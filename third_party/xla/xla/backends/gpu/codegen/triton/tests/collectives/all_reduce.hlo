@@ -1,5 +1,4 @@
-// RUN: fusion_to_triton --xla_gpu_experimental_enable_tiling_propagation=false %s | FileCheck %s
-// RUN: fusion_to_triton %s --xla_gpu_experimental_enable_tiling_propagation | FileCheck %s
+// RUN: fusion_to_triton %s | FileCheck %s
 
 sum {
   x = f32[] parameter(0)
@@ -9,7 +8,8 @@ sum {
 fusion{
   p0 = f32[65536]{0} parameter(0)
   ROOT all-reduce = f32[65536]{0} all-reduce(p0),
-    replica_groups={{0,1}}, to_apply=sum
+    replica_groups={{0,1}}, to_apply=sum,
+    backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
 }
 
 // CHECK-LABEL: xtile.entry_func @triton_fn(

@@ -144,7 +144,7 @@ absl::StatusOr<std::optional<ConfigAssigner::Config>> ParseForcedConfig(
 
 absl::StatusOr<std::unique_ptr<ConfigAssigner>> ConfigAssigner::Create(
     Options options,
-    std::unique_ptr<AutotunerCacheInterface> absl_nonnull cache,
+    std::unique_ptr<AutotunerCacheInterface> absl_nullable cache,
     std::unique_ptr<CodegenOrchestrator> absl_nonnull orchestrator,
     std::unique_ptr<Autotuner> absl_nullable autotuner,
     tsl::thread::ThreadPool* thread_pool) {
@@ -189,10 +189,11 @@ absl::Status ConfigAssigner::AssignConfigs(
     HloModule* module, const InstructionFilterFn& should_assign_config,
     MultiProcessKeyValueStore& sharding_kv_store) {
   // Sharding the instructions only makes sense if we can have different
-  // configs for different shards, which only happens due to online tuning.
-  if (!options_.allow_autotuning) {
+  // configs for different shards, which only happens due to online tuning, and
+  // requires the cache to exchange results across shards.
+  if (!options_.allow_autotuning || optimal_config_cache_ == nullptr) {
     VLOG(1) << "Falling back to non-sharded config assignment as online "
-               "tuning is disabled.";
+               "tuning or caching is disabled.";
     return AssignConfigs(module, should_assign_config);
   }
 
@@ -488,6 +489,9 @@ ConfigAssigner::GetFirstCompilableConfigOrDefault(const HloInstruction* instr) {
 
 std::optional<ConfigAssigner::Config> ConfigAssigner::LookUp(
     const HloInstruction* instr) const {
+  if (optimal_config_cache_ == nullptr) {
+    return std::nullopt;
+  }
   auto cached_config = optimal_config_cache_->Lookup(instr);
   if (!cached_config.has_value()) {
     return std::nullopt;
@@ -510,6 +514,9 @@ std::optional<ConfigAssigner::Config> ConfigAssigner::LookUp(
 
 absl::Status ConfigAssigner::Insert(const HloInstruction* instr,
                                     const ConfigAssigner::Config& config) {
+  if (optimal_config_cache_ == nullptr) {
+    return absl::OkStatus();
+  }
   AutotunerCacheInterface::Config cached_config;
   cached_config.codegen_backend = config.codegen_backend->backend();
   cached_config.backend_config = *config.backend_config;
@@ -597,6 +604,9 @@ std::string ConfigAssigner::Options::ToString() const {
 }
 
 AutotunerCacheInterface::CacheStats ConfigAssigner::GetCacheStats() const {
+  if (optimal_config_cache_ == nullptr) {
+    return {};
+  }
   return optimal_config_cache_->GetCacheStats();
 }
 

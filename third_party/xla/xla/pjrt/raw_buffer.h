@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/staging_buffer.h"
+#include "xla/pjrt/strided_gather.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -95,6 +96,19 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
       absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+
+  void ScheduleCopySliceTo(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      const StridedGather& gather, PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+
+  void ScheduleUpdateSlice(PjRtDeviceEventRefVector transfer_dependency_events,
+                           const StridedGather& gather,
+                           PjRtRawBufferRef src_raw_buffer,
+                           PjRtDeviceEventPromiseRef definition_event_promise,
+                           PjRtDeviceEventPromiseRef src_usage_event_promise);
 
   void DecrefAfter(PjRtDeviceEventRefVector avs);
 
@@ -213,6 +227,28 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
       absl::AnyInvocable<void(absl::Status) &&> allocation_event) = 0;
+
+  // Blocks on a list of dependencies and then copies a strided slice of
+  // this buffer directly into dst_raw_buffer. Must set
+  // definition_event_promise when dst_raw_buffer is ready,
+  // allocation_event before using dst_raw_buffer, and
+  // src_usage_event_promise when done using this buffer.
+  virtual void ScheduleCopySliceTo(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      const StridedGather& gather, PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+
+  // Blocks on a list of dependencies and then updates a strided slice of
+  // this buffer with the contents of src_raw_buffer. Must set
+  // definition_event_promise when this buffer is ready, and
+  // src_usage_event_promise when done using src_raw_buffer.
+  virtual void ScheduleUpdateSlice(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      const StridedGather& gather, PjRtRawBufferRef src_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise);
 
   // Returns the async value associated with the buffer.
   virtual PjRtDeviceEventPtr GetRawBufferAsyncValue() = 0;

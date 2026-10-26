@@ -83,12 +83,12 @@ class CollectiveOpsE2ETestBase : public gpu::HloPjRtGpuTestBase {
     return device_description().gpu_compute_capability();
   }
 
-  bool IsHopperAndHigher() {
+  bool IsHopperAndHigher() const {
     return Capability().IsCuda() &&
            Capability().cuda_compute_capability()->IsAtLeastHopper();
   }
 
-  bool IsAmpereAndHigher() {
+  bool IsAmpereAndHigher() const {
     return Capability().IsCuda() &&
            Capability().cuda_compute_capability()->IsAtLeastAmpere();
   }

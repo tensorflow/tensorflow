@@ -19,10 +19,8 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "google/protobuf/any.pb.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -42,10 +40,8 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -59,11 +55,12 @@ limitations under the License.
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/triton_emitter_constraints.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -96,10 +93,12 @@ TritonBackend::GetSupportedConfigsWithEstimates(const HloInstruction& instr) {
   absl::flat_hash_map<TritonGemmConfig, absl::Duration> estimates_map;
   if (dot_instr != nullptr) {
     const auto* dot = Cast<HloDotInstruction>(dot_instr);
+    ABSL_ASSIGN_OR_RETURN(MlirContextPool::BorrowedObject mlir_context,
+                     mlir_context_pool_->GetOrCreate());
     ABSL_ASSIGN_OR_RETURN(estimates_map,
                      EstimateConfigsWithCostModel(
                          dot, gemm_configs, target_config().device_description,
-                         debug_options(), mlir_context_));
+                         debug_options(), mlir_context->get()));
   }
 
   std::vector<CodegenBackend::EstimatedConfig> result;
@@ -187,9 +186,11 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
         search_space.GenerateConfigs(autotune_warp_specialization);
     std::vector<TritonGemmConfig> candidate_configs =
         search_space.OptimizeConfigSet(all_configs, default_configs);
+    ABSL_ASSIGN_OR_RETURN(MlirContextPool::BorrowedObject mlir_context,
+                     mlir_context_pool_->GetOrCreate());
     return OptimizeConfigsWithCostModel(dot, all_configs, candidate_configs,
                                         target_config().device_description,
-                                        debug_options(), mlir_context_);
+                                        debug_options(), mlir_context->get());
   }
 
   VLOG(1) << "Restricting configs to the default set.";
@@ -217,6 +218,12 @@ TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
 
   const bool exhaustive_search =
       debug_options().xla_gpu_exhaustive_tiling_search();
+
+  // Only MI300 measured a win, matching mi300.txtpb for regular dots.
+  const bool autotune_mfma_size =
+      gpu_cc.IsRocm() &&
+      gpu_cc.rocm_compute_capability()->has_mfma_instr_support() &&
+      (exhaustive_search || gpu_cc.rocm_compute_capability()->gfx9_mi300());
   for (int block_m = 128; block_m <= 256; block_m *= 2) {
     for (int block_n = 16; block_n <= 256; block_n *= 2) {
       for (int block_k = 128; block_k <= 256; block_k *= 2) {
@@ -230,12 +237,19 @@ TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
           continue;
         }
 
-        configs.push_back(TritonGemmConfig(block_m, block_n,
-                                           /*block_k=*/block_k,
-                                           /*num_stages=*/1,
-                                           /*num_warps=*/4,
-                                           /*num_ctas=*/1,
-                                           /*is_tma_allowed=*/false));
+        TritonGemmConfig config(block_m, block_n,
+                                /*block_k=*/block_k,
+                                /*num_stages=*/1,
+                                /*num_warps=*/4,
+                                /*num_ctas=*/1,
+                                /*is_tma_allowed=*/false);
+        configs.push_back(config);
+
+        const int mfma_size = MfmaSizeToTry(block_m, block_n);
+        if (autotune_mfma_size && mfma_size != 0) {
+          config.mfma_size = mfma_size;
+          configs.push_back(config);
+        }
       }
     }
   }
@@ -324,11 +338,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
     ABSL_RETURN_IF_ERROR(float_normalization.Run(hlo_module.get()).status());
   }
 
+  ABSL_ASSIGN_OR_RETURN(MlirContextPool::BorrowedObject mlir_context,
+                   mlir_context_pool_->GetOrCreate());
+
   HloCostAnalysis::Options priority_fusion_options;
   priority_fusion_options.count_multiple_input_accesses = true;
   PriorityFusion priority_fusion(
       /*thread_pool=*/nullptr, gpu_device_info, alias_info_,
-      priority_fusion_options, mlir_context_);
+      priority_fusion_options, mlir_context->get());
   ABSL_RETURN_IF_ERROR(priority_fusion.Run(hlo_module.get()).status());
 
   // If the priority fusion pass above skipped some instructions, turn them
@@ -336,7 +353,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   FusionWrapper fusion_wrapper(gpu_device_info);
   ABSL_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
   ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
-                                                     mlir_context_);
+                                                     mlir_context->get());
   ABSL_RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
   return hlo_module;
 }
@@ -358,38 +375,27 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
     auto fusion = Cast<HloFusionInstruction>(&instr);
     std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
         HloFusionAdaptor::ForInstruction(fusion);
-    if (instr.GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_experimental_enable_tiling_propagation()) {
-      auto ts =
-          experimental::TilingSpace::Create(*fusion_adaptor, mlir_context_);
-      if (!ts.ok()) {
-        VLOG(1) << "Failed to create tiling space: " << ts.status().message();
-        return false;
-      }
-      auto tiled_computation_or = experimental::TiledHloComputation::Tile(
-          *fusion_adaptor, std::move(ts.value()));
-      if (!tiled_computation_or.ok()) {
-        VLOG(1) << "Fusion is not tileable with experimental tiling: "
-                << tiled_computation_or.status().message();
-        return false;
-      }
-      // We don't have concrete tile sizes here and don't validate Triton
-      // constraints here.
-      return true;
-    }
-
-    auto device_info = target_config().device_description;
-    SymbolicTileAnalysisOrError analysis_or_error =
-        SymbolicTileAnalysis::AnalyzeFusion(
-            *fusion_adaptor, mlir_context_,
-            TritonEmitterConstraints::GetBuilder(device_info));
-    if (const auto* fusion_decision =
-            std::get_if<FusionDecision>(&analysis_or_error)) {
-      VLOG(1) << "Fusion not tileable: " << fusion_decision->Explain();
+    absl::StatusOr<MlirContextPool::BorrowedObject> mlir_context =
+        mlir_context_pool_->GetOrCreate();
+    if (!mlir_context.ok()) {
+      VLOG(1) << "Failed to borrow MLIRContext: " << mlir_context.status();
       return false;
     }
+    auto ts = experimental::TilingSpace::Create(*fusion_adaptor,
+                                                (*mlir_context)->get());
+    if (!ts.ok()) {
+      VLOG(1) << "Failed to create tiling space: " << ts.status().message();
+      return false;
+    }
+    auto tiled_computation_or = experimental::TiledHloComputation::Tile(
+        *fusion_adaptor, std::move(ts.value()));
+    if (!tiled_computation_or.ok()) {
+      VLOG(1) << "Fusion is not tileable with experimental tiling: "
+              << tiled_computation_or.status().message();
+      return false;
+    }
+    // We don't have concrete tile sizes here and don't validate Triton
+    // constraints here.
     return true;
   }
   return backend_config.kind() == kCuDnnFusionKind ||

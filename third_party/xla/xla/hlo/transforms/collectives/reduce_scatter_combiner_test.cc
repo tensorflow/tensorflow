@@ -54,17 +54,15 @@ class ReduceScatterCombinerTest : public HloHardwareIndependentTestBase {
     VLOG(1) << "Before running ReduceScatterCombiner: "
             << ReduceScatterCount(module.get()) << " reduce-scatter ops";
 
-    auto changed = ReduceScatterCombiner(byte_threshold, count_threshold,
-                                         combine_by_dim, combine_while_loops)
-                       .Run(module.get());
-    if (!changed.ok()) {
-      return changed.status();
-    }
+    ABSL_ASSIGN_OR_RETURN(bool changed,
+                     ReduceScatterCombiner(byte_threshold, count_threshold,
+                                           combine_by_dim, combine_while_loops)
+                         .Run(module.get()));
 
     VLOG(1) << "After running ReduceScatterCombiner: "
             << ReduceScatterCount(module.get()) << " reduce-scatter ops";
 
-    EXPECT_EQ(changed.value(), expect_change);
+    EXPECT_EQ(changed, expect_change);
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 

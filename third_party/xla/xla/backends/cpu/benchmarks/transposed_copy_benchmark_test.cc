@@ -94,6 +94,7 @@ static void BM_TransposeAndCopySquare(benchmark::State& state,
 #define REGISTER_BENCHMARK(NAME) \
   XLA_CPU_BENCHMARK(NAME)        \
       ->MeasureProcessCPUTime()  \
+      ->Arg(3)                   \
       ->Arg(128)                 \
       ->Arg(256)                 \
       ->Arg(512)                 \

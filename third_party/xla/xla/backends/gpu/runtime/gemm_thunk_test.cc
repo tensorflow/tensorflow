@@ -45,8 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -141,16 +139,16 @@ TEST(GemmThunkTest, ProtoRoundTrip) {
   const GemmThunkProto& original_gemm_thunk_proto =
       original_thunk_proto.gemm_thunk();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Thunk::ThunkInfo thunk_info_from_proto,
       Thunk::ThunkInfo::FromProto(original_thunk_proto.thunk_info()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GemmThunk> gemm_thunk,
       GemmThunk::FromProto(thunk_info_from_proto, original_gemm_thunk_proto,
                            buffer_allocations));
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_tripped_thunk_proto,
-                          gemm_thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_tripped_thunk_proto,
+                       gemm_thunk->ToProto());
   EXPECT_THAT(round_tripped_thunk_proto, EqualsProto(original_thunk_proto));
 }
 // ===========================================================================
@@ -164,8 +162,8 @@ TEST(GemmThunkTest, RecordCommandBuffer) {
     GTEST_SKIP() << "CUDA graph tracing is not supported";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto trace_stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto trace_stream, executor->CreateStream());
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 4 * 3;
@@ -175,18 +173,18 @@ TEST(GemmThunkTest, RecordCommandBuffer) {
   // lhs = [1, 2, 3, 4 / 5, 6, 7, 8], rhs = all-ones [4x3]
   se::DeviceAddress<float> lhs = executor->AllocateArray<float>(2 * 4);
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
-  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
+  ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
   se::DeviceAddress<float> rhs = executor->AllocateArray<float>(4 * 3);
   std::vector<float> rhs_arr(12, 1.0f);
-  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
+  ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
   se::DeviceAddress<float> out = executor->AllocateArray<float>(2 * 3);
-  TF_ASSERT_OK(stream->MemZero(&out, out_length));
+  ASSERT_OK(stream->MemZero(&out, out_length));
 
   se::DeviceAddress<float> workspace =
       executor->AllocateArray<float>(workspace_length / sizeof(float));
-  TF_ASSERT_OK(stream->MemZero(&workspace, workspace_length));
+  ASSERT_OK(stream->MemZero(&workspace, workspace_length));
 
   BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
   BufferAllocation alloc_rhs(/*index=*/1, rhs_length, /*color=*/0);
@@ -199,7 +197,7 @@ TEST(GemmThunkTest, RecordCommandBuffer) {
   BufferAllocation::Slice slice_workspace(&alloc_workspace, 0,
                                           workspace_length);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
@@ -217,8 +215,7 @@ TEST(GemmThunkTest, RecordCommandBuffer) {
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, stream.get()}));
+  ASSERT_OK(thunk.Initialize({executor, source, &allocations, stream.get()}));
 
   ServiceExecutableRunOptions run_options;
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
@@ -230,22 +227,21 @@ TEST(GemmThunkTest, RecordCommandBuffer) {
   CommandStateManager state;
   Command::RecordParams record_params = {state};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      thunk.Record(params, record_params,
-                   Command::RecordCreate{/*dependencies=*/{}},
-                   command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(params, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   // Expected: lhs [2x4] * rhs [4x3, all-ones] = [[10,10,10],[26,26,26]]
   std::vector<float> dst(6, 0.0f);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
+  ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
   ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
 }
 
@@ -256,8 +252,8 @@ TEST(GemmThunkTest, RecordCommandBufferUpdate) {
     GTEST_SKIP() << "CUDA graph tracing is not supported";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto trace_stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto trace_stream, executor->CreateStream());
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 4 * 3;
@@ -266,18 +262,18 @@ TEST(GemmThunkTest, RecordCommandBufferUpdate) {
 
   se::DeviceAddress<float> lhs = executor->AllocateArray<float>(2 * 4);
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
-  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
+  ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
   se::DeviceAddress<float> rhs = executor->AllocateArray<float>(4 * 3);
   std::vector<float> rhs_arr(12, 1.0f);
-  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
+  ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
   se::DeviceAddress<float> out = executor->AllocateArray<float>(2 * 3);
-  TF_ASSERT_OK(stream->MemZero(&out, out_length));
+  ASSERT_OK(stream->MemZero(&out, out_length));
 
   se::DeviceAddress<float> workspace =
       executor->AllocateArray<float>(workspace_length / sizeof(float));
-  TF_ASSERT_OK(stream->MemZero(&workspace, workspace_length));
+  ASSERT_OK(stream->MemZero(&workspace, workspace_length));
 
   BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
   BufferAllocation alloc_rhs(/*index=*/1, rhs_length, /*color=*/0);
@@ -290,7 +286,7 @@ TEST(GemmThunkTest, RecordCommandBufferUpdate) {
   BufferAllocation::Slice slice_workspace(&alloc_workspace, 0,
                                           workspace_length);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GemmConfig config,
       GemmConfig::For(
           ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
@@ -308,8 +304,7 @@ TEST(GemmThunkTest, RecordCommandBufferUpdate) {
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(
-      thunk.Initialize({executor, source, &allocations, stream.get()}));
+  ASSERT_OK(thunk.Initialize({executor, source, &allocations, stream.get()}));
 
   ServiceExecutableRunOptions run_options;
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
@@ -322,39 +317,38 @@ TEST(GemmThunkTest, RecordCommandBufferUpdate) {
   Command::RecordParams record_params = {state};
 
   // First recording: RecordCreate.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto command_buffer,
       executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const se::CommandBuffer::Command* cmd,
-      thunk.Record(params, record_params,
-                   Command::RecordCreate{/*dependencies=*/{}},
-                   command_buffer.get()));
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* cmd,
+                       thunk.Record(params, record_params,
+                                    Command::RecordCreate{/*dependencies=*/{}},
+                                    command_buffer.get()));
   ASSERT_NE(cmd, nullptr);
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   std::vector<float> dst(6, 0.0f);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
+  ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
   ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
 
   // Transition to update state; zero output to confirm re-execution.
-  TF_ASSERT_OK(command_buffer->Update());
-  TF_ASSERT_OK(stream->MemZero(&out, out_length));
+  ASSERT_OK(command_buffer->Update());
+  ASSERT_OK(stream->MemZero(&out, out_length));
 
   // Second recording: RecordUpdate with same buffers → cache hit, same cmd.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const se::CommandBuffer::Command* updated_cmd,
       thunk.Record(params, record_params, Command::RecordUpdate{cmd},
                    command_buffer.get()));
   EXPECT_EQ(updated_cmd, cmd);  // same command node is reused (cache hit)
-  TF_ASSERT_OK(command_buffer->Finalize());
-  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(command_buffer->Finalize());
+  ASSERT_OK(command_buffer->Submit(stream.get()));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   std::fill(dst.begin(), dst.end(), 0.0f);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
+  ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
   ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
 }
 

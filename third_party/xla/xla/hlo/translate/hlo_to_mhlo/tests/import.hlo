@@ -371,6 +371,16 @@ add {
   ROOT %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true
 }
 
+// CHECK-LABEL:  func private @test_fma
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<4xf32>, [[ARG1:%.*]]: tensor<4xf32>, [[ARG2:%.*]]: tensor<4xf32>) -> tensor<4xf32>
+%test_fma (a: f32[4], b: f32[4], c: f32[4]) -> f32[4] {
+  %a = f32[4] parameter(0)
+  %b = f32[4] parameter(1)
+  %c = f32[4] parameter(2)
+  // CHECK-NEXT:  mhlo.fma [[ARG0]], [[ARG1]], [[ARG2]] : tensor<4xf32>
+  ROOT %fma0 = f32[4] fma(f32[4] %a, f32[4] %b, f32[4] %c)
+}
+
 
 // CHECK-LABEL:  func private @test_clamp(
 %test_clamp (Arg_0.1: f32[], Arg_1.2: f32[4], Arg_1.3: f32[]) -> f32[4] {
@@ -415,6 +425,9 @@ add {
 
   // CHECK-NEXT:  mhlo.compare LE, %arg0, %arg1, TOTALORDER : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
   %compare.5 = pred[3] compare(Arg_0.1, Arg_1.2), direction=LE, type=TOTALORDER
+
+  // CHECK-NEXT:  mhlo.compare LT, %arg0, %arg1, WEAKORDER : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
+  %compare.weak = pred[3] compare(Arg_0.1, Arg_1.2), direction=LT, order=WEAK
 
   // Requires broadcast of compatible tensors.
   // CHECK-NEXT:  mhlo.compare GT, %arg0, %arg2 : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xi1>
@@ -943,6 +956,14 @@ add {
   ROOT %exp.2 = f32[16] exponential(f32[16] %arg0.1)
 }
 
+// CHECK-LABEL:  func private @test_exp2(%arg0: tensor<16xf32>) -> tensor<16xf32>
+%test_exp2 (arg0.1: f32[16]) -> f32[16] {
+  %arg0.1 = f32[16] parameter(0)
+
+  // CHECK-NEXT:  mhlo.exp2 %arg0 : tensor<16xf32>
+  ROOT %exp2.2 = f32[16] exp2(f32[16] %arg0.1)
+}
+
 // CHECK-LABEL:  func private @test_expm1(%arg0: tensor<16xf32>) -> tensor<16xf32>
 %test_expm1 (arg0.1: f32[16]) -> f32[16] {
   %arg0.1 = f32[16] parameter(0)
@@ -1099,6 +1120,14 @@ add {
 
   // CHECK:  mhlo.log_plus_one %arg0 : tensor<16xf32>
   ROOT %log1p.2 = f32[16] log-plus-one(f32[16] %arg0.1)
+}
+
+// CHECK-LABEL:  func private @test_log2(%arg0: tensor<16xf32>) -> tensor<16xf32>
+%test_log2 (arg0.1: f32[16]) -> f32[16] {
+  %arg0.1 = f32[16] parameter(0)
+
+  // CHECK:  mhlo.log2 %arg0 : tensor<16xf32>
+  ROOT %log2.2 = f32[16] log2(f32[16] %arg0.1)
 }
 
 // Test mhlo.map

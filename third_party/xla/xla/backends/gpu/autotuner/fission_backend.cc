@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
@@ -212,11 +213,13 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
 }
 
 absl::Status FissionBackend::RunPriorityFusion(HloModule* module) const {
+  ABSL_ASSIGN_OR_RETURN(MlirContextPool::BorrowedObject mlir_context,
+                   mlir_context_pool_->GetOrCreate());
   HloCostAnalysis::Options priority_fusion_options;
   priority_fusion_options.count_multiple_input_accesses = true;
   PriorityFusion priority_fusion(
       /*thread_pool=*/nullptr, target_config().device_description, alias_info_,
-      priority_fusion_options, mlir_context_);
+      priority_fusion_options, mlir_context->get());
   return priority_fusion.Run(module).status();
 }
 
@@ -239,23 +242,23 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
   ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> supported_instrs,
                    FindSupportedInstructions(hlo_module.get()));
 
-  for (size_t i = 0; i < supported_instrs.size(); ++i) {
-    HloInstruction* supported_instr = supported_instrs[i];
-    if (i > 0) {
-      if (supported_instr->opcode() != supported_instrs[0]->opcode()) {
-        return absl::InternalError(absl::StrCat(
-            "FissionBackend expected isomorphic supported instructions, but "
-            "found different opcodes: ",
-            HloOpcodeString(supported_instrs[0]->opcode()), " vs ",
-            HloOpcodeString(supported_instr->opcode())));
-      }
-      if (!ShapeUtil::Compatible(supported_instr->shape(),
-                                 supported_instrs[0]->shape())) {
-        return absl::InternalError(
-            "FissionBackend expected isomorphic supported instructions with "
-            "compatible shapes, but found incompatible shapes.");
-      }
+  for (size_t i = 1; i < supported_instrs.size(); ++i) {
+    const HloInstruction* supported_instr = supported_instrs[i];
+    if (supported_instr->opcode() != supported_instrs[0]->opcode()) {
+      return absl::InternalError(absl::StrCat(
+          "FissionBackend expected isomorphic supported instructions, but "
+          "found different opcodes: ",
+          HloOpcodeString(supported_instrs[0]->opcode()), " vs ",
+          HloOpcodeString(supported_instr->opcode())));
     }
+    if (!ShapeUtil::Compatible(supported_instr->shape(),
+                               supported_instrs[0]->shape())) {
+      return absl::InternalError(
+          "FissionBackend expected isomorphic supported instructions with "
+          "compatible shapes, but found incompatible shapes.");
+    }
+  }
+  for (HloInstruction* supported_instr : supported_instrs) {
     ABSL_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
   }
 
@@ -277,17 +280,18 @@ absl::StatusOr<absl::Duration> FissionBackend::EstimateFissionPrologueEpilogue(
   ABSL_RETURN_IF_ERROR(
       fusion_wrapper.Run(fissioned_and_rewritten_module.get()).status());
 
+  ABSL_ASSIGN_OR_RETURN(MlirContextPool::BorrowedObject mlir_context,
+                   mlir_context_pool_->GetOrCreate());
   const stream_executor::DeviceDescription& device_info =
       target_config().device_description;
   HloFusionAnalysisCache fusion_analysis_cache{device_info};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model{
       &device_info, &fusion_analysis_cache, HloCostAnalysis::DefaultShapeSize,
-      mlir_context_,
-      /*use_experimental_tiling=*/
-      debug_options().xla_gpu_experimental_enable_tiling_propagation(),
+      mlir_context->get(),
       /*enable_same_shape_multi_output_fusion=*/
       debug_options()
-          .xla_gpu_experimental_enable_same_shape_multi_output_fusion()};
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion(),
+      mlir_context_pool_};
 
   absl::Duration total_exec_time = absl::ZeroDuration();
 

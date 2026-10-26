@@ -182,5 +182,51 @@ ENTRY entry {
               op::Multiply(op::ReplicaId(), op::Constant())))));
 }
 
+TEST_F(AllGatherDecomposerTest, PreservesMetadataAndFrontendAttributes) {
+  const std::string module_str = R"(
+HloModule module
+
+ENTRY entry {
+  param0 = f32[10,20] parameter(0)
+  param1 = f32[10,16] parameter(1)
+  ag_single = f32[10,80] all-gather(param0), replica_groups={}, dimensions={1},
+    frontend_attributes={_xla_compute_type="sparse"},
+    metadata={op_name="jit(all_gather_fn)/shard_map/MARKER!!!/all_gather"}
+  ag_tuple = (f32[10,80], f32[10,64]) all-gather(param0, param1),
+    replica_groups={}, dimensions={1},
+    frontend_attributes={_xla_compute_type="sparse"},
+    metadata={op_name="jit(all_gather_fn)/shard_map/MARKER_TUPLE/all_gather"}
+  ROOT root = (f32[10,80], (f32[10,80], f32[10,64])) tuple(ag_single, ag_tuple)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(module_str));
+  AllGatherDecomposer decomposer;
+  ASSERT_OK_AND_ASSIGN(bool changed, decomposer.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* ar_single = root->operand(0);
+  EXPECT_THAT(ar_single, op::AllReduce());
+  EXPECT_EQ(ar_single->metadata().op_name(),
+            "jit(all_gather_fn)/shard_map/MARKER!!!/all_gather");
+  EXPECT_THAT(
+      ar_single->frontend_attributes().map(),
+      ::testing::Contains(::testing::Pair("_xla_compute_type", "sparse")));
+
+  const HloInstruction* ar_tuple = root->operand(1);
+  EXPECT_THAT(ar_tuple, op::Tuple(op::AllReduce(), op::AllReduce()));
+  EXPECT_EQ(ar_tuple->metadata().op_name(),
+            "jit(all_gather_fn)/shard_map/MARKER_TUPLE/all_gather");
+  for (const HloInstruction* ar : ar_tuple->operands()) {
+    EXPECT_EQ(ar->metadata().op_name(),
+              "jit(all_gather_fn)/shard_map/MARKER_TUPLE/all_gather");
+    EXPECT_THAT(
+        ar->frontend_attributes().map(),
+        ::testing::Contains(::testing::Pair("_xla_compute_type", "sparse")));
+  }
+}
+
 }  // namespace
 }  // namespace xla

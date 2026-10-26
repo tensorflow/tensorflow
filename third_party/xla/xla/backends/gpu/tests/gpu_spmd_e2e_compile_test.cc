@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -69,7 +68,7 @@ ENTRY entry {
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> executable =
       CreateExecutable(std::move(hlo_module),
                        /*run_hlo_passes=*/true);
-  TF_EXPECT_OK(executable.status());
+  EXPECT_OK(executable.status());
 }
 
 TEST_F(GpuSpmdE2ECompileTest, DotSharding) {

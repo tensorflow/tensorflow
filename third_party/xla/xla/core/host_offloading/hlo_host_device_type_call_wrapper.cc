@@ -16,8 +16,11 @@ limitations under the License.
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -632,7 +635,24 @@ absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
 
   ABSL_RETURN_IF_ERROR(
       AnnotateHostComputeOffload().Run(module, execution_threads).status());
-  ABSL_RETURN_IF_ERROR(CallInliner().Run(module, execution_threads).status());
+  std::optional<std::function<CallInliner::InlineOverridePolicy(
+      const CallGraph&, const HloInstruction*)>>
+      override_policy = std::nullopt;
+  if (options_.inline_only_host_computations) {
+    override_policy = [](const CallGraph& /*call_graph*/,
+                         const HloInstruction* instruction) {
+      if (host_offload_utils::ComputeTypeIsHost(instruction) ||
+          absl::c_any_of(instruction->to_apply()->instructions(),
+                         host_offload_utils::ComputeTypeIsHost)) {
+        return CallInliner::InlineOverridePolicy::kAllowInline;
+      }
+      return CallInliner::InlineOverridePolicy::kProhibitInline;
+    };
+  }
+  CallInliner call_inliner(
+      /*single_call_site=*/false, /*update_domain=*/false,
+      /*composites_to_preserve=*/{}, std::move(override_policy));
+  ABSL_RETURN_IF_ERROR(call_inliner.Run(module, execution_threads).status());
   ABSL_RETURN_IF_ERROR(TupleSimplifier().Run(module, execution_threads).status());
   ABSL_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
 

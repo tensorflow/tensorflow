@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/lib/core/bits.h"
 #include "xla/util.h"
 #include "tsl/platform/protobuf.h"
@@ -146,6 +147,13 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   }
   if (device_description_.gpu_compute_capability().IsRocm()) {
     ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddWavesPerEuParameter);
+    // The default path keeps only configs listed in the hint tables, and only
+    // mi300.txtpb lists the variants.
+    if (device_description_.gpu_compute_capability()
+            .rocm_compute_capability()
+            ->has_mfma_instr_support()) {
+      ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddMfmaSizeParameter);
+    }
   }
 
   std::vector<TritonGemmConfig> result;
@@ -639,9 +647,7 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
     return;
   }
 
-  // Output tilings alone typically produce 12-20 configs (without split-K
-  // multipliers). We only skip optimization for very small search spaces.
-  constexpr int kMinConfigsForOccupancyOptimization = 15;
+  constexpr int kMinConfigsForOccupancyOptimization = 24;
   if (configs.size() < kMinConfigsForOccupancyOptimization) {
     VLOG(10) << "Skipping occupancy optimization for small search spaces. "
                 "Configs size: "
@@ -703,6 +709,30 @@ void TritonDotFusionSearchSpace::AddWavesPerEuParameter(
              << new_config.ToString();
     updated_configs.push_back(new_config);
   }
+}
+
+void TritonDotFusionSearchSpace::AddMfmaSizeParameter(
+    const ConfigWithNotes& config,
+    std::vector<ConfigWithNotes>& updated_configs) const {
+  updated_configs.push_back(config);
+  const int mfma_size =
+      MfmaSizeToTry(config.config.block_m, config.config.block_n);
+  if (mfma_size == 0) {
+    return;
+  }
+  ConfigWithNotes new_config = config;
+  new_config.config.mfma_size = mfma_size;
+  VLOG(10) << "Adding mfma_size parameter: config = " << new_config.ToString();
+  updated_configs.push_back(new_config);
+}
+
+int MfmaSizeToTry(int block_m, int block_n) {
+  // Triton's auto MFMA choice takes the largest instruction that fits the
+  // tile, which is not always the fastest. Auto already picks 16 on tiles in
+  // [16, 32), and under 16 Triton skips its divisibility check for a forced
+  // size and miscompiles.
+  constexpr int kSmallMfmaSize = 16;
+  return std::min(block_m, block_n) >= 2 * kSmallMfmaSize ? kSmallMfmaSize : 0;
 }
 
 }  // namespace xla::gpu

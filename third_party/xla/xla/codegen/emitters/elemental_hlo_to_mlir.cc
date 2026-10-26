@@ -665,32 +665,8 @@ SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
   for (unsigned int i = 0; i < map.GetNumResults(); ++i) {
     SmallVector<Value, 1> result;
     IndexingMap sub_map = map.GetSubMap(i);
-    sub_map.ClearConstraints();
     b.createOrFold<ApplyIndexingOp>(result, dims, symbols, std::move(sub_map));
     results.append(result);
-  }
-  if (map.GetConstraintsCount() == 0) {
-    return results;
-  }
-  // Add constraints to the apply indexing ops.
-  // TODO(b/542571968): A more principled, but potentially a much more expensive
-  // way to fix this is to allow the constraints in the indexing maps for
-  // apply_indexing ops. That will require to update a lot of tests, but it is
-  // worth trying.
-  SmallVector<Interval> result_ranges = map.ComputeResultRanges();
-  for (const auto& [result, range] : llvm::zip(results, result_ranges)) {
-    // Bare dim/symbol results fold to a pre-existing operand. Its defining op
-    // may not be guarded by `map`'s constraints, so never annotate it.
-    if (llvm::is_contained(dims, result) ||
-        llvm::is_contained(symbols, result)) {
-      continue;
-    }
-    auto apply_op = result.getDefiningOp<ApplyIndexingOp>();
-    if (!apply_op || range.IsUnconstrained()) {
-      continue;
-    }
-    apply_op->setAttr("xla.range",
-                      b.getIndexArrayAttr({range.lower, range.upper}));
   }
   return results;
 }
@@ -889,6 +865,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
   return {{out}};
 }
 
+}  // namespace
+
 absl::StatusOr<SmallVector<Value, 1>> EmitIota(const HloInstruction* instr,
                                                ValueRange indices,
                                                ImplicitLocOpBuilder& builder) {
@@ -906,6 +884,8 @@ absl::StatusOr<SmallVector<Value, 1>> EmitIota(const HloInstruction* instr,
       builder.getLoc(), result_type_with_sign, result_element_type,
       {index_type}, {index}, /*attributes=*/{}, &builder)}};
 }
+
+namespace {
 
 absl::StatusOr<SmallVector<Value, 1>> EmitCompare(
     const HloInstruction* instr, llvm::ArrayRef<mlir::Type> arg_types,
@@ -1066,6 +1046,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       }
       return MapElementwiseOp<mhlo::ExpOp>(arg_types, operands, builder,
                                            attributes);
+    case HloOpcode::kExp2:
+      return MapElementwiseOp<mhlo::Exp2Op>(arg_types, operands, builder);
     case HloOpcode::kExpm1:
       return MapElementwiseOp<mhlo::Expm1Op>(arg_types, operands, builder);
     case HloOpcode::kFloor:
@@ -1086,6 +1068,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
                                            attributes);
     case HloOpcode::kLog1p:
       return MapElementwiseOp<mhlo::Log1pOp>(arg_types, operands, builder);
+    case HloOpcode::kLog2:
+      return MapElementwiseOp<mhlo::Log2Op>(arg_types, operands, builder);
     case HloOpcode::kLogistic:
       return MapElementwiseOp<mhlo::LogisticOp>(arg_types, operands, builder);
     case HloOpcode::kMap: {

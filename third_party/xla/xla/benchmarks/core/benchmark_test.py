@@ -20,10 +20,12 @@ from unittest import mock
 
 from absl.testing import absltest
 import jax
+from jax.experimental.pallas import tpu as pltpu
 import jax.numpy as jnp
 import numpy as np
 
 from xla.benchmarks.core import benchmark
+from xla.benchmarks.core import platform_info
 from xla.benchmarks.jax_microbenchmarks import jax_profiler_utils
 
 InputSpec = benchmark.InputSpec
@@ -199,6 +201,77 @@ class BenchmarkTest(absltest.TestCase):
       bm.run(repeat=0)
     with self.assertRaises(ValueError):
       bm.run(runs=0)
+
+  def test_dtype_dict(self):
+    d = platform_info.DtypeDict({jnp.bfloat16: 16, jnp.float32: 32})
+    self.assertEqual(d[jnp.bfloat16], 16)
+    self.assertEqual(d[jnp.dtype("bfloat16")], 16)
+    self.assertEqual(d["bfloat16"], 16)
+    self.assertIn(jnp.bfloat16, d)
+    self.assertIn(jnp.dtype("bfloat16"), d)
+    self.assertIn("bfloat16", d)
+    self.assertNotIn(jnp.int32, d)
+    self.assertNotIn("invalid_dtype_str", d)
+    self.assertNotIn(12345, d)
+    self.assertEqual(d.get(jnp.dtype("bfloat16")), 16)
+    self.assertEqual(d.get(jnp.int32, 0), 0)
+
+  def test_dtype_to_str_accepts_dtype_objects(self):
+    for name, scalar_type in benchmark.STR_TO_DTYPE_MAPPING.items():
+      with self.subTest(name=name):
+        self.assertEqual(benchmark.dtype_to_str(scalar_type), name)
+        self.assertEqual(benchmark.dtype_to_str(jnp.dtype(scalar_type)), name)
+    self.assertEqual(benchmark.dtype_to_str("foo"), "foo")
+
+  def test_dtype_objects_match_scalar_types(self):
+    for chip in (
+        pltpu.ChipVersion.TPU_V5E,
+        pltpu.ChipVersion.TPU_V5P,
+        pltpu.ChipVersion.TPU_V6E,
+        pltpu.ChipVersion.TPU_7X,
+        pltpu.ChipVersion.TPU_8I,
+        pltpu.ChipVersion.TPU_8T,
+    ):
+      pinfo = platform_info.get_platform_info(chip)
+      for scalar_type in (
+          jnp.float32,
+          jnp.bfloat16,
+          jnp.float8_e4m3fn,
+          jnp.float8_e5m2,
+          jnp.float8_e4m3b11fnuz,
+          jnp.int8,
+          jnp.uint8,
+          jnp.int4,
+          jnp.uint4,
+          jnp.float4_e2m1fn,
+      ):
+        dtype_object = jnp.dtype(scalar_type)
+        with self.subTest(chip=chip.value, dtype=dtype_object.name):
+          for mapping in (
+              pinfo.matmul_cadence_cycles_by_dtype,
+              pinfo.matmul_latency_cycles_by_dtype,
+              pinfo.latch_cadence_cycles_by_dtype,
+          ):
+            expected = pinfo.get_emulated_dtype(scalar_type, mapping)
+            actual = pinfo.get_emulated_dtype(dtype_object, mapping)
+            self.assertEqual(actual, expected)
+            self.assertIn(actual, mapping)
+          self.assertEqual(
+              pinfo.get_matmul_cadence_cycles(dtype_object),
+              pinfo.get_matmul_cadence_cycles(scalar_type),
+          )
+          self.assertEqual(
+              pinfo.get_matmul_latency_cycles(dtype_object),
+              pinfo.get_matmul_latency_cycles(scalar_type),
+          )
+          self.assertEqual(
+              pinfo.get_latch_cadence_cycles(dtype_object),
+              pinfo.get_latch_cadence_cycles(scalar_type),
+          )
+          self.assertEqual(
+              pinfo.mxu_size_by_dtype(dtype_object),
+              pinfo.mxu_size_by_dtype(scalar_type),
+          )
 
 
 if __name__ == "__main__":

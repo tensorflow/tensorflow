@@ -89,10 +89,9 @@ struct IfrtIrProgramMemoryStats {
 // running the program, and can be generated as part of cross compilation.
 class ProgramMemoryTracer {
  public:
-  ProgramMemoryTracer(std::shared_ptr<CompiledIfrtIrProgram> program,
-                      Client* client, DeviceListRef devices,
-                      std::string dump_dir)
-      : program_(std::move(program)),
+  ProgramMemoryTracer(const CompiledIfrtIrProgram& program, Client* client,
+                      DeviceListRef devices, std::string dump_dir)
+      : program_(program),
         client_(client),
         devices_(std::move(devices)),
         dump_dir_(std::move(dump_dir)) {}
@@ -131,7 +130,7 @@ class ProgramMemoryTracer {
 
   mlir::SymbolTableCollection symbol_table_;
   // The program for which the memory trace is being generated.
-  std::shared_ptr<CompiledIfrtIrProgram> program_;
+  const CompiledIfrtIrProgram& program_;
   Client* client_;
   DeviceListRef devices_;
 

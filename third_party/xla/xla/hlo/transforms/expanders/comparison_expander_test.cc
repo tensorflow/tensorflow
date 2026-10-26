@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
@@ -115,6 +116,30 @@ ENTRY main {
   EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
   EXPECT_EQ(root->comparison_direction(), ComparisonDirection::kLt);
   EXPECT_EQ(root->comparison_order(), ComparisonOrder::kPartial);
+}
+
+TEST_F(ComparisonExpanderTest, ExtraFilterSkipsExpansion) {
+  constexpr absl::string_view kHloText = R"(
+HloModule test
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT cmp = pred[8] compare(p0, p1), direction=LT, order=WEAK
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  ComparisonExpander expander(
+      /*expand_via_upcast=*/{},
+      /*extra_filter=*/[](const HloInstruction* instr) {
+        return instr->comparison_order() != ComparisonOrder::kWeak;
+      });
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+  EXPECT_FALSE(changed);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCompare);
+  EXPECT_EQ(root->comparison_order(), ComparisonOrder::kWeak);
 }
 
 }  // namespace

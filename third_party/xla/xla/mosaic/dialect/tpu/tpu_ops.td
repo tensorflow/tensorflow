@@ -24,6 +24,7 @@ include "mlir/Pass/PassBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/ViewLikeInterface.td"
 include "xla/mosaic/dialect/tpu/tpu.td"
 include "xla/mosaic/dialect/tpu/tpu_enums.td"
 include "xla/mosaic/dialect/tpu/tpu_types.td"
@@ -124,6 +125,7 @@ def TPU_MemorySpaceAttr : AttrDef<TPU_Dialect, "MemorySpace"> {
         return get($_ctxt, value, std::nullopt);
     }]>
   ];
+  let genVerifyDecl = 1;
 }
 
 class TPU_Op<string mnemonic, list<Trait> traits = []> :
@@ -199,7 +201,7 @@ def TPU_ReduceOp : TPU_Op<"reduce", [Pure, SameOperandsAndResultRank]> {
 //  mask   : Elementwise vector mask. The scan operation starts from the
 //           lowest-indexed non-masked vector element (all previous elements
 //           have undefined values). Not taken for I1 input vectors.
-def TPU_ScanOp : TPU_Op<"scan"> {
+def TPU_ScanOp : TPU_Op<"scan", [Pure]> {
   let arguments = (ins
     VectorOfNonZeroRankOf<[I1, I16, I32, BF16, F32]>:$input,
     TPU_ReductionKindAttr:$kind,
@@ -221,7 +223,7 @@ def TPU_SortOp : TPU_Op<"sort", [Pure]> {
     preserve their input order regardless of the sorting order. Masked-out keys
     and values are placed at the end of the output vectors. Integer keys are
     treated as unsigned. An output mask indicates which outputs correspond to
-    the valid inputs. 
+    the valid inputs.
   }];
   let arguments = (ins
     VectorOfNonZeroRankOf<[I32,F32]>:$keys,
@@ -698,18 +700,6 @@ def TPU_ReshapeOp : TPU_Op<"reshape", [Pure]> {
   let assemblyFormat = [{ $source attr-dict `:` type($source) `->` type($result) }];
   let hasVerifier = 1;
   let hasFolder = 1;
-}
-
-// TODO(mvoz): deprecated - use concat. Canonicalization will do so automatically.
-// b/376295711
-def TPU_RepeatOp : TPU_Op<"repeat", [Pure]> {
-  let arguments = (ins
-    AnyVectorOfNonZeroRank:$source,
-    I32Attr:$dimension,
-    I32Attr:$times
-  );
-  let results = (outs AnyVectorOfNonZeroRank:$output);
-  let assemblyFormat = [{ $source `,` $dimension `x` $times attr-dict `:` type($source) `->` type($output) }];
 }
 
 def TPU_BroadcastInSublanesOp : TPU_Op<"broadcast_in_sublanes", [Pure]> {
@@ -1350,7 +1340,7 @@ def TPU_AssumeMultipleOp : TPU_Op<"assume_multiple", [Pure, SameOperandsAndResul
   let hasVerifier = 1;
 }
 
-def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]> {
+def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments, ViewLikeOpInterface]> {
   let arguments = (ins
     AnyMemRef:$mem_ref,
     Variadic<I32>:$base_idx,
@@ -1362,6 +1352,9 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
     attr-dict `:` type($mem_ref) `->` type($result)
   }];
   let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getMemRef(); }
+
     // Returns a message string on error, and nullopt on success.
     std::optional<std::string> verifyOffsetAndSizeTileAlignment(
         std::array<int64_t, 2> tc_target_shape,
@@ -1385,26 +1378,79 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments]>
   let hasFolder = 1;
 }
 
-def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure]> {
+def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure, ViewLikeOpInterface]> {
+  let summary = "Slices a shared VMEM memref to a subcore-local VMEM memref.";
+  let description = [{
+    Extracts a subcore-local VMEM slice from a shared VMEM memref by dividing
+    the minor dimension across `num_subcores`.
+
+    To align with SparseCore physical VMEM striping, each subcore's minor
+    dimension slice (`result_shape[-1] = input_shape[-1] / num_subcores`) must
+    span exactly one physical VMEM stripe (`stripe_words`, e.g. 8 words / 32
+    bytes on TPU v7x).
+      - With >1D tiling (which requires a `(packing, 1)` sub-tile when
+        `packing > 1`), each minor index spans a full word, so
+        `result_shape[-1] == stripe_words`.
+      - With 1D tiling, each word holds `packing` elements along the minor
+        dimension, so `result_shape[-1] == stripe_words * packing`
+        (`stripe_bytes / element_bytes`).
+
+    Examples of valid shapes/layouts on a target with 16 subcores, 4B words, and
+    8-word stripes (e.g. TPU v7x):
+      - `8x128xbf16, #tpu.tiled<(8,128)(2,1),[1,1]>` (`result_shape[-1] = 8`)
+      - `8x256xbf16, #tpu.tiled<(16),[16,1]>` (`result_shape[-1] = 16`)
+      - `8x128xi32, #tpu.tiled<(8,128),[1,1]>` (`result_shape[-1] = 8`)
+      - `8x128xi32, #tpu.tiled<(8),[16,1]>` (`result_shape[-1] = 8`)
+  }];
+  let arguments = (ins
+    AnyMemRef:$mem_ref
+  );
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{
+    $mem_ref attr-dict `:` type($mem_ref) `->` type($result)
+  }];
+  let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getMemRef(); }
+
+    static ::mlir::FailureOr<::mlir::tpu::TiledLayoutAttr> inferResultLayout(
+        ::mlir::MemRefType source_type, ::mlir::ArrayRef<int64_t> target_shape,
+        int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
+        int64_t spmem_word_size_bytes,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
+  }];
+  let hasVerifier = 1;
+}
+
+def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure, ViewLikeOpInterface]> {
   let arguments = (ins AnyMemRef:$input);
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+
+    static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
+        ::mlir::MemRefLayoutAttrInterface input_layout,
+        ::mlir::ArrayRef<int64_t> squeezed,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
 }
 
-def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure]> {
+def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure, ViewLikeOpInterface]> {
   let arguments = (ins AnyMemRef:$input);
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+
     static ::mlir::FailureOr<::mlir::MemRefLayoutAttrInterface> inferResultLayout(
         ::mlir::MemRefType input_type, ::mlir::ArrayRef<int64_t> result_shape,
         ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
@@ -1412,20 +1458,56 @@ def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure]> {
   let hasVerifier = 1;
 }
 
-def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure]> {
+def TPU_MemRefPadOp : TPU_Op<"memref_pad", [Pure, ViewLikeOpInterface]> {
+  let summary = "Pads a memref's logical shape within its physical tile bounds.";
+  let description = [{
+    Pads the logical dimensions of a memref up to (at most) the tile-aligned
+    bounds of its underlying `TiledLayoutAttr` without modifying physical
+    memory or layout.
+
+    For each dimension `i` with input size `in_dim`, result size `res_dim`, and
+    first-tile size `tile_size` (`1` for untiled leading dimensions),
+    `in_dim <= res_dim <= alignTo(in_dim, tile_size)` must hold. Because the
+    padded region lies within the already-allocated physical tiles, this
+    operation is a zero-cost metadata view in lowering. Reading from the padded
+    region yields undefined values.
+
+    This operation is also allowed in user programs before tiling is inferred
+    (when the memref has an identity layout), in which case the compiler will
+    reject the program during tiling propagation if the op requests more
+    padding than is guaranteed by the inferred tiling.
+  }];
   let arguments = (ins AnyMemRef:$input);
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($result)
   }];
   let extraClassDeclaration = [{
-    mlir::InFlightDiagnostic verifyTiling();
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+  }];
+  let hasVerifier = 1;
+}
+
+def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure, ViewLikeOpInterface]> {
+  let arguments = (ins AnyMemRef:$input);
+  let results = (outs AnyMemRef:$result);
+  let assemblyFormat = [{
+    $input attr-dict `:` type($input) `->` type($result)
+  }];
+  let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+
+    static ::mlir::FailureOr<::mlir::MemRefType> inferResultType(
+        ::mlir::MemRefType input_type, ::mlir::Type result_elem_type,
+        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 }
 
-def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSegments]> {
+def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSegments, ViewLikeOpInterface]> {
   let arguments = (ins
     AnyMemRef:$input,
     // Dynamic offset shifts the memref pointer by the specified number of
@@ -1444,6 +1526,10 @@ def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSe
   let builders = [
     OpBuilder<(ins "::mlir::Type":$result_type, "::mlir::Value":$input, CArg<"::mlir::Value", "nullptr">:$dynamic_offset, CArg<"::mlir::ValueRange", "{}">:$dynamic_sizes, CArg<"::mlir::ValueRange", "{}">:$dynamic_strides)>
   ];
+  let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getInput(); }
+  }];
   let hasVerifier = 1;
 }
 
@@ -1455,7 +1541,7 @@ def TPU_AssumeLayoutOp : TPU_Op<"assume_layout", [Pure]> {
   }];
 }
 
-def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure]> {
+def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure, SameOperandsAndResultShape, SameOperandsAndResultElementType, ViewLikeOpInterface]> {
   let description = [{
     Erases the layout attribute and, optionally, the memory space from a memref.
     The resulting memref is otherwise identical to the input.
@@ -1472,11 +1558,15 @@ def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure]> {
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand) `->` type($result)
   }];
+  let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getOperand(); }
+  }];
   let hasFolder = 1;
   let hasVerifier = 1;
 }
 
-def TPU_AnnotateOp : TPU_Op<"annotate", [Pure, SameOperandsAndResultType]> {
+def TPU_AnnotateOp : TPU_Op<"annotate", [Pure, SameOperandsAndResultType, ViewLikeOpInterface]> {
   let summary = "Annotates a memref with memory annotations.";
   let arguments = (ins
     AnyMemRef:$operand,
@@ -1488,6 +1578,10 @@ def TPU_AnnotateOp : TPU_Op<"annotate", [Pure, SameOperandsAndResultType]> {
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
     $operand attr-dict `:` type($operand)
+  }];
+  let extraClassDeclaration = [{
+    // ViewLikeOpInterface.
+    ::mlir::Value getViewSource() { return getOperand(); }
   }];
   let hasVerifier = 1;
 }
@@ -1871,7 +1965,7 @@ def TPU_PRNGRandomBitsOp : TPU_Op<"prng_random_bits"> {
   let results = (outs AnyVectorOfNonZeroRank:$output);
 }
 
-def TPU_SublaneShuffleOp : TPU_Op<"sublane_shuffle", [SameOperandsAndResultType]> {
+def TPU_SublaneShuffleOp : TPU_Op<"sublane_shuffle", [Pure, SameOperandsAndResultType]> {
   // This op takes 2 physical vregs and a pattern, applies the pattern,
   // and returns the result as 1 vreg.
   //
@@ -2001,6 +2095,28 @@ def TPU_TileSizeOp : TPU_Op<"tile_size", [Pure]> {
     attr-dict $source `,` $index `:` type($source)
   }];
 
+  let hasVerifier = 1;
+}
+
+def TPU_MemRefMemorySpaceIsOp : TPU_Op<"memref_memory_space_is", [Pure]> {
+  let summary = "Check if a memref resides in the given memory space.";
+  let description = [{
+    Returns true if `source` is in `memory_space`. If `memory_space` has no
+    core type, the core type of `source` is ignored.
+
+    The result is resolved at compile time, once the memory space of `source`
+    is fully known: `any` is specialized, and a missing memory space or core
+    type is filled in from the enclosing function's `tpu.core_type`.
+  }];
+
+  let arguments = (ins AnyMemRef:$source, TPU_MemorySpaceAttr:$memory_space);
+  let results = (outs I1:$result);
+
+  let assemblyFormat = [{
+    $source `,` $memory_space attr-dict `:` type($source)
+  }];
+
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 

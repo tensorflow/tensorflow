@@ -47,7 +47,7 @@ class DebugGraphDecorator : public DebugGraphDecoratorInterface {
  public:
   DebugGraphDecorator(const DebugOptions& debug_options)
       : debug_options_(debug_options) {}
-  ~DebugGraphDecorator() override {}
+  ~DebugGraphDecorator() override = default;
 
   absl::Status DecorateGraph(Graph* graph, Device* device) override;
   absl::Status PublishGraph(const Graph& graph,

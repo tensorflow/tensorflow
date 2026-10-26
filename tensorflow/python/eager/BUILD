@@ -478,6 +478,7 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "backprop_test",
     srcs = ["backprop_test.py"],
+    shard_count = 4,
     tags = [
         "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)
@@ -530,7 +531,7 @@ cuda_py_strict_test(
 cuda_py_strict_test(
     name = "forwardprop_test",
     srcs = ["forwardprop_test.py"],
-    shard_count = 5,
+    shard_count = 20,
     deps = [
         ":backprop",
         ":context",
@@ -1156,7 +1157,7 @@ cuda_py_strict_test(
         "//conditions:default": None,
     }),
     grpc_enabled = True,
-    shard_count = 2,
+    shard_count = 4,
     tags = [
         "no_oss",  # This test launches local server.
         "nofastbuild",  # times out

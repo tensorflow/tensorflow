@@ -24,17 +24,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -100,10 +100,10 @@ struct RaggedAllToAllRendezvousValue {
 };
 
 struct RaggedAllToAllStreamState {
-  int device_ordinal;
-  RankId rank;
+  int device_ordinal = 0;
+  RankId rank = RankId(0);
   std::optional<int64_t> lsa_size;
-  GpuCliqueKey clique_key;
+  GpuCliqueKey clique_key{{}, 0};
 
   // Host memory allocations for ragged metadata.
   absl::InlinedVector<std::unique_ptr<se::MemoryAllocation>, 8>
@@ -127,6 +127,10 @@ struct RaggedAllToAllStreamState {
   // peers.
   std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>> participants;
 
+  // Pre-loaded symmetric-memory kernel for the NCCL one-shot path.
+  RaggedAllToAllWithSymmetricMemoryKernelType sym_mem_kernel;
+
+  RaggedAllToAllStreamState() = default;
   RaggedAllToAllStreamState(int device_ordinal, RankId rank,
                             GpuCliqueKey clique_key)
       : device_ordinal(device_ordinal),
@@ -140,9 +144,11 @@ class RaggedAllToAllThunk : public CollectiveThunk {
  public:
   RaggedAllToAllThunk(ThunkInfo thunk_info,
                       const HloRaggedAllToAllInstruction* instr,
-                      std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
+                      std::vector<Buffer> buffers, bool p2p_memcpy_enabled,
+                      int devices_per_host);
   RaggedAllToAllThunk(ThunkInfo thunk_info, const RaggedAllToAllConfig& config,
-                      std::vector<CollectiveThunk::Buffer> buffers);
+                      std::vector<CollectiveThunk::Buffer> buffers,
+                      int devices_per_host);
 
   // Returns whether the given instruction can be lowered to a nccl
   // ragged-all-to-all call.
@@ -152,6 +158,16 @@ class RaggedAllToAllThunk : public CollectiveThunk {
 
   CollectiveCliqueRequests::CliqueRequirements GetCliqueRequirements(
       const GpuCliqueKey& clique_key, const PrepareParams& params) override;
+
+  bool IsTracedCommand() const override {
+    return !IsSymmetricMemoryKernelSupported();
+  }
+  bool requires_update_on_initialize() const override {
+    return !IsSymmetricMemoryKernelSupported();
+  }
+  bool requires_warmup() const override {
+    return !IsSymmetricMemoryKernelSupported();
+  }
 
   absl::Status Initialize(const InitializeParams& params) override;
 
@@ -230,9 +246,14 @@ class RaggedAllToAllThunk : public CollectiveThunk {
   // Returns true if one shot kernel is supported
   bool IsOneShotKernelSupported() const;
 
+  // Returns true if the symmetric-memory kernel with NCCL multi-GPU barrier is
+  // supported.
+  bool IsSymmetricMemoryKernelSupported() const;
+
   static absl::StatusOr<std::unique_ptr<RaggedAllToAllThunk>> FromProto(
       ThunkInfo thunk_info, const RaggedAllToAllThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_per_host);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -260,13 +281,7 @@ class RaggedAllToAllThunk : public CollectiveThunk {
   // Initialize / Run time via device_kernel_barrier_count().
   static constexpr int32_t kMinDeviceKernelCtaCount = 8;
 
-  mutable absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<RaggedAllToAllStreamState>>
-      per_stream_states_ ABSL_GUARDED_BY(mutex_);
-
-  absl::StatusOr<RaggedAllToAllStreamState*> InitializeOnce(
-      const InitializeParams& params);
+  PerDeviceState<RaggedAllToAllStreamState> per_device_states_;
 };
 
 // Executes the rendezvous to exchange buffer addresses and barrier signal
@@ -300,9 +315,10 @@ absl::Status RunOneShotRaggedAllToAll(
 // requiring Event-based coordination, enabling compatibility with CUDA Graphs.
 absl::Status RunOneShotRaggedAllToAllWithNccl(
     const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
-    GpuCommunicator* comm, SymmetricMemory* output_sym_mem,
-    size_t output_sym_offset, int64_t num_total_updates, int64_t num_input_rows,
-    int64_t num_row_elements, absl::Span<DeviceBufferPair const> buffers);
+    GpuCommunicator* comm, RaggedAllToAllWithSymmetricMemoryKernelType& kernel,
+    SymmetricMemory* output_sym_mem, size_t output_sym_offset,
+    int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
+    absl::Span<DeviceBufferPair const> buffers);
 
 }  // namespace gpu
 }  // namespace xla

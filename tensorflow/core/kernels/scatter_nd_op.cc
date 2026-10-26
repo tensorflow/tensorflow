@@ -93,7 +93,7 @@ class ScatterOpBase : public OpKernel {
         BadIndicesPolicyFromString(bad_indices_policy_str);
     OP_REQUIRES_OK(c, bad_indices_policy.status());
     bad_indices_policy_ = *bad_indices_policy;
-    if constexpr (std::is_same<Device, GPUDevice>::value) {
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(
           c, bad_indices_policy_ != BadIndicesPolicy::kError,
           absl::InvalidArgumentError(
@@ -222,45 +222,12 @@ class TensorScatterOp : public ScatterOpBase<Device> {
                 absl::InvalidArgumentError(
                     "Indices and updates specified for empty output shape"));
 
-    const int64_t outer_dims = indices.shape().dims() - 1;
-
-    OP_REQUIRES(c, updates.shape().dims() >= outer_dims,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "Updates shape must have rank at least the number of "
-                    "outer dimensions of indices (",
-                    outer_dims,
-                    "). Found: updates shape=", updates.shape().DebugString(),
-                    ", indices shape=", indices.shape().DebugString())));
-
-    for (int i = 0; i < outer_dims; ++i) {
-      OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "Outer dimensions of indices and update must match. "
-                      "Indices shape: ",
-                      indices.shape().DebugString(),
-                      ", updates shape:", updates.shape().DebugString())));
-    }
-
-    const int64_t ix = indices.shape().dim_size(outer_dims);
-    OP_REQUIRES(
-        c, updates.shape().dims() - outer_dims == shape.dims() - ix,
-        absl::InvalidArgumentError(absl::StrCat(
-            "Inner dimensions of output shape must match "
-            "inner dimensions of updates shape. Output: ",
-            shape.DebugString(), " updates: ", updates.shape().DebugString())));
-    for (int i = 0; i + outer_dims < updates.shape().dims(); ++i) {
-      OP_REQUIRES(
-          c, updates.shape().dim_size(i + outer_dims) == shape.dim_size(ix + i),
-          absl::InvalidArgumentError(absl::StrCat(
-              "The inner ", shape.dims() - ix,
-              " dimensions of output.shape=", shape.DebugString(),
-              " must match the inner ", updates.shape().dims() - outer_dims,
-              " dimensions of updates.shape=", updates.shape().DebugString())));
-    }
+    OP_REQUIRES_OK(c, ValidateScatterNdUpdateShape(shape, indices.shape(),
+                                                   updates.shape()));
 
     AllocatorAttributes alloc_attr;
     MemoryType memory_type = DEVICE_MEMORY;
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice>) {
       alloc_attr.set_on_host(true);
       memory_type = HOST_MEMORY;
     } else {
@@ -971,7 +938,7 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
 
   if (allocate) {
     AllocatorAttributes alloc_attr;
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice>) {
       alloc_attr.set_on_host(true);
     }
     TF_RETURN_IF_ERROR(
@@ -1030,7 +997,7 @@ absl::Status DoScatterNdImpl(OpKernelContext* c, const Tensor& indices,
     }
   }
   const bool check_bad_indices =
-      ((std::is_same<Device, CPUDevice>::value &&
+      ((std::is_same_v<Device, CPUDevice> &&
         bad_indices_policy == BadIndicesPolicy::kDefault) ||
        bad_indices_policy == BadIndicesPolicy::kError);
   if (check_bad_indices && bad_i >= 0) {
@@ -1145,7 +1112,7 @@ absl::Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
                          Tensor* out, bool allocate,
                          BadIndicesPolicy bad_indices_policy) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  if (std::is_same<Device, GPUDevice>::value &&
+  if (std::is_same_v<Device, GPUDevice> &&
       tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
     return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
                                           allocate);
@@ -1154,8 +1121,7 @@ absl::Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
 
   // Run on the CPU for integer types, since the GPU implementation uses
   // atomics, which are not supported for all integer types.
-  if constexpr (std::is_same<Device, GPUDevice>::value &&
-                std::is_integral<T>::value) {
+  if constexpr (std::is_same_v<Device, GPUDevice> && std::is_integral_v<T>) {
     return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
                                           allocate, bad_indices_policy);
   } else {

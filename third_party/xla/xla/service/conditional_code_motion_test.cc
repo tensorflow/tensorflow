@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -2964,6 +2965,81 @@ ENTRY main {
   EXPECT_EQ(false_root->original_value()->ToString(), R"(({"mul_false"}))");
 
   EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+constexpr absl::string_view kDusInBranchesWithCustomCallUser = R"(
+HloModule DusInBranchesWithCustomCallUser
+
+branch_0 {
+  p = (bf16[1,64,8], s32[], bf16[1,32,8]) parameter(0)
+  cache = bf16[1,64,8] get-tuple-element(p), index=0
+  offset = s32[] get-tuple-element(p), index=1
+  update = bf16[1,32,8] get-tuple-element(p), index=2
+  slice = bf16[1,32,8] slice(cache), slice={[0:1], [16:48], [0:8]}
+  zero = s32[] constant(0)
+  sixteen = s32[] constant(16)
+  dus = bf16[1,64,8] dynamic-update-slice(cache, slice, zero, sixteen, zero)
+  ROOT t = (bf16[1,64,8]) tuple(dus)
+}
+
+branch_1 {
+  p = (s32[], bf16[1,64,8], bf16[1,32,8]) parameter(0)
+  offset = s32[] get-tuple-element(p), index=0
+  cache = bf16[1,64,8] get-tuple-element(p), index=1
+  update = bf16[1,32,8] get-tuple-element(p), index=2
+  zero = s32[] constant(0)
+  dus = bf16[1,64,8] dynamic-update-slice(cache, update, zero, offset, zero)
+  ROOT t = (bf16[1,64,8]) tuple(dus)
+}
+
+ENTRY main {
+  index = s32[] parameter(0)
+  cache = bf16[1,64,8] parameter(1)
+  offset = s32[] parameter(2)
+  update = bf16[1,32,8] parameter(3)
+  t0 = (bf16[1,64,8], s32[], bf16[1,32,8]) tuple(cache, offset, update)
+  t1 = (s32[], bf16[1,64,8], bf16[1,32,8]) tuple(offset, cache, update)
+  cond = (bf16[1,64,8]) conditional(index, t0, t1), branch_computations={branch_0, branch_1}
+  gte = bf16[1,64,8] get-tuple-element(cond), index=0
+  sharding = bf16[1,64,8] custom-call(gte), custom_call_target="Sharding", custom_call_has_side_effect=$0
+  ROOT result = (bf16[1,64,8], bf16[1,64,8]) tuple(sharding, gte)
+}
+)";
+
+// A side-effecting custom-call (e.g. a sharding annotation consumed later in
+// the pipeline) cannot be fused with its operand, so it must not make hoisting
+// the branch-root dynamic-update-slice look profitable.
+TEST_F(ConditionalCodeMotionTest,
+       DoNotMoveDusOutForSideEffectingCustomCallUser) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(absl::Substitute(
+                           kDusInBranchesWithCustomCallUser, "true")));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/false,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK(pass.Run(module.get()).status());
+
+  HloInstruction* conditional =
+      FindInstruction(module.get(), HloOpcode::kConditional);
+  ASSERT_NE(conditional, nullptr);
+  for (HloComputation* branch : conditional->branch_computations()) {
+    EXPECT_THAT(branch->root_instruction(),
+                op::Tuple(op::DynamicUpdateSlice()));
+  }
+}
+
+TEST_F(ConditionalCodeMotionTest, MoveDusOutForNonSideEffectingCustomCallUser) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(absl::Substitute(
+                           kDusInBranchesWithCustomCallUser, "false")));
+  ConditionalCodeMotion pass(/*is_layout_sensitive=*/false,
+                             /*pursue_full_conditional_code_motion=*/true);
+  ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
+  ASSERT_TRUE(changed);
+
+  HloInstruction* dus =
+      FindInstruction(module.get(), HloOpcode::kDynamicUpdateSlice);
+  ASSERT_NE(dus, nullptr);
+  EXPECT_EQ(dus->parent(), module->entry_computation());
 }
 
 }  // namespace conditional_opt

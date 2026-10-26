@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
+#include "xla/hlo/transforms/simplifiers/conditional_canonicalizer.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/interpreter/interpreter_topology_description.h"
@@ -219,6 +220,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> RunInterpreterHloPasses(
       /*rewrite_training_op=*/true,
       /*rewrite_inference_op=*/true,
       /*rewrite_grad_op=*/true);
+  // Establishes the tuple-form invariant DynamicDimensionInference expects
+  // for conditionals, as the CPU and GPU pipelines do.
+  pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<LayoutAssignment>(
       hlo_module->mutable_entry_computation_layout());
   pipeline.AddPass<ConvolutionTypeCanonicalizer>();

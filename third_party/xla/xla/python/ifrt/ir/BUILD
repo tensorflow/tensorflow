@@ -135,9 +135,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":sharding_param_proto_cc",
-        "//xla/python/ifrt:serdes_default_version_accessor",
-        "//xla/python/ifrt:serdes_version",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
@@ -160,11 +157,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
-)
-
-tf_proto_library(
-    name = "sharding_param_proto",
-    srcs = ["sharding_param.proto"],
 )
 
 tf_proto_library(
@@ -887,18 +879,11 @@ cc_library(
     srcs = ["program_memory_tracer_test_lib.cc"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":atom_program_compiler",
         ":ifrt_ir_loaded_executable",
         ":ifrt_ir_loaded_executable_test_base",
-        ":ifrt_ir_program",
         ":program_memory_tracer",
-        "//xla:status_macros",
         "//xla/pjrt:compiled_memory_stats",
-        "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
-        "//xla/python/ifrt:test_util",
-        "//xla/python/ifrt/ir/support:module_parsing",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_macros",
@@ -906,7 +891,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
-        "@llvm-project//mlir:IR",
     ] + if_google(["//xla/python/ifrt/ir/google:tpu_transfer_size_util_impl"]),
     alwayslink = True,
 )

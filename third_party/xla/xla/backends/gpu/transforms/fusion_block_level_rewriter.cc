@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/fusion_block_level_rewriter.h"
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <variant>
 
@@ -32,6 +33,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/tiling/tiling_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -42,7 +44,9 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -51,6 +55,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -179,24 +184,16 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
   const DebugOptions& debug_options =
       fusion->GetModule()->config().debug_options();
 
-  // Same-shape multi-output fusions require the new tiling propagation
-  // infrastructure.
+  // Same-shape multi-output fusions.
   if (IsSameShapeMultiOutputFusion(*fusion,
                                    Shape::Equal().IgnoreElementType()) &&
       debug_options
-          .xla_gpu_experimental_enable_same_shape_multi_output_fusion() &&
-      debug_options.xla_gpu_experimental_enable_tiling_propagation()) {
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion()) {
     return true;
   }
 
   if (fusion->IsMultiOutputFusion() &&
       !debug_options.xla_gpu_unsupported_enable_triton_multi_output_fusion()) {
-    return false;
-  }
-
-  // Scan fusions require the new tiling propagation infrastructure.
-  if (IsScanFusion(fusion) &&
-      !debug_options.xla_gpu_experimental_enable_tiling_propagation()) {
     return false;
   }
 
@@ -211,22 +208,83 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
          IsScanFusion(fusion);
 }
 
+// Returns whether the `sequential_tile_sizes` of a Triton fusion's block-level
+// config no longer match the number of sequential dimensions of its tiling
+// space, e.g. because HloCSE merged reductions that producer fusion had
+// duplicated.
+absl::StatusOr<bool> HasStaleSequentialTileSizes(
+    const HloFusionInstruction& fusion,
+    const FusionBackendConfig& fusion_backend_config,
+    mlir::MLIRContext* mlir_context, MlirContextPool* mlir_context_pool) {
+  if (fusion_backend_config.kind() != kTritonFusionKind) {
+    return false;
+  }
+  const auto& block_config = fusion_backend_config.block_level_fusion_config();
+  if (block_config.sequential_tile_sizes().empty()) {
+    return false;
+  }
+  ABSL_ASSIGN_OR_RETURN(PooledOrFallbackMlirContext context,
+                   BorrowMlirContextOr(mlir_context_pool, mlir_context));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
+  absl::StatusOr<std::unique_ptr<TilingSpace>> tiling_space =
+      TilingSpace::Create(*fusion_adaptor, context.get());
+  if (!tiling_space.ok()) {
+    return false;
+  }
+  return block_config.sequential_tile_sizes_size() !=
+         (*tiling_space)->num_sequential_dimensions();
+}
+
 absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
-    mlir::MLIRContext* mlir_context, bool use_experimental_tiling) {
+    mlir::MLIRContext* mlir_context,
+    tsl::thread::ThreadPool* thread_pool = nullptr,
+    MlirContextPool* mlir_context_pool = nullptr) {
   bool dump_fusion_visualization = fusion_instruction->GetModule()
                                        ->config()
                                        .debug_options()
                                        .xla_dump_fusion_visualization();
 
-  ABSL_ASSIGN_OR_RETURN(bool should_try_rewrite,
-                   ShouldTryRewriteFusion(fusion_instruction, device_info));
-  if (!should_try_rewrite) {
-    VLOG(2) << "Not rewriting fusion " << fusion_instruction->ToString()
-            << " because it is not supported.";
+  ABSL_ASSIGN_OR_RETURN(auto backend_config,
+                   fusion_instruction->backend_config<GpuBackendConfig>());
+  const FusionBackendConfig& fusion_backend_config =
+      backend_config.fusion_backend_config();
+  if (fusion_backend_config.kind() == kTensorIrFusionKind) {
+    // The fusion was explicitly assigned to the TensorIR emitter (by the
+    // autotuner or by hand). Rewriting it into a Triton block-level fusion
+    // would silently discard that assignment.
+    VLOG(2) << "Not rewriting fusion " << fusion_instruction->name()
+            << " because it is assigned to the TensorIR emitter.";
     return false;
+  }
+  if (fusion_backend_config.has_block_level_fusion_config()) {
+    ABSL_ASSIGN_OR_RETURN(
+        bool has_stale_config,
+        HasStaleSequentialTileSizes(*fusion_instruction, fusion_backend_config,
+                                    mlir_context, mlir_context_pool));
+    if (!has_stale_config) {
+      // Fusion is already block-level! Skip.
+      return false;
+    }
+    VLOG(2) << "Re-tiling " << fusion_instruction->name()
+            << " because its sequential tile sizes are stale.";
+    backend_config.mutable_fusion_backend_config()
+        ->clear_block_level_fusion_config();
+    ABSL_RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
+  }
+
+  // The Triton emitter requires a block-level config, so Triton fusions
+  // without one (e.g. from ScanRewriterTriton) are always tiled.
+  if (!IsGenericTritonFusion(*fusion_instruction)) {
+    ABSL_ASSIGN_OR_RETURN(bool should_try_rewrite,
+                     ShouldTryRewriteFusion(fusion_instruction, device_info));
+    if (!should_try_rewrite) {
+      VLOG(2) << "Not rewriting fusion " << fusion_instruction->ToString()
+              << " because it is not supported.";
+      return false;
+    }
   }
 
   const HloComputation* fusion_computation =
@@ -247,38 +305,30 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     return false;
   }
 
-  ABSL_ASSIGN_OR_RETURN(auto backend_config,
-                   fusion_instruction->backend_config<GpuBackendConfig>());
-
-  if (backend_config.has_fusion_backend_config() &&
-      backend_config.fusion_backend_config().has_block_level_fusion_config()) {
-    // Fusion is already block-level! Skip.
-    return false;
-  }
-
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
       &device_info, &fusion_analysis_cache, shape_size, mlir_context,
-      use_experimental_tiling,
       fusion_instruction->GetModule()
           ->config()
           .debug_options()
-          .xla_gpu_experimental_enable_same_shape_multi_output_fusion());
+          .xla_gpu_experimental_enable_same_shape_multi_output_fusion(),
+      mlir_context_pool);
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
 
   ABSL_ASSIGN_OR_RETURN(TiledRunTimeDataOrError tiled_runtime_data_or_error,
                    indexing_performance_model
-                       .TryFindBestTilingForFusionAsync(*fusion_adaptor)
+                       .TryFindBestTilingForFusionAsync(
+                           *fusion_adaptor,
+                           thread_pool ? thread_pool->AsExecutor() : nullptr)
                        .Await());
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or_error)) {
     // Can't rewrite this fusion because we can't tile it, skip!
     VLOG(2) << "Can't rewrite fusion " << fusion_instruction->ToString()
-            << " because tiling search failed. (The most likely cause for "
-            << "is that SymbolicTileAnalysis failed.)";
+            << " because tiling search failed: " << fusion_decision->Explain();
     if (dump_fusion_visualization) {
       RegisterFusionState(
           *fusion_instruction->parent(),
@@ -335,13 +385,10 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    ABSL_ASSIGN_OR_RETURN(
-        bool changed,
-        ProcessFusionInstruction(
-            fusion_instruction, device_info_, shape_size_, mlir_context_,
-            module->config()
-                .debug_options()
-                .xla_gpu_experimental_enable_tiling_propagation()));
+    ABSL_ASSIGN_OR_RETURN(bool changed,
+                     ProcessFusionInstruction(
+                         fusion_instruction, device_info_, shape_size_,
+                         mlir_context_, thread_pool_, mlir_context_pool_));
 
     has_changed |= changed;
   }

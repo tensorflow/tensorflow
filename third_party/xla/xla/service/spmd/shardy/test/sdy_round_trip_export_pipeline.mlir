@@ -24,9 +24,9 @@ sdy.mesh @unused_mesh = <["axis_0"=16]>
 
 // CHECK-V2: module attributes {mhlo.frontend_attributes = {
 // CHECK-V2-SAME: xla.sdy.meshes = "{
-// CHECK-V2-SAME: maximal_mesh_5 = #sdy.mesh<[], device_ids=[5]>,
 // CHECK-V2-SAME: mesh = #sdy.mesh<[\22axis_0\22=2, \22axis_1\22=4, \22axis_2\22=4]>,
-// CHECK-V2-SAME: mesh_0 = #sdy.mesh<[\22a\22=2, \22b\22=2]>
+// CHECK-V2-SAME: mesh_0 = #sdy.mesh<[\22a\22=2, \22b\22=2]>,
+// CHECK-V2-SAME: single_device_5 = #sdy.mesh<[], device_ids=[5]>,
 // CHECK-V2-SAME: unused_mesh = #sdy.mesh<[\22axis_0\22=16]>}"}} {
 
 // CHECK-LABEL: func @multiple_shardings(
@@ -177,14 +177,14 @@ func.func @constant() -> tensor<i32> {
 // CHECK-V2-SAME: -> (tensor<32xi32> {mhlo.sharding = "{maximal device=5}"}) {
 // CHECK-V3-NOT:    mhlo.frontend_attributes
 // CHECK-V3-SAME: mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"
-// CHECK-V3-SAME: -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}) {
+// CHECK-V3-SAME: -> (tensor<32xi32> {mhlo.sharding = "{single_device[device_id=5]}"}) {
 func.func @inlined_mesh(
   %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=2, "b"=2]>, [{"a"}]>}
 ) -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<[], device_ids=[5]>, []>}) {
   // CHECK-NEXT: %[[SHARDING:.*]] = stablehlo.custom_call @Sharding(%arg0)
   // CHECK-V2-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_0, [{\22a\22, \22b\22}]>]>"}, mhlo.sharding = "{devices=[4]<=[4]}"}
   // CHECK-V2-NEXT: %[[RESULT_SHARDING:.*]] = stablehlo.custom_call @xla.sdy.FuncResultSharding(%[[SHARDING]])
-  // CHECK-V2-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@maximal_mesh_5, []>]>"}
+  // CHECK-V2-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@single_device_5, []>]>"}
   // CHECK-V2-NEXT: return %[[RESULT_SHARDING]]
   // CHECK-V3-NOT:    mhlo.frontend_attributes
   // CHECK-V3-SAME:   mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a', 'b'}]}"

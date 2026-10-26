@@ -140,7 +140,7 @@ class GPUProcessState {
   // GPUProcessState is a singleton that should not normally be deleted except
   // at process shutdown.
   GPUProcessState();
-  virtual ~GPUProcessState() {}
+  virtual ~GPUProcessState() = default;
   friend class GPUDeviceTest;
 
   // Helper method for unit tests to reset the ProcessState singleton by

@@ -1279,24 +1279,17 @@ class HloInstruction {
 
   // Returns the result shape of this instruction.
   const Shape& shape() const {
-    DCHECK(shape_) << "Instruction shape must be set";
+    DCHECK(shape_ != nullptr) << "Instruction shape must be set";
     return *shape_;
   }
 
   // Returns the (mutable) result shape of this instruction.
-  Shape* mutable_shape() {
-    DCHECK(shape_) << "Instruction shape must be set";
-    if (shape_is_canonicalized_) {
-      shape_ = std::make_shared<Shape>(*shape_);
-      shape_is_canonicalized_ = false;
-    }
-    return &*shape_;
-  }
+  Shape* mutable_shape();
 
   // Canonicalize instruction shape using the given shape pool.
   bool Canonicalize(ShapePool* shape_pool) {
-    DCHECK(shape_) << "Instruction shape must be set";
-    if (shape_pool) {
+    DCHECK(shape_ != nullptr) << "Instruction shape must be set";
+    if (shape_pool != nullptr) {
       std::shared_ptr<Shape> canonical = shape_pool->GetCanonicalShape(shape_);
       shape_is_canonicalized_ = true;
       if (canonical != shape_) {
@@ -1459,7 +1452,7 @@ class HloInstruction {
   }
 
   // Allow subclasses to contribute additional attributes to the hash.
-  virtual void HashAdditionalAttributes(absl::HashState h) const {};
+  virtual void HashAdditionalAttributes(absl::HashState h) const {}
 
   // Generates a hash value of an HLO instruction. Hash considers
   // information on opcode, shape, number of operands, and other relevant
@@ -1593,9 +1586,9 @@ class HloInstruction {
       const;
 
   std::pair<HloInstruction*, ShapeIndex> LatestNonGteAncestorAndIndex() {
-    auto rv =
+    std::pair<const HloInstruction*, ShapeIndex> rv =
         const_cast<const HloInstruction*>(this)->LatestNonGteAncestorAndIndex();
-    return {const_cast<HloInstruction*>(rv.first), rv.second};
+    return {const_cast<HloInstruction*>(rv.first), std::move(rv.second)};
   }
 
   // Same as LatestNonGteAncestorAndIndex, but just returns the HloInstruction.
@@ -1769,7 +1762,7 @@ class HloInstruction {
 
   // Returns the sharding applied to this operator, or default_ if none exists.
   const HloSharding& sharding_or_default(const HloSharding& default_) const {
-    return sharding_ ? *sharding_ : default_;
+    return sharding_ != nullptr ? *sharding_ : default_;
   }
   // Returns the sharding unique device, if any.
   std::optional<int64_t> sharding_unique_device() const {
@@ -1780,12 +1773,8 @@ class HloInstruction {
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
-  void set_sharding(HloSharding sharding) {
-    set_sharding(std::make_shared<HloSharding>(std::move(sharding)));
-  }
-  void set_sharding(std::shared_ptr<const HloSharding> sharding) {
-    sharding_ = std::move(sharding);
-  }
+  void set_sharding(HloSharding sharding);
+  void set_sharding(std::shared_ptr<const HloSharding> sharding);
   // Copies the sharding of another instruction, this is more efficient than
   // set_sharding(hlo->sharding()) because it avoids a deep copy and shares the
   // storage. Note that if the other instruction has no sharding set, it also
@@ -1808,7 +1797,7 @@ class HloInstruction {
     if (!has_sharding()) {
       return !other->has_sharding();
     }
-    return other->has_sharding() ? sharding() == other->sharding() : false;
+    return other->has_sharding() && sharding() == other->sharding();
   }
 
   // When creating a new instruction which either replaces, or shifts up (kCopy
@@ -1942,9 +1931,7 @@ class HloInstruction {
   //
   // See also HloModule::SetAndUniquifyInstrName(), which does this plus
   // UniquifyName().
-  void SetAndSanitizeName(absl::string_view name) {
-    name_ = NameUniquer::GetSanitizedName(name);
-  }
+  void SetAndSanitizeName(absl::string_view name);
 
   // Use the given NameUniquer to select a unique name for the instruction based
   // on the instruction's existing name.
@@ -1991,38 +1978,22 @@ class HloInstruction {
 
   bool has_backend_config() const { return !backend_config_->empty(); }
 
-  void clear_backend_config() {
-    backend_config_ = std::make_shared<BackendConfigWrapper>();
-  }
+  void clear_backend_config();
 
   void CopyBackendConfigFrom(const HloInstruction* other) {
     backend_config_ = other->backend_config_;
   }
 
   // Replaces the frontend attributes with the provided argument.
-  void set_frontend_attributes(FrontendAttributes frontend_attributes) {
-    if (!has_rare() && frontend_attributes.map().empty()) {
-      return;
-    }
-    mutable_rare()->frontend_attributes = std::move(frontend_attributes);
-  }
+  void set_frontend_attributes(FrontendAttributes frontend_attributes);
 
   // Adds attributes only if they not already present in the HloInstruction.
   // Skips all atributes already present in the HloInstruction.
-  void add_frontend_attributes(FrontendAttributes frontend_attributes) {
-    if (!frontend_attributes.map().empty()) {
-      mutable_rare()->frontend_attributes.mutable_map()->insert(
-          frontend_attributes.map().begin(), frontend_attributes.map().end());
-    }
-  }
+  void add_frontend_attributes(FrontendAttributes frontend_attributes);
 
   // Adds a single attribute only if it not already present in the
   // HloInstruction. Returns false if the attribute was already present.
-  bool add_frontend_attribute(absl::string_view key, absl::string_view value) {
-    auto it = mutable_rare()->frontend_attributes.mutable_map()->insert(
-        {std::string(key), std::string(value)});
-    return it.second;
-  }
+  bool add_frontend_attribute(absl::string_view key, absl::string_view value);
 
   size_t erase_frontend_attribute(absl::string_view key) {
     return mutable_rare()->frontend_attributes.mutable_map()->erase(key);
@@ -2042,13 +2013,7 @@ class HloInstruction {
   }
 
   std::optional<std::string> get_frontend_attribute(
-      absl::string_view key) const {
-    auto it = rare()->frontend_attributes.map().find(key);
-    if (it == rare()->frontend_attributes.map().end()) {
-      return std::nullopt;
-    }
-    return it->second;
-  }
+      absl::string_view key) const;
 
   void set_is_composite(bool is_composite) {
     if (!has_rare() && !is_composite) {
@@ -2070,17 +2035,7 @@ class HloInstruction {
                           result_accuracy().mode() != ResultAccuracy::DEFAULT);
   }
 
-  bool equal_result_accuracy(const HloInstruction* other) const {
-    return result_accuracy().has_tolerance() ==
-               other->result_accuracy().has_tolerance() &&
-           result_accuracy().tolerance().atol() ==
-               other->result_accuracy().tolerance().atol() &&
-           result_accuracy().tolerance().rtol() ==
-               other->result_accuracy().tolerance().rtol() &&
-           result_accuracy().tolerance().ulps() ==
-               other->result_accuracy().tolerance().ulps() &&
-           result_accuracy().mode() == other->result_accuracy().mode();
-  }
+  bool equal_result_accuracy(const HloInstruction* other) const;
 
   void add_single_statistic(Statistic statistic) {
     *mutable_rare()->statistics_viz.add_statistics() = std::move(statistic);
@@ -2146,20 +2101,14 @@ class HloInstruction {
     return backend_config_->ApplyFnOnProto(fn);
   }
 
-  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
-    backend_config_ = std::make_shared<BackendConfigWrapper>(proto);
-    return absl::OkStatus();
-  }
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto);
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
     return backend_config_->GetRawString();
   }
-  void set_raw_backend_config_string(std::string config_str) {
-    backend_config_ =
-        std::make_shared<BackendConfigWrapper>(std::move(config_str));
-  }
+  void set_raw_backend_config_string(std::string config_str);
 
   bool is_default_config() const { return is_default_config_; }
   void set_default_config() { is_default_config_ = true; }
@@ -2186,13 +2135,7 @@ class HloInstruction {
 
   // Sets the debug metadata for this instruction, excluding creation_pass_id,
   // which should never be copied anywhere.
-  void set_metadata(const OpMetadata& metadata) {
-    if (&metadata == kEmptyMetadata) {
-      metadata_.reset();
-    } else {
-      mutable_metadata() = metadata;
-    }
-  }
+  void set_metadata(const OpMetadata& metadata);
 
   void set_size_of_generated_code_in_bytes(int64_t code_size_in_bytes) {
     mutable_metadata().set_size_of_generated_code_in_bytes(code_size_in_bytes);
@@ -2242,12 +2185,7 @@ class HloInstruction {
   // string.
   std::string GetStackTraceStringFromMetadata(int indent = 0) const;
 
-  OpMetadata& mutable_metadata() {
-    if (metadata_ == nullptr) {
-      metadata_ = std::make_unique<OpMetadata>();
-    }
-    return *metadata_;
-  }
+  OpMetadata& mutable_metadata();
 
   // Get the computation containing this instruction.
   const HloComputation* parent() const { return parent_; }
@@ -2830,12 +2768,7 @@ class HloInstruction {
   }
 
   // Lazily allocate the Rare struct
-  Rare* mutable_rare() {
-    if (rare_ == nullptr) {
-      rare_ = std::make_unique<Rare>();
-    }
-    return rare_.get();
-  }
+  Rare* mutable_rare();
 
   // Users holds the list of users of an HloInstruction, plus it provides a fast
   // way for checking for presence of a potential user.

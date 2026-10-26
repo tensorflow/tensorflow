@@ -89,9 +89,9 @@ static CollectiveReduceThunk MakeThunk(
                                               .destination_memory_space = 0});
   }
   const bool has_dynamic_root = alloc_root != nullptr;
-  return CollectiveReduceThunk(Thunk::ThunkInfo(),
-                               MakeCollectiveReduceConfig(has_dynamic_root),
-                               buffers, has_dynamic_root);
+  return CollectiveReduceThunk(
+      Thunk::ThunkInfo(), MakeCollectiveReduceConfig(has_dynamic_root), buffers,
+      /*devices_per_host=*/kNumDevices, has_dynamic_root);
 }
 
 using DeviceTestSlot = CollectiveThunkMultiGpuTestState;

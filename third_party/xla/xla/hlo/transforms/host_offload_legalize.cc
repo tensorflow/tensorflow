@@ -193,8 +193,7 @@ absl::StatusOr<InstructionAndIndex> WalkUpMemoryOffload(
       return InstructionAndIndex(instruction, index);
     }
     default: {
-      return absl::InvalidArgumentError(
-          absl::StrFormat("Invalid opcode %s", instruction->ToString()));
+      return InvalidArgument("Invalid opcode %s", instruction->ToString());
     }
   }
 }
@@ -236,14 +235,14 @@ absl::StatusOr<std::vector<InstructionAndIndex>> WalkDownMemoryOffload(
       std::vector<HloInstruction*> callers =
           call_graph.GetComputationCallers(current_value.instruction->parent());
       if (callers.size() != 1 || callers[0]->opcode() != HloOpcode::kWhile) {
-        return absl::InvalidArgumentError(absl::StrFormat(
+        return InvalidArgument(
             "Expected computation \"%s\" to be called only by one caller "
             "and that caller to be a While. There are %d caller(s): [%s]",
             current_value.instruction->parent()->name(), callers.size(),
             absl::StrJoin(callers, ", ",
                           [](std::string* out, const HloInstruction* instr) {
                             absl::StrAppend(out, instr->name());
-                          })));
+                          }));
       }
       ABSL_RETURN_IF_ERROR(add_gte_for_idx(callers[0], current_value.index));
       return results;
@@ -324,8 +323,7 @@ absl::StatusOr<std::vector<InstructionAndIndex>> WalkDownMemoryOffload(
         [[fallthrough]];
       }
       default: {
-        return absl::InvalidArgumentError(
-            absl::StrFormat("Unrecognized user name: %s", user->name()));
+        return InvalidArgument("Unrecognized user name: %s", user->name());
       }
     }
   }
@@ -389,10 +387,10 @@ absl::StatusOr<std::pair<Shape, Shape>> GetNewShapesAfterBitcastReducedRank(
   const Shape& before_bitcast_shape = bitcast->operand(0)->shape();
   if (!(ShapeUtil::IsEffectivelyMostMajorDimension(before_bitcast_shape, 0) &&
         before_bitcast_shape.dimensions(0) == 1)) {
-    return absl::InternalError(
-        absl::StrFormat("Only handling bitcasts with majormost dimension "
-                        "of size 1. This bitcast is \"%s\"",
-                        bitcast->ToString()));
+    return Internal(
+        "Only handling bitcasts with majormost dimension "
+        "of size 1. This bitcast is \"%s\"",
+        bitcast->ToString());
   }
   const Shape new_bitcast_shape = RemoveMajormostDimension(shape_before_copy);
   VLOG(2) << absl::StreamFormat(
@@ -413,10 +411,10 @@ absl::StatusOr<std::pair<Shape, Shape>> GetNewShapesAfterBitcastIncreasedRank(
   const Shape& after_bitcast_shape = bitcast->shape();
   if (!(ShapeUtil::IsEffectivelyMostMajorDimension(after_bitcast_shape, 0) &&
         after_bitcast_shape.dimensions(0) == 1)) {
-    return absl::UnimplementedError(
-        absl::StrFormat("Only handling bitcasts with majormost dimension "
-                        "of size 1. This bitcast is \"%s\"",
-                        bitcast->ToString()));
+    return Unimplemented(
+        "Only handling bitcasts with majormost dimension "
+        "of size 1. This bitcast is \"%s\"",
+        bitcast->ToString());
   }
   const Shape new_bitcast_shape = AddMajormostDimension(shape_before_copy);
   VLOG(2) << absl::StreamFormat(
@@ -442,12 +440,12 @@ absl::StatusOr<std::pair<Shape, Shape>> GetNewShapesAfterBitcastSameRank(
                                      before_bitcast_shape)) {
     // Something about the shape other than the layout changes. This is not
     // supported.
-    return absl::UnimplementedError(absl::StrFormat(
+    return Unimplemented(
         "Only handling bitcasts which change the layout. This bitcast (\"%s\") "
         "has input shape \"%s\" and output shape \"%s\".",
         bitcast->name(),
         bitcast->operand(0)->shape().ToString(/*print_layout=*/true),
-        bitcast->shape().ToString(/*print_layout=*/true)));
+        bitcast->shape().ToString(/*print_layout=*/true));
   }
 
   if (Shape::Equal()(after_bitcast_shape, before_bitcast_shape)) {
@@ -508,10 +506,10 @@ absl::StatusOr<std::pair<Shape, Shape>> GetNewShapesAfterBitcastSameRank(
       return std::make_pair(new_shape_before_copy, new_shape_after_copy);
     }
   }
-  return absl::UnimplementedError(absl::StrFormat(
+  return Unimplemented(
       "Something about this layout changed other than the minor-to-major "
       "ordering. This is unsuppored. Bitcast: \"%s\"",
-      bitcast->ToString()));
+      bitcast->ToString());
 }
 
 // This function is to be called when we are moving a copy down the graph. The
@@ -523,9 +521,9 @@ absl::StatusOr<std::pair<Shape, Shape>> GetNewShapesAfterBitcast(
     const Shape& shape_before_copy, const Shape& shape_after_copy) {
   if (!Shape::Equal().IgnoreLayout()(copy_to_move->operand(0)->shape(),
                                      copy_to_move->shape())) {
-    return absl::InternalError(absl::StrFormat(
+    return Internal(
         "Expecting copy to only change instruction's layout. Copy: %s",
-        copy_to_move->ToString()));
+        copy_to_move->ToString());
   }
 
   const Shape& before_bitcast_shape = bitcast->operand(0)->shape();
@@ -555,9 +553,9 @@ absl::StatusOr<std::pair<Shape, Shape>> GetNewShapesAfterBitcast(
   }
 
   // Dimensionality changes in some other way.
-  return absl::UnimplementedError(absl::StrFormat(
+  return Unimplemented(
       "Bitcast changes dimensionality in an unsupported way. Bitcast: \"%s\"",
-      bitcast->ToString()));
+      bitcast->ToString());
 }
 
 absl::Status MoveCopyDown(
@@ -879,7 +877,7 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
                 call_graph->GetComputationCallers(annotation->parent());
             if (callers.size() != 1 ||
                 callers[0]->opcode() != HloOpcode::kWhile) {
-              return absl::InvalidArgumentError(absl::StrFormat(
+              return InvalidArgument(
                   "Expected computation \"%s\" to be called only by one caller "
                   "and that caller to be a While. There are %d caller(s): [%s]",
                   current_value.instruction->parent()->name(), callers.size(),
@@ -887,7 +885,7 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
                       callers, ", ",
                       [](std::string* out, const HloInstruction* instr) {
                         absl::StrAppend(out, instr->name());
-                      })));
+                      }));
             }
             for (int i = 0; i < user->operands().size(); i++) {
               if (user->operands()[i] == annotation &&

@@ -144,7 +144,7 @@ TfLiteStatus ConcatOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
   return kTfLiteOk;
 }
 
-ConcatOpBuilder::~ConcatOpBuilder() {}
+ConcatOpBuilder::~ConcatOpBuilder() = default;
 
 OpBuilder* CreateConcatBuilder(GraphBuilder* graph_builder, int op_type) {
   return new ConcatOpBuilder(graph_builder, op_type);

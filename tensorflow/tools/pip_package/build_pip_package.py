@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from typing import Optional, Union
 
 from tensorflow.tools.pip_package.utils.utils import copy_file
 from tensorflow.tools.pip_package.utils.utils import create_init_files
@@ -89,7 +90,9 @@ def parse_args() -> argparse.Namespace:
       "--xla_aot", help="xla aot compiled sources", action="append"
   )
   parser.add_argument("--version", help="TF version")
-  parser.add_argument("--collab", help="True if collaborator build")
+  parser.add_argument(
+      "--collab", default="False", help="True if collaborator build"
+  )
   return parser.parse_args()
 
 
@@ -441,7 +444,7 @@ def build_wheel(
     cwd: str,
     project_name: str,
     platform: str,
-    collab: str = False,
+    collab: Optional[Union[str, bool]] = "False",
 ) -> None:
   """Build the wheel in the target directory.
 
@@ -450,17 +453,22 @@ def build_wheel(
     cwd: path to directory with wheel source files
     project_name: name to pass to setup.py.
     platform: platform name to pass to setup.py.
-    collab: defines if this is a collab build
+    collab: True, "1", or a case-insensitive "true" enables a collaborator
+      build; other values disable it.
   """
   env = os.environ.copy()
   if is_windows():
     # HOMEPATH is not set by bazel but it's required by setuptools.
     env["HOMEPATH"] = "C:"
+    # os.environ uppercases keys on Windows; its copy is case-sensitive.
+    env.pop("COLLABORATOR_BUILD", None)
   # project_name is needed by setup.py.
   env["project_name"] = project_name
 
-  if collab == "True":
-    env["collaborator_build"] = True
+  if str(collab).lower() in ("true", "1"):
+    env["collaborator_build"] = "True"
+  else:
+    env.pop("collaborator_build", None)
 
   # Note: (Required for rules_python >= 1.7.0)
   # Modern rules_python no longer exports PYTHONPATH to subprocesses by default
@@ -483,7 +491,8 @@ def build_wheel(
   )
 
 
-if __name__ == "__main__":
+def main() -> None:
+  """Prepare the wheel sources and build the pip package."""
   args = parse_args()
   temp_dir = tempfile.TemporaryDirectory(prefix="tensorflow_wheel")
   temp_dir_path = temp_dir.name

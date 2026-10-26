@@ -61,6 +61,8 @@ namespace stream_executor {
 // Loads kernel from in process symbol pointer (e.g. pointer to C++ device
 // function).
 struct InProcessSymbol {
+  // For SYCL, this points to a getter function returning a
+  // `sycl::kernel_id`, interpreted by SyclExecutor::LoadKernel.
   void* symbol;
   // If not empty, this symbol can be looked up by this name in the kernel
   // symbol registry.
@@ -224,6 +226,9 @@ class KernelLoaderSpec {
 
   const std::string& kernel_name() const { return kernel_name_; }
 
+  // Returns true if this spec can be serialized to `KernelLoaderSpecProto`.
+  bool IsSerializable() const;
+
   absl::StatusOr<KernelLoaderSpecProto> ToProto() const;
 
   using SymbolResolver =
@@ -232,6 +237,10 @@ class KernelLoaderSpec {
   static absl::StatusOr<KernelLoaderSpec> FromProto(
       const KernelLoaderSpecProto& proto,
       std::optional<SymbolResolver> symbol_resolver = std::nullopt);
+
+  // Converts any owning in-memory CUBIN/PTX payload to a reference-counted
+  // shared payload so copies of this spec share the underlying binary.
+  KernelLoaderSpec ToShared() &&;
 
  private:
   using Payload =

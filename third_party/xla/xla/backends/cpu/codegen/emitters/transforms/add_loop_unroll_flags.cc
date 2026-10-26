@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <utility>
 
@@ -69,13 +68,14 @@ class AddLoopUnrollFlagsPass
         /*followupUnrolled=*/nullptr, /*followupRemainder=*/nullptr,
         /*followupAll=*/nullptr);
     auto loop_annotation = mlir::LLVM::LoopAnnotationAttr::get(
-        context,
+        context, /*id=*/nullptr,
         /*disableNonforced=*/nullptr, /*vectorize=*/nullptr,
         /*interleave=*/nullptr, loop_unroll,
         /*unrollAndJam=*/nullptr, /*licm=*/nullptr, /*distribute=*/nullptr,
         /*pipeline=*/nullptr, /*peeled=*/nullptr, /*unswitch=*/nullptr,
         /*mustProgress=*/nullptr,
         /*isVectorized=*/nullptr,
+        /*align=*/0,
         /*startLoc=*/nullptr,
         /*endLoc=*/nullptr,
         /*parallelAccesses=*/{});

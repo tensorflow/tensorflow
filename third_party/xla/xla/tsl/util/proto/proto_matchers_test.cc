@@ -136,6 +136,8 @@ TEST(EqualsProto, WorksWithPartially) {
       r3: "b"
       r3: "c"
       s4: "t"
+      m5 { key: "k1" value: 1 }
+      m5 { key: "k2" value: 2 }
     )");
   EXPECT_THAT(
       foo, Partially(EqualsProto(R"pb(
@@ -150,6 +152,14 @@ TEST(EqualsProto, WorksWithPartially) {
   EXPECT_THAT(foo, Partially(EqualsProto(R"pb(
                 r3: "a" r3: "b" r3: "c"
               )pb")));
+  // extra map entries in actual proto are ignored
+  EXPECT_THAT(foo, Partially(EqualsProto(R"pb(
+                m5 { key: "k1" value: 1 }
+              )pb")));
+  // extra elements in ordered repeated fields are not ignored
+  EXPECT_THAT(foo, Not(Partially(EqualsProto(R"pb(
+                r3: "a" r3: "b"
+              )pb"))));
   // bad order
   EXPECT_THAT(foo,
               Not(Partially(EqualsProto(R"pb(
@@ -162,6 +172,14 @@ TEST(EqualsProto, WorksWithPartially) {
                 r3: "a"
                 r3: "b"
                 r3: "c"
+              )pb"))));
+  // wrong map value
+  EXPECT_THAT(foo, Not(Partially(EqualsProto(R"pb(
+                m5 { key: "k1" value: 2 }
+              )pb"))));
+  // missing map key
+  EXPECT_THAT(foo, Not(Partially(EqualsProto(R"pb(
+                m5 { key: "k3" value: 3 }
               )pb"))));
 }
 
@@ -237,6 +255,16 @@ TEST(EqualsProto, WorksWithPartiallyAndIgnoringOrder) {
   EXPECT_THAT(foo, Partially(IgnoringRepeatedFieldOrdering(EqualsProto(R"pb(
                 s1: "foo"
               )pb"))));
+  // extra elements in unordered repeated fields are ignored
+  EXPECT_THAT(foo, Partially(IgnoringRepeatedFieldOrdering(EqualsProto(R"pb(
+                r3: "c"
+                r3: "a"
+              )pb"))));
+  // missing element in repeated field
+  EXPECT_THAT(foo, Not(Partially(IgnoringRepeatedFieldOrdering(EqualsProto(R"pb(
+                r3: "a"
+                r3: "d"
+              )pb")))));
   // bad order
   EXPECT_THAT(foo, Not(Partially(IgnoringRepeatedFieldOrdering(EqualsProto(R"pb(
                 s1: "bar"
@@ -371,6 +399,8 @@ TEST(EquivToProto, WorksWithPartially) {
       r3: "b"
       r3: "c"
       s4: "s"
+      m5 { key: "k1" value: 1 }
+      m5 { key: "k2" value: 2 }
     )");
   EXPECT_THAT(foo, Partially(EquivToProto(R"pb(
                 s1: "foo" r3: "a" r3: "b" r3: "c"
@@ -384,6 +414,14 @@ TEST(EquivToProto, WorksWithPartially) {
   EXPECT_THAT(foo, Partially(EquivToProto(R"pb(
                 r3: "a" r3: "b" r3: "c"
               )pb")));
+  // extra map entries in actual proto are ignored
+  EXPECT_THAT(foo, Partially(EquivToProto(R"pb(
+                m5 { key: "k1" value: 1 }
+              )pb")));
+  // extra elements in ordered repeated fields are not ignored
+  EXPECT_THAT(foo, Not(Partially(EquivToProto(R"pb(
+                r3: "a" r3: "b"
+              )pb"))));
   // bad order
   EXPECT_THAT(foo,
               Not(Partially(EquivToProto(R"pb(
@@ -468,6 +506,17 @@ TEST(EquivToProto, WorksWithPartiallyAndIgnoringOrder) {
   EXPECT_THAT(foo, Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
                 s1: "foo"
               )pb"))));
+  // extra elements in unordered repeated fields are ignored
+  EXPECT_THAT(foo, Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
+                r3: "c"
+                r3: "a"
+              )pb"))));
+  // missing element in repeated field
+  EXPECT_THAT(foo,
+              Not(Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
+                r3: "a"
+                r3: "d"
+              )pb")))));
   // bad order
   EXPECT_THAT(foo,
               Not(Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(

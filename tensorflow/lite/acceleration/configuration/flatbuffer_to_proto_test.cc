@@ -353,8 +353,8 @@ TEST_F(ConversionTest, EdgeTpuSettings) {
   input_settings->float_truncation_type = kFloatTruncationType;
   input_settings->use_tpu_server = kUseTpuServer;
 
-  std::unique_ptr<EdgeTpuInactivePowerConfigT> inactive_power_config(
-      new EdgeTpuInactivePowerConfigT());
+  std::unique_ptr<EdgeTpuInactivePowerConfigT> inactive_power_config =
+      std::make_unique<EdgeTpuInactivePowerConfigT>();
   inactive_power_config->inactive_power_state = kInactivePowerState;
   inactive_power_config->inactive_timeout_us = kInactiveTimeoutUs;
   input_settings->inactive_power_configs.emplace_back(
@@ -619,13 +619,15 @@ TEST_F(ConversionTest, MiniBenchmarkSettings) {
   mini_settings->model_file->filename = "test_model";
   mini_settings->storage_paths = std::make_unique<BenchmarkStoragePathsT>();
   mini_settings->storage_paths->storage_file_path = "/data/local/tmp";
-  std::unique_ptr<TFLiteSettingsT> xnnpack(new TFLiteSettingsT());
+  std::unique_ptr<TFLiteSettingsT> xnnpack =
+      std::make_unique<TFLiteSettingsT>();
   xnnpack->xnnpack_settings = std::make_unique<XNNPackSettingsT>();
   xnnpack->xnnpack_settings->num_threads = 2;
-  std::unique_ptr<TFLiteSettingsT> hexagon(new TFLiteSettingsT());
+  std::unique_ptr<TFLiteSettingsT> hexagon =
+      std::make_unique<TFLiteSettingsT>();
   hexagon->hexagon_settings = std::make_unique<HexagonSettingsT>();
   hexagon->hexagon_settings->powersave_level = 3;
-  std::unique_ptr<TFLiteSettingsT> coreml(new TFLiteSettingsT());
+  std::unique_ptr<TFLiteSettingsT> coreml = std::make_unique<TFLiteSettingsT>();
   coreml->coreml_settings = std::make_unique<CoreMLSettingsT>();
   coreml->coreml_settings->enabled_devices =
       CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE;
@@ -750,12 +752,12 @@ TEST_F(ConversionTest, BenchmarkError) {
   error->exit_code = 123;
   error->signal = 321;
   error->mini_benchmark_error_code = 456;
-  std::unique_ptr<ErrorCodeT> code1(new ErrorCodeT());
+  std::unique_ptr<ErrorCodeT> code1 = std::make_unique<ErrorCodeT>();
   code1->source = Delegate_EDGETPU;
   code1->tflite_error = 3;
   code1->underlying_api_error = 301;
   error->error_code.emplace_back(std::move(code1));
-  std::unique_ptr<ErrorCodeT> code2(new ErrorCodeT());
+  std::unique_ptr<ErrorCodeT> code2 = std::make_unique<ErrorCodeT>();
   code2->source = Delegate_NNAPI;
   code2->tflite_error = 4;
   code2->underlying_api_error = 404;
@@ -781,7 +783,8 @@ TEST_F(ConversionTest, BenchmarkError) {
 TEST_F(ConversionTest, BenchmarkMetric) {
   event_.benchmark_event = std::make_unique<BenchmarkEventT>();
   event_.benchmark_event->result = std::make_unique<BenchmarkResultT>();
-  std::unique_ptr<BenchmarkMetricT> metric(new BenchmarkMetricT());
+  std::unique_ptr<BenchmarkMetricT> metric =
+      std::make_unique<BenchmarkMetricT>();
   metric->name = "test";
   metric->values.push_back(1.234);
   metric->values.push_back(5.678);

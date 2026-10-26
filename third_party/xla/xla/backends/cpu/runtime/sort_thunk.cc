@@ -239,10 +239,7 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
     if (raw_data.size() == 1 && direction.has_value()) {
       primitive_util::ArrayTypeSwitch(
           [&](auto type) {
-            if constexpr ((primitive_util::IsFloatingPointType(type) &&
-                           primitive_util::BitWidth(type) >= 16) ||
-                          (primitive_util::IsIntegralType(type) &&
-                           primitive_util::BitWidth(type) >= 8)) {
+            if constexpr (IsSupportedKeyType(type)) {
               using T = primitive_util::NativeTypeOf<type>;
               internal::SortInplace<T>(sort_dims, start_slice, end_slice,
                                        reinterpret_cast<T*>(raw_data[0]),
@@ -255,14 +252,11 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
           first_element_type);
     } else if (raw_data.size() == 2 && direction.has_value() &&
                (sort_dims.inner_dim_size == 1 ||
-                sort_dims.sort_dim_size <= 65536)) {
+                sort_dims.sort_dim_size <= kMaxSortDimSize)) {
       size_t val_size = primitive_sizes[1];
       primitive_util::ArrayTypeSwitch(
           [&](auto key_type) {
-            if constexpr ((primitive_util::IsFloatingPointType(key_type) &&
-                           primitive_util::BitWidth(key_type) >= 16) ||
-                          (primitive_util::IsIntegralType(key_type) &&
-                           primitive_util::BitWidth(key_type) >= 8)) {
+            if constexpr (IsSupportedKeyType(key_type)) {
               using Key = primitive_util::NativeTypeOf<key_type>;
               auto* keys = reinterpret_cast<Key*>(raw_data[0]);
               switch (val_size) {

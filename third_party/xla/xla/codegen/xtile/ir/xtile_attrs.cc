@@ -16,14 +16,30 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 
 #include <cstdint>
+#include <optional>
 
 #include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
+#include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 
 namespace xla::xtile {
+
+std::optional<CollectiveStrategy> GetCollectiveStrategy(mlir::Operation* op) {
+  auto attr =
+      op->getAttrOfType<CollectiveStrategyAttr>(CollectiveStrategyAttr::name);
+  if (!attr) {
+    return std::nullopt;
+  }
+  return attr.getValue();
+}
+
+void SetCollectiveStrategy(mlir::Operation* op, CollectiveStrategy strategy) {
+  op->setAttr(CollectiveStrategyAttr::name,
+              CollectiveStrategyAttr::get(op->getContext(), strategy));
+}
 
 mlir::AffineMap LayoutAttr::getAffineMap() const {
   return mlir::AffineMap::getPermutationMap(getMinorToMajor(), getContext());

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -104,6 +105,40 @@ TEST_F(SortTest, SortTwiceWithSameComparator) {
       sort_x = f32[32,64] sort(x), dimensions={0}, to_apply=compare
       sort_y = f32[64,32] sort(y), dimensions={1}, to_apply=compare
       ROOT tuple = (f32[32,64], f32[64,32]) tuple(sort_x, sort_y)
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
+}
+
+TEST_F(SortTest, MultiElementComparator) {
+  if (const char* device_type = std::getenv("XLA_TEST_DEVICE_TYPE");
+      device_type != nullptr && absl::string_view(device_type) == "tpu") {
+    GTEST_SKIP();
+  }
+  // Regression test for https://github.com/openxla/xla/issues/47372: a
+  // comparator with non-scalar intermediate values used to crash the GPU
+  // LLVM IR emitter (llvm_loop.cc CHECK) on the second loop-emitted op.
+  // The comparator is semantically p0 < p1, computed via f32[2] values.
+  absl::string_view hlo_text_module = R"(
+    HloModule sort
+
+    compare {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      idx = f32[2] iota(), iota_dimension=0
+      b0 = f32[2] broadcast(p0), dimensions={}
+      b1 = f32[2] broadcast(p1), dimensions={}
+      sum0 = f32[2] add(b0, idx)
+      sum1 = f32[2] add(b1, idx)
+      cmp = pred[2] compare(sum0, sum1), direction=LT
+      first = pred[1] slice(cmp), slice={[0:1]}
+      ROOT r = pred[] reshape(first)
+    }
+
+    ENTRY e {
+      x = f32[32] parameter(0)
+      ROOT sort = f32[32] sort(x), dimensions={0}, to_apply=compare
     }
   )";
 

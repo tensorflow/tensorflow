@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"  // IWYU pragma: keep
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/xla_data.pb.h"
 
@@ -228,6 +229,13 @@ absl::Status CubSortKeysExecute(
             descending, batch_size, stream);
 }
 
+absl::Status CubSortDummyExecuteFfiHandler() {
+  return absl::InternalError("Dummy execute handler should not be called");
+}
+
+XLA_FFI_DEFINE_HANDLER(kCubSortDummyExecute, CubSortDummyExecuteFfiHandler,
+                       ffi::Ffi::Bind());
+
 XLA_FFI_DEFINE_HANDLER(kCubSortKeysInstantiate, CubSortKeysInstantiate,
                        ffi::Ffi::BindInstantiate()
                            .Arg<ffi::AnyBuffer>()          // d_keys_in
@@ -245,12 +253,20 @@ XLA_FFI_DEFINE_HANDLER(kCubSortKeysExecute, CubSortKeysExecute,
                            .Attr<int64_t>("batch_size")
                            .Ctx<ffi::PlatformStream<hipStream_t>>());
 
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_keys",
-                         "ROCM",
-                         {/* .instantiate = */ kCubSortKeysInstantiate,
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         xla::gpu::kCubDeviceRadixSortKeysTarget.data(), "ROCM",
+                         {/* .instantiate = */ nullptr,
                           /* .prepare = */ nullptr,
                           /* .initialize = */ nullptr,
                           /* .execute = */ kCubSortKeysExecute});
+
+XLA_FFI_REGISTER_HANDLER(
+    ffi::GetXlaFfiApi(),
+    xla::gpu::kCubDeviceRadixSortKeysUnassignedScratchSizeTarget.data(), "ROCM",
+    {/* .instantiate = */ kCubSortKeysInstantiate,
+     /* .prepare = */ nullptr,
+     /* .initialize = */ nullptr,
+     /* .execute = */ kCubSortDummyExecute});
 
 //===----------------------------------------------------------------------===//
 // CubSortPairs: instantiate + execute
@@ -324,12 +340,22 @@ XLA_FFI_DEFINE_HANDLER(kCubSortPairsExecute, CubSortPairsExecute,
                            .Attr<int64_t>("batch_size")
                            .Ctx<ffi::PlatformStream<hipStream_t>>());
 
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_pairs",
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         xla::gpu::kCubDeviceRadixSortPairsTarget.data(),
                          "ROCM",
-                         {/* .instantiate = */ kCubSortPairsInstantiate,
+                         {/* .instantiate = */ nullptr,
                           /* .prepare = */ nullptr,
                           /* .initialize = */ nullptr,
                           /* .execute = */ kCubSortPairsExecute});
+
+XLA_FFI_REGISTER_HANDLER(
+    ffi::GetXlaFfiApi(),
+    xla::gpu::kCubDeviceRadixSortPairsUnassignedScratchSizeTarget.data(),
+    "ROCM",
+    {/* .instantiate = */ kCubSortPairsInstantiate,
+     /* .prepare = */ nullptr,
+     /* .initialize = */ nullptr,
+     /* .execute = */ kCubSortDummyExecute});
 
 }  // namespace
 }  // namespace rocm

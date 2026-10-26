@@ -395,7 +395,7 @@ class BasePatternActivationRewriter : public BasePatternRewriter {
 
   using BasePattern = typename BasePatternRewriter::Pattern;
   using Pattern = std::conditional_t<
-      std::is_same<BasePatternRewriter, ContractionBiasAddRewriter>::value,
+      std::is_same_v<BasePatternRewriter, ContractionBiasAddRewriter>,
       ContractionBiasAddActivation, void>;
 
   bool matchPattern(Operation *op, BasePattern &base_pattern,
@@ -406,8 +406,8 @@ class BasePatternActivationRewriter : public BasePatternRewriter {
     if (this->helper_.HasControlOperandsOrResultUsers(op)) return false;
 
     // TODO(intel-tf): Add support for more patterns.
-    if constexpr (std::is_same<BasePattern, ContractionBiasAdd>::value &&
-                  std::is_same<Pattern, ContractionBiasAddActivation>::value) {
+    if constexpr (std::is_same_v<BasePattern, ContractionBiasAdd> &&
+                  std::is_same_v<Pattern, ContractionBiasAddActivation>) {
       Operation *bias_add_op = op->getOperand(0).getDefiningOp();
       if (!this->helper_.getDialect()->IsBiasAdd(bias_add_op) ||
           !this->helper_.HaveSameDataType(op, bias_add_op) ||
@@ -431,8 +431,8 @@ class BasePatternActivationRewriter : public BasePatternRewriter {
     BasePattern base_pattern;
     Pattern pattern;
     if (!matchPattern(op, base_pattern, pattern)) return failure();
-    if constexpr (!std::is_same<BasePatternRewriter,
-                                ContractionBiasAddRewriter>::value) {
+    if constexpr (!std::is_same_v<BasePatternRewriter,
+                                  ContractionBiasAddRewriter>) {
       return failure();
     }
     if (!this->helper_.IsDeviceCompatible(pattern)) return failure();

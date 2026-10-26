@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -1253,6 +1254,23 @@ DataType PyTensor_DataType(PyObject* tensor) {
       return DT_INVALID;
     }
 
+    if (PyUnicode_Check(dtype_field.get())) {
+      Py_ssize_t dtype_size;
+      const char* dtype_name =
+          PyUnicode_AsUTF8AndSize(dtype_field.get(), &dtype_size);
+      if (dtype_name == nullptr) {
+        return DT_INVALID;
+      }
+      DataType dtype;
+      if (DataTypeFromString(absl::string_view(dtype_name, dtype_size),
+                             &dtype)) {
+        return dtype;
+      }
+      PyErr_Format(PyExc_TypeError, "Invalid TensorFlow dtype: %R",
+                   dtype_field.get());
+      return DT_INVALID;
+    }
+
     Safe_PyObjectPtr enum_field(
         PyObject_GetAttr(dtype_field.get(), type_enum_attr));
     if (!enum_field) {
@@ -2111,7 +2129,9 @@ bool TensorShapesAndDtypes(PyObject* tensors, std::vector<int64_t>* tensor_ids,
   for (int i = 0; i < len; ++i) {
     PyObject* item = seq_array[i];
     tensor_ids->push_back(FastTensorId(item));
-    dtypes->push_back(tensorflow::PyTensor_DataType(item));
+    tensorflow::DataType dtype = tensorflow::PyTensor_DataType(item);
+    if (dtype == tensorflow::DT_INVALID && PyErr_Occurred()) return false;
+    dtypes->push_back(dtype);
   }
   return true;
 }
@@ -2466,7 +2486,9 @@ std::vector<tensorflow::DataType> MakeTensorDtypeList(PyObject* tensors) {
   list.reserve(len);
   for (int i = 0; i < len; ++i) {
     PyObject* tensor = seq_array[i];
-    list.push_back(tensorflow::PyTensor_DataType(tensor));
+    tensorflow::DataType dtype = tensorflow::PyTensor_DataType(tensor);
+    if (dtype == tensorflow::DT_INVALID && PyErr_Occurred()) break;
+    list.push_back(dtype);
   }
   Py_DECREF(seq);
   return list;
@@ -3023,21 +3045,41 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   if (!result.empty()) {
     PyObject* py_result = PyList_New(result.size());
     tensorflow::gtl::FlatSet<PyObject*> seen_results(result.size());
-    for (int i = 0; i < result.size(); ++i) {
+    if (py_result == nullptr) {
+      for (PyObject* gradient : result) {
+        if (gradient != nullptr && seen_results.insert(gradient).second) {
+          Py_DECREF(gradient);
+        }
+      }
+      return nullptr;
+    }
+    for (size_t i = 0; i < result.size(); ++i) {
       if (result[i] == nullptr) {
         if (unconnected_gradients_zero) {
           // generate a zeros tensor in the shape of sources[i]
           tensorflow::DataType dtype =
               tensorflow::PyTensor_DataType(sources_obj[i]);
-          PyTapeTensor tensor =
-              PyTapeTensor(sources_vec[i], dtype, sources_obj[i]);
-          result[i] = tensor.ZerosLike();
+          if (dtype != tensorflow::DT_INVALID || !PyErr_Occurred()) {
+            PyTapeTensor tensor =
+                PyTapeTensor(sources_vec[i], dtype, sources_obj[i]);
+            result[i] = tensor.ZerosLike();
+          }
         } else {
           Py_INCREF(Py_None);
           result[i] = Py_None;
         }
       } else if (seen_results.find(result[i]) != seen_results.end()) {
         Py_INCREF(result[i]);
+      }
+      if (result[i] == nullptr) {
+        // Release gradients not yet transferred to py_result.
+        for (size_t j = i + 1; j < result.size(); ++j) {
+          if (result[j] != nullptr && seen_results.insert(result[j]).second) {
+            Py_DECREF(result[j]);
+          }
+        }
+        Py_DECREF(py_result);
+        return nullptr;
       }
       seen_results.insert(result[i]);
       PyList_SET_ITEM(py_result, i, reinterpret_cast<PyObject*>(result[i]));
@@ -3355,15 +3397,18 @@ tensorflow::DataType MaybeGetDTypeForAttr(const string& attr,
     if (input_info.is_list) {
       tensorflow::Safe_PyObjectPtr fast_item(
           PySequence_Fast(item, "Unable to allocate"));
+      if (fast_item == nullptr) return tensorflow::DT_INVALID;
       int len = PySequence_Fast_GET_SIZE(fast_item.get());
       PyObject** fast_item_array = PySequence_Fast_ITEMS(fast_item.get());
       for (int i = 0; i < len; i++) {
         auto dtype = MaybeGetDType(fast_item_array[i]);
         if (dtype != tensorflow::DT_INVALID) return dtype;
+        if (PyErr_Occurred()) return tensorflow::DT_INVALID;
       }
     } else {
       auto dtype = MaybeGetDType(item);
       if (dtype != tensorflow::DT_INVALID) return dtype;
+      if (PyErr_Occurred()) return tensorflow::DT_INVALID;
     }
   }
 
@@ -3651,6 +3696,7 @@ bool ConvertToTensor(
 
   // The hint comes from a supposedly similarly typed tensor.
   tensorflow::DataType dtype_hint = dtype_hint_getter();
+  if (PyErr_Occurred()) return false;
 
   TFE_TensorHandle* handle = tensorflow::ConvertToEagerTensor(
       op_exec_info.ctx, input, dtype_hint, op_exec_info.device_name);

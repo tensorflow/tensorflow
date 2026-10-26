@@ -118,14 +118,14 @@ ENTRY entry {
   const absl::string_view expected_hlo =
       R"(HloModule outline, entry_computation_layout={()->(f32[], f32[])}
 
-a {
+a.1 {
   p0 = f32[] parameter(0)
   ROOT add.2 = f32[] add(p0, p0)
 }
 
 ENTRY entry {
   c = f32[] constant(1)
-  call = f32[] call(c), to_apply=a
+  call = f32[] call(c), to_apply=a.1
   ROOT tuple = (f32[], f32[]) tuple(call, c)
 }
 
@@ -154,14 +154,14 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-a {
+a.1 {
   p0 = f32[] parameter(0)
   ROOT add.2 = f32[] add(p0, p0)
 }
 
 ENTRY inline {
   c = f32[] constant(1)
-  ROOT a = f32[] call(c), to_apply=a
+  ROOT a = f32[] call(c), to_apply=a.1
 }
 
 )";
@@ -199,24 +199,24 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-c {
+c.1 {
   p0 = f32[] parameter(0)
   ROOT result.7 = f32[] add(p0, p0)
 }
 
-b {
+b.1 {
   p0.1 = f32[] parameter(0)
-  ROOT result.8 = f32[] call(p0.1), to_apply=c
+  ROOT result.8 = f32[] call(p0.1), to_apply=c.1
 }
 
-a {
+a.1 {
   p0.2 = f32[] parameter(0)
-  ROOT result.9 = f32[] call(p0.2), to_apply=b
+  ROOT result.9 = f32[] call(p0.2), to_apply=b.1
 }
 
 ENTRY inline {
   c = f32[] constant(1)
-  ROOT result.3 = f32[] call(c), to_apply=a
+  ROOT result.3 = f32[] call(c), to_apply=a.1
 }
 
 )";
@@ -285,25 +285,72 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-a {
+a.1 {
   p0 = f32[] parameter(0)
   ROOT add.2 = f32[] add(p0, p0)
 }
 
-b {
+b.1 {
   p0.1 = f32[] parameter(0)
   ROOT mul.2 = f32[] multiply(p0.1, p0.1)
 }
 
 ENTRY inline {
   c = f32[] constant(1)
-  call_a = f32[] call(c), to_apply=a
-  ROOT call_b = f32[] call(call_a), to_apply=b
+  call_a = f32[] call(c), to_apply=a.1
+  ROOT call_b = f32[] call(call_a), to_apply=b.1
 }
 
 )";
 
   EXPECT_EQ(module->ToString(HloPrintOptions::ShortParsable()), expected_hlo);
+}
+
+TEST_F(CallOutlinerTest, OutlinedComputationsWithSameMarkerHaveUniqueNames) {
+  // Two separate blocks carry the same marked name, as happens when one
+  // computation is called twice and both call sites are inlined.
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module
+
+  ENTRY inline {
+    p0 = f32[] parameter(0)
+    before0 = (f32[]) custom-call(p0), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="a"}
+    gte0 = f32[] get-tuple-element(before0), index=0
+    add0 = f32[] add(gte0, gte0)
+    after0 = f32[] custom-call(add0), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="a"}
+    before1 = (f32[]) custom-call(after0), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="a"}
+    gte1 = f32[] get-tuple-element(before1), index=0
+    add1 = f32[] add(gte1, gte1)
+    ROOT after1 = f32[] custom-call(add1), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="a"}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
+
+  EXPECT_EQ(CountCalls(module->entry_computation()), 2);
+  EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+}
+
+TEST_F(CallOutlinerTest, ComputationCalledTwiceRoundTripsWithUniqueNames) {
+  const absl::string_view hlo_string = R"(
+  HloModule inline_module
+
+  a {
+    p = f32[] parameter(0)
+    ROOT add = f32[] add(p, p)
+  }
+
+  ENTRY inline {
+    c = f32[] constant(1)
+    call0 = f32[] call(c), to_apply=a
+    ROOT call1 = f32[] call(call0), to_apply=a
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseInlineAndOutline(hlo_string));
+
+  EXPECT_EQ(CountCalls(module->entry_computation()), 2);
+  EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
 }
 
 TEST_F(CallOutlinerTest, CallWithMultipleArguments) {
@@ -328,7 +375,7 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-a {
+a.1 {
   p0.1 = f32[] parameter(0)
   p1.1 = f32[] parameter(1)
   ROOT add.2 = f32[] add(p0.1, p1.1)
@@ -337,7 +384,7 @@ a {
 ENTRY inline {
   c1 = f32[] constant(1)
   c2 = f32[] constant(2)
-  ROOT result = f32[] call(c1, c2), to_apply=a
+  ROOT result = f32[] call(c1, c2), to_apply=a.1
 }
 
 )";
@@ -367,14 +414,14 @@ ENTRY inline {
   const absl::string_view expected_hlo =
       R"(HloModule inline_module, entry_computation_layout={()->f32[]}
 
-a {
+a.1 {
   p0 = f32[] parameter(0)
   ROOT result.3 = f32[] bitcast(p0)
 }
 
 ENTRY inline {
   c = f32[] constant(1)
-  ROOT result.1 = f32[] call(c), to_apply=a
+  ROOT result.1 = f32[] call(c), to_apply=a.1
 }
 
 )";
@@ -1075,6 +1122,156 @@ TEST_F(CallOutlinerTest, OutlineNestedBlockWithGteUsedOutsideInnerBlock) {
   EXPECT_EQ(CountCalls(module->entry_computation()), 1);
   HloInstruction* root_call = module->entry_computation()->root_instruction();
   EXPECT_EQ(root_call->opcode(), HloOpcode::kCall);
+}
+
+TEST_F(CallOutlinerTest,
+       OutlineBlockWithSideEffectingInstructionRemovesCallerCopy) {
+  const absl::string_view hlo_string = R"(
+  HloModule side_effect_module
+
+  ENTRY entry {
+    p0 = f32[2,2]{1,0} parameter(0)
+
+    before = (f32[2,2]{1,0}) custom-call(p0), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="callee"}
+    gte = f32[2,2]{1,0} get-tuple-element(before), index=0
+    side_effect_op = f32[2,2]{1,0} custom-call(gte), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true
+    after = f32[2,2]{1,0} custom-call(side_effect_op), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="callee"}
+    ROOT root = f32[2,2]{1,0} copy(after)
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
+  EXPECT_EQ(CountCalls(module->entry_computation()), 1);
+
+  // The caller entry computation should only contain parameter, call, and root
+  // copy. The side_effect_op must be removed from the caller computation!
+  for (HloInstruction* inst : module->entry_computation()->instructions()) {
+    EXPECT_NE(inst->name(), "side_effect_op");
+    EXPECT_NE(inst->opcode(), HloOpcode::kCustomCall)
+        << "Unexpected custom call remaining in entry: " << inst->ToString();
+  }
+
+  // The outlined computation must contain the cloned side_effect_op.
+  HloInstruction* call = FindCallByName(module->entry_computation(), "callee");
+  ASSERT_NE(call, nullptr);
+  bool found_side_effect_in_callee = false;
+  for (HloInstruction* inst : call->to_apply()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCustomCall &&
+        inst->custom_call_target() == "tpu_custom_call") {
+      found_side_effect_in_callee = true;
+    }
+  }
+  EXPECT_TRUE(found_side_effect_in_callee);
+}
+
+TEST_F(CallOutlinerTest,
+       OutlineBlockWithSideEffectingInstructionReferencedOutsideViaTuple) {
+  const absl::string_view hlo_string = R"(
+  HloModule multi_output_side_effect_module
+
+  ENTRY entry {
+    p0 = f32[2,2]{1,0} parameter(0)
+
+    before = (f32[2,2]{1,0}) custom-call(p0), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="callee"}
+    gte = f32[2,2]{1,0} get-tuple-element(before), index=0
+    side_effect_op = f32[2,2]{1,0} custom-call(gte), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true
+    pure_op = f32[2,2]{1,0} negate(gte)
+    after = (f32[2,2]{1,0}, f32[2,2]{1,0}) custom-call(side_effect_op, pure_op), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="callee"}
+    gte0 = f32[2,2]{1,0} get-tuple-element(after), index=0
+    gte1 = f32[2,2]{1,0} get-tuple-element(after), index=1
+    add = f32[2,2]{1,0} add(gte0, gte1)
+    ROOT root = f32[2,2]{1,0} copy(add)
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
+  EXPECT_EQ(CountCalls(module->entry_computation()), 1);
+
+  // The caller entry computation should NOT contain side_effect_op or pure_op.
+  for (HloInstruction* inst : module->entry_computation()->instructions()) {
+    EXPECT_NE(inst->name(), "side_effect_op");
+    EXPECT_NE(inst->name(), "pure_op");
+    EXPECT_NE(inst->opcode(), HloOpcode::kCustomCall)
+        << "Unexpected custom call remaining in entry: " << inst->ToString();
+  }
+
+  // The callee must contain both side_effect_op and pure_op.
+  HloInstruction* call = FindCallByName(module->entry_computation(), "callee");
+  ASSERT_NE(call, nullptr);
+  bool found_side_effect_in_callee = false;
+  bool found_pure_op_in_callee = false;
+  for (HloInstruction* inst : call->to_apply()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCustomCall &&
+        inst->custom_call_target() == "tpu_custom_call") {
+      found_side_effect_in_callee = true;
+    }
+    if (inst->opcode() == HloOpcode::kNegate) {
+      found_pure_op_in_callee = true;
+    }
+  }
+  EXPECT_TRUE(found_side_effect_in_callee);
+  EXPECT_TRUE(found_pure_op_in_callee);
+}
+
+TEST_F(CallOutlinerTest,
+       OutlineNestedBlockWithSideEffectingInstructionsRemovesCallerCopies) {
+  const absl::string_view hlo_string = R"(
+  HloModule nested_side_effect_module
+
+  ENTRY entry {
+    p0 = f32[2,2]{1,0} parameter(0)
+
+    before_outer = (f32[2,2]{1,0}) custom-call(p0), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="outer"}
+    gte_outer = f32[2,2]{1,0} get-tuple-element(before_outer), index=0
+    side_effect_outer = f32[2,2]{1,0} custom-call(gte_outer), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true
+
+    before_inner = (f32[2,2]{1,0}) custom-call(side_effect_outer), custom_call_target="__xla_internal_call_marker_before", frontend_attributes={xla_call_marked_computation="inner"}
+    gte_inner = f32[2,2]{1,0} get-tuple-element(before_inner), index=0
+    side_effect_inner = f32[2,2]{1,0} custom-call(gte_inner), custom_call_target="tpu_custom_call", custom_call_has_side_effect=true
+    after_inner = f32[2,2]{1,0} custom-call(side_effect_inner), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="inner"}
+
+    after_outer = f32[2,2]{1,0} custom-call(after_inner), custom_call_target="__xla_internal_call_marker_after", frontend_attributes={xla_call_marked_computation="outer"}
+    ROOT root = f32[2,2]{1,0} copy(after_outer)
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       OutlineModule(hlo_string));
+  EXPECT_EQ(CountCalls(module->entry_computation()), 1);
+
+  // The entry computation must NOT contain any custom-calls!
+  for (HloInstruction* inst : module->entry_computation()->instructions()) {
+    EXPECT_NE(inst->name(), "side_effect_outer");
+    EXPECT_NE(inst->name(), "side_effect_inner");
+    EXPECT_NE(inst->opcode(), HloOpcode::kCustomCall)
+        << "Unexpected custom call remaining in entry: " << inst->ToString();
+  }
+
+  // The outer computation must contain call to inner and side_effect_outer.
+  HloInstruction* outer_call =
+      FindCallByName(module->entry_computation(), "outer");
+  ASSERT_NE(outer_call, nullptr);
+  EXPECT_EQ(CountCalls(outer_call->to_apply()), 1);
+
+  bool found_outer_side_effect = false;
+  for (HloInstruction* inst : outer_call->to_apply()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCustomCall &&
+        inst->custom_call_target() == "tpu_custom_call") {
+      found_outer_side_effect = true;
+    }
+  }
+  EXPECT_TRUE(found_outer_side_effect);
+
+  // The inner computation must contain side_effect_inner.
+  HloInstruction* inner_call = FindCallByName(outer_call->to_apply(), "inner");
+  ASSERT_NE(inner_call, nullptr);
+  bool found_inner_side_effect = false;
+  for (HloInstruction* inst : inner_call->to_apply()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCustomCall &&
+        inst->custom_call_target() == "tpu_custom_call") {
+      found_inner_side_effect = true;
+    }
+  }
+  EXPECT_TRUE(found_inner_side_effect);
 }
 
 }  // namespace

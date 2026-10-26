@@ -21,8 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <iterator>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -68,6 +66,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
@@ -288,7 +287,8 @@ absl::StatusOr<MlirCompilationSetup> SetupMlirCompilation(
   ABSL_RETURN_IF_ERROR(MlirToXlaComputation(
       module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, &exec_build_options));
+      /*return_tuple=*/false, &exec_build_options,
+      mlir::mhlo::getCpuChloToHighLevelMhloOptions()));
   xla_computation.mutable_proto()->set_pjrt_id(module_id);
   setup.computation = std::move(xla_computation);
 
@@ -698,6 +698,12 @@ tsl::AsyncValueRef<PjRtExecutable> PjRtCpuRawClient::ToAsyncExecutable(
     std::shared_ptr<PjRtExecutable> executable) const {
   return tsl::MakeAvailableAsyncValueRef(
       std::static_pointer_cast<PjRtCpuExecutable>(executable));
+}
+
+std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+          PjRtRawClient::PjRtFulfillAsyncExecutableCallback>
+PjRtCpuRawClient::CreateLinkedExecutablePromise() const {
+  return CreateLinkedExecutablePromiseForType<PjRtCpuExecutable>();
 }
 
 static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
@@ -1496,10 +1502,12 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   // pacing to avoid problems such as memory fragmentation and running ahead
   // too far, not for correctness. Placing it before the executable launch
   // allows the inputs for the next executable to be fetched even if the
-  // launch is delayed.
+  // launch is delayed. A dispatch from inside a host callback takes no units:
+  // the computations holding them may be queued behind the computation that
+  // runs the callback, so waiting for a unit can deadlock.
   auto compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
       local_device_state->max_inflight_computations_semaphore().ScopedAcquire(
-          1));
+          ThisThreadIsInsideHostCallback() ? 0 : 1));
 
   ExecutableRunOptions run_options;
   run_options.set_run_id(run_id_);
@@ -1616,11 +1624,6 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
         cpu::Thunk::CustomCallExecuteParams custom_call_execute_params,
         cpu::Thunk::CustomCallExecuteParams::Create(&run_options));
 
-    std::optional<cpu::Thunk::YnnParams> ynn_params;
-    if (cpu_executable->has_ynn_fusions()) {
-      ABSL_ASSIGN_OR_RETURN(ynn_params, cpu::Thunk::YnnParams::Create(&run_options));
-    }
-
     cpu::ThreadPoolTaskRunner task_runner(
         run_options.intra_op_thread_pool()->getPool());
 
@@ -1632,7 +1635,6 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
         &task_runner,
         &collective_params,
         &custom_call_execute_params,
-        ynn_params ? &*ynn_params : nullptr,
         run_options.run_id().ToInt(),
         run_options.device_ordinal(),
         cpu::Thunk::ExecuteSession(cpu::Thunk::ExecuteSession::kMaxWorkers,

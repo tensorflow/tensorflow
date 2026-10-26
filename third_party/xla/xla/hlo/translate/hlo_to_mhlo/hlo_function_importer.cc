@@ -487,7 +487,8 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
             // NOTE: since we are flattening args, all arguments will share the
             // same location as the tuple parameter instruction.
             function.getArgument(arg_index).setLoc(
-                mlir::hlo::GenerateInstructionLocation(instruction, context_));
+                mlir::hlo::GenerateInstructionLocation(instruction, context_,
+                                                       &frame_locations_));
             funcArgAttrs[arg_index++] = argAttrs.getDictionary(context_);
             ++i;
           });
@@ -521,7 +522,8 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         }
       }
       function.getArgument(arg_index).setLoc(
-          mlir::hlo::GenerateInstructionLocation(instruction, context_));
+          mlir::hlo::GenerateInstructionLocation(instruction, context_,
+                                                 &frame_locations_));
       funcArgAttrs[arg_index++] = argAttrs.getDictionary(context_);
     }
   }
@@ -754,7 +756,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   ABSL_ASSIGN_OR_RETURN(auto result_type,
                    ConvertShapeToType<RankedTensorType>(shape, *builder_));
   mlir::Location loc = mlir::hlo::GenerateInstructionLocation(
-      instruction, func_builder->getContext());
+      instruction, func_builder->getContext(), &frame_locations_);
 
   llvm::SmallVector<NamedAttribute, 10> attributes;
   if (instruction->has_sharding()) {
@@ -1274,7 +1276,9 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         // we don't want to expose this implementation detail to MHLO/StableHLO
         // users.
         if (!custom_call->IsCustomCall(kPinCustomCallTarget) &&
-            !custom_call->IsCustomCall(kUnpinCustomCallTarget)) {
+            !custom_call->IsCustomCall(kUnpinCustomCallTarget) &&
+            !custom_call->IsCustomCall(kFanOutCustomCallTarget) &&
+            !custom_call->IsCustomCall(kFanInCustomCallTarget)) {
           attributes.push_back(builder_->getNamedAttr(
               "output_operand_aliases",
               ConvertOutputOperandAliasing(
@@ -1294,7 +1298,9 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "api_version", mlir::stablehlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
       if (!custom_call->IsCustomCall(kPinCustomCallTarget) &&
-          !custom_call->IsCustomCall(kUnpinCustomCallTarget)) {
+          !custom_call->IsCustomCall(kUnpinCustomCallTarget) &&
+          !custom_call->IsCustomCall(kFanOutCustomCallTarget) &&
+          !custom_call->IsCustomCall(kFanInCustomCallTarget)) {
         attributes.push_back(builder_->getNamedAttr(
             "output_operand_aliases",
             stablehlo::ConvertOutputOperandAliasing(
@@ -1322,6 +1328,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           builder_->getBoolAttr(instruction->cholesky_options().lower())));
       return mlir::stablehlo::CholeskyOp::create(
                  *func_builder, loc, result_type, operands, attributes)
+          .getOperation();
+    }
+    case HloOpcode::kFma: {
+      return mlir::stablehlo::FmaOp::create(*func_builder, loc, result_type,
+                                            operands, attributes)
           .getOperation();
     }
     case HloOpcode::kGather: {
@@ -2439,9 +2450,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       RESULT_ACCURACY_CASE(kCbrt, CbrtOp);
       RESULT_ACCURACY_CASE(kCos, CosineOp);
       RESULT_ACCURACY_CASE(kExp, ExpOp);
+      RESULT_ACCURACY_CASE(kExp2, Exp2Op);
       RESULT_ACCURACY_CASE(kExpm1, Expm1Op);
       RESULT_ACCURACY_CASE(kLog, LogOp);
       RESULT_ACCURACY_CASE(kLog1p, Log1pOp);
+      RESULT_ACCURACY_CASE(kLog2, Log2Op);
       RESULT_ACCURACY_CASE(kLogistic, LogisticOp);
       RESULT_ACCURACY_CASE(kRsqrt, RsqrtOp);
       RESULT_ACCURACY_CASE(kSin, SineOp);
@@ -2622,10 +2635,10 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonOrder(
                               builder_->getContext(),
                               mlir::stablehlo::ComparisonType::TOTALORDER));
     case ComparisonOrder::kWeak:
-      // TODO(b/565612124): Map to mlir::stablehlo::ComparisonType::WEAKORDER
-      // once added to StableHLO.
-      LOG(FATAL) << "Unsupported comparison order: "
-                 << ComparisonOrderToString(order);
+      return builder_->getNamedAttr(
+          "compare_type", mlir::stablehlo::ComparisonTypeAttr::get(
+                              builder_->getContext(),
+                              mlir::stablehlo::ComparisonType::WEAKORDER));
   }
   LOG(FATAL) << "Unhandled comparison order: " << static_cast<int>(order);
 }

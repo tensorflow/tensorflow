@@ -75,14 +75,19 @@ bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr);
 // Returns true if the ragged-dot instruction can be lowered by the Triton
 // XTile backend.  Criteria:
 //   - Exactly one LHS ragged dimension.
-//   - Tiling propagation enabled
-//   (xla_gpu_experimental_enable_tiling_propagation).
 //   - Element types supported by the xtile emitter: F16, BF16, F32, F64,
 //     F8E5M2, F8E4M3FN; nanoo FP8 types (F8E4M3FNUZ, F8E5M2FNUZ) on ROCm only.
 //     Complex types (C64, C128) are not supported.
 bool IsTritonSupportedRaggedDot(
     const se::GpuComputeCapability& gpu_compute_capability,
     const HloInstruction& instr);
+
+// Returns true if `dnums` describes the weight-gradient (wgrad) flavor of
+// ragged-dot, i.e. the LHS ragged dimension is also one of the contracting
+// dimensions (kRaggedContracting mode), as opposed to a batch or
+// non-contracting dimension. Wgrad ragged-dots lower to cuDNN's
+// moe_grouped_matmul_bwd rather than the forward moe_grouped_matmul path.
+bool IsRaggedDotWgrad(const RaggedDotDimensionNumbers& dnums);
 
 constexpr int64_t WarpSize(const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
@@ -122,6 +127,10 @@ inline constexpr absl::string_view kTritonNestedGemmFusionKind =
 
 // Fusions that use cuDNN have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
+
+// Fusions codegen'd through the TensorIR/CudaTile pipeline have
+// FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kTensorIrFusionKind = "__tensorir";
 
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";

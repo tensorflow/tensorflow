@@ -229,6 +229,11 @@ class TritonDotFusionSearchSpace {
       const ConfigWithNotes& config,
       std::vector<ConfigWithNotes>& updated_configs) const;
 
+  // Extend the passed configs with mfma_size values.
+  void AddMfmaSizeParameter(
+      const ConfigWithNotes& config,
+      std::vector<ConfigWithNotes>& updated_configs) const;
+
   // The order of these fields is important: the values of those defined earlier
   // are used to compute the values of later ones.
   se::DeviceDescription device_description_;
@@ -251,6 +256,9 @@ class TritonDotFusionSearchSpace {
   bool exhaustive_tiling_search_;
   bool has_concatenate_ = false;
 };
+
+// Returns the mfma_size to try on top of auto for this tile, or 0 if none.
+int MfmaSizeToTry(int block_m, int block_n);
 
 }  // namespace xla::gpu
 

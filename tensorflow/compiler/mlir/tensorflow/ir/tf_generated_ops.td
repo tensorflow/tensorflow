@@ -21470,7 +21470,8 @@ either be empty or have the same number of elements as `keys`.}]>:$alternate_key
     BoolAttr:$training,
     StrAttr:$file_path,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$write_vector_predictions,
-    DefaultValuedOptionalAttr<F32Attr, "1.0f">:$sample_rate
+    DefaultValuedOptionalAttr<F32Attr, "1.0f">:$sample_rate,
+    DefaultValuedOptionalAttr<StrAttr, "\"\"">:$date
   );
 
   let results = (outs);

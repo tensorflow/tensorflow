@@ -565,6 +565,91 @@ TEST_F(ExecutionStreamAssignmentTest,
               absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
+TEST_F(ExecutionStreamAssignmentTest,
+       CollectiveStreamCallAssignsCommunicationStreamToWrappedCollective) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  body {
+    p0 = f32[1] parameter(0)
+    ag-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+    ROOT ag-done = f32[1] all-gather-done(ag-start)
+  }
+
+  ENTRY main {
+    p0 = f32[1] parameter(0)
+    call-start = ((f32[1]), f32[1]) call-start(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="collective"}
+    ROOT call-done = f32[1] call-done(call-start),
+      frontend_attributes={_xla_stream_annotation="collective"}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ExecutionStreamAssignment assignment(
+      module.get(), {/*number_of_compute_execution_streams=*/4,
+                     /*number_of_communication_execution_streams=*/2});
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "call-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "ag-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(1))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "ag-done")),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(assignment.GetExecutionStreamId(
+                  FindInstruction(module.get(), "call-done")),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(
+    ExecutionStreamAssignmentTest,
+    CollectiveStreamCallSharesSingleCommunicationStreamWithWrappedCollective) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  body {
+    p0 = f32[1] parameter(0)
+    ag-start = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+    ROOT ag-done = f32[1] all-gather-done(ag-start)
+  }
+
+  ENTRY main {
+    p0 = f32[1] parameter(0)
+    call-start = ((f32[1]), f32[1]) call-start(p0), to_apply=body,
+      frontend_attributes={_xla_stream_annotation="collective"}
+    ROOT call-done = f32[1] call-done(call-start),
+      frontend_attributes={_xla_stream_annotation="collective"}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ExecutionStreamAssignment assignment(
+      module.get(), {/*number_of_compute_execution_streams=*/4,
+                     /*number_of_communication_execution_streams=*/1});
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "call-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "ag-start")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "ag-done")),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(assignment.GetExecutionStreamId(
+                  FindInstruction(module.get(), "call-done")),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+}
+
 TEST_F(ExecutionStreamAssignmentTest, PipelinedSendRecv) {
   const char* kModuleStr = R"(
     HloModule test, num_partitions=2
@@ -644,6 +729,60 @@ TEST_F(ExecutionStreamAssignmentTest, PipelinedSendRecv) {
                     FindInstruction(module.get(), instruction)),
                 absl_testing::StatusIs(absl::StatusCode::kNotFound));
   }
+}
+
+TEST_F(ExecutionStreamAssignmentTest,
+       MultipleStreamAnnotatedCallsAssignStreamsToAllWrappedCollectives) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  body1 {
+    p0 = f32[1] parameter(0)
+    ag-start.0 = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+    ROOT ag-done.0 = f32[1] all-gather-done(ag-start.0)
+  }
+
+  body2 {
+    p0 = f32[1] parameter(0)
+    ag-start.1 = (f32[1], f32[1]) all-gather-start(p0), dimensions={0}
+    ROOT ag-done.1 = f32[1] all-gather-done(ag-start.1)
+  }
+
+  ENTRY main {
+    p0 = f32[1] parameter(0)
+    cs0 = ((f32[1]), f32[1]) call-start(p0),
+      to_apply=body1,
+      frontend_attributes={_xla_stream_annotation="collective"}
+    cd0 = f32[1] call-done(cs0),
+      frontend_attributes={_xla_stream_annotation="collective"}
+    cs1 = ((f32[1]), f32[1]) call-start(cd0),
+      to_apply=body2,
+      frontend_attributes={_xla_stream_annotation="collective"}
+    ROOT cd1 = f32[1] call-done(cs1),
+      frontend_attributes={_xla_stream_annotation="collective"}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ExecutionStreamAssignment assignment(
+      module.get(), {/*number_of_compute_execution_streams=*/4,
+                     /*number_of_communication_execution_streams=*/2});
+
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "cs0")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(FindInstruction(module.get(), "cs1")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(1))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "ag-start.0")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(0))));
+  EXPECT_THAT(
+      assignment.GetExecutionStreamId(
+          FindInstruction(module.get(), "ag-start.1")),
+      absl_testing::IsOkAndHolds(ExecutionStreamId(CommunicationStreamId(1))));
 }
 
 }  // namespace

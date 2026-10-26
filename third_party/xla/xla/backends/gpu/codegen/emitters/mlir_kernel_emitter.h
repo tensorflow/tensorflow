@@ -24,9 +24,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -85,6 +87,11 @@ class MlirKernelEmitter {
       const BufferAssignment* buffer_assignment) const;
 
   static mlir::DialectRegistry GetDialectRegistry();
+
+  // Emits `{thread_id.x, thread_id.y, thread_id.z, block_id.x, block_id.y,
+  // block_id.z}` annotated with `xla.range` from `launch_dims`.
+  static llvm::SmallVector<mlir::Value> EmitThreadAndBlockIds(
+      mlir::ImplicitLocOpBuilder& builder, const LaunchDimensions& launch_dims);
 
   // Computes an indexing map from thread to output element(s) of the **hero**.
   //
@@ -220,6 +227,15 @@ absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
     const se::DeviceDescription& device, const HloModule& hlo_module,
     const std::string& entry_function_name, int unroll_factor,
     mlir::MLIRContext& mlir_context, MlirKernelSource source);
+
+// Annotates an LLVM module produced by `CompileMlirToLlvm` with thread/block ID
+// range metadata, target triple/data layout, GPU kernel calling convention, and
+// launch dimension attributes.
+absl::Status AnnotateMlirKernelLlvmModule(
+    const se::DeviceDescription& gpu_device_info,
+    const LaunchDimensions& launch_dims, absl::string_view kernel_name,
+    absl::string_view data_layout, const llvm::Triple& target_triple,
+    llvm::Module* module);
 
 std::unique_ptr<mlir::MLIRContext> CreateMlirContext();
 

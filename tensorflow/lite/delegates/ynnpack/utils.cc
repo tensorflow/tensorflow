@@ -268,9 +268,18 @@ bool IsConstant(const TfLiteTensor& tensor, bool allow_prepare) {
   }
 }
 
-bool IsSupportedQuantization(const TfLiteTensor& tensor,
-                             bool allow_per_channel) {
+bool IsSupportedQuantization(const TfLiteTensor& tensor, bool allow_per_channel,
+                             bool allow_blockwise) {
   if (!IsQuantized(tensor)) return true;
+  if (tensor.quantization.type == kTfLiteBlockwiseQuantization) {
+    if (!allow_blockwise) return false;
+    const auto* params = static_cast<const TfLiteBlockwiseQuantization*>(
+        tensor.quantization.params);
+    if (!params) return false;
+    if (params->scale < 0) return false;
+    if (params->blocksize <= 0) return false;
+    return true;
+  }
   if (tensor.quantization.type != kTfLiteAffineQuantization) return false;
   const auto* params =
       static_cast<const TfLiteAffineQuantization*>(tensor.quantization.params);
@@ -300,7 +309,8 @@ size_t YnnTypeElementCount(ynn_type type) {
   }
 }
 
-bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel) {
+bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel,
+                       bool allow_blockwise) {
   if (tensor.type == kTfLiteBool) return false;
   ynn_type type = GetYnnType(tensor.type);
   if (type == ynn_type_invalid) return false;
@@ -311,7 +321,7 @@ bool IsTensorSupported(const TfLiteTensor& tensor, bool allow_per_channel) {
         tensor.dims->size == 0 ? 1 : tensor.dims->data[tensor.dims->size - 1];
     if (dense_dim % element_count != 0) return false;
   }
-  return IsSupportedQuantization(tensor, allow_per_channel);
+  return IsSupportedQuantization(tensor, allow_per_channel, allow_blockwise);
 }
 
 bool QuantizationParamsEqual(const TfLiteTensor& tensor1,
@@ -736,15 +746,11 @@ TfLiteStatus DefineYnnStencil(TfLiteContext* context, ynn_subgraph_t subgraph,
   return kTfLiteOk;
 }
 
-flexbuffers::Map GetFlexBufferMap(const TfLiteRegistration* reg,
-                                  const TfLiteNode* node) {
-  if (node == nullptr) {
-    return flexbuffers::Map::EmptyMap();
-  }
-  if (reg != nullptr && reg->builtin_code == kTfLiteBuiltinStablehloComposite &&
-      node->builtin_data != nullptr) {
+flexbuffers::Map GetFlexBufferMap(const NodeInfo& node) {
+  if (node.builtin_code == kTfLiteBuiltinStablehloComposite &&
+      node.builtin_data != nullptr) {
     const auto* composite_params =
-        static_cast<const TfLiteStablehloCompositeParams*>(node->builtin_data);
+        static_cast<const TfLiteStablehloCompositeParams*>(node.builtin_data);
     if (composite_params->attributes != nullptr &&
         composite_params->attributes_size > 0) {
       return flexbuffers::GetRoot(composite_params->attributes,
@@ -752,11 +758,11 @@ flexbuffers::Map GetFlexBufferMap(const TfLiteRegistration* reg,
           .AsMap();
     }
   }
-  if (node->custom_initial_data != nullptr &&
-      node->custom_initial_data_size > 0) {
+  if (node.custom_initial_data != nullptr &&
+      node.custom_initial_data_size > 0) {
     return flexbuffers::GetRoot(
-               reinterpret_cast<const uint8_t*>(node->custom_initial_data),
-               node->custom_initial_data_size)
+               reinterpret_cast<const uint8_t*>(node.custom_initial_data),
+               node.custom_initial_data_size)
         .AsMap();
   }
   return flexbuffers::Map::EmptyMap();

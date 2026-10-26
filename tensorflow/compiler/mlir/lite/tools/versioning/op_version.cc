@@ -1207,6 +1207,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (IsFloat8Type(op_sig.inputs.at(0).type) ||
           IsFloat8Type(op_sig.outputs.at(0).type)) {
         return 9;
+      } else if ((op_sig.inputs.at(0).type == kTfLiteInt2 ||
+                  op_sig.inputs.at(0).type == kTfLiteInt4 ||
+                  op_sig.inputs.at(0).type == kTfLiteUInt4) &&
+                 op_sig.outputs.at(0).type != kTfLiteFloat32 &&
+                 op_sig.outputs.at(0).type != kTfLiteInt2 &&
+                 op_sig.outputs.at(0).type != kTfLiteInt4 &&
+                 op_sig.outputs.at(0).type != kTfLiteUInt4) {
+        // Packed sub-byte int input to any non-packed output other than
+        // FLOAT32 (packed->FLOAT32 is v6/v8, packed->Float8 is v9 above).
+        return 10;
       } else if (op_sig.inputs.at(0).type == kTfLiteInt2 ||
                  op_sig.outputs.at(0).type == kTfLiteInt2 ||
                  op_sig.inputs.at(0).type == kTfLiteUInt4 ||

@@ -25,10 +25,12 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -676,6 +678,32 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         tol=tol,
     )
 
+  @test_util.disable_xla("Runtime check is in the standard CPU/GPU kernels")
+  def testConv2DInputSmallerThanFilterDynamic(self):
+    for padding in ["VALID", [[0, 0], [0, 0], [0, 0], [0, 0]]]:
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(
+                  shape=[1, None, 5, 1], dtype=dtypes.float32
+              ),
+              tensor_spec.TensorSpec(shape=[3, 1, 1, 1], dtype=dtypes.float32),
+          ]
+      )
+      def run_conv(x, filters, padding=padding):
+        return nn_ops.conv2d(x, filters, strides=[1, 1, 1, 1], padding=padding)
+
+      with context.eager_mode(), self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "must be at least effective_filter_size",
+      ):
+        self.evaluate(
+            run_conv(
+                constant_op.constant(np.zeros([1, 2, 5, 1], np.float32)),
+                constant_op.constant(np.zeros([3, 1, 1, 1], np.float32)),
+            )
+        )
+
   @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
   def testConv2D1x1Filter(self, data_format, dtype, use_gpu, op_name):
@@ -837,6 +865,46 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         use_gpu=use_gpu,
         op_name=op_name,
     )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DEmptyBatchOutputShape(self):
+    # With an empty batch, the output still has the shape of the convolution's
+    # output, which differs from the input's here.
+    output = nn_ops.conv2d(
+        array_ops.zeros([0, 4, 4, 3]),
+        array_ops.zeros([3, 3, 3, 5]),
+        strides=[1, 1, 1, 1],
+        padding="VALID",
+    )
+    self.assertEqual(self.evaluate(output).shape, (0, 2, 2, 5))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConv2DBackpropEmptyInput(self):
+    # An empty batch, or an input with no rows under SAME padding, gives an
+    # empty out_backprop, and the gradients are zero.
+    for input_sizes, out_backprop_sizes, stride, padding in (
+        ([0, 4, 4, 3], [0, 2, 2, 2], 1, "VALID"),
+        ([2, 0, 4, 3], [2, 0, 4, 2], 1, "SAME"),
+        ([2, 0, 4, 3], [2, 0, 2, 2], 2, "SAME"),
+    ):
+      strides = [1, stride, stride, 1]
+      out_backprop = array_ops.zeros(out_backprop_sizes)
+      input_grad = gen_nn_ops.conv2d_backprop_input(
+          input_sizes=input_sizes,
+          filter=array_ops.ones([3, 3, 3, 2]),
+          out_backprop=out_backprop,
+          strides=strides,
+          padding=padding,
+      )
+      filter_grad = gen_nn_ops.conv2d_backprop_filter(
+          input=array_ops.ones(input_sizes),
+          filter_sizes=[3, 3, 3, 2],
+          out_backprop=out_backprop,
+          strides=strides,
+          padding=padding,
+      )
+      self.assertAllEqual(np.zeros(input_sizes), self.evaluate(input_grad))
+      self.assertAllEqual(np.zeros([3, 3, 3, 2]), self.evaluate(filter_grad))
 
   @parameterized.named_parameters(*TEST_PARAMS)
   @test_util.run_in_graph_and_eager_modes
@@ -3104,6 +3172,36 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
     #           strides=[1, 1, 1, 1],
     #           padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
 
+    # Invalid input or filter rank (< 4) in eager/graph execution.
+    invalid_shapes = [(), (1,), (1, 1), (1, 1, 3)]
+    valid_shape = [1, 1, 1, 1]
+    for op in (nn_ops.conv2d, gen_nn_ops.Conv2D):
+      for bad_shape in invalid_shapes:
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError),
+            r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
+        ):
+          self.evaluate(
+              op(
+                  input=np.ones(bad_shape, dtype=np.float32),
+                  filter=np.ones(valid_shape, dtype=np.float32),
+                  strides=[1, 1, 1, 1],
+                  padding="VALID",
+              )
+          )
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError),
+            r"(must be 4-dimensional|Shape must be rank 4 but is rank \d+)",
+        ):
+          self.evaluate(
+              op(
+                  input=np.ones(valid_shape, dtype=np.float32),
+                  filter=np.ones(bad_shape, dtype=np.float32),
+                  strides=[1, 1, 1, 1],
+                  padding="VALID",
+              )
+          )
+
     # Filter dimensions must be greater than 0.
     with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError, "filter must not have zero elements"
@@ -3197,6 +3295,94 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
             data_format="NHWC",
             dilations=[1, 1, 1, 1])
         self.evaluate(t)
+
+  @test_util.run_v2_only
+  def testConv2DBackpropInputInvalidInputSizesRaiseError(self):
+    # The oneDNN kernel validated input_sizes only when it held two values.
+    # Any other count reached MakeInputTfShape unchecked and aborted the
+    # process on a CHECK instead of raising. Eager only: in graph mode the
+    # shape function rejects these before the kernel is reached.
+    filters = constant_op.constant(
+        0.1, shape=[3, 3, 3, 3], dtype=dtypes.float32
+    )
+    out_backprop = constant_op.constant(
+        0.1, shape=[1, 4, 4, 3], dtype=dtypes.float32
+    )
+
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError,
+        "input_sizes to contain 4 values or 2 values",
+    ):
+      self.evaluate(
+          gen_nn_ops.conv2d_backprop_input(
+              input_sizes=constant_op.constant(
+                  [8, 8, 3], shape=[3], dtype=dtypes.int32
+              ),
+              filter=filters,
+              out_backprop=out_backprop,
+              strides=[1, 2, 2, 1],
+              padding="SAME",
+          )
+      )
+
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "input_sizes input must be 1-dim"
+    ):
+      self.evaluate(
+          gen_nn_ops.conv2d_backprop_input(
+              input_sizes=constant_op.constant(8, dtype=dtypes.int32),
+              filter=filters,
+              out_backprop=out_backprop,
+              strides=[1, 2, 2, 1],
+              padding="SAME",
+          )
+      )
+
+    # Control case. The same kernel class also backs Conv3DBackpropInputV2,
+    # whose input_sizes holds five values, so the guard has to follow the rank
+    # of out_backprop rather than assume four.
+    filters_3d = constant_op.constant(
+        0.1, shape=[3, 3, 3, 3, 3], dtype=dtypes.float32
+    )
+    out_backprop_3d = constant_op.constant(
+        0.1, shape=[1, 4, 4, 4, 3], dtype=dtypes.float32
+    )
+    self.assertAllEqual(
+        self.evaluate(
+            gen_nn_ops.conv3d_backprop_input_v2(
+                input_sizes=constant_op.constant(
+                    [1, 8, 8, 8, 3], shape=[5], dtype=dtypes.int32
+                ),
+                filter=filters_3d,
+                out_backprop=out_backprop_3d,
+                strides=[1, 2, 2, 2, 1],
+                padding="SAME",
+            )
+        ).shape,
+        [1, 8, 8, 8, 3],
+    )
+
+    # Two values are a Conv2D-only form, so Conv3D must reject them as well
+    # as any other count. Only the oneDNN CPU kernel emits this message: with
+    # oneDNN off, or on GPU, a different Conv3D kernel rejects these first.
+    if test_util.IsMklEnabled():
+      with ops.device("/cpu:0"):
+        for input_sizes in ([8, 8], [8, 8, 8]):
+          with self.assertRaisesRegex(
+              errors_impl.InvalidArgumentError,
+              "requires input_sizes to contain 5 values",
+          ):
+            self.evaluate(
+                gen_nn_ops.conv3d_backprop_input_v2(
+                    input_sizes=constant_op.constant(
+                        input_sizes, dtype=dtypes.int32
+                    ),
+                    filter=filters_3d,
+                    out_backprop=out_backprop_3d,
+                    strides=[1, 2, 2, 2, 1],
+                    padding="SAME",
+                )
+            )
 
 
 @test_util.run_all_without_tensor_float_32("Avoid TF32 conv on GPU")

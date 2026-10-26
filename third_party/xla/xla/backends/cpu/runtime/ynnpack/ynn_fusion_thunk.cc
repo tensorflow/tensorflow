@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/device_address.h"
@@ -284,8 +285,12 @@ YnnFusionThunk::BufferUses YnnFusionThunk::buffer_uses() const {
 }
 
 const YnnThreadpool& GetYnnThreadpool(const Thunk::ExecuteParams& params) {
-  static absl::NoDestructor<YnnThreadpool> no_threadpool(nullptr);
-  return params.ynn_params ? params.ynn_params->threadpool : *no_threadpool;
+  static absl::NoDestructor<YnnThreadpool> no_threadpool(nullptr, nullptr);
+  if (params.intra_op_threadpool == nullptr) {
+    return *no_threadpool;
+  }
+  return params.ynn_params.GetOrCreateThreadpool(
+      [&] { return CreateYnnThreadpool(params.intra_op_threadpool); });
 }
 
 tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(

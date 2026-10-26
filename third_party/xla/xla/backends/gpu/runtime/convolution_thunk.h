@@ -17,14 +17,13 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_CONVOLUTION_THUNK_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
@@ -51,7 +50,7 @@ class ConvolutionThunk : public TracedCommand {
       ThunkInfo thunk_info, GpuConvDescriptor descriptor,
       std::vector<ShapedSlice> operand_slices,
       std::vector<ShapedSlice> result_slices,
-      BufferAllocation::Slice scratch_slice);
+      BufferAllocation::Slice scratch_slice, int devices_per_host);
 
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
@@ -62,7 +61,8 @@ class ConvolutionThunk : public TracedCommand {
 
   static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> FromProto(
       ThunkInfo thunk_info, const ConvolutionThunkProto& proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_per_host);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -71,15 +71,12 @@ class ConvolutionThunk : public TracedCommand {
                    GpuConvConfig config,
                    std::vector<ShapedSlice> operand_slices,
                    std::vector<ShapedSlice> result_slices,
-                   BufferAllocation::Slice scratch_slice);
+                   BufferAllocation::Slice scratch_slice, int devices_per_host);
 
-  RunConvOptions GetOrCreate(const GpuConvConfig& config,
-                             const se::Stream* stream);
+  absl::StatusOr<RunConvOptions> GetOrCreate(const GpuConvConfig& config,
+                                             const se::Stream* stream);
 
-  absl::Mutex mu_;
-  absl::flat_hash_map<const se::StreamExecutor*,
-                      std::unique_ptr<GenericConvRunner>>
-      cache_ ABSL_GUARDED_BY(mu_);
+  PerDeviceState<std::optional<GenericConvRunner>> runner_states_;
 
   std::vector<ShapedSlice> operand_buffers_;
   std::vector<ShapedSlice> result_buffers_;

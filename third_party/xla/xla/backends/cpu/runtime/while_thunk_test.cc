@@ -244,5 +244,46 @@ TEST(WhileThunkTest, NonBlockingExecuteWithTripCount) {
   EXPECT_EQ(counter, LiteralUtil::CreateR0<int32_t>(kNumIterations));
 }
 
+TEST(WhileThunkTest, SequentialExecution) {
+  BufferAllocation alloc(0, 2 * 1024 * 1024, 0);
+  BufferAllocation::Slice pred_slice(&alloc, 0, sizeof(bool));
+
+  ThunkSequence cond_sequence;
+  cond_sequence.push_back(std::make_unique<BufferUseThunk>(
+      BufferUse::Read(pred_slice, ShapeUtil::MakeShape(PRED, {1}))));
+
+  ThunkSequence body_sequence;
+  for (int i = 0; i < 10; ++i) {
+    BufferAllocation::Slice slice(&alloc, 1024 + i * 2048, 2048);
+    body_sequence.push_back(std::make_unique<BufferUseThunk>(
+        BufferUse::Write(slice, ShapeUtil::MakeShape(U8, {2048}))));
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      WhileThunk::Create({"while"}, pred_slice, std::move(cond_sequence),
+                         std::move(body_sequence)));
+  EXPECT_TRUE(thunk->body_executor().is_sequential());
+
+  ThunkSequence large_cond_sequence;
+  large_cond_sequence.push_back(std::make_unique<BufferUseThunk>(
+      BufferUse::Read(pred_slice, ShapeUtil::MakeShape(PRED, {1}))));
+
+  constexpr int64_t kLargeSliceSize = 128 * 1024;
+  ThunkSequence large_body_sequence;
+  for (int i = 0; i < 10; ++i) {
+    BufferAllocation::Slice slice(&alloc, 1024 + i * kLargeSliceSize,
+                                  kLargeSliceSize);
+    large_body_sequence.push_back(std::make_unique<BufferUseThunk>(
+        BufferUse::Write(slice, ShapeUtil::MakeShape(U8, {kLargeSliceSize}))));
+  }
+
+  ASSERT_OK_AND_ASSIGN(auto large_thunk,
+                       WhileThunk::Create({"while_large"}, pred_slice,
+                                          std::move(large_cond_sequence),
+                                          std::move(large_body_sequence)));
+  EXPECT_FALSE(large_thunk->body_executor().is_sequential());
+}
+
 }  // namespace
 }  // namespace xla::cpu

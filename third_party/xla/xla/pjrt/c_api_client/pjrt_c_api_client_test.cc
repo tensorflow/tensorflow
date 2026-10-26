@@ -147,7 +147,9 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
 
   absl::Status error = absl::InternalError("Test Error");
   error.SetPayload("test_key", absl::Cord("test_payload_value"));
-  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 3}, {0, 1});
+  Layout default_layout = LayoutUtil::MakeDescendingLayout(2);
+  Layout custom_layout = LayoutUtil::MakeAscendingLayout(2);
 
   ASSERT_OK_AND_ASSIGN(
       auto error_buffer,
@@ -158,6 +160,36 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
   EXPECT_THAT(awaited_status.message(), HasSubstr("Test Error"));
   EXPECT_EQ(awaited_status.GetPayload("test_key"),
             absl::Cord("test_payload_value"));
+  EXPECT_EQ(error_buffer->layout()->xla_layout(), default_layout);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto custom_layout_error_buffer,
+      client->CreateErrorBuffer(error, shape, client->memory_spaces()[0],
+                                &custom_layout));
+  EXPECT_EQ(custom_layout_error_buffer->layout()->xla_layout(), custom_layout);
+
+  Layout invalid_layout = LayoutUtil::MakeLayout({0});
+  EXPECT_THAT(client->CreateErrorBuffer(
+                  error, shape, client->memory_spaces()[0], &invalid_layout),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  EXPECT_THAT(
+      client->CreateErrorBuffer(error, ShapeUtil::MakeTupleShape({shape}),
+                                client->memory_spaces()[0]),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  Shape token_shape = ShapeUtil::MakeTokenShape();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> token_error_buffer,
+                       client->CreateErrorBuffer(error, token_shape,
+                                                 client->memory_spaces()[0]));
+  EXPECT_EQ(token_error_buffer->on_device_shape(), token_shape);
+  EXPECT_THAT(token_error_buffer->GetReadyFuture().Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("Test Error")));
+  EXPECT_THAT(
+      client->CreateErrorBuffer(error, token_shape, client->memory_spaces()[0],
+                                &custom_layout),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
@@ -206,6 +238,45 @@ TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
     }
     blocking_counter.Wait();
   }
+}
+
+TEST(PjRtCApiClientTest, ConcurrentAcquireExternalReference) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+  ASSERT_OK(buffer->GetReadyFuture().Await());
+
+  constexpr int kNumThreads = 8;
+  constexpr int kNumIterations = 1000;
+  tsl::thread::ThreadPool thread_pool(
+      tsl::Env::Default(), "ConcurrentAcquireExternalReference", kNumThreads);
+
+  absl::BlockingCounter blocking_counter(kNumThreads);
+  for (int i = 0; i < kNumThreads; ++i) {
+    thread_pool.Schedule([&]() {
+      for (int j = 0; j < kNumIterations; ++j) {
+        if (absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>> ref =
+                buffer->AcquireExternalReference();
+            ref.ok()) {
+          EXPECT_NE((*ref)->OpaqueDeviceMemoryDataPointer(), nullptr);
+        } else {
+          EXPECT_OK(ref);
+        }
+      }
+      blocking_counter.DecrementCount();
+    });
+  }
+  blocking_counter.Wait();
 }
 
 TEST(PjRtCApiClientTest, GetReadyFutureDeletedBuffer) {
@@ -1060,36 +1131,6 @@ ENTRY Identity() -> f32[2, 2] {
   EXPECT_THAT(poison_result, IsOkAndHolds(false));
 }
 
-TEST(PjRtCApiClientTest, AddressableDeviceLogicalIds) {
-  SetUpCpuPjRtApi();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                       GetCApiClient("cpu"));
-  ASSERT_GT(client->addressable_devices().size(), 1);
-
-  XlaBuilder builder("Identity");
-  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
-  XlaOp input = Parameter(&builder, 0, shape, "input");
-  XlaComputation computation = builder.Build(input).value();
-
-  DeviceAssignment device_assignment(1, 2);
-  device_assignment(0, 0) = 0;
-  device_assignment(0, 1) = 1;
-
-  CompileOptions options;
-  options.executable_build_options.set_device_assignment(device_assignment);
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                       client->CompileAndLoad(computation, options));
-
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds> logical_ids =
-      executable->addressable_device_logical_ids();
-  ASSERT_EQ(logical_ids.size(), 2);
-  EXPECT_EQ(logical_ids[0].replica, 0);
-  EXPECT_EQ(logical_ids[0].partition, 0);
-  EXPECT_EQ(logical_ids[1].replica, 0);
-  EXPECT_EQ(logical_ids[1].partition, 1);
-}
-
 TEST(PjRtCApiClientTest, Bitcast) {
   SetUpCpuPjRtApi();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -1150,6 +1191,20 @@ TEST(PjRtCApiClientTest, MakeCanonicalShapeForMemorySpace) {
   EXPECT_TRUE(canonical_shape_specific.has_layout());
   EXPECT_EQ(canonical_shape_specific.layout().minor_to_major(),
             specific_layout.minor_to_major());
+
+  Shape token_shape = ShapeUtil::MakeTokenShape();
+  EXPECT_THAT(topology->MakeCanonicalShapeForMemorySpace(
+                  /*memory_space_kind_id=*/0, token_shape, /*layout=*/nullptr),
+              IsOkAndHolds(token_shape));
+  EXPECT_THAT(topology->MakeCanonicalShapeForMemorySpace(
+                  /*memory_space_kind_id=*/0, token_shape, &specific_layout),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+
+  EXPECT_THAT(
+      topology->MakeCanonicalShapeForMemorySpace(
+          /*memory_space_kind_id=*/0, ShapeUtil::MakeTupleShape({input_shape}),
+          /*layout=*/nullptr),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(PjRtCApiClientTest, IsCApi) {

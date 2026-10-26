@@ -166,6 +166,21 @@ absl::Status FastParseSequenceExample(
 // It is exported here as a convenient API to test parser part separately.
 bool TestFastParse(const std::string& serialized, Example* example);
 
+// These run the helpers that FastParseSequenceExample uses to fill its outputs,
+// so that their bounds checks can be tested on their own. The counting pass
+// sizes every output to fit, so the checks can't fail through
+// FastParseSequenceExample.
+// TestParseFeature parses the serialized Feature into `out` starting at
+// `*out_offset` and returns the number of values added, or -1 if they don't
+// fit. TestPadFeature and TestCopyTensorIntoTensor return false if the values
+// don't fit.
+int TestParseFeature(DataType dtype, const std::string& serialized_feature,
+                     Tensor* out, size_t* out_offset);
+bool TestPadFeature(DataType dtype, size_t num_to_pad, Tensor* out,
+                    size_t* out_offset);
+bool TestCopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
+                              size_t* dst_offset);
+
 }  // namespace example
 }  // namespace tensorflow
 

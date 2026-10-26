@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/profiler/lib/traceme.h"
 

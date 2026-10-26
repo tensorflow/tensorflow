@@ -57,7 +57,7 @@ constexpr char kV2ModuleSavedModelChecksum[] = "15788619162413586750";
 
 class LoaderTest : public ::testing::Test {
  protected:
-  LoaderTest() {}
+  LoaderTest() = default;
 
   string MakeSerializedExample(float x) {
     tensorflow::Example example;

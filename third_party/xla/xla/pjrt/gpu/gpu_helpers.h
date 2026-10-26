@@ -28,13 +28,20 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
-#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/pjrt/gpu/allocator_config.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/types.h"
 
 namespace xla {
+
+// Formats the runtime software version for both GPU clients and topologies.
+// The description may come from a live device or a serialized target config;
+// this function does not initialize a GPU runtime.
+std::string GetGpuPlatformVersion(
+    const stream_executor::DeviceDescription& device_description);
 
 // Builds an xla::LocalClient for the GPU platform.
 absl::StatusOr<LocalClient*> GetGpuXlaClient(
@@ -63,9 +70,18 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
 // heuristic, for both owned-hole reuse and central-gap carves.
 // Equal-size holes prefer lower addresses for collective memory and higher
 // addresses for default memory.
+//
+// memory_fraction decides how the pool may use device memory (see
+// MemFraction). A FlexMemFraction only takes effect for spatial device-memory
+// pools: the initial allocation given by its start (or gpu_system_memory_size)
+// is mapped up front and default-only backing is added on demand, up to
+// cap * total device memory rounded down to the mapping granularity. CUDA
+// reserves the cap in VA and extends the mapped prefix without moving it. The
+// initial allocation must fit under the cap, otherwise InvalidArgument is
+// returned. Non-spatial and unified-memory pools use only the start fraction.
 absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
-    std::optional<int64_t> gpu_system_memory_size,
+    se::StreamExecutor* executor, const MemFraction& memory_fraction,
+    bool preallocate, std::optional<int64_t> gpu_system_memory_size,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors,
     bool enable_spatial_partitioning = false);

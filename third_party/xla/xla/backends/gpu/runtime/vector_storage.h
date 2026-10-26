@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "xla/backends/gpu/runtime/device_slot.h"
 
 namespace xla::gpu {
@@ -39,6 +40,9 @@ class VectorStorage {
 
   // Returns nullptr if `device_ordinal` is outside [0, size).
   DeviceSlot* Find(int device_ordinal) const;
+
+  // Calls `fn` on every slot in [0, size).
+  void ForEach(absl::FunctionRef<void(DeviceSlot&)> fn) const;
 
  private:
   std::vector<std::unique_ptr<DeviceSlot>> slots_;

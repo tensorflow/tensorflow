@@ -69,7 +69,7 @@ class RegexReplaceOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("replace_global", &replace_global_));
   }
 
-  ~RegexReplaceOp() override {}
+  ~RegexReplaceOp() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor* pattern_tensor;

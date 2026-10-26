@@ -420,14 +420,6 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
   return PrepareCollective(params, clique_key);
 }
 
-absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
-  ABSL_ASSIGN_OR_RETURN(
-      GpuCliqueKey clique_key,
-      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, communication_id_));
-  return InitializeCollective(params, clique_key);
-}
-
 absl::Status CollectiveThunk::FirstCallRendezvous(
     const ExecuteParams& params, const GpuCliqueKey& clique_key,
     absl::string_view label, RendezvousFlag& flag) {

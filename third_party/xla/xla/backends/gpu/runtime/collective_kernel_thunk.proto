@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/backends/gpu/runtime/collective_thunk.proto";
+import "xla/backends/gpu/runtime/collective_types.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 
 option java_outer_classname = "CollectiveKernelThunk";
@@ -30,12 +31,6 @@ enum KernelArgTypeProto {
   KERNEL_ARG_TYPE_RUNTIME_RANK = 3;
   KERNEL_ARG_TYPE_INVOCATION_COUNT = 4;
   KERNEL_ARG_TYPE_SCRATCH_BUFFER = 5;
-}
-
-enum SymmetricMemoryTypeProto {
-  SYMMETRIC_MEMORY_TYPE_NONE = 0;
-  SYMMETRIC_MEMORY_TYPE_LOAD_STORE_ACCESSIBLE = 1;
-  SYMMETRIC_MEMORY_TYPE_XLA_RENDEZVOUS = 2;
 }
 
 message IoBufferSpecProto {

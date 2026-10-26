@@ -41,7 +41,7 @@ class TfDriver : public TestRunner {
                     const std::vector<string>& input_layer_type,
                     const std::vector<string>& input_layer_shape,
                     const std::vector<string>& output_layer);
-  ~TfDriver() override {}
+  ~TfDriver() override = default;
 
   void LoadModel(const string& bin_file_path) override;
   void LoadModel(const string& bin_file_path, const string&) override {

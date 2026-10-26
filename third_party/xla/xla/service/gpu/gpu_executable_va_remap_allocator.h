@@ -20,14 +20,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 #include "xla/service/service_executable_run_options.h"
@@ -61,6 +60,8 @@ class ThunkExecutor;
 //    non-constant, non-thread-local allocations over the first executions,
 //    and then remaps the union of the temp buffers and stable profile
 //    candidates.
+// Host memory space allocations are never remapped: remapping backs an
+// allocation with VMM device memory, and these must stay host memory.
 //
 // When VA remapping is unavailable for an execution (no VMM allocator,
 // nothing to remap, or SKIP_PROFILED has neither automatically selected temp
@@ -72,7 +73,7 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
       absl::string_view module_name,
       absl::Span<const BufferAllocation* const> allocations,
       const Shape& result_shape, const DebugOptions* debug_options,
-      ThunkExecutor* thunk_executor);
+      ThunkExecutor* thunk_executor, int num_devices);
   ~GpuExecutableVaRemapAllocator() override;
 
   // Creates the per-run execution scope. When VA remapping applies to this
@@ -122,6 +123,11 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
         allocation_to_mapping_size;
     std::unique_ptr<se::MemoryReservation> va_reservation;
     se::DeviceAddressVmmAllocator* vmm_allocator = nullptr;
+    // -1 is just a sentinel value since state needs to be default
+    // constructible. Always initialized alongside `vmm_allocator` in
+    // `CreateExecutionScope` before any execution or destructor cleanup can
+    // read it.
+    int device_ordinal = -1;
 
     ProfilePhase phase = ProfilePhase::kInactive;
     // Number of completed profiling observations.
@@ -167,9 +173,7 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
   // executions.
   AllocationIndexSet profile_candidate_alloc_indices_;
 
-  absl::Mutex remappings_mutex_;
-  absl::node_hash_map<se::StreamExecutor*, Remapping> remappings_
-      ABSL_GUARDED_BY(remappings_mutex_);
+  PerDeviceState<Remapping> remappings_;
 };
 
 }  // namespace gpu

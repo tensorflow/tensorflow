@@ -56,6 +56,8 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/pjrt/strided_gather.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -489,6 +491,9 @@ struct PjRtPluginAttributes {
 // unique CrossHostTransferKey.
 TSL_LIB_GTL_DEFINE_INT_TYPE(CrossHostTransferKey, int64_t);
 
+// Task id of a distributed process. Transfer code uses process_index().
+TSL_LIB_GTL_DEFINE_INT_TYPE(TaskId, int32_t);
+
 // Encapsulates the state of Python session with XLA.
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
@@ -767,9 +772,18 @@ class PjRtClient {
   }
 
   // Creates buffer in the given memory space that carries an error future
-  // without allocating memory.
+  // without allocating memory. If `layout` is not provided, a default layout
+  // for `shape` and `memory` will be used, and any layout in `shape` will be
+  // ignored.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
+    return CreateErrorBuffer(std::move(error), shape, memory,
+                             /*layout=*/nullptr);
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      absl::Status error, const Shape& shape, PjRtMemorySpace* memory,
+      const Layout* layout) {
     return absl::UnimplementedError("CreateErrorBuffer not supported.");
   }
 
@@ -1078,10 +1092,14 @@ class PjRtClient {
   // cross-host transfers API.
 
   // Send buffers to remote devices specified by dst_global_device_ids.
+  // `incarnations` is the last GetAliveTasks snapshot, keyed by task id. An
+  // empty map keeps the historical clique key. The cross-host transfers
+  // extension carries the same snapshot as task id and incarnation arrays.
   virtual absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
       absl::Span<PjRtBuffer* const> buffers,
       absl::Span<const GlobalDeviceId> dst_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) {
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> /*incarnations*/ = {}) {
     return absl::UnimplementedError(
         "Cross-host data transfers are not supported by this client.");
   }
@@ -1091,7 +1109,8 @@ class PjRtClient {
   CrossHostReceiveBuffers(
       xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
       absl::Span<const GlobalDeviceId> src_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys) {
+      std::vector<CrossHostTransferKey> transfer_keys,
+      absl::flat_hash_map<TaskId, IncarnationId> /*incarnations*/ = {}) {
     return absl::UnimplementedError(
         "Cross-host data transfers are not supported.");
   }
@@ -1357,6 +1376,21 @@ class PjRtBuffer {
       xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
       const Layout* device_layout) = 0;
 
+  // Copies a strided slice of the buffer's on-device bytes into a new buffer
+  // of `dst_shape` in the same memory space.
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopySlice(
+      const StridedGather& gather, const xla::Shape& dst_shape) {
+    return absl::UnimplementedError("CopySlice is not supported.");
+  }
+
+  // Updates a strided slice of the buffer's on-device bytes with the contents
+  // of `slice` in the same memory space. The original buffer will be donated,
+  // and underlying device memory will be handed over to the new buffer.
+  virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> UpdateSlice(
+      const StridedGather& gather, PjRtBuffer* slice) {
+    return absl::UnimplementedError("UpdateSlice is not supported.");
+  }
+
   // Donates 'this' and returns a new buffer that is ready only when both 'this'
   // and 'dependency' are ready.
   //
@@ -1392,6 +1426,24 @@ class PjRtBuffer {
 // when passed to the execution.
 class PjRtLoadedExecutable {
  public:
+  // Result of execution with buffer donation recovery enabled.
+  struct ResultWithDonationRecovery {
+    // The output buffers produced by the execution.
+    std::vector<std::unique_ptr<PjRtBuffer>> output_buffers;
+
+    // A future that resolves when the execution completion status is
+    // determined:
+    // - On normal successful execution: resolves to an empty vector (no
+    //   recovery needed).
+    // - On recoverable execution error: resolves to a vector of size
+    //   `argument_handles.size()`, where recovered buffers are present at the
+    //   positional indices corresponding to the arguments that were donated
+    //   (non-donated or unrecovered slots are nullptr).
+    // - On unrecoverable execution error: resolves with the non-OK execution
+    //   Status.
+    Future<std::vector<std::unique_ptr<PjRtBuffer>>> recovery_future;
+  };
+
   PjRtLoadedExecutable() {
     executable_forwarder_ = std::make_unique<PjRtExecutableForwarder>(this);
   }
@@ -1420,8 +1472,11 @@ class PjRtLoadedExecutable {
     int replica;
     int partition;
   };
-  virtual absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
-      const = 0;
+  virtual absl::StatusOr<absl::Span<const LogicalDeviceIds>>
+  addressable_device_logical_ids() const {
+    return absl::UnimplementedError(
+        "addressable_device_logical_ids is not supported.");
+  }
 
   // An addressable_device is one which the client can issue commands to.
   // addressable_devices()[i] is the Device to which
@@ -1500,6 +1555,19 @@ class PjRtLoadedExecutable {
                           returned_future, /*fill_future=*/false);
   }
 
+  // Like ExecuteSharded, but always fills `returned_future` on non-error
+  // return and, if execution fails, attempts to recover any donated buffers
+  // from `argument_handles`.
+  virtual absl::StatusOr<ResultWithDonationRecovery>
+  ExecuteShardedWithDonationRecovery(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<Future<>>& returned_future) const {
+    return absl::UnimplementedError(
+        "ExecuteShardedWithDonationRecovery is not implemented for this "
+        "executable.");
+  }
+
   // Execute on a given `device`. Requires `device` to be addressable by client.
   // Requires executable has exactly 1 replica and 1 partition and no
   // device_assignment (thus portable).
@@ -1530,6 +1598,19 @@ class PjRtLoadedExecutable {
     std::optional<Future<>> returned_future;
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/false);
+  }
+
+  // Like ExecutePortable, but always fills `returned_future` on non-error
+  // return and, if execution fails, attempts to recover any donated buffers
+  // from `argument_handles`.
+  virtual absl::StatusOr<ResultWithDonationRecovery>
+  ExecutePortableWithDonationRecovery(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<Future<>>& returned_future) const {
+    return absl::UnimplementedError(
+        "ExecutePortableWithDonationRecovery is not implemented for this "
+        "executable.");
   }
 
   // Asynchronously free resources after the last execution completes.

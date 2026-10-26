@@ -372,9 +372,11 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
     case HloOpcode::kSinh:
     case HloOpcode::kSin:
     case HloOpcode::kExp:
+    case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLog2:
     case HloOpcode::kLogistic:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
@@ -1592,6 +1594,8 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   switch (opcode) {
     case HloOpcode::kClamp:
       return InferClampShape(lhs, rhs, ehs);
+    case HloOpcode::kFma:
+      return InferFmaShape(lhs, rhs, ehs);
     case HloOpcode::kSelect:
       return InferSelectShape(lhs, rhs, ehs);
     default:
@@ -4219,6 +4223,48 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
                            ShapeUtil::HumanString(max));
   }
   return operand;
+}
+
+/* static */ absl::StatusOr<Shape> ShapeInference::InferFmaShape(
+    const Shape& a, const Shape& b, const Shape& c) {
+  ABSL_RETURN_IF_ERROR(ExpectArray(a, "fma a"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(b, "fma b"));
+  ABSL_RETURN_IF_ERROR(ExpectArray(c, "fma c"));
+
+  if (!ShapeUtil::ElementIsFloating(a)) {
+    return InvalidArgument(
+        "Expected element type in shape to be floating for fma operation; "
+        "got %s.",
+        PrimitiveType_Name(a.element_type()));
+  }
+
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(a, b) ||
+      !ShapeUtil::SameElementTypeIgnoringFpPrecision(a, c) ||
+      !ShapeUtil::SameElementTypeIgnoringFpPrecision(b, c)) {
+    return InvalidArgument("Fma with incompatible element types: %s, %s, %s.",
+                           ShapeUtil::HumanString(a), ShapeUtil::HumanString(b),
+                           ShapeUtil::HumanString(c));
+  }
+
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(a, b) ||
+      !ShapeUtil::CompatibleIgnoringFpPrecision(a, c) ||
+      !ShapeUtil::CompatibleIgnoringFpPrecision(b, c)) {
+    return InvalidArgument("Fma with incompatible shapes: %s, %s, %s.",
+                           ShapeUtil::HumanString(a), ShapeUtil::HumanString(b),
+                           ShapeUtil::HumanString(c));
+  }
+
+  Shape ab = ShapeUtil::ChangeElementType(
+      a, ShapeUtil::HigherPrecisionElementType(a, b));
+  Shape result = ShapeUtil::ChangeElementType(
+      ab, ShapeUtil::HigherPrecisionElementType(ab, c));
+  for (int64_t dimension = 0; dimension < a.dimensions().size(); ++dimension) {
+    result.set_dynamic_dimension(dimension,
+                                 a.is_dynamic_dimension(dimension) ||
+                                     b.is_dynamic_dimension(dimension) ||
+                                     c.is_dynamic_dimension(dimension));
+  }
+  return result;
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferSelectShape(

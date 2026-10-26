@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -55,6 +56,8 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -82,6 +85,7 @@ using ::mlir::func::FuncOp;
 using ::mlir::sdy::getSharding;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::kShardingRuleAttr;
+using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::OpShardingRuleAttr;
 using ::mlir::sdy::PropagationBarrierOp;
@@ -116,22 +120,41 @@ CustomCallOp getX64CombineUser(Operation* op) {
   return nullptr;
 }
 
-CustomCallOp getX64CombineOnFuncResultSharding(
-    CustomCallOp funcResultSharding) {
-  if (auto combineOp = getX64CombineUser(funcResultSharding)) {
-    return combineOp;
+// Finds the downstream `X64Combine` for a split 32-bit half.
+// Because multiple results may share the same tuple, `tuplePath` records
+// which slot this value entered so we only follow GTEs that extract that slot.
+CustomCallOp getX64CombineOnOp(Operation* op,
+                               llvm::SmallVector<int64_t, 4>& tuplePath) {
+  if (tuplePath.empty()) {
+    if (auto combineOp = getX64CombineUser(op)) {
+      return combineOp;
+    }
   }
-  for (Operation* user : funcResultSharding->getUsers()) {
-    auto tupleOp = mlir::dyn_cast<stablehlo::TupleOp>(user);
-    if (!tupleOp) continue;
-    for (Operation* gteOp : tupleOp->getUsers()) {
-      if (!mlir::isa<stablehlo::GetTupleElementOp>(gteOp)) continue;
-      if (auto combineOp = getX64CombineUser(gteOp)) {
+  for (mlir::OpOperand& use : op->getUses()) {
+    if (auto tupleOp = mlir::dyn_cast<stablehlo::TupleOp>(use.getOwner())) {
+      tuplePath.push_back(use.getOperandNumber());
+      if (CustomCallOp combineOp = getX64CombineOnOp(tupleOp, tuplePath)) {
         return combineOp;
       }
+      tuplePath.pop_back();
+    } else if (auto gteOp =
+                   mlir::dyn_cast<stablehlo::GetTupleElementOp>(use.getOwner());
+               gteOp && !tuplePath.empty() &&
+               gteOp.getIndex() == tuplePath.back()) {
+      int64_t index = tuplePath.pop_back_val();
+      if (CustomCallOp combineOp = getX64CombineOnOp(gteOp, tuplePath)) {
+        return combineOp;
+      }
+      tuplePath.push_back(index);
     }
   }
   return nullptr;
+}
+
+CustomCallOp getX64CombineOnFuncResultSharding(
+    CustomCallOp funcResultSharding) {
+  llvm::SmallVector<int64_t, 4> tuplePath;
+  return getX64CombineOnOp(funcResultSharding, tuplePath);
 }
 
 // TODO(kostiantynl): b/448858211 when API is fixed, use
@@ -206,34 +229,74 @@ bool handleFuncResultSharding(
   return anyChanged;
 }
 
+ManualAxesAttr extractManualAxesFromNamedSharding(
+    const xla::NamedSharding& namedSharding, mlir::MLIRContext* context) {
+  llvm::SmallVector<mlir::sdy::AxisRefAttr> manualAxes;
+  manualAxes.reserve(namedSharding.manual_axes().size());
+  const xla::Mesh& mesh = namedSharding.mesh();
+  for (const auto& axisRef : namedSharding.manual_axes()) {
+    // Silently dropping an axis here would yield a manual computation with
+    // fewer manual axes than it actually has, which miscompiles rather than
+    // fails, so treat an out-of-range index as a bug.
+    CHECK_LT(axisRef.mesh_axis_index(), mesh.axis_names().size());
+    manualAxes.push_back(toSdyAxisRefAttr(axisRef, mesh, context));
+  }
+  if (!manualAxes.empty()) {
+    return ManualAxesAttr::get(context, manualAxes);
+  }
+  return nullptr;
+}
+
+ManualAxesAttr extractManualAxes(const xla::HloSharding& hloSharding,
+                                 mlir::MLIRContext* context) {
+  if (hloSharding.IsTuple()) {
+    // Manual axes are only attached to ranked tensors, so a leading token
+    // element can legitimately have none. Take the first element that does.
+    for (const xla::HloSharding& element : hloSharding.tuple_elements()) {
+      if (ManualAxesAttr manualAxes = extractManualAxes(element, context)) {
+        return manualAxes;
+      }
+    }
+    return nullptr;
+  }
+  if (hloSharding.UseNamedShardingLeaf()) {
+    return extractManualAxesFromNamedSharding(hloSharding.named_sharding(),
+                                              context);
+  }
+  return nullptr;
+}
+
 // The sharding information is in the `kXlaShardingAttr` attribute.
 void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
-  for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
-    if (auto oldSharding =
-            funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
-      if (auto sdySharding = convertToSdyShardingAttr(
-              parseShardingFromString(oldSharding),
-              mlir::sdy::getTensorRank(argType), funcOp.getContext())) {
-        funcOp.setArgAttr(argNum, kShardingAttr, sdySharding);
-      }
-    }
-    funcOp.removeArgAttr(argNum, kXlaShardingAttr);
-  }
-
-  for (auto [resNum, resType] : llvm::enumerate(funcOp.getResultTypes())) {
-    if (auto oldSharding =
-            funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
-      HloSharding hloSharding = parseShardingFromString(oldSharding);
-      if (!hloSharding.IsSingleDevice()) {
-        if (auto sdySharding = convertToSdyShardingAttr(
-                hloSharding, mlir::sdy::getTensorRank(resType),
-                funcOp.getContext())) {
-          funcOp.setResultAttr(resNum, kShardingAttr, sdySharding);
+  auto convertAttrToSdySharding = [&](llvm::ArrayRef<mlir::Type> types,
+                                      bool dropSingleDeviceSharding) {
+    return [&, types, dropSingleDeviceSharding](mlir::NamedAttrList& attrs,
+                                                int64_t index) {
+      if (auto oldSharding = mlir::dyn_cast_or_null<StringAttr>(
+              attrs.erase(kXlaShardingAttr))) {
+        HloSharding hloSharding = parseShardingFromString(oldSharding);
+        if (!dropSingleDeviceSharding || !hloSharding.IsSingleDevice()) {
+          if (auto sdySharding = convertToSdyShardingAttr(
+                  hloSharding, mlir::sdy::getTensorRank(types[index]),
+                  funcOp.getContext())) {
+            attrs.set(kShardingAttr, sdySharding);
+          }
         }
+        return true;
       }
-    }
-    funcOp.removeResultAttr(resNum, kXlaShardingAttr);
-  }
+      return false;
+    };
+  };
+  // Replace `kXlaShardingAttr` with `kShardingAttr` on all args, then set all
+  // arg attrs at once. Per-arg `setArgAttr` would be O(N^2).
+  mlir::sdy::modifyAllArgAttrs(
+      funcOp, convertAttrToSdySharding(funcOp.getArgumentTypes(),
+                                       /*dropSingleDeviceSharding=*/false));
+
+  // Same for results, but single-device shardings are dropped.
+  mlir::sdy::modifyAllResultAttrs(
+      funcOp, convertAttrToSdySharding(funcOp.getResultTypes(),
+                                       /*dropSingleDeviceSharding=*/true));
 
   if (funcOp.isExternal()) {
     return;
@@ -272,12 +335,38 @@ void convertShardyAttrsWithHloShardingV3(FuncOp funcOp) {
       StringRef targetName = customCallOp.getCallTargetName();
       if (targetName == kShardingCustomCallTargetName ||
           targetName == "X64Combine" ||
+          targetName == kGlobalToLocalShapeCallTargetName ||
+          targetName == kLocalToGlobalShapeCallTargetName ||
           isPythonCallbackCustomCall(customCallOp)) {
+        HloSharding hloSharding = parseShardingFromString(shardingAttr);
         if (auto sdySharding = convertToSdySharding(
-                parseShardingFromString(shardingAttr),
-                customCallOp->getResultTypes(), customCallOp->getContext())) {
+                hloSharding, customCallOp->getResultTypes(),
+                customCallOp->getContext())) {
           customCallOp->setAttr(kShardingAttr, sdySharding);
         }
+        // Only `xla.sdy.GlobalToLocalShape` (when there are operands) and the
+        // manual computation CallOp (when there are no operands) may carry
+        // manual axes.
+        if (targetName == kGlobalToLocalShapeCallTargetName) {
+          if (auto manualAxesAttr =
+                  extractManualAxes(hloSharding, customCallOp->getContext())) {
+            customCallOp->setAttr(kManualAxes, manualAxesAttr);
+          }
+        }
+      }
+    } else if (auto callOp = mlir::dyn_cast<mlir::func::CallOp>(op);
+               callOp && isManualComputation(callOp)) {
+      // The body call op carries the local out shardings and the manual axes.
+      // It is the only carrier of the manual axes when the manual computation
+      // has no operands, since there is no `xla.sdy.GlobalToLocalShape` then.
+      HloSharding hloSharding = parseShardingFromString(shardingAttr);
+      if (auto sdySharding = convertToSdySharding(
+              hloSharding, callOp->getResultTypes(), callOp->getContext())) {
+        callOp->setAttr(kShardingAttr, sdySharding);
+      }
+      if (auto manualAxesAttr =
+              extractManualAxes(hloSharding, callOp->getContext())) {
+        callOp->setAttr(kManualAxes, manualAxesAttr);
       }
     }
 
@@ -294,48 +383,38 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
   // copying the result shardings.
   StringRef attributeName =
       xla::ToStringRef(HloSharding::kShardingFrontendAttrName);
-  llvm::SmallVector<mlir::DictionaryAttr> funcArgAttrs;
-  funcArgAttrs.reserve(funcOp.getNumArguments());
-  for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); argNum++) {
-    // Attempt to extract the TensorShardingAttr from the frontend attributes
-    // of the function argument/result.
-    // TODO(b/510714593): Batch remove/set attributes through a shardy utility.
-    mlir::NamedAttrList attrs(funcOp.getArgAttrDict(argNum));
-    if (DictionaryAttr dictAttr = getFuncArgFrontendAttrs(funcOp, argNum)) {
-      if (auto sharding =
-              parseStringAttr<TensorShardingAttr>(dictAttr, attributeName)) {
-        attrs.set(kShardingAttr, sharding);
-        llvm::SmallVector<NamedAttribute> existingAttributes =
-            getExistingFrontendAttributes(dictAttr,
-                                          /*excludedAttribute=*/attributeName);
-        if (!existingAttributes.empty()) {
-          attrs.set(
-              kFrontendAttributesAttr,
-              DictionaryAttr::get(funcOp.getContext(), existingAttributes));
-        } else {
-          attrs.erase(kFrontendAttributesAttr);
+  mlir::sdy::modifyAllArgAttrs(
+      funcOp, [&](mlir::NamedAttrList& attrs, int64_t argNum) {
+        bool changed = false;
+        if (DictionaryAttr dictAttr = getFuncArgFrontendAttrs(funcOp, argNum)) {
+          if (auto sharding = parseStringAttr<TensorShardingAttr>(
+                  dictAttr, attributeName)) {
+            attrs.set(kShardingAttr, sharding);
+            llvm::SmallVector<NamedAttribute> existingAttributes =
+                getExistingFrontendAttributes(
+                    dictAttr, /*excludedAttribute=*/attributeName);
+            if (!existingAttributes.empty()) {
+              attrs.set(
+                  kFrontendAttributesAttr,
+                  DictionaryAttr::get(funcOp.getContext(), existingAttributes));
+            } else {
+              attrs.erase(kFrontendAttributesAttr);
+            }
+            changed = true;
+          }
         }
-      }
-    }
-    attrs.erase(kXlaShardingAttr);
-    funcArgAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
-  }
-  funcOp.setAllArgAttrs(funcArgAttrs);
+        if (attrs.erase(kXlaShardingAttr)) {
+          changed = true;
+        }
+        return changed;
+      });
 
   // Due to `SdyRoundTripExportShardingsPass` keeping `kXlaShardingAttr`, remove
   // them purely for cleanliness of the module.
-  llvm::SmallVector<mlir::DictionaryAttr> newResultAttrs;
-  newResultAttrs.reserve(funcOp.getNumResults());
-  for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
-    mlir::DictionaryAttr dict = funcOp.getResultAttrDict(resNum);
-    mlir::NamedAttrList attrs(dict);
-    if (attrs.erase(kXlaShardingAttr)) {
-      newResultAttrs.push_back(attrs.getDictionary(funcOp.getContext()));
-    } else {
-      newResultAttrs.push_back(dict);
-    }
-  }
-  funcOp.setAllResultAttrs(newResultAttrs);
+  mlir::sdy::modifyAllResultAttrs(
+      funcOp, [&](mlir::NamedAttrList& attrs, int64_t /*resNum*/) {
+        return static_cast<bool>(attrs.erase(kXlaShardingAttr));
+      });
 
   if (funcOp.isExternal()) {
     return;

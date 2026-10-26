@@ -14,16 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <ostream>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -377,6 +380,13 @@ REGISTER_OP("Pack")
       int32_t axis;
       TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank + 1, &axis));
 
+      if (rank >= TensorShape::MaxDimensions()) {
+        return errors::InvalidArgument(
+            "Cannot pack tensors of rank ", rank,
+            ": packing would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), ".");
+      }
+
       // Copy all dimensions over, inserting a dimension of value #inputs
       // at <axis>.
       std::vector<DimensionHandle> dims;
@@ -708,6 +718,8 @@ REGISTER_OP("SplitV")
         if (size_splits->dtype() == DT_INT32) {
           data =
               AsInt64<int32_t>(size_splits, size_splits->shape().dim_size(0));
+        } else if (size_splits->dtype() == DT_INT8) {
+          data = AsInt64<int8_t>(size_splits, size_splits->shape().dim_size(0));
         } else {
           data =
               AsInt64<int64_t>(size_splits, size_splits->shape().dim_size(0));
@@ -718,7 +730,8 @@ REGISTER_OP("SplitV")
         }
         int64_t total_size = 0;
         bool has_neg_one = false;
-        for (const auto size : data) {
+        for (int i = 0; i < num_outputs; ++i) {
+          const auto size = data[i];
           if (size == -1) {
             if (has_neg_one) {
               return absl::InvalidArgumentError(
@@ -726,6 +739,15 @@ REGISTER_OP("SplitV")
             }
             has_neg_one = true;
           } else {
+            if (size < 0) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Split size at index ", i, " must be >= 0. Got: ", size));
+            }
+            if (total_size > std::numeric_limits<int64_t>::max() - size) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Sum of size_splits overflows the index type at index ", i,
+                  "."));
+            }
             total_size += size;
           }
         }
@@ -2173,6 +2195,13 @@ REGISTER_OP("ExpandDims")
         dim += rank + 1;
       }
 
+      if (rank >= TensorShape::MaxDimensions()) {
+        return errors::InvalidArgument(
+            "Cannot expand a tensor of rank ", rank,
+            ": expanding would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), ".");
+      }
+
       ShapeHandle end;
       TF_RETURN_IF_ERROR(c->Subshape(input, dim, &end));
 
@@ -2682,12 +2711,30 @@ REGISTER_OP("ExtractImagePatches")
 
       int64_t ksize_rows = ksizes[1];
       int64_t ksize_cols = ksizes[2];
+      if (ksize_rows <= 0 || ksize_cols <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractImagePatches requires spatial ksizes to be "
+                         "positive, but got: [",
+                         ksize_rows, ", ", ksize_cols, "]"));
+      }
 
       int64_t stride_rows = strides[1];
       int64_t stride_cols = strides[2];
+      if (stride_rows <= 0 || stride_cols <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractImagePatches requires spatial strides to be "
+                         "positive, but got: [",
+                         stride_rows, ", ", stride_cols, "]"));
+      }
 
       int64_t rate_rows = rates[1];
       int64_t rate_cols = rates[2];
+      if (rate_rows <= 0 || rate_cols <= 0) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("ExtractImagePatches requires spatial rates to be "
+                         "positive, but got: [",
+                         rate_rows, ", ", rate_cols, "]"));
+      }
 
       int64_t ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
       int64_t ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
@@ -2780,10 +2827,22 @@ REGISTER_OP("ExtractVolumePatches")
       int64_t ksize_planes = ksizes[1];
       int64_t ksize_rows = ksizes[2];
       int64_t ksize_cols = ksizes[3];
+      if (ksize_planes <= 0 || ksize_rows <= 0 || ksize_cols <= 0) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "ExtractVolumePatches requires spatial ksizes to be "
+            "positive, but got: [",
+            ksize_planes, ", ", ksize_rows, ", ", ksize_cols, "]"));
+      }
 
       int64_t stride_planes = strides[1];
       int64_t stride_rows = strides[2];
       int64_t stride_cols = strides[3];
+      if (stride_planes <= 0 || stride_rows <= 0 || stride_cols <= 0) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "ExtractVolumePatches requires spatial strides to be "
+            "positive, but got: [",
+            stride_planes, ", ", stride_rows, ", ", stride_cols, "]"));
+      }
 
       /*
       int64_t rate_planes = rates[1];
@@ -2812,6 +2871,7 @@ REGISTER_OP("ExtractVolumePatches")
           !c->ValueKnown(in_cols_dim)) {
         ShapeHandle output_shape =
             c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
+                          InferenceContext::kUnknownDim,
                           InferenceContext::kUnknownDim, output_depth_dim});
         c->set_output(0, output_shape);
         return absl::OkStatus();

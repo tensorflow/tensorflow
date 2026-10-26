@@ -353,15 +353,15 @@ class QuantizationDebugger:
 
       # Collect the statistics of this invoke result.
       for tensor_detail in self._get_numeric_verify_tensor_details():
-        tensor_name = tensor_detail['name']  # pytype: disable=unsupported-operands  # dynamic-method-lookup
-        diffs = self._quant_interpreter.get_tensor(tensor_detail['index'])  # pytype: disable=unsupported-operands  # dynamic-method-lookup
+        tensor_name = tensor_detail['name']  # pyrefly: ignore[bad-index]
+        diffs = self._quant_interpreter.get_tensor(tensor_detail['index'])  # pyrefly: ignore[bad-index]
         for metric_name, metric_fn in self._layer_debug_metrics.items():
           layer_statistics[tensor_name][metric_name].append(metric_fn(diffs))
 
       if self._debug_options.layer_direct_compare_metrics is not None:
         for tensor_detail in self._get_numeric_verify_tensor_details():
-          tensor_name = tensor_detail['name']  # pytype: disable=unsupported-operands  # dynamic-method-lookup
-          op_idx = self._defining_op[tensor_detail['index']]  # pytype: disable=unsupported-operands  # dynamic-method-lookup
+          tensor_name = tensor_detail['name']  # pyrefly: ignore[bad-index]
+          op_idx = self._defining_op[tensor_detail['index']]  # pyrefly: ignore[bad-index]
           op_detail = self._quant_interpreter._get_op_details(op_idx)  # pylint: disable=protected-access
           q_idx, f_idx = op_detail['inputs']
           quant_input_detail = self._quant_interpreter._get_tensor_details(  # pylint: disable=protected-access

@@ -94,20 +94,18 @@ class OneDnnThreadPool : public threadpool_iface {
   bool get_in_parallel() const override {
     return (eigen_interface_->CurrentThreadId() != -1) ? true : false;
   }
-#ifdef ENABLE_ONEDNN_ASYNC
-  // Return 0 for synchronous execution; caller handles synchronization.
+#if defined(ENABLE_ONEDNN_ASYNC) || DNNL_VERSION_MAJOR > 3 || \
+    (DNNL_VERSION_MAJOR == 3 && DNNL_VERSION_MINOR >= 11)
+  // Return 0 for synchronous execution; parallel_for handles synchronization.
   uint64_t get_flags() const override { return 0; }
-  // wait() method for synchronous execution is basically a no-op.
-  // But we need to implement it to satisfy the interface.
-  // This is the requirement of the new experimental async runtime support
-  // in oneDNN.
-  virtual void wait() override {}
+  // wait() is a no-op because parallel_for does not return early.
+  void wait() override {}
 #else
-  // Return ASYNCHRONOUS to work with current onednn version.
-  // TODO(intel-tf): remove this ifdefing block after making oneDNN v3.11 (async
-  // support) default
+  // Preserve the behavior required by older oneDNN versions, whose threadpool
+  // interface does not declare wait().
   uint64_t get_flags() const override { return ASYNCHRONOUS; }
-#endif  // ENABLE_ONEDNN_ASYNC
+#endif  // defined(ENABLE_ONEDNN_ASYNC) || DNNL_VERSION_MAJOR > 3 ||
+        // (DNNL_VERSION_MAJOR == 3 && DNNL_VERSION_MINOR >= 11)
   void parallel_for(int n, const std::function<void(int, int)>& fn) override {
     // Should never happen (handled by DNNL)
     if (n == 0) {
@@ -131,10 +129,8 @@ class OneDnnThreadPool : public threadpool_iface {
     const int njobs_to_schedule = use_caller_thread ? njobs - 1 : njobs;
 
     if (use_caller_thread) {
-#ifdef ENABLE_ONEDNN_ASYNC
-      // Add barriers for synchronization when ENABLE_ONEDNN_ASYNC is defined.
-      // TODO(intel-tf): remove this ifdefing block after making oneDNN v3.11
-      // (async support) default
+#if defined(ENABLE_ONEDNN_ASYNC) || DNNL_VERSION_MAJOR > 3 || \
+    (DNNL_VERSION_MAJOR == 3 && DNNL_VERSION_MINOR >= 11)
       absl::BlockingCounter counter(njobs_to_schedule + 1);
       for (int i = 0; i < njobs_to_schedule; i++) {
         eigen_interface_->ScheduleWithHint(
@@ -156,7 +152,8 @@ class OneDnnThreadPool : public threadpool_iface {
             i, i + 1);
       }
       run_jobs(balance, njobs_to_schedule, n, njobs, fn);
-#endif  // ENABLE_ONEDNN_ASYNC
+#endif  // defined(ENABLE_ONEDNN_ASYNC) || DNNL_VERSION_MAJOR > 3 ||
+        // (DNNL_VERSION_MAJOR == 3 && DNNL_VERSION_MINOR >= 11)
     } else {
       absl::BlockingCounter counter(njobs);
       std::function<void(int, int)> handle_range = [=, &handle_range, &counter](

@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
@@ -29,6 +30,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOkAndHolds;
 
 class HloModuleDceTest : public HloHardwareIndependentTestBase {
  protected:
@@ -560,6 +563,196 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadWhileLoop) {
   // Dead while.1 should be removed.
   EXPECT_EQ(1, while_loops.size());
   EXPECT_EQ(1, ShapeUtil::TupleElementCount(while_loops[0]->shape()));
+}
+
+// Tests that when a computation is called multiple times and only one call's
+// result is dead, that dead call is removed while the live call and the
+// called computation remain.
+TEST_F(HloModuleDceTest, TwoCallsToOneDeadOneLive) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule TwoCallsToOneDeadOneLive
+
+  // CHECK: %foo (param: s32[]) -> s32[] {
+  // CHECK:   %param = s32[] parameter(0)
+  // CHECK:   ROOT %negate = s32[] negate(%param)
+  // CHECK: }
+  foo {
+    param = s32[] parameter(0)
+    ROOT negate = s32[] negate(param)
+  }
+
+  // CHECK-LABEL: ENTRY %entry
+  // CHECK-NOT: dead_call
+  // CHECK: %live_call = s32[] call(%c0), to_apply=%foo
+  // CHECK: ROOT %add = s32[] add(%live_call, %c0)
+  ENTRY entry {
+    c0 = s32[] constant(42)
+    dead_call = s32[] call(c0), to_apply=foo
+    live_call = s32[] call(c0), to_apply=foo
+    ROOT add = s32[] add(live_call, c0)
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloModuleDCE dce;
+  EXPECT_THAT(dce.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+// Tests that when all calls to a computation have dead results, all dead call
+// instructions are removed and the now uncalled computation is also swept.
+TEST_F(HloModuleDceTest, TwoCallsBothDead) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule TwoCallsBothDead
+
+  // CHECK-NOT: %foo
+  foo {
+    param = s32[] parameter(0)
+    ROOT negate = s32[] negate(param)
+  }
+
+  // CHECK-LABEL: ENTRY %entry
+  // CHECK-NOT: dead_call
+  // CHECK: ROOT %c1 = s32[] constant(100)
+  ENTRY entry {
+    c0 = s32[] constant(42)
+    dead_call0 = s32[] call(c0), to_apply=foo
+    dead_call1 = s32[] call(c0), to_apply=foo
+    ROOT c1 = s32[] constant(100)
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloModuleDCE dce;
+  EXPECT_THAT(dce.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+// Tests a call graph where entry calls foo and bar, and foo also calls bar,
+// with liveness throughout the entire graph. No calls or computations are
+// removed.
+TEST_F(HloModuleDceTest, EntryCallsFooAndBarAndFooCallsBarLiveThroughout) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule EntryCallsFooAndBarAndFooCallsBar
+
+  // CHECK-LABEL: %bar
+  // CHECK: %bar_param = s32[] parameter(0)
+  // CHECK: %c1 = s32[] constant(1)
+  // CHECK: ROOT %bar_add = s32[] add(%bar_param, %c1)
+  bar {
+    bar_param = s32[] parameter(0)
+    c1 = s32[] constant(1)
+    ROOT bar_add = s32[] add(bar_param, c1)
+  }
+
+  // CHECK-LABEL: %foo
+  // CHECK: %foo_param = s32[] parameter(0)
+  // CHECK: %foo_call_bar = s32[] call(%foo_param), to_apply=%bar
+  // CHECK: %c2 = s32[] constant(2)
+  // CHECK: ROOT %foo_add = s32[] add(%foo_call_bar, %c2)
+  foo {
+    foo_param = s32[] parameter(0)
+    foo_call_bar = s32[] call(foo_param), to_apply=bar
+    c2 = s32[] constant(2)
+    ROOT foo_add = s32[] add(foo_call_bar, c2)
+  }
+
+  // CHECK-LABEL: ENTRY %entry
+  // CHECK: %c0 = s32[] constant(42)
+  // CHECK: %entry_call_foo = s32[] call(%c0), to_apply=%foo
+  // CHECK: %entry_call_bar = s32[] call(%c0), to_apply=%bar
+  // CHECK: ROOT %entry_add = s32[] add(%entry_call_foo, %entry_call_bar)
+  ENTRY entry {
+    c0 = s32[] constant(42)
+    entry_call_foo = s32[] call(c0), to_apply=foo
+    entry_call_bar = s32[] call(c0), to_apply=bar
+    ROOT entry_add = s32[] add(entry_call_foo, entry_call_bar)
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloModuleDCE dce;
+  EXPECT_THAT(dce.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(HloModuleDceTest, DeadCallKeptAliveDueToMultipleOutput) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule DeadCallKeptAlive
+
+  // CHECK-LABEL: %bar
+  // CHECK: %bar_param = s32[] parameter(0)
+  // CHECK: %c1 = s32[] constant(1)
+  // CHECK: ROOT %bar_add = s32[] add(%bar_param, %c1)
+  bar {
+    bar_param = s32[] parameter(0)
+    c1 = s32[] constant(1)
+    ROOT bar_add = s32[] add(bar_param, c1)
+  }
+
+  // CHECK-LABEL: %foo
+  // CHECK: %foo_param0 = s32[] parameter(0)
+  // CHECK: %foo_param1 = s32[] parameter(1)
+  // CHECK: ROOT %foo_tuple = (s32[], s32[]) tuple(%foo_param0, %foo_param1)
+  foo {
+    foo_param0 = s32[] parameter(0)
+    foo_param1 = s32[] parameter(1)
+    ROOT foo_tuple = (s32[], s32[]) tuple(foo_param0, foo_param1)
+  }
+
+  // CHECK-LABEL: ENTRY %entry
+  // CHECK: %c0 = s32[] constant(42)
+  // CHECK: %dead_call_bar = s32[] call(%c0), to_apply=%bar
+  // CHECK: %call = (s32[], s32[]) call(%c0, %dead_call_bar), to_apply=%foo
+  // CHECK: ROOT %entry_add = s32[] negate(%call#0)
+  ENTRY entry {
+    c0 = s32[] constant(42)
+    dead_call_bar = s32[] call(c0), to_apply=bar
+    call = (s32[], s32[]) call(c0, dead_call_bar), to_apply=foo
+    ROOT entry_add = s32[] negate(%call#0)
+  })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloModuleDCE dce;
+  EXPECT_THAT(dce.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+// Tests a module where the while body is shared by multiple while loops
+// (non-flat on while computations).
+TEST_F(HloModuleDceTest, NonFlatWhileDeadLoopElementElimination) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule SharedWhileBodyDeadLoopElement
+
+  while_body {
+    body_param = (s32[], s32[3]{0}) parameter(0)
+    val = s32[] get-tuple-element(body_param), index=0
+    c1 = s32[] constant(1)
+    add = s32[] add(val, c1)
+    dead_elem = s32[3]{0} get-tuple-element(body_param), index=1
+    dead_mult = s32[3]{0} multiply(dead_elem, dead_elem)
+    ROOT body_tuple = (s32[], s32[3]{0}) tuple(add, dead_mult)
+  }
+
+  while_cond {
+    cond_param = (s32[], s32[3]{0}) parameter(0)
+    cond_val = s32[] get-tuple-element(cond_param), index=0
+    limit = s32[] constant(10)
+    ROOT cmp = pred[] compare(cond_val, limit), direction=LT
+  }
+
+  ENTRY entry {
+    c0 = s32[] constant(0)
+    init_dead = s32[3]{0} constant({1, 2, 3})
+    init_tuple = (s32[], s32[3]{0}) tuple(c0, init_dead)
+    while1 = (s32[], s32[3]{0}) while(init_tuple), condition=while_cond, body=while_body
+    while2 = (s32[], s32[3]{0}) while(init_tuple), condition=while_cond, body=while_body
+    val1 = s32[] get-tuple-element(while1), index=0
+    val2 = s32[] get-tuple-element(while2), index=0
+    ROOT res = s32[] add(val1, val2)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloModuleDCE dce;
+  EXPECT_THAT(dce.Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace

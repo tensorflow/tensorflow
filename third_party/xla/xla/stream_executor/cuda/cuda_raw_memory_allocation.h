@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -33,9 +34,22 @@ namespace stream_executor::gpu {
 class CudaRawMemoryAllocation : public MemoryAllocation {
  public:
   // Creates a physical memory allocation of at least `size` bytes using
-  // cuMemCreate. StreamExecutor is used only for context activation.
+  // cuMemCreate. StreamExecutor is used only for context activation. Probes
+  // the device's allocator options on every call; prefer the overload below
+  // when the caller already holds them.
   static absl::StatusOr<std::unique_ptr<CudaRawMemoryAllocation>> Create(
       StreamExecutor* executor, uint64_t size);
+
+  // Same, but builds the allocation properties from `options` (normally the
+  // executor's probed CudaDeviceAllocator::Options) so that handle types match
+  // the executor's other VMM allocations, and falls back through simpler
+  // handle types the same way CudaDeviceAllocator does. Like
+  // CudaDeviceAllocator, the size is padded to the larger of
+  // `options.alignment` and the mapping granularity. Fails with
+  // InvalidArgument when `options.use_vmm` is false.
+  static absl::StatusOr<std::unique_ptr<CudaRawMemoryAllocation>> Create(
+      StreamExecutor* executor, uint64_t size,
+      const CudaDeviceAllocator::Options& options);
 
   // Returns a DeviceAddressBase whose opaque() holds the raw
   // CUmemGenericAllocationHandle cast to void*, and size() is the
@@ -52,6 +66,12 @@ class CudaRawMemoryAllocation : public MemoryAllocation {
   explicit CudaRawMemoryAllocation(StreamExecutor* executor,
                                    CUmemGenericAllocationHandle handle,
                                    uint64_t size);
+
+  // Shared by both Create overloads. The caller has activated the context and
+  // resolved `device`.
+  static absl::StatusOr<std::unique_ptr<CudaRawMemoryAllocation>>
+  CreateWithDevice(StreamExecutor* executor, CUdevice device, uint64_t size,
+                   const CudaDeviceAllocator::Options& options);
 
   StreamExecutor* executor_;
   CUmemGenericAllocationHandle handle_;  // 0 means moved-from / released

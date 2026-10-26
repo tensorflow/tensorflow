@@ -42,6 +42,10 @@ _TAGS_TO_DOCUMENTATION_MAP = {
         "Not ran on ARM. Currently OpenXLA CI doesn't make a distinction and"
         " doesn't build things tagged with this either."
     ),
+    "flaky": (
+        "Test is known to be flaky. `xla_test` and `xla_cc_test` set"
+        " `flaky = True`, and ROCm CI excludes it via `--config=no_flaky`."
+    ),
     # Various disable tags (currently *unrecognized* by OpenXLA CI)
     "notap": "Internal tag which disables the test. Not used on OpenXLA CI.",
     "nosan": "Disabled under all sanitizers. Not used on OpenXLA CI.",
@@ -50,6 +54,10 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "notsan": "Disabled under tsan. Not used on OpenXLA CI",
     "nobuilder": "Not built internally.",
     "nofixdeps": "Internal tag. Disables build_cleaner.",
+    "keep_dep": (
+        "Internal tag. Tells build_cleaner not to remove this target from"
+        " dependency lists."
+    ),
     "nozapfhahn": "Internal tag. Disables gathering coverage",
     "optonly": "Should only be tested with -c opt",
     "nodebug": "Should not be tested in debug builds.",
@@ -118,7 +126,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_gb200": "Runs on a gb200.",
     "xla_gb300": "Runs on a gb300.",
     "xla_rtx6000pro": "Runs on an rtx6000pro.",
-    "xla_vr200": "Runs on a vr200.",
+    "xla_vr_nvl72": "Runs on Vera Rubin NVL72.",
     "xla_device_p100": "Runs on a p100.",
     "xla_device_v100": "Runs on a v100.",
     "xla_device_a100": "Runs on an a100.",
@@ -127,7 +135,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_device_gb200": "Runs on a gb200.",
     "xla_device_gb300": "Runs on a gb300.",
     "xla_device_rtx6000pro": "Runs on an rtx6000pro.",
-    "xla_device_vr200": "Runs on a vr200.",
+    "xla_device_vr_nvl72": "Runs on Vera Rubin NVL72.",
     # Below tags are consumed by `xla_test`.
     "test_migrated_to_hlo_runner_pjrt": (
         "Adds the appropriate `xla/tests:pjrt_$BACKEND_client_registry` to the"

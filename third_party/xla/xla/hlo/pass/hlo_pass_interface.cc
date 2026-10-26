@@ -67,18 +67,4 @@ absl::StatusOr<bool> HloPassInterface::Run(
   return RunImpl(module, execution_threads);
 }
 
-absl::StatusOr<bool> HloPassInterface::Run(
-    std::unique_ptr<HloModule>& module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  if (!ShouldRunPass(module.get(), name(), IsPassPipeline())) {
-    return false;
-  }
-
-  auto* env = tsl::Env::Default();
-  std::unique_ptr<tsl::ThreadNote> thread_note;
-  thread_note = env->AddThreadNote(absl::StrCat("Running HLO pass on module ",
-                                                module->name(), ": ", name()));
-  return RunImpl(module, execution_threads);
-}
-
 }  // namespace xla

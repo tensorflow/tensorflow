@@ -141,7 +141,6 @@ class Thunk {
     kReduceScatter,
     kReplicaId,
     kRngSeed,
-    kSelectK,
     kSend,
     kSequential,
     kTriangularSolve,
@@ -225,6 +224,9 @@ class Thunk {
     const BufferAllocations* absl_nonnull buffer_allocations = nullptr;
     // Execution scoped state shared between prepare, initialize and execute.
     ExecutionScopedState* execution_scoped_state = nullptr;
+
+    // Per-execution custom options.
+    const CustomOptions* custom_options = nullptr;
   };
 
   //===--------------------------------------------------------------------===//

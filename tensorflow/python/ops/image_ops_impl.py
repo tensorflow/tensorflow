@@ -3476,6 +3476,7 @@ def total_variation(images, name=None):
   """
 
   with ops.name_scope(name, 'total_variation'):
+    images = ops.convert_to_tensor(images, name='images')
     ndims = images.get_shape().ndims
 
     if ndims == 3:
@@ -4312,21 +4313,33 @@ def psnr(a, b, max_val, name=None):
     and shape [batch_size, 1].
   """
   with ops.name_scope(name, 'PSNR', [a, b]):
+    # Convert first: max_val is cast to the dtype of `a` below, and the shape
+    # check reads their static shapes, neither of which an unconverted value
+    # has.
+    a = ops.convert_to_tensor(a, name='a')
+    b = ops.convert_to_tensor(b, name='b')
+
     # Need to convert the images to float32.  Scale max_val accordingly so that
     # PSNR is computed correctly.
     max_val = math_ops.cast(max_val, a.dtype)
     max_val = convert_image_dtype(max_val, dtypes.float32)
     a = convert_image_dtype(a, dtypes.float32)
     b = convert_image_dtype(b, dtypes.float32)
-    mse = math_ops.reduce_mean(math_ops.squared_difference(a, b), [-3, -2, -1])
-    psnr_val = math_ops.subtract(
-        20 * math_ops.log(max_val) / math_ops.log(10.0),
-        np.float32(10 / np.log(10)) * math_ops.log(mse),
-        name='psnr')
 
+    # Check the shapes before reducing, so a rank below 3 is reported as such
+    # rather than surfacing from the reduction. This has to come after the
+    # conversions above: the check compares the two shapes with an op that
+    # needs both images to have the same dtype.
     _, _, checks = _verify_compatible_image_shapes(a, b)
     with ops.control_dependencies(checks):
-      return array_ops.identity(psnr_val)
+      a = array_ops.identity(a)
+
+    mse = math_ops.reduce_mean(math_ops.squared_difference(a, b), [-3, -2, -1])
+    return math_ops.subtract(
+        20 * math_ops.log(max_val) / math_ops.log(10.0),
+        np.float32(10 / np.log(10)) * math_ops.log(mse),
+        name='psnr',
+    )
 
 
 def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):
@@ -4772,6 +4785,7 @@ def image_gradients(image):
   Raises:
     ValueError: If `image` is not a 4D tensor.
   """
+  image = ops.convert_to_tensor(image, name='image')
   if image.get_shape().ndims != 4:
     raise ValueError('image_gradients expects a 4D tensor '
                      '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
@@ -4835,6 +4849,7 @@ def sobel_edges(image):
     [dy[1], dx[1]], ..., [dy[d-1], dx[d-1]]] calculated using the Sobel filter.
   """
   # Define vertical and horizontal Sobel filters.
+  image = ops.convert_to_tensor(image, name='image')
   static_image_shape = image.get_shape()
   image_shape = array_ops.shape(image)
   kernels = [[[-1, -2, -1], [0, 0, 0], [1, 2, 1]],

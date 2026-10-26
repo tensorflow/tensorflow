@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/dead_dynamic_update_slice_elimination.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -31,29 +32,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/primitive_util.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-
-std::optional<int64_t> GetConstantAsInt64(const HloInstruction* inst) {
-  if (!inst->IsConstant() || !ShapeUtil::IsScalar(inst->shape())) {
-    return std::nullopt;
-  }
-  return primitive_util::PrimitiveTypeSwitch<std::optional<int64_t>>(
-      [&](auto primitive_type_constant) -> std::optional<int64_t> {
-        if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          return static_cast<int64_t>(
-              inst->literal().GetFirstElement<NativeT>());
-        }
-        return std::nullopt;
-      },
-      inst->shape().element_type());
-}
 
 std::optional<std::vector<int64_t>> GetStartIndices(const HloInstruction* dus) {
   absl::Span<HloInstruction* const> start_indices_operands =
@@ -62,7 +44,10 @@ std::optional<std::vector<int64_t>> GetStartIndices(const HloInstruction* dus) {
                        ->first_index_operand_number());
   std::vector<int64_t> start_indices;
   for (HloInstruction* operand : start_indices_operands) {
-    std::optional<int64_t> start_index = GetConstantAsInt64(operand);
+    if (!operand->IsConstant()) {
+      return std::nullopt;
+    }
+    std::optional<int64_t> start_index = operand->literal().GetFirstInteger();
     if (!start_index.has_value()) {
       return std::nullopt;
     }
@@ -84,7 +69,7 @@ bool RangesOverlap(int64_t start1, int64_t end1, int64_t start2, int64_t end2) {
 // If true, the updated elements of the dynamic-update-slice is not accessed
 // by the slice user.
 bool IsDusUpdateUnused(const std::vector<int64_t>& dus_starts,
-                       const Shape& update_shape,
+                       const Shape& operand_shape, const Shape& update_shape,
                        const HloInstruction* slice_user) {
   if (slice_user->opcode() != HloOpcode::kSlice) {
     return false;
@@ -97,7 +82,9 @@ bool IsDusUpdateUnused(const std::vector<int64_t>& dus_starts,
   // dimensions. If there is no overlap in any dimension, the slice is safe,
   // i.e., it doesn't access the updated elements.
   for (int dim = 0; dim < update_shape.dimensions().size(); ++dim) {
-    int64_t dus_start = dus_starts[dim];
+    int64_t dus_start = std::clamp<int64_t>(
+        dus_starts[dim], 0,
+        operand_shape.dimensions(dim) - update_shape.dimensions(dim));
     int64_t dus_limit = dus_start + update_shape.dimensions(dim);
     int64_t slice_start = slice_starts[dim];
     int64_t slice_limit = slice_limits[dim];
@@ -132,9 +119,10 @@ absl::StatusOr<bool> ProcessDynamicUpdateSlice(HloInstruction* dus,
   }
 
   bool is_dus_update_unused =
-      dus->user_count() > 0 &&
+      dus != comp->root_instruction() && dus->user_count() > 0 &&
       absl::c_all_of(dus->users(), [&](HloInstruction* user) {
-        return IsDusUpdateUnused(dus_starts_vec, update_operand->shape(), user);
+        return IsDusUpdateUnused(dus_starts_vec, dus->operand(0)->shape(),
+                                 update_operand->shape(), user);
       });
   VLOG(2) << "  is_dus_update_unused: " << is_dus_update_unused;
   if (is_dus_update_unused) {

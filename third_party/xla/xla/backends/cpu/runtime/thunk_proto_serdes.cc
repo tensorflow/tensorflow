@@ -537,9 +537,10 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
 
 static absl::StatusOr<std::unique_ptr<CallThunk>> CallThunkFromProto(
     const ThunkProto& proto, const HloModule* hlo_module,
-    const std::vector<BufferAllocation>* buffer_allocations) {
-  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(hlo_module,
-                                                    buffer_allocations);
+    const std::vector<BufferAllocation>* buffer_allocations,
+    const std::vector<std::shared_ptr<Resource>>* thunk_resources) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
+      hlo_module, buffer_allocations, thunk_resources);
 
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<ThunkSequence> call_sequence,
@@ -552,9 +553,10 @@ static absl::StatusOr<std::unique_ptr<CallThunk>> CallThunkFromProto(
 static absl::StatusOr<std::unique_ptr<ConditionalThunk>>
 ConditionalThunkFromProto(
     const ThunkProto& proto, const HloModule* hlo_module,
-    const std::vector<BufferAllocation>* buffer_allocations) {
-  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(hlo_module,
-                                                    buffer_allocations);
+    const std::vector<BufferAllocation>* buffer_allocations,
+    const std::vector<std::shared_ptr<Resource>>* thunk_resources) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
+      hlo_module, buffer_allocations, thunk_resources);
 
   std::vector<ThunkSequence> branch_sequences;
   for (const ThunkSequenceProto& branch_sequence_proto :
@@ -782,9 +784,10 @@ static absl::StatusOr<std::unique_ptr<TopKThunk>> TopKThunkFromProto(
 
 static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
     const ThunkProto& proto, const HloModule* hlo_module,
-    const std::vector<BufferAllocation>* buffer_allocations) {
-  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(hlo_module,
-                                                    buffer_allocations);
+    const std::vector<BufferAllocation>* buffer_allocations,
+    const std::vector<std::shared_ptr<Resource>>* thunk_resources) {
+  ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
+      hlo_module, buffer_allocations, thunk_resources);
 
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<ThunkSequence> cond_sequence,
@@ -873,9 +876,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
 
   switch (kind) {
     case Thunk::Kind::kCall:
-      return CallThunkFromProto(proto, hlo_module_, buffer_allocations_);
+      return CallThunkFromProto(proto, hlo_module_, buffer_allocations_,
+                                thunk_resources_);
     case Thunk::Kind::kConditional:
-      return ConditionalThunkFromProto(proto, hlo_module_, buffer_allocations_);
+      return ConditionalThunkFromProto(proto, hlo_module_, buffer_allocations_,
+                                       thunk_resources_);
     case Thunk::Kind::kInfeed:
       return InfeedThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kKernel:
@@ -889,7 +894,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
     case Thunk::Kind::kTopK:
       return TopKThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kWhile:
-      return WhileThunkFromProto(proto, hlo_module_, buffer_allocations_);
+      return WhileThunkFromProto(proto, hlo_module_, buffer_allocations_,
+                                 thunk_resources_);
     case Thunk::Kind::kPartitionId:
       return PartitionIdThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kReplicaId:
@@ -906,8 +912,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
 
 ThunkSequenceSerDesProtobuf::ThunkSequenceSerDesProtobuf(
     const HloModule* hlo_module,
-    const std::vector<BufferAllocation>* buffer_allocations)
-    : hlo_module_(hlo_module), buffer_allocations_(buffer_allocations) {}
+    const std::vector<BufferAllocation>* buffer_allocations,
+    const std::vector<std::shared_ptr<Resource>>* parent_resources)
+    : hlo_module_(hlo_module),
+      buffer_allocations_(buffer_allocations),
+      parent_resources_(parent_resources) {}
 
 absl::StatusOr<std::string> ThunkSequenceSerDesProtobuf::Serialize(
     const ThunkSequence& thunk_sequence) {
@@ -970,6 +979,40 @@ absl::StatusOr<ThunkSequenceProto> ThunkSequenceSerDesProtobuf::ToProto(
   return proto;
 }
 
+// Reuses a unique matching `Resource` from the enclosing container thunk when
+// deserializing a nested `ThunkSequence`, so container thunks and their nested
+// thunks keep the same `Resource` pointer identity for `ExecutionGraph`.
+//
+// During `ToProto`, a container thunk reports the `resource_uses()` of its
+// nested sequences, so `parent_resources` holds the exact `Resource` instances
+// used inside that container. Because `ResourceProto` only carries `Kind` and
+// no resource ID, we match by `Kind`. This is exact for
+// `kCollectiveCommunicator` (a module-wide singleton in `ThunkEmitter`). If a
+// container thunk ever holds multiple distinct resources of the same `Kind`
+// (for example, multiple `kToken`s), `Kind` alone cannot disambiguate them and
+// we fall back to creating a fresh `Resource` rather than changing the proto
+// wire format.
+static absl::StatusOr<std::shared_ptr<Resource>> GetOrCreateResourceFromProto(
+    const ResourceProto& proto,
+    const std::vector<std::shared_ptr<Resource>>* parent_resources) {
+  ABSL_ASSIGN_OR_RETURN(Resource::Kind kind, ResourceKindFromProto(proto));
+  if (parent_resources == nullptr) {
+    return Resource::Create(kind);
+  }
+  std::shared_ptr<Resource> match = nullptr;
+  for (const std::shared_ptr<Resource>& candidate : *parent_resources) {
+    if (candidate != nullptr && candidate->kind() == kind &&
+        candidate.get() != match.get()) {
+      if (match != nullptr) {
+        // Multiple distinct parent resources of this kind; cannot disambiguate.
+        return Resource::Create(kind);
+      }
+      match = candidate;
+    }
+  }
+  return match != nullptr ? match : Resource::Create(kind);
+}
+
 absl::StatusOr<std::unique_ptr<ThunkSequence>>
 ThunkSequenceSerDesProtobuf::FromProto(const ThunkSequenceProto& proto) const {
   auto thunk_sequence = std::make_unique<ThunkSequence>();
@@ -980,7 +1023,8 @@ ThunkSequenceSerDesProtobuf::FromProto(const ThunkSequenceProto& proto) const {
 
   for (const auto& resource_users_proto : proto.thunk_resources()) {
     ABSL_ASSIGN_OR_RETURN(std::shared_ptr<Resource> resource,
-                     CreateResourceFromProto(resource_users_proto.resource()));
+                     GetOrCreateResourceFromProto(
+                         resource_users_proto.resource(), parent_resources_));
     for (size_t user : resource_users_proto.thunk_indices()) {
       thunk_resources[user].push_back(resource);
     }

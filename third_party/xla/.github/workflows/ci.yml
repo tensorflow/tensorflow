@@ -27,6 +27,13 @@ on:
           - 'yes'
           - 'no'
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      # Trigger on `closed` so the concurrency group cancels any in-progress
+      # `synchronize` run when a PR is closed or merged by Copybara.
+      - closed
   push:
     branches:
       - main
@@ -37,13 +44,16 @@ concurrency:
 
 jobs:
   Tests:
+    # Skip job execution on `closed` events; the run only exists to cancel
+    # in-progress runs in the same concurrency group.
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
     strategy:
       # Don't fail fast - want to see results for all builds even if one fails.
       fail-fast: false
       matrix:
         job_info: [
           {
-            pool: "linux-x86-n2-16",
+            pool: "linux-x86-n4-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 CPU",
             repo: "openxla/xla",
@@ -55,25 +65,25 @@ jobs:
             repo: "openxla/xla",
           },
           {
-            pool: "linux-x86-n2-16",
+            pool: "linux-x86-n4-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 CPU WORKSPACE",
             repo: "openxla/xla",
           },
           {
-            pool: "linux-x86-n2-16",
+            pool: "linux-x86-n4-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux X86 GPU ONEAPI",
             repo: "openxla/xla",
           },
           {
-            pool: "linux-x86-n2-16",
+            pool: "linux-x86-n4-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 GPU Hermetic ROCm",
             repo: "openxla/xla",
           },
           {
-            pool: "linux-x86-n2-16",
+            pool: "linux-x86-n4-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 GPU T4",
             repo: "openxla/xla",
@@ -85,7 +95,7 @@ jobs:
             repo: "openxla/xla",
           },
           {
-            pool: "linux-x86-n2-16",
+            pool: "linux-x86-n4-16",
             container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
             name: "JAX Linux x86 CPU Bzlmod",
             repo: "jax-ml/jax",
@@ -97,7 +107,7 @@ jobs:
             repo: "jax-ml/jax",
           },
           {
-            pool: "linux-x86-n2-16",
+            pool: "linux-x86-n4-16",
             container: "gcr.io/tensorflow-sigs/build:latest-python3.12",
             name: "JAX Linux x86 GPU T4",
             repo: "jax-ml/jax",
@@ -114,7 +124,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: "openxla/xla"
-          fetch-depth: 0
           persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
@@ -150,70 +159,3 @@ jobs:
           else
             python3 "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

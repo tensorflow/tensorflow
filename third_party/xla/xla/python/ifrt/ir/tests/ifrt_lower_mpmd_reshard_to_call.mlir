@@ -29,10 +29,9 @@ module @reshard_without_donation {
     return %0 : !array1
   }
 
-  // CHECK: module @reshard_4784300543980450571
+  // CHECK: module @reshard_4784300543980450571 <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 3
-  // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
   // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
@@ -52,18 +51,17 @@ module @reshard_with_donation {
   func.func public @main(%arg0: !array0) -> (!array1)
       attributes {ifrt.function} {
     // CHECK: ifrt.Call @reshard_4784300543980450571::@main(%arg0) on devices [0, 1, 2]
+    // CHECK-SAME: <donated_input_indices = [0]>
     // CHECK-SAME: {
     // CHECK-DAG:    ifrt.module_type = "mpmd_reshard"
-    // CHECK-DAG:    donated_input_indices = array<i32: 0>
     // CHECK-SAME: }
-    %0, %ctrl_0 = ifrt.Reshard(%arg0) {donated=true} : (!array0) -> !array1
+    %0, %ctrl_0 = ifrt.Reshard(%arg0) <donated=true> : (!array0) -> !array1
     return %0 : !array1
   }
 
-  // CHECK: module @reshard_4784300543980450571
+  // CHECK: module @reshard_4784300543980450571 <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 3
-  // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
   // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
@@ -114,10 +112,9 @@ module @reshard_after_call_to_module {
     return %1 : tensor<2x2xi32>
   }
 
-  // CHECK: module @reshard_4784300543980450571
+  // CHECK: module @reshard_4784300543980450571 <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 3
-  // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
   // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
@@ -150,10 +147,9 @@ module @reshard_before_call_to_module {
     return %1 : tensor<2x2xi32>
   }
 
-  // CHECK: module @reshard_4784300543980450571
+  // CHECK: module @reshard_4784300543980450571 <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 3
-  // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
   // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
@@ -179,10 +175,9 @@ module @two_identical_reshards_single_module {
     return %0, %1 : !array1, !array1
   }
 
-  // CHECK: module @reshard_4784300543980450571
+  // CHECK: module @reshard_4784300543980450571 <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 3
-  // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
   // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
@@ -208,19 +203,17 @@ module @two_reshards_two_modules {
     return %1 : !array0
   }
 
-  // CHECK: module @reshard_4784300543980450571
+  // CHECK: module @reshard_4784300543980450571 <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 3
-  // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
   // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>
   // CHECK: -> !ifrt.array<tensor<2x2xi32>, #sp1, [2]>
 
-  // CHECK: module @reshard_17322361279023763284
+  // CHECK: module @reshard_17322361279023763284 <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 3
-  // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
   // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp1, [2]>
@@ -244,10 +237,9 @@ module @check_reshard_module_has_unique_devices {
     return %0 : !array1
   }
 
-  // CHECK: module @reshard_6746659470058475136
+  // CHECK: module @reshard_6746659470058475136 <sym_visibility = "private">
   // CHECK-SAME: attributes {
   // CHECK-DAG:    ifrt.num_devices = 2
-  // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(
   // CHECK: %arg0: !ifrt.array<tensor<2x2xi32>, #sp, [0]>

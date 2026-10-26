@@ -24,17 +24,41 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 
 namespace xla {
+namespace {
+
+// Recursively interns `src_id` (and its ancestor chain) from `src_frames` into
+// `dst_frames`, returning the corresponding ID in `dst_frames`.
+StackFrameId InternStackFrame(
+    const StackFrames& src_frames, StackFrameId src_id, StackFrames& dst_frames,
+    absl::flat_hash_map<StackFrameId, StackFrameId>& interned) {
+  if (auto it = interned.find(src_id); it != interned.end()) {
+    return it->second;
+  }
+  HloStackFrame frame = src_frames.GetStackFrame(src_id);
+  if (frame.empty()) {
+    return StackFrameId{};
+  }
+  frame.parent_frame_id =
+      InternStackFrame(src_frames, frame.parent_frame_id, dst_frames, interned);
+  StackFrameId dst_id = dst_frames.AddStackFrame(frame);
+  interned[src_id] = dst_id;
+  return dst_id;
+}
+
+}  // namespace
 
 absl::StatusOr<bool> HloModuleStitcher::RunImpl(
     HloModule* module,
@@ -45,9 +69,9 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
   }
 
   if (visiting_modules_.contains(module)) {
-    return absl::InternalError(
-        absl::StrCat("Circular dependency detected in submodule stitching: ",
-                     module->name()));
+    return InternalStrCat(
+        "Circular dependency detected in submodule stitching: ",
+        module->name());
   }
 
   if (visited_modules_.contains(module)) {
@@ -72,8 +96,7 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
         std::string sub_module_name = inst->raw_backend_config_string();
         auto it = optimized_modules_.find(sub_module_name);
         if (it == optimized_modules_.end()) {
-          return absl::NotFoundError(
-              absl::StrCat("Sub-module ", sub_module_name, " not found"));
+          return NotFoundStrCat("Sub-module ", sub_module_name, " not found");
         }
 
         HloModule* sub_module = it->second;
@@ -85,16 +108,35 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
         HloComputation* sub_entry = sub_module->entry_computation();
 
         if (inst->operand_count() != sub_entry->num_parameters()) {
-          return absl::InvalidArgumentError(absl::StrCat(
+          return InvalidArgumentStrCat(
               "Operand count mismatch: custom call has ", inst->operand_count(),
-              " operands but sub-module expects ",
-              sub_entry->num_parameters()));
+              " operands but sub-module expects ", sub_entry->num_parameters());
         }
 
         HloCloneContext context(module);
         HloComputation* cloned_sub_entry = context.FindComputation(sub_entry);
         if (cloned_sub_entry == nullptr) {
           cloned_sub_entry = module->DeepCloneComputation(sub_entry, &context);
+        }
+        // Intern the submodule's stack frames into the parent module and remap
+        // cloned instructions' stack_frame_ids.
+        const StackFrames& src_frames = sub_module->stack_frames();
+        StackFrames& dst_frames = module->mutable_stack_frames();
+        absl::flat_hash_map<StackFrameId, StackFrameId> frame_id_map;
+        for (const HloComputation* sub_comp : sub_module->computations()) {
+          HloComputation* cloned_comp = context.FindComputation(sub_comp);
+          if (cloned_comp == nullptr) {
+            continue;
+          }
+          for (HloInstruction* new_inst : cloned_comp->instructions()) {
+            int src_id = new_inst->metadata().stack_frame_id();
+            if (src_id != 0) {
+              new_inst->mutable_metadata().set_stack_frame_id(
+                  InternStackFrame(src_frames, StackFrameId{src_id}, dst_frames,
+                                   frame_id_map)
+                      .value);
+            }
+          }
         }
 
         std::vector<HloInstruction*> operands;
@@ -105,10 +147,10 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
               cloned_sub_entry->parameter_instruction(i)->shape();
           if (!ShapeUtil::Equal(operand->shape(), expected_shape)) {
             if (!ShapeUtil::Compatible(operand->shape(), expected_shape)) {
-              return absl::InvalidArgumentError(absl::StrCat(
+              return InvalidArgumentStrCat(
                   "Incompatible operand shape at index ", i, ": expected ",
                   ShapeUtil::HumanString(expected_shape), ", got ",
-                  ShapeUtil::HumanString(operand->shape())));
+                  ShapeUtil::HumanString(operand->shape()));
             }
             operand = comp->AddInstruction(HloInstruction::CreateUnary(
                 expected_shape, HloOpcode::kCopy, operand));
@@ -121,14 +163,15 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
         HloInstruction* call = comp->AddInstruction(HloInstruction::CreateCall(
             result_shape, operands, cloned_sub_entry));
         call->set_frontend_attributes(inst->frontend_attributes());
+        call->set_metadata(inst->metadata());
 
         HloInstruction* replacement = call;
         if (!ShapeUtil::Equal(result_shape, inst->shape())) {
           if (!ShapeUtil::Compatible(result_shape, inst->shape())) {
-            return absl::InvalidArgumentError(
-                absl::StrCat("Incompatible result shape: expected ",
-                             ShapeUtil::HumanString(inst->shape()), ", got ",
-                             ShapeUtil::HumanString(result_shape)));
+            return InvalidArgumentStrCat("Incompatible result shape: expected ",
+                                         ShapeUtil::HumanString(inst->shape()),
+                                         ", got ",
+                                         ShapeUtil::HumanString(result_shape));
           }
           replacement = comp->AddInstruction(HloInstruction::CreateUnary(
               inst->shape(), HloOpcode::kCopy, call));

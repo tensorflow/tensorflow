@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/device_slot.h"
 
@@ -64,6 +65,16 @@ DeviceSlot* CowStorage::GetOrCreate(int device_ordinal,
   const Snapshot* published = snapshots_.back().get();
   snapshot_.store(published, std::memory_order_release);
   return published->back().slot;
+}
+
+void CowStorage::ForEach(absl::FunctionRef<void(DeviceSlot&)> fn) const {
+  const Snapshot* snapshot = snapshot_.load(std::memory_order_acquire);
+  if (snapshot == nullptr) {
+    return;
+  }
+  for (const Entry& entry : *snapshot) {
+    fn(*entry.slot);
+  }
 }
 
 DeviceSlot* CowStorage::FindIn(const Snapshot& snapshot, int device_ordinal) {

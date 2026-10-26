@@ -106,10 +106,23 @@ class GpuTopology {
   const gpu::GpuTargetConfig& gpu_target_config() const {
     return *gpu_target_config_;
   }
+  int32_t locality_domain_count() const {
+    return gpu_target_config_.has_value()
+               ? gpu_target_config_->device_description.locality_domain_count()
+               : 0;
+  }
 
   const std::optional<cpu::TargetMachineOptions>& host_target_machine_options()
       const {
     return host_target_machine_options_;
+  }
+
+  bool confidential_computing_enabled() const {
+    if (has_gpu_target_config()) {
+      return gpu_target_config()
+          .device_description.confidential_computing_enabled();
+    }
+    return false;
   }
 
  private:
@@ -136,6 +149,13 @@ GpuTopology GetSingleDeviceGpuTopology(
     const gpu::GpuTargetConfig& gpu_target_config,
     const std::optional<cpu::TargetMachineOptions>&
         host_target_machine_options = std::nullopt);
+
+// Parses a `GpuTopology` from either an inline topology specification
+// (`[<platform_version>:]<num_partitions>x<num_hosts_per_partition>x<num_devices_per_host>`
+// or `[<platform_version>:]<num_hosts_per_partition>x<num_devices_per_host>`)
+// or a `GpuTopologyProto` textproto file at `topology_spec_or_filename`.
+absl::StatusOr<GpuTopology> ParseGpuTopology(
+    absl::string_view topology_spec_or_filename);
 
 }  // namespace xla
 

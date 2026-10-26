@@ -81,7 +81,7 @@ def select_window(
   )
   if p_state is not None and p_state < 0:
     p_state = None
-  block_m, block_k, block_n = pallas_cost_model.CostModel(
+  block_m, block_k, block_n = pallas_cost_model.DenseCostModel(
       m,
       k,
       n,

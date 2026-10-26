@@ -115,6 +115,20 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "hlo_gumgraph_text_renderer_test",
+    srcs = ["hlo_gumgraph_text_renderer_test.cc"],
+    deps = [
+        ":hlo_gumgraph_text_renderer",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/tools/hlo_diff:hlo_diff_result",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "graph_url_generator",
     hdrs = ["graph_url_generator.h"],

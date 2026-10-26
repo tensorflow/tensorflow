@@ -59,6 +59,46 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertIn("tf.Tensor", str(t))
     self.assertIn("tf.Tensor", repr(t))
 
+  def testScalarCacheKeepsSignOfZero(self):
+    # Python scalars are cached by value, and Python considers 0.0 == -0.0.
+    # Whichever zero is converted first must not be returned for the other.
+    for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      for first, second in ((0.0, -0.0), (-0.0, 0.0)):
+        a = _create_tensor(first, dtype=dtype)
+        b = _create_tensor(second, dtype=dtype)
+        self.assertEqual(np.signbit(first), np.signbit(a.numpy()))
+        self.assertEqual(np.signbit(second), np.signbit(b.numpy()))
+
+    zeros = [
+        complex(0.0, 0.0),
+        complex(0.0, -0.0),
+        complex(-0.0, 0.0),
+        complex(-0.0, -0.0),
+    ]
+    for dtype in (dtypes.complex64, dtypes.complex128):
+      for value in zeros + zeros[::-1]:
+        t = _create_tensor(value, dtype=dtype).numpy()
+        self.assertEqual(np.signbit(value.real), np.signbit(t.real))
+        self.assertEqual(np.signbit(value.imag), np.signbit(t.imag))
+
+    # np.float64 and np.complex128 subclass float and complex, so they go
+    # through the same cache.
+    for value_type, dtype in (
+        (np.float64, dtypes.float64),
+        (np.complex128, dtypes.complex128),
+    ):
+      for first, second in ((0.0, -0.0), (-0.0, 0.0)):
+        a = _create_tensor(value_type(first), dtype=dtype)
+        b = _create_tensor(value_type(second), dtype=dtype)
+        self.assertEqual(np.signbit(first), np.signbit(np.real(a.numpy())))
+        self.assertEqual(np.signbit(second), np.signbit(np.real(b.numpy())))
+
+    # The same cache backs the conversion of Python scalars in binary ops.
+    x = constant_op.constant([1.0, 2.0])
+    self.assertAllEqual([False, False], np.signbit(x * 0.0))
+    self.assertAllEqual([True, True], np.signbit(x * -0.0))
+    self.assertAllEqual([-np.inf, -np.inf], 1.0 / (x * -0.0))
+
   def testBadConstructorArgs(self):
     context.ensure_initialized()
     ctx = context.context()
@@ -191,6 +231,22 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float32, t.dtype)
     t = _create_tensor(3.0, dtype=dtypes.float64)
     self.assertEqual(dtypes.float64, t.dtype)
+
+  def testBfloat16FromPythonFloats(self):
+    # 1e-38 and -1e-40 are subnormal in bfloat16; +/-1e39 overflow to +/-inf.
+    values = [1e-38, -1e-40, 0.1, 3.0, 1e39, -1e39]
+    expected = np.array(values, dtype=dtypes.bfloat16.as_numpy_dtype)
+    for value, want in zip(values, expected):
+      got = _create_tensor(value, dtype=dtypes.bfloat16).numpy()
+      self.assertAllEqual(got.view(np.uint16), want.view(np.uint16))
+    got = _create_tensor(values, dtype=dtypes.bfloat16).numpy()
+    self.assertAllEqual(got.view(np.uint16), expected.view(np.uint16))
+    self.assertAllEqual(
+        _create_tensor([True, 1e39], dtype=dtypes.bfloat16), [1.0, np.inf]
+    )
+    self.assertEqual(
+        float(_create_tensor(2**200, dtype=dtypes.bfloat16).numpy()), np.inf
+    )
 
   def testBool(self):
     self.assertFalse(bool(_create_tensor(False)))
@@ -385,6 +441,72 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     for t in [dtypes.uint64, dtypes.uint32, dtypes.int32, dtypes.int64]:
       self.assertEqual(constant_op.constant(t.max, dtype=t).numpy(), t.max)
       self.assertEqual(constant_op.constant(t.min, dtype=t).numpy(), t.min)
+
+  def testUint64OutOfRange(self):
+    for convert in (
+        _create_tensor,
+        constant_op.constant,
+        ops.convert_to_tensor,
+    ):
+      for value in (-1, -2, -(2**64), 2**64):
+        for invalid in (value, [value], [[0, value]]):
+          with self.subTest(convert=convert.__name__, value=invalid):
+            with self.assertRaisesRegex(
+                OverflowError,
+                r"can't convert negative (?:value|int) to unsigned(?: int)?|"
+                r"int too big to convert|int too large to convert",
+            ):
+              convert(invalid, dtype=dtypes.uint64)
+            self.assertAllEqual(convert(1, dtype=dtypes.uint64), 1)
+
+  def testNumpyIntegerConversionFailure(self):
+    class InvalidInteger(np.int64):
+
+      def __int__(self):
+        raise RuntimeError("integer conversion failed")
+
+    for dtype in (None, dtypes.int32, dtypes.int64, dtypes.uint64):
+      for convert in (
+          _create_tensor,
+          constant_op.constant,
+          ops.convert_to_tensor,
+      ):
+        # Scalars use NumPy's array conversion; sequences use ConvertScalar.
+        self.assertAllEqual(convert(InvalidInteger(1), dtype=dtype), 1)
+        for value in ([InvalidInteger(1)], [[InvalidInteger(1)]]):
+          with self.subTest(convert=convert.__name__, dtype=dtype, value=value):
+            with self.assertRaisesRegex(
+                RuntimeError, "integer conversion failed"
+            ):
+              convert(value, dtype=dtype)
+            self.assertAllEqual(convert(1, dtype=dtype), 1)
+
+  def testFloat64IntegerOverflow(self):
+    for convert in (
+        _create_tensor,
+        constant_op.constant,
+        ops.convert_to_tensor,
+    ):
+      for value in (10**310, [10**310], [[0, 10**310]]):
+        with self.subTest(convert=convert.__name__, value=value):
+          with self.assertRaisesRegex(ValueError, "out-of-range integer"):
+            convert(value, dtype=dtypes.float64)
+          self.assertAllEqual(
+              convert([1.0], dtype=dtypes.float64).numpy(), [1.0]
+          )
+
+  def testUint64BoundaryValues(self):
+    values = [0, 2**63, 2**64 - 1]
+    for convert in (
+        _create_tensor,
+        constant_op.constant,
+        ops.convert_to_tensor,
+    ):
+      for value in values + [values, [values], []]:
+        with self.subTest(convert=convert.__name__, value=value):
+          tensor = convert(value, dtype=dtypes.uint64)
+          self.assertEqual(tensor.dtype, dtypes.uint64)
+          self.assertAllEqual(tensor, np.array(value, dtype=np.uint64))
 
   def test_numpyIsView(self):
     with ops.device("CPU"):

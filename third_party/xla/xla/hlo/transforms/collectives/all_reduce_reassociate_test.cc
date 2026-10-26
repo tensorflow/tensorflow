@@ -24,11 +24,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -41,6 +43,7 @@ namespace xla {
 namespace {
 
 namespace m = xla::testing::opcode_matchers;
+using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
 
 class AllReduceSimplifierTest : public HloHardwareIndependentTestBase {
@@ -49,12 +52,10 @@ class AllReduceSimplifierTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_module, bool expect_change,
       bool reassociate_converted_ar = false) {
     ABSL_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
-    auto changed =
-        AllReduceReassociate(reassociate_converted_ar).Run(module.get());
-    if (!changed.ok()) {
-      return changed.status();
-    }
-    EXPECT_EQ(changed.value(), expect_change);
+    ABSL_ASSIGN_OR_RETURN(
+        bool changed,
+        AllReduceReassociate(reassociate_converted_ar).Run(module.get()));
+    EXPECT_EQ(changed, expect_change);
     return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
@@ -826,6 +827,143 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(auto module,
                        RunPass(kHloModule, /*expect_change=*/false));
   EXPECT_EQ(AllReduceCount(module), 2);
+}
+
+TEST_F(AllReduceSimplifierTest, DoesNotCrossCallBoundaries) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+callee {
+  p = f32[8] parameter(0)
+  ROOT ar = f32[8] all-reduce(p), replica_groups={}, to_apply=sum
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  c1 = f32[8] call(p1), to_apply=callee
+  ROOT add = f32[8] add(ar0, c1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(AllReduceReassociate().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(AllReduceSimplifierTest, TransformationInsideCalledFoo) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+// CHECK-LABEL: %foo
+// CHECK:         %[[ADD:.*]] = f32[8]{{.*}} add(%a, %b)
+// CHECK:         ROOT %{{.*}} = f32[8]{{.*}} all-reduce(%[[ADD]]), {{.*}}to_apply=%sum
+foo {
+  a = f32[8] parameter(0)
+  b = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(a), replica_groups={}, to_apply=sum
+  ar1 = f32[8] all-reduce(b), replica_groups={}, to_apply=sum
+  ROOT add = f32[8] add(ar0, ar1)
+}
+
+// CHECK-LABEL: ENTRY %main
+// CHECK:         ROOT %call = f32[8]{{.*}} call(%p0, %p1), to_apply=%foo
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT call = f32[8] call(p0, p1), to_apply=foo
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(AllReduceReassociate().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(AllReduceSimplifierTest, TransformationInsideBarCalledByEntryAndFoo) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+// CHECK-LABEL: %bar
+// CHECK:         %[[ADD:.*]] = f32[8]{{.*}} add(%a, %b)
+// CHECK:         ROOT %{{.*}} = f32[8]{{.*}} all-reduce(%[[ADD]]), {{.*}}to_apply=%sum
+bar {
+  a = f32[8] parameter(0)
+  b = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(a), replica_groups={}, to_apply=sum
+  ar1 = f32[8] all-reduce(b), replica_groups={}, to_apply=sum
+  ROOT add = f32[8] add(ar0, ar1)
+}
+
+// CHECK-LABEL: %foo
+// CHECK:         ROOT %{{.*}} = f32[8]{{.*}} call(%{{.*}}, %{{.*}}), to_apply=%bar
+foo {
+  x = f32[8] parameter(0)
+  y = f32[8] parameter(1)
+  ROOT call_bar = f32[8] call(x, y), to_apply=bar
+}
+
+// CHECK-LABEL: ENTRY %main
+// CHECK:         %c_foo = f32[8]{{.*}} call(%p0, %p1), to_apply=%foo
+// CHECK:         %c_bar = f32[8]{{.*}} call(%p0, %p1), to_apply=%bar
+// CHECK:         ROOT %{{.*}} = f32[8]{{.*}} add(%c_foo, %c_bar)
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  c_foo = f32[8] call(p0, p1), to_apply=foo
+  c_bar = f32[8] call(p0, p1), to_apply=bar
+  ROOT add = f32[8] add(c_foo, c_bar)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(AllReduceReassociate().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(AllReduceSimplifierTest, CombinesAllReducesWithSameComputationAtEntry) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+// CHECK-LABEL: ENTRY %main
+// CHECK:         %[[ADD:.*]] = f32[8]{{.*}} add(%p0, %p1)
+// CHECK:         ROOT %{{.*}} = f32[8]{{.*}} all-reduce(%[[ADD]]), {{.*}}to_apply=%sum
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  ar1 = f32[8] all-reduce(p1), replica_groups={}, to_apply=sum
+  ROOT add = f32[8] add(ar0, ar1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(AllReduceReassociate().Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
 }  // namespace

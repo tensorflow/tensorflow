@@ -15,33 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_COMPILE_INTERFACE_H_
 #define TENSORFLOW_CORE_TPU_TPU_COMPILE_INTERFACE_H_
 
-#include <cstdint>
-
-#include "absl/strings/string_view.h"
-
-// Some legacy code requires different implementations for operations like
-// fingerprint/hashing during compilation and/or graph rewriting. These
-// alternate implementations can be registered (via a module initializer) to
-// change the default behavior.
-class TpuCompileInterface {
- public:
-  virtual ~TpuCompileInterface() {}
-  static TpuCompileInterface* Get();
-  static bool RegisterImplementation(TpuCompileInterface* impl);
-
-  virtual uint64_t FingerprintString(absl::string_view str) = 0;
-
-  // Proto: tensorflow::tpu::CompilationResultProto
-  // Location: tensorflow/core/protobuf/tpu/compilation_result.proto
-  static inline constexpr char kTpuCompileErrorPayloadKey[] =
-      "type.googleapis.com/tensorflow.tpu.CompilationResultProto";
-
-  // Unique string added to the error message for permanent errors during
-  // XLA:TPU compilation. This can be used by TensorFlow models to distinguish
-  // compilation errors from transient errors created by TPU worker preemptions
-  // and restarts.
-  static inline constexpr char kTpuCompileErrorMessage[] =
-      "XLA:TPU compile permanent error";
-};
+#include "xla/tpu/tpu_compile_interface.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_COMPILE_INTERFACE_H_

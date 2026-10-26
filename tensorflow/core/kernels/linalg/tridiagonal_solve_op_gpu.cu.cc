@@ -293,11 +293,18 @@ class TridiagonalSolveOpGpu : public OpKernel {
       batch_size *= lhs.dim_size(i);
     }
 
+    if (rhs.NumElements() == 0) {
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, rhs.shape(), &output));
+      return;
+    }
+
     // The batching mechanism of LinearAlgebraOp is used when it's not
     // possible or desirable to use GtsvBatched.
     const bool use_linalg_op =
         pivoting_            // GtsvBatched doesn't do pivoting
-        || num_rhs > 1       // GtsvBatched doesn't support multiple rhs
+        || num_rhs != 1      // GtsvBatched needs exactly one rhs
         || matrix_size < 3   // Not supported in cuSparse, use the custom kernel
         || batch_size == 1;  // No point to use GtsvBatched
 
@@ -375,18 +382,16 @@ class TridiagonalSolveOpGpu : public OpKernel {
     for (int index : perm) {
       dims.push_back(lhs.dim_size(index));
     }
-    TensorShape lhs_transposed_shape(
-        absl::Span<const int64_t>(dims.data(), ndims));
+    TensorShape lhs_transposed_shape(absl::MakeConstSpan(dims).first(ndims));
 
     std::unique_ptr<GpuSolver> cublas_solver(new GpuSolver(context));
     OP_REQUIRES_OK(context, cublas_solver->allocate_scoped_tensor(
                                 DataTypeToEnum<Scalar>::value,
                                 lhs_transposed_shape, &lhs_transposed));
     auto device = context->eigen_device<Eigen::GpuDevice>();
-    OP_REQUIRES_OK(
-        context,
-        DoTranspose(device, lhs, absl::Span<const int>(perm.data(), ndims),
-                    &lhs_transposed));
+    OP_REQUIRES_OK(context, DoTranspose(device, lhs,
+                                        absl::MakeConstSpan(perm).first(ndims),
+                                        &lhs_transposed));
   }
 
   TridiagonalSolveOpGpuLinalg<Scalar> linalgOp_;

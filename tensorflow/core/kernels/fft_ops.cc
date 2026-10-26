@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -176,11 +177,17 @@ class FFTBase : public OpKernel {
                       "fft_length must have shape [", fft_rank, "]")));
 
       auto fft_length_as_vec = fft_length.vec<int32_t>();
+      bool is_empty = (input_shape.num_elements() == 0);
       for (int i = 0; i < fft_rank; ++i) {
         OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                     absl::InvalidArgumentError(absl::StrCat(
                         "fft_length[", i,
                         "] must >= 0, but got: ", fft_length_as_vec(i))));
+        OP_REQUIRES(ctx, is_empty || fft_length_as_vec(i) > 0,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "fft_length[", i,
+                        "] must be > 0 for non-empty inputs, but got: ",
+                        fft_length_as_vec(i))));
         fft_shape[i] = fft_length_as_vec(i);
         // Each input dimension must have length of at least fft_shape[i]. For
         // IRFFTs, the inner-most input dimension must have length of at least
@@ -192,7 +199,7 @@ class FFTBase : public OpKernel {
         OP_REQUIRES(
             ctx,
             // We pass through empty tensors, so special case them here.
-            input_shape.dim_size(input_index) == 0 ||
+            input_shape.num_elements() == 0 ||
                 input_shape.dim_size(input_index) >= min_input_dim_length,
             absl::InvalidArgumentError(absl::StrCat(
                 "Input dimension ", input_index,
@@ -239,11 +246,9 @@ class FFTBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
-      return;
-    }
-
+    // An empty input is handled inside DoFFT, which zeroes the output. The
+    // output is sized from `fft_length`, so it can be non-empty even when the
+    // input is not, and it must not be returned unwritten.
     DoFFT(ctx, in, fft_shape, out);
   }
 
@@ -271,18 +276,24 @@ class FFTNBase : public OpKernel {
     const Tensor& fft_length = ctx->input(1);
     const Tensor& axes = ctx->input(2);
     unsigned int input_rank = input_shape.dims();
+    OP_REQUIRES(ctx, axes.shape().dims() == 1,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "axes must be 1D, but got: ", axes.shape().DebugString())));
     const int fft_rank = axes.dim_size(0);
-    std::vector<uint64_t> fft_shape(fft_rank);
-    std::vector<int32_t> axes_shape(fft_rank);  // List of axes to transform.
-
+    OP_REQUIRES(ctx, fft_rank > 0,
+                absl::InvalidArgumentError("axes must not be empty."));
     OP_REQUIRES(ctx, input_rank >= fft_rank,
                 absl::InvalidArgumentError(
                     absl::StrCat("Input must have rank of at least ", fft_rank,
                                  " but got: ", input_shape.DebugString())));
+    // Allocate only after fft_rank is validated against the bounded input
+    // rank, so a huge axes tensor cannot trigger a giant allocation.
+    std::vector<uint64_t> fft_shape(fft_rank);
+    std::vector<int32_t> axes_shape(fft_rank);  // List of axes to transform.
+
     auto axes_as_vec = axes.vec<int32_t>();
     // TODO(b/295964813): fftn() ops now doesn't work for arbitrary axes.
     for (int i = 0; i < fft_rank; ++i) {
-      axes_shape[i] = axes_as_vec(i) % input_rank;
       if (axes_as_vec(i) < 0) {
         axes_shape[i] = axes_as_vec(i) + input_rank;
       } else {
@@ -298,29 +309,37 @@ class FFTNBase : public OpKernel {
                     "The last axis to perform transform on must be -1."));
 
     // In R2C or C2R mode, we use a second input to specify the FFT length
-    // instead of inferring it from the input shape.
+    // instead of inferring it from the input shape. Note the error message
+    // uses DebugString() rather than dim_size(0) so a scalar fft_length does
+    // not hit a fatal DCHECK while building the message.
     OP_REQUIRES(ctx,
                 fft_length.shape().dims() == 1 &&
                     fft_length.shape().dim_size(0) == fft_rank,
                 absl::InvalidArgumentError(absl::StrCat(
                     "fft_length must have shape [", fft_rank,
-                    "], but got: ", fft_length.shape().dim_size(0), ".")));
+                    "], but got: ", fft_length.shape().DebugString(), ".")));
     auto fft_length_as_vec = fft_length.vec<int32_t>();
+    bool is_empty = (input_shape.num_elements() == 0);
     for (int i = 0; i < fft_rank; ++i) {
       OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                   absl::InvalidArgumentError(absl::StrCat(
                       "fft_length[", i,
                       "] must >= 0, but got: ", fft_length_as_vec(i))));
+      OP_REQUIRES(
+          ctx, is_empty || fft_length_as_vec(i) > 0,
+          absl::InvalidArgumentError(absl::StrCat(
+              "fft_length[", i, "] must be > 0 for non-empty inputs, but got: ",
+              fft_length_as_vec(i))));
       fft_shape[i] = fft_length_as_vec(i);
+      auto input_index = input_rank - fft_rank + i;
       if (IsReal()) {
         bool inner_most = (i == fft_rank - 1);
         uint64_t min_input_dim_length =
             !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
-        auto input_index = input_rank - fft_rank + i;
         OP_REQUIRES(
             ctx,
             // We pass through empty tensors, so special case them here.
-            input_shape.dim_size(input_index) == 0 ||
+            input_shape.num_elements() == 0 ||
                 input_shape.dim_size(input_index) >= min_input_dim_length,
             absl::InvalidArgumentError(absl::StrCat(
                 "Input dimension ", input_index,
@@ -331,7 +350,15 @@ class FFTNBase : public OpKernel {
                            : fft_shape[i];
         output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       } else {
-        output_shape.set_dim(output_shape.dims() - fft_rank + i, fft_shape[i]);
+        OP_REQUIRES(ctx,
+                    input_shape.num_elements() == 0 ||
+                        input_shape.dim_size(input_index) >= fft_shape[i],
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Input dimension ", input_index,
+                        " must have length of at least ", fft_shape[i],
+                        " but got: ", input_shape.dim_size(input_index))));
+        uint64_t dim = fft_shape[i];
+        output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       }
     }
 
@@ -364,10 +391,7 @@ class FFTNBase : public OpKernel {
               "Wrong types for FFT: in=", in.dtype(), " out=", out->dtype())));
     }
 
-    if (input_shape.num_elements() == 0) {
-      DCHECK_EQ(0, output_shape.num_elements());
-      return;
-    }
+    // As above, DoFFTN zeroes the output for an empty input.
     DoFFTN(ctx, in, fft_shape.data(), axes_shape.data(), out);
   }
 
@@ -395,6 +419,16 @@ class FFTCPU : public FFTBase {
 
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64_t* fft_shape,
              Tensor* out) override {
+    // An empty input carries no frequency content, and `fft_length` pads it
+    // with zeros, so the transform is identically zero. The output is sized
+    // from `fft_length` and can be non-empty here, so fill it.
+    if (in.NumElements() == 0) {
+      if (out->NumElements() > 0) {
+        memset(out->data(), 0, out->TotalBytes());
+      }
+      return;
+    }
+
     std::vector<size_t> axes(Rank());
     int batch_dims = in.dims() - FFTRank;
 
@@ -598,7 +632,7 @@ se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64_t size) {
 // into base class.
 class CufftScratchAllocator : public se::ScratchAllocator {
  public:
-  ~CufftScratchAllocator() override {}
+  ~CufftScratchAllocator() override = default;
   CufftScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
@@ -668,6 +702,19 @@ class FFTGPUBase : public FFTBase {
              Tensor* out) override {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
+
+    // See the CPU kernel: an empty input transforms to an all-zero output,
+    // which is sized from `fft_length` and can be non-empty. A zero
+    // fft_length sizes the output to empty instead, and cuFFT cannot plan
+    // a zero-length transform, so bail out before touching it.
+    if (in.NumElements() == 0 || out->NumElements() == 0) {
+      if (out->NumElements() > 0) {
+        stream_executor::DeviceAddressBase out_bytes(out->data(),
+                                                     out->TotalBytes());
+        OP_REQUIRES_OK(ctx, stream->MemZero(&out_bytes, out->TotalBytes()));
+      }
+      return;
+    }
 
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();
@@ -858,6 +905,19 @@ class FFTNGPUBase : public FFTNBase {
         absl::InvalidArgumentError("Only 1D, 2D and 3D FFTs supported."));
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
+
+    // See the CPU kernel: an empty input transforms to an all-zero output,
+    // which is sized from `fft_length` and can be non-empty. A zero
+    // fft_length sizes the output to empty instead, and cuFFT cannot plan
+    // a zero-length transform, so bail out before touching it.
+    if (in.NumElements() == 0 || out->NumElements() == 0) {
+      if (out->NumElements() > 0) {
+        stream_executor::DeviceAddressBase out_bytes(out->data(),
+                                                     out->TotalBytes());
+        OP_REQUIRES_OK(ctx, stream->MemZero(&out_bytes, out->TotalBytes()));
+      }
+      return;
+    }
 
     Eigen::Map<Eigen::ArrayXi> axes(axes_shape, fft_rank);
     const TensorShape& input_shape = in.shape();

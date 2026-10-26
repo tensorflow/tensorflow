@@ -51,6 +51,12 @@ TEST(Layout, ToStringForTileWithCombinedDimensions) {
             "{3,2,1,0:T(*,*,42,123)}");
 }
 
+TEST(Layout, ToStringForTileWithMatchedDimensions) {
+  EXPECT_EQ(
+      Layout({3, 2, 1, 0}, {Tile({Tile::kMatchDimension, 128})}).ToString(),
+      "{3,2,1,0:T(d,128)}");
+}
+
 TEST(Layout, ToStringForTailPaddingAlignment) {
   EXPECT_EQ(Layout({3, 2, 1, 0})
                 .set_tail_padding_alignment_in_elements(100)

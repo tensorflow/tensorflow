@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/codegen/computation_kernel_arguments.h"
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
@@ -428,9 +429,7 @@ template <typename CollectiveInstruction>
 static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
     const CollectiveInstruction* instruction) {
   return CollectiveThunk::OpParams{
-      /*op_id=*/instruction->channel_id().has_value()
-          ? instruction->channel_id().value()
-          : instruction->GetModule()->unique_id(),
+      /*op_id=*/instruction->unique_id(),
       /*has_channel_id=*/instruction->channel_id().has_value(),
       /*use_global_device_ids=*/instruction->use_global_device_ids(),
       /*replica_groups=*/instruction->replica_groups(),
@@ -443,9 +442,7 @@ static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
 static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
     const HloAllToAllInstruction* instruction) {
   return CollectiveThunk::OpParams{
-      /*op_id=*/instruction->channel_id().has_value()
-          ? instruction->channel_id().value()
-          : instruction->GetModule()->unique_id(),
+      /*op_id=*/instruction->unique_id(),
       /*has_channel_id=*/instruction->channel_id().has_value(),
       /*use_global_device_ids=*/std::nullopt,
       /*replica_groups=*/instruction->replica_groups(),
@@ -458,9 +455,7 @@ static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
 static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
     const HloCollectivePermuteInstruction* instruction) {
   return CollectiveThunk::OpParams{
-      /*op_id=*/instruction->channel_id().has_value()
-          ? instruction->channel_id().value()
-          : instruction->GetModule()->unique_id(),
+      /*op_id=*/instruction->unique_id(),
       /*has_channel_id=*/instruction->channel_id().has_value(),
       /*use_global_device_ids=*/std::nullopt,
       /*replica_groups=*/{},  // CollectivePermute does not have replica groups
@@ -588,8 +583,33 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
   if (std::optional<std::string> maybe_small_call =
           instruction->get_frontend_attribute("xla_cpu_small_call");
       maybe_small_call.has_value() && *maybe_small_call == "true") {
+    ABSL_ASSIGN_OR_RETURN(ComputationKernelArguments arguments,
+                     ComputationKernelArguments::Create(
+                         *instruction->to_apply(), buffer_assignment_));
+
+    // Hoisted loops are often clones of each other, so compile each distinct
+    // kernel once. The prefix keeps keys apart from fusion fingerprints.
+    std::optional<std::string> cache_key;
+    if (arguments.fingerprint().has_value()) {
+      cache_key = absl::StrCat("small_call:", *arguments.fingerprint());
+      if (const auto itr = kernel_spec_cache_.find(*cache_key);
+          itr != kernel_spec_cache_.end()) {
+        const KernelSpec& cached_spec = itr->second;
+        VLOG(1) << "Reusing kernel: " << cached_spec.name()
+                << " for call: " << instruction->name();
+        // Kernel parameters are positional, matching the order of `arguments`.
+        KernelSpec kernel_spec(cached_spec.name(),
+                               cached_spec.work_dimensions(),
+                               arguments.arguments(), arguments.results(),
+                               cached_spec.invariant_arguments());
+        return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                       /*min_alignment=*/MinAlign());
+      }
+    }
+
     ComputationKernelEmitter emitter(instruction, &buffer_assignment_,
-                                     &target_machine_features_);
+                                     &target_machine_features_,
+                                     std::move(arguments));
     ABSL_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                      emitter.EmitKernelDefinition());
 
@@ -598,6 +618,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
 
     kernels_.push_back(
         {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
+
+    if (cache_key.has_value()) {
+      kernel_spec_cache_.insert({*std::move(cache_key), kernel_spec});
+    }
 
     return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
                                    /*min_alignment=*/MinAlign());
@@ -1166,11 +1190,52 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
                                  /*min_alignment=*/MinAlign());
 }
 
-// Parse the sort comparator to determine the sort direction.
+// Parse the sort instruction and comparator to determine the sort direction if
+// it is supported by SortThunk's SortDirection fast path.
 std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
-    const HloComputation* hlo_comparator) const {
-  if (hlo_comparator->num_parameters() < 2 ||
-      hlo_comparator->num_parameters() % 2 != 0) {
+    const HloSortInstruction* sort) {
+  if (sort->operand_count() != 1 && sort->operand_count() != 2) {
+    return std::nullopt;
+  }
+
+  PrimitiveType key_type = sort->operand(0)->shape().element_type();
+  if (!SortThunk::IsSupportedKeyType(key_type)) {
+    return std::nullopt;
+  }
+
+  if (sort->operand_count() == 2) {
+    PrimitiveType val_type = sort->operand(1)->shape().element_type();
+    if (!primitive_util::IsArrayType(val_type)) {
+      return std::nullopt;
+    }
+    int val_bit_width = primitive_util::BitWidth(val_type);
+    if (val_bit_width != 8 && val_bit_width != 16 && val_bit_width != 32 &&
+        val_bit_width != 64) {
+      return std::nullopt;
+    }
+
+    const Shape& shape = sort->operand(0)->shape();
+    int64_t rank = shape.dimensions().size();
+    int64_t sort_dimension = sort->sort_dimension() >= 0
+                                 ? sort->sort_dimension()
+                                 : rank + sort->sort_dimension();
+    if (sort_dimension < 0 || sort_dimension >= rank) {
+      return std::nullopt;
+    }
+    // CpuLayoutAssignment always assigns descending (row-major) layout to sort
+    // operands, so logical dimensions match physical dimensions.
+    absl::Span<const int64_t> dimensions = shape.dimensions();
+    int64_t sort_dim_size = dimensions[sort_dimension];
+    bool is_strided_sort =
+        absl::c_any_of(dimensions.subspan(sort_dimension + 1),
+                       [](int64_t dim) { return dim != 1; });
+    if (is_strided_sort && sort_dim_size > SortThunk::kMaxSortDimSize) {
+      return std::nullopt;
+    }
+  }
+
+  const HloComputation* hlo_comparator = sort->to_apply();
+  if (hlo_comparator->num_parameters() != sort->operand_count() * 2) {
     return std::nullopt;
   }
 
@@ -1237,7 +1302,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   HloComputation* hlocomparator = sort->to_apply();
 
   const std::optional<SortThunk::SortDirection> direction =
-      MatchSortDirection(hlocomparator);
+      MatchSortDirection(sort);
 
   ABSL_ASSIGN_OR_RETURN(auto comparator,
                    ir_emitter_.EmitSortComparator(hlocomparator));

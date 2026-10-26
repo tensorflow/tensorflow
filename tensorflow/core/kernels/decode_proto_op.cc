@@ -27,6 +27,7 @@ limitations under the License.
 // are available at runtime but should be competitive in speed with approaches
 // that compile in the proto definitions.
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -497,6 +498,11 @@ class DenseCollector {
     if (field.is_repeated) {
       index = next_repeat_index_;
     }
+    if (index >= max_repeat_count_) {
+      return absl::DataLossError(absl::StrCat(
+          "ReadValue: Tried to write more entries than allowed.  Field tag: ",
+          field.number, ", Max entries allowed: ", max_repeat_count_));
+    }
     next_repeat_index_ = index + 1;
 
     return internal::ReadValue(input, field.type, field.number,
@@ -506,6 +512,12 @@ class DenseCollector {
   // Reads and stores a length-delimited list of values.
   absl::Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
                                 const size_t buf_size) {
+    // An empty packed run holds no values (CountCollector counts none), so it
+    // must not fail the bounds check below when the output is already full.
+    if (buf_size == 0) {
+      return absl::OkStatus();
+    }
+
     const void* buf;
     int unused_max_buf_size;
     input->GetDirectBufferPointerInline(&buf, &unused_max_buf_size);
@@ -519,19 +531,26 @@ class DenseCollector {
     }
 
     // Setting stride=0 causes new values to overwrite old ones for
-    // non-repeated fields.
+    // non-repeated fields, which always write at index 0 (as in ReadValue).
     const int stride = field.is_repeated ? 1 : 0;
-
-    if (next_repeat_index_ >= max_repeat_count_) {
+    int32_t index = 0;
+    if (field.is_repeated) {
+      index = next_repeat_index_;
+    }
+    if (index >= max_repeat_count_) {
       return absl::DataLossError(absl::StrCat(
           "ReadPackedValues: Tried to write more entries than allowed.  "
           "Field tag: ",
           field.number, ", Max entries allowed: ", max_repeat_count_));
-    } else {
-      return internal::ReadPackedFromArray(buf, buf_size, field.type,
-                                           field.number, default_value_.dtype,
-                                           stride, &next_repeat_index_, datap_);
     }
+
+    absl::Status status = internal::ReadPackedFromArray(
+        buf, buf_size, field.type, field.number, default_value_.dtype, stride,
+        max_repeat_count_, &index, datap_);
+    // A non-repeated field ends at index 1 once it holds a value, and stays
+    // filled when it later appears again (including as an empty packed run).
+    next_repeat_index_ = std::max(next_repeat_index_, index);
+    return status;
   }
 
   // Fills in any missing values in the output array with defaults. Dispatches
@@ -582,10 +601,11 @@ class DenseCollector {
 
   int32_t next_repeat_index_ = 0;
 
-  // This is a pointer to data_[message_index_]. There is no bounds checking at
-  // this level: we computed the max repeat size for each field in
-  // CountCollector and use the same code to traverse it here, so we are
-  // guaranteed not to be called for more items than we have allocated space.
+  // This is a pointer to data_[message_index_], which has room for
+  // max_repeat_count_ values. We computed the max repeat size for each field in
+  // CountCollector and use the same code to traverse it here, but every write
+  // is still checked against max_repeat_count_ so that a disagreement between
+  // the two passes is reported as an error instead of writing out of bounds.
   void* const datap_ = nullptr;
 
   const DefaultValue default_value_;

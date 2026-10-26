@@ -55,23 +55,20 @@ using Callback = std::function<void()>;
 static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
                                                  const Tensor& box_index,
                                                  int* num_boxes) {
-  if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
-    *num_boxes = 0;
-    return absl::OkStatus();
-  }
-  // The shape of 'boxes' is [num_boxes, 4].
+  // The shape of 'boxes' is [num_boxes, 4] and the shape of 'box_index' is
+  // [num_boxes]. The ranks must be validated even when both tensors are
+  // empty, since the kernels later access them as rank-2 and rank-1 tensors.
   if (boxes.dims() != 2) {
     return absl::InvalidArgumentError(
-        absl::StrCat("boxes must be 2-D", boxes.shape().DebugString()));
+        absl::StrCat("boxes must be 2-D, got ", boxes.shape().DebugString()));
+  }
+  if (box_index.dims() != 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "box_index must be 1-D, got ", box_index.shape().DebugString()));
   }
   *num_boxes = boxes.dim_size(0);
   if (boxes.dim_size(1) != 4) {
     return absl::InvalidArgumentError("boxes must have 4 columns");
-  }
-  // The shape of 'box_index' is [num_boxes].
-  if (box_index.dims() != 1) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("box_index must be 1-D", box_index.shape().DebugString()));
   }
   if (box_index.dim_size(0) != *num_boxes) {
     return absl::InvalidArgumentError("box_index has incompatible shape");
@@ -423,7 +420,7 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
         absl::InvalidArgumentError("image_size and grads are incompatible"),
         done);
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES_ASYNC(
           context, !OpDeterminismRequired(),
           absl::UnimplementedError(
@@ -645,7 +642,7 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
         absl::InvalidArgumentError("boxes and grads have incompatible shape"),
         done);
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES_ASYNC(
           context, !OpDeterminismRequired(),
           absl::UnimplementedError(

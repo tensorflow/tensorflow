@@ -22,8 +22,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "xla/tsl/lib/monitoring/test_utils.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
@@ -42,6 +46,7 @@ namespace data {
 namespace {
 
 using ::tensorflow::monitoring::testing::CellReader;
+using ::tensorflow::monitoring::testing::Histogram;
 using ::tensorflow::testing::IsOkAndHolds;
 using ::tensorflow::testing::StatusIs;
 using ::testing::Gt;
@@ -71,9 +76,14 @@ class TensorDataset : public CachableSequence<Tensor> {
 
 class SlowDataset : public CachableSequence<Tensor> {
  public:
-  explicit SlowDataset(absl::Duration delay) : delay_(delay) {}
+  explicit SlowDataset(absl::Duration delay,
+                       absl::Notification* started = nullptr)
+      : delay_(delay), started_(started) {}
 
   absl::StatusOr<Tensor> GetNext() override {
+    if (started_ != nullptr && !started_->HasBeenNotified()) {
+      started_->Notify();
+    }
     Env::Default()->SleepForMicroseconds(absl::ToInt64Microseconds(delay_));
     return Tensor("Test Tensor");
   }
@@ -84,6 +94,7 @@ class SlowDataset : public CachableSequence<Tensor> {
 
  private:
   absl::Duration delay_;
+  absl::Notification* started_;
 };
 
 template <class T>
@@ -265,6 +276,8 @@ TEST(CrossTrainerCacheTest, AlternateTrainerExtendsCache) {
 TEST(CrossTrainerCacheTest, CacheHitMetrics) {
   CellReader<int64_t> cell_reader(
       "/tensorflow/data/service/cross_trainer_cache_queries");
+  CellReader<int64_t> trainer_queries_reader(
+      "/tensorflow/data/service/cross_trainer_cache/trainer_queries");
   EXPECT_EQ(cell_reader.Delta("true"), 0);
   EXPECT_EQ(cell_reader.Delta("false"), 0);
   EXPECT_EQ(cell_reader.Read("true"), 0);
@@ -280,6 +293,8 @@ TEST(CrossTrainerCacheTest, CacheHitMetrics) {
   EXPECT_EQ(cell_reader.Delta("false"), 10);
   EXPECT_EQ(cell_reader.Read("true"), 0);
   EXPECT_EQ(cell_reader.Read("false"), 10);
+  EXPECT_EQ(trainer_queries_reader.Delta("Trainer 1", "true", "cache"), 0);
+  EXPECT_EQ(trainer_queries_reader.Delta("Trainer 1", "false", "prefetch"), 10);
 
   for (size_t i = 0; i < num_elements; ++i) {
     EXPECT_THAT(cache.Get("Trainer 2"), absl_testing::IsOkAndHolds(Pointee(i)));
@@ -288,28 +303,42 @@ TEST(CrossTrainerCacheTest, CacheHitMetrics) {
   EXPECT_EQ(cell_reader.Delta("false"), 0);
   EXPECT_EQ(cell_reader.Read("true"), 10);
   EXPECT_EQ(cell_reader.Read("false"), 10);
+  EXPECT_EQ(trainer_queries_reader.Delta("Trainer 2", "true", "cache"), 10);
+  EXPECT_EQ(trainer_queries_reader.Delta("Trainer 2", "false", "prefetch"), 0);
 }
 
 TEST(CrossTrainerCacheTest, CacheSizeMetrics) {
   CellReader<int64_t> cell_reader(
       "/tensorflow/data/service/cross_trainer_cache_size_bytes");
+  CellReader<int64_t> size_bytes_reader(
+      "/tensorflow/data/service/cross_trainer_cache/size_bytes");
+  CellReader<int64_t> max_size_bytes_reader(
+      "/tensorflow/data/service/cross_trainer_cache/max_size_bytes");
 
   const size_t num_elements = 5;
-  CrossTrainerCache<int64_t> cache(
-      /*max_cache_size_bytes=*/num_elements * sizeof(int64_t),
-      std::make_unique<InfiniteRange>());
+  {
+    CrossTrainerCache<int64_t> cache(
+        /*max_cache_size_bytes=*/num_elements * sizeof(int64_t),
+        std::make_unique<InfiniteRange>());
+    EXPECT_EQ(max_size_bytes_reader.Read(), num_elements * sizeof(int64_t));
 
-  for (size_t i = 0; i < num_elements; ++i) {
-    EXPECT_THAT(cache.Get("Trainer 1"), absl_testing::IsOkAndHolds(Pointee(i)));
-    EXPECT_EQ(cell_reader.Read(), (i + 1) * sizeof(int64_t));
-  }
+    for (size_t i = 0; i < num_elements; ++i) {
+      EXPECT_THAT(cache.Get("Trainer 1"),
+                  absl_testing::IsOkAndHolds(Pointee(i)));
+      EXPECT_EQ(cell_reader.Read(), (i + 1) * sizeof(int64_t));
+      EXPECT_EQ(size_bytes_reader.Read(), (i + 1) * sizeof(int64_t));
+    }
 
-  // The cache size does not increase after reaching `num_elements`.
-  for (size_t i = 0; i < 100; ++i) {
-    EXPECT_THAT(cache.Get("Trainer 1"),
-                absl_testing::IsOkAndHolds(Pointee(num_elements + i)));
-    EXPECT_EQ(cell_reader.Read(), 5 * sizeof(int64_t));
+    // The cache size does not increase after reaching `num_elements`.
+    for (size_t i = 0; i < 100; ++i) {
+      EXPECT_THAT(cache.Get("Trainer 1"),
+                  absl_testing::IsOkAndHolds(Pointee(num_elements + i)));
+      EXPECT_EQ(cell_reader.Read(), 5 * sizeof(int64_t));
+      EXPECT_EQ(size_bytes_reader.Read(), 5 * sizeof(int64_t));
+    }
   }
+  // When the cache is destroyed, `size_bytes` decrements back to 0.
+  EXPECT_EQ(size_bytes_reader.Read(), 0);
 }
 
 TEST(CrossTrainerCacheTest, ConcurrentReaders) {
@@ -460,6 +489,94 @@ TEST(CrossTrainerCacheTest, Errors) {
   EXPECT_THAT(
       cache.Get("New Trainer"),
       absl_testing::IsOkAndHolds(Pointee(std::string("Third element"))));
+}
+
+TEST(CrossTrainerCacheTest, SkipAndCursorOffsetMetrics) {
+  CellReader<int64_t> elements_skipped_reader(
+      "/tensorflow/data/service/cross_trainer_cache/elements_skipped");
+  CellReader<Histogram> cursor_offset_reader(
+      "/tensorflow/data/service/cross_trainer_cache/cursor_offset");
+  CellReader<int64_t> total_size_bytes_reader(
+      "/tensorflow/data/service/cross_trainer_cache/size_bytes");
+
+  CrossTrainerCache<int64_t> cache(
+      /*max_cache_size_bytes=*/3 * sizeof(int64_t),
+      std::make_unique<InfiniteRange>());
+
+  EXPECT_THAT(cache.Get("Trainer 2"), absl_testing::IsOkAndHolds(Pointee(0)));
+  Histogram trainer_2_initial = cursor_offset_reader.Delta("Trainer 2");
+  EXPECT_FLOAT_EQ(trainer_2_initial.num(), 1.0);
+  EXPECT_FLOAT_EQ(trainer_2_initial.sum(), 1.0);
+
+  for (size_t i = 0; i < 5; ++i) {
+    EXPECT_THAT(cache.Get("Trainer 1"), absl_testing::IsOkAndHolds(Pointee(i)));
+  }
+
+  EXPECT_EQ(total_size_bytes_reader.Read(), 3 * sizeof(int64_t));
+  Histogram trainer_1_offset = cursor_offset_reader.Delta("Trainer 1");
+  EXPECT_FLOAT_EQ(trainer_1_offset.num(), 5.0);
+  EXPECT_FLOAT_EQ(trainer_1_offset.sum(), 12.0);
+  EXPECT_EQ(elements_skipped_reader.Read("Trainer 1"), 0);
+
+  // Verify that overlapping CrossTrainerCache instances sum in `size_bytes`
+  // and decrement on destruction.
+  {
+    CrossTrainerCache<int64_t> overlapping_cache(
+        /*max_cache_size_bytes=*/3 * sizeof(int64_t),
+        std::make_unique<InfiniteRange>());
+    EXPECT_THAT(overlapping_cache.Get("Trainer 1"),
+                absl_testing::IsOkAndHolds(Pointee(0)));
+    EXPECT_EQ(total_size_bytes_reader.Read(), 4 * sizeof(int64_t));
+  }
+  EXPECT_EQ(total_size_bytes_reader.Read(), 3 * sizeof(int64_t));
+
+  EXPECT_THAT(cache.Get("Trainer 2"), absl_testing::IsOkAndHolds(Pointee(2)));
+  EXPECT_EQ(elements_skipped_reader.Delta("Trainer 2"), 1);
+  Histogram trainer_2_after_skip = cursor_offset_reader.Delta("Trainer 2");
+  EXPECT_FLOAT_EQ(trainer_2_after_skip.num(), 1.0);
+  EXPECT_FLOAT_EQ(trainer_2_after_skip.sum(), 1.0);
+
+  // A late-joining trainer records the elements evicted before its first read.
+  EXPECT_THAT(cache.Get("Trainer 3"), absl_testing::IsOkAndHolds(Pointee(2)));
+  EXPECT_EQ(elements_skipped_reader.Delta("Trainer 3"), 2);
+}
+
+TEST(CrossTrainerCacheTest, BlockedWaitUsecsMetrics) {
+  CellReader<int64_t> blocked_wait_usecs_reader(
+      "/tensorflow/data/service/cross_trainer_cache/blocked_wait_usecs");
+  CellReader<int64_t> trainer_queries_reader(
+      "/tensorflow/data/service/cross_trainer_cache/trainer_queries");
+  absl::Notification extend_started;
+  CrossTrainerCache<Tensor> cache(
+      /*max_cache_size_bytes=*/1000,
+      std::make_unique<SlowDataset>(absl::Milliseconds(100), &extend_started));
+
+  std::unique_ptr<Thread> trainer_1_thread =
+      absl::WrapUnique(Env::Default()->StartThread(
+          /*thread_options=*/{}, /*name=*/"Trainer_1", [&cache]() {
+            TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const Tensor> next,
+                                    cache.Get("Trainer 1"));
+            test::ExpectEqual(*next, Tensor("Test Tensor"));
+          }));
+
+  // Wait until Trainer 1 time to enter ExtendCache(), then query from Trainer 2
+  // so Trainer 2 blocks on `extending_cache_`.
+  extend_started.WaitForNotification();
+  uint64_t start_us = Env::Default()->NowMicros();
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const Tensor> next,
+                          cache.Get("Trainer 2"));
+  uint64_t elapsed_us = Env::Default()->NowMicros() - start_us;
+  test::ExpectEqual(*next, Tensor("Test Tensor"));
+  trainer_1_thread.reset();
+
+  EXPECT_EQ(blocked_wait_usecs_reader.Delta("Trainer 1"), 0);
+  int64_t trainer_2_wait_us = blocked_wait_usecs_reader.Delta("Trainer 2");
+  EXPECT_GE(trainer_2_wait_us, 50000);
+  EXPECT_LE(trainer_2_wait_us, elapsed_us);
+  EXPECT_EQ(trainer_queries_reader.Delta("Trainer 1", "false", "prefetch"), 1);
+  EXPECT_EQ(trainer_queries_reader.Delta("Trainer 2", "true", "cache_waited"),
+            1);
+  EXPECT_EQ(trainer_queries_reader.Delta("Trainer 2", "true", "cache"), 0);
 }
 
 TEST(CrossTrainerCacheTest, CacheSizeIsTooSmall) {

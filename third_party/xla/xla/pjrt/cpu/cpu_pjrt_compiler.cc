@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 
 namespace xla::cpu {
 namespace {
@@ -106,7 +107,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 CpuPjRtCompiler::DeserializeExecutable(
     const PjRtTopologyDescription& topology,
     riegeli::Any<riegeli::Reader*> reader,
-    std::optional<CompileOptions>&& options) {
+    std::optional<CompileOptions>&& options,
+    bool executable_compatibility_check_on_deserialization) {
   ABSL_ASSIGN_OR_RETURN(auto* cpu_topology, GetCpuTopology(topology));
   return PjRtCpuExecutable::Deserialize(std::move(reader), *cpu_topology,
                                         std::move(options));

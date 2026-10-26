@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/union_find.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 
@@ -346,6 +347,17 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
   int64_t current_heap_size_ = 0;
   int64_t max_heap_size_ = 0;
 };
+
+#if defined(PLATFORM_GOOGLE)
+// TODO(b/571155846): Open-source this radix sort improvement once OR-Tools
+// with scratch-buffer AutoRadixSort (cl/990317179) is released and the
+// dependency is bumped in OpenXLA.
+//
+// Sorts `chunks` in ascending order of `Chunk::offset` using an adaptive hybrid
+// sort strategy.
+void AdaptiveHybridSortChunks(std::vector<HeapSimulator::Chunk>& chunks,
+                              std::vector<HeapSimulator::Chunk>& scratch);
+#endif  // PLATFORM_GOOGLE
 
 // Node in BufferIntervalTree that stores the alloc and free times of a buffer,
 // and the chunk assigned to it.
@@ -860,24 +872,24 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     // The latest slice time for the specified sliced allocation request.
     int64_t LatestSliceTime() const { return sorted_slice_sizes_.size() - 1; }
 
-    // Returns ok if the given permutation of slice times results in an
-    // allocation of free space in root, at the specified offset. Otherwise,
-    // returns the reason such an allocation would not fit.
+    // Returns whether the given permutation of slice times results in an
+    // allocation of free space in root, at the specified offset.
     //
     // permutation_of_slice_times[i] is the slice time that the ith slice
     // (spatially) should be allocated. Such a slice has size
     // sorted_slice_sizes_[i] and would be allocated at offset +
     // sum(sorted_slice_sizes[j], for j in [0, i-1]).
-    absl::Status DoesPermutationFit(
+    //
+    // If it does not fit, *min_next_offset (which must be non-null) is set to
+    // the earliest offset > offset at which this permutation could possibly fit
+    // in root. If there is no chance of fitting in this root, *min_next_offset
+    // is set to INT64_MAX. This function is unaware of any alignment
+    // requirements - it is the responsibility of the caller to adjust
+    // *min_next_offset to satisfy any alignment constraints.
+    bool DoesPermutationFit(
         absl::Span<const int64_t> permutation_of_slice_times,
-        const FreeChunkRoot& root, int64_t offset) const;
-
-    // Only DoesSlicedPermutationFit() should call this method directly. Other
-    // callers should call DoesSlicedPermutationFit(), which contains some
-    // wrapper VLOGGING.
-    absl::Status DoesPermutationFitImpl(
-        absl::Span<const int64_t> permutation_of_slice_times,
-        const FreeChunkRoot& root, int64_t offset) const;
+        const FreeChunkRoot& root, int64_t offset,
+        int64_t* min_next_offset) const;
 
     // Same as Find() except only checks root, to see if it can hold the sliced
     // allocation request. If only_try_this_offset is set, we only evaluate the
@@ -1075,12 +1087,16 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
 
   // Temporary buffers used by MakeFreeChunks to avoid reallocating memory.
   mutable std::vector<Chunk> used_chunks_;
+#if defined(PLATFORM_GOOGLE)
+  mutable std::vector<Chunk> radix_scratch_;
+#endif  // PLATFORM_GOOGLE
   mutable std::vector<std::pair<int64_t, int64_t>> free_chunks_list_;
 
  protected:
-  // Returns all transitive colocated buffers of this buffer interval. I.e., If
-  // a buffer A is colocated with B and B is colocated with C, this function
-  // returns all three of them.
+  // Returns all transitive colocated buffers of this buffer interval,
+  // excluding the interval's buffer itself. I.e., if a buffer A is colocated
+  // with B and B is colocated with C, calling this on A's interval returns B
+  // and C.
   absl::flat_hash_set<const BufferType*> GetTransitiveColocations(
       const BufferInterval& interval) const;
 

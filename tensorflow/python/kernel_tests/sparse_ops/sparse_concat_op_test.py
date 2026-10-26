@@ -472,18 +472,20 @@ class SparseConcatTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testDivisionByZeroMalformedShape(self):
     with self.session():
-      sp1 = sparse_tensor.SparseTensor(
-          indices=[[0, 0]], values=[1.0], dense_shape=[0, 1]
-      )
-      sp2 = sparse_tensor.SparseTensor(
-          indices=[[0, 0]], values=[2.0], dense_shape=[0, 1]
-      )
-      concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
-      with self.assertRaisesOpError(
-          "SparseTensor cannot have non-zero indices if dense shape has zero"
-          " volume"
-      ):
-        self.evaluate(concat_op)
+      for shapes in (([0, 1], [0, 1]), ([1, 1], [1, 0])):
+        with self.subTest(shapes=shapes):
+          sp1 = sparse_tensor.SparseTensor(
+              indices=[[0, 0]], values=[1.0], dense_shape=shapes[0]
+          )
+          sp2 = sparse_tensor.SparseTensor(
+              indices=[[0, 0]], values=[2.0], dense_shape=shapes[1]
+          )
+          concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
+          with self.assertRaisesOpError(
+              "SparseTensor cannot have non-zero indices if dense shape has"
+              " zero volume"
+          ):
+            self.evaluate(concat_op)
 
   def testLargeShapeOverflow(self):
     shape1 = constant_op.constant([2305843009213693952], dtype=dtypes.int64) * 2
@@ -498,7 +500,7 @@ class SparseConcatTest(test.TestCase):
       concat_op = sparse_ops.sparse_concat(axis=0, sp_inputs=[sp1, sp2])
       self.evaluate(concat_op)
 
-  def testGPUOutputDenseElementsOverflow(self):
+  def testGPUInputVolumeOverflow(self):
     if not test.is_gpu_available():
       self.skipTest("No GPU available to run GPU functor check.")
 
@@ -517,9 +519,58 @@ class SparseConcatTest(test.TestCase):
       sp2 = sparse_tensor.SparseTensor(
           indices=[[0, 0, 0]], values=[1.0], dense_shape=shape2
       )
-      with self.assertRaisesOpError("dense_elements overflowed"):
+      with self.assertRaisesOpError("Encountered overflow when multiplying"):
         concat_op = sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2])
         self.evaluate(concat_op)
+
+  def testSparseConcatInputVolumeOverflowCrash(self):
+    # Reject overflowing volumes in both the first and subsequent inputs with
+    # an OpError rather than abort during TensorShape construction.
+    int64_max = 9223372036854775807
+    dim_x = int64_max // 11
+
+    indices1 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values1 = constant_op.constant([1.0], dtype=dtypes.float32)
+
+    indices2 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values2 = constant_op.constant([2.0], dtype=dtypes.float32)
+    shape2 = constant_op.constant([1, dim_x, dim_x], dtype=dtypes.int64)
+
+    for first_shape in ([1, dim_x, dim_x], [1, 1, dim_x]):
+      with self.subTest(first_shape=first_shape):
+        shape1 = constant_op.constant(first_shape, dtype=dtypes.int64)
+        sp1 = sparse_tensor.SparseTensor(indices1, values1, shape1)
+        sp2 = sparse_tensor.SparseTensor(indices2, values2, shape2)
+
+        with self.assertRaisesOpError("Encountered overflow when multiplying"):
+          self.evaluate(sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
+
+  def testSparseConcatOutputVolumeOverflow(self):
+    # Individual volumes fit in int64, but the concatenated
+    # output volume overflows int64, triggering
+    # SetDimWithStatus -> RecomputeNumElements.
+    # Axis = 1, dim_x = int64_max // 11
+    # Input 1 volume: 10 * dim_x < int64_max
+    # Input 2 volume:  2 * dim_x < int64_max
+    # Output volume:  12 * dim_x > int64_max
+    int64_max = 9223372036854775807
+    dim_x = int64_max // 11
+
+    indices1 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values1 = constant_op.constant([1.0], dtype=dtypes.float32)
+    shape1 = constant_op.constant([1, 10, dim_x], dtype=dtypes.int64)
+
+    indices2 = constant_op.constant([[0, 0, 0]], dtype=dtypes.int64)
+    values2 = constant_op.constant([2.0], dtype=dtypes.float32)
+    shape2 = constant_op.constant([1, 2, dim_x], dtype=dtypes.int64)
+
+    sp1 = sparse_tensor.SparseTensor(indices1, values1, shape1)
+    sp2 = sparse_tensor.SparseTensor(indices2, values2, shape2)
+
+    with self.assertRaisesOpError(
+        "results in overflow when computing number of elements"
+    ):
+      self.evaluate(sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
 
 
 if __name__ == "__main__":

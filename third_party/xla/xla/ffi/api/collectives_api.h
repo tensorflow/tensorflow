@@ -108,6 +108,10 @@ class CommunicatorContextBase {
   // Init/Execute. The handler reinterprets the window and calls the backend's
   // collective device APIs directly to obtain local, peer, and multicast
   // pointers. Allocation stays on the JAX-side.
+  //
+  // RequestWindow requires the corresponding communicator/clique to have been
+  // requested first via RequestCommunicator with the same (group_mode, groups,
+  // communication_id); backends may return FailedPrecondition otherwise.
 
   Status RequestWindow(GroupMode group_mode,
                        const std::vector<std::vector<int64_t>>& groups,

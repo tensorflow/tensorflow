@@ -1,0 +1,163 @@
+diff --git a/include/tensor_ir/Compiler/CudaTile/TileIRAssembly.h b/include/tensor_ir/Compiler/CudaTile/TileIRAssembly.h
+--- a/include/tensor_ir/Compiler/CudaTile/TileIRAssembly.h
++++ b/include/tensor_ir/Compiler/CudaTile/TileIRAssembly.h
+@@ -9,11 +9,22 @@
+ 
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/ADT/StringRef.h"
+ 
+ #include "cuda_tile/Bytecode/Common/Version.h"
+ #include <optional>
++#include <string>
+ 
+ namespace mlir::nv_tensor_ir::backend::cuda_tile {
++
++/// Overrides the 'tileiras' executable that assembleTileIRToCubin() invokes
++/// and the environment it runs in. By default the assembler is searched for on
++/// PATH and inherits the environment of the calling process, which a host that
++/// stages its tools in a private directory cannot arrange. An empty path
++/// restores the PATH lookup; an empty environment restores inheritance.
++/// Environment entries are "NAME=value" strings.
++void setTileIRAssembler(llvm::StringRef path,
++                        llvm::ArrayRef<std::string> environment = {});
+ 
+ /// Assemble the TileIR bytecode into a cubin by invoking 'tileiras'
+ /// as a subprocess for the given target. `bytecodeVersion` is used only for
+diff --git a/lib/Compiler/CudaTile/TileIRAssembly.cpp b/lib/Compiler/CudaTile/TileIRAssembly.cpp
+--- a/lib/Compiler/CudaTile/TileIRAssembly.cpp
++++ b/lib/Compiler/CudaTile/TileIRAssembly.cpp
+@@ -2,6 +2,14 @@
+ // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+ 
+ #include "tensor_ir/Compiler/CudaTile/TileIRAssembly.h"
++
++#include <algorithm>
++#include <memory>
++#include <mutex>
++#include <optional>
++#include <string>
++#include <utility>
++#include <vector>
+ 
+ #include "llvm/ADT/SmallString.h"
+ #include "llvm/ADT/StringExtras.h"
+@@ -11,12 +19,6 @@
+ #include "llvm/Support/Program.h"
+ #include "llvm/Support/raw_ostream.h"
+ 
+-#include <algorithm>
+-#include <memory>
+-#include <optional>
+-#include <string>
+-#include <utility>
+-
+ namespace mlir::nv_tensor_ir::backend::cuda_tile {
+ namespace {
+ 
+@@ -51,15 +53,39 @@
+ 
+ ProcessResult runProgram(llvm::StringRef program,
+                          llvm::ArrayRef<llvm::StringRef> args,
++                         std::optional<llvm::ArrayRef<llvm::StringRef>> env,
+                          llvm::StringRef stdoutPath,
+                          llvm::StringRef stderrPath) {
+   llvm::SmallVector<std::optional<llvm::StringRef>, 3> redirects{
+       llvm::StringRef(""), stdoutPath, stderrPath};
+   ProcessResult result{};
+-  result.exitCode = llvm::sys::ExecuteAndWait(
+-      program, args, /*Env=*/std::nullopt, redirects, /*SecondsToWait=*/0,
+-      /*MemoryLimit=*/0, &result.error);
++  result.exitCode = llvm::sys::ExecuteAndWait(program, args, env, redirects,
++                                              /*SecondsToWait=*/0,
++                                              /*MemoryLimit=*/0, &result.error);
+   return result;
++}
++
++/// The assembler installed with setTileIRAssembler().
++struct AssemblerOverride {
++  std::string path;
++  std::vector<std::string> environment;
++};
++
++/// Guards assemblerOverride(). Hosts install the override once during start-up
++/// but may assemble from several threads afterwards.
++std::mutex &assemblerOverrideMutex() {
++  static std::mutex *mutex = new std::mutex();
++  return *mutex;
++}
++
++AssemblerOverride &assemblerOverride() {
++  static AssemblerOverride *override = new AssemblerOverride();
++  return *override;
++}
++
++AssemblerOverride getAssemblerOverride() {
++  std::lock_guard<std::mutex> lock(assemblerOverrideMutex());
++  return assemblerOverride();
+ }
+ 
+ Status processError(llvm::StringRef action, const ProcessResult &result,
+@@ -78,9 +104,18 @@
+ [[maybe_unused]] StatusOr<llvm::SmallVector<char, 0>> assembleWithExecutable(
+     llvm::ArrayRef<char> bytecode, SmTarget target,
+     std::optional<mlir::cuda_tile::BytecodeVersion> bytecodeVersion) {
+-  auto program = llvm::sys::findProgramByName("tileiras");
+-  if (!program) {
+-    return Status::NotFound("tileiras was not found on PATH");
++  AssemblerOverride override = getAssemblerOverride();
++  std::string program = std::move(override.path);
++  if (program.empty()) {
++    auto found = llvm::sys::findProgramByName("tileiras");
++    if (!found) {
++      return Status::NotFound("tileiras was not found on PATH");
++    }
++    program = std::move(*found);
++  }
++  std::optional<llvm::SmallVector<llvm::StringRef, 16>> env;
++  if (!override.environment.empty()) {
++    env.emplace(override.environment.begin(), override.environment.end());
+   }
+ 
+   TIR_ASSIGN_OR_RETURN(auto stdoutFile, createTemporaryFile("stdout"));
+@@ -90,10 +125,10 @@
+   // version up front, do a cheap pre-flight check so an unsupported version
+   // fails fast with a clear message instead of via `tileiras`'s own error.
+   if (bytecodeVersion) {
+-    llvm::SmallVector<llvm::StringRef, 2> versionArgs{*program,
++    llvm::SmallVector<llvm::StringRef, 2> versionArgs{program,
+                                                       "--list-versions"};
+     ProcessResult query =
+-        runProgram(*program, versionArgs, stdoutFile.path, stderrFile.path);
++        runProgram(program, versionArgs, env, stdoutFile.path, stderrFile.path);
+     if (query.exitCode != 0) {
+       return processError("tileiras --list-versions", query, stderrFile.path);
+     }
+@@ -128,10 +163,10 @@
+   std::string gpuArg =
+       "--gpu-name=sm_" + std::to_string(target.getComputeCapabilityVersion());
+   std::string outputArg = "--output-file=" + outputFile.path;
+-  llvm::SmallVector<llvm::StringRef, 4> args{*program, gpuArg, outputArg,
++  llvm::SmallVector<llvm::StringRef, 4> args{program, gpuArg, outputArg,
+                                              inputFile.path};
+   ProcessResult compile =
+-      runProgram(*program, args, stdoutFile.path, stderrFile.path);
++      runProgram(program, args, env, stdoutFile.path, stderrFile.path);
+   if (compile.exitCode != 0) {
+     return processError("tileiras compilation", compile, stderrFile.path);
+   }
+@@ -151,6 +186,14 @@
+ 
+ } // namespace
+ 
++void setTileIRAssembler(llvm::StringRef path,
++                        llvm::ArrayRef<std::string> environment) {
++  std::lock_guard<std::mutex> lock(assemblerOverrideMutex());
++  assemblerOverride().path = path.str();
++  assemblerOverride().environment.assign(environment.begin(),
++                                         environment.end());
++}
++
+ StatusOr<std::optional<llvm::SmallVector<char, 0>>> assembleTileIRToCubin(
+     llvm::ArrayRef<char> bytecode, SmTarget target,
+     std::optional<mlir::cuda_tile::BytecodeVersion> bytecodeVersion) {

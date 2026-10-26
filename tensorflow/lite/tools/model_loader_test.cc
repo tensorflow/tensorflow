@@ -18,12 +18,12 @@ limitations under the License.
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/strings/str_format.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"

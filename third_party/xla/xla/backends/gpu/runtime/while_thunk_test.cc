@@ -26,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -96,11 +97,12 @@ WhileThunk CreateWhileThunk(
     std::optional<int64_t> trip_count) {
   return WhileThunk(thunk_info, condition_result_buffer_index,
                     std::move(condition_thunks), std::move(body_thunks),
-                    trip_count);
+                    trip_count, /*devices_per_host=*/1);
 }
 
 struct CommandRecordCounts {
   int prepares = 0;
+  int initializes = 0;
   int creates = 0;
   int updates = 0;
 };
@@ -114,6 +116,11 @@ class RecordingCommand : public Command {
 
   absl::Status Prepare(const PrepareParams&) override {
     ++counts_->prepares;
+    return absl::OkStatus();
+  }
+
+  absl::Status Initialize(const InitializeParams&) override {
+    ++counts_->initializes;
     return absl::OkStatus();
   }
 
@@ -250,7 +257,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationKnownTripCountTest) {
                          /*condition_result_buffer_index=*/slice,
                          /*condition_thunks=*/ThunkSequence(),
                          /*body_thunks=*/std::move(body_thunks),
-                         /*trip_count=*/5);
+                         /*trip_count=*/5, /*devices_per_host=*/1);
 
   EXPECT_THAT(ExecuteThunk(while_thunk), absl_testing::IsOk());
   EXPECT_THAT(logger->logged_counters(), ElementsAre(0, 1, 2, 3, 4));
@@ -264,7 +271,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationNestedTest) {
                                    /*condition_result_buffer_index=*/slice,
                                    /*condition_thunks=*/ThunkSequence(),
                                    /*body_thunks=*/std::move(body_thunks),
-                                   /*trip_count=*/2);
+                                   /*trip_count=*/2, /*devices_per_host=*/1);
 
   ThunkSequence outer_body_sequence;
   outer_body_sequence.push_back(std::move(inner_while_thunk));
@@ -273,7 +280,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationNestedTest) {
                                /*condition_result_buffer_index=*/slice,
                                /*condition_thunks=*/ThunkSequence(),
                                /*body_thunks=*/std::move(outer_body_sequence),
-                               /*trip_count=*/3);
+                               /*trip_count=*/3, /*devices_per_host=*/1);
 
   EXPECT_THAT(ExecuteThunk(outer_while_thunk), absl_testing::IsOk());
   EXPECT_THAT(logger->logged_counters(), ElementsAre(0, 1, 0, 1, 0, 1));
@@ -285,7 +292,8 @@ TEST(WhileThunkTest, PreparePropagatesToCommandBufferExecutors) {
                                      /*size=*/sizeof(bool));
   WhileThunk thunk(Thunk::ThunkInfo(), pred_slice,
                    /*condition_thunks=*/ThunkSequence(),
-                   /*body_thunks=*/ThunkSequence());
+                   /*body_thunks=*/ThunkSequence(),
+                   /*trip_count=*/std::nullopt, /*devices_per_host=*/1);
 
   CommandRecordCounts cond_counts;
   CommandRecordCounts body_counts;
@@ -319,13 +327,77 @@ TEST(WhileThunkTest, PreparePropagatesToCommandBufferExecutors) {
   EXPECT_EQ(body_counts.prepares, 1);
 }
 
+TEST(WhileThunkTest, PrepareAndInitializeDoNotDuplicateSharedCommands) {
+  BufferAllocation pred_alloc(/*index=*/0, /*size=*/sizeof(bool), /*color=*/0);
+  BufferAllocation::Slice pred_slice(&pred_alloc, /*offset=*/0,
+                                     /*size=*/sizeof(bool));
+  CommandRecordCounts cond_counts;
+  CommandRecordCounts body_counts;
+  auto cond_cmd = std::make_unique<RecordingCommand>(&cond_counts);
+  auto body_cmd = std::make_unique<RecordingCommand>(&body_counts);
+
+  CommandSequence cond_commands;
+  cond_commands.Append(cond_cmd.get());
+  CommandSequence body_commands;
+  body_commands.Append(body_cmd.get());
+
+  ThunkSequence cond_thunks;
+  cond_thunks.push_back(std::move(cond_cmd));
+  ThunkSequence body_thunks;
+  body_thunks.push_back(std::move(body_cmd));
+
+  WhileThunk thunk(Thunk::ThunkInfo(), pred_slice, std::move(cond_thunks),
+                   std::move(body_thunks), /*trip_count=*/std::nullopt,
+                   /*devices_per_host=*/1);
+
+  ASSERT_OK_AND_ASSIGN(CommandExecutor cond_executor,
+                       CommandExecutor::Create(
+                           std::move(cond_commands),
+                           CommandExecutor::SynchronizationMode::kSerialize));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor body_executor,
+                       CommandExecutor::Create(
+                           std::move(body_commands),
+                           CommandExecutor::SynchronizationMode::kSerialize));
+  ASSERT_OK(thunk.SetOrUpdateCommandBufferExecutors(
+      std::move(cond_executor), std::move(body_executor),
+      /*enable_loop_unroll=*/false));
+
+  ASSERT_OK_AND_ASSIGN(std::string platform_name,
+                       PlatformUtil::CanonicalPlatformName("gpu"));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName(platform_name));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  std::vector<se::DeviceAddressBase> buffers;
+  BufferAllocations allocations(buffers, /*device_ordinal=*/0,
+                                /*memory_allocator=*/nullptr);
+
+  Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
+                                      /*collective_clique_requests=*/nullptr,
+                                      /*collective_memory_requests=*/nullptr,
+                                      /*executor=*/executor,
+                                      /*buffer_allocations=*/&allocations};
+  ASSERT_OK(thunk.Prepare(prepare_params));
+  EXPECT_EQ(cond_counts.prepares, 1);
+  EXPECT_EQ(body_counts.prepares, 1);
+
+  Thunk::InitializeParams init_params;
+  init_params.executor = executor;
+  init_params.buffer_allocations = &allocations;
+  ASSERT_OK(thunk.Initialize(init_params));
+  EXPECT_EQ(cond_counts.initializes, 1);
+  EXPECT_EQ(body_counts.initializes, 1);
+}
+
 TEST(WhileThunkTest, RecordCreatesAndUpdatesCommandBufferWhile) {
   BufferAllocation pred_alloc(/*index=*/0, /*size=*/sizeof(bool), /*color=*/0);
   BufferAllocation::Slice pred_slice(&pred_alloc, /*offset=*/0,
                                      /*size=*/sizeof(bool));
   WhileThunk thunk(Thunk::ThunkInfo(), pred_slice,
                    /*condition_thunks=*/ThunkSequence(),
-                   /*body_thunks=*/ThunkSequence());
+                   /*body_thunks=*/ThunkSequence(),
+                   /*trip_count=*/std::nullopt, /*devices_per_host=*/1);
 
   CommandRecordCounts cond_counts;
   CommandRecordCounts body_counts;
@@ -515,14 +587,15 @@ TEST(WhileThunkTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<WhileThunk> thunk,
-      WhileThunk::FromProto(thunk_info, proto.while_thunk(), buffer_allocations,
-                            [](const ThunkProto& proto)
-                                -> absl::StatusOr<std::unique_ptr<DummyThunk>> {
-                              return DummyThunk::FromProto(proto,
-                                                           Kind::kCustomCall);
-                            }));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<WhileThunk> thunk,
+                       WhileThunk::FromProto(
+                           thunk_info, proto.while_thunk(), buffer_allocations,
+                           [](const ThunkProto& proto)
+                               -> absl::StatusOr<std::unique_ptr<DummyThunk>> {
+                             return DummyThunk::FromProto(proto,
+                                                          Kind::kCustomCall);
+                           },
+                           /*devices_per_host=*/1));
   ASSERT_NE(thunk, nullptr);
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
@@ -542,7 +615,7 @@ TEST(WhileThunkTest, TransformNested) {
       /*condition_result_buffer_index=*/slice,
       /*condition_thunks=*/std::move(condition_thunks),
       /*body_thunks=*/std::move(body_thunks),
-      /*trip_count=*/3);
+      /*trip_count=*/3, /*devices_per_host=*/1);
 
   EXPECT_OK(while_thunk->TransformNested([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
@@ -554,6 +627,72 @@ TEST(WhileThunkTest, TransformNested) {
   EXPECT_THAT(while_thunk->body_executor().thunks(), SizeIs(1));
   EXPECT_THAT(while_thunk->body_executor().thunks()[0]->kind(),
               Kind::kCustomCall);
+}
+
+TEST(WhileThunkTest, UnrollDecisionIsReadyBeforeDeviceInitialization) {
+  constexpr int kTripCount = 7;
+  BufferAllocation pred_alloc(/*index=*/0, /*size=*/sizeof(bool), /*color=*/0);
+  BufferAllocation::Slice pred_slice(&pred_alloc, /*offset=*/0,
+                                     /*size=*/sizeof(bool));
+  WhileThunk thunk(Thunk::ThunkInfo(), pred_slice, ThunkSequence(),
+                   ThunkSequence(), kTripCount, /*devices_per_host=*/1);
+  CommandRecordCounts cond_counts;
+  CommandRecordCounts body_counts;
+  ASSERT_OK_AND_ASSIGN(CommandExecutor cond_executor,
+                       MakeCommandExecutor(&cond_counts));
+  ASSERT_OK_AND_ASSIGN(CommandExecutor body_executor,
+                       MakeCommandExecutor(&body_counts));
+  ASSERT_OK(thunk.SetOrUpdateCommandBufferExecutors(
+      std::move(cond_executor), std::move(body_executor),
+      /*enable_loop_unroll=*/true));
+
+  bool pred = true;
+  std::vector<se::DeviceAddressBase> buffers = {
+      se::DeviceAddressBase(&pred, sizeof(pred))};
+  BufferAllocations allocations(buffers, /*device_ordinal=*/0,
+                                /*memory_allocator=*/nullptr);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      run_options, allocations, /*stream=*/nullptr,
+      /*command_buffer_trace_stream=*/nullptr, /*collective_params=*/nullptr,
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
+  CommandStateManager state_manager;
+  Command::RecordParams record_params{state_manager};
+  ::testing::NiceMock<se::MockCommandBuffer> command_buffer;
+  NestedCommandBuffer child;
+  ConfigureNestedCommandBuffer(&child);
+  FakeSeCommand child_command;
+  using RecordChild = absl::AnyInvocable<absl::Status(se::CommandBuffer*)>;
+  EXPECT_CALL(command_buffer,
+              CreateChildCommand(::testing::A<RecordChild>(), ::testing::_))
+      .WillOnce([&](RecordChild record,
+                    absl::Span<const se::CommandBuffer::Command* const>)
+                    -> absl::StatusOr<const se::CommandBuffer::Command*> {
+        ABSL_RETURN_IF_ERROR(record(child.command_buffer.get()));
+        ABSL_RETURN_IF_ERROR(child.command_buffer->Finalize());
+        return &child_command;
+      });
+  EXPECT_CALL(command_buffer,
+              CreateWhile(::testing::A<se::DeviceAddress<bool>>(), ::testing::_,
+                          ::testing::_, ::testing::_))
+      .Times(0);
+  ASSERT_OK_AND_ASSIGN(const se::CommandBuffer::Command* recorded,
+                       thunk.Record(execute_params, record_params,
+                                    Command::RecordCreate{}, &command_buffer));
+  EXPECT_EQ(recorded, &child_command);
+  EXPECT_EQ(cond_counts.creates, kTripCount);
+  EXPECT_EQ(body_counts.creates, kTripCount);
+
+  ASSERT_OK(child.command_buffer->Update());
+  EXPECT_CALL(command_buffer,
+              UpdateChildCommand(&child_command, ::testing::A<RecordChild>()))
+      .WillOnce([&](const se::CommandBuffer::Command*, RecordChild update) {
+        return update(child.command_buffer.get());
+      });
+  ASSERT_OK(thunk.Record(execute_params, record_params,
+                         Command::RecordUpdate{recorded}, &command_buffer));
+  EXPECT_EQ(cond_counts.updates, kTripCount);
+  EXPECT_EQ(body_counts.updates, kTripCount);
 }
 
 }  // namespace

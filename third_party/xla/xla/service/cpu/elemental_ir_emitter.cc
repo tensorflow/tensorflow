@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"
+#include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/exp.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/rsqrt.h"
@@ -73,9 +74,28 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
   return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
 }
 
+namespace {
+
+template <typename Intrinsic>
+absl::StatusOr<llvm::Value*> EmitUnaryF32Intrinsic(llvm::Module* module,
+                                                   llvm::IRBuilderBase* b,
+                                                   PrimitiveType prim_type,
+                                                   llvm::Value* value) {
+  if (prim_type != F32 && prim_type != F16 && prim_type != BF16) {
+    return Unimplemented("%s", Intrinsic::kName);
+  }
+  llvm::Value* f32_value = b->CreateFPCast(value, b->getFloatTy(), "upcast");
+  llvm::Function* fn = Intrinsic::GetOrInsertDeclaration(module, Type::S(F32));
+  llvm::Value* f32_result = b->CreateCall(fn, f32_value);
+  return b->CreateFPCast(f32_result, value->getType(), "downcast");
+}
+
+}  // namespace
+
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcos(
     PrimitiveType prim_type, llvm::Value* value) {
-  return Unimplemented("acos");
+  return EmitUnaryF32Intrinsic<xla::codegen::intrinsics::Acos>(
+      module(), b(), prim_type, value);
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcosh(
@@ -85,17 +105,20 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcosh(
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitCosh(
     PrimitiveType prim_type, llvm::Value* value) {
-  return Unimplemented("cosh");
+  return EmitUnaryF32Intrinsic<xla::codegen::intrinsics::Cosh>(
+      module(), b(), prim_type, value);
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitSinh(
     PrimitiveType prim_type, llvm::Value* value) {
-  return Unimplemented("sinh");
+  return EmitUnaryF32Intrinsic<xla::codegen::intrinsics::Sinh>(
+      module(), b(), prim_type, value);
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAsin(
     PrimitiveType prim_type, llvm::Value* value) {
-  return Unimplemented("asin");
+  return EmitUnaryF32Intrinsic<xla::codegen::intrinsics::Asin>(
+      module(), b(), prim_type, value);
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(

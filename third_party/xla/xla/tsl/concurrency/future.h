@@ -53,7 +53,7 @@ namespace tsl {
 // semantics. This is alternative to AsyncValueRef<T> which has a smart-pointer
 // semantics.
 //
-// Key differences between Future<t> and AsyncValueRef<T>:
+// Key differences between Future<T> and AsyncValueRef<T>:
 //
 // 1. Reading and writing asynchronous value is split between Future<T> and
 //    Promise<T>.
@@ -116,8 +116,8 @@ Future<std::vector<T>> JoinFutures(absl::Span<Future<T>> futures);
 // Example:
 //
 //   Future<std::string> f0 = ...;
-//   Future<std::string> f1 = ...;
-//   Future<std::tuple<std::string, int32_t> joined = JoinFutures(f0, f1);
+//   Future<int32_t> f1 = ...;
+//   Future<std::tuple<std::string, int32_t>> joined = JoinFutures(f0, f1);
 //
 //
 // Example with custom joined type:

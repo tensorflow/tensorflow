@@ -31,14 +31,11 @@ UnboundedWorkQueue::UnboundedWorkQueue(Env* env, absl::string_view thread_name,
 UnboundedWorkQueue::~UnboundedWorkQueue() {
   {
     absl::MutexLock l(work_queue_mu_);
+    // Wait until all queued and running work has completed.
+    work_queue_mu_.Await(absl::Condition(this, &UnboundedWorkQueue::IsIdle));
     // Wake up all `PooledThreadFunc` threads and cause them to terminate before
-    // joining them when `threads_` is cleared.
+    // joining them when `thread_pool_` is cleared.
     cancelled_ = true;
-    if (!work_queue_.empty()) {
-      LOG(ERROR) << "UnboundedWorkQueue named \"" << thread_name_ << "\" was "
-                 << "deleted with pending work in its queue. This may indicate "
-                 << "a potential use-after-free bug.";
-    }
   }
 
   {
@@ -48,7 +45,7 @@ UnboundedWorkQueue::~UnboundedWorkQueue() {
     //
     // NOTE: It is safe to do this while holding `thread_pool_mu_`, because
     // no subsequent calls to `this->Schedule()` should be issued after the
-    // destructor starts.
+    // destructor starts, and all queued work has already completed.
     thread_pool_.clear();
   }
 }
@@ -78,10 +75,14 @@ void UnboundedWorkQueue::PooledThreadFunc() {
     tsl::port::NUMASetThreadNodeAffinity(thread_options_.numa_node);
   }
 
+  bool is_running = false;
   while (true) {
     WorkFunction fn;
     {
       absl::MutexLock l(work_queue_mu_);
+      if (is_running) {
+        --num_running_functions_;
+      }
       ++num_idle_threads_;
       // Wait for a new work function to be submitted, or the cache to be
       // destroyed.
@@ -93,6 +94,8 @@ void UnboundedWorkQueue::PooledThreadFunc() {
       fn = std::move(work_queue_.front());
       work_queue_.pop_front();
       --num_idle_threads_;
+      ++num_running_functions_;
+      is_running = true;
     }
 
     fn();

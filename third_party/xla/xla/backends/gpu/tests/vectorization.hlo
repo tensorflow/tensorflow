@@ -1,8 +1,8 @@
 // RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-LLVM-%{GPU} %s
 // RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-PTX-%{GPU} %s %}
 
-// CHECK-LLVM-b200: store <16 x i8>
-// CHECK-PTX-b200: st.global.v4.b32
+// CHECK-LLVM-b200: store <32 x i8>
+// CHECK-PTX-b200: st.global.{{(v4|v8)}}.b32
 
 // Note, these aren't the optimal values for H100, this just reflects the
 // current behavior of XLA. H100 would also benefit from further vectorization.

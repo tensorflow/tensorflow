@@ -300,5 +300,58 @@ TEST_F(CowStorageTest, FindDoesNotWaitForInsert) {
   EXPECT_EQ(uncommitted, nullptr);
 }
 
+TEST_F(CowStorageTest, ForEachVisitsCreatedSlots) {
+  CowStorage storage;
+  int empty_visits = 0;
+  storage.ForEach([&](DeviceSlot&) { ++empty_visits; });
+  EXPECT_EQ(empty_visits, 0);
+
+  DeviceSlot* s0 = storage.GetOrCreate(0, &DeviceSlot::Create<Tracked>);
+  DeviceSlot* s7 = storage.GetOrCreate(7, &DeviceSlot::Create<Tracked>);
+  DeviceSlot* s31 = storage.GetOrCreate(31, &DeviceSlot::Create<Tracked>);
+
+  std::vector<DeviceSlot*> visited;
+  storage.ForEach([&](DeviceSlot& slot) { visited.push_back(&slot); });
+  EXPECT_THAT(visited, ::testing::UnorderedElementsAre(s0, s7, s31));
+}
+
+TEST_F(CowStorageTest, ForEachDoesNotWaitForInsert) {
+  CowStorage storage;
+  DeviceSlot* existing =
+      storage.GetOrCreate(0, &DeviceSlot::Create<GatedState>);
+  ASSERT_NE(existing, nullptr);
+
+  absl::Notification entered;
+  absl::Notification release;
+  absl::Notification foreach_done;
+  GatedState::entered.store(&entered);
+  GatedState::gate.store(&release);
+
+  bool insert_in_progress = false;
+  bool foreach_finished = false;
+  std::vector<DeviceSlot*> visited;
+  {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "cow_storage_test", 2);
+    pool.Schedule(
+        [&] { storage.GetOrCreate(1, &DeviceSlot::Create<GatedState>); });
+    insert_in_progress =
+        entered.WaitForNotificationWithTimeout(absl::Seconds(10));
+    if (insert_in_progress) {
+      pool.Schedule([&] {
+        storage.ForEach([&](DeviceSlot& slot) { visited.push_back(&slot); });
+        foreach_done.Notify();
+      });
+      foreach_finished =
+          foreach_done.WaitForNotificationWithTimeout(absl::Seconds(10));
+    }
+    release.Notify();
+  }  // Joins the pool.
+  GatedState::Reset();
+
+  EXPECT_TRUE(insert_in_progress);
+  EXPECT_TRUE(foreach_finished);
+  EXPECT_THAT(visited, ::testing::ElementsAre(existing));
+}
+
 }  // namespace
 }  // namespace xla::gpu

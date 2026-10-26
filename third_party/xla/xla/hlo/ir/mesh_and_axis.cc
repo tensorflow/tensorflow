@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/xla_data.pb.h"
@@ -46,12 +45,12 @@ namespace xla {
 
 absl::Status Mesh::Validate() {
   if (device_assignment_.num_dimensions() == 0) {
-    // Empty mesh or maximal mesh.
+    // Empty mesh or single-device mesh.
     if (device_assignment_.num_elements() <= 1) {
       return absl::OkStatus();
     }
     return absl::InvalidArgumentError(absl::StrCat(
-        "Non-maximal mesh must have exactly 1 device id. Number of "
+        "Single-device mesh must have at most 1 device id. Number of "
         "device ids: ",
         device_assignment_.num_elements()));
   }
@@ -109,9 +108,9 @@ Mesh::Mesh(TileAssignment device_assignment,
 }
 
 std::string Mesh::ToString() const {
-  if (IsMaximal()) {
+  if (IsSingleDevice()) {
     return absl::StrCat(
-        "maximal_mesh[device_id=", device_assignment_.array()(0), "]");
+        "single_device[device_id=", device_assignment_.array()(0), "]");
   }
 
   std::string mesh_str = "mesh";
@@ -143,7 +142,7 @@ MeshProto Mesh::ToProto() const {
     if (device_assignment_.num_elements() == 0) {
       return MeshProto();
     }
-    // Maximal mesh
+    // Single-device mesh
     // TODO(b/454008727): Validate device_ids_size is 1.
     proto.add_device_ids(*device_assignment_.array().begin());
     return proto;
@@ -152,11 +151,10 @@ MeshProto Mesh::ToProto() const {
   std::vector<MeshProto::MeshAxis> axes;
   axes.reserve(num_axes());
 
-  for (auto [name, size] :
-       llvm::zip_equal(axes_names_, device_assignment_.dimensions())) {
+  for (int64_t i = 0; i < axes_names_.size(); ++i) {
     MeshProto::MeshAxis axis;
-    axis.set_name(name);
-    axis.set_size(size);
+    axis.set_name(axes_names_[i]);
+    axis.set_size(device_assignment_.dim(i));
     axes.push_back(std::move(axis));
   }
   proto.mutable_axes()->Assign(axes.begin(), axes.end());

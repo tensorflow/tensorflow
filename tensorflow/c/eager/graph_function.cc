@@ -26,7 +26,7 @@ namespace graph {
 GraphFunction::GraphFunction(FunctionDef fdef)
     : AbstractFunction(kGraph),
       func_record_(new FunctionRecord(std::move(fdef), {}, true)) {}
-GraphFunction::~GraphFunction() {}
+GraphFunction::~GraphFunction() = default;
 absl::Status GraphFunction::GetFunctionDef(const FunctionDef **fdef) {
   *fdef = &(func_record_->fdef());
   return absl::OkStatus();

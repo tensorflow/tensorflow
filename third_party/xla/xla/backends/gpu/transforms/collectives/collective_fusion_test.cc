@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu_topology.h"
@@ -167,6 +166,35 @@ TEST_F(CollectiveFusionTest, FusesAndFlattensMediumAllReduceTwoShot) {
                             kExpected, /*after_pass_checks=*/nullptr, &config);
 }
 
+TEST_F(CollectiveFusionTest, FusesAndFlattens3DAllReduceTwoShot) {
+  // Use a 3D shape to test multi-dimensional flattening:
+  // [2, 4, 32768] = 262144 elements (1 MB -> TwoShot)
+  Shape shape = xla::ShapeUtil::MakeShape(F32, {2, 4, 32768});
+  std::string hlo = absl::StrFormat(kAllReduceHloTemplate, shape.ToString());
+  SCOPED_TRACE(::testing::Message() << "hlo: " << hlo);
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[262144]) -> f32[262144] {
+    // CHECK:   %[[P0:.*]] = f32[262144]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[262144]{0} all-reduce(%[[P0]]),
+    // CHECK-SAME: to_apply=%add
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0.1: f32[2,4,32768]) -> f32[2,4,32768] {
+    // CHECK:   %[[P0:.*]] = f32[2,4,32768]{2,1,0} parameter(0)
+    // CHECK:   %[[BITCAST_TO_1D:.*]] = f32[262144]{0} bitcast(%[[P0]])
+    // CHECK:   %[[FUSION:.*]] = f32[262144]{0} fusion(%[[BITCAST_TO_1D]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+    // CHECK:   ROOT {{.*}} = f32[2,4,32768]{2,1,0} bitcast(%[[FUSION]])
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  RunAndFilecheckHloRewrite(hlo, AnnotateAndFusePipeline(*gpu_topology_),
+                            kExpected, /*after_pass_checks=*/nullptr, &config);
+}
+
 TEST_F(CollectiveFusionTest, DoesNotFuseUnannotated) {
   constexpr int64_t kNumElements = 32768;
   Shape shape = ShapeUtil::MakeShape(F32, {kNumElements});
@@ -284,5 +312,173 @@ TEST_F(CollectiveFusionTest, AsyncCollectiveCreatorLiftsTritonCollective) {
   EXPECT_TRUE(filecheck_matches) << module->ToString();
 }
 
+TEST_F(CollectiveFusionTest, FusesReduceScatterOneShot) {
+  static constexpr absl::string_view kReduceScatterHlo = R"(
+    HloModule reduce_scatter_test
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = f32[262144]{0} parameter(0)
+      ROOT rs = f32[32768]{0} reduce-scatter(p0),
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          dimensions={0},
+          to_apply=add
+    }
+  )";
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[262144]) -> f32[32768] {
+    // CHECK:   %[[P0:.*]] = f32[262144]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[32768]{0} reduce-scatter(%[[P0]]),
+    // CHECK-SAME: dimensions={0},
+    // CHECK-SAME: to_apply=%add
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0.1: f32[262144]) -> f32[32768] {
+    // CHECK:   %[[P0:.*]] = f32[262144]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[32768]{0} fusion(%[[P0]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  config.mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_REDUCE_SCATTER);
+  RunAndFilecheckHloRewrite(kReduceScatterHlo,
+                            AnnotateAndFusePipeline(*gpu_topology_), kExpected,
+                            /*after_pass_checks=*/nullptr, &config);
+}
+
+TEST_F(CollectiveFusionTest,
+       FusesAndFlattensNonPowerOfTwoReduceScatterOneShot) {
+  static constexpr absl::string_view kReduceScatterHlo = R"(
+    HloModule reduce_scatter_test
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = f32[98304]{0} parameter(0)
+      ROOT rs = f32[12288]{0} reduce-scatter(p0),
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          dimensions={0},
+          to_apply=add
+    }
+  )";
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[64,8,192]) -> f32[8,8,192] {
+    // CHECK:   %[[P0:.*]] = f32[64,8,192]{2,1,0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[8,8,192]{2,1,0} reduce-scatter(%[[P0]]),
+    // CHECK-SAME: dimensions={0},
+    // CHECK-SAME: to_apply=%add
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0.1: f32[98304]) -> f32[12288] {
+    // CHECK:   %[[P0:.*]] = f32[98304]{0} parameter(0)
+    // CHECK:   %[[BITCAST_IN:.*]] = f32[64,8,192]{2,1,0} bitcast(%[[P0]])
+    // CHECK:   %[[FUSION:.*]] = f32[8,8,192]{2,1,0} fusion(%[[BITCAST_IN]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+    // CHECK:   ROOT {{.*}} = f32[12288]{0} bitcast(%[[FUSION]])
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  config.mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_REDUCE_SCATTER);
+  RunAndFilecheckHloRewrite(kReduceScatterHlo,
+                            AnnotateAndFusePipeline(*gpu_topology_), kExpected,
+                            /*after_pass_checks=*/nullptr, &config);
+}
+
+TEST_F(CollectiveFusionTest, FusesVariadicAllGatherIntoGteTupleRoot) {
+  static constexpr absl::string_view kVariadicAllGatherHlo = R"(
+    HloModule variadic_all_gather_test
+
+    ENTRY e {
+      p0 = f32[4,4096]{1,0} parameter(0)
+      p1 = pred[2]{0} parameter(1)
+      ROOT ag = (f32[8,4096]{1,0}, pred[4]{0}) all-gather(p0, p1),
+          replica_groups={{0,1}},
+          dimensions={0}
+    }
+  )";
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[4,4096], param_1: pred[2]) -> (f32[8,4096], pred[4]) {
+    // CHECK:   %[[P0:.*]] = f32[4,4096]{1,0} parameter(0)
+    // CHECK:   %[[P1:.*]] = pred[2]{0} parameter(1)
+    // CHECK:   %[[AG:.*]] = (f32[8,4096]{1,0}, pred[4]{0}) all-gather(%[[P0]], %[[P1]]),
+    // CHECK-SAME: dimensions={0}
+    // CHECK:   %[[GTE0:.*]] = f32[8,4096]{1,0} get-tuple-element(%[[AG]]), index=0
+    // CHECK:   %[[GTE1:.*]] = pred[4]{0} get-tuple-element(%[[AG]]), index=1
+    // CHECK:   ROOT {{.*}} = (f32[8,4096]{1,0}, pred[4]{0}) tuple(%[[GTE0]], %[[GTE1]]), frontend_attributes={disable_tuple_simplifier="true"}
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0: f32[4,4096], p1: pred[2]) -> (f32[8,4096], pred[4]) {
+    // CHECK:   %[[P0_ENTRY:.*]] = f32[4,4096]{1,0} parameter(0)
+    // CHECK:   %[[P1_ENTRY:.*]] = pred[2]{0} parameter(1)
+    // CHECK:   ROOT {{.*}} = (f32[8,4096]{1,0}, pred[4]{0}) fusion(%[[P0_ENTRY]], %[[P1_ENTRY]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  config.mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_GATHER);
+  RunAndFilecheckHloRewrite(kVariadicAllGatherHlo,
+                            AnnotateAndFusePipeline(*gpu_topology_), kExpected,
+                            /*after_pass_checks=*/nullptr, &config);
+}
+
+TEST_F(CollectiveFusionTest, FusesAllToAllOneShot) {
+  static constexpr absl::string_view kAllToAllHlo = R"(
+    HloModule all_to_all_test
+
+    ENTRY e {
+      p0 = f32[32768]{0} parameter(0)
+      ROOT a2a = f32[32768]{0} all-to-all(p0),
+          replica_groups={{0,1,2,3,4,5,6,7}},
+          dimensions={0}
+    }
+  )";
+  static constexpr absl::string_view kExpected = R"(
+    // CHECK: %[[FUSION_COMPUTATION:.*]] (param_0: f32[32768]) -> f32[32768] {
+    // CHECK:   %[[P0:.*]] = f32[32768]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[32768]{0} all-to-all(%[[P0]]),
+    // CHECK-SAME: dimensions={0}
+    // CHECK: }
+    //
+    // CHECK: ENTRY %e (p0: f32[32768]) -> f32[32768] {
+    // CHECK:   %[[P0:.*]] = f32[32768]{0} parameter(0)
+    // CHECK:   ROOT {{.*}} = f32[32768]{0} fusion(%[[P0]]),
+    // CHECK-SAME: kind=kCustom,
+    // CHECK-SAME: calls=%[[FUSION_COMPUTATION]],
+    // CHECK-SAME: backend_config={
+    // CHECK-SAME: "kind":"__triton_collective"
+    // CHECK-SAME: "block_level_fusion_config"
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/8);
+  config.mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_TO_ALL);
+  RunAndFilecheckHloRewrite(kAllToAllHlo,
+                            AnnotateAndFusePipeline(*gpu_topology_), kExpected,
+                            /*after_pass_checks=*/nullptr, &config);
+}
 }  // namespace
 }  // namespace xla::gpu

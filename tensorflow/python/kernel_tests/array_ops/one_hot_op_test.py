@@ -265,6 +265,23 @@ class OneHotTest(test.TestCase, parameterized.TestCase):
     self._testBothOneHot(
         indices=indices, depth=depth, off_value=0.0, truth=truth)
 
+  def testBool(self):
+    indices = [0, 1, 2]
+    depth = 3
+    truth = np.asarray(
+        [[True, False, False], [False, True, False], [False, False, True]],
+        dtype=np.bool_,
+    )
+    self._testBothOneHot(
+        indices=indices, depth=depth, dtype=dtypes.bool, truth=truth
+    )
+    self._testBothOneHot(
+        indices=indices, depth=depth, on_value=True, truth=truth
+    )
+    self._testBothOneHot(
+        indices=indices, depth=depth, off_value=False, truth=truth
+    )
+
   def testString(self):
     indices = [0, 1, 2]
     depth = 3

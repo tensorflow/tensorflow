@@ -104,5 +104,26 @@ absl::StatusOr<dnnl::memory::data_type> ToOneDnnDataType(
   }
 }
 
+absl::StatusOr<dnnl::memory::data_type> ToOneDnnDataType(
+    dnn::DataType dnn_type) {
+  switch (dnn_type) {
+    case dnn::DataType::kHalf:
+      return dnnl::memory::data_type::f16;
+    case dnn::DataType::kBF16:
+      return dnnl::memory::data_type::bf16;
+    case dnn::DataType::kFloat:
+      return dnnl::memory::data_type::f32;
+    case dnn::DataType::kDouble:
+      return dnnl::memory::data_type::f64;
+    case dnn::DataType::kInt8:
+      return dnnl::memory::data_type::s8;
+    case dnn::DataType::kInt32:
+      return dnnl::memory::data_type::s32;
+    default:
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported DNN datatype: ", dnn::DataType_Name(dnn_type)));
+  }
+}
+
 }  // namespace sycl
 }  // namespace stream_executor

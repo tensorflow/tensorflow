@@ -22,13 +22,17 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
 
+namespace xla {
+class CustomOptions;
+}  // namespace xla
+
 namespace xla::ffi {
 
 //===----------------------------------------------------------------------===//
 // AttributesStorage
 //===----------------------------------------------------------------------===//
 
-// Owns the XLA FFI C API storage backing a set of custom call attributes.
+// Owns the XLA FFI C API storage backing custom call attributes or options.
 //
 // An `AttributesMap` is a map of nested `std::variant`s, whereas the XLA FFI C
 // API passes attributes as an `XLA_FFI_Attrs` struct: parallel arrays of names,
@@ -38,15 +42,17 @@ namespace xla::ffi {
 // defined decodings registered with `XLA_FFI_REGISTER_ENUM_ATTR_DECODING` and
 // `XLA_FFI_REGISTER_STRUCT_ATTR_DECODING`) work.
 //
-// For any particular instance of a custom call in the XLA program, attributes
-// are compile time constants. An `AttributesStorage` is therefore immutable and
-// shared: `Create` hands out a `std::shared_ptr` that can be held by any number
-// of call frames (see `CallFrame::Copy`) and `ffi::Attributes` views.
+// Custom options use the same C API format as attributes and represent per-call
+// values and passed to FFI handlers as XLA_FFI_Attrs.
 class AttributesStorage {
  public:
   // Builds the C API storage for `attrs`.
-  static std::shared_ptr<const AttributesStorage> Create(
+  static std::unique_ptr<const AttributesStorage> Create(
       const AttributesMap& attrs);
+
+  // Builds the same C API representation for per-call custom options.
+  static std::unique_ptr<const AttributesStorage> Create(
+      const xla::CustomOptions& options);
 
   ~AttributesStorage();
 
@@ -62,6 +68,7 @@ class AttributesStorage {
   struct AttributeStorage;
   struct AttributeType;
   struct ConvertAttribute;
+  struct ConvertOption;
   struct FixUpAttribute;
 
   // Declare implementation detail structs for attributes storage.
@@ -79,7 +86,7 @@ class AttributesStorage {
   // Creates attributes storage from an attributes map.
   static std::unique_ptr<Attributes> CreateAttrs(const AttributesMap& attrs);
 
-  // Fixes up attributes storage by initializing XLA FFI structs with valid
+  // Sorts attributes by name, then initializes XLA FFI structs with valid
   // pointers into storage objects.
   static std::unique_ptr<Attributes> FixUpAttrs(
       std::unique_ptr<Attributes> attrs);

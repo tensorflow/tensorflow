@@ -27,6 +27,7 @@ limitations under the License.
 #define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
 #endif
 
+#include <limits>
 #include <numeric>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -100,7 +101,15 @@ class SplitVOpBase : public OpKernel {
             "-input rank(-", input.dims(), ") <= split_dim < input rank (",
             input.dims(), "), but got ", split_dim_orig)));
 
-    Tlen input_size_split_dim = input_shape.dim_size(split_dim);
+    // Check that the input size fits in Tlen before converting it. Otherwise
+    // an int32 or int8 Tlen truncates it, and split sizes that sum to the
+    // truncated size silently drop the rest of the input.
+    const int64_t actual_input_size = input_shape.dim_size(split_dim);
+    OP_REQUIRES(context, actual_input_size <= std::numeric_limits<Tlen>::max(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input size along split_dim must be <= max(Tlen). Got: ",
+                    actual_input_size)));
+    Tlen input_size_split_dim = static_cast<Tlen>(actual_input_size);
 
     // Special case 1: num_split == 1. Nothing to do.
     if (num_split == 1) {
@@ -128,6 +137,24 @@ class SplitVOpBase : public OpKernel {
                                        "input."));
         neg_one_dim = d;
       } else {
+        // Reject a negative size before summing it, so that
+        // 0 <= determined_size <= input_size_split_dim below. Otherwise a
+        // large negative size, such as the minimum of Tlen next to a -1, makes
+        // `input_size_split_dim - determined_size` overflow.
+        OP_REQUIRES(context, size >= 0,
+                    errors::InvalidArgument("Split size at index ", d,
+                                            " must be >= 0. Got: ", size));
+        // Accumulate with an explicit overflow guard. `determined_size += size`
+        // wraps for large `size_splits`, and a wrapped total can equal
+        // `input_size_split_dim` and pass the check below, letting the aligned
+        // slicing path compute an endpoint that reaches a fatal `Tensor::Slice`
+        // invariant. Rejecting overflow here also keeps that later path safe,
+        // since the accepted total then bounds every partial sum.
+        OP_REQUIRES(context,
+                    determined_size <= std::numeric_limits<Tlen>::max() - size,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Sum of size_splits overflows the index type at index ",
+                        d, ".")));
         determined_size += size;
       }
     }
@@ -145,13 +172,6 @@ class SplitVOpBase : public OpKernel {
 
     if (neg_one_dim >= 0) {
       (*split_sizes_vec)[neg_one_dim] = input_size_split_dim - determined_size;
-    }
-
-    for (int i = 0; i < split_sizes_vec->size(); ++i) {
-      const Tlen& split_size = (*split_sizes_vec)[i];
-      OP_REQUIRES(context, split_size >= Tlen(0),
-                  errors::InvalidArgument("Split size at index ", i,
-                                          " must be >= 0. Got: ", split_size));
     }
 
     // Special case 2: split along the 1st dimension. The requirements are that
@@ -180,7 +200,7 @@ class SplitVOpBase : public OpKernel {
   template <typename IndexType>
   std::tuple<IndexType, IndexType, IndexType> SetDims(
       const TensorShape& input_shape, const int32_t split_dim) const {
-    static_assert(std::is_integral<IndexType>::value,
+    static_assert(std::is_integral_v<IndexType>,
                   "IndexType must be an integer type");
     int32_t prefix_dim_size = 1;
     for (int i = 0; i < split_dim; ++i) {
@@ -430,10 +450,10 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
       GpuDeviceArrayOnHost<T*> ptrs(context, num_split);
       OP_REQUIRES_OK(context, ptrs.Init());
 
-      GpuDeviceArrayOnHost<Tlen> offsets(context, num_split + 1);
+      GpuDeviceArrayOnHost<int32_t> offsets(context, num_split + 1);
       OP_REQUIRES_OK(context, offsets.Init());
 
-      Tlen offset = 0;
+      int32_t offset = 0;
       int entry = split_sizes_vec[0];
       bool fixed_size =
           std::all_of(split_sizes_vec.begin(), split_sizes_vec.end(),
@@ -454,7 +474,7 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
       OP_REQUIRES_OK(context, offsets.Finalize());
 
       if (input.NumElements() > 0) {
-        SplitVOpGPULaunch<T, Tlen>().Run(
+        SplitVOpGPULaunch<T, int32_t>().Run(
             context->eigen_device<GPUDevice>(), fixed_size,
             input.flat<T>().data(), prefix_dim_size,
             input.NumElements() / prefix_dim_size, offsets.data(), ptrs.data());

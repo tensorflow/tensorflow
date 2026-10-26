@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -212,7 +213,22 @@ TEST(CpuTopologyDescriptionTest, GetDefaultLayout) {
         topology.MakeCanonicalShapeForMemorySpace(CpuDeviceMemorySpace::kKindId,
                                                   shape, /*layout=*/nullptr));
     EXPECT_EQ(default_layout, canonical_shape.layout());
+
+    Layout untiled_layout = LayoutUtil::MakeDescendingLayout(2);
+    ASSERT_OK_AND_ASSIGN(
+        Shape canonical_from_untiled,
+        topology.MakeCanonicalShapeForMemorySpace(CpuDeviceMemorySpace::kKindId,
+                                                  shape, &untiled_layout));
+    EXPECT_EQ(default_layout, canonical_from_untiled.layout());
   }
+
+  const Shape s4_shape = ShapeUtil::MakeShape(S4, {2, 3});
+  Layout bad_s4_layout = LayoutUtil::MakeDescendingLayout(2);
+  bad_s4_layout.set_element_size_in_bits(8);
+  EXPECT_FALSE(topology
+                   .MakeCanonicalShapeForMemorySpace(
+                       CpuDeviceMemorySpace::kKindId, s4_shape, &bad_s4_layout)
+                   .ok());
 }
 
 }  // namespace

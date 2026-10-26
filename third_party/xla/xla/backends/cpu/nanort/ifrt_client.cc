@@ -30,7 +30,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -914,7 +914,8 @@ class NanoExecutable final
     XlaComputation computation;
     ABSL_RETURN_IF_ERROR(MlirToXlaComputation(
         xla_program->mlir_module(), computation, /*use_tuple_args=*/false,
-        /*return_tuple=*/true, /*exec_build_options=*/nullptr));
+        /*return_tuple=*/true, /*exec_build_options=*/nullptr,
+        mlir::mhlo::getCpuChloToHighLevelMhloOptions()));
     ABSL_ASSIGN_OR_RETURN(auto nano_executable,
                      client->nano_client()->Compile(computation));
 
@@ -1574,6 +1575,15 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::CopyArrays(
   return result;
 }
 
+absl::StatusOr<std::vector<ifrt::ArrayRef>>
+NanoIfrtClient::CopyArraysWithDonatedDst(
+    absl::Span<ifrt::ArrayRef> arrays,
+    absl::Span<ifrt::ArrayRef> donated_dst_arrays,
+    ifrt::ArrayCopySemantics semantics) {
+  return absl::UnimplementedError(
+      "CopyArraysWithDonatedDst is not implemented.");
+}
+
 absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
     const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics semantics) {
@@ -1707,6 +1717,12 @@ absl::StatusOr<ifrt::DeviceListRef> NanoIfrtClient::MakeDeviceList(
 }
 
 ifrt::Compiler* NanoIfrtClient::GetDefaultCompiler() { return compiler_.get(); }
+
+absl::StatusOr<std::vector<tsl::Future<ifrt::LoadedExecutableRef>>>
+NanoIfrtClient::Load(absl::Span<const ifrt::ExecutableRef> executables,
+                     absl::Span<std::unique_ptr<ifrt::LoadOptions>> options) {
+  return absl::UnimplementedError("Load is not implemented.");
+}
 
 absl::StatusOr<std::shared_ptr<ifrt::Topology>>
 NanoIfrtClient::GetTopologyForDevices(

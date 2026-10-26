@@ -22,21 +22,48 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_emitter_context.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/layout.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/xla_data.pb.h"
 
 // Helpers for writing custom-call thunk-folding handlers. See
 // `native_custom_call_handler_registry.h` for the mechanism itself.
 
 namespace xla::gpu {
+
+// Number of scratch buffers that `CustomCallScratchAssigner` appended to the
+// result of `instr` (see `NativeCustomCallScratchHandler`). Zero if the custom
+// call has no scratch buffers.
+//
+// Returns `InvalidArgument` if the custom call's scratch attribute is
+// malformed or doesn't fit its result shape.
+absl::StatusOr<int64_t> NumScratchBuffers(
+    const HloCustomCallInstruction& instr);
+
+// Returns the shape index at which the `scratch_index`-th scratch buffer of
+// `instr` lives (counting from zero, in the order the scratch handler returned
+// them).
+//
+// Returns `InvalidArgument` if `instr` doesn't have that many scratch buffers.
+absl::StatusOr<ShapeIndex> ScratchShapeIndex(
+    const HloCustomCallInstruction& instr, int64_t scratch_index);
+
+// The shape and buffer slice of the `scratch_index`-th scratch buffer of
+// `instr`, resolved through `ctx`.
+absl::StatusOr<ShapedSlice> GetScratchShapedSlice(
+    const HloCustomCallInstruction& instr,
+    const NativeCustomCallEmitterContext& ctx, int64_t scratch_index);
 
 // Returns the shape index at which the single array result of `instr` lives.
 //
@@ -44,7 +71,8 @@ namespace xla::gpu {
 // result: `jax.ffi.ffi_call` always wraps results in a tuple, while
 // hand-written HLO usually does not. Accepting both spellings means a handler
 // works regardless of who produced the module, so prefer this over inspecting
-// `instr.shape()` directly.
+// `instr.shape()` directly. Scratch buffers appended by
+// `CustomCallScratchAssigner` don't count as results.
 //
 // Returns `InvalidArgument` if `instr` does not have exactly one array result.
 absl::StatusOr<ShapeIndex> SingleResultShapeIndex(
@@ -70,6 +98,30 @@ absl::StatusOr<int64_t> SingleResultArgumentPosition(
 // the invalid capability that `DeviceDescription` returns in that case.
 absl::StatusOr<stream_executor::CudaComputeCapability> GetCudaComputeCapability(
     const NativeCustomCallEmitterContext& ctx);
+
+// Target memory spaces for native custom call scratch buffers.
+enum class NativeCustomCallMemorySpace : int64_t {
+  // Regular device memory (Layout::kDefaultMemorySpace). Buffer assignment
+  // allocates a standard device buffer.
+  kDefault = Layout::kDefaultMemorySpace,
+
+  // Shared collective (symmetric) memory (Layout::kCollectiveMemorySpace).
+  // Buffer assignment may share the allocation with other collective buffers
+  // with non-overlapping live ranges.
+  kCollective = Layout::kCollectiveMemorySpace,
+};
+
+// Builds an array shape of `element_type` with `dimensions` in the default
+// (descending) layout, placed in `memory_space`. Since XLA GPU buffer
+// assignment aligns all allocations to 256 bytes
+// (`kXlaAllocatedBufferAlignBytes`), this buffer is properly aligned for any
+// primitive or vector type in GPU kernels.
+//
+// Returns `InvalidArgument` if the dimensions do not form a valid array shape.
+absl::StatusOr<Shape> MakeScratchShape(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    NativeCustomCallMemorySpace memory_space =
+        NativeCustomCallMemorySpace::kDefault);
 
 // Everything that distinguishes one custom kernel launch from another.
 struct CustomKernelLaunchSpec {

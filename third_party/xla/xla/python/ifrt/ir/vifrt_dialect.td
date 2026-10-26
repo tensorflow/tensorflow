@@ -42,7 +42,6 @@ def Vifrt_Dialect : Dialect {
 
   let useDefaultAttributePrinterParser = 0;
   let useDefaultTypePrinterParser = 0;
-  let useStrictPropertiesInAssemblyFormat = 0;
 }
 
 //===---------------------------------------------------------------------------

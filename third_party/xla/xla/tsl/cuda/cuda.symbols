@@ -53,6 +53,7 @@ cuDeviceGetAttribute
 cuDeviceGetByPCIBusId
 cuDeviceGetCount
 cuDeviceGetDefaultMemPool
+cuDeviceGetDevResource
 cuDeviceGetExecAffinitySupport
 cuDeviceGetGraphMemAttribute
 cuDeviceGetLuid
@@ -78,6 +79,9 @@ cuDeviceSetGraphMemAttribute
 cuDeviceSetMemPool
 cuDeviceTotalMem
 cuDeviceTotalMem_v2
+cuDevResourceGenerateDesc
+cuDevSmResourceSplit
+cuDevSmResourceSplitByCount
 cuDriverGetVersion
 cuEGLApiInit
 cuEGLStreamConsumerAcquireFrame
@@ -171,6 +175,7 @@ cuGraphExecEventWaitNodeSetEvent
 cuGraphExecExternalSemaphoresSignalNodeSetParams
 cuGraphExecExternalSemaphoresWaitNodeSetParams
 cuGraphExecGetFlags
+cuGraphExecGetId
 cuGraphExecHostNodeSetParams
 cuGraphExecKernelNodeSetParams
 cuGraphExecKernelNodeSetParams_v2
@@ -185,6 +190,7 @@ cuGraphExternalSemaphoresWaitNodeGetParams
 cuGraphExternalSemaphoresWaitNodeSetParams
 cuGraphGetEdges
 cuGraphGetEdges_v2
+cuGraphGetId
 cuGraphGetNodes
 cuGraphGetRootNodes
 cuGraphHostNodeGetParams
@@ -210,11 +216,14 @@ cuGraphMemcpyNodeSetParams
 cuGraphMemsetNodeGetParams
 cuGraphMemsetNodeSetParams
 cuGraphNodeFindInClone
+cuGraphNodeGetContainingGraph
 cuGraphNodeGetDependencies
 cuGraphNodeGetDependencies_v2
 cuGraphNodeGetDependentNodes
 cuGraphNodeGetDependentNodes_v2
 cuGraphNodeGetEnabled
+cuGraphNodeGetParams
+cuGraphNodeGetToolsId
 cuGraphNodeGetType
 cuGraphNodeSetEnabled
 cuGraphNodeSetParams
@@ -241,6 +250,9 @@ cuGraphicsUnmapResources_ptsz
 cuGraphicsUnregisterResource
 cuGraphicsVDPAURegisterOutputSurface
 cuGraphicsVDPAURegisterVideoSurface
+cuGreenCtxCreate
+cuGreenCtxDestroy
+cuGreenCtxStreamCreate
 cuImportExternalMemory
 cuImportExternalSemaphore
 cuInit

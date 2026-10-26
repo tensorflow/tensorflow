@@ -55,6 +55,7 @@ using ::testing::Field;
 using ::testing::Ge;
 using ::testing::IsEmpty;
 using ::testing::Le;
+using ::testing::Lt;
 using ::testing::SizeIs;
 
 // Returns a matcher that verifies that each container element that matches
@@ -94,6 +95,10 @@ auto NumCtasIs(MatcherType matcher) {
 template <typename MatcherType>
 auto WavesPerEuIs(MatcherType matcher) {
   return Field("waves_per_eu", &TritonGemmConfig::waves_per_eu, matcher);
+}
+template <typename MatcherType>
+auto MfmaSizeIs(MatcherType matcher) {
+  return Field("mfma_size", &TritonGemmConfig::mfma_size, matcher);
 }
 
 auto IsValidConfig() {
@@ -264,21 +269,6 @@ TEST_F(DotSearchSpaceTest, ScalesDesiredWarpsWithHardwareDerivedRidgePoint) {
                                            GetDot(compute_bound_module.get()));
   EXPECT_THAT(compute_space.ToString(),
               ::testing::HasSubstr("desired_total_warps: 1056"));
-}
-
-TEST_F(DotSearchSpaceTest, EliminatesLowOccupancyTilesForMediumProblem) {
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
-                          /*contracting_dim=*/1024));
-  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
-  // On 1024x1024 with 132 cores, tiles >= 128x128 yield <= 64 result tiles
-  // (< 132 cores) and should be eliminated in non-exhaustive mode.
-  EXPECT_THAT(
-      search_space.GenerateConfigs(),
-      AllOf(Not(IsEmpty()),
-            Not(Contains(AllOf(BlockMIs(Ge(128)), BlockNIs(Ge(128)))))));
 }
 
 TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {
@@ -606,6 +596,15 @@ TEST_F(DotSearchSpaceTest, CudaDoesNotGenerateWavesPerEuConfigs) {
               AllOf(Not(IsEmpty()), Each(WavesPerEuIs(Eq(0)))));
 }
 
+TEST_F(DotSearchSpaceTest, CudaDoesNotGenerateMfmaSizeConfigs) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              AllOf(Not(IsEmpty()), Each(MfmaSizeIs(Eq(0)))));
+}
+
 class RocmDotSearchSpaceTest : public DefaultDeviceDotSearchSpaceTest {
  protected:
   RocmDotSearchSpaceTest() {
@@ -628,6 +627,30 @@ TEST_F(RocmDotSearchSpaceTest, GeneratesWavesPerEuConfigs) {
 
   EXPECT_THAT(configs, AllOf(Not(IsEmpty()), Contains(WavesPerEuIs(Ge(1))),
                              Each(WavesPerEuIs(AnyOf(0, 1, 2, 4)))));
+}
+
+TEST_F(RocmDotSearchSpaceTest, GeneratesMfmaSizeConfigs) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+  std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs();
+
+  EXPECT_THAT(configs, AllOf(Not(IsEmpty()), Contains(MfmaSizeIs(Eq(16))),
+                             Contains(MfmaSizeIs(Eq(0))),
+                             Each(MfmaSizeIs(AnyOf(0, 16)))));
+  EXPECT_THAT(configs,
+              Not(Contains(AllOf(MfmaSizeIs(Eq(16)),
+                                 AnyOf(BlockMIs(Lt(32)), BlockNIs(Lt(32)))))));
+}
+
+TEST_F(RocmDotSearchSpaceTest, NarrowDotDoesNotGetMfmaSizeConfigs) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/16));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              AllOf(Not(IsEmpty()), Each(MfmaSizeIs(Eq(0)))));
 }
 
 }  // namespace

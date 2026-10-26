@@ -128,8 +128,8 @@ DenseIntElementsAttr composeBroadcastDimensionsAttr(OpBuilder &builder,
 }
 
 // Find all the broadcast intents and their dependencies. Start analyzing from
-// the root an collect all broadcast intents that can help broadcast propagation
-// from there.
+// the root and collect all broadcast intents that can help broadcast
+// propagation from there.
 void findBroadcastIntents(
     DynamicBroadcastInDimOp root, Block *parentBlock,
     BroadcastIntent &rootBcastIntent,

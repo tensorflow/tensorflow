@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,8 +27,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -36,10 +35,8 @@ namespace xla::xtile {
 
 // Emits an xtile module.
 // fn_name: The name of the function to emit.
-// emitter_specific_constraints_builder: A builder for the emitter specific
-//   constraints.
 // fusion: The fusion instruction to emit.
-// block_level_parameters: The block level parameters.
+// tiled_computation: The tiled computation to emit.
 // mlir_context: The MLIR context to use.
 // opaque_args_types: The types of the opaque arguments to the function, e.x.
 // arguments for collectives in XLA:GPU.
@@ -47,10 +44,11 @@ namespace xla::xtile {
 // Omit otherwise.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction& fusion,
-    const SymbolicTileAnalysis& symbolic_tile_analysis, const Tiling& tiling,
+    const ::xla::gpu::TiledHloComputation& tiled_computation,
     mlir::MLIRContext& mlir_context,
     absl::Span<mlir::Type> opaque_args_types = {},
-    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc = {});
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc = {},
+    int num_tiles_per_pid = 1);
 
 }  // namespace xla::xtile
 

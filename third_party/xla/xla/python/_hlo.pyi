@@ -203,157 +203,163 @@ class HloOpcode(enum.Enum):
 
   kExp = 58
 
-  kExpm1 = 59
+  kExp2 = 59
 
-  kFft = 60
+  kExpm1 = 60
 
-  kFloor = 61
+  kFft = 61
 
-  kFusion = 62
+  kFloor = 62
 
-  kGather = 63
+  kFma = 63
 
-  kGetDimensionSize = 64
+  kFusion = 64
 
-  kGetTupleElement = 65
+  kGather = 65
 
-  kImag = 66
+  kGetDimensionSize = 66
 
-  kInfeed = 67
+  kGetTupleElement = 67
 
-  kIota = 68
+  kImag = 68
 
-  kIsFinite = 69
+  kInfeed = 69
 
-  kLog = 70
+  kIota = 70
 
-  kLog1p = 71
+  kIsFinite = 71
 
-  kLogistic = 72
+  kLog = 72
 
-  kMap = 73
+  kLog1p = 73
 
-  kMaximum = 74
+  kLog2 = 74
 
-  kMinimum = 75
+  kLogistic = 75
 
-  kMulhi = 76
+  kMap = 76
 
-  kMultiply = 77
+  kMaximum = 77
 
-  kNegate = 78
+  kMinimum = 78
 
-  kNot = 79
+  kMulhi = 79
 
-  kOptimizationBarrier = 80
+  kMultiply = 80
 
-  kOr = 81
+  kNegate = 81
 
-  kOutfeed = 82
+  kNot = 82
 
-  kPad = 83
+  kOptimizationBarrier = 83
 
-  kParameter = 84
+  kOr = 84
 
-  kPartitionId = 85
+  kOutfeed = 85
 
-  kPopulationCount = 86
+  kPad = 86
 
-  kPower = 87
+  kParameter = 87
 
-  kRaggedAllToAll = 88
+  kPartitionId = 88
 
-  kRaggedDot = 89
+  kPopulationCount = 89
 
-  kReal = 90
+  kPower = 90
 
-  kRecv = 91
+  kRaggedAllToAll = 91
 
-  kRecvDone = 92
+  kRaggedDot = 92
 
-  kReduce = 93
+  kReal = 93
 
-  kReducePrecision = 94
+  kRecv = 94
 
-  kReduceScatter = 95
+  kRecvDone = 95
 
-  kReduceWindow = 96
+  kReduce = 96
 
-  kRemainder = 97
+  kReducePrecision = 97
 
-  kReplicaId = 98
+  kReduceScatter = 98
 
-  kReshape = 99
+  kReduceWindow = 99
 
-  kReverse = 100
+  kRemainder = 100
 
-  kRng = 101
+  kReplicaId = 101
 
-  kRngBitGenerator = 102
+  kReshape = 102
 
-  kRngGetAndUpdateState = 103
+  kReverse = 103
 
-  kRoundNearestAfz = 104
+  kRng = 104
 
-  kRoundNearestEven = 105
+  kRngBitGenerator = 105
 
-  kRsqrt = 106
+  kRngGetAndUpdateState = 106
 
-  kScaledDot = 107
+  kRoundNearestAfz = 107
 
-  kScan = 108
+  kRoundNearestEven = 108
 
-  kScatter = 109
+  kRsqrt = 109
 
-  kSelect = 110
+  kScaledDot = 110
 
-  kSelectAndScatter = 111
+  kScan = 111
 
-  kSend = 112
+  kScatter = 112
 
-  kSendDone = 113
+  kSelect = 113
 
-  kSetDimensionSize = 114
+  kSelectAndScatter = 114
 
-  kShiftLeft = 115
+  kSend = 115
 
-  kShiftRightArithmetic = 116
+  kSendDone = 116
 
-  kShiftRightLogical = 117
+  kSetDimensionSize = 117
 
-  kShuffle = 118
+  kShiftLeft = 118
 
-  kSign = 119
+  kShiftRightArithmetic = 119
 
-  kSin = 120
+  kShiftRightLogical = 120
 
-  kSinh = 121
+  kShuffle = 121
 
-  kSlice = 122
+  kSign = 122
 
-  kSort = 123
+  kSin = 123
 
-  kSqrt = 124
+  kSinh = 124
 
-  kStochasticConvert = 125
+  kSlice = 125
 
-  kSubtract = 126
+  kSort = 126
 
-  kTan = 127
+  kSqrt = 127
 
-  kTanh = 128
+  kStochasticConvert = 128
 
-  kTopK = 129
+  kSubtract = 129
 
-  kTranspose = 130
+  kTan = 130
 
-  kTriangularSolve = 131
+  kTanh = 131
 
-  kTuple = 132
+  kTopK = 132
 
-  kWhile = 133
+  kTranspose = 133
 
-  kXor = 134
+  kTriangularSolve = 134
+
+  kTuple = 135
+
+  kWhile = 136
+
+  kXor = 137
 
 class Layout:
   @overload
@@ -563,6 +569,7 @@ class HloInstruction:
   def shape(self) -> Shape: ...
   def users(self) -> list[HloInstruction]: ...
   def operands(self) -> list[HloInstruction]: ...
+  def control_predecessors(self) -> list[HloInstruction]: ...
   def async_wrapped_root(self) -> HloInstruction: ...
   def get_frontend_attribute(self, key: str) -> str | None: ...
   def set_frontend_attribute(self, key: str, value: str) -> None: ...
@@ -576,6 +583,7 @@ class HloComputation:
   @property
   def name(self) -> str: ...
   def render_html(self, arg: str, /) -> None: ...
+  def root_instruction(self) -> HloInstruction: ...
   def instructions(self) -> list[HloInstruction]: ...
   def replace_instruction(
       self, arg0: HloInstruction, arg1: HloInstruction, /

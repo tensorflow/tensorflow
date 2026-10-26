@@ -484,7 +484,7 @@ using NoneTrue = std::is_same<BoolPack<Bs..., false>, BoolPack<false, Bs...>>;
 // Returns whether none of the types in Ts is a reference.
 template <typename... Ts>
 constexpr bool NoneIsReference() {
-  return NoneTrue<(std::is_reference<Ts>::value)...>::value;
+  return NoneTrue<(std::is_reference_v<Ts>)...>::value;
 }
 }  // namespace detail
 }  // namespace tensorflow

@@ -337,7 +337,7 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
     of `i32` flags with shape `[num_blocks][world_size]`, flattened as
     `block_idx * world_size + slot_idx`.
 
-    This barrier supports three synchronization modes via `$barrier_mode`:
+    This barrier supports four synchronization modes via `$barrier_mode`:
 
     ### 1. `symmetric` (default; `$signal_stride == 0`, `$signal_slot` omitted)
     Used when block `block_idx` on every GPU produces and consumes data for the
@@ -378,6 +378,22 @@ def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
     - **Wait (Read)**: Block `block_idx` on GPU `r` spin-waits on its own
       buffer `$signal_buffers[r]` until all `world_size` slots at
       `target_block * world_size + [0..world_size)` reach `>= $signal_value`.
+
+    ### 4. `pairwise_symmetric` (`$signal_stride > 0`, `$signal_slot` provided)
+    Used for 1-to-1 pairwise synchronization where block `block_idx` on GPU `r`
+    communicates exclusively with block `target_block` on peer GPU
+    `$signal_slot` (`p = $signal_slot`):
+    - Let `base_block = block_idx - $signal_slot * $signal_stride` and
+      `target_block = base_block + r * $signal_stride`.
+    - **Signal (Write)**: Thread 0 of block `block_idx` on GPU `r` updates its
+      local invocation counter at `$signal_buffers[r][block_idx * world_size + r]`
+      and atomically writes `$signal_value` to index
+      `target_block * world_size + r` in peer GPU `$signal_slot`'s signal
+      buffer (`$signal_buffers[$signal_slot]`).
+    - **Wait (Read)**: Thread 0 of block `block_idx` on GPU `r` spin-waits on
+      its own buffer `$signal_buffers[r]` at index
+      `block_idx * world_size + $signal_slot` until it reaches
+      `>= $signal_value`.
 
     *NOTE* Block orchestration order is not guaranteed across GPUs,
     so there is a chance of a deadlock should the number of blocks be greater

@@ -1401,10 +1401,25 @@ absl::Status AvgPoolShape(shape_inference::InferenceContext* c) {
   // in the kernel implementation.
 
   DimensionHandle output_rows, output_cols;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, kernel_rows, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, kernel_cols, stride_cols, padding, &output_cols));
+  auto pooling_output_size = [&](DimensionHandle input_size, int32_t window,
+                                 int32_t stride, DimensionHandle* output_size) {
+    if (padding == Padding::VALID && stride > 0 && c->ValueKnown(input_size) &&
+        c->Value(input_size) < window) {
+      // Runtime pooling uses signed division, which truncates toward zero.
+      // Compare the gap with twice the stride without overflowing.
+      const int64_t gap = static_cast<int64_t>(window) - c->Value(input_size);
+      if (gap - stride < stride) {
+        *output_size = c->MakeDim(0);
+        return absl::OkStatus();
+      }
+    }
+    return GetWindowedOutputSizeFromDims(c, input_size, window, stride, padding,
+                                         output_size);
+  };
+  TF_RETURN_IF_ERROR(
+      pooling_output_size(in_rows_dim, kernel_rows, stride_rows, &output_rows));
+  TF_RETURN_IF_ERROR(
+      pooling_output_size(in_cols_dim, kernel_cols, stride_cols, &output_cols));
 
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size_dim,
@@ -1803,13 +1818,36 @@ absl::Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c) {
     }
   }
 
+  // diag's leading dimensions are the batch dimensions: all but the last for
+  // a single diagonal, and all but the last two for a band. Count them from
+  // the input's rank when it's known, since shape inference first runs this
+  // function before it has k's value, when a band would pass for a single
+  // diagonal.
+  int32_t num_batch_dims = -1;
+  if (c->RankKnown(input_shape)) {
+    num_batch_dims = c->Rank(input_shape) - 2;
+  } else if (c->RankKnown(diag_shape)) {
+    // Otherwise go by diag_index, which is a single diagonal when it has one
+    // element.
+    if (diag_index_known) {
+      // Without the input's rank, the check above couldn't tell that a band
+      // needs a dimension to hold its diagonals.
+      const int32_t diag_dims = (lower_diag_index == upper_diag_index) ? 1 : 2;
+      TF_RETURN_IF_ERROR(
+          c->WithRankAtLeast(c->input(1), diag_dims, &diag_shape));
+      num_batch_dims = c->Rank(diag_shape) - diag_dims;
+    } else if (c->Value(c->NumElements(diag_index_shape)) == 1) {
+      num_batch_dims = c->Rank(diag_shape) - 1;
+    }
+  }
+
   ShapeHandle output_shape = input_shape;
-  if (c->RankKnown(diag_shape) && !c->FullyDefined(input_shape)) {
+  if (num_batch_dims >= 0 && c->RankKnown(diag_shape) &&
+      !c->FullyDefined(input_shape)) {
     // Try to infer parts of shape from diag.
     ShapeHandle diag_prefix;
-    TF_RETURN_IF_ERROR(c->Subshape(
-        diag_shape, 0, (lower_diag_index == upper_diag_index) ? -1 : -2,
-        &diag_prefix));
+    TF_RETURN_IF_ERROR(
+        c->Subshape(diag_shape, 0, num_batch_dims, &diag_prefix));
 
     // The inner matrices can be rectangular, so we can't pinpoint their
     // exact height and width by just lower_diag_index, upper_diag_index,

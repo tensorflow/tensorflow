@@ -1446,9 +1446,13 @@ absl::StatusOr<bool> WindowedEinsumHandler::RunImpl(
       // UnrollAndReturnReplacement which used to do it internally.
       ABSL_RETURN_IF_ERROR(FlattenCallGraph().Run(module).status());
 
-      result.new_while_op->while_body()->SetAndSanitizeName(
+      // Loops can share a condition, or have bodies whose names map to the
+      // same prefixed name, so the new names must go through the uniquer.
+      module->SetAndUniquifyComputationName(
+          result.new_while_op->while_body(),
           absl::StrCat("unrolled_", original_body_name));
-      result.new_while_op->while_condition()->SetAndSanitizeName(
+      module->SetAndUniquifyComputationName(
+          result.new_while_op->while_condition(),
           absl::StrCat("unrolled_", original_cond_name));
       // The loop is fully unrolled but has a trip count of 1
       // To prevent it from being inlined by while loop simplifier,

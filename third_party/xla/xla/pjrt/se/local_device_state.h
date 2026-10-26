@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <stack>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -106,6 +107,9 @@ class LocalDeviceState {
     int num_device_to_device_streams = 1;
   };
 
+  using DeviceErrorCallback =
+      absl::AnyInvocable<void(const absl::Status& status) const>;
+
   // `device_ordinal` is the logical local device ordinal (returned by
   // `local_device_id()`), and it's used to look up an addressable device local
   // to a given client. If it is not set (-1 by default), the device's logical
@@ -119,7 +123,8 @@ class LocalDeviceState {
                    bool allow_event_reuse, bool use_callback_stream,
                    int device_ordinal = -1,
                    std::optional<StreamOptions> stream_options = std::nullopt,
-                   bool schedule_async = false);
+                   bool schedule_async = false,
+                   DeviceErrorCallback device_error_callback = nullptr);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }
@@ -223,8 +228,8 @@ class LocalDeviceState {
   }
 
   absl::Status AllocateAndRecordEvent(
-      AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
-      se::Stream* stream, absl::string_view tag = "AllocateAndRecordEvent",
+      BufferSequencingEventRef event, se::Stream* stream,
+      absl::string_view tag = "AllocateAndRecordEvent",
       absl::AnyInvocable<void() &&> cleanup = {});
 
   size_t GetNextComputeStreamSyncPoint() {
@@ -237,6 +242,10 @@ class LocalDeviceState {
   absl::StatusOr<BufferSequencingEventRef> GetEventForComputeStreamSyncPoint(
       size_t sync_point, AsyncWorkRunner* async_work_runner,
       bool nullptr_if_past = false);
+
+  const DeviceErrorCallback& device_error_callback() const {
+    return device_error_callback_;
+  }
 
  private:
   absl::Status SynchronizeAllActivity();
@@ -305,6 +314,7 @@ class LocalDeviceState {
   std::atomic<size_t> next_compute_stream_sync_point_{0};
   size_t base_compute_event_sequence_id_ ABSL_GUARDED_BY(mu_) = 0;
   std::deque<BufferSequencingEventRef> compute_events_ ABSL_GUARDED_BY(mu_);
+  const DeviceErrorCallback device_error_callback_;
 };
 
 }  // namespace xla

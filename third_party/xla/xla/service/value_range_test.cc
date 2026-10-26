@@ -618,5 +618,111 @@ TEST_F(ValueRangeTest, ParameterInsideFusion) {
                           /*is_linear=*/true}));
 }
 
+TEST_F(ValueRangeTest, EmptyRangeProperties) {
+  Range empty_range;
+  EXPECT_TRUE(empty_range.IsEmpty());
+  EXPECT_FALSE(empty_range.IsBounded());
+  EXPECT_FALSE(empty_range.IsStepKnown());
+  EXPECT_FALSE(empty_range.IsSingleValue());
+  EXPECT_EQ(empty_range, Range());
+}
+
+TEST_F(ValueRangeTest, CompareWithUnknownOperandsReturnsEmptyRange) {
+  constexpr absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    p0 = s32[] parameter(0)
+    c5 = s32[] constant(5)
+    c0 = s32[] constant(0)
+    cn5 = s32[] constant(-5)
+    cmp_lt_pos = pred[] compare(p0, c5), direction=LT
+    cmp_lt_zero = pred[] compare(p0, c0), direction=LT
+    cmp_neg_lt = pred[] compare(cn5, p0), direction=LT
+    ROOT out = (pred[], pred[], pred[]) tuple(cmp_lt_pos, cmp_lt_zero, cmp_neg_lt)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        hlo_string, HloModuleConfig{}));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  for (const HloInstruction* cmp : root->operands()) {
+    absl::flat_hash_map<const HloInstruction*, Range> known_ranges;
+    Range range = RecursivelyIdentifyRange(cmp, known_ranges);
+    EXPECT_TRUE(range.IsEmpty()) << cmp->ToString();
+    EXPECT_FALSE(range.IsBounded()) << cmp->ToString();
+    EXPECT_FALSE(range.IsSingleValue()) << cmp->ToString();
+  }
+}
+
+TEST_F(ValueRangeTest, SelectWithUnknownConditionReturnsEmptyRange) {
+  constexpr absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    p0 = s32[] parameter(0)
+    c5 = s32[] constant(5)
+    lt = pred[] compare(p0, c5), direction=LT
+    c0 = s32[] constant(0)
+    c4 = s32[] constant(4)
+    ROOT slct = s32[] select(lt, c0, c4)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        hlo_string, HloModuleConfig{}));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  absl::flat_hash_map<const HloInstruction*, Range> known_ranges;
+  Range range = RecursivelyIdentifyRange(root, known_ranges);
+  EXPECT_TRUE(range.IsEmpty());
+  EXPECT_FALSE(range.IsBounded());
+  EXPECT_FALSE(range.IsSingleValue());
+}
+
+TEST_F(ValueRangeTest, MultiplyValueWithNegativeConstant) {
+  constexpr absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    c0 = s32[] constant(-1024)
+    p0 = s32[] parameter(0)
+    ROOT %a = s32[] multiply(p0, c0)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                        hlo_string, HloModuleConfig{}));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* p0 = root->operand(0);
+  absl::flat_hash_map<const HloInstruction*, Range> fs;
+  fs.insert(std::make_pair(
+      p0, Range{/*min=*/ConstantValue::GetSigned(2, /*bitwidth=*/32),
+                /*max=*/ConstantValue::GetSigned(32, /*bitwidth=*/32),
+                /*step=*/ConstantValue::GetSigned(2, /*bitwidth=*/32),
+                /*is_linear=*/true}));
+  Range range = RecursivelyIdentifyRange(root, fs);
+  EXPECT_FALSE(range.IsEmpty());
+  EXPECT_FALSE(range.IsSingleValue());
+  EXPECT_TRUE(range.IsLinear());
+  EXPECT_EQ(range.min().GetSignedValue(), -32 * 1024);
+  EXPECT_EQ(range.max()->GetSignedValue(), -2 * 1024);
+  EXPECT_EQ(range.step()->GetSignedValue(), 2 * 1024);
+
+  absl::flat_hash_map<const HloInstruction*, Range> unbounded_fs;
+  unbounded_fs.insert(std::make_pair(
+      p0, Range{/*min=*/ConstantValue::GetSigned(2, /*bitwidth=*/32),
+                /*max=*/std::nullopt,
+                /*step=*/ConstantValue::GetSigned(2, /*bitwidth=*/32),
+                /*is_linear=*/true}));
+  Range unbounded_range = RecursivelyIdentifyRange(root, unbounded_fs);
+  EXPECT_TRUE(unbounded_range.IsEmpty());
+
+  absl::flat_hash_map<const HloInstruction*, Range> wrapped_fs;
+  wrapped_fs.insert(std::make_pair(
+      p0, Range{/*min=*/ConstantValue::GetSigned(0, /*bitwidth=*/32),
+                /*max=*/ConstantValue::GetSigned(1 << 22, /*bitwidth=*/32),
+                /*step=*/ConstantValue::GetSigned(1, /*bitwidth=*/32),
+                /*is_linear=*/true}));
+  Range wrapped_range = RecursivelyIdentifyRange(root, wrapped_fs);
+  EXPECT_TRUE(wrapped_range.IsEmpty());
+}
+
 }  // namespace
 }  // namespace xla

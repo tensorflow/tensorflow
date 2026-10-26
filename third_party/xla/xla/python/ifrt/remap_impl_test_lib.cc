@@ -227,20 +227,23 @@ TEST_F(RemapImplTest, ExtractSingleShard) {
                            /*device_indices=*/{0, 1}));
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto out_arrays, client->RemapArrays(plan, absl::MakeSpan(arrays),
+    ASSERT_OK_AND_ASSIGN(auto out_arrays,
+                         client->RemapArrays(plan, absl::MakeSpan(arrays),
                                              ArrayCopySemantics::kReuseInput));
     ASSERT_THAT(out_arrays, SizeIs(1));
+    EXPECT_FALSE(arrays[0]->IsDeleted());
     // `out_arrays[0].shards[0] == arrays[0].shards[1]`.
     AssertArrayContent<int32_t>(client.get(), out_arrays[0].get(),
                                 /*base_values=*/{6},
                                 /*device_indices=*/{1});
   }
   {
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto out_arrays, client->RemapArrays(plan, absl::MakeSpan(arrays),
+    ASSERT_OK_AND_ASSIGN(auto out_arrays,
+                         client->RemapArrays(plan, absl::MakeSpan(arrays),
                                              ArrayCopySemantics::kDonateInput));
     ASSERT_THAT(out_arrays, SizeIs(1));
+    EXPECT_TRUE(arrays[0]->IsDeleted());
+    EXPECT_THAT(arrays[0]->Delete().Await(), absl_testing::IsOk());
     // `out_arrays[0].shards[0] == arrays[0].shards[1]`.
     AssertArrayContent<int32_t>(client.get(), out_arrays[0].get(),
                                 /*base_values=*/{6},

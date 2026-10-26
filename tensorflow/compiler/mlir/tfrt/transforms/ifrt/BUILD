@@ -253,10 +253,12 @@ cc_library(
     srcs = ["ifrt_backend_compiler.cc"],
     hdrs = ["ifrt_backend_compiler.h"],
     deps = [
+        ":tf2hlo",
         ":tf_ifrt_passes",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:visitor",
+        "//tensorflow/compiler/mlir/tensorflow/ir/host_runtime:tensorflow_tfrt_ops",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:cluster_tf",
         "//tensorflow/compiler/mlir/tfrt:backend_compiler",
         "//tensorflow/compiler/mlir/tfrt:tpu_passes",
@@ -291,6 +293,7 @@ tf_cc_test(
     deps = [
         ":ifrt_backend_compiler",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow/ir/host_runtime:tensorflow_tfrt_ops",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
@@ -310,6 +313,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
+        "@llvm-project//mlir:Support",
         "@tf_runtime//:hostcontext",
         "@xla//xla/python/ifrt",
         "@xla//xla/python/ifrt:test_util",

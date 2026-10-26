@@ -145,6 +145,51 @@ class ReduceTest(test_util.TensorFlowTestCase):
                                      []])
     self.assertAllClose(math_ops.reduce_std(x, axis=0), [0., 4., 1., 0.])
 
+  def testReduceStdFloat16LargeMagnitude(self):
+    # Regression test: squared deviations of large-magnitude float16 values
+    # can overflow float16's range even when the standard deviation itself
+    # does not, so reduce_std/reduce_variance need to compute internally in
+    # a wider dtype. Previously this produced NaN on CPU and Inf on GPU for
+    # reduce_std, instead of a finite, correct result on both.
+    rs = np.random.RandomState(0)
+    x_np = rs.randn(1000).astype(np.float32) * 1e4
+    x_f16 = constant_op.constant(x_np.astype(np.float16))
+    expected_std = np.std(x_np.astype(np.float64))
+
+    std = self.evaluate(math_ops.reduce_std(x_f16))
+    self.assertEqual(std.dtype, np.float16)
+    self.assertTrue(np.isfinite(std), f"Expected a finite result, got {std}")
+    self.assertAllClose(std, expected_std, rtol=0.02)
+
+    # The true variance here does exceed float16's range (~65504), so,
+    # unlike the standard deviation, it should consistently overflow to Inf
+    # rather than landing on NaN on some platforms.
+    variance = self.evaluate(math_ops.reduce_variance(x_f16))
+    self.assertEqual(variance.dtype, np.float16)
+    self.assertTrue(np.isposinf(variance), f"Expected Inf, got {variance}")
+
+  def testReduceStdFloat16ModerateMagnitude(self):
+    # Companion to testReduceStdFloat16LargeMagnitude: covers the path where
+    # neither the squared deviations nor the variance overflow float16, so
+    # the float32-promoted computation should still closely match a float64
+    # reference, same as before the promotion was added.
+    rs = np.random.RandomState(0)
+    x_np = rs.randn(1000).astype(np.float32)
+    x_f16 = constant_op.constant(x_np.astype(np.float16))
+    expected_std = np.std(x_np.astype(np.float64))
+    expected_variance = np.var(x_np.astype(np.float64))
+
+    std = self.evaluate(math_ops.reduce_std(x_f16))
+    variance = self.evaluate(math_ops.reduce_variance(x_f16))
+    self.assertEqual(std.dtype, np.float16)
+    self.assertEqual(variance.dtype, np.float16)
+    self.assertTrue(np.isfinite(std), f"Expected a finite result, got {std}")
+    self.assertTrue(
+        np.isfinite(variance), f"Expected a finite result, got {variance}"
+    )
+    self.assertAllClose(std, expected_std, rtol=0.05)
+    self.assertAllClose(variance, expected_variance, rtol=0.05)
+
   def testReduceStdComplex(self):
     # Ensure that complex values are handled to be consistent with numpy
     complex_ys = [([0 - 1j, 0 + 1j], dtypes.float64),
@@ -659,6 +704,38 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
     with test_util.device(use_gpu=True):
       self.assertAllEqual(self.evaluate(expected), self.evaluate(result))
 
+  def testAcceptsPythonSequences(self):
+    # Inputs without a `dtype` attribute are converted to tensors first.
+    with test_util.device(use_gpu=True):
+      for scalar_mul_fn in (math_ops.scalar_mul, math_ops.scalar_mul_v2):
+        result = scalar_mul_fn(3, [1, 2, 3])
+        self.assertEqual(dtypes.int32, result.dtype)
+        self.assertAllEqual([3, 6, 9], self.evaluate(result))
+
+        result = scalar_mul_fn(2.0, ((1.0, 2.0), (3.0, 4.0)))
+        self.assertEqual(dtypes.float32, result.dtype)
+        self.assertAllClose([[2.0, 4.0], [6.0, 8.0]], self.evaluate(result))
+
+        result = scalar_mul_fn(3, 5)
+        self.assertAllEqual(15, self.evaluate(result))
+
+        result = scalar_mul_fn(3.0, [])
+        self.assertEqual(dtypes.float32, result.dtype)
+        self.assertAllEqual([], self.evaluate(result))
+
+        result = scalar_mul_fn(2, np.array([1, 2], dtype=np.int64))
+        self.assertEqual(dtypes.int64, result.dtype)
+        self.assertAllEqual([2, 4], self.evaluate(result))
+
+  def testPythonSequenceInheritsTypedScalarDtype(self):
+    with test_util.device(use_gpu=True):
+      for scalar_mul_fn in (math_ops.scalar_mul, math_ops.scalar_mul_v2):
+        for dtype in (dtypes.float16, dtypes.float64):
+          scalar = constant_op.constant(2.0, dtype=dtype)
+          result = scalar_mul_fn(scalar, [1.0, 2.0])
+          self.assertEqual(dtype, result.dtype)
+          self.assertAllClose([2.0, 4.0], self.evaluate(result))
+
   def testAcceptsIndexedSlices(self):
     values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])
     indices = constant_op.constant([0, 2, 5])
@@ -1102,6 +1179,51 @@ class MultiplyNoNanTest(test_util.TensorFlowTestCase):
         # second argument.
         tf_result_reverseargs = math_ops.multiply_no_nan(zeros, x)
         self.assertAllEqual(zeros * x, tf_result_reverseargs)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class XopsGpuKernelTest(test_util.TensorFlowTestCase):
+  """The zero branch of the MLIR-generated GPU kernels for xlogy and friends.
+
+  On CPU these ops run the Eigen functors in cwise_ops.h instead.
+  """
+
+  @test_util.run_gpu_only
+  def testNegativeZeroGivesPositiveZero(self):
+    for op, y in (
+        (math_ops.xlogy, 2.0),
+        (math_ops.xlog1py, 1.0),
+        (math_ops.xdivy, 3.0),
+    ):
+      for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+        x = constant_op.constant(np.full((16,), -0.0), dtype=dtype)
+        y_t = constant_op.constant(np.full((16,), y), dtype=dtype)
+        with test_util.force_gpu():
+          result = self.evaluate(op(x, y_t))
+        self.assertAllEqual(result, np.zeros(16))
+        self.assertFalse(np.signbit(result).any())
+
+  @test_util.run_gpu_only
+  def testSubnormalIsNotReturned(self):
+    # The GPU kernels flush denormals, so a subnormal x compares equal to zero
+    # and the result is 0; without flushing, x / x is 1. It must never be x.
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      tiny = np.finfo(dtype.as_numpy_dtype).tiny / 4
+      x = constant_op.constant(np.full((16,), tiny), dtype=dtype)
+      with test_util.force_gpu():
+        result = self.evaluate(math_ops.xdivy(x, x))
+      self.assertTrue(np.isin(result, [0.0, 1.0]).all(), result)
+
+  @test_util.run_gpu_only
+  def testComplexXlog1pyComparesXAgainstZero(self):
+    # The complex kernel compared x against 1 rather than 0, so xlog1py(1, y)
+    # returned 1 and xlog1py(0, -1) returned nan.
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      x = constant_op.constant([1.0, 0.0], dtype=dtype)
+      y = constant_op.constant([1.0, -1.0], dtype=dtype)
+      with test_util.force_gpu():
+        result = self.evaluate(math_ops.xlog1py(x, y))
+      self.assertAllClose(result, [np.log(2.0), 0.0])
 
 
 @test_util.run_all_in_graph_and_eager_modes

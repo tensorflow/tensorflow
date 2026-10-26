@@ -480,6 +480,7 @@ IfrtBackend::IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
           /*num_threads=*/32),
       in_order_requests_processor_(
           std::make_unique<InOrderRequestsProcessor>(this)),
+      cancellation_handles_(std::make_shared<CancellationHandles>()),
       destroyed_user_context_ids_(std::make_shared<DestroyedUserContextIds>()) {
 }
 
@@ -711,6 +712,9 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     case IfrtRequest::RequestCase::kGetDefaultLayoutRequest:
       return tsl::Future<Response>(
           HandleGetDefaultLayoutRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kCancelExecutionRequest:
+      return tsl::Future<Response>(
+          HandleCancelExecutionRequest(std::move(request)));
     default:
       LOG(ERROR) << "Got unimplemented request type: "
                  << request->DebugString();
@@ -1965,6 +1969,24 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   // assigns values to client-minted handles, and assumes this is done
   // atomically (as in ACID) across all handles.
   [&]() -> void {
+    // The cancellation handle is retained only while the execution status is
+    // tracked, so that the entry is released once the execution completes. The
+    // client only sends a cancellation handle when `fill_status` is set.
+    const uint64_t cancellation_handle = execute.cancellation_handle();
+    if (cancellation_handle != 0 && result.cancellation_handle != nullptr &&
+        result.status.IsValid()) {
+      {
+        absl::MutexLock lock(cancellation_handles_->mu);
+        cancellation_handles_->handles.insert(
+            {cancellation_handle, std::move(result.cancellation_handle)});
+      }
+      result.status.OnReady([cancellation_handles = cancellation_handles_,
+                             cancellation_handle](const absl::Status&) {
+        absl::MutexLock lock(cancellation_handles->mu);
+        cancellation_handles->handles.erase(cancellation_handle);
+      });
+    }
+
     if (execute_options.fill_status) {
       uint64_t status_handle = execute.result_status_handle();
       if (status_handle == 0) {
@@ -2311,6 +2333,33 @@ IfrtBackend::HandleGetDefaultLayoutRequest(
   *ifrt_resp->mutable_get_default_layout_response()
        ->mutable_serialized_pjrt_layout() = layout->Serialize();
 
+  return ifrt_resp;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleCancelExecutionRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const auto& cancel_request = request->cancel_execution_request();
+  absl::Status error = tsl::StatusFromProto(cancel_request.error());
+  if (error.ok()) {
+    return absl::InvalidArgumentError(
+        "CancelExecution requires a non-OK status");
+  }
+  xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle;
+  {
+    absl::MutexLock lock(cancellation_handles_->mu);
+    auto node = cancellation_handles_->handles.extract(
+        cancel_request.cancellation_handle());
+    if (!node.empty()) {
+      cancellation_handle = std::move(node.mapped());
+    }
+  }
+  if (cancellation_handle != nullptr) {
+    client_->CancelExecution(std::move(cancellation_handle), std::move(error));
+  }
+
+  auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
+  ifrt_resp->mutable_cancel_execution_response();
   return ifrt_resp;
 }
 

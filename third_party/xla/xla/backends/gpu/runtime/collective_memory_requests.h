@@ -43,12 +43,7 @@ namespace xla::gpu {
 //       the underlying collective communication library (i.e. NCCL), see
 //       `xla::SymmetricMemory` for more details.
 //
-//   (2) Multicast memory implemented directly on top of multicast objects
-//       supported by the low level GPU driver programming interface. Access to
-//       such objects can be done via the multimem addresses and multimem
-//       instruction.
-//
-//   (3) Peer memory implemented as device address exchange between ranks
+//   (2) Peer memory implemented as device address exchange between ranks
 //       running within same process (local GPU cliques). Within single host
 //       multiple GPU devices can access peer memory via pointers, and
 //       collective operations could be implemented as simple memory reads
@@ -56,14 +51,11 @@ namespace xla::gpu {
 //
 // Symmetric memory allocated via the underlying collective communication
 // library can span multiple processes running on different hosts, connected via
-// the host network. Multicast objects and peer memory require all devices to be
-// connected with NVLINK (for CUDA platform).
+// the host network. Peer memory requires all devices to be connected with
+// NVLINK (for CUDA platform).
 //
 // For CUDA symmetric memory see official NCCL documentation:
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html#window-reg
-//
-// For CUDA multicast object management see official documentation:
-// https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MULTICAST.html
 class CollectiveMemoryRequests {
  public:
   explicit CollectiveMemoryRequests(const BufferAllocations& buffers);
@@ -108,22 +100,6 @@ class CollectiveMemoryRequests {
       const GpuCliqueKey& clique,
       absl::Span<const se::DeviceAddressBase> addrs);
 
-  // Adds a request to map the given allocation to multicast object on the given
-  // clique.
-  absl::Status RequestMulticastAllocation(const GpuCliqueKey& clique,
-                                          BufferAllocation::Index allocation);
-
-  // Adds a request to map the given allocation slice to multicast object on the
-  // given clique.
-  absl::Status RequestMulticastAllocationSlice(const GpuCliqueKey& clique,
-                                               BufferAllocation::Slice slice);
-
-  // Adds a request to map the given address to multicast object on the given
-  // clique. If address does not correspond to any of the buffer allocations in
-  // the `buffers_`, it will return an error.
-  absl::Status RequestMulticastAddress(const GpuCliqueKey& clique,
-                                       const se::DeviceAddressBase& addr);
-
   // Adds a request to exchange the given allocation with clique peers.
   absl::Status RequestPeerAllocation(const GpuCliqueKey& clique,
                                      BufferAllocation::Index allocation);
@@ -138,20 +114,16 @@ class CollectiveMemoryRequests {
   absl::Status RequestPeerAddress(const GpuCliqueKey& clique,
                                   const se::DeviceAddressBase& addr);
 
-  // Returns all cliques that have symmetric or multicast allocation requests.
+  // Returns all cliques that have symmetric allocation requests.
   std::vector<GpuCliqueKey> RequestedCliques() const;
 
   // Returns all requested symmetric allocations ordered by clique.
   std::vector<CollectiveAllocations> OrderedSymmetricAllocations() const;
 
-  // Returns all requested multicast allocations ordered by clique.
-  std::vector<CollectiveAllocations> OrderedMulticastAllocations() const;
-
   // Returns all requested peer allocations ordered by clique.
   std::vector<CollectiveAllocations> OrderedPeerAllocations() const;
 
   size_t symmetric_size() const { return sym_allocations_.size(); }
-  size_t multicast_size() const { return mcast_allocations_.size(); }
   size_t peer_size() const { return peer_allocations_.size(); }
 
   const BufferAllocations& buffers() const { return buffers_; }
@@ -159,7 +131,6 @@ class CollectiveMemoryRequests {
  private:
   const BufferAllocations& buffers_;
   absl::flat_hash_map<GpuCliqueKey, CollectiveAllocations> sym_allocations_;
-  absl::flat_hash_map<GpuCliqueKey, CollectiveAllocations> mcast_allocations_;
   absl::flat_hash_map<GpuCliqueKey, CollectiveAllocations> peer_allocations_;
 };
 

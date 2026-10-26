@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
-#include "xla/backends/gpu/runtime/lock_free_kernel_cache.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -56,7 +56,7 @@ class CustomKernelThunk : public Command {
  public:
   CustomKernelThunk(Thunk::ThunkInfo thunk_info, CustomKernel custom_kernel,
                     const emitters::KernelArguments& kernel_arguments,
-                    bool use_pdl = false,
+                    int devices_in_process, bool use_pdl = false,
                     std::vector<int64_t> zeroed_output_buffer_indices = {},
                     stream_executor::gpu::TmaMetadata tma_metadata = {});
 
@@ -93,16 +93,21 @@ class CustomKernelThunk : public Command {
   static absl::StatusOr<std::unique_ptr<CustomKernelThunk>> FromProto(
       ThunkInfo thunk_info, const CustomKernelThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations,
+      int devices_in_process,
       const std::optional<se::KernelLoaderSpec::SymbolResolver>&
           symbol_resolver = std::nullopt);
 
  private:
+  struct KernelState {
+    std::unique_ptr<se::Kernel> kernel;
+  };
+
   // Private constructor for deserialization.
   CustomKernelThunk(Thunk::ThunkInfo thunk_info, CustomKernel custom_kernel,
                     std::vector<ShapedSlice> args, std::vector<bool> written,
                     std::vector<int64_t> zeroed_output_buffer_indices,
                     stream_executor::gpu::TmaMetadata tma_metadata,
-                    bool use_pdl);
+                    bool use_pdl, int devices_in_process);
 
   // Holds the loaded kernel and the device addresses of its arguments.
   struct KernelWithArgs {
@@ -125,9 +130,6 @@ class CustomKernelThunk : public Command {
 
   CustomKernel custom_kernel_;
 
-  // Lock-free cache of loaded kernels for each `StreamExecutor`.
-  LockFreeKernelCache kernel_cache_;
-
   // Buffer indices that should be zeroed before the kernel is launched.
   std::vector<int64_t> zeroed_output_buffer_indices_;
 
@@ -137,6 +139,9 @@ class CustomKernelThunk : public Command {
 
   // Programmatic Dependent Launch.
   bool use_pdl_;
+
+  // Per-device loaded kernels indexed by device ordinal.
+  PerDeviceState<KernelState> device_states_;
 };
 
 }  // namespace xla::gpu

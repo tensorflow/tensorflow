@@ -43,6 +43,17 @@ matches the `axis` dimension of the input and output tensors.
 END
   }
   attr {
+    name: "axis"
+    description: <<END
+The index of the input dimension along which the quantization ranges
+vary, for per-channel quantization. When `axis` is -1 (the default),
+quantization is per-tensor and `min_range`/`max_range` must be scalars.
+Otherwise `min_range` and `max_range` must be 1-D tensors with as many
+elements as the input's `axis` dimension. Negative values other than -1
+are invalid.
+END
+  }
+  attr {
     name: "round_mode"
     description: <<END
 `round_mode='HALF_TO_EVEN'` only supported for mode 'SCALED'.

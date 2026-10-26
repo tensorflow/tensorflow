@@ -84,7 +84,7 @@ class AcquiredCliquesMap
 // appropriately sized thread pool to avoid deadlocks). Implementation relies on
 // the rendezvous mechanism to ensure that all participants join clique
 // acquisition, with a rendezvous key derived from the clique key.
-absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
+absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
     GpuCollectives* collectives, se::StreamExecutor* device, RunId run_id,
     const GpuCliqueKey& clique_key,
     absl::Span<const std::vector<GlobalDeviceId>> device_groups,
@@ -98,16 +98,20 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
 absl::Status CheckCliqueIsNotStale(const GpuCliqueKey& clique_key);
 
 // Updates the global set of task state information. This function aborts and
-// invalidates all cliques that were created via AcquireGpuClique with
-// incarnations that have become stale.
+// invalidates all cliques that were created via AcquireClique with incarnations
+// that have become stale.
 absl::Status UpdateGlobalProcessInfo(
     absl::Span<xla::coordination::TaskInfo> infos);
 
-// Aborts local GPU collectives by driving the official AbortOnFailure path with
-// a task-failure state. Safe to call from the HangWatchdog thread; execution
-// threads unwind via CancellationToken.
-absl::Status AbortCollectivesOnTaskFailure(int failed_task_id,
-                                           const absl::Status& error);
+// Aborts all GPU cliques acquired by the process and cancels pending clique
+// initializations. Concurrent calls don't wait for the abort in progress and
+// return immediately.
+absl::Status AbortAllCliques();
+
+// Marks `failed_task_id` as failed in the global task state and aborts all
+// cliques that include its incarnation. No-op if the global task state is not
+// known yet.
+absl::Status AbortTaskCliques(int failed_task_id, absl::Status error);
 
 namespace internal {
 // Destroys all cliques that were acquired for the given process. This is

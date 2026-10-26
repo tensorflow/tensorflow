@@ -47,7 +47,7 @@ namespace {
 
 class WhileOpTest : public OpsTestBase {
  protected:
-  WhileOpTest() {}
+  WhileOpTest() = default;
   void SetUp() override {
     stream_executor::test_util::PopulateDefaultPlatform(&platform_,
                                                         &platform_fns_);

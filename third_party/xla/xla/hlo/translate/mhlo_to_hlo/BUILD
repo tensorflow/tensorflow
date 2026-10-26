@@ -283,6 +283,7 @@ cc_library(
         "@stablehlo//:replica_group_utils",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:ml_dtypes",
     ],
 )

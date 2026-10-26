@@ -1896,6 +1896,148 @@ TEST_F(GpuHloScheduleTest, AsyncOps) {
                           HloOpcode::kAsyncDone, HloOpcode::kAdd));
 }
 
+// An async pair costs the latency between its start and done, whatever it
+// wraps: here a fusion, a fusion profiled only through the custom call inside
+// it (like a dynamic slice fusion), and a call, on the parallel execution
+// thread as compute_on produces them (CollectiveFusion's fusions wrapping
+// collective kernels are the same shape). The profile only has entries for
+// the wrapped fusion, the inner custom call and the called custom call, which
+// is how device activity is attributed; the accuracy checker at ERROR
+// strictness would fail the schedule if any pair, or the call's parameter,
+// were reported as missing.
+TEST_F(GpuHloScheduleTest, ProfilesAsyncPairsWrappingFusions) {
+  const absl::string_view kHloString = R"(
+  HloModule m
+
+  fused_negate {
+    p = f32[32] parameter(0)
+    ROOT negate = f32[32] negate(p)
+  }
+
+  async_negate {
+    p0 = f32[32] parameter(0)
+    ROOT negate-fusion = f32[32] fusion(p0), kind=kLoop, calls=fused_negate
+  }
+
+  slicing_fusion {
+    p0 = f32[4,32] parameter(0)
+    i = s32[] parameter(1)
+    zero = s32[] constant(0)
+    slice = f32[1,32] dynamic-slice(p0, i, zero), dynamic_slice_sizes={1,32}
+    ROOT inner = f32[1,32] custom-call(slice), custom_call_target="work"
+  }
+
+  async_slicing {
+    p0 = f32[4,32] parameter(0)
+    i = s32[] parameter(1)
+    ROOT slicing = f32[1,32] fusion(p0, i), kind=kCustom, calls=slicing_fusion
+  }
+
+  called {
+    p0 = f32[32] parameter(0)
+    ROOT work = f32[32] custom-call(p0), custom_call_target="work"
+  }
+
+  async_call {
+    p0 = f32[32] parameter(0)
+    ROOT call = f32[32] call(p0), to_apply=called
+  }
+
+  ENTRY e {
+    p0 = f32[32] parameter(0)
+    p1 = f32[4,32] parameter(1)
+    i = s32[] parameter(2)
+    negate-start = ((f32[32]), f32[32]) async-start(p0), calls=async_negate,
+      async_execution_thread="parallel"
+    negate-done = f32[32] async-done(negate-start)
+    slice-start = ((f32[4,32], s32[]), f32[1,32]) async-start(p1, i),
+      calls=async_slicing, async_execution_thread="parallel"
+    slice-done = f32[1,32] async-done(slice-start)
+    call-start = ((f32[32]), f32[32]) async-start(p0), calls=async_call,
+      async_execution_thread="parallel"
+    call-done = f32[32] async-done(call-start)
+    ROOT t = (f32[32], f32[1,32], f32[32]) tuple(negate-done, slice-done, call-done)
+  })";
+
+  const absl::string_view kProfile = R"pb(
+    costs { name: "negate-fusion" cost_us: 50.0 }
+    costs { name: "inner" cost_us: 60.0 }
+    costs { name: "work" cost_us: 70.0 }
+  )pb";
+
+  TestConfig test_config;
+  test_config.enable_latency_hiding_scheduler = true;
+  test_config.fdo_profile = kProfile;
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(kHloString, GetModuleConfig(test_config)));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_pgle_accuracy_checker(
+          DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR);
+  ASSERT_OK(ScheduleGpuModule(module.get()).status());
+}
+
+// Work inside an async call that the profile does not cover is a missing
+// profile entry, which the accuracy checker at ERROR strictness rejects, even
+// though it does not visit the called computation itself. (The complementary
+// case, a fully profiled call, is in ProfilesAsyncPairsWrappingFusions.)
+TEST_F(GpuHloScheduleTest, ReportsUnprofiledWorkInsideAsyncCalls) {
+  const absl::string_view kHloString = R"(
+  HloModule m
+
+  slicing_fusion {
+    p0 = f32[4,32] parameter(0)
+    i = s32[] parameter(1)
+    zero = s32[] constant(0)
+    slice = f32[1,32] dynamic-slice(p0, i, zero), dynamic_slice_sizes={1,32}
+    ROOT inner = f32[1,32] custom-call(slice), custom_call_target="work"
+  }
+
+  async_slicing {
+    p0 = f32[4,32] parameter(0)
+    i = s32[] parameter(1)
+    ROOT slicing = f32[1,32] fusion(p0, i), kind=kCustom, calls=slicing_fusion
+  }
+
+  called {
+    p0 = f32[32] parameter(0)
+    ROOT work = f32[32] custom-call(p0), custom_call_target="work"
+  }
+
+  async_call {
+    p0 = f32[32] parameter(0)
+    ROOT call = f32[32] call(p0), to_apply=called
+  }
+
+  ENTRY e {
+    p0 = f32[32] parameter(0)
+    neg = f32[32] negate(p0)
+    call-start = ((f32[32]), f32[32]) async-start(neg), calls=async_call,
+      async_execution_thread="parallel"
+    ROOT call-done = f32[32] async-done(call-start)
+  })";
+
+  // `work` is not in the profile and is reported missing.
+  const absl::string_view kProfile = R"pb(
+    costs { name: "neg" cost_us: 5.0 }
+  )pb";
+
+  TestConfig test_config;
+  test_config.enable_latency_hiding_scheduler = true;
+  test_config.fdo_profile = kProfile;
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(kHloString, GetModuleConfig(test_config)));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_pgle_accuracy_checker(
+          DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR);
+  EXPECT_THAT(ScheduleGpuModule(module.get()).status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("1 missing")));
+}
+
 TEST_F(GpuHloScheduleTest, MetadataIgnoredInFingerprint) {
   absl::string_view hlo = R"(
 HloModule test

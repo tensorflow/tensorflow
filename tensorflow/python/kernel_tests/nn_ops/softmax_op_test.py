@@ -276,6 +276,28 @@ class SoftmaxTest(test.TestCase):
         use_gpu=False)
     self._testOverflow(use_gpu=False)
 
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testHighRank(self):
+    # Regression test for GitHub issue 128814: the oneDNN kernel rejected
+    # inputs of more than 5 dimensions. It now collapses the leading
+    # dimensions of those, and rank 5 is the highest it takes as is.
+    rng = np.random.RandomState(0)
+    for rank in (5, 6, 7):
+      for empty_dim in (None, 2, -1):
+        shape = [2] * (rank - 1) + [3]
+        if empty_dim is not None:
+          shape[empty_dim] = 0
+        features = rng.rand(*shape).astype(np.float32)
+        if empty_dim == -1:
+          # NumPy can't take the maximum along an empty dimension.
+          self.assertAllEqual(
+              np.zeros(shape, dtype=np.float32),
+              self.evaluate(nn_ops.softmax(features)),
+          )
+        else:
+          self._testSoftmax(features)
+        self._testSoftmax(features, dim=1)
+
   def testShapeInference(self):
     op = nn_ops.softmax([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
                          [[2., 3., 4., 5.], [6., 7., 8., 9.]],
@@ -316,6 +338,53 @@ class SoftmaxTest(test.TestCase):
           y = nn_ops.softmax(x)
           tf_softmax = self.evaluate(y)
         self.assertAllClose(tf_softmax, np_softmax)
+
+  def testSingleClassExactPrecision(self):
+    # Regression test for GitHub issue #116933:
+    # Single-class softmax must return exact 1.0 without 1-ULP precision loss
+    # across SIMD batch boundaries (e.g. AVX2 Packet8f vectorized batches).
+    batch_sizes = [1, 2, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 128, 129]
+    for batch_size in batch_sizes:
+      for dtype in [
+          dtypes.float32,
+          dtypes.float64,
+          dtypes.float16,
+          dtypes.bfloat16,
+      ]:
+        for use_gpu in [False, True]:
+          with self.cached_session(use_gpu=use_gpu):
+            logits = math_ops.cast(
+                constant_op.constant(np.random.randn(batch_size, 1)),
+                dtype=dtype,
+            )
+            res = self.evaluate(nn_ops.softmax(logits, axis=-1))
+            expected = np.ones((batch_size, 1), dtype=dtype.as_numpy_dtype)
+            self.assertAllEqual(res, expected)
+
+  def testSingleClassLogSoftmax(self):
+    # Single-class log-softmax must return exact 0.0 across SIMD batch sizes.
+    batch_sizes = [1, 7, 8, 9, 16, 32, 64, 128]
+    for batch_size in batch_sizes:
+      for dtype in [dtypes.float32, dtypes.float64]:
+        with self.cached_session():
+          logits = math_ops.cast(
+              constant_op.constant(np.random.randn(batch_size, 1)), dtype=dtype
+          )
+          res = self.evaluate(nn_ops.log_softmax(logits, axis=-1))
+          expected = np.zeros((batch_size, 1), dtype=dtype.as_numpy_dtype)
+          self.assertAllEqual(res, expected)
+
+  def testSingleClassNonFinite(self):
+    # Verify that non-finite logits (NaN, Inf, -Inf) correctly produce NaN
+    # in single-class softmax and log-softmax as mandated by IEEE-754.
+    non_finites = [np.nan, np.inf, -np.inf]
+    for val in non_finites:
+      with self.cached_session():
+        logits = constant_op.constant([[val]], dtype=dtypes.float32)
+        sm = self.evaluate(nn_ops.softmax(logits))
+        lsm = self.evaluate(nn_ops.log_softmax(logits))
+        self.assertTrue(np.isnan(sm[0, 0]))
+        self.assertTrue(np.isnan(lsm[0, 0]))
 
 
 if __name__ == "__main__":

@@ -193,6 +193,10 @@ class PjRtCpuRawClient : public PjRtRawClient {
   tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
       std::shared_ptr<PjRtExecutable> executable) const override;
 
+  std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+            PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromise() const override;
+
   tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() override;
 
   absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,
@@ -204,6 +208,10 @@ class PjRtCpuRawClient : public PjRtRawClient {
 
   absl::Status TransferFromOutfeed(LocalDeviceId local_device_id,
                                    MutableBorrowingLiteral literal) override;
+
+  bool IsDmaMapped(const void* data, int64_t transfer_size) const override {
+    return true;
+  }
 
   class LocalDeviceState {
    public:

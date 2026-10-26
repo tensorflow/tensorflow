@@ -326,6 +326,7 @@ xla_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
         "//xla/tests:client_library_test_runner_mixin",
@@ -649,9 +650,6 @@ cc_library(
 xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
-    backend_tags = {
-        "v100": ["broken"],  # b/455498612
-    },
     backends = ALL_HARDWARE_BACKENDS,
     shard_count = 5,
     tags = ["optonly"],

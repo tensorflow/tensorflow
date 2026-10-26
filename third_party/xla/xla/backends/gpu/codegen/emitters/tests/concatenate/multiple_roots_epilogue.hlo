@@ -1,0 +1,45 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize | FileCheck %s
+// RUN: gpu_test_correctness %s
+
+fusion {
+  %p0 = f32[2,4,16,32] parameter(0)
+  %p1 = f32[2,4,48,32] parameter(1)
+  %p2 = f32[2,4,16,32] parameter(2)
+  %p3 = f32[2,4,48,32] parameter(3)
+  %p4 = f32[2,4,64,32] parameter(4)
+  %q = f32[2,4,64,32] concatenate(%p0, %p1), dimensions={2}
+  %k = f32[2,4,64,32] concatenate(%p2, %p3), dimensions={2}
+  %qn = f32[2,4,64,32] negate(%q)
+  %km = f32[2,4,64,32] multiply(%k, %p4)
+  %qb = f32[8,64,32] bitcast(%qn)
+  %kb = f32[8,64,32] bitcast(%km)
+  ROOT %t = (f32[8,64,32], f32[8,64,32]) tuple(%qb, %kb)
+}
+
+ENTRY main {
+  %p0 = f32[2,4,16,32] parameter(0)
+  %p1 = f32[2,4,48,32] parameter(1)
+  %p2 = f32[2,4,16,32] parameter(2)
+  %p3 = f32[2,4,48,32] parameter(3)
+  %p4 = f32[2,4,64,32] parameter(4)
+  ROOT %fusion = (f32[8,64,32], f32[8,64,32]) fusion(%p0, %p1, %p2, %p3, %p4),
+      kind=kInput, calls=fusion
+}
+
+// Epilogues that change the shape, as in RoPE. Both roots share one shape, so
+// both are written at the same output indices.
+
+// CHECK-LABEL: func.func @main(
+// CHECK:         xla.loop
+// CHECK:           %[[Q0:.+]] = xla.pure_call @fusion_p0
+// CHECK:           %[[K0:.+]] = xla.pure_call @fusion_p2
+// CHECK:           %[[E0:.+]], %[[E1:.+]] = xla.pure_call @fusion__epilogue__qb_kb(%{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %[[Q0]], %[[K0]])
+// CHECK:           tensor.insert %[[E0]] into %{{.*}}[%[[A0:.+]], %[[B0:.+]], %[[C0:.+]]] : tensor<8x64x32xf32>
+// CHECK:           tensor.insert %[[E1]] into %{{.*}}[%[[A0]], %[[B0]], %[[C0]]] : tensor<8x64x32xf32>
+// CHECK:         xla.loop
+// CHECK:           %[[Q1:.+]] = xla.pure_call @fusion_p1
+// CHECK:           %[[K1:.+]] = xla.pure_call @fusion_p3
+// CHECK:           %[[E2:.+]], %[[E3:.+]] = xla.pure_call @fusion__epilogue__qb_kb(%{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %{{[^,]+}}, %[[Q1]], %[[K1]])
+// CHECK:           tensor.insert %[[E2]] into %{{.*}}[%[[A1:.+]], %[[B1:.+]], %[[C1:.+]]] : tensor<8x64x32xf32>
+// CHECK:           tensor.insert %[[E3]] into %{{.*}}[%[[A1]], %[[B1]], %[[C1]]] : tensor<8x64x32xf32>
+// CHECK-NOT:     xla.loop

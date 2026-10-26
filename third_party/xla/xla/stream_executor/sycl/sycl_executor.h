@@ -246,6 +246,12 @@ class SyclExecutor : public gpu::GpuExecutor {
   bool UnloadGpuBinary(ModuleHandle module_handle)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
+  // Increments the reference count of an already-cached module.
+  // REQUIRES: Caller must hold in_memory_modules_mu_.
+  // Returns an error if module_handle is not in gpu_binary_to_module_.
+  absl::Status IncrementModuleRefCount(ModuleHandle module_handle)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
+
   // Mutex for blas, dnn, and fft.
   absl::Mutex mu_;
   std::unique_ptr<blas::BlasSupport> blas_ ABSL_GUARDED_BY(mu_);

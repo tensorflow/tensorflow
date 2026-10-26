@@ -43,7 +43,7 @@ SimplePropagatorState::SimplePropagatorState(
   immutable_state_.copy_pending_counts(pending_.get());
 }
 
-SimplePropagatorState::~SimplePropagatorState() {}
+SimplePropagatorState::~SimplePropagatorState() = default;
 
 void SimplePropagatorState::ActivateRoots(
     absl::Span<const NodeItem* const> roots, TaggedNodeSeq* ready) {

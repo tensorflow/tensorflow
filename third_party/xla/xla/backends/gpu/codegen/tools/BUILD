@@ -96,10 +96,12 @@ xla_cc_binary(
     ],
     visibility = [":codegen_tests"],
     deps = [
-        "//xla/backends/gpu/codegen/tensor_ir:conversion",
+        "//xla/backends/gpu/codegen/tensor_ir:hlo_to_tensor_ir",
         "//xla/backends/gpu/codegen/tensor_ir:support",
         "//xla/hlo/ir:hlo",
+        "//xla/service/llvm_ir:llvm_util",
         "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/status:statusor",
         "@cuda_tile//:CudaTileDialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -108,7 +110,7 @@ xla_cc_binary(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@tensor_ir//:NVTensorIRConversionOptions",
+        "@tensor_ir//:NVTensorIRCompilerOptions",
         "@tensor_ir//:NVTensorIRCudaTilePipelines",
         "@tensor_ir//:NVTensorIRDialect",
     ],
@@ -137,7 +139,6 @@ xla_cc_binary(
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:pjrt_gpu_client_registry",
-        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -147,7 +148,6 @@ xla_cc_binary(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
-        "@tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:all_runtime",
     ]) + if_rocm_is_configured([

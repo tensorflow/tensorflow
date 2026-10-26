@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -44,6 +44,7 @@ namespace xla::gpu {
 class CommandBufferThunk : public Thunk {
  public:
   CommandBufferThunk(CommandExecutor commands, ThunkInfo thunk_info,
+                     int devices_in_process,
                      std::unique_ptr<SequentialThunk> thunks = nullptr,
                      bool enable_command_buffers_during_profiling = false);
 
@@ -143,12 +144,18 @@ class CommandBufferThunk : public Thunk {
     bool warmup_done ABSL_GUARDED_BY(mutex) = false;
   };
 
+  struct DeviceState {
+    absl::Mutex mutex;
+    std::shared_ptr<ExecutorCommandBuffer> command_buffer
+        ABSL_GUARDED_BY(mutex);
+  };
+
   // Command buffer thunk owns one command buffer for each executor it runs on.
   struct State {
-    absl::Mutex mutex;
-    absl::flat_hash_map<se::StreamExecutor*,
-                        std::shared_ptr<ExecutorCommandBuffer>>
-        command_buffers ABSL_GUARDED_BY(mutex);
+    explicit State(int devices_in_process)
+        : device_states(devices_in_process) {}
+
+    PerDeviceState<DeviceState> device_states;
   };
 
   // Returns a command buffer for `executor` or creates a new one.

@@ -2639,6 +2639,84 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with bar as scope_name:
       self.assertEqual("bar/", scope_name)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2InvalidCharsEagerNestedScope(self):
+    """Spaces and invalid chars raise ValueError in eager nested scopes."""
+    invalid_msg = "is not a valid (root )?scope name"
+    with ops.name_scope_v2("valid_outer"):
+      with self.assertRaisesRegex(ValueError, invalid_msg):
+        with ops.name_scope_v2("scope with spaces"):
+          pass
+      with self.assertRaisesRegex(ValueError, invalid_msg):
+        with ops.name_scope_v2("invalid@scope"):
+          pass
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2InvalidCharsEagerRootScope(self):
+    """Spaces and illegal chars should raise ValueError in root scope."""
+    # Trailing underscores are valid in both eager and graph mode root scopes.
+    with ops.name_scope_v2("valid_trailing_underscore_"):
+      pass
+    invalid_msg = "is not a valid (root )?scope name"
+    if context.executing_eagerly():
+      # Eager root scopes accept leading underscores; graph mode does not.
+      with ops.name_scope_v2("_leading_underscore"):
+        pass
+      with ops.name_scope_v2("/"):
+        pass
+      v = variables.Variable(1.0, name="_private_var")
+      self.assertEqual(1.0, self.evaluate(v))
+    else:
+      with self.assertRaisesRegex(ValueError, invalid_msg):
+        with ops.name_scope_v2("_leading_underscore"):
+          pass
+    # Spaces and special chars must always raise.
+    with self.assertRaisesRegex(ValueError, invalid_msg):
+      with ops.name_scope_v2("scope with spaces"):
+        pass
+    with self.assertRaisesRegex(ValueError, invalid_msg):
+      with ops.name_scope_v2("invalid@scope"):
+        pass
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2ColonInEagerScopeName(self):
+    """Eager scope names built from tensor names may contain a colon."""
+    if not context.executing_eagerly():
+      self.skipTest("Colons are only valid in eager scope names.")
+    # Callers derive scope names from variable names, which carry an output
+    # index; e.g. TPU embedding slot creation enters "video:0_accumulators".
+    with ops.name_scope_v2("video:0_accumulators"):
+      pass
+    with ops.name_scope_v2("valid_outer"):
+      with ops.name_scope_v2("video:0_accumulators"):
+        pass
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2ValidNamesEager(self):
+    """Valid scope names should not raise in graph or eager mode."""
+    with ops.name_scope_v2("valid_scope"):
+      pass
+    with ops.name_scope_v2("ValidScope123"):
+      pass
+    with ops.name_scope_v2("valid/nested"):
+      pass
+    with ops.name_scope_v2("absolute_path/"):
+      pass
+    with ops.name_scope_v2(""):
+      pass
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2InvalidCharsEagerTrailingSlash(self):
+    """Invalid characters should be rejected before trailing-slash handling."""
+    invalid_msg = "is not a valid (root )?scope name"
+    with self.assertRaisesRegex(ValueError, invalid_msg):
+      with ops.name_scope_v2("invalid space/"):
+        pass
+    with ops.name_scope_v2("valid_outer"):
+      with self.assertRaisesRegex(ValueError, invalid_msg):
+        with ops.name_scope_v2("invalid space/"):
+          pass
+
   @test_util.run_deprecated_v1
   def testNoScopeName(self):
     g0 = ops.Graph()

@@ -33,7 +33,7 @@ class TensorProto;
 // into Tensor contents as well as associated metadata.
 class TensorResponse {
  public:
-  TensorResponse() {}
+  TensorResponse() = default;
 
   // Reset to initial state.
   void Clear();

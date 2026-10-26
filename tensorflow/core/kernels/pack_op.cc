@@ -18,10 +18,12 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
@@ -80,7 +82,7 @@ class PackOp : public OpKernel {
                     expanded_num_dims, ")")));
 
     TensorShape output_shape(first_input.shape());
-    output_shape.InsertDim(axis, num);
+    OP_REQUIRES_OK(c, output_shape.InsertDimWithStatus(axis, num));
 
     // In the num = 1 case, just reshape the input
     if (num == 1) {
@@ -108,7 +110,7 @@ class PackOp : public OpKernel {
     // required: Eigen device() assignments must be compiled with
     // EIGEN_USE_GPU defined (i.e. by NVCC/hipcc), otherwise Eigen fires a
     // static assertion even inside discarded if-constexpr branches.
-    if (std::is_same<Device, GPUDevice>::value && first_input.dims() == 0) {
+    if (std::is_same_v<Device, GPUDevice> && first_input.dims() == 0) {
       PackScalarsOnGPU<T>(c, num, output);
       return;
     }
@@ -146,7 +148,7 @@ class PackOp : public OpKernel {
     }
     if (output_size > 0) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      if (std::is_same<Device, GPUDevice>::value) {
+      if (std::is_same_v<Device, GPUDevice>) {
         ConcatGPU<T>(c, inputs_flat, output, &output_flat);
         return;
       }

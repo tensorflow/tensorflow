@@ -94,6 +94,11 @@ class CholeskyOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
+    // Validate inputs.
+    OP_REQUIRES_ASYNC(context, ndims >= 2,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Input must have rank >= 2, got ", ndims)),
+                      done);
     const int64_t n = input.dim_size(ndims - 1);
 #if GOOGLE_CUDA
     cublasFillMode_t fill = CUBLAS_FILL_MODE_UPPER;
@@ -104,14 +109,9 @@ class CholeskyOpGpu : public AsyncOpKernel {
     rocblas_fill fill = rocblas_fill_upper;
 #endif
 #endif
-    // Validate inputs.
-    OP_REQUIRES_ASYNC(context, ndims >= 2,
-                      absl::InvalidArgumentError(absl::StrCat(
-                          "Input must have rank >= 2, got ", ndims)),
-                      done);
     OP_REQUIRES_ASYNC(context, input.dim_size(ndims - 2) == n,
                       absl::InvalidArgumentError(
-                          absl::StrCat("Input matrices must be squares, got",
+                          absl::StrCat("Input matrices must be square, got ",
                                        input.dim_size(ndims - 2), " != ", n)),
                       done);
 
@@ -195,26 +195,35 @@ class CholeskyOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done, n](
                             const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && absl::IsInvalidArgument(status) &&
-          !host_infos.empty()) {
-        Tensor* output = context->mutable_output(0);
-        auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
+      if (!status.ok()) {
+        if (absl::IsInvalidArgument(status) && !host_infos.empty()) {
+          Tensor* output = context->mutable_output(0);
+          auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
 
-        for (int i = 0; i < host_infos[0].size(); ++i) {
-          if (host_infos[0](i) > 0) {
-            LOG(WARNING) << "Cholesky decomposition was not successful for "
-                            "batch "
-                         << i
-                         << ". The input might not be valid. "
-                            "Filling lower-triangular output with NaNs.";
-            typename TTypes<Scalar, 3>::Tensor output_batch(
-                &output_reshaped(i, 0, 0), 1, n, n);
-            functor::MatrixBandFillFunctor<GPUDevice, Scalar> band_fill;
-            band_fill(context, context->eigen_device<GPUDevice>(),
-                      /*num_lower_diags=*/n, /*num_upper_diags=*/0,
-                      /*value=*/Eigen::NumTraits<Scalar>::quiet_NaN(),
-                      output_batch);
+          for (int i = 0; i < host_infos[0].size(); ++i) {
+            OP_REQUIRES_ASYNC(
+                context, host_infos[0](i) >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Invalid input argument no. ", host_infos[0].data()[i],
+                    " for batch index ", i, ".")),
+                done);
+            if (host_infos[0](i) > 0) {
+              LOG(WARNING) << "Cholesky decomposition was not successful for "
+                              "batch "
+                           << i
+                           << ". The input might not be valid. "
+                              "Filling lower-triangular output with NaNs.";
+              typename TTypes<Scalar, 3>::Tensor output_batch(
+                  &output_reshaped(i, 0, 0), 1, n, n);
+              functor::MatrixBandFillFunctor<GPUDevice, Scalar> band_fill;
+              band_fill(context, context->eigen_device<GPUDevice>(),
+                        /*num_lower_diags=*/n, /*num_upper_diags=*/0,
+                        /*value=*/Eigen::NumTraits<Scalar>::quiet_NaN(),
+                        output_batch);
+            }
           }
+        } else {
+          OP_REQUIRES_OK_ASYNC(context, status, done);
         }
       }
       done();

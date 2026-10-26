@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_OPS_H_
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/mem.h"
@@ -80,12 +81,12 @@ struct Im2ColBufferResource : public ResourceBase {
   Im2ColBufferResource<T, size>() {
     data = static_cast<T*>(port::Malloc(size * sizeof(T)));
   }
-  ~Im2ColBufferResource<T, size>() { port::Free(data); }
+  ~Im2ColBufferResource<T, size>() override { port::Free(data); }
   // This mutex ensures that only a single operation at a time is able to use
   // the buffer memory held by this resource.
   mutex mu;
   T* data;
-  std::string DebugString() const { return "Im2ColBufferResource"; }
+  std::string DebugString() const override { return "Im2ColBufferResource"; }
 };
 
 // Convolution parameters specified by Op attributes.

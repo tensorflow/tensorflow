@@ -180,6 +180,10 @@ void copyCastToBFloat16(const Eigen::half* in, Eigen::bfloat16* out,
   });
 }
 
+template <typename FromT>
+TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
+                          TfLiteTensor* out, int num_elements);
+
 #if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
 template <typename Float8T>
 TFLITE_NOINLINE uint8_t castFloatToFloat8Rep(float value) {
@@ -201,10 +205,6 @@ void copyCastToFloat8(const FromT* in, uint8_t* out, int num_elements) {
   std::transform(in, in + num_elements, out,
                  [](FromT value) { return castToFloat8Rep<Float8T>(value); });
 }
-
-template <typename FromT>
-TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
-                          TfLiteTensor* out, int num_elements);
 
 template <typename Float8T>
 TfLiteStatus copyFloat8ToTensor(TfLiteContext* context, const uint8_t* in,
@@ -317,7 +317,8 @@ TfLiteStatus castUInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
   return kTfLiteOk;
 }
 
-#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
+// Unpacks a packed sub-byte integer tensor (INT2/INT4/UINT4) into int8 and
+// casts it to the output tensor type.
 TfLiteStatus castPackedIntToTensor(TfLiteContext* context,
                                    const TfLiteTensor* in, TfLiteTensor* out,
                                    int num_elements, int bit_width,
@@ -328,7 +329,6 @@ TfLiteStatus castPackedIntToTensor(TfLiteContext* context,
       unpacked.data(), unpack_unsigned);
   return copyToTensor(context, unpacked.data(), out, num_elements);
 }
-#endif  // TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS
 
 TfLiteStatus castFloatToInt4(const float* in, TfLiteTensor* out,
                              int num_elements) {
@@ -504,39 +504,21 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
       if (output->type == kTfLiteFloat32) {
         return castInt4ToFloat(context, input, output, num_elements);
       }
-#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
-      if (output->type == kTfLiteFloat8E4M3FN ||
-          output->type == kTfLiteFloat8E5M2) {
-        return castPackedIntToTensor(context, input, output, num_elements,
-                                     /*bit_width=*/4);
-      }
-#endif
-      TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      return castPackedIntToTensor(context, input, output, num_elements,
+                                   /*bit_width=*/4);
     case kTfLiteInt2:
       if (output->type == kTfLiteFloat32) {
         return castInt2ToFloat(context, input, output, num_elements);
       }
-#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
-      if (output->type == kTfLiteFloat8E4M3FN ||
-          output->type == kTfLiteFloat8E5M2) {
-        return castPackedIntToTensor(context, input, output, num_elements,
-                                     /*bit_width=*/2);
-      }
-#endif
-      TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      return castPackedIntToTensor(context, input, output, num_elements,
+                                   /*bit_width=*/2);
     case kTfLiteUInt4:
       if (output->type == kTfLiteFloat32) {
         return castUInt4ToFloat(context, input, output, num_elements);
       }
-#if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
-      if (output->type == kTfLiteFloat8E4M3FN ||
-          output->type == kTfLiteFloat8E5M2) {
-        return castPackedIntToTensor(context, input, output, num_elements,
-                                     /*bit_width=*/4,
-                                     /*unpack_unsigned=*/true);
-      }
-#endif
-      TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      return castPackedIntToTensor(context, input, output, num_elements,
+                                   /*bit_width=*/4,
+                                   /*unpack_unsigned=*/true);
     default:
       // Unsupported type.
       TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");

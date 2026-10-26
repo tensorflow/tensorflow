@@ -46,7 +46,7 @@ class ImagePreprocessingStage : public EvaluationStage {
 
   EvaluationStageMetrics LatestMetrics() override;
 
-  ~ImagePreprocessingStage() override {}
+  ~ImagePreprocessingStage() override = default;
 
   // Call before Run().
   void SetImagePath(std::string* image_path) { image_path_ = image_path; }

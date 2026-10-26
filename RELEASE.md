@@ -16,6 +16,9 @@
 
 * `tf.lite`
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
+    * `tfl.cast` now supports casting packed INT2/INT4/UINT4 inputs to any non-packed output type (CAST op version 10).
+* `tf.function` / `PolymorphicFunction`:
+    * Added `clear_cache()` method to `PolymorphicFunction` to explicitly clear compiled concrete functions and dispatch tables, freeing retained graph memory.
 
 ### Bug Fixes and Other Changes
 
@@ -51,6 +54,9 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
 
 ### Major Features and Improvements
 
+*   Support for Python 3.14 has been added.
+* `tf.distribute.experimental`
+    * Introduces `tf.distribute.experimental.auto_strategy`, a dynamic factory API that automatically detects available hardware (TPUs, multiple GPUs, or multi-worker clusters via `TF_CONFIG`) and resolves the optimal distribution strategy, safely falling back to single device execution.
 * `tf.lite`
     * Adds support for QUI4 (Quantized Unsigned 4-bit) in Dequantize operator.
     * Adds support for FP16 and BF16 in Unpack operator.

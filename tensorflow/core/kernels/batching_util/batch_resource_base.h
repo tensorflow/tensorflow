@@ -382,6 +382,16 @@ class BatchResourceBase : public ResourceBase {
       OpKernelContext* context,
       std::vector<Tensor>* concatenated_tensors) const;
 
+  // Splits each tensor in `combined_outputs` along dimension 0 and gives each
+  // task in `batch` and `unbatched_tasks` its rows; padding rows are dropped.
+  // When every task's rows start at an aligned address and the batch has no
+  // more padding rows than task rows, the tasks get zero-copy slices of
+  // `combined_outputs` instead of copies. A slice keeps the whole batched
+  // output allocated, including the other tasks' rows and the padding, until it
+  // is released, and `Tensor::AllocatedBytes()` on a slice reports the size of
+  // the whole batched output. Callers that keep a task's outputs after the
+  // batch finishes, such as caches or asynchronous post-processing, therefore
+  // keep the whole batched output allocated.
   Status SplitOutputTensors(
       const std::vector<Tensor>& combined_outputs, BatchT* batch,
       std::vector<std::unique_ptr<BatchTask>>& unbatched_tasks) const;

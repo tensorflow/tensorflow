@@ -82,6 +82,17 @@ absl::Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
                                         const std::set<int>* variables_updated,
                                         std::vector<VariableInfo>* result);
 
+// As above. If `ctx` is non-null and TF_XLA_ALLOW_HOST_RESIDENT_VARS=1,
+// read-only variables on a host device are copied to `dev` once and the copy
+// is reused, instead of being rejected. Variables in `variables_updated` are
+// still rejected, since updates to the copy would not reach the host variable.
+absl::Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
+                                        absl::Span<const Tensor* const> inputs,
+                                        absl::Span<const int> variable_indices,
+                                        const std::set<int>* variables_updated,
+                                        OpKernelContext* ctx,
+                                        std::vector<VariableInfo>* result);
+
 std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx);
 
 absl::Status CreateVariableInfoLookup(

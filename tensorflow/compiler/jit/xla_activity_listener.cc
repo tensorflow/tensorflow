@@ -100,6 +100,6 @@ void RegisterXlaActivityListener(
 
 void XlaActivityListener::Flush() {}
 
-XlaActivityListener::~XlaActivityListener() {}
+XlaActivityListener::~XlaActivityListener() = default;
 
 }  // namespace tensorflow

@@ -32,8 +32,18 @@ import subprocess
 import sys
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
+# Ensure the XLA repository root is on sys.path when invoked directly as a
+# script in OSS (e.g. `python3 build_tools/ci/build.py` without PYTHONPATH).
+_XLA_SRC_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+if _XLA_SRC_ROOT not in sys.path:
+  sys.path.insert(0, _XLA_SRC_ROOT)
+
+# pylint: disable=g-import-not-at-top
 from build_tools.ci import bazel_diff
 from build_tools.ci import change_detector
+# pylint: enable=g-import-not-at-top
 
 # TODO(ddunleavy): move this to the bazelrc
 _DEFAULT_BAZEL_OPTIONS = dict(
@@ -46,6 +56,7 @@ _DEFAULT_BAZEL_OPTIONS = dict(
     flaky_test_attempts=3,
     jobs=150,
     bes_upload_mode="fully_async",
+    build_runfile_links=False,
 )
 
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
@@ -63,21 +74,10 @@ _XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools:compute_xspace_stats_main_gpu",
 )
 _GITHUB_WORKSPACE = os.environ.get("GITHUB_WORKSPACE", "$GITHUB_WORKSPACE")
-
-
-def retry(
-    args: List[str], delay_seconds: int = 15, retries: int = 3
-) -> List[str]:
-  # Possibly a slight abuse of `parallel` as nothing happens in parallel, just
-  # retries with delay if the command fails.
-  # pyformat:disable
-  return [
-      "parallel", "--ungroup",
-      "--retries", str(retries),
-      "--delay", str(delay_seconds),
-      "--nonall",
-      "--", *args,
-  ]
+_WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES = (
+    f"-Djava.security.properties={_GITHUB_WORKSPACE}"
+    r"\openxla\xla\build_tools\ci\bazel_dns_windows.security"
+)
 
 
 def sh(args, check=True, **kwargs):
@@ -108,11 +108,7 @@ class BuildType(enum.Enum):
   # Presubmit builds for regression testing.
   XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_CPU_128_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
 
   XLA_MACOS_X86_CPU_KOKORO = enum.auto()
@@ -154,6 +150,8 @@ class Build:
     extra_setup_commands: Tuple of shell commands to run before Bazel.
     use_bazel_diff: Whether to enable bazel-diff target filtering on presubmit.
     bazel_diff_use_cquery: Whether bazel-diff should use cquery (--useCquery).
+    command_retries: Number of times to retry failed Bazel commands against the
+      warm cache (e.g. to mitigate transient Windows lld-link file-open races).
   """
 
   _builds: ClassVar[Dict[BuildType, "Build"]] = {}
@@ -175,6 +173,7 @@ class Build:
   extra_setup_commands: Tuple[List[str], ...] = ()
   use_bazel_diff: bool = False
   bazel_diff_use_cquery: bool = True
+  command_retries: int = 0
 
   def __post_init__(self):
     # pylint: disable=protected-access
@@ -195,14 +194,12 @@ class Build:
   def bazel_command(
       self,
       subcommand: str = "test",
-      extra_options: Tuple[str, ...] = (),
       target_pattern_file: Optional[str] = None,
   ) -> List[str]:
     """Returns a bazel test command for this build.
 
     Args:
       subcommand: The subcommand to give to bazel. `test` by default.
-      extra_options: Extra options. For now just used to pass in `--nobuild`.
       target_pattern_file: Optional file containing explicit target patterns.
 
     Returns: List of command line arguments
@@ -210,10 +207,21 @@ class Build:
     options = _dict_to_cli_options(self.options)
     startup_options = _dict_to_cli_options(self.startup_options)
     configs = [f"--config={config}" for config in self.configs]
+    effective_build_tag_filters = self.build_tag_filters
+    effective_test_tag_filters = self.test_tag_filters
+    if target_pattern_file:
+      # Explicit target labels in --target_pattern_file bypass Bazel's wildcard
+      # exclusion of `tags = ["manual"]`, so exclude manual targets explicitly.
+      if "-manual" not in effective_build_tag_filters:
+        effective_build_tag_filters = (*effective_build_tag_filters, "-manual")
+      if "-manual" not in effective_test_tag_filters:
+        effective_test_tag_filters = (*effective_test_tag_filters, "-manual")
     build_tag_filters = (
-        f"--build_tag_filters={','.join(self.build_tag_filters)}"
+        f"--build_tag_filters={','.join(effective_build_tag_filters)}"
     )
-    test_tag_filters = f"--test_tag_filters={','.join(self.test_tag_filters)}"
+    test_tag_filters = (
+        f"--test_tag_filters={','.join(effective_test_tag_filters)}"
+    )
     action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
     test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
     repo_env = [f"--repo_env={k}={v}" for k, v in self.repo_env.items()]
@@ -235,7 +243,6 @@ class Build:
         + override_repository
         + override_module
         + options
-        + list(extra_options)
     )
     if target_pattern_file:
       extra = ["--skip_incompatible_explicit_targets"]
@@ -265,30 +272,6 @@ class Build:
     cmds = []
 
     cmds.extend(self.extra_setup_commands)
-
-    # We really want `bazel fetch` here, but it uses `bazel query` and not
-    # `cquery`, which means that it fails due to config issues that aren't
-    # problems in practice.
-    # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
-    # MacOS VM.
-    macos_build = (
-        self.type_ == BuildType.XLA_MACOS_X86_CPU_KOKORO
-        or self.type_ == BuildType.XLA_MACOS_ARM64_CPU_KOKORO
-    )
-    windows_build = (
-        self.type_ == BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS
-        or self.type_ == BuildType.XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS
-    )
-    if not (macos_build or windows_build):
-      cmds.append(
-          retry(
-              self.bazel_command(
-                  subcommand="build",
-                  extra_options=("--nobuild",),
-                  target_pattern_file=target_pattern_file,
-              )
-          )
-      )
     cmds.append(
         self.bazel_command(
             subcommand=self.subcommand,
@@ -465,8 +448,6 @@ Build(
         "-//xla/backends/gpu/...",
         "-//xla/codegen/emitters/tests/...",
         "-//xla/service/gpu/...",
-        # eigen is not windows compatible
-        "-//xla/codegen/intrinsic/cpp:eigen_unary_test",
     ),
     build_tag_filters=windows_x86_tag_filter,
     test_tag_filters=windows_x86_tag_filter,
@@ -477,7 +458,13 @@ Build(
     subcommand="build",
     startup_options={
         "output_user_root": "C:/x",
+        "host_jvm_args": _WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES,
     },
+    # Retry failed Bazel builds against the warm local cache to mitigate
+    # transient Windows lld-link wcifs.sys file-open races (b/571438464) until
+    # the Windows CI container image includes the lld/COFF/Driver.cpp
+    # LinkerDriver::enqueuePath fix (b/571437556).
+    command_retries=2,
 )
 
 Build(
@@ -504,7 +491,10 @@ Build(
     type_=BuildType.XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    target_patterns=(
+        *_XLA_DEFAULT_TARGET_PATTERNS,
+        "-@tsl//tsl/platform:stacktrace_handler_test",
+    ),
     options={
         **_DEFAULT_BAZEL_OPTIONS,
         "build_tests_only": True,
@@ -627,7 +617,12 @@ Build(
     target_patterns=_XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
-    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    options={
+        **_DEFAULT_BAZEL_OPTIONS,
+        "build_runfile_links": True,
+        "remote_download_toplevel": True,
+        "//xla/tsl:ci_build": True,
+    },
     subcommand="build",
 )
 
@@ -639,30 +634,12 @@ Build(
     options={
         **_DEFAULT_BAZEL_OPTIONS,
         "build_tests_only": False,
+        "build_runfile_links": True,
+        "remote_download_toplevel": True,
         "//xla/tsl:ci_build": True,
     },
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
-    subcommand="build",
-)
-
-Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_PRESUBMIT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
-    test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=nvidia_single_gpu_build_filters,
-    options={
-        "run_under": "//build_tools/ci:parallel_gpu_execute",
-        "//xla/tsl:ci_build": True,
-        **_DEFAULT_BAZEL_OPTIONS,
-    },
-    repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
-    },
-    extra_setup_commands=(["nvidia-smi"],),
     subcommand="build",
 )
 
@@ -677,42 +654,24 @@ Build(
         "cuda_libraries_from_stubs",
     ),
     test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=75),
+    + _tag_filters_for_compute_capability(compute_capability=89),
     build_tag_filters=nvidia_single_gpu_build_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
+        "build_runfile_links": True,
+        "remote_download_toplevel": True,
     },
     repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
+        "TF_CUDA_COMPUTE_CAPABILITIES": "8.9",
     },
     extra_setup_commands=(["nvidia-smi"],),
     subcommand="build",
 )
 
 Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_PRESUBMIT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
-    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=nvidia_single_gpu_build_filters,
-    options={
-        "run_under": "//build_tools/ci:parallel_gpu_execute",
-        "//xla/tsl:ci_build": True,
-        **_DEFAULT_BAZEL_OPTIONS,
-    },
-    repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
-    },
-    extra_setup_commands=(["nvidia-smi"],),
-    subcommand="build",
-)
-
-Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
+    type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=(
         "warnings",
@@ -722,54 +681,14 @@ Build(
     ),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=nvidia_single_gpu_build_filters,
-    options={
-        "run_under": "//build_tools/ci:parallel_gpu_execute",
-        "//xla/tsl:ci_build": True,
-        **_DEFAULT_BAZEL_OPTIONS,
-    },
-    repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "7.5",
-    },
-    extra_setup_commands=(["nvidia-smi"],),
-    subcommand="build",
-)
-
-Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_PRESUBMIT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    configs=(),
-    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=nvidia_single_gpu_test_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
     build_tag_filters=nvidia_single_gpu_build_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
-        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
         "//xla/tsl:ci_build": True,
         **_DEFAULT_BAZEL_OPTIONS,
-    },
-    repo_env={
-        "TF_CUDA_COMPUTE_CAPABILITIES": "10",
-    },
-    extra_setup_commands=(["nvidia-smi"],),
-    subcommand="build",
-)
-
-Build(
-    type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
-    repo="openxla/xla",
-    configs=("cuda_libraries_from_stubs",),
-    target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=nvidia_single_gpu_test_filters
-    + _tag_filters_for_compute_capability(compute_capability=100),
-    build_tag_filters=nvidia_single_gpu_build_filters,
-    options={
-        "run_under": "//build_tools/ci:parallel_gpu_execute",
-        # Use User Mode and Kernel Mode Drivers pre-installed on the system.
-        "//xla/tsl:ci_build": True,
-        **_DEFAULT_BAZEL_OPTIONS,
+        "build_runfile_links": True,
+        "remote_download_toplevel": True,
     },
     repo_env={
         "TF_CUDA_COMPUTE_CAPABILITIES": "10",
@@ -868,7 +787,7 @@ Build(
     override_module={
         "xla": f"{_GITHUB_WORKSPACE}/openxla/xla",
     },
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options={**_DEFAULT_BAZEL_OPTIONS, "remote_download_minimal": True},
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
 )
 
@@ -896,12 +815,18 @@ Build(
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}\\openxla\\xla",
     ),
-    options={**_DEFAULT_BAZEL_OPTIONS, "build_runfile_links": False},
+    options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
     subcommand="build",
     startup_options={
         "output_base": f"{_GITHUB_WORKSPACE}\\bazel_output_base",
+        "host_jvm_args": _WINDOWS_BAZEL_DNS_SECURITY_PROPERTIES,
     },
+    # Retry failed Bazel builds against the warm local cache to mitigate
+    # transient Windows lld-link wcifs.sys file-open races (b/571438464) until
+    # the Windows CI container image includes the lld/COFF/Driver.cpp
+    # LinkerDriver::enqueuePath fix (b/571437556).
+    command_retries=2,
 )
 
 Build(
@@ -934,6 +859,7 @@ Build(
     ),
     options={
         **_DEFAULT_BAZEL_OPTIONS,
+        "remote_download_minimal": True,
         "@local_config_cuda//cuda:override_include_cuda_libs": True,
     },
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
@@ -971,6 +897,37 @@ def get_xla_dir(build: Build) -> str:
   return "."
 
 
+def execute_build_commands(
+    build: Build, target_pattern_file: str | None = None
+) -> None:
+  """Executes commands for a build, retrying failed Bazel commands if configured."""
+  for command in build.commands(target_pattern_file=target_pattern_file):
+    max_retries = (
+        build.command_retries
+        if command and command[0] == "bazel" and build.command_retries > 0
+        else 0
+    )
+    for attempt in range(max_retries + 1):
+      result = sh(command, check=False)
+      if result.returncode == 0:
+        break
+      if result.returncode == 4 and target_pattern_file:
+        logging.info(
+            "Bazel returned exit code 4 (no tests found), treating as success."
+        )
+        break
+      if attempt < max_retries:
+        logging.warning(
+            "Bazel command failed with exit code %d (attempt %d/%d); retrying"
+            " against warm Bazel cache...",
+            result.returncode,
+            attempt + 1,
+            max_retries + 1,
+        )
+        continue
+      sys.exit(result.returncode)
+
+
 def _parse_args():
   """Defines flags and parses args."""
   parser = argparse.ArgumentParser(allow_abbrev=False)
@@ -988,7 +945,7 @@ def _parse_args():
   return parser.parse_args()
 
 
-def main():
+def main() -> None:
   logging.basicConfig()
   logging.getLogger().setLevel(logging.INFO)
 
@@ -1054,15 +1011,7 @@ def main():
       elif decision.decision == bazel_diff.BazelDiffDecisionType.IMPACTED:
         target_pattern_file = decision.impacted_targets_file
 
-  for command in build.commands(target_pattern_file=target_pattern_file):
-    result = sh(command, check=False)
-    if result.returncode == 4 and target_pattern_file:
-      logging.info(
-          "Bazel returned exit code 4 (no tests found), treating as success."
-      )
-      continue
-    if result.returncode != 0:
-      sys.exit(result.returncode)
+  execute_build_commands(build, target_pattern_file=target_pattern_file)
 
 
 if __name__ == "__main__":

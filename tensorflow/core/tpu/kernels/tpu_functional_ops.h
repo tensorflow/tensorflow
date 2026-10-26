@@ -331,6 +331,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // Init once flagas.
   absl::once_flag once_;
   absl::once_flag ordinal_selector_once_;
+  absl::Status init_status_;
 
   // Device manager and device set.
   const DeviceMgr* device_mgr_;
@@ -376,7 +377,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // List of TPU devices
   std::vector<Device*> tpu_devices_;
 
-  TpuPartitionedCall_Params runtime_params_;
+  TpuPartitionedCall_Params runtime_params_{};
 };
 
 }  // namespace tensorflow

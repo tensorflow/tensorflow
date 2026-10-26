@@ -34,13 +34,14 @@ ConvertCharBuffersToPjRtPartialProgramProtos(
     absl::Span<const char*> char_buffers,
     absl::Span<const size_t> char_buffer_sizes);
 
-// Converts a vector of `PjRtPartialProgramProto`s to an array of C-style
+// Converts a span of `PjRtPartialProgramProto`s to an array of C-style
 // character buffers and their sizes. This function allocates memory for the
 // `char_buffers`, the individual serialized protos, and `char_buffer_sizes`.
-// In case the partial programs cannot be serialized, this function frees the
-// allocated memory.
+// Each `PjRtPartialProgramProto` is set to an empty message after serialization
+// to minimize peak memory usage. In case the partial programs cannot be
+// serialized, this function frees the allocated memory.
 absl::StatusOr<const char**> ConvertPjRtPartialProgramProtosToCharBuffers(
-    const std::vector<xla::PjRtPartialProgramProto>& partial_programs,
+    absl::Span<xla::PjRtPartialProgramProto> partial_programs,
     const size_t*& char_buffer_sizes);
 
 }  // namespace xla

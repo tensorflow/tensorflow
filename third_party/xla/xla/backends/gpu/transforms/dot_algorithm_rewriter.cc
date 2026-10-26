@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/dot_algorithm_rewriter.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
@@ -342,15 +343,19 @@ absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
   bool default_to_bf16 = module->config()
                              .debug_options()
                              .xla_gpu_default_to_alg_dot_bf16_bf16_f32();
-  for (HloComputation* computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    for (HloInstruction* instruction : computation->instructions()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
       if (HloPredicateIsNotOp<HloOpcode::kDot>(instruction)) {
         continue;
       }
       auto algorithm = instruction->precision_config().algorithm();
+      if (fp8xn_only_ &&
+          algorithm != PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3 &&
+          algorithm != PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4) {
+        continue;
+      }
       auto need_to_simulate_tpu_precision = [&]() -> bool {
         if (!default_to_bf16) {
           return false;  // Default to BF16 is disabled by flag.
@@ -397,6 +402,18 @@ absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
           RewriteF32ToTF32X3(instruction);
           changed = true;
           break;
+        case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3:
+        case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4: {
+          // HIGHEST disables FP8 fast accumulation in cuBLASLt
+          // (IsFastAccumEnabled in cuda_blas_lt.cc requires
+          // compute_precision == 0) and in Triton (stablehlo_lower_to_triton.cc
+          // keeps max_num_imprecise_acc = 0 for HIGHEST F8 dots).
+          ABSL_ASSIGN_OR_RETURN(
+              bool rewritten,
+              RewriteFp8xNDot(instruction, PrecisionConfig::HIGHEST));
+          changed |= rewritten;
+          break;
+        }
         default:
           break;
       }

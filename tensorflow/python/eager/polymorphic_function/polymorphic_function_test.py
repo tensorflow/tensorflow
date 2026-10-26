@@ -2073,6 +2073,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined(z1, z2)
     self.assertLen(self._total_function_cache_def_func(defined), 3)
 
+  def testRetracingOnEqualPythonValuesThatDiffer(self):
+    # Regression test for GitHub issue 128160. These values compare equal in
+    # Python, so a call with one used to reuse the trace of the other.
+
+    @polymorphic_function.function
+    def sign(x):
+      return constant_op.constant(numpy.copysign(1.0, x))
+
+    self.assertEqual(self.evaluate(sign(0.0)), 1.0)
+    self.assertEqual(self.evaluate(sign(-0.0)), -1.0)
+
+    @polymorphic_function.function
+    def to_tensor(x):
+      return constant_op.constant(x)
+
+    self.assertEqual(to_tensor(1).dtype, dtypes.int32)
+    self.assertEqual(to_tensor(1.0).dtype, dtypes.float32)
+    self.assertEqual(to_tensor(True).dtype, dtypes.bool)
+    self.assertEqual(to_tensor(float('nan')).dtype, dtypes.float32)
+    self.assertEqual(
+        to_tensor(complex(float('nan'), 1)).dtype, dtypes.complex128
+    )
+
   def testFunctionModifiesInputList(self):
     # Tests on `list` methods that do in place modification, except `list.sort`
     # since it cannot even be "defunned" in the first place
@@ -4433,6 +4456,73 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     obj2.testDouble(constant_op.constant('a'))
     self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
     self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+
+  def test_clear_cache(self):
+
+    @polymorphic_function.function
+    def double(a):
+      return a + a
+
+    self.assertAllEqual(double(constant_op.constant(1)), 2)
+    self.assertAllEqual(double(constant_op.constant('a')), b'aa')
+    self.assertAllEqual(double.experimental_get_tracing_count(), 2)
+    double.clear_cache()
+    self.assertAllEqual(double.experimental_get_tracing_count(), 0)
+    self.assertAllEqual(double(constant_op.constant(1)), 2)
+    self.assertAllEqual(double.experimental_get_tracing_count(), 1)
+
+  def test_clear_cache_with_variable(self):
+    v = None
+
+    @polymorphic_function.function
+    def f(x):
+      nonlocal v
+      if v is None:
+        v = variables.Variable(1.0)
+      return v * x
+
+    self.assertAllEqual(f(constant_op.constant(2.0)), 2.0)
+    self.assertAllEqual(f.experimental_get_tracing_count(), 2)
+    f.clear_cache()
+    # Reset outer variable to trigger variable re-creation in the function
+    v = None
+    self.assertAllEqual(f.experimental_get_tracing_count(), 0)
+    self.assertAllEqual(f(constant_op.constant(3.0)), 3.0)
+    self.assertAllEqual(f.experimental_get_tracing_count(), 2)
+
+  def test_clear_cache_method_descriptor(self):
+
+    class Model:
+
+      @polymorphic_function.function
+      def call(self, x):
+        return x + 1
+
+    m1 = Model()
+    self.assertAllEqual(m1.call(constant_op.constant(1)), 2)
+    self.assertAllEqual(m1.call.experimental_get_tracing_count(), 1)
+
+    # Calling clear_cache on class method descriptor
+    Model.call.clear_cache()
+
+    self.assertAllEqual(m1.call.experimental_get_tracing_count(), 0)
+    self.assertAllEqual(m1.call(constant_op.constant(1)), 2)
+    self.assertAllEqual(m1.call.experimental_get_tracing_count(), 1)
+
+  def test_clear_cache_releases_by_ref_captures(self):
+    value = constant_op.constant(2.0)
+
+    @polymorphic_function.function
+    def f():
+      return ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_lib.TensorSpec(shape=(), dtype=dtypes.float32)
+      )
+
+    self.assertAllEqual(f(), 2.0)
+    self.assertNotEmpty(f._function_captures.by_ref_external)
+    f.clear_cache()
+    self.assertEmpty(f._function_captures.by_ref_external)
+    self.assertAllEqual(f(), 2.0)
 
   def test_tensor_shape_casted_to_specific(self):
     @polymorphic_function.function(

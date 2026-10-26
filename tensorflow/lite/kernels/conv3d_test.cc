@@ -540,5 +540,57 @@ TEST(Conv3dPrepareSecurityTest, RejectsShapeOverflow) {
   registration->free(&context, node.user_data);
 }
 
+TEST(Conv3dPrepareSecurityTest, RejectsInputElementOverflowWithStridedIm2Col) {
+  // With stride 4, output elements (16384 * 8192) and im2col elements
+  // (16384 * 8192 * 2 * 2 = 536,870,912) fit in 32-bit int, but the input
+  // tensor (65536 * 32768 = 2^31) overflows 32-bit signed int offsets in
+  // im2col.
+  IntArrayUniquePtr input_dims = BuildTfLiteArray<int>({1, 1, 65536, 32768, 1});
+  IntArrayUniquePtr filter_dims = BuildTfLiteArray<int>({1, 2, 2, 1, 1});
+  IntArrayUniquePtr output_dims = BuildTfLiteArray<int>(0);
+
+  TfLiteTensor tensors[3] = {};
+  tensors[0].type = kTfLiteFloat32;
+  tensors[0].dims = input_dims.get();
+  tensors[1].type = kTfLiteFloat32;
+  tensors[1].dims = filter_dims.get();
+  tensors[2].type = kTfLiteFloat32;
+  tensors[2].dims = output_dims.get();
+
+  IntArrayUniquePtr inputs = BuildTfLiteArray<int>({0, 1});
+  IntArrayUniquePtr outputs = BuildTfLiteArray<int>({2});
+  TfLiteConv3DParams params = {};
+  params.padding = kTfLitePaddingSame;
+  params.stride_depth = 1;
+  params.stride_width = 4;
+  params.stride_height = 4;
+  params.dilation_depth_factor = 1;
+  params.dilation_width_factor = 1;
+  params.dilation_height_factor = 1;
+  params.activation = kTfLiteActNone;
+
+  DirectPrepareTestContextState state;
+  TfLiteContext context = {};
+  context.tensors_size = 3;
+  context.tensors = tensors;
+  context.impl_ = &state;
+  context.ResizeTensor = ResizeTensorShouldNotBeCalled;
+  context.ReportError = SilentReportError;
+  context.AddTensors = AddTensorsShouldNotBeCalled;
+
+  TfLiteNode node = {};
+  node.inputs = inputs.get();
+  node.outputs = outputs.get();
+  node.builtin_data = &params;
+
+  TfLiteRegistration* registration =
+      ops::builtin::Register_CONV_3D_GENERIC_OPT();
+  node.user_data = registration->init(&context, nullptr, 0);
+  EXPECT_EQ(registration->prepare(&context, &node), kTfLiteError);
+  EXPECT_FALSE(state.resize_tensor_called);
+  EXPECT_FALSE(state.add_tensors_called);
+  registration->free(&context, node.user_data);
+}
+
 }  // namespace
 }  // namespace tflite

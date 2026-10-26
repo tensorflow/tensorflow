@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "xla/backends/cpu/codegen/computation_kernel_arguments.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/llvm_kernel_source.h"
@@ -46,9 +47,12 @@ namespace xla::cpu {
 // allocations for small buffers.
 class ComputationKernelEmitter final : public KernelEmitter<LlvmKernelSource> {
  public:
+  // `arguments` must be created from `instr->to_apply()` and
+  // `buffer_assignment`.
   ComputationKernelEmitter(const HloInstruction* instr,
                            const BufferAssignment* buffer_assignment,
-                           const TargetMachineFeatures* target_machine);
+                           const TargetMachineFeatures* target_machine,
+                           ComputationKernelArguments arguments);
 
   absl::string_view name() const final { return "computation_kernel_emitter"; }
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
@@ -65,6 +69,7 @@ class ComputationKernelEmitter final : public KernelEmitter<LlvmKernelSource> {
 
   const BufferAssignment* buffer_assignment_;
   const TargetMachineFeatures* target_machine_;
+  ComputationKernelArguments arguments_;
 };
 
 }  // namespace xla::cpu

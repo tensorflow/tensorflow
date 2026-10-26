@@ -4146,6 +4146,3011 @@ entries {
   }
 }
 entries {
+  key: "sm_107"
+  value {
+    entries {
+      b: 1
+      m: 256
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 4809981651376 }
+      flops { key: "f32xf32->f32" value: 4702134529147 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 9300008869179 }
+      flops { key: "f32xf32->f32" value: 9300008869179 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 17924376068376 }
+      flops { key: "f32xf32->f32" value: 16578276679841 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 34735436853002 }
+      flops { key: "f32xf32->f32" value: 31714964083175 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 55007265573770 }
+      flops { key: "f32xf32->f32" value: 63670648956356 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 9383230425055 }
+      flops { key: "f32xf32->f32" value: 8035065134099 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 18893261261261 }
+      flops { key: "f32xf32->f32" value: 15477136531365 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 32961131630648 }
+      flops { key: "f32xf32->f32" value: 25458597875569 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 61794534069981 }
+      flops { key: "f32xf32->f32" value: 61567765137614 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 98400093841642 }
+      flops { key: "f32xf32->f32" value: 108590394822006 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 33961975708502 }
+      flops { key: "f32xf32->f32" value: 28244471380471 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 34663669421487 }
+      flops { key: "f32xf32->f32" value: 29228599303135 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 63310249056603 }
+      flops { key: "f32xf32->f32" value: 66841498007968 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 93858551048951 }
+      flops { key: "f32xf32->f32" value: 117528658493870 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 192841563218390 }
+      flops { key: "f32xf32->f32" value: 206171625192012 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 56679783783783 }
+      flops { key: "f32xf32->f32" value: 47393265536723 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 107892064308681 }
+      flops { key: "f32xf32->f32" value: 119410790035587 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 108065803542673 }
+      flops { key: "f32xf32->f32" value: 116306523396880 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 182857940054495 }
+      flops { key: "f32xf32->f32" value: 210043392801251 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 284359593220339 }
+      flops { key: "f32xf32->f32" value: 355543650331125 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 114912438356164 }
+      flops { key: "f32xf32->f32" value: 115704937931034 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 200924742514970 }
+      flops { key: "f32xf32->f32" value: 207767380804953 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 311410041763341 }
+      flops { key: "f32xf32->f32" value: 324982392251816 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 338079919395466 }
+      flops { key: "f32xf32->f32" value: 354604301188903 }
+    }
+    entries {
+      b: 1
+      m: 256
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 528936859113300 }
+      flops { key: "f32xf32->f32" value: 501748515887850 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 9198035087719 }
+      flops { key: "f32xf32->f32" value: 7810621973929 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 19784452830188 }
+      flops { key: "f32xf32->f32" value: 17810208067940 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 32961131630648 }
+      flops { key: "f32xf32->f32" value: 24672376470588 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 59283448763250 }
+      flops { key: "f32xf32->f32" value: 49344752941176 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 106184911392405 }
+      flops { key: "f32xf32->f32" value: 106353191759112 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 33554432000000 }
+      flops { key: "f32xf32->f32" value: 28728109589041 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 34030864097363 }
+      flops { key: "f32xf32->f32" value: 30783882568807 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 66182311637080 }
+      flops { key: "f32xf32->f32" value: 62836014981273 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 99420539259259 }
+      flops { key: "f32xf32->f32" value: 111291648424543 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 187717102097902 }
+      flops { key: "f32xf32->f32" value: 205855411042944 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 64035175572519 }
+      flops { key: "f32xf32->f32" value: 46474282548476 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 112977885521885 }
+      flops { key: "f32xf32->f32" value: 114520245733788 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 100764060060060 }
+      flops { key: "f32xf32->f32" value: 117118436300174 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 200624406576980 }
+      flops { key: "f32xf32->f32" value: 215784128617363 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 331401797530864 }
+      flops { key: "f32xf32->f32" value: 342392163265306 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 115307326460481 }
+      flops { key: "f32xf32->f32" value: 121574028985507 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 172516359897172 }
+      flops { key: "f32xf32->f32" value: 210372614420062 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 307134389016018 }
+      flops { key: "f32xf32->f32" value: 328965019607843 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 286178524520255 }
+      flops { key: "f32xf32->f32" value: 345921979381443 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 501748515887850 }
+      flops { key: "f32xf32->f32" value: 530504853754940 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 196800187683284 }
+      flops { key: "f32xf32->f32" value: 201528120120120 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 342392163265306 }
+      flops { key: "f32xf32->f32" value: 345032719794344 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 529458493096646 }
+      flops { key: "f32xf32->f32" value: 531555358415841 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 727467360433604 }
+      flops { key: "f32xf32->f32" value: 726482966170500 }
+    }
+    entries {
+      b: 1
+      m: 512
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 941878792982456 }
+      flops { key: "f32xf32->f32" value: 742560044260027 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 33026015748031 }
+      flops { key: "f32xf32->f32" value: 29127111111111 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 34030864097363 }
+      flops { key: "f32xf32->f32" value: 30840470588235 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 60241350089766 }
+      flops { key: "f32xf32->f32" value: 52022375193798 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 102770082695252 }
+      flops { key: "f32xf32->f32" value: 114912438356164 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 195367871906841 }
+      flops { key: "f32xf32->f32" value: 198546934911242 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 63072240601503 }
+      flops { key: "f32xf32->f32" value: 47527524079320 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 113335636900992 }
+      flops { key: "f32xf32->f32" value: 117734849122807 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 112977885521885 }
+      flops { key: "f32xf32->f32" value: 120266781362007 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 198841078518518 }
+      flops { key: "f32xf32->f32" value: 212369822784810 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 428126724082934 }
+      flops { key: "f32xf32->f32" value: 340222377693282 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 114912438356164 }
+      flops { key: "f32xf32->f32" value: 114912438356164 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 213044012698412 }
+      flops { key: "f32xf32->f32" value: 215784128617363 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 281378884696016 }
+      flops { key: "f32xf32->f32" value: 345921979381443 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 412977624615384 }
+      flops { key: "f32xf32->f32" value: 359833050938337 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 599186285714285 }
+      flops { key: "f32xf32->f32" value: 539568755778894 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 198546934911242 }
+      flops { key: "f32xf32->f32" value: 209061881619937 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 302292180180180 }
+      flops { key: "f32xf32->f32" value: 351355308900523 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 483667488288288 }
+      flops { key: "f32xf32->f32" value: 536870912000000 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 730436614965986 }
+      flops { key: "f32xf32->f32" value: 732429620736698 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 941878792982456 }
+      flops { key: "f32xf32->f32" value: 799509921072226 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 351355308900523 }
+      flops { key: "f32xf32->f32" value: 323416212048192 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 484540534296028 }
+      flops { key: "f32xf32->f32" value: 487178686025408 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 719666101876675 }
+      flops { key: "f32xf32->f32" value: 748773935843793 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1025541379178605 }
+      flops { key: "f32xf32->f32" value: 1012963984905660 }
+    }
+    entries {
+      b: 1
+      m: 1024
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1807646168350168 }
+      flops { key: "f32xf32->f32" value: 1248537004651162 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 62836014981273 }
+      flops { key: "f32xf32->f32" value: 46733192200557 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 106861248407643 }
+      flops { key: "f32xf32->f32" value: 113359567567567 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 105517081761006 }
+      flops { key: "f32xf32->f32" value: 120699395683453 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 196782154128104 }
+      flops { key: "f32xf32->f32" value: 205855411042944 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 328562369645042 }
+      flops { key: "f32xf32->f32" value: 343707370038412 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 116105301038062 }
+      flops { key: "f32xf32->f32" value: 119410790035587 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 199136094955489 }
+      flops { key: "f32xf32->f32" value: 186932768802228 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 302292180180180 }
+      flops { key: "f32xf32->f32" value: 342392163265306 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 331811441285537 }
+      flops { key: "f32xf32->f32" value: 357437358189081 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 608697179138322 }
+      flops { key: "f32xf32->f32" value: 551202168377823 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 206488812307692 }
+      flops { key: "f32xf32->f32" value: 211699886435331 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 300936609865470 }
+      flops { key: "f32xf32->f32" value: 335544320000000 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 541200516129032 }
+      flops { key: "f32xf32->f32" value: 533668898608349 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1005376239700374 }
+      flops { key: "f32xf32->f32" value: 757222724964739 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 958698057142857 }
+      flops { key: "f32xf32->f32" value: 795364314074074 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 352277501312335 }
+      flops { key: "f32xf32->f32" value: 317299593380614 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 546642140257095 }
+      flops { key: "f32xf32->f32" value: 503631249530956 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 833650484472049 }
+      flops { key: "f32xf32->f32" value: 757222724964739 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 981482471663619 }
+      flops { key: "f32xf32->f32" value: 1008208285446009 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1810694475548060 }
+      flops { key: "f32xf32->f32" value: 1304668072904009 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 442962798679868 }
+      flops { key: "f32xf32->f32" value: 440780715927750 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 665267548946716 }
+      flops { key: "f32xf32->f32" value: 691843958762886 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1043480878522837 }
+      flops { key: "f32xf32->f32" value: 954437176888888 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1872261244986922 }
+      flops { key: "f32xf32->f32" value: 1209168720720720 }
+    }
+    entries {
+      b: 1
+      m: 2048
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2408843127313516 }
+      flops { key: "f32xf32->f32" value: 1488691248803102 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 113743837288135 }
+      flops { key: "f32xf32->f32" value: 121135133574007 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 204600195121951 }
+      flops { key: "f32xf32->f32" value: 206488812307692 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 300263373601789 }
+      flops { key: "f32xf32->f32" value: 340654131979695 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 386203335671252 }
+      flops { key: "f32xf32->f32" value: 345032719794344 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 599186285714285 }
+      flops { key: "f32xf32->f32" value: 521233895145631 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 201528120120120 }
+      flops { key: "f32xf32->f32" value: 204600195121951 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 362750616216216 }
+      flops { key: "f32xf32->f32" value: 347714321243523 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 520223751937984 }
+      flops { key: "f32xf32->f32" value: 525314003913894 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 990536738007380 }
+      flops { key: "f32xf32->f32" value: 750868408391608 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 939406670166229 }
+      flops { key: "f32xf32->f32" value: 790097000735835 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 340654131979695 }
+      flops { key: "f32xf32->f32" value: 315806418823529 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 517216678227360 }
+      flops { key: "f32xf32->f32" value: 515231201535508 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 730436614965986 }
+      flops { key: "f32xf32->f32" value: 751920044817927 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1205097445566779 }
+      flops { key: "f32xf32->f32" value: 1004435756782039 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1770390476504534 }
+      flops { key: "f32xf32->f32" value: 1254371289719626 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 467657588850174 }
+      flops { key: "f32xf32->f32" value: 458080982935153 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 726482966170500 }
+      flops { key: "f32xf32->f32" value: 665267548946716 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1285822107926053 }
+      flops { key: "f32xf32->f32" value: 970833475587703 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1856079211754537 }
+      flops { key: "f32xf32->f32" value: 1252177054227405 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2400764279485746 }
+      flops { key: "f32xf32->f32" value: 1481534079337702 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 653127630170316 }
+      flops { key: "f32xf32->f32" value: 578524689655172 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1229944815578465 }
+      flops { key: "f32xf32->f32" value: 891765854347261 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1887068231985940 }
+      flops { key: "f32xf32->f32" value: 1205097445566779 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 2430654949632145 }
+      flops { key: "f32xf32->f32" value: 1437405386880856 }
+    }
+    entries {
+      b: 1
+      m: 4096
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2906915259560067 }
+      flops { key: "f32xf32->f32" value: 1634912906346279 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 9489375565610 }
+      flops { key: "f32xf32->f32" value: 8507716024340 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 20213513253012 }
+      flops { key: "f32xf32->f32" value: 17772474576271 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 28926234482758 }
+      flops { key: "f32xf32->f32" value: 30897267034990 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 55001630160844 }
+      flops { key: "f32xf32->f32" value: 42853680715197 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 101989155015197 }
+      flops { key: "f32xf32->f32" value: 75149903695408 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 32513984496124 }
+      flops { key: "f32xf32->f32" value: 26715312101910 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 34521020576131 }
+      flops { key: "f32xf32->f32" value: 31775030303030 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 61008058181818 }
+      flops { key: "f32xf32->f32" value: 49417425625920 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 107546256410256 }
+      flops { key: "f32xf32->f32" value: 74565404444444 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 190379756028368 }
+      flops { key: "f32xf32->f32" value: 111384006639004 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 58457198606271 }
+      flops { key: "f32xf32->f32" value: 66576253968253 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 99864380952380 }
+      flops { key: "f32xf32->f32" value: 118566897526501 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 104368373250388 }
+      flops { key: "f32xf32->f32" value: 74400070953436 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 195367871906841 }
+      flops { key: "f32xf32->f32" value: 114227853617021 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 333046471464019 }
+      flops { key: "f32xf32->f32" value: 187717102097902 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 108240103225806 }
+      flops { key: "f32xf32->f32" value: 120266781362007 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 191193344729344 }
+      flops { key: "f32xf32->f32" value: 196800187683284 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 283720920597172 }
+      flops { key: "f32xf32->f32" value: 297600283813747 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 330585536945812 }
+      flops { key: "f32xf32->f32" value: 194800766328011 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 489845722627737 }
+      flops { key: "f32xf32->f32" value: 237232030489657 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 182361043478260 }
+      flops { key: "f32xf32->f32" value: 197379011764705 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 336385283208020 }
+      flops { key: "f32xf32->f32" value: 303660018099547 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 509365191650853 }
+      flops { key: "f32xf32->f32" value: 435771844155844 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 697234950649350 }
+      flops { key: "f32xf32->f32" value: 621378370370370 }
+    }
+    entries {
+      b: 2
+      m: 256
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 689622237636480 }
+      flops { key: "f32xf32->f32" value: 325468773022639 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 32513984496124 }
+      flops { key: "f32xf32->f32" value: 27685174917491 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 32896501960784 }
+      flops { key: "f32xf32->f32" value: 31651392052823 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 59811821746880 }
+      flops { key: "f32xf32->f32" value: 50533783132530 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 108414966074313 }
+      flops { key: "f32xf32->f32" value: 77762298957126 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 191193344729344 }
+      flops { key: "f32xf32->f32" value: 105517081761006 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 59918628571428 }
+      flops { key: "f32xf32->f32" value: 47259763380281 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 104857600000000 }
+      flops { key: "f32xf32->f32" value: 118149408450704 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 107546256410256 }
+      flops { key: "f32xf32->f32" value: 77852510440835 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 197961250737463 }
+      flops { key: "f32xf32->f32" value: 107117101356743 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 338933656565656 }
+      flops { key: "f32xf32->f32" value: 196512046852123 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 112598765100671 }
+      flops { key: "f32xf32->f32" value: 119837257142857 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 194518446376811 }
+      flops { key: "f32xf32->f32" value: 204600195121951 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 316551245283018 }
+      flops { key: "f32xf32->f32" value: 297600283813747 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 283458770855332 }
+      flops { key: "f32xf32->f32" value: 219130984489795 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 492542121100917 }
+      flops { key: "f32xf32->f32" value: 267899656686626 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 182361043478260 }
+      flops { key: "f32xf32->f32" value: 197379011764705 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 329773287469287 }
+      flops { key: "f32xf32->f32" value: 292413350762527 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 409825123664122 }
+      flops { key: "f32xf32->f32" value: 429496729600000 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 927238189982728 }
+      flops { key: "f32xf32->f32" value: 603904287964004 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 763142732054015 }
+      flops { key: "f32xf32->f32" value: 410765808722264 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 317252717979022 }
+      flops { key: "f32xf32->f32" value: 270600258064516 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 492542121100917 }
+      flops { key: "f32xf32->f32" value: 417473493001555 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 780335627906976 }
+      flops { key: "f32xf32->f32" value: 598518296544035 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 988712545119705 }
+      flops { key: "f32xf32->f32" value: 798321058736059 }
+    }
+    entries {
+      b: 2
+      m: 512
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1654376155231354 }
+      flops { key: "f32xf32->f32" value: 1008208285446009 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 61908546125461 }
+      flops { key: "f32xf32->f32" value: 66313106719367 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 92436451790633 }
+      flops { key: "f32xf32->f32" value: 108942961038961 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 99273467455621 }
+      flops { key: "f32xf32->f32" value: 77762298957126 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 170543491740787 }
+      flops { key: "f32xf32->f32" value: 107892064308681 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 314695728018757 }
+      flops { key: "f32xf32->f32" value: 195083906976744 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 116914397212543 }
+      flops { key: "f32xf32->f32" value: 121135133574007 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 186413511111111 }
+      flops { key: "f32xf32->f32" value: 202745812688821 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 302974555304740 }
+      flops { key: "f32xf32->f32" value: 320328706443914 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 333460193788819 }
+      flops { key: "f32xf32->f32" value: 229628277159965 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 496642841813136 }
+      flops { key: "f32xf32->f32" value: 286026058604155 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 200324967164179 }
+      flops { key: "f32xf32->f32" value: 197379011764705 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 289262344827586 }
+      flops { key: "f32xf32->f32" value: 309971658198614 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 442962798679868 }
+      flops { key: "f32xf32->f32" value: 477643160142348 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 970833475587703 }
+      flops { key: "f32xf32->f32" value: 664444198019802 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 777510372194062 }
+      flops { key: "f32xf32->f32" value: 443511699297810 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 321095043062200 }
+      flops { key: "f32xf32->f32" value: 304348589569161 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 507439425330812 }
+      flops { key: "f32xf32->f32" value: 451152026890756 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 686535693094629 }
+      flops { key: "f32xf32->f32" value: 655520039072039 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1003497031775700 }
+      flops { key: "f32xf32->f32" value: 899281259631490 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1771759829216727 }
+      flops { key: "f32xf32->f32" value: 1153940702847931 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 439337898527004 }
+      flops { key: "f32xf32->f32" value: 387912508670520 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 965595165467625 }
+      flops { key: "f32xf32->f32" value: 610774643913538 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1263225675294117 }
+      flops { key: "f32xf32->f32" value: 853530861685214 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1713873621707901 }
+      flops { key: "f32xf32->f32" value: 1110958948784273 }
+    }
+    entries {
+      b: 2
+      m: 1024
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2176871412062848 }
+      flops { key: "f32xf32->f32" value: 1326400369356675 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 114912438356164 }
+      flops { key: "f32xf32->f32" value: 121574028985507 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 196800187683284 }
+      flops { key: "f32xf32->f32" value: 208412621118012 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 314327231850117 }
+      flops { key: "f32xf32->f32" value: 300263373601789 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 273077778229908 }
+      flops { key: "f32xf32->f32" value: 205225883792048 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 501280029878618 }
+      flops { key: "f32xf32->f32" value: 254079939422621 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 188508044943820 }
+      flops { key: "f32xf32->f32" value: 201528120120120 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 340654131979695 }
+      flops { key: "f32xf32->f32" value: 315065089201877 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 516222030769230 }
+      flops { key: "f32xf32->f32" value: 463619094991364 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 960413080500894 }
+      flops { key: "f32xf32->f32" value: 648394821256038 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 745136588480222 }
+      flops { key: "f32xf32->f32" value: 416815129291311 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 309257437788018 }
+      flops { key: "f32xf32->f32" value: 305735143507972 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 472597633802816 }
+      flops { key: "f32xf32->f32" value: 454975349152542 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 756156214084507 }
+      flops { key: "f32xf32->f32" value: 636857546856465 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1355734626262626 }
+      flops { key: "f32xf32->f32" value: 909950698305084 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1751617983686786 }
+      flops { key: "f32xf32->f32" value: 1100673939456065 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 459649753424657 }
+      flops { key: "f32xf32->f32" value: 422068327044025 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1011056331450094 }
+      flops { key: "f32xf32->f32" value: 584190328618063 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1239886632794457 }
+      flops { key: "f32xf32->f32" value: 844800805664830 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1738853156275303 }
+      flops { key: "f32xf32->f32" value: 1105241198147195 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2200220175327378 }
+      flops { key: "f32xf32->f32" value: 1423588762346702 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 849479291139240 }
+      flops { key: "f32xf32->f32" value: 514737211888782 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1279787632896305 }
+      flops { key: "f32xf32->f32" value: 843432136285531 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1844917223367697 }
+      flops { key: "f32xf32->f32" value: 1121401382767624 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 2306641941997852 }
+      flops { key: "f32xf32->f32" value: 1372632565036753 }
+    }
+    entries {
+      b: 2
+      m: 2048
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2656903351543621 }
+      flops { key: "f32xf32->f32" value: 1560671255813953 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 192289008595988 }
+      flops { key: "f32xf32->f32" value: 196800187683284 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 328160704156479 }
+      flops { key: "f32xf32->f32" value: 329773287469287 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 494356272559852 }
+      flops { key: "f32xf32->f32" value: 474267590106007 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 715827882666666 }
+      flops { key: "f32xf32->f32" value: 638372071343638 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 671928550688360 }
+      flops { key: "f32xf32->f32" value: 340431371921133 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 309971658198614 }
+      flops { key: "f32xf32->f32" value: 302292180180180 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 533668898608349 }
+      flops { key: "f32xf32->f32" value: 463619094991364 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 832358003100775 }
+      flops { key: "f32xf32->f32" value: 655520039072039 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1191722335183129 }
+      flops { key: "f32xf32->f32" value: 909180206604572 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1804608107563025 }
+      flops { key: "f32xf32->f32" value: 1093980462557310 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 469292755244755 }
+      flops { key: "f32xf32->f32" value: 410451767584097 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 967334976576576 }
+      flops { key: "f32xf32->f32" value: 625723673659673 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1221549287827076 }
+      flops { key: "f32xf32->f32" value: 824686500768049 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1705705836378077 }
+      flops { key: "f32xf32->f32" value: 1110958948784273 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2208209406683804 }
+      flops { key: "f32xf32->f32" value: 1416545941952506 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 870131137763371 }
+      flops { key: "f32xf32->f32" value: 508882381042654 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1285918352095808 }
+      flops { key: "f32xf32->f32" value: 837552124804992 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1813753081081081 }
+      flops { key: "f32xf32->f32" value: 1111498022450101 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 2280841605629128 }
+      flops { key: "f32xf32->f32" value: 1377005845827071 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2634090757843494 }
+      flops { key: "f32xf32->f32" value: 1590728628148148 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 1138644564156946 }
+      flops { key: "f32xf32->f32" value: 682173966963151 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1753047875918367 }
+      flops { key: "f32xf32->f32" value: 1071598626746507 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 2448670066134549 }
+      flops { key: "f32xf32->f32" value: 1439814715387194 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 2946804319725557 }
+      flops { key: "f32xf32->f32" value: 1638362500858287 }
+    }
+    entries {
+      b: 2
+      m: 4096
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 3334601937888199 }
+      flops { key: "f32xf32->f32" value: 1775502089202090 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 34663669421487 }
+      flops { key: "f32xf32->f32" value: 27060025806451 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 31011489833641 }
+      flops { key: "f32xf32->f32" value: 31418007490636 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 61794534069981 }
+      flops { key: "f32xf32->f32" value: 49932190476190 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 105351434850863 }
+      flops { key: "f32xf32->f32" value: 75658245772266 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 195083906976744 }
+      flops { key: "f32xf32->f32" value: 112598765100671 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 58661594405594 }
+      flops { key: "f32xf32->f32" value: 46474282548476 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 97826332361516 }
+      flops { key: "f32xf32->f32" value: 110376421052631 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 112034831385642 }
+      flops { key: "f32xf32->f32" value: 76783597254004 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 193119033093525 }
+      flops { key: "f32xf32->f32" value: 113743837288135 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 334290729763387 }
+      flops { key: "f32xf32->f32" value: 149048004441976 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 91929950684931 }
+      flops { key: "f32xf32->f32" value: 118987347517730 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 176602273684210 }
+      flops { key: "f32xf32->f32" value: 197379011764705 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 296941876106194 }
+      flops { key: "f32xf32->f32" value: 292413350762527 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 328562369645042 }
+      flops { key: "f32xf32->f32" value: 188111742116327 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 493901482980680 }
+      flops { key: "f32xf32->f32" value: 232009901469317 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 195083906976744 }
+      flops { key: "f32xf32->f32" value: 192289008595988 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 319566019047619 }
+      flops { key: "f32xf32->f32" value: 292413350762527 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 404270265060240 }
+      flops { key: "f32xf32->f32" value: 416179001550387 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 697234950649350 }
+      flops { key: "f32xf32->f32" value: 605223320791939 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 674884867379006 }
+      flops { key: "f32xf32->f32" value: 320999050523168 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 312134251162790 }
+      flops { key: "f32xf32->f32" value: 268973402805611 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 464421204152249 }
+      flops { key: "f32xf32->f32" value: 423399772870662 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 677012499369483 }
+      flops { key: "f32xf32->f32" value: 539534865397902 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1103537331963001 }
+      flops { key: "f32xf32->f32" value: 777510372194062 }
+    }
+    entries {
+      b: 4
+      m: 256
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1494421466945024 }
+      flops { key: "f32xf32->f32" value: 990051530557556 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 58254222222222 }
+      flops { key: "f32xf32->f32" value: 46603377777777 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 95325090909090 }
+      flops { key: "f32xf32->f32" value: 112977885521885 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 103883690402476 }
+      flops { key: "f32xf32->f32" value: 76346830489192 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 206488812307692 }
+      flops { key: "f32xf32->f32" value: 102139531414982 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 330585536945812 }
+      flops { key: "f32xf32->f32" value: 172294901155327 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 115704937931034 }
+      flops { key: "f32xf32->f32" value: 115704937931034 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 188474955941723 }
+      flops { key: "f32xf32->f32" value: 198546934911242 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 283159763713080 }
+      flops { key: "f32xf32->f32" value: 288640275268817 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 332633774473358 }
+      flops { key: "f32xf32->f32" value: 203978310030395 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 492994409550045 }
+      flops { key: "f32xf32->f32" value: 249012482374768 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 179916525469168 }
+      flops { key: "f32xf32->f32" value: 193397302593659 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 328160704156479 }
+      flops { key: "f32xf32->f32" value: 289262344827586 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 494299378064219 }
+      flops { key: "f32xf32->f32" value: 422733001574803 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 546155556459816 }
+      flops { key: "f32xf32->f32" value: 582921728555917 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 741534408839779 }
+      flops { key: "f32xf32->f32" value: 360437000335683 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 318806954869358 }
+      flops { key: "f32xf32->f32" value: 275601084188911 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 445166593698175 }
+      flops { key: "f32xf32->f32" value: 417473493001555 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 804903916041979 }
+      flops { key: "f32xf32->f32" value: 595200567627494 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1135033640591966 }
+      flops { key: "f32xf32->f32" value: 825320387394312 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1530636955096222 }
+      flops { key: "f32xf32->f32" value: 1045512973709834 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 430875531300160 }
+      flops { key: "f32xf32->f32" value: 371794260387811 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 922458611683848 }
+      flops { key: "f32xf32->f32" value: 555731033965193 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1177348491228070 }
+      flops { key: "f32xf32->f32" value: 743073926643598 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1593088759643917 }
+      flops { key: "f32xf32->f32" value: 1013920513692162 }
+    }
+    entries {
+      b: 4
+      m: 512
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2124118346191889 }
+      flops { key: "f32xf32->f32" value: 1221201960762013 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 98112374269005 }
+      flops { key: "f32xf32->f32" value: 114912438356164 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 189039053521126 }
+      flops { key: "f32xf32->f32" value: 211034163522012 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 314327231850117 }
+      flops { key: "f32xf32->f32" value: 327360312195121 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 318806954869358 }
+      flops { key: "f32xf32->f32" value: 194800766328011 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 488953471766848 }
+      flops { key: "f32xf32->f32" value: 235057316987740 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 187454927374301 }
+      flops { key: "f32xf32->f32" value: 195652664723032 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 340654131979695 }
+      flops { key: "f32xf32->f32" value: 318051488151658 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 527378106090373 }
+      flops { key: "f32xf32->f32" value: 479295535766097 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 680444755386565 }
+      flops { key: "f32xf32->f32" value: 646832424096385 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 756689093727977 }
+      flops { key: "f32xf32->f32" value: 389177899238854 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 318806954869358 }
+      flops { key: "f32xf32->f32" value: 291144746203904 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 519217516441005 }
+      flops { key: "f32xf32->f32" value: 455747803056027 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 832358003100775 }
+      flops { key: "f32xf32->f32" value: 612866337899543 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 985084242201834 }
+      flops { key: "f32xf32->f32" value: 863093151670434 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1719362408326661 }
+      flops { key: "f32xf32->f32" value: 1084587701010101 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 431568257234726 }
+      flops { key: "f32xf32->f32" value: 403662339849624 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 880116249180327 }
+      flops { key: "f32xf32->f32" value: 622098391657010 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1254371289719626 }
+      flops { key: "f32xf32->f32" value: 858993459200000 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1636723592054494 }
+      flops { key: "f32xf32->f32" value: 1106380035033487 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2158275023115578 }
+      flops { key: "f32xf32->f32" value: 1319498401228878 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 863136514469453 }
+      flops { key: "f32xf32->f32" value: 501748515887850 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1335499781094527 }
+      flops { key: "f32xf32->f32" value: 856936810853950 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1837026217279726 }
+      flops { key: "f32xf32->f32" value: 1127880067226890 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 2294320136752137 }
+      flops { key: "f32xf32->f32" value: 1358736885795634 }
+    }
+    entries {
+      b: 4
+      m: 1024
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2639757101162009 }
+      flops { key: "f32xf32->f32" value: 1548573029024698 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 193397302593659 }
+      flops { key: "f32xf32->f32" value: 198546934911242 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 333874945273631 }
+      flops { key: "f32xf32->f32" value: 321865055155875 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 496183837338262 }
+      flops { key: "f32xf32->f32" value: 458864027350427 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 715827882666666 }
+      flops { key: "f32xf32->f32" value: 664444198019802 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 694052001131176 }
+      flops { key: "f32xf32->f32" value: 332119339313331 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 318051488151658 }
+      flops { key: "f32xf32->f32" value: 302292180180180 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 525314003913894 }
+      flops { key: "f32xf32->f32" value: 442233041186161 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 693631669250646 }
+      flops { key: "f32xf32->f32" value: 649964784503632 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1173488332240437 }
+      flops { key: "f32xf32->f32" value: 923251783319002 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1720740102564102 }
+      flops { key: "f32xf32->f32" value: 1154561101075268 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 465226093587521 }
+      flops { key: "f32xf32->f32" value: 385129779053084 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 983280058608058 }
+      flops { key: "f32xf32->f32" value: 614268778032036 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1272205952606635 }
+      flops { key: "f32xf32->f32" value: 815293716021260 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1686947091908876 }
+      flops { key: "f32xf32->f32" value: 1168380657236126 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2179080312531709 }
+      flops { key: "f32xf32->f32" value: 1408618975832735 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 860370051282051 }
+      flops { key: "f32xf32->f32" value: 509818659386313 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1299929569007264 }
+      flops { key: "f32xf32->f32" value: 861060003207698 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1798562519262981 }
+      flops { key: "f32xf32->f32" value: 1090646850177755 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 2278497239257294 }
+      flops { key: "f32xf32->f32" value: 1352319677581864 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2640619302797418 }
+      flops { key: "f32xf32->f32" value: 1529819161531611 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 1150848685959271 }
+      flops { key: "f32xf32->f32" value: 677867313131313 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1727661824617860 }
+      flops { key: "f32xf32->f32" value: 1072133623564653 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 2355988642896324 }
+      flops { key: "f32xf32->f32" value: 1393536729381704 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 2687714202753442 }
+      flops { key: "f32xf32->f32" value: 1639280942164334 }
+    }
+    entries {
+      b: 4
+      m: 2048
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 3068381708162172 }
+      flops { key: "f32xf32->f32" value: 1775502089202090 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 256
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 307134389016018 }
+      flops { key: "f32xf32->f32" value: 296286375275938 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 256
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 470939396491228 }
+      flops { key: "f32xf32->f32" value: 462023160068846 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 256
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 798915047619047 }
+      flops { key: "f32xf32->f32" value: 625723673659673 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 256
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1366083745547073 }
+      flops { key: "f32xf32->f32" value: 908411018612521 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 256
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 1768932164744645 }
+      flops { key: "f32xf32->f32" value: 1088987651115618 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 512
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 440780715927750 }
+      flops { key: "f32xf32->f32" value: 412343250384024 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 512
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 956989147950089 }
+      flops { key: "f32xf32->f32" value: 615633526266752 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 512
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1298357707376058 }
+      flops { key: "f32xf32->f32" value: 852852918189038 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 512
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 1701651068145800 }
+      flops { key: "f32xf32->f32" value: 1139248619628647 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 512
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2183511589222165 }
+      flops { key: "f32xf32->f32" value: 1388132041935158 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 1024
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 858993459200000 }
+      flops { key: "f32xf32->f32" value: 498024964749536 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 1024
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1261741273795534 }
+      flops { key: "f32xf32->f32" value: 833650484472049 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 1024
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 1807646168350168 }
+      flops { key: "f32xf32->f32" value: 1113262648004147 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 1024
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 2266473507124010 }
+      flops { key: "f32xf32->f32" value: 1360027642811906 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 1024
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2633283265418734 }
+      flops { key: "f32xf32->f32" value: 1576713397944199 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 2048
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 1163238484934660 }
+      flops { key: "f32xf32->f32" value: 679583432911392 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 2048
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 1750190422167889 }
+      flops { key: "f32xf32->f32" value: 1072669154845154 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 2048
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 2350830484948002 }
+      flops { key: "f32xf32->f32" value: 1435453736678294 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 2048
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 2647945311960542 }
+      flops { key: "f32xf32->f32" value: 1644616466297311 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 2048
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 2939713458574408 }
+      flops { key: "f32xf32->f32" value: 1769467359387170 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 4096
+      k: 256
+      flops { key: "bf16xbf16->bf16" value: 1444171921990585 }
+      flops { key: "f32xf32->f32" value: 836899317225253 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 4096
+      k: 512
+      flops { key: "bf16xbf16->bf16" value: 2156108080321285 }
+      flops { key: "f32xf32->f32" value: 1286688824445776 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 4096
+      k: 1024
+      flops { key: "bf16xbf16->bf16" value: 2981580906629642 }
+      flops { key: "f32xf32->f32" value: 1699294676953511 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 4096
+      k: 2048
+      flops { key: "bf16xbf16->bf16" value: 3329391685468926 }
+      flops { key: "f32xf32->f32" value: 1818155947640308 }
+    }
+    entries {
+      b: 4
+      m: 4096
+      n: 4096
+      k: 4096
+      flops { key: "bf16xbf16->bf16" value: 3577648726364015 }
+      flops { key: "f32xf32->f32" value: 1880452103751287 }
+    }
+  }
+}
+entries {
   key: "sm_90"
   value {
     entries {

@@ -26,7 +26,7 @@ ENTRY main {
     }
 }
 
-// NEW-VECTOR:       #[[$UB_MAP:.*]] = #xla.indexing_map<"(pid, tid) -> (min(max(pid * -48 - tid * 16 + 112, 0), 16)), domain: pid in [0, 2], tid in [0, 2]">
+// NEW-VECTOR:       #[[$UB_MAP:.*]] = #xla.indexing_map<"(pid, tid) -> (min(max(pid * -48 - tid * 16 + 112, 0), 16)), domain: pid in [0, 2], tid in [0, 2], pid * 3 + tid in [0, 6]">
 // NEW-VECTOR-LABEL: func.func @wrapped_fusion_impl(
 // NEW-VECTOR-SAME:      %[[PID:[^:]+]]: index {xla.range = [0 : index, 2 : index]}
 // NEW-VECTOR:           scf.for %[[TID:.*]] =

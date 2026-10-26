@@ -39,8 +39,16 @@ namespace gpu {
 
 namespace {
 
+// A tiled scan computes one row per block and loops over the scan dimension.
+// For scan dimensions of at least kMinLongScanDimSize, it only beats
+// the hierarchical scan of AssociativeScanRewriter with at least
+// kMinRowsForLongScan rows (crossover at 64 rows on H100 and 32 on B200).
+// Shorter scans are faster with Triton at any batch size.
+constexpr int64_t kMinLongScanDimSize = 32768;
+constexpr int64_t kMinRowsForLongScan = 64;
+
 // Complements `IsTritonSupportedInstruction` with graph-level checks (non-root,
-// only GTE 0 users).
+// only GTE 0 users) and profitability heuristics.
 bool IsEligibleScan(const HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kScan) {
     return false;
@@ -56,6 +64,20 @@ bool IsEligibleScan(const HloInstruction* instr) {
   }
 
   const auto* scan = Cast<HloScanInstruction>(instr);
+  const Shape& input_shape = scan->operand(0)->shape();
+  int64_t rank = input_shape.dimensions().size();
+  int64_t scan_dim = scan->scan_dimension();
+  int64_t scan_dim_size = input_shape.dimensions(scan_dim);
+  int64_t num_rows = 1;
+  for (int64_t i = 0; i < rank; ++i) {
+    if (i != scan_dim) {
+      num_rows *= input_shape.dimensions(i);
+    }
+  }
+  if (scan_dim_size >= kMinLongScanDimSize && num_rows < kMinRowsForLongScan) {
+    return false;
+  }
+
   for (const HloInstruction* user : scan->users()) {
     if (user->opcode() != HloOpcode::kGetTupleElement) {
       return false;
@@ -95,6 +117,8 @@ absl::Status RewriteScanToTritonFusion(HloInstruction* scan) {
       fusion_computation));
   module->SetAndUniquifyInstrName(fusion, "triton_scan");
 
+  // The block-level config is left to PriorityFusion or
+  // FusionBlockLevelRewriter.
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                    fusion->backend_config<GpuBackendConfig>());
   gpu_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
@@ -122,6 +146,9 @@ absl::Status RewriteScanToTritonFusion(HloInstruction* scan) {
 absl::StatusOr<bool> ScanRewriterTriton::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  ABSL_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
+      device_info_.gpu_compute_capability()));
+
   std::vector<HloInstruction*> scans_to_rewrite;
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {

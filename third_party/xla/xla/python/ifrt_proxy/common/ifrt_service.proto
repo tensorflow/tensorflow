@@ -38,7 +38,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
-// Next ID: 35.
+// Next ID: 36.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -102,12 +102,13 @@ message IfrtRequest {
     GetDefaultDeviceAssignmentRequest get_default_device_assignment_request =
         19;
     GetDefaultLayoutRequest get_default_layout_request = 27;
+    CancelExecutionRequest cancel_execution_request = 35;
   }
 
   reserved 10;
 }
 
-// Next ID: 35.
+// Next ID: 36.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -170,6 +171,7 @@ message IfrtResponse {
     GetDefaultDeviceAssignmentResponse get_default_device_assignment_response =
         19;
     GetDefaultLayoutResponse get_default_layout_response = 27;
+    CancelExecutionResponse cancel_execution_response = 35;
   }
 
   reserved 10;
@@ -621,6 +623,7 @@ message LoadedExecutableExecuteRequest {
   // Client-generated handles for the response.
   repeated fixed64 result_array_handle = 5;
   fixed64 result_status_handle = 6;
+  fixed64 cancellation_handle = 7;
 }
 message LoadedExecutableExecuteResponse {
   fixed64 status_handle = 1;
@@ -754,3 +757,10 @@ message GetDefaultLayoutRequest {
 message GetDefaultLayoutResponse {
   bytes serialized_pjrt_layout = 1;
 }
+
+// Mirrors Client::CancelExecution.
+message CancelExecutionRequest {
+  fixed64 cancellation_handle = 1;
+  tensorflow.StatusProto error = 2;
+}
+message CancelExecutionResponse {}

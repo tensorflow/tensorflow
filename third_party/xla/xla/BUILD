@@ -392,6 +392,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -735,6 +736,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@highway//:hwy",
+        "@tsl//tsl/platform",
         "@tsl//tsl/platform:ml_dtypes",
         "@tsl//tsl/platform:platform_port",
     ],
@@ -1174,6 +1176,7 @@ xla_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -1374,6 +1377,29 @@ cc_library(
             "@com_google_protobuf//:protobuf",
             "@tsl//tsl/platform:platform_port",
         ],
+)
+
+cc_library(
+    name = "debug_options_runtime_fields",
+    srcs = ["debug_options_runtime_fields.cc"],
+    hdrs = ["debug_options_runtime_fields.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":xla_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "debug_options_runtime_fields_test",
+    srcs = ["debug_options_runtime_fields_test.cc"],
+    deps = [
+        ":debug_options_runtime_fields",
+        ":xla_proto_cc",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 xla_cc_test(

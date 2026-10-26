@@ -1069,6 +1069,11 @@ _VALID_OP_NAME_REGEX: Pattern[str] = re.compile(
     r"^[A-Za-z0-9.][A-Za-z0-9_.\\/>-]*$")
 _VALID_SCOPE_NAME_REGEX: Pattern[str] = re.compile(
     r"^[A-Za-z0-9_.\\/>-]*$")
+# Eager scope names are also built from tensor names, which carry an output
+# index (e.g. "video:0_accumulators"), so a colon is additionally allowed.
+_VALID_EAGER_SCOPE_NAME_REGEX: Pattern[str] = re.compile(
+    r"^[A-Za-z0-9_.:\\/>-]*$"
+)
 
 
 @tf_export("__internal__.create_c_op", v1=[])
@@ -5857,6 +5862,13 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       # This also prevents auto-incrementing.
       old_name = ctx.scope_name
       name = self._name
+      if name and not _VALID_EAGER_SCOPE_NAME_REGEX.match(name):
+        raise ValueError(
+            f"'{name}' is not a valid scope name. A scope name has to "
+            "match the following pattern: "
+            f"{_VALID_EAGER_SCOPE_NAME_REGEX.pattern}"
+        )
+
       if not name:
         scope_name = ""
       elif name[-1] == "/":

@@ -33,7 +33,9 @@ bool RamFileBlockCache::BlockNotStale(const std::shared_ptr<Block>& block) {
   if (block->state != FetchState::FINISHED) {
     return true;  // No need to check for staleness.
   }
-  if (max_staleness_ == 0) return true;  // Not enforcing staleness.
+  if (max_staleness_ == 0) {
+    return true;  // Not enforcing staleness.
+  }
   return env_->NowSeconds() - block->timestamp <= max_staleness_;
 }
 
@@ -47,10 +49,9 @@ std::shared_ptr<RamFileBlockCache::Block> RamFileBlockCache::Lookup(
         cache_stats_->RecordCacheHitBlockSize(entry->second->data.size());
       }
       return entry->second;
-    } else {
+    }
       // Remove the stale block and continue.
       RemoveFile_Locked(key.first);
-    }
   }
 
   // Insert a new empty block, setting the bookkeeping to sentinel values

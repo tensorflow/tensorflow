@@ -30,8 +30,8 @@ visibility(DEFAULT_LOAD_VISIBILITY)
 # RBE settings for tests that require a GPU. This is used in exec_properties of rules
 # that need GPU access.
 GPU_TEST_PROPERTIES = {
-    "dockerRuntime": "nvidia",
-    "Pool": "gpu-pool",
+    "test.dockerRuntime": "nvidia",
+    "test.Pool": "gpu-pool",
 }
 
 ROCM_SINGLE_GPU_TEST_PROPERTIES = {
@@ -79,6 +79,11 @@ def tf_has_tag(kwargs, tag):
 
 def tf_has_any_tag(kwargs, tags):
     return any([tf_has_tag(kwargs, tag) for tag in tags])
+
+def tf_override_test_tags_by_target_name(name, tags):
+    """Temporary workaround for Google-internal builds. Do not use it, it will be removed."""
+    _ignore = name  # buildifier: disable=unused-variable
+    return tags
 
 def tf_exec_properties(kwargs):
     """Gets execution_properties for TensorFlow GPU tests based on the provided tags.

@@ -105,7 +105,12 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
                   absl::InvalidArgumentError(
                       absl::StrCat("Expected begin[", i, "] in [0, ",
                                    input.dim_size(i), "], but got ", b)));
-      OP_REQUIRES(context, 0 <= s && b + s <= input.dim_size(i),
+      // `b` has been validated to lie in [0, dim_size(i)] just above, so
+      // `dim_size(i) - b` cannot underflow. Comparing against it instead of
+      // computing `b + s` avoids a signed overflow: for a large `dim_size(i)`,
+      // `b + s` can wrap negative and pass the upper-bound check, letting the
+      // wrapped limit reach a fatal `Tensor::Slice` invariant downstream.
+      OP_REQUIRES(context, 0 <= s && s <= input.dim_size(i) - b,
                   absl::InvalidArgumentError(absl::StrCat(
                       "Expected size[", i, "] in [0, ", input.dim_size(i) - b,
                       "], but ", "got ", s)));
@@ -169,7 +174,7 @@ class SliceOp : public OpKernel {
     const int input_dims = input.dims();
 
     if (result->NumElements() > 0) {
-      if (std::is_same<Device, CPUDevice>::value && input_dims == 2 &&
+      if (std::is_same_v<Device, CPUDevice> && input_dims == 2 &&
           DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
         auto input_t = input.tensor<T, 2>();
         auto output_t = result->tensor<T, 2>();

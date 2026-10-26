@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,9 +26,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -695,6 +698,92 @@ TEST_F(HloInstructionUtilsTest, IsTopKStable) {
   EXPECT_TRUE(IsTopKStable(topk_stable));
   EXPECT_FALSE(IsTopKStable(topk_unstable));
   EXPECT_TRUE(IsTopKStable(topk_default));
+}
+
+TEST_F(HloInstructionUtilsTest, SetTopKStability) {
+  const char* const hlo = R"(
+    HloModule test
+
+    compare-gt.1 {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT compare = pred[] compare(p.0.lhs, p.0.rhs), direction=GT, order=TOTAL
+    }
+
+    ENTRY main {
+      arg = f32[1024] parameter(0)
+      topk_with_order = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
+      topk_order_only = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={order = "TOTAL"}
+      topk_empty = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}
+      ROOT tuple = tuple(topk_with_order, topk_order_only, topk_empty)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  auto* topk_with_order = Cast<HloCustomCallInstruction>(
+      FindInstruction(m.get(), "topk_with_order"));
+  auto* topk_order_only = Cast<HloCustomCallInstruction>(
+      FindInstruction(m.get(), "topk_order_only"));
+  auto* topk_empty =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_empty"));
+
+  SetTopKStability(topk_with_order, false);
+  EXPECT_EQ(topk_with_order->raw_backend_config_string(),
+            "{is_stable = false, order = \"TOTAL\"}");
+  EXPECT_FALSE(IsTopKStable(topk_with_order));
+  EXPECT_EQ(GetTopKOrder(topk_with_order), ComparisonOrder::kTotal);
+
+  SetTopKStability(topk_order_only, false);
+  EXPECT_EQ(topk_order_only->raw_backend_config_string(),
+            "{order = \"TOTAL\", is_stable = false}");
+  EXPECT_FALSE(IsTopKStable(topk_order_only));
+  EXPECT_EQ(GetTopKOrder(topk_order_only), ComparisonOrder::kTotal);
+
+  SetTopKStability(topk_empty, false);
+  EXPECT_EQ(topk_empty->raw_backend_config_string(), "{is_stable = false}");
+  EXPECT_FALSE(IsTopKStable(topk_empty));
+}
+
+TEST_F(HloInstructionUtilsTest, GetTopKOrder) {
+  const char* const hlo = R"(
+    HloModule test
+
+    compare-true {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT c = pred[] constant(true)
+    }
+
+    ENTRY main {
+      arg = f32[1024] parameter(0)
+      topk_total = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-true}, backend_config={is_stable = true, order = "TOTAL"}
+      topk_partial = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-true}, backend_config={is_stable = false, order = "PARTIAL"}
+      topk_weak = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-true}, backend_config={is_stable = true, order = "WEAK"}
+      topk_default = (f32[24], s32[24]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-true}
+      ROOT tuple = tuple(topk_total, topk_partial, topk_weak, topk_default)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  auto* topk_total =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_total"));
+  auto* topk_partial =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_partial"));
+  auto* topk_weak =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_weak"));
+  auto* topk_default =
+      Cast<HloCustomCallInstruction>(FindInstruction(m.get(), "topk_default"));
+
+  EXPECT_EQ(GetTopKOrder(topk_total), ComparisonOrder::kTotal);
+  EXPECT_EQ(GetTopKOrder(topk_partial), ComparisonOrder::kPartial);
+  EXPECT_EQ(GetTopKOrder(topk_weak), ComparisonOrder::kWeak);
+  EXPECT_EQ(GetTopKOrder(topk_default), ComparisonOrder::kTotal);
 }
 
 TEST_F(HloInstructionUtilsTest, IsAllowedAsyncIntermediary) {

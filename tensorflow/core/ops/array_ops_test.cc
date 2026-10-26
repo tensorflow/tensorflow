@@ -711,6 +711,32 @@ TEST(ArrayOpsTest, MatrixSetDiag_ShapeFn) {
   INFER_OK(op, "[?,3,2];[1,2]", "[d1_0,d0_1,d0_2]");
 }
 
+TEST(ArrayOpsTest, MatrixSetDiagV3_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixSetDiagV3");
+
+  // Inputs are input, diagonal and k.
+
+  // Without k's value, the batch dimensions are counted from the input's
+  // rank, so a band's diagonals aren't taken for a single diagonal's.
+  INFER_OK(op, "[?,4];[2,?];[2]", "in0");
+  INFER_OK(op, "[?,?,4];[3,2,?];[2]", "[d1_0,d0_1,d0_2]");
+  INFER_OK(op, "[?,?,4];[3,?];[]", "[d1_0,d0_1,d0_2]");
+
+  // Without the input's rank either, a k with one element is a single
+  // diagonal, and nothing is inferred from a k with two.
+  INFER_OK(op, "?;[3,?];[]", "[d1_0,?,?]");
+  INFER_OK(op, "?;[3,2,?];[2]", "in0");
+
+  // With k's value.
+  Tensor k_t = test::AsTensor<int32_t>({-1, 0});
+  op.input_tensors.resize(3);
+  op.input_tensors[2] = &k_t;
+  INFER_OK(op, "[?,4];[2,?];[2]", "in0");
+  INFER_OK(op, "?;[3,2,?];[2]", "[d1_0,?,?]");
+  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[?,4];[4];[2]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "?;[4];[2]");
+}
+
 TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
   ShapeInferenceTestOp op("ExpandDims");
   op.input_tensors.resize(2);
@@ -1457,6 +1483,51 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
       "ExtractImagePatches requires the ksizes attribute to contain 4 values, "
       "but got: 5",
       op, "[1,7,7,2]");
+
+  // Non-positive spatial ksizes, strides, and rates.
+  set_op({1, 0, 2, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, "VALID");
+  INFER_ERROR("ExtractImagePatches requires spatial ksizes to be positive", op,
+              "[1,7,7,2]");
+  set_op({1, 2, -2, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, "VALID");
+  INFER_ERROR("ExtractImagePatches requires spatial ksizes to be positive", op,
+              "[1,7,7,2]");
+  set_op({1, 2, 2, 1}, {1, 0, 1, 1}, {1, 1, 1, 1}, "VALID");
+  INFER_ERROR("ExtractImagePatches requires spatial strides to be positive", op,
+              "[1,?,?,2]");
+  set_op({1, 2, 2, 1}, {1, 1, 1, 1}, {1, 1, 0, 1}, "VALID");
+  INFER_ERROR("ExtractImagePatches requires spatial rates to be positive", op,
+              "[1,7,7,2]");
+  set_op({1, 2, 2, 1}, {1, 1, 1, 1}, {1, 1, -1, 1}, "VALID");
+  INFER_ERROR("ExtractImagePatches requires spatial rates to be positive", op,
+              "[1,7,7,2]");
+}
+
+TEST(ArrayOpsTest, ExtractVolumePatchesShapeTest) {
+  ShapeInferenceTestOp op("ExtractVolumePatches");
+  auto set_op = [&op](const std::vector<int32_t>& ksizes,
+                      const std::vector<int32_t>& strides,
+                      const std::string& padding) {
+    TF_ASSERT_OK(NodeDefBuilder("test", "ExtractVolumePatches")
+                     .Input("input", 0, DT_FLOAT)
+                     .Attr("ksizes", ksizes)
+                     .Attr("strides", strides)
+                     .Attr("padding", padding)
+                     .Finalize(&op.node_def));
+  };
+  set_op({1, 2, 2, 2, 1}, {1, 1, 1, 1, 1}, "VALID");
+  INFER_OK(op, "[1,3,3,3,2]", "[d0_0,2,2,2,16]");
+  INFER_OK(op, "[1,?,?,?,2]", "[d0_0,?,?,?,16]");
+
+  // Non-positive spatial ksizes and strides.
+  set_op({1, 0, 2, 2, 1}, {1, 1, 1, 1, 1}, "VALID");
+  INFER_ERROR("ExtractVolumePatches requires spatial ksizes to be positive", op,
+              "[1,3,3,3,2]");
+  set_op({1, 2, 2, -2, 1}, {1, 1, 1, 1, 1}, "VALID");
+  INFER_ERROR("ExtractVolumePatches requires spatial ksizes to be positive", op,
+              "[1,3,3,3,2]");
+  set_op({1, 2, 2, 2, 1}, {1, 1, 0, 1, 1}, "VALID");
+  INFER_ERROR("ExtractVolumePatches requires spatial strides to be positive",
+              op, "[1,3,3,3,2]");
 }
 
 TEST(ArrayOpsTest, QuantizeAndDequantizeV2_ShapeFn) {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -28,10 +29,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
-#include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -44,118 +44,116 @@ namespace xla::xtile {
 namespace {
 
 using ::xla::xtile::BlockLevelParameters;
-using DimensionSemantics =
-    ::xla::gpu::experimental::TilingSpace::DimensionSemantics;
+using DimensionSemantics = ::xla::gpu::TilingSpace::DimensionSemantics;
 
-}  // namespace
-
-absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
-    const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters,
-    const Tile* dot_tiling_config_override) {
-  Tiling::TileMapping tile_mapping;
-  int64_t real_root_index = symbolic_tile_analysis.real_root_index();
-  const HloInstruction* real_root =
-      symbolic_tile_analysis.GetRoots()[real_root_index];
-
-  for (const auto& [hlo, num_tiling_parameters] :
-       symbolic_tile_analysis.GetTilingSpecification().parameter_mapping()) {
-    // TODO(b/419026602): handle reductions.
-    if (hlo->opcode() == HloOpcode::kDot ||
-        hlo->opcode() == HloOpcode::kScaledDot) {
-      if (dot_tiling_config_override) {
-        tile_mapping[hlo] =
-            FlatTiling(dot_tiling_config_override->sizes().begin(),
-                       dot_tiling_config_override->sizes().end());
-      } else {
-        if (!hlo->has_backend_config()) {
-          return absl::FailedPreconditionError(absl::StrCat(
-              "Dot instruction ", hlo->name(),
-              " does not have a backend config for tile sizes set."));
-        }
-        ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile tile_config,
-                         hlo->backend_config<xla::xtile::Tile>());
-        if (tile_config.sizes().empty()) {
-          return absl::FailedPreconditionError(
-              absl::StrCat("Dot instruction ", hlo->name(),
-                           " has an empty tile config in the backend config."));
-        }
-        tile_mapping[hlo] =
-            FlatTiling(tile_config.sizes().begin(), tile_config.sizes().end());
-      }
-    }
-
-    // TODO(b/390559452): this should change for generalized multi-output
-    // fusions.
-    if (hlo == real_root) {
-      if (real_root_index >= block_level_parameters.output_tile_sizes.size()) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Output tile sizes index ", real_root_index,
-            " is out of bounds for block level fusion config: ",
-            block_level_parameters.ToBlockLevelFusionConfig().DebugString()));
-      }
-      absl::Span<const int64_t> output_tile_sizes =
-          block_level_parameters.output_tile_sizes[real_root_index];
-      tile_mapping[hlo].insert(tile_mapping[hlo].end(),
-                               output_tile_sizes.begin(),
-                               output_tile_sizes.end());
-    }
-  }
-
-  return Tiling(std::move(tile_mapping));
-}
-
-absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
-    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+absl::StatusOr<llvm::SmallVector<int64_t>> GetParallelTileSizes(
+    const ::xla::gpu::TilingSpace& tiling_space,
     const BlockLevelParameters& block_level_parameters,
     bool enable_same_shape_multi_output_fusion) {
   TF_RET_CHECK(!block_level_parameters.output_tile_sizes.empty())
       << "output_tile_sizes cannot be empty.";
 
-  // For multi-output fusions with identical shapes, we enforce that all outputs
-  // share the same tiling. Therefore, the block-level parameters must specify
-  // identical tile sizes for all outputs.
-  // TODO(b/502910372): Support arbitrary multi-output fusions.
-  const auto& parallel_tile_sizes = block_level_parameters.output_tile_sizes[0];
-  if (block_level_parameters.output_tile_sizes.size() > 1) {
-    if (!enable_same_shape_multi_output_fusion) {
-      return Unimplemented(
-          "Only single-result fusions are supported for now. Received %d "
-          "roots.",
-          block_level_parameters.output_tile_sizes.size());
-    }
+  if (block_level_parameters.output_tile_sizes.size() == 1) {
+    return llvm::to_vector(
+        llvm::ArrayRef(block_level_parameters.output_tile_sizes[0]));
+  }
 
-    for (size_t i = 1; i < block_level_parameters.output_tile_sizes.size();
-         ++i) {
-      if (parallel_tile_sizes != block_level_parameters.output_tile_sizes[i]) {
-        return Unimplemented(
-            "Same-shape multi-output fusions must have identical tile sizes "
-            "for all outputs. Received different tile sizes for root 0 [%s] "
-            "and root %d [%s].",
-            absl::StrJoin(parallel_tile_sizes, ", "), i,
-            absl::StrJoin(block_level_parameters.output_tile_sizes[i], ", "));
-      }
+  // If the tiling space has one set of parallel dimensions per root (e.g.
+  // index-wise variadic fusions such as a variadic all-gather, see
+  // TilingSpace::Create), the per-root tile sizes are concatenated in root
+  // order.
+  if (tiling_space.HasPerOutputTiles()) {
+    llvm::SmallVector<int64_t> parallel_tile_sizes;
+    parallel_tile_sizes.reserve(tiling_space.num_parallel_dimensions());
+    for (const auto& output_tile_sizes :
+         block_level_parameters.output_tile_sizes) {
+      parallel_tile_sizes.append(output_tile_sizes.begin(),
+                                 output_tile_sizes.end());
+    }
+    return parallel_tile_sizes;
+  }
+
+  if (!enable_same_shape_multi_output_fusion) {
+    return Unimplemented(
+        "Only single-result fusions are supported for now. Received %d "
+        "roots.",
+        block_level_parameters.output_tile_sizes.size());
+  }
+
+  // For multi-output fusions with identical shapes, we enforce that all
+  // outputs share the same tiling. Therefore, the block-level parameters must
+  // specify identical tile sizes for all outputs.
+  // TODO(b/502910372): Support arbitrary multi-output fusions.
+  llvm::SmallVector<int64_t> parallel_tile_sizes = llvm::to_vector(
+      llvm::ArrayRef(block_level_parameters.output_tile_sizes[0]));
+  for (size_t i = 1; i < block_level_parameters.output_tile_sizes.size(); ++i) {
+    if (!absl::c_equal(parallel_tile_sizes,
+                       block_level_parameters.output_tile_sizes[i])) {
+      return Unimplemented(
+          "Same-shape multi-output fusions must have identical tile sizes "
+          "for all outputs. Received different tile sizes for root 0 [%s] "
+          "and root %d [%s].",
+          absl::StrJoin(parallel_tile_sizes, ", "), i,
+          absl::StrJoin(block_level_parameters.output_tile_sizes[i], ", "));
     }
   }
-  if (int64_t num_parallel_dims = tiling_space.num_parallel_dimensions();
-      num_parallel_dims != parallel_tile_sizes.size()) {
+  return parallel_tile_sizes;
+}
+
+}  // namespace
+
+absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
+    const ::xla::gpu::TilingSpace& tiling_space,
+    const BlockLevelParameters& block_level_parameters,
+    bool enable_same_shape_multi_output_fusion) {
+  ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> parallel_tile_sizes,
+                   GetParallelTileSizes(tiling_space, block_level_parameters,
+                                        enable_same_shape_multi_output_fusion));
+  const int64_t num_parallel_dims = tiling_space.num_parallel_dimensions();
+  if (num_parallel_dims != parallel_tile_sizes.size()) {
     return Internal(
         "Number of parallel dimensions in the tiling space (%d) does not match "
         "the number of output tile sizes in the block level fusion config "
         "(%d).",
         num_parallel_dims, parallel_tile_sizes.size());
   }
+  const int64_t num_sequential_dims = tiling_space.num_sequential_dimensions();
+  const auto& sequential_tile_sizes =
+      block_level_parameters.sequential_tile_sizes;
+  if (!sequential_tile_sizes.empty() &&
+      sequential_tile_sizes.size() != num_sequential_dims) {
+    return Internal(
+        "Number of sequential dimensions in the tiling space (%d) does not "
+        "match the number of sequential tile sizes in the block level fusion "
+        "config (%d).",
+        num_sequential_dims, sequential_tile_sizes.size());
+  }
   llvm::SmallVector<int64_t> tile_sizes;
   tile_sizes.reserve(tiling_space.dimensions().size());
   int parallel_dim_count = 0;
-  for (const xla::gpu::experimental::TilingSpace::DimensionInfo& dim :
+  int sequential_dim_count = 0;
+  for (const xla::gpu::TilingSpace::DimensionInfo& dim :
        tiling_space.dimensions()) {
     switch (dim.type) {
       case DimensionSemantics::kParallel:
         tile_sizes.push_back(parallel_tile_sizes[parallel_dim_count]);
         parallel_dim_count++;
         break;
+      case DimensionSemantics::kReplica:
+        break;
       case DimensionSemantics::kSequential: {
+        if (!sequential_tile_sizes.empty()) {
+          if (dim.hlo->has_backend_config()) {
+            return Internal(
+                "Instruction %s has a backend config while "
+                "sequential_tile_sizes is set in the block level fusion "
+                "config.",
+                dim.hlo->name());
+          }
+          tile_sizes.push_back(sequential_tile_sizes[sequential_dim_count]);
+          sequential_dim_count++;
+          break;
+        }
         if (dim.hlo->has_backend_config()) {
           ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile config,
                            dim.hlo->backend_config<xla::xtile::Tile>());
@@ -164,23 +162,23 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
           // in config.sizes is offset by output_rank. For scans, the sequential
           // dimension is in the output and config.sizes contains only the scan
           // dimension at index 0.
-          int64_t seq_dim_idx = 0;
+          int64_t config_dim_idx = 0;
           if (dim.hlo->opcode() != HloOpcode::kScan) {
             int64_t output_rank = dim.hlo->shape().dimensions().size();
-            seq_dim_idx = dim.dim_position - output_rank;
+            config_dim_idx = dim.dim_position - output_rank;
           }
-          if (seq_dim_idx < 0 || seq_dim_idx >= config.sizes_size()) {
+          if (config_dim_idx < 0 || config_dim_idx >= config.sizes_size()) {
             return Internal(
                 "Sequential dimension index %d is out of bounds for backend "
                 "config sizes of size %d.",
-                seq_dim_idx, config.sizes_size());
+                config_dim_idx, config.sizes_size());
           }
-          tile_sizes.push_back(config.sizes(seq_dim_idx));
-        } else {
-          VLOG(1) << "No backend_config set for HLO instruction of dimension "
-                  << dim.ToString() << ". Using dimension size as tile size.";
-          tile_sizes.push_back(dim.dimension_size);
+          tile_sizes.push_back(config.sizes(config_dim_idx));
+          break;
         }
+        VLOG(1) << "No backend_config set for HLO instruction of dimension "
+                << dim.ToString() << ". Using dimension size as tile size.";
+        tile_sizes.push_back(dim.dimension_size);
         break;
       }
       default:

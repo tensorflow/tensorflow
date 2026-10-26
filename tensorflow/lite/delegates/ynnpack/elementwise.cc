@@ -107,12 +107,8 @@ TfLiteStatus DefineUnaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
 
         switch (node.builtin_code) {
           case kTfLiteBuiltinGelu: {
-            TfLiteNode* tflite_node;
-            TfLiteRegistration* reg;
-            TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-                context, node.node_index, &tflite_node, &reg));
             const auto* params =
-                static_cast<const TfLiteGeluParams*>(tflite_node->builtin_data);
+                static_cast<const TfLiteGeluParams*>(node.builtin_data);
             bool approximate = params && params->approximate;
             if (approximate) {
               TF_LITE_ENSURE_YNN_STATUS(
@@ -128,12 +124,8 @@ TfLiteStatus DefineUnaryNode(TfLiteContext* context, ynn_subgraph_t subgraph,
                 ynn::define_elu(subgraph, input_id, 1.0f, output_id));
             return kTfLiteOk;
           case kTfLiteBuiltinLeakyRelu: {
-            TfLiteNode* tflite_node;
-            TfLiteRegistration* reg;
-            TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-                context, node.node_index, &tflite_node, &reg));
-            const auto* params = static_cast<const TfLiteLeakyReluParams*>(
-                tflite_node->builtin_data);
+            const auto* params =
+                static_cast<const TfLiteLeakyReluParams*>(node.builtin_data);
             float alpha = params ? params->alpha : 0.2f;
             TF_LITE_ENSURE_YNN_STATUS(
                 ynn::define_leaky_relu(subgraph, input_id, alpha, output_id));
