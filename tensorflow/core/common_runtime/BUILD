@@ -870,7 +870,10 @@ tf_cc_test(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:state",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
