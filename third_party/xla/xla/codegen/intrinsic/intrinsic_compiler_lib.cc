@@ -38,7 +38,7 @@ limitations under the License.
 namespace xla::codegen::intrinsic {
 
 void RunInlineAndOptPasses(llvm::Module& module) {
-  llvm::PassBuilder pb;
+  llvm::PassBuilder pb(module.getContext());
 
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
