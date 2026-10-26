@@ -4421,6 +4421,218 @@ TEST_F(ConstantFoldingTest, RedundantVariableUpdateAddZerosToHandle) {
   }
 }
 
+TEST_F(ConstantFoldingTest, SimplifyStridedSliceInt64AndHighRankMaskBounds) {
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    auto in1 = ops::Variable(scope.WithOpName("in1"), {3, 5}, DT_FLOAT);
+    const int64_t high_base = int64_t{1} << 32;
+    auto begin =
+        ops::Const<int64_t>(scope.WithOpName("begin"), {high_base, 0}, {2});
+    auto end =
+        ops::Const<int64_t>(scope.WithOpName("end"), {high_base + 3, 5}, {2});
+    auto strides =
+        ops::Const<int64_t>(scope.WithOpName("strides"), {1, 1}, {2});
+    ops::StridedSlice s1(scope.WithOpName("s1"), in1, begin, end, strides);
+
+    GrapplerItem item;
+    item.fetch = {"s1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "s1") {
+        EXPECT_EQ("StridedSlice", node.op());
+      }
+    }
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    auto in1 =
+        ops::Variable(scope.WithOpName("in1"), TensorShape({1, 1}), DT_FLOAT);
+    auto begin_valid = ops::Const(scope.WithOpName("begin_valid"), {0, 0}, {2});
+    auto end_valid = ops::Const(scope.WithOpName("end_valid"), {1, 1}, {2});
+    auto strides_valid =
+        ops::Const(scope.WithOpName("strides_valid"), {1, 1}, {2});
+    ops::StridedSlice s1(
+        scope.WithOpName("s1"), in1, begin_valid, end_valid, strides_valid,
+        ops::StridedSlice::Attrs().BeginMask(1).EndMask(1).EllipsisMask(1));
+
+    GrapplerItem item;
+    item.fetch = {"s1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "in1") {
+        auto* shape_proto = (*node->mutable_attr())["shape"].mutable_shape();
+        shape_proto->Clear();
+        for (int d = 0; d < 32; ++d) {
+          shape_proto->add_dim()->set_size(1);
+        }
+      }
+    }
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "s1") {
+        EXPECT_EQ("Identity", node.op());
+      }
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, ReverseRankZeroAndOutOfBoundsAxisSkipped) {
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    Output in1 =
+        ops::Variable(scope.WithOpName("in1"), TensorShape({1, 1}), DT_FLOAT);
+    Output axis_oob = ops::Const(scope.WithOpName("axis_oob"), {0}, {1});
+    ops::Reverse r1(scope.WithOpName("r1"), in1, axis_oob);
+
+    GrapplerItem item;
+    item.fetch = {"r1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "axis_oob") {
+        Tensor bad_axis(DT_INT32, TensorShape({1}));
+        bad_axis.vec<int>()(0) = std::numeric_limits<int>::max();
+        bad_axis.AsProtoTensorContent(
+            (*node->mutable_attr())["value"].mutable_tensor());
+      }
+    }
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "r1") {
+        EXPECT_EQ("ReverseV2", node.op());
+      }
+    }
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    Output in1 = ops::Placeholder(scope.WithOpName("in1"), DT_FLOAT,
+                                  ops::Placeholder::Shape(TensorShape({1})));
+    Output axis_oob = ops::Const(scope.WithOpName("axis_oob"), {0}, {1});
+    ops::Reverse r1(scope.WithOpName("r1"), in1, axis_oob);
+
+    GrapplerItem item;
+    item.fetch = {"r1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "in1") {
+        (*node->mutable_attr())["shape"].mutable_shape()->Clear();
+      }
+    }
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "r1") {
+        EXPECT_EQ("ReverseV2", node.op());
+      }
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest,
+       MaterializeShapesAndSimplifySliceRankAndElementBounds) {
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    Output size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+    auto static_array =
+        ops::TensorArray(scope.WithOpName("static"), size, DT_FLOAT,
+                         ops::TensorArray::DynamicSize(false));
+    auto static_sz = ops::TensorArraySize(
+        scope.WithOpName("static_sz"), static_array.handle, static_array.flow);
+
+    GrapplerItem item;
+    item.fetch = {"static_sz"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "size") {
+        Tensor empty_size(DT_INT32, TensorShape({0}));
+        empty_size.AsProtoTensorContent(
+            (*node->mutable_attr())["value"].mutable_tensor());
+      }
+    }
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "static_sz") {
+        EXPECT_EQ("TensorArraySizeV3", node.op());
+      }
+    }
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    auto in1 = ops::Variable(scope.WithOpName("in1"), {3, 5}, DT_FLOAT);
+    auto begin = ops::Const(scope.WithOpName("begin"), {0, 0}, {2});
+    auto size = ops::Const(scope.WithOpName("size"), {-1, -1}, {2});
+    ops::Slice s1(scope.WithOpName("s1"), in1, begin, size);
+
+    GrapplerItem item;
+    item.fetch = {"s1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "begin") {
+        Tensor empty_begin(DT_INT32, TensorShape({0}));
+        empty_begin.AsProtoTensorContent(
+            (*node->mutable_attr())["value"].mutable_tensor());
+      }
+    }
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "s1") {
+        EXPECT_EQ("Slice", node.op());
+      }
+    }
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    auto in1 = ops::Variable(scope.WithOpName("in1"), {3, 5}, DT_FLOAT);
+    auto begin = ops::Const(scope.WithOpName("begin"), {0, 0}, {2});
+    auto end = ops::Const(scope.WithOpName("end"), {3, 5}, {2});
+    auto strides = ops::Const(scope.WithOpName("strides"), {1, 1}, {2});
+    ops::StridedSlice s1(scope.WithOpName("s1"), in1, begin, end, strides);
+
+    GrapplerItem item;
+    item.fetch = {"s1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "begin") {
+        Tensor empty_begin(DT_INT32, TensorShape({0}));
+        empty_begin.AsProtoTensorContent(
+            (*node->mutable_attr())["value"].mutable_tensor());
+      }
+    }
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "s1") {
+        EXPECT_EQ("StridedSlice", node.op());
+      }
+    }
+  }
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
