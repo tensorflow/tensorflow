@@ -1572,15 +1572,10 @@ absl::Status HloEvaluator::HandleIsFinite(const HloInstruction* is_finite) {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          ABSL_ASSIGN_OR_RETURN(Literal literal,
-                           (ElementWiseUnaryOpImpl<bool, NativeT>(
-                               is_finite,
-                               [](NativeT elem_operand) {
-                                 return Eigen::numext::isfinite(elem_operand);
-                               },
-                               GetEvaluatedLiteralFor(operand))));
-          SetEvaluatedLiteralFor(is_finite, std::move(literal));
-          return absl::OkStatus();
+          return ElementWiseUnaryOpImpl<bool, NativeT>(
+              is_finite, [](NativeT elem_operand) {
+                return Eigen::numext::isfinite(elem_operand);
+              });
         }
         return InvalidArgument(
             "expected element type in shape to be floating point, but got: %s",
@@ -1596,24 +1591,14 @@ absl::Status HloEvaluator::HandleReal(const HloInstruction* real) {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          ABSL_ASSIGN_OR_RETURN(
-              Literal literal,
-              (ElementWiseUnaryOpImpl<NativeT, NativeT>(
-                  real, [](NativeT elem_operand) { return elem_operand; },
-                  GetEvaluatedLiteralFor(operand))));
-          SetEvaluatedLiteralFor(real, std::move(literal));
-          return absl::OkStatus();
+          return ElementWiseUnaryOpImpl<NativeT, NativeT>(
+              real, [](NativeT elem_operand) { return elem_operand; });
         }
         if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          ABSL_ASSIGN_OR_RETURN(
-              Literal literal,
-              (ElementWiseUnaryOpImpl<typename NativeT::value_type, NativeT>(
-                  real,
-                  [](NativeT elem_operand) { return std::real(elem_operand); },
-                  GetEvaluatedLiteralFor(operand))));
-          SetEvaluatedLiteralFor(real, std::move(literal));
-          return absl::OkStatus();
+          return ElementWiseUnaryOpImpl<typename NativeT::value_type, NativeT>(
+              real,
+              [](NativeT elem_operand) { return std::real(elem_operand); });
         }
         LOG(FATAL) << "HandleReal: unknown/unhandled primitive type: "
                    << PrimitiveType_Name(operand->shape().element_type());
@@ -1628,24 +1613,14 @@ absl::Status HloEvaluator::HandleImag(const HloInstruction* imag) {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          ABSL_ASSIGN_OR_RETURN(
-              Literal literal,
-              (ElementWiseUnaryOpImpl<NativeT, NativeT>(
-                  imag, [](NativeT elem_operand) { return NativeT(0); },
-                  GetEvaluatedLiteralFor(operand))));
-          SetEvaluatedLiteralFor(imag, std::move(literal));
-          return absl::OkStatus();
+          return ElementWiseUnaryOpImpl<NativeT, NativeT>(
+              imag, [](NativeT elem_operand) { return NativeT(0); });
         }
         if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          ABSL_ASSIGN_OR_RETURN(
-              Literal literal,
-              (ElementWiseUnaryOpImpl<typename NativeT::value_type, NativeT>(
-                  imag,
-                  [](NativeT elem_operand) { return std::imag(elem_operand); },
-                  GetEvaluatedLiteralFor(operand))));
-          SetEvaluatedLiteralFor(imag, std::move(literal));
-          return absl::OkStatus();
+          return ElementWiseUnaryOpImpl<typename NativeT::value_type, NativeT>(
+              imag,
+              [](NativeT elem_operand) { return std::imag(elem_operand); });
         }
         LOG(FATAL) << "HandleImag: unknown/unhandled primitive type: "
                    << PrimitiveType_Name(operand->shape().element_type());
@@ -5617,6 +5592,24 @@ Shape HloEvaluator::GetShapeWithLayout(const Shape& shape) {
     LayoutUtil::SetToDefaultLayout(&shape_copy);
   }
   return shape_copy;
+}
+
+absl::Status HloEvaluator::RunElementwiseUnaryOp(
+    const HloInstruction* instruction,
+    absl::FunctionRef<absl::Status(
+        Literal& result, const Literal& operand_literal, bool same_layout)>
+        populate) {
+  const Shape& shape = instruction->shape();
+  const auto* operand = instruction->operand(0);
+  TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
+
+  const Literal& operand_literal = GetEvaluatedLiteralFor(operand);
+  Literal result(shape);
+  bool same_layout =
+      LayoutUtil::Equal(operand->shape().layout(), shape.layout());
+  ABSL_RETURN_IF_ERROR(populate(result, operand_literal, same_layout));
+  SetEvaluatedLiteralFor(instruction, std::move(result));
+  return absl::OkStatus();
 }
 
 bool HloEvaluator::TryEvaluateDotFastPathF32(const HloInstruction* dot) {

@@ -186,39 +186,23 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   template <typename NativeT,
             typename std::enable_if_t<std::is_unsigned_v<NativeT>>* = nullptr>
   absl::Status HandleAbs(const HloInstruction* abs) {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
-                       return elem_operand;
-                     }));
-    parent_->SetEvaluatedLiteralFor(abs, std::move(literal));
-    return absl::OkStatus();
+    return ElementWiseUnaryOp(
+        abs, [](NativeT elem_operand) { return elem_operand; });
   }
 
   template <typename NativeT,
             typename std::enable_if_t<std::is_signed_v<NativeT>>* = nullptr>
   absl::Status HandleAbs(const HloInstruction* abs) {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(abs, [](NativeT elem_operand) {
-                       return std::abs(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(abs, std::move(literal));
-    return absl::OkStatus();
+    return ElementWiseUnaryOp(
+        abs, [](NativeT elem_operand) { return std::abs(elem_operand); });
   }
 
   template <typename NativeT,
             typename std::enable_if_t<is_complex_v<NativeT>>* = nullptr>
   absl::Status HandleAbs(const HloInstruction* abs) {
-    const Literal& operand_literal =
-        parent_->GetEvaluatedLiteralFor(abs->operand(0));
-    ABSL_ASSIGN_OR_RETURN(
-        Literal literal,
-        (HloEvaluator::ElementWiseUnaryOpImpl<typename NativeT::value_type,
-                                              NativeT>(
-            abs, [](NativeT elem_operand) { return std::abs(elem_operand); },
-            operand_literal)));
-    parent_->SetEvaluatedLiteralFor(abs, std::move(literal));
-
-    return absl::OkStatus();
+    return parent_
+        ->ElementWiseUnaryOpImpl<typename NativeT::value_type, NativeT>(
+            abs, [](NativeT elem_operand) { return std::abs(elem_operand); });
   }
 
   absl::Status HandleAbs(const HloInstruction* abs) override {
@@ -238,176 +222,159 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleAcos(const HloInstruction* acos) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(acos, [](ElementwiseT elem_operand) {
-                       return std::acos(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(acos, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(acos, [](ElementwiseT elem_operand) {
+        return std::acos(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(acos);
   }
 
   absl::Status HandleAcosh(const HloInstruction* acosh) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(acosh, [](ElementwiseT elem_operand) {
-                       return std::acosh(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(acosh, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(acosh, [](ElementwiseT elem_operand) {
+        return std::acosh(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(acosh);
   }
 
   absl::Status HandleAsin(const HloInstruction* asin) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(asin, [](ElementwiseT elem_operand) {
-                       return std::asin(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(asin, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(asin, [](ElementwiseT elem_operand) {
+        return std::asin(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(asin);
   }
 
   absl::Status HandleRound(const HloInstruction* round) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      ABSL_ASSIGN_OR_RETURN(Literal literal,
-                       ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
-                         return std::round(elem_operand);
-                       }));
-      parent_->SetEvaluatedLiteralFor(round, std::move(literal));
-      return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
+        return std::round(elem_operand);
+      });
     }
     return UnsupportedTypeError(round);
   }
 
   absl::Status HandleRoundNearestEven(const HloInstruction* round) override {
-    if constexpr (!is_complex_v<ReturnT>) {
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
       // Verify the current rounding direction.
       TF_RET_CHECK(fegetround() == FE_TONEAREST);
-      ABSL_ASSIGN_OR_RETURN(Literal literal,
-                       ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
-                         return std::nearbyint(elem_operand);
-                       }));
-      parent_->SetEvaluatedLiteralFor(round, std::move(literal));
-      return absl::OkStatus();
+      return ElementWiseUnaryOp(round, [](ElementwiseT elem_operand) {
+        return std::nearbyint(elem_operand);
+      });
     }
     return UnsupportedTypeError(round);
   }
 
   absl::Status HandleCeil(const HloInstruction* ceil) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      ABSL_ASSIGN_OR_RETURN(Literal literal,
-                       ElementWiseUnaryOp(ceil, [](ElementwiseT elem_operand) {
-                         return std::ceil(elem_operand);
-                       }));
-      parent_->SetEvaluatedLiteralFor(ceil, std::move(literal));
-      return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(ceil, [](ElementwiseT elem_operand) {
+        return std::ceil(elem_operand);
+      });
     }
     return UnsupportedTypeError(ceil);
   }
 
   absl::Status HandleErf(const HloInstruction* erf) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      ABSL_ASSIGN_OR_RETURN(Literal literal,
-                       ElementWiseUnaryOp(erf, [](ElementwiseT elem_operand) {
-                         return std::erf(elem_operand);
-                       }));
-      parent_->SetEvaluatedLiteralFor(erf, std::move(literal));
-      return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(erf, [](ElementwiseT elem_operand) {
+        return std::erf(elem_operand);
+      });
     }
     return UnsupportedTypeError(erf);
   }
 
   absl::Status HandleExp(const HloInstruction* exp) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(exp, [](ElementwiseT elem_operand) {
-                       return std::exp(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(exp, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(exp, [](ElementwiseT elem_operand) {
+        return std::exp(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(exp);
   }
 
   absl::Status HandleExp2(const HloInstruction* exp2) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(exp2, [](ElementwiseT elem_operand) {
-                       if constexpr (is_complex_v<ReturnT>) {
-                         return std::exp(elem_operand * ElementwiseT(M_LN2));
-                       } else {
-                         return std::exp2(elem_operand);
-                       }
-                     }));
-    parent_->SetEvaluatedLiteralFor(exp2, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(exp2, [](ElementwiseT elem_operand) {
+        if constexpr (is_complex_v<ReturnT>) {
+          return std::exp(elem_operand * ElementwiseT(M_LN2));
+        } else {
+          return std::exp2(elem_operand);
+        }
+      });
+    }
+    return UnsupportedTypeError(exp2);
   }
 
   absl::Status HandleExpm1(const HloInstruction* expm1) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      ABSL_ASSIGN_OR_RETURN(Literal literal,
-                       ElementWiseUnaryOp(expm1, [](ElementwiseT elem_operand) {
-                         return std::expm1(elem_operand);
-                       }));
-      parent_->SetEvaluatedLiteralFor(expm1, std::move(literal));
-      return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(expm1, [](ElementwiseT elem_operand) {
+        return std::expm1(elem_operand);
+      });
     }
     return UnsupportedTypeError(expm1);
   }
 
   absl::Status HandleFloor(const HloInstruction* floor) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      ABSL_ASSIGN_OR_RETURN(Literal literal,
-                       ElementWiseUnaryOp(floor, [](ElementwiseT elem_operand) {
-                         return std::floor(elem_operand);
-                       }));
-      parent_->SetEvaluatedLiteralFor(floor, std::move(literal));
-      return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(floor, [](ElementwiseT elem_operand) {
+        return std::floor(elem_operand);
+      });
     }
     return UnsupportedTypeError(floor);
   }
 
   absl::Status HandleLog(const HloInstruction* log) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(log, [](ElementwiseT elem_operand) {
-                       return std::log(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(log, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(log, [](ElementwiseT elem_operand) {
+        return std::log(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(log);
   }
 
   absl::Status HandleLog1p(const HloInstruction* log1p) override {
-    if constexpr (!is_complex_v<ReturnT>) {
-      ABSL_ASSIGN_OR_RETURN(Literal literal,
-                       ElementWiseUnaryOp(log1p, [](ElementwiseT elem_operand) {
-                         return std::log1p(elem_operand);
-                       }));
-      parent_->SetEvaluatedLiteralFor(log1p, std::move(literal));
-      return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(log1p, [](ElementwiseT elem_operand) {
+        return std::log1p(elem_operand);
+      });
     }
     return UnsupportedTypeError(log1p);
   }
 
   absl::Status HandleLog2(const HloInstruction* log2) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(log2, [](ElementwiseT elem_operand) {
-                       if constexpr (is_complex_v<ReturnT>) {
-                         return std::log(elem_operand) / ElementwiseT(M_LN2);
-                       } else {
-                         return std::log2(elem_operand);
-                       }
-                     }));
-    parent_->SetEvaluatedLiteralFor(log2, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(log2, [](ElementwiseT elem_operand) {
+        if constexpr (is_complex_v<ReturnT>) {
+          return std::log(elem_operand) / ElementwiseT(M_LN2);
+        } else {
+          return std::log2(elem_operand);
+        }
+      });
+    }
+    return UnsupportedTypeError(log2);
   }
 
   absl::Status HandleNot(const HloInstruction* not_) override {
     if constexpr (std::is_arithmetic_v<ElementwiseT>) {
-      ABSL_ASSIGN_OR_RETURN(Literal literal,
-                       ElementWiseUnaryOp(not_, [](ElementwiseT elem_operand) {
-                         if constexpr (std::is_floating_point_v<ElementwiseT> ||
-                                       std::is_same_v<ElementwiseT, bool>) {
-                           return !elem_operand;
-                         } else {
-                           static_assert(std::is_integral_v<ElementwiseT>);
-                           return ~elem_operand;
-                         }
-                       }));
-      parent_->SetEvaluatedLiteralFor(not_, std::move(literal));
-      return absl::OkStatus();
+      return ElementWiseUnaryOp(not_, [](ElementwiseT elem_operand) {
+        if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                      std::is_same_v<ElementwiseT, bool>) {
+          return !elem_operand;
+        } else {
+          static_assert(std::is_integral_v<ElementwiseT>);
+          return ~elem_operand;
+        }
+      });
     }
     return UnsupportedTypeError(not_);
   }
@@ -418,24 +385,17 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                                 !std::is_floating_point_v<NativeT>>* = nullptr>
   absl::Status HandleNegate(const HloInstruction* negate) {
     using type = std::make_unsigned_t<NativeT>;
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(negate, [](ElementwiseT elem_operand) {
-                       return NativeT(-type(elem_operand));
-                     }));
-    parent_->SetEvaluatedLiteralFor(negate, std::move(literal));
-    return absl::OkStatus();
+    return ElementWiseUnaryOp(negate, [](ElementwiseT elem_operand) {
+      return NativeT(-type(elem_operand));
+    });
   }
 
   template <typename NativeT, typename std::enable_if_t<
                                   !std::is_signed_v<NativeT> ||
                                   std::is_floating_point_v<NativeT>>* = nullptr>
   absl::Status HandleNegate(const HloInstruction* negate) {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(negate, [](ElementwiseT elem_operand) {
-                       return -elem_operand;
-                     }));
-    parent_->SetEvaluatedLiteralFor(negate, std::move(literal));
-    return absl::OkStatus();
+    return ElementWiseUnaryOp(
+        negate, [](ElementwiseT elem_operand) { return -elem_operand; });
   }
 
   absl::Status HandleNegate(const HloInstruction* negate) override {
@@ -443,47 +403,44 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleLogistic(const HloInstruction* logistic) override {
-    ABSL_ASSIGN_OR_RETURN(
-        Literal literal,
-        ElementWiseUnaryOp(logistic, [](ElementwiseT elem_operand) {
-          return static_cast<ElementwiseT>(1) /
-                 (static_cast<ElementwiseT>(1) + std::exp(-elem_operand));
-        }));
-    parent_->SetEvaluatedLiteralFor(logistic, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(logistic, [](ElementwiseT elem_operand) {
+        return static_cast<ElementwiseT>(1) /
+               (static_cast<ElementwiseT>(1) + std::exp(-elem_operand));
+      });
+    }
+    return UnsupportedTypeError(logistic);
   }
 
   absl::Status HandleSign(const HloInstruction* sign) override {
     using NativeT = ElementwiseT;
-    ABSL_ASSIGN_OR_RETURN(
-        Literal literal,
-        ElementWiseUnaryOp(sign, [](ElementwiseT elem_operand) {
-          if constexpr (std::is_integral_v<NativeT>) {
-            return (ElementwiseT(0) < elem_operand) -
-                   (elem_operand < ElementwiseT(0));
-          }
-          if constexpr (std::is_floating_point_v<ElementwiseT>) {
-            return std::isnan(elem_operand)
-                       ? elem_operand
-                       : std::copysign(elem_operand != ElementwiseT(0),
-                                       elem_operand);
-          }
-          if constexpr (is_complex_v<NativeT>) {
-            auto abs_val = std::abs(elem_operand);
-            return 0 == abs_val ? ElementwiseT(0) : elem_operand / abs_val;
-          }
-        }));
-    parent_->SetEvaluatedLiteralFor(sign, std::move(literal));
-    return absl::OkStatus();
+    return ElementWiseUnaryOp(sign, [](ElementwiseT elem_operand) {
+      if constexpr (std::is_integral_v<NativeT>) {
+        return (ElementwiseT(0) < elem_operand) -
+               (elem_operand < ElementwiseT(0));
+      }
+      if constexpr (std::is_floating_point_v<ElementwiseT>) {
+        return std::isnan(elem_operand)
+                   ? elem_operand
+                   : std::copysign(elem_operand != ElementwiseT(0),
+                                   elem_operand);
+      }
+      if constexpr (is_complex_v<NativeT>) {
+        auto abs_val = std::abs(elem_operand);
+        return 0 == abs_val ? ElementwiseT(0) : elem_operand / abs_val;
+      }
+    });
   }
 
   absl::Status HandleAsinh(const HloInstruction* asinh) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(asinh, [](ElementwiseT elem_operand) {
-                       return std::asinh(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(asinh, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(asinh, [](ElementwiseT elem_operand) {
+        return std::asinh(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(asinh);
   }
 
   absl::Status HandleAtan2(const HloInstruction* atan2) override {
@@ -511,21 +468,23 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleAtanh(const HloInstruction* atanh) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(atanh, [](ElementwiseT elem_operand) {
-                       return std::atanh(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(atanh, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(atanh, [](ElementwiseT elem_operand) {
+        return std::atanh(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(atanh);
   }
 
   absl::Status HandleTanh(const HloInstruction* tanh) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(tanh, [](ElementwiseT elem_operand) {
-                       return std::tanh(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(tanh, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(tanh, [](ElementwiseT elem_operand) {
+        return std::tanh(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(tanh);
   }
 
   absl::Status HandleMultiply(const HloInstruction* multiply) override {
@@ -710,34 +669,32 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleSqrt(const HloInstruction* sqrt) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(sqrt, [](ElementwiseT elem_operand) {
-                       return std::sqrt(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(sqrt, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(sqrt, [](ElementwiseT elem_operand) {
+        return std::sqrt(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(sqrt);
   }
 
   absl::Status HandleCbrt(const HloInstruction* cbrt) override {
-    if constexpr (!is_complex_v<ElementwiseT>) {
-      ABSL_ASSIGN_OR_RETURN(Literal literal,
-                       ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) {
-                         return std::cbrt(elem_operand);
-                       }));
-      parent_->SetEvaluatedLiteralFor(cbrt, std::move(literal));
-      return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) {
+        return std::cbrt(elem_operand);
+      });
     }
     return UnsupportedTypeError(cbrt);
   }
 
   absl::Status HandleRsqrt(const HloInstruction* rsqrt) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(rsqrt, [](ElementwiseT elem_operand) {
-                       return static_cast<ElementwiseT>(1) /
-                              std::sqrt(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(rsqrt, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(rsqrt, [](ElementwiseT elem_operand) {
+        return static_cast<ElementwiseT>(1) / std::sqrt(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(rsqrt);
   }
 
   absl::Status HandleRemainder(const HloInstruction* remainder) override {
@@ -944,21 +901,17 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     // Enable CLZ only for integer types.
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      ABSL_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
-            int64_t unsigned_digits = std::numeric_limits<ReturnT>::digits +
-                                      std::numeric_limits<ReturnT>::is_signed;
-            // Mask to ReturnT's width: ElementwiseT is 64 bits, so a negative
-            // operand is sign extended and Log2Floor would count the sign bits.
-            const uint64_t mask = unsigned_digits >= 64
-                                      ? ~uint64_t{0}
-                                      : (uint64_t{1} << unsigned_digits) - 1;
-            const uint64_t bits = static_cast<uint64_t>(elem_operand) & mask;
-            return (unsigned_digits - 1) - Log2Floor<uint64_t>(bits);
-          }));
-      parent_->SetEvaluatedLiteralFor(clz, std::move(literal));
-      return absl::OkStatus();
+      return ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
+        int64_t unsigned_digits = std::numeric_limits<ReturnT>::digits +
+                                  std::numeric_limits<ReturnT>::is_signed;
+        // Mask to ReturnT's width: ElementwiseT is 64 bits, so a negative
+        // operand is sign extended and Log2Floor would count the sign bits.
+        const uint64_t mask = unsigned_digits >= 64
+                                  ? ~uint64_t{0}
+                                  : (uint64_t{1} << unsigned_digits) - 1;
+        const uint64_t bits = static_cast<uint64_t>(elem_operand) & mask;
+        return (unsigned_digits - 1) - Log2Floor<uint64_t>(bits);
+      });
     }
     return UnsupportedTypeError(clz);
   }
@@ -966,161 +919,153 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   absl::Status HandlePopulationCount(const HloInstruction* popcnt) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      ABSL_ASSIGN_OR_RETURN(
-          Literal literal,
-          ElementWiseUnaryOp(popcnt, [](ElementwiseT elem_operand) {
-            return std::bitset<CHAR_BIT * sizeof(ReturnT)>(elem_operand)
-                .count();
-          }));
-      parent_->SetEvaluatedLiteralFor(popcnt, std::move(literal));
-      return absl::OkStatus();
+      return ElementWiseUnaryOp(popcnt, [](ElementwiseT elem_operand) {
+        return std::bitset<CHAR_BIT * sizeof(ReturnT)>(elem_operand).count();
+      });
     }
     return UnsupportedTypeError(popcnt);
   }
 
   absl::Status HandleSin(const HloInstruction* sin) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
-                       return std::sin(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(sin, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(sin, [](ElementwiseT elem_operand) {
+        return std::sin(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(sin);
   }
 
   absl::Status HandleSinh(const HloInstruction* sinh) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(sinh, [](ElementwiseT elem_operand) {
-                       return std::sinh(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(sinh, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(sinh, [](ElementwiseT elem_operand) {
+        return std::sinh(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(sinh);
   }
 
   absl::Status HandleCos(const HloInstruction* cos) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
-                       return std::cos(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(cos, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(cos, [](ElementwiseT elem_operand) {
+        return std::cos(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(cos);
   }
 
   absl::Status HandleCosh(const HloInstruction* cosh) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(cosh, [](ElementwiseT elem_operand) {
-                       return std::cosh(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(cosh, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(cosh, [](ElementwiseT elem_operand) {
+        return std::cosh(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(cosh);
   }
 
   absl::Status HandleTan(const HloInstruction* tan) override {
-    ABSL_ASSIGN_OR_RETURN(Literal literal,
-                     ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
-                       return std::tan(elem_operand);
-                     }));
-    parent_->SetEvaluatedLiteralFor(tan, std::move(literal));
-    return absl::OkStatus();
+    if constexpr (std::is_floating_point_v<ElementwiseT> ||
+                  is_complex_v<ElementwiseT>) {
+      return ElementWiseUnaryOp(tan, [](ElementwiseT elem_operand) {
+        return std::tan(elem_operand);
+      });
+    }
+    return UnsupportedTypeError(tan);
   }
 
   template <typename NativeT, typename std::enable_if_t<
                                   std::is_floating_point_v<NativeT>>* = nullptr>
   absl::Status HandleReducePrecision(const HloInstruction* reduce_precision) {
-    ABSL_ASSIGN_OR_RETURN(
-        Literal literal,
-        ElementWiseUnaryOp(reduce_precision, [&](ElementwiseT elem) {
-          const uint32_t src_mantissa_bits =
-              std::numeric_limits<NativeT>::digits - 1;
-          const uint32_t src_exponent_bits =
-              8 * sizeof(NativeT) - src_mantissa_bits - 1;
-          const uint32_t dest_mantissa_bits = reduce_precision->mantissa_bits();
-          const uint32_t dest_exponent_bits = reduce_precision->exponent_bits();
+    return ElementWiseUnaryOp(reduce_precision, [&](ElementwiseT elem) {
+      const uint32_t src_mantissa_bits =
+          std::numeric_limits<NativeT>::digits - 1;
+      const uint32_t src_exponent_bits =
+          8 * sizeof(NativeT) - src_mantissa_bits - 1;
+      const uint32_t dest_mantissa_bits = reduce_precision->mantissa_bits();
+      const uint32_t dest_exponent_bits = reduce_precision->exponent_bits();
 
-          using Uint = UnsignedIntegerTypeForSizeType<sizeof(NativeT)>;
-          Uint value_as_int = absl::bit_cast<Uint>(elem);
+      using Uint = UnsignedIntegerTypeForSizeType<sizeof(NativeT)>;
+      Uint value_as_int = absl::bit_cast<Uint>(elem);
 
-          // Code is based on the CPU/GPU implementation in LLVM-emitting code.
-          //
-          // Bits in float32 type:
-          //   mantissa : bits [0:22]
-          //   exponent : bits [23:30]
-          //   sign     : bits [31]
-          if (dest_mantissa_bits < src_mantissa_bits) {
-            const Uint last_mantissa_bit_mask =
-                Uint{1} << (src_mantissa_bits - dest_mantissa_bits);
+      // Code is based on the CPU/GPU implementation in LLVM-emitting code.
+      //
+      // Bits in float32 type:
+      //   mantissa : bits [0:22]
+      //   exponent : bits [23:30]
+      //   sign     : bits [31]
+      if (dest_mantissa_bits < src_mantissa_bits) {
+        const Uint last_mantissa_bit_mask =
+            Uint{1} << (src_mantissa_bits - dest_mantissa_bits);
 
-            // Compute rounding bias for round-to-nearest with ties to even.
-            // This is equal to a base value of 0111... plus one bit if the last
-            // remaining mantissa bit is 1.
-            const Uint base_rounding_bias = (last_mantissa_bit_mask >> 1) - 1;
-            const Uint x_last_mantissa_bit =
-                (value_as_int & last_mantissa_bit_mask) >>
-                (src_mantissa_bits - dest_mantissa_bits);
-            const Uint x_rounding_bias =
-                x_last_mantissa_bit + base_rounding_bias;
+        // Compute rounding bias for round-to-nearest with ties to even.
+        // This is equal to a base value of 0111... plus one bit if the last
+        // remaining mantissa bit is 1.
+        const Uint base_rounding_bias = (last_mantissa_bit_mask >> 1) - 1;
+        const Uint x_last_mantissa_bit =
+            (value_as_int & last_mantissa_bit_mask) >>
+            (src_mantissa_bits - dest_mantissa_bits);
+        const Uint x_rounding_bias = x_last_mantissa_bit + base_rounding_bias;
 
-            // Add rounding bias, and mask out truncated bits.  Note that the
-            // case where adding the rounding bias overflows into the exponent
-            // bits is correct; the non-masked mantissa bits will all be zero,
-            // and the exponent will be incremented by one.
-            const Uint truncation_mask = ~(last_mantissa_bit_mask - 1);
-            value_as_int = value_as_int + x_rounding_bias;
-            value_as_int = value_as_int & truncation_mask;
-          }
-          if (dest_exponent_bits < src_exponent_bits) {
-            // Masks for f32 values.
-            const Uint sign_bit_mask = Uint{1} << 8 * sizeof(NativeT) - 1;
-            const Uint exp_bits_mask = (Uint{1 << src_exponent_bits} - 1)
-                                       << src_mantissa_bits;
+        // Add rounding bias, and mask out truncated bits.  Note that the
+        // case where adding the rounding bias overflows into the exponent
+        // bits is correct; the non-masked mantissa bits will all be zero,
+        // and the exponent will be incremented by one.
+        const Uint truncation_mask = ~(last_mantissa_bit_mask - 1);
+        value_as_int = value_as_int + x_rounding_bias;
+        value_as_int = value_as_int & truncation_mask;
+      }
+      if (dest_exponent_bits < src_exponent_bits) {
+        // Masks for f32 values.
+        const Uint sign_bit_mask = Uint{1} << 8 * sizeof(NativeT) - 1;
+        const Uint exp_bits_mask = (Uint{1 << src_exponent_bits} - 1)
+                                   << src_mantissa_bits;
 
-            // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the
-            // most- significant bit -- is equal to 1.0f for all exponent sizes.
-            // Adding 2^(n-1)-1 to this gives us the highest non-infinite
-            // exponent for a bit- size of n, and subtracting 2^(n-1)-1 from
-            // this gives us the lowest' exponent (corresponding to 0.0f).
-            //
-            // Thus, the f32 exponent corresponding to the highest non-infinite
-            // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
-            // exponent corresponding to the lowest exponent for a bit size of n
-            // is (2^7-1) - 2^(n-1)-1.
-            //
-            // Note that we have already checked that exponents_bits >= 1.
-            const Uint exponent_bias = (Uint{1} << (src_exponent_bits - 1)) - 1;
-            const Uint reduced_exponent_bias =
-                (1 << (dest_exponent_bits - 1)) - 1;
-            const Uint reduced_max_exponent =
-                exponent_bias + reduced_exponent_bias;
-            const Uint reduced_min_exponent =
-                exponent_bias - reduced_exponent_bias;
+        // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the
+        // most- significant bit -- is equal to 1.0f for all exponent sizes.
+        // Adding 2^(n-1)-1 to this gives us the highest non-infinite
+        // exponent for a bit- size of n, and subtracting 2^(n-1)-1 from
+        // this gives us the lowest' exponent (corresponding to 0.0f).
+        //
+        // Thus, the f32 exponent corresponding to the highest non-infinite
+        // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
+        // exponent corresponding to the lowest exponent for a bit size of n
+        // is (2^7-1) - 2^(n-1)-1.
+        //
+        // Note that we have already checked that exponents_bits >= 1.
+        const Uint exponent_bias = (Uint{1} << (src_exponent_bits - 1)) - 1;
+        const Uint reduced_exponent_bias = (1 << (dest_exponent_bits - 1)) - 1;
+        const Uint reduced_max_exponent = exponent_bias + reduced_exponent_bias;
+        const Uint reduced_min_exponent = exponent_bias - reduced_exponent_bias;
 
-            // Do we overflow or underflow?
-            const Uint x_exponent = value_as_int & exp_bits_mask;
-            const bool x_overflows =
-                x_exponent > (reduced_max_exponent << src_mantissa_bits);
-            const bool x_underflows =
-                x_exponent <= (reduced_min_exponent << src_mantissa_bits);
+        // Do we overflow or underflow?
+        const Uint x_exponent = value_as_int & exp_bits_mask;
+        const bool x_overflows =
+            x_exponent > (reduced_max_exponent << src_mantissa_bits);
+        const bool x_underflows =
+            x_exponent <= (reduced_min_exponent << src_mantissa_bits);
 
-            // Compute appropriately-signed values of zero and infinity.
-            const Uint x_signed_zero = value_as_int & sign_bit_mask;
-            const Uint x_signed_inf = x_signed_zero | exp_bits_mask;
+        // Compute appropriately-signed values of zero and infinity.
+        const Uint x_signed_zero = value_as_int & sign_bit_mask;
+        const Uint x_signed_inf = x_signed_zero | exp_bits_mask;
 
-            // Force to zero or infinity if overflow or underflow.  (Note that
-            // this truncates all denormal values to zero, rather than rounding
-            // them.)
-            value_as_int = x_overflows ? x_signed_inf : value_as_int;
-            value_as_int = x_underflows ? x_signed_zero : value_as_int;
-          }
+        // Force to zero or infinity if overflow or underflow.  (Note that
+        // this truncates all denormal values to zero, rather than rounding
+        // them.)
+        value_as_int = x_overflows ? x_signed_inf : value_as_int;
+        value_as_int = x_underflows ? x_signed_zero : value_as_int;
+      }
 
-          NativeT reduced_result = absl::bit_cast<NativeT>(value_as_int);
-          if (std::isnan(elem)) {
-            reduced_result = dest_mantissa_bits > 0
-                                 ? elem
-                                 : std::numeric_limits<NativeT>::infinity();
-          }
-          return reduced_result;
-        }));
-    parent_->SetEvaluatedLiteralFor(reduce_precision, std::move(literal));
-    return absl::OkStatus();
+      NativeT reduced_result = absl::bit_cast<NativeT>(value_as_int);
+      if (std::isnan(elem)) {
+        reduced_result = dest_mantissa_bits > 0
+                             ? elem
+                             : std::numeric_limits<NativeT>::infinity();
+      }
+      return reduced_result;
+    });
   }
 
   template <typename NativeT,
@@ -1253,24 +1198,20 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
  private:
   template <typename UnaryOp>
-  absl::StatusOr<Literal> ElementWiseUnaryOp(const HloInstruction* instruction,
-                                             UnaryOp&& unary_op) {
+  absl::Status ElementWiseUnaryOp(const HloInstruction* instruction,
+                                  UnaryOp&& unary_op) {
     static_assert(std::is_invocable_r_v<ElementwiseT, UnaryOp, ElementwiseT>,
                   "Invalid UnaryOp signature");
     return ElementWiseUnaryOpImpl(instruction, unary_op);
   }
 
-  absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
+  absl::Status ElementWiseUnaryOpImpl(
       const HloInstruction* instruction,
       absl::FunctionRef<ElementwiseT(ElementwiseT)> unary_op) {
-    const Literal& operand_literal =
-        parent_->GetEvaluatedLiteralFor(instruction->operand(0));
-    ABSL_ASSIGN_OR_RETURN(
-        auto result_literal,
-        (HloEvaluator::ElementWiseUnaryOpImpl<ReturnT, ReturnT>(
-            instruction, ConvertUnaryFunction(unary_op), operand_literal)));
-
-    return result_literal;
+    return parent_->ElementWiseUnaryOpImpl<ReturnT, ReturnT>(
+        instruction, [unary_op](ReturnT arg) {
+          return static_cast<ReturnT>(unary_op(static_cast<ElementwiseT>(arg)));
+        });
   }
 
   template <typename BinaryOp>

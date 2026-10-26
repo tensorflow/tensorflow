@@ -775,33 +775,36 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     EvaluationState* state_;
   };
 
+  absl::Status RunElementwiseUnaryOp(
+      const HloInstruction* instruction,
+      absl::FunctionRef<absl::Status(
+          Literal& result, const Literal& operand_literal, bool same_layout)>
+          populate);
+
   template <typename ReturnT, typename NativeT, typename UnaryOp>
-  static absl::StatusOr<Literal> ElementWiseUnaryOpImpl(
-      const HloInstruction* instruction, UnaryOp&& unary_op,
-      const Literal& operand_literal) {
+  absl::Status ElementWiseUnaryOpImpl(const HloInstruction* instruction,
+                                      UnaryOp unary_op) {
     static_assert(std::is_invocable_r_v<ReturnT, UnaryOp, NativeT>,
                   "Invalid UnaryOp signature");
-
-    const Shape& shape = instruction->shape();
-    const auto* operand = instruction->operand(0);
-    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
-
-    Literal result(shape);
-    bool same_layout =
-        LayoutUtil::Equal(operand->shape().layout(), shape.layout());
-    if (same_layout) {
-      const NativeT* operand_data = operand_literal.data<NativeT>().data();
-      ABSL_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
-          [&](int64_t linear_index, int /*thread_id*/) {
-            return unary_op(operand_data[linear_index]);
-          }));
-    } else {
-      ABSL_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
-          [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
-            return unary_op(operand_literal.Get<NativeT>(multi_index));
-          }));
-    }
-    return result;
+    return RunElementwiseUnaryOp(
+        instruction,
+        [&](Literal& result, const Literal& operand_literal,
+            bool same_layout) -> absl::Status {
+          if (same_layout) {
+            const NativeT* operand_data =
+                operand_literal.data<NativeT>().data();
+            return result.PopulateLinearParallel<ReturnT>(
+                [operand_data, unary_op](int64_t linear_index,
+                                         int /*thread_id*/) {
+                  return unary_op(operand_data[linear_index]);
+                });
+          }
+          return result.PopulateParallel<ReturnT>(
+              [&operand_literal, unary_op](
+                  absl::Span<const int64_t> multi_index, int /*thread_id*/) {
+                return unary_op(operand_literal.Get<NativeT>(multi_index));
+              });
+        });
   }
 
   // Module-level seed handle.
