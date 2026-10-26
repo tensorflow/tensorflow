@@ -197,6 +197,47 @@ class BuildTest(parameterized.TestCase):
       build.execute_build_commands(target_build, target_pattern_file=None)
     self.assertEqual(mock_sh.call_count, 3)
 
+  def test_bazel_command_excludes_manual_tags_with_target_pattern_file(
+      self,
+  ) -> None:
+    builds = build.Build.all_builds()
+    cpu_build = builds[build.BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS]
+
+    wildcard_cmd = cpu_build.bazel_command(target_pattern_file=None)
+    self.assertIn(
+        "--build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,"
+        "-requires-gpu-amd,-requires-gpu-intel",
+        wildcard_cmd,
+    )
+    self.assertIn(
+        "--test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,"
+        "-requires-gpu-amd,-requires-gpu-intel",
+        wildcard_cmd,
+    )
+
+    pattern_file_cmd = cpu_build.bazel_command(
+        target_pattern_file="/tmp/targets.txt"
+    )
+    self.assertIn(
+        "--build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,"
+        "-requires-gpu-amd,-requires-gpu-intel,-manual",
+        pattern_file_cmd,
+    )
+    self.assertIn(
+        "--test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,"
+        "-requires-gpu-amd,-requires-gpu-intel,-manual",
+        pattern_file_cmd,
+    )
+
+    empty_tag_build = builds[
+        build.BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS
+    ]
+    empty_tag_cmd = empty_tag_build.bazel_command(
+        target_pattern_file="/tmp/targets.txt"
+    )
+    self.assertIn("--build_tag_filters=-manual", empty_tag_cmd)
+    self.assertIn("--test_tag_filters=-manual", empty_tag_cmd)
+
 
 if __name__ == "__main__":
   absltest.main()

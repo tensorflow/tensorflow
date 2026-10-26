@@ -264,8 +264,34 @@ class BazelDiffTest(parameterized.TestCase):
       self.assertIn("xla_linux_x86_gpu_l4", content)
       self.assertIn("IMPACTED", content)
       self.assertIn("//xla/service:hlo_parser", content)
+      self.assertNotIn("more targets omitted", content)
     finally:
       os.unlink(summary_file)
+
+  def test_report_decision_truncates_large_step_summary(self):
+    summary_file = self.create_tempfile("step_summary.md")
+    targets = tuple(
+        f"//xla/service/cpu:generated_target_{i}" for i in range(25000)
+    )
+    with mock.patch.dict(
+        os.environ, {"GITHUB_STEP_SUMMARY": summary_file.full_path}
+    ):
+      decision = bazel_diff.BazelDiffDecision(
+          decision=bazel_diff.BazelDiffDecisionType.IMPACTED,
+          impacted_targets=targets,
+          reason="Found 25000 impacted targets",
+          changed_files_count=10,
+          elapsed_seconds=45.0,
+      )
+      bazel_diff.report_decision(decision, "xla_linux_x86_cpu")
+
+    content = summary_file.read_text()
+    self.assertLess(len(content.encode("utf-8")), 1024 * 1024)
+    self.assertIn("(showing first 500 of 25000)", content)
+    self.assertIn("//xla/service/cpu:generated_target_0\n", content)
+    self.assertIn("//xla/service/cpu:generated_target_499\n", content)
+    self.assertNotIn("//xla/service/cpu:generated_target_500\n", content)
+    self.assertIn("... (24500 more targets omitted)", content)
 
   @mock.patch.object(
       change_detector, "get_changed_files", autospec=True, spec_set=True

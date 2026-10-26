@@ -207,10 +207,21 @@ class Build:
     options = _dict_to_cli_options(self.options)
     startup_options = _dict_to_cli_options(self.startup_options)
     configs = [f"--config={config}" for config in self.configs]
+    effective_build_tag_filters = self.build_tag_filters
+    effective_test_tag_filters = self.test_tag_filters
+    if target_pattern_file:
+      # Explicit target labels in --target_pattern_file bypass Bazel's wildcard
+      # exclusion of `tags = ["manual"]`, so exclude manual targets explicitly.
+      if "-manual" not in effective_build_tag_filters:
+        effective_build_tag_filters = (*effective_build_tag_filters, "-manual")
+      if "-manual" not in effective_test_tag_filters:
+        effective_test_tag_filters = (*effective_test_tag_filters, "-manual")
     build_tag_filters = (
-        f"--build_tag_filters={','.join(self.build_tag_filters)}"
+        f"--build_tag_filters={','.join(effective_build_tag_filters)}"
     )
-    test_tag_filters = f"--test_tag_filters={','.join(self.test_tag_filters)}"
+    test_tag_filters = (
+        f"--test_tag_filters={','.join(effective_test_tag_filters)}"
+    )
     action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
     test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
     repo_env = [f"--repo_env={k}={v}" for k, v in self.repo_env.items()]

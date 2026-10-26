@@ -49,6 +49,10 @@ KEEP_TARGET_PREFIXES: Tuple[str, ...] = (
     "@tsl//tsl/",
 )
 
+# Cap targets rendered in $GITHUB_STEP_SUMMARY so large diffs stay well below
+# GitHub Actions' 1024 KB step summary upload limit.
+_MAX_STEP_SUMMARY_TARGETS = 500
+
 
 class BuildConfig(Protocol):
   """Protocol describing the Build attributes used by bazel-diff.
@@ -380,9 +384,23 @@ def report_decision(decision: BazelDiffDecision, build_name: str) -> None:
             f"| **Duration** | {decision.elapsed_seconds:.1f}s |\n\n"
         )
         if decision.decision == BazelDiffDecisionType.IMPACTED:
-          f.write("<details><summary>Impacted Targets List</summary>\n\n```\n")
-          for target in decision.impacted_targets:
+          displayed_targets = decision.impacted_targets[
+              :_MAX_STEP_SUMMARY_TARGETS
+          ]
+          omitted_count = len(decision.impacted_targets) - len(
+              displayed_targets
+          )
+          summary_label = "Impacted Targets List"
+          if omitted_count > 0:
+            summary_label += (
+                f" (showing first {len(displayed_targets)} of"
+                f" {len(decision.impacted_targets)})"
+            )
+          f.write(f"<details><summary>{summary_label}</summary>\n\n```\n")
+          for target in displayed_targets:
             f.write(f"{target}\n")
+          if omitted_count > 0:
+            f.write(f"... ({omitted_count} more targets omitted)\n")
           f.write("```\n</details>\n\n")
     except OSError as e:
       logging.warning("Failed to write to GITHUB_STEP_SUMMARY: %s", e)
