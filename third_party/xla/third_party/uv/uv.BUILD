@@ -16,6 +16,8 @@
 # Description:
 #   libuv is a cross-platform asynchronous I/O library.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
 )

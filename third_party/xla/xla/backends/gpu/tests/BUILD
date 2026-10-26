@@ -2,8 +2,7 @@
 # verify the IR emitted.
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
-
-# copybara:uncomment load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite_for_gpus")
 load("//xla:xla.default.bzl", "xla_cc_test")

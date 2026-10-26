@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Wrapper for py_extension in OSS using native.cc_binary."""
+"""Wrapper for py_extension in OSS using cc_binary."""
+
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 
 def py_extension(name, srcs, deps = [], copts = [], linkopts = [], **kwargs):
     # Remove features or other attributes unsupported by cc_binary
     kwargs.pop("features", None)
 
-    native.cc_binary(
+    cc_binary(
         name = name,
         srcs = srcs,
         copts = copts + ["-fexceptions", "-fPIC"],
