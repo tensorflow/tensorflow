@@ -207,6 +207,88 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual("line1\nline2", file_contents)
 
+  def testSeekOnWriteOnlyFile(self):
+    # Regression test for tensorflow/tensorflow#32122: seek() on a write-only
+    # file must move the write position so data can be overwritten in place.
+    file_path = file_io.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("hello")
+      f.seek(0)
+      self.assertEqual(0, f.tell())
+      f.write("X")
+      f.flush()
+    self.assertEqual("Xello", file_io.read_file_to_string(file_path))
+
+  def testSeekWriteOnlyFileDoesNotRaise(self):
+    # Minimal reproduction from the issue: seek() right after opening in "w".
+    file_path = file_io.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.seek(0)
+    self.assertTrue(file_io.file_exists(file_path))
+
+  def testSeekOnWriteOnlyFileWithWhenceCur(self):
+    file_path = file_io.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("abc")
+      f.seek(0)
+      f.seek(1, 1)  # whence=1: relative to the current position
+      f.write("Z")
+      f.flush()
+    self.assertEqual("aZc", file_io.read_file_to_string(file_path))
+
+  def testSeekOnWriteOnlyFileWithWhenceEnd(self):
+    file_path = file_io.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("0123456789")
+      f.seek(5)
+      f.write("A")
+      f.seek(-2, 2)  # whence=2: relative to the end of the file
+      f.write("B")
+      f.flush()
+    self.assertEqual("01234A67B9", file_io.read_file_to_string(file_path))
+
+  def testSeekOnWriteOnlyFileWithWhenceEndBuffered(self):
+    # Writes buffered past the last flushed size must be accounted for by
+    # whence=2 (seek() flushes the writable file before stat-ing it).
+    file_path = file_io.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("0123456789")
+      f.seek(5)
+      f.write("ABCDEFG")
+      f.seek(-2, 2)
+      f.write("Z")
+    self.assertEqual("01234ABCDEZG", file_io.read_file_to_string(file_path))
+
+  def testSeekOnWriteOnlyFileNegativePosition(self):
+    file_path = file_io.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("hello")
+      with self.assertRaises(errors.InvalidArgumentError):
+        f.seek(-1)
+
+  def testSeekOnReadFile(self):
+    # The read path must keep its existing behavior.
+    file_path = file_io.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("hello")
+    with file_io.FileIO(file_path, mode="r") as f:
+      f.seek(1)
+      self.assertEqual("e", f.read(1))
+
+  def testSeekOnAppendFileFails(self):
+    # Append mode rejects seeking; writes after the failure still append.
+    file_path = file_io.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("first")
+    with file_io.FileIO(file_path, mode="a") as f:
+      f.write("second")
+      with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                  "Cannot seek in append mode"):
+        f.seek(0)
+      f.write("X")
+      f.flush()
+    self.assertEqual("firstsecondX", file_io.read_file_to_string(file_path))
+
   def testFileWriteBadMode(self):
     file_path = file_io.join(self._base_dir, "temp_file")
     with self.assertRaises(errors.PermissionDeniedError):
