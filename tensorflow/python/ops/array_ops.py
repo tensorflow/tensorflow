@@ -4042,11 +4042,11 @@ def one_hot(indices,
   `on_value` and `off_value` must have matching data types. If `dtype` is also
   provided, they must be the same data type as specified by `dtype`.
 
-  If `on_value` is not provided, it will default to the value `1` with type
-  `dtype`
+  If `on_value` is not provided, it will default to the value `1` (`True` for
+  boolean) with type `dtype`
 
-  If `off_value` is not provided, it will default to the value `0` with type
-  `dtype`
+  If `off_value` is not provided, it will default to the value `0` (`False` for
+  boolean) with type `dtype`
 
   If the input `indices` is rank `N`, the output will have rank `N+1`. The
   new axis is created at dimension `axis` (default: the new axis is appended
@@ -4080,8 +4080,9 @@ def one_hot(indices,
   `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
   value `tf.float32`.
 
-  Note: If a non-numeric data type output is desired (`tf.string`, `tf.bool`,
-  etc.), both `on_value` and `off_value` _must_ be provided to `one_hot`.
+  Note: If a non-numeric data type output other than `tf.bool` is desired
+  (e.g. `tf.string`), both `on_value` and `off_value` _must_ be provided to
+  `one_hot`.
 
   For example:
 
@@ -4124,10 +4125,10 @@ def one_hot(indices,
   Args:
     indices: A `Tensor` of indices.
     depth: A scalar defining the depth of the one hot dimension.
-    on_value: A scalar defining the value to fill in output when `indices[j]
-      = i`. (default: 1)
-    off_value: A scalar defining the value to fill in output when `indices[j]
-      != i`. (default: 0)
+    on_value: A scalar defining the value to fill in output when `indices[j] =
+      i`. (default: 1)
+    off_value: A scalar defining the value to fill in output when `indices[j] !=
+      i`. (default: 0)
     axis: The axis to fill (default: -1, a new inner-most axis).
     dtype: The data type of the output tensor.
     name: A name for the operation (optional).
@@ -4170,12 +4171,16 @@ def one_hot(indices,
       dtype = dtypes.float32
 
     if not on_exists:
-      # on_value not provided: assign to value 1 of type dtype
-      on_value = ops.convert_to_tensor(1, dtype, name="on_value")
+      # on_value not provided: assign to value 1 (True for bool) of type dtype
+      on_value = ops.convert_to_tensor(
+          True if dtype == dtypes.bool else 1, dtype, name="on_value"
+      )
       on_dtype = dtype
     if not off_exists:
-      # off_value not provided: assign to value 0 of type dtype
-      off_value = ops.convert_to_tensor(0, dtype, name="off_value")
+      # off_value not provided: assign to value 0 (False for bool) of type dtype
+      off_value = ops.convert_to_tensor(
+          False if dtype == dtypes.bool else 0, dtype, name="off_value"
+      )
       off_dtype = dtype
 
     if on_dtype != off_dtype:
