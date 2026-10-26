@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/traced_command.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
 
@@ -75,7 +78,15 @@ TracedCommand::RecordTracedCommand(
       auto nested_cmd,
       traced_cmd->GetOrTraceCommandBuffer(
           execute_params.buffer_allocations, execute_params.stream->parent(),
-          execute_params.command_buffer_trace_stream, trace, priority()));
+          execute_params.command_buffer_trace_stream,
+          [&](se::Stream* stream) {
+            std::optional<tsl::profiler::ScopedAnnotation> annotation =
+                std::holds_alternative<RecordUpdate>(record_action)
+                    ? GetInstructionAnnotation(profile_annotation())
+                    : std::nullopt;
+            return trace(stream);
+          },
+          priority()));
 
   if (auto* create = std::get_if<RecordCreate>(&record_action)) {
     VLOG(5) << "Record traced command " << nested_cmd

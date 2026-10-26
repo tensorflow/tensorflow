@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -51,10 +52,20 @@ static_assert(std::is_pointer_v<CUstream>);
 static_assert(std::is_pointer_v<nvtxDomainHandle_t>);
 static_assert(std::is_pointer_v<nvtxStringHandle_t>);
 
-ProfilerDomainHandle DefaultProfilerDomain() {
+ProfilerDomainHandle XlaProfilerDomain() {
   static ProfilerDomainHandle domain =
-      reinterpret_cast<ProfilerDomainHandle>(nvtxDomainCreateA("TSL"));
+      reinterpret_cast<ProfilerDomainHandle>(nvtxDomainCreateA("XLA"));
   return domain;
+}
+
+ProfilerDomainHandle DefaultProfilerDomain() {
+  if (const char* env = std::getenv("XLA_GPU_NVTX_DOMAIN");
+      env != nullptr && std::string_view(env) == "XLA") {  // non-absl ok
+    return XlaProfilerDomain();
+  }
+  static ProfilerDomainHandle tsl_domain =
+      reinterpret_cast<ProfilerDomainHandle>(nvtxDomainCreateA("TSL"));
+  return tsl_domain;
 }
 
 void NameCurrentThread(const std::string& thread_name) {
@@ -82,6 +93,15 @@ void RangePush(ProfilerDomainHandle domain, const char* ascii) {
   attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
   attrs.messageType = NVTX_MESSAGE_TYPE_ASCII;
   attrs.message.ascii = ascii;
+  nvtxDomainRangePushEx(reinterpret_cast<nvtxDomainHandle_t>(domain), &attrs);
+}
+
+void RangePush(ProfilerDomainHandle domain, StringHandle title) {
+  nvtxEventAttributes_t attrs{};
+  attrs.version = NVTX_VERSION;
+  attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
+  attrs.messageType = NVTX_MESSAGE_TYPE_REGISTERED;
+  attrs.message.registered = reinterpret_cast<nvtxStringHandle_t>(title);
   nvtxDomainRangePushEx(reinterpret_cast<nvtxDomainHandle_t>(domain), &attrs);
 }
 

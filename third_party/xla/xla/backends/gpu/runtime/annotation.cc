@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <optional>
 #include <ostream>
@@ -30,12 +31,16 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -607,12 +612,25 @@ static std::string MakeInstructionName(
   return absl::StrCat(title, MakeInstructionDetails(metadata), "#");
 }
 
+NvtxRangeFormat DefaultNvtxRangeFormat() {
+  if (const char* env = std::getenv("XLA_GPU_NVTX_DOMAIN");
+      env != nullptr && absl::string_view(env) == "XLA") {
+    return NvtxRangeFormat::kHloOpName;
+  }
+  return NvtxRangeFormat::kKeyValue;
+}
+
 InstructionAnnotation::InstructionAnnotation(
     const ModuleAnnotation& module_annotation, const HloInstruction& inst,
-    TraceAnnotationLevel annotation_level)
-    : nvtx_name_str_(MakeInstructionTitle(
-          module_annotation.longest_op_name_prefix(), inst)),
-      nvtx_name_(RegisterString(nvtx_name_str_)) {
+    TraceAnnotationLevel annotation_level, NvtxRangeFormat nvtx_range_format) {
+  std::string key_value_title =
+      MakeInstructionTitle(module_annotation.longest_op_name_prefix(), inst);
+  if (nvtx_range_format == NvtxRangeFormat::kHloOpName) {
+    nvtx_name_str_ = std::string(inst.name());
+  } else {
+    nvtx_name_str_ = key_value_title;
+  }
+  nvtx_name_ = RegisterString(nvtx_name_str_);
   // Register these string lazily since they are expensive to produce and
   // won't be used if there's no registered profiler.
   payload_ = Basic{
@@ -625,13 +643,13 @@ InstructionAnnotation::InstructionAnnotation(
           [&] { return "\n" + CalledInstructionsAsString(inst); }),
   };
   if (annotation_level < TraceAnnotationLevel::kDetailed) {
-    xprof_name_str_ = nvtx_name_str_;
+    xprof_name_str_ = std::move(key_value_title);
     return;
   }
 
   InstructionAnnotationMetadata metadata =
       GetInstructionAnnotationMetadata(inst);
-  xprof_name_str_ = MakeInstructionName(nvtx_name_str_, metadata);
+  xprof_name_str_ = MakeInstructionName(key_value_title, metadata);
 
   payload_ = Detailed{
       std::move(std::get<Basic>(payload_)),
@@ -674,7 +692,8 @@ void RangePush(tsl::profiler::ProfilerDomainHandle domain,
 }
 
 ModuleAnnotations::ModuleAnnotations(absl::string_view module_name,
-                                     TraceAnnotationLevel /*annotation_level*/)
+                                     TraceAnnotationLevel /*annotation_level*/,
+                                     NvtxRangeFormat /*nvtx_range_format*/)
     : top_level(module_name) {}
 
 uint64_t InstructionAnnotation::Basic::NvtxSchemaId() {
@@ -801,7 +820,8 @@ uint64_t InstructionAnnotation::Collective::NvtxSchemaId() {
 }
 
 ModuleAnnotations::ModuleAnnotations(const HloModule& mod,
-                                     TraceAnnotationLevel annotation_level)
+                                     TraceAnnotationLevel annotation_level,
+                                     NvtxRangeFormat nvtx_range_format)
     : top_level{mod} {
   VLOG(1) << "Preparing GPU trace module annotations: module=" << mod.name()
           << " annotation_level=" << static_cast<int32_t>(annotation_level);
@@ -818,9 +838,9 @@ ModuleAnnotations::ModuleAnnotations(const HloModule& mod,
       // based on the content of `inst`, including `called` etc.
       // FIXME: using try_emplace here was sensitive to
       // https://github.com/abseil/abseil-cpp/issues/388.
-      instructions.insert(
-          {inst->name(),
-           InstructionAnnotation{top_level, *inst, annotation_level}});
+      instructions.insert({inst->name(), InstructionAnnotation{
+                                             top_level, *inst, annotation_level,
+                                             nvtx_range_format}});
     }
   }
 }
@@ -831,6 +851,27 @@ ModuleAnnotations::ModuleAnnotations(const HloModule& mod,
 
 namespace {
 thread_local const ModuleAnnotations* current_annotations = nullptr;
+
+StringHandle GetRegisteredFallbackInstructionTitle(
+    absl::string_view profile_annotation) {
+  auto domain = tsl::profiler::DefaultProfilerDomain();
+  if (domain == nullptr) {
+    return {};
+  }
+  static absl::NoDestructor<absl::Mutex> mu;
+  static absl::NoDestructor<absl::flat_hash_map<std::string, StringHandle>>
+      registered_titles ABSL_GUARDED_BY(*mu);
+  absl::MutexLock lock(*mu);
+  std::string title =
+      DefaultNvtxRangeFormat() == NvtxRangeFormat::kHloOpName
+          ? std::string(profile_annotation)
+          : absl::StrFormat("Thunk:#hlo_op=%s#", profile_annotation);
+  StringHandle& handle = (*registered_titles)[title];
+  if (handle == nullptr) {
+    handle = tsl::profiler::RegisterString(domain, title);
+  }
+  return handle;
+}
 }  // namespace
 
 ScopedModuleAnnotations::ScopedModuleAnnotations(
@@ -858,7 +899,11 @@ std::optional<ScopedAnnotation> GetInstructionAnnotation(
     }
   }
   return std::optional<ScopedAnnotation>{
-      [&] { return absl::StrFormat("Thunk:#hlo_op=%s#", profile_annotation); }};
+      std::in_place,
+      [&] { return absl::StrFormat("Thunk:#hlo_op=%s#", profile_annotation); },
+      [&] {
+        return GetRegisteredFallbackInstructionTitle(profile_annotation);
+      }};
 }
 
 }  // namespace xla::gpu
