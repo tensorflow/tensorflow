@@ -27,7 +27,7 @@ namespace fuzzing {
 class FuzzStringToNumber : public FuzzSession<std::string> {
   void BuildGraph(const Scope& scope) override {
     auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_STRING);
+        MakePlaceholder(scope, "input", DT_STRING);
     tensorflow::ops::StringToNumber(scope.WithOpName("output"), op_node);
   }
   void FuzzImpl(const std::string& input_string) final {
