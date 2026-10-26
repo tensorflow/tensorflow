@@ -1879,7 +1879,7 @@ PjRtStreamExecutorRawClient::CompileInternal(
   ABSL_ASSIGN_OR_RETURN(
       auto device_assignment,
       UpdateCompileOptions(
-          process_index, *topology, &options,
+          process_index, target_topology, &options,
           /*lookup_addressable_devices=*/topology == &target_topology));
 
   // It is important to set the canonicalization callback after creating
@@ -1971,7 +1971,7 @@ PjRtStreamExecutorRawClient::CrossCompile(
     const PjRtTopologyDescription& target_topology) {
   int module_id = HloModule::GetNextUniqueModuleId();
   ABSL_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module.mlir_module(),
-                                               *topology, module_id));
+                                               target_topology, module_id));
 
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
