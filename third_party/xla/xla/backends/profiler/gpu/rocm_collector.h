@@ -138,6 +138,8 @@ class RocmTraceCollector {
       : options_(options) {}
   virtual ~RocmTraceCollector() {}
 
+  const RocmTraceCollectorOptions& GetOptions() const { return options_; }
+
   // Agent data used by GetDeviceCapabilities instead of hipGetDeviceProperties
   // (which can set sticky hipGetLastError for non-visible devices on ROCm 7+).
   virtual void SetGpuAgents(std::vector<rocprofiler_agent_v0_t> /*agents*/) {}

@@ -539,6 +539,16 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "rocm_tracer_utils_test",
+    size = "small",
+    srcs = ["rocm_tracer_utils_test.cc"],
+    deps = [
+        ":rocm_tracer_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "rocm_collector",
     srcs = ["rocm_collector.cc"],
@@ -599,7 +609,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocprofiler_sdk",  # buildcleaner: keep
@@ -617,11 +626,12 @@ xla_test(
         ":rocm_collector",
         ":rocm_tracer",
         ":rocm_tracer_utils",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_time",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
