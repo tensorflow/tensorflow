@@ -3,6 +3,10 @@
 
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load(
+    "//xla/tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -20,6 +24,11 @@ package_group(
     includes = [
         "//xla:friends",
     ],
+)
+
+tf_proto_library(
+    name = "hlo_pipeline_proto",
+    srcs = ["hlo_pipeline.proto"],
 )
 
 cc_library(
