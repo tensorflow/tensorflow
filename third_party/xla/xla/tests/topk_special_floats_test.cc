@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/strings/str_format.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/xla_test_backend_predicates.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 
@@ -110,10 +110,10 @@ TEST_F(TopkTest, TopKWithSpecialFloats) {
       auto literal = LiteralUtil::CreateR2FromArray2D<float>(input);
 
       for (int k : {2, 4, 8, 16, 32, 64}) {
-        if (test::DeviceTypeIs(test::kGpu) && batch == 1 && n >= 4096 &&
-            k > 16) {
-          // TODO(b/572311831): [XLA:GPU] hlo.topk gives incorrect ordering
-          // for +0.0 vs -0.0 when lowered to CUB radix sort.
+        // CUB radix sort mis-orders +0 and -0 (b/572311831). Skip those
+        // shapes on GPU. amdgpu runs them.
+        if (test::DeviceTypeIs(test::kGpu) && !test::DeviceIs("amdgpu") &&
+            batch == 1 && n >= 4096 && k > 16) {
           continue;
         }
         const auto hlo_text_module = absl::StrFormat(
