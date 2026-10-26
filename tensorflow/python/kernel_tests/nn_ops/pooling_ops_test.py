@@ -836,6 +836,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testMaxPoolValidEmptyOutputNCHW(self):
+    if not test.is_gpu_available(cuda_only=True):
+      self.skipTest("NCHW MaxPool is only supported on GPU.")
     value = array_ops.zeros([1, 4, 4, 1])
     output = nn_ops.max_pool(
         value,

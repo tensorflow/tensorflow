@@ -1860,6 +1860,39 @@ absl::Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c) {
   return absl::OkStatus();
 }
 
+namespace {
+
+absl::Status PoolingOutputSize(shape_inference::InferenceContext* c,
+                               shape_inference::DimensionHandle input_size,
+                               int32_t window, int32_t stride,
+                               Padding padding, int64_t pad_before,
+                               int64_t pad_after,
+                               shape_inference::DimensionHandle* output_size) {
+  if ((padding == Padding::VALID || padding == Padding::EXPLICIT) &&
+      stride > 0 && c->ValueKnown(input_size) &&
+      c->Value(input_size) < window &&
+      (padding != Padding::EXPLICIT ||
+       (pad_before < window && pad_after < window))) {
+    const int64_t total_pad =
+        (padding == Padding::EXPLICIT) ? (pad_before + pad_after) : 0;
+    const int64_t padded_input = c->Value(input_size) + total_pad;
+    if (padded_input < window) {
+      // Runtime pooling uses signed division, which truncates toward zero.
+      // Compare the gap with twice the stride without overflowing.
+      const int64_t gap = static_cast<int64_t>(window) - padded_input;
+      if (gap - stride < stride) {
+        *output_size = c->MakeDim(0);
+        return absl::OkStatus();
+      }
+    }
+  }
+  return GetWindowedOutputSizeFromDimsV2(c, input_size, window,
+                                         /*dilation_rate=*/1, stride, padding,
+                                         pad_before, pad_after, output_size);
+}
+
+}  // namespace
+
 absl::Status MaxPoolShapeImpl(shape_inference::InferenceContext* c,
                               bool supports_explicit_padding) {
   std::string data_format_str;
@@ -1938,38 +1971,15 @@ absl::Status MaxPoolShapeImpl(shape_inference::InferenceContext* c,
     GetExplicitPaddingForDim(explicit_paddings, data_format, 'W',
                              &pad_cols_before, &pad_cols_after);
   }
-  auto pooling_output_size = [&](DimensionHandle input_size, int32_t window,
-                                 int32_t stride, int64_t pad_before,
-                                 int64_t pad_after,
-                                 DimensionHandle* output_size) {
-    if ((padding == Padding::VALID || padding == Padding::EXPLICIT) &&
-        stride > 0 && c->ValueKnown(input_size)) {
-      const int64_t total_pad =
-          (padding == Padding::EXPLICIT) ? (pad_before + pad_after) : 0;
-      const int64_t padded_input = c->Value(input_size) + total_pad;
-      if (padded_input < window) {
-        // Runtime pooling uses signed division, which truncates toward zero.
-        // Compare the gap with twice the stride without overflowing.
-        const int64_t gap = static_cast<int64_t>(window) - padded_input;
-        if (gap - stride < stride) {
-          *output_size = c->MakeDim(0);
-          return absl::OkStatus();
-        }
-      }
-    }
-    return GetWindowedOutputSizeFromDimsV2(c, input_size, window,
-                                           /*dilation_rate=*/1, stride, padding,
-                                           pad_before, pad_after, output_size);
-  };
-  TF_RETURN_IF_ERROR(pooling_output_size(in_rows_dim, kernel_rows, stride_rows,
-                                         pad_rows_before, pad_rows_after,
-                                         &output_rows));
-  TF_RETURN_IF_ERROR(pooling_output_size(in_cols_dim, kernel_cols, stride_cols,
-                                         pad_cols_before, pad_cols_after,
-                                         &output_cols));
-  TF_RETURN_IF_ERROR(pooling_output_size(in_depth_dim, kernel_depth,
-                                         stride_depth, /*pad_before=*/0,
-                                         /*pad_after=*/0, &output_depth));
+  TF_RETURN_IF_ERROR(PoolingOutputSize(c, in_rows_dim, kernel_rows, stride_rows,
+                                       padding, pad_rows_before, pad_rows_after,
+                                       &output_rows));
+  TF_RETURN_IF_ERROR(PoolingOutputSize(c, in_cols_dim, kernel_cols, stride_cols,
+                                       padding, pad_cols_before, pad_cols_after,
+                                       &output_cols));
+  TF_RETURN_IF_ERROR(PoolingOutputSize(c, in_depth_dim, kernel_depth,
+                                       stride_depth, padding, /*pad_before=*/0,
+                                       /*pad_after=*/0, &output_depth));
 
   TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size_dim,
                                          {output_rows, output_cols},
@@ -2080,27 +2090,15 @@ absl::Status MaxPoolV2Shape(shape_inference::InferenceContext* c,
 
   ShapeHandle output_shape;
   DimensionHandle output_rows, output_cols, output_depth;
-  auto pooling_output_size = [&](DimensionHandle input_size, int32_t window,
-                                 int32_t stride, DimensionHandle* output_size) {
-    if (padding == Padding::VALID && stride > 0 && c->ValueKnown(input_size) &&
-        c->Value(input_size) < window) {
-      // Runtime pooling uses signed division, which truncates toward zero.
-      // Compare the gap with twice the stride without overflowing.
-      const int64_t gap = static_cast<int64_t>(window) - c->Value(input_size);
-      if (gap - stride < stride) {
-        *output_size = c->MakeDim(0);
-        return absl::OkStatus();
-      }
-    }
-    return GetWindowedOutputSizeFromDims(c, input_size, window, stride, padding,
-                                         output_size);
-  };
-  TF_RETURN_IF_ERROR(
-      pooling_output_size(in_rows_dim, kernel_rows, stride_rows, &output_rows));
-  TF_RETURN_IF_ERROR(
-      pooling_output_size(in_cols_dim, kernel_cols, stride_cols, &output_cols));
-  TF_RETURN_IF_ERROR(pooling_output_size(in_depth_dim, kernel_depth,
-                                         stride_depth, &output_depth));
+  TF_RETURN_IF_ERROR(PoolingOutputSize(c, in_rows_dim, kernel_rows, stride_rows,
+                                       padding, /*pad_before=*/-1,
+                                       /*pad_after=*/-1, &output_rows));
+  TF_RETURN_IF_ERROR(PoolingOutputSize(c, in_cols_dim, kernel_cols, stride_cols,
+                                       padding, /*pad_before=*/-1,
+                                       /*pad_after=*/-1, &output_cols));
+  TF_RETURN_IF_ERROR(PoolingOutputSize(c, in_depth_dim, kernel_depth,
+                                       stride_depth, padding, /*pad_before=*/-1,
+                                       /*pad_after=*/-1, &output_depth));
 
   TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size_dim,
                                          {output_rows, output_cols},

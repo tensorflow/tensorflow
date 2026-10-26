@@ -77,23 +77,6 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // Get the input tensor and initialize the pooling parameters
       TensorShape input_tensor_shape = input_tensor.shape();
-      TensorShape logical_shape = dnn_shape_input.IsMklTensor()
-                                      ? dnn_shape_input.GetTfShape()
-                                      : input_tensor_shape;
-      if (input_tensor.NumElements() != 0 && this->padding_ == Padding::VALID) {
-        const int ksize_size = this->ksize_.size();
-        for (int i = 0; i < ksize_size; i++) {
-          OP_REQUIRES(
-              context,
-              logical_shape.dims() > i &&
-                  logical_shape.dim_size(i) >= this->ksize_[i],
-              absl::InvalidArgumentError(absl::StrCat(
-                  "The ksize dimension ", i, " (value ", this->ksize_[i], ")",
-                  " is larger than the input tensor dimension ", i, " (value ",
-                  logical_shape.dims() > i ? logical_shape.dim_size(i) : -1,
-                  ").")));
-        }
-      }
       this->InitMklPoolParameters(context, &pool_params, dnn_shape_input,
                                   input_tensor_shape);
       OP_REQUIRES_OK(context, context->status());
@@ -105,8 +88,9 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
-      // If input is an empty tensor, allocate an empty output tensor and return
-      if (input_tensor.NumElements() == 0) {
+      TensorShape out_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
+      if (input_tensor.NumElements() == 0 ||
+          out_tf_shape.num_elements() == 0) {
         const int kOutputIndex = 0;
         this->AllocateEmptyOutputTensor(context, kOutputIndex, &pool_params,
                                         output_dims_mkl_order, &output_tensor);
