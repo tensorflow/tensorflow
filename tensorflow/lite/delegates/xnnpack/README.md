@@ -224,8 +224,11 @@ instead of saving it to disk.
 
 You will lose advantages 1 and 4 but can still profit from 2 and 3.
 
-Note: Currently, this is only accessible on systems that have the `memfd_create`
-system call.
+When no cache is configured, models with more than one delegated subgraph get an
+in-memory cache by default; set
+`TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DEFAULT_WEIGHT_CACHE` to opt out.
+
+Note: Not supported on Windows.
 
 ```c++
 std::unique_ptr<tflite::Interpreter> interpreter;

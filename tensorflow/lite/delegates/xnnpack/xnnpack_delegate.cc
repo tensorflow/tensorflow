@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
+#include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
@@ -740,6 +741,61 @@ class Delegate {
     }
   }
 
+  // Enables an in-memory weight cache for models with more than one subgraph
+  // when no weight cache is configured, so that weights shared by several
+  // subgraphs (e.g. signatures) are packed once.
+  //
+  // The cache belongs to the model it was enabled for. The XNNPack kernels
+  // built with it own it, so it's freed with the model. The delegate only
+  // holds it while preparing a subgraph (see `DelegatePrepare()`).
+  void MaybeEnableDefaultWeightCache(const tflite::Subgraph& subgraph) {
+    const auto* const model = subgraph.GetSubgraphs();
+    // The last cache expires with its model, even if a new model gets its
+    // address.
+    default_weight_cache_ = model == last_default_weight_cache_model_
+                                ? last_default_weight_cache_.lock()
+                                : nullptr;
+    if (default_weight_cache_ != nullptr || model == nullptr ||
+        (options_.flags &
+         TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DEFAULT_WEIGHT_CACHE) ||
+        options_.weights_cache != nullptr ||
+        options_.weight_cache_provider != nullptr ||
+        options_.weight_cache_file_path != nullptr ||
+        options_.weight_cache_file_descriptor > 0 ||
+        !TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+      return;
+    }
+    // Only count the subgraphs that the interpreter can delegate.
+    const auto num_subgraphs =
+        std::count_if(model->begin(), model->end(), [](const auto& s) {
+          return !s->execution_plan().empty() && !s->IsDelegationSkippable();
+        });
+    if (num_subgraphs <= 1) {
+      return;
+    }
+    auto cache = std::make_shared<MMapWeightCacheProvider>();
+    if (!cache->StartBuild(kInMemoryCachePath)) {
+      return;
+    }
+    default_weight_cache_ = std::move(cache);
+    last_default_weight_cache_ = default_weight_cache_;
+    last_default_weight_cache_model_ = model;
+    TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
+               "XNNPack in-memory weight cache enabled for a model with %d "
+               "subgraphs.",
+               static_cast<int>(num_subgraphs));
+  }
+
+  // Releases the delegate's reference to the default weight cache once a
+  // subgraph is prepared.
+  void ReleaseDefaultWeightCache() { default_weight_cache_.reset(); }
+
+  // Returns the weight cache provider to use for new XNNPack kernels.
+  MMapWeightCacheProvider& weight_cache_provider() {
+    return default_weight_cache_ != nullptr ? *default_weight_cache_
+                                            : *weight_cache_provider_;
+  }
+
   ~Delegate() {
     if (workspace_mutex_ != nullptr && workspace_ != nullptr) {
       std::lock_guard<std::mutex> lock(*workspace_mutex_);
@@ -845,6 +901,9 @@ class Delegate {
   }
 
   xnn_weights_cache_t weights_cache() const {
+    if (default_weight_cache_ != nullptr) {
+      return &default_weight_cache_->GetCacheProvider();
+    }
     if (options_.weights_cache == nullptr) {
       return nullptr;
     } else {
@@ -949,6 +1008,13 @@ class Delegate {
   maybe_unique_ptr<MMapWeightCacheProvider> weight_cache_provider_{
       new MMapWeightCacheProvider(), kOwned};
 
+  // See `MaybeEnableDefaultWeightCache()`. Only set while preparing a
+  // subgraph, and never exposed through `options_`.
+  std::shared_ptr<MMapWeightCacheProvider> default_weight_cache_;
+  // The last default weight cache, and `GetSubgraphs()` of its model.
+  std::weak_ptr<MMapWeightCacheProvider> last_default_weight_cache_;
+  const void* last_default_weight_cache_model_ = nullptr;
+
   // A map of `f16`->`f32` dequantization tensor indices that will be skipped in
   // the XNNPACK subgraph.
   std::unordered_map<int, int> f16_input_tensor_for_dequant_f32_tensor_;
@@ -1025,7 +1091,8 @@ class Subgraph {
       subgraph_index = this_subgraph->GetSubgraphIndex();
     }
     // Map tensors identifiers before packing anything.
-    if (delegate.weight_cache_provider_->IsActive()) {
+    MMapWeightCacheProvider& weight_cache = delegate.weight_cache_provider();
+    if (weight_cache.IsActive()) {
       const auto* subgraph =
           reinterpret_cast<tflite::Subgraph*>(context->impl_);
       auto tensor_buffer_identifiers = subgraph->GetTensorBufferIdentifiers();
@@ -1034,9 +1101,9 @@ class Subgraph {
         tensor_buffer_identifiers.insert_or_assign(tensor_index,
                                                    external_buffer_id);
       }
-      if (!delegate.weight_cache_provider_->MapTensorIdentifiers(
-              context->tensors, context->tensors_size,
-              tensor_buffer_identifiers)) {
+      if (!weight_cache.MapTensorIdentifiers(context->tensors,
+                                             context->tensors_size,
+                                             tensor_buffer_identifiers)) {
         return nullptr;
       }
     }
@@ -1491,9 +1558,8 @@ class Subgraph {
     }
     flags |= delegate.runtime_flags();
 
-    if (delegate.weight_cache_provider_->IsActive() &&
-        delegate.weight_cache_provider_->CanStartBuildStep()) {
-      if (!delegate.weight_cache_provider_->StartBuildStep()) {
+    if (weight_cache.IsActive() && weight_cache.CanStartBuildStep()) {
+      if (!weight_cache.StartBuildStep()) {
         TF_LITE_KERNEL_LOG(
             context, "XNNPack delegate failed to start cache build step.");
         return nullptr;
@@ -1505,9 +1571,8 @@ class Subgraph {
           subgraph.get(), delegate.weights_cache(), delegate.workspace(),
           delegate.threadpool(), flags, &runtime_ptr);
     }
-    if (delegate.weight_cache_provider_->IsActive() &&
-        delegate.weight_cache_provider_->CanStartBuildStep()) {
-      if (!delegate.weight_cache_provider_->StopBuildStep()) {
+    if (weight_cache.IsActive() && weight_cache.CanStartBuildStep()) {
+      if (!weight_cache.StopBuildStep()) {
         if (runtime_ptr != nullptr) {
           std::lock_guard<std::mutex> lock(*delegate.workspace_mutex_);
           xnn_delete_runtime(runtime_ptr);
@@ -1515,6 +1580,13 @@ class Subgraph {
         TF_LITE_KERNEL_LOG(context,
                            "XNNPack delegate failed to stop cache build step.");
         return nullptr;
+      }
+      // The default cache adds a mapping in every build step.
+      if (delegate.default_weight_cache_ != nullptr &&
+          delegate.options_.weight_cache_lock_memory &&
+          !weight_cache.LockMemory()) {
+        TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                        "XNNPack weight cache could not be locked in memory.");
       }
     }
     if (status != xnn_status_success) {
@@ -7205,6 +7277,7 @@ class Subgraph {
            std::vector<int> outputs,
            std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack)
       : allocated_scales_(delegate.TransferTempAllocatedScales()),
+        default_weight_cache_(delegate.default_weight_cache_),
         runtime_(runtime, &xnn_delete_runtime),
         inputs_(std::move(inputs)),
         outputs_(std::move(outputs)),
@@ -7228,6 +7301,8 @@ class Subgraph {
   // Must be declared before runtime_ so it outlives runtime_ during
   // destruction.
   std::vector<std::vector<float>> allocated_scales_;
+  // Keeps the default weight cache alive while `runtime_` uses it.
+  std::shared_ptr<MMapWeightCacheProvider> default_weight_cache_;
   // XNNPACK Runtime (subgraph + workspace) with smart-pointer for lifetime
   // management.
   std::unique_ptr<xnn_runtime, decltype(&xnn_delete_runtime)> runtime_{
@@ -7268,6 +7343,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
     tflite::Subgraph* this_subgraph =
         reinterpret_cast<tflite::Subgraph*>(context->impl_);
     subgraph_index = this_subgraph->GetSubgraphIndex();
+    MaybeEnableDefaultWeightCache(*this_subgraph);
   }
   if (subgraph_index >= static_unpacked_data_.size()) {
     static_unpacked_data_.resize(subgraph_index + 1);
@@ -7723,7 +7799,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
         static_unpacked_input_it != static_unpacked_data.end()
             ? static_unpacked_input_it->second.data()
             : static_cast<const char*>(input_tensor.data.data);
-    weight_cache_provider_->RemapDataBuffer(packed_data, unpacked_data);
+    weight_cache_provider().RemapDataBuffer(packed_data, unpacked_data);
   }
 
   // Add nodes that unpack static data consumed by delegated nodes.
@@ -7802,12 +7878,16 @@ const TfLiteRegistration kSubgraphRegistration = {
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  auto* xnnpack_delegate =
+      static_cast<::tflite::xnnpack::Delegate*>(delegate->data_);
+  // The kernels created below keep the default weight cache alive.
+  ScopeGuard release_default_weight_cache(
+      [xnnpack_delegate] { xnnpack_delegate->ReleaseDefaultWeightCache(); });
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> moe_ops_to_replace(
       nullptr, TfLiteIntArrayFree);
   TfLiteIntArray* moe_ops_to_replace_raw = nullptr;
   TfLiteIntArray* ops_to_replace =
-      static_cast<::tflite::xnnpack::Delegate*>(delegate->data_)
-          ->PrepareOpsToDelegate(context, &moe_ops_to_replace_raw);
+      xnnpack_delegate->PrepareOpsToDelegate(context, &moe_ops_to_replace_raw);
   moe_ops_to_replace.reset(moe_ops_to_replace_raw);
   if (ops_to_replace == nullptr) {
     return kTfLiteError;
@@ -7897,7 +7977,7 @@ void TfLiteXNNPackDelegateWeightsCacheDelete(
 }
 
 bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider() {
-  return tflite::xnnpack::InMemoryFileDescriptorAvailable();
+  return tflite::xnnpack::MMapHandle::CanMapAnonymous();
 }
 
 const char* TfLiteXNNPackDelegateInMemoryFilePath() {

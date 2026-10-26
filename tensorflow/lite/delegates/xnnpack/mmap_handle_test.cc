@@ -15,9 +15,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 
 #include <cerrno>
+#include <cinttypes>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <fstream>
 #include <string>
 #include <utility>
 
@@ -39,8 +42,10 @@ namespace tflite::xnnpack {
 namespace {
 
 using testing::ElementsAreArray;
+using testing::EndsWith;
 using testing::Ge;
 using testing::Gt;
+using testing::HasSubstr;
 
 TEST(MMapHandleTest, DefaultConstructs) {
   MMapHandle handle;
@@ -267,6 +272,61 @@ TEST(MMapHandleTest, MemoryLockAndUnlock) {
 
   EXPECT_THAT(handle, ElementsAreArray(payload));
 }
+
+TEST(MMapHandleTest, MapGrowAndFinalizeAnonymous) {
+  if (!MMapHandle::CanMapAnonymous()) {
+    GTEST_SKIP() << "Anonymous mappings aren't supported on this platform.";
+  }
+  const std::string payload = "This is some data in the mapping.";
+  MMapHandle handle;
+  ASSERT_TRUE(handle.MapAnonymous(payload.size()));
+  ASSERT_GE(handle.size(), payload.size());
+  std::memcpy(handle.data(), payload.data(), payload.size());
+
+  const size_t initial_size = handle.size();
+  ASSERT_TRUE(handle.GrowAnonymous(initial_size + 1, payload.size()));
+  EXPECT_GE(handle.size(), 2 * initial_size);
+  EXPECT_EQ(std::memcmp(handle.data(), payload.data(), payload.size()), 0);
+
+  ASSERT_TRUE(handle.FinalizeAnonymous(payload.size()));
+  EXPECT_GE(handle.size(), payload.size());
+  EXPECT_EQ(std::memcmp(handle.data(), payload.data(), payload.size()), 0);
+}
+
+#if (defined(__linux__) || defined(__ANDROID__)) && \
+    !defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
+// Returns the `/proc/self/maps` line of the mapping that holds `addr`.
+std::string GetMapsLine(const void* addr) {
+  const uintptr_t target = reinterpret_cast<uintptr_t>(addr);
+  std::ifstream maps("/proc/self/maps");
+  for (std::string line; std::getline(maps, line);) {
+    uintptr_t start = 0;
+    uintptr_t end = 0;
+    if (std::sscanf(line.c_str(), "%" SCNxPTR "-%" SCNxPTR, &start, &end) ==
+            2 &&
+        start <= target && target < end) {
+      return line;
+    }
+  }
+  return "";
+}
+
+TEST(MMapHandleTest, AnonymousMappingKeepsItsName) {
+  MMapHandle handle;
+  ASSERT_TRUE(handle.MapAnonymous(1, "xnnpack-test"));
+  if (GetMapsLine(handle.data()).find("[anon:") == std::string::npos) {
+    GTEST_SKIP() << "Anonymous mapping names aren't supported.";
+  }
+  handle.data()[0] = 1;
+
+  // The name is set once and survives mremap, munmap and mprotect.
+  ASSERT_TRUE(handle.GrowAnonymous(4 * handle.size(), /*used_size=*/1));
+  ASSERT_TRUE(handle.FinalizeAnonymous(/*used_size=*/1));
+  const std::string line = GetMapsLine(handle.data());
+  EXPECT_THAT(line, HasSubstr(" r--p "));
+  EXPECT_THAT(line, EndsWith("[anon:xnnpack-test]"));
+}
+#endif
 
 }  // namespace
 }  // namespace tflite::xnnpack
