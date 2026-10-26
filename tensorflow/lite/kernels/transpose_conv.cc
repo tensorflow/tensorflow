@@ -414,13 +414,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
-    // Check quantized_bias_type is either kTfLiteInt64 or kTfLiteInt32.
+    // Eval picks the int32 or int64 bias path from data->quantized_bias_type.
+    // The option sets it when present (FLOAT32, the schema default, means
+    // unset) and must then match the bias tensor; otherwise the bias tensor's
+    // own type decides, as it did before the option existed.
     if (params->quantized_bias_type != kTfLiteFloat32) {
       TF_LITE_ENSURE(context, params->quantized_bias_type == kTfLiteInt32 ||
                                   params->quantized_bias_type == kTfLiteInt64);
       TF_LITE_ENSURE(context, (bias == nullptr) ||
                                   bias->type == params->quantized_bias_type);
       data->quantized_bias_type = params->quantized_bias_type;
+    } else if (bias != nullptr) {
+      data->quantized_bias_type = bias->type;
     }
   }
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
