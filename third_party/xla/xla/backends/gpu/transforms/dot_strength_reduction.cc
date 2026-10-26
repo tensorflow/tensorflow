@@ -651,12 +651,16 @@ bool DotStrengthReduction::InstructionMatchesPattern(
   if (instruction->opcode() != HloOpcode::kDot) {
     return false;
   }
-  if (enable_one_hot_dot_to_gather_ &&
-      MatchOneHotDot(Cast<HloDotInstruction>(instruction)).has_value()) {
+  HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
+  // FP8xN dots are decomposed by DotAlgorithmRewriter after layout assignment.
+  const auto algorithm = dot->precision_config().algorithm();
+  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3 ||
+      algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4) {
+    return false;
+  }
+  if (enable_one_hot_dot_to_gather_ && MatchOneHotDot(dot).has_value()) {
     return true;
   }
-
-  const HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
   const HloInstruction* lhs = dot->operand(0);
   const HloInstruction* rhs = dot->operand(1);
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();

@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -874,6 +875,30 @@ INSTANTIATE_TEST_SUITE_P(
     [](const ::testing::TestParamInfo<OneHotExecutionTestCase>& info) {
       return info.param.test_name;
     });
+
+TEST_F(DotStrengthReductionTest, Fp8xNDotShouldNotBeStrengthReduced) {
+  // Without an algorithm this dot of two vectors is strength reduced. FP8xN
+  // dots must survive until DotAlgorithmRewriter decomposes them.
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = bf16[32,500] parameter(0)
+  p1 = bf16[32,500] parameter(1)
+  ROOT dot = f32[32] dot(p0, p1), lhs_batch_dims={0},
+    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}$0
+})";
+  DotStrengthReduction pass{
+      se::GpuComputeCapability(se::CudaComputeCapability::Hopper())};
+  for (absl::string_view algorithm : {"", ", algorithm=dot_bf16_bf16_fp8x3",
+                                      ", algorithm=dot_bf16_bf16_fp8x4"}) {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<VerifiedHloModule> module,
+        ParseAndReturnVerifiedModule(absl::Substitute(kHlo, algorithm)));
+    ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+    EXPECT_EQ(changed, algorithm.empty()) << algorithm;
+  }
+}
 
 }  // namespace
 }  // namespace gpu

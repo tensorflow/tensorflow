@@ -2046,6 +2046,11 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
     bias_mode = GemmRewriterOptions::BiasMode::kNoBias;
   }
 
+  // Decompose FP8xN dot algorithms into F8E4M3FN dots before the FP8
+  // GemmRewriter lowers them to cuBLASLt (see b/576656261 for Triton lowering
+  // and b/576655907 for cuDNN fusion).
+  pipeline.AddPass<DotAlgorithmRewriter>(gpu_version, /*fp8xn_only=*/true);
+
   GemmRewriterOptions fp8_options{GemmRewriterOptions::DType::kFp8Only,
                                   bias_mode};
   pipeline.AddPass<GemmRewriter>(gpu_version, toolkit_version, fp8_options);

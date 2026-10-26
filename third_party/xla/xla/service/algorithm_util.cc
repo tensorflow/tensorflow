@@ -326,6 +326,13 @@ bool IsSupportedDotAlgorithmOnGpu(
         }
       }
       return false;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4:
+      // DotAlgorithmRewriter lowers these to F8E4M3FN dots run by cuBLASLt.
+      return is_cuda_ge_ada &&
+             (lhs_storage_type == BF16 || lhs_storage_type == F32) &&
+             (rhs_storage_type == BF16 || rhs_storage_type == F32) &&
+             (output_storage_type == BF16 || output_storage_type == F32);
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
       return lhs_storage_type == rhs_storage_type && lhs_storage_type == F16 &&
              (output_storage_type == F16 || output_storage_type == F32);
