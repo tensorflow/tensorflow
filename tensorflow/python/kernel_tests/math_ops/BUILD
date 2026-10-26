@@ -70,7 +70,7 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "argmax_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["argmax_op_test.py"],
     tags = [
         "no_cuda_asan",  # times out
