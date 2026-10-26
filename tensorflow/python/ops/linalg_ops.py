@@ -797,11 +797,6 @@ def norm(tensor,
 
   with ops.name_scope(name, 'norm', [tensor]):
     tensor = ops.convert_to_tensor(tensor)
-    output_dtype = tensor.dtype
-    if tensor.dtype == dtypes.float16:
-      # Intermediate sums of squares / powers overflow `float16` long before
-      # the norm itself does, so compute in `float32`.
-      tensor = math_ops.cast(tensor, dtypes.float32)
 
     # Match np.linalg.norm: out-of-bounds axes raise a clear AxisError
     # (a ValueError) instead of an opaque backend kernel failure.
@@ -813,6 +808,12 @@ def norm(tensor,
               f'axis {ax} is out of bounds for tensor of rank '
               f'{tensor.shape.rank}'
           )
+
+    is_float16 = tensor.dtype == dtypes.float16
+    if is_float16:
+      # Intermediate sums of squares / powers overflow `float16` long before
+      # the norm itself does, so compute in `float32`.
+      tensor = math_ops.cast(tensor, dtypes.float32)
 
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
@@ -913,8 +914,8 @@ def norm(tensor,
             1.0 / ord)
     if not keepdims:
       result = array_ops.squeeze(result, axis)
-    if result.dtype != output_dtype:
-      result = math_ops.cast(result, output_dtype)
+    if is_float16:
+      result = math_ops.cast(result, dtypes.float16)
     return result
 
 

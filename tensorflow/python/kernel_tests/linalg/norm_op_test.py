@@ -121,6 +121,27 @@ class NormOpTest(test_lib.TestCase):
       )
       self.assertAllEqual(result, np.zeros([1, 1]))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16LargeValuesDoNotOverflow(self):
+    vec = np.array([300.0, 400.0, 100.0], dtype=np.float16)
+    for ord_, np_ord in ("euclidean", None), (1, 1), (3, 3), (np.inf, np.inf):
+      with self.subTest(ord=ord_):
+        result = self.evaluate(
+            linalg_ops.norm(constant_op.constant(vec), ord=ord_))
+        self.assertEqual(result.dtype, np.float16)
+        expected = np.linalg.norm(vec.astype(np.float32), ord=np_ord)
+        self.assertAllClose(result, expected, rtol=1e-3)
+
+    mat = np.array([[300.0, 400.0], [100.0, 200.0]], dtype=np.float16)
+    for ord_ in "fro", 1, 2, np.inf:
+      with self.subTest(ord=ord_, matrix=True):
+        result = self.evaluate(
+            linalg_ops.norm(
+                constant_op.constant(mat), ord=ord_, axis=(0, 1)))
+        self.assertEqual(result.dtype, np.float16)
+        expected = np.linalg.norm(mat.astype(np.float32), ord=ord_)
+        self.assertAllClose(result, expected, rtol=1e-3)
+
 
 class MatrixNormXlaTest(test_lib.TestCase, parameterized.TestCase):
 
