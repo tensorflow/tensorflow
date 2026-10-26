@@ -1706,6 +1706,10 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def strip_gpu_tags(tags):
+    """Returns `tags` without any `requires-gpu-*` tag."""
+    return [tag for tag in tags if not tag.startswith("requires-gpu-")]
+
 # TODO(jakeharmon): Replace with an implementation which doesn't add a
 # dependency on core:common_runtime
 def tf_gpu_cc_test(
@@ -1763,9 +1767,7 @@ def tf_gpu_cc_test(
     )
     targets.append(name + "_gpu")
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
-        cleaned_tags = tags + tf_cuda_2gpu_tests_tags()
-        if "requires-gpu-nvidia" in cleaned_tags:
-            cleaned_tags.remove("requires-gpu-nvidia")
+        cleaned_tags = strip_gpu_tags(tags) + tf_cuda_2gpu_tests_tags()
         tf_cc_test(
             name = name,
             size = size,
@@ -2890,9 +2892,7 @@ def gpu_py_test(
         if config == "gpu":
             test_tags = test_tags + tf_cuda_tests_tags()
         if config == "2gpu":
-            test_tags = test_tags + tf_cuda_2gpu_tests_tags()
-            if "requires-gpu-nvidia" in test_tags:
-                test_tags.remove("requires-gpu-nvidia")
+            test_tags = strip_gpu_tags(tags) + tf_cuda_2gpu_tests_tags()
 
         # TODO(b/215751004): CPU on XLA tests are skipped intentionally.
         if config != "cpu" and xla_enable_strict_auto_jit:
