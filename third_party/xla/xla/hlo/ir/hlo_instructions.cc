@@ -129,9 +129,7 @@ void SetThreadName(HloComputation* called_computation,
   called_computation->SetExecutionThread(execution_thread);
   for (HloInstruction* instr : called_computation->instructions()) {
     if (instr->IsAsynchronous()) {
-      // Set async instruction thread name and also recursively set async
-      // computations.
-      instr->set_async_execution_thread(execution_thread);
+      continue;
     }
     for (HloComputation* nested_called_computation :
          instr->called_computations()) {

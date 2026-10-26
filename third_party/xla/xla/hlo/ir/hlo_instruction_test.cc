@@ -1223,5 +1223,107 @@ ENTRY e {
   EXPECT_THAT(defused_root->control_successors(),
               ::testing::ElementsAre(after));
 }
+
+TEST_F(HloInstructionTest, NestedAsyncStartPreservesExecutionThread) {
+  constexpr absl::string_view kHloString = R"(
+HloModule NestedAsyncThreads
+
+%inner_comp (p0: f32[8]) -> f32[8] {
+  %p0 = f32[8] parameter(0)
+  ROOT %neg = f32[8] negate(%p0)
+}, execution_thread="inner_thread"
+
+%fused_comp (fp0: f32[8]) -> f32[8] {
+  %fp0 = f32[8] parameter(0)
+  %inner_start = ((f32[8]), f32[8]) call-start(%fp0),
+    to_apply=%inner_comp, async_execution_thread="inner_thread"
+  %inner_done = f32[8] call-done(%inner_start)
+  ROOT %add = f32[8] add(%fp0, %inner_done)
+}
+
+%outer_async_comp (ap0: f32[8]) -> f32[8] {
+  %ap0 = f32[8] parameter(0)
+  ROOT %fus = f32[8] fusion(%ap0), kind=kCustom, calls=%fused_comp
+}
+
+ENTRY %main (x: f32[8]) -> f32[8] {
+  %x = f32[8] parameter(0)
+  %outer_start = ((f32[8]), f32[8]) async-start(%x), calls=%outer_async_comp
+  ROOT %outer_done = f32[8] async-done(%outer_start)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloString));
+
+  auto verify_threads = [](const HloModule& m) {
+    const HloInstruction* outer_done =
+        m.entry_computation()->root_instruction();
+    const HloInstruction* outer_start = outer_done->operand(0);
+    EXPECT_EQ(outer_start->async_execution_thread(),
+              HloInstruction::kMainExecutionThread);
+    EXPECT_EQ(outer_start->async_wrapped_computation()->execution_thread(),
+              HloInstruction::kMainExecutionThread);
+
+    const HloInstruction* fus = outer_start->async_wrapped_instruction();
+    const HloComputation* fused_comp = fus->fused_instructions_computation();
+    EXPECT_EQ(fused_comp->execution_thread(),
+              HloInstruction::kMainExecutionThread);
+
+    const HloInstruction* inner_done =
+        fused_comp->root_instruction()->operand(1);
+    const HloInstruction* inner_start = inner_done->operand(0);
+    EXPECT_EQ(inner_start->async_execution_thread(), "inner_thread");
+    EXPECT_EQ(inner_done->async_execution_thread(), "inner_thread");
+    EXPECT_EQ(inner_start->async_wrapped_computation()->execution_thread(),
+              "inner_thread");
+    EXPECT_EQ(inner_start->async_wrapped_instruction()
+                  ->to_apply()
+                  ->execution_thread(),
+              "inner_thread");
+  };
+
+  verify_threads(*module);
+
+  std::unique_ptr<HloModule> cloned = module->Clone();
+  verify_threads(*cloned);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> roundtrip,
+      HloModule::CreateFromProto(module->ToProto(), module->config()));
+  verify_threads(*roundtrip);
+
+  HloInstruction* cloned_fus = cloned->entry_computation()
+                                   ->root_instruction()
+                                   ->mutable_operand(0)
+                                   ->async_wrapped_instruction();
+  Cast<HloCallableInstruction>(cloned_fus)
+      ->RecursivelySetComputationsThreadName("parallel");
+  EXPECT_EQ(cloned_fus->fused_instructions_computation()->execution_thread(),
+            "parallel");
+  const HloInstruction* cloned_inner_start =
+      cloned_fus->fused_instructions_computation()
+          ->root_instruction()
+          ->operand(1)
+          ->operand(0);
+  EXPECT_EQ(cloned_inner_start->async_execution_thread(), "inner_thread");
+  EXPECT_EQ(cloned_inner_start->async_wrapped_computation()->execution_thread(),
+            "inner_thread");
+
+  HloInstruction* outer_done = module->entry_computation()->root_instruction();
+  HloInstruction* outer_start = outer_done->mutable_operand(0);
+  outer_start->set_async_execution_thread("parallel");
+  outer_done->set_async_execution_thread("parallel");
+  EXPECT_EQ(outer_start->async_wrapped_instruction()
+                ->fused_instructions_computation()
+                ->execution_thread(),
+            "parallel");
+  const HloInstruction* inner_start = outer_start->async_wrapped_instruction()
+                                          ->fused_instructions_computation()
+                                          ->root_instruction()
+                                          ->operand(1)
+                                          ->operand(0);
+  EXPECT_EQ(inner_start->async_execution_thread(), "inner_thread");
+  EXPECT_EQ(inner_start->async_wrapped_computation()->execution_thread(),
+            "inner_thread");
+}
 }  // namespace
 }  // namespace xla
