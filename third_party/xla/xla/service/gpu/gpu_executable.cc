@@ -1650,7 +1650,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     if (params.debug_options.xla_gpu_experimental_nccl_window_symmetric()) {
       params.debug_module->mutable_config()
           .mutable_debug_options()
-          .set_xla_gpu_experimental_nccl_window_symmetric(false);
+          .set_xla_gpu_experimental_nccl_window_symmetric(true);
     }
   }
   if (!proto.has_buffer_assignment()) {

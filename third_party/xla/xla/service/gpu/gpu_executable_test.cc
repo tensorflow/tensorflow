@@ -1226,6 +1226,7 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
 
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_executable_embed_debug_info(true);
+  debug_options.set_xla_gpu_experimental_nccl_window_symmetric(true);
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable,
@@ -1233,6 +1234,9 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
                                debug_options));
   ASSERT_TRUE(executable->has_module());
   EXPECT_EQ(executable->constants().size(), 1);
+  EXPECT_TRUE(executable->module_config()
+                  .debug_options()
+                  .xla_gpu_experimental_nccl_window_symmetric());
 
   EXPECT_TRUE(XlaDebugInfoManager::Get()->TracksModule(
       executable->module().unique_id()));
