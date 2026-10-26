@@ -1561,16 +1561,8 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
   std::vector<SymbolicExpr> to_remove;
   std::vector<std::pair<SymbolicExpr, Interval>> to_add;
   for (const auto& [expr, range] : constraints_) {
-    SymbolicExpr updated_expr = expr;
-    if (num_dims_changed && num_symbols_changed) {
-      updated_expr =
-          expr.ReplaceDimsAndSymbols(dim_replacements, symbol_replacements);
-    } else if (num_dims_changed) {
-      updated_expr = expr.ReplaceDims(dim_replacements, num_dims_before,
-                                      num_dims_after, num_symbols_before);
-    } else if (num_symbols_changed) {
-      updated_expr = expr.ReplaceSymbols(symbol_replacements, num_dims_before);
-    }
+    SymbolicExpr updated_expr = expr.ReplaceDimsAndSymbols(
+        dim_replacements, symbol_replacements, num_dims_before, num_dims_after);
     if (updated_expr == expr) {
       continue;
     }
@@ -1797,8 +1789,8 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
       MapSymbolsToComposedSymbolsList(first, composed_indexing_map);
   for (const auto& [expr, range] : first.GetSymbolicConstraints()) {
     composed_indexing_map.AddConstraint(
-        expr.ReplaceSymbols(first_map_symbols_to_composed_symbols,
-                            composed_dims),
+        expr.ReplaceDimsAndSymbols({}, first_map_symbols_to_composed_symbols,
+                                   composed_dims),
         range);
   }
   // Add constraints for consumer's codomain w.r.t. producer's domain.
@@ -1809,8 +1801,8 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     Interval producer_dim_range =
         second.GetDimensionBound(static_cast<int64_t>(index));
     composed_indexing_map.AddConstraint(
-        expr.ReplaceSymbols(first_map_symbols_to_composed_symbols,
-                            composed_dims),
+        expr.ReplaceDimsAndSymbols({}, first_map_symbols_to_composed_symbols,
+                                   composed_dims),
         producer_dim_range);
   }
   return composed_indexing_map;
@@ -1920,7 +1912,7 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   SmallVector<std::pair<SymbolicExpr, Interval>, 4> new_constraints;
   for (const auto& [expr, range] : constraints_) {
     new_constraints.push_back(std::make_pair(
-        expr.ReplaceSymbols(syms_replacements, num_dims), range));
+        expr.ReplaceDimsAndSymbols({}, syms_replacements, num_dims), range));
   }
 
   SymbolicMap canonical_map =
@@ -1979,9 +1971,9 @@ IndexingMap ConvertRangeVariablesToDimensions(
   std::vector<std::pair<SymbolicExpr, Interval>> constraints;
   constraints.reserve(map.GetConstraintsCount());
   for (auto constraint : map.GetSymbolicConstraints()) {
-    constraints.push_back(
-        {constraint.first.ReplaceSymbols(symbol_replacements, num_dims),
-         constraint.second});
+    constraints.push_back({constraint.first.ReplaceDimsAndSymbols(
+                               {}, symbol_replacements, num_dims),
+                           constraint.second});
   }
   return IndexingMap{converted_symbolic_map, std::move(dims),
                      std::move(range_vars), map.GetRTVars(), constraints};
