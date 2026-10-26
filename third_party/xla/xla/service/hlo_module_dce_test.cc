@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "xla/service/hlo_module_dce.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status_matchers.h"
-#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -716,6 +713,46 @@ TEST_F(HloModuleDceTest, DeadCallKeptAliveDueToMultipleOutput) {
   HloModuleDCE dce;
   EXPECT_THAT(dce.Run(module.get()), IsOkAndHolds(false));
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+// Tests a module where the while body is shared by multiple while loops
+// (non-flat on while computations).
+TEST_F(HloModuleDceTest, NonFlatWhileDeadLoopElementElimination) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule SharedWhileBodyDeadLoopElement
+
+  while_body {
+    body_param = (s32[], s32[3]{0}) parameter(0)
+    val = s32[] get-tuple-element(body_param), index=0
+    c1 = s32[] constant(1)
+    add = s32[] add(val, c1)
+    dead_elem = s32[3]{0} get-tuple-element(body_param), index=1
+    dead_mult = s32[3]{0} multiply(dead_elem, dead_elem)
+    ROOT body_tuple = (s32[], s32[3]{0}) tuple(add, dead_mult)
+  }
+
+  while_cond {
+    cond_param = (s32[], s32[3]{0}) parameter(0)
+    cond_val = s32[] get-tuple-element(cond_param), index=0
+    limit = s32[] constant(10)
+    ROOT cmp = pred[] compare(cond_val, limit), direction=LT
+  }
+
+  ENTRY entry {
+    c0 = s32[] constant(0)
+    init_dead = s32[3]{0} constant({1, 2, 3})
+    init_tuple = (s32[], s32[3]{0}) tuple(c0, init_dead)
+    while1 = (s32[], s32[3]{0}) while(init_tuple), condition=while_cond, body=while_body
+    while2 = (s32[], s32[3]{0}) while(init_tuple), condition=while_cond, body=while_body
+    val1 = s32[] get-tuple-element(while1), index=0
+    val2 = s32[] get-tuple-element(while2), index=0
+    ROOT res = s32[] add(val1, val2)
+  }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloModuleDCE dce;
+  EXPECT_THAT(dce.Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace
