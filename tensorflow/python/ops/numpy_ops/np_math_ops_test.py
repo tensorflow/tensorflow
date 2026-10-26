@@ -706,6 +706,28 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.average(scalar, axis=0)
 
+  def testPtpAxisOutOfBounds(self):
+    x = np_array_ops.array(np.arange(6.0).reshape([2, 3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.ptp(x, axis=5)
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.ptp(x, axis=-5)
+    # Tuple axes are validated element-wise, matching NumPy.
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.ptp(x, axis=(0, 5))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.ptp(x, axis=np.int64(2))
+    # Valid axes, including NumPy-scalar ones, must keep working.
+    self.assertAllClose(
+        np_math_ops.ptp(x, axis=0), np_array_ops.array([3.0, 3.0, 3.0])
+    )
+    self.assertAllClose(
+        np_math_ops.ptp(x, axis=(0, 1)), np_array_ops.array(5.0)
+    )
+    self.assertAllClose(
+        np_math_ops.ptp(x, axis=np.int64(1)), np_array_ops.array([2.0, 2.0])
+    )
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
