@@ -732,9 +732,10 @@ class MathTest(test.TestCase, parameterized.TestCase):
 
   def testTensordotAxesOutOfBounds(self):
     # NumPy raises IndexError before any computation when `axes` indexes past
-    # an input's shape; the backend instead normalized out-of-bounds entries
-    # into a bad transpose `perm` (silently mis-evaluated in eager, crashed
-    # under XLA). Validate statically-known ranks up front.
+    # an input's shape; the backend instead normalizes the raw entries and
+    # only checks an integer count against the first input, so out-of-bounds
+    # entries fail later with an IndexError or a transpose-permutation error
+    # that does not mention `axes`. Validate statically-known ranks up front.
     a = np_array_ops.array(np.ones([2, 3]))
     b = np_array_ops.array(np.ones([3, 4]))
     # Integer `axes` counts contracted axes, so bounds are the input ranks.
@@ -749,6 +750,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.tensordot(a, b, axes=([0], [3]))
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.tensordot(a, b, axes=(-3, 0))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.tensordot(a, b, axes=([0], [-3]))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_math_ops.tensordot(a, b, axes=(np.int64(2), 0))
+    # The error message reports the offending input's shape, not the tensor.
+    try:
+      np_math_ops.tensordot(a, b, axes=3)
+    except ValueError as e:
+      self.assertIn('shape (2, 3)', str(e))
     # Valid axes, negative entries included, must keep working.
     onesa = np_array_ops.array(np.ones([2, 3]))
     onesb = np_array_ops.array(np.ones([3, 4]))
@@ -767,6 +777,17 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         np_math_ops.tensordot(onesa, onesa, axes=([-2], [0])),
         np.tensordot(np.ones([2, 3]), np.ones([2, 3]), axes=([-2], [0])),
+    )
+    # Mixed integer/sequence form: a bare integer names that side's single
+    # contraction axis, as in NumPy.
+    self.assertAllClose(
+        np_math_ops.tensordot(onesa, onesb, axes=(1, [0])),
+        np.tensordot(np.ones([2, 3]), np.ones([3, 4]), axes=(1, [0])),
+    )
+    # Full contraction of two equally-shaped inputs.
+    self.assertAllClose(
+        np_math_ops.tensordot(onesa, onesa, axes=2),
+        np.tensordot(np.ones([2, 3]), np.ones([2, 3]), axes=2),
     )
     # NumPy treats a negative integer `axes` as an empty contraction.
     self.assertAllClose(
