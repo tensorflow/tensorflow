@@ -6040,6 +6040,18 @@ xla_aot_compile_gpu(
     ]),
 )
 
+xla_aot_compile_gpu(
+    name = "xla_aot_compile_test_gpu_executable_fmha_deviceless_cudnn",
+    gpu_targets = [
+        "h100",
+        "h100_mig",
+        "b200",
+        "b200_mig",
+    ],
+    module = "xla_aot_compile_test_fmha.hlo",
+    xla_flags = "--xla_gpu_cudnn_deviceless_compilation_mode=CUDNN_DEVICELESS_COMPILATION_AUTO",
+)
+
 xla_aot_compile_gpu_runtime_autotuning(
     name = "xla_aot_compile_test_gpu_executable_convolution_runtime_autotuning",
     gpu_target_config = "//xla/backends/gpu/target_config:specs/h100_sxm.txtpb",
@@ -6124,6 +6136,7 @@ xla_test(
         ":xla_aot_compile_test_gpu_executable_convolution",
         ":xla_aot_compile_test_gpu_executable_convolution_deviceless_cudnn",
         ":xla_aot_compile_test_gpu_executable_convolution_legacy_cache",
+        ":xla_aot_compile_test_gpu_executable_fmha_deviceless_cudnn",
         ":xla_aot_compile_test_gpu_executable_hlo",
         ":xla_aot_compile_test_gpu_executable_hlo_legacy_cache",
         ":xla_aot_compile_test_gpu_executable_legacy_cache",
@@ -6138,6 +6151,7 @@ xla_test(
         ":hlo_runner_pjrt",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:types",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/stream_executor/cuda:cudnn_plugin",
         "//xla/tsl/platform:env",
