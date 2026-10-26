@@ -129,6 +129,14 @@ class GpuCompilerTest
   se::CudaComputeCapability get_cuda_cc() const {
     return device_description().cuda_compute_capability();
   }
+
+  se::RocmComputeCapability get_rocm_cc() const {
+    return device_description().rocm_compute_capability();
+  }
+
+  bool RunsFusionDispatchPipeline() const {
+    return get_cuda_cc().IsAtLeastAmpere() || get_rocm_cc().gfx9_mi300_series();
+  }
 };
 
 absl::StatusOr<std::string> ReadNonEmptyFile(absl::string_view file_path) {
@@ -977,7 +985,7 @@ ENTRY main {
       GetOptimizedModuleForExecutable(transpose_fusion_module, config));
   const HloModule* optimized_module = optimized_module_and_executable.first;
 
-  if (get_cuda_cc().IsAtLeastAmpere()) {
+  if (RunsFusionDispatchPipeline()) {
     EXPECT_TRUE(HasBlockLevelFusionConfig(
         optimized_module->entry_computation()->root_instruction()));
   } else {
@@ -989,8 +997,9 @@ ENTRY main {
 TEST_F(
     GpuCompilerTest,
     FusionBlockLevelRewriterRewritesKLoopTransposeWithBitcastIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
-  if (!get_cuda_cc().IsAtLeastAmpere()) {
-    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ to run.";
+  if (!RunsFusionDispatchPipeline()) {
+    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ or MI300+ to "
+                    "run.";
   }
 
   // If this test starts failing, then it's likely that this no longer generates
@@ -1359,8 +1368,8 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
 }
 
 TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
-  if (!get_cuda_cc().IsAtLeastAmpere()) {
-    GTEST_SKIP() << "fusion-dispatch requires Ampere+ to run.";
+  if (!RunsFusionDispatchPipeline()) {
+    GTEST_SKIP() << "fusion-dispatch requires Ampere+ or MI300+ to run.";
   }
 
   DebugOptions debug_options = GetDebugOptionsForTest();

@@ -3243,7 +3243,12 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
 
   const auto* cuda_cc =
       gpu_device_info.gpu_compute_capability().cuda_compute_capability();
-  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
+  const auto* rocm_cc =
+      gpu_device_info.gpu_compute_capability().rocm_compute_capability();
+  // TODO(anurmukh) Enable on gfx12 once Triton block level fusions are
+  // validated there.
+  if ((cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) ||
+      (rocm_cc != nullptr && rocm_cc->gfx9_mi300_series())) {
     // This needs to run after every pass affecting fusions. The last passes
     // that create new fusions are FusionWrapper and StreamAttributeAnnotator.
     main_pipeline.AddPass<HloPassPipeline>(
