@@ -514,17 +514,18 @@ class ArrayCreationTest(test.TestCase):
       np_array_ops.diagonal(a, axis1=-7, axis2=0)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.diagonal(a, axis1=0, axis2=5)
-    # NumPy raises for 0-d/1-d inputs too.
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # NumPy raises for 0-d/1-d inputs too, with its own "diag requires"
+    # message before any per-axis checks.
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_array_ops.diagonal(np.array(5))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_array_ops.diagonal(np.array([1, 2, 3]))
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
       np_array_ops.diagonal(a, axis1=0, axis2=0)
     # Mixed-sign duplicates normalize to the same axis.
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
       np_array_ops.diagonal(a, axis1=0, axis2=-3)
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
       np_array_ops.diagonal(a, axis1=-1, axis2=2)
 
   def testDiagFlat(self):

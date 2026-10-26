@@ -377,6 +377,12 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   a = asarray(a)
 
   maybe_rank = a.shape.rank
+  if maybe_rank is not None and maybe_rank < 2:
+    # NumPy raises for rank < 2 before any per-axis checks, so even a
+    # rank-1 call with an out-of-bounds `axis2` gets this message. The
+    # backend instead produced a confusing error deep inside
+    # `moveaxis`/`matrix_diag_part` (and `trace` inherits this check).
+    raise ValueError('diag requires an array of at least two dimensions')
   if (
       maybe_rank is not None
       and isinstance(axis1, (int, np.integer))
@@ -395,7 +401,7 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
           f'for input of rank {maybe_rank}.'
       )
     if norm1 == norm2:
-      raise ValueError('axis1 and axis2 cannot be the same axis')
+      raise ValueError('axis1 and axis2 cannot be the same')
     # Reassign after validation so the error messages above keep the
     # original user-supplied values and the fast path below consumes
     # normalized, non-negative axes.
