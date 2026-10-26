@@ -716,6 +716,45 @@ class MapStageTest(test.TestCase):
       )
       self.evaluate(result)
 
+  def testMapStageValuesIndicesMismatch(self):
+    # MapStage must reject an indices tensor whose element count differs from
+    # the number of values. With more indices than values the staged tuple is
+    # shorter than dtypes_, and a later MapUnstage/MapPeek then indexes the
+    # stored OptionalTuple out of bounds (heap read, then a move/reset write).
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'does not match number of values'
+    ):
+      op = data_flow_ops.gen_data_flow_ops.map_stage(
+          key=constant_op.constant([1], dtype=dtypes.int64),
+          indices=constant_op.constant([0, 1, 2, 3], dtype=dtypes.int32),
+          values=[constant_op.constant([1.0], dtype=dtypes.float32)],
+          dtypes=[dtypes.float32] * 4,
+          capacity=0,
+          memory_limit=0,
+          container='',
+          shared_name='test_map_stage_mismatch',
+          name=None,
+      )
+      self.evaluate(op)
+
+  def testOrderedMapStageValuesIndicesMismatch(self):
+    # Parallel coverage for the ordered variant, which shares StagingMap::put.
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'does not match number of values'
+    ):
+      op = data_flow_ops.gen_data_flow_ops.ordered_map_stage(
+          key=constant_op.constant([1], dtype=dtypes.int64),
+          indices=constant_op.constant([0, 2], dtype=dtypes.int32),
+          values=[constant_op.constant([1.0], dtype=dtypes.float32)],
+          dtypes=[dtypes.float32] * 4,
+          capacity=0,
+          memory_limit=0,
+          container='',
+          shared_name='test_ordered_map_stage_mismatch',
+          name=None,
+      )
+      self.evaluate(op)
+
 
 if __name__ == '__main__':
   test.main()

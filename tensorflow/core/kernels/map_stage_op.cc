@@ -357,6 +357,16 @@ class StagingMap : public ResourceBase {
     // Sanity check the indices
     TF_RETURN_IF_ERROR(check_index_ordering(*indices));
 
+    // Every index must have a corresponding value. Otherwise the loops in
+    // put_incomplete() read (*tuple)[i] past the end of the tuple, and the
+    // complete path stores a tuple shorter than dtypes_ that later gets()
+    // and pops() then index out of bounds.
+    if (indices->NumElements() != static_cast<int64_t>(tuple->size())) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Number of indices '", indices->NumElements(),
+          "' does not match number of values '", tuple->size(), "'."));
+    }
+
     // Handle incomplete inserts
     if (indices->NumElements() != dtypes_.size()) {
       return put_incomplete(*key, *indices, tuple, &lock);
