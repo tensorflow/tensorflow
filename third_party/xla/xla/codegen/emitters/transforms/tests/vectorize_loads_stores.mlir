@@ -577,6 +577,37 @@ func.func @simple_atomic_rmw(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // -----
 
+func.func @sub_atomic_rmw(%arg0: tensor<2xf32>, %arg1: f32)
+    -> tensor<2xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %loop = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter = %arg0)
+  -> tensor<2xf32> {
+    %atomic = xla.atomic_rmw %iter[%j] : tensor<2xf32> {
+      ^bb0(%current: f32):
+        %sub = arith.subf %current, %arg1 : f32
+        xla.yield %sub : f32
+      }
+    scf.yield %atomic : tensor<2xf32>
+  }
+  return %loop : tensor<2xf32>
+}
+
+// CHECK-HOPPER-LABEL:       @sub_atomic_rmw
+// CHECK-HOPPER-SAME:          (%[[ARG0:.*]]: tensor{{.*}}, %[[ARG1:.*]]: f32)
+// CHECK-HOPPER-DAG:           %[[C0:.*]] = arith.constant 0 : index
+// CHECK-HOPPER:               %[[INIT:.*]] = arith.constant dense<0.000000e+00> : vector<2xf32>
+// CHECK-HOPPER:               %[[LOOP:.*]] = scf.for
+// CHECK-HOPPER-SAME:          iter_args(%[[ITER:.*]] = %[[INIT]])
+// CHECK-HOPPER:                 %[[NEG:.*]] = arith.negf %[[ARG1]] : f32
+// CHECK-HOPPER:                 vector.insert %[[NEG]]
+// CHECK-HOPPER:               xla.atomic_rmw %[[ARG0]]
+// CHECK-HOPPER-NEXT:            ^bb0(%[[CURRENT:.*]]: vector<2xf32>):
+// CHECK-HOPPER-NEXT:              arith.addf %[[CURRENT]], %[[LOOP]]
+
+// -----
+
 func.func @fold_insert_extract(%in: tensor<64xf32>, %out: tensor<64xf32>)
     -> tensor<64xf32> {
   %c0 = arith.constant 0 : index

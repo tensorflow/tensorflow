@@ -386,7 +386,7 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     b.setInsertionPoint(loop);
     auto atomic_modifier_parameters = emitters::GetAtomicModifierParameters(op);
     if (!atomic_modifier_parameters.has_value() ||
-        atomic_modifier_parameters->second != ml::AtomicBinOp::fadd) {
+        atomic_modifier_parameters->bin_op != ml::AtomicBinOp::fadd) {
       return rewriter.notifyMatchFailure(op,
                                          "atomic modifier is not vectorizable. "
                                          "Currently only supporting fadd.");
@@ -407,9 +407,12 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
       auto induction_var =
           mlir::cast<scf::ForOp>(bbarg.front().getOwner()->getParentOp())
               .getInductionVar();
+      Value modifier = atomic_modifier_parameters->modifier;
+      if (atomic_modifier_parameters->negated) {
+        modifier = arith::NegFOp::create(yield_b, yield_loc, modifier);
+      }
       auto insert_op = mlir::vector::InsertOp::create(
-          yield_b, yield_loc, atomic_modifier_parameters->first, bbarg.front(),
-          induction_var);
+          yield_b, yield_loc, modifier, bbarg.front(), induction_var);
       return llvm::SmallVector<Value>{insert_op.getResult()};
     };
     int result_index = op->use_begin()->getOperandNumber();
