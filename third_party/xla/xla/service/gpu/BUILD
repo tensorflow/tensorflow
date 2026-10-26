@@ -3606,6 +3606,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:collective_opt_utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

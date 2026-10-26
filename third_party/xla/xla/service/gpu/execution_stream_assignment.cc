@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -318,7 +319,13 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module,
   ExecutionStreams execution_streams(options);
 
   std::deque<const HloComputation*> queue;
-  queue.push_back(module->entry_computation());
+  absl::flat_hash_set<const HloComputation*> enqueued;
+  auto enqueue = [&](const HloComputation* comp) {
+    if (enqueued.insert(comp).second) {
+      queue.push_back(comp);
+    }
+  };
+  enqueue(module->entry_computation());
 
   while (!queue.empty()) {
     const HloComputation* computation = queue.front();
@@ -367,7 +374,14 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module,
       if (HloPredicateIsOp<HloOpcode::kCall, HloOpcode::kConditional,
                            HloOpcode::kWhile>(hlo)) {
         for (auto* called : hlo->called_computations()) {
-          queue.push_back(called);
+          enqueue(called);
+        }
+        continue;
+      }
+
+      if (auto* async = DynCast<HloAsyncStartInstruction>(hlo)) {
+        if (HloComputation* wrapped = async->async_wrapped_computation()) {
+          enqueue(wrapped);
         }
       }
     }
