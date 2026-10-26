@@ -154,7 +154,10 @@ class CollectiveKernelThunk : public TracedCommand {
     RankId rank = RankId(0);
 
     // Pointer to the collective kernel metadata on device.
-    se::DeviceAddressBase metadata;
+    se::DeviceAddressBase metadata_addr;
+
+    // Pointers to the remote buffers for each parameter.
+    std::vector<void*> param_to_peers_ptrs;
 
     // Kernel entry for the stream executor.
     std::unique_ptr<se::Kernel> kernel;
@@ -179,6 +182,11 @@ class CollectiveKernelThunk : public TracedCommand {
           scratch_allocation(std::move(scratch_allocation_arg)),
           scratch_slices(std::move(scratch_slices_arg)) {}
   };
+
+  absl::Status AllocateAndInitializeCollectiveMetadata(
+      StreamState* state, se::StreamExecutor* executor, se::Stream* stream,
+      RankId rank, int64_t num_devices, int64_t num_symmetric_parameters,
+      bool requires_multimem);
 
   // Returns the input size in bytes for the collective.
   int64_t GetInputSizeBytes() const;
