@@ -36,7 +36,7 @@ namespace gpu {
 class DotStrengthReduction : public OpExpanderPass {
  public:
   explicit DotStrengthReduction(se::GpuComputeCapability compute_capability,
-                                bool enable_one_hot_dot_to_gather = false)
+                                bool enable_one_hot_dot_to_gather = true)
       : compute_capability_(compute_capability),
         enable_one_hot_dot_to_gather_(enable_one_hot_dot_to_gather) {}
   absl::string_view name() const override { return "dot-strength-reduction"; }
