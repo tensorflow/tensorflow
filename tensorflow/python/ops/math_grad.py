@@ -1258,7 +1258,7 @@ def _SigmoidGrad(op: ops.Operation, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
   y = op.outputs[0]  # y = sigmoid(x)
   with ops.control_dependencies([grad]):
-    if y.dtype == dtypes.float64:
+    if y.dtype.base_dtype == dtypes.float64:
       # `1 - sigmoid(x)` is exactly `sigmoid(-x)`, but computing it as
       # `1 - y` cancels catastrophically once `y` rounds to 1: at x = 37.43 in
       # float64 the derivative is still 5.55e-17, and yet `1 - y` is 0, which
