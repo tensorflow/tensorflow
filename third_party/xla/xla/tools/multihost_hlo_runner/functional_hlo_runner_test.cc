@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
@@ -26,6 +28,7 @@ limitations under the License.
 #include "xla/tests/xla_test_backend_predicates.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -37,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -44,6 +48,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -51,6 +56,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/mock_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -673,12 +679,12 @@ TEST_F(FunctionalHloRunnerTest, AutoLayoutAssignsNonDefaultLayout) {
   }
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   preproc_options.use_layouts_from_hlo_module = true;
-  CompileAndFilecheck(GetHloPath("auto_layout.hlo"),
-                      // Makes LHS contracting dimension minor.
-                      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{0",
-                      preproc_options,
-                      FunctionalHloRunner::HloPassesMode::kStandardCompile,
-                      /*num_partitions=*/1);
+  CompileAndFilecheck(
+      GetHloPath("auto_layout.hlo"),
+      // Makes batch dimension major.
+      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{1,0,2}",
+      preproc_options, FunctionalHloRunner::HloPassesMode::kStandardCompile,
+      /*num_partitions=*/1);
 }
 
 TEST_F(FunctionalHloRunnerTest, FixedLayoutAssignsNonDefaultLayout) {
@@ -687,12 +693,12 @@ TEST_F(FunctionalHloRunnerTest, FixedLayoutAssignsNonDefaultLayout) {
   }
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   preproc_options.force_auto_layout = true;
-  CompileAndFilecheck(GetHloPath("fixed_layout.hlo"),
-                      // Makes LHS contracting dimension minor.
-                      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{0",
-                      preproc_options,
-                      FunctionalHloRunner::HloPassesMode::kStandardCompile,
-                      /*num_partitions=*/1);
+  CompileAndFilecheck(
+      GetHloPath("fixed_layout.hlo"),
+      // Makes batch dimension major.
+      "// CHECK: entry_computation_layout={(bf16[4096,64,8]{1,0,2}",
+      preproc_options, FunctionalHloRunner::HloPassesMode::kStandardCompile,
+      /*num_partitions=*/1);
 }
 
 TEST_F(FunctionalHloRunnerTest, CanCompileWithoutHavingEnoughGpus) {
@@ -1460,6 +1466,136 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomData) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *client, preproc_options, raw_compile_options, running_options,
       {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+class FakeReadyFuturePjRtBuffer : public PjRtBuffer {
+ public:
+  explicit FakeReadyFuturePjRtBuffer(Future<> ready_future)
+      : ready_future_(std::move(ready_future)) {}
+
+  const Shape& on_device_shape() const override { return shape_; }
+  PjRtMemorySpace* memory_space() const override { return nullptr; }
+  PjRtDevice* device() const override { return nullptr; }
+  PjRtClient* client() const override { return nullptr; }
+  absl::StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
+      override {
+    return absl::UnimplementedError("Not implemented");
+  }
+  Future<> ToLiteral(MutableLiteralBase* literal) override {
+    return Future<>(absl::UnimplementedError("Not implemented"));
+  }
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override {
+    return Future<>(absl::UnimplementedError("Not implemented"));
+  }
+  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override { return 0; }
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override {
+    return Future<>(absl::UnimplementedError("Not implemented"));
+  }
+  void Delete() override {}
+  absl::StatusOr<std::unique_ptr<ExternalReference>>
+  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override {
+    return absl::UnimplementedError("Not implemented");
+  }
+  bool IsDeleted() const override { return false; }
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space) override {
+    return absl::UnimplementedError("Not implemented");
+  }
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
+                          RemoteSendCallback on_done) override {}
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> Bitcast(
+      xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
+      const Layout* device_layout) override {
+    return absl::UnimplementedError("Not implemented");
+  }
+  Future<> GetReadyFuture() override { return ready_future_; }
+  bool IsOnCpu() const override { return true; }
+
+ private:
+  Shape shape_;
+  Future<> ready_future_;
+};
+
+class HostLiteralMockPjRtClient : public MockPjRtClient {
+ public:
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<PjRtBuffer>>,
+              BufferFromHostLiteral,
+              (const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+               const Layout* device_layout),
+              (override));
+};
+
+TEST_F(FunctionalHloRunnerTest,
+       CopyArgumentsToDeviceWaitsForPendingTransfersOnError) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       GetPjRtClient());
+  constexpr absl::string_view kTwoArgStablehlo = R"mlir(
+    module {
+      func.func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>)
+          -> tensor<4xi32> {
+        %0 = stablehlo.add %arg0, %arg1 : tensor<4xi32>
+        func.return %0 : tensor<4xi32>
+      }
+    }
+  )mlir";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> stablehlo_module,
+                       xla::ParseMlirModuleString(kTwoArgStablehlo, *context));
+  xla::CompileOptions compile_options;
+  *compile_options.executable_build_options.mutable_debug_options() =
+      GetDebugOptionsFromFlags();
+  compile_options.executable_build_options.set_num_replicas(1);
+  compile_options.executable_build_options.set_num_partitions(1);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       real_client->CompileAndLoad(
+                           MaybeOwningMlirModule(std::move(context),
+                                                 std::move(stablehlo_module)),
+                           compile_options));
+
+  HostLiteralMockPjRtClient mock_client;
+  absl::Notification second_arg_reached;
+  std::atomic<bool> first_arg_transfer_finished{false};
+  std::unique_ptr<tsl::Thread> transfer_thread;
+
+  EXPECT_CALL(mock_client, BufferFromHostLiteral)
+      .WillOnce([&](const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+                    const Layout* device_layout)
+                    -> absl::StatusOr<std::unique_ptr<PjRtBuffer>> {
+        absl::Span<const int32_t> host_data = literal.data<int32_t>();
+        auto [promise, future] = MakePromise<>();
+        transfer_thread.reset(tsl::Env::Default()->StartThread(
+            tsl::ThreadOptions(), "async_h2d_transfer",
+            [&second_arg_reached, &first_arg_transfer_finished, host_data,
+             promise = std::move(promise)]() mutable {
+              second_arg_reached.WaitForNotification();
+              // Read from `host_data` to verify the caller kept the host
+              // Literal alive until this transfer's ready future completed.
+              int32_t sum = 0;
+              for (int32_t v : host_data) {
+                sum += v;
+              }
+              CHECK_GE(sum, 0);
+              first_arg_transfer_finished.store(true);
+              promise.Set(absl::OkStatus());
+            }));
+        return std::make_unique<FakeReadyFuturePjRtBuffer>(std::move(future));
+      })
+      .WillOnce([&](const LiteralSlice& literal, PjRtMemorySpace* memory_space,
+                    const Layout* device_layout)
+                    -> absl::StatusOr<std::unique_ptr<PjRtBuffer>> {
+        second_arg_reached.Notify();
+        return absl::ResourceExhaustedError("Staging buffer allocation failed");
+      });
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
+  EXPECT_THAT(FunctionalHloRunner::Run(mock_client, executable.get(),
+                                       /*arguments=*/{}, running_options),
+              absl_testing::StatusIs(absl::StatusCode::kResourceExhausted));
+  EXPECT_TRUE(first_arg_transfer_finished.load());
 }
 
 }  // namespace

@@ -3481,6 +3481,9 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   std::vector<std::pair<HloInstruction*, std::unique_ptr<WhileLoopAnalysis>>>
       loop_analyses;
   for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    if (!computation->HasCalledComputations()) {
+      continue;
+    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() != HloOpcode::kWhile) {

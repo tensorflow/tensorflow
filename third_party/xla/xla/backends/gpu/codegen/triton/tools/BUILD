@@ -65,8 +65,8 @@ xla_cc_binary(
     deps = [
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
-        "//xla/codegen/tiling/experimental:tile",
-        "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/tiling:tile",
+        "//xla/codegen/tiling:tiled_hlo",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/codegen/xtile:tiling_from_block_parameters",
         "//xla/hlo/analysis:symbolic_map",

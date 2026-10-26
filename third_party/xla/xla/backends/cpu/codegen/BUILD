@@ -18,7 +18,6 @@ load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
-    "if_llvm_aarch32_available",
     "if_llvm_aarch64_available",
     "if_llvm_powerpc_available",
     "if_llvm_riscv_available",
@@ -118,7 +117,14 @@ cc_library(
     name = "ir_compiler",
     srcs = ["ir_compiler.cc"],
     hdrs = ["ir_compiler.h"],
-    defines = if_llvm_aarch32_available(["XLA_LLVM_AARCH32_AVAILABLE=1"]) + if_llvm_aarch64_available([
+    # TODO(xla-cpu): Have users who need a specific target architecture include
+    # and initialize that LLVM backend directly.
+    defines = select({
+        "//xla/tsl:aarch32_or_cross": [
+            "XLA_LLVM_AARCH32_AVAILABLE=1",
+        ],
+        "//conditions:default": [],
+    }) + if_llvm_aarch64_available([
         "XLA_LLVM_AARCH64_AVAILABLE=1",
     ]) + if_llvm_powerpc_available([
         "XLA_LLVM_POWERPC_AVAILABLE=1",
@@ -303,41 +309,28 @@ cc_library(
     srcs = ["jit_compiler.cc"],
     hdrs = ["jit_compiler.h"],
     deps = [
-        ":compiled_function_library",
-        ":contiguous_section_memory_manager",
-        ":cpu_features",
         ":execution_engine",
         ":ir_compiler",
-        ":jit_memory_mapper",
         ":object_loader",
         "//xla:util",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:ExecutionEngine",
-        "@llvm-project//llvm:MC",
         "@llvm-project//llvm:OrcJIT",
         "@llvm-project//llvm:OrcShared",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:platform_port",
-        "@tsl//tsl/platform:statusor",
         "@tsl//tsl/profiler/lib:traceme",
         "@tsl//tsl/profiler/lib:traceme_encode",
     ] + if_llvm_aarch64_available([
@@ -639,13 +632,54 @@ cc_library(
 )
 
 cc_library(
+    name = "computation_kernel_arguments",
+    srcs = ["computation_kernel_arguments.cc"],
+    hdrs = ["computation_kernel_arguments.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/codegen:kernel_spec",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "computation_kernel_arguments_test",
+    srcs = ["computation_kernel_arguments_test.cc"],
+    deps = [
+        ":computation_kernel_arguments",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
+        "//xla/service:logical_buffer",
+        "//xla/service/cpu:cpu_executable",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "computation_kernel_emitter",
     srcs = ["computation_kernel_emitter.cc"],
     hdrs = ["computation_kernel_emitter.h"],
     deps = [
+        ":computation_kernel_arguments",
         ":kernel_api_ir_builder",
         ":target_machine_features",
-        "//xla:shape_util",
         "//xla:util",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
@@ -661,7 +695,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -670,7 +703,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
     ],
 )

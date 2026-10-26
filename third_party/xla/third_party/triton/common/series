@@ -13,7 +13,6 @@ disable_amd_test.patch
 wgmma_pipeline_fix.patch
 nvdisasm_bin_path.patch
 assert_fail.patch
-silence_matchAndRewrite_failures.patch
 check_null_encoding.patch
 test_cache_determinism_fix.patch
 mig_limits_pytests.patch
@@ -38,3 +37,5 @@ fix_load_ops.patch
 cxx17_support.patch
 llvm_cl996124567.patch
 llvm_cl998243985.patch
+llvm_cl1000840178.patch
+llvm_cl1004097735.patch

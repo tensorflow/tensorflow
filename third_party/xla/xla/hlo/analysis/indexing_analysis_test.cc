@@ -1784,11 +1784,10 @@ TEST_P(IndexingAnalysisTest, FusionOpReshapeOfConcat) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1) -> (d0 * 8 + d1),
+                            (d0, d1) -> (d1),
                             domain:
-                            d0 in [0, 3],
-                            d1 in [0, 7],
-                            d0 * 8 + d1 in [0, 1]
+                            d0 in [0, 0],
+                            d1 in [0, 1]
                           operand id = 1
                             (d0, d1) -> (d0 * 8 + d1 - 2),
                             domain:

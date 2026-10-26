@@ -171,6 +171,8 @@ class RpcHelper {
 
   ResponseFuture<GetDefaultLayoutResponse> GetDefaultLayout(
       std::unique_ptr<GetDefaultLayoutRequest> req);
+  ResponseFuture<CancelExecutionResponse> CancelExecution(
+      std::unique_ptr<CancelExecutionRequest> req);
 
   // Utility functions.
 

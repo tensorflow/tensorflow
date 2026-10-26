@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
@@ -296,6 +297,97 @@ CHECK-THEN: %parameter.1 = f32[10,10]{1,0} parameter(1)
 CHECK-THEN: %dot.1 = f32[10,10]{1,0} dot(%parameter.0, %parameter.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 CHECK-THEN: %parameter.2 = f32[10,10]{1,0} parameter(2)
 CHECK-THEN: ROOT %add.1 = f32[10,10]{1,0} add(%dot.1, %parameter.2)
+  )"));
+  EXPECT_TRUE(filecheck_result);
+}
+
+TEST_F(HloDecomposerTest,
+       ExtractCollectiveOperationsIntoNewModuleFlattensTupleResults) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  p1 = f32[10] parameter(1)
+  ar = (f32[10], f32[10]) all-reduce(p0, p1), replica_groups={{0,1}}, to_apply=add
+  ag = f32[20] all-gather(p0), dimensions={0}, replica_groups={{0,1}}
+  gte0 = f32[10] get-tuple-element(ar), index=0
+  gte1 = f32[10] get-tuple-element(ar), index=1
+  ROOT result = (f32[10], f32[10], f32[20]) tuple(gte0, gte1, ag)
+})"));
+  HloInstruction* ar =
+      module->entry_computation()->GetInstructionWithName("ar");
+  HloInstruction* ag =
+      module->entry_computation()->GetInstructionWithName("ag");
+  std::unique_ptr<HloModule> new_module =
+      ExtractCollectiveOperationsIntoNewModule(
+          {ar, ag}, /*done_ops=*/{},
+          /*non_optimized_ops=*/{HloOpcode::kAllReduce, HloOpcode::kAllGather},
+          /*return_tuple=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(new_module->ToString(), R"(
+CHECK: ENTRY
+CHECK-THEN: %[[P0:.*]] = f32[10]{0} parameter(0)
+CHECK-THEN: %[[P1:.*]] = f32[10]{0} parameter(1)
+CHECK-THEN: %[[AR:.*]] = (f32[10]{0}, f32[10]{0}) all-reduce(%[[P0]], %[[P1]])
+CHECK-THEN: %[[P2:.*]] = f32[10]{0} parameter(2)
+CHECK-THEN: %[[AG:.*]] = f32[20]{0} all-gather(%[[P2]])
+CHECK-THEN: %[[GTE0:.*]] = f32[10]{0} get-tuple-element(%[[AR]]), index=0
+CHECK-THEN: %[[GTE1:.*]] = f32[10]{0} get-tuple-element(%[[AR]]), index=1
+CHECK-THEN: ROOT %{{.*}} = (f32[10]{0}, f32[10]{0}, f32[20]{0}) tuple(%[[GTE0]], %[[GTE1]], %[[AG]])
+  )"));
+  EXPECT_TRUE(filecheck_result);
+}
+
+TEST_F(HloDecomposerTest,
+       ExtractProducerConsumersIntoNewModuleFlattensTupleConsumers) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+fused_comp {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  add = f32[10,10] add(p0, p1)
+  mul = f32[10,10] multiply(p0, p1)
+  ROOT tuple = (f32[10,10], f32[10,10]) tuple(add, mul)
+}
+
+ENTRY main {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  dot = f32[10,10] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = f32[10,10] parameter(2)
+  fusion = (f32[10,10], f32[10,10]) fusion(dot, p2), kind=kLoop, calls=fused_comp
+  subtract = f32[10,10] subtract(dot, p2)
+  gte0 = f32[10,10] get-tuple-element(fusion), index=0
+  gte1 = f32[10,10] get-tuple-element(fusion), index=1
+  ROOT r = (f32[10,10], f32[10,10], f32[10,10]) tuple(gte0, gte1, subtract)
+})"));
+  HloInstruction* dot =
+      module->entry_computation()->GetInstructionWithName("dot");
+  std::unique_ptr<HloModule> new_module =
+      ExtractProducerConsumersIntoNewModule(*dot);
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(new_module->ToString(), R"(
+CHECK: ENTRY
+CHECK-THEN: %[[P0:.*]] = f32[10,10]{1,0} parameter(0)
+CHECK-THEN: %[[P1:.*]] = f32[10,10]{1,0} parameter(1)
+CHECK-THEN: %[[DOT:.*]] = f32[10,10]{1,0} dot(%[[P0]], %[[P1]])
+CHECK-THEN: %[[P2:.*]] = f32[10,10]{1,0} parameter(2)
+CHECK-THEN: %[[FUSION:.*]] = (f32[10,10]{1,0}, f32[10,10]{1,0}) fusion(%[[DOT]], %[[P2]])
+CHECK-THEN: %[[P3:.*]] = f32[10,10]{1,0} parameter(3)
+CHECK-THEN: %[[SUB:.*]] = f32[10,10]{1,0} subtract(%[[DOT]], %[[P3]])
+CHECK-THEN: %[[GTE0:.*]] = f32[10,10]{1,0} get-tuple-element(%[[FUSION]]), index=0
+CHECK-THEN: %[[GTE1:.*]] = f32[10,10]{1,0} get-tuple-element(%[[FUSION]]), index=1
+CHECK-THEN: ROOT %{{.*}} = (f32[10,10]{1,0}, f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(%[[GTE0]], %[[GTE1]], %[[SUB]])
   )"));
   EXPECT_TRUE(filecheck_result);
 }

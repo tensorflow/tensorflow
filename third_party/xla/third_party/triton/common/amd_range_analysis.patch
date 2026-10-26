@@ -32,7 +32,7 @@ Lifecycle: Upstream this fix to triton-lang/triton and remove the patch in the n
  }
  
  bool isEmptyInitializedRange(ConstantIntRanges rv) {
-@@ -384,11 +387,16 @@ int64_t
+@@ -379,11 +382,16 @@ int64_t
  TritonIntegerRangeAnalysis::getTotalLoopTripCount(LoopLikeOpInterface loop) {
    SmallVector<LoopLikeOpInterface> loops{loop};
    getEnclosingLoops(*loop, loops);

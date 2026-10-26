@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/nvptx_compiler.h"
 
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <fstream>
@@ -29,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -40,10 +40,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/conv_kind_assignment.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
-#include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_compiler.h"
 #include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
@@ -69,7 +68,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
-#include "xla/hlo/transforms/simplifiers/dot_dimension_merger.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
@@ -81,12 +79,10 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"
-#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
@@ -96,14 +92,12 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/stream_executor/cuda/assemble_compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -176,24 +170,6 @@ class MatmulBfloat16Support : public FloatSupport {
 };
 
 }  // namespace
-
-void NVPTXCompiler::AddPaddingForGpublasGemms(
-    HloPassPipeline& pipeline, const DebugOptions& debug_options,
-    const se::GpuComputeCapability& gpu_version) {
-  if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
-    for (const CublasPaddingRequirement& requirement :
-         CublasPaddingRequirements) {
-      if (gpu_version.cuda_compute_capability()->SupportsAllFeaturesOf(
-              requirement.min_compute_capability)) {
-        pipeline.AddPass<CublasPadForGemms>(gpu_version, requirement.data_type,
-                                            requirement.multiple_of);
-      }
-    }
-    // Padding a gemm operand that's a constant results in pad(constant).  Run
-    // constant-folding to simplify this into a new constant.
-    pipeline.AddPass<HloConstantFolding>();
-  }
-}
 
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
@@ -338,7 +314,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           ? se::dnn::VersionInfo(
                 gpu_target_config.device_description.dnn_version())
           : se::dnn::VersionInfo{});
-  pre_pipeline.AddPass<DotDimensionMerger>();
 
   ABSL_RETURN_IF_ERROR(
       pre_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
@@ -419,15 +394,17 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
   });
   const se::DeviceDescription& gpu_device_info =
       gpu_target_config.device_description;
+  // Stream-annotated calls are wrapped into async computations on the parallel
+  // execution thread, and their cuDNN graphs must be compiled as well.
+  const absl::flat_hash_set<absl::string_view> execution_threads = {
+      HloInstruction::kMainExecutionThread,
+      HloInstruction::kParallelExecutionThread};
   CuDnnFusionCompiler fusion_compiler(dnn_support, gpu_device_info,
                                       *dnn_compiled_graphs);
-  ABSL_RETURN_IF_ERROR(
-      fusion_compiler.Run(module, {HloInstruction::kMainExecutionThread})
-          .status());
+  ABSL_RETURN_IF_ERROR(fusion_compiler.Run(module, execution_threads).status());
   CuDnnCustomCallCompiler call_compiler(dnn_support, gpu_device_info,
                                         *dnn_compiled_graphs);
-  return call_compiler.Run(module, {HloInstruction::kMainExecutionThread})
-      .status();
+  return call_compiler.Run(module, execution_threads).status();
 }
 
 namespace {
@@ -509,6 +486,22 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
   return nullptr;
 }
 
+absl::StatusOr<se::SemanticVersion> GetPtxVersionForCompilation(
+    const se::cuda::CompilationProvider& compilation_provider) {
+  absl::StatusOr<int> ptx_isa_version =
+      compilation_provider.GetLatestPtxIsaVersion();
+  std::optional<int> max_ptx_isa_version;
+  if (ptx_isa_version.ok()) {
+    max_ptx_isa_version = *ptx_isa_version;
+  } else {
+    VLOG(2)
+        << "Could not query latest PTX ISA version from compilation provider ("
+        << compilation_provider.name() << "): " << ptx_isa_version.status();
+  }
+  return nvptx::GetPtxVersionForCompilation(llvm::Triple(nvptx::TargetTriple()),
+                                            max_ptx_isa_version);
+}
+
 }  // namespace
 
 // Prints a warning if the ptx->sass JIT in the driver has known bugs.
@@ -560,16 +553,18 @@ NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options,
                                  FromDebugOptions(debug_options)];
   if (compilation_provider == nullptr) {
     ABSL_ASSIGN_OR_RETURN(compilation_provider,
-                     se::cuda::AssembleCompilationProvider(
+                     compilation_provider_factory_(
                          se::cuda::CompilationProviderOptions::FromDebugOptions(
                              debug_options, stream_exec)));
   }
   return compilation_provider.get();
 }
 
-NVPTXCompiler::NVPTXCompiler()
+NVPTXCompiler::NVPTXCompiler(
+    CompilationProviderFactory compilation_provider_factory)
     : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::TargetTriple(),
-                  nvptx::DataLayout()) {}
+                  nvptx::DataLayout()),
+      compilation_provider_factory_(std::move(compilation_provider_factory)) {}
 
 std::unique_ptr<GpuAliasInfo> NVPTXCompiler::GetAliasInfo(
     const se::DeviceDescription& device_description) const {
@@ -592,6 +587,7 @@ NVPTXCompiler::CompileTargetBinary(
   }
   const DebugOptions& debug_options = module_config.debug_options();
   const se::cuda::CompilationProvider* compilation_provider = nullptr;
+  std::optional<se::SemanticVersion> ptx_version;
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
@@ -610,22 +606,14 @@ NVPTXCompiler::CompileTargetBinary(
         debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
-    absl::StatusOr<int> ptx_isa_version =
-        compilation_provider->GetLatestPtxIsaVersion();
-    std::optional<int> max_ptx_isa_version;
-    if (ptx_isa_version.ok()) {
-      max_ptx_isa_version = *ptx_isa_version;
-    } else {
-      VLOG(2) << "Could not query latest PTX ISA version from compilation "
-                 "provider ("
-              << compilation_provider->name()
-              << "): " << ptx_isa_version.status();
-    }
+    ABSL_ASSIGN_OR_RETURN(ptx_version,
+                     GetPtxVersionForCompilation(*compilation_provider));
     ABSL_ASSIGN_OR_RETURN(
-        ptx, nvptx::CompileToPtx(selected_module,
-                                 device_description.gpu_compute_capability(),
-                                 debug_options, /*configure_target=*/nullptr,
-                                 max_ptx_isa_version));
+        ptx,
+        nvptx::CompileToPtx(
+            selected_module, device_description.gpu_compute_capability(),
+            debug_options, /*configure_target=*/nullptr,
+            ptx_version->major_version() * 10 + ptx_version->minor_version()));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -657,28 +645,16 @@ NVPTXCompiler::CompileTargetBinary(
   if (compilation_provider == nullptr) {
     ABSL_ASSIGN_OR_RETURN(compilation_provider,
                      GetCompilationProvider(debug_options, nullptr));
+    ABSL_ASSIGN_OR_RETURN(ptx_version,
+                     GetPtxVersionForCompilation(*compilation_provider));
   }
 
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
-  absl::StatusOr<stream_executor::SemanticVersion> runtime_cuda_version =
-      stream_executor::GetAsmCompilerVersion(
-          module_config.debug_options().xla_gpu_cuda_data_dir());
-  constexpr stream_executor::SemanticVersion kCompileTimeCudaVersion{
-      CUDA_VERSION / 1000, (CUDA_VERSION / 10) % 100, CUDA_VERSION % 10};
-  auto highest_supported_cuda_version = [&] {
-    if (runtime_cuda_version.ok()) {
-      return std::min(runtime_cuda_version.value(), kCompileTimeCudaVersion);
-    }
-    return kCompileTimeCudaVersion;
-  }();
-  auto ptx_version = nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
-      highest_supported_cuda_version);
-
   se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
       *device_description.gpu_compute_capability().cuda_compute_capability(),
-      ptx_version);
+      *ptx_version);
 
   // This may print multiple lines per HLO compilation because of the
   // parallelized compilation of LLVM modules.
@@ -739,26 +715,13 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return std::vector<uint8_t>{};
   }
 
-  absl::StatusOr<stream_executor::SemanticVersion> runtime_cuda_version =
-      stream_executor::GetAsmCompilerVersion(
-          debug_options.xla_gpu_cuda_data_dir());
-  constexpr stream_executor::SemanticVersion kCompileTimeCudaVersion{
-      CUDA_VERSION / 1000, (CUDA_VERSION / 10) % 100, CUDA_VERSION % 10};
-  auto highest_supported_cuda_version = [&] {
-    if (runtime_cuda_version.ok()) {
-      return std::min(runtime_cuda_version.value(), kCompileTimeCudaVersion);
-    }
-    return kCompileTimeCudaVersion;
-  }();
-  auto ptx_version = nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
-      highest_supported_cuda_version);
-
+  ABSL_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
+                   GetCompilationProvider(debug_options, stream_exec));
+  ABSL_ASSIGN_OR_RETURN(se::SemanticVersion ptx_version,
+                   GetPtxVersionForCompilation(*compilation_provider));
   se::CudaComputeCapability cc = nvptx::ResolveSupportedComputeCapability(
       *device_description.gpu_compute_capability().cuda_compute_capability(),
       ptx_version);
-
-  ABSL_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
-                   GetCompilationProvider(debug_options, stream_exec));
 
   std::vector<se::cuda::CompilationProvider::RelocatableModuleOrPtx> inputs;
   inputs.reserve(modules.size());

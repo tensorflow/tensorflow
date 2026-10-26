@@ -94,7 +94,14 @@ class RocmComputeCapability {
       "gfx1030",  // RX68xx / RX69xx
       "gfx1100",  // RX7900
       "gfx1101",  // RX7700 / RX7800
-      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201",
+      "gfx1102",  // RX7600
+      "gfx1103",  // Radeon 780M
+      "gfx1150",  // Radeon 890M
+      "gfx1151",  // Radeon 8060S
+      "gfx1152",  // Radeon 860M
+      "gfx1153",  // Radeon 820M
+      "gfx1200",  // RX9060
+      "gfx1201",  // RX9070
       "gfx1250",  // MI450
   };
 
@@ -135,11 +142,12 @@ class RocmComputeCapability {
 
   bool gfx11() const { return absl::StartsWith(gfx_version(), "gfx11"); }
 
-  static constexpr absl::string_view kGfx11Discrete[] = {"gfx1100", "gfx1101"};
+  static constexpr absl::string_view kGfx11Discrete[] = {"gfx1100", "gfx1101",
+                                                         "gfx1102"};
   bool gfx11_discrete() const { return IsThisGfxInAnyList(kGfx11Discrete); }
 
-  static constexpr absl::string_view kGfx11Apu[] = {"gfx1103", "gfx1150",
-                                                    "gfx1151"};
+  static constexpr absl::string_view kGfx11Apu[] = {
+      "gfx1103", "gfx1150", "gfx1151", "gfx1152", "gfx1153"};
   bool gfx11_apu() const { return IsThisGfxInAnyList(kGfx11Apu); }
 
   static constexpr absl::string_view kGfx11Rx7900[] = {"gfx1100", "gfx1101",

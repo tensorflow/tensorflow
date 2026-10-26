@@ -213,45 +213,22 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   }
 
   bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) const {
-    // In Confidential Computing VMs, transfers must always be staged onto
-    // host memory allocated via cuMemHostAlloc.
     if (confidential_computing_enabled_) {
-      return true;
+      return false;
     }
-    // Allocating a multi-gigabyte pinned staging buffer can be very slow, in
-    // which case staging is probably worse than not staging. This cap does not
-    // apply to chunked staging, which only uses staging_chunk_size() buffers.
-    // TODO(phawkins): add chunking for transfers when chunked staging is off.
+    // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
+    // using a staging buffer is probably worse than not using one.
+    // TODO(phawkins): add chunking for transfers.
     return should_stage_host_to_device_transfers_ &&
-           (size < (int64_t{1} << 30) || ShouldUseChunkedStaging()) &&
-           !IsDmaMapped(data, size);
-  }
-
-  // Returns true if staged transfers should be split into at most
-  // `staging_chunk_size()`-byte chunks that are pipelined through a bounded
-  // number of staging buffers, with host copies done on the transfer's work
-  // thread instead of in stream host callbacks. Applies to staged transfers of
-  // every size (a transfer no larger than a chunk is a single chunk). Only
-  // enabled in Confidential Computing mode (where every transfer is staged),
-  // or when forced for testing.
-  bool ShouldUseChunkedStaging() const {
-    return confidential_computing_enabled_ ||
-           force_staging_chunking_for_testing_;
-  }
-
-  int64_t staging_chunk_size() const { return staging_chunk_size_; }
-
-  // Test-only: enables chunked staging (when `force` is true) even when
-  // Confidential Computing is disabled, using `chunk_size`-byte chunks. Must be
-  // called before any transfer is issued on this client.
-  void SetStagingChunkingForTesting(bool force, int64_t chunk_size) {
-    CHECK_GT(chunk_size, 0);
-    force_staging_chunking_for_testing_ = force;
-    staging_chunk_size_ = chunk_size;
+           size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
   }
 
   tsl::AsyncValueRef<PjRtExecutable> ToAsyncExecutable(
       std::shared_ptr<PjRtExecutable> executable) const override;
+
+  std::pair<tsl::AsyncValueRef<PjRtExecutable>,
+            PjRtFulfillAsyncExecutableCallback>
+  CreateLinkedExecutablePromise() const override;
 
   void ThenRecordEvent(BufferSequencingEventRef event,
                        LocalDeviceState* local_device,
@@ -367,6 +344,17 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   void Stop() { async_work_runner_.reset(); }
 
+  // Compiles `computation` for `target_topology` using this client's compiler
+  // backend.
+  // - `topology`: The topology of the client performing the compilation (may be
+  //   nullptr).
+  // - `target_topology`: The topology the compiled executable is promised to
+  //   run on (which may have a different number of hosts or devices than
+  //   `topology`).
+  // - Target topology properties (`num_nodes`, `slice_size`, default memory
+  //   space) come from `target_topology`.
+  // - Local device ordinals are only looked up when
+  //   `topology == &target_topology`.
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
       const XlaComputation& computation, CompileOptions options,
       int process_index,
@@ -374,6 +362,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       const PjRtTopologyDescription* topology,
       const PjRtTopologyDescription& target_topology);
 
+  // Same as above, but compiles `mlir_module`.
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
       MaybeOwningMlirModule mlir_module, CompileOptions options,
       int process_index,
@@ -399,9 +388,6 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
   // transfer via pinned memory.
   bool should_stage_host_to_device_transfers_;
   bool confidential_computing_enabled_ = false;
-  // Chunk size for chunked staging; see ShouldUseChunkedStaging().
-  int64_t staging_chunk_size_;
-  bool force_staging_chunking_for_testing_ = false;
 
   se::StreamExecutor* absl_nonnull executor_;
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;

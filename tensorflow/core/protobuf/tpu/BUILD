@@ -16,7 +16,6 @@
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_all_protos",
     "tf_proto_library",
     "tf_pyclif_proto_library",
 )
@@ -75,11 +74,13 @@ tf_proto_library(
     srcs = [
         "compilation_result.proto",
     ],
-    protodeps = tf_additional_all_protos() + [
-        "@xla//xla:xla_data_proto",
-        "@xla//xla/service:hlo_proto",
+    protodeps = [
+        "@xla//xla/tpu/protobuf:compilation_result_proto",
     ],
     visibility = ["//visibility:public"],
+    exports = [
+        "@xla//xla/tpu/protobuf:compilation_result_proto",
+    ],
 )
 
 tf_proto_library(

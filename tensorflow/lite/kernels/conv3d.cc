@@ -182,11 +182,22 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       filter_width, filter_depth, params->padding, &out_height, &out_width,
       &out_depth, &opdata->padding));
 
-  int output_spatial_elements = 0;
+  int input_spatial_elements = 0;
   TF_LITE_ENSURE_MSG(context,
-                     CheckedNumElements({out_depth, out_height, out_width},
-                                        output_spatial_elements) == kTfLiteOk,
-                     "%s", "Conv3D output spatial dimensions overflow.");
+                     CheckedNumElements({depth, height, width, input_channel},
+                                        input_spatial_elements) == kTfLiteOk,
+                     "%s", "Conv3D input spatial dimensions overflow.");
+  int total_input_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context, CheckedNumElements(input, total_input_elements) == kTfLiteOk,
+      "%s", "Conv3D input dimensions overflow.");
+
+  int output_spatial_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements({out_depth, out_height, out_width, channels_out},
+                         output_spatial_elements) == kTfLiteOk,
+      "%s", "Conv3D output spatial dimensions overflow.");
   int total_output_elements = 0;
   TF_LITE_ENSURE_MSG(context,
                      CheckedNumElements({batches, out_depth, out_height,

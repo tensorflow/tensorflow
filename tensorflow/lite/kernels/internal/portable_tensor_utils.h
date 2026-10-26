@@ -18,10 +18,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
@@ -113,10 +116,13 @@ inline void VectorBatchVectorCwiseProductAccumulate(const T* vector, int v_size,
 }
 
 // Batch vector initialization with another vector.
+// Callers must ensure that `n_batch * v_size` does not overflow `ptrdiff_t`.
 template <typename T>
 void VectorBatchVectorAssign(const T* vector, int v_size, int n_batch,
                              T* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
+  TFLITE_DCHECK(v_size <= 0 || n_batch <= 0 ||
+                n_batch <= std::numeric_limits<ptrdiff_t>::max() / v_size);
+  for (ptrdiff_t b = 0; b < n_batch; b++) {
     std::copy_n(vector, v_size, batch_vector + b * v_size);
   }
 }
@@ -155,12 +161,16 @@ void AsymmetricQuantizeFloats(const float* values, const int size,
 // scaling_factors    (out) scaling factors (one per vector)
 // zero_points        (out) zero points (one per vector)
 // do_asymmetric      controls if the quantization should be asymmetric.
+//
+// Callers must ensure that `n_batch * n_data` does not overflow `ptrdiff_t`.
 inline void BatchQuantizeFloats(const float* float_data_ptr, int n_batch,
                                 int n_data, int8_t* quantized_data_ptr,
                                 float* scaling_factors, int32_t* zero_points,
                                 bool do_asymmetric) {
-  for (int b = 0; b < n_batch; ++b) {
-    const int offset = b * n_data;
+  TFLITE_DCHECK(n_data <= 0 || n_batch <= 0 ||
+                n_batch <= std::numeric_limits<ptrdiff_t>::max() / n_data);
+  for (ptrdiff_t b = 0; b < n_batch; ++b) {
+    const ptrdiff_t offset = b * n_data;
     if (do_asymmetric) {
       tensor_utils::AsymmetricQuantizeFloats(
           float_data_ptr + offset, n_data, quantized_data_ptr + offset,

@@ -155,6 +155,10 @@ absl::Status ShapeVerifier::HandleClamp(HloInstruction* clamp) {
   return CheckTernaryShape(clamp);
 }
 
+absl::Status ShapeVerifier::HandleFma(HloInstruction* fma) {
+  return CheckTernaryShape(fma);
+}
+
 absl::Status ShapeVerifier::HandleSelect(HloInstruction* select) {
   return CheckTernaryShape(select);
 }
@@ -724,9 +728,22 @@ absl::Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
                  *all_to_all->split_dimension(), split_count));
   }
   TF_RET_CHECK(hlo->operand_count() == split_count);
+  // InferAllToAllTupleShape compares operand layouts, so strip them if layouts
+  // haven't been assigned.
+  const bool compare_layouts =
+      opts_.layout_sensitive || all_to_all->constrain_layout();
+  std::vector<Shape> operand_shapes_storage;
+  operand_shapes_storage.reserve(hlo->operand_count());
   std::vector<const Shape*> operand_shapes;
+  operand_shapes.reserve(hlo->operand_count());
   for (const HloInstruction* operand : hlo->operands()) {
-    operand_shapes.push_back(&operand->shape());
+    if (compare_layouts) {
+      operand_shapes.push_back(&operand->shape());
+    } else {
+      operand_shapes_storage.push_back(operand->shape());
+      LayoutUtil::ClearLayout(&operand_shapes_storage.back());
+      operand_shapes.push_back(&operand_shapes_storage.back());
+    }
   }
   return CheckShape(hlo,
                     ShapeInference::InferAllToAllTupleShape(operand_shapes));
@@ -1453,23 +1470,34 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   int64_t num_inputs = operand_shapes.size() - num_carries;
   int64_t num_outputs = result_shapes.size() - num_carries;
 
-  // Build the shape-equality predicate. Layouts are always ignored:
-  // associative scans are lowered directly by an emitter, so the to_apply
-  // computation is never materialized and its parameter layouts are
-  // independent of the operand array layouts (which are freely assigned by
-  // layout assignment). The layout-sensitive guard above ensures
-  // non-associative scans never reach this point.
+  // shapes_match always ignores layouts: associative scans are lowered
+  // directly by an emitter, so the to_apply computation is never materialized
+  // and its parameter layouts are independent of the operand array layouts
+  // (which are freely assigned by layout assignment). The layout-sensitive
+  // guard above ensures non-associative scans never reach this point.
   //
-  // When mixed precision is allowed, also ignore FP precision: during BF16
+  // When mixed precision is allowed, it also ignores FP precision: during BF16
   // propagation the scan I/O and the body parameter/root shapes can
   // transiently disagree on element type (e.g. body root pinned at F32 while
   // the scan output has been lowered to BF16). ResolveInconsistentScans
-  // reconciles these mismatches before the final, strict verifier pass.
-  // This mirrors HandleReduce / HandleReduceWindow / HandleMap.
-  auto shape_equal = Shape::Equal().IgnoreLayout();
-  if (opts_.allow_mixed_precision) {
-    shape_equal.IgnoreFpPrecision();
-  }
+  // reconciles these mismatches before the final, strict verifier pass. BF16
+  // conversion folding can also leave a BF16 init feeding an F32 carry. This
+  // mirrors HandleReduce / HandleReduceWindow / HandleMap.
+  //
+  // ShapesSame applies its predicate only when the verifier is layout
+  // sensitive. Otherwise it uses ShapeUtil::Compatible, which also compares
+  // element types, so the layout insensitive mixed precision case calls
+  // ShapeUtil::CompatibleIgnoringFpPrecision directly.
+  auto shapes_match = [&](const Shape& a, const Shape& b) {
+    if (!opts_.layout_sensitive && opts_.allow_mixed_precision) {
+      return ShapeUtil::CompatibleIgnoringFpPrecision(a, b);
+    }
+    auto shape_equal = Shape::Equal().IgnoreLayout();
+    if (opts_.allow_mixed_precision) {
+      shape_equal.IgnoreFpPrecision();
+    }
+    return ShapesSame(a, b, shape_equal);
+  };
 
   // Check shapes of operands vs to_apply parameters.
   for (int64_t i = 0; i < operand_shapes.size(); ++i) {
@@ -1487,7 +1515,7 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
       }
       expected_param_shape.DeleteDimension(scan_dim);
     }
-    if (!ShapesSame(param_shape, expected_param_shape, shape_equal)) {
+    if (!shapes_match(param_shape, expected_param_shape)) {
       return Internal(
           "Shapes of operand %d and to_apply computation parameter are "
           "inconsistent",
@@ -1501,7 +1529,7 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   for (int64_t i = 0; i < num_carries; ++i) {
     const Shape& param_shape = parameter_shapes[i + num_inputs];
     const Shape& root_shape = root_shapes[i + num_outputs];
-    if (!ShapesSame(param_shape, root_shape, shape_equal)) {
+    if (!shapes_match(param_shape, root_shape)) {
       return Internal(
           "Shapes of parameter %d and root in to_apply computation are "
           "inconsistent",
@@ -1509,9 +1537,9 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
     }
   }
 
-  // Check shapes of results vs to_apply root. Use the same shape_equal
-  // predicate as above so allow_mixed_precision lets the body root and the
-  // scan result transiently disagree on FP precision during propagation.
+  // Check shapes of results vs to_apply root. Use shapes_match as above so
+  // allow_mixed_precision lets the body root and the scan result transiently
+  // disagree on FP precision during propagation.
   for (int64_t i = 0; i < root_shapes.size(); ++i) {
     const Shape& root_shape = root_shapes[i];
     const Shape& result_shape = result_shapes[i];
@@ -1527,7 +1555,7 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
       }
       expected_root_shape.DeleteDimension(scan_dim);
     }
-    if (!ShapesSame(root_shape, expected_root_shape, shape_equal)) {
+    if (!shapes_match(root_shape, expected_root_shape)) {
       return Internal(
           "Shapes of result %d and to_apply computation root are "
           "inconsistent",
@@ -4049,7 +4077,7 @@ int64_t CountWritersInUser(const HloInstruction* inst,
   return 0;
 }
 
-// Returns the number of writers for the value produced by the instruction in
+// Returns the number of writers for the HloValue produced by the instruction in
 // the given shape_index. This is to support the verification that a buffer can
 // have at most one writer and we may return early when we find more than one
 // writers, but we choose not to return early.
@@ -4063,8 +4091,8 @@ int64_t CountWriters(const HloInstruction* inst,
   return num_writers;
 }
 
-// Verifies a buffer result produced by the given instruction can have at most
-// one writer.
+// Verifies a buffer result (i.e. HloValue) produced by the given instruction
+// can have at most one writer.
 absl::Status CheckBufferHasUniqueWriter(const HloInstruction* inst,
                                         const ShapeIndex& result_index) {
   if (CountWriters(inst, result_index) > 1) {
@@ -4076,8 +4104,8 @@ absl::Status CheckBufferHasUniqueWriter(const HloInstruction* inst,
   return absl::OkStatus();
 }
 
-// Verifies all buffer results produced by the given instruction can have at
-// most one writer.
+// Verifies all buffer results (i.e. HloValues) produced by the given
+// instruction can have at most one writer.
 absl::Status CheckBufferHasUniqueWriters(const HloInstruction* inst) {
   return ShapeUtil::ForEachSubshapeWithStatus(
       inst->shape(),
@@ -4151,6 +4179,122 @@ absl::Status VerifyUnpin(const HloCustomCallInstruction* inst,
   }
 
   return absl::OkStatus();
+}
+
+std::string FormatOutputToOperandAliasing(
+    const HloCustomCallInstruction* inst) {
+  return absl::StrCat("{",
+                      absl::StrJoin(inst->output_to_operand_aliasing(), ", ",
+                                    [](std::string* out, const auto& pair) {
+                                      absl::StrAppend(
+                                          out, pair.first.ToString(), ": (",
+                                          pair.second.first, ", ",
+                                          pair.second.second.ToString(), ")");
+                                    }),
+                      "}");
+}
+
+// Verifies the structural invariants of a FanOut custom call:
+// 1. Exactly 1 operand of buffer type.
+// 2. Result is a tuple with >= 2 buffer elements (element 0 is the anchor
+//    buffer, elements 1..N are concurrent stream view buffers).
+// 3. All tuple elements match the operand buffer shape.
+// 4. Output to operand aliasing strictly aliases element 0 to operand 0:
+//    {{0}: (0, {})}.
+// 5. Each tuple element buffer has at most one writer.
+absl::Status VerifyFanOut(const HloCustomCallInstruction* inst,
+                          bool layout_sensitive) {
+  if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsBuffer()) {
+    return InvalidArgument(
+        "custom-call to FanOut must have one buffer operand");
+  }
+
+  if (!inst->shape().IsTuple() || inst->shape().tuple_shapes_size() < 2) {
+    return InvalidArgument(
+        "custom-call to FanOut must have a tuple result with >= 2 elements");
+  }
+
+  for (const auto& subshape : inst->shape().tuple_shapes()) {
+    if (!subshape.IsBuffer()) {
+      return InvalidArgument(
+          "custom-call to FanOut must only have buffer results in its tuple");
+    }
+    if (!xla::Shape::Equal()
+             .IgnoreLayout(!layout_sensitive)
+             .IgnoreMemorySpaceInLayout()(
+                 inst->operand(0)->shape().buffer_shape(),
+                 subshape.buffer_shape())) {
+      return InvalidArgument(
+          "custom-call to FanOut must have the same shape as the operand");
+    }
+  }
+
+  if (inst->output_to_operand_aliasing().size() != 1 ||
+      inst->output_to_operand_aliasing()[0].first != ShapeIndex({0}) ||
+      inst->output_to_operand_aliasing()[0].second !=
+          std::make_pair(int64_t{0}, ShapeIndex({}))) {
+    return InvalidArgument(
+        "custom-call to FanOut must only have output-to-operand aliasing for "
+        "output 0: {{0}: (0, {})}; got %s",
+        FormatOutputToOperandAliasing(inst));
+  }
+
+  for (int64_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+    ABSL_RETURN_IF_ERROR(CheckBufferHasUniqueWriter(inst, {i}));
+  }
+
+  return absl::OkStatus();
+}
+
+// Verifies the structural invariants of a FanIn custom call:
+// 1. At least 2 distinct operands, all of buffer type (operand 0 is the anchor
+//    buffer, operands 1..N are stream buffers to merge).
+// 2. Result is a single buffer matching the shape of all operands.
+// 3. Output to operand aliasing strictly aliases the result to operand 0:
+//    {{}: (0, {})}.
+// 4. Result buffer has at most one writer.
+absl::Status VerifyFanIn(const HloCustomCallInstruction* inst,
+                         bool layout_sensitive) {
+  if (inst->operand_count() < 2) {
+    return InvalidArgument(
+        "custom-call to FanIn must have at least 2 buffer operands");
+  }
+
+  if (!inst->shape().IsBuffer()) {
+    return InvalidArgument("custom-call to FanIn must have one buffer result");
+  }
+
+  absl::flat_hash_set<const HloInstruction*> seen_operands;
+  for (const auto* operand : inst->operands()) {
+    if (!operand->shape().IsBuffer()) {
+      return InvalidArgument(
+          "custom-call to FanIn must only have buffer operands");
+    }
+    if (!seen_operands.insert(operand).second) {
+      return InvalidArgument(
+          "custom-call to FanIn must have distinct operands");
+    }
+    if (!xla::Shape::Equal()
+             .IgnoreLayout(!layout_sensitive)
+             .IgnoreMemorySpaceInLayout()(operand->shape().buffer_shape(),
+                                          inst->shape().buffer_shape())) {
+      return InvalidArgument(
+          "custom-call to FanIn result must have the same shape as all "
+          "operands");
+    }
+  }
+
+  if (inst->output_to_operand_aliasing().size() != 1 ||
+      inst->output_to_operand_aliasing()[0].first != ShapeIndex({}) ||
+      inst->output_to_operand_aliasing()[0].second !=
+          std::make_pair(int64_t{0}, ShapeIndex({}))) {
+    return InvalidArgument(
+        "custom-call to FanIn must only have output-to-operand aliasing for "
+        "result: {{}: (0, {})}; got %s",
+        FormatOutputToOperandAliasing(inst));
+  }
+
+  return CheckBufferHasUniqueWriter(inst, {});
 }
 
 absl::Status VerifyNoBuffers(const Shape& shape, const HloInstruction* inst) {
@@ -4273,6 +4417,12 @@ absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst,
   }
   if (inst->IsCustomCall(kUnpinCustomCallTarget)) {
     return VerifyUnpin(Cast<HloCustomCallInstruction>(inst), layout_sensitive);
+  }
+  if (inst->IsCustomCall(kFanOutCustomCallTarget)) {
+    return VerifyFanOut(inst, layout_sensitive);
+  }
+  if (inst->IsCustomCall(kFanInCustomCallTarget)) {
+    return VerifyFanIn(inst, layout_sensitive);
   }
 
   ABSL_RETURN_IF_ERROR(VerifyBuffersInOperands(inst));
@@ -4739,7 +4889,14 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
         target_metadata_->GetVerifier();
     InstructionVerifier instruction_verifier(
         module, target_metadata_->GetVerifierOpts());
+    absl::flat_hash_map<absl::string_view, const HloComputation*>
+        computations_by_name;
     for (auto* computation : module->computations(execution_threads)) {
+      auto [it, inserted] =
+          computations_by_name.emplace(computation->name(), computation);
+      TF_RET_CHECK(inserted)
+          << "Computation has name that is not unique within module: "
+          << computation->name();
       ABSL_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       ABSL_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
       // Verify that async computations contain a single instruction unless

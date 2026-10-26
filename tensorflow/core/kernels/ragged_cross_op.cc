@@ -54,7 +54,7 @@ class FeatureReader {
   virtual void ReadValue(int64_t batch, int64_t n, uint64_t* out) const = 0;
   virtual void ReadValue(int64_t batch, int64_t n, tstring* out) const = 0;
 
-  virtual ~FeatureReader() {}
+  virtual ~FeatureReader() = default;
 };
 
 using FeatureReaders = std::vector<std::unique_ptr<FeatureReader>>;
@@ -169,7 +169,7 @@ class SparseFeatureReader : public FeatureReader {
 class OutputWriter {
  public:
   virtual void WriteOutputSlice(int64_t begin, int64_t end) = 0;
-  virtual ~OutputWriter() {}
+  virtual ~OutputWriter() = default;
 };
 
 template <typename ValuesType, typename SplitsType>

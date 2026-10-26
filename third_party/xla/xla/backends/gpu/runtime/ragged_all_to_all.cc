@@ -18,21 +18,27 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <type_traits>
 
+#include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/primitive_util.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_device_kernel.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -40,65 +46,32 @@ namespace xla::gpu {
 
 namespace {
 
-template <int64_t kVectorSize>
-absl::Status LaunchTypedKernel(se::Stream* stream,
-                               const se::ThreadDim& thread_dims,
-                               const se::BlockDim& block_dims,
-                               se::DeviceAddressBase input_buffer,
-                               se::gpu::RaggedAllToAllOutputPtrs output_ptrs,
-                               se::DeviceAddressBase input_offsets_buffer,
-                               se::DeviceAddressBase send_sizes_buffer,
-                               se::DeviceAddressBase output_offsets_buffer,
-                               int64_t num_updates_per_output,
-                               int64_t num_row_elements) {
-  using KernelTrait = se::gpu::RaggedAllToAllKernel<kVectorSize>;
+struct RaggedAllToAllLaunchParams {
+  int64_t vector_size_bytes;
+  int64_t num_vectorized_row_elements;
+  se::ThreadDim thread_dims;
+  se::BlockDim block_dims;
+};
 
-  ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
-                                    .LoadKernel<KernelTrait>(stream->parent()));
-
-  return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
-                       output_ptrs, input_offsets_buffer, send_sizes_buffer,
-                       output_offsets_buffer, num_updates_per_output,
-                       num_row_elements);
-}
-
-template <int64_t kVectorSize>
-absl::Status LaunchTypedKernelWithSymmetricMemory(
-    se::Stream* stream, const se::ThreadDim& thread_dims,
-    const se::BlockDim& block_dims, se::DeviceAddressBase input_buffer,
-    xla::SymmetricMemory* output_ptrs_symmetric_memory,
-    size_t output_sym_offset, se::DeviceAddressBase input_offsets_buffer,
-    se::DeviceAddressBase send_sizes_buffer,
-    se::DeviceAddressBase output_offsets_buffer, int64_t num_updates_per_output,
+absl::StatusOr<RaggedAllToAllLaunchParams> ComputeRaggedAllToAllLaunchParams(
+    PrimitiveType element_type, int64_t num_outputs,
+    int64_t num_updates_per_output, int64_t num_input_rows,
     int64_t num_row_elements) {
-  using KernelTrait =
-      se::gpu::RaggedAllToAllWithSymmetricMemoryKernel<kVectorSize>;
-
-  ABSL_ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
-                                    .LoadKernel<KernelTrait>(stream->parent()));
-
-  return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
-                       output_ptrs_symmetric_memory, output_sym_offset,
-                       input_offsets_buffer, send_sizes_buffer,
-                       output_offsets_buffer, num_updates_per_output,
-                       num_row_elements);
-}
-
-template <typename Fn>
-absl::Status RunRaggedAllToAllKernelImpl(Fn&& launch_kernel, se::Stream* stream,
-                                         PrimitiveType element_type,
-                                         int64_t num_outputs,
-                                         int64_t num_updates_per_output,
-                                         int64_t num_input_rows,
-                                         int64_t num_row_elements) {
   static constexpr size_t kThreads = 128;
 
   int64_t num_vectorized_row_elements = num_row_elements;
   int64_t vector_size_bytes = xla::primitive_util::ByteWidth(element_type);
-
   while (num_vectorized_row_elements % 2 == 0 && vector_size_bytes < 8) {
     num_vectorized_row_elements /= 2;
     vector_size_bytes *= 2;
+  }
+  if (vector_size_bytes != 1 && vector_size_bytes != 2 &&
+      vector_size_bytes != 4 && vector_size_bytes != 8) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unsupported element type: ",
+        primitive_util::LowercasePrimitiveTypeName(element_type),
+        " (bit width ", xla::primitive_util::BitWidth(element_type),
+        ") for RaggedAllToAll kernel."));
   }
 
   int64_t num_updates_per_block = 1;
@@ -117,29 +90,28 @@ absl::Status RunRaggedAllToAllKernelImpl(Fn&& launch_kernel, se::Stream* stream,
     num_updates_per_block *= 2;
   }
 
-  se::ThreadDim thread_dims(kThreads, 1, 1);
-  se::BlockDim block_dims(num_outputs, num_block_clusters,
-                          num_updates_per_block);
+  return RaggedAllToAllLaunchParams{
+      vector_size_bytes,
+      num_vectorized_row_elements,
+      se::ThreadDim(kThreads, 1, 1),
+      se::BlockDim(num_outputs, num_block_clusters, num_updates_per_block),
+  };
+}
 
+template <typename Fn>
+auto WithVectorSize(int64_t vector_size_bytes, Fn&& fn)
+    -> std::invoke_result_t<Fn, std::integral_constant<int64_t, 1>> {
   switch (vector_size_bytes) {
     case 1:
-      return launch_kernel(std::integral_constant<int64_t, 1>{}, thread_dims,
-                           block_dims, num_vectorized_row_elements);
+      return fn(std::integral_constant<int64_t, 1>{});
     case 2:
-      return launch_kernel(std::integral_constant<int64_t, 2>{}, thread_dims,
-                           block_dims, num_vectorized_row_elements);
+      return fn(std::integral_constant<int64_t, 2>{});
     case 4:
-      return launch_kernel(std::integral_constant<int64_t, 4>{}, thread_dims,
-                           block_dims, num_vectorized_row_elements);
+      return fn(std::integral_constant<int64_t, 4>{});
     case 8:
-      return launch_kernel(std::integral_constant<int64_t, 8>{}, thread_dims,
-                           block_dims, num_vectorized_row_elements);
+      return fn(std::integral_constant<int64_t, 8>{});
     default:
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Unsupported element type: ",
-          primitive_util::LowercasePrimitiveTypeName(element_type),
-          " (bit width ", xla::primitive_util::BitWidth(element_type),
-          ") for RaggedAllToAll kernel."));
+      return absl::InternalError("Unreachable vector_size_bytes");
   }
 }
 
@@ -162,21 +134,22 @@ absl::Status RunRaggedAllToAllKernel(
     se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
     int64_t num_updates_per_output, int64_t num_input_rows,
     int64_t num_row_elements) {
-  auto launch_kernel =
-      [&](auto type, const se::ThreadDim& thread_dims,
-          const se::BlockDim& block_dims,
-          int64_t num_vectorized_row_elements) -> absl::Status {
-    using T = decltype(type);
-
-    return LaunchTypedKernel<T::value>(
-        stream, thread_dims, block_dims, input_buffer, output_ptrs,
-        input_offsets_buffer, send_sizes_buffer, output_offsets_buffer,
-        num_updates_per_output, num_vectorized_row_elements);
-  };
-
-  return RunRaggedAllToAllKernelImpl(launch_kernel, stream, element_type,
-                                     num_outputs, num_updates_per_output,
-                                     num_input_rows, num_row_elements);
+  ABSL_ASSIGN_OR_RETURN(RaggedAllToAllLaunchParams params,
+                   ComputeRaggedAllToAllLaunchParams(
+                       element_type, num_outputs, num_updates_per_output,
+                       num_input_rows, num_row_elements));
+  ABSL_ASSIGN_OR_RETURN(
+      auto kernel,
+      WithVectorSize(params.vector_size_bytes, [&](auto vector_size) {
+        return se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+            .LoadKernel<
+                se::gpu::RaggedAllToAllKernel<decltype(vector_size)::value>>(
+                stream->parent());
+      }));
+  return kernel.Launch(
+      params.thread_dims, params.block_dims, stream, input_buffer, output_ptrs,
+      input_offsets_buffer, send_sizes_buffer, output_offsets_buffer,
+      num_updates_per_output, params.num_vectorized_row_elements);
 }
 
 bool IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
@@ -186,31 +159,74 @@ bool IsRaggedAllToAllWithSymmetricMemoryKernelSupported(
   return primitive_util::BitWidth(element_type) % 8 == 0;
 }
 
+absl::StatusOr<RaggedAllToAllWithSymmetricMemoryKernelType>
+LoadRaggedAllToAllWithSymmetricMemoryKernel(se::StreamExecutor* executor,
+                                            PrimitiveType element_type,
+                                            int64_t num_row_elements) {
+  ABSL_ASSIGN_OR_RETURN(RaggedAllToAllLaunchParams params,
+                   ComputeRaggedAllToAllLaunchParams(
+                       element_type, /*num_outputs=*/1,
+                       /*num_updates_per_output=*/1,
+                       /*num_input_rows=*/1, num_row_elements));
+  return WithVectorSize(params.vector_size_bytes, [&](auto vector_size) {
+    return se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+        .LoadKernel<se::gpu::RaggedAllToAllWithSymmetricMemoryKernel<
+            decltype(vector_size)::value>>(executor);
+  });
+}
+
 absl::Status RunRaggedAllToAllWithSymmetricMemoryKernel(
-    se::Stream* stream, PrimitiveType element_type,
-    se::DeviceAddressBase input_buffer,
+    se::Stream* stream, RaggedAllToAllWithSymmetricMemoryKernelType& kernel,
+    PrimitiveType element_type, se::DeviceAddressBase input_buffer,
     xla::SymmetricMemory* output_ptrs_symmetric_memory,
     size_t output_sym_offset, se::DeviceAddressBase input_offsets_buffer,
     se::DeviceAddressBase send_sizes_buffer,
     se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
     int64_t num_updates_per_output, int64_t num_input_rows,
     int64_t num_row_elements) {
-  auto launch_kernel =
-      [&](auto type, const se::ThreadDim& thread_dims,
-          const se::BlockDim& block_dims,
-          int64_t num_vectorized_row_elements) -> absl::Status {
-    using T = decltype(type);
+  ABSL_ASSIGN_OR_RETURN(RaggedAllToAllLaunchParams params,
+                   ComputeRaggedAllToAllLaunchParams(
+                       element_type, num_outputs, num_updates_per_output,
+                       num_input_rows, num_row_elements));
+  return kernel.Launch(
+      params.thread_dims, params.block_dims, stream, input_buffer,
+      output_ptrs_symmetric_memory, output_sym_offset, input_offsets_buffer,
+      send_sizes_buffer, output_offsets_buffer, num_updates_per_output,
+      params.num_vectorized_row_elements);
+}
 
-    return LaunchTypedKernelWithSymmetricMemory<T::value>(
-        stream, thread_dims, block_dims, input_buffer,
+absl::StatusOr<const se::CommandBuffer::Command*>
+RecordRaggedAllToAllWithSymmetricMemoryKernel(
+    se::CommandBuffer* command_buffer,
+    const RaggedAllToAllWithSymmetricMemoryKernelType& kernel,
+    PrimitiveType element_type, se::DeviceAddressBase input_buffer,
+    xla::SymmetricMemory* output_ptrs_symmetric_memory,
+    size_t output_sym_offset, se::DeviceAddressBase input_offsets_buffer,
+    se::DeviceAddressBase send_sizes_buffer,
+    se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
+    int64_t num_updates_per_output, int64_t num_input_rows,
+    int64_t num_row_elements,
+    const se::CommandBuffer::Command* absl_nullable cmd,
+    absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+  ABSL_ASSIGN_OR_RETURN(RaggedAllToAllLaunchParams params,
+                   ComputeRaggedAllToAllLaunchParams(
+                       element_type, num_outputs, num_updates_per_output,
+                       num_input_rows, num_row_elements));
+  if (cmd == nullptr) {
+    return command_buffer->CreateLaunch(
+        kernel, params.thread_dims, params.block_dims,
+        /*cluster_dims=*/std::nullopt, dependencies, input_buffer,
         output_ptrs_symmetric_memory, output_sym_offset, input_offsets_buffer,
         send_sizes_buffer, output_offsets_buffer, num_updates_per_output,
-        num_vectorized_row_elements);
-  };
-
-  return RunRaggedAllToAllKernelImpl(launch_kernel, stream, element_type,
-                                     num_outputs, num_updates_per_output,
-                                     num_input_rows, num_row_elements);
+        params.num_vectorized_row_elements);
+  }
+  ABSL_RETURN_IF_ERROR(command_buffer->UpdateLaunch(
+      cmd, kernel, params.thread_dims, params.block_dims,
+      /*cluster_dims=*/std::nullopt, input_buffer, output_ptrs_symmetric_memory,
+      output_sym_offset, input_offsets_buffer, send_sizes_buffer,
+      output_offsets_buffer, num_updates_per_output,
+      params.num_vectorized_row_elements));
+  return cmd;
 }
 
 namespace {

@@ -20,42 +20,53 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensor_ir/Compiler/CudaTile/Pipelines.h"
 #include "tensor_ir/Compiler/CudaTile/TileIRAssembly.h"
-#include "tensor_ir/Conversion/TensorToCudaTile/Options.h"
+#include "tensor_ir/Dialect/TensorIRAttrs.h"
+#include "tensor_ir/Options/Options.h"
+#include "tensor_ir/Options/OptionsEnums.h"
+#include "tensor_ir/Utils/ComputeCapability.h"
 #include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Pass/PassManager.h"
+#include "llvm/Support/LogicalResult.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/path.h"
 
 namespace xla::gpu::tensor_ir {
 
-mlir::nv_tensor_ir::TensorToCudaTilePipelineOptions GetPipelineOptions(
+mlir::nv_tensor_ir::CompilerInvocation GetPipelineOptions(
     const stream_executor::GpuComputeCapability& gpu_cc,
     llvm::ArrayRef<int32_t> tile_size, int64_t reduction_tile_size) {
-  mlir::nv_tensor_ir::TensorToCudaTilePipelineOptions options;
-  options.tileSize.assign(tile_size.begin(), tile_size.end());
-  options.reductionTileSize = reduction_tile_size;
+  mlir::nv_tensor_ir::CompilerInvocation options;
+  options.codegen.tileSize.assign(tile_size.begin(), tile_size.end());
+  // Emit only the CudaTile kernel module; XLA's own runtime launches the
+  // kernel, so no native host LLVM wrapper is needed.
+  options.codegen.hostTarget = mlir::nv_tensor_ir::HostTarget::Interpreter;
+  options.cudaTile.reductionTileSize = reduction_tile_size;
   // Skip the TileAnalyzer candidate search when an explicit tile shape is
   // already provided (e.g. by the autotuner).
-  options.maxCandidates = tile_size.empty() ? 1 : 0;
+  options.cudaTile.maxTileCandidates = tile_size.empty() ? 1 : 0;
 
   if (const auto* cuda_cc = gpu_cc.cuda_compute_capability()) {
-    options.computeCapability = cuda_cc->major * 10 + cuda_cc->minor;
+    mlir::FailureOr<mlir::nv_tensor_ir::SmTarget> sm_target =
+        mlir::nv_tensor_ir::SmTarget::fromCc(
+            cuda_cc->major * 10 + cuda_cc->minor,
+            mlir::nv_tensor_ir::ArchPortability::arch_conditional);
+    if (llvm::succeeded(sm_target)) {
+      options.setKernelSmTarget(*sm_target);
+    } else {
+      options.deviceTarget.kernelTarget =
+          absl::StrCat("sm_", cuda_cc->major * 10 + cuda_cc->minor);
+    }
   }
   return options;
-}
-
-void CreateTensorIrPipeline(
-    mlir::OpPassManager* pm,
-    const mlir::nv_tensor_ir::TensorToCudaTilePipelineOptions& options) {
-  mlir::nv_tensor_ir::buildTensorToCudaTileConversionPipeline(*pm, options);
 }
 
 void SetUpTileIrAssembler() {
@@ -64,8 +75,13 @@ void SetUpTileIrAssembler() {
     // The same search that finds `ptxas`: the CUDA toolkit roots first, `$PATH`
     // last. `tileiras` ships next to `ptxas` from CUDA 13.1 on; TensorIR itself
     // needs the 13.3 release or newer.
+    static constexpr stream_executor::SemanticVersion kMinimumTileirasVersion{
+        13, 3, 0};
+    static constexpr absl::Span<const stream_executor::SemanticVersion>
+        kNoExcludedVersions{};
     absl::StatusOr<std::string> path = stream_executor::FindCudaExecutable(
-        "tileiras", /*preferred_cuda_dir=*/"");
+        "tileiras", /*preferred_cuda_dir=*/"", kMinimumTileirasVersion,
+        kNoExcludedVersions);
     if (!path.ok()) {
       LOG(WARNING) << "TensorIR: no Tile IR assembler (CUDA 13.3 or newer "
                       "ships one), falling back to Tile IR bytecode for the "

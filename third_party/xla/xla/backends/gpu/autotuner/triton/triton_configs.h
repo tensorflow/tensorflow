@@ -32,6 +32,7 @@ enum class TritonConfigsPlatform {
   kHopper,
   kMI300,
   kMI350,
+  kRubin,
 };
 
 const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(

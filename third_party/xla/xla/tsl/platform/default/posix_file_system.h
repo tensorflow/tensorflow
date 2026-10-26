@@ -52,6 +52,10 @@ class PosixFileSystem : public FileSystem {
   absl::Status GetMatchingPaths(const std::string& pattern,
                                 std::vector<std::string>* results) override;
 
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                std::vector<std::string>* results,
+                                bool multithreaded) override;
+
   absl::Status DeleteFile(const std::string& fname) override;
 
   absl::Status CreateDir(const std::string& name) override;

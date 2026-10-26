@@ -26,7 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_join.h"
 
@@ -99,6 +99,7 @@ class EuclideanNNInterpolator : public InterpolatorBase<R, N> {
 // potential dimension for each dimension. `next_power_context` specifies the
 // next power of two dimension for each dimension. `max_context` and
 // `min_context` specify the maximum and minimum value for each dimension.
+// `Eval` snaps to the nearest stored coordinate in each dimension (any grid).
 template <typename R, size_t N>
 class EuclideanComplementInterpolator : public EuclideanNNInterpolator<R, N> {
  public:
@@ -119,19 +120,26 @@ class EuclideanComplementInterpolator : public EuclideanNNInterpolator<R, N> {
     CHECK_GT(retrieval_.size(), 0);
     std::array<int64_t, N> interpolation_point;
     for (int i = 0; i < point.size(); ++i) {
-      std::optional<int64_t> next_potential_dim;
-      if (retrieval_ctx_[i] != -1) {
-        int64_t next = retrieval_ctx_[i];
-        next_potential_dim = Closest(point[i], PrevComplement(point[i], next),
-                                     NextComplement(point[i], next));
-      }
-      if (retrieval_pow_ctx_[i] != -1) {
-        next_potential_dim = Closest(point[i], PrevPowerOfTwo(point[i]),
-                                     NextPowerOfTwo(point[i]));
-      }
-      CHECK(next_potential_dim.has_value());
+      std::array<int64_t, N> probe;
+      probe.fill(std::numeric_limits<int64_t>::min());
+      for (int j = 0; j < i; ++j) probe[j] = interpolation_point[j];
+      probe[i] = point[i];
+      auto same_prefix = [&](const std::array<int64_t, N>& key) {
+        for (int j = 0; j < i; ++j) {
+          if (key[j] != interpolation_point[j]) return false;
+        }
+        return true;
+      };
+      auto next = retrieval_.lower_bound(probe);
+      auto prev = next;
+      bool has_prev =
+          next != retrieval_.begin() && same_prefix((--prev)->first);
+      bool has_next = next != retrieval_.end() && same_prefix(next->first);
+      CHECK(has_prev || has_next);
       interpolation_point[i] =
-          std::max(std::min(*next_potential_dim, max_ctx_[i]), min_ctx_[i]);
+          !has_prev   ? next->first[i]
+          : !has_next ? prev->first[i]
+                      : Closest(point[i], prev->first[i], next->first[i]);
     }
     return retrieval_.at(interpolation_point);
   }
@@ -186,7 +194,7 @@ class EuclideanComplementInterpolator : public EuclideanNNInterpolator<R, N> {
   std::array<int64_t, N> max_ctx_;
   std::array<int64_t, N> min_ctx_;
 
-  absl::flat_hash_map<std::array<int64_t, N>, R> retrieval_;
+  absl::btree_map<std::array<int64_t, N>, R> retrieval_;
 };
 
 template <size_t N>

@@ -113,6 +113,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kErf:
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
+    case HloOpcode::kFma:
     case HloOpcode::kIsFinite:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -872,8 +873,8 @@ ENTRY triton_computation {
                                                     : ExpectedFailMode::kFail);
 }
 
-constexpr std::array kTestedOpsTernaryElementwise = {HloOpcode::kSelect,
-                                                     HloOpcode::kClamp};
+constexpr std::array kTestedOpsTernaryElementwise = {
+    HloOpcode::kSelect, HloOpcode::kClamp, HloOpcode::kFma};
 
 INSTANTIATE_TEST_SUITE_P(
     TernaryElementwiseTestSuite, TernaryElementwiseTest,
@@ -1272,6 +1273,23 @@ TEST_F(ScanSupportTest, NonAssociativeScanNotSupported) {
   })");
 }
 
+TEST_F(ScanSupportTest, ScanOverNonLastDimensionNotSupported) {
+  ExpectScanNotSupported(R"(
+  ENTRY main {
+    param = f32[16,8] parameter(0)
+    init = f32[8] parameter(1)
+    scan = (f32[16,8], f32[8]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true
+    ROOT gte = f32[16,8] get-tuple-element(scan), index=0
+  })",
+                         R"(
+  add {
+    Arg_0 = f32[8] parameter(0)
+    Arg_1 = f32[8] parameter(1)
+    ROOT add = f32[8] add(Arg_0, Arg_1)
+  })");
+}
+
 using TransposeTest = SupportTestWithTypeAndOpcodeAndDeviceParam;
 
 TEST_P(TransposeTest, LoadTranspose3D) {
@@ -1373,7 +1391,7 @@ ENTRY triton_computation {
 
 TEST_P(ConcatenateDeviceTest, TritonDoesNotSupportUnalignedConcatenate) {
   auto cc = GetParam();
-  // Operand 0 has size 63 along concat dim (1), which is not divisible by 64.
+  // Operand 0 has size 63 along concat dim (1), which is not divisible by 8.
   // Operand 1 has size 128 (aligned).
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
@@ -1385,6 +1403,22 @@ ENTRY triton_computation {
                        ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
                                                       HloOpcode::kConcatenate));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
+}
+
+TEST_P(ConcatenateDeviceTest, TritonSupportsSub64AlignedConcatenate) {
+  auto cc = GetParam();
+  // Operand 0 has size 24 along concat dim (1), which is divisible by 8 (though
+  // not 64). With a compatible tile size (8 along concat dim), tiling succeeds.
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  p0 = $0[18,24,20] parameter(0)
+  p1 = $0[18,128,20] parameter(1)
+  ROOT concatenate = $0[18,152,20] concatenate(p0, p1), dimensions={1}
+})";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
+                                                      HloOpcode::kConcatenate));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 8, 1}, cc);
 }
 
 INSTANTIATE_TEST_SUITE_P(ConcatenateTestSuite, ConcatenateDeviceTest,
@@ -1465,6 +1499,21 @@ ENTRY triton_computation {
   ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                        ParseTemplateAndGetInstruction(
                            kHloTestTemplate, data_type, HloOpcode::kAllReduce));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+TEST_P(CollectiveTest, IsTritonSupportedAllToAll) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = $0[128,64] parameter(0)
+  ROOT all-to-all = $0[128,64] all-to-all(input),
+    replica_groups={{0,1}}, dimensions={1},
+    backend_config={"collective_backend_config":{"kernel_strategy":"KERNEL_STRATEGY_TRITON_ONE_SHOT"}}
+})";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(
+                           kHloTestTemplate, data_type, HloOpcode::kAllToAll));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
@@ -2531,6 +2580,41 @@ ENTRY triton_computation {
   EXPECT_FALSE(IsTritonSupportedInstruction(
       *dot, se::GpuComputeCapability(se::CudaComputeCapability::Volta())));
 }
+
+// Triton cannot lower F8E4M3FN conversions before sm89.
+class ScaledDotF8E4M3FNTest
+    : public SupportTest,
+      public ::testing::WithParamInterface<se::GpuComputeCapability> {};
+
+TEST_P(ScaledDotF8E4M3FNTest, MixedWithBF16) {
+  const std::string kHloTestTemplate = R"(
+HloModule ScaledDotF8E4M3FNMixedWithBF16
+
+ENTRY triton_computation {
+  lhs = f8e4m3fn[16, 32] parameter(0)
+  lhs_scale = f8e8m0fnu[16, 1] parameter(1)
+  rhs = $0[32, 16] parameter(2)
+  rhs_scale = f8e8m0fnu[] constant(1)
+  rhs_scale_broadcast = f8e8m0fnu[1, 16] broadcast(rhs_scale), dimensions={}
+  ROOT dot = f32[16, 16] scaled-dot(lhs, rhs, lhs_scale, rhs_scale_broadcast),
+      lhs_contracting_dims={1},
+      rhs_contracting_dims={0},
+      backend_config={sizes:[16]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(kHloTestTemplate, BF16,
+                                                      HloOpcode::kScaledDot));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 16}, GetParam(),
+                 ExpectedFailMode::kFailOrCrash);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ScaledDotF8E4M3FNTestSuite, ScaledDotF8E4M3FNTest,
+    ::testing::Values(
+        se::GpuComputeCapability(se::CudaComputeCapability::Ampere()),
+        se::GpuComputeCapability(se::CudaComputeCapability(8, 9)),
+        se::GpuComputeCapability(se::CudaComputeCapability::Hopper())));
 
 TEST_F(SupportTest, NestedFusionsAreRejected) {
   // Nested fusions are not supported by xtile emitter.

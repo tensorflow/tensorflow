@@ -41,11 +41,8 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   // The stop event must have completed in order for hipEventElapsedTime to
   // work.
-  hipError_t res = hipEventSynchronize(stop);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to synchronize the stop event: " << ToString(res);
-    return false;
-  }
+  ABSL_RETURN_IF_ERROR(ToStatus(hipEventSynchronize(stop),
+                           "failed to synchronize the stop event"));
   float elapsed_milliseconds;
   ABSL_RETURN_IF_ERROR(
       ToStatus(hipEventElapsedTime(&elapsed_milliseconds, start, stop),

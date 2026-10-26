@@ -312,6 +312,20 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       } else if (IsMoe(reg, node)) {
         node_info.composite_op_type = CompositeOpType::kMoe;
       }
+      if (node_info.composite_op_type != CompositeOpType::kNone) {
+        auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
+        const auto* composite_params =
+            static_cast<const TfLiteStablehloCompositeParams*>(
+                node->builtin_data);
+        if (subgraph != nullptr && subgraph->GetSubgraphs() != nullptr &&
+            composite_params != nullptr &&
+            composite_params->subgraph_index > 0 &&
+            static_cast<size_t>(composite_params->subgraph_index) <
+                subgraph->GetSubgraphs()->size()) {
+          TF_LITE_ENSURE_STATUS(subgraph->MarkSubgraphAsDelegationSkippable(
+              composite_params->subgraph_index));
+        }
+      }
       nodes_info_.push_back(node_info);
     }
 
@@ -505,9 +519,10 @@ class YNNPackDelegate : public SimpleDelegateInterface {
     } else if (builtin_code == kTfLiteBuiltinDepthToSpace) {
       return IsDepthToSpaceSupported(registration, node, context) == kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinBatchMatmul) {
-      return IsBatchMatMulSupported(registration, node, context) == kTfLiteOk;
+      return IsBatchMatMulSupported(registration, node, context, options_) ==
+             kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinFullyConnected) {
-      return IsFullyConnectedSupported(registration, node, context) ==
+      return IsFullyConnectedSupported(registration, node, context, options_) ==
              kTfLiteOk;
     } else if (builtin_code == kTfLiteBuiltinConv2d) {
       return IsConvSupported(registration, node, context) == kTfLiteOk;
@@ -533,8 +548,8 @@ class YNNPackDelegate : public SimpleDelegateInterface {
     } else if (builtin_code == kTfLiteBuiltinDequantize) {
       return IsDequantizeSupported(registration, node, context) == kTfLiteOk;
     } else if (IsRuntimeBmm(registration, node)) {
-      return IsRuntimeBatchedMatMulSupported(registration, node, context) ==
-             kTfLiteOk;
+      return IsRuntimeBatchedMatMulSupported(registration, node, context,
+                                             options_) == kTfLiteOk;
     } else if (IsSdpa(registration, node)) {
       return IsSdpaSupported(registration, node, context) == kTfLiteOk;
     } else if (IsMoe(registration, node)) {
@@ -553,10 +568,11 @@ class YNNPackDelegate : public SimpleDelegateInterface {
   TfLiteStatus Initialize(TfLiteContext* context) override {
     auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
     if (subgraph != nullptr) {
-      auto filter = [context](const TfLiteNode* node,
-                              const TfLiteRegistration* reg) -> bool {
+      auto filter = [context, this](const TfLiteNode* node,
+                                    const TfLiteRegistration* reg) -> bool {
         if (IsRuntimeBmm(reg, node) &&
-            IsRuntimeBatchedMatMulSupported(reg, node, context) == kTfLiteOk) {
+            IsRuntimeBatchedMatMulSupported(reg, node, context, options_) ==
+                kTfLiteOk) {
           // Don't inline this supported runtime_bmm.
           return false;
         } else if (IsSdpa(reg, node) &&
@@ -605,6 +621,7 @@ TfLiteYNNPackDelegateOptions TfLiteYNNPackDelegateOptionsDefault() {
   options.fast_math = false;
   options.consistent_arithmetic = false;
   options.no_excess_precision = false;
+  options.enable_blockwise_quantization = false;
   return options;
 }
 

@@ -113,6 +113,33 @@ void MergeMemorySpace(const Shape& old_shape, Shape* new_shape) {
     }
   }
 }
+
+// Returns true if `hlo` is a custom call whose `to_apply` computation executes
+// sequentially with the caller's operands forwarded 1:1 to its parameters,
+// i.e. a call-like custom call. `CallGraph` classifies all custom calls as
+// `CallContext::kEmbedded`, so the partitioner has to recognize these itself in
+// order to partition their called computations like `kCall` callees.
+bool IsCallLikeCustomCall(const HloInstruction* hlo) {
+  return hlo->IsCustomCall("compute-on-start");
+}
+
+// Returns true if the computation of `node` is invoked in a context the
+// partitioner must treat like a control-flow callee (`kCall`, `kWhile`,
+// `kConditional`), either because `CallGraph` says so or because all of its
+// callers are call-like custom calls. Computations without callers (including
+// the entry computation) are excluded.
+bool IsControlFlowLikeCallee(const CallGraphNode& node) {
+  if (node.caller_callsites().empty()) {
+    return false;
+  }
+  if (node.context() == CallContext::kControlFlow) {
+    return true;
+  }
+  return node.context() == CallContext::kEmbedded &&
+         absl::c_all_of(node.caller_callsites(), [](const CallSite& call_site) {
+           return IsCallLikeCustomCall(call_site.instruction());
+         });
+}
 }  // namespace
 
 std::string SpmdLogger::MakeReport() {
@@ -344,13 +371,22 @@ void SpmdBuilder::SetBroadcastDimsForReshape(const HloInstruction& hlo) {
   if (it == broadcast_dims_.end()) {
     return;
   }
+  if (visiting_hlo_ == nullptr ||
+      visiting_hlo_->opcode() != HloOpcode::kReshape ||
+      visiting_hlo_->operand(0)->shape().dimensions().size() !=
+          hlo.operand(0)->shape().dimensions().size() ||
+      visiting_hlo_->shape().dimensions().size() !=
+          hlo.shape().dimensions().size()) {
+    return;
+  }
   std::vector<int64_t> iota_dims(hlo.shape().dimensions().size());
   absl::c_iota(iota_dims, 0);
   absl::flat_hash_set<int64_t> reshape_broadcast_dims(iota_dims.begin(),
                                                       iota_dims.end());
 
-  absl::Span<const int64_t> operand_dims = hlo.operand(0)->shape().dimensions();
-  absl::Span<const int64_t> hlo_dims = hlo.shape().dimensions();
+  absl::Span<const int64_t> operand_dims =
+      visiting_hlo_->operand(0)->shape().dimensions();
+  absl::Span<const int64_t> hlo_dims = visiting_hlo_->shape().dimensions();
   std::vector<int64_t> before_dim_size_stack(operand_dims.rbegin(),
                                              operand_dims.rend());
   std::vector<int64_t> after_dim_size_stack(hlo_dims.rbegin(), hlo_dims.rend());
@@ -699,7 +735,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
         hlo_sharding_util::GroupShardingOnDims(target_v2, group_dims);
     auto partially_sharded = PerGroupSliceFromReplicated(
         hlo_, state_.partition_id, target_grouped.device_groups, group_dims,
-        target_grouped.group_dim_sizes, state_.b);
+        target_grouped.group_dim_sizes, state_.b, std::move(pad_value));
     partially_sharded->set_sharding(target);
     return PartitionedHlo(partially_sharded, base_shape(), state_);
   }
@@ -7307,74 +7343,6 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
   }
 }
 
-static HloSharding ResolveReductionOpForSharding(
-    const HloInstruction* instruction, HloSharding sharding) {
-  if (sharding.IsTuple()) {
-    std::vector<HloSharding> new_elements;
-    new_elements.reserve(sharding.tuple_elements().size());
-    for (int i = 0; i < sharding.tuple_elements().size(); ++i) {
-      const HloInstruction* element_instr = nullptr;
-      if (instruction->opcode() == HloOpcode::kTuple &&
-          i < instruction->operand_count()) {
-        element_instr = instruction->operand(i);
-      } else {
-        element_instr = instruction;
-      }
-      new_elements.push_back(ResolveReductionOpForSharding(
-          element_instr, sharding.tuple_elements()[i]));
-    }
-    Shape tuple_shape;
-    if (instruction->shape().IsTuple()) {
-      tuple_shape = instruction->shape();
-    } else {
-      std::vector<Shape> shapes(new_elements.size(), instruction->shape());
-      tuple_shape = ShapeUtil::MakeTupleShape(shapes);
-    }
-    return HloSharding::Tuple(tuple_shape, new_elements);
-  }
-
-  if (sharding.UseNamedShardingLeaf()) {
-    if (sharding.named_sharding().unreduced_axes().empty()) {
-      return sharding;
-    }
-  } else if (!sharding.IsUnreducedSubgroup()) {
-    return sharding;
-  }
-
-  const HloInstruction* current = instruction;
-  while (current && current->opcode() != HloOpcode::kReduce &&
-         current->opcode() != HloOpcode::kAllReduce &&
-         current->opcode() != HloOpcode::kReduceScatter &&
-         current->operand_count() > 0) {
-    current = current->operand(0);
-  }
-  if (current && (current->opcode() == HloOpcode::kReduce ||
-                  current->opcode() == HloOpcode::kAllReduce ||
-                  current->opcode() == HloOpcode::kReduceScatter)) {
-    const HloComputation* computation = current->to_apply();
-    if (computation) {
-      const HloInstruction* root = computation->root_instruction();
-      ReductionOp reduction_op = ReductionOp::kSum;
-      if (root && root->opcode() == HloOpcode::kMaximum) {
-        reduction_op = ReductionOp::kMax;
-      } else if (root && root->opcode() == HloOpcode::kMinimum) {
-        reduction_op = ReductionOp::kMin;
-      }
-      sharding.set_reduction_op(reduction_op);
-    }
-  } else if (current && current->opcode() == HloOpcode::kParameter) {
-    const HloModule* module = current->parent()->parent();
-    if (module && module->has_spmd_parameters_shardings() &&
-        current->parameter_number() <
-            module->spmd_parameters_shardings().size()) {
-      sharding.set_reduction_op(
-          module->spmd_parameters_shardings()[current->parameter_number()]
-              .reduction_op());
-    }
-  }
-  return sharding;
-}
-
 /* static */ void SpmdPartitioner::RecordInputsOutputsSharding(
     HloModule* module) {
   // Add the parameters' and output's shardings to the module.
@@ -7389,9 +7357,7 @@ static HloSharding ResolveReductionOpForSharding(
   module->set_spmd_parameters_shardings(entry_params_shardings);
   auto entry_root = module->entry_computation()->root_instruction();
   CHECK(entry_root->has_sharding()) << "Missing sharding in entry root.";
-  HloSharding output_sharding =
-      ResolveReductionOpForSharding(entry_root, entry_root->sharding());
-  module->set_spmd_output_sharding(std::move(output_sharding));
+  module->set_spmd_output_sharding(entry_root->sharding());
 }
 
 absl::StatusOr<bool> SpmdPartitioner::RunImpl(
@@ -7436,10 +7402,7 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
             !execution_threads.contains(computation->execution_thread())) {
           return absl::OkStatus();
         }
-        if (node.context() != CallContext::kControlFlow) {
-          return absl::OkStatus();
-        }
-        if (node.caller_callsites().empty()) {
+        if (!IsControlFlowLikeCallee(node)) {
           return absl::OkStatus();
         }
         // PreprocessCallSites made sure a computation is only used by a single
@@ -7478,7 +7441,8 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
             break;
           }
           case HloOpcode::kCall:
-          case HloOpcode::kConditional: {
+          case HloOpcode::kConditional:
+          case HloOpcode::kCustomCall: {
             ABSL_RETURN_IF_ERROR(
                 PartitionComputation(computation, caller->sharding(),
                                      &next_channel_id, &logger, *call_graph)
@@ -8012,7 +7976,8 @@ absl::StatusOr<std::vector<CallSiteInfo>> GetCallSiteInfos(
       call_site_infos.push_back(call_site_info);
       break;
     }
-    case HloOpcode::kCall: {
+    case HloOpcode::kCall:
+    case HloOpcode::kCustomCall: {
       CallSiteInfo call_site_info;
       call_site_info.opcode = caller->opcode();
       call_site_info.param_sharding.reserve(caller->operand_count());
@@ -8088,7 +8053,7 @@ absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
         !execution_threads.contains(computation->execution_thread())) {
       return absl::OkStatus();
     }
-    if (node.context() != CallContext::kControlFlow) {
+    if (!IsControlFlowLikeCallee(node)) {
       return absl::OkStatus();
     }
     for (const CallSite& call_site : node.caller_callsites()) {
@@ -8103,7 +8068,8 @@ absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
                        GetCallSiteInfos(caller, computation));
       switch (caller->opcode()) {
         case HloOpcode::kWhile:
-        case HloOpcode::kCall: {
+        case HloOpcode::kCall:
+        case HloOpcode::kCustomCall: {
           CHECK_EQ(call_site_infos.size(), 1)
               << "Unexpected number of call site infos for "
               << caller->ToString();
@@ -8176,6 +8142,12 @@ absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
                 hlo->operand(i + 1)->sharding());
           }
           break;
+        }
+        case HloOpcode::kCustomCall: {
+          if (!IsCallLikeCustomCall(hlo)) {
+            break;
+          }
+          [[fallthrough]];
         }
         case HloOpcode::kCall: {
           for (int64_t i = 0; i < hlo->operand_count(); ++i) {

@@ -207,7 +207,7 @@ TEST_F(HloToTensorIrTest, UnsupportedOpFailsAndNamesTheOp) {
   EXPECT_THAT(graph.status().message(), HasSubstr("stablehlo.xor"));
 }
 
-TEST_F(HloToTensorIrTest, TupleRootFailsCleanly) {
+TEST_F(HloToTensorIrTest, TupleRootBecomesMultipleResults) {
   constexpr absl::string_view kHloText = R"(
     HloModule test_module
 
@@ -224,8 +224,9 @@ TEST_F(HloToTensorIrTest, TupleRootFailsCleanly) {
 
   auto graph =
       ImportAndLegalizeComputation(*hlo_module->entry_computation(), *module_);
-  EXPECT_THAT(graph, Not(IsOk()));
-  EXPECT_THAT(graph.status().message(), HasSubstr("stablehlo.tuple"));
+  ASSERT_THAT(graph, IsOk());
+  EXPECT_EQ(graph->getNumResults(), 2);
+  EXPECT_EQ(graph->getNumArguments(), 2);
 }
 
 TEST_F(HloToTensorIrTest, NullModuleIsRejected) {

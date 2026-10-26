@@ -9,12 +9,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string>
-
-#include "absl/strings/string_view.h"
 
 #ifndef XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_UTILS_H_
 #define XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_UTILS_H_
+
+#include <string>
+
+#include "absl/strings/string_view.h"
 
 namespace xla::gpu::nvptx {
 

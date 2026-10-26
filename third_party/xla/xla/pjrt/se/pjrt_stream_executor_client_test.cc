@@ -123,7 +123,8 @@ class StreamExecutorCpuCompiler : public PjRtCompiler {
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       const PjRtTopologyDescription& topology,
       riegeli::Any<riegeli::Reader*> reader,
-      std::optional<CompileOptions>&& options) override {
+      std::optional<CompileOptions>&& options,
+      bool executable_compatibility_check_on_deserialization) override {
     return StreamExecutorExecutable::Deserialize(std::move(reader), topology,
                                                  std::move(options));
   }
@@ -739,7 +740,7 @@ TEST(PjRtStreamExecutorClientTest, CrossHostReceiveBuffersCleanupAfterFailure) {
   EXPECT_THAT(
       client->CrossHostReceiveBuffers(client->addressable_devices()[0], shapes,
                                       src_device_ids, transfer_keys),
-      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

@@ -27,6 +27,8 @@ def ChloLegalizeToHighLevelMhloPass : Pass<"chlo-legalize-to-high-level-mhlo", "
            "Enable chlo.acosh to mhlo.acosh lowering.">,
     Option<"enable_acos_", "enable-acos", "bool", /*default=*/"false",
            "Enable chlo.acos to mhlo.acos lowering.">,
+    Option<"enable_f64_acos_", "enable-f64-acos", "bool", /*default=*/"false",
+           "Enable chlo.acos to mhlo.acos lowering for F64.">,
     Option<"enable_atanh_", "enable-atanh", "bool", /*default=*/"false",
            "Enable chlo.atanh to mhlo.atanh lowering.">,
     Option<"enable_cosh_", "enable-cosh", "bool", /*default=*/"false",
@@ -35,6 +37,8 @@ def ChloLegalizeToHighLevelMhloPass : Pass<"chlo-legalize-to-high-level-mhlo", "
            "Enable chlo.sinh to mhlo.sinh lowering.">,
     Option<"enable_asin_", "enable-asin", "bool", /*default=*/"false",
            "Enable chlo.asin to mhlo.asin lowering.">,
+    Option<"enable_f64_asin_", "enable-f64-asin", "bool", /*default=*/"false",
+           "Enable chlo.asin to mhlo.asin lowering for F64.">,
     Option<"enable_asinh_", "enable-asinh", "bool", /*default=*/"false",
            "Enable chlo.asinh to mhlo.asinh lowering.">
   ];

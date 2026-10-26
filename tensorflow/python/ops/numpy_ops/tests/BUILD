@@ -224,7 +224,7 @@ py_test(
     tags = [
         "gpu",
         "no_pip",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":config",

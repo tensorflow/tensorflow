@@ -2054,6 +2054,226 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccessWithMpmdAddressableDevices) {
   }
 }
 
+TEST_P(IfrtBackendHandlerTest, CancelExecution) {
+  if (Version().protocol_version() < protocol_version::kCancelExecution) {
+    GTEST_SKIP() << "CancelExecution is not supported in protocol version "
+                 << Version().protocol_version();
+  }
+
+  MockLoadedExecutable* executable;
+  uint64_t handle;
+  {
+    auto e = std::make_unique<MockLoadedExecutable>();
+    executable = e.get();
+    TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                            CompileTestLoadedExecutable(std::move(e)));
+    handle = response.loaded_executable_handle();
+  }
+
+  auto backend_cancellation_handle =
+      std::make_shared<LoadedExecutable::CancellationHandleObject>();
+  auto [status_promise, status_future] = tsl::MakePromise<>();
+
+  EXPECT_CALL(*executable, Execute(_, _, _))
+      .WillOnce([&, status_future = status_future](
+                    absl::Span<ArrayRef> args,
+                    const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+                    std::optional<DeviceListRef> devices)
+                    -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
+        LoadedExecutable::ExecuteResult result;
+        result.status = status_future;
+        result.cancellation_handle = backend_cancellation_handle;
+        return result;
+      });
+
+  const uint64_t cancellation_handle = 1000;
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    LoadedExecutableExecuteRequest* execute_request =
+        request->mutable_loaded_executable_execute_request();
+    execute_request->set_loaded_executable_handle(handle);
+    execute_request->set_cancellation_handle(cancellation_handle);
+    xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
+    execute_options.fill_status = true;
+    TF_ASSERT_OK(execute_options.ToProto(
+        *execute_request->mutable_execute_options(), ifrt_serdes_version()));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                            CallBackend(std::move(request)));
+    EXPECT_TRUE(response->has_loaded_executable_execute_response());
+  }
+
+  EXPECT_CALL(
+      *mock_client_,
+      CancelExecution(testing::Eq(backend_cancellation_handle),
+                      absl_testing::StatusIs(absl::StatusCode::kCancelled,
+                                             StrEq("cancelled"))))
+      .Times(1);
+
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    CancelExecutionRequest* cancel_request =
+        request->mutable_cancel_execution_request();
+    cancel_request->set_cancellation_handle(cancellation_handle);
+    *cancel_request->mutable_error() =
+        tsl::StatusToProto(absl::CancelledError("cancelled"));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                            CallBackend(std::move(request)));
+    EXPECT_TRUE(response->has_cancel_execution_response());
+  }
+
+  // A subsequent CancelExecution for the same handle is a no-op since the
+  // handle was consumed.
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    CancelExecutionRequest* cancel_request =
+        request->mutable_cancel_execution_request();
+    cancel_request->set_cancellation_handle(cancellation_handle);
+    *cancel_request->mutable_error() =
+        tsl::StatusToProto(absl::CancelledError("cancelled"));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                            CallBackend(std::move(request)));
+    EXPECT_TRUE(response->has_cancel_execution_response());
+  }
+
+  status_promise.Set(absl::CancelledError("cancelled"));
+}
+
+TEST_P(IfrtBackendHandlerTest, CancelExecutionAfterCompletionIsNoOp) {
+  if (Version().protocol_version() < protocol_version::kCancelExecution) {
+    GTEST_SKIP() << "CancelExecution is not supported in protocol version "
+                 << Version().protocol_version();
+  }
+
+  MockLoadedExecutable* executable;
+  uint64_t handle;
+  {
+    auto e = std::make_unique<MockLoadedExecutable>();
+    executable = e.get();
+    TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                            CompileTestLoadedExecutable(std::move(e)));
+    handle = response.loaded_executable_handle();
+  }
+
+  auto backend_cancellation_handle =
+      std::make_shared<LoadedExecutable::CancellationHandleObject>();
+  auto [status_promise, status_future] = tsl::MakePromise<>();
+
+  EXPECT_CALL(*executable, Execute(_, _, _))
+      .WillOnce([&, status_future = status_future](
+                    absl::Span<ArrayRef> args,
+                    const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+                    std::optional<DeviceListRef> devices)
+                    -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
+        LoadedExecutable::ExecuteResult result;
+        result.status = status_future;
+        result.cancellation_handle = backend_cancellation_handle;
+        return result;
+      });
+
+  const uint64_t cancellation_handle = 1000;
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    LoadedExecutableExecuteRequest* execute_request =
+        request->mutable_loaded_executable_execute_request();
+    execute_request->set_loaded_executable_handle(handle);
+    execute_request->set_cancellation_handle(cancellation_handle);
+    xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
+    execute_options.fill_status = true;
+    TF_ASSERT_OK(execute_options.ToProto(
+        *execute_request->mutable_execute_options(), ifrt_serdes_version()));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                            CallBackend(std::move(request)));
+    EXPECT_TRUE(response->has_loaded_executable_execute_response());
+  }
+
+  // Once the execution completes, the server drops its cancellation handle so
+  // that a later CancelExecution does not reach the backend.
+  status_promise.Set(absl::OkStatus());
+  EXPECT_CALL(*mock_client_, CancelExecution(_, _)).Times(0);
+
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    CancelExecutionRequest* cancel_request =
+        request->mutable_cancel_execution_request();
+    cancel_request->set_cancellation_handle(cancellation_handle);
+    *cancel_request->mutable_error() =
+        tsl::StatusToProto(absl::CancelledError("cancelled"));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                            CallBackend(std::move(request)));
+    EXPECT_TRUE(response->has_cancel_execution_response());
+  }
+}
+
+TEST_P(IfrtBackendHandlerTest, CancelExecutionWithoutFillStatusIsNoOp) {
+  if (Version().protocol_version() < protocol_version::kCancelExecution) {
+    GTEST_SKIP() << "CancelExecution is not supported in protocol version "
+                 << Version().protocol_version();
+  }
+
+  MockLoadedExecutable* executable;
+  uint64_t handle;
+  {
+    auto e = std::make_unique<MockLoadedExecutable>();
+    executable = e.get();
+    TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                            CompileTestLoadedExecutable(std::move(e)));
+    handle = response.loaded_executable_handle();
+  }
+
+  auto backend_cancellation_handle =
+      std::make_shared<LoadedExecutable::CancellationHandleObject>();
+
+  EXPECT_CALL(*executable, Execute(_, _, _))
+      .WillOnce([&](absl::Span<ArrayRef> args,
+                    const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+                    std::optional<DeviceListRef> devices)
+                    -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
+        LoadedExecutable::ExecuteResult result;
+        // No status future since `fill_status` is false.
+        result.cancellation_handle = backend_cancellation_handle;
+        return result;
+      });
+
+  // The server must not retain a cancellation handle that it would have no way
+  // to release before the executable is destroyed.
+  const uint64_t cancellation_handle = 1000;
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    LoadedExecutableExecuteRequest* execute_request =
+        request->mutable_loaded_executable_execute_request();
+    execute_request->set_loaded_executable_handle(handle);
+    execute_request->set_cancellation_handle(cancellation_handle);
+    xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
+    execute_options.fill_status = false;
+    TF_ASSERT_OK(execute_options.ToProto(
+        *execute_request->mutable_execute_options(), ifrt_serdes_version()));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                            CallBackend(std::move(request)));
+    EXPECT_TRUE(response->has_loaded_executable_execute_response());
+  }
+
+  EXPECT_CALL(*mock_client_, CancelExecution(_, _)).Times(0);
+
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    CancelExecutionRequest* cancel_request =
+        request->mutable_cancel_execution_request();
+    cancel_request->set_cancellation_handle(cancellation_handle);
+    *cancel_request->mutable_error() =
+        tsl::StatusToProto(absl::CancelledError("cancelled"));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                            CallBackend(std::move(request)));
+    EXPECT_TRUE(response->has_cancel_execution_response());
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(
     IfrtBackendHandlerTestWithAllVersions, IfrtBackendHandlerTest,
     testing::Range(protocol_version::kServerMin,

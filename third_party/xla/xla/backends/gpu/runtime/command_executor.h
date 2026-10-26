@@ -159,13 +159,7 @@ class CommandExecutor {
     return requires_update_on_initialize_;
   }
 
-  bool requires_warmup() const {
-    bool requires_warmup = false;
-    commands_.Walk([&](const Command* command) {
-      requires_warmup |= command->requires_warmup();
-    });
-    return requires_warmup;
-  }
+  bool requires_warmup() const { return requires_warmup_; }
 
   bool requires_update_on_execute() const {
     return requires_update_on_execute_;
@@ -257,6 +251,9 @@ class CommandExecutor {
   // Whether any command in this sequence requires an update during
   // initialization.
   bool requires_update_on_initialize_ = false;
+
+  // Whether any command, including nested commands, requires warmup.
+  bool requires_warmup_ = false;
 
   // Whether any command in this sequence requires an update on every
   // execution.

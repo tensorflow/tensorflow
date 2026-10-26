@@ -297,6 +297,9 @@ class CollectivesModeOps
     }
     debug_options.set_xla_gpu_collective_permute_mode(collectives_mode_);
     debug_options.set_xla_gpu_all_gather_mode(collectives_mode_);
+    if (RequiresCollectiveMemory()) {
+      debug_options.set_xla_gpu_experimental_nccl_window_symmetric(true);
+    }
     return debug_options;
   }
 

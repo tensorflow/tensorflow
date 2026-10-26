@@ -29,11 +29,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
@@ -45,15 +45,6 @@ class GpuTopology;
 }  // namespace xla
 
 namespace xla::gpu {
-
-// Flattens instructions inside a > 1D collective fusion to 1D instructions
-// inplace. For example, a 2D computation with shape [2, 3] will be flattened to
-// a 1D computation with shape [6] with surrounding bitcasts inserted in the
-// parent computation.
-// NB: This should only be used if the fused computation  only contains
-// elementwise operations (and the collective itself).
-absl::Status FlattenCollectiveFusion(
-    HloFusionInstruction* absl_nonnull fusion_instr);
 
 // Returns a tile such that each dimension is a power of two and that the total
 // number of blocks does not exceed num_blocks. Returns the tile sizes in
@@ -105,8 +96,12 @@ mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
 mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
                                      mlir::PatternRewriter& rewriter);
 
-// Rewrites stablehlo reduce-scatter op to a triton implementation.
-mlir::LogicalResult RewriteReduceScatter(mlir::stablehlo::ReduceScatterOp op,
+// Rewrites stablehlo all-to-all op to a triton implementation.
+mlir::LogicalResult RewriteAllToAll(mlir::stablehlo::AllToAllOp op,
+                                    mlir::PatternRewriter& rewriter);
+
+// Rewrites xtile reduce-scatter op to a triton implementation.
+mlir::LogicalResult RewriteReduceScatter(xla::xtile::ReduceScatterOp op,
                                          mlir::PatternRewriter& rewriter);
 
 // Returns the symmetric memory type for the scratch buffers of the collective
@@ -119,16 +114,31 @@ absl::StatusOr<SymmetricMemoryType> GetSymmetricMemoryType(
 // Creates a CollectiveKernelSpec for a given collective or fusion instruction.
 // `scratch_memory_type` is used for all scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateCollectiveKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type);
+    const GpuTopology& gpu_topology, const HloInstruction* instr,
+    const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type,
+    const DeviceAssignment* device_assignment = nullptr);
 
-// Reshapes a reduce-scatter fusion (whose root is a reduce-scatter that
-// satisfies IsReduceScatterFlattenable) to a 2D reduce-scatter along dimension
-// 0: the fused parameter becomes [R * R, OutputSize / R] and the root
-// [R, OutputSize / R], where R is the number of replicas per group.
-// Bitcasts are inserted around the fusion in the parent computation.
+// Returns true if `rs` needs to be reshaped by `FlattenReduceScatterFusion`
+// before tiling: either an output is not divisible by the replica group size
+// along the scatter dimension, or its per-rank element count is not a power of
+// two.
+bool ShouldFlattenReduceScatter(
+    const HloReduceScatterInstruction* absl_nonnull rs);
+
+// Reshapes a reduce-scatter fusion so every operand is scattered along dim 0
+// with output dim 0 equal to R (the number of ranks per group), and wraps the
+// fusion inputs and outputs in bitcasts in the parent computation.
+// For example, with R = 2, an operand `f32[2,4,8] -> f32[1,4,8]` is reshaped
+// to `f32[4,16] -> f32[2,16]`.
 absl::Status FlattenReduceScatterFusion(
     HloFusionInstruction* absl_nonnull fusion_instr);
+
+// Returns the collective instruction (all-reduce, all-gather, all-to-all, or
+// reduce-scatter) of a collective fusion computation, or nullptr if there is
+// none.
+const HloInstruction* GetCollectiveHero(const HloComputation* computation);
+HloInstruction* GetMutableCollectiveHero(HloComputation* computation);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

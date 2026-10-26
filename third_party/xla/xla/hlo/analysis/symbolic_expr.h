@@ -81,20 +81,18 @@ class SymbolicExpr {
   // undefined (due to undefined behavior, e.g. division by zero or overflow).
   SymbolicExpr ReplaceVariables(
       absl::Span<const SymbolicExpr> substitutions) const;
-  // TODO: b/459357586 - These methods are needed for IndexingMap, but
-  // dimensions and symbols are SymbolicMap specific. We should remove them once
-  // we have a better way to integrate SymbolicExpr with IndexingMap. It is
-  // assuming that dimensions are the first (0...num_dims-1) variables and
-  // symbols are the rest.
-  SymbolicExpr ReplaceDims(absl::Span<const SymbolicExpr> replacements) const;
-  SymbolicExpr ReplaceDims(absl::Span<const SymbolicExpr> replacements,
-                           int64_t current_num_dims, int64_t new_num_dims,
-                           int64_t num_symbols) const;
-  SymbolicExpr ReplaceSymbols(absl::Span<const SymbolicExpr> replacements,
-                              int64_t num_dims) const;
+  // Replaces dimensions and symbols, shifting symbols if `sym_replacements` is
+  // empty and the number of dimensions changes. Dimensions are the first
+  // `num_old_dims` variables and symbols are the rest.
+  //
+  // TODO: b/459357586 - This method is needed for IndexingMap, but dimensions
+  // and symbols are SymbolicMap specific. We should remove it once we have a
+  // better way to integrate SymbolicExpr with IndexingMap.
   SymbolicExpr ReplaceDimsAndSymbols(
       absl::Span<const SymbolicExpr> dim_replacements,
-      absl::Span<const SymbolicExpr> symbol_replacements) const;
+      absl::Span<const SymbolicExpr> sym_replacements = {},
+      std::optional<int64_t> num_old_dims = std::nullopt,
+      std::optional<int64_t> num_new_dims = std::nullopt) const;
 
   SymbolicExpr Canonicalize() const;
 

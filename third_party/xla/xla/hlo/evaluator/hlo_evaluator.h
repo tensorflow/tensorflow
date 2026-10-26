@@ -49,8 +49,10 @@ limitations under the License.
 #include "xla/hlo/evaluator/hlo_evaluator_interface.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
@@ -497,97 +499,6 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
 
   bool TryEvaluateDotFastPathF32(const HloInstruction* dot);
 
-  struct ShapeInfo {
-    static std::pair<DimensionVector, DimensionVector> dims(
-        const DimensionVector& dim_indexes, const Shape& literal_shape,
-        const Shape& scale_shape);
-
-    ShapeInfo(const Literal& literal, const Literal& scale_literal,
-              absl::Span<const int64_t> contracting_dims_field,
-              absl::Span<const int64_t> batch_dims_field);
-    ~ShapeInfo();
-
-    const int64_t rank;
-    DimensionVector batch_dim_indexes;
-    DimensionVector batch_dim_sizes;
-    DimensionVector batch_dim_scale_divisors;
-
-    DimensionVector non_contracting_dim_indexes;
-    DimensionVector non_contracting_dim_sizes;
-    DimensionVector non_contracting_dim_scale_divisors;
-
-    DimensionVector contracting_dim_indexes;
-    DimensionVector contracting_dim_sizes;
-    DimensionVector contracting_dim_scale_divisors;
-  };
-
-  struct DotDimensionInfo {
-    DotDimensionInfo(
-        const Shape& lhs_shape, const Shape& rhs_shape,
-        const DotDimensionNumbers& dnums,
-        std::optional<int64_t> extra_rhs_contracting_dim = std::nullopt);
-    ~DotDimensionInfo();
-
-    int64_t lhs_rank;
-    int64_t rhs_rank;
-    DimensionVector lhs_non_contracting_dims;
-    DimensionVector rhs_non_contracting_dims;
-    DimensionVector lhs_contracting_dims;
-    DimensionVector rhs_contracting_dims;
-    DimensionVector contracting_dim_sizes;
-    int64_t total_contraction_size;
-  };
-
-  absl::Status EvaluateConvolution(
-      const HloInstruction* conv, bool use_f32_fast_path,
-      absl::FunctionRef<absl::Status(
-          const Literal& lhs_literal, const Literal& rhs_literal,
-          const Shape& window_shape, const DimensionVector& lhs_dim_multipliers,
-          const DimensionVector& rhs_dim_multipliers, Literal* result)>
-          evaluate_impl);
-
-  absl::Status EvaluateDotSlowPath(
-      const HloInstruction* dot,
-      absl::FunctionRef<
-          absl::Status(const Literal& lhs_literal, const Literal& rhs_literal,
-                       const DotDimensionInfo& dot_info, Literal* result)>
-          evaluate_impl);
-
-  absl::Status EvaluateRaggedDot(
-      const HloInstruction* dot,
-      absl::FunctionRef<absl::Status(
-          const Literal& lhs_literal, const Literal& rhs_literal,
-          const Literal& gs_literal, const DotDimensionInfo& dot_info,
-          int64_t ragged_dim_as_contracting_dim, Literal* result)>
-          contracting_impl,
-      absl::FunctionRef<
-          absl::Status(const Literal& lhs_literal, const Literal& rhs_literal,
-                       const Literal& gs_literal,
-                       const DotDimensionInfo& dot_info, Literal* result)>
-          batch_impl,
-      absl::FunctionRef<
-          absl::Status(const Literal& lhs_literal, const Literal& rhs_literal,
-                       const Literal& gs_literal,
-                       const DotDimensionInfo& dot_info, Literal* result)>
-          non_contracting_impl);
-
-  absl::Status EvaluateScaledDot(
-      const HloInstruction* dot,
-      absl::FunctionRef<absl::Status(
-          const Literal& lhs_literal, const Literal& rhs_literal,
-          const Literal& lhs_scale_literal, const Literal& rhs_scale_literal,
-          const ShapeInfo& lhs_info, const ShapeInfo& rhs_info,
-          int64_t total_contraction_size, Literal* result)>
-          evaluate_impl);
-
-  absl::Status EvaluatePad(
-      const HloInstruction* pad,
-      absl::FunctionRef<absl::Status(
-          const Literal& evaluated_operand, const Literal& evaluated_padding,
-          absl::Span<int64_t> target_index, absl::Span<const int64_t> zero_base,
-          absl::Span<const int64_t> step, Literal* result)>
-          evaluate_impl);
-
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
   // class.
   //
@@ -666,6 +577,11 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
   absl::Status HandleOptimizationBarrier(
       const HloInstruction* optimization_barrier) override;
+  absl::Status HandleConvolution(const HloInstruction* conv) override;
+  absl::Status HandleDot(const HloInstruction* dot) override;
+  absl::Status HandleRaggedDot(const HloInstruction* dot) override;
+  absl::Status HandleScaledDot(const HloInstruction* dot) override;
+  absl::Status HandlePad(const HloInstruction* pad) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
   // expanded in a semantic-preserving way into other HLOs by adding expansion
@@ -700,6 +616,8 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // Crash with log if the given instruction has not been evaluated previously.
   const Literal& GetEvaluatedLiteralFor(const HloInstruction* hlo) {
     if (hlo->IsConstant()) {
+      CHECK(Cast<HloConstantInstruction>(hlo)->HasLiteral())
+          << "constant instruction has no literal: " << hlo->ToString();
       return hlo->literal();
     }
     if (hlo->opcode() == HloOpcode::kParameter && state_.has_args()) {
@@ -719,6 +637,8 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
       return state_.extract_evaluated(hlo);
     }
     if (hlo->IsConstant()) {
+      CHECK(Cast<HloConstantInstruction>(hlo)->HasLiteral())
+          << "constant instruction has no literal: " << hlo->ToString();
       return hlo->literal().Clone();
     }
     if (hlo->opcode() == HloOpcode::kParameter && state_.has_args()) {

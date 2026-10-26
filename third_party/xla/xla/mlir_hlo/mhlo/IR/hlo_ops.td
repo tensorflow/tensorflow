@@ -3067,6 +3067,49 @@ def MHLO_FftOp: MHLO_Op<"fft", [InferTensorType, Pure]> {
   let results = (outs MHLO_Tensor);
 }
 
+def MHLO_FmaOp : MHLO_Op<"fma",
+    [Pure, HLO_CompatibleOperandsAndResultType, InferShapedTypeOpInterface,
+     SameOperandsAndResultShape, Elementwise]> {
+  let summary = "Fma operation";
+  let description = [{
+    Performs element-wise single-rounded IEEE-754 fused multiply-add of `a`,
+    `b`, and `c` tensors and produces a `result` tensor.
+
+    See:
+    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#fma
+
+    Example:
+    ```mlir
+    %result = mhlo.fma %a, %b, %c : tensor<3xf32>
+    ```
+  }];
+  let arguments = (ins
+    MHLO_FpTensor:$a,
+    MHLO_FpTensor:$b,
+    MHLO_FpTensor:$c
+  );
+
+  let results = (outs MHLO_FpTensor:$result);
+
+  let extraClassDeclaration = [{
+    LogicalResult reifyReturnTypeShapes(
+        OpBuilder& builder, ValueRange operands,
+        SmallVectorImpl<Value>& reifiedReturnShapes) {
+      return ::mlir::hlo::deriveShapeFromOperand(&builder, getOperation(),
+                                                 operands.front(),
+                                                 &reifiedReturnShapes);
+    }
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return mlir::hlo::isCompatibleForHloTypeInference(l, r);
+    }
+  }];
+
+  let assemblyFormat = [{
+    $a `,` $b `,` $c attr-dict
+      `:` custom<SameOperandsAndResultType>(type($a), type($b), type($c), type($result))
+  }];
+}
+
 def MHLO_GatherOp: MHLO_Op<"gather", [InferTensorTypeWithReify, Pure]> {
   let summary = "Gather operation";
   let description = [{

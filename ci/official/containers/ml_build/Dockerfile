@@ -71,7 +71,6 @@ RUN if [ "${INSTALL_CMAKE_TOOLCHAIN}" = "true" ]; then \
 # Setup links for TensorFlow to compile.
 # Referenced in devel.usertools/*.bazelrc.
 # Set python3.12 as the default python version.
-# TF does not support python3.13.
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python
 RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python

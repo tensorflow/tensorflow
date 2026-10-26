@@ -87,8 +87,6 @@ cc_library(
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:hlo_proto_cc",
-        "//xla/service/spmd/shardy:constants",
-        "//xla/service/spmd/shardy:utils",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",

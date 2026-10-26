@@ -3475,6 +3475,18 @@ TEST_F(LatencyHidingSchedulerTest, AddDeleteOccupierForSharedResource) {
   DefaultSchedulerCore::AddOccupierToResource(0, edge3, occupiers);
   DefaultSchedulerCore::DeleteOccupierFromResource(4, edge3, occupiers);
   CHECK(check_eq({3, 4.5}));
+
+  // Large latencies where 0.0001 is smaller than 0.5 ULP of OriginalLatency().
+  occupiers.clear();
+  HloEdge large_edge1(1e13, nullptr);
+  HloEdge large_edge2(2e13, nullptr);
+  HloEdge large_edge3(3e13, nullptr);
+  EXPECT_TRUE(
+      DefaultSchedulerCore::AddOccupierToResource(0, large_edge1, occupiers));
+  EXPECT_TRUE(
+      DefaultSchedulerCore::AddOccupierToResource(0, large_edge2, occupiers));
+  EXPECT_TRUE(
+      DefaultSchedulerCore::AddOccupierToResource(0, large_edge3, occupiers));
 }
 
 TEST_F(LatencyHidingSchedulerTest, DepthPressureReduction) {

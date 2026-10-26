@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@xla//xla/tsl:tsl.bzl", "tf_openmp_copts")
 load("@xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml", "if_mkldnn_openmp")
 

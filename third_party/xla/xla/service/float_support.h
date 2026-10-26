@@ -65,8 +65,8 @@ class FloatSupport {
   // high-precision type will not change the output. This typically includes
   // HLOs that pass elements from the operand to the output without arithmetic
   // operations.
-  static bool EffectiveOperandPrecisionIsOutputPrecision(
-      const HloInstruction& hlo, int64_t operand_index);
+  bool EffectiveOperandPrecisionIsOutputPrecision(const HloInstruction& hlo,
+                                                  int64_t operand_index) const;
 
   // Returns if the backend only uses low precision for the operand at the
   // specified index, even if the operand is in the high-precision type.

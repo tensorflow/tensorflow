@@ -62,6 +62,7 @@ load(
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
+    "tf_override_test_tags_by_target_name",
     _tf_cuda_2gpu_tests_tags = "tf_cuda_2gpu_tests_tags",
     _tf_cuda_base_tests_tags = "tf_cuda_base_tests_tags",
     _tf_cuda_tests_tags = "tf_cuda_tests_tags",
@@ -84,7 +85,12 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
-    "rocm_copts",
+    "if_rocm_is_configured",
+    "is_rocm_configured",
+)
+load(
+    "@config_rocm_hipcc//rocm:build_defs.bzl",
+    "rocm_library",
 )
 load(
     "@xla//xla/tsl:tsl.bzl",
@@ -1506,10 +1512,10 @@ def tf_gen_op_wrapper_py(
         linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         visibility = [clean_dep("//tensorflow:internal")],
-        deps = ([
+        deps = (deps + [
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/python/framework:python_op_gen_main"),
-        ] + deps),
+        ]),
         testonly = testonly,
     )
 
@@ -1611,6 +1617,11 @@ def tf_cc_test(
         linkopts = lrt_if_needed(),
         kernels = [],
         **kwargs):
+    if "tags" in kwargs:
+        kwargs["tags"] = tf_override_test_tags_by_target_name(
+            "%s%s" % (name, suffix),
+            kwargs["tags"],
+        )
     cc_test(
         name = "%s%s" % (name, suffix),
         srcs = srcs + tf_binary_additional_srcs(),
@@ -1695,6 +1706,10 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def strip_gpu_tags(tags):
+    """Returns `tags` without any `requires-gpu-*` tag."""
+    return [tag for tag in tags if not tag.startswith("requires-gpu-")]
+
 # TODO(jakeharmon): Replace with an implementation which doesn't add a
 # dependency on core:common_runtime
 def tf_gpu_cc_test(
@@ -1752,9 +1767,7 @@ def tf_gpu_cc_test(
     )
     targets.append(name + "_gpu")
     if "multi_gpu" in tags or "multi_and_single_gpu" in tags:
-        cleaned_tags = tags + tf_cuda_2gpu_tests_tags()
-        if "requires-gpu-nvidia" in cleaned_tags:
-            cleaned_tags.remove("requires-gpu-nvidia")
+        cleaned_tags = strip_gpu_tags(tags) + tf_cuda_2gpu_tests_tags()
         tf_cc_test(
             name = name,
             size = size,
@@ -1797,7 +1810,7 @@ def tf_gpu_only_cc_test(
         linkopts = [],
         features = [],
         extra_copts = []):
-    tags = tags + tf_gpu_tests_tags()
+    tags = tf_override_test_tags_by_target_name("%s%s" % (name, "_gpu"), tags + tf_gpu_tests_tags())
 
     gpu_lib_name = "%s%s" % (name, "_gpu_lib")
     tf_gpu_kernel_library(
@@ -1997,10 +2010,11 @@ def tf_gpu_kernel_library(
         deps = [],
         hdrs = [],
         **kwargs):
-    copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + rocm_copts(opts = cuda_copts)
+    copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + if_rocm_is_configured(cuda_copts)
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
+    gpu_library = rocm_library if is_rocm_configured() else cuda_library
 
-    cuda_library(
+    gpu_library(
         srcs = srcs,
         hdrs = hdrs,
         copts = copts,
@@ -2378,10 +2392,11 @@ def tf_custom_op_library(
 
     if gpu_srcs:
         basename = name.split(".")[0]
-        cuda_library(
+        gpu_library = rocm_library if is_rocm_configured() else cuda_library
+        gpu_library(
             name = basename + "_gpu",
             srcs = gpu_srcs,
-            copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
+            copts = copts + tf_copts() + _cuda_copts() +
                     if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
             deps = deps + gpu_deps,
             **kwargs
@@ -2660,6 +2675,8 @@ def py_test(
         env = {},
         extra_pywrap_deps = [clean_dep("//tensorflow/python:_pywrap_tensorflow")],
         **kwargs):
+    if "tags" in kwargs and "name" in kwargs:
+        kwargs["tags"] = tf_override_test_tags_by_target_name(kwargs["name"], kwargs["tags"])
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 
@@ -2875,9 +2892,7 @@ def gpu_py_test(
         if config == "gpu":
             test_tags = test_tags + tf_cuda_tests_tags()
         if config == "2gpu":
-            test_tags = test_tags + tf_cuda_2gpu_tests_tags()
-            if "requires-gpu-nvidia" in test_tags:
-                test_tags.remove("requires-gpu-nvidia")
+            test_tags = strip_gpu_tags(tags) + tf_cuda_2gpu_tests_tags()
 
         # TODO(b/215751004): CPU on XLA tests are skipped intentionally.
         if config != "cpu" and xla_enable_strict_auto_jit:

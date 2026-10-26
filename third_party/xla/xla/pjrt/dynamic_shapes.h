@@ -55,6 +55,7 @@ struct PjRtShapeAndMetadataTransferRequirements {
   }
 
   size_t size = 0;
+  size_t unpadded_size = 0;
   size_t metadata_alignment = 0;
   size_t metadata_offset = 0;
   size_t metadata_size = 0;

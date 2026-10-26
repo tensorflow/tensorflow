@@ -632,7 +632,9 @@ tf_py_strict_test(
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -945,6 +947,7 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",

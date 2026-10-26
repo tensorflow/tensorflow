@@ -92,7 +92,8 @@ TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
       auto literal = LiteralUtil::CreateR2FromArray2D<float>(input);
 
       for (int k : {2, 4, 8, 16, 32, 64}) {
-        const auto hlo_text_module = absl::Substitute(R"(
+        const auto hlo_text_module = absl::Substitute(
+            R"(
       HloModule topk
 
       %top_k_gt_f32_comparator.4 (approx_top_k.35: f32[], approx_top_k.36: f32[], approx_top_k.37: s32[], approx_top_k.38: s32[]) -> pred[] {
@@ -106,14 +107,16 @@ TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
       ENTRY TopK {
         x = f32[$0,$1]{1,0} parameter(0)
         %approx_top_k.60 = s32[$1]{0} iota(), iota_dimension=0
-        %approx_top_k.61 = s32[$0,$1]{1,0} broadcast(%approx_top_k.60), dimensions={1}
+        %approx_top_k.61 = s32[$0,$1]{1,0} $3
         %approx_top_k.62 = (f32[$0,$1]{1,0}, s32[$0,$1]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=true, to_apply=%top_k_gt_f32_comparator.4
         %approx_top_k.64 = f32[$0,$2]{1,0} slice(%approx_top_k.62#0), slice={[0:$0], [0:$2]}
         %approx_top_k.66 = s32[$0,$2]{1,0} slice(%approx_top_k.62#1), slice={[0:$0], [0:$2]}
         ROOT %approx_top_k.67 = (f32[$0,$2]{1,0}, s32[$0,$2]{1,0}) tuple(%approx_top_k.64, %approx_top_k.66)
       }
     )",
-                                                      batch, n, k);
+            batch, n, k,
+            batch == 1 ? "reshape(%approx_top_k.60)"
+                       : "broadcast(%approx_top_k.60), dimensions={1}");
 
         ASSERT_OK_AND_ASSIGN(auto module,
                              ParseAndReturnVerifiedModule(hlo_text_module));
@@ -203,7 +206,8 @@ TEST_F(TopkTest, ApproxTopKWithSpecialBFloat16) {
       auto literal = LiteralUtil::CreateR2FromArray2D<bfloat16>(input);
 
       for (int k : {2, 4, 8, 16, 32, 64}) {
-        const auto hlo_text_module = absl::Substitute(R"(
+        const auto hlo_text_module = absl::Substitute(
+            R"(
       HloModule topk
 
       %top_k_gt_bf16_comparator.4 (approx_top_k.35: bf16[], approx_top_k.36: bf16[], approx_top_k.37: s32[], approx_top_k.38: s32[]) -> pred[] {
@@ -217,14 +221,16 @@ TEST_F(TopkTest, ApproxTopKWithSpecialBFloat16) {
       ENTRY TopK {
         x = bf16[$0,$1]{1,0} parameter(0)
         %approx_top_k.60 = s32[$1]{0} iota(), iota_dimension=0
-        %approx_top_k.61 = s32[$0,$1]{1,0} broadcast(%approx_top_k.60), dimensions={1}
+        %approx_top_k.61 = s32[$0,$1]{1,0} $3
         %approx_top_k.62 = (bf16[$0,$1]{1,0}, s32[$0,$1]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=true, to_apply=%top_k_gt_bf16_comparator.4
         %approx_top_k.64 = bf16[$0,$2]{1,0} slice(%approx_top_k.62#0), slice={[0:$0], [0:$2]}
         %approx_top_k.66 = s32[$0,$2]{1,0} slice(%approx_top_k.62#1), slice={[0:$0], [0:$2]}
         ROOT %approx_top_k.67 = (bf16[$0,$2]{1,0}, s32[$0,$2]{1,0}) tuple(%approx_top_k.64, %approx_top_k.66)
       }
     )",
-                                                      batch, n, k);
+            batch, n, k,
+            batch == 1 ? "reshape(%approx_top_k.60)"
+                       : "broadcast(%approx_top_k.60), dimensions={1}");
 
         ASSERT_OK_AND_ASSIGN(auto module,
                              ParseAndReturnVerifiedModule(hlo_text_module));

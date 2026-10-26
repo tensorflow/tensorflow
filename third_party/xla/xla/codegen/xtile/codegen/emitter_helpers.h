@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -42,10 +43,10 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/ir_emission_utils.h"  // IWYU pragma:  export
-#include "xla/codegen/tiling/experimental/scheduling.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/scheduling.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -68,16 +69,14 @@ static constexpr auto kTritonDivisibilityAttr = "tt.divisibility";
 
 // Maps sequential dimensions to their current value and its range.
 using SequentialDimValueMap =
-    absl::flat_hash_map<gpu::experimental::TiledDimId,
-                        std::pair<mlir::Value, Interval>>;
+    absl::flat_hash_map<gpu::TiledDimId, std::pair<mlir::Value, Interval>>;
 
 // Removes `dim_id` from `map` when destroyed. Mappings are scoped because the
 // mapped values, e.g. loop induction variables, do not dominate code emitted
 // outside of their loop.
 class ScopedSequentialDimBinding {
  public:
-  ScopedSequentialDimBinding(SequentialDimValueMap* map,
-                             gpu::experimental::TiledDimId dim_id)
+  ScopedSequentialDimBinding(SequentialDimValueMap* map, gpu::TiledDimId dim_id)
       : map_(map), dim_id_(dim_id) {}
   ScopedSequentialDimBinding(ScopedSequentialDimBinding&& other) noexcept
       : map_(std::exchange(other.map_, nullptr)), dim_id_(other.dim_id_) {}
@@ -90,17 +89,17 @@ class ScopedSequentialDimBinding {
 
  private:
   SequentialDimValueMap* map_;
-  gpu::experimental::TiledDimId dim_id_;
+  gpu::TiledDimId dim_id_;
 };
 
 // Convenience class for holding the emitted values.
 class EmitterContext {
  public:
-  EmitterContext(
-      mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-      mlir::Value pid, mlir::Value tid, gpu::experimental::Schedule schedule,
-      xtile::EntryFuncOp entry_func,
-      const gpu::experimental::TiledHloComputation& tiled_computation)
+  EmitterContext(mlir::ImplicitLocOpBuilder& b,
+                 const HloFusionInstruction* fusion, mlir::Value pid,
+                 mlir::Value tid, gpu::Schedule schedule,
+                 xtile::EntryFuncOp entry_func,
+                 const gpu::TiledHloComputation& tiled_computation)
       : b_(b),
         pid_(pid),
         tid_(tid),
@@ -114,14 +113,14 @@ class EmitterContext {
   mlir::Value tid() const { return tid_; }
   const HloFusionInstruction& fusion() const { return *fusion_; }
   xtile::EntryFuncOp entry_func() const { return entry_func_; }
-  const gpu::experimental::TiledHloComputation& tiled_computation() const {
+  const gpu::TiledHloComputation& tiled_computation() const {
     return tiled_computation_;
   }
 
   // Returns the single result of `tiled_hlo`. Multi-result instructions (e.g.
   // variadic collectives) must be addressed with an explicit result index.
   TensorValue TiledHloToTensorValue(
-      const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
+      const gpu::TiledHloInstruction& tiled_hlo) const {
     const auto& results = tiled_hlo_to_tensors_.at(&tiled_hlo);
     CHECK_EQ(results.size(), 1)
         << "Expected a single result for " << tiled_hlo.hlo()->ToString();
@@ -129,9 +128,8 @@ class EmitterContext {
   }
 
   // Returns result `result_index` of `tiled_hlo`.
-  TensorValue TiledHloToTensorValue(
-      const gpu::experimental::TiledHloInstruction& tiled_hlo,
-      int64_t result_index) const {
+  TensorValue TiledHloToTensorValue(const gpu::TiledHloInstruction& tiled_hlo,
+                                    int64_t result_index) const {
     const auto& results = tiled_hlo_to_tensors_.at(&tiled_hlo);
     CHECK_GE(result_index, 0);
     CHECK_LT(result_index, results.size())
@@ -140,22 +138,19 @@ class EmitterContext {
   }
 
   // Maps `tiled_hlo` to its results. Returns false if it was already mapped.
-  bool MapTiledHloToTensorValues(
-      const gpu::experimental::TiledHloInstruction* tiled_hlo,
-      llvm::ArrayRef<TensorValue> values) {
+  bool MapTiledHloToTensorValues(const gpu::TiledHloInstruction* tiled_hlo,
+                                 llvm::ArrayRef<TensorValue> values) {
     return tiled_hlo_to_tensors_
         .try_emplace(tiled_hlo, values.begin(), values.end())
         .second;
   }
 
-  bool IsEmitted(
-      const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
+  bool IsEmitted(const gpu::TiledHloInstruction& tiled_hlo) const {
     return tiled_hlo_to_tensors_.contains(&tiled_hlo);
   }
 
-  bool MapTiledHloToTensorValue(
-      const gpu::experimental::TiledHloInstruction* tiled_hlo,
-      TensorValue value) {
+  bool MapTiledHloToTensorValue(const gpu::TiledHloInstruction* tiled_hlo,
+                                TensorValue value) {
     return MapTiledHloToTensorValues(tiled_hlo, {value});
   }
 
@@ -188,18 +183,39 @@ class EmitterContext {
   absl::StatusOr<mlir::SmallVector<mlir::Value>> EvaluateTilingParameters(
       mlir::ArrayRef<SymbolicExpr> exprs);
 
+  // A tiled scan leaves its `scf.for` over the scan dimension open, so that
+  // the epilogue and the writes of the output tiles are emitted inside the
+  // loop. EmitGeneric closes it by yielding `carries`; `binding` keeps the
+  // induction variable bound until then.
+  void SetOpenScanLoop(mlir::scf::ForOp for_op, mlir::ValueRange carries,
+                       ScopedSequentialDimBinding binding) {
+    open_scan_loop_ = for_op;
+    open_scan_carries_.assign(carries.begin(), carries.end());
+    open_scan_binding_.emplace(std::move(binding));
+  }
+  void ResetOpenScanLoop() {
+    open_scan_loop_ = nullptr;
+    open_scan_carries_.clear();
+    open_scan_binding_.reset();
+  }
+  mlir::scf::ForOp open_scan_loop() const { return open_scan_loop_; }
+  mlir::ValueRange open_scan_carries() const { return open_scan_carries_; }
+
  private:
   mlir::ImplicitLocOpBuilder& b_;
   mlir::Value pid_;
   mlir::Value tid_;
-  absl::flat_hash_map<const gpu::experimental::TiledHloInstruction*,
+  absl::flat_hash_map<const gpu::TiledHloInstruction*,
                       llvm::SmallVector<TensorValue, 1>>
       tiled_hlo_to_tensors_;
-  gpu::experimental::Schedule schedule_;
+  gpu::Schedule schedule_;
   const HloFusionInstruction* fusion_ = nullptr;
   xtile::EntryFuncOp entry_func_;
-  const gpu::experimental::TiledHloComputation& tiled_computation_;
+  const gpu::TiledHloComputation& tiled_computation_;
   SequentialDimValueMap sequential_dim_id_to_value_;
+  std::optional<ScopedSequentialDimBinding> open_scan_binding_;
+  mlir::scf::ForOp open_scan_loop_;
+  llvm::SmallVector<mlir::Value> open_scan_carries_;
 };
 
 // Constructs and holds information needed to construct a tile. This information
@@ -208,12 +224,7 @@ class EmitterContext {
 class TileInfo {
  public:
   static absl::StatusOr<TileInfo> Construct(
-      mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
-      mlir::ValueRange runtime_values, const TiledHloInstruction& tiled_hlo);
-
-  static absl::StatusOr<TileInfo> Construct(
-      EmitterContext& ctx,
-      const gpu::experimental::TiledHloInstruction& tiled_hlo);
+      EmitterContext& ctx, const gpu::TiledHloInstruction& tiled_hlo);
 
   // Tile offsets in storage coordinates. Its size is equal to the rank of the
   // output shape.
@@ -555,9 +566,10 @@ TensorValue EmitTiledTranspose(mlir::ImplicitLocOpBuilder& b,
                                llvm::SmallVector<int64_t> dimensions,
                                TensorValue input);
 
-// Emits a reduction computation.
+// Emits a reduction computation (two scalar arguments of `element_type`) as
+// the region of `reduction`.
 absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
-                                   const HloInstruction* hlo_reduction,
+                                   PrimitiveType element_type,
                                    const HloComputation* reduction_computation,
                                    mlir::Operation* reduction);
 }  // namespace xla::xtile

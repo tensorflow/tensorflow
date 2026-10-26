@@ -377,10 +377,6 @@ class ElementalIrEmitterForTests : public ElementalIrEmitter {
   HloToElementGeneratorMap generator_map_;
 };
 
-absl::StatusOr<llvm::Value*> EmitIota(
-    const HloInstruction* hlo, const llvm_ir::IrArray::Index& target_index,
-    llvm::Module* module, llvm::IRBuilderBase* b);
-
 }  // namespace xla
 
 #endif  // XLA_SERVICE_ELEMENTAL_IR_EMITTER_H_

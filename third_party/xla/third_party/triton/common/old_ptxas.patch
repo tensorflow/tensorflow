@@ -31,6 +31,67 @@ On Blackwell architectures with PTX 8.8+, upstream Triton generates 256-bit glob
    // PRE_BW-LABEL: global_load_v4_b64
    // PRE_BW-NOT: ld.global.v4.b64
    // PRE_BW: ld.global.v2.b64
+@@ -156,10 +156,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
+ 
+   // FP4-LABEL: @fp4_to_fp16
+   // FP4-NOT: cvt.rn.bf16x2.e2m1x2
+-  // FP16-NATIVE-COUNT-4: nvvm.convert.f4x2.to.f16x2 {{.*}} : i8(f4E2M1FN) -> vector<2xf16>
+-  // FP16-LEGACY-NOT: nvvm.convert.f4x2.to.f16x2
++  // FP16-NATIVE-COUNT-4: cvt.rn.f16x2.e2m1x2
++  // FP16-LEGACY-NOT: cvt.rn.f16x2.e2m1x2
+   // FP16-LEGACY: cvt.rn.f16x2.e4m3x2
+-  // FP16-LEGACY-NOT: nvvm.convert.f4x2.to.f16x2
++  // FP16-LEGACY-NOT: cvt.rn.f16x2.e2m1x2
+   // FP4-NOT: cvt.rn.bf16x2.e2m1x2
+   tt.func private @fp4_to_fp16(%in: tensor<128xi8, #packed_fp4>) -> tensor<256xf16, #unpacked_fp4> {
+     %out = ttg.fp4_to_fp %in {axis = 0 : i32} : tensor<128xi8, #packed_fp4> -> tensor<256xf16, #unpacked_fp4>
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Fp4ToFpOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Fp4ToFpOpToLLVM.cpp
+@@ -44,6 +44,16 @@ static constexpr const char *FP4ToBf16NativePtx =
+     "cvt.rn.bf16x2.e2m1x2 $3, b3;\n"
+     "}";
+ 
++static constexpr const char *FP4ToFp16NativePtx =
++    "{\n"
++    ".reg .b8 b<4>;\n"
++    "mov.b32 {b0, b1, b2, b3}, $4;\n"
++    "cvt.rn.f16x2.e2m1x2 $0, b0;\n"
++    "cvt.rn.f16x2.e2m1x2 $1, b1;\n"
++    "cvt.rn.f16x2.e2m1x2 $2, b2;\n"
++    "cvt.rn.f16x2.e2m1x2 $3, b3;\n"
++    "}";
++
+ static constexpr const char *FP4ToFP16Ptx =
+     "{\n"
+     ".reg .b32           a<11>;\n"
+@@ -100,23 +110,10 @@ protected:
+     bool toFp16 = elemType == f16_ty;
+     auto b = TritonLLVMOpBuilder(loc, rewriter);
+     std::array<Value, 8> results;
+-    if (toFp16 && targetInfo.getComputeCapability() >= 100 &&
+-        targetInfo.getPtxVersion() >= 86) {
+-      Value bytes = b.bitcast(packedVec, vec_ty(i8_ty, 4));
+-      for (int i = 0; i < 4; ++i) {
+-        Value byte = b.extract_element(bytes, b.i32_val(i));
+-        Value elements = NVVM::ConvertF4x2ToF16x2Op::create(
+-            rewriter, loc, vec_ty(f16_ty, 2), byte, Float4E2M1FNType::get(ctx),
+-            false);
+-        results[2 * i] = b.extract_element(elements, b.i32_val(0));
+-        results[2 * i + 1] = b.extract_element(elements, b.i32_val(1));
+-      }
+-      return results;
+-    }
+     std::string ptx = toFp16 ? FP4ToFP16Ptx : FP4ToBP16Ptx;
+-    if (!toFp16 && targetInfo.getComputeCapability() >= 100 &&
+-        targetInfo.getPtxVersion() >= 92)
+-      ptx = FP4ToBf16NativePtx;
++    if (targetInfo.getComputeCapability() >= 100 &&
++        targetInfo.getPtxVersion() >= (toFp16 ? 86 : 92))
++      ptx = toFp16 ? FP4ToFp16NativePtx : FP4ToBf16NativePtx;
+     SmallVector<Type> rets(4, i32_ty);
+     Type retType = struct_ty(rets);
+     Value ret = createInlineAsmUpcast(loc, rewriter, ptx, retType, packedVec);
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp

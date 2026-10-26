@@ -43,7 +43,7 @@ class GrpcRemoteMaster : public MasterInterface {
   explicit GrpcRemoteMaster(const SharedGrpcChannelPtr& client_channel)
       : stub_(grpc::MasterService::NewStub(client_channel)) {}
 
-  ~GrpcRemoteMaster() override {}
+  ~GrpcRemoteMaster() override = default;
 
   absl::Status CreateSession(CallOptions* call_options,
                              const CreateSessionRequest* request,

@@ -32,10 +32,10 @@ licenses(["notice"])  # MIT
 # Coverage differs per library:
 #   * libibverbs: NOT linked at all. MORI dlopen()s it at runtime (ibv_shim.cpp);
 #     this shim only carries the vendored @rdma_core headers.
-#   * libdrm/libdrm_amdgpu, libnuma: bundled in therock ROCm under
-#     rocm_dist/lib/rocm_sysdeps/lib, exposed as @local_config_rocm//rocm:{drm,
-#     drm_amdgpu,numa} and used unconditionally (both the hermetic dist and a
-#     local therock /opt/rocm ship rocm_sysdeps), so no host -l is needed.
+#   * libdrm/libdrm_amdgpu, libnuma: exposed as @local_config_rocm//rocm:{drm,
+#     drm_amdgpu,numa}. These resolve to the copies bundled by therock ROCm
+#     under rocm_dist/lib/rocm_sysdeps/lib, or to the host libraries (-ldrm,
+#     -ldrm_amdgpu, -lnuma) on classic ROCm installs without rocm_sysdeps.
 #
 # They are hosted here (not under xla/third_party/ as separate repos) because
 # right now only @roc_mori references them. If a future ROCm release bundles
@@ -55,12 +55,10 @@ alias(
 # drmClose). Only listed by mori_application, since :hsakmt itself is a
 # static archive whose link-time deps must be resolved by the consumer.
 #
-# These come from the therock ROCm distribution under rocm_dist/lib/
-# rocm_sysdeps/lib, exposed as @local_config_rocm//rocm:{drm,drm_amdgpu,numa}.
-# Used unconditionally: both the hermetic dist and a local therock /opt/rocm ship
-# rocm_sysdeps, so there is no host -ldrm/-lnuma dependency in either mode. (If
-# building against a classic, non-therock ROCm without rocm_sysdeps, these would
-# need to fall back to host -l; that is not a configuration this branch targets.)
+# @local_config_rocm//rocm:{drm,drm_amdgpu,numa} resolve to the therock copies
+# under rocm_dist/lib/rocm_sysdeps/lib when present (hermetic dist or a local
+# therock /opt/rocm), and to the host -ldrm/-ldrm_amdgpu/-lnuma on classic ROCm,
+# whose libhsakmt.a was built against the host libraries.
 cc_library(
     name = "libdrm",
     deps = [

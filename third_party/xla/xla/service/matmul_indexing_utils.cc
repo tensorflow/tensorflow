@@ -21,6 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
@@ -255,6 +257,10 @@ DotOperandDims DotOperandDims::GetPermuted(
   return copy;
 }
 
+bool DotOperandDims::IsSorted(Category category) const {
+  return absl::c_is_sorted(dim_numbers_[category]);
+}
+
 bool DotOperandDims::IsConsecutive(Category category) const {
   const auto& dims = dim_numbers_[category];
   return absl::c_adjacent_find(dims, [](int64_t a, int64_t b) {
@@ -294,9 +300,12 @@ std::optional<std::vector<int64_t>> DotOperandDims::PermuteToConsecutive(
   const auto& dims = dim_numbers_[category];
   std::vector<int64_t> permutation(shape_.dimensions().size());
   std::iota(permutation.begin(), permutation.end(), 0);
-  // Partition into non-category and category dimensions, preserving relative
-  // order.
-  auto dims_begin = absl::c_stable_partition(permutation, [&dims](int64_t dim) {
+  const int64_t max_dim = *absl::c_max_element(dims);
+  // Partition the prefix up to `max_dim` into non-category and category
+  // dimensions, preserving relative order and leaving trailing dimensions in
+  // place.
+  absl::Span<int64_t> prefix = absl::MakeSpan(permutation).first(max_dim + 1);
+  auto dims_begin = absl::c_stable_partition(prefix, [&dims](int64_t dim) {
     return !absl::c_linear_search(dims, dim);
   });
   // Overwrite the category dimensions part with the actual `dims` to preserve
@@ -498,6 +507,49 @@ absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::MapForward(
           absl::StrCat("Unsupported opcode for MapForward: ",
                        HloOpcodeString(inst->opcode())));
   }
+}
+
+absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::MapForward(
+    const ShapeTracker& tracker) const {
+  TF_RET_CHECK(tracker.input_shape().dimensions() == shape_.dimensions());
+  DotOperandDims dims = *this;
+  for (const ShapeTracker::Step& step : tracker.GetSteps()) {
+    if (step.type == ShapeTracker::Step::Type::kTranspose) {
+      dims.ApplyPermutation(step.dimensions);
+      continue;
+    }
+    ABSL_ASSIGN_OR_RETURN(std::optional<DotOperandDims> reshaped,
+                     dims.Reshape(ShapeUtil::MakeShape(shape_.element_type(),
+                                                       step.dimensions)));
+    if (!reshaped.has_value()) {
+      return std::nullopt;
+    }
+    dims = *std::move(reshaped);
+  }
+  ABSL_RETURN_IF_ERROR(dims.SetShape(tracker.output_shape()));
+  return dims;
+}
+
+absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::MapBackward(
+    const ShapeTracker& tracker) const {
+  ABSL_ASSIGN_OR_RETURN(ShapeTracker inverted, tracker.GetInverted());
+  return MapForward(inverted);
+}
+
+absl::StatusOr<std::optional<DotOperandDims>> DotOperandDims::FoldBackward(
+    const ShapeTracker& tracker) const {
+  ABSL_ASSIGN_OR_RETURN(std::optional<DotOperandDims> dims, MapBackward(tracker));
+  if (!dims.has_value() || !dims->IsSorted(kNonContracting)) {
+    return std::nullopt;
+  }
+  // Ensure within-category dimension sizes are preserved so the dot's output
+  // shape and dimension pairing with the other operand remain unchanged.
+  for (Category category : {kBatch, kNonContracting, kContracting}) {
+    if (dims->Sizes(category) != Sizes(category)) {
+      return std::nullopt;
+    }
+  }
+  return dims;
 }
 
 absl::StatusOr<int64_t> DotOperandDims::IndexWithinCategory(

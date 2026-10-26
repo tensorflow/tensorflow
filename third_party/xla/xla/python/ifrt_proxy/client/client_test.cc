@@ -15,6 +15,7 @@
 #include "xla/python/ifrt_proxy/client/client.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -42,6 +43,7 @@
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
+#include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
 #include "xla/python/ifrt_proxy/client/mock_host_buffer.h"
@@ -299,6 +301,49 @@ TEST_P(ClientTest, CopyArraysDefaultLayoutSuccess) {
   EXPECT_EQ(layout_2, nullptr);
 }
 
+TEST_P(ClientTest, CopyArraysMemoryKindCombinations) {
+  IfrtResponse response;
+  response.mutable_copy_arrays_response()->add_array_handles(1);
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kCopyArraysRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
+
+  struct Case {
+    std::optional<MemoryKind> kind;
+    absl::string_view expected;
+  };
+  const std::vector<Case> kCases = {
+      {std::nullopt, "device"},
+      {MemoryKind(), "device"},
+      {MemoryKind("device"), "device"},
+      {MemoryKind("pinned_host"), "pinned_host"},
+  };
+
+  for (const Case& src : kCases) {
+    for (const Case& dst : kCases) {
+      auto sharding = SingleDeviceSharding::Create(
+          device_, src.kind.value_or(MemoryKind()));
+      std::vector<ArrayRef> arrays = {tsl::MakeRef<Array>(
+          client_.get(), rpc_helper_, DType(DType::kF64), Shape({1, 2, 3}),
+          std::move(sharding), ArrayHandle{1234}, /*layout=*/nullptr)};
+      ASSERT_OK_AND_ASSIGN(DeviceListRef devices,
+                           client_->MakeDeviceList({device_}));
+
+      ASSERT_OK_AND_ASSIGN(
+          std::vector<ArrayRef> copied,
+          client_->CopyArrays(absl::MakeSpan(arrays), std::move(devices),
+                              dst.kind, ArrayCopySemantics::kAlwaysCopy));
+      ASSERT_THAT(copied, SizeIs(1));
+
+      EXPECT_EQ(copied[0]->sharding().memory_kind().value(),
+                dst.kind.has_value() ? dst.expected : src.expected);
+    }
+  }
+}
+
 TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
   std::shared_ptr<xla::ifrt::SingleDeviceSharding> sharding =
       xla::ifrt::SingleDeviceSharding::Create(device_, xla::ifrt::MemoryKind());
@@ -506,6 +551,33 @@ TEST_P(ClientTest, ReshardArraysSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout,
                           reshared_arrays[0]->pjrt_layout());
   EXPECT_EQ(layout->ToString(), layout_2_->ToString());
+}
+
+TEST_P(ClientTest, CancelExecutionSuccess) {
+  auto cancellation_handle = std::make_shared<CancellationHandle>(1234);
+  if (GetParam() >= protocol_version::kCancelExecution) {
+    IfrtResponse response;
+    response.mutable_cancel_execution_response();
+    EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
+                               R"pb(
+                                 cancel_execution_request {
+                                   cancellation_handle: 1234
+                                   error {
+                                     code: 1  # CANCELLED
+                                     message: "cancelled"
+                                   }
+                                 }
+                               )pb")))))
+        .WillOnce(MockClientSessionReturnResponse(response));
+  } else {
+    EXPECT_CALL(
+        *session_,
+        Enqueue(IfrtRequestOfType(IfrtRequest::kCancelExecutionRequest)))
+        .Times(0);
+  }
+
+  client_->CancelExecution(std::move(cancellation_handle),
+                           absl::CancelledError("cancelled"));
 }
 
 INSTANTIATE_TEST_SUITE_P(

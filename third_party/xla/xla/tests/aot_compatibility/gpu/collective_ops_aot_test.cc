@@ -13,56 +13,42 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// LEGACY: do not add test cases here. New collective coverage goes into the
+// per-thunk-family targets described in ../google/README.md.
+//
+// These are the original collective AOT smoke tests. They are kept only for
+// their goldens from older compilers (v1-v3), the oldest golden history in the
+// tree. The family targets cover the same HLO in their ElementTypes cases.
+//
+// TODO(aliia): Delete this target, its goldens and its README entry once
+// reduction_collectives_aot_test and data_movement_collectives_aot_test have
+// at least two golden versions on every architecture. From then on, their own
+// backwards-compatibility suites replay goldens from an older compiler.
+
 #include <cstdint>
-#include <memory>
-#include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "xla/error_spec.h"
 #include "xla/literal.h"
-#include "xla/service/hlo_module_config.h"
+#include "xla/tests/aot_compatibility/gpu/collective_aot_test_base.h"
 #include "xla/tests/aot_compatibility/test_lib.h"
-#include "xla/tests/aot_interception_pjrt_client.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
-#include "tsl/platform/path.h"
 
 namespace xla {
 namespace aot_compatibility {
-
-using ::testing::TestParamInfo;
-using ::testing::UnitTest;
-using ::testing::ValuesIn;
-using ::testing::WithParamInterface;
-
 namespace {
 
-class CollectiveOpsAotTest : public AotCompatibilityTest,
-                             public WithParamInterface<AotTestParam> {
- public:
-  CollectiveOpsAotTest() : AotCompatibilityTest(GetParam()) {}
+using ::testing::ValuesIn;
 
- protected:
-  std::string file_path_;
+constexpr absl::string_view kTargetBase = "collective_ops_aot_test_2gpu";
+constexpr int64_t kNumReplicas = 2;
 
-  void SetUp() override {
-    AotCompatibilityTest::SetUp();
-    int version = GetParam().version;
-    std::string full_name =
-        UnitTest::GetInstance()->current_test_info()->name();
-    std::string test_name = full_name.substr(0, full_name.find('/'));
-    file_path_ = tsl::io::JoinPath(
-        GetExecutablesDirectory(GetParam().target_name, AOTTestPlatform::kGpu),
-        absl::StrCat("v", version), absl::StrCat(test_name, ".pbtxt"));
-  }
-};
+class CollectiveOpsAotTest : public CollectiveAotTestBase {};
 
 TEST_P(CollectiveOpsAotTest, AllGatherMixedTypes) {
-  absl::string_view kModuleStr = R"hlo(
+  constexpr absl::string_view kHlo = R"hlo(
     HloModule test
     ENTRY test_computation {
       id = u32[] replica-id()
@@ -76,27 +62,19 @@ TEST_P(CollectiveOpsAotTest, AllGatherMixedTypes) {
       ROOT out = (u32[4], f32[4]) tuple(r0, r1)
     }
   )hlo";
-  const int64_t kNumReplicas = 2;
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(kModuleStr, config));
-
   ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        kNumReplicas,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
-  for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
-    auto rs = results[replica_idx].DecomposeTuple();
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 1, 0, 1}, rs[0]);
-    LiteralTestUtil::ExpectR1Near<float>({0.0, 1.0, 0.0, 1.0}, rs[1],
+      RunReplicated(kHlo, GetModuleConfigForTest(kNumReplicas)));
+  for (int64_t replica = 0; replica < kNumReplicas; ++replica) {
+    std::vector<Literal> outputs = results[replica].DecomposeTuple();
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 1, 0, 1}, outputs[0]);
+    LiteralTestUtil::ExpectR1Near<float>({0.0, 1.0, 0.0, 1.0}, outputs[1],
                                          ErrorSpec{1e-5, 1e-5});
   }
 }
 
 TEST_P(CollectiveOpsAotTest, ReduceScatter) {
-  absl::string_view kModuleStr = R"hlo(
+  constexpr absl::string_view kHlo = R"hlo(
     HloModule test
     add {
       lhs = u32[] parameter(0)
@@ -117,45 +95,19 @@ TEST_P(CollectiveOpsAotTest, ReduceScatter) {
                         dimensions={0}, to_apply=add
     }
   )hlo";
-
-  const int64_t kNumReplicas = 2;
-  HloModuleConfig config = GetModuleConfigForTest(kNumReplicas);
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnVerifiedModule(kModuleStr, config));
-
   ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        kNumReplicas,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
-
+      RunReplicated(kHlo, GetModuleConfigForTest(kNumReplicas)));
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 13, 15, 17}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
 }
 
-std::vector<AotTestParam> GetTestParamsOrDie(
-    absl::StatusOr<std::vector<AotTestParam>> params) {
-  CHECK(params.ok()) << params.status();
-  return *std::move(params);
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    BackwardsCompatibility, CollectiveOpsAotTest,
-    ValuesIn(GetTestParamsOrDie(GetAotTestParamsForBackwardsCompatibility(
-        absl::StrCat("collective_ops_aot_test_2gpu_", DetectGpuArchToken()),
-        AOTTestPlatform::kGpu))),
-    [](const TestParamInfo<AotTestParam>& info) {
-      return absl::StrCat("v", info.param.version);
-    });
-
-INSTANTIATE_TEST_SUITE_P(
-    GoldenFileVerification, CollectiveOpsAotTest,
-    ValuesIn(GetTestParamsOrDie(GetAotTestParamsForGoldenFileVerification(
-        absl::StrCat("collective_ops_aot_test_2gpu_", DetectGpuArchToken()),
-        AOTTestPlatform::kGpu))),
-    [](const TestParamInfo<AotTestParam>& info) {
-      return absl::StrCat("v", info.param.version);
-    });
+INSTANTIATE_TEST_SUITE_P(BackwardsCompatibility, CollectiveOpsAotTest,
+                         ValuesIn(GpuBackwardsCompatibilityParams(kTargetBase)),
+                         AotTestParamName);
+INSTANTIATE_TEST_SUITE_P(GoldenFileVerification, CollectiveOpsAotTest,
+                         ValuesIn(GpuGoldenFileVerificationParams(kTargetBase)),
+                         AotTestParamName);
 
 }  // namespace
 }  // namespace aot_compatibility

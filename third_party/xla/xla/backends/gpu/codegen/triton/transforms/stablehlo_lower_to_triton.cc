@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/xtile/codegen/dot_algorithms.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -1042,6 +1043,18 @@ class LowerAllGather : public mlir::OpRewritePattern<stablehlo::AllGatherOp> {
   }
 };
 
+class LowerAllToAll : public mlir::OpRewritePattern<stablehlo::AllToAllOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::AllToAllOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    return ::xla::gpu::RewriteAllToAll(op, rewriter);
+  }
+};
+
 class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -1055,13 +1068,13 @@ class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
 };
 
 class LowerReduceScatter
-    : public mlir::OpRewritePattern<stablehlo::ReduceScatterOp> {
+    : public mlir::OpRewritePattern<::xla::xtile::ReduceScatterOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
  private:
   mlir::LogicalResult matchAndRewrite(
-      stablehlo::ReduceScatterOp op,
+      ::xla::xtile::ReduceScatterOp op,
       mlir::PatternRewriter& rewriter) const override {
     return ::xla::gpu::RewriteReduceScatter(op, rewriter);
   }
@@ -1079,8 +1092,8 @@ class StableHLOLowerToTritonPass
     {
       mlir::RewritePatternSet patterns(mlir_context);
       patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
-                   LowerReduce, LowerReshape, LowerAllGather, LowerAllReduce,
-                   LowerReduceScatter>(mlir_context);
+                   LowerReduce, LowerReshape, LowerAllGather, LowerAllToAll,
+                   LowerAllReduce, LowerReduceScatter>(mlir_context);
       patterns.add<CanonicalizeDotGeneral>(mlir_context);
       patterns.add<LowerDotGeneral>(mlir_context, warp_specialization_allowed_);
       if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),

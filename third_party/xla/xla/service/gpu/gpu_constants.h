@@ -1,4 +1,3 @@
-#include "xla/codegen/emitters/kernel_arguments.h"
 /* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_CONSTANTS_H_
 
 #include <cstdint>
+
+#include "xla/codegen/emitters/kernel_arguments.h"
 
 namespace xla {
 namespace gpu {

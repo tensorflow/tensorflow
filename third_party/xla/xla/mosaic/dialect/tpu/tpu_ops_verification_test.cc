@@ -23,9 +23,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithDialect.h"
+#include "mlir/Dialect/Func/IR/FuncDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/IR/MemRefDialect.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -34,9 +38,11 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/layout.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mosaic/dialect/tpu/tpu_dialect.h"
 
@@ -2699,6 +2705,48 @@ TEST_F(TpuOpsVectorSubcoreVerificationTest,
       VerifyOp(slice),
       StatusIs(_, HasSubstr("Source and target minormost dimension cannot be "
                             "dynamic")));
+}
+
+TEST_F(TpuOpsVerificationTest, MemRefPadOpValid) {
+  Value untiled = AllocaI32({12, 128}, MemorySpace::kVmem);
+  EXPECT_THAT(
+      VerifyOp(Create<MemRefPadOp>(
+          GetMemRefType({16, 128}, i32(), MemorySpace::kVmem), untiled)),
+      absl_testing::IsOk());
+
+  auto layout =
+      TiledLayoutAttr::get(builder().getContext(), {xla::Tile({8, 128})},
+                           /*tile_strides=*/{2, 1, 1});
+  auto vmem = MemorySpaceAttr::get(builder().getContext(), MemorySpace::kVmem);
+  Value tiled = Create<memref::AllocaOp>(
+                    MemRefType::get({3, 10, 100}, i32(), layout, vmem))
+                    .getMemref();
+  // Dim 0 is untiled (3 -> 3), dim 1 is partially padded (10 -> 12 <= 16),
+  // dim 2 is padded to tile boundary (100 -> 128).
+  EXPECT_THAT(VerifyOp(Create<MemRefPadOp>(
+                  MemRefType::get({3, 12, 128}, i32(), layout, vmem), tiled)),
+              absl_testing::IsOk());
+}
+
+TEST_F(TpuOpsVerificationTest, MemRefPadOpInvalidBounds) {
+  auto layout =
+      TiledLayoutAttr::get(builder().getContext(), {xla::Tile({8, 128})},
+                           /*tile_strides=*/{1, 1});
+  auto vmem = MemorySpaceAttr::get(builder().getContext(), MemorySpace::kVmem);
+  Value source =
+      Create<memref::AllocaOp>(MemRefType::get({12, 128}, i32(), layout, vmem))
+          .getMemref();
+
+  EXPECT_THAT(
+      VerifyOp(Create<MemRefPadOp>(
+          MemRefType::get({8, 128}, i32(), layout, vmem), source)),
+      StatusIs(
+          _,
+          HasSubstr("must be greater than or equal to input dimension (12)")));
+  EXPECT_THAT(
+      VerifyOp(Create<MemRefPadOp>(
+          MemRefType::get({24, 128}, i32(), layout, vmem), source)),
+      StatusIs(_, HasSubstr("must not exceed the tile-aligned bound (16)")));
 }
 
 }  // namespace

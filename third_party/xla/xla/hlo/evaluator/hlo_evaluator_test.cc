@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 
 #include <array>
+#include <cmath>
 #include <complex>
 #include <cstdint>
 #include <initializer_list>
@@ -291,6 +292,61 @@ TEST_P(HloEvaluatorBf16Test, DoesClamp) {
 
   auto expected = LiteralUtil::CreateR2<float>({{0, 4}, {2, 4}});
 
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, DoesFmaF32SingleRounding) {
+  auto a = LiteralUtil::CreateR1<float>({2.0f, 0x1.000002p0f});
+  auto b = LiteralUtil::CreateR1<float>({3.0f, 0x1.000002p0f});
+  auto c = LiteralUtil::CreateR1<float>({4.0f, -1.0f});
+  Shape shape = a.shape();
+  HloComputation::Builder builder(TestName());
+  auto c1 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(a)));
+  auto c2 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(b)));
+  auto c3 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(c)));
+  builder.AddInstruction(
+      HloInstruction::CreateTernary(shape, HloOpcode::kFma, c1, c2, c3));
+  m_->AddEntryComputation(builder.Build());
+
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  auto expected = LiteralUtil::CreateR1<float>(
+      {10.0f, std::fma(0x1.000002p0f, 0x1.000002p0f, -1.0f)});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, DoesFmaBf16SingleRounding) {
+  // Case 0: a = b = 131/128 = 1.0234375, c = -1.0.
+  // Exact a*b + c = 777/16384, which rounds to bf16 97/2048 = 0.04736328125.
+  // Unfused bf16(a*b) + c gives 96/2048 = 0.046875.
+  // Case 1: 1.5 * (1 + 2^-7) - 2^-24.
+  // Exact a*b = 1.5 + 2^-7 + 2^-8, which is an exact tie in bf16 between
+  // 0x3fc1 (odd) and 0x3fc2 (even). Subtracting 2^-24 makes the exact sum
+  // strictly less than the tie, so single rounding to bf16 gives 0x3fc1
+  // (1.5 + 2^-7). Naive double -> float -> bf16 double-rounds up to 0x3fc2.
+  auto a =
+      LiteralUtil::CreateR1<bfloat16>({bfloat16(1.0234375f), bfloat16(1.5f)});
+  auto b = LiteralUtil::CreateR1<bfloat16>(
+      {bfloat16(1.0234375f), bfloat16(1.0f + std::ldexp(1.0f, -7))});
+  auto c = LiteralUtil::CreateR1<bfloat16>(
+      {bfloat16(-1.0f), bfloat16(-std::ldexp(1.0f, -24))});
+  Shape shape = a.shape();
+  HloComputation::Builder builder(TestName());
+  auto c1 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(a)));
+  auto c2 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(b)));
+  auto c3 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(c)));
+  builder.AddInstruction(
+      HloInstruction::CreateTernary(shape, HloOpcode::kFma, c1, c2, c3));
+  m_->AddEntryComputation(builder.Build());
+
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  auto expected = LiteralUtil::CreateR1<bfloat16>(
+      {bfloat16(0.04736328125f), bfloat16(1.5f + std::ldexp(1.0f, -7))});
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
@@ -6886,6 +6942,31 @@ TEST_F(HloEvaluatorTest, AsyncOpsWithLayout) {
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, AsyncStartWithTiledLayout) {
+  // The reshape drops the tiling, so the result can't be moved.
+  const absl::string_view hlo_text = R"(
+  HloModule test
+
+  async_computation {
+    p0 = f32[8,128]{1,0:T(8,128)} parameter(0)
+    ROOT reshape = f32[8,128]{1,0:T(8,128)} reshape(p0)
+  }, execution_thread="thread"
+
+  ENTRY entry {
+    x = f32[8,128]{1,0:T(8,128)} parameter(0)
+    async-start = ((f32[8,128]{1,0:T(8,128)}), f32[8,128]{1,0:T(8,128)}) async-start(x), calls=async_computation, async_execution_thread="thread"
+    ROOT async-done = f32[8,128]{1,0:T(8,128)} async-done(async-start)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Array2D<float> input(8, 128);
+  input.FillIota(1.0f);
+  Literal arg = LiteralUtil::CreateR2FromArray2D<float>(input);
+  ASSERT_OK_AND_ASSIGN(Literal result, HloEvaluator().Evaluate(
+                                           *m_->entry_computation(), {&arg}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(arg, result));
 }
 
 TEST_F(HloEvaluatorTest, LateBindingAsyncStartAndUpdate) {

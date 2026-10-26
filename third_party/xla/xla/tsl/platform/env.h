@@ -50,6 +50,7 @@ namespace tsl {
 class Thread;
 class ThreadNote;
 struct ThreadOptions;
+class ThreadPoolInterface;
 
 /// \brief An interface used by the tensorflow implementation to
 /// access operating system functionality like the filesystem etc.
@@ -199,11 +200,16 @@ class Env {
   virtual bool MatchPath(absl::string_view path, absl::string_view pattern) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
-  /// that pattern. *results is cleared.
+  /// that pattern, sorted in ascending lexicographic order. *results is
+  /// cleared.
   ///
   /// More details about `pattern` in FileSystem::GetMatchingPaths.
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
                                         std::vector<std::string>* results);
+
+  virtual absl::Status GetMatchingPaths(const std::string& pattern,
+                                        std::vector<std::string>* results,
+                                        bool multithreaded);
 
   // TODO(b/485502789): Remove the const std::string& versions of these
   // functions and move the actual implementation here, avoiding the string
@@ -218,6 +224,16 @@ class Env {
   absl::Status GetMatchingPaths(const T& pattern,
                                 std::vector<std::string>* results) {
     return GetMatchingPaths(std::string(pattern), results);
+  }
+
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status GetMatchingPaths(const T& pattern,
+                                std::vector<std::string>* results,
+                                bool multithreaded) {
+    return GetMatchingPaths(std::string(pattern), results, multithreaded);
   }
 
   /// Deletes the named file.
@@ -372,7 +388,6 @@ class Env {
   /// the directory the executable is located in if not running under bazel.
   virtual std::string GetRunfilesDir() = 0;
 
-  // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
@@ -420,6 +435,10 @@ class Env {
 
   // Returns true if the current thread is a cooperatively scheduled fiber.
   virtual bool IsCurrentThreadFiber() { return false; }
+
+  virtual ThreadPoolInterface* CreateThreadPoolInterface(
+      const ThreadOptions& thread_options, const std::string& name,
+      int num_threads, bool low_latency_hint);
 
   // \brief Schedules the given closure on a thread-pool.
   //

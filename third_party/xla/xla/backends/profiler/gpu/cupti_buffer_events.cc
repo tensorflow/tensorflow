@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_version.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cuda_version_variants.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
@@ -44,42 +45,44 @@ struct CuptiActivityHasGraphId {
   static constexpr bool value = false;
 };
 
+template <typename CuptiActivity>
+struct CuptiActivityHasSourceGraphId {
+  static constexpr bool value = false;
+};
+
 // CUPTI from CUDA 11.6 adds information about the hardware channel that ops
 // run on; this makes its way into the channel_id and channel_type fields in the
 // structs we export.
 //
 // Define some type aliases so we can access the hardware channel id if it's
 // available.
-#if CUDA_VERSION >= 12000  // CUDA 12.0
+#if CUDA_VERSION >= 13040  // CUDA 13.4
+#define TF_CUPTI_HAS_CHANNEL_ID 1
+using CuptiActivityKernelTy = CUpti_ActivityKernel13;
+using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy7;
+using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
+using CuptiActivityMemsetTy = CUpti_ActivityMemset5;
+#elif CUDA_VERSION >= 12000  // CUDA 12.0
 #define TF_CUPTI_HAS_CHANNEL_ID 1
 using CuptiActivityKernelTy = CUpti_ActivityKernel9;
 using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
 using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
 using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
-
-template <>
-struct CuptiActivityHasGraphId<CuptiActivityKernelTy> {
-  static constexpr bool value = true;
-};
-template <>
-struct CuptiActivityHasGraphId<CuptiActivityMemcpyTy> {
-  static constexpr bool value = true;
-};
-template <>
-struct CuptiActivityHasGraphId<CuptiActivityMemcpyP2PTy> {
-  static constexpr bool value = true;
-};
-template <>
-struct CuptiActivityHasGraphId<CuptiActivityMemsetTy> {
-  static constexpr bool value = true;
-};
 #elif CUDA_VERSION >= 11060  // CUDA 11.6
 #define TF_CUPTI_HAS_CHANNEL_ID 1
 using CuptiActivityKernelTy = CUpti_ActivityKernel7;
 using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
 using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
 using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
+#else
+using CuptiActivityKernelTy = CUpti_ActivityKernel4;
+using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy;
+using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpy2;
+using CuptiActivityMemsetTy = CUpti_ActivityMemset;
+#endif
 
+// Graph IDs are available from CUDA 11.6.
+#if CUDA_VERSION >= 11060
 template <>
 struct CuptiActivityHasGraphId<CuptiActivityKernelTy> {
   static constexpr bool value = true;
@@ -96,12 +99,23 @@ template <>
 struct CuptiActivityHasGraphId<CuptiActivityMemsetTy> {
   static constexpr bool value = true;
 };
-#else
-using CuptiActivityKernelTy = CUpti_ActivityKernel4;
-using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy;
-using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpy2;
-using CuptiActivityMemsetTy = CUpti_ActivityMemset;
-#endif
+#endif  // CUDA_VERSION >= 11060
+
+// CUDA 13.4 adds the source graph IDs, but not to P2P memcpy records.
+#if CUDA_VERSION >= 13040
+template <>
+struct CuptiActivityHasSourceGraphId<CuptiActivityKernelTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasSourceGraphId<CuptiActivityMemcpyTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasSourceGraphId<CuptiActivityMemsetTy> {
+  static constexpr bool value = true;
+};
+#endif  // CUDA_VERSION >= 13040
 
 // TODO: (b/350105610), Using Cupti_ActivityGraphTrace2 for CUDA 12.3 and later
 #if CUDA_VERSION >= 11070
@@ -141,6 +155,13 @@ const char *getActivityUnifiedMemoryKindString(
   return "<UNKNOWN>";
 }
 
+// The CUDA 13.4 source graph fields are read without a runtime CUPTI version
+// check, which relies on the CUPTI library loaded at runtime being at least as
+// new as the CUPTI headers used at build time. The assert only checks that the
+// CUPTI headers match the CUDA headers.
+static_assert(CUDA_VERSION < 13040 || CUPTI_API_VERSION >= 130400,
+              "CUDA 13.4+ builds need CUPTI 13.4+ headers");
+
 template <typename CuptiActivity>
 void SetEventGraphId(CuptiTracerEvent &event,
                      const CuptiActivity *cupti_activity) {
@@ -150,6 +171,10 @@ void SetEventGraphId(CuptiTracerEvent &event,
   if constexpr (CuptiActivityHasGraphId<CuptiActivity>::value) {
     event.graph_id = cupti_activity->graphId;
     event.graph_node_id = cupti_activity->graphNodeId;
+  }
+  if constexpr (CuptiActivityHasSourceGraphId<CuptiActivity>::value) {
+    event.source_graph_id = cupti_activity->sourceGraphId;
+    event.source_graph_node_id = cupti_activity->sourceGraphNodeId;
   }
 }
 
@@ -763,7 +788,8 @@ CuptiActivityBufferManager::ActivityBufferAndSize::ActivityBufferAndSize(
 void AddActivityBufferListEventsTo(
     CuptiEventCollectorDelegate& collector,
     CuptiActivityBufferManager::CachedActivityBufferBatch& cached_buffers,
-    size_t max_activity_event_count, size_t& dropped_activity_event_count) {
+    size_t max_activity_event_count, size_t& dropped_activity_event_count,
+    CuptiInterface* cupti_interface) {
   dropped_activity_event_count = 0;
   size_t total_activity_event_count = 0;
   while (!cached_buffers.buffers.empty()) {
@@ -772,7 +798,7 @@ void AddActivityBufferListEventsTo(
     cached_buffers.buffers.pop_front();
     ConvertActivityBuffer(collector, cached_buffers, buffer_and_size,
                           max_activity_event_count, total_activity_event_count,
-                          dropped_activity_event_count, GetCuptiInterface())
+                          dropped_activity_event_count, cupti_interface)
         .IgnoreError();
   }
 }

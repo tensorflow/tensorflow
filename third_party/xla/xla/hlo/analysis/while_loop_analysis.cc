@@ -878,7 +878,10 @@ optional<Range> MatchLoopRangeWithKnownValues(
     return nullopt;
   }
   if (!while_cond_bound_supports_equality) {
-    while_cond_bound_val.value()--;
+    while_cond_bound_val = CheckedSubtract(*while_cond_bound_val, 1);
+    if (!while_cond_bound_val) {
+      return nullopt;
+    }
   }
 
   // We also need to round the bound down so that the difference between bound
@@ -895,7 +898,22 @@ optional<Range> MatchLoopRangeWithKnownValues(
   if (remainder < 0) {
     remainder += trip_count_step;
   }
-  while_cond_bound_val.value() -= remainder;
+  while_cond_bound_val = CheckedSubtract(*while_cond_bound_val, remainder);
+  if (!while_cond_bound_val) {
+    return nullopt;
+  }
+
+  const PrimitiveType indvar_type = indvar_init.shape().element_type();
+  if (*while_cond_bound_val >= *indvar_init_val) {
+    optional<int64_t> post_loop_val =
+        CheckedAdd(*while_cond_bound_val, trip_count_step);
+    if (!post_loop_val.has_value() ||
+        !primitive_util::IsIntegralType(indvar_type) ||
+        !primitive_util::FitsInIntegralType(*post_loop_val, indvar_type)) {
+      VLOG(2) << "Pattern-match failed: induction variable overflows its type.";
+      return nullopt;
+    }
+  }
 
   const int64_t init_bitwidth =
       primitive_util::BitWidth(indvar_init.shape().element_type());
@@ -1019,6 +1037,7 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
     return nullopt;
   }
 
+  optional<int64_t> trip_count;
   // Handle `i = init; i < N; i+=k`.
   if (Match(while_cond_root,
             m::Op()
@@ -1035,14 +1054,12 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
       return nullopt;
     }
-    return (*trips - 1) / trip_count_step + 1;
-  }
-
-  // Handle `i = init; i <= N; i+=k`.
-  if (Match(while_cond_root,
-            m::Op()
-                .WithComparisonDirection(ComparisonDirection::kLe)
-                .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
+    trip_count = (*trips - 1) / trip_count_step + 1;
+  } else if (Match(while_cond_root,
+                   m::Op()
+                       .WithComparisonDirection(ComparisonDirection::kLe)
+                       .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
+    // Handle `i = init; i <= N; i+=k`.
     VLOG(2) << "Pattern-match succeeded: loop condition is i <= N: "
             << while_cond_root->ToString();
     if (*while_cond_bound_val < *indvar_init_val) {
@@ -1054,17 +1071,34 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    trips = CheckedAdd(*trips / trip_count_step, 1);
-    if (!trips) {
+    trip_count = CheckedAdd(*trips / trip_count_step, 1);
+    if (!trip_count) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    return *trips;
+  } else {
+    VLOG(2) << "Pattern-match failed: while condition follows unknown pattern: "
+            << while_cond_root->ToString();
+    return nullopt;
   }
 
-  VLOG(2) << "Pattern-match failed: while condition follows unknown pattern: "
-          << while_cond_root->ToString();
-  return nullopt;
+  // Verify that advancing the induction variable through the final step that
+  // exits the loop does not overflow its element type (which would wrap around
+  // at runtime instead of terminating after `trip_count` iterations).
+  optional<int64_t> last_indvar_val =
+      CheckedAdd(*indvar_init_val, (*trip_count - 1) * trip_count_step);
+  optional<int64_t> post_loop_val =
+      last_indvar_val.has_value()
+          ? CheckedAdd(*last_indvar_val, trip_count_step)
+          : nullopt;
+  const PrimitiveType indvar_type = indvar_init.shape().element_type();
+  if (!post_loop_val.has_value() ||
+      !primitive_util::IsIntegralType(indvar_type) ||
+      !primitive_util::FitsInIntegralType(*post_loop_val, indvar_type)) {
+    VLOG(2) << "Pattern-match failed: induction variable overflows its type.";
+    return nullopt;
+  }
+  return *trip_count;
 }
 
 optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,

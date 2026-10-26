@@ -8,3 +8,6 @@ _jsimd_*
 _hwloc_*
 _LLVM*
 *mlir*
+_curl_*
+_Curl_*
+_curlx_*

@@ -63,6 +63,34 @@ package_group(
 )
 
 cc_library(
+    name = "locality_domain_memory",
+    srcs = ["locality_domain_memory.cc"],
+    hdrs = ["locality_domain_memory.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+xla_cc_test(
+    name = "locality_domain_memory_test",
+    srcs = ["locality_domain_memory_test.cc"],
+    deps = [
+        ":locality_domain_memory",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:fingerprint",
+    ],
+)
+
+cc_library(
     name = "context",
     hdrs = ["context.h"],
     deps = [
@@ -664,6 +692,7 @@ xla_test(
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
@@ -682,6 +711,7 @@ xla_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -1173,6 +1203,7 @@ xla_cc_test(
     deps = [
         ":scoped_command_buffer_annotation",
         "//xla/tsl/platform:env",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

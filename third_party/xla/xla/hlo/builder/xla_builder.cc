@@ -49,10 +49,12 @@ limitations under the License.
 #include "xla/hlo/builder/sharding_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -919,11 +921,20 @@ absl::StatusOr<XlaComputationId> XlaBuilder::BuildSubComputation(
   c.computation = std::move(proto);
   c.input_output_aliases = std::move(input_output_aliases_);
   c.buffer_donors = std::move(buffer_donors_);
+  // Only entries imported with a stack frame index reference stack_frames_;
+  // this builder's own computation (`proto`), computations of nested
+  // sub-builders, and imports without an index carry caller-owned ids.
+  absl::flat_hash_map<StackFrameId, StackFrameId> interned_frames;
   for (auto& entry : embedded_) {
+    if (entry.second.uses_builder_stack_frames) {
+      parent_builder_->InternStackFrameIds(
+          stack_frames_, entry.second.computation, interned_frames);
+    }
     auto [it, inserted] = parent_builder_->embedded_.emplace(
         entry.first, std::move(entry.second));
     TF_RET_CHECK(inserted) << "Duplicate computation id: " << entry.first;
   }
+  stack_frames_ = StackFrames();
   return XlaComputationId(id);
 }
 
@@ -958,6 +969,10 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
         input_output_aliases_, buffer_donors_));
   }
   module->add_computations()->Swap(&entry);
+  if (!stack_frames_.empty()) {
+    *module->mutable_stack_frame_index() = stack_frames_.proto();
+    stack_frames_ = StackFrames();
+  }
   embedded_.clear();
   return std::move(computation);
 }
@@ -981,6 +996,10 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(XlaComputationId entry_id) {
   }
   for (auto& e : embedded_) {
     module.add_computations()->Swap(&e.second.computation);
+  }
+  if (!stack_frames_.empty()) {
+    *module.mutable_stack_frame_index() = stack_frames_.proto();
+    stack_frames_ = StackFrames();
   }
   embedded_.clear();
   return XlaComputation(std::move(module));
@@ -2710,6 +2729,10 @@ absl::StatusOr<XlaOp> XlaBuilder::CholeskyInternal(const Shape& shape, XlaOp a,
   *instr.mutable_shape() = shape.ToProto();
 
   return AddInstruction(std::move(instr), HloOpcode::kCholesky, {a});
+}
+
+XlaOp XlaBuilder::Fma(XlaOp a, XlaOp b, XlaOp c) {
+  return TernaryOp(HloOpcode::kFma, a, b, c);
 }
 
 XlaOp XlaBuilder::Infeed(const Shape& shape, const std::string& config) {
@@ -5374,6 +5397,12 @@ absl::StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
     }
   }
   *module->add_computations() = std::move(entry);
+  // The imported computations copied above reference this builder's stack
+  // frame table. Copy rather than move it: the builder is still in use after
+  // this call.
+  if (!stack_frames_.empty()) {
+    *module->mutable_stack_frame_index() = stack_frames_.proto();
+  }
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "Constant computation:\n" << module->DebugString();
   }
@@ -5535,11 +5564,60 @@ absl::StatusOr<XlaOp> XlaBuilder::AddOpWithShape(
   return AddInstruction(std::move(instr), opcode, operands);
 }
 
+StackFrameId XlaBuilder::InternStackFrame(
+    const StackFrames& source, StackFrameId id,
+    absl::flat_hash_map<StackFrameId, StackFrameId>& interned) {
+  if (!id.valid() || id.value > source.proto().stack_frames_size()) {
+    return StackFrameId{};  // Unset or dangling: drop it.
+  }
+  if (auto it = interned.find(id); it != interned.end()) {
+    return it->second;
+  }
+  HloStackFrame frame = source.GetStackFrame(id);
+  frame.parent_frame_id =
+      InternStackFrame(source, frame.parent_frame_id, interned);
+  StackFrameId interned_id = stack_frames_.AddStackFrame(frame);
+  interned[id] = interned_id;
+  return interned_id;
+}
+
+void XlaBuilder::InternStackFrameIds(
+    const StackFrames& source, HloComputationProto& computation,
+    absl::flat_hash_map<StackFrameId, StackFrameId>& interned) {
+  for (HloInstructionProto& instruction : *computation.mutable_instructions()) {
+    const int id = instruction.metadata().stack_frame_id();
+    if (id != 0) {
+      instruction.mutable_metadata()->set_stack_frame_id(
+          InternStackFrame(source, StackFrameId{id}, interned).value);
+    }
+  }
+}
+
 XlaComputationId XlaBuilder::AddSubComputation(
     const XlaComputation& computation) {
   if (!GetCurrentStatus().ok()) {
     return XlaComputationId();
   }
+  // Carry over the source location table of the imported computation, so that
+  // the stack_frame_ids referenced by its instructions remain resolvable in
+  // the module built by this builder. Computations without a table are left
+  // untouched: any ids they carry were set via SetOpMetadata and refer to a
+  // caller-owned table.
+  std::optional<StackFrames> imported_frames;
+  if (computation.proto().stack_frame_index().stack_frames_size() > 0) {
+    absl::StatusOr<StackFrames> frames =
+        StackFrames::FromProto(computation.proto().stack_frame_index());
+    if (frames.ok()) {
+      imported_frames = *std::move(frames);
+    } else {
+      // Interning against an empty table drops the ids rather than leaving
+      // them dangling.
+      LOG(WARNING) << "Dropping invalid stack frame index of computation "
+                   << computation.name() << ": " << frames.status();
+      imported_frames.emplace();
+    }
+  }
+  absl::flat_hash_map<StackFrameId, StackFrameId> interned_frames;
   absl::flat_hash_map<int64_t, int64_t> remapped_ids;
   std::vector<HloComputationProto> imported_computations;
   imported_computations.reserve(computation.proto().computations_size());
@@ -5558,6 +5636,9 @@ XlaComputationId XlaBuilder::AddSubComputation(
       instruction.set_name(UniquifyInstructionName(instruction.name()));
       instruction.set_id(
           HloInstruction::CalculateUniqueId(computation_id, instruction.id()));
+    }
+    if (imported_frames.has_value()) {
+      InternStackFrameIds(*imported_frames, new_computation, interned_frames);
     }
     new_computation.set_root_id(HloInstruction::CalculateUniqueId(
         computation_id, new_computation.root_id()));
@@ -5595,7 +5676,11 @@ XlaComputationId XlaBuilder::AddSubComputation(
           {imported_computation.instructions(i).id(), imported_instruction});
     }
     embedded_.emplace(computation_id,
-                      Subcomputation{std::move(imported_computation), {}, {}});
+                      Subcomputation{std::move(imported_computation),
+                                     {},
+                                     {},
+                                     /*uses_builder_stack_frames=*/
+                                     imported_frames.has_value()});
   }
   return XlaComputationId(
       remapped_ids.at(computation.proto().entry_computation_id()));
@@ -6769,6 +6854,8 @@ XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable) {
 XlaOp Clamp(const XlaOp min, const XlaOp operand, const XlaOp max) {
   return min.builder()->Clamp(min, operand, max);
 }
+
+XlaOp Fma(XlaOp a, XlaOp b, XlaOp c) { return a.builder()->Fma(a, b, c); }
 
 XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
           XlaComputationId computation, absl::Span<const int64_t> dimensions,

@@ -34,8 +34,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -406,8 +404,7 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   struct ExecutionContext {
     ExecutionContext(cpu::BufferAllocations::Buffers buffers,
                      FunctionLibrary* function_library,
-                     const ExecuteOptions& options,
-                     std::optional<Thunk::YnnParams> ynn_params)
+                     const ExecuteOptions& options)
         : allocations(std::move(buffers)),
           execute_params(Thunk::ExecuteParams{function_library, &allocations,
                                               /*xfeed=*/nullptr,
@@ -420,19 +417,15 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
               options.device_assignment(), /*collectives=*/nullptr),
           custom_call_execute_params(
               RunId(options.launch_id()), options.local_device_id().value(),
-              options.intra_op_thread_pool(), options.ffi_context()),
-          ynn_params(std::move(ynn_params)) {
+              options.intra_op_thread_pool(), options.ffi_context()) {
       execute_params.collective_params = &collective_execute_params;
       execute_params.custom_call_params = &custom_call_execute_params;
-      execute_params.ynn_params =
-          this->ynn_params.has_value() ? &*this->ynn_params : nullptr;
     }
 
     cpu::BufferAllocations allocations;
     Thunk::ExecuteParams execute_params;
     Thunk::CollectiveExecuteParams collective_execute_params;
     Thunk::CustomCallExecuteParams custom_call_execute_params;
-    std::optional<Thunk::YnnParams> ynn_params;
   };
 
   // Do a heap allocation if we're running with a thread pool, using
@@ -441,18 +434,8 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
   // allocation when it is not required.
   if (options.intra_op_thread_pool() || options.ffi_context() ||
       options.device_assignment()) {
-    // Prepare for executing YNNPACK fusions. Without a YNN threadpool, YNNPACK
-    // fusions run single-threaded in the caller thread.
-    std::optional<Thunk::YnnParams> ynn_params;
-    if (executable->has_ynn_fusions() && options.intra_op_thread_pool()) {
-      ABSL_ASSIGN_OR_RETURN(YnnThreadpool ynn_threadpool,
-                       CreateYnnThreadpool(options.intra_op_thread_pool()));
-      ynn_params.emplace(std::move(ynn_threadpool));
-    }
-
     auto execution_context = std::make_unique<ExecutionContext>(
-        std::move(buffers), executable->function_library(), options,
-        std::move(ynn_params));
+        std::move(buffers), executable->function_library(), options);
 
     auto execute_event =
         executable->thunks().Execute(execution_context->execute_params);

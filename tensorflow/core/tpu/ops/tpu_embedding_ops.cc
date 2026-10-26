@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/status_macros.h"
+#include "xla/tpu/protobuf/optimization_parameters.pb.h"
+#include "xla/tpu/protobuf/tpu_embedding_configuration.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/attr_value.pb.h"

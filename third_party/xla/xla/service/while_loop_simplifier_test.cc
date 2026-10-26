@@ -1516,6 +1516,104 @@ TEST_F(WhileLoopSimplifierTest, NotRemoveCompareWithFloatCounter) {
       absl_testing::IsOkAndHolds(false));
 }
 
+TEST_F(WhileLoopSimplifierTest, NotRemoveCompareWhenInductionVarWraps) {
+  const std::string hlo_string = R"(
+  HloModule NotRemoveCompareWhenInductionVarWraps
+  body {
+    loop_var = (pred[], s32[]) parameter(0)
+    i = s32[] get-tuple-element(loop_var), index=1
+    zero = s32[] constant(0)
+    comp = pred[] compare(i, zero), direction=LT
+    step = s32[] constant(805306368)
+    add = s32[] add(i, step)
+    ROOT tuple = (pred[], s32[]) tuple(comp, add)
+  }
+  cond {
+    bound = s32[] constant(1610612741)
+    param0 = (pred[], s32[]) parameter(0)
+    i = s32[] get-tuple-element(param0), index=1
+    ROOT lt = pred[] compare(i, bound), direction=LT
+  }
+  ENTRY main {
+    init_i = s32[] constant(805306368)
+    init_p = pred[] constant(false)
+    tuple.1 = (pred[], s32[]) tuple(init_p, init_i)
+    ROOT while = (pred[], s32[]) while(tuple.1), condition=cond, body=body
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(
+      WhileLoopSimplifier(/*simplify_compare_instrs=*/true).Run(m.get()),
+      absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(WhileLoopSimplifierTest, NotRemoveWhileLoopWhenInductionVarWraps) {
+  const std::string hlo_string = R"(
+  HloModule NotRemoveWhileLoopWhenInductionVarWraps
+  body {
+    loop_var = (f32[], s32[]) parameter(0)
+    acc = f32[] get-tuple-element(loop_var), index=0
+    i = s32[] get-tuple-element(loop_var), index=1
+    one = f32[] constant(1)
+    next_acc = f32[] add(acc, one)
+    step = s32[] constant(1342177280)
+    next_i = s32[] add(i, step)
+    ROOT tuple = (f32[], s32[]) tuple(next_acc, next_i)
+  }
+  cond {
+    bound = s32[] constant(1879048192)
+    param0 = (f32[], s32[]) parameter(0)
+    i = s32[] get-tuple-element(param0), index=1
+    ROOT lt = pred[] compare(i, bound), direction=LT
+  }
+  ENTRY main {
+    zero = f32[] constant(0)
+    init_i = s32[] constant(1073741824)
+    tuple.1 = (f32[], s32[]) tuple(zero, init_i)
+    ROOT while = (f32[], s32[]) while(tuple.1), condition=cond, body=body
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(
+      WhileLoopSimplifier(/*simplify_compare_instrs=*/true).Run(m.get()),
+      absl_testing::IsOkAndHolds(false));
+  EXPECT_NE(FindFirstWhile(m.get()), nullptr);
+}
+
+TEST_F(WhileLoopSimplifierTest,
+       NotRemoveWhileLoopWhenUnsignedInductionVarWraps) {
+  const std::string hlo_string = R"(
+  HloModule NotRemoveWhileLoopWhenUnsignedInductionVarWraps
+  body {
+    loop_var = (f32[], u32[]) parameter(0)
+    acc = f32[] get-tuple-element(loop_var), index=0
+    i = u32[] get-tuple-element(loop_var), index=1
+    one = f32[] constant(1)
+    next_acc = f32[] add(acc, one)
+    step = u32[] constant(2147483648)
+    next_i = u32[] add(i, step)
+    ROOT tuple = (f32[], u32[]) tuple(next_acc, next_i)
+  }
+  cond {
+    bound = u32[] constant(3221225472)
+    param0 = (f32[], u32[]) parameter(0)
+    i = u32[] get-tuple-element(param0), index=1
+    ROOT lt = pred[] compare(i, bound), direction=LT
+  }
+  ENTRY main {
+    zero = f32[] constant(0)
+    init_i = u32[] constant(2147483648)
+    tuple.1 = (f32[], u32[]) tuple(zero, init_i)
+    ROOT while = (f32[], u32[]) while(tuple.1), condition=cond, body=body
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(
+      WhileLoopSimplifier(/*simplify_compare_instrs=*/true).Run(m.get()),
+      absl_testing::IsOkAndHolds(false));
+  EXPECT_NE(FindFirstWhile(m.get()), nullptr);
+}
+
 TEST_F(WhileLoopSimplifierTest, NotRemoveCompare) {
   const std::string hlo_string = R"(
   HloModule RemoveTrivialCompare

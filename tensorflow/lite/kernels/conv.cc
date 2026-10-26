@@ -516,11 +516,28 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
           &out_height, &out_width, &data->padding));
   TF_LITE_ENSURE_STATUS(ValidatePaddingValuesForInt16(data->padding));
 
+  int input_spatial_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements({input_height, input_width, input->dims->data[3]},
+                         input_spatial_elements) == kTfLiteOk,
+      "%s", "Conv input spatial dimensions overflow.");
+  int total_input_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context, CheckedNumElements(input, total_input_elements) == kTfLiteOk,
+      "%s", "Conv input dimensions overflow.");
+
   int output_spatial_elements = 0;
   TF_LITE_ENSURE_MSG(context,
-                     CheckedNumElements({out_height, out_width},
+                     CheckedNumElements({out_height, out_width, channels_out},
                                         output_spatial_elements) == kTfLiteOk,
                      "%s", "Conv output spatial dimensions overflow.");
+  int total_output_elements = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      CheckedNumElements({batches, out_height, out_width, channels_out},
+                         total_output_elements) == kTfLiteOk,
+      "%s", "Conv output dimensions overflow.");
 
   size_t im2col_type_size;
   TF_LITE_ENSURE_STATUS(GetSizeOfType(context, input->type, &im2col_type_size));

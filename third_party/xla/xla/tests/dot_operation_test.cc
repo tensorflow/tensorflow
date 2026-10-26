@@ -2384,6 +2384,25 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
+TEST_F(DotOperationTextTest, BatchDotTransposedOperandsPermutedBatchDims) {
+  absl::string_view hlo_string =
+      R"(
+HloModule BatchDotTransposedOperandsPermutedBatchDims
+
+ENTRY main {
+  p0 = f32[2,2,2,4,4] parameter(0)
+  p1 = f32[2,2,2,4,4] parameter(1)
+  lhs = f32[2,2,2,4,4] transpose(p0), dimensions={0,2,1,3,4}
+  rhs = f32[2,2,2,4,4] transpose(p1), dimensions={0,2,1,3,4}
+  ROOT dot = f32[2,2,2,4,4] dot(lhs, rhs),
+    lhs_batch_dims={1,0,2}, rhs_batch_dims={1,0,2},
+    lhs_contracting_dims={4}, rhs_contracting_dims={3}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
 // This benchmark is to show the performance impact of the following
 // transformation:
 //   dot(reshape(transpose(A)), Const) ==>

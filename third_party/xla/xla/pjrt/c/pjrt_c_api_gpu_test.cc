@@ -712,6 +712,9 @@ TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
     if (allocator_option == "bfc" || allocator_option == "cuda_async") {
       options["memory_fraction"] = 0.5f;
     }
+    if (allocator_option == "bfc") {
+      options["memory_fraction_policy"] = static_cast<std::string>("0.5-0.9");
+    }
     if (allocator_option == "cuda_async") {
       options["preallocate"] = true;
     }
@@ -777,6 +780,66 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
                   "Allocator invalid_allocator not supported for PJRT GPU "
                   "plugin. Supported allocator options are: 'default', "
                   "'platform', 'bfc', 'cuda_async', 'vmm' and 'address'."));
+
+  PJRT_Error_Destroy_Args error_destroy_args;
+  error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
+  error_destroy_args.extension_start = nullptr;
+  error_destroy_args.error = error;
+
+  api->PJRT_Error_Destroy(&error_destroy_args);
+}
+
+TEST(PjrtCApiGpuAllocatorTest, MemoryFractionPolicies) {
+  const PJRT_Api* api = GetPjrtApi();
+  for (const char* policy : {"0.01", "0.01+", "0.01-0.02", "0.01-0.01"}) {
+    SCOPED_TRACE(policy);
+    absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+        {"allocator", std::string("bfc")},
+        {"visible_devices", std::vector<int64_t>{0}},
+        {"memory_fraction_policy", std::string(policy)},
+    };
+    ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                         ConvertToPjRtNamedValueList(options));
+    PJRT_Client_Create_Args create_args = {};
+    create_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+    create_args.create_options = c_options.data();
+    create_args.num_options = c_options.size();
+    std::unique_ptr<PJRT_Error, PJRT_ErrorDeleter> error(
+        api->PJRT_Client_Create(&create_args), MakeErrorDeleter(api));
+    std::unique_ptr<PJRT_Client, PJRT_ClientDeleter> client(
+        create_args.client, MakeClientDeleter(api));
+    ASSERT_EQ(error, nullptr) << GetErrorMessage(error.get(), api);
+    ASSERT_NE(client, nullptr);
+  }
+}
+
+TEST(PjrtCApiGpuAllocatorTest, InvalidMemoryFractionPolicyRejected) {
+  auto api = GetPjrtApi();
+  absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
+      {"allocator", static_cast<std::string>("bfc")},
+      {"memory_fraction_policy", static_cast<std::string>("0.9-0.5")},
+  };
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
+  PJRT_Client_Create_Args create_arg;
+  create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+  create_arg.extension_start = nullptr;
+  create_arg.client = nullptr;
+  create_arg.create_options = c_options.data();
+  create_arg.num_options = c_options.size();
+  create_arg.kv_get_callback = nullptr;
+  create_arg.kv_get_user_arg = nullptr;
+  create_arg.kv_try_get_callback = nullptr;
+  create_arg.kv_try_get_user_arg = nullptr;
+  create_arg.kv_put_callback = nullptr;
+  create_arg.kv_put_user_arg = nullptr;
+  PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
+  EXPECT_NE(error, nullptr);
+  EXPECT_THAT(::pjrt::PjrtErrorToStatus(error, api),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("memory_fraction_policy: Invalid memory fraction "
+                            "\"0.9-0.5\"")));
 
   PJRT_Error_Destroy_Args error_destroy_args;
   error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
@@ -1062,27 +1125,28 @@ constexpr char const* kTargetConfigString = R"(gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32
   shared_memory_per_block: 49152
-  shared_memory_per_core: 98304
+  shared_memory_per_core: 167936
   threads_per_core_limit: 2048
-  core_count: 80
+  core_count: 108
   fpus_per_core: 64
   block_dim_limit_x: 2147483647
   block_dim_limit_y: 65535
   block_dim_limit_z: 65535
-  memory_bandwidth: 898048000000
-  l2_cache_size: 6291456
-  clock_rate_ghz: 1.53
-  device_memory_size: 34072559616
-  shared_memory_per_block_optin: 98304
+  memory_bandwidth: 2039040000000
+  l2_cache_size: 41943040
+  clock_rate_ghz: 1.41
+  device_memory_size: 85100068864
+  shared_memory_per_block_optin: 166912
   cuda_compute_capability {
-    major: 7
+    major: 8
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
   dnn_version: "9.3.0"
 }
 platform_name: "CUDA"
-device_description_str: "Tesla V100-SXM2-32GB"
+device_description_str: "NVIDIA A100-SXM4-80GB"
+runtime_version { major: 13 minor: 4 patch: 0 }
 )";
 
 constexpr char const* kHostTargetMachineOptionsString =
@@ -1097,8 +1161,8 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
       {"host_target_machine_options",
        static_cast<std::string>(kHostTargetMachineOptionsString)},
   };
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                          ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
 
   PJRT_TopologyDescription_Create_Args args;
   args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
@@ -1121,10 +1185,11 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
               (pjrt_topology->topology->platform_id() == xla::OneapiId() &&
                pjrt_topology->topology->platform_name() == xla::OneapiName()));
 
+  EXPECT_EQ(pjrt_topology->topology->platform_version(), "cuda 13040");
   EXPECT_EQ(pjrt_topology->topology->ProcessCount().value(), 16 * 2);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions().size(), 16 * 2 * 4);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[0]->device_kind(),
-            "Tesla V100-SXM2-32GB");
+            "NVIDIA A100-SXM4-80GB");
   for (int i = 0; i < pjrt_topology->topology->DeviceDescriptions().size() - 1;
        ++i) {
     EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[i]->id(), i);

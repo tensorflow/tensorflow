@@ -161,17 +161,6 @@ else
   python="$venv_dir/Scripts/python.exe"
 fi
 
-# TODO(b/366266944) Remove the check after tf docker image upgrade for NumPy 2
-# and numpy 1 support is dropped b/361369076.
-if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
-  if [[ "$TFCI_PYTHON_VERSION" == "3.13" ]]; then
-    "$python" -m pip install numpy==1.26.4
-  else
-    "$python" -m pip install numpy==1.26.0
-  fi
-fi
-
-
 if [[ "$TFCI_BAZEL_COMMON_ARGS" =~ gpu|cuda ]]; then
   echo "Checking to make sure tensorflow[and-cuda] is installable..."
   "$python" -m pip install "$(echo *.whl)[and-cuda]" $TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS
@@ -212,17 +201,4 @@ import sys
 import tensorflow as tf
 sys.exit(0 if "keras" in tf.keras.__name__ else 1)
 '
-fi
-
-# Import tf nightly wheel built with numpy2 from PyPI in numpy1 env for testing.
-# This aims to maintain TF compatibility with NumPy 1.x until 2025 b/361369076.
-if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
-  # Uninstall tf nightly wheel built with numpy1.
-  "$python" -m pip uninstall -y tf_nightly_numpy1
-  # Install tf nightly cpu wheel built with numpy2.x from PyPI in numpy1.x env.
-  "$python" -m pip install tf-nightly-cpu
-  if [[ "$TFCI_WHL_IMPORT_TEST_ENABLE" == "1" ]]; then
-    "$python" -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
-    "$python" -c 'import sys; import tensorflow as tf; sys.exit(0 if "keras" in tf.keras.__name__ else 1)'
-  fi
 fi

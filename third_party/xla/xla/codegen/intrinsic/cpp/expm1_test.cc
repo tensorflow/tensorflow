@@ -255,8 +255,8 @@ TEST(Expm1Test, ExhaustiveF16AndBF16ZeroUlpViaF32) {
       EXPECT_TRUE(std::isnan(static_cast<float>(actual)));
       continue;
     }
-    xla::half expected =
-        static_cast<xla::half>(std::expm1(static_cast<double>(xf)));
+    xla::half expected = static_cast<xla::half>(
+        static_cast<float>(std::expm1(static_cast<double>(xf))));
     if (std::isnan(static_cast<float>(expected))) {
       EXPECT_TRUE(std::isnan(static_cast<float>(actual)));
     } else {

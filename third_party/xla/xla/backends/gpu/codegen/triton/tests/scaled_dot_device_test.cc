@@ -706,7 +706,7 @@ ENTRY e {
   ASSERT_OK_AND_ASSIGN(auto optimized_module,
                        GetOptimizedModule(kHloTextTemplate));
   constexpr absl::string_view kExpectedOptimizedHLO = R"(
-    CHECK: %fusion
+    CHECK: %{{.*}} (param
     CHECK: %{{.*}} = f8e8m0fnu[3,128,4]{2,1,0} broadcast(%{{.*}}), dimensions={0,1}
     CHECK: %{{.*}} = f8e8m0fnu[3,128,4]{2,1,0} broadcast(%{{.*}}), dimensions={0,1}
     CHECK: ROOT {{.*}} scaled-dot
@@ -894,7 +894,7 @@ ENTRY e {
   ASSERT_OK_AND_ASSIGN(auto optimized_module,
                        GetOptimizedModule(kHloTextTemplate));
   constexpr absl::string_view kExpectedOptimizedHLO = R"(
-    CHECK: %[[fusion_name:.*]] (parameter
+    CHECK: %[[fusion_name:.*]] (param
     CHECK: %[[scaled_dot:.*]] = bf16[3,128,128]{2,1,0} scaled-dot
     CHECK: %[[global_scaler:.*]] = bf16[3,128,128]{2,1,0} broadcast
     CHECK: ROOT %{{.*}} = bf16[3,128,128]{2,1,0} multiply(%[[scaled_dot]], %[[global_scaler]])

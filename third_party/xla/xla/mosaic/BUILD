@@ -64,6 +64,7 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:VectorDialect",
+        "@llvm-project//mlir:ViewLikeInterface",
     ],
 )
 
@@ -181,6 +182,7 @@ td_library(
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:PassBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+        "@llvm-project//mlir:ViewLikeInterfaceTdFiles",
     ],
 )
 
@@ -275,6 +277,7 @@ xla_cc_test(
     srcs = ["dialect/tpu/tpu_ops_verification_test.cc"],
     deps = [
         ":tpu_dialect",
+        "//xla:shape_util",
         "//xla/mlir/utils:error_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

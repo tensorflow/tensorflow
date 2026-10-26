@@ -47,8 +47,10 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -848,6 +850,10 @@ class XlaBuilder {
   virtual absl::StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
                                                  bool lower);
 
+  // Enqueues a fused multiply-add instruction onto the computation that
+  // computes a * b + c with a single IEEE-754 rounding.
+  XlaOp Fma(XlaOp a, XlaOp b, XlaOp c);
+
   XlaOp Infeed(const Shape& shape, const std::string& config = "");
   XlaOp InfeedWithToken(XlaOp token, const Shape& shape,
                         const std::string& config);
@@ -1431,8 +1437,37 @@ class XlaBuilder {
 
     // Holds the buffer donor information populated by the AddBufferDonor() API.
     absl::flat_hash_set<HloBufferDonorConfig::BufferDonor> buffer_donors;
+
+    // True if the stack_frame_ids of `computation` refer to the builder's
+    // `stack_frames_`, i.e. it was imported with a stack frame index via
+    // AddSubComputation (or inherited such an entry from a child builder).
+    // False for computations built by sub-builders and for imports without a
+    // stack frame index: their ids are caller-owned and must not be rewritten.
+    bool uses_builder_stack_frames = false;
   };
   std::map<int64_t, Subcomputation> embedded_;
+
+  // Source location table referenced by the stack_frame_ids of computations
+  // in `embedded_` that were imported via AddSubComputation. Identical frames
+  // are stored once. Emitted into the HloModuleProto by Build().
+  //
+  // This table only covers imported computations. Ids set directly via
+  // SetOpMetadata refer to a different, caller-owned table and can't be
+  // mixed with it.
+  StackFrames stack_frames_;
+
+  // Adds frame `id` of `source` (and its parent chain) to `stack_frames_`,
+  // reusing identical existing frames, and returns its id there. Returns an
+  // invalid id if `id` is unset or does not exist in `source`.
+  StackFrameId InternStackFrame(
+      const StackFrames& source, StackFrameId id,
+      absl::flat_hash_map<StackFrameId, StackFrameId>& interned);
+
+  // Rewrites every stack_frame_id in `computation` from an id of `source` to
+  // the corresponding id in `stack_frames_`.
+  void InternStackFrameIds(
+      const StackFrames& source, HloComputationProto& computation,
+      absl::flat_hash_map<StackFrameId, StackFrameId>& interned);
 
   // True if the instructions in this builder refer to computations from a
   // parent builder. Used only for error checking.
@@ -1658,6 +1693,7 @@ class XlaBuilder {
                                bool unit_diagonal,
                                TriangularSolveOptions::Transpose transpose_a);
   friend XlaOp Cholesky(XlaOp a, bool lower);
+  friend XlaOp Fma(XlaOp a, XlaOp b, XlaOp c);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
                       const std::string& config);
   friend void Outfeed(XlaOp operand, const Shape& shape_with_layout,
@@ -1938,14 +1974,12 @@ class XlaBuilder {
       XlaOp init_value, XlaComputationId scatter);
   friend XlaOp Abs(XlaOp operand);
   friend XlaOp Acos(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Acosh(XlaOp x,
                      const std::optional<ResultAccuracy>& result_accuracy,
                      bool expand);
   friend XlaOp Asin(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Asinh(XlaOp x,
                      const std::optional<ResultAccuracy>& result_accuracy,
                      bool expand);
@@ -1979,13 +2013,11 @@ class XlaBuilder {
   friend XlaOp Cos(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Cosh(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Sin(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Sinh(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
+                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Tan(XlaOp operand,
                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Tanh(XlaOp operand,
@@ -3510,6 +3542,10 @@ XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable = true);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
+
+// Enqueues a fused multiply-add instruction onto the computation that computes
+// a * b + c with a single IEEE-754 rounding.
+XlaOp Fma(XlaOp a, XlaOp b, XlaOp c);
 
 // Enqueues a map instruction onto the computation.
 XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,

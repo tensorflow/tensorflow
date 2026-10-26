@@ -22,6 +22,12 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+TEST(ReadAssignVariable, SimpleAssignOnly) {
+  auto xnnpack_delegate = NewXnnPackDelegateSupportingVariableOps();
+  VariableOpsTester().NumInputs(1).NumOutputs(0).TestAssignOnly(
+      xnnpack_delegate.get());
+}
+
 TEST(ReadAssignVariable, SimpleAssignThenRead) {
   auto xnnpack_delegate = NewXnnPackDelegateSupportingVariableOps();
   TfLiteDelegate* delegate = xnnpack_delegate.get();

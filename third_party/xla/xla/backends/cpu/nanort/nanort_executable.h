@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "tsl/platform/mem.h"
 
 #define EIGEN_USE_THREADS
 
@@ -164,21 +163,48 @@ class NanoRtExecutable {
   template <size_t n>
   class ManagedTemp {
    public:
-    explicit ManagedTemp(size_t size) : data_(size) {
+    explicit ManagedTemp(size_t size)
+        : data_(CeilOfRatio(size, Align())), size_(size) {
       ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(data_.data(), data_.memsize());
+      // Keep the rounded chunk tail inaccessible beyond the requested size.
+      AnnotateMemory(data_.memsize(), size_);
+    }
+
+    ~ManagedTemp() {
+      // Restore the full chunk extent before FixedArray destroys its storage.
+      AnnotateMemory(size_, data_.memsize());
     }
 
     ManagedTemp(const ManagedTemp&) = delete;
     ManagedTemp& operator=(const ManagedTemp&) = delete;
 
-    PreallocatedTemp data() { return absl::MakeSpan(data_); }
+    PreallocatedTemp data() {
+      return absl::MakeSpan(reinterpret_cast<std::byte*>(data_.data()), size_);
+    }
 
    private:
     friend class NanoRtExecutable;
-    using Allocator =
-        tsl::port::AlignedAllocator<std::byte,
-                                    static_cast<std::align_val_t>(Align())>;
-    alignas(Align()) absl::FixedArray<std::byte, n, Allocator> data_;
+
+    struct alignas(Align()) AlignedChunk {
+      std::byte data[Align()];
+    };
+
+    static constexpr size_t CeilOfRatio(size_t num, size_t div) {
+      return num / div + (num % div != 0);
+    }
+
+    void AnnotateMemory(size_t old_size, size_t new_size) {
+      if (size_ != 0) {
+        [[maybe_unused]] std::byte* begin =
+            reinterpret_cast<std::byte*>(data_.data());
+        [[maybe_unused]] std::byte* end = begin + data_.memsize();
+        ABSL_ANNOTATE_CONTIGUOUS_CONTAINER(begin, end, begin + old_size,
+                                           begin + new_size);
+      }
+    }
+
+    absl::FixedArray<AlignedChunk, CeilOfRatio(n, Align())> data_;
+    size_t size_;
   };
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(absl::Span<const Argument> arguments,

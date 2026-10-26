@@ -391,7 +391,8 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
   }
 }
 
-absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
+absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo,
+                                         bool allow_non_canonical_lhs) {
   CHECK_EQ(hlo->opcode(), HloOpcode::kDot);
   if (!CheckOperandCount(hlo, 2)) {
     return false;
@@ -458,9 +459,10 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
   }
 
   // YNNPACK supports transposing the inputs efficiently if possible (they will
-  // fuse with dot packing), but we don't currently support generating the
-  // necessary transposes.
-  if (!dot_canonical_dims.lhs_canonical ||
+  // fuse with dot packing). The emitter can transpose a non-canonical LHS, but
+  // we don't fuse it yet.
+  // TODO(b/575584834): Enable non-canonical LHS once the regression is fixed.
+  if (!(dot_canonical_dims.lhs_canonical || allow_non_canonical_lhs) ||
       dot_canonical_dims.lhs_column_major ||
       dot_canonical_dims.rhs_column_major) {
     return false;

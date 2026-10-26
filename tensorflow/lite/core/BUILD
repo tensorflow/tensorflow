@@ -364,10 +364,13 @@ cc_test(
         ":framework",
         ":signature_runner",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
+        "//tensorflow/lite:interpreter_options_header",
         "//tensorflow/lite:model_builder",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 

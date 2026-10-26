@@ -61,6 +61,10 @@ message ThunkBufferDebugFilter {
 // All singular scalar fields must be explicitly defined as `optional` so that
 // field presence is available to support merging between command-line flags and
 // stored instances. This is enforced via a unit test.
+//
+// Fields that can change how a loaded executable behaves must be added to
+// `kRuntimeFields` in `debug_options_runtime_fields.cc`. This is not
+// enforced; see `debug_options_runtime_fields.h` for the criteria.
 message DebugOptions {
   // Enum to define all collective ops
   // that xla supports.
@@ -108,6 +112,7 @@ message DebugOptions {
     COLLECTIVE_KERNEL_ALL_REDUCE = 1;
     COLLECTIVE_KERNEL_ALL_GATHER = 2;
     COLLECTIVE_KERNEL_REDUCE_SCATTER = 3;
+    COLLECTIVE_KERNEL_ALL_TO_ALL = 4;
     COLLECTIVE_KERNEL_ALL_COLLECTIVES = 8;
   }
 
@@ -802,6 +807,13 @@ message DebugOptions {
   // preallocation.
   optional bool xla_gpu_enable_allocator_spatial_partitioning = 494;
 
+  // Overrides the client's memory fraction for the GPU BFC allocator. Uses the
+  // START, START+, or START-CAP grammar: "0.75" is fixed at 75% of device
+  // memory, "0.75+" preallocates 75% and lets the shared spatial pool grow to
+  // all of it, and "0.75-0.85" caps growth at 85%.
+  // Empty (the default) keeps the client's setting.
+  optional string xla_gpu_memory_fraction_policy = 560;
+
   optional bool xla_gpu_enable_analytical_latency_estimator = 255;
 
   // Enables NCCL Speed-of-Light (SoL) analytical cost model
@@ -1124,6 +1136,10 @@ message DebugOptions {
   // this flag can cause both performance improvements and performance
   // regressions.
   optional int32 xla_gpu_experimental_max_unroll_factor = 459;
+
+  // Register NCCL windows with NCCL_WIN_COLL_SYMMETRIC instead of
+  // NCCL_WIN_DEFAULT.
+  optional bool xla_gpu_experimental_nccl_window_symmetric = 561;
 
   // For sub-byte dot operands, layout them along contracting dimensions.
   optional bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
@@ -1878,7 +1894,9 @@ message DebugOptions {
   optional int64 xla_gpu_async_copy_min_bytes = 522;
 
   // If true, enable experimental tiling propagation.
-  optional bool xla_gpu_experimental_enable_tiling_propagation = 456;
+  // TODO(b/514293537): drop the flag.
+  optional bool xla_gpu_experimental_enable_tiling_propagation = 456
+      [deprecated = true];
 
   // Enables and controls expetimental cost model-driven tiling choices for GEMM
   // fusions.
@@ -1947,7 +1965,24 @@ message DebugOptions {
   // Requires sm_90+ and CUDA 13.3+ (tileiras) at runtime. Off by default.
   optional bool xla_gpu_experimental_enable_tensor_ir = 557;
 
-  // Next id: 558
+  // If true, the block-level (Triton) tiling search also enumerates tile sizes
+  // for reduction dimensions, i.e. reductions may be emitted as a loop over
+  // tiles.
+  // TODO(b/534676634): Only fusions with a single reduce over a single
+  // dimension are tiled for now; extend to the other cases.
+  optional bool xla_gpu_experimental_enable_reduction_dimension_tiling = 558;
+
+  // When true, autotune cache lookup requires the entire codegen environment
+  // to match. When false, only the codegen version of the optimal backend is
+  // required to match (e.g., allowing Triton cached entries to be reused even
+  // when the cuDNN version changes).
+  optional bool xla_autotune_cache_require_strict_codegen_match = 559;
+
+  // Lowers eligible associative kScan instructions to Triton fusions
+  // (ScanRewriterTriton).
+  optional bool xla_gpu_experimental_enable_triton_scan = 562;
+
+  // Next id: 563
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

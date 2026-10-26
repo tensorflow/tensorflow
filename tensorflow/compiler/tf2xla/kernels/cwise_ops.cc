@@ -68,7 +68,10 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
             lhs = xla::SliceInDim(lhs, 0, rhs_xla_shape.dimensions(i), 1,
                                   /*dimno=*/i);
             lhs_tensor_shape->set_dim(i, rhs_xla_shape.dimensions(i));
-            // Propagate dynamic dimension.
+            // Propagate dynamic dimension. A size above the new bound would
+            // describe more elements than the slice has.
+            size = xla::Min(size,
+                            xla::ScalarLike(size, rhs_xla_shape.dimensions(i)));
             lhs = xla::SetDimensionSize(lhs, size, i);
           }
           if (rhs_xla_shape.is_dynamic_dimension(i) &&

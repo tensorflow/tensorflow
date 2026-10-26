@@ -16,14 +16,17 @@ limitations under the License.
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -33,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/runtime/device_id.h"
 #include "xla/shape.h"
 
 namespace pjrt {
@@ -142,14 +146,44 @@ xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
              cancel_notifier_user_arg);
   };
 }
+
+absl::StatusOr<absl::flat_hash_map<xla::TaskId, xla::IncarnationId>>
+IncarnationsFromC(size_t num_tasks, const int* task_ids,
+                  const int64_t* incarnation_ids) {
+  absl::flat_hash_map<xla::TaskId, xla::IncarnationId> incarnations;
+  if (num_tasks == 0) {
+    return incarnations;
+  }
+  if (task_ids == nullptr || incarnation_ids == nullptr) {
+    return absl::InvalidArgumentError(
+        "task_ids and incarnation_ids must be non-null when num_tasks > 0");
+  }
+  incarnations.reserve(num_tasks);
+  for (size_t i = 0; i < num_tasks; ++i) {
+    // Duplicate task ids keep the first incarnation, matching execute.
+    incarnations.insert(
+        {xla::TaskId(task_ids[i]), xla::IncarnationId(incarnation_ids[i])});
+  }
+  return incarnations;
+}
+
 }  // namespace
 
 PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args",
-      PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args_STRUCT_SIZE,
+      PJRT_STRUCT_SIZE(PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args,
+                       buffers),
       args->struct_size));
+  absl::flat_hash_map<xla::TaskId, xla::IncarnationId> incarnations;
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args,
+                       incarnation_ids)) {
+    PJRT_ASSIGN_OR_RETURN(incarnations,
+                          IncarnationsFromC(args->num_tasks, args->task_ids,
+                                            args->incarnation_ids));
+  }
 
   std::vector<xla::Shape> shapes;
   shapes.reserve(args->num_shapes);
@@ -175,7 +209,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
   PJRT_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers,
                         args->client->client->CrossHostReceiveBuffers(
                             args->device->device, shapes, src_global_device_ids,
-                            std::move(transfer_keys)));
+                            std::move(transfer_keys), std::move(incarnations)));
 
   for (int i = 0; i < buffers.size(); ++i) {
     args->buffers[i] = new PJRT_Buffer{std::move(buffers[i]), args->client};
@@ -202,10 +236,19 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(
     transfer_keys.push_back(args->transfer_keys[i]);
   }
 
-  PJRT_ASSIGN_OR_RETURN(
-      std::vector<tsl::Future<>> send_futures,
-      args->client->client->CrossHostSendBuffers(buffers, dst_global_device_ids,
-                                                 std::move(transfer_keys)));
+  absl::flat_hash_map<xla::TaskId, xla::IncarnationId> incarnations;
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args,
+                       incarnation_ids)) {
+    PJRT_ASSIGN_OR_RETURN(incarnations,
+                          IncarnationsFromC(args->num_tasks, args->task_ids,
+                                            args->incarnation_ids));
+  }
+
+  PJRT_ASSIGN_OR_RETURN(std::vector<tsl::Future<>> send_futures,
+                        args->client->client->CrossHostSendBuffers(
+                            buffers, dst_global_device_ids,
+                            std::move(transfer_keys), std::move(incarnations)));
 
   for (int i = 0; i < buffers.size(); ++i) {
     args->send_events[i] = new PJRT_Event{std::move(send_futures[i])};

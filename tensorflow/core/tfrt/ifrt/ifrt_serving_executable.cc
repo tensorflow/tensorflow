@@ -1355,8 +1355,15 @@ IfrtServingExecutable::ExecuteAsync(
       tsl::JoinFutures(absl::MakeSpan(output_futures));
 
   // Fast path: if both are ready, offload cleanup to thread pool immediately.
+  // The execution status must still be checked, like the slow path below and
+  // `Execute()` do: a failed execution must not be reported as successful just
+  // because the output futures are already available.
   if (final_future.IsReady() && status_future.IsReady()) {
+    absl::Status status = status_future.Await();
     thread_pool_.Schedule([exec_info = std::move(exec_info)]() mutable {});
+    if (!status.ok()) {
+      return tsl::Future<std::vector<tensorflow::Tensor>>(std::move(status));
+    }
     return final_future;
   }
 

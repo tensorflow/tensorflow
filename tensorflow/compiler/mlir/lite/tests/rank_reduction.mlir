@@ -301,4 +301,19 @@ module {
     %0 = "tfl.dequantize"(%arg0) : (tensor<1x8x17x128x24x!quant.uniform<i8:f32, 0.13367551565170288>>) -> tensor<1x8x17x128x24xf32>
     func.return %0 : tensor<1x8x17x128x24xf32>
   }
+
+  // Do not lift reshape through concatenation when the concat axis is merged
+  // with an outer non-unit dimension (interleave pattern).
+  // CHECK-LABEL: func.func @lift_reshape_through_concat_interleave_no_rewrite
+  func.func @lift_reshape_through_concat_interleave_no_rewrite(%a: tensor<1x14x14x32x1xf32>, %b: tensor<1x14x14x32x1xf32>) -> tensor<1x14x14x64xf32> {
+    // CHECK: %[[R_A:.*]] = "tfl.reshape"(%arg0, {{.*}}) : (tensor<1x14x14x32x1xf32>, tensor<4xi32>) -> tensor<14x14x32x1xf32>
+    // CHECK: %[[R_B:.*]] = "tfl.reshape"(%arg1, {{.*}}) : (tensor<1x14x14x32x1xf32>, tensor<4xi32>) -> tensor<14x14x32x1xf32>
+    // CHECK: %[[CONCAT:.*]] = "tfl.concatenation"(%[[R_A]], %[[R_B]]) <{axis = 3 : i32, fused_activation_function = "NONE"}> : (tensor<14x14x32x1xf32>, tensor<14x14x32x1xf32>) -> tensor<14x14x32x2xf32>
+    // CHECK: %[[OUT:.*]] = "tfl.reshape"(%[[CONCAT]], {{.*}}) : (tensor<14x14x32x2xf32>, tensor<4xi32>) -> tensor<1x14x14x64xf32>
+    // CHECK: return %[[OUT]]
+    %0 = "tfl.concatenation"(%a, %b) {axis = 4 : i32, fused_activation_function = "NONE"} : (tensor<1x14x14x32x1xf32>, tensor<1x14x14x32x1xf32>) -> tensor<1x14x14x32x2xf32>
+    %cst = arith.constant dense<[1, 14, 14, 64]> : tensor<4xi32>
+    %1 = "tfl.reshape"(%0, %cst) : (tensor<1x14x14x32x2xf32>, tensor<4xi32>) -> tensor<1x14x14x64xf32>
+    func.return %1 : tensor<1x14x14x64xf32>
+  }
 }

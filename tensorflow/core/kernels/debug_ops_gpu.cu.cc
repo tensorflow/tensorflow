@@ -21,7 +21,10 @@ limitations under the License.
 #include <stdio.h>
 
 #include <algorithm>
+#include <cstdint>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -36,33 +39,24 @@ typedef Eigen::GpuDevice GPUDevice;
 // A CUDA kernel that fills the second element of a vector according
 // to whether any of the input data contains infinity or NaN.
 template <typename Tin, typename Tout>
-__global__ void CurtHealthKernel(const Tin* __restrict__ data, int size,
+__global__ void CurtHealthKernel(const Tin* __restrict__ data, int64_t size,
                                  Tout output[1]) {
-  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32_t total_thread_count = gridDim.x * blockDim.x;
-
-  int32_t offset = thread_id;
-  while (offset < size) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (Eigen::numext::isinf(data[offset]) ||
         Eigen::numext::isnan(data[offset])) {
       output[0] = 1.0;
     }
-    offset += total_thread_count;
   }
 }
 
 // A CUDA kernel that fills the three elements of an output
 // vector with the number of NaNs, -infs, and infs in the input respectively.
 template <typename Tin, typename Tout>
-__global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
+__global__ void ConciseHealthKernel(const Tin* __restrict__ data, int64_t size,
                                     Tout output[3]) {
-  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32_t total_thread_count = gridDim.x * blockDim.x;
-
-  int32_t offset = thread_id;
   Tout accum[3] = {0.0, 0.0, 0.0};
 
-  while (offset < size) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         ++accum[0];
@@ -73,7 +67,6 @@ __global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
     if (Eigen::numext::isnan(data[offset])) {
       ++accum[2];
     }
-    offset += total_thread_count;
   }
 
   GpuAtomicAdd(output, accum[0]);
@@ -85,15 +78,11 @@ __global__ void ConciseHealthKernel(const Tin* __restrict__ data, int size,
 // number of -infs, infs, nans, negatives, zeros, and positives in the input
 // respectively.
 template <typename Tin, typename Tout>
-__global__ void FullHealthKernel(const Tin* __restrict__ data, int size,
+__global__ void FullHealthKernel(const Tin* __restrict__ data, int64_t size,
                                  Tout output[6]) {
-  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32_t total_thread_count = gridDim.x * blockDim.x;
-
-  int32_t offset = thread_id;
   Tout accum[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
-  while (offset < size) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         ++accum[0];
@@ -111,7 +100,6 @@ __global__ void FullHealthKernel(const Tin* __restrict__ data, int size,
         ++accum[5];
       }
     }
-    offset += total_thread_count;
   }
 
   GpuAtomicAdd(output, accum[0]);
@@ -129,13 +117,8 @@ __global__ void FullHealthKernel(const Tin* __restrict__ data, int size,
 // +infinity. The last is filled with NaN if any of the elements is NaN.
 template <typename Tin, typename Tout>
 __global__ void ReduceInfNanThreeSlotsKernel(const Tin* __restrict__ data,
-                                             int size, Tout output[3]) {
-  const int32_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32_t total_thread_count = gridDim.x * blockDim.x;
-
-  int32_t offset = thread_id;
-
-  while (offset < size) {
+                                             int64_t size, Tout output[3]) {
+  for (int64_t offset : GpuGridRangeX<int64_t>(size)) {
     if (Eigen::numext::isinf(data[offset])) {
       if (data[offset] < static_cast<Tin>(0.f)) {
         output[0] = -std::numeric_limits<Tout>::infinity();
@@ -146,7 +129,6 @@ __global__ void ReduceInfNanThreeSlotsKernel(const Tin* __restrict__ data,
     if (Eigen::numext::isnan(data[offset])) {
       output[2] = std::numeric_limits<Tout>::quiet_NaN();
     }
-    offset += total_thread_count;
   }
 }
 
@@ -154,14 +136,17 @@ __global__ void ReduceInfNanThreeSlotsKernel(const Tin* __restrict__ data,
 
 template <typename Tin, typename Tout>
 struct CurtHealthLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[1]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[1]) {
+    absl::StatusOr<GpuLaunchConfig64> config_or = GetGpuLaunchConfig64(size, d);
+    if (!config_or.ok()) {
+      return config_or.status();
+    }
+    const GpuLaunchConfig64& config = *config_or;
 
-    TF_CHECK_OK(GpuLaunchKernel(CurtHealthKernel<Tin, Tout>, num_blocks,
-                                block_size, 0, d.stream(), data, size, output));
+    return GpuLaunchKernel(CurtHealthKernel<Tin, Tout>, config.block_count,
+                           config.thread_per_block, 0, d.stream(), data, size,
+                           output);
   }
 };
 
@@ -178,14 +163,17 @@ template struct CurtHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ConciseHealthLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[3]) {
+    absl::StatusOr<GpuLaunchConfig64> config_or = GetGpuLaunchConfig64(size, d);
+    if (!config_or.ok()) {
+      return config_or.status();
+    }
+    const GpuLaunchConfig64& config = *config_or;
 
-    TF_CHECK_OK(GpuLaunchKernel(ConciseHealthKernel<Tin, Tout>, num_blocks,
-                                block_size, 0, d.stream(), data, size, output));
+    return GpuLaunchKernel(ConciseHealthKernel<Tin, Tout>, config.block_count,
+                           config.thread_per_block, 0, d.stream(), data, size,
+                           output);
   }
 };
 
@@ -202,14 +190,17 @@ template struct ConciseHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct FullHealthLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[6]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[6]) {
+    absl::StatusOr<GpuLaunchConfig64> config_or = GetGpuLaunchConfig64(size, d);
+    if (!config_or.ok()) {
+      return config_or.status();
+    }
+    const GpuLaunchConfig64& config = *config_or;
 
-    TF_CHECK_OK(GpuLaunchKernel(FullHealthKernel<Tin, Tout>, num_blocks,
-                                block_size, 0, d.stream(), data, size, output));
+    return GpuLaunchKernel(FullHealthKernel<Tin, Tout>, config.block_count,
+                           config.thread_per_block, 0, d.stream(), data, size,
+                           output);
   }
 };
 
@@ -226,15 +217,17 @@ template struct FullHealthLaunch<int32_t, double>;
 
 template <typename Tin, typename Tout>
 struct ReduceInfNanThreeSlotsLaunch {
-  void Run(const GPUDevice& d, const Tin* data, int size, Tout output[3]) {
-    const int32_t block_size = d.maxGpuThreadsPerBlock();
-    const int32_t num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
+  absl::Status Run(const GPUDevice& d, const Tin* data, int64_t size,
+                   Tout output[3]) {
+    absl::StatusOr<GpuLaunchConfig64> config_or = GetGpuLaunchConfig64(size, d);
+    if (!config_or.ok()) {
+      return config_or.status();
+    }
+    const GpuLaunchConfig64& config = *config_or;
 
-    TF_CHECK_OK(GpuLaunchKernel(ReduceInfNanThreeSlotsKernel<Tin, Tout>,
-                                num_blocks, block_size, 0, d.stream(), data,
-                                size, output));
+    return GpuLaunchKernel(ReduceInfNanThreeSlotsKernel<Tin, Tout>,
+                           config.block_count, config.thread_per_block, 0,
+                           d.stream(), data, size, output);
   }
 };
 

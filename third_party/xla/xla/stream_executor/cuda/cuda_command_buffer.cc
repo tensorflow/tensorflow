@@ -269,9 +269,12 @@ std::string ConditionalTypeToString(GpuCommandBuffer::ConditionType type) {
   }
 }
 
-absl::Status GraphInstantiate(CUgraphExec* exec, CUgraph graph) {
-  VLOG(2) << "Instantiate CUDA executable graph from graph " << graph;
-  uint64_t cu_flags = CUDA_GRAPH_INSTANTIATE_FLAG_USE_NODE_PRIORITY;
+absl::Status GraphInstantiate(CUgraphExec* exec, CUgraph graph,
+                              bool use_node_priority) {
+  VLOG(2) << "Instantiate CUDA executable graph from graph " << graph
+          << "; use_node_priority=" << use_node_priority;
+  uint64_t cu_flags =
+      use_node_priority ? CUDA_GRAPH_INSTANTIATE_FLAG_USE_NODE_PRIORITY : 0;
   return cuda::ToStatus(cuGraphInstantiate(exec, graph, cu_flags),
                         "Failed to instantiate CUDA graph");
 }
@@ -686,6 +689,9 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateClonedChildNode(
       absl::down_cast<const CudaCommandBuffer&>(nested);
   CHECK_EQ(child_command_buffer.parent_, nullptr)
       << "Nested command buffer's parent is not null";
+  if (child_command_buffer.has_node_priority_) {
+    SetHasNodePriority();
+  }
 
   CUgraph child_graph = child_command_buffer.graph_;
   std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
@@ -716,8 +722,12 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNode(
 
 absl::Status CudaCommandBuffer::UpdateClonedChildNode(
     GraphNodeHandle node_handle, const CommandBuffer& nested) {
-  CUgraph child_graph =
-      absl::down_cast<const CudaCommandBuffer&>(nested).graph_;
+  const auto& child_command_buffer =
+      absl::down_cast<const CudaCommandBuffer&>(nested);
+  if (child_command_buffer.has_node_priority_) {
+    SetHasNodePriority();
+  }
+  CUgraph child_graph = child_command_buffer.graph_;
   VLOG(2) << "Set child node params " << node_handle << " in graph executable "
           << graph_exec() << " to params contained in " << child_graph;
 
@@ -850,6 +860,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
       "Failed to add kernel node to a CUDA graph"));
 
   if (priority != StreamPriority::Default) {
+    SetHasNodePriority();
     CUlaunchAttributeValue value;
     value.priority = stream_exec_->GetGpuStreamPriority(priority);
     ABSL_RETURN_IF_ERROR(
@@ -1019,6 +1030,9 @@ absl::StatusOr<size_t> CudaCommandBuffer::GetNodeCount() const {
 }
 
 absl::Status CudaCommandBuffer::SetPriority(StreamPriority priority) {
+  if (priority != StreamPriority::Default) {
+    SetHasNodePriority();
+  }
   size_t num_nodes;
   ABSL_RETURN_IF_ERROR(
       cuda::ToStatus(cuGraphGetNodes(graph_, /*nodes=*/nullptr, &num_nodes)));
@@ -1043,6 +1057,13 @@ absl::Status CudaCommandBuffer::SetPriority(StreamPriority priority) {
     }
   }
   return absl::OkStatus();
+}
+
+void CudaCommandBuffer::SetHasNodePriority() {
+  for (CudaCommandBuffer* current = this; current != nullptr;
+       current = current->parent_) {
+    current->has_node_priority_ = true;
+  }
 }
 
 absl::Status CudaCommandBuffer::PrepareFinalization() {
@@ -1092,7 +1113,8 @@ absl::Status CudaCommandBuffer::InstantiateGraph() {
   VLOG(2) << "CUDA Graph DOT:\n" << ToString();
   // If we get a "resource exhausted error" we retry instantiating Gpu graph
   // one more time after releasing unused device memory allocated for graphs.
-  auto instantiated = GraphInstantiate(&graph_exec_, graph_);
+  auto instantiated =
+      GraphInstantiate(&graph_exec_, graph_, has_node_priority_);
   if (instantiated.code() == absl::StatusCode::kResourceExhausted) {
     LOG(WARNING) << "Retry CUDA graph instantiation after OOM error";
     CUdevice device;
@@ -1101,7 +1123,7 @@ absl::Status CudaCommandBuffer::InstantiateGraph() {
                        "Failed call to cuDeviceGet"));
     ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGraphMemTrim(device),
                                    "Failed to trim device graph memory"));
-    ABSL_RETURN_IF_ERROR(GraphInstantiate(&graph_exec_, graph_));
+    ABSL_RETURN_IF_ERROR(GraphInstantiate(&graph_exec_, graph_, has_node_priority_));
   } else {
     ABSL_RETURN_IF_ERROR(instantiated);
   }

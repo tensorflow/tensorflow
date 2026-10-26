@@ -33,21 +33,53 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+namespace {
+
+// Returns true if `instr` is a broadcast inside the fusion whose operand chain
+// within the fusion consists only of cheap-to-recompute instructions
+// (`parameter`, `constant`, `iota`, `convert`, `bitcast`, `reshape`, and
+// `broadcast`).
+bool IsBroadcastCheapToRecompute(HloInstructionAdaptor instr) {
+  const HloFusionAdaptor& fusion = instr.parent();
+  if (!fusion.ContainsInstruction(instr) ||
+      instr.opcode() != HloOpcode::kBroadcast) {
+    return false;
+  }
+  HloInstructionAdaptor curr = instr.GetOperand(0);
+  while (fusion.ContainsInstruction(curr)) {
+    switch (curr.opcode()) {
+      case HloOpcode::kParameter:
+      case HloOpcode::kConstant:
+      case HloOpcode::kIota:
+        return true;
+      case HloOpcode::kConvert:
+      case HloOpcode::kBitcast:
+      case HloOpcode::kReshape:
+      case HloOpcode::kBroadcast:
+        curr = curr.GetOperand(0);
+        break;
+      default:
+        return false;
+    }
+  }
+  // `curr` is outside the fusion, which means it is a fusion parameter.
+  return true;
+}
+
+}  // namespace
 
 int GetVectorSizeForMlir(const HloFusionAnalysis& analysis, int64_t minor_dim,
                          int num_threads) {
@@ -103,6 +135,22 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
   absl::node_hash_map<HloInstructionAdaptor,
                       absl::flat_hash_set<HloInstructionAdaptor>>
       reachable_outputs;
+  // Tracks fusion roots that can be reached from an instruction without
+  // traversing any cheap-to-recompute `kBroadcast` instruction. In multi-output
+  // `kInput` reduction fusions, all roots in the same reduction group are
+  // emitted into a single per-thread inner reduction loop, whereas separate
+  // reduction groups execute in parallel across `blockIdx.z` within the same
+  // kernel. Merging reductions that only share a cheap broadcasted input (such
+  // as a small lookup table or shift constant) bloats the inner reduction loop
+  // body and can exceed LLVM's loop unroll threshold, preventing full
+  // unrolling of the inner vector loop and causing dynamic vector indexing to
+  // spill into `.local` stack memory with high register pressure and low
+  // occupancy. Keeping `unbroadcasted_reachable_outputs` allows us to only
+  // merge reduction roots that share an unbroadcasted or non-trivial
+  // predecessor.
+  absl::node_hash_map<HloInstructionAdaptor,
+                      absl::flat_hash_set<HloInstructionAdaptor>>
+      unbroadcasted_reachable_outputs;
   absl::flat_hash_set<HloInstructionAdaptor> roots_with_reduction;
   absl::flat_hash_map<const HloInstruction*, int> root_indices;
   const auto& roots = analysis.fusion().GetRoots();
@@ -147,16 +195,46 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
 
   for (auto root : roots) {
     visit({root});
+    HloBfsConsumersFirstTraversal(
+        {root}, analysis.fusion(), [&](HloInstructionAdaptor consumer) {
+          if (IsBroadcastCheapToRecompute(consumer)) {
+            return TraversalResult::kSkip;
+          }
+          unbroadcasted_reachable_outputs[consumer].insert(root);
+          for (auto producer : consumer.GetOperands()) {
+            if (!analysis.fusion().ContainsInstruction(producer)) {
+              unbroadcasted_reachable_outputs[producer].insert(root);
+            }
+          }
+          return TraversalResult::kAdvance;
+        });
   }
 
   for (auto instr : instructions) {
     const auto& reachable = reachable_outputs[instr];
+    const auto& unbroadcasted_reachable =
+        unbroadcasted_reachable_outputs[instr];
+    bool has_unbroadcasted_reduce =
+        absl::c_any_of(roots_with_reduction, [&](HloInstructionAdaptor root) {
+          return unbroadcasted_reachable.contains(root);
+        });
     std::vector<HloInstructionAdaptor> reached_output_ids;
     bool added_to_reduce = false;
     for (auto output : roots) {
       bool has_real_hero = roots_with_reduction.contains(output);
+      if (has_real_hero && !unbroadcasted_reachable.contains(output)) {
+        if (has_unbroadcasted_reduce || added_to_reduce) {
+          // Do not group more than one output reduce instructions through an
+          // instruction that only reaches reductions via a cheap-to-recompute
+          // broadcast.
+          VLOG(3) << "Skip instruction " << instr.ToString()
+                  << " reaching reduction output " << output.ToString()
+                  << " only through a cheap broadcast";
+          continue;
+        }
+      }
       if (has_real_hero &&
-          (hlo_query::IsBroadcastedConstantOrScalar(instr.instruction()))) {
+          hlo_query::IsBroadcastedConstantOrScalar(instr.instruction())) {
         if (added_to_reduce) {
           // Do not group more than one output reduce instructions through
           // broadcasted constants or scalars, as the recomputation should be
@@ -175,9 +253,11 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis) {
         }
       }
     }
-    auto& first_reached_output = disjoint_sets.at(reached_output_ids.front());
-    for (size_t j = 1; j < reached_output_ids.size(); ++j) {
-      first_reached_output.Merge(&disjoint_sets.at(reached_output_ids[j]));
+    if (!reached_output_ids.empty()) {
+      auto& first_reached_output = disjoint_sets.at(reached_output_ids.front());
+      for (size_t j = 1; j < reached_output_ids.size(); ++j) {
+        first_reached_output.Merge(&disjoint_sets.at(reached_output_ids[j]));
+      }
     }
   }
 

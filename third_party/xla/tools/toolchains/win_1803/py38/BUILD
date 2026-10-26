@@ -15,7 +15,10 @@
 
 # Point both runtimes to the same python binary to ensure we always
 # use the python binary specified by ./configure.py script.
-load("@bazel_tools//tools/python:toolchain.bzl", "py_runtime_pair")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_python//python:py_runtime.bzl", "py_runtime")
+load("@rules_python//python:py_runtime_pair.bzl", "py_runtime_pair")
 
 licenses(["restricted"])
 
