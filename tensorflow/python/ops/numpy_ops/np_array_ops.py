@@ -378,10 +378,9 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
 
   maybe_rank = a.shape.rank
   if maybe_rank is not None and maybe_rank < 2:
-    # NumPy raises for rank < 2 before any per-axis checks, so even a
-    # rank-1 call with an out-of-bounds `axis2` gets this message. The
-    # backend instead produced a confusing error deep inside
-    # `moveaxis`/`matrix_diag_part` (and `trace` inherits this check).
+    # NumPy checks the rank before any per-axis checks, so a rank-0 or
+    # rank-1 input gets this message instead of the out-of-bounds or
+    # same-axis errors below. `trace` inherits this check.
     raise ValueError('diag requires an array of at least two dimensions')
   if (
       maybe_rank is not None

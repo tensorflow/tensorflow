@@ -1058,7 +1058,9 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.trace(a, axis1=0, axis2=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.trace(a, axis1=-3, axis2=1)
-    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
+    with self.assertRaisesRegex(
+        ValueError, r'axis1 and axis2 cannot be the same$'
+    ):
       np_math_ops.trace(a, axis1=1, axis2=1)
     # Mixed-sign duplicates normalize to the same axis.
     with self.assertRaisesRegex(ValueError, 'cannot be the same'):
@@ -1069,9 +1071,8 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.trace(np.array(5))
     with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array([1, 2, 3]))
-    # A rank-1 input has no valid trace axes: the out-of-bounds default
-    # axes (axis1=-2, axis2=-1) must raise, not silently route the input
-    # to the rank>=2-only `math_ops.trace` fast path.
+    # NumPy checks the rank first, so explicit axes on a rank-1 input
+    # still raise the "diag requires" error.
     with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array([1.0, 2.0, 3.0]), axis1=-2, axis2=-1)
 

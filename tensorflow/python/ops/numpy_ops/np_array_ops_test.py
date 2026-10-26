@@ -520,7 +520,9 @@ class ArrayCreationTest(test.TestCase):
       np_array_ops.diagonal(np.array(5))
     with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_array_ops.diagonal(np.array([1, 2, 3]))
-    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
+    with self.assertRaisesRegex(
+        ValueError, r'axis1 and axis2 cannot be the same$'
+    ):
       np_array_ops.diagonal(a, axis1=0, axis2=0)
     # Mixed-sign duplicates normalize to the same axis.
     with self.assertRaisesRegex(ValueError, 'cannot be the same'):
