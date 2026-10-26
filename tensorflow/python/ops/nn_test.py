@@ -315,6 +315,16 @@ class L2NormalizeTest(test_lib.TestCase):
         y_tf = nn_impl.l2_normalize(x_tf, dim)
         self.assertAllClose(y_np, self.evaluate(y_tf))
 
+  def testL2NormalizeHalfPrecision(self):
+    x_np = np.array([[300.0, 400.0], [0.0, 0.0], [1e-4, 0.0]], np.float32)
+    expected = [[0.6, 0.8], [0.0, 0.0], [1.0, 0.0]]
+    for dtype in [dtypes.float16, dtypes.bfloat16]:
+      x_tf = constant_op.constant(x_np, dtype=dtype)
+      y_tf = nn_impl.l2_normalize(x_tf, 1)
+      self.assertEqual(dtype, y_tf.dtype)
+      y = self.evaluate(y_tf).astype(np.float32)
+      self.assertAllClose(expected, y, atol=1e-2)
+
 
 DROPOUT_FNS = [
     ("stateful_v1", nn_ops.dropout),
