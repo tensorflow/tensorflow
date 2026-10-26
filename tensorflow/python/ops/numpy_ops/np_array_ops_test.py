@@ -707,6 +707,23 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[True, False], [True, True]], axis=(0, 1), keepdims=True)
     run_test([5.2, 3.5], axis=0)
     run_test([1, 0], axis=0)
+    run_test([-3j, 0j])
+    run_test([[1j, 2 + 0j], [0j, 1 - 1j]], axis=1)
+
+  def testComplexToBool(self):
+    # A complex value is true if its real or imaginary part is nonzero.
+    x = np.array([[-3j, 0j], [2 + 0j, 1 - 1j]], np.complex128)
+    expected = x.astype(bool)
+    for a in [x, x.tolist(), ops.convert_to_tensor(x), np_array_ops.array(x)]:
+      self.assertAllEqual(expected, np_array_ops.asarray(a, dtype=bool))
+      if hasattr(a, 'astype'):
+        self.assertAllEqual(expected, a.astype(bool))
+      self.assertAllEqual(np.nonzero(x), np_array_ops.nonzero(a))
+      self.assertAllEqual(np.where(x), np_array_ops.where(a))
+      self.assertAllEqual(
+          np.compress(x[0], [1, 2]), np_array_ops.compress(a[0], [1, 2])
+      )
+      self.assertAllEqual(np.logical_not(x), np_math_ops.logical_not(a))
 
   def testCompress(self):
 

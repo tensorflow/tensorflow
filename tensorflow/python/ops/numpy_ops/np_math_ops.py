@@ -2014,7 +2014,7 @@ def _enable_numpy_methods(tensor_class):
   setattr(tensor_class, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
   setattr(tensor_class, 'ravel', np_array_ops.ravel)
   setattr(tensor_class, 'clip', clip)
-  setattr(tensor_class, 'astype', math_ops.cast)
+  setattr(tensor_class, 'astype', np_array_ops._cast)  # pylint: disable=protected-access
   setattr(tensor_class, '__round__', np_array_ops.around)
   setattr(tensor_class, 'max', np_array_ops.amax)
   setattr(tensor_class, 'mean', np_array_ops.mean)
