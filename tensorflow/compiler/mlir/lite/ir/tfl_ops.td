@@ -4391,7 +4391,7 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
 
   let arguments = (ins TFL_TensorOf<[QI2, QI4, QUI4, QI8, QUI8, QI16, F16, F8E4M3FN, F8E5M2, TFL_BlockwiseQuantType]>:$input);
 
-  let results = (outs TFL_FpTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, F16]>:$output);
 
   let hasVerifier = 1;
 
@@ -4587,7 +4587,7 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI4, QUI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, F16, QI4, QUI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
     TensorTypeAttr:$qtype
   );
 
