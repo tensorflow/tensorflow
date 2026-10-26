@@ -104,8 +104,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/backends/gpu/transforms/deviceless_estimate_cub_sort_scratch_size.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
-#include "xla/backends/gpu/transforms/dot_dimension_sorter.h"
-#include "xla/backends/gpu/transforms/dot_normalizer.h"
 #include "xla/backends/gpu/transforms/dot_operand_converter.h"
 #include "xla/backends/gpu/transforms/dot_strength_reduction.h"
 #include "xla/backends/gpu/transforms/double_buffer_loop_unrolling.h"
@@ -191,7 +189,6 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/comparison_expander.h"
 #include "xla/hlo/transforms/expanders/convolution_4d_expander.h"
 #include "xla/hlo/transforms/expanders/convolution_pred_expander.h"
-#include "xla/hlo/transforms/expanders/dot_decomposer.h"
 #include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
 #include "xla/hlo/transforms/expanders/elementary_function_expander.h"
@@ -823,9 +820,6 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<TopKSplitter>();
   pipeline.AddPass<TopkSpecializer>(gpu_version);
   pipeline.AddPass<TopkDecomposer>();
-
-  pipeline.AddPass<DotDimensionSorter>();
-  pipeline.AddPass<DotDecomposer>();
 
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
     const auto* cuda_cc =
@@ -2154,16 +2148,13 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         gpu_target_config.device_description.gpu_compute_capability();
     pipeline.AddPass<AlgorithmChecker>(gpu_version);
 
-    // Make sure that dots have at least 1 contracting dimension in the
-    // operands. Needs to happen shortly before the dot rewrite, as otherwise
-    // AlgebraicSimplifier will simplify it away again.
-    // TODO(b/375566188): Figure out whether we can get rid of this pass.
-    pipeline.AddPass<DotNormalizer>();
     if (IsTritonGemmEnabled(debug_options, gpu_version)) {
       pipeline.AddPass<DotDimensionNormalizer>(
           /*normalize_noncontracting_dimensions=*/!debug_options
               .xla_gpu_experimental_gemm_fusion_v2());
-      pipeline.AddPass<GemvRewriter>();
+      if (!debug_options.xla_gpu_experimental_gemm_fusion_v2()) {
+        pipeline.AddPass<GemvRewriter>();
+      }
       pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
       pipeline.AddPass<GemmFusion>(gpu_target_config.device_description);
       pipeline.AddPass<HoistFusedBitcasts>();

@@ -1475,7 +1475,6 @@ xla_test(
     deps = [
         ":dot_dimension_sorter",
         "//xla:error_spec",
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",

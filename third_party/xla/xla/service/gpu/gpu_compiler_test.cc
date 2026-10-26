@@ -1324,25 +1324,6 @@ class PassOrderTest : public GpuCompilerTest {
     return {first_pass_latest_run, last_pass_earliest_run};
   }
 
-  // Checks that no pass that matches `pass_regex` runs strictly in between
-  // `pass_range.first_pass_run_index` and `pass_range.second_pass_run_index`.
-  void VerifyNotRunInBetween(const PassRange& pass_range,
-                             absl::string_view pass_regex) {
-    CHECK(optimized_module_);
-    int run_index = 0;
-    for (const HloPassMetadata& pass_metadata :
-         optimized_module_->metadata().proto().pass_metadata()) {
-      if (run_index >= pass_range.second_pass_run_index) {
-        break;
-      }
-      if (run_index++ <= pass_range.first_pass_run_index) {
-        continue;
-      }
-      EXPECT_FALSE(RE2::FullMatch(pass_metadata.pass_name(), pass_regex))
-          << "Ran " << pass_metadata.pass_name() << " in the given range";
-    }
-  }
-
  protected:
   // Compiles a dummy module with the given configuration, running all passes,
   // including the ones in RunBackend. This is important because otherwise, we
@@ -1462,26 +1443,6 @@ TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
   CompileModule(config);
 
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
-}
-
-TEST_F(PassOrderTest, GemmFusionRunsAfterDotNormalizer) {
-  if (!get_cuda_cc().IsAtLeastAmpere()) {
-    GTEST_SKIP() << "GemmFusion requires Ampere+ to run.";
-  }
-  DebugOptions options = GetDebugOptionsForTest();
-  options.set_xla_gpu_enable_triton_gemm(true);
-  SetDebugOptions(options);
-  PassRange pass_range = VerifyPassOrder(
-      /*first_pass_regex=*/"dot_normalizer",
-      /*last_pass_regex=*/"triton-gemm-rewriter");
-  VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
-}
-
-TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
-  PassRange pass_range = VerifyPassOrder(
-      /*first_pass_regex=*/"dot_normalizer",
-      /*last_pass_regex=*/"cublas-gemm-rewriter");
-  VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
 }
 
 TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterGemmFusion) {

@@ -68,7 +68,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
-#include "xla/hlo/transforms/simplifiers/dot_dimension_merger.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
@@ -315,7 +314,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           ? se::dnn::VersionInfo(
                 gpu_target_config.device_description.dnn_version())
           : se::dnn::VersionInfo{});
-  pre_pipeline.AddPass<DotDimensionMerger>();
 
   ABSL_RETURN_IF_ERROR(
       pre_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})

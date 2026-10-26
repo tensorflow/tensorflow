@@ -99,10 +99,11 @@ ENTRY test {
 
   MatchOptimizedHlo(hlo_text,
                     R"(
-CHECK-DAG: %[[LHS_BITCAST:[a-zA-Z0-9_.-]+]] = f32[6,16,10240]{{.*}} {{bitcast}}
-CHECK-DAG: %[[RHS_BITCAST:[a-zA-Z0-9_.-]+]] = f32[6,10240,128]{{.*}} {{bitcast}}
-CHECK: = (f32[6,16,128]{2,1,0}, s8[{{[0-9]+}}]{0}) custom-call(%[[LHS_BITCAST]], %[[RHS_BITCAST]]), custom_call_target="__cublas{{.*}}matmul"
-CHECK: ROOT {{.*}} = f32[2,3,16,128]{3,2,1,0} {{bitcast}}
+CHECK-NOT: bitcast
+CHECK-DAG: %[[LHS:[a-zA-Z0-9_.-]+]] = f32[2,3,16,10240]{3,2,1,0} parameter(0)
+CHECK-DAG: %[[RHS:[a-zA-Z0-9_.-]+]] = f32[2,3,10240,128]{3,2,1,0} parameter(1)
+CHECK: %[[GEMM:[a-zA-Z0-9_.-]+]] = (f32[2,3,16,128]{3,2,1,0}, s8[{{[0-9]+}}]{0}) custom-call(%[[LHS]], %[[RHS]]), custom_call_target="__cublas{{.*}}matmul"
+CHECK: ROOT {{.*}} = f32[2,3,16,128]{3,2,1,0} get-tuple-element(%[[GEMM]]), index=0
 )");
 }
 
@@ -2350,7 +2351,7 @@ ENTRY AddDotsFunc {
 ; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[3,4,2], {{.*}}: f32[3,4,5]) -> f32[2,5] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[3,4,2]{2,1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4,5]{2,1,0} parameter(1)
-; CHECK-DAG:     [[BITCAST0:%[^ ]+]] = f32[2,12]{0,1} bitcast([[P0]])
+; CHECK-DAG:     [[BITCAST0:%[^ ]+]] = f32[12,2]{1,0} bitcast([[P0]])
 ; CHECK-DAG:     [[BITCAST1:%[^ ]+]] = f32[12,5]{1,0} bitcast([[P1]])
 ; CHECK:         [[GEMM:%[^ ]+]] = {{.*}} custom-call([[BITCAST0]], [[BITCAST1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
@@ -2359,7 +2360,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:         "alpha_imag":0
 ; CHECK-DAG:         "beta":0
 ; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_contracting_dimensions":["0"]
 ; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
 ; CHECK-DAG:           "lhs_batch_dimensions":[]
 ; CHECK-DAG:           "rhs_batch_dimensions":[]
@@ -2579,34 +2580,29 @@ ENTRY AddDotsFunc {
 
 )";
 
-  // Batch sizes larger than 2^16-1 are not supported by cublasLt. Ensure that
-  // the custom_call_target is __cublas$gemm.
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[20000,4,3,2], {{.*}}: f32[20000,4,3,4]) -> f32[20000,4,2,4] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[20000,4,3,2]{3,2,1,0} parameter(0)
-; CHECK-DAG:     [[BC0:%[^ ]+]] = f32[80000,3,2]{2,1,0} bitcast([[P0]])
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[20000,4,3,4]{3,2,1,0} parameter(1)
-; CHECK-DAG:     [[BC1:%[^ ]+]] = f32[80000,3,4]{2,1,0} bitcast([[P1]])
-; CHECK:         [[GEMM:%[^ ]+]] = (f32[80000,2,4]{2,1,0}, s8[{{[0-9]+}}]{0}) custom-call([[BC0]], [[BC1]]),
+; CHECK:         [[GEMM:%[^ ]+]] = (f32[20000,4,2,4]{3,2,1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
 ; CHECK-DAG:         "alpha_imag":0
 ; CHECK-DAG:         "beta":0
 ; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "lhs_batch_dimensions":["0"]
-; CHECK-DAG:           "rhs_batch_dimensions":["0"]
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0","1"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0","1"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "precision_config":{
 ; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
 ; CHECK-DAG:         }
 ; CHECK:           }
-; CHECK:   [[OUT:%[^ ]+]] = f32[80000,2,4]{2,1,0} get-tuple-element([[GEMM]]), index=0
-; CHECK:   ROOT {{[^ ]+}} = f32[20000,4,2,4]{3,2,1,0} bitcast([[OUT]])
+; CHECK:   ROOT {{[^ ]+}} = f32[20000,4,2,4]{3,2,1,0} get-tuple-element([[GEMM]]), index=0
 )");
 }
 

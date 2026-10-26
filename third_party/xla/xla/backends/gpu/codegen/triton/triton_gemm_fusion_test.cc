@@ -1612,7 +1612,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: gemm_fusion_dot
+; CHECK: gemm_fusion_d
 ; CHECK: dot(
 ; CHECK: bf16[] constant(0.123)
 ; CHECK: ROOT
@@ -1989,9 +1989,7 @@ ENTRY e {
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
-// TODO(b/393299275): This test name might be a bit misleading, since the dot is
-// given a non-contracting dimension by the time it gets passed down to the
-// Triton emitter. This should probably be a fusion test.
+// TODO(b/393299275): This should probably be a fusion test.
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
 TEST_P(TritonGemmTest, LowerDotWithLhsWithoutNonContractingDimThroughTriton) {
@@ -2012,9 +2010,7 @@ ENTRY e {
               .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
-// TODO(b/393299275): This test name might be a bit misleading, since the dot is
-// given a non-contracting dimension by the time it gets passed down to the
-// Triton emitter. This should probably be a fusion test.
+// TODO(b/393299275): This should probably be a fusion test.
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
 TEST_P(TritonGemmTest, LowerDotWithRhsWithoutNonContractingDimThroughTriton) {
