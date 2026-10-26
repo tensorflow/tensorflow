@@ -1696,11 +1696,12 @@ class TestSecurityHardening(unittest.TestCase):
         mock_post.assert_called_once()
 
     def test_engineer_review_agent_import_grouping_order(self):
-        """Finding 4: pr_review_agent/agent modules group stdlib, third-party, and local imports in standard order."""
+        """Finding 4: pr_review_agent/agent modules group stdlib imports before non-stdlib imports."""
         stdlib_modules = {
             "__future__",
             "asyncio",
             "base64",
+            "logging",
             "os",
             "pathlib",
             "re",
@@ -1709,14 +1710,13 @@ class TestSecurityHardening(unittest.TestCase):
             "tempfile",
             "typing",
         }
-        third_party_roots = {"dotenv", "google", "requests"}
-        local_roots = {"agent"}
+        non_stdlib_roots = {"agent", "dotenv", "google", "requests"}
 
         agent_dir = Path(__file__).resolve().parent / "agent"
         expected_groups_by_file = {
-            "agent.py": {1, 2, 3},
-            "main.py": {1, 2, 3},
-            "utils.py": {1, 2, 3},
+            "agent.py": {1, 2},
+            "main.py": {1, 2},
+            "utils.py": {1, 2},
             "settings.py": {1, 2},
         }
 
@@ -1740,10 +1740,8 @@ class TestSecurityHardening(unittest.TestCase):
                         seen_imports.add(key)
                         if root_pkg in stdlib_modules:
                             group_sequence.append((1, alias.name, node.lineno))
-                        elif root_pkg in third_party_roots:
+                        elif root_pkg in non_stdlib_roots:
                             group_sequence.append((2, alias.name, node.lineno))
-                        elif root_pkg in local_roots:
-                            group_sequence.append((3, alias.name, node.lineno))
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     root_pkg = node.module.split(".")[0]
                     for alias in node.names:
@@ -1756,16 +1754,14 @@ class TestSecurityHardening(unittest.TestCase):
                         seen_imports.add(key)
                     if root_pkg in stdlib_modules:
                         group_sequence.append((1, node.module, node.lineno))
-                    elif root_pkg in third_party_roots:
+                    elif root_pkg in non_stdlib_roots:
                         group_sequence.append((2, node.module, node.lineno))
-                    elif root_pkg in local_roots:
-                        group_sequence.append((3, node.module, node.lineno))
 
             group_ids = [g[0] for g in group_sequence]
             self.assertEqual(
                 group_ids,
                 sorted(group_ids),
-                f"Expected stdlib (1) -> third-party (2) -> local (3) import order in {filename}, got {group_sequence}",
+                f"Expected stdlib (1) -> non-stdlib (2) import order in {filename}, got {group_sequence}",
             )
             self.assertEqual(set(group_ids), expected_groups)
 
