@@ -75,6 +75,7 @@ class AddLoopUnrollFlagsPass
         /*pipeline=*/nullptr, /*peeled=*/nullptr, /*unswitch=*/nullptr,
         /*mustProgress=*/nullptr,
         /*isVectorized=*/nullptr,
+        /*align=*/0,
         /*startLoc=*/nullptr,
         /*endLoc=*/nullptr,
         /*parallelAccesses=*/{});
