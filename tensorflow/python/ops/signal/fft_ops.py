@@ -105,23 +105,13 @@ def _validate_static_irfft_fft_length(fft_length_static, fft_rank):
     raise ValueError("fft_length[-1] must be > 0, got %d" % fft_length_last)
 
 
-def _has_empty_batch_dim(input_tensor, fft_rank):
-  """Returns True if a dimension outside the inner `fft_rank` dims is empty."""
-  if input_tensor.shape.ndims is None:
-    return False
-  outer_dims = input_tensor.shape.dims[
-      :max(input_tensor.shape.ndims - fft_rank, 0)]
-  return any(dim.value == 0 for dim in outer_dims)
-
-
 def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
   """Pads `input_tensor` to `fft_length` on its inner-most `fft_rank` dims."""
   fft_shape = _tensor_util.constant_value_as_shape(fft_length)
 
-  # Edge case: skip padding when a batch dimension is empty, since the result
-  # is empty as well. An empty transformed dimension must still be zero-padded
-  # to `fft_length`, otherwise the kernel reads uninitialized memory.
-  if _has_empty_batch_dim(input_tensor, fft_rank):
+  # Edge case: skip padding empty tensors.
+  if (input_tensor.shape.ndims is not None and
+      any(dim.value == 0 for dim in input_tensor.shape.dims)):
     return input_tensor
 
   # An N-D transform over a rank 0 input has no dimensions to pad, and the
@@ -192,14 +182,9 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
         fft_length = _infer_fft_length_for_rfft(input_tensor, fft_rank)
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
-      fft_length_static = _tensor_util.constant_value(fft_length)
-      # Only an empty batch dimension (empty output) may skip validation. An
-      # empty transformed dimension is still padded to `fft_length`, so an
-      # invalid `fft_length` must be rejected here.
-      if not _has_empty_batch_dim(input_tensor, fft_rank):
-        _validate_static_irfft_fft_length(fft_length_static, fft_rank)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
 
+      fft_length_static = _tensor_util.constant_value(fft_length)
       if fft_length_static is not None:
         fft_length = fft_length_static
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
