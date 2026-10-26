@@ -863,9 +863,11 @@ TilingSpace::GetValidTilings(bool tile_reduction_dimensions) {
   // multi-dimension reduction fusions are supported.
   // Reduction dimensions are only tiled when requested and the fusion has a
   // single reduce that reduces a single dimension. Otherwise, sequential reduce
-  // dimensions are not tiled. To work around the limitation of
-  // `GetFlatTilingsForInputSpace`, we set the tile size to 1 here and later
-  // replace with the actual dimension size.
+  // dimensions are not tiled. Row-local scan dimensions
+  // (`<= kMaxRowLocalScanDimSize`) are likewise kept in a single tile, matching
+  // the producer fusion invariant in PriorityFusion. To work around the
+  // limitation of `GetFlatTilingsForInputSpace`, we set the tile size to 1 here
+  // and later replace with the actual dimension size.
   const int64_t num_reduction_dims =
       absl::c_count_if(dimensions_, [](const DimensionInfo& dim) {
         return dim.type == DimensionSemantics::kSequential &&
@@ -874,9 +876,16 @@ TilingSpace::GetValidTilings(bool tile_reduction_dimensions) {
   const bool tile_reduction_dims =
       tile_reduction_dimensions && num_reduction_dims == 1;
   auto is_untiled_dim = [&](const DimensionInfo& dim) {
-    return !tile_reduction_dims &&
-           dim.type == DimensionSemantics::kSequential &&
-           dim.hlo->opcode() == HloOpcode::kReduce;
+    if (dim.type != DimensionSemantics::kSequential) {
+      return false;
+    }
+    if (dim.hlo->opcode() == HloOpcode::kReduce) {
+      return !tile_reduction_dims;
+    }
+    if (dim.hlo->opcode() == HloOpcode::kScan) {
+      return dim.dimension_size <= kMaxRowLocalScanDimSize;
+    }
+    return false;
   };
   for (const auto& dim : dimensions_) {
     if (dim.type == DimensionSemantics::kReplica) {

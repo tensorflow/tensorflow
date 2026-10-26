@@ -923,6 +923,55 @@ ENTRY main {
               SizeIs(1));
 }
 
+TEST_F(GpuIndexingPerformanceModelTest,
+       TryFindBestTilingForFusionAsync_RowLocalScanGetsSingleTileOnB200) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  p0 = f16[2,3] parameter(0)
+  p1 = f16[2,3] parameter(1)
+  sum = f16[2,3] add(p0, p1)
+  ROOT tuple = (f16[2,3], f16[2,3]) tuple(sum, sum)
+}
+
+scan_fusion {
+  p0 = f16[2,3,3] parameter(0)
+  c0 = f16[] constant(0)
+  init = f16[2,3] broadcast(c0), dimensions={}
+  scan = (f16[2,3,3], f16[2,3]) scan(p0, init), dimensions={2},
+    num_carries=1, is_associative=true, to_apply=add
+  ROOT gte = f16[2,3,3] get-tuple-element(scan), index=0
+}
+
+ENTRY main {
+  p0 = f16[2,3,3] parameter(0)
+  ROOT fusion = f16[2,3,3] fusion(p0), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})"));
+
+  se::DeviceDescription b200_device_info =
+      TestGpuDeviceInfo::B200SXMDeviceInfo();
+  HloFusionAnalysisCache b200_analysis_cache(b200_device_info);
+  GpuPerformanceModelWithIndexingAnalysis b200_cost_model(
+      &b200_device_info, &b200_analysis_cache,
+      HloCostAnalysis::DefaultShapeSize, &mlir_context_,
+      /*enable_same_shape_multi_output_fusion=*/false, &mlir_context_pool_);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(auto tiled_runtime_data_or_error,
+                       b200_cost_model
+                           .TryFindBestTilingForFusionAsync(
+                               *HloFusionAdaptor::ForInstruction(root))
+                           .Await());
+  ASSERT_TRUE(
+      std::holds_alternative<TiledRunTimeData>(tiled_runtime_data_or_error));
+  const TiledRunTimeData& tiled_runtime_data =
+      std::get<TiledRunTimeData>(tiled_runtime_data_or_error);
+  EXPECT_THAT(tiled_runtime_data.block_level_parameters.sequential_tile_sizes,
+              ElementsAre(4));
+}
+
 TEST_F(
     GpuIndexingPerformanceModelTest,
     TryFindBestTilingForFusionAsync_UntiledReduceHasEmptySequentialTileSizes) {

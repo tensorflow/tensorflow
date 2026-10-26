@@ -2643,6 +2643,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
+        "//xla/codegen/tiling:tile",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_dfs_reachability",

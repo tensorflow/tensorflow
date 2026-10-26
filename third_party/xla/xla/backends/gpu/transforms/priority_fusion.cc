@@ -45,6 +45,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -92,11 +93,6 @@ namespace gpu {
 namespace {
 
 using ::xla::xtile::BlockLevelParameters;
-
-// Producers are only fused into scan fusions with a scan dimension of at
-// most this size, where the row fits into a single tile and row-wise
-// producers such as a softmax need no loop over the scan dimension.
-constexpr int64_t kMaxRowLocalScanDimSize = 128;
 
 bool AllScansHaveDimSizeAtMost(const HloInstruction& instr, int64_t max_size) {
   if (instr.opcode() == HloOpcode::kScan) {

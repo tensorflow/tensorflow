@@ -1209,6 +1209,57 @@ TEST_F(TilingSpaceTest,
               ElementsAre(ElementsAre(1, 4, 8), ElementsAre(2, 4, 8)));
 }
 
+TEST_F(TilingSpaceTest, GetValidTilingsDoesNotTileRowLocalScanDim) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+      HloModule m
+      add {
+        p0 = f32[2] parameter(0)
+        p1 = f32[2] parameter(1)
+        sum = f32[2] add(p0, p1)
+        ROOT t = (f32[2], f32[2]) tuple(sum, sum)
+      }
+      ENTRY e {
+        p0 = f32[2,3] parameter(0)
+        init = f32[2] parameter(1)
+        ROOT s = (f32[2,3], f32[2]) scan(p0, init), dimensions={1},
+          num_carries=1, is_associative=true, to_apply=add
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto valid_tilings, tiling_space->GetValidTilings());
+  EXPECT_THAT(valid_tilings, ElementsAre(ElementsAre(1, 3), ElementsAre(2, 3)));
+}
+
+TEST_F(TilingSpaceTest, GetValidTilingsTilesScanDimAboveRowLocalLimit) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+      HloModule m
+      add {
+        p0 = f32[1] parameter(0)
+        p1 = f32[1] parameter(1)
+        sum = f32[1] add(p0, p1)
+        ROOT t = (f32[1], f32[1]) tuple(sum, sum)
+      }
+      ENTRY e {
+        p0 = f32[1,256] parameter(0)
+        init = f32[1] parameter(1)
+        ROOT s = (f32[1,256], f32[1]) scan(p0, init), dimensions={1},
+          num_carries=1, is_associative=true, to_apply=add
+      }
+  )");
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+  ASSERT_OK_AND_ASSIGN(auto tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto valid_tilings, tiling_space->GetValidTilings());
+  EXPECT_THAT(
+      valid_tilings,
+      ElementsAre(ElementsAre(1, 1), ElementsAre(1, 2), ElementsAre(1, 4),
+                  ElementsAre(1, 8), ElementsAre(1, 16), ElementsAre(1, 32),
+                  ElementsAre(1, 64), ElementsAre(1, 128),
+                  ElementsAre(1, 256)));
+}
+
 TEST_F(TilingSpaceTest, ScanWithElementwiseEpiloguePropagatesDimensions) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
