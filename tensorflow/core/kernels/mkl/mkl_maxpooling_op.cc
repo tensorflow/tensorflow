@@ -144,8 +144,6 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       // Get a pooling op from the cached pool
       MklPoolingFwdPrimitive<T>* pooling_fwd = nullptr;
       prop_kind pooling_prop_kind;
-      bool int8_forward_inference =
-          std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
       if (int8_forward_inference)
         pooling_prop_kind = prop_kind::forward_inference;
       else
