@@ -370,7 +370,8 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
     stfts = np.zeros((0, 5), dtype=np.complex64)
     inverse_stft = spectral_ops.inverse_stft(
         stfts, frame_length=8, frame_step=4, fft_length=8)
-    self.assertAllEqual(self.evaluate(array_ops.shape(inverse_stft)), [0])
+    self.assertAllEqual(
+        self.evaluate(inverse_stft), np.zeros((0,), dtype=np.float32))
 
   def test_inverse_stft_rejects_zero_frame_length(self):
     # Regression for https://github.com/tensorflow/tensorflow/issues/117843:

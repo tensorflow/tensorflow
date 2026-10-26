@@ -89,7 +89,7 @@ class ReconstructionOpsTest(test.TestCase, parameterized.TestCase):
     signal = array_ops.zeros([3, 0, 5])
     reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
     self.assertEqual(reconstruction.shape.as_list(), [3, 0])
-    self.assertAllEqual(self.evaluate(array_ops.shape(reconstruction)), [3, 0])
+    self.assertAllEqual(self.evaluate(reconstruction), np.zeros((3, 0)))
 
   def test_zero_frames_unknown_shape(self):
     # This test uses placeholders and does not work in eager mode.

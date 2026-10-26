@@ -34,6 +34,8 @@ def overlap_and_add(signal, frame_step, name=None):
 
       output_size = (frames - 1) * frame_step + frame_length
 
+  for `frames > 0`, and `output_size = 0` when `frames == 0`.
+
   Args:
     signal: A [..., frames, frame_length] `Tensor`. All dimensions may be
       unknown, and rank must be at least 2.
