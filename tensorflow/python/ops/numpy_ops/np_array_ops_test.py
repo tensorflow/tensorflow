@@ -1524,14 +1524,44 @@ class ArrayMethodsTest(test.TestCase):
     self.assertAllEqual(
         np_array_ops.pad(t, [[0, 1], [2, 0]], 'constant'),
         np.pad(np_t, [[0, 1], [2, 0]]))
-    # NumPy rejects non-integral `pad_width` with TypeError.
+    # NumPy rejects non-integral `pad_width` with TypeError, and negative
+    # entries with ValueError, for every broadcast form.
     with self.assertRaisesRegex(TypeError, 'integral type'):
       np_array_ops.pad(t, 1.5, 'constant')
     with self.assertRaisesRegex(TypeError, 'integral type'):
       np_array_ops.pad(t, [(1.5, 2)], 'constant')
-    # And negative entries with ValueError.
-    with self.assertRaisesRegex(ValueError, "can't contain negative values"):
-      np_array_ops.pad(t, [(-2, 1), (0, 0)], 'constant')
+    for pair in (-2, (-2,), (3, -1), ((-4,), (2,))):
+      with self.assertRaisesRegex(ValueError, "can't contain negative values"):
+        np_array_ops.pad(t, pair, 'constant')
+    # The other NumPy broadcast forms pad every axis.
+    for pair in ((1,), [1], [[1]]):
+      self.assertAllEqual(
+          np_array_ops.pad(t, pair, 'constant'), np.pad(np_t, pair))
+    # A (rank, 1) pad_width broadcasts its pairs across (before, after).
+    self.assertAllEqual(
+        np_array_ops.pad(t, [[1], [2]], 'constant'), np.pad(np_t, [[1], [2]]))
+    # The checks run for values, so they apply even when the rank is not
+    # statically known below; exercise them on a statically-known input.
+    self.assertAllEqual(
+        np_array_ops.pad(t, 1, 'reflect'), np.pad(np_t, 1, 'reflect'))
+    # A tensor `pad_width` of the exact (rank, 2) shape keeps working.
+    self.assertAllEqual(
+        np_array_ops.pad(
+            t, ops.convert_to_tensor([[1, 2], [2, 1]]), 'constant'),
+        np.pad(np_t, [[1, 2], [2, 1]]))
+
+  def testPadWidthGraphMode(self):
+    # A `pad_width` containing a symbolic Tensor skips NumPy normalization
+    # and goes straight to the backend, exactly as before this change.
+    @def_function.function
+    def f(x):
+      return np_array_ops.pad(
+          x, [[0, array_ops.shape(x)[0]], [0, 0]], 'constant')
+
+    np_x = [[1, 2, 3], [4, 5, 6]]
+    np_padded = f(ops.convert_to_tensor(np_x))
+    self.assertAllEqual(
+        np_padded, np.pad(np_x, [[0, 2], [0, 0]]))
 
   def testTake(self):
     a = [4, 3, 5, 7, 6, 8]
