@@ -373,7 +373,7 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   llvm::StandardInstrumentations si(module.getContext(), false);
   si.registerCallbacks(pic, &mam);
 
-  llvm::PassBuilder pb(target_machine, pto, {}, &pic);
+  llvm::PassBuilder pb(module.getContext(), target_machine, pto, {}, &pic);
 
   // Add the appropriate TargetLibraryInfo.
   llvm::Triple target_triple(target_machine->getTargetTriple());
