@@ -5019,6 +5019,103 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   stop_teardown.Notify();
 }
 
+TEST_P(SharedBatchSchedulerPriorityAwareTest,
+       SplitFailureFinishesTaskAndDoesNotLivelock) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
+                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
+
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, /*max_queue_depth=*/20);
+  options.enable_large_batch_splitting = true;
+  options.input_batch_size_limit = 100;
+
+  int split_calls = 0;
+  options.split_input_task_func =
+      [&split_calls](std::unique_ptr<FakeTask>* input_task,
+                     int first_output_task_size, int input_batch_size_limit,
+                     std::vector<std::unique_ptr<FakeTask>>* output_tasks)
+      -> absl::Status {
+    if (++split_calls == 1) {
+      return absl::InternalError("Simulated split failure");
+    }
+    output_tasks->push_back(std::make_unique<FakeTask>(first_output_task_size));
+    return absl::OkStatus();
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                          CreateQueue(scheduler, options, [](auto) {}));
+
+  auto done_notification = std::make_shared<absl::Notification>();
+  auto status_storage = std::make_shared<absl::Status>();
+  auto task = std::make_unique<FakeTask>(
+      /*size=*/15, tsl::criticality::Criticality::kCritical, done_notification,
+      status_storage);
+  TF_ASSERT_OK(queue->Schedule(&task));
+
+  EXPECT_TRUE(done_notification->WaitForNotificationWithTimeout(
+      absl::Milliseconds(500)));
+  EXPECT_THAT(*status_storage,
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("Simulated split failure")));
+  EXPECT_EQ(split_calls, 1);
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedLowPrioritySplitFailureFinishesTask) {
+  absl::Notification batch_processed;
+  auto queue_callback = [&batch_processed](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    EXPECT_TRUE(batch->IsClosed());
+    EXPECT_EQ(batch->size(), 6);
+    batch_processed.Notify();
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
+                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
+
+  QueueOptions queue_options = CreateQueueOptions(
+      /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+      /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+      /*enable_priority_queue=*/true);
+  queue_options.enable_large_batch_splitting = true;
+  queue_options.split_input_task_func =
+      [](std::unique_ptr<FakeTask>* input_task, int first_output_task_size,
+         int input_batch_size_limit,
+         std::vector<std::unique_ptr<FakeTask>>* output_tasks) -> absl::Status {
+    return absl::InternalError("Simulated low priority split failure");
+  };
+  queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+  queue_options.low_priority_queue_options.batch_timeout_micros =
+      1 * 1000 * 1000;
+  queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+  queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+  queue_options.mixed_priority_batching_policy =
+      MixedPriorityBatchingPolicy::kPriorityMerge;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Queue> queue,
+      CreateQueue(scheduler, queue_options, queue_callback));
+
+  auto low_pri_done = std::make_shared<absl::Notification>();
+  auto low_pri_status = std::make_shared<absl::Status>();
+  auto low_pri_task = std::make_unique<FakeTask>(
+      /*size=*/6, tsl::criticality::Criticality::kSheddable, low_pri_done,
+      low_pri_status);
+  TF_ASSERT_OK(queue->Schedule(&low_pri_task));
+  TF_ASSERT_OK(ScheduleTask(/*task_size=*/6, queue.get(),
+                            tsl::criticality::Criticality::kCriticalPlus));
+
+  EXPECT_TRUE(batch_processed.WaitForNotificationWithTimeout(absl::Seconds(5)));
+  EXPECT_TRUE(
+      low_pri_done->WaitForNotificationWithTimeout(absl::Milliseconds(500)));
+  EXPECT_THAT(*low_pri_status,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  HasSubstr("Simulated low priority split failure")));
+}
+
 INSTANTIATE_TEST_SUITE_P(Parameter, SharedBatchSchedulerPriorityAwareTest,
                          ::testing::Bool());
 

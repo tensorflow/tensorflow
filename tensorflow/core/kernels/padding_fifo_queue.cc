@@ -79,8 +79,13 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       Tensor element;
       // Here, ManyOutShape returns zeros for undetermined shapes,
       // which is exactly what we want to use.
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(component_dtypes_[i],
-                                             ManyOutShape(i, 0), &element));
+      absl::Status status = ctx->allocate_temp(component_dtypes_[i],
+                                               ManyOutShape(i, 0), &element);
+      if (!status.ok()) {
+        ctx->SetStatus(status);
+        callback(Tuple());
+        return;
+      }
       tuple.emplace_back(element);
     }
     callback(tuple);
