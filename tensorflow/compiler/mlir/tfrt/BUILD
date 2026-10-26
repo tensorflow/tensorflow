@@ -434,8 +434,15 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":import_model",
+        ":tf_to_tfrt",
         ":tfrt_compile_options",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 

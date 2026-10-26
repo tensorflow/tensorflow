@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <ostream>
@@ -156,6 +157,12 @@ struct GraphExecutionRunOptions {
 
   // Callback to check if the request RPC has been cancelled by the client.
   std::function<bool()> is_rpc_cancelled_callback;
+
+  // The latency priority and admission order of the request among the requests
+  // of the same criticality, for the priority aware batch scheduler. See
+  // serving::BatchTask.
+  int32_t latency_priority = 0;
+  std::optional<int64_t> admission_order;
 };
 
 // Creates the default `SessionOptions` from a `GraphExecutionOptions`.

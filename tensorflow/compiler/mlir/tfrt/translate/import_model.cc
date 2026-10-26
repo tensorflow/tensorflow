@@ -351,6 +351,8 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
       options.batch_queue_global_prioritization_num_threads;
   pipeline_options->enable_priority_aware_batch_scheduler =
       options.enable_priority_aware_batch_scheduler;
+  pipeline_options->priority_aware_batch_scheduler_use_global_scheduler =
+      options.priority_aware_batch_scheduler_use_global_scheduler;
   pipeline_options->enable_priority_aware_batch_scheduler_resplit =
       options.enable_priority_aware_batch_scheduler_resplit;
   pipeline_options->enable_batching_task_lazy_cancellation =

@@ -478,6 +478,8 @@ TEST_F(GraphExecutorTest, CreateRequestInfoPopulatesRpcCancellationOptions) {
   run_options.is_rpc_cancelled_callback = [&is_cancelled]() {
     return is_cancelled;
   };
+  run_options.latency_priority = 1;
+  run_options.admission_order = 12345;
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto request_info,
@@ -498,6 +500,8 @@ TEST_F(GraphExecutorTest, CreateRequestInfoPopulatesRpcCancellationOptions) {
   EXPECT_FALSE(fallback_request_state->is_rpc_cancelled_callback()());
   is_cancelled = true;
   EXPECT_TRUE(fallback_request_state->is_rpc_cancelled_callback()());
+  EXPECT_EQ(fallback_request_state->latency_priority(), 1);
+  EXPECT_EQ(fallback_request_state->admission_order(), 12345);
 }
 
 TEST_F(GraphExecutorTest, Extend) {

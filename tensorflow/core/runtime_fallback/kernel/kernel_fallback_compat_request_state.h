@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_COMPAT_REQUEST_STATE_H__
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_KERNEL_FALLBACK_COMPAT_REQUEST_STATE_H__
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -199,6 +200,16 @@ class KernelFallbackCompatRequestState {
     return is_rpc_cancelled_callback_;
   }
 
+  void set_latency_priority(int32_t latency_priority) {
+    latency_priority_ = latency_priority;
+  }
+  int32_t latency_priority() const { return latency_priority_; }
+
+  void set_admission_order(std::optional<int64_t> admission_order) {
+    admission_order_ = admission_order;
+  }
+  std::optional<int64_t> admission_order() const { return admission_order_; }
+
  private:
   int64_t step_id_ = 0;
   // Below are resources needed by current tensorflow.
@@ -243,6 +254,8 @@ class KernelFallbackCompatRequestState {
   const tensorflow::tfrt_stub::RuntimeConfig* runtime_config_ = nullptr;
   std::optional<absl::Time> rpc_deadline_for_batching_task_cancellation_;
   std::function<bool()> is_rpc_cancelled_callback_;
+  int32_t latency_priority_ = 0;
+  std::optional<int64_t> admission_order_;
 };
 
 // Set up fallback context with common tensorflow states such as devices,

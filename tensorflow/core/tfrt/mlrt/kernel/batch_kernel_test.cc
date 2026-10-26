@@ -25,6 +25,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -153,7 +155,10 @@ void PopulateBatchTestAttributesHelper(
   attributes.Add("device", "/device:CPU:0");
 }
 
-mlrt::bc::Buffer CreateExecutableForBatchFunctionOp() {
+// If `batch_node_def_str` is not empty, it replaces the default NodeDef of the
+// batch function.
+mlrt::bc::Buffer CreateExecutableForBatchFunctionOp(
+    absl::string_view batch_node_def_str = "") {
   mlrt::bc::Buffer buffer;
   mlrt::bc::Allocator allocator(&buffer);
 
@@ -169,8 +174,11 @@ mlrt::bc::Buffer CreateExecutableForBatchFunctionOp() {
       .Assign(kernel_names);
   kernels.Def(kernel_names);
   mlrt::testing::AttributeTable attributes(
-      executable_ctor.construct_attributes(5));
+      executable_ctor.construct_attributes(batch_node_def_str.empty() ? 5 : 6));
   PopulateBatchTestAttributesHelper(attributes);
+  if (!batch_node_def_str.empty()) {
+    attributes.Add("batch_node_def_str", batch_node_def_str);
+  }
 
   auto functions_ctor = executable_ctor.construct_functions(2);
 
@@ -606,6 +614,137 @@ TEST(KernelTest, SplitBatchesProduceDisjointXProfEventGroups) {
   ASSERT_EQ(num_process_batch_events, 2);
   ASSERT_EQ(execute_group_ids.size(), 2);
   EXPECT_NE(execute_group_ids[0], execute_group_ids[1]);
+}
+
+// A batch function with a priority aware queue that has room for a single
+// batch of 10 inputs, which is only processed once it is full.
+constexpr char kPriorityAwareBatchNodeDefStr[] =
+    R"pb(name: "BatchFunction"
+         op: "MlrtBatchFunction"
+         input: "dummy_arg"
+         input: "dummy_arg"
+         device: "/job:localhost/replica:0/task:0/device:CPU:0"
+         attr {
+           key: "num_batch_threads"
+           value { i: 1 }
+         }
+         attr {
+           key: "max_batch_size"
+           value { i: 10 }
+         }
+         attr {
+           key: "batch_timeout_micros"
+           value { i: 100000000 }
+         }
+         attr {
+           key: "max_enqueued_batches"
+           value { i: 1 }
+         }
+         attr {
+           key: "enable_priority_aware_batch_scheduler"
+           value { b: true }
+         }
+         attr {
+           key: "Tin"
+           value { list { type: DT_INT32 type: DT_INT32 } }
+         }
+         attr {
+           key: "Tcaptured"
+           value { list {} }
+         }
+         attr {
+           key: "Tout"
+           value { list { type: DT_INT32 } }
+         })pb";
+
+TEST(KernelTest, BatchFunctionOpUsesLatencyPriorityAndAdmissionOrder) {
+  auto buffer =
+      CreateExecutableForBatchFunctionOp(kPriorityAwareBatchNodeDefStr);
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::KernelRegistry registry;
+  RegisterTfMlrtKernels(registry);
+  RegisterTfMlrtBatchKernels(registry);
+  mlrt::LoadedExecutable loaded_executable(executable, registry);
+
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state, tfrt_stub::FallbackState::Create(
+                                                   session_options, fdef_lib));
+
+  std::function<void(std::function<void()>)> runner =
+      [](const std::function<void()>& f) { f(); };
+
+  // All the calls share this ResourceContext (and batching queue).
+  tfrt::ResourceContext resource_context;
+
+  // A call of the batch function, which completes when its batch is processed
+  // or when it is evicted from the batching queue.
+  struct Call {
+    tfrt_stub::OpKernelRunnerTable runner_table;
+    tfd::FallbackResourceArray resource_array;
+    std::optional<tfd::KernelFallbackCompatRequestState> request_state;
+    // Declared before `execution_context`, which refers to them.
+    mlrt::Value result;
+    absl::Notification done;
+    std::optional<mlrt::ExecutionContext> execution_context;
+  };
+  auto start_call = [&](int num_inputs, int32_t latency_priority,
+                        std::optional<int64_t> admission_order) {
+    auto call = std::make_unique<Call>();
+    call->request_state.emplace(
+        &runner, &fallback_state->device_manager(), /*step_id=*/0,
+        &call->runner_table, &call->resource_array,
+        /*user_intra_op_threadpool=*/nullptr, /*model_metadata=*/std::nullopt,
+        &fallback_state->process_function_library_runtime());
+    call->request_state->set_latency_priority(latency_priority);
+    call->request_state->set_admission_order(admission_order);
+
+    call->execution_context.emplace(&loaded_executable);
+    call->execution_context->set_work_queue(work_queue.get());
+    call->execution_context->AddUserContext(
+        std::make_unique<Context>(&*call->request_state, &resource_context));
+    call->execution_context->set_exit_handler(
+        [done = &call->done]() { done->Notify(); });
+
+    tensorflow::Tensor input_tensor(tensorflow::DT_INT32, {num_inputs});
+    input_tensor.flat<int32_t>().setConstant(100);
+    mlrt::Value arg(tfrt_stub::FallbackTensor(std::move(input_tensor)));
+    std::vector<uint8_t> last_uses = {true};
+    call->execution_context->Call(executable.functions()[0], last_uses,
+                                  absl::MakeSpan(&arg, 1),
+                                  absl::MakeSpan(&call->result, 1));
+    mlrt::Execute(*call->execution_context);
+    return call;
+  };
+
+  // The queue does not have room for the inputs of the third call, which has
+  // a higher latency priority than the first two: it evicts the one with the
+  // higher admission order, although that one was scheduled first.
+  auto higher_admission_order_call = start_call(
+      /*num_inputs=*/3, /*latency_priority=*/0, /*admission_order=*/2);
+  auto lower_admission_order_call = start_call(
+      /*num_inputs=*/3, /*latency_priority=*/0, /*admission_order=*/1);
+  auto higher_latency_priority_call = start_call(
+      /*num_inputs=*/6, /*latency_priority=*/1,
+      /*admission_order=*/std::nullopt);
+  higher_admission_order_call->done.WaitForNotification();
+  EXPECT_EQ(higher_admission_order_call->execution_context->status().code(),
+            absl::StatusCode::kUnavailable);
+
+  // This call fills the batch, which is then processed.
+  auto last_call = start_call(/*num_inputs=*/1, /*latency_priority=*/0,
+                              /*admission_order=*/std::nullopt);
+  lower_admission_order_call->done.WaitForNotification();
+  TF_EXPECT_OK(lower_admission_order_call->execution_context->status());
+  higher_latency_priority_call->done.WaitForNotification();
+  TF_EXPECT_OK(higher_latency_priority_call->execution_context->status());
+  last_call->done.WaitForNotification();
+  TF_EXPECT_OK(last_call->execution_context->status());
 }
 
 }  // namespace

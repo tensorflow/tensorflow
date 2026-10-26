@@ -63,6 +63,8 @@ class ReconfigBatchOpPass
         options.batch_queue_global_prioritization_num_threads;
     enable_priority_aware_batch_scheduler_ =
         options.enable_priority_aware_batch_scheduler;
+    priority_aware_batch_scheduler_use_global_scheduler_ =
+        options.priority_aware_batch_scheduler_use_global_scheduler;
     enable_priority_aware_batch_scheduler_resplit_ =
         options.enable_priority_aware_batch_scheduler_resplit;
     enable_batching_task_lazy_cancellation_ =
@@ -96,7 +98,9 @@ class ReconfigBatchOpPass
         low_priority_batch_timeout_micros_ == 0 &&
         low_priority_allowed_batch_sizes_.empty() &&
         low_priority_max_enqueued_batches_ == 0 &&
-        num_warmup_batch_threads_ == 0 &&
+        num_warmup_batch_threads_ == 0 && !enable_large_batch_splitting_ &&
+        mixed_priority_batching_policy_.empty() &&
+        batch_queue_global_prioritization_num_threads_ == 0 &&
         !enable_priority_aware_batch_scheduler_ &&
         !enable_priority_aware_batch_scheduler_resplit_ &&
         !enable_batching_task_lazy_cancellation_) {
@@ -248,6 +252,11 @@ class ReconfigBatchOpPass
       llvm::cl::init(false),
       llvm::cl::desc("If true, the queue implementation will have a separate "
                      "subqueue for each criticality.")};
+  mlir::Pass::Option<bool> priority_aware_batch_scheduler_use_global_scheduler_{
+      *this, "tfrt-priority-aware-batch-scheduler-use-global-scheduler",
+      llvm::cl::init(false),
+      llvm::cl::desc("If true, priority-aware batch ops share the "
+                     "process-wide batch scheduler.")};
   mlir::Pass::Option<bool> enable_priority_aware_batch_scheduler_resplit_{
       *this, "tfrt-enable-priority-aware-batch-scheduler-resplit",
       llvm::cl::init(false),

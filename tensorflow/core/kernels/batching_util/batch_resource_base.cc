@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -533,6 +534,8 @@ BatchResourceBase::BatchTask::CreateSplitTask(
   task->forced_warmup_batch_size = this->forced_warmup_batch_size;
   task->rpc_deadline = this->rpc_deadline;
   task->is_rpc_cancelled = this->is_rpc_cancelled;
+  task->latency_priority_val = this->latency_priority_val;
+  task->admission_order_val = this->admission_order_val;
 
   return task;
 }
@@ -942,6 +945,21 @@ BatchResourceBase::GetAdaptiveBatcherQueueOptions(
   batcher_queue_options.disable_padding = disable_padding;
 
   return batcher_queue_options;
+}
+
+namespace {
+std::atomic<bool> g_use_global_priority_aware_batch_scheduler{false};
+}  // namespace
+
+/*static*/ void BatchResourceBase::SetUseGlobalPriorityAwareBatchScheduler(
+    bool use_global) {
+  g_use_global_priority_aware_batch_scheduler.store(use_global,
+                                                    std::memory_order_relaxed);
+}
+
+/*static*/ bool BatchResourceBase::UseGlobalPriorityAwareBatchScheduler() {
+  return g_use_global_priority_aware_batch_scheduler.load(
+      std::memory_order_relaxed);
 }
 
 /*static*/ absl::Status BatchResourceBase::ValidateBatch(const BatchT& batch) {

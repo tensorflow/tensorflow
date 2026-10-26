@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/env.h"
@@ -748,6 +749,13 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
 
   GetDefaultInputValue(meta_graph_def.signature_def(), model_context,
                        initializers_and_signatures.signature_map);
+
+  if (options.graph_execution_options.compile_options
+              .batch_queue_global_prioritization_num_threads > 0 ||
+      options.graph_execution_options.compile_options
+          .priority_aware_batch_scheduler_use_global_scheduler) {
+    serving::BatchResourceBase::SetUseGlobalPriorityAwareBatchScheduler(true);
+  }
 
   mlrt::bc::Buffer bytecode;
   tfrt::BefBuffer bef;

@@ -93,6 +93,7 @@ struct ReconfigBatchOpPassOptions {
   std::string mixed_priority_batching_policy = "";
   int64_t batch_queue_global_prioritization_num_threads = 0;
   bool enable_priority_aware_batch_scheduler = false;
+  bool priority_aware_batch_scheduler_use_global_scheduler = false;
   bool enable_priority_aware_batch_scheduler_resplit = false;
   bool enable_batching_task_lazy_cancellation = false;
 };
