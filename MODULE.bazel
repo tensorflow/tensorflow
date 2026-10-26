@@ -136,7 +136,9 @@ use_repo(
     "onednn_async_aarch64",
     "pthreadpool",
     "raft",
+    "rdma_core",
     "riegeli",
+    "roc_mori",
     "rocm_device_libs",
     "shardy",
     "slinky",
@@ -300,6 +302,8 @@ use_repo(
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_rocm")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 
