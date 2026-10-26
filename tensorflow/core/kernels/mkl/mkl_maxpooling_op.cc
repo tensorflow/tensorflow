@@ -56,6 +56,23 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       this->SanityCheckInput(context, input_tensor, dnn_shape_input);
       if (!context->status().ok()) return;
 
+      bool int8_forward_inference =
+          std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
+      if (int8_forward_inference) {
+        const Tensor& min_input_t = MklGetInput(context, 1);
+        const Tensor& max_input_t = MklGetInput(context, 2);
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "min_input shape must be rank 0 but is rank ",
+                        min_input_t.dims(), ", received shape: ",
+                        min_input_t.shape().DebugString())));
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "max_input shape must be rank 0 but is rank ",
+                        max_input_t.dims(), ", received shape: ",
+                        max_input_t.shape().DebugString())));
+      }
+
       MklDnnData<T> dnn_data_input(&cpu_engine_);
       MklDnnData<T> dnn_data_output(&cpu_engine_);
 
@@ -89,8 +106,6 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
       TensorShape out_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
-      bool int8_forward_inference =
-          std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
       if (input_tensor.NumElements() == 0 ||
           out_tf_shape.num_elements() == 0) {
         const int kOutputIndex = 0;
@@ -209,20 +224,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
 
   void ForwardMinMaxToOutputs(OpKernelContext* context) {
     // Pass min, max from input to output.
-    const Tensor& min_input_t = MklGetInput(context, 1);
-    const Tensor& max_input_t = MklGetInput(context, 2);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_t.shape()),
-                absl::InvalidArgumentError(absl::StrCat(
-                    "min_input shape must be rank 0 but is rank ",
-                    min_input_t.dims(),
-                    ", received shape: ", min_input_t.shape().DebugString())));
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_t.shape()),
-                absl::InvalidArgumentError(absl::StrCat(
-                    "max_input shape must be rank 0 but is rank ",
-                    max_input_t.dims(),
-                    ", received shape: ", max_input_t.shape().DebugString())));
-    const float min_input = min_input_t.scalar<float>()();
-    const float max_input = max_input_t.scalar<float>()();
+    const float min_input = MklGetInput(context, 1).scalar<float>()();
+    const float max_input = MklGetInput(context, 2).scalar<float>()();
 
     Tensor* output_min = nullptr;
     Tensor* output_max = nullptr;
