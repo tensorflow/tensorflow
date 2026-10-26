@@ -17,19 +17,25 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_COLLECTIVES_GLOO_COMMUNICATOR_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "gloo/context.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/executable_run_options.h"
 #include "xla/future.h"
+#include "xla/service/collective_rendezvous.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -96,9 +102,21 @@ class GlooCommunicator : public Communicator {
   }
 
  private:
+  uint32_t NextTag(const RendezvousKey& key);
+
   std::shared_ptr<gloo::Context> context_;
   size_t rank_;
   size_t num_ranks_;
+
+  absl::Mutex mu_;
+  struct RunState {
+    RunId run_id;
+    absl::flat_hash_map<int64_t, uint32_t> loop_counters;
+  };
+  static constexpr size_t kMaxTrackedRunIds = 4;
+  // Bounded LRU cache of recent RunIds (most recently used at front).
+  absl::InlinedVector<RunState, kMaxTrackedRunIds> run_states_
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla::cpu
