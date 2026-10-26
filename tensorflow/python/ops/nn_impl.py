@@ -2485,7 +2485,9 @@ def sampled_softmax_loss(weights,
   A common use case is to use this method for training, and calculate the full
   softmax loss for evaluation or inference. In this case, you must set
   `partition_strategy="div"` for the two losses to be consistent, as in the
-  following example:
+  following example (the partition strategy only matters when `weights` is a
+  list of more than one shard; for a single `weights` tensor `"div"` and
+  `"mod"` give the same result):
 
   ```python
   if mode == "train":
@@ -2511,29 +2513,28 @@ def sampled_softmax_loss(weights,
 
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
-        objects whose concatenation along dimension 0 has shape
-        [num_classes, dim].  The (possibly-sharded) class embeddings.
+      objects whose concatenation along dimension 0 has shape [num_classes,
+      dim].  The (possibly-sharded) class embeddings.
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
-    labels: A `Tensor` of type `int64` and shape `[batch_size,
-        num_true]`. The target classes.  Note that this format differs from
-        the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
-    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
-        activations of the input network.
+    labels: A `Tensor` of type `int64` and shape `[batch_size, num_true]`. The
+      target classes.  Note that this format differs from the `labels` argument
+      of `nn.softmax_cross_entropy_with_logits`.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward activations of
+      the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.
     sampled_values: a tuple of (`sampled_candidates`, `true_expected_count`,
-        `sampled_expected_count`) returned by a `*_candidate_sampler` function.
-        (if None, we default to `log_uniform_candidate_sampler`)
+      `sampled_expected_count`) returned by a `*_candidate_sampler` function.
+      (if None, we default to `log_uniform_candidate_sampler`)
     remove_accidental_hits:  A `bool`.  whether to remove "accidental hits"
-        where a sampled class equals one of the target classes.  Default is
-        True.
+      where a sampled class equals one of the target classes.  Default is True.
     partition_strategy: A string specifying the partitioning strategy, relevant
-        if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
-        Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
+      if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
+      Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
     seed: random seed for candidate sampling. Default to None, which doesn't set
-        the op-level random seed for candidate sampling.
+      the op-level random seed for candidate sampling.
 
   Returns:
     A `batch_size` 1-D tensor of per-example sampled softmax losses.
