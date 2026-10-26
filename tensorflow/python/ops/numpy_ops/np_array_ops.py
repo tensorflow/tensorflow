@@ -1311,6 +1311,48 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
     raise ValueError('Unsupported padding mode: ' + mode)
   mode = mode.upper()
   array = asarray(array)
+  # NumPy broadcasts `pad_width` against the input rank before using it, and
+  # requires its entries to be integral, raising TypeError or ValueError
+  # before any computation. The backend `pad` instead requires an exact
+  # (rank, 2) paddings tensor, so the scalar/pair forms NumPy accepts fail
+  # with a confusing InvalidArgumentError, and float entries only fail there
+  # as well. Mirror NumPy's semantics for Python/NumPy values when the rank
+  # is statically known; tensor inputs or unknown ranks keep the previous
+  # behavior.
+  maybe_rank = array.shape.rank
+  if maybe_rank is not None and not isinstance(pad_width,
+                                                core_tf_types.Tensor):
+    try:
+      np_pw = np.asarray(pad_width)
+    except (TypeError, ValueError):
+      # Ragged input: leave it to the backend, like NumPy's own
+      # "inhomogeneous shape" error path.
+      np_pw = None
+    if np_pw is not None:
+      if not np.issubdtype(np_pw.dtype, np.integer):
+        raise TypeError('`pad_width` must be of integral type.')
+      if np_pw.ndim == 0:
+        # Scalar: pad both sides of every axis by the same amount.
+        np_pw = np.full((maybe_rank, 2), np_pw)
+      elif (
+          np_pw.ndim == 1
+          and np_pw.shape[0] == 2
+          or np_pw.shape == (1, 2)
+      ):
+        # Pair, or a single pair in a sequence: broadcast to every axis.
+        np_pw = np.tile(np_pw, (maybe_rank, 1))
+      elif not (
+          np_pw.ndim == 2
+          and np_pw.shape[0] == maybe_rank
+          and np_pw.shape[1] == 2
+      ):
+        # Anything else is left to the backend, matching NumPy's own
+        # internal broadcast-error path.
+        np_pw = None
+      if np_pw is not None and (np_pw < 0).any():
+        raise ValueError('''index can't contain negative values''')
+      if np_pw is not None:
+        pad_width = np_pw
   pad_width = asarray(pad_width, dtype=dtypes.int32)
   return array_ops.pad(
       tensor=array,

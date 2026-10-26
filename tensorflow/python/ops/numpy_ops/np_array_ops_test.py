@@ -1502,6 +1502,37 @@ class ArrayMethodsTest(test.TestCase):
         [[2, 1, 1, 2, 3, 3, 2], [2, 1, 1, 2, 3, 3, 2], [5, 4, 4, 5, 6, 6, 5],
          [5, 4, 4, 5, 6, 6, 5]])
 
+  def testPadWidthSemantics(self):
+    # NumPy broadcasts `pad_width` against the input rank before using it
+    # and requires integral entries, raising TypeError/ValueError before
+    # any computation. The backend only accepts exact (rank, 2) paddings.
+    t = np_array_ops.array([[1, 2, 3], [4, 5, 6]])
+    np_t = [[1, 2, 3], [4, 5, 6]]
+    # Scalar pads both sides of every axis.
+    self.assertAllEqual(
+        np_array_ops.pad(t, 1, 'constant'), np.pad(np_t, 1))
+    # A bare (before, after) pair is broadcast to every axis.
+    self.assertAllEqual(
+        np_array_ops.pad(t, (1, 2), 'constant'), np.pad(np_t, (1, 2)))
+    # So is a single pair inside a sequence.
+    self.assertAllEqual(
+        np_array_ops.pad(t, [(1, 2)], 'constant'), np.pad(np_t, [(1, 2)]))
+    # NumPy np.int64 scalars work as well.
+    self.assertAllEqual(
+        np_array_ops.pad(t, np.int64(1), 'constant'), np.pad(np_t, 1))
+    # A full (rank, 2) pad_width keeps working.
+    self.assertAllEqual(
+        np_array_ops.pad(t, [[0, 1], [2, 0]], 'constant'),
+        np.pad(np_t, [[0, 1], [2, 0]]))
+    # NumPy rejects non-integral `pad_width` with TypeError.
+    with self.assertRaisesRegex(TypeError, 'integral type'):
+      np_array_ops.pad(t, 1.5, 'constant')
+    with self.assertRaisesRegex(TypeError, 'integral type'):
+      np_array_ops.pad(t, [(1.5, 2)], 'constant')
+    # And negative entries with ValueError.
+    with self.assertRaisesRegex(ValueError, "can't contain negative values"):
+      np_array_ops.pad(t, [(-2, 1), (0, 0)], 'constant')
+
   def testTake(self):
     a = [4, 3, 5, 7, 6, 8]
     indices = [0, 1, 4]
