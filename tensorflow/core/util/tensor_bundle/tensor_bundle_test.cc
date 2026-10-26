@@ -1087,8 +1087,9 @@ TEST(TensorBundleTest, StringEntryRemainingBytes) {
                                        test::AsTensor<tstring>({"ab", "cd"}));
     } else {
       EXPECT_TRUE(absl::IsDataLoss(status)) << status;
-      EXPECT_TRUE(absl::StrContains(status.message(), "bundle entry"))
-          << status;
+      const char* expected = entry_size < 6 ? "string element count"
+                                            : "String data exceeds remaining";
+      EXPECT_TRUE(absl::StrContains(status.message(), expected)) << status;
       // Validate the entire payload budget before resizing either string.
       EXPECT_TRUE(strings.flat<tstring>()(0).empty());
       EXPECT_TRUE(strings.flat<tstring>()(1).empty());
@@ -1212,7 +1213,9 @@ TEST(TensorBundleTest, VariantEntryRemainingBytes) {
     Tensor variants(DT_VARIANT, TensorShape({2}));
     const absl::Status status = reader.Lookup("variants", &variants);
     EXPECT_TRUE(absl::IsDataLoss(status)) << status;
-    EXPECT_TRUE(absl::StrContains(status.message(), "bundle entry")) << status;
+    const char* expected =
+        entry_size < 0 ? "Variant data and checksum" : "variant element count";
+    EXPECT_TRUE(absl::StrContains(status.message(), expected)) << status;
   }
 
   const std::string prefix = Prefix("variant_oversized_element_count");
