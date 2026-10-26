@@ -713,6 +713,14 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             << instruction->shape().ToString(true) << " vs "
             << shape.ToString(true);
         *instruction->mutable_shape() = shape;
+      } else if (prohibit_empty_literal) {
+        // A constant instruction with no literal is only valid when the
+        // caller explicitly opts out of this check (e.g. tooling that
+        // intentionally dumps a module with oversized constants dropped).
+        // Without this, HloEvaluator::GetEvaluatedLiteralFor() would later
+        // dereference a null literal_ and crash (b/110214922).
+        return absl::InvalidArgumentError(
+            "Constant instruction proto has no literal");
       } else {
         instruction = std::make_unique<HloConstantInstruction>(shape);
       }
