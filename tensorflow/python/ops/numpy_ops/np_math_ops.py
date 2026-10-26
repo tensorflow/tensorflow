@@ -890,7 +890,13 @@ def floor(x):
 @tf_export.tf_export('experimental.numpy.conj', v1=[])
 @np_utils.np_doc('conj')
 def conj(x):
-  return _scalar(math_ops.conj, x)
+  def f(x):
+    # `math_ops.conj` rejects bool, which has no imaginary part to negate.
+    if x.dtype == dtypes.bool:
+      return x
+    return math_ops.conj(x)
+
+  return _scalar(f, x)
 
 
 @tf_export.tf_export('experimental.numpy.negative', v1=[])
@@ -1058,7 +1064,7 @@ def cbrt(x):
 @tf_export.tf_export('experimental.numpy.conjugate', v1=[])
 @np_utils.np_doc('conjugate', link=np_utils.AliasOf('conj'))
 def conjugate(x):
-  return _scalar(math_ops.conj, x)
+  return conj(x)
 
 
 @tf_export.tf_export('experimental.numpy.exp2', v1=[])
@@ -1088,13 +1094,20 @@ def fix(x):
 @tf_export.tf_export('experimental.numpy.iscomplex', v1=[])
 @np_utils.np_doc('iscomplex')
 def iscomplex(x):
-  return np_array_ops.imag(x) != 0
+  x = np_array_ops.asarray(x)
+  if x.dtype.is_complex:
+    return np_array_ops.imag(x) != 0
+  # Comparing against 0 would fail for bool, so answer from the dtype.
+  return np_array_ops.zeros_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isreal', v1=[])
 @np_utils.np_doc('isreal')
 def isreal(x):
-  return np_array_ops.imag(x) == 0
+  x = np_array_ops.asarray(x)
+  if x.dtype.is_complex:
+    return np_array_ops.imag(x) == 0
+  return np_array_ops.ones_like(x, dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.iscomplexobj', v1=[])

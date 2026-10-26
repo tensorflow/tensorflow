@@ -907,6 +907,7 @@ class ArrayMethodsTest(test.TestCase):
     run_test(3j)
     run_test([])
     run_test([1, 2, 3])
+    run_test([True, False])
     run_test([1 + 5j, 2 + 3j])
     run_test([[1 + 5j, 2 + 3j], [1 + 7j, 2 + 8j]])
 
@@ -1245,6 +1246,7 @@ class ArrayMethodsTest(test.TestCase):
     run_test(3j)
     run_test([])
     run_test([1, 2, 3])
+    run_test([True, False])
     run_test([1 + 5j, 2 + 3j])
     run_test([[1 + 5j, 2 + 3j], [1 + 7j, 2 + 8j]])
 
