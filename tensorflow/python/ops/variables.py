@@ -401,6 +401,10 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
       """Returns the specified slice or element of this variable."""
       ...
 
+    def __setitem__(self, slice_spec: Any, value: Any) -> None:
+      """Assigns `value` to the specified slice of this variable."""
+      ...
+
     def __add__(self, other: Any) -> tensor_lib.Tensor:
       """Returns the element-wise sum of this variable and `other`."""
       ...
@@ -1129,6 +1133,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     # instead)
     # pylint: disable=protected-access
     setattr(cls, "__getitem__", tensor_getitem_override._slice_helper_var)
+    setattr(cls, "__setitem__", tensor_getitem_override._setitem_helper_var)
 
   @classmethod
   def _OverloadOperator(cls, operator):  # pylint: disable=invalid-name
