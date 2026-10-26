@@ -1436,6 +1436,7 @@ cc_library(
         "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
+        "//xla/service/gpu:cublas_cudnn",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",

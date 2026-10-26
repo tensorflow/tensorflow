@@ -3543,7 +3543,6 @@ cc_library(
         "//xla/ffi/api:c_api",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/service:hlo_proto_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:logging",
