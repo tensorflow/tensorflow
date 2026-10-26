@@ -50,13 +50,15 @@ jobs:
         ref: ${{ github.event.inputs.release_branch }}
     - name: Get some helpful info for formatting
       id: cherrypick
+      env:
+        GIT_COMMIT: ${{ github.event.inputs.git_commit }}
       run: |
           git config --global user.name "TensorFlow Release Automation"
           git config --global user.email "jenkins@tensorflow.org"
           git fetch origin master
-          git cherry-pick ${{ github.event.inputs.git_commit }}
-          echo "SHORTSHA=$(git log -1 ${{ github.event.inputs.git_commit }} --format="%h")" >> "$GITHUB_OUTPUT"
-          echo "TITLE=$(git log -1 ${{ github.event.inputs.git_commit }} --format="%s")" >> "$GITHUB_OUTPUT"
+          git cherry-pick "$GIT_COMMIT"
+          echo "SHORTSHA=$(git log -1 "$GIT_COMMIT" --format="%h")" >> "$GITHUB_OUTPUT"
+          echo "TITLE=$(git log -1 "$GIT_COMMIT" --format="%s")" >> "$GITHUB_OUTPUT"
     - name: Create Pull Request with changes
       uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
       with:
