@@ -1241,7 +1241,9 @@ class UnaryOpsTest(xla_test.XLATestCase):
         self.assertTrue(np.isnan(np.imag(log_res[7])))
         self.assertTrue(np.isnan(abs_res[7]))
         self.assertTrue(np.isnan(np.real(sqrt_res[7])))
+        self.assertTrue(np.isnan(np.imag(sqrt_res[7])))
         self.assertTrue(np.isnan(np.real(rsqrt_res[7])))
+        self.assertTrue(np.isnan(np.imag(rsqrt_res[7])))
 
 
 if __name__ == "__main__":
