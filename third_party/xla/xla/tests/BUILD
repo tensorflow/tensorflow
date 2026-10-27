@@ -23,7 +23,13 @@ load(
 )
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
-load("//xla/tests:build_defs.bzl", "ALL_HARDWARE_BACKENDS", "generate_backend_suites", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "ALL_HARDWARE_BACKENDS",
+    "generate_backend_suites",
+    "get_sc_offload_backend_args",
+    "xla_test",
+)
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -620,6 +626,8 @@ xla_test(
 xla_test(
     name = "conv_depthwise_backprop_filter_test",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
+    # TODO(b/577275792): Times out with SparseCore fusion offloading.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     shard_count = 50,
     tags = ["nozapfhahn"],  # TODO: b/445492433 - Re-enable when it doesn't time out.
     deps = [
@@ -637,6 +645,8 @@ xla_test(
 xla_test(
     name = "grouped_convolution_test",
     srcs = ["grouped_convolution_test.cc"],
+    # TODO(b/577275792): Times out with SparseCore fusion offloading.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     shard_count = 23,
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1091,6 +1101,8 @@ xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
     aot_compile_test = False,
+    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     backend_tags = {
         # TODO(b/445172709): Re-enable once fixed.
         "b200": ["broken"],
@@ -1192,9 +1204,11 @@ xla_test(
     timeout = "long",
     srcs = ["dot_operation_test.cc"],
     aot_compile_test = False,
+    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
     args = [
         "--xla_tpu_order_dot_after_layout=true",
     ],
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     # placeholder for extra args for dot_operation_test_canonicalization_after_layout
     disabled_backends = [
         "cpu",
@@ -1331,6 +1345,8 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
+    # TODO(b/577281374): The SparseCore mismatch detector fails on SparseCore scatter offloads.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
@@ -1436,6 +1452,8 @@ xla_test(
 xla_test(
     name = "convolution_test",
     srcs = ["convolution_test.cc"],
+    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     shard_count = 50,
     tags = [
         "optonly",
@@ -1752,6 +1770,8 @@ xla_test(
 xla_test(
     name = "float8_test",
     srcs = ["float8_test.cc"],
+    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1994,6 +2014,8 @@ xla_test(
 xla_test(
     name = "reduce_window_test",
     srcs = ["reduce_window_test.cc"],
+    # TODO(b/577275792): Times out with SparseCore fusion offloading.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     shard_count = 50,
     tags = ["optonly"],
     deps = [
@@ -2369,6 +2391,8 @@ xla_test(
 xla_test(
     name = "pad_test",
     srcs = ["pad_test.cc"],
+    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -2427,6 +2451,8 @@ xla_test(
 xla_test(
     name = "matrix_ops_simple_test",
     srcs = ["matrix_ops_simple_test.cc"],
+    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -2512,6 +2538,8 @@ xla_test(
 xla_test(
     name = "reshape_test",
     srcs = ["reshape_test.cc"],
+    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     shard_count = 30,
     deps = [
         ":client_library_test_runner_mixin",
