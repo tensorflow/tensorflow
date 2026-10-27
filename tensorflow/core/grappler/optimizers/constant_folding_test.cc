@@ -5129,6 +5129,146 @@ TEST_F(ConstantFoldingTest,
   }
 }
 
+// Optimizes `item`, which holds a valid TensorArraySizeV3 node "control" of a
+// size-3 TensorArrayV3 and a TensorArraySizeV3 node "result". "control" must be
+// materialized, which shows that shape materialization ran on the graph, and
+// "result" must be left unchanged with `result_input` as its first input.
+void ExpectOnlyControlTensorArraySizeMaterialized(
+    const GrapplerItem& item, const std::string& result_input,
+    GraphDef* optimized) {
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, optimized));
+  bool found_control = false;
+  bool found_result = false;
+  for (const NodeDef& node : optimized->node()) {
+    if (node.name() == "control") {
+      found_control = true;
+      EXPECT_EQ("Const", node.op());
+      if (node.op() == "Const") {
+        Tensor value;
+        ASSERT_TRUE(value.FromProto(node.attr().at("value").tensor()));
+        ASSERT_EQ(DT_INT32, value.dtype());
+        ASSERT_EQ(0, value.dims());
+        EXPECT_EQ(3, value.scalar<int32_t>()());
+      }
+    } else if (node.name() == "result") {
+      found_result = true;
+      EXPECT_EQ("TensorArraySizeV3", node.op());
+      ASSERT_GE(node.input_size(), 1);
+      EXPECT_EQ(result_input, node.input(0));
+    }
+  }
+  EXPECT_TRUE(found_control);
+  EXPECT_TRUE(found_result);
+}
+
+TEST_F(ConstantFoldingTest, TensorArraySizeRequiresTensorArrayV3HandleOnPort0) {
+  enum Producer {
+    kIdentityNPort1,
+    kIdentityNPort0,
+    kStackV2,
+    kTensorArrayFlowPort,
+  };
+  for (Producer producer :
+       {kIdentityNPort1, kIdentityNPort0, kStackV2, kTensorArrayFlowPort}) {
+    SCOPED_TRACE(producer);
+    Scope scope = Scope::NewRootScope();
+    auto control_size =
+        ops::Const(scope.WithOpName("control_size"), 3, TensorShape({}));
+    auto control_array =
+        ops::TensorArray(scope.WithOpName("control_array"), control_size,
+                         DT_FLOAT, ops::TensorArray::DynamicSize(false));
+    ops::TensorArraySize control(scope.WithOpName("control"),
+                                 control_array.handle, control_array.flow);
+    auto size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+    auto array = ops::TensorArray(scope.WithOpName("array"), size, DT_FLOAT,
+                                  ops::TensorArray::DynamicSize(false));
+    auto other = ops::Const(scope.WithOpName("other"), 7, TensorShape({}));
+    Output handle = array.handle;
+    std::string result_input = "array";
+    if (producer == kIdentityNPort1) {
+      // IdentityN forwards `other` on port 0 and the array handle on port 1.
+      auto id_n = ops::IdentityN(scope.WithOpName("id_n"),
+                                 {Output(other), array.handle});
+      handle = id_n.output[1];
+      result_input = "id_n:1";
+    } else if (producer == kIdentityNPort0) {
+      auto id_n = ops::IdentityN(scope.WithOpName("id_n"), {array.handle});
+      handle = id_n.output[0];
+      result_input = "id_n";
+    }
+    ops::TensorArraySize result(scope.WithOpName("result"), handle, array.flow);
+    GrapplerItem item;
+    item.fetch = {"control", "result"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    if (producer == kStackV2 || producer == kTensorArrayFlowPort) {
+      // StackV2 has no C++ op wrapper, so add it and rewire "result" here.
+      if (producer == kStackV2) {
+        *item.graph.add_node() = test::function::NDef(
+            "stack", "StackV2", {"other"}, {{"elem_type", DT_FLOAT}});
+        result_input = "stack";
+      } else {
+        result_input = "array:1";
+      }
+      bool found = false;
+      for (NodeDef& node : *item.graph.mutable_node()) {
+        if (node.name() == "result") {
+          found = true;
+          node.set_input(0, result_input);
+        }
+      }
+      ASSERT_TRUE(found);
+    }
+    GraphDef got;
+    ExpectOnlyControlTensorArraySizeMaterialized(item, result_input, &got);
+    if (producer == kIdentityNPort1) {
+      // The array behind id_n:1 has size 5, not the value 7 of the constant
+      // that IdentityN forwards on port 0.
+      auto expected = EvaluateNodes(item.graph, {"result"});
+      auto actual = EvaluateNodes(got, {"result"});
+      ASSERT_EQ(1, expected.size());
+      ASSERT_EQ(1, actual.size());
+      EXPECT_EQ(5, expected[0].scalar<int32_t>()());
+      test::ExpectTensorEqual<int32_t>(expected[0], actual[0]);
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, TensorArraySizeDynamicOrMalformedDynamicSize) {
+  for (bool malformed : {false, true}) {
+    SCOPED_TRACE(malformed);
+    Scope scope = Scope::NewRootScope();
+    auto control_size =
+        ops::Const(scope.WithOpName("control_size"), 3, TensorShape({}));
+    auto control_array =
+        ops::TensorArray(scope.WithOpName("control_array"), control_size,
+                         DT_FLOAT, ops::TensorArray::DynamicSize(false));
+    ops::TensorArraySize control(scope.WithOpName("control"),
+                                 control_array.handle, control_array.flow);
+    auto size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+    auto array = ops::TensorArray(scope.WithOpName("array"), size, DT_FLOAT,
+                                  ops::TensorArray::DynamicSize(!malformed));
+    ops::TensorArraySize result(scope.WithOpName("result"), array.handle,
+                                array.flow);
+    GrapplerItem item;
+    item.fetch = {"control", "result"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    if (malformed) {
+      // An int-typed `dynamic_size` must not be read as a bool (false).
+      bool found = false;
+      for (NodeDef& node : *item.graph.mutable_node()) {
+        if (node.name() == "array") {
+          found = true;
+          (*node.mutable_attr())["dynamic_size"].set_i(0);
+        }
+      }
+      ASSERT_TRUE(found);
+    }
+    GraphDef got;
+    ExpectOnlyControlTensorArraySizeMaterialized(item, "array", &got);
+  }
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

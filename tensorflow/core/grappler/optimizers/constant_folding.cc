@@ -469,15 +469,19 @@ absl::Status ConstantFolding::MaterializeShapes(
     }
 
     if (op == "TensorArraySizeV3") {
-      if (node->input_size() < 2 || IsControlInput(node->input(0)) ||
-          IsControlInput(node->input(1))) {
+      if (NumNonControlInputs(*node) != 2 ||
+          NodePosition(node->input(0)) != 0 ||
+          NodePosition(node->input(1)) < 0 ||
+          node_map_->GetNode(node->input(1)) == nullptr) {
         continue;
       }
       const NodeDef* array = node_map_->GetNode(node->input(0));
-      if (array == nullptr || array->input_size() == 0 ||
-          IsControlInput(array->input(0)) ||
-          (array->attr().count("dynamic_size") != 0 &&
-           array->attr().at("dynamic_size").b())) {
+      bool dynamic_size = false;
+      if (array == nullptr || array->op() != "TensorArrayV3" ||
+          array->input_size() == 0 || NodePosition(array->input(0)) != 0 ||
+          (HasNodeAttr(*array, "dynamic_size") &&
+           (!GetNodeAttr(*array, "dynamic_size", &dynamic_size).ok() ||
+            dynamic_size))) {
         continue;
       }
       const NodeDef* array_size = node_map_->GetNode(array->input(0));
