@@ -107,7 +107,6 @@ class ShardingPropagation : public HloModulePass {
           {false},
       absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters =
           {false},
-      bool cse_prevention_only = false,
       std::unique_ptr<CustomCallShardingHelper> sharding_helper = nullptr)
       : is_spmd_(is_spmd),
         propagate_metadata_(propagate_metadata),
@@ -122,8 +121,7 @@ class ShardingPropagation : public HloModulePass {
             allow_spmd_sharding_propagation_to_output.end()),
         allow_spmd_sharding_propagation_to_parameters_vector_(
             allow_spmd_sharding_propagation_to_parameters.begin(),
-            allow_spmd_sharding_propagation_to_parameters.end()),
-        cse_prevention_only_(cse_prevention_only) {
+            allow_spmd_sharding_propagation_to_parameters.end()) {
     if (sharding_helper) {
       sharding_helper_ = std::move(sharding_helper);
     } else {
@@ -203,10 +201,6 @@ class ShardingPropagation : public HloModulePass {
       allow_spmd_sharding_propagation_to_output_vector_;
   absl::InlinedVector<bool, 1>
       allow_spmd_sharding_propagation_to_parameters_vector_;
-  // If true, the pass keeps the propagation results only on selected
-  // instructions to prevent CSE across unrelated subgraphs. (A common case is
-  // scalar broadcasts).
-  bool cse_prevention_only_;
 };
 
 }  // namespace xla
