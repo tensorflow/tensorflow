@@ -22,7 +22,10 @@ for the __future__ division line.
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -66,6 +69,33 @@ class DivisionTestCase(test.TestCase):
       # Do only one sess.run for speed
       for f, (x, y) in zip(checks, self.evaluate(tensors)):
         f(x, y)
+
+  def testSignedIntegerDivisionOverflow(self):
+    # Signed integer division INT_MIN / -1 overflows the signed integer range
+    # and wraps around to INT_MIN in two's complement arithmetic without crashing.
+    cases = [
+        (dtypes.int8, -128, -1, -128),
+        (dtypes.int16, -32768, -1, -32768),
+        (dtypes.int32, -2147483648, -1, -2147483648),
+        (dtypes.int64, -9223372036854775808, -1, -9223372036854775808),
+    ]
+    for dtype, min_val, div_val, expected in cases:
+      x = constant_op.constant([min_val], dtype=dtype)
+      y = constant_op.constant([div_val], dtype=dtype)
+      # Test math_ops.floordiv and operator //
+      self.assertAllEqual(self.evaluate(math_ops.floordiv(x, y)), [expected])
+      self.assertAllEqual(self.evaluate(x // y), [expected])
+      # Test raw_ops FloorDiv, TruncateDiv, Div
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.floor_div(x, y)), [expected]
+      )
+      self.assertAllEqual(
+          self.evaluate(gen_math_ops.truncate_div(x, y)), [expected]
+      )
+      self.assertAllEqual(self.evaluate(gen_math_ops.div(x, y)), [expected])
+      # Test mod operations INT_MIN % -1 == 0
+      self.assertAllEqual(self.evaluate(gen_math_ops.floor_mod(x, y)), [0])
+      self.assertAllEqual(self.evaluate(gen_math_ops.truncate_mod(x, y)), [0])
 
 
 if __name__ == "__main__":

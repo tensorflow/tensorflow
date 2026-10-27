@@ -126,11 +126,14 @@ struct safe_div_or_mod_op {
     if (TF_PREDICT_TRUE(safe_b != 0)) {
       // Avoid FPE for INT_MIN/-1.
       const T safe_a = tensorflow::internal::SubtleMustCopy(a);
-      if (TF_PREDICT_FALSE(std::is_signed<T>::value &&
+      if (TF_PREDICT_FALSE(std::is_signed_v<T> &&
                            safe_a == std::numeric_limits<T>::min() &&
                            safe_b == T(-1))) {
-        // Prefer to overflow 'a' instead of crashing.
-        return DivOrMod()(-safe_a, 1);
+        // Prefer to overflow 'a' (wraparound to INT_MIN in two's complement)
+        // instead of crashing. Avoid signed negation UB for INT_MIN.
+        using UnsignedT = typename std::make_unsigned<T>::type;
+        const T wrapped_a = static_cast<T>(-static_cast<UnsignedT>(safe_a));
+        return DivOrMod()(wrapped_a, 1);
       }
       return DivOrMod()(safe_a, safe_b);
     } else {
