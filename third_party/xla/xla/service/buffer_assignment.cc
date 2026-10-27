@@ -3709,16 +3709,60 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
     backup_presets = opts_.preset_assignments->ClonePresetAssignments();
   }
 
-  // 2. Define the assignment strategies to try.
-  const std::vector<BufferAssigner::AssignmentStrategy> assignment_strategies =
-      {
-          {opts_.assignment_algorithm_for_computations_without_ordering,
-           opts_.buffer_assignment_algorithm},
-          {opts_.assignment_algorithm_for_computations_without_ordering,
-           buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT},
-          {opts_.fallback_algorithm_for_computations_without_ordering,
-           opts_.fallback_algorithm},
-      };
+  // 2. Define the assignment strategies to try. The (non-sequential,
+  // sequential) pairs are, depending on the sequential algorithm:
+  //  * FAST_MERGE: (FAST_MERGE, FAST_MERGE) -> (FAST_MERGE, FAST_SPLIT) ->
+  //    (SPATIAL, SPATIAL) -> (SPATIAL, TEMPORAL)
+  //  * FAST_SPLIT: (FAST_MERGE, FAST_SPLIT) -> (SPATIAL, SPATIAL) ->
+  //    (SPATIAL, TEMPORAL)
+  //  * SPATIAL: (FAST_MERGE, SPATIAL) -> (SPATIAL, SPATIAL) ->
+  //    (SPATIAL, TEMPORAL)
+  //  * TEMPORAL: (FAST_MERGE, TEMPORAL) -> (SPATIAL, SPATIAL) ->
+  //    (SPATIAL, TEMPORAL)
+  //  * DEFAULT, BEST_OF_SPATIAL_TEMPORAL: (FAST_MERGE, X) -> (SPATIAL, X)
+  // The best assignment of each color is kept, so trying SPATIAL and then
+  // TEMPORAL is like BEST_OF_SPATIAL_TEMPORAL, but skips TEMPORAL if SPATIAL
+  // fits.
+  using SequentialAlgorithm = buffer_assignment::BufferAssignmentAlgorithmProto;
+  using NonSequentialAlgorithm =
+      buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto;
+  const NonSequentialAlgorithm::Value non_sequential =
+      opts_.assignment_algorithm_for_computations_without_ordering;
+  const SequentialAlgorithm::Value sequential =
+      opts_.buffer_assignment_algorithm;
+  std::vector<BufferAssigner::AssignmentStrategy> assignment_strategies;
+  // Adds the strategy unless it was already added.
+  auto add_strategy = [&](NonSequentialAlgorithm::Value strategy_non_sequential,
+                          SequentialAlgorithm::Value strategy_sequential) {
+    for (const BufferAssigner::AssignmentStrategy& strategy :
+         assignment_strategies) {
+      if (strategy.non_sequential_algorithm == strategy_non_sequential &&
+          strategy.sequential_algorithm == strategy_sequential) {
+        return;
+      }
+    }
+    assignment_strategies.push_back(
+        {strategy_non_sequential, strategy_sequential});
+  };
+
+  add_strategy(non_sequential, sequential);
+  if (sequential == SequentialAlgorithm::FAST_MERGE) {
+    add_strategy(non_sequential, SequentialAlgorithm::FAST_SPLIT);
+  }
+
+  const NonSequentialAlgorithm::Value fallback_non_sequential =
+      non_sequential == NonSequentialAlgorithm::FAST_MERGE
+          ? opts_.fallback_algorithm_for_computations_without_ordering
+          : non_sequential;
+  if (sequential == SequentialAlgorithm::DEFAULT ||
+      sequential == SequentialAlgorithm::BEST_OF_SPATIAL_TEMPORAL) {
+    add_strategy(fallback_non_sequential, sequential);
+  } else if (opts_.fallback_algorithm == SequentialAlgorithm::DEFAULT) {
+    add_strategy(fallback_non_sequential, SequentialAlgorithm::SPATIAL);
+    add_strategy(fallback_non_sequential, SequentialAlgorithm::TEMPORAL);
+  } else {
+    add_strategy(fallback_non_sequential, opts_.fallback_algorithm);
+  }
 
   // The first step of RunAssignBuffers (AssignBuffersForGlobalComputations)
   // only depends on the non-sequential algorithm. Its result, i.e. the

@@ -1014,6 +1014,181 @@ TEST_F(BufferAssignmentTest, OOMFallbackStrategySelection) {
   EXPECT_EQ(none_fits->GetStats().total_allocation_bytes, 288);
 }
 
+// With the fallback, FAST_MERGE first falls back to FAST_SPLIT, and then the
+// algorithms that may use more memory than BEST_OF_SPATIAL_TEMPORAL fall back
+// to SPATIAL and then TEMPORAL, skipping the strategies already tried. So only
+// SPATIAL for the computations without a sequential ordering, with DEFAULT or
+// BEST_OF_SPATIAL_TEMPORAL for the others, has no fallback.
+TEST_F(BufferAssignmentTest, OOMFallbackStrategiesDependOnAlgorithms) {
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec4_, "param"));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, param, param));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  using NonSequentialAlgorithm =
+      buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto;
+  using SequentialAlgorithm = buffer_assignment::BufferAssignmentAlgorithmProto;
+  // Returns the number of evaluated strategies. The limit is below the safety
+  // margin, so no strategy fits, and the module has a single color, so the
+  // limit is queried once per evaluated strategy.
+  auto count_strategies = [&](NonSequentialAlgorithm::Value non_sequential,
+                              SequentialAlgorithm::Value sequential) {
+    BufferAssigner::Options opts;
+    opts.enable_fallback = true;
+    opts.assignment_algorithm_for_computations_without_ordering =
+        non_sequential;
+    opts.buffer_assignment_algorithm = sequential;
+    int num_strategies = 0;
+    opts.color_memory_limit = [&](LogicalBuffer::Color) -> int64_t {
+      ++num_strategies;
+      return 1;
+    };
+    EXPECT_THAT(
+        BufferAssigner::Run(
+            module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+            &BufferSizeBytes, &alias_info_,
+            [](LogicalBuffer::Color) { return 1; }, std::move(opts)),
+        ::absl_testing::IsOk());
+    return num_strategies;
+  };
+
+  struct TestCase {
+    SequentialAlgorithm::Value sequential;
+    // With SPATIAL and FAST_MERGE for the computations without a sequential
+    // ordering.
+    int num_strategies_with_spatial;
+    int num_strategies_with_fast_merge;
+  };
+  for (const TestCase& test_case : std::vector<TestCase>{
+           {SequentialAlgorithm::FAST_MERGE, 4, 4},
+           {SequentialAlgorithm::FAST_SPLIT, 3, 3},
+           {SequentialAlgorithm::TEMPORAL, 2, 3},
+           {SequentialAlgorithm::SPATIAL, 2, 3},
+           {SequentialAlgorithm::DEFAULT, 1, 2},
+           {SequentialAlgorithm::BEST_OF_SPATIAL_TEMPORAL, 1, 2}}) {
+    SCOPED_TRACE(SequentialAlgorithm::Value_Name(test_case.sequential));
+    EXPECT_EQ(
+        count_strategies(NonSequentialAlgorithm::SPATIAL, test_case.sequential),
+        test_case.num_strategies_with_spatial);
+    EXPECT_EQ(count_strategies(NonSequentialAlgorithm::FAST_MERGE,
+                               test_case.sequential),
+              test_case.num_strategies_with_fast_merge);
+  }
+}
+
+// The DEFAULT fallback algorithm tries SPATIAL and then TEMPORAL. TEMPORAL is
+// skipped if SPATIAL fits, and otherwise the better of the two is kept, as with
+// BEST_OF_SPATIAL_TEMPORAL.
+TEST_F(BufferAssignmentTest, OOMFallbackTriesSpatialThenTemporal) {
+  // Live ranges (positions in the sequence below) and sizes of the large temp
+  // buffers:
+  //   w:   [1, 5],   800B
+  //   a:   [2, 3],  1600B
+  //   mid: [4, 7],  1200B
+  //   big: [6, 10], 2000B
+  // SPATIAL packs the largest buffers first, so `w` does not fit into the gap
+  // between `a` and `mid` and is placed on top of them. TEMPORAL packs the
+  // long-lived `big` and `w` first and needs less memory.
+  const char* const kHloText = R"(
+HloModule OOMFallbackTriesSpatialThenTemporal
+
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT r = f32[] add(x, y)
+}
+
+ENTRY entry {
+  p = f32[] parameter(0)
+  w = f32[200] broadcast(p), dimensions={}
+  a = f32[400] broadcast(p), dimensions={}
+  a_sum = f32[] reduce(a, p), dimensions={0}, to_apply=add
+  mid = f32[300] broadcast(a_sum), dimensions={}
+  w_sum = f32[] reduce(w, p), dimensions={0}, to_apply=add
+  big = f32[500] broadcast(w_sum), dimensions={}
+  mid_sum = f32[] reduce(mid, p), dimensions={0}, to_apply=add
+  f1 = f32[] add(mid_sum, mid_sum)
+  f2 = f32[] add(f1, f1)
+  ROOT big_sum = f32[] reduce(big, f2), dimensions={0}, to_apply=add
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::vector<HloInstruction*> sequence;
+  for (const char* name : {"p", "w", "a", "a_sum", "mid", "w_sum", "big",
+                           "mid_sum", "f1", "f2", "big_sum"}) {
+    sequence.push_back(FindInstruction(module.get(), name));
+  }
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(), sequence);
+  ASSERT_OK(schedule.Update());
+  const HloInstruction* big = FindInstruction(module.get(), "big");
+
+  using SequentialAlgorithm = buffer_assignment::BufferAssignmentAlgorithmProto;
+  struct Result {
+    int64_t temp_allocation_size;
+    int num_strategies;
+  };
+  // Runs buffer assignment with `limit` bytes on top of the safety margin and
+  // returns the size of the temp allocation and the number of evaluated
+  // strategies. The module has a single color, so the limit is queried once
+  // per evaluated strategy.
+  auto run = [&](SequentialAlgorithm::Value sequential, bool enable_fallback,
+                 int64_t limit) {
+    constexpr int64_t kSafetyMargin = int64_t{5} << 29;
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.enable_fallback = enable_fallback;
+    opts.buffer_assignment_algorithm = sequential;
+    int num_strategies = 0;
+    opts.color_memory_limit = [&](LogicalBuffer::Color) -> int64_t {
+      ++num_strategies;
+      return kSafetyMargin + limit;
+    };
+    absl::StatusOr<std::unique_ptr<BufferAssignment>> assignment =
+        BufferAssigner::Run(
+            module.get(), std::make_unique<SequentialHloOrdering>(schedule),
+            &BufferSizeBytes, &alias_info_,
+            [](LogicalBuffer::Color) { return 1; }, std::move(opts));
+    CHECK_OK(assignment.status());
+    const BufferAllocation& allocation =
+        GetTopLevelAllocation(**assignment, big);
+    EXPECT_TRUE(allocation.IsPreallocatedTempBuffer());
+    return Result{allocation.size(), num_strategies};
+  };
+
+  constexpr int64_t kNoLimit = 0;
+  const int64_t spatial_size =
+      run(SequentialAlgorithm::SPATIAL, /*enable_fallback=*/false, kNoLimit)
+          .temp_allocation_size;
+  const int64_t temporal_size =
+      run(SequentialAlgorithm::TEMPORAL, /*enable_fallback=*/false, kNoLimit)
+          .temp_allocation_size;
+  // The test is only meaningful if the two packing strategies differ.
+  ASSERT_LT(temporal_size, spatial_size);
+
+  // SPATIAL fits: TEMPORAL is not tried.
+  Result spatial_fits = run(SequentialAlgorithm::SPATIAL,
+                            /*enable_fallback=*/true, /*limit=*/1000000);
+  EXPECT_EQ(spatial_fits.num_strategies, 1);
+  EXPECT_EQ(spatial_fits.temp_allocation_size, spatial_size);
+
+  // SPATIAL exceeds the limit: TEMPORAL is tried and kept.
+  Result spatial_exceeds = run(SequentialAlgorithm::SPATIAL,
+                               /*enable_fallback=*/true, /*limit=*/1);
+  EXPECT_EQ(spatial_exceeds.num_strategies, 2);
+  EXPECT_EQ(spatial_exceeds.temp_allocation_size, temporal_size);
+
+  // TEMPORAL exceeds the limit: SPATIAL is tried, but TEMPORAL is kept since it
+  // uses less memory.
+  Result temporal_exceeds = run(SequentialAlgorithm::TEMPORAL,
+                                /*enable_fallback=*/true, /*limit=*/1);
+  EXPECT_EQ(temporal_exceeds.num_strategies, 2);
+  EXPECT_EQ(temporal_exceeds.temp_allocation_size, temporal_size);
+}
+
 // Verifies that clearing and restoring the allocations of one color from a
 // snapshot leaves the other colors untouched and keeps the indices consistent.
 TEST_F(BufferAssignmentTest, RestoreStateForColorsOnlyReplacesGivenColors) {
@@ -1331,7 +1506,7 @@ ENTRY main {
                         FAST_MERGE
               : buffer_assignment::
                     AssignmentAlgorithmForComputationsWithoutOrderingProto::
-                        DEFAULT;
+                        SPATIAL;
 
       std::unique_ptr<HloOrdering> ordering =
           use_sequential_ordering
