@@ -701,7 +701,7 @@ WindowDatasetParams WindowDatasetParamsWithSignedInt64Overflow() {
 TEST_F(WindowDatasetOpTest, SignedInt64OverflowingTargetBufferSize) {
   auto dataset_params = WindowDatasetParamsWithSignedInt64Overflow();
   EXPECT_THAT(Initialize(dataset_params),
-              tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      ::testing::HasSubstr("overflow")));
 }
 
