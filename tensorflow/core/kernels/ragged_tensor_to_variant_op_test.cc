@@ -513,6 +513,37 @@ TEST_F(RaggedTensorToVariantGradientKernelTest,
                                      "ragged splits  must be 0 but is 1"));
 }
 
+TEST_F(RaggedTensorToVariantGradientKernelTest, DenseValuesShapeMismatchError) {
+  // encoded_variant_grad=
+  // [ [1, 2, 3],
+  //   [       ],
+  //   [4, 5   ],
+  //   [6      ]]
+  // The flat_values carried by the variants total 6 elements, but
+  // dense_values_shape declares an output of 1 element. Concatenating the
+  // pieces into that output would run past it, so the op must reject the
+  // mismatch rather than copy.
+  auto encoded_variant_grad_1 =
+      CreateVariantFromRagged<int, int64_t>({}, {3}, {1, 2, 3});
+  auto encoded_variant_grad_2 =
+      CreateVariantFromRagged<int, int64_t>({}, {0}, {});
+  auto encoded_variant_grad_3 =
+      CreateVariantFromRagged<int, int64_t>({}, {2}, {4, 5});
+  auto encoded_variant_grad_4 =
+      CreateVariantFromRagged<int, int64_t>({}, {1}, {6});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>(
+      {encoded_variant_grad_1, encoded_variant_grad_2, encoded_variant_grad_3,
+       encoded_variant_grad_4},
+      {0, 3, 3, 5, 6}, {1});
+
+  EXPECT_THAT(
+      RunOpKernel(),
+      absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                             "Sum of ragged gradient flat_values sizes (6) != "
+                             "dense_values_shape number of elements (1)"));
+}
+
 TEST_F(RaggedTensorToVariantGradientKernelTest, RowSplitsIncreasingError) {
   // encoded_variant_grad=
   // [ [1, 2, 3],

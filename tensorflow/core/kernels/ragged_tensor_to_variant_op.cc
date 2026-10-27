@@ -309,12 +309,25 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
       using ConstPiece = typename TTypes<VALUE_TYPE, 2>::ConstMatrix;
       std::vector<std::unique_ptr<ConstPiece>> pieces;
       pieces.reserve(values.size());
+      int64_t total_values = 0;
       for (const Tensor& t : values) {
+        total_values += t.NumElements();
         // ConcatCPU assumes non-empty inputs.
         if (t.NumElements() == 0) continue;
         pieces.emplace_back(
             new ConstPiece(t.shaped<VALUE_TYPE, 2>({1, t.NumElements()})));
       }
+      // `dense_values_shape` comes from an input tensor and is independent of
+      // the sizes carried by the encoded variants, but ConcatCPU copies each
+      // piece into `out` in full without bounding the total against the output.
+      // Require the sizes to agree so the concat can't read or write past the
+      // allocated buffer.
+      OP_REQUIRES(
+          context, total_values == dense_values_shape.num_elements(),
+          errors::InvalidArgument(
+              "Sum of ragged gradient flat_values sizes (", total_values,
+              ") != dense_values_shape number of elements (",
+              dense_values_shape.num_elements(), ")"));
       Piece out_flat =
           out->shaped<VALUE_TYPE, 2>({1, dense_values_shape.num_elements()});
       ConcatCPU<VALUE_TYPE>(context->device(), pieces, &out_flat);
