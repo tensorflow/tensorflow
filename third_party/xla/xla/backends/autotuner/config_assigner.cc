@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/status_macros.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -311,19 +312,19 @@ absl::Status ConfigAssigner::AssignConfigs(
 }
 
 absl::Status ConfigAssigner::AssignConfig(HloInstruction* instr) {
-  ABSL_ASSIGN_OR_RETURN(Config config, GetConfig(instr).Await());
+  ABSL_ASSIGN_OR_RETURN(std::vector<Config> configs, GetConfigsForAll({{instr}}));
   if (options_.dump_hlos) {
-    ABSL_RETURN_IF_ERROR(DumpHlo(*instr, config));
+    ABSL_RETURN_IF_ERROR(DumpHlo(*instr, configs[0]));
   }
-  ABSL_RETURN_IF_ERROR(orchestrator_->ApplyConfig(*instr, config));
+  ABSL_RETURN_IF_ERROR(orchestrator_->ApplyConfig(*instr, configs[0]));
   if (autotuner_ != nullptr) {
     ABSL_RETURN_IF_ERROR(autotuner_->DumpTuningLogs());
   }
   return absl::OkStatus();
 }
 
-tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
-    const HloInstruction* instr) {
+absl::StatusOr<std::optional<ConfigAssigner::Config>>
+ConfigAssigner::GetForcedOrCachedConfig(const HloInstruction* instr) {
   if (VLOG_IS_ON(1)) {
     HloPrintOptions print_options;
     if (VLOG_IS_ON(4)) {
@@ -343,7 +344,7 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
   std::optional<Config> cached_config = LookUp(instr);
   if (cached_config.has_value()) {
     VLOG(1) << "Using cached config: " << cached_config->ToString();
-    return std::move(cached_config.value());
+    return std::move(cached_config);
   }
 
   if (options_.expect_all_instructions_in_cache) {
@@ -354,25 +355,61 @@ tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetConfig(
     return s;
   }
 
+  return std::nullopt;
+}
+
+tsl::Future<std::optional<ConfigAssigner::Config>>
+ConfigAssigner::GetConfigUsingEstimations(const HloInstruction* instr) {
+  if (!options_.prefer_estimated_configs) {
+    return std::nullopt;
+  }
+  absl::StatusOr<std::vector<Config>> configs = GetEstimatedConfigs(instr);
+  if (!configs.ok()) {
+    VLOG(1) << "Failed to find compilable estimated config: "
+            << configs.status();
+    return std::nullopt;
+  }
+
+  if (configs->empty()) {
+    VLOG(2) << "No estimated configs, skipping";
+    return std::nullopt;
+  }
+
+  // Compile on the thread pool so that instructions compile in parallel.
+  // With compile_all_supported_configs, GetFirstCompilableConfig awaits the
+  // thread pool itself, which must not be done from a pool thread.
+  tsl::Executor* executor =
+      thread_pool_ != nullptr && !options_.compile_all_supported_configs
+          ? thread_pool_->AsExecutor()
+          : &tsl::InlineExecutor::Instance();
+  return tsl::MakeFutureOn(
+      *executor,
+      [this, instr, configs = std::move(*configs)]() mutable
+          -> absl::StatusOr<std::optional<Config>> {
+        absl::StatusOr<Config> config =
+            GetFirstCompilableConfig(instr, std::move(configs));
+        if (!config.ok()) {
+          VLOG(1) << "Failed to find compilable estimated config: "
+                  << config.status();
+          return std::nullopt;
+        }
+        // TODO (b/577053481): Estimated configs may be interpreted as tuned
+        // configs with the current caching approach. We need to distinguish
+        // them
+        if (options_.allow_autotuning) {
+          ABSL_RETURN_IF_ERROR(Insert(instr, *config));
+        }
+        return std::move(*config);
+      });
+}
+
+tsl::Future<ConfigAssigner::Config> ConfigAssigner::GetTunedOrFallbackConfig(
+    const HloInstruction* instr) {
   // TODO (b/446870267): Improve the cache fallback logic as we move to offline
   // autotuning.
   // Autotuning disabled, pick the first config that compiles
   if (!options_.allow_autotuning) {
     return GetFirstCompilableConfigOrDefault(instr);
-  }
-
-  // Autotuning enabled but we prefer estimated configs if they are available
-  if (options_.prefer_estimated_configs) {
-    absl::StatusOr<Config> compilable_config =
-        GetFirstCompilableEstimatedConfig(instr,
-                                          /*only_with_estimates=*/true);
-    if (compilable_config.ok()) {
-      ABSL_RETURN_IF_ERROR(Insert(instr, *compilable_config));
-      return std::move(*compilable_config);
-    }
-
-    VLOG(1) << "Failed to find compilable estimated config: "
-            << compilable_config.status();
   }
 
   TF_RET_CHECK(autotuner_ != nullptr)
@@ -417,9 +454,8 @@ absl::StatusOr<ConfigAssigner::Config> ConfigAssigner::GetFirstCompilableConfig(
       "All supported configs failed to compile for HLO.");
 }
 
-absl::StatusOr<ConfigAssigner::Config>
-ConfigAssigner::GetFirstCompilableEstimatedConfig(const HloInstruction* instr,
-                                                  bool only_with_estimates) {
+absl::StatusOr<std::vector<ConfigAssigner::Config>>
+ConfigAssigner::GetEstimatedConfigs(const HloInstruction* instr) {
   ABSL_ASSIGN_OR_RETURN(
       std::vector<CodegenOrchestrator::EstimatedConfig> estimated_configs,
       orchestrator_->GetSupportedConfigsWithEstimates(*instr));
@@ -438,31 +474,16 @@ ConfigAssigner::GetFirstCompilableEstimatedConfig(const HloInstruction* instr,
   std::vector<Config> configs;
   configs.reserve(estimated_configs.size());
   for (auto& config : estimated_configs) {
-    if (only_with_estimates && !config.estimated_runtime.has_value()) {
+    if (!config.estimated_runtime.has_value()) {
       break;
     }
     configs.push_back(std::move(config.config));
   }
-
-  return GetFirstCompilableConfig(instr, std::move(configs));
+  return configs;
 }
 
 absl::StatusOr<ConfigAssigner::Config>
 ConfigAssigner::GetFirstCompilableConfigOrDefault(const HloInstruction* instr) {
-  if (options_.prefer_estimated_configs) {
-    // Include configs without estimates to avoid duplicated compilations in
-    // case the first good config is a config without estimates.
-    absl::StatusOr<Config> compilable_config =
-        GetFirstCompilableEstimatedConfig(instr,
-                                          /*only_with_estimates=*/false);
-    if (compilable_config.ok()) {
-      return compilable_config;
-    }
-
-    VLOG(1) << "Failed to find compilable estimated config: "
-            << compilable_config.status();
-  }
-
   absl::StatusOr<std::vector<Config>> supported_configs =
       orchestrator_->GetSupportedConfigs(*instr);
   absl::StatusOr<Config> supported_config =
@@ -526,10 +547,46 @@ absl::Status ConfigAssigner::Insert(const HloInstruction* instr,
 absl::StatusOr<std::vector<ConfigAssigner::Config>>
 ConfigAssigner::GetConfigsForAll(
     const std::vector<InstructionGroup>& instruction_groups) {
+  std::vector<tsl::Future<std::optional<Config>>> non_tuned_configs;
+  non_tuned_configs.reserve(instruction_groups.size());
+  for (const InstructionGroup& instr_group : instruction_groups) {
+    const HloInstruction* instr = instr_group[0];
+    // First we attempt to get a forced or cached config.
+    // This is done synchronously.
+    // An error here signifies config assignment error.
+    absl::StatusOr<std::optional<Config>> config =
+        GetForcedOrCachedConfig(instr);
+    if (!config.ok() || config->has_value()) {
+      non_tuned_configs.push_back(std::move(config));
+      continue;
+    }
+
+    // If applicable, use the estimated config.
+    // The candidate configs may be compiled on the thread pool.
+    non_tuned_configs.push_back(GetConfigUsingEstimations(instr));
+  }
+
   std::vector<tsl::Future<Config>> future_configs;
   future_configs.reserve(instruction_groups.size());
   for (int i = 0; i < instruction_groups.size(); i++) {
-    future_configs.push_back(GetConfig(instruction_groups[i][0]));
+    // Try to use a non-tuned config (or its error) if available.
+    absl::StatusOr<std::optional<Config>> config =
+        std::move(non_tuned_configs[i]).Await();
+    if (!config.ok()) {
+      future_configs.push_back(config.status());
+      continue;
+    }
+    if (config->has_value()) {
+      future_configs.push_back(std::move(**config));
+      continue;
+    }
+
+    // We need to tune the config or use a fallback if tuning is disabled.
+    // Fallback config is the first compilable or default.
+    // Tuning can happen on the thread pool but must be started from this thread
+    // because some backends' GetSupportedConfigs are not thread-safe.
+    const HloInstruction* instr = instruction_groups[i][0];
+    future_configs.push_back(GetTunedOrFallbackConfig(instr));
   }
 
   std::vector<absl::StatusOr<Config>> status_or_configs;

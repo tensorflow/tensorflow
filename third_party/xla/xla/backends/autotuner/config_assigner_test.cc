@@ -853,7 +853,7 @@ TEST_F(ConfigAssignerTest, SelectFirstConfigWithEstimatesPicksLowestEstimate) {
 }
 
 TEST_F(ConfigAssignerTest,
-       SelectFirstConfigWithEstimatesFallsBackThroughEstimatesAndUnestimated) {
+       SelectFirstConfigWithEstimatesFallsBackToFirstCompilableConfig) {
   config_.allow_autotuning = false;
   config_.prefer_estimated_configs = true;
 
@@ -868,10 +868,22 @@ TEST_F(ConfigAssignerTest,
         configs.push_back({GetTestConfig("only_config"), std::nullopt});
         return configs;
       });
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce([](const HloInstruction&) {
+        std::vector<std::unique_ptr<BackendConfig>> configs;
+        configs.push_back(GetTestConfig("test_config_1"));
+        configs.push_back(GetTestConfig("test_config_2"));
+        configs.push_back(GetTestConfig("only_config"));
+        return configs;
+      });
 
+  // The estimated configs fail to compile both during the estimate check and
+  // during the fallback.
   EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
+      .WillOnce(Return(absl::InternalError("compilation failed")))
       .WillOnce(Return(absl::InternalError("compilation failed")));
   EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2")))
+      .WillOnce(Return(absl::InternalError("compilation failed")))
       .WillOnce(Return(absl::InternalError("compilation failed")));
   EXPECT_CALL(*backend, Compile(_, ConfigMatcher("only_config")))
       .WillOnce(Return(std::unique_ptr<Executable>()));
@@ -936,9 +948,12 @@ TEST_F(ConfigAssignerTest,
   config_.allow_autotuning = true;
   config_.prefer_estimated_configs = true;
 
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
+
   auto backend = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend, GetSupportedConfigsWithEstimates(_))
-      .WillOnce([](const HloInstruction&) {
+      .WillOnce([&](const HloInstruction&) {
+        EXPECT_EQ(thread_pool.CurrentThreadId(), -1);
         std::vector<CodegenBackend::EstimatedConfig> configs;
         configs.push_back(
             {GetTestConfig("test_config_1"), absl::Milliseconds(5)});
@@ -947,7 +962,8 @@ TEST_F(ConfigAssignerTest,
         return configs;
       });
   EXPECT_CALL(*backend, GetSupportedConfigs(_))
-      .WillOnce([](const HloInstruction&) {
+      .WillOnce([&](const HloInstruction&) {
+        EXPECT_EQ(thread_pool.CurrentThreadId(), -1);
         std::vector<std::unique_ptr<BackendConfig>> configs;
         configs.push_back(GetTestConfig("test_config_1"));
         configs.push_back(GetTestConfig("test_config_2"));
@@ -958,13 +974,22 @@ TEST_F(ConfigAssignerTest,
   // test_config_1 fails compilation during estimate check and during
   // autotuning.
   EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
-      .WillOnce(Return(absl::InternalError("compilation failed")))
-      .WillOnce(Return(absl::InternalError("compilation failed")));
+      .Times(2)
+      .WillRepeatedly([&](const HloInstruction&, const BackendConfig&) {
+        EXPECT_NE(thread_pool.CurrentThreadId(), -1);
+        return absl::InternalError("compilation failed");
+      });
 
   EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2")))
-      .WillOnce(Return(std::unique_ptr<Executable>()));
+      .WillOnce([&](const HloInstruction&, const BackendConfig&) {
+        EXPECT_NE(thread_pool.CurrentThreadId(), -1);
+        return std::unique_ptr<Executable>();
+      });
   EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_3")))
-      .WillOnce(Return(std::unique_ptr<Executable>()));
+      .WillOnce([&](const HloInstruction&, const BackendConfig&) {
+        EXPECT_NE(thread_pool.CurrentThreadId(), -1);
+        return std::unique_ptr<Executable>();
+      });
 
   auto profiler = std::make_unique<MockProfiler>();
   EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
@@ -986,7 +1011,8 @@ TEST_F(ConfigAssignerTest,
   ASSERT_OK_AND_ASSIGN(
       auto config_assigner,
       CreateConfigAssigner(std::move(backends), std::move(profiler), config_,
-                           std::move(cache)));
+                           std::move(cache), /*autotuner_options=*/std::nullopt,
+                           &thread_pool));
 
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(config_assigner->AssignConfig(dummy_instr.get()), IsOk());
