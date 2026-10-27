@@ -325,6 +325,49 @@ class L2NormalizeTest(test_lib.TestCase):
       y = self.evaluate(y_tf).astype(np.float32)
       self.assertAllClose(expected, y, atol=1e-2)
 
+  def testL2NormalizeHalfPrecisionNegativeValues(self):
+    x_np = np.array([[-300.0, 400.0], [300.0, -400.0]], np.float32)
+    expected = [[-0.6, 0.8], [0.6, -0.8]]
+    for dtype in [dtypes.float16, dtypes.bfloat16]:
+      y_tf = nn_impl.l2_normalize(constant_op.constant(x_np, dtype=dtype), 1)
+      self.assertEqual(dtype, y_tf.dtype)
+      self.assertAllClose(
+          expected, self.evaluate(y_tf).astype(np.float32), atol=1e-2)
+
+  def testL2NormalizeHalfPrecisionTensorEpsilon(self):
+    x_np = np.array([[3.0, 4.0]], np.float32)
+    # The sum of squares (25) is below `epsilon` (100), so the output is
+    # scaled by `rsqrt(epsilon)` = 0.1.
+    expected = [[0.3, 0.4]]
+    for dtype in [dtypes.float16, dtypes.bfloat16]:
+      epsilon = constant_op.constant(100.0, dtype=dtype)
+      y_tf = nn_impl.l2_normalize(
+          constant_op.constant(x_np, dtype=dtype), 1, epsilon=epsilon)
+      self.assertEqual(dtype, y_tf.dtype)
+      self.assertAllClose(
+          expected, self.evaluate(y_tf).astype(np.float32), atol=1e-2)
+
+  def testL2NormalizeHalfPrecisionGradient(self):
+    x_np = np.array([[300.0, 400.0], [-300.0, 400.0]], np.float32)
+    weights = np.array([[1.0, 0.0], [1.0, 1.0]], np.float32)
+    # Reference gradient computed in float32.
+    x32 = constant_op.constant(x_np)
+    with backprop.GradientTape() as tape:
+      tape.watch(x32)
+      loss = math_ops.reduce_sum(nn_impl.l2_normalize(x32, 1) * weights)
+    expected = self.evaluate(tape.gradient(loss, x32))
+    for dtype in [dtypes.float16, dtypes.bfloat16]:
+      x = constant_op.constant(x_np, dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = nn_impl.l2_normalize(x, 1)
+        loss = math_ops.reduce_sum(y * math_ops.cast(weights, dtype))
+      grad = tape.gradient(loss, x)
+      self.assertEqual(dtype, grad.dtype)
+      grad = self.evaluate(grad).astype(np.float32)
+      self.assertFalse(np.any(np.isnan(grad)))
+      self.assertAllClose(expected, grad, atol=1e-3)
+
 
 DROPOUT_FNS = [
     ("stateful_v1", nn_ops.dropout),
