@@ -28,17 +28,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Get file changes
       id: get_file_changes
       uses: trilom/file-changes-action@a6ca26c14274c33b15e6499323aac178af06ad4b # v1.2.4
       with:
         output: ' '
     - name: Report list of changed files
+      env:
+        CHANGED_FILES: ${{ steps.get_file_changes.outputs.files }}
       run: |
-        echo Changed files: ${{ steps.get_file_changes.outputs.files }}
+        echo "Changed files: $CHANGED_FILES"
     - name: Set up Python 3.9
-      uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: "3.9"
     - name: Install Python dependencies
@@ -46,5 +48,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install pylint==2.13.9 "numpy<2.0.0" wheel
     - name: Run PyLint on changed files
+      env:
+        CHANGED_FILES: ${{ steps.get_file_changes.outputs.files }}
       run: |
-        echo "${{ steps.get_file_changes.outputs.files}}" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
+        echo "$CHANGED_FILES" | tr " " "\n" | grep ".py$" | xargs pylint --rcfile=tensorflow/tools/ci_build/pylintrc
