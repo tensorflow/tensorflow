@@ -261,10 +261,10 @@ struct CseKey {
         return H::combine(std::move(h), instruction->dimensions());
       case HloOpcode::kGetTupleElement:
         return H::combine(std::move(h), instruction->tuple_index());
-      case HloOpcode::kCompare:
-        return H::combine(
-            std::move(h),
-            Cast<HloCompareInstruction>(instruction)->direction());
+      case HloOpcode::kCompare: {
+        const auto* cmp = Cast<HloCompareInstruction>(instruction);
+        return H::combine(std::move(h), cmp->direction(), cmp->order());
+      }
       default:
         return std::move(h);
     }

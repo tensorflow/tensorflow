@@ -1284,5 +1284,33 @@ INSTANTIATE_TEST_SUITE_P(AlgebraicSimplifierCanonicalizeCommutativeTestSuite,
                          ::testing::Values("add", "multiply", "and", "or",
                                            "xor", "minimum", "maximum"));
 
+TEST_F(HloCseTest, CompareOrderPreserved) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule m
+
+    ENTRY entry {
+      a = f64[4] parameter(0)
+      b = f64[4] parameter(1)
+
+      partial = pred[4] compare(a, b), direction=GT
+      weak = pred[4] compare(a, b), direction=GT, order=WEAK
+      total_0 = pred[4] compare(a, b), direction=GT, order=TOTAL
+      total_1 = pred[4] compare(a, b), direction=GT, order=TOTAL
+
+      ROOT root = tuple(partial, weak, total_0, total_1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_THAT(cse.Run(m.get()), ::absl_testing::IsOkAndHolds(true));
+
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  ASSERT_EQ(root->operand_count(), 4);
+  EXPECT_NE(root->operand(0), root->operand(1));
+  EXPECT_NE(root->operand(0), root->operand(2));
+  EXPECT_NE(root->operand(1), root->operand(2));
+  EXPECT_EQ(root->operand(2), root->operand(3));
+}
+
 }  // namespace
 }  // namespace xla
