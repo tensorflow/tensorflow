@@ -47,13 +47,15 @@ class TensordotTest(test_lib.TestCase):
         ([1, 2], [0, 1]),
         ([-2, -1], [0, 1]),
         (np.array([1, 2]), np.array([0, 1])),
+        np.array([[1, 2], [0, 1]]),
         ([np.int64(1), np.int64(2)], [np.int64(0), np.int64(1)]),
     ):
-      with self.assertRaisesRegex(
-          ValueError,
-          r"Contraction axes of a and b must have the same size",
-      ):
-        math_ops.tensordot(a, b, axes)
+      with self.subTest(axes=axes):
+        with self.assertRaisesRegex(
+            ValueError,
+            r"Contraction axes of a and b must have the same size",
+        ):
+          math_ops.tensordot(a, b, axes)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def test_invalid_shape(self):

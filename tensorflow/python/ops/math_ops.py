@@ -5579,6 +5579,8 @@ def tensordot(a, b, axes, name=None):
   with ops.name_scope(name, "Tensordot", [a, b, axes]) as name:
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
+    if isinstance(axes, np.ndarray) and axes.ndim == 2:
+      axes = axes.tolist()
     a_axes, b_axes = _tensordot_axes(a, axes)
     if (
         isinstance(a_axes, (list, tuple, np.ndarray))
