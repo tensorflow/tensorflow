@@ -19,6 +19,7 @@ limitations under the License.
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -130,10 +131,8 @@ struct safe_div_or_mod_op {
                            safe_a == std::numeric_limits<T>::min() &&
                            safe_b == T(-1))) {
         // Prefer to overflow 'a' (wraparound to INT_MIN in two's complement)
-        // instead of crashing. Avoid signed negation UB for INT_MIN.
-        using UnsignedT = typename std::make_unsigned<T>::type;
-        const T wrapped_a = static_cast<T>(-static_cast<UnsignedT>(safe_a));
-        return DivOrMod()(wrapped_a, 1);
+        // instead of crashing.
+        return DivOrMod()(safe_a, T(1));
       }
       return DivOrMod()(safe_a, safe_b);
     } else {

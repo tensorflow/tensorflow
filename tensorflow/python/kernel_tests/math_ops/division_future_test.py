@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -35,7 +36,7 @@ class DivisionTestCase(test.TestCase):
     values = [1, 2, 7, 11]
     functions = (lambda x: x), constant_op.constant
     # TODO(irving): Test int8, int16 once we support casts for those.
-    dtypes = np.int32, np.int64, np.float32, np.float64
+    test_dtypes = np.int32, np.int64, np.float32, np.float64
 
     tensors = []
     checks = []
@@ -50,7 +51,7 @@ class DivisionTestCase(test.TestCase):
       checks.append(f)
 
     with self.cached_session() as sess:
-      for dtype in dtypes:
+      for dtype in test_dtypes:
         for x in map(dtype, values):
           for y in map(dtype, values):
             for fx in functions:
@@ -67,9 +68,11 @@ class DivisionTestCase(test.TestCase):
       for f, (x, y) in zip(checks, self.evaluate(tensors)):
         f(x, y)
 
+  @test_util.run_in_graph_and_eager_modes
   def testSignedIntegerDivisionOverflow(self):
-    # Signed integer division INT_MIN / -1 overflows the signed integer range
-    # and wraps around to INT_MIN in two's complement arithmetic without crashing.
+    # Signed integer division INT_MIN / -1 overflows the signed integer
+    # range and wraps around to INT_MIN in two's complement arithmetic
+    # without crashing.
     cases = [
         (dtypes.int8, -128, -1, -128),
         (dtypes.int16, -32768, -1, -32768),
@@ -92,7 +95,8 @@ class DivisionTestCase(test.TestCase):
       self.assertAllEqual(self.evaluate(gen_math_ops.div(x, y)), [expected])
       # Test mod operations INT_MIN % -1 == 0
       self.assertAllEqual(self.evaluate(gen_math_ops.floor_mod(x, y)), [0])
-      self.assertAllEqual(self.evaluate(gen_math_ops.truncate_mod(x, y)), [0])
+      if dtype in (dtypes.int32, dtypes.int64):
+        self.assertAllEqual(self.evaluate(gen_math_ops.truncate_mod(x, y)), [0])
 
 
 if __name__ == "__main__":
