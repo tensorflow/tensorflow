@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -26,14 +27,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/host_memory_allocator.h"
-#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/se/local_device_state.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
-#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -63,6 +61,10 @@ class PjRtState : public ResourceBase {
   // Moves PJRT client to `unused_`. The PJRT client moved to `unused_` will not
   // be returned by `GetPjRtClient`.
   absl::Status MovePjRtClientToUnused(const DeviceType& device_type);
+  // Resets the PJRT client for the given `device_type`. The PJRT client will be
+  // moved to `unused_`.  Intended to be called by
+  // GPUProcessState::TestOnlyReset.
+  absl::Status TestOnlyResetPjRtClient(const DeviceType& device_type);
   std::string DebugString() const override;
 
   // Saves information needed to create a PJRT client (to enable creating a

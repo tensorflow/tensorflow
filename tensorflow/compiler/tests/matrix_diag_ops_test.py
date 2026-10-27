@@ -1066,11 +1066,12 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
 
     x = np.array(x, dtype=dtype)
     with self.session() as session:
-      x_ph = array_ops.placeholder(dtypes.as_dtype(dtype), x.shape)
-      mask_phs = [
-          array_ops.placeholder(dtypes.bool, [x.shape[axis]]) for axis in axes
-      ]
-      output = f(x_ph, *mask_phs)
+      with self.device_scope():
+        x_ph = array_ops.placeholder(dtypes.as_dtype(dtype), x.shape)
+        mask_phs = [
+            array_ops.placeholder(dtypes.bool, [x.shape[axis]]) for axis in axes
+        ]
+        output = f(x_ph, *mask_phs)
       feed_dict = {x_ph: x}
       feed_dict.update({ph: masks[axis] for ph, axis in zip(mask_phs, axes)})
       return session.run(output, feed_dict)
