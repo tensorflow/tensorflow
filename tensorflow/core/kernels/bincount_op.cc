@@ -237,7 +237,7 @@ class BincountOp : public OpKernel {
     OP_REQUIRES(ctx, size >= 0,
                 absl::InvalidArgumentError(
                     absl::StrCat("size (", size, ") must be non-negative")));
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       OP_REQUIRES(ctx, size <= kMaxGpuHistogramBins,
                   absl::InvalidArgumentError(
                       absl::StrCat("size (", size, ") must be at most ",
@@ -322,7 +322,7 @@ class DenseBincountOp : public OpKernel {
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
     if (data.dims() <= 1) {
-      if (std::is_same<Device, GPUDevice>::value && !binary_output_) {
+      if (std::is_same_v<Device, GPUDevice> && !binary_output_) {
         OP_REQUIRES(ctx, size <= kMaxGpuHistogramBins,
                     absl::InvalidArgumentError(
                         absl::StrCat("size (", size, ") must be at most ",
