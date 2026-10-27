@@ -1540,8 +1540,7 @@ class ArrayMethodsTest(test.TestCase):
     # A (rank, 1) pad_width broadcasts its pairs across (before, after).
     self.assertAllEqual(
         np_array_ops.pad(t, [[1], [2]], 'constant'), np.pad(np_t, [[1], [2]]))
-    # The checks run for values, so they apply even when the rank is not
-    # statically known below; exercise them on a statically-known input.
+    # Reflect mode works with a scalar `pad_width` as well.
     self.assertAllEqual(
         np_array_ops.pad(t, 1, 'reflect'), np.pad(np_t, 1, 'reflect'))
     # A tensor `pad_width` of the exact (rank, 2) shape keeps working.
@@ -1549,6 +1548,85 @@ class ArrayMethodsTest(test.TestCase):
         np_array_ops.pad(
             t, ops.convert_to_tensor([[1, 2], [2, 1]]), 'constant'),
         np.pad(np_t, [[1, 2], [2, 1]]))
+    # 1-D inputs take the same scalar and pair forms.
+    v = np_array_ops.array([1, 2, 3])
+    np_v = np.array([1, 2, 3])
+    self.assertAllEqual(
+        np_array_ops.pad(v, 1, 'constant'), np.pad(np_v, 1))
+    self.assertAllEqual(
+        np_array_ops.pad(v, (1, 2), 'constant'), np.pad(np_v, (1, 2)))
+
+  def testPadWidthBroadcastTensorShapes(self):
+    # 3-D inputs take every broadcast form, including the single-pair
+    # [[before, after]] form.
+    np_t3 = np.arange(24.).reshape(2, 3, 4)
+    t3 = np_array_ops.array(np_t3)
+    self.assertAllEqual(
+        np_array_ops.pad(t3, 1, 'constant'), np.pad(np_t3, 1))
+    self.assertAllEqual(
+        np_array_ops.pad(t3, [[1, 2]], 'constant'),
+        np.pad(np_t3, [[1, 2]]))
+    self.assertAllEqual(
+        np_array_ops.pad(t3, [[1], [2], [3]], 'constant'),
+        np.pad(np_t3, [[1], [2], [3]]))
+    # Tensor `pad_width` values also expand for a statically-known rank:
+    # a scalar or length-2 `tf.experimental.numpy.ndarray` no longer
+    # skips broadcasting and fails inside the backend.
+    for width_np, width in (
+        (1, np_array_ops.array(1)),
+        ([1, 2], np_array_ops.array([1, 2])),
+        ([[1, 2]], np_array_ops.array([[1, 2]])),
+        ([[1], [2], [3]], np_array_ops.array([[1], [2], [3]])),
+    ):
+      self.assertAllEqual(
+          np_array_ops.pad(t3, width, 'constant'),
+          np.pad(np_t3, width_np))
+
+  def testPadWidthZeroDim(self):
+    # NumPy has zero axes to pad on a 0-d array: every `pad_width`
+    # broadcastable to (0, 2) leaves the array unchanged, while the dtype
+    # and negative-entry checks still raise, and shapes that do not
+    # broadcast to (0, 2) raise ValueError.
+    np_x = np.array(5)
+    x = np_array_ops.array(np_x)
+    for width in (1, (1, 2), [[0, 0]], [1], np.int64(2)):
+      self.assertAllEqual(
+          np_array_ops.pad(x, width, 'constant'), np.pad(np_x, width))
+    with self.assertRaisesRegex(ValueError, "can't contain negative values"):
+      np_array_ops.pad(x, [[-1, -2]], 'constant')
+    with self.assertRaisesRegex(TypeError, 'integral type'):
+      np_array_ops.pad(x, [[1.5, 2]], 'constant')
+    with self.assertRaisesRegex(ValueError, 'broadcast'):
+      np_array_ops.pad(x, [[1, 2], [3, 4]], 'constant')
+
+  def testPadWidthUnknownRank(self):
+    # With an unknown input rank, the dtype and negative checks still run
+    # (they only inspect the Python value) and only the broadcast step is
+    # skipped.
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)]
+    )
+    def f(x):
+      return np_array_ops.pad(x, [[1, 1], [3, 4]], 'constant')
+
+    np_x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+    self.assertAllEqual(f(np_x), np.pad(np_x, [[1, 1], [3, 4]]))
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)]
+    )
+    def g(x):
+      return np_array_ops.pad(x, -1, 'constant')
+
+    with self.assertRaisesRegex(ValueError, "can't contain negative"):
+      g(np_x)
+
+    @def_function.function
+    def f_float(x):
+      return np_array_ops.pad(x, 1.5, 'constant')
+
+    with self.assertRaisesRegex(TypeError, 'integral type'):
+      f_float(np_x)
 
   def testPadWidthGraphMode(self):
     # A `pad_width` containing a symbolic Tensor skips NumPy normalization
