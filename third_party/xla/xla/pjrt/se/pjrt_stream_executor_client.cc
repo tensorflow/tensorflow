@@ -2135,8 +2135,8 @@ absl::Status PjRtStreamExecutorExecutableLoadState::Preload(
       .status();
 }
 
-tsl::RCReference<PjRtExecutableLoadState>
-PjRtStreamExecutorRawClient::MakeLoadState() {
+absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
+PjRtStreamExecutorRawClient::MakeLoadState(const LoadOptions& load_options) {
   return tsl::MakeRef<PjRtStreamExecutorExecutableLoadState>(this);
 }
 

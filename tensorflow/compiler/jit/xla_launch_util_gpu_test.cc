@@ -89,11 +89,22 @@ class PjRtExecutionUtilGpuTest : public OpsTestBase {
     rollout_config.AllowForDeviceInXlaLaunch(device_type);
     rollout_config.AllowForDeviceInXlaCompileOnDemand(device_type);
 
-    auto device =
-        DeviceFactory::NewDevice(device_type.type_string(), SessionOptions(),
-                                 "/job:localhost/replica:0/task:0");
-    device_ = device.get();
-    SetDevice(device_type, std::move(device));
+    SessionOptions session_options;
+    auto* virtual_devices = session_options.config.mutable_gpu_options()
+                                ->mutable_experimental()
+                                ->add_virtual_devices();
+    virtual_devices->add_memory_limit_mb(256);
+    virtual_devices->add_memory_limit_mb(256);
+    (*session_options.config
+          .mutable_device_count())[device_type.type_string()] = 2;
+    std::vector<std::unique_ptr<Device>> devices;
+    CHECK_OK(DeviceFactory::GetFactory(device_type.type_string())
+                 ->CreateDevices(session_options,
+                                 "/job:localhost/replica:0/task:0", &devices));
+    CHECK_GE(devices.size(), 2);
+    device_ = devices[0].get();
+    secondary_device_ = std::move(devices[1]);
+    SetDevice(device_type, std::move(devices[0]));
 
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_fns{
         UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
@@ -203,6 +214,7 @@ class PjRtExecutionUtilGpuTest : public OpsTestBase {
   }
 
  protected:
+  std::unique_ptr<Device> secondary_device_;
   core::RefCountPtr<DeviceContext> device_context_;
   Allocator* host_allocator_;
   Allocator* device_allocator_;
@@ -245,6 +257,59 @@ TEST_F(PjRtExecutionUtilGpuTest, PreparePjRtExecutableArguments) {
   std::shared_ptr<xla::Literal> literal2 = *exec_args[1]->ToLiteralSync();
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       *literal2, xla::LiteralUtil::CreateR2<int32_t>({{4, 5, 6}})));
+}
+
+TEST_F(PjRtExecutionUtilGpuTest,
+       RunPjRtExecutableWithPjRtTensorBufferFromDifferentVirtualGpu) {
+  XlaOpRegistry::RegisterCompilationKernels();
+  TF_ASSERT_OK(NodeDefBuilder("AddV2", "AddV2")
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("T", DT_INT32)
+                   .Device("/job:localhost/replica:0/task:0/device:GPU:0")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  // Create device tensors on virtual GPU 0 (cuda:0), which are backed by
+  // PjRtTensorBuffer with device() == cuda:0.
+  Tensor* a = CreateDeviceTensor<int32_t>(TensorShape({1, 3}), {1, 2, 3});
+  Tensor* b = CreateDeviceTensor<int32_t>(TensorShape({1, 3}), {4, 5, 6});
+  inputs_.push_back({nullptr, a});
+  inputs_.push_back({nullptr, b});
+
+  CreateContext();
+
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({1, 3});
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({1, 3});
+
+  const XlaCompiler::CompilationResult* result;
+  xla::PjRtLoadedExecutable* executable;
+  CompileToExecutable(args, &result, &executable);
+
+  // Execute on virtual GPU 1 (cuda:1) using the PjRtTensorBuffer tensors
+  // created on virtual GPU 0 (cuda:0).
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::PjRtDevice * pjrt_device_1,
+      pjrt_client_->LookupAddressableDevice(xla::LocalDeviceId(1)));
+  std::vector<const Tensor*> inputs = {a, b};
+  const DeviceType& device_type = GetDeviceType(context_.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
+      RunPjRtExecutable(/*num_missing_prefix_ctx_inputs=*/0, inputs,
+                        /*variable_snapshots=*/{}, /*updated_variables=*/{},
+                        device_type, /*use_pjrt_tensor_buffer=*/true, *result,
+                        pjrt_device_1, pjrt_client_, executable));
+
+  ASSERT_EQ(execute_outputs.size(), 1);
+  EXPECT_EQ(execute_outputs[0]->device(), pjrt_device_1);
+  std::shared_ptr<xla::Literal> literal = *execute_outputs[0]->ToLiteralSync();
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(
+      *literal, xla::LiteralUtil::CreateR2<int32_t>({{5, 7, 9}})));
 }
 
 TEST_F(PjRtExecutionUtilGpuTest,
@@ -384,6 +449,29 @@ TEST_F(
     EXPECT_FALSE(variables[0].lock_held());
     EXPECT_TRUE(variables[0].shared_lock_held());
   }
+}
+
+TEST_F(PjRtExecutionUtilGpuTest, CopyCPUTensorToGPUProducesPjRtTensorBuffer) {
+  Tensor* host_tensor =
+      CreateHostTensor<int32_t>(TensorShape({1, 3}), {10, 20, 30});
+  Tensor gpu_tensor(device_allocator_, DT_INT32, TensorShape({1, 3}));
+  ASSERT_EQ(
+      dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(&gpu_tensor)),
+      nullptr);
+
+  DeviceContext* default_context =
+      device_->tensorflow_accelerator_device_info()->default_context;
+  TF_ASSERT_OK(default_context->CopyCPUTensorToDeviceSync(host_tensor, device_,
+                                                          &gpu_tensor));
+
+  const auto* pjrt_tensor_buffer =
+      dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(&gpu_tensor));
+  ASSERT_NE(pjrt_tensor_buffer, nullptr);
+  ASSERT_NE(pjrt_tensor_buffer->pjrt_buffer(), nullptr);
+  std::shared_ptr<xla::Literal> literal =
+      *pjrt_tensor_buffer->pjrt_buffer()->ToLiteralSync();
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(
+      *literal, xla::LiteralUtil::CreateR2<int32_t>({{10, 20, 30}})));
 }
 
 TEST_F(PjRtExecutionUtilGpuTest,

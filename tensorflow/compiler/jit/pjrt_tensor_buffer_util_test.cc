@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -81,6 +82,7 @@ TEST(PjRtTensorBufferUtilTest,
   TensorShape shape(dimensions);
   Tensor tensor(gpu_allocator, DT_INT32, shape);
   ASSERT_TRUE(tensor.RefCountIsOne());
+  const size_t orig_allocated_bytes = tensor.AllocatedBytes();
   TensorBuffer* orig_root_buffer = DMAHelper::buffer(&tensor)->root_buffer();
   ASSERT_EQ(dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(&tensor)),
             nullptr);
@@ -102,6 +104,8 @@ TEST(PjRtTensorBufferUtilTest,
       dynamic_cast<PjRtTensorBuffer*>(DMAHelper::buffer(&tensor));
   ASSERT_NE(pjrt_tensor_buffer, nullptr);
   EXPECT_EQ(pjrt_tensor_buffer->root_buffer(), orig_root_buffer);
+  EXPECT_GT(orig_allocated_bytes, tensor.TotalBytes());
+  EXPECT_EQ(tensor.AllocatedBytes(), orig_allocated_bytes);
   EXPECT_TRUE(tensor.RefCountIsOne());
 }
 
