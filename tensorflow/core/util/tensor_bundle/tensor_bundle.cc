@@ -93,6 +93,10 @@ absl::Status ValidateVariableLengthEntrySize(const BundleEntryProto& entry,
   if (entry.size() < 0) {
     return errors::DataLoss("Invalid size in bundle entry: ", entry.size());
   }
+  if (num_elements < 0) {
+    return errors::DataLoss("Invalid element count in bundle entry: key ", key,
+                            "; element count ", num_elements);
+  }
   const uint64_t elements = static_cast<uint64_t>(num_elements);
   const uint64_t entry_size = static_cast<uint64_t>(entry.size());
   if (entry.dtype() == DT_STRING &&
@@ -961,15 +965,23 @@ absl::Status BundleReader::GetBundleEntryProto(absl::string_view key,
 
 absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
                                     Tensor* val) {
+  if (!TensorShape::IsValid(entry.shape())) {
+    return absl::DataLossError(absl::StrCat("Invalid tensor shape: ", key(),
+                                            " ",
+                                            entry.shape().ShortDebugString()));
+  }
   const TensorShape stored_shape(entry.shape());
   TF_RETURN_IF_ERROR(ValidateVariableLengthEntrySize(
-      entry,
-      val->NumElements() == 0 ? stored_shape.num_elements() : val->NumElements(),
-      key()));
+      entry, stored_shape.num_elements(), key()));
 
   Tensor* ret = val;
   if (val->NumElements() == 0) {
     ret = new Tensor(entry.dtype(), stored_shape);
+  } else if (val->NumElements() != stored_shape.num_elements()) {
+    return absl::DataLossError(
+        absl::StrCat("Invalid element count in bundle entry: key ", key(),
+                     "; stored elements ", stored_shape.num_elements(),
+                     "; expected elements ", val->NumElements()));
   }
 
   // Validates the "size" field.
@@ -1304,6 +1316,10 @@ absl::Status BundleReader::LookupDtypeAndShape(absl::string_view key,
                                                TensorShape* shape) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
+  if (!TensorShape::IsValid(entry.shape())) {
+    return absl::DataLossError(absl::StrCat("Invalid tensor shape: ", key, " ",
+                                            entry.shape().ShortDebugString()));
+  }
   const TensorShape stored_shape(entry.shape());
   if (entry.slices().empty()) {
     TF_RETURN_IF_ERROR(ValidateVariableLengthEntrySize(
