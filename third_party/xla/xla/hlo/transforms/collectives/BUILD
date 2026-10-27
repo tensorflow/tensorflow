@@ -504,6 +504,7 @@ xla_cc_test(
         ":collective_transformation_reorderer",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_verifier",
