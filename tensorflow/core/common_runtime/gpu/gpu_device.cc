@@ -484,11 +484,9 @@ absl::Status BaseGPUDevice::Init(
   accelerator_device_info_->stream = stream_->compute;
   accelerator_device_info_->default_context = device_context_;
   accelerator_device_info_->pjrt_context = pjrt_device_context_.get();
-  bool use_pjrt =
-      GetXlaOpsCommonFlags()->tf_xla_use_device_api.IsEnabledForGpu();
   accelerator_device_info_->use_pjrt_tensor_buffer =
-      use_pjrt && static_cast<PjRtDeviceContext*>(pjrt_device_context_.get())
-                      ->use_pjrt_tensor_buffer();
+      static_cast<PjRtDeviceContext*>(pjrt_device_context_.get())
+          ->use_pjrt_tensor_buffer();
   accelerator_device_info_->event_mgr = em_;
   tsl::PlatformDeviceId platform_device_id;
   TF_RETURN_IF_ERROR(
