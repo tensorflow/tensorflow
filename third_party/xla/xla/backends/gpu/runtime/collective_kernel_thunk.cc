@@ -36,7 +36,6 @@ limitations under the License.*/
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -58,7 +57,6 @@ limitations under the License.*/
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -75,7 +73,6 @@ limitations under the License.*/
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
-#include "xla/tsl/util/sorted_range.h"
 #include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -123,66 +120,37 @@ struct PtrFormatter {
   }
 };
 
-struct SymmetricParameters {
-  std::vector<se::DeviceAddressBase> addresses;
-  std::vector<SymmetricMemoryType> symmetric_memory_type;
+absl::Status CopyCollectiveMetadataToDevice(
+    se::Stream* stream, CollectiveKernelMetadata metadata,
+    const std::vector<void*>& param_to_peers_ptrs,
+    const std::vector<void*>& multimem_addresses,
+    se::DeviceAddressBase destination) {
+  const int64_t param_to_peers_ptrs_size =
+      param_to_peers_ptrs.size() * sizeof(void*);
+  se::DeviceAddressBase param_to_peers_ptrs_buffer = destination.GetByteSlice(
+      sizeof(CollectiveKernelMetadata), param_to_peers_ptrs_size);
 
-  int64_t scratch_buffer_index = 0;
+  const int64_t multimem_addresses_size =
+      multimem_addresses.size() * sizeof(void*);
+  se::DeviceAddressBase multimem_addresses_buffer = destination.GetByteSlice(
+      sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size,
+      multimem_addresses_size);
 
-  bool use_rendezvous = false;
-  bool use_load_store_accessible = false;
-  bool requires_multimem = false;
-};
-
-SymmetricParameters GetSymmetricParameters(
-    const CollectiveKernelSpec& kernel_spec,
-    const BufferAllocations* buffer_allocations,
-    const std::vector<CollectiveThunk::Buffer>& buffers,
-    const std::vector<se::DeviceAddressBase>& scratch_slices) {
-  SymmetricParameters symmetric_parameters;
-  symmetric_parameters.addresses.reserve(
-      kernel_spec.codegen_config.argument_descriptors.size());
-  symmetric_parameters.symmetric_memory_type.reserve(
-      kernel_spec.codegen_config.argument_descriptors.size());
-
-  auto add_buffer = [&](const se::DeviceAddressBase& buffer_address,
-                        const SymmetricMemoryType& symmetric_memory_type,
-                        bool requires_multimem) {
-    if (symmetric_memory_type != SymmetricMemoryType::kNone) {
-      symmetric_parameters.addresses.push_back(buffer_address);
-      symmetric_parameters.symmetric_memory_type.push_back(
-          symmetric_memory_type);
-
-      symmetric_parameters.use_rendezvous |=
-          symmetric_memory_type == SymmetricMemoryType::kXlaRendezvous;
-      symmetric_parameters.use_load_store_accessible |=
-          symmetric_memory_type == SymmetricMemoryType::kLoadStoreAccessible;
-      symmetric_parameters.requires_multimem |= requires_multimem;
-    }
-  };
-
-  for (auto [buffer, spec] :
-       llvm::zip(buffers, kernel_spec.codegen_config.input_buffer_specs)) {
-    add_buffer(buffer_allocations->GetDeviceAddress(buffer.source_buffer.slice),
-               spec.symmetric_memory_type, spec.requires_multimem);
-  }
-
-  for (auto [buffer, spec] :
-       llvm::zip(buffers, kernel_spec.codegen_config.output_buffer_specs)) {
-    add_buffer(
-        buffer_allocations->GetDeviceAddress(buffer.destination_buffer.slice),
-        spec.symmetric_memory_type, spec.requires_multimem);
-  }
-
-  symmetric_parameters.scratch_buffer_index =
-      symmetric_parameters.addresses.size();
-
-  for (auto [buffer, spec] :
-       llvm::zip(scratch_slices, kernel_spec.scratch_buffers)) {
-    add_buffer(buffer, spec.symmetric_memory_type, spec.requires_multimem);
-  }
-
-  return symmetric_parameters;
+  metadata.param_to_peers =
+      reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
+  metadata.param_to_multimem_addresses =
+      multimem_addresses_size > 0
+          ? reinterpret_cast<void**>(multimem_addresses_buffer.opaque())
+          : nullptr;
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
+                                 sizeof(CollectiveKernelMetadata)));
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
+                                 param_to_peers_ptrs.data(),
+                                 param_to_peers_ptrs_size));
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(&multimem_addresses_buffer,
+                                 multimem_addresses.data(),
+                                 multimem_addresses_size));
+  return absl::OkStatus();
 }
 
 absl::StatusOr<se::DeviceAddressBase> GetParameterDeviceMemoryBase(
@@ -218,18 +186,16 @@ absl::StatusOr<std::vector<se::KernelArg>> BuildKernelArguments(
     return *index;
   };
   const int32_t param_index_offset = [](const CollectiveKernelSpec& spec) {
-    // In the parameter metadata table (`state->metadata_addr`), peer addresses
-    // for symmetric input/output buffers are stored first (1 slot per symmetric
-    // operand, 1 slot per symmetric result), followed by scratch buffer
+    // In the parameter metadata table (`state->metadata`), peer addresses
+    // for multimem-enabled buffers are stored first (1 slot per multimem
+    // operand, 1 slot per multimem result), followed by scratch buffer
     // allocations.
-    static constexpr auto is_symmetric_buffer =
-        [](const IoBufferSpec& spec) -> bool {
-      return spec.symmetric_memory_type != SymmetricMemoryType::kNone;
-    };
+    static constexpr auto count_multimem_buffers =
+        [](const IoBufferSpec& spec) -> bool { return spec.requires_multimem; };
     return absl::c_count_if(spec.codegen_config.input_buffer_specs,
-                            is_symmetric_buffer) +
+                            count_multimem_buffers) +
            absl::c_count_if(spec.codegen_config.output_buffer_specs,
-                            is_symmetric_buffer);
+                            count_multimem_buffers);
   }(kernel_spec);
   for (const KernelArgDescriptor& desc :
        kernel_spec.codegen_config.argument_descriptors) {
@@ -273,40 +239,55 @@ absl::StatusOr<std::vector<se::KernelArg>> BuildKernelArguments(
   return kernel_args;
 }
 
-absl::StatusOr<std::vector<void*>> CollectParamToPeersWithRendezvous(
-    const GpuCliqueKey& clique_key, RankId rank,
-    const SymmetricParameters& symmetric_parameters) {
-  std::vector<void*> param_to_peers_ptrs(symmetric_parameters.addresses.size() *
-                                         clique_key.num_devices());
-
-  // If rendezvous is not used, we can skip the device parameter exchange step.
-  if (!symmetric_parameters.use_rendezvous) {
-    return param_to_peers_ptrs;
-  }
-
-  using DeviceParameters = absl::flat_hash_map<int, se::DeviceAddressBase>;
-
-  DeviceParameters param_idx_to_device_address;
-  for (int i = 0; i < symmetric_parameters.addresses.size(); ++i) {
-    if (symmetric_parameters.symmetric_memory_type[i] ==
-        SymmetricMemoryType::kXlaRendezvous) {
-      param_idx_to_device_address[i] = symmetric_parameters.addresses[i];
+bool RequiresMultimem(CollectiveKernelSpec kernel_spec) {
+  for (const auto& op : kernel_spec.codegen_config.input_buffer_specs) {
+    if (op.requires_multimem) {
+      return true;
     }
   }
+  for (const auto& res : kernel_spec.codegen_config.output_buffer_specs) {
+    if (res.requires_multimem) {
+      return true;
+    }
+  }
+  for (const auto& scratch : kernel_spec.scratch_buffers) {
+    if (scratch.requires_multimem) {
+      return true;
+    }
+  }
+  return false;
+}
 
+absl::StatusOr<std::vector<void*>> CollectParamToPeers(
+    const GpuCliqueKey& clique_key, RankId rank,
+    stream_executor::Stream* stream,
+    std::vector<stream_executor::DeviceAddressBase> parameters) {
+  std::vector<void*> param_to_peers_ptrs;
+
+  size_t num_parameters = parameters.size();
   // Exchange device parameters with all ranks in the clique.
   ABSL_ASSIGN_OR_RETURN(
       auto device_parameters,
-      GpuCliqueRendezvous::Join(clique_key, rank,
-                                std::move(param_idx_to_device_address)));
+      GpuCliqueRendezvous::Join(clique_key, rank, std::move(parameters)));
+
+  // Collect pointers to device buffers from all participating ranks.
+  param_to_peers_ptrs.reserve(num_parameters * clique_key.num_devices());
+
+  absl::flat_hash_map<int, std::vector<stream_executor::DeviceAddressBase>>
+      peer_to_parameters(clique_key.num_devices());
+
+  using DeviceParameters = std::vector<stream_executor::DeviceAddressBase>;
 
   for (auto peer = RankId(0); peer < RankId(clique_key.num_devices()); ++peer) {
     ABSL_ASSIGN_OR_RETURN(const DeviceParameters& peer_parameters,
                      device_parameters->at<DeviceParameters>(peer));
-    for (const auto& [param_idx, device_address] :
-         tsl::SortedRange(peer_parameters)) {
-      param_to_peers_ptrs[peer.value() + param_idx * clique_key.num_devices()] =
-          device_address.opaque();
+    peer_to_parameters[peer.value()] = std::move(peer_parameters);
+  }
+
+  for (int parameter = 0; parameter < num_parameters; ++parameter) {
+    for (int peer = 0; peer < clique_key.num_devices(); ++peer) {
+      param_to_peers_ptrs.push_back(
+          peer_to_parameters[peer][parameter].opaque());
     }
   }
 
@@ -448,67 +429,6 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
   return absl::OkStatus();
 }
 
-size_t GetParamToPeersPtrsSizeBytes(int num_devices, int num_parameters) {
-  return num_parameters * num_devices * sizeof(uint64_t);
-}
-
-size_t GetMultimemAddressesSizeBytes(int num_parameters) {
-  return num_parameters * sizeof(void*);
-}
-
-size_t GetCollectiveKernelMetadataSizeBytes(int num_devices, int num_parameters,
-                                            bool requires_multimem) {
-  return sizeof(CollectiveKernelMetadata) +
-         GetParamToPeersPtrsSizeBytes(num_devices, num_parameters) +
-         (requires_multimem ? GetMultimemAddressesSizeBytes(num_parameters)
-                            : 0);
-}
-
-se::DeviceAddressBase GetParamToPeersPtrs(se::DeviceAddressBase metadata_addr,
-                                          int num_devices, int num_parameters) {
-  return metadata_addr.GetByteSlice(
-      sizeof(CollectiveKernelMetadata),
-      GetParamToPeersPtrsSizeBytes(num_devices, num_parameters));
-}
-
-se::DeviceAddressBase GetMultimemAddresses(se::DeviceAddressBase metadata_addr,
-                                           int num_devices,
-                                           int num_parameters) {
-  return metadata_addr.GetByteSlice(
-      sizeof(CollectiveKernelMetadata) +
-          GetParamToPeersPtrsSizeBytes(num_devices, num_parameters),
-      GetMultimemAddressesSizeBytes(num_parameters));
-}
-
-absl::Status CollectiveKernelThunk::AllocateAndInitializeCollectiveMetadata(
-    StreamState* state, se::StreamExecutor* executor, se::Stream* stream,
-    RankId rank, int64_t num_devices, int64_t num_symmetric_parameters,
-    bool requires_multimem) {
-  state->metadata_addr =
-      executor->Allocate(GetCollectiveKernelMetadataSizeBytes(
-          num_devices, num_symmetric_parameters, requires_multimem));
-
-  CollectiveKernelMetadata metadata;
-  metadata.rank = static_cast<int32_t>(rank.value());
-
-  se::DeviceAddressBase param_to_peers_ptrs_addr = GetParamToPeersPtrs(
-      state->metadata_addr, num_devices, num_symmetric_parameters);
-
-  metadata.param_to_peers =
-      reinterpret_cast<void**>(param_to_peers_ptrs_addr.opaque());
-  metadata.param_to_multimem_addresses = nullptr;
-
-  if (requires_multimem) {
-    se::DeviceAddressBase multimem_addresses_addr = GetMultimemAddresses(
-        state->metadata_addr, num_devices, num_symmetric_parameters);
-    metadata.param_to_multimem_addresses =
-        reinterpret_cast<void**>(multimem_addresses_addr.opaque());
-  }
-
-  return stream->Memcpy(&state->metadata_addr, &metadata,
-                        sizeof(CollectiveKernelMetadata));
-}
-
 int64_t CollectiveKernelThunk::GetInputSizeBytes() const {
   return buffers_[0].element_count *
          ShapeUtil::ByteSizeOfPrimitiveType(
@@ -524,6 +444,56 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   TF_RET_CHECK(rank.has_value())
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
+
+  const bool use_symmetric_memory = absl::c_any_of(
+      kernel_spec_.scratch_buffers, [](const ScratchBufferSpec& spec) {
+        return spec.symmetric_memory_type ==
+               SymmetricMemoryType::kLoadStoreAccessible;
+      });
+
+  auto get_parameters = [&](const StreamState& state) {
+    std::vector<se::DeviceAddressBase> parameters;
+    parameters.reserve(kernel_spec_.codegen_config.argument_descriptors.size());
+    for (size_t i = 0;
+         i < kernel_spec_.codegen_config.input_buffer_specs.size(); ++i) {
+      if (kernel_spec_.codegen_config.input_buffer_specs[i].requires_multimem) {
+        parameters.push_back(params.buffer_allocations->GetDeviceAddress(
+            buffers_[i].source_buffer.slice));
+      }
+    }
+    for (size_t i = 0;
+         i < kernel_spec_.codegen_config.output_buffer_specs.size(); ++i) {
+      if (kernel_spec_.codegen_config.output_buffer_specs[i]
+              .requires_multimem) {
+        parameters.push_back(params.buffer_allocations->GetDeviceAddress(
+            buffers_[i].destination_buffer.slice));
+      }
+    }
+    for (const se::DeviceAddressBase& slice : state.scratch_slices) {
+      parameters.push_back(slice);
+    }
+    return parameters;
+  };
+
+  auto get_multimem_addresses =
+      [&](absl::Span<const se::DeviceAddressBase> parameters)
+      -> absl::StatusOr<std::vector<void*>> {
+    std::vector<void*> multimem_addresses;
+    if (RequiresMultimem(kernel_spec_)) {
+      multimem_addresses.resize(parameters.size(), nullptr);
+      for (size_t i = 0; i < parameters.size(); ++i) {
+        auto [mmem, offset] = params.collective_memory->FindSymmetricMemory(
+            clique_key, parameters[i]);
+        if (mmem != nullptr) {
+          ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase mmem_addr,
+                           mmem->multimem_addr());
+          multimem_addresses[i] =
+              tsl::safe_reinterpret_cast<char*>(mmem_addr.opaque()) + offset;
+        }
+      }
+    }
+    return multimem_addresses;
+  };
 
   int64_t total_scratch_bytes = 0;
   std::vector<int64_t> slice_offsets;
@@ -586,47 +556,44 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
                              std::move(kernel), std::move(scratch_allocation),
                              std::move(scratch_slices));
 
-        SymmetricParameters symmetric_parameters =
-            GetSymmetricParameters(kernel_spec_, params.buffer_allocations,
-                                   buffers_, state->scratch_slices);
+        std::vector<se::DeviceAddressBase> parameters = get_parameters(*state);
+        const size_t num_parameters = parameters.size();
+        const size_t param_to_peers_ptrs_size_bytes =
+            num_parameters * clique_key.num_devices() * sizeof(uint64_t);
+        const size_t multimem_size_bytes =
+            RequiresMultimem(kernel_spec_) ? num_parameters * sizeof(void*) : 0;
+        state->metadata = params.executor->Allocate(
+            sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size_bytes +
+                multimem_size_bytes,
+            0);
 
-        ABSL_RETURN_IF_ERROR(AllocateAndInitializeCollectiveMetadata(
-            state, params.executor, params.stream, rank.value(),
-            clique_key.num_devices(), symmetric_parameters.addresses.size(),
-            symmetric_parameters.requires_multimem));
-
-        ABSL_ASSIGN_OR_RETURN(state->param_to_peers_ptrs,
-                         CollectParamToPeersWithRendezvous(
-                             clique_key, state->rank, symmetric_parameters));
-
-        // If there are arguments that need to be exchanged with rendezvous, do
-        // it once during initialization.
-        if (symmetric_parameters.use_rendezvous) {
-          const size_t param_to_peers_ptrs_size_bytes =
-              state->param_to_peers_ptrs.size() * sizeof(uint64_t);
-
-          se::DeviceAddressBase param_to_peers_ptrs_device_address =
-              state->metadata_addr.GetByteSlice(
-                  sizeof(CollectiveKernelMetadata),
-                  param_to_peers_ptrs_size_bytes);
-
-          ABSL_RETURN_IF_ERROR(
-              params.stream->Memcpy(&param_to_peers_ptrs_device_address,
-                                    state->param_to_peers_ptrs.data(),
-                                    param_to_peers_ptrs_size_bytes));
+        if (!use_symmetric_memory) {
+          TF_RET_CHECK(params.collective_memory != nullptr)
+              << "Collective memory must not be null in "
+                 "CollectiveKernelThunk::Initialize";
+          ABSL_ASSIGN_OR_RETURN(std::vector<void*> multimem_addresses,
+                           get_multimem_addresses(parameters));
+          ABSL_ASSIGN_OR_RETURN(
+              std::vector<void*> param_to_peers_ptrs,
+              CollectParamToPeers(clique_key, state->rank, params.stream,
+                                  std::move(parameters)));
+          CollectiveKernelMetadata metadata;
+          metadata.rank = state->rank.value();
+          ABSL_RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
+              params.stream, metadata, param_to_peers_ptrs, multimem_addresses,
+              state->metadata));
         }
-
         return absl::OkStatus();
       }));
+
+  if (!use_symmetric_memory) {
+    return absl::OkStatus();
+  }
 
   StreamState* state =
       per_device_state_.Find(params.executor->device_ordinal());
   TF_RET_CHECK(state != nullptr);
-
-  SymmetricParameters symmetric_parameters = GetSymmetricParameters(
-      kernel_spec_, params.buffer_allocations, buffers_, state->scratch_slices);
-
-  if (!symmetric_parameters.use_load_store_accessible) {
+  if (!state->scratch_symmetric_memory.Expired()) {
     return absl::OkStatus();
   }
 
@@ -644,89 +611,61 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
                    params.collective_cliques->GetComm(clique_key, *rank));
 
   if (!state->scratch_allocation.address().is_null()) {
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<SymmetricMemory> symmetric_memory,
-        comm->CreateSymmetricMemory(state->scratch_allocation.address()));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<SymmetricMemory> symmetric_memory,
+                     comm->CreateSymmetricMemory(
+                         state->scratch_allocation.address(),
+                         params.collective_params->nccl_window_symmetric));
     ABSL_ASSIGN_OR_RETURN(state->scratch_symmetric_memory,
                      params.collective_cliques->Tie(
                          clique_key, std::move(symmetric_memory)));
   }
 
-  std::shared_ptr<SymmetricMemory> scratch_symmetric_memory =
-      state->scratch_symmetric_memory.Lock();
+  std::vector<se::DeviceAddressBase> parameters = get_parameters(*state);
+  const size_t num_parameters = parameters.size();
+  ABSL_ASSIGN_OR_RETURN(std::vector<void*> multimem_addresses,
+                   get_multimem_addresses(parameters));
 
-  std::vector<void*> param_to_peers_ptrs = state->param_to_peers_ptrs;
-  std::vector<void*> multimem_addresses(symmetric_parameters.addresses.size());
-
-  for (int i = 0; i < symmetric_parameters.addresses.size(); ++i) {
-    if (symmetric_parameters.symmetric_memory_type[i] !=
-        SymmetricMemoryType::kLoadStoreAccessible) {
-      continue;
-    }
-
-    auto [symmetric_memory,
-          offset] = [&]() -> std::pair<SymmetricMemory*, int64_t> {
-      if (i < symmetric_parameters.scratch_buffer_index) {
-        return params.collective_memory->FindSymmetricMemory(
-            clique_key, symmetric_parameters.addresses[i]);
+  static constexpr auto is_multimem_buffer =
+      [](const IoBufferSpec& spec) -> bool { return spec.requires_multimem; };
+  int32_t scratch_buffers_index =
+      absl::c_count_if(kernel_spec_.codegen_config.input_buffer_specs,
+                       is_multimem_buffer) +
+      absl::c_count_if(kernel_spec_.codegen_config.output_buffer_specs,
+                       is_multimem_buffer);
+  std::vector<void*> param_to_peers_ptrs(num_parameters *
+                                         clique_key.num_devices());
+  if (scratch_buffers_index < num_parameters) {
+    auto sym_mem = state->scratch_symmetric_memory.Lock();
+    TF_RET_CHECK(sym_mem != nullptr)
+        << "Symmetric memory for scratch allocation is no longer valid";
+    for (size_t i = scratch_buffers_index; i < num_parameters; ++i) {
+      const size_t scratch_index = i - scratch_buffers_index;
+      const size_t parameter_offset = i * clique_key.num_devices();
+      for (int device_rank = 0; device_rank < clique_key.num_devices();
+           ++device_rank) {
+        ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer_base,
+                         sym_mem->peer_addr(RankId(device_rank)));
+        param_to_peers_ptrs[parameter_offset + device_rank] =
+            peer_base
+                .GetByteSlice(slice_offsets[scratch_index],
+                              slice_sizes[scratch_index])
+                .opaque();
       }
-
-      return std::make_pair(
-          scratch_symmetric_memory.get(),
-          slice_offsets[i - symmetric_parameters.scratch_buffer_index]);
-    }();
-    TF_RET_CHECK(symmetric_memory != nullptr)
-        << "Symmetric memory is null for parameter " << i;
-
-    for (int device_rank = 0; device_rank < clique_key.num_devices();
-         ++device_rank) {
-      ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase peer_base,
-                       symmetric_memory->peer_addr(RankId(device_rank)));
-
-      param_to_peers_ptrs[i * clique_key.num_devices() + device_rank] =
-          peer_base
-              .GetByteSlice(offset, symmetric_parameters.addresses[i].size())
-              .opaque();
-    }
-
-    if (symmetric_parameters.requires_multimem) {
-      ABSL_ASSIGN_OR_RETURN(se::DeviceAddressBase multimem_addr,
-                       symmetric_memory->multimem_addr());
-      multimem_addresses[i] =
-          tsl::safe_reinterpret_cast<char*>(multimem_addr.opaque()) + offset;
     }
   }
 
-  // Update the device state if the param_to_peers_ptrs has changed.
-  if (state->param_to_peers_ptrs != param_to_peers_ptrs) {
-    state->param_to_peers_ptrs = std::move(param_to_peers_ptrs);
-
-    se::DeviceAddressBase param_to_peers_ptrs_device_address =
-        GetParamToPeersPtrs(state->metadata_addr, clique_key.num_devices(),
-                            symmetric_parameters.addresses.size());
-
-    ABSL_RETURN_IF_ERROR(params.stream->Memcpy(
-        &param_to_peers_ptrs_device_address, state->param_to_peers_ptrs.data(),
-        state->param_to_peers_ptrs.size() * sizeof(uint64_t)));
-
-    if (symmetric_parameters.requires_multimem) {
-      se::DeviceAddressBase multimem_addresses_device_address =
-          GetMultimemAddresses(state->metadata_addr, clique_key.num_devices(),
-                               symmetric_parameters.addresses.size());
-
-      ABSL_RETURN_IF_ERROR(params.stream->Memcpy(
-          &multimem_addresses_device_address, multimem_addresses.data(),
-          multimem_addresses.size() * sizeof(uint64_t)));
-    }
-
-    if (VLOG_IS_ON(3)) {
-      XLA_VLOG_DEVICE(3, params.executor->device_ordinal())
-          << "Constructed device state {"
-          << " metadata rank: " << *rank << ", param_to_peers: ("
-          << absl::StrJoin(state->param_to_peers_ptrs, ", ", PtrFormatter{})
-          << "), multimem_addresses: ("
-          << absl::StrJoin(multimem_addresses, ", ", PtrFormatter{}) << ")}";
-    }
+  CollectiveKernelMetadata metadata;
+  metadata.rank = state->rank.value();
+  ABSL_RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
+      params.stream, metadata, param_to_peers_ptrs, multimem_addresses,
+      state->metadata));
+  if (VLOG_IS_ON(3)) {
+    XLA_VLOG_DEVICE(3, params.executor->device_ordinal())
+        << "Constructed device state {"
+        << " metadata rank: " << metadata.rank << ", param_to_peers: ("
+        << absl::StrJoin(param_to_peers_ptrs, ", ", PtrFormatter{})
+        << "), multimem_addresses: ("
+        << absl::StrJoin(multimem_addresses, ", ", PtrFormatter{}) << ")}";
   }
   return absl::OkStatus();
 }
@@ -755,23 +694,23 @@ CollectiveKernelThunk::PrepareLaunch(const ExecuteParams& params) {
   TF_RET_CHECK(state->kernel != nullptr)
       << "Kernel is not initialized for collective kernel thunk.";
 
-  static constexpr auto is_symmetric_buffer = [](const auto& buffer_spec) {
-    return buffer_spec.symmetric_memory_type != SymmetricMemoryType::kNone;
+  static constexpr auto has_multimem = [](const auto& buffer_spec) {
+    return buffer_spec.requires_multimem;
   };
   int32_t num_parameters =
       absl::c_count_if(kernel_spec_.codegen_config.input_buffer_specs,
-                       is_symmetric_buffer) +
+                       has_multimem) +
       absl::c_count_if(kernel_spec_.codegen_config.output_buffer_specs,
-                       is_symmetric_buffer) +
-      absl::c_count_if(kernel_spec_.scratch_buffers, is_symmetric_buffer);
+                       has_multimem) +
+      kernel_spec_.scratch_buffers.size();
 
   LaunchPlan plan;
   plan.kernel = state->kernel.get();
   ABSL_ASSIGN_OR_RETURN(
       plan.kernel_args,
       BuildKernelArguments(kernel_spec_, buffers_, params, state->rank,
-                           state->invocation_count, state->metadata_addr,
-                           clique_key, num_parameters));
+                           state->invocation_count, state->metadata, clique_key,
+                           num_parameters));
 
   // For AllGather: copy input buffer → local rank's symmetric scratch buffer
   // before kernel launch. All ranks perform this copy, then the entry barrier

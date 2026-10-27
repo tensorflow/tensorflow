@@ -1905,7 +1905,6 @@ cc_library(
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
-        "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:stream_executor_util",
@@ -1920,7 +1919,6 @@ cc_library(
         "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/stream_executor/gpu:collective_kernel_metadata",
         "//xla/tsl/util:safe_reinterpret_cast",
-        "//xla/tsl/util:sorted_range",
         "//xla/tsl/util:tied_ref",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1933,7 +1931,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
     ],
 )
 
