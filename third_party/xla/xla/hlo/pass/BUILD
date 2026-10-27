@@ -138,6 +138,46 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_pass_registry",
+    srcs = ["hlo_pass_registry.cc"],
+    hdrs = ["hlo_pass_registry.h"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_pass_context",
+        ":hlo_pass_options",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_pass_registry_test",
+    srcs = ["hlo_pass_registry_test.cc"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_pass_context",
+        ":hlo_pass_options",
+        ":hlo_pass_registry",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_pass_filter",
     srcs = ["hlo_pass_filter.cc"],
     hdrs = ["hlo_pass_filter.h"],
