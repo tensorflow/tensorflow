@@ -196,6 +196,7 @@ python.toolchain(python_version = "3.11")
 python.toolchain(python_version = "3.12")
 python.toolchain(python_version = "3.13")
 python.toolchain(python_version = "3.14")
+python.toolchain(python_version = "3.15")
 use_repo(python, "pythons_hub")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
@@ -228,6 +229,7 @@ cc_library(
         "3.12",
         "3.13",
         "3.14",
+        "3.15",
     ]
 ]
 use_repo(pip, "pypi_mods", pypi = "xla_pypi")
