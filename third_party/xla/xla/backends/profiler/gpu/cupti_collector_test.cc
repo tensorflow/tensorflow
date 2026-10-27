@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -976,6 +977,110 @@ TEST(CuptiCollectorTest, NoResolutionWarningIfARecordResolves) {
               Not(Contains(HasSubstr("CUDA graph node records"))));
 
   registry.ClearForTesting();
+}
+
+CuptiTracerEvent MakeGraphLaunchEvent(uint32_t correlation_id,
+                                      int64_t stream_id, uint32_t graph_id,
+                                      uint64_t start_ns) {
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::CudaGraph;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = "cuGraphLaunch";
+  event.start_time_ns = start_ns;
+  event.end_time_ns = start_ns + 10;
+  event.correlation_id = correlation_id;
+  event.thread_id = 100;
+  event.stream_id = stream_id;
+  event.graph_id = graph_id;
+  return event;
+}
+
+CuptiTracerEvent MakeGraphKernelEvent(absl::string_view name,
+                                      uint32_t correlation_id,
+                                      int64_t stream_id, uint32_t graph_id,
+                                      uint64_t start_ns) {
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::Kernel;
+  event.source = CuptiTracerEventSource::Activity;
+  event.name = std::string(name);
+  event.start_time_ns = start_ns;
+  event.end_time_ns = start_ns + 30;
+  event.correlation_id = correlation_id;
+  event.stream_id = stream_id;
+  event.graph_id = graph_id;
+  return event;
+}
+
+TEST(CuptiCollectorTest,
+     RemapsCudaGraphActivityStreamsToLaunchAndBranchStreams) {
+  CuptiTracerCollectorOptions options;
+  options.num_gpus = 1;
+  auto collector = CreateCuptiCollector(options, 0, 0);
+
+  constexpr int64_t kLaunchStreamId = 50;
+  // Launch 0: 1 fork branch (100)
+  // Launch 1: 3 fork branches (200, 201, 202)
+  // Launch 2: 2 fork branches arriving out of order (301 twice, then 300 once)
+  const std::vector<std::vector<int64_t>> kForkStreamsPerLaunch = {
+      {100}, {200, 201, 202}, {301, 301, 300}};
+
+  for (uint32_t i = 0; i < kForkStreamsPerLaunch.size(); ++i) {
+    const uint32_t graph_id = i + 1;
+    const uint32_t correlation_id = 10 + i;
+    const uint64_t base_ns = 100 + i * 100;
+    collector->AddEvent(MakeGraphLaunchEvent(correlation_id, kLaunchStreamId,
+                                             graph_id, base_ns));
+    for (size_t b = 0; b < kForkStreamsPerLaunch[i].size(); ++b) {
+      collector->AddEvent(MakeGraphKernelEvent("fork", correlation_id,
+                                               kForkStreamsPerLaunch[i][b],
+                                               graph_id, base_ns + 20 + b * 5));
+    }
+    collector->AddEvent(MakeGraphKernelEvent(
+        "primary", correlation_id, kLaunchStreamId, graph_id, base_ns + 30));
+  }
+
+  XSpace space;
+  collector->Export(&space, /*end_gpu_ns=*/500);
+  const auto* gpu_plane =
+      tsl::profiler::FindPlaneWithName(space, tsl::profiler::GpuPlaneName(0));
+  ASSERT_NE(gpu_plane, nullptr);
+
+  absl::flat_hash_map<int64_t, int> events_per_line;
+  for (const auto& line : gpu_plane->lines()) {
+    events_per_line[line.id()] = line.events_size();
+  }
+  EXPECT_THAT(events_per_line,
+              UnorderedElementsAre(Pair(kLaunchStreamId, 3), Pair(100, 3),
+                                   Pair(201, 3), Pair(202, 1)));
+}
+
+TEST(CuptiCollectorTest,
+     RemapsCudaGraphActivityStreamsWhenCallbackEventsDisabled) {
+  CuptiTracerCollectorOptions options;
+  options.num_gpus = 1;
+  options.max_callback_api_events = 0;
+  auto collector = CreateCuptiCollector(options, 0, 0);
+
+  CallbackAnnotationsAndEvents callback_data;
+  for (uint32_t i = 0; i < 2; ++i) {
+    callback_data.event_queue().Push(
+        MakeGraphLaunchEvent(10 + i, /*stream_id=*/50, 1 + i, 100 + i * 100));
+    collector->AddEvent(
+        MakeGraphKernelEvent("fork", 10 + i, 31 + i, 1 + i, 120 + i * 100));
+  }
+  std::vector<CallbackAnnotationsAndEvents> callback_events;
+  callback_events.push_back(std::move(callback_data));
+  collector->OnTracerCollectedCallbackData(std::move(callback_events),
+                                           /*need_callback_events=*/false);
+
+  XSpace space;
+  collector->Export(&space, /*end_gpu_ns=*/300);
+  const auto* gpu_plane =
+      tsl::profiler::FindPlaneWithName(space, tsl::profiler::GpuPlaneName(0));
+  ASSERT_NE(gpu_plane, nullptr);
+  ASSERT_EQ(gpu_plane->lines_size(), 1);
+  EXPECT_EQ(gpu_plane->lines(0).id(), 31);
+  EXPECT_EQ(gpu_plane->lines(0).events_size(), 2);
 }
 
 }  // namespace
