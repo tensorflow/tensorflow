@@ -225,6 +225,31 @@ absl::Status ValidateStridedSliceOp(
           " for strides."));
     }
   }
+  if (strides_tensor.dtype() != DT_INT16 &&
+      strides_tensor.dtype() != DT_INT32 &&
+      strides_tensor.dtype() != DT_INT64) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected strides to have dtype int16, int32, or int64, "
+                     "but got ",
+                     DataTypeString(strides_tensor.dtype()), "."));
+  }
+  if (begin_tensor != nullptr &&
+      begin_tensor->dtype() != strides_tensor.dtype()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected begin and strides to have the same dtype, "
+                     "but got ",
+                     DataTypeString(begin_tensor->dtype()), " and ",
+                     DataTypeString(strides_tensor.dtype()), "."));
+  }
+  if (end_tensor != nullptr &&
+      end_tensor->dtype() != strides_tensor.dtype()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected end and strides to have the same dtype, "
+                     "but got ",
+                     DataTypeString(end_tensor->dtype()), " and ",
+                     DataTypeString(strides_tensor.dtype()), "."));
+  }
+
   // Use bit compares to ensure ellipsis_mask is 0 or a power of 2
   // i.e. there exists only no more than one ellipsis
   if (ellipsis_mask && ((ellipsis_mask & (ellipsis_mask - 1)) != 0)) {
@@ -289,7 +314,8 @@ absl::Status ValidateStridedSliceOp(
   } else if (strides_tensor.dtype() == DT_INT16) {
     TF_RETURN_IF_ERROR(BuildDenseSpec<int16_t>(sparse_spec, &dense_spec));
   } else {
-    LOG(FATAL) << "begin must be either int16, int32 or int64";
+    return absl::InvalidArgumentError(
+        "begin, end, and strides must be int16, int32, or int64");
   }
 
   // Step 3: Make implicit ranges (non-zero begin_masks and end_masks) explicit
