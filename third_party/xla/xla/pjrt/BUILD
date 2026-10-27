@@ -1312,6 +1312,7 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla/pjrt/c:pjrt_c_api_device_event_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_raw_buffer_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/tsl/concurrency:async_value",

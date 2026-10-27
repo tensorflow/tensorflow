@@ -1301,6 +1301,22 @@ TEST(PjRtCpuClientTest, CopyRawToHost) {
             absl::string_view(raw_data_result, raw_data_size));
 }
 
+TEST(PjRtCpuClientTest, GetExternalDmaInfoIsUnimplemented) {
+  // The CPU backend does not expose its memory as a dma-buf, so the default
+  // PjRtRawBuffer hook (reached through the C function table) must report
+  // Unimplemented.
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  Literal literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef raw_buffer,
+                          PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
+
+  EXPECT_THAT(raw_buffer->GetExternalDmaInfo(),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
 TEST(PjRtCpuClientTest, SubByteLiteralToBufferRoundtrip) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetXlaPjrtCpuClient(CpuClientOptions()));
