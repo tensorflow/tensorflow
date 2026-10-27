@@ -17,11 +17,14 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.platform import test as test_lib
 
 
@@ -141,6 +144,37 @@ class NormOpTest(test_lib.TestCase):
         self.assertEqual(result.dtype, np.float16)
         expected = np.linalg.norm(mat.astype(np.float32), ord=ord_)
         self.assertAllClose(result, expected, rtol=1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16LargeValuesKeepdims(self):
+    mat = np.array([[300.0, 400.0], [100.0, 200.0]], dtype=np.float16)
+    result = self.evaluate(
+        linalg_ops.norm(constant_op.constant(mat), axis=1, keepdims=True))
+    self.assertEqual(result.dtype, np.float16)
+    self.assertEqual(result.shape, (2, 1))
+    expected = np.linalg.norm(mat.astype(np.float32), axis=1, keepdims=True)
+    self.assertAllClose(result, expected, rtol=1e-3)
+
+  def testFloat16LargeValuesGradient(self):
+    vec = constant_op.constant([300.0, 400.0, 100.0], dtype=dtypes.float16)
+    with backprop.GradientTape() as tape:
+      tape.watch(vec)
+      norm = linalg_ops.norm(vec)
+    grad = tape.gradient(norm, vec)
+    self.assertEqual(grad.dtype, dtypes.float16)
+    v32 = vec.numpy().astype(np.float32)
+    self.assertAllClose(grad, v32 / np.linalg.norm(v32), rtol=1e-2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16LargeValuesNormalize(self):
+    vec = np.array([300.0, 400.0, 100.0], dtype=np.float16)
+    normalized, norm = nn_impl.normalize(constant_op.constant(vec))
+    normalized, norm = self.evaluate([normalized, norm])
+    self.assertEqual(normalized.dtype, np.float16)
+    expected_norm = np.linalg.norm(vec.astype(np.float32))
+    self.assertAllClose(norm, expected_norm, rtol=1e-3)
+    self.assertAllClose(
+        normalized, vec.astype(np.float32) / expected_norm, rtol=2e-3)
 
 
 class MatrixNormXlaTest(test_lib.TestCase, parameterized.TestCase):

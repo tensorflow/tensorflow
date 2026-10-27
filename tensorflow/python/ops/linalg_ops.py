@@ -639,7 +639,8 @@ def norm_v2(tensor,
   matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
 
   Args:
-    tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
+    tensor: `Tensor` of types `float16`, `bfloat16`, `float32`, `float64`,
+      `complex64`, `complex128`
     ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`,
       `1`, `2`, `np.inf` and any positive real number yielding the corresponding
       p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
@@ -714,7 +715,8 @@ def norm(tensor,
   matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
 
   Args:
-    tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
+    tensor: `Tensor` of types `float16`, `bfloat16`, `float32`, `float64`,
+      `complex64`, `complex128`
     ord: Order of the norm. Supported values are 'fro', 'euclidean',
       `1`, `2`, `np.inf` and any positive real number yielding the corresponding
       p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
