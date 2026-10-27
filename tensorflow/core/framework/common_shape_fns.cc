@@ -2072,7 +2072,13 @@ absl::Status MaxPoolV2Shape(shape_inference::InferenceContext* c,
   return absl::OkStatus();
 }
 
-absl::Status Pool3DShape(shape_inference::InferenceContext* c) {
+namespace {
+
+// If `allow_empty_valid_output` is true, a VALID-padded window that is slightly
+// larger than a known input dimension infers an output size of 0 instead of a
+// negative dimension error, matching the runtime kernel (see AvgPoolShape).
+absl::Status Pool3DShapeImpl(shape_inference::InferenceContext* c,
+                             bool allow_empty_valid_output) {
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
 
@@ -2134,12 +2140,27 @@ absl::Status Pool3DShape(shape_inference::InferenceContext* c) {
   // information in the input to be ignored. This will require a change
   // in the kernel implementation.
   DimensionHandle output_planes, output_rows, output_cols;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_planes_dim, kernel_planes, stride_planes, padding, &output_planes));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, kernel_rows, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, kernel_cols, stride_cols, padding, &output_cols));
+  auto pooling_output_size = [&](DimensionHandle input_size, int32_t window,
+                                 int32_t stride, DimensionHandle* output_size) {
+    if (allow_empty_valid_output && padding == Padding::VALID && stride > 0 &&
+        c->ValueKnown(input_size) && c->Value(input_size) < window) {
+      // Runtime pooling uses signed division, which truncates toward zero.
+      // Compare the gap with twice the stride without overflowing.
+      const int64_t gap = static_cast<int64_t>(window) - c->Value(input_size);
+      if (gap - stride < stride) {
+        *output_size = c->MakeDim(0);
+        return absl::OkStatus();
+      }
+    }
+    return GetWindowedOutputSizeFromDims(c, input_size, window, stride, padding,
+                                         output_size);
+  };
+  TF_RETURN_IF_ERROR(pooling_output_size(in_planes_dim, kernel_planes,
+                                         stride_planes, &output_planes));
+  TF_RETURN_IF_ERROR(
+      pooling_output_size(in_rows_dim, kernel_rows, stride_rows, &output_rows));
+  TF_RETURN_IF_ERROR(
+      pooling_output_size(in_cols_dim, kernel_cols, stride_cols, &output_cols));
 
   ShapeHandle output_shape;
   if (data_format == "NCDHW") {
@@ -2152,6 +2173,16 @@ absl::Status Pool3DShape(shape_inference::InferenceContext* c) {
 
   c->set_output(0, output_shape);
   return absl::OkStatus();
+}
+
+}  // namespace
+
+absl::Status Pool3DShape(shape_inference::InferenceContext* c) {
+  return Pool3DShapeImpl(c, /*allow_empty_valid_output=*/false);
+}
+
+absl::Status AvgPool3DShape(shape_inference::InferenceContext* c) {
+  return Pool3DShapeImpl(c, /*allow_empty_valid_output=*/true);
 }
 
 absl::Status MaxPool3DGradShape(shape_inference::InferenceContext* c) {

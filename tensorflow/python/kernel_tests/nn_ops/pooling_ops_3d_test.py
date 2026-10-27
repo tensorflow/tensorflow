@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -135,6 +136,36 @@ class PoolingTest(test.TestCase):
         strides=(2, 3, 1),
         padding="SAME",
         expected=expected_output)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPool3dValidEmptyOutput(self):
+    # A VALID window slightly larger than the input yields an empty output in
+    # both eager and graph modes (see #113322).
+    value = array_ops.zeros([1, 3, 3, 3, 2])
+    output = nn_ops.avg_pool3d(
+        value, ksize=4, strides=4, padding="VALID", data_format="NDHWC")
+    self.assertEqual(output.shape.as_list(), [1, 0, 0, 0, 2])
+    self.assertEqual(self.evaluate(output).shape, (1, 0, 0, 0, 2))
+
+  def testAvgPool3dValidEmptyOutputInTfFunction(self):
+    @def_function.function
+    def f(x):
+      return nn_ops.avg_pool3d(
+          x, ksize=4, strides=4, padding="VALID", data_format="NDHWC")
+
+    self.assertEqual(f(array_ops.zeros([1, 3, 3, 3, 2])).shape, (1, 0, 0, 0, 2))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAvgPool3dValidNegativeOutput(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Negative dimension size|Computed output size would be negative"):
+      self.evaluate(
+          nn_ops.avg_pool3d(
+              array_ops.zeros([1, 1, 3, 3, 2]),
+              ksize=[4, 1, 1],
+              strides=1,
+              padding="VALID"))
 
   def testAvgPool3dGrad(self):
     with self.assertRaises(
