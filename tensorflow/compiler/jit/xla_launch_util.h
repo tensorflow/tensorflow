@@ -52,6 +52,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
+namespace Eigen {
+struct ThreadPoolDevice;
+}  // namespace Eigen
+
 namespace tensorflow {
 
 // Creates a list of updated resource variables.
@@ -124,7 +128,8 @@ absl::Status PopulateCtxOutputsFromPjRtExecutableOutputs(
 // Returns the options used for executing a PjRtLoadedExecutable.
 xla::ExecuteOptions GetPjRtExecuteOptions(
     const DeviceType& device_type,
-    absl::flat_hash_set<int> non_donatable_input_indices);
+    absl::flat_hash_set<int> non_donatable_input_indices,
+    xla::ExecuteContext* execute_context = nullptr);
 
 // Returns the device ordinal from the parsed name of the device.
 int GetDeviceOrdinal(const DeviceBase* device);
@@ -168,7 +173,8 @@ absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
     const DeviceType& device_type, bool use_pjrt_tensor_buffer,
     const XlaCompiler::CompilationResult& compilation_result,
     xla::PjRtDevice* device, xla::PjRtClient* pjrt_client,
-    xla::PjRtLoadedExecutable* executable);
+    xla::PjRtLoadedExecutable* executable,
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr);
 
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.

@@ -192,7 +192,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
             PjRtFulfillAsyncExecutableCallback>
   CreateLinkedExecutablePromise() const override;
 
-  tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() override;
+  absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>> MakeLoadState(
+      const LoadOptions& load_options) override;
 
   absl::StatusOr<bool> PoisonExecution(LocalDeviceId local_device_id,
                                        int32_t launch_id,
