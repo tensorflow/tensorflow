@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
+#include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -231,6 +232,12 @@ class CuptiTracer {
   std::unique_ptr<xla::profiler::CuptiPmSampler> cupti_pm_sampler_;
   CuptiInterface* cupti_interface_ = nullptr;
   CuptiTraceCollector* collector_ = nullptr;
+  // Held from Enable() until Disable() has handed the session's records to
+  // `collector_`, which resolves command buffer node annotations only then.
+  // Meanwhile CudaGraphAnnotationRegistry keeps the annotations of CUDA
+  // graphs destroyed during the session instead of erasing them.
+  std::optional<stream_executor::gpu::CudaGraphAnnotationRegistry::HarvestHold>
+      annotation_harvest_hold_;
 
   // CUPTI 10.1 and higher need root access to profile.
   bool need_root_access_ = false;

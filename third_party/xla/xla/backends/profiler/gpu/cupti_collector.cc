@@ -44,6 +44,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler_utils.h"
+#include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
 #include "xla/tsl/profiler/utils/timespan.h"
@@ -729,6 +730,34 @@ class EventInQueue {
   CallbackAnnotationsAndEvents::EventQueue::Iterator last_;
 };
 
+using CudaGraphKeySpace =
+    stream_executor::gpu::CudaGraphAnnotationRegistry::KeySpace;
+
+// A key of CudaGraphAnnotationRegistry.
+struct CommandBufferRegistryKey {
+  uint32_t graph_id;
+  uint64_t node_id;
+  CudaGraphKeySpace space;
+};
+
+// Returns the registry key for a CUPTI record of a CUDA graph node: the
+// template IDs on CUDA 13.4+, otherwise the executable graph IDs (CUDA
+// 13.2-13.3, or a newer build on an older driver/CUPTI). nullopt if none.
+std::optional<CommandBufferRegistryKey> GetCommandBufferRegistryKey(
+    const CuptiTracerEvent& event) {
+  if (event.source_graph_id != 0 && event.source_graph_node_id != 0) {
+    return CommandBufferRegistryKey{event.source_graph_id,
+                                    event.source_graph_node_id,
+                                    CudaGraphKeySpace::kTemplateGraph};
+  }
+  // TODO(b/483450622): Delete once CUDA < 13.4 support is retired.
+  if (event.graph_id != 0 && event.graph_node_id != 0) {
+    return CommandBufferRegistryKey{event.graph_id, event.graph_node_id,
+                                    CudaGraphKeySpace::kPre134ExecGraph};
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 void PmSamples::PopulateCounterLine(XPlaneBuilder* plane,
@@ -917,24 +946,47 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       return;
     }
 
-    // For activity events with graph_id and graph_node_id, we need to rewrite
-    // the annotation to reflect the detail framework information which are got
-    // during the callback for cuda graph creation and nodes insertion.
-    if (event.source == CuptiTracerEventSource::Activity &&
-        (event.graph_id != 0 && event.graph_node_id != 0)) {
-      // We need to rewrite the annotation of this inner node event in cuda
-      // graph device plane.
-      auto orig_graph_id_it = cuda_graph_id_map_.find(event.graph_id);
-      if (orig_graph_id_it != cuda_graph_id_map_.end()) {
-        uint32_t orig_graph_id = orig_graph_id_it->second;
-        const auto& node_id_2_orig = cuda_graph_node_id_map_[event.graph_id];
-        auto orig_node_id_it = node_id_2_orig.find(event.graph_node_id);
-        if (orig_node_id_it != node_id_2_orig.end()) {
-          uint64_t orig_node_id = orig_node_id_it->second;
-          auto annotation_it =
-              graph_node_annotations_.find({orig_graph_id, orig_node_id});
-          if (annotation_it != graph_node_annotations_.end()) {
-            event.annotation = annotation_it->second;
+    // Resolve the per-node annotation recorded in CudaGraphAnnotationRegistry
+    // (see GetCommandBufferRegistryKey), else fall back to the callback-based
+    // map. It replaces the launch annotation but keeps its scope_range_id.
+    if (event.source == CuptiTracerEventSource::Activity) {
+      bool resolved_from_registry = false;
+      auto& registry =
+          stream_executor::gpu::CudaGraphAnnotationRegistry::Default();
+      // `empty()` takes no lock, so sessions without command buffer telemetry
+      // skip the lookup.
+      if (!registry.empty()) {
+        registry_was_non_empty_ = true;
+        if (std::optional<CommandBufferRegistryKey> key =
+                GetCommandBufferRegistryKey(event)) {
+          // The string is only valid under the registry's reader lock, so copy
+          // it into collector-owned storage.
+          resolved_from_registry = registry.VisitNodeAnnotation(
+              key->graph_id, key->node_id,
+              [&](absl::string_view annotation) {
+                event.annotation = string_deduper_.Dedup(annotation);
+              },
+              key->space);
+          ++(resolved_from_registry ? num_records_resolved_
+                                    : num_records_missed_with_graph_ids_);
+        }
+      }
+      if (!resolved_from_registry &&
+          (event.graph_id != 0 && event.graph_node_id != 0)) {
+        // Rewrite the annotation of this inner node event in the cuda graph
+        // device plane using callback-collected graph node annotations.
+        auto orig_graph_id_it = cuda_graph_id_map_.find(event.graph_id);
+        if (orig_graph_id_it != cuda_graph_id_map_.end()) {
+          uint32_t orig_graph_id = orig_graph_id_it->second;
+          const auto& node_id_2_orig = cuda_graph_node_id_map_[event.graph_id];
+          auto orig_node_id_it = node_id_2_orig.find(event.graph_node_id);
+          if (orig_node_id_it != node_id_2_orig.end()) {
+            uint64_t orig_node_id = orig_node_id_it->second;
+            auto annotation_it =
+                graph_node_annotations_.find({orig_graph_id, orig_node_id});
+            if (annotation_it != graph_node_annotations_.end()) {
+              event.annotation = annotation_it->second;
+            }
           }
         }
       }
@@ -979,6 +1031,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         !num_events_dropped_message.empty()) {
       space->add_warnings(num_events_dropped_message);
     }
+    ReportCommandBufferAnnotationResolution(space);
     ExportScopeRangeIdTree(space);
     size_t num_events = 0;
     XPlaneBuilder host_plane(
@@ -1003,6 +1056,29 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
     return num_events > 0;
+  }
+
+  // Logs how many CUDA graph node records of the session resolved to a command
+  // buffer node annotation. If the registry had annotations but none
+  // resolved, a version mismatch (e.g. between the CUDA driver, runtime and
+  // CUPTI) or a registry the writer doesn't share is likely, so it also warns
+  // and adds the warning to `space`.
+  void ReportCommandBufferAnnotationResolution(XSpace* space) {
+    VLOG(1) << "Command buffer node annotations: resolved="
+            << num_records_resolved_
+            << " missed_with_graph_ids=" << num_records_missed_with_graph_ids_;
+    if (!registry_was_non_empty_ || num_records_resolved_ > 0 ||
+        num_records_missed_with_graph_ids_ == 0) {
+      return;
+    }
+    std::string message = absl::StrCat(
+        "None of the ", num_records_missed_with_graph_ids_,
+        " CUDA graph node records with graph IDs resolved to a command "
+        "buffer node annotation recorded by "
+        "--xla_gpu_enable_command_buffer_telemetry, so they keep the command "
+        "buffer launch annotation.");
+    LOG(WARNING) << message;
+    space->add_warnings(std::move(message));
   }
 
   std::string ReportDroppedEvents() {
@@ -1039,8 +1115,14 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       cuda_graph_node_id_map_;
   // Map from graph_id to original graph_id
   absl::flat_hash_map<uint32_t, uint32_t> cuda_graph_id_map_;
-  // For marker data strings.
+  // Owns marker data strings and the command buffer node annotations copied
+  // out of `CudaGraphAnnotationRegistry`, which events keep views into.
   StringDeduper string_deduper_;
+  // Command buffer node annotation lookups of the session, for
+  // ReportCommandBufferAnnotationResolution().
+  bool registry_was_non_empty_ = false;
+  uint64_t num_records_resolved_ = 0;
+  uint64_t num_records_missed_with_graph_ids_ = 0;
 
   // process the nvtx marker, a)cache range start event, or b)merge range end
   // with its corresponding start event. If merged, the event be updated with

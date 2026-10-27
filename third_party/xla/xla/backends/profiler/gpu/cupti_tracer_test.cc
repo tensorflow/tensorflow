@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 #include "xla/backends/profiler/gpu/mock_cupti.h"
+#include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
@@ -44,8 +47,10 @@ namespace profiler {
 namespace test {
 namespace {
 
+using ::stream_executor::gpu::CudaGraphAnnotationRegistry;
 using ::testing::_;
 using ::testing::DoAll;
+using ::testing::HasSubstr;
 using ::testing::Invoke;
 using ::testing::Return;
 using ::testing::SetArgPointee;
@@ -545,6 +550,108 @@ TEST_F(CuptiTracerTest, GraphNodeApiExitWithoutNodeCreatedCallback) {
   EXPECT_EQ(num_graph_node_events, 1);
 }
 
+// Makes `mock` accept a CUPTI V2 session. The other calls it gets succeed by
+// default.
+void AcceptV2Session(::testing::NiceMock<MockCupti>& mock) {
+  auto* const subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+  ON_CALL(mock, SubscribeV2(_, _, _))
+      .WillByDefault(
+          DoAll(SetArgPointee<0>(subscriber), Return(CUPTI_SUCCESS)));
+  ON_CALL(mock, GetTimestampV2(subscriber, _))
+      .WillByDefault(SetTimestampAndReturnSuccess(1));
+}
+
+int ActiveHarvestHolds() {
+  return CudaGraphAnnotationRegistry::Default().GetStats().active_holds;
+}
+
+// The harvest hold tests talk to the mock directly because only the hold
+// count matters here, not the CUPTI calls. The counts are relative to the
+// start of each test, so they don't depend on other users of the process-wide
+// registry.
+TEST_F(CuptiTracerTest, EnableTakesHoldDisableReleases) {
+  const int holds_before = ActiveHarvestHolds();
+  ::testing::NiceMock<MockCupti> mock;
+  AcceptV2Session(mock);
+  TestableCuptiTracer tracer(&mock);
+
+  ASSERT_OK(tracer.Enable(KernelTraceOptions(), cupti_collector_.get()));
+  EXPECT_EQ(ActiveHarvestHolds(), holds_before + 1);
+
+  tracer.Disable();
+  EXPECT_EQ(ActiveHarvestHolds(), holds_before);
+}
+
+// Callers don't call Disable() after a failed Enable(), so Enable() must
+// release the hold itself.
+TEST_F(CuptiTracerTest, EnableFailureReleasesHold) {
+  const int holds_before = ActiveHarvestHolds();
+  ::testing::NiceMock<MockCupti> mock;
+  AcceptV2Session(mock);
+  ON_CALL(mock, EnableCallback(_, _, _, _))
+      .WillByDefault(Return(CUPTI_ERROR_UNKNOWN));
+  TestableCuptiTracer tracer(&mock);
+
+  EXPECT_FALSE(
+      tracer.Enable(KernelTraceOptions(), cupti_collector_.get()).ok());
+  EXPECT_EQ(ActiveHarvestHolds(), holds_before);
+}
+
+// Enable() warns when a session selects graph-level tracing while command
+// buffer telemetry has recorded node annotations, which such a session can't
+// use. The warning is logged once per process, so no other test may trigger
+// it.
+TEST_F(CuptiTracerTest, WarnsWhenGraphTraceHidesNodeAnnotations) {
+  CudaGraphAnnotationRegistry& registry =
+      CudaGraphAnnotationRegistry::Default();
+  registry.ClearForTesting();
+  ::testing::NiceMock<MockCupti> mock;
+  AcceptV2Session(mock);
+  TestableCuptiTracer tracer(&mock);
+  CuptiTracerOptions graph_trace_options = KernelTraceOptions();
+  graph_trace_options.activities_selected.push_back(
+      CUPTI_ACTIVITY_KIND_GRAPH_TRACE);
+
+  int warnings = 0;
+  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
+  EXPECT_CALL(log, Log(absl::LogSeverity::kWarning, _,
+                       HasSubstr("--xla_gpu_enable_command_buffer_telemetry")))
+      .WillRepeatedly([&warnings] { ++warnings; });
+  log.StartCapturingLogs();
+
+  // Graph-level tracing, but no recorded annotations.
+  ASSERT_OK(tracer.Enable(graph_trace_options, cupti_collector_.get()));
+  tracer.Disable();
+  EXPECT_EQ(warnings, 0);
+
+  // Recorded annotations, but node-level tracing.
+  constexpr uint32_t kGraphId = 1;
+  constexpr uint64_t kNodeId = 1001;
+  const CudaGraphAnnotationRegistry::Token token =
+      registry
+          .TrackGraph(kGraphId,
+                      CudaGraphAnnotationRegistry::TrackMode::kNewGraph)
+          .token;
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(
+      kGraphId, token, kNodeId,
+      "XlaModule:#hlo_module=test_mod#::fusion.1:#hlo_op=fusion.1#"));
+  ASSERT_OK(tracer.Enable(KernelTraceOptions(), cupti_collector_.get()));
+  tracer.Disable();
+  EXPECT_EQ(warnings, 0);
+
+  // Both.
+  ASSERT_OK(tracer.Enable(graph_trace_options, cupti_collector_.get()));
+  tracer.Disable();
+  EXPECT_EQ(warnings, 1);
+
+  // Both again, in a second session: the warning is logged only once.
+  ASSERT_OK(tracer.Enable(graph_trace_options, cupti_collector_.get()));
+  tracer.Disable();
+  EXPECT_EQ(warnings, 1);
+
+  registry.ClearForTesting();
+}
 }  // namespace
 }  // namespace test
 }  // namespace profiler
