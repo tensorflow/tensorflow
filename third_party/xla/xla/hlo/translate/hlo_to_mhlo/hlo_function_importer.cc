@@ -71,7 +71,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/translate/hlo_to_mhlo/async_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/custom_call_importer.h"
@@ -2293,40 +2292,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       operands[0].getType());
-    }
-    case HloOpcode::kDomain: {
-      auto domain_kind = mlir::mhlo::symbolizeDomainKind(
-          ToStringRef(instruction->user_side_metadata().Kind()));
-      if (!domain_kind || *domain_kind != mlir::mhlo::DomainKind::sharding) {
-        return InvalidArgument(
-            "Invalid domain kind in hlo -> mhlo import. Only 'sharding' is "
-            "supported");
-      }
-      attributes.push_back(builder_->getNamedAttr(
-          "kind", mlir::mhlo::DomainKindAttr::get(func_builder->getContext(),
-                                                  *domain_kind)));
-
-      // In XLA, DomainMetadata is open-world, but in the proto, it is
-      // hardcoded to be ShardingMetadata. Thankfully, the only other
-      // implementation of DomainMetadata is OpName, which is generally used
-      // for debugging and never for compiling production models.
-      //
-      // Since this is hardcoded as such in the proto, we must follow suit.
-      auto exit_metadata = ShardingMetadata::ToShardingMetadata(
-          &instruction->operand_side_metadata());
-      auto entry_metadata = ShardingMetadata::ToShardingMetadata(
-          &instruction->user_side_metadata());
-      attributes.push_back(builder_->getNamedAttr(
-          "exit_metadata",
-          ConvertSharding(*(*exit_metadata)->sharding(), builder_)));
-      attributes.push_back(builder_->getNamedAttr(
-          "entry_metadata",
-          ConvertSharding(*(*entry_metadata)->sharding(), builder_)));
-
-      // XLA Feature -- MHLO Only
-      return mlir::mhlo::DomainOp::create(*func_builder, loc, result_type,
-                                          operands, attributes)
-          .getOperation();
     }
 
 #define NO_ATTRIBUTE_CASE(hlo_op_code, mlir_op)                              \

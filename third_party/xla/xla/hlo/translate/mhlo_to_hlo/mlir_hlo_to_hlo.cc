@@ -4181,29 +4181,6 @@ LogicalResult ExportXlaOp(RaggedDotOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
-  auto& valueMap = *ctx.values;
-
-  xla::Shape shape = xla::TypeToShape(op.getResult().getType());
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), valueMap, &operand, op))) {
-    return failure();
-  }
-
-  auto entry = xla::ConvertSharding(op.getEntryMetadata());
-  if (!entry) {
-    return failure();
-  }
-  auto exit = xla::ConvertSharding(op.getExitMetadata());
-  if (!exit) {
-    return failure();
-  }
-
-  valueMap[op] = xla::internal::XlaBuilderFriend::BuildDomain(
-      ctx.builder, operand, *exit, *entry, shape);
-  return success();
-}
-
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   llvm::SmallVector<xla::XlaOp> args;
