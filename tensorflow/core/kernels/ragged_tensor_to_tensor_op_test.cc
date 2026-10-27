@@ -537,6 +537,165 @@ TEST_F(RaggedTensorToTensorOpTest, ValuesFewerThanRowPartition) {
   EXPECT_EQ(absl::IsInvalidArgument(RunOpKernel()), true);
 }
 
+TEST_F(RaggedTensorToTensorOpTest, ValidRowPartitionControl) {
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({2, 2}),                      // shape
+      {"ROW_SPLITS"},                           // row_partition_types
+      createVector<float>({1.0f, 2.0f, 3.0f}),  // values
+      createScalar<float>(0.0f),                // default_value
+      {createVector<int32_t>({0, 2, 3})}        // row_partition_tensors
+  );
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorNear<float>(
+      *GetOutput(0),
+      test::AsTensor<float>({1.0f, 2.0f, 3.0f, 0.0f}, TensorShape({2, 2})),
+      0.01);
+}
+
+TEST_F(RaggedTensorToTensorOpTest, RowSplitNonZeroOriginRejected) {
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({2, 2}),                // shape
+      {"ROW_SPLITS"},                     // row_partition_types
+      createVector<float>({1.0f, 2.0f}),  // values
+      createScalar<float>(0.0f),          // default_value
+      {createVector<int32_t>({2, 0, 2})}  // row_partition_tensors
+  );
+  const absl::Status status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(status.message().find("First value of row_split must be 0"),
+            std::string::npos);
+}
+
+TEST_F(RaggedTensorToTensorOpTest, RowSplitNonMonotonicRejected) {
+  auto reset_test_inputs = [this]() {
+    for (Tensor* t : tensors_) {
+      delete t;
+    }
+    tensors_.clear();
+    inputs_.clear();
+  };
+
+  // Non-monotonic row_split with zero origin ([0, 2, 1]) must be rejected by
+  // ValidateRowSplits before width/index subtraction.
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({2, 2}),                // shape
+      {"ROW_SPLITS"},                     // row_partition_types
+      createVector<float>({1.0f, 2.0f}),  // values
+      createScalar<float>(0.0f),          // default_value
+      {createVector<int32_t>({0, 2, 1})}  // row_partition_tensors
+  );
+  absl::Status status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(status.message().find("row_split must be monotonically increasing"),
+            std::string::npos);
+
+  // Zero-sized output shape still validates row_split ordering in Compute.
+  reset_test_inputs();
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({2, 0}),                // shape
+      {"ROW_SPLITS"},                     // row_partition_types
+      createVector<float>({}),            // values
+      createScalar<float>(0.0f),          // default_value
+      {createVector<int32_t>({0, 2, 1})}  // row_partition_tensors
+  );
+  status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(status.message().find("row_split must be monotonically increasing"),
+            std::string::npos);
+}
+
+TEST_F(RaggedTensorToTensorOpTest, EmptyRowSplitPartitionRejected) {
+  auto reset_test_inputs = [this]() {
+    for (Tensor* t : tensors_) {
+      delete t;
+    }
+    tensors_.clear();
+    inputs_.clear();
+  };
+
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({0, 2}),             // shape
+      {"FIRST_DIM_SIZE", "ROW_SPLITS"},  // row_partition_types
+      createVector<float>({}),         // values
+      createScalar<float>(0.0f),       // default_value
+      {createScalar<int32_t>(0),
+       createVector<int32_t>({})}      // row_partition_tensors
+  );
+  absl::Status status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(status.message().find("Row split tensor must not be empty"),
+            std::string::npos);
+
+  reset_test_inputs();
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({1, 2}),             // shape
+      {"FIRST_DIM_SIZE", "ROW_SPLITS"},  // row_partition_types
+      createVector<float>({1.0f}),     // values
+      createScalar<float>(0.0f),       // default_value
+      {createScalar<int32_t>(1),
+       createVector<int32_t>({})}      // row_partition_tensors
+  );
+  status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(status.message().find("Row split tensor must not be empty"),
+            std::string::npos);
+}
+
+TEST_F(RaggedTensorToTensorOpTest, NegativeFirstValueRowIdRejected) {
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({2, 2}),                 // shape
+      {"FIRST_DIM_SIZE", "VALUE_ROWIDS"},  // row_partition_types
+      createVector<float>({1.0f}),         // values
+      createScalar<float>(0.0f),           // default_value
+      {createScalar<int32_t>(2),
+       createVector<int32_t>({-1})}        // row_partition_tensors
+  );
+  const absl::Status status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(status.message().find("which is not in [0, 2)"),
+            std::string::npos);
+}
+
+TEST_F(RaggedTensorToTensorOpTest, InvalidFirstDimensionPartitionRejected) {
+  auto reset_test_inputs = [this]() {
+    for (Tensor* t : tensors_) {
+      delete t;
+    }
+    tensors_.clear();
+    inputs_.clear();
+  };
+
+  // Negative FIRST_DIM_SIZE (-1) must be rejected.
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({0, 2}),                 // shape
+      {"FIRST_DIM_SIZE", "VALUE_ROWIDS"},  // row_partition_types
+      createVector<float>({1.0f}),         // values
+      createScalar<float>(0.0f),           // default_value
+      {createScalar<int32_t>(-1),
+       createVector<int32_t>({0})}         // row_partition_tensors
+  );
+  absl::Status status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(status.message().find("First dimension size must be non-negative"),
+            std::string::npos);
+
+  // Non-vector first ROW_SPLITS tensor (rank 2) must be rejected.
+  reset_test_inputs();
+  BuildRaggedTensorToTensorGraph<float, int32_t>(
+      TensorShape({1, 2}),                                  // shape
+      {"ROW_SPLITS"},                                       // row_partition_types
+      createVector<float>({}),                              // values
+      createScalar<float>(0.0f),                            // default_value
+      {ShapeAndValues<int32_t>{TensorShape({2, 1}), {0, 0}}}  // rank-2 tensor
+  );
+  status = RunOpKernel();
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
+  EXPECT_NE(
+      status.message().find(
+          "First row partition tensor of type ROW_SPLITS must be a 1D vector"),
+      std::string::npos);
+}
+
 class RaggedTensorToTensorOpUnknownShapeTest
     : public ::tensorflow::OpsTestBase {
  protected:

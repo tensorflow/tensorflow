@@ -106,6 +106,24 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     }
   }
 
+  static absl::Status ValidateRowSplits(const RowPartitionTensor& row_split) {
+    if (row_split.size() == 0) {
+      return absl::InvalidArgumentError("Row split tensor must not be empty.");
+    }
+    if (row_split(0) != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "First value of row_split must be 0, got ", row_split(0)));
+    }
+    for (Eigen::Index i = 1; i < row_split.size(); ++i) {
+      if (row_split(i) < row_split(i - 1)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "row_split must be monotonically increasing, got ", row_split(i),
+            " after ", row_split(i - 1)));
+      }
+    }
+    return absl::OkStatus();
+  }
+
   static INDEX_TYPE GetMaxWidthRowSplit(const RowPartitionTensor& row_split) {
     const INDEX_TYPE tensor_length = row_split.size();
     if (tensor_length == 0 || tensor_length == 1) {
@@ -216,12 +234,11 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
       const vector<INDEX_TYPE>& parent_output_index,
       INDEX_TYPE output_index_multiplier, INDEX_TYPE output_size,
       vector<INDEX_TYPE>* result) {
-    INDEX_TYPE row_split_size = row_split.size();
-    if (row_split_size > 0) {
-      result->reserve(row_split(row_split_size - 1));
-    }
-    for (INDEX_TYPE i = 0; i < row_split_size - 1; ++i) {
-      INDEX_TYPE row_length = row_split(i + 1) - row_split(i);
+    TF_RETURN_IF_ERROR(ValidateRowSplits(row_split));
+    const Eigen::Index row_split_size = row_split.size();
+    result->reserve(row_split(row_split_size - 1));
+    for (Eigen::Index i = 0; i < row_split_size - 1; ++i) {
+      const INDEX_TYPE row_length = row_split(i + 1) - row_split(i);
       INDEX_TYPE real_length = std::min(output_size, row_length);
       INDEX_TYPE parent_output_index_current = parent_output_index[i];
 
@@ -278,10 +295,13 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     INDEX_TYPE current_output_column = 0;
     INDEX_TYPE current_value_rowid = value_rowids(0);
 
-    if (current_value_rowid >= parent_output_index.size()) {
+    if (current_value_rowid < 0 ||
+        static_cast<size_t>(current_value_rowid) >=
+            parent_output_index.size()) {
       return absl::InvalidArgumentError(
           absl::StrCat("Got current_value_rowid=", current_value_rowid,
-                       " which is not less than ", parent_output_index.size()));
+                       " which is not in [0, ", parent_output_index.size(),
+                       ")"));
     }
 
     INDEX_TYPE current_output_index = parent_output_index[current_value_rowid];
@@ -339,7 +359,12 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
             row_partition_tensor, parent_output_index, output_index_multiplier,
             output_size, result);
       case RowPartitionType::ROW_SPLITS:
-        if (row_partition_tensor.size() - 1 > parent_output_index.size()) {
+        if (row_partition_tensor.size() == 0) {
+          return absl::InvalidArgumentError(
+              "Row split tensor must not be empty.");
+        }
+        if (static_cast<size_t>(row_partition_tensor.size() - 1) >
+            parent_output_index.size()) {
           return absl::InvalidArgumentError(
               absl::StrCat("Row partition size is greater than output size: ",
                            row_partition_tensor.size() - 1, " > ",
@@ -365,12 +390,28 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     const RowPartitionType first_partition_type = row_partition_types_[0];
     switch (first_partition_type) {
       case RowPartitionType::FIRST_DIM_SIZE:
+        if (!TensorShapeUtils::IsScalar(first_partition_tensor.shape())) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "First row partition tensor of type FIRST_DIM_SIZE must be a "
+              "scalar, got shape ",
+              first_partition_tensor.shape().DebugString()));
+        }
         *result = first_partition_tensor.scalar<INDEX_TYPE>()();
+        if (*result < 0) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "First dimension size must be non-negative, got ", *result));
+        }
         return absl::OkStatus();
       case RowPartitionType::VALUE_ROWIDS:
         return absl::InvalidArgumentError(
             "Cannot handle VALUE_ROWIDS in first dimension.");
       case RowPartitionType::ROW_SPLITS:
+        if (!TensorShapeUtils::IsVector(first_partition_tensor.shape())) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "First row partition tensor of type ROW_SPLITS must be a 1D "
+              "vector, got shape ",
+              first_partition_tensor.shape().DebugString()));
+        }
         *result = first_partition_tensor.shape().dim_size(0) - 1;
         return absl::OkStatus();
       default:
@@ -389,6 +430,14 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         absl::InvalidArgumentError("Invalid first partition input. Tensor "
                                    "requires at least one element."));
     OP_REQUIRES_OK(context, GetFirstDimensionSize(context, &first_dimension));
+    // Validate ordering before shape inference computes adjacent differences.
+    for (int dimension = 0; dimension < ragged_rank_; ++dimension) {
+      if (GetRowPartitionTypeByDimension(dimension) ==
+          RowPartitionType::ROW_SPLITS) {
+        OP_REQUIRES_OK(context,
+                       ValidateRowSplits(GetRowPartitionTensor(context, dimension)));
+      }
+    }
     vector<INDEX_TYPE> output_size;
     OP_REQUIRES_OK(context,
                    CalculateOutputSize(first_dimension, context, &output_size));
