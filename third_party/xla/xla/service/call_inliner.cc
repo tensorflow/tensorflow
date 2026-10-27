@@ -42,6 +42,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/stack_frames.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/transforms/propagate_call_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -242,6 +246,26 @@ bool InlineComposites(
          !composites_to_preserve.contains(
              instruction->frontend_attributes().map().at("composite.name"));
 }
+
+class CallInlinerFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "call-inliner"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext&, const HloPassOptions& options) const override {
+    ABSL_ASSIGN_OR_RETURN(bool single_call_site,
+                     options.Get<bool>("single_call_site", false));
+    ABSL_ASSIGN_OR_RETURN(bool propagate_metadata,
+                     options.Get<bool>("propagate_metadata", true));
+    return std::make_unique<CallInliner>(
+        single_call_site,
+        /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
+        /*override_policy=*/std::nullopt, propagate_metadata);
+  }
+};
+
+const HloPassFactory* const kCallInlinerRegistration =
+    RegisterHloPassFactory<CallInlinerFactory>();
 
 }  // namespace
 
