@@ -238,6 +238,9 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompilerImpl() {
   std::vector<const char*> opts{};
   nvPTXCompileResult compile_result =
       nvPTXCompilerCompile(compiler_handle, opts.size(), opts.data());
+  fprintf(stderr, "NVPTXCOMPILER: nvPTXCompilerCompile returned %d\n",
+          compile_result);
+  fflush(stderr);
 
   if (compile_result == NVPTXCOMPILE_SUCCESS) {
     return absl::InternalError(

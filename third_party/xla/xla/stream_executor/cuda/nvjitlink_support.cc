@@ -17,11 +17,11 @@ limitations under the License.
 
 namespace stream_executor {
 bool IsLibNvJitLinkSupported() {
-  // NVJitLink as a precompiled library is not compatible with MSan, so we
-  // disable its support so that we at least can run some larger tests under
-  // MSAN. This is not ideal because it means these tests will take different
-  // code paths but the alternative would be not running them at all.
-#ifdef MEMORY_SANITIZER
+  // NVJitLink as a precompiled library is not compatible with MSan or HWASan,
+  // so we disable its support so that we at least can run some larger tests
+  // under MSAN/HWASAN. This is not ideal because it means these tests will take
+  // different code paths but the alternative would be not running them at all.
+#if defined(MEMORY_SANITIZER) || defined(HWADDRESS_SANITIZER)
   return false;
 #else
   return true;
