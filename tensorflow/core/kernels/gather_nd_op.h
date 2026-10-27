@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_H_
 // Functor definition for GatherOp, must be compilable by nvcc.
 
+#include <cstdint>
+#include <limits>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -89,10 +92,7 @@ absl::Status DoGatherNd(
 
   // The result shape is
   //   indices.shape[:-1] + params.shape[indices.shape[-1]:]
-  Index N_result = 1;
-  for (int i = 0; i < indices_shape.dims() - 1; ++i) {
-    N_result *= indices_shape.dim_size(i);
-  }
+  const Index N_result = static_cast<Index>(N_big);
 
   const TensorShape& params_shape(params.shape());
   Index total_nd = params_shape.dims();

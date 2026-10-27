@@ -271,6 +271,11 @@ class GatherNdTest(test.TestCase):
     # 32768 or more tuples used to abort or return uninitialized memory.
     with self.session(use_gpu=False):
       params = np.arange(1, 8, dtype=np.int32)
+      valid_indices = np.zeros((32767, 1), dtype=np.int16)
+      self.assertAllEqual(
+          self.evaluate(array_ops.gather_nd(params, valid_indices)),
+          np.ones((32767,), dtype=np.int32),
+      )
       for num_tuples in (32768, 65537):
         indices = np.zeros((num_tuples, 1), dtype=np.int16)
         with self.assertRaisesOpError(
