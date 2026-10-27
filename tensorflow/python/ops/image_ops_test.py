@@ -1049,6 +1049,17 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
           y_fused = self.evaluate(image_ops.adjust_saturation(x_np, scale))
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
+  def testHueJustBelowZero(self):
+    # Blue is a few ulps above green, so the hue is a tiny negative number that
+    # wraps around to exactly 1.0 in float32. The red channel must survive.
+    x_np = np.array(
+        [[[0.8, 0.1, 0.10000001], [1.0, 0.0, 1e-7]]], dtype=np.float32)
+    with self.cached_session():
+      for scale in [0.5, 2.0]:
+        y_baseline = self._adjustSaturationNp(x_np, scale)
+        y_fused = self.evaluate(image_ops.adjust_saturation(x_np, scale))
+        self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
+
 
 class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
                               parameterized.TestCase):
