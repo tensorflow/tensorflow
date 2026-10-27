@@ -201,6 +201,35 @@ class ReduceTest(test_util.TensorFlowTestCase):
       self.assertEqual(self.evaluate(y_result), 1.0)
       self.assertEqual(y_result.dtype, dtype)
 
+  def testReduceVarAndStdIdenticalLargeValues(self):
+
+    def var_and_std(x):
+      return (
+          math_ops.reduce_variance(x, axis=1),
+          math_ops.reduce_std(x, axis=1),
+      )
+
+    var_and_std_fns = [
+        def_function.function(var_and_std, jit_compile=jit_compile)
+        for jit_compile in [False, True]
+    ]
+    for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ]:
+      for sign in [1.0, -1.0]:
+        val = sign * (
+            100.0 if dtype in (dtypes.float16, dtypes.bfloat16) else 7.5e10
+        )
+        x = constant_op.constant([[val, val, val]], dtype=dtype)
+        atol = 2.5 if dtype == dtypes.float32 else 1e-5
+        for var_and_std_fn in var_and_std_fns:
+          variance, std = self.evaluate(var_and_std_fn(x))
+          self.assertAllClose(variance, [0.0], atol=atol)
+          self.assertAllClose(std, [0.0], atol=atol)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class LogSumExpTest(test_util.TensorFlowTestCase):
