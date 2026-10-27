@@ -38,7 +38,7 @@ bazel_dep(name = "zlib", version = "1.3.2")
 # go/keep-sorted end
 
 # Only for compatibility, not directly used
-bazel_dep(name = "c-ares", version = "1.34.6.bcr.1", repo_name = None)
+bazel_dep(name = "c-ares", version = "1.34.6.bcr.3", repo_name = None)
 bazel_dep(name = "eigen", version = "4.0.0-20241125.bcr.3", repo_name = None)
 bazel_dep(name = "grpc-java", version = "1.75.0", repo_name = None)
 bazel_dep(name = "libpfm", version = "4.13.0", repo_name = None)
