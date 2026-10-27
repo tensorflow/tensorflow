@@ -4793,6 +4793,14 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   }
   stats_strides[3] = 1;
 
+  // Each of the B physical rows holds at most S tokens, so the packed total
+  // token count is bounded by B * S. Declaring this to cuDNN avoids sizing the
+  // workspace buffers that scale with the total token count (dQ_accum, and the
+  // dK/dV full-head buffers for GQA/MQA) for the inflated B * max_seg_per_batch
+  // batch dimension. Must be computed before the dims are fixed up below.
+  const int64_t max_total_seq_len_q = q_dims[0] * q_dims[2];
+  const int64_t max_total_seq_len_kv = k_dims[0] * k_dims[2];
+
   if (max_seg_per_batch > 1) {
     FixDimsForRaggedOffset(q_dims, max_seg_per_batch);
     FixDimsForRaggedOffset(k_dims, max_seg_per_batch);
@@ -4966,6 +4974,11 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
 
   if (sliding_window_length > 0) {
     sdpa_backward_options.set_sliding_window_length(sliding_window_length);
+  }
+
+  if (max_seg_per_batch > 1) {
+    sdpa_backward_options.set_max_total_seq_len_q(max_total_seq_len_q);
+    sdpa_backward_options.set_max_total_seq_len_kv(max_total_seq_len_kv);
   }
 
   if (score_mod) {

@@ -2320,6 +2320,29 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "cudnn_flash_attention_test",
+    srcs = ["cudnn_flash_attention_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cuda_compute_capability",
+        ":cudnn_plugin",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/protobuf:dnn_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "cubin_or_ptx_image",
     hdrs = ["cubin_or_ptx_image.h"],
