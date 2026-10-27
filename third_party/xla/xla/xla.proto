@@ -1129,7 +1129,8 @@ message DebugOptions {
   optional int32 xla_gpu_experimental_force_split_k = 472;
 
   // Enable GEMM fusion v2 pass for building Triton fusions.
-  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475;
+  // TODO(b/487920266): Remove this flag entirely.
+  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475 [deprecated = true];
 
   // Controls max unroll factor on Blackwell architectures. This is also
   // guarded with a heuristic, but the heuristic is not perfect, so changing

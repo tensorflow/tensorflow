@@ -2754,11 +2754,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_enable_cudnn_int8x32_convolution_reordering),
       debug_options->xla_gpu_enable_cudnn_int8x32_convolution_reordering(),
       "Enable cuDNN frontend for int8x32 convolutions with reordered filter."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_gemm_fusion_v2",
-      bool_setter_for(&DebugOptions::set_xla_gpu_experimental_gemm_fusion_v2),
-      debug_options->xla_gpu_experimental_gemm_fusion_v2(),
-      "Enable experimental rewrite of GEMM fusion pass for Triton."));
+  flag_list->push_back(tsl::Flag("xla_gpu_experimental_gemm_fusion_v2",
+                                 noop_flag_setter<bool>, true,
+                                 "Deprecated, do not use."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_triton_gemm_any",
                 bool_setter_for(&DebugOptions::set_xla_gpu_triton_gemm_any),
