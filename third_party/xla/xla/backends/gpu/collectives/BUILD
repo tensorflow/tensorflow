@@ -520,6 +520,57 @@ cc_library(
 )
 
 cc_library(
+    name = "mock_gpu_communicator",
+    testonly = True,
+    hdrs = ["mock_gpu_communicator.h"],
+    deps = [
+        ":gpu_communicator",
+        ":gxl_communicator",
+        "//xla:future",
+        "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/core/collectives:registered_memory",
+        "//xla/core/collectives:symmetric_memory",
+        "//xla/ffi/api:c_api",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel_args",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/tsl/util:tied_ref",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+cc_library(
+    name = "mock_gpu_collectives",
+    testonly = True,
+    hdrs = ["mock_gpu_collectives.h"],
+    deps = [
+        ":cancellation_token",
+        ":gpu_collectives",
+        ":gpu_communicator",
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+cc_library(
     name = "gpu_collectives_stub",
     srcs = ["gpu_collectives_stub.cc"],
     hdrs = ["gpu_collectives_stub.h"],
