@@ -45,8 +45,8 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'main' }}
 
 env:
-  ROCM_DISTRO_URL: https://stable.repo.amd.com/rocm/core/tarball/therock-dist-linux-multiarch-10.0.0.tar.gz
-  ROCM_DISTRO_HASH: 1c5e807875d26a2470ecc7323daa5b5b9009208a55c3290ac255a909cde15fc6
+  ROCM_DISTRO_URL: https://rocm.devreleases.amd.com/tarball-multi-arch/therock-dist-linux-multiarch-10.0.0.dev0%2Bc247febed686e713051e4cf7bcce437a8dcbfad9.tar.gz
+  ROCM_DISTRO_HASH: 1c5beccd46d06ae9b68602b955eae9f4ddf5b0dbb561e521c8040a1c87b1c555
   ROCM_AMD_GPU_TARGETS: gfx950
   ROCM_SINGLE_GPU_RBE_POOL: linux_x64_gpu
 
@@ -229,7 +229,6 @@ jobs:
         run: |
           build_tools/rocm/run_xla_ci_build.sh \
             --config=ci_single_gpu \
-            --test_env=HSA_CO_DMACOPY_SIZE=-1 \
             --config=no_flaky \
             --local_test_jobs=1 \
             --bes_keywords=xla \
@@ -251,7 +250,6 @@ jobs:
             --config=ci_rocm_cpu \
             --config=no_flaky \
             --local_test_jobs=200 \
-            --test_env=HSA_CO_DMACOPY_SIZE=-1 \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \
