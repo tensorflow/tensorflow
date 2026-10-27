@@ -1321,10 +1321,10 @@ absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
 
 class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit CuDnnFusionVisitor(se::dnn::DnnSupport* dnn_support,
+  explicit CuDnnFusionVisitor(se::StreamExecutor* stream_exec,
                               const se::DeviceDescription& gpu_device_info,
                               BinaryMap& compilation_results)
-      : dnn_support_(dnn_support),
+      : stream_exec_(stream_exec),
         gpu_device_info_(gpu_device_info),
         compilation_results_(compilation_results) {}
 
@@ -1354,9 +1354,15 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         gpu_config.fusion_backend_config();
 
     auto compile_graph = [&]() -> absl::StatusOr<se::gpu::CudnnGraph> {
+      HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(hlo);
+      ABSL_ASSIGN_OR_RETURN(
+          se::dnn::DnnSupport * dnn_support,
+          ResolveCudnnSupport(hlo->GetModule()->config().debug_options(),
+                              stream_exec_, gpu_device_info_.dnn_version()),
+          _ << "failed to resolve cuDNN support for fusion: "
+            << fusion->ToString());
       ABSL_ASSIGN_OR_RETURN(se::gpu::CudnnGraph graph,
-                       PrepareGraph(dnn_support_, gpu_device_info_,
-                                    *DynCast<HloFusionInstruction>(hlo)));
+                       PrepareGraph(dnn_support, gpu_device_info_, *fusion));
 
       if (fusion_backend_config.has_cudnn_fusion_config() &&
           fusion_backend_config.cudnn_fusion_config().has_plan_id()) {
@@ -1367,14 +1373,14 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
         if (plan_id >= graph.Graph().get_execution_plan_count()) {
           return absl::InternalError("cuDNN graph plan does not exist.");
         }
-        ABSL_RETURN_IF_ERROR(graph.Build(dnn_support_, gpu_device_info_, plan_id));
+        ABSL_RETURN_IF_ERROR(graph.Build(dnn_support, gpu_device_info_, plan_id));
       } else {
         // Build plans one by one till first successful when no plan_id was
         // provided.
         int64_t plan_id = 0;
         for (; plan_id < graph.Graph().get_execution_plan_count(); ++plan_id) {
           VLOG(7) << "Trying plan ID " << plan_id;
-          if (graph.Build(dnn_support_, gpu_device_info_, plan_id).ok()) {
+          if (graph.Build(dnn_support, gpu_device_info_, plan_id).ok()) {
             VLOG(7) << "Successfully built plan ID " << plan_id;
             break;
           }
@@ -1445,7 +1451,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  se::dnn::DnnSupport* dnn_support_;
+  se::StreamExecutor* stream_exec_;
   const se::DeviceDescription& gpu_device_info_;
   // <HLO computation fingerprint, serialized compiled cuDNN graph>.
   BinaryMap& compilation_results_;
@@ -1458,17 +1464,16 @@ absl::StatusOr<bool> CuDnnFusionCompiler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER("cuDNN fusion compiler");
-  return CuDnnFusionVisitor(dnn_support_, gpu_device_info_,
+  return CuDnnFusionVisitor(stream_exec_, gpu_device_info_,
                             compilation_results_)
       .RunOnModule(module, execution_threads);
 }
 
 absl::StatusOr<int> CuDnnFusionCompiler::GetAvailablePlanCount(
-    se::StreamExecutor* stream_exec,
+    se::dnn::DnnSupport* dnn_support,
     const se::DeviceDescription& gpu_device_info,
     const HloFusionInstruction& hlo) {
-  se::dnn::DnnSupport* dnn = stream_exec ? stream_exec->AsDnn() : nullptr;
-  ABSL_ASSIGN_OR_RETURN(auto graph, PrepareGraph(dnn, gpu_device_info, hlo));
+  ABSL_ASSIGN_OR_RETURN(auto graph, PrepareGraph(dnn_support, gpu_device_info, hlo));
   return std::min(
       static_cast<int32_t>(graph.Graph().get_execution_plan_count()),
       hlo.GetModule()->config().debug_options().xla_gpu_cudnn_gemm_max_plans());

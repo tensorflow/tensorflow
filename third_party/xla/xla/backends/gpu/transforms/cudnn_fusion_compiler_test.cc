@@ -93,7 +93,7 @@ TEST_P(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -157,7 +157,7 @@ TEST_P(CudnnFusionCompilerWgradTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -202,7 +202,7 @@ TEST_F(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -243,7 +243,7 @@ TEST_F(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -284,7 +284,7 @@ TEST_F(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }

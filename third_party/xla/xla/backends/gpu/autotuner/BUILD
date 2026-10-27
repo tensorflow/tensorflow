@@ -326,6 +326,7 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:cudnn_support_utils",
         "//xla/service/gpu:gpu_conv_runner",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:stream_executor_util",
