@@ -512,6 +512,13 @@ absl::Status ValidateInput(const OpInputList& indices_list_in,
         "Expected ", size, " input values, got ", values_list_in.size()));
   }
   for (int i = 0; i < size; i++) {
+    if (values_list_in[i].dtype() != DT_INT64 &&
+        values_list_in[i].dtype() != DT_STRING) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Input values should be of type ", DT_INT64, " or ",
+                       DT_STRING, " but received ",
+                       values_list_in[i].dtype()));
+    }
     // Make sure to avoid the expected type to be string, but input values to be
     // int64.
     if (check_type && internal_type == DT_STRING &&
@@ -560,6 +567,13 @@ absl::Status ValidateInput(const OpInputList& indices_list_in,
 
   // Validates dense_list_in OpInputList
   for (int i = 0; i < dense_list_in.size(); ++i) {
+    if (dense_list_in[i].dtype() != DT_INT64 &&
+        dense_list_in[i].dtype() != DT_STRING) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Dense inputs should be of type ", DT_INT64, " or ",
+                       DT_STRING, " but received ",
+                       dense_list_in[i].dtype()));
+    }
     // Make sure to avoid the expected type to be string, but input values to be
     // int64.
     if (check_type && internal_type == DT_STRING &&

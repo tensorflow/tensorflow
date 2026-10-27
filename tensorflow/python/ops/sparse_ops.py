@@ -724,6 +724,17 @@ def _sparse_cross_internal_v2(inputs):
           i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
       for i in inputs):
     raise TypeError("All inputs must be Tensor or SparseTensor.")
+  for i, inp in enumerate(inputs):
+    inp_dtype = (
+        inp.values.dtype
+        if isinstance(inp, sparse_tensor.SparseTensor)
+        else inp.dtype
+    )
+    if not (inp_dtype.is_integer or inp_dtype == dtypes.string):
+      raise TypeError(
+          f"Unexpected dtype for inputs[{i}]: {inp_dtype}. "
+          "tf.sparse.cross only supports integer and string dtypes."
+      )
   sparse_inputs = [
       i for i in inputs if isinstance(i, sparse_tensor.SparseTensor)
   ]
@@ -734,10 +745,10 @@ def _sparse_cross_internal_v2(inputs):
   values = [sp_input.values for sp_input in sparse_inputs]
   shapes = [sp_input.dense_shape for sp_input in sparse_inputs]
   for i in range(len(values)):
-    if values[i].dtype != dtypes.string:
+    if values[i].dtype.is_integer:
       values[i] = math_ops.cast(values[i], dtypes.int64)
   for i in range(len(dense_inputs)):
-    if dense_inputs[i].dtype != dtypes.string:
+    if dense_inputs[i].dtype.is_integer:
       dense_inputs[i] = math_ops.cast(dense_inputs[i], dtypes.int64)
   return indices, values, shapes, dense_inputs
 
@@ -754,7 +765,18 @@ def _sparse_cross_internal(inputs,
       isinstance(
           i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
       for i in inputs):
-    raise TypeError("All inputs must be SparseTensors")
+    raise TypeError("All inputs must be Tensor or SparseTensor.")
+  for i, inp in enumerate(inputs):
+    inp_dtype = (
+        inp.values.dtype
+        if isinstance(inp, sparse_tensor.SparseTensor)
+        else inp.dtype
+    )
+    if not (inp_dtype.is_integer or inp_dtype == dtypes.string):
+      raise TypeError(
+          f"Unexpected dtype for inputs[{i}]: {inp_dtype}. "
+          "tf.sparse.cross only supports integer and string dtypes."
+      )
 
   sparse_inputs = [
       i for i in inputs if isinstance(i, sparse_tensor.SparseTensor)
@@ -770,11 +792,11 @@ def _sparse_cross_internal(inputs,
 
   internal_type = dtypes.string
   for i in range(len(values)):
-    if values[i].dtype != dtypes.string:
+    if values[i].dtype.is_integer:
       values[i] = math_ops.cast(values[i], dtypes.int64)
       internal_type = dtypes.int64
   for i in range(len(dense_inputs)):
-    if dense_inputs[i].dtype != dtypes.string:
+    if dense_inputs[i].dtype.is_integer:
       dense_inputs[i] = math_ops.cast(dense_inputs[i], dtypes.int64)
       internal_type = dtypes.int64
 
