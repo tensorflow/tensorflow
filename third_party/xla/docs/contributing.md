@@ -154,9 +154,37 @@ see the [GPU AOT compatibility guide](gpu_aot_compatibility.md).
     targets. See [The Hitchhiker's Guide to Fewer `#ifdef`s in XLA](./avoiding_ifdefs.md)
     for details and examples.
 
+*   *Reproducer-first bugfix workflow*:
+    1.  Write a minimal unit test that reproduces the bug.
+    2.  Verify that the test fails on the unpatched codebase for the expected
+        reason.
+    3.  Implement the minimal root-cause fix and verify the test passes.
+    4.  Never hide bugs by weakening assertions, widening numerical tolerances
+        without mathematical justification, or adding `GTEST_SKIP()`.
+
+*   *PR Title and Description*:
+    *   Prefix the title with the component tag in brackets followed by a
+        concise summary (for example,
+        `[XLA:GPU] Skip Triton dot emitter when contracting dimension is zero`).
+    *   Structure the description around why the change is needed rather than a
+        file-by-file summary of the diff:
+        *   **Status quo**: What the system currently does.
+        *   **Why**: Why the current behavior fails or is insufficient.
+        *   **Design choices**: The technical approach taken and why.
+        *   **Trade-offs / Alternatives**: Any compromises accepted and why
+            alternatives were not chosen.
+
+*   *Cross-Repository Patches*: If a PR depends on a simultaneous change in
+    Shardy or StableHLO (pinned in `workspace0.bzl` / `workspace.bzl`), update
+    `third_party/shardy/temporary.patch` or
+    `third_party/stablehlo/temporary.patch` in the same PR so the build remains
+    self-contained.
+
 *   When in doubt as to conventions within the code, it is always a good idea to
     examine pre-existing code and to try to follow the patterns already in place
-    in OpenXLA.
+    in OpenXLA (see also
+    [`xla/AGENTS.md`](https://github.com/openxla/xla/blob/main/xla/AGENTS.md)
+    for C++17, HLO/MLIR, and unit-testing conventions).
 
 
 ### Review Process
