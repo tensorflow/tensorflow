@@ -78,12 +78,6 @@ absl::StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
   return graph;
 }
 
-bool UsePjRtForSingleDeviceCompilation(const DeviceType& device_type) {
-  const auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
-  return rollout_config.IsEnabledInXlaLaunchForDevice(device_type) ||
-         rollout_config.IsEnabledInXlaCompileOnDemandForDevice(device_type) ||
-         rollout_config.IsEnabledInXlaCompileAndRunForDevice(device_type);
-}
 
 std::string GetPjRtDeviceCompilerResourceName(const DeviceType& device_type) {
   return absl::StrCat(kPjRtDeviceCompilerResourceName, "_",

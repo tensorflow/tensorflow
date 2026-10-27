@@ -20,9 +20,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <memory>
-#include <set>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -32,25 +30,20 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/variable_info.h"
-#include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -180,19 +173,6 @@ absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtBuffer>>> RunPjRtExecutable(
 // ShapedBuffers suitable for passing to an XLA computation.
 class XlaComputationLaunchContext {
  public:
-  // Create a new launch context. 'allocate_xla_tensors' is true if allocated
-  // output tensors and variables are always XlaTensors. If false they are
-  // assumed to be "normal" device pointers.
-  // If 'use_multiple_streams' is true, tensors may be defined and used on
-  // multiple streams and so se::Events must be defined and waited for. If
-  // 'use_multiple_streams' is true, 'allocate_xla_tensors' must also be true
-  // because we track inter-stream dependencies through events inside XlaTensor
-  // objects.
-  XlaComputationLaunchContext(
-      xla::LocalClient* client,
-      stream_executor::DeviceAddressAllocator* xla_allocator,
-      int device_ordinal, bool allocate_xla_tensors, bool use_multiple_streams);
-
   // Builds a XlaCompiler::Argument vector from the arguments to an XlaLaunch
   // op.
   // Precondition: variables in `variable_args` are locked.
@@ -201,45 +181,6 @@ class XlaComputationLaunchContext {
                             absl::Span<const Tensor* const> inputs,
                             absl::Span<VariableInfo const> variable_args,
                             Device* device);
-
-  // Add all inputs within `ctx` as XLA arguments (returned by arguments()).
-  // `variables` is a map from TensorFlow argument number to resource variable.
-  //
-  // Assumes that the first `missing_ctx_input_prefix` inputs to the kernel are
-  // missing and adjusts input indices accordingly.  All elements in kernel's
-  // input_mapping must be greater than or equal to `missing_ctx_input_prefix`
-  // (in other words, no inputs actually required by the kernel can be missing).
-  absl::StatusOr<std::vector<xla::ExecutionInput>> PopulateInputs(
-      OpKernelContext* ctx,
-      const XlaCompiler::CompilationResult* compilation_result,
-      const absl::flat_hash_map<int, const Tensor*>& resource_vars,
-      int missing_ctx_input_prefix,
-      const xla::HloInputOutputAliasConfig& input_output_alias);
-
-  // Given the XLA output in `output`, populate all outputs of `ctx`.  Also
-  // writes out the resource variable updates.
-  //
-  // Updates to all resource variables are written in a single atomic operation.
-  // This models *->Write dependencies between resource variable operations.
-  // See jit/resource_operation_safety_analysis for details.
-  //
-  //
-  // Assumes that the first `missing_ctx_input_prefix` inputs to the
-  // compilation_result are missing and adjusts input indices accordingly.
-  absl::Status PopulateOutputs(
-      OpKernelContext* ctx,
-      const XlaCompiler::CompilationResult* compilation_result,
-      xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,
-      absl::Span<VariableInfo> variable_infos,
-      const xla::HloInputOutputAliasConfig& input_output_alias,
-      const absl::flat_hash_map<int, const Tensor*>& resource_vars);
-
- private:
-  xla::LocalClient* client_;
-  stream_executor::DeviceAddressAllocator* xla_allocator_;
-  bool allocate_xla_tensors_;
-  bool use_multiple_streams_;
-  int device_ordinal_;
 };
 
 // A simple TensorBuffer implementation that allows us to create Tensors that
