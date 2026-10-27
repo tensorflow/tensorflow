@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for tensorflow.ops.gradients."""
 
+import gc
 import sys
 import warnings
+import weakref
 
 from absl.testing import parameterized
 import numpy as np
@@ -1217,6 +1219,32 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       y = F(x)
       with self.assertRaises(RuntimeError):
         gradients.gradients(y, x)
+
+  def testCustomGradientReleasedWithGraph(self):
+
+    @custom_gradient.custom_gradient
+    def Square(x):
+
+      def Grad(dy):
+        return 2. * x * dy
+
+      return x * x, Grad
+
+    graph = ops.Graph()
+    with graph.as_default():
+      x = constant(3.)
+      y = Square(x)
+      dx = gradients.gradients(y, x)[0]
+      with session.Session() as sess:
+        self.assertEqual(6., sess.run(dx))
+    name = y.op.get_attr("_gradient_op_type").decode()
+    self.assertIn(name, ops.gradient_registry.list())
+
+    graph_ref = weakref.ref(graph)
+    del graph, x, y, dx, sess
+    gc.collect()
+    self.assertIsNone(graph_ref())
+    self.assertNotIn(name, ops.gradient_registry.list())
 
   def testCustomGradientWithVariables(self):
 
