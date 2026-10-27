@@ -110,6 +110,34 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_pass_options",
+    srcs = ["hlo_pass_options.cc"],
+    hdrs = ["hlo_pass_options.h"],
+    deps = [
+        ":hlo_pipeline_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_pass_options_test",
+    srcs = ["hlo_pass_options_test.cc"],
+    deps = [
+        ":hlo_pass_options",
+        ":hlo_pipeline_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_pass_filter",
     srcs = ["hlo_pass_filter.cc"],
     hdrs = ["hlo_pass_filter.h"],
