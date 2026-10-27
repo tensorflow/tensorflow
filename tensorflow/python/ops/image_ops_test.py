@@ -5370,11 +5370,14 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([0, 255 * 256], dtypes.uint16, dtypes.int16, [0, 255 * 128])
       self._convert([0, 255 * 128], dtypes.int16, dtypes.uint16, [0, 255 * 256])
 
-  def testConvertHalfPrecisionFloatToInt(self):
-    # `dtype.max + 0.5` is not representable in half precision, so the scaling
-    # must happen in float32 for `1.0` to map to `dtype.max`.
-    for src_dtype in [dtypes.float16, dtypes.bfloat16]:
-      for dst_dtype in [dtypes.uint8, dtypes.int8, dtypes.uint16, dtypes.int16]:
+  def testConvertFloatToInt(self):
+    # `dtype.max + 0.5` is not representable in lower precision floats, so the
+    # scaling must happen in a wider float type for `1.0` to map to `dtype.max`.
+    for src_dtype in [dtypes.float16, dtypes.bfloat16, dtypes.float32]:
+      for dst_dtype in [
+          dtypes.uint8, dtypes.int8, dtypes.uint16, dtypes.int16,
+          dtypes.uint32, dtypes.int32
+      ]:
         for saturate in [False, True]:
           with self.subTest(src=src_dtype, dst=dst_dtype, saturate=saturate):
             x = constant_op.constant([0.0, 0.5, 1.0], dtype=src_dtype)
