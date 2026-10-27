@@ -20,6 +20,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/bincount_op.h"
 
 #include <atomic>
+#include <cstdint>
+#include <limits>
+#include <type_traits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -38,6 +41,9 @@ using thread::ThreadPool;
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+constexpr int64_t kMaxGpuHistogramBins =
+    std::numeric_limits<int32_t>::max() - 1024;
 
 namespace functor {
 
@@ -231,6 +237,12 @@ class BincountOp : public OpKernel {
     OP_REQUIRES(ctx, size >= 0,
                 absl::InvalidArgumentError(
                     absl::StrCat("size (", size, ") must be non-negative")));
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(ctx, size <= kMaxGpuHistogramBins,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("size (", size, ") must be at most ",
+                                   kMaxGpuHistogramBins, " on GPU")));
+    }
 
     const Tensor& weights_t = ctx->input(2);
     const auto arr = arr_t.flat<int32_t>();
@@ -310,6 +322,12 @@ class DenseBincountOp : public OpKernel {
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
     if (data.dims() <= 1) {
+      if (std::is_same<Device, GPUDevice>::value && !binary_output_) {
+        OP_REQUIRES(ctx, size <= kMaxGpuHistogramBins,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("size (", size, ") must be at most ",
+                                     kMaxGpuHistogramBins, " on GPU")));
+      }
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({size}), &out_t));
       auto out = out_t->flat<T>();
       fill(ctx->eigen_device<Device>(), out);

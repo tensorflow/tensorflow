@@ -296,6 +296,23 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       )
     self.assertAllEqual(expected_out, out)
 
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("XLA does not use DeviceHistogram")
+  def test_size_too_large_for_gpu_histogram(self):
+    size = array_ops.placeholder_with_default(
+        np.int32(2**31 - 2), shape=[])
+    with test_util.force_gpu():
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "must be at most"):
+        self.evaluate(
+            gen_math_ops.dense_bincount(
+                input=[0, 1, 1], weights=[], size=size, binary_output=False))
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "must be at most"):
+        self.evaluate(
+            gen_math_ops.bincount(arr=[0, 1, 1], size=size, weights=[]))
+
   def _test_bincount_col_binary_with_negative_input(
       self, num_rows, num_cols, size, dtype
   ):

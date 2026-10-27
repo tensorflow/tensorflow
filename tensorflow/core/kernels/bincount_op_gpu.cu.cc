@@ -17,8 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <limits>
 #include <type_traits>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -51,6 +54,11 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
     }
     if (output.size() == 0) {
       return absl::OkStatus();
+    }
+    if (arr.size() > std::numeric_limits<int>::max()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Bincount on GPU supports at most ", std::numeric_limits<int>::max(),
+          " input values, got ", arr.size()));
     }
     if (tensorflow::OpDeterminismRequired()) {
       // TODO(reedwm): Is this really nondeterministic?
