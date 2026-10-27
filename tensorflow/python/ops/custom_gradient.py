@@ -543,7 +543,12 @@ def _graph_mode_decorator(f, args, kwargs):
 
   @ops.RegisterGradient(name)
   def registered_grad_fn(op, *result_grads):  # pylint: disable=unused-variable
-    return internal_grad_fn_ref()(op, *result_grads)
+    grad_fn = internal_grad_fn_ref()
+    if grad_fn is None:
+      raise LookupError(
+          f"Gradient function '{name}' has been garbage collected because "
+          "the associated graph was destroyed.")
+    return grad_fn(op, *result_grads)
 
   weakref.finalize(
       internal_grad_fn,

@@ -1239,12 +1239,15 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.assertEqual(6., sess.run(dx))
     name = y.op.get_attr("_gradient_op_type").decode()
     self.assertIn(name, ops.gradient_registry.list())
+    registered_grad_fn = ops.gradient_registry.lookup(name)
 
     graph_ref = weakref.ref(graph)
     del graph, x, y, dx, sess
     gc.collect()
     self.assertIsNone(graph_ref())
     self.assertNotIn(name, ops.gradient_registry.list())
+    with self.assertRaisesRegex(LookupError, "garbage collected"):
+      registered_grad_fn(None)
 
   def testCustomGradientWithVariables(self):
 
