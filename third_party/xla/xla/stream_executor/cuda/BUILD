@@ -342,6 +342,7 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:blas_lt_matmul_algorithm",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
@@ -369,9 +370,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":cublas_lt_matmul_algorithm",
         ":cuda_blas_utils",
         ":cuda_compute_capability",
-        ":cuda_executor",
         ":cuda_helpers",
         ":cuda_platform_id",
         "//xla:shape_util",
@@ -382,13 +383,13 @@ cc_library(
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_address",
-        "//xla/stream_executor:device_description",
         "//xla/stream_executor:engine_options",
         "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:blas_lt_matmul_algorithm",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/platform:initialize",
@@ -411,11 +412,6 @@ cc_library(
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
         "@local_config_cuda//cuda:cuda_headers",
-        "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:logging",
-        "@tsl//tsl/platform:ml_dtypes",
-        "@tsl//tsl/platform:status",
-        "@tsl//tsl/platform:statusor",
         "@tsl//tsl/platform:tensor_float_32_hdr_lib",
     ] + if_static([
         "@tsl//tsl/platform:tensor_float_32_utils",
@@ -760,12 +756,43 @@ xla_test(
     ],
 )
 
+tf_proto_library(
+    name = "cublas_lt_matmul_algorithm_proto",
+    srcs = ["cublas_lt_matmul_algorithm.proto"],
+)
+
+cc_library(
+    name = "cublas_lt_matmul_algorithm",
+    srcs = ["cublas_lt_matmul_algorithm.cc"],
+    hdrs = ["cublas_lt_matmul_algorithm.h"],
+    deps = [
+        ":cublas_lt_matmul_algorithm_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "cublas_lt_matmul_algorithm_test",
+    srcs = ["cublas_lt_matmul_algorithm_test.cc"],
+    deps = [
+        ":cublas_lt_matmul_algorithm",
+        ":cublas_lt_matmul_algorithm_proto_cc",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_test(
     name = "cuda_blas_lt_test",
     srcs = ["cuda_blas_lt_test.cc"],
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":cublas_lt_matmul_algorithm",
+        ":cublas_lt_matmul_algorithm_proto_cc",
         ":cublas_plugin",
         ":cuda_platform",
         "//xla:shape_util",
@@ -776,8 +803,12 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:blas_lt_matmul_algorithm",
+        "//xla/stream_executor/gpu:blas_lt_matmul_algorithm_proto_cc",
         "//xla/stream_executor/gpu:gpu_blas_lt",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
