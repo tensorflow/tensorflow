@@ -816,11 +816,7 @@ absl::Status RunLatencyHidingSchedulerPasses(
       std::move(overlap_limit_rule));
 
   const int64_t configured_fencing_threshold_bytes =
-      // NOLINTNEXTLINE
-      options.has_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes()
-          ? options
-                .xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes()
-          : -1;
+      options.xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes();
   if (std::optional<int64_t> fencing_threshold_bytes =
           GetSchedulerMemoryFencingThresholdBytes(
               configured_fencing_threshold_bytes, memory_limit)) {

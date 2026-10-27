@@ -541,7 +541,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_collective_start_as_early_as_possible(false);
   opts.set_xla_gpu_experimental_enable_selective_memcpy_overlap(false);
   opts.set_xla_gpu_experimental_parallel_async_compute_limit(2);
-  opts.set_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(-1);
+  opts.set_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(0);
   opts.set_xla_gpu_experimental_scheduler_memory_fencing_slack_windows(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(false);
