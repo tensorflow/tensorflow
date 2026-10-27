@@ -234,7 +234,6 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
       const vector<INDEX_TYPE>& parent_output_index,
       INDEX_TYPE output_index_multiplier, INDEX_TYPE output_size,
       vector<INDEX_TYPE>* result) {
-    TF_RETURN_IF_ERROR(ValidateRowSplits(row_split));
     const Eigen::Index row_split_size = row_split.size();
     result->reserve(row_split(row_split_size - 1));
     for (Eigen::Index i = 0; i < row_split_size - 1; ++i) {
@@ -296,8 +295,8 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     INDEX_TYPE current_value_rowid = value_rowids(0);
 
     if (current_value_rowid < 0 ||
-        static_cast<size_t>(current_value_rowid) >=
-            parent_output_index.size()) {
+        current_value_rowid >=
+            static_cast<INDEX_TYPE>(parent_output_index.size())) {
       return absl::InvalidArgumentError(
           absl::StrCat("Got current_value_rowid=", current_value_rowid,
                        " which is not in [0, ", parent_output_index.size(),
@@ -363,8 +362,8 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
           return absl::InvalidArgumentError(
               "Row split tensor must not be empty.");
         }
-        if (static_cast<size_t>(row_partition_tensor.size() - 1) >
-            parent_output_index.size()) {
+        if (row_partition_tensor.size() - 1 >
+            static_cast<Eigen::Index>(parent_output_index.size())) {
           return absl::InvalidArgumentError(
               absl::StrCat("Row partition size is greater than output size: ",
                            row_partition_tensor.size() - 1, " > ",
@@ -429,15 +428,15 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         context, first_partition_tensor.NumElements() > 0,
         absl::InvalidArgumentError("Invalid first partition input. Tensor "
                                    "requires at least one element."));
-    OP_REQUIRES_OK(context, GetFirstDimensionSize(context, &first_dimension));
     // Validate ordering before shape inference computes adjacent differences.
     for (int dimension = 0; dimension < ragged_rank_; ++dimension) {
       if (GetRowPartitionTypeByDimension(dimension) ==
           RowPartitionType::ROW_SPLITS) {
-        OP_REQUIRES_OK(context,
-                       ValidateRowSplits(GetRowPartitionTensor(context, dimension)));
+        OP_REQUIRES_OK(context, ValidateRowSplits(
+                                    GetRowPartitionTensor(context, dimension)));
       }
     }
+    OP_REQUIRES_OK(context, GetFirstDimensionSize(context, &first_dimension));
     vector<INDEX_TYPE> output_size;
     OP_REQUIRES_OK(context,
                    CalculateOutputSize(first_dimension, context, &output_size));
