@@ -45,7 +45,7 @@ absl::Status RemapVectorToMap(
     absl::flat_hash_map<int64_t, int64_t>* old_id_to_new_id) {
   id_present->clear();
   id_present->resize(remapping.size(), false);
-  for (int i = 0; i < remapping.size(); ++i) {
+  for (int64_t i = 0; i < remapping.size(); ++i) {
     const int64_t old_id = remapping(i);
     if (old_id < 0) continue;
     (*id_present)[i] = true;
@@ -171,7 +171,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
     // bounds.
     int64_t min_old_row = -1;
     int64_t max_old_row = -1;
-    for (int i = 0; i < row_remapping.size(); ++i) {
+    for (int64_t i = 0; i < row_remapping.size(); ++i) {
       const int64_t old_row = row_remapping(i);
       if (old_row >= 0) {
         OP_REQUIRES(context, old_row < tensor_shape.dim_size(0),
@@ -194,7 +194,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
     std::vector<bool> col_id_present;
     if (remap_cols) {
       // Validate column remapping bounds.
-      for (int i = 0; i < col_remapping.size(); ++i) {
+      for (int64_t i = 0; i < col_remapping.size(); ++i) {
         const int64_t old_col = col_remapping(i);
         if (old_col >= 0) {
           OP_REQUIRES(context, old_col < tensor_shape.dim_size(1),
@@ -262,7 +262,8 @@ class LoadAndRemapMatrixOp : public OpKernel {
                                                  &loaded_tensor_t));
 
       // Iterates through the old loaded tensor slice row-by-row.
-      for (int row = 0; row < loaded_tensor_t.dim_size(0); ++row, ++row_index) {
+      for (int64_t row = 0; row < loaded_tensor_t.dim_size(0);
+           ++row, ++row_index) {
         if (row_index % 500000 == min_old_row) {
           LOG(INFO) << "Processing old row " << row_index;
         }
@@ -280,7 +281,7 @@ class LoadAndRemapMatrixOp : public OpKernel {
         // Copies over the row element-by-element, in case remapping is needed
         // along the column axis.
         const auto& loaded_tensor = loaded_tensor_t.matrix<float>();
-        for (int old_col = 0; old_col < loaded_tensor_t.dim_size(1);
+        for (int64_t old_col = 0; old_col < loaded_tensor_t.dim_size(1);
              ++old_col) {
           int64_t new_col = old_col;
           if (remap_cols) {
@@ -321,8 +322,8 @@ class LoadAndRemapMatrixOp : public OpKernel {
         context, context->input("initializing_values", &initializing_values_t));
     const auto initializing_values = initializing_values_t->flat<float>();
     int64_t initializing_values_index = 0;
-    for (int i = 0; i < num_rows_; ++i) {
-      for (int j = 0; j < num_cols_; ++j) {
+    for (int64_t i = 0; i < num_rows_; ++i) {
+      for (int64_t j = 0; j < num_cols_; ++j) {
         if (row_id_present[i] && (!remap_cols || col_id_present[j])) continue;
         OP_REQUIRES(
             context, initializing_values_index < initializing_values.size(),

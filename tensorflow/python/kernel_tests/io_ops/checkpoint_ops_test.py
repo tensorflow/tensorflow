@@ -338,9 +338,11 @@ class LoadAndRemapMatrixTest(test.TestCase):
             )
         )
 
+    # num_rows * num_cols overflows int64; must fail cleanly in
+    # TensorShape::BuildTensorShape instead of crashing.
     with self.cached_session(), self.assertRaisesRegex(
-        errors.ResourceExhaustedError,
-        'OOM when allocating tensor',
+        errors.InvalidArgumentError,
+        'Encountered overflow when multiplying',
     ):
       self.evaluate(
           gen_checkpoint_ops.load_and_remap_matrix(
@@ -350,7 +352,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
               col_remapping=[],
               initializing_values=[],
               num_rows=self.old_num_rows,
-              num_cols=10**12,
+              num_cols=2**62,
           )
       )
 
