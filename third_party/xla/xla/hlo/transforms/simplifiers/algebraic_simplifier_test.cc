@@ -13392,6 +13392,35 @@ TEST_F(AlgebraicSimplifierTest,
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       DoNotSimplifyRedundantBitcastWithControlSuccessor) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0)
+      p1 = s32[10] parameter(1)
+      p2 = s32[10] parameter(2)
+      b0 = s32[1, 10] bitcast(p0)
+      b1 = s32[1, 1, 10] bitcast(b0)
+      add0 = s32[10] add(p1, p2), control-predecessors={b1}
+      ROOT t = (s32[1, 1, 10], s32[10]) tuple(b1, add0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  // Folding b1 into b0 would drop the b1 -> add0 ordering edge.
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       AlgebraicSimplifier(default_options_).Run(m.get()));
+  EXPECT_FALSE(changed);
+  ASSERT_OK(verifier().Run(m.get()).status());
+  HloInstruction* b1 = FindInstruction(m.get(), "b1");
+  HloInstruction* add0 = FindInstruction(m.get(), "add0");
+  ASSERT_NE(b1, nullptr);
+  EXPECT_THAT(b1, GmockMatch(m::Bitcast(m::Bitcast(m::Parameter(0)))));
+  EXPECT_THAT(b1->control_successors(), ElementsAre(add0));
+  EXPECT_EQ(m->entry_computation()->root_instruction()->operand(0), b1);
+}
+
 TEST_F(AlgebraicSimplifierTest, SimplifyOptimizationBarrier) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m

@@ -363,24 +363,31 @@ HloAsyncInstruction* FindAsyncChainDataflow(
     }
     case HloOpcode::kParameter: {
       auto* comp = instr->parent();
-      if (comp != nullptr) {
-        auto callers = comp->caller_instructions(HloOpcode::kWhile);
-        if (callers.size() == 1) {
-          auto* while_op = callers.front();
-          if (while_op->while_body() == comp) {
-            HloAsyncInstruction* res = FindAsyncChainDataflow(
-                while_op->mutable_operand(0), is_target, index, visited);
-            if (res != nullptr) {
-              return res;
-            }
-            if (comp->root_instruction() != nullptr) {
-              HloAsyncInstruction* root_res = FindAsyncChainDataflow(
-                  comp->root_instruction(), is_target, index, visited);
-              if (root_res != nullptr) {
-                return root_res;
-              }
-            }
-          }
+      if (comp == nullptr) {
+        revert_step();
+        return nullptr;
+      }
+      // A body can have several while callers while a pass holds a widened
+      // clone of an enclosing loop next to the not yet removed original. The
+      // clones carry the same chain, so any caller resolves it.
+      bool is_while_body = false;
+      for (HloInstruction* while_op :
+           comp->caller_instructions(HloOpcode::kWhile)) {
+        if (while_op->while_body() != comp) {
+          continue;
+        }
+        is_while_body = true;
+        HloAsyncInstruction* res = FindAsyncChainDataflow(
+            while_op->mutable_operand(0), is_target, index, visited);
+        if (res != nullptr) {
+          return res;
+        }
+      }
+      if (is_while_body && comp->root_instruction() != nullptr) {
+        HloAsyncInstruction* root_res = FindAsyncChainDataflow(
+            comp->root_instruction(), is_target, index, visited);
+        if (root_res != nullptr) {
+          return root_res;
         }
       }
       revert_step();

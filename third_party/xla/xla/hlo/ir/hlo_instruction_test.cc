@@ -1023,6 +1023,59 @@ ENTRY main {
   EXPECT_EQ(cloned_done->async_chain_start(), cloned_start);
 }
 
+TEST_F(HloInstructionTest, AsyncChainStartThroughWhileBodyWithTwoCallers) {
+  // Passes can briefly leave a cloned while next to the original, so the body
+  // has two while callers. The chain must still resolve through either one.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+
+async_comp {
+  p0 = f32[2,4] parameter(0)
+  ROOT neg = f32[2,4] negate(p0)
+}
+
+body {
+  p = (s32[], ((f32[2,4]), f32[2,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  state = ((f32[2,4]), f32[2,4], s32[]) get-tuple-element(p), index=1
+  done = f32[2,4] call-done(state)
+  one = s32[] constant(1)
+  next = s32[] add(i, one)
+  ROOT t = (s32[], ((f32[2,4]), f32[2,4], s32[])) tuple(next, state)
+}
+
+cond {
+  p = (s32[], ((f32[2,4]), f32[2,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  n = s32[] constant(4)
+  ROOT lt = pred[] compare(i, n), direction=LT
+}
+
+ENTRY main {
+  p0 = f32[2,4] parameter(0)
+  zero = s32[] constant(0)
+  start = ((f32[2,4]), f32[2,4], s32[]) call-start(p0), to_apply=async_comp
+  init = (s32[], ((f32[2,4]), f32[2,4], s32[])) tuple(zero, start)
+  w0 = (s32[], ((f32[2,4]), f32[2,4], s32[])) while(init), condition=cond, body=body
+  w1 = (s32[], ((f32[2,4]), f32[2,4], s32[])) while(init), condition=cond, body=body
+  ROOT r = ((s32[], ((f32[2,4]), f32[2,4], s32[])), (s32[], ((f32[2,4]), f32[2,4], s32[]))) tuple(w0, w1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  auto* start =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "start"));
+  auto* done = Cast<HloAsyncInstruction>(FindInstruction(module.get(), "done"));
+  ASSERT_EQ(done->parent()->caller_instructions(HloOpcode::kWhile).size(), 2);
+
+  EXPECT_EQ(done->async_chain_start(), start);
+  ASSERT_NE(done->async_wrapped_instruction(), nullptr);
+  EXPECT_EQ(done->async_wrapped_instruction(),
+            start->async_wrapped_instruction());
+  EXPECT_FALSE(done->HasSideEffect());
+}
+
 TEST_F(HloInstructionTest, AsyncPredicates) {
   const char* const kHlo = R"(
 HloModule async_predicates_test
