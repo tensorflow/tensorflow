@@ -3965,7 +3965,6 @@ cc_library(
     hdrs = ["hlo_cse.h"],
     deps = [
         ":hlo_cse_constant_key",
-        ":hlo_domain_map",
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla/hlo/ir:hlo",
@@ -4034,48 +4033,6 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "hlo_domain_map",
-    srcs = ["hlo_domain_map.cc"],
-    hdrs = ["hlo_domain_map.h"],
-    deps = [
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "hlo_domain_verifier",
-    srcs = ["hlo_domain_verifier.cc"],
-    hdrs = ["hlo_domain_verifier.h"],
-    deps = [
-        ":hlo_domain_map",
-        "//xla:status_macros",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:status",
     ],
 )
 

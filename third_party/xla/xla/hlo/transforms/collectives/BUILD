@@ -291,7 +291,6 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:collective_combiner_utils",
-        "//xla/service:hlo_domain_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -365,7 +364,6 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:collective_combiner_utils",
-        "//xla/service:hlo_domain_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -641,7 +639,6 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_domain_map",
         "@com_google_absl//absl/log",
     ],
 )
@@ -855,7 +852,6 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/service:collective_combiner_utils",
         "//xla/service:collective_ops_utils",
-        "//xla/service:hlo_domain_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",

@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_cse_constant_key.h"
-#include "xla/service/hlo_domain_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
@@ -56,17 +55,6 @@ template <bool kIsLayoutSensitive>
 absl::StatusOr<bool> CombineConstants(
     HloComputation* computation,
     absl::AnyInvocable<bool(const HloInstruction*)> should_combine_constant) {
-  // Populating the domain map is somewhat expensive -- only do it if there are
-  // kDomain ops in the computation.  If there are no kDomain ops, the domain
-  // map is trivial, every op gets mapped to the same domain.
-  std::unique_ptr<HloDomainMap> domain_map;
-  if (absl::c_any_of(computation->instructions(),
-                     [&](const HloInstruction* instr) {
-                       return instr->opcode() == HloOpcode::kDomain;
-                     })) {
-    ABSL_ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
-  }
-
   // Map from the literal hash of a constant or the shape hash of an iota all
   // equivalent instructions. This avoids extreme quadratic behavior with many
   // scalar constants.
@@ -90,10 +78,8 @@ absl::StatusOr<bool> CombineConstants(
     HloInstruction* match = nullptr;
     if (auto* constant_inst = DynCast<HloConstantInstruction>(instruction)) {
       auto [it, did_insert] = constants.insert(
-          {CseConstantKey<kIsLayoutSensitive>{
-               constant_inst->literal(), constant_inst->shape(),
-               (domain_map != nullptr ? domain_map->GetDomainId(instruction)
-                                      : 0)},
+          {CseConstantKey<kIsLayoutSensitive>{constant_inst->literal(),
+                                              constant_inst->shape()},
            constant_inst});
       if (!did_insert) {
         match = it->second;
