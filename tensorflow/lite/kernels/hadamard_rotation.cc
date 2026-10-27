@@ -148,6 +148,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, input_tensor->type == kTfLiteFloat32 ||
                               input_tensor->type == kTfLiteInt32);
 
+  // Eval() always rotates `input_tensor` in place into `output` (it starts
+  // by memcpy'ing the whole input buffer into the output buffer), so the two
+  // tensors must always have identical size. Explicitly resize the output to
+  // match the input's dimensions, following the usual TFLite convention for
+  // same-shape ops (see e.g. activations.cc's GenericPrepare), instead of
+  // leaving output's shape/allocation independently determined by whatever
+  // the model declares for it.
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  TF_LITE_ENSURE_OK(
+      context,
+      context->ResizeTensor(context, output,
+                            TfLiteIntArrayCopy(input_tensor->dims)));
+
   return kTfLiteOk;
 }
 

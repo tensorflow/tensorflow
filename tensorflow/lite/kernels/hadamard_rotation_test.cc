@@ -167,6 +167,23 @@ TEST_P(HadamardRotationOpTest, RandomInputTest) {
 INSTANTIATE_TEST_SUITE_P(HadamardSizes, HadamardRotationOpTest,
                          Values(4, 16, 64));
 
+// Regression test for a missing size check in Prepare(): the output
+// tensor's shape/allocation used to be left as whatever the model declared
+// for it, independent of the input, even though Eval() always copies the
+// entire input buffer into the output buffer before rotating in place.
+// Deliberately declare an output shape that does not match the input, and
+// verify that Prepare() (invoked via AllocateTensors() inside
+// BuildInterpreter(), i.e. before Invoke() is ever called) now resizes the
+// output to match the input instead of leaving the mismatched declared
+// shape in place.
+TEST(HadamardRotationPrepareTest, OutputShapeMismatchIsCorrectedByPrepare) {
+  const int size = 4;
+  BaseHadamardRotationOpModel m(size, /*input=*/{TensorType_FLOAT32,
+                                                 {1, size * 2}},
+                                /*output=*/{TensorType_FLOAT32, {1, 1}});
+  EXPECT_THAT(m.GetOutputShape1(), ElementsAre(1, size * 2));
+}
+
 }  // namespace
 }  // namespace custom
 }  // namespace ops
