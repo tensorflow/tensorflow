@@ -60,6 +60,7 @@ tf_proto_library(
         "//xla:xla_data_proto",
         "//xla:xla_proto",
         "//xla/codegen/xtile:xtile_config_proto",
+        "//xla/stream_executor/gpu:blas_lt_matmul_algorithm_proto",
         "//xla/tsl/protobuf:dnn_proto",
     ],
 )
