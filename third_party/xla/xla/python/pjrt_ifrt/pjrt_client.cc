@@ -78,6 +78,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
@@ -2021,6 +2022,19 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(
     absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
     ArrayCopySemantics semantics) {
   return Unimplemented("ReshardArrays not available with pjrt-ifrt client.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::CopyArraySlices(
+    absl::Span<const ArrayRef> arrays,
+    absl::Span<const IndexDomain> index_domains) {
+  return Unimplemented("CopyArraySlices not available with pjrt-ifrt client.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::UpdateArraySlices(
+    absl::Span<ArrayRef> arrays, absl::Span<const ArrayRef> slices,
+    absl::Span<const Index> origins) {
+  return Unimplemented(
+      "UpdateArraySlices not available with pjrt-ifrt client.");
 }
 
 tsl::Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {

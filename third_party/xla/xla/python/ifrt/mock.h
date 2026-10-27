@@ -213,6 +213,14 @@ class MockClient : public RTTIExtends<MockClient, Client> {
               (absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
                ArrayCopySemantics semantics),
               (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, CopyArraySlices,
+              (absl::Span<const ArrayRef> arrays,
+               absl::Span<const IndexDomain> index_domains),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, UpdateArraySlices,
+              (absl::Span<ArrayRef> arrays, absl::Span<const ArrayRef> slices,
+               absl::Span<const Index> origins),
+              (final));
   MOCK_METHOD(tsl::Future<>, GetReadyFuture,
               (absl::Span<const ValueRef> values), (final));
   MOCK_METHOD(tsl::Future<>, DeleteValues, (absl::Span<ValueRef> arrays),
