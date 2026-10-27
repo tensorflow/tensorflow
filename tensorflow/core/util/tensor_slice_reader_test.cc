@@ -645,6 +645,48 @@ TEST(CheckpointVersionTest, BadConsumer) {
           ".  Please upgrade TensorFlow: this version is likely buggy."));
 }
 
+// Positive control: valid full slice checkpoint succeeds.
+TEST(TensorSliceReaderTest, GetTensorFullSliceControlSucceeds) {
+  const std::string fname =
+      io::JoinPath(testing::TmpDir(), "full_slice_checkpoint");
+  TensorSliceWriter writer(fname, CreateTableTensorSliceBuilder);
+  const float data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  TensorShape shape({2, 5});
+  TensorSlice full_slice(2);
+  TF_CHECK_OK(writer.Add("test", shape, full_slice, data));
+  TF_CHECK_OK(writer.Finish());
+
+  TensorSliceReader reader(fname, OpenTableTensorSliceReader);
+  TF_EXPECT_OK(reader.status());
+  std::unique_ptr<tensorflow::Tensor> tensor;
+  TF_ASSERT_OK(reader.GetTensor("test", &tensor));
+  ASSERT_NE(tensor, nullptr);
+  EXPECT_EQ(tensor->shape(), shape);
+  const float* tensor_data = reinterpret_cast<const float*>(tensor->data());
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_FLOAT_EQ(tensor_data[i], static_cast<float>(i));
+  }
+}
+
+TEST(TensorSliceReaderTest, GetTensorRejectsSinglePartialSlice) {
+  const std::string fname =
+      io::JoinPath(testing::TmpDir(), "single_partial_slice_checkpoint");
+  TensorSliceWriter writer(fname, CreateTableTensorSliceBuilder);
+  const float data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  TensorShape shape({4, 5});
+  TensorSlice partial_slice = TensorSlice::ParseOrDie("0,2:-");
+  TF_CHECK_OK(writer.Add("test", shape, partial_slice, data));
+  TF_CHECK_OK(writer.Finish());
+
+  TensorSliceReader reader(fname, OpenTableTensorSliceReader);
+  TF_EXPECT_OK(reader.status());
+  std::unique_ptr<tensorflow::Tensor> tensor;
+  absl::Status s = reader.GetTensor("test", &tensor);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.code(), error::UNIMPLEMENTED);
+  EXPECT_EQ(tensor, nullptr);
+}
+
 }  // namespace
 
 }  // namespace checkpoint

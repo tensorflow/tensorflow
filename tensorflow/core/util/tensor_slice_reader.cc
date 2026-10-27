@@ -257,8 +257,15 @@ absl::Status TensorSliceReader::GetTensor(
     slice = tss->Slices().begin()->second.slice;
   }
 
+  TensorShape slice_shape;
+  absl::Status s = slice.SliceTensorShape(shape, &slice_shape);
+  if (!s.ok()) return s;
+  if (!slice_shape.IsSameSize(shape)) {
+    return absl::UnimplementedError("Sliced checkpoints are not supported");
+  }
+
   std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor);
-  absl::Status s = tensorflow::Tensor::BuildTensor(type, shape, t.get());
+  s = tensorflow::Tensor::BuildTensor(type, shape, t.get());
   if (!s.ok()) return s;
 
   for (const auto d : shape.dim_sizes()) {
