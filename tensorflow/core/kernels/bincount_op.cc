@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/sparse_utils.h"
@@ -242,6 +243,12 @@ class BincountOp : public OpKernel {
                   absl::InvalidArgumentError(
                       absl::StrCat("size (", size, ") must be at most ",
                                    kMaxGpuHistogramBins, " on GPU")));
+      OP_REQUIRES(ctx,
+                  arr_t.NumElements() <= std::numeric_limits<int32_t>::max(),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Bincount on GPU supports at most ",
+                      std::numeric_limits<int32_t>::max(),
+                      " input values, got ", arr_t.NumElements())));
     }
 
     const Tensor& weights_t = ctx->input(2);
@@ -319,6 +326,14 @@ class DenseBincountOp : public OpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("size (", size, ") must be non-negative")));
 
+    if (std::is_same_v<Device, GPUDevice>) {
+      OP_REQUIRES(ctx,
+                  data.NumElements() <= std::numeric_limits<int32_t>::max(),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Bincount on GPU supports at most ",
+                                   std::numeric_limits<int32_t>::max(),
+                                   " input values, got ", data.NumElements())));
+    }
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
     if (data.dims() <= 1) {
@@ -346,8 +361,11 @@ class DenseBincountOp : public OpKernel {
           (weights.NumElements() == 0)
               ? weights.shaped<T, 2>(absl::InlinedVector<int64_t, 2UL>(2, 0))
               : weights.matrix<T>();
+      TensorShape output_shape;
       OP_REQUIRES_OK(
-          ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
+          ctx, TensorShape::BuildTensorShape(
+                   {num_rows, static_cast<int64_t>(size)}, &output_shape));
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
       auto out = out_t->matrix<T>();
       fill(ctx->eigen_device<Device>(), out_t->flat<T>());
       if (binary_output_) {
