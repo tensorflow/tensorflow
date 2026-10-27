@@ -650,8 +650,8 @@ absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
     };
   }
   CallInliner call_inliner(
-      /*single_call_site=*/false, /*update_domain=*/false,
-      /*composites_to_preserve=*/{}, std::move(override_policy));
+      /*single_call_site=*/false, /*composites_to_preserve=*/{},
+      std::move(override_policy));
   ABSL_RETURN_IF_ERROR(call_inliner.Run(module, execution_threads).status());
   ABSL_RETURN_IF_ERROR(TupleSimplifier().Run(module, execution_threads).status());
   ABSL_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());

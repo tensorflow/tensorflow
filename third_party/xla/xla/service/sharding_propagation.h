@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -129,13 +128,6 @@ class ShardingPropagation : public HloModulePass {
     }
   }
   absl::string_view name() const override { return "sharding-propagation"; }
-
-  // Function which can be used to apply a spatially partitioned sharding onto a
-  // given domain. It will apply the sharding into the exit edges of the domain
-  // and then rely on the rest of sharding propagation to ensure that the
-  // intermediate nodes get the correct sharding.
-  static absl::Status NormalizeDomain(const DomainMetadata::Domain& domain,
-                                      const DomainMetadata* metadata);
 
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,

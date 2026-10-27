@@ -21,16 +21,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/tsl/platform/status.h"
 
 namespace xla {
 
@@ -66,48 +61,8 @@ class ShardingMetadata : public DomainMetadata {
   static absl::StatusOr<const ShardingMetadata*> ToShardingMetadata(
       const DomainMetadata* metadata);
 
-  // Apply the specified domain metadata onto the specified domain. If no
-  // metadata is specified then apply sharding heuristics and normalize the
-  // instructions whose sharding deviates from the one which is inferred as to
-  // be the original one. Policy wise, HLO passes are allowed to create new
-  // unassigned instructions, but if they do create assigned ones, they have to
-  // conform to the ones around.
-  static absl::Status NormalizeShardingDomain(
-      const DomainMetadata::Domain& domain, const DomainMetadata* metadata);
-
  private:
   std::shared_ptr<const HloSharding> sharding_;
-};
-
-// If the sharding between root and instruction changes then returns a
-// ShardingMetadata based kDomain instruction what can be used to separate
-// operand and instruction.
-// Returns nullptr if there is no need for a domain separation.
-class ShardingDomainCreator {
- public:
-  HloInstruction* operator()(HloInstruction* instruction, HloInstruction* root,
-                             HloInstruction* operand);
-
- private:
-  // Map from instruction and user sharding to domain users to CSE identical
-  // domains.
-  struct DomainCseMapKey {
-    const HloInstruction* instruction;
-    std::shared_ptr<const HloSharding> sharding;
-
-    bool operator==(const DomainCseMapKey& other) const;
-
-    template <typename H>
-    friend H AbslHashValue(H h, const DomainCseMapKey& key) {
-      h = H::combine(std::move(h), key.instruction);
-      const bool has_sharding = key.sharding != nullptr;
-      if (has_sharding) {
-        h = H::combine(std::move(h), *key.sharding);
-      }
-      return H::combine(std::move(h), has_sharding);
-    }
-  };
-  absl::flat_hash_map<DomainCseMapKey, HloInstruction*> domain_cse_map_;
 };
 
 }  // namespace xla

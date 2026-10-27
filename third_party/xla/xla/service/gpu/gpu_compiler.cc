@@ -703,7 +703,7 @@ absl::Status RunPreSPMDPartitionerPasses(
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
   pre_spmd_pipeline.AddPass<FlattenCallGraph>();
   pre_spmd_pipeline.AddPass<CallInliner>(
-      /*single_call_site=*/false, /*update_domain=*/false,
+      /*single_call_site=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>());
 
   // Remove zero-sized HLO from the input so that other passes don't have to
@@ -895,7 +895,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<DynamicIndexSplitter>();
 
   pipeline.AddPass<CallInliner>(
-      /*single_call_site=*/false, /*update_domain=*/false,
+      /*single_call_site=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>());
 
   // Runs AsyncCollectiveCustomCallRewriter post-SPMD (pre-layout assignment)

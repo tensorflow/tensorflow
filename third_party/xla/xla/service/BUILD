@@ -922,7 +922,6 @@ cc_library(
     hdrs = ["call_inliner.h"],
     deps = [
         ":call_graph",
-        ":hlo_domain_isolator",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -4080,56 +4079,16 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "hlo_domain_isolator",
-    srcs = ["hlo_domain_isolator.cc"],
-    hdrs = ["hlo_domain_isolator.h"],
-    deps = [
-        ":hlo_domain_remover",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "@com_google_absl//absl/status:status_macros",
-        "@tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "hlo_domain_remover",
-    srcs = ["hlo_domain_remover.cc"],
-    hdrs = ["hlo_domain_remover.h"],
-    deps = [
-        ":hlo_domain_map",
-        ":hlo_domain_verifier",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/strings:string_view",
-        "@tsl//tsl/platform:status",
-    ],
-)
-
 xla_cc_test(
     name = "hlo_domain_test",
     srcs = ["hlo_domain_test.cc"],
     deps = [
-        ":call_inliner",
-        ":hlo_domain_isolator",
-        ":hlo_domain_remover",
-        ":hlo_domain_verifier",
-        ":sharding_propagation",
-        "//xla:debug_options_flags",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/log",
-        "@com_google_googletest//:gtest",
     ],
 )
 

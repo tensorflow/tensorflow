@@ -41,13 +41,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/transforms/propagate_call_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/hlo_domain_isolator.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
@@ -424,12 +422,6 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
             inlined_instructions.push_back(
                 inline_map_cur_call[inlined_instruction]);
           }
-        }
-      }
-      if (update_domain_) {
-        HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-        for (const auto& [call_inst, inlined_inst] : inline_map_cur_call) {
-          ABSL_RETURN_IF_ERROR(isolator.UpdateDomains(inlined_inst).status());
         }
       }
       if (inline_map.has_value()) {
