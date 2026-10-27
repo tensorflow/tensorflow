@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -39,11 +41,13 @@ namespace xla {
 // Only computations called by kCall instructions will be unflattened.
 class UnflattenCallGraph : public HloModulePass {
  public:
-  UnflattenCallGraph()
+  explicit UnflattenCallGraph(
+      HloPredicate should_unflatten_call = HloPredicateTrue)
       : print_options_(HloPrintOptions::Canonical()
                            .set_print_ids(false)
                            .set_print_metadata(true)
-                           .set_print_backend_config(true)) {}
+                           .set_print_backend_config(true)),
+        should_unflatten_call_(std::move(should_unflatten_call)) {}
 
   absl::string_view name() const override { return "unflatten-call-graph"; }
 
@@ -93,6 +97,7 @@ class UnflattenCallGraph : public HloModulePass {
           hash_to_canonical);
 
   HloPrintOptions print_options_;
+  HloPredicate should_unflatten_call_;
 };
 
 }  // namespace xla

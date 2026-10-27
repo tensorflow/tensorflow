@@ -56,7 +56,9 @@ UnflattenCallGraph::HloCalls UnflattenCallGraph::CollectHloCalls(
 
   for (const CallGraphNode& node : call_graph->nodes()) {
     for (const CallSite& callsite : node.callsites()) {
-      if (callsite.instruction()->opcode() == HloOpcode::kCall) {
+      if (callsite.instruction()->opcode() == HloOpcode::kCall &&
+          (!should_unflatten_call_ ||
+           should_unflatten_call_(callsite.instruction()))) {
         calls.call_sites.insert(callsite.instruction());
         HloComputation* target = callsite.instruction()->to_apply();
         if (calls.targets.insert(target).second) {
