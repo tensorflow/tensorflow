@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -324,6 +325,16 @@ TYPED_TEST(BroadcastToOpTest, BroadcastToEmtpyShapeTest) {
   m.SetInput({1, 2, 3, 4, 5, 6});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 0, 2}));
+}
+
+TEST(BroadcastToOpTest, Float16) {
+  BroadcastToOpModel<half> m({1, 2}, {2}, {3, 2});
+  m.SetInput({half(1.5f), half(-2.25f)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({half(1.5f), half(-2.25f), half(1.5f),
+                                half(-2.25f), half(1.5f), half(-2.25f)}));
 }
 
 #if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)

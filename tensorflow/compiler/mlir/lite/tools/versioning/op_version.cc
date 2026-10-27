@@ -1146,10 +1146,19 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
+    case BuiltinOperator_GREATER:
+      // Note: GREATER v3 is float16, unlike LESS/GREATER_EQUAL where v3 is
+      // int16.
+      if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SUM:
     case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_GREATER:
     case BuiltinOperator_LESS_EQUAL:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_DEPTH_TO_SPACE:
@@ -1195,6 +1204,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     // changed because of builtin op code shortage problem.
     // Quantized broadcast_to is version 3
     case BuiltinOperator_BROADCAST_TO:
+      if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
+        return 5;
+      }
       if (IsFloat8Type(op_sig.inputs.at(0).type)) {
         return 4;
       }

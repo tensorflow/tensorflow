@@ -1474,6 +1474,7 @@ cc_test(
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
     ],
 )

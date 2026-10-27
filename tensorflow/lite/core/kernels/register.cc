@@ -195,7 +195,7 @@ void BuiltinOpResolver::RegisterBuiltinOps() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_GREATER, Register_GREATER(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -333,7 +333,7 @@ void BuiltinOpResolver::RegisterBuiltinOps() {
   // of builtin op code shortage problem.
   AddBuiltin(BuiltinOperator_BROADCAST_TO, Register_BROADCAST_TO(),
              /* min_version = */ 2,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_CALL_ONCE,
              tflite::ops::builtin::Register_CALL_ONCE());
   AddBuiltin(BuiltinOperator_RFFT2D, Register_RFFT2D());

@@ -558,6 +558,13 @@ func.func @testGreaterEqualInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x
   func.return %0#0 : tensor<? x i1>
 }
 
+// CHECK-LABEL: testGreaterF16
+func.func @testGreaterF16(%arg0: tensor<512xf16>, %arg1: tensor<f16>) -> tensor<512xi1> {
+  // CHECK: tfl.greater(%arg0, %arg1)
+  %0 = "tfl.greater"(%arg0, %arg1) : (tensor<512xf16>, tensor<f16>) -> tensor<512xi1>
+  func.return %0 : tensor<512xi1>
+}
+
 // -----
 
 // CHECK-LABEL: testFloorDivI32
@@ -2992,6 +2999,13 @@ func.func @testBroadcastToWithI64ShapeTensor(tensor<?x?x?x?x?x?xf32>, tensor<8xi
   // CHECK: "tfl.broadcast_to"(%arg0, %arg1)
   %0 = "tfl.broadcast_to"(%arg0, %arg1): (tensor<?x?x?x?x?x?xf32>, tensor<8xi64>) -> tensor<?x?x?x?x?x?x?x?xf32>
   func.return %0 : tensor<?x?x?x?x?x?x?x?xf32>
+}
+
+// CHECK-LABEL: testBroadcastToF16
+func.func @testBroadcastToF16(%arg0: tensor<4096xf16>, %arg1: tensor<3xi64>) -> tensor<8x1x4096xf16> {
+  // CHECK: "tfl.broadcast_to"(%arg0, %arg1)
+  %0 = "tfl.broadcast_to"(%arg0, %arg1): (tensor<4096xf16>, tensor<3xi64>) -> tensor<8x1x4096xf16>
+  func.return %0 : tensor<8x1x4096xf16>
 }
 
 // -----
