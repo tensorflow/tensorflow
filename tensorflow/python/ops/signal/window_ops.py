@@ -72,7 +72,8 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
     window_length_const = tensor_util.constant_value(window_length)
     if window_length_const == 1:
       return array_ops.ones([1], dtype=dtype)
-    # tf.range does not support float16 so we work with float32 initially.
+    # Compute sample positions in float32 first so float16 windows do not
+    # lose integer precision or overflow before normalizing by safe_halflen.
     halflen_float = (
         math_ops.cast(window_length, dtype=dtypes.float32) - 1.0) / 2.0
     # Build the sample positions from `range(window_length)` so that there are

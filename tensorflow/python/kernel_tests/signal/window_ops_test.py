@@ -154,11 +154,12 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     def kaiser(length):
       return window_ops.kaiser_window(length, 8.0, tf_dtype)
 
-    self.assertAllEqual(
-        np.kaiser(0, 8.0),
-        self.evaluate(window_ops.kaiser_window(0, 8.0, tf_dtype)),
-    )
-    self.assertEqual((0,), self.evaluate(kaiser(0)).shape)
+    static_window = window_ops.kaiser_window(0, 8.0, tf_dtype)
+    self.assertEqual(tf_dtype, static_window.dtype)
+    self.assertAllEqual(np.kaiser(0, 8.0), self.evaluate(static_window))
+    dynamic_window = self.evaluate(kaiser(0))
+    self.assertEqual(tf_dtype.as_numpy_dtype, dynamic_window.dtype)
+    self.assertEqual((0,), dynamic_window.shape)
 
   def test_kaiser_window_dynamic_length_one_gradient(self):
     """The length-1 window must not leak NaNs into the gradient of beta."""
