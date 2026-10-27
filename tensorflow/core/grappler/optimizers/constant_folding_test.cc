@@ -4576,6 +4576,38 @@ TEST_F(ConstantFoldingTest,
   }
   {
     tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    Output size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+    auto static_array =
+        ops::TensorArray(scope.WithOpName("static"), size, DT_FLOAT,
+                         ops::TensorArray::DynamicSize(false));
+    auto static_sz = ops::TensorArraySize(
+        scope.WithOpName("static_sz"), static_array.handle, static_array.flow);
+
+    GrapplerItem item;
+    item.fetch = {"static_sz"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "size") {
+        Tensor int64_size(DT_INT64, TensorShape({}));
+        int64_size.scalar<int64_t>()() = 5;
+        auto* tensor_proto = (*node->mutable_attr())["value"].mutable_tensor();
+        int64_size.AsProtoTensorContent(tensor_proto);
+        (*node->mutable_attr())["dtype"].set_type(DT_INT64);
+      }
+    }
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "static_sz") {
+        EXPECT_EQ("TensorArraySizeV3", node.op());
+      }
+    }
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
     auto in1 = ops::Variable(scope.WithOpName("in1"), {3, 5}, DT_FLOAT);
     auto begin = ops::Const(scope.WithOpName("begin"), {0, 0}, {2});
     auto size = ops::Const(scope.WithOpName("size"), {-1, -1}, {2});

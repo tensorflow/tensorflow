@@ -490,7 +490,8 @@ absl::Status ConstantFolding::MaterializeShapes(
         if (!value.FromProto(raw_val)) {
           continue;
         }
-        if (value.NumElements() != 1 || value.flat<int32_t>()(0) == 0) {
+        if (value.NumElements() != 1 || value.dtype() != DT_INT32 ||
+            value.flat<int32_t>()(0) == 0) {
           continue;
         }
 
@@ -2304,7 +2305,7 @@ absl::Status ConstantFolding::SimplifySlice(const GraphProperties& properties,
       GetTensorFromConstNode(node->input(1), &begin) &&
       GetTensorFromConstNode(node->input(2), &size)) {
     const auto& input = properties.GetInputProperties(node->name())[0];
-    if (begin.dims() != 1 || size.dims() != 1 ||
+    if (input.shape().unknown_rank() || begin.dims() != 1 || size.dims() != 1 ||
         begin.NumElements() != input.shape().dim_size() ||
         size.NumElements() != input.shape().dim_size() ||
         (begin.dtype() != DT_INT32 && begin.dtype() != DT_INT64) ||
