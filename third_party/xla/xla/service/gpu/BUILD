@@ -1756,6 +1756,7 @@ cc_library(
     tags = ["gpu"],
     deps = [
         ":alias_info",
+        ":backend_configs_cc",
         ":compile_module_to_llvm_ir",
         ":conv_layout_normalization",
         ":cublas_cudnn",
@@ -1775,6 +1776,7 @@ cc_library(
         ":hlo_fusion_stats",
         ":ir_emission_utils",
         ":kernel_reuse_cache",
+        ":kernel_reuse_cache_proto_cc",
         ":matmul_utils",
         ":metrics",
         ":mlir_context_pool",
@@ -2013,6 +2015,7 @@ cc_library(
         "//xla/service:while_loop_simplifier",
         "//xla/service:xla_transform",
         "//xla/service/cpu:cpu_aot_compilation_result",
+        "//xla/service/cpu:executable_proto_cc",
         "//xla/service/debug:unstable_reduction_detector",
         "//xla/service/gpu/autotuning:autotuner_cache",
         "//xla/service/gpu/autotuning:config_assigner_pass",
