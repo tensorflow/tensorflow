@@ -733,8 +733,7 @@ ENTRY e {
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
 }
 
-// TODO(b/417172838): support dynamic slice op.
-TEST_F(GemmFusionTest, DISABLED_DynamicSliceIsFused) {
+TEST_F(GemmFusionTestV2, DynamicSliceIsFused) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -750,13 +749,34 @@ ENTRY e {
 })"));
 
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
-                                    m::Parameter(), m::Constant()))));
+  // The scalar constant offset is fused into the computation.
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter()))));
 }
 
-// TODO(b/417172838): support dynamic slice op.
-TEST_F(GemmFusionTest, DISABLED_DynamicSlicesAreFusedEvenIfTheyShareIndices) {
+TEST_F(GemmFusionTestV2, DynamicSliceOfLargeOperandIsFused) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  dot_lhs = bf16[1024,4096] parameter(0)
+  weights = bf16[32,4096,4096] parameter(1)
+  layer = s32[] parameter(2)
+  c0 = s32[] constant(0)
+  dynamic_slice = bf16[1,4096,4096] dynamic-slice(weights, layer, c0, c0),
+                  dynamic_slice_sizes={1,4096,4096}
+  reshape = bf16[4096,4096] reshape(dynamic_slice)
+  ROOT dot = bf16[1024,4096] dot(dot_lhs, reshape),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter()))));
+}
+
+TEST_F(GemmFusionTestV2, DynamicSlicesAreFusedEvenIfTheyShareIndices) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -773,19 +793,15 @@ ENTRY e {
 })"));
 
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
-  // TODO(b/339810582): Don't duplicate scalar parameters to dot fusions,
-  // because they are never tiled differently.
+  // Shared operands, including the scalar offsets, are not duplicated.
   // TODO(b/339814210): Don't count scalar parameters towards dot fusion
   // parameter limit.
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter(),
-                            m::Parameter(), m::Parameter(), m::Parameter(),
-                            m::Parameter(), m::Parameter()))));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Parameter(), m::Parameter()))));
 }
 
-// TODO(b/417172838): support dynamic slice op.
-TEST_F(GemmFusionTest, DISABLED_DoNotFuseDynamicSliceOfNonMajorFragments) {
+TEST_F(GemmFusionTestV2, DynamicSliceOfNonMajorFragmentsIsFused) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -799,13 +815,12 @@ ENTRY e {
   ROOT dot = f32[4,4]{1,0} dot(dot_lhs, reshape),
              lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })"));
-  // FusionDecision "Unsupported dynamic slice on non-major-most dimension."
-  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter()))));
 }
 
-// TODO(b/417172838): support dynamic slice op.
-TEST_F(GemmFusionTest,
-       DISABLED_CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
+TEST_F(GemmFusionTestV2, CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -819,9 +834,9 @@ ENTRY e {
            lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  // The scalar constant offsets are fused into the computation.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
-                                    m::Constant(), m::Constant()))));
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter()))));
 }
 
 TEST_F(GemmFusionTest, SliceToDegenerateIsSkipped) {
