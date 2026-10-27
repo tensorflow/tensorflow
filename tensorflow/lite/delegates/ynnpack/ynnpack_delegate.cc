@@ -61,10 +61,14 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
   TfLiteStatus BuildSubgraphAndRuntime(TfLiteContext* context) {
-    if (runtime_) {
-      ynn_delete_runtime(runtime_);
-      runtime_ = nullptr;
-    }
+    // The constants folded by the previous runtime (e.g. the packed weights)
+    // are only reused by the new subgraph's constant folding while that
+    // runtime is alive, so keep it until the new subgraph is optimized.
+    // Rebuilds happen at runtime, e.g. when an MoE node switches between
+    // bucketing tokens on the host and gathering weights.
+    std::unique_ptr<ynn_runtime, decltype(&ynn_delete_runtime)> old_runtime(
+        runtime_, ynn_delete_runtime);
+    runtime_ = nullptr;
     if (subgraph_) {
       ynn_delete_subgraph(subgraph_);
       subgraph_ = nullptr;
@@ -74,19 +78,25 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     outputs_.clear();
     dummy_inputs_.clear();
     input_shapes_.clear();
+    moe_dispatches_.clear();
 
-    int num_dummy_inputs = 0;
+    int num_extra_external_inputs = 0;
     for (const auto& node : nodes_info_) {
       if (node.composite_op_type == CompositeOpType::kRuntimeBmm &&
           node.inputs.size() >= 3) {
-        num_dummy_inputs += 2;
+        num_extra_external_inputs += 2;
       } else if (node.composite_op_type == CompositeOpType::kSdpa) {
-        num_dummy_inputs += 4;
+        num_extra_external_inputs += 4;
+      } else if (node.composite_op_type == CompositeOpType::kMoe &&
+                 ShouldDispatchMoeOnHost(context, node, input_tensor_indices_,
+                                         options_)) {
+        num_extra_external_inputs += kNumMoeDispatchExternalValues;
       }
     }
 
     int external_value_ids = input_tensor_indices_.size() +
-                             output_tensor_indices_.size() + num_dummy_inputs;
+                             output_tensor_indices_.size() +
+                             num_extra_external_inputs;
     uint32_t subgraph_flags = 0;
     if (options_.fast_math) {
       subgraph_flags |= YNN_FLAG_FAST_MATH;
@@ -259,8 +269,14 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_STATUS(DefineDequantizeNode(context, subgraph_,
                                                    tensor_to_value_id_, node));
       } else if (node.composite_op_type == CompositeOpType::kMoe) {
-        TF_LITE_ENSURE_STATUS(
-            DefineMoeNode(context, subgraph_, tensor_to_value_id_, node));
+        MoeDispatch* dispatch = nullptr;
+        if (ShouldDispatchMoeOnHost(context, node, input_tensor_indices_,
+                                    options_)) {
+          dispatch = &moe_dispatches_.emplace_back();
+        }
+        TF_LITE_ENSURE_STATUS(DefineMoeNode(context, subgraph_,
+                                            tensor_to_value_id_,
+                                            next_external_id, dispatch, node));
       } else {
         TF_LITE_ENSURE_MSG(context, false, "Unsupported op: %d",
                            node.builtin_code);
@@ -269,8 +285,12 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
 
     ynn_threadpool_t ynn_tp = reinterpret_cast<ynn_threadpool_t>(thread_pool_);
     TF_LITE_ENSURE_YNN_STATUS(ynn_optimize_subgraph(subgraph_, ynn_tp, 0));
-    TF_LITE_ENSURE_YNN_STATUS(
-        ynn_create_runtime(subgraph_, ynn_tp, 0, &runtime_));
+    old_runtime.reset();
+    const ynn_status create_status =
+        ynn_create_runtime(subgraph_, ynn_tp, 0, &runtime_);
+    ynn_delete_subgraph(subgraph_);
+    subgraph_ = nullptr;
+    TF_LITE_ENSURE_YNN_STATUS(create_status);
 
     return kTfLiteOk;
   }
@@ -352,6 +372,26 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       }
     }
 
+    if (!rebuild_required && !options_.static_shape) {
+      // Whether an MoE node buckets its tokens by expert depends on the
+      // number of tokens, so a resize can change the lowering a node should
+      // use. Not rebuilding would still be correct (both lowerings compute
+      // the same result); the rebuild is for performance. Only the number of
+      // bucketing nodes is compared, so one node switching on while another
+      // switches off is not detected.
+      size_t num_moe_dispatches = 0;
+      for (const auto& node_info : nodes_info_) {
+        if (node_info.composite_op_type == CompositeOpType::kMoe &&
+            ShouldDispatchMoeOnHost(context, node_info, input_tensor_indices_,
+                                    options_)) {
+          ++num_moe_dispatches;
+        }
+      }
+      if (num_moe_dispatches != moe_dispatches_.size()) {
+        rebuild_required = true;
+      }
+    }
+
     if (rebuild_required) {
       TF_LITE_ENSURE_STATUS(BuildSubgraphAndRuntime(context));
     }
@@ -368,6 +408,10 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
     for (const auto& dummy : dummy_inputs_) {
       TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
           runtime_, dummy.dummy_val_id, dummy.rank, dummy.full_dims));
+    }
+
+    for (const MoeDispatch& dispatch : moe_dispatches_) {
+      TF_LITE_ENSURE_STATUS(SetMoeDispatchShapes(context, runtime_, dispatch));
     }
 
     TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
@@ -394,6 +438,12 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   }
 
   TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override {
+    bool reshape_required = false;
+    for (MoeDispatch& dispatch : moe_dispatches_) {
+      TF_LITE_ENSURE_STATUS(
+          SetupMoeDispatch(context, runtime_, dispatch, &reshape_required));
+    }
+
     if (!dummy_inputs_.empty()) {
       // Set shape for dummy inputs based on param_tensor data at each
       // invocation.
@@ -427,7 +477,14 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         TF_LITE_ENSURE_YNN_STATUS(ynn_set_external_value_shape(
             runtime_, dummy.dummy_val_id, dummy.rank, dims));
       }
+      reshape_required = true;
+    }
+    if (reshape_required) {
       TF_LITE_ENSURE_YNN_STATUS(ynn_reshape_runtime(runtime_));
+    }
+
+    for (MoeDispatch& dispatch : moe_dispatches_) {
+      TF_LITE_ENSURE_STATUS(SetMoeDispatchData(context, runtime_, dispatch));
     }
 
     // Set input buffers.
@@ -467,6 +524,7 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
   std::vector<std::vector<size_t>> input_shapes_;
   TensorToValueIdMap tensor_to_value_id_;
   std::vector<DummyInputInfo> dummy_inputs_;
+  std::vector<MoeDispatch> moe_dispatches_;
 };
 
 class YNNPackDelegate : public SimpleDelegateInterface {
@@ -622,6 +680,7 @@ TfLiteYNNPackDelegateOptions TfLiteYNNPackDelegateOptionsDefault() {
   options.consistent_arithmetic = false;
   options.no_excess_precision = false;
   options.enable_blockwise_quantization = false;
+  options.dispatch_moe_on_host = false;
   return options;
 }
 
