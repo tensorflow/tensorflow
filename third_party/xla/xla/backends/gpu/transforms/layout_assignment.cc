@@ -189,6 +189,14 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     }
     return kAllNHWC;
   }
+  if (gpu_version.IsOneAPI()) {
+    // For oneAPI, NHWC layout is currently only supported for 2D convolutions;
+    // use NCHW (NCDHW) for other spatial dimensions.
+    if (num_spatial_dimensions == 2) {
+      return kAllNHWC;
+    }
+    return kAllNCHW;
+  }
 
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
 
@@ -785,7 +793,8 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       *new_shape.mutable_tuple_shapes(1) =
           called_computation->ComputeProgramShape().result();
       ABSL_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
-                                           /*mandatory=*/true, /*dfs=*/true,
+                                           /*mandatory=*/true,
+                                           /*dfs=*/true,
                                            /*allow_alias=*/true));
     } else if (instruction->opcode() == HloOpcode::kAsyncDone) {
       HloComputation* called_computation =
@@ -799,7 +808,8 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       Shape new_shape = called_computation->root_instruction()->shape();
 
       ABSL_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
-                                           /*mandatory=*/true, /*dfs=*/true,
+                                           /*mandatory=*/true,
+                                           /*dfs=*/true,
                                            /*allow_alias=*/true));
     }
   }

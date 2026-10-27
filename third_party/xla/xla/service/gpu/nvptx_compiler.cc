@@ -227,7 +227,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
       hlo_module->config().debug_options(),
-      /*is_rocm=*/false);
+      /*is_non_cuda_platform=*/false);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 

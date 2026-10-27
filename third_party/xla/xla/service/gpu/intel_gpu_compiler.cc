@@ -16,12 +16,25 @@ limitations under the License.
 #include "xla/service/gpu/intel_gpu_compiler.h"
 
 #include "absl/status/status_macros.h"
+#include "xla/backends/gpu/transforms/algebraic_simplifier.h"
+#include "xla/backends/gpu/transforms/conv_padding_legalization.h"
+#include "xla/backends/gpu/transforms/conv_rewriter.h"
+#include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/backends/gpu/transforms/sycl_gemm_workspace_pass.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/convert_mover.h"
+#include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
+#include "xla/hlo/transforms/simplifiers/reshape_mover.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/llvm_gpu_backend/spirv_backend.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 
 namespace xla {
@@ -36,7 +49,61 @@ absl::Status IntelGpuCompiler::OptimizeHloConvolutionCanonicalization(
     se::dnn::VersionInfo dnn_version,
     const se::SemanticVersion& toolkit_version,
     CompilationStats* compilation_stats) {
-  // Return OkStatus as a stub.
+  HloPassPipeline pipeline("conv_canonicalization", compilation_stats);
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
+      /*layout_sensitive=*/false,
+      /*allow_mixed_precision=*/false);
+
+  if (!hlo_module->config()
+           .debug_options()
+           .xla_gpu_experimental_disable_binary_libraries()) {
+    pipeline.AddPass<ConvRewriter>(gpu_version);
+    pipeline.AddPass<CudnnFusedConvRewriter>(gpu_version, dnn_version,
+                                             toolkit_version);
+    // ConvPaddingLegalization converts base dilation into explicit padding
+    // operations, which is required for backends that don't support base
+    // dilation natively.
+    pipeline.AddPass<ConvPaddingLegalization>();
+  }
+
+  // ConvPaddingLegalization leaves behind unnecessary tuple/get-tuple-element
+  // pairs that TupleSimplifier fixes.
+  pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<TupleSimplifier>();
+
+  // ConvRewriter introduces reshapes and transposes that can be eliminated
+  // using AlgebraicSimplifier. We run algsimp to a fixed point.
+  AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
+      AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
+      hlo_module->config().debug_options(),
+      /*is_non_cuda_platform=*/true);
+  pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
+                                                       gpu_version);
+
+  // Run ReshapeMover to a fixed point. Include algsimp because ReshapeMover
+  // relies on it.
+  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+          "reshape_mover_after_conv_canonicalization")] {
+    ReshapeMoverOptions reshape_mover_options;
+    reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
+    pipeline.AddPass<ReshapeMover>(reshape_mover_options);
+    pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
+  }();
+
+  // ConvertMover and ReshapeMover fight with each other, so we run ConvertMover
+  // and algsimp to a fixed point.
+  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+          "simplify_after_conv_canonicalization")] {
+    pipeline.AddPass<ConvertMover>();
+    pipeline.AddPass<GpuAlgebraicSimplifier>(algsimp_options, gpu_version);
+  }();
+
+  pipeline.AddPass<HloConstantFolding>();
+  ABSL_RETURN_IF_ERROR(
+      pipeline
+          .Run(hlo_module,
+               /*execution_threads=*/{HloInstruction::kMainExecutionThread})
+          .status());
   return absl::OkStatus();
 }
 

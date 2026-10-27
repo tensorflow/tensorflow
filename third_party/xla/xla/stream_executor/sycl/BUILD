@@ -799,3 +799,21 @@ sycl_library(
     ],
     alwayslink = True,
 )
+
+xla_test(
+    name = "conv_sycl_test",
+    srcs = ["conv_sycl_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

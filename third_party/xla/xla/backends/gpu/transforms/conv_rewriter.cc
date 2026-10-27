@@ -58,11 +58,16 @@ namespace gpu {
 
 namespace {
 
-absl::Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc,
-                        const se::dnn::VersionInfo dnn_version) {
-  auto valid_shape = [conv, &cc,
-                      &dnn_version](const Shape& shape) -> absl::Status {
+absl::StatusOr<bool> CheckTypes(HloInstruction* conv,
+                                const se::GpuComputeCapability cc,
+                                const se::dnn::VersionInfo dnn_version) {
+  auto valid_shape =
+      [conv, &cc, &dnn_version](const Shape& shape) -> absl::StatusOr<bool> {
     PrimitiveType type = shape.element_type();
+    // oneDNN integer convolutions are not supported yet.
+    if (cc.IsOneAPI() && primitive_util::IsIntegralType(type)) {
+      return false;
+    }
     if (!primitive_util::IsFloatingPointType(type) &&
         !primitive_util::IsIntegralType(type)) {
       // Among integral types, only S8 is supported. But CudnnFusedConvRewriter
@@ -84,7 +89,7 @@ absl::Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc,
       if (!cc.IsCuda()) {
         return Unimplemented(
             "FP8 convolutions are only supported on CUDA GPUs, but got "
-            "FP8 convolution on ROCm GPU: %s",
+            "FP8 convolution on ROCm/Intel GPU: %s",
             conv->ToString());
       }
       if (dnn_version >= se::dnn::VersionInfo{9, 8, 0}) {
@@ -103,13 +108,17 @@ absl::Status CheckTypes(HloInstruction* conv, const se::GpuComputeCapability cc,
             cc.ToString(), conv->ToString());
       }
     }
-    return absl::OkStatus();
+    return true;
   };
 
-  ABSL_RETURN_IF_ERROR(valid_shape(conv->shape()));
-  ABSL_RETURN_IF_ERROR(valid_shape(conv->operand(0)->shape()));
-  ABSL_RETURN_IF_ERROR(valid_shape(conv->operand(1)->shape()));
-  return absl::OkStatus();
+  for (const Shape* shape : {&conv->shape(), &conv->operand(0)->shape(),
+                             &conv->operand(1)->shape()}) {
+    ABSL_ASSIGN_OR_RETURN(bool is_supported, valid_shape(*shape));
+    if (!is_supported) {
+      return false;
+    }
+  }
+  return true;
 }
 
 using ConvolutionMatch = std::optional<
@@ -196,6 +205,15 @@ bool CanImplementAsGpuForwardConv(HloInstruction* conv) {
     return false;
   }
   return true;
+}
+
+bool CanImplementAsGpuForwardConv(HloInstruction* conv,
+                                  const se::GpuComputeCapability& cc) {
+  // oneDNN only supports cross correlation (no reversal).
+  if (cc.IsOneAPI() && window_util::HasWindowReversal(conv->window())) {
+    return false;
+  }
+  return CanImplementAsGpuForwardConv(conv);
 }
 
 // Try to match a backward filter pattern that contains "conv".
@@ -665,7 +683,10 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 static absl::StatusOr<HloInstruction*> CreateCustomCallHelper(
     HloInstruction* conv, const se::GpuComputeCapability& cc,
     const se::dnn::VersionInfo& dnn_version) {
-  ABSL_RETURN_IF_ERROR(CheckTypes(conv, cc, dnn_version));
+  ABSL_ASSIGN_OR_RETURN(bool types_supported, CheckTypes(conv, cc, dnn_version));
+  if (!types_supported) {
+    return nullptr;
+  }
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
@@ -683,7 +704,7 @@ static absl::StatusOr<HloInstruction*> CreateCustomCallHelper(
   }
 
   // If all else fails, try a forward convolution.
-  if (CanImplementAsGpuForwardConv(conv)) {
+  if (CanImplementAsGpuForwardConv(conv, cc)) {
     if (conv->batch_group_count() > 1) {
       conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
     }

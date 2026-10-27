@@ -30,6 +30,9 @@ class ConvolutionLayoutNormalizationTest : public HloPjRtGpuTestBase {
   bool IsRocm() {
     return device_description().gpu_compute_capability().IsRocm();
   }
+  bool IsOneApi() {
+    return device_description().gpu_compute_capability().IsOneAPI();
+  }
 };
 
 TEST_F(ConvolutionLayoutNormalizationTest, BackwardInput) {
@@ -71,7 +74,8 @@ ENTRY %TestComputation {
 }
 )";
 
-  if (!IsRocm() && GetCudaComputeCapability().IsAtLeastHopper()) {
+  if ((!IsRocm() && GetCudaComputeCapability().IsAtLeastHopper()) ||
+      IsOneApi()) {
     MatchOptimizedHlo(hlo, R"(
 // CHECK: (f32[2,1,378,128]{3,2,1,0}, u8[{{[0-9]+}}]{0}) custom-call([[param_0_0:%[^ ]+]], [[bitcast_5_1:%[^ ]+]]), window={size=1x5 pad=0_0x2_2}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
     )");
