@@ -111,6 +111,35 @@ bool AllScansHaveDimSizeAtMost(const HloInstruction& instr, int64_t max_size) {
   return true;
 }
 
+bool IsCheapProducerOp(const HloInstruction& instr) {
+  switch (instr.opcode()) {
+    case HloOpcode::kConstant:
+    case HloOpcode::kParameter:
+      return ShapeUtil::IsEffectiveScalar(instr.shape());
+    case HloOpcode::kIota:
+      return true;
+    case HloOpcode::kBroadcast:
+      return ShapeUtil::IsEffectiveScalar(instr.operand(0)->shape());
+    case HloOpcode::kFusion:
+      return absl::c_all_of(
+          instr.fused_instructions_computation()->instructions(),
+          [](const HloInstruction* fused) {
+            return IsCheapProducerOp(*fused);
+          });
+    default:
+      return instr.IsElementwise();
+  }
+}
+
+// Returns true if `producer` computes its output from only scalar operands,
+// scalar constants, iotas, broadcasts of scalars, and elementwise ops.
+bool IsCheapNoMemoryProducer(const HloInstruction& producer) {
+  return IsCheapProducerOp(producer) &&
+         absl::c_all_of(producer.operands(), [](const HloInstruction* operand) {
+           return ShapeUtil::IsEffectiveScalar(operand->shape());
+         });
+}
+
 // Bitcasts are fusible if they don't change the bit width.
 bool IsFusibleBitcast(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kBitcast &&
@@ -919,7 +948,8 @@ class PriorityFusionQueue {
         return FusionDecision::Forbid(
             "producer fusion into a non-Triton scan fusion is not supported");
       }
-      if (!AllScansHaveDimSizeAtMost(*consumer, kMaxRowLocalScanDimSize)) {
+      if (!AllScansHaveDimSizeAtMost(*consumer, kMaxRowLocalScanDimSize) &&
+          !IsCheapNoMemoryProducer(*producer)) {
         return FusionDecision::Forbid(
             absl::StrCat("producer fusion into scan fusions with a scan "
                          "dimension > ",
