@@ -45,21 +45,7 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-// Struct to hold all call instructions and called computations in a module.
-struct HloCalls {
-  // All callsites are guaranteed to be `kCall` instructions.
-  absl::flat_hash_set<HloInstruction*> call_sites;
-  absl::flat_hash_set<HloComputation*> targets;
-};
-
-// Iterates through all instructions in the module's computations
-// and collects all `HloInstruction`s with opcode `kCall` into 'call_sites'
-// and all unique computations targeted by these calls into 'targets'.
-// It only retains call sites and targets that could potentially be duplicates
-// by filtering out computations with unique properties (instruction count,
-// parameter count).
-HloCalls CollectHloCalls(
+UnflattenCallGraph::HloCalls UnflattenCallGraph::CollectHloCalls(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph =
@@ -73,9 +59,10 @@ HloCalls CollectHloCalls(
       if (callsite.instruction()->opcode() == HloOpcode::kCall) {
         calls.call_sites.insert(callsite.instruction());
         HloComputation* target = callsite.instruction()->to_apply();
-        calls.targets.insert(target);
-        ++count_num_instructions[target->instruction_count()];
-        ++count_num_params[target->num_parameters()];
+        if (calls.targets.insert(target).second) {
+          ++count_num_instructions[target->instruction_count()];
+          ++count_num_params[target->num_parameters()];
+        }
       }
     }
   }
@@ -96,7 +83,6 @@ HloCalls CollectHloCalls(
   }
   return calls;
 }
-}  // namespace
 
 absl::StatusOr<std::vector<UnflattenCallGraph::ComputationHashResult>>
 UnflattenCallGraph::HashComputations(

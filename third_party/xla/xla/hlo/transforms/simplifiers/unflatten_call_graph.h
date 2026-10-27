@@ -48,6 +48,23 @@ class UnflattenCallGraph : public HloModulePass {
   absl::string_view name() const override { return "unflatten-call-graph"; }
 
  protected:
+  // Struct to hold all call instructions and called computations in a module.
+  struct HloCalls {
+    // All callsites are guaranteed to be `kCall` instructions.
+    absl::flat_hash_set<HloInstruction*> call_sites;
+    absl::flat_hash_set<HloComputation*> targets;
+  };
+
+  // Iterates through all instructions in the module's computations and
+  // collects all `HloInstruction`s with opcode `kCall` into `call_sites` and
+  // all unique computations targeted by these calls into `targets`. Only
+  // retains call sites and targets that could potentially be duplicates by
+  // filtering out computations with unique properties (instruction count,
+  // parameter count).
+  HloCalls CollectHloCalls(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
   // Find called computations that are identical and replace them with calls to
   // a single computation. Returns true if the module was changed.
   absl::StatusOr<bool> RunImpl(

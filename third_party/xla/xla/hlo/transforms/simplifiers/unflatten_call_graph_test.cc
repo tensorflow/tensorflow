@@ -35,6 +35,13 @@ namespace {
 
 class UnflattenCallGraphTest : public HloHardwareIndependentTestBase {
  protected:
+  class TestableUnflattenCallGraph : public UnflattenCallGraph {
+   public:
+    using UnflattenCallGraph::CollectHloCalls;
+    using UnflattenCallGraph::HloCalls;
+    using UnflattenCallGraph::UnflattenCallGraph;
+  };
+
   absl::StatusOr<bool> RunUnflattenCallGraph(HloModule* module) {
     UnflattenCallGraph unflatten;
     return unflatten.Run(module);
@@ -501,6 +508,100 @@ HloModule OnlyDeduplicateCalledComputations
   EXPECT_EQ(map1->to_apply(), called_computation_1);
   auto map2 = FindInstruction(module.get(), "map2");
   EXPECT_EQ(map2->to_apply(), called_computation_2);
+}
+
+// Verify that CollectHloCalls counts unique target computations rather than
+// call sites when pruning computations with unique instruction count or
+// parameter count. A computation already shared across multiple call sites
+// must be pruned if no other target computation shares both its instruction
+// count and parameter count, and must not inflate the histogram counts for
+// unrelated single-call computations.
+TEST_F(UnflattenCallGraphTest, SharedCalleeCountedOnceInSizeHistogramPruning) {
+  const std::string hlo_string = R"(
+  HloModule SharedCalleeCountedOnce
+
+  // 2 instructions, 1 parameter; called twice.
+  %SharedCallee (x: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    ROOT %neg = f32[] negate(%x)
+  }
+
+  // 2 instructions, 2 parameters; called once. Shares instruction_count=2 with
+  // %SharedCallee, but has a unique num_parameters=2 across target
+  // computations.
+  %SameInstCountUniqueParamCount (x: f32[], y: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    %y = f32[] parameter(1)
+  }
+
+  // 3 instructions, 3 parameters; called once.
+  %UniqueInstAndParamCount (x: f32[], y: f32[], z: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    %y = f32[] parameter(1)
+    ROOT %z = f32[] parameter(2)
+  }
+
+  ENTRY %main (a: f32[]) -> (f32[], f32[], f32[], f32[]) {
+    %a = f32[] parameter(0)
+    %shared_call.0 = f32[] call(%a), to_apply=%SharedCallee
+    %shared_call.1 = f32[] call(%a), to_apply=%SharedCallee
+    %other_call.0 = f32[] call(%a, %a), to_apply=%SameInstCountUniqueParamCount
+    %other_call.1 = f32[] call(%a, %a, %a), to_apply=%UniqueInstAndParamCount
+    ROOT %t = (f32[], f32[], f32[], f32[]) tuple(
+        %shared_call.0, %shared_call.1, %other_call.0, %other_call.1)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TestableUnflattenCallGraph unflatten;
+  TestableUnflattenCallGraph::HloCalls calls =
+      unflatten.CollectHloCalls(module.get(), /*execution_threads=*/{});
+  EXPECT_TRUE(calls.targets.empty());
+  EXPECT_TRUE(calls.call_sites.empty());
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, unflatten.Run(module.get()));
+  EXPECT_FALSE(changed);
+
+  // When another computation has the same instruction and parameter counts as
+  // %SharedCallee, both computations and all three call sites are retained and
+  // merged.
+  const std::string merge_hlo_string = R"(
+  HloModule SharedCalleeMergedWithDuplicate
+
+  %SharedCallee (x: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    ROOT %neg = f32[] negate(%x)
+  }
+
+  %DuplicateOfShared (x: f32[]) -> f32[] {
+    %x = f32[] parameter(0)
+    ROOT %neg = f32[] negate(%x)
+  }
+
+  ENTRY %main (a: f32[]) -> (f32[], f32[], f32[]) {
+    %a = f32[] parameter(0)
+    %shared_call.0 = f32[] call(%a), to_apply=%SharedCallee
+    %shared_call.1 = f32[] call(%a), to_apply=%SharedCallee
+    %dup_call = f32[] call(%a), to_apply=%DuplicateOfShared
+    ROOT %t = (f32[], f32[], f32[]) tuple(
+        %shared_call.0, %shared_call.1, %dup_call)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> merge_module,
+                          ParseAndReturnVerifiedModule(merge_hlo_string));
+  TestableUnflattenCallGraph::HloCalls merge_calls =
+      unflatten.CollectHloCalls(merge_module.get(), /*execution_threads=*/{});
+  EXPECT_EQ(merge_calls.targets.size(), 2);
+  EXPECT_EQ(merge_calls.call_sites.size(), 3);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool merge_changed,
+                          unflatten.Run(merge_module.get()));
+  EXPECT_TRUE(merge_changed);
+  EXPECT_EQ(merge_module->computation_count(), 2);
+  EXPECT_EQ(FindInstruction(merge_module.get(), "shared_call.0")->to_apply(),
+            FindInstruction(merge_module.get(), "dup_call")->to_apply());
 }
 
 }  // namespace
