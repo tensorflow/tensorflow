@@ -84,6 +84,10 @@ message AutotuneResult {
   message GemmKey {
     int64 algorithm = 1;
     int64 autotune_workspace_size = 2;
+    // hipBLASLt only: if an FP8-output GEMM has no algorithm, run it with a
+    // wider output and a loop fusion that converts it to FP8. `algorithm`
+    // indexes the algorithms of the wider GEMM.
+    bool unfuse_fp8_output = 3;
   }
 
   // Legacy and unused in new data; superseded by AlgorithmProto.
