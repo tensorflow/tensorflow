@@ -143,7 +143,7 @@ class ThreadPool {
   // instance provided by the caller. Caller retains ownership of
   // `user_threadpool` and must ensure its lifetime is longer than the
   // ThreadPool instance.
-  explicit ThreadPool(thread::ThreadPoolInterface* user_threadpool);
+  explicit ThreadPool(ThreadPoolInterface* user_threadpool);
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
