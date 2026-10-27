@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_reservation.h"
@@ -51,23 +52,30 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   // Returns an error if any device does not support cuStreamWriteValue64
   // (compute capability < 7.0).
   //
+  // `host_allocator` serves MemorySpace::kHost; see DeviceAddressVmmAllocator.
+  //
   // Precondition: all entries in `devices` have distinct device ordinals.
   static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
       const Platform* platform, absl::Span<const DeviceConfig> devices,
-      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr);
 
   // Creates an allocator supporting multiple devices, computing the pa_budget
   // for each device by querying DeviceMemoryUsage and applying memory_fraction.
   // If gpu_system_memory_size is set, it overrides the memory_fraction budget.
+  //
+  // `host_allocator` serves MemorySpace::kHost; see DeviceAddressVmmAllocator.
   //
   // Precondition: all entries in `devices` have distinct device ordinals.
   static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
       const Platform* platform, double memory_fraction,
       std::optional<int64_t> gpu_system_memory_size,
       absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
-      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr);
 
-  // Creates an allocator for a single device.
+  // Creates an allocator for a single device, with no host allocator:
+  // MemorySpace::kHost requests fail.
   //
   // Returns an error if the device does not support cuStreamWriteValue64
   // (compute capability < 7.0).
@@ -107,7 +115,8 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
 
   explicit CudaDeviceAddressVmmAllocator(
       const Platform* platform,
-      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr);
 };
 
 }  // namespace stream_executor::gpu

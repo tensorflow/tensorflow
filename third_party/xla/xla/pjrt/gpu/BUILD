@@ -222,6 +222,7 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_address_vmm_allocator",
+        "//xla/stream_executor:device_address_vmm_allocator_factory",  # buildcleaner: keep
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:device_interconnect_resource",
@@ -276,12 +277,8 @@ cc_library(
     ]) + if_cuda([
         # keep sorted
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/stream_executor/cuda:cuda_device_address_vmm_allocator",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm([
-        # keep sorted
-        "//xla/stream_executor/rocm:rocm_device_address_vmm_allocator",
     ]) + if_sycl([
         # keep sorted
         "//xla/backends/gpu/runtime:thunk_executor",
@@ -577,10 +574,11 @@ xla_test(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:gpu_memory_space_assignment",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tests:literal_test_util",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:env",

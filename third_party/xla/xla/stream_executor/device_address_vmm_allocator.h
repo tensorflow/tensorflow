@@ -122,10 +122,10 @@ namespace stream_executor {
 // real unmap, then the allocator releases any owned reservation and raw
 // physical memory.
 //
-// When a host allocator is set (see the constructor), MemorySpace::kHost
-// allocations are not VMM allocations: Allocate() serves them from it without
-// charging the PA budget, Map() rejects them, and Deallocate() returns them to
-// it immediately instead of deferring them. AllowsAsynchronousDeallocation() is
+// MemorySpace::kHost allocations are not VMM allocations. When a host allocator
+// is set (see the constructor), Allocate() serves them from it without charging
+// the PA budget, Map() rejects them, and Deallocate() returns them to it
+// immediately instead of deferring them. AllowsAsynchronousDeallocation() is
 // therefore true only if the host allocator's is, and such a host allocator
 // must order reuse on the same per-device stream as this allocator, as the BFC
 // path does with the compute stream.
@@ -166,15 +166,18 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // Creates a platform-appropriate VMM allocator for the given devices,
   // dispatching to the CUDA or ROCm implementation based on the build platform.
   // The pa_budget for each device is computed from `memory_fraction` (or
-  // overridden by `gpu_system_memory_size` when set). Returns an error on
-  // platforms without a VMM implementation.
+  // overridden by `gpu_system_memory_size` when set).
+  // `reclaim_exempt_memory_space` and `host_allocator` are passed to the
+  // constructor. Returns an error on platforms without a VMM implementation.
   //
-  // Defined in device_address_vmm_allocator_factory.cc so this base library
-  // does not depend on the platform-specific subclasses.
+  // Defined in device_address_vmm_allocator_factory_{cuda,rocm,stub}.cc so this
+  // base library does not depend on the platform-specific subclasses.
   static absl::StatusOr<std::unique_ptr<DeviceAddressVmmAllocator>> Create(
       const Platform* platform, double memory_fraction,
       std::optional<int64_t> gpu_system_memory_size,
-      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices);
+      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr);
 
   ~DeviceAddressVmmAllocator() override;
 
@@ -523,7 +526,7 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   // MemorySpace::kHost instead of device VMM memory, which the CPU cannot
   // access; see the class comment. It is called without this allocator's locks
   // held, so it must be thread-safe. Without it, MemorySpace::kHost requests
-  // are served from device VMM memory like any other memory space.
+  // fail.
   explicit DeviceAddressVmmAllocator(
       const Platform* platform,
       std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,

@@ -474,8 +474,7 @@ GpuExecutableVaRemapAllocator::GpuExecutableVaRemapAllocator(
           // Collected by the base class.
           return;
         }
-        // Must stay host memory; remapping would back it with VMM device
-        // memory.
+        // Not VMM physical memory: Map() and mapped Allocate() reject it.
         if (allocation.color() == Layout::kHostMemorySpace) {
           return;
         }

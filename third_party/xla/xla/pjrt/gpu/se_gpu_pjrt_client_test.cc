@@ -4015,6 +4015,9 @@ TEST_F(VmmTest, VmmAllocatorCanBeSet) {
                 raw_client->allocator()),
             nullptr);
 #endif
+  // The pinned host allocator keeps this true; otherwise every execution would
+  // block the host until the GPU is done.
+  EXPECT_TRUE(raw_client->allocator()->AllowsAsynchronousDeallocation());
 }
 
 TEST_F(VmmTest, VmmAllocatorE2ETest) {
@@ -4053,6 +4056,68 @@ ENTRY main (a: f32[], b: f32[]) -> f32[] {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
                           results[0][0]->ToLiteral().Await());
   EXPECT_EQ(literal->Get<float>({}), 3.0f);
+}
+
+TEST_F(VmmTest, PinnedHostBufferIsHostAccessible) {
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  options.allowed_devices = {0};
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_memory_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  std::vector<float> data{12.0, 34.0, 56.0, 78.0};
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr, pinned_memory_space,
+          /*device_layout=*/nullptr));
+  ASSERT_OK(buffer->GetReadyFuture().Await());
+  ASSERT_TRUE(buffer->IsOnCpu());
+
+  // A pinned_host buffer served from device VMM memory has no CPU mapping, so
+  // a regression faults here instead of failing the expectations.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                       buffer->AcquireExternalReference());
+  const float* host_ptr =
+      reinterpret_cast<const float*>(ref->OpaqueDeviceMemoryDataPointer());
+  EXPECT_THAT(host_ptr[0], FloatEq(12.0));
+  EXPECT_THAT(host_ptr[3], FloatEq(78.0));
+}
+
+TEST_F(VmmTest, ExecutePinnedHostOutputIsHostAccessible) {
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  options.allowed_devices = {0};
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       CompileExecutable(kD2HProgram, *client));
+
+  // Outputs are dropped between runs, so later runs may reuse host memory.
+  for (int run = 0; run < 3; ++run) {
+    ASSERT_OK_AND_ASSIGN(
+        auto result, executable->Execute({{input.get()}}, ExecuteOptions()));
+    ASSERT_EQ(result[0].size(), 1);
+    PjRtBuffer* output = result[0][0].get();
+    ASSERT_EQ(output->memory_space()->kind(), "pinned_host");
+    ASSERT_TRUE(output->IsOnCpu());
+    ASSERT_OK(output->GetReadyFuture().Await());
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                         output->AcquireExternalReference());
+    const int32_t* host_ptr =
+        reinterpret_cast<const int32_t*>(ref->OpaqueDeviceMemoryDataPointer());
+    EXPECT_THAT(absl::MakeConstSpan(host_ptr, 4), ElementsAre(1, 2, 3, 4))
+        << "run " << run;
+  }
 }
 
 GpuClientOptions VmmClientOptions() {
