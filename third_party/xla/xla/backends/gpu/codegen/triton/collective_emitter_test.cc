@@ -1202,11 +1202,11 @@ TEST_F(CollectiveBlockLevelConfigTest,
 }
 
 // Shape from `all-gather.170` on 16 ranks.
-// Total output is ~10.5 MB -> 64 blocks (4 blocks per peer).
+// Total output is ~10.5 MB -> 128 blocks (8 blocks per peer).
 // Each output is tiled independently:
-// - Output 0 (`f32[32,8,10240]`, per-peer `[2,8,10240]`): 4 tiles of
-//   `[1,4,16384]`.
-// - Output 3 (`pred[32]`, per-peer `[2]`): 2 tiles of `[1]` (padded to 4 by
+// - Output 0 (`f32[32,8,10240]`, per-peer `[2,8,10240]`): 8 tiles of
+//   `[1,2,16384]`.
+// - Output 3 (`pred[32]`, per-peer `[2]`): 2 tiles of `[1]` (padded to 8 by
 //   the schedule).
 TEST_F(CollectiveBlockLevelConfigTest,
        VariadicAllGatherBlockLevelConfigSmallOutputsDoNotLimitGrid) {
@@ -1235,23 +1235,23 @@ TEST_F(CollectiveBlockLevelConfigTest,
       BlockLevelFusionConfig block_level_config,
       GetCollectiveBlockLevelFusionConfig(topology_16, fusion));
   ASSERT_EQ(block_level_config.output_tiles_size(), 6);
-  // 4 tiles per peer: 128 elements per thread with 512 threads, the same as
+  // 8 tiles per peer: 64 elements per thread with 512 threads, the same as
   // the single-operand all-gather of f32[2,8,10240].
   EXPECT_THAT(block_level_config.output_tiles(0).sizes(),
-              ElementsAre(1, 4, 16384));
-  EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1, 64));
-  EXPECT_THAT(block_level_config.output_tiles(2).sizes(), ElementsAre(1, 128));
-  // 2 tiles per peer each; padded to 4 by the schedule.
+              ElementsAre(1, 2, 16384));
+  EXPECT_THAT(block_level_config.output_tiles(1).sizes(), ElementsAre(1, 32));
+  EXPECT_THAT(block_level_config.output_tiles(2).sizes(), ElementsAre(1, 64));
+  // 2 tiles per peer each; padded to 8 by the schedule.
   EXPECT_THAT(block_level_config.output_tiles(3).sizes(), ElementsAre(1));
   EXPECT_THAT(block_level_config.output_tiles(4).sizes(), ElementsAre(1));
-  // 4 tiles per peer.
-  EXPECT_THAT(block_level_config.output_tiles(5).sizes(), ElementsAre(2, 2));
+  // 8 tiles per peer.
+  EXPECT_THAT(block_level_config.output_tiles(5).sizes(), ElementsAre(1, 2));
 
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
   std::optional<TritonFusion::LaunchConfig> launch_config =
       TritonFusion::GetLaunchConfig(&analysis);
   ASSERT_TRUE(launch_config.has_value());
-  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 64);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 128);
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
 }
 
