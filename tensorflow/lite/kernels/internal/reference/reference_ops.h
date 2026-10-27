@@ -965,7 +965,14 @@ inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
   const int segment_flat_size =
       MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
 
-  memset(output_data, 0, sizeof(T) * output_shape.FlatSize());
+  // FlatSize() does not check for integer overflow. If a maliciously crafted
+  // model gives `output_shape` dimensions whose product overflows int, the
+  // unchecked result would be reinterpreted as a huge size_t length below.
+  // Use the checked variant and skip the zero-fill on overflow instead.
+  size_t output_flat_size = 0;
+  if (output_shape.CheckedFlatSize(output_flat_size)) {
+    memset(output_data, 0, sizeof(T) * output_flat_size);
+  }
 
   for (int i = 0; i < input_shape.Dims(0); i++) {
     int output_index = segment_ids_data[i];

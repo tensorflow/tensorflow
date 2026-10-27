@@ -36,7 +36,14 @@ constexpr int kOutputTensor = 0;
 inline void MaxUnpooling(const RuntimeShape& input_shape,
                          const float* input_data, const int32_t* indices_data,
                          const RuntimeShape& output_shape, float* output_data) {
-  std::memset(output_data, 0, output_shape.FlatSize() * sizeof(float));
+  // FlatSize() does not check for integer overflow. If a maliciously crafted
+  // model gives `output_shape` dimensions whose product overflows int, the
+  // unchecked result would be reinterpreted as a huge size_t length below.
+  // Use the checked variant and skip the zero-fill on overflow instead.
+  size_t output_flat_size = 0;
+  if (output_shape.CheckedFlatSize(output_flat_size)) {
+    std::memset(output_data, 0, output_flat_size * sizeof(float));
+  }
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int depth = MatchingDim(input_shape, 3, output_shape, 3);
   const int batch_stride =

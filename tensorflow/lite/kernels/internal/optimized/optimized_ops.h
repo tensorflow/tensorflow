@@ -4664,7 +4664,14 @@ inline void PadImageStyleMemset(const tflite::PadParams& op_params,
   // Empty tensors may have null data pointers. If an empty spatial dimension
   // is padded into a non-empty output, every output element is padding.
   if (input_height == 0 || input_width == 0) {
-    TypedMemset<T>(output_data, pad_value, ext_output_shape.FlatSize());
+    // FlatSize() does not check for integer overflow; TypedMemset() takes an
+    // unsigned size_t count, so an overflowed (negative) FlatSize() would be
+    // reinterpreted as a huge length. Use the checked variant and skip the
+    // fill rather than pass an attacker-controlled length to memset.
+    size_t ext_output_flat_size = 0;
+    if (ext_output_shape.CheckedFlatSize(ext_output_flat_size)) {
+      TypedMemset<T>(output_data, pad_value, ext_output_flat_size);
+    }
   } else {
     for (int i = 0; i < batch; ++i) {
       // For each image in the batch, apply the top padding, then iterate
@@ -4950,7 +4957,18 @@ void TransposeIm2col(const ConvParams& params, uint8_t zero_byte,
   // the output pixels. We therefore must initialize the im2col array to zero.
   // This is potentially inefficient because we subsequently overwrite bytes
   // set here. However, in practice memset is very fast and costs negligible.
-  memset(im2col_data, zero_byte, im2col_shape.FlatSize() * sizeof(T));
+  //
+  // FlatSize() does not check for integer overflow. If a maliciously crafted
+  // model causes row_shape/col_shape (and therefore im2col_shape) to overflow
+  // int, the unchecked product below would silently become a corrupted (and
+  // once multiplied by sizeof(T) and promoted to size_t, potentially huge)
+  // length argument to memset. Compute it via the checked variant instead and
+  // skip the (already meaningless) zero-fill if it overflows, rather than
+  // handing memset() an attacker-controlled length.
+  size_t im2col_flat_size = 0;
+  if (im2col_shape.CheckedFlatSize(im2col_flat_size)) {
+    memset(im2col_data, zero_byte, im2col_flat_size * sizeof(T));
+  }
 
   // Loop through the output batches
   for (int batch = 0; batch < batches; ++batch) {

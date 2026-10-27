@@ -179,20 +179,35 @@ void update_slice(int current_dim, int max_dim, const int32_t* output_stride,
   }
 }
 
-void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
-                        const int64_t* indices_data, size_t element_size,
-                        TfLiteTensor* output) {
+TfLiteStatus DynamicUpdateSlice(const TfLiteTensor* input,
+                                const TfLiteTensor* update,
+                                const int64_t* indices_data,
+                                size_t element_size, TfLiteTensor* output) {
   const auto& input_shape = GetTensorShape(input);
   const auto& update_shape = GetTensorShape(update);
   const char* update_data = reinterpret_cast<const char*>(update->data.data);
   char* output_data = reinterpret_cast<char*>(output->data.data);
 
   const int input_dims = input_shape.DimensionsCount();
+
+  // FlatSize() does not check for integer overflow, which a maliciously
+  // crafted model could trigger with large enough dimensions (the product
+  // of dimensions can exceed INT_MAX while each individual dimension looks
+  // innocuous). Use the checked variant so an overflow is rejected here
+  // instead of silently producing a corrupted (and possibly huge, once
+  // reinterpreted as an unsigned length) byte count below.
+  size_t input_flat_size = 0;
+  size_t update_flat_size = 0;
+  if (!input_shape.CheckedFlatSize(input_flat_size) ||
+      !update_shape.CheckedFlatSize(update_flat_size)) {
+    return kTfLiteError;
+  }
+
   // If the update is the entirety of the output, then simply copy it and
   // return.
-  if (input_shape.FlatSize() == update_shape.FlatSize()) {
-    memcpy(output_data, update_data, input_shape.FlatSize() * element_size);
-    return;
+  if (input_flat_size == update_flat_size) {
+    memcpy(output_data, update_data, input_flat_size * element_size);
+    return kTfLiteOk;
   }
   // Computes the effective slice indices.
   // The clamped indices are guaranteed to >= 0 since update is less than or
@@ -207,8 +222,8 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
   }
 
   // Update tensor has no elements. Skip.
-  if (update_shape.FlatSize() == 0) {
-    return;
+  if (update_flat_size == 0) {
+    return kTfLiteOk;
   }
 
   int output_stride[kMaxRank];
@@ -224,6 +239,7 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
   update_slice(0, input_dims, output_stride, update_stride,
                update_shape.DimsData(), update_data,
                clamped_start_indices.DimsData(), element_size, output_data);
+  return kTfLiteOk;
 }
 
 void update_slice_int4(int current_dim, int max_dim,
@@ -361,7 +377,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                          operand->type);
       return kTfLiteError;
     }
-    DynamicUpdateSlice(operand, update, indices_data_i64, element_size, output);
+    TF_LITE_ENSURE_MSG(
+        context,
+        DynamicUpdateSlice(operand, update, indices_data_i64, element_size,
+                           output) == kTfLiteOk,
+        "DynamicUpdateSlice: number of elements overflowed.");
   }
 
   return kTfLiteOk;
