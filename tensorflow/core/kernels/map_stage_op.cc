@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -352,20 +353,21 @@ class StagingMap : public ResourceBase {
         current_bytes_(0) {}
 
   absl::Status put(KeyType* key, const Tensor* indices, OptionalTuple* tuple) {
-    tensorflow::mutex_lock lock(mu_);
-
-    // Sanity check the indices
-    TF_RETURN_IF_ERROR(check_index_ordering(*indices));
-
     // Every index must have a corresponding value. Otherwise the loops in
     // put_incomplete() read (*tuple)[i] past the end of the tuple, and the
     // complete path stores a tuple shorter than dtypes_ that later gets()
     // and pops() then index out of bounds.
-    if (indices->NumElements() != static_cast<int64_t>(tuple->size())) {
+    if (indices->NumElements() != 0 &&
+        indices->NumElements() != static_cast<int64_t>(tuple->size())) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Number of indices '", indices->NumElements(),
           "' does not match number of values '", tuple->size(), "'."));
     }
+
+    // Sanity check the indices
+    TF_RETURN_IF_ERROR(check_index_ordering(*indices));
+
+    tensorflow::mutex_lock lock(mu_);
 
     // Handle incomplete inserts
     if (indices->NumElements() != dtypes_.size()) {
