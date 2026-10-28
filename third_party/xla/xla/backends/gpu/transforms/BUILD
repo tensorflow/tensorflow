@@ -1887,6 +1887,33 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "erase_xla_late_frontend_attributes",
+    srcs = ["erase_xla_late_frontend_attributes.cc"],
+    hdrs = ["erase_xla_late_frontend_attributes.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/spmd/shardy:constants",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "erase_xla_late_frontend_attributes_test",
+    srcs = ["erase_xla_late_frontend_attributes_test.cc"],
+    deps = [
+        ":erase_xla_late_frontend_attributes",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "explicit_collectives_group_async_wrapper",
     srcs = ["explicit_collectives_group_async_wrapper.cc"],
     hdrs = ["explicit_collectives_group_async_wrapper.h"],

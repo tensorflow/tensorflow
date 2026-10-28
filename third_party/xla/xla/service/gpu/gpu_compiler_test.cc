@@ -3563,5 +3563,130 @@ TEST_F(GpuCompilerTest, DevicelessCollectiveFusionWithTopologyFlag) {
               absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(GpuCompilerTest, InlinesXlaLateCallsOnGpu) {
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule InlinesXlaLateCallsOnGpu
+
+%callee (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  ROOT %mul = f32[] multiply(%x, %x)
+}
+
+ENTRY %main (a: f32[]) -> f32[] {
+  %a = f32[] parameter(0)
+  ROOT %call = f32[] call(%a), to_apply=%callee, frontend_attributes={inlineable="xla_late"}
+}
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  for (const HloComputation* computation :
+       optimized_module->MakeNonfusionComputations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      EXPECT_NE(instruction->opcode(), HloOpcode::kCall);
+      EXPECT_FALSE(
+          instruction->has_frontend_attributes() &&
+          instruction->frontend_attributes().map().contains("inlineable"));
+    }
+  }
+}
+
+TEST_F(GpuCompilerTest, InlinesSingleShardShardyManualComputationOnGpu) {
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule InlinesSingleShardShardyManualComputationOnGpu
+
+%xla.sdy.manual_computation_body (x: f32[4]) -> f32[4] {
+  %x = f32[4] parameter(0)
+  ROOT %mul = f32[4] multiply(%x, %x)
+}
+
+ENTRY %main (a: f32[4]) -> f32[4] {
+  %a = f32[4] parameter(0)
+  %global_to_local = f32[4] custom-call(%a), custom_call_target="xla.sdy.GlobalToLocalShape", custom_call_has_side_effect=true
+  %call = f32[4] call(%global_to_local), to_apply=%xla.sdy.manual_computation_body, frontend_attributes={inlineable="xla_late"}
+  ROOT %local_to_global = f32[4] custom-call(%call), custom_call_target="xla.sdy.LocalToGlobalShape", custom_call_has_side_effect=true
+}
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_use_shardy_partitioner(true);
+  config.set_num_partitions(1);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  for (const HloComputation* computation :
+       optimized_module->MakeNonfusionComputations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      EXPECT_NE(instruction->opcode(), HloOpcode::kCall);
+      EXPECT_FALSE(
+          instruction->has_frontend_attributes() &&
+          instruction->frontend_attributes().map().contains("inlineable"));
+    }
+  }
+}
+
+TEST_F(GpuCompilerTest, InlinesMultiShardShardyManualComputationOnGpu) {
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule InlinesMultiShardShardyManualComputationOnGpu, frontend_attributes={xla.sdy.meshes={mesh = #sdy.mesh<["x"=2]>}}
+
+%xla.sdy.manual_computation_body (x: f32[2]) -> f32[2] {
+  %x = f32[2] parameter(0)
+  ROOT %mul = f32[2] multiply(%x, %x)
+}
+
+ENTRY %main (a: f32[4]) -> f32[4] {
+  %a = f32[4] parameter(0), frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"x\"}]>"}
+  %global_to_local = f32[2] custom-call(%a), custom_call_target="xla.sdy.GlobalToLocalShape", custom_call_has_side_effect=true, frontend_attributes={xla.sdy.in_shardings="#sdy.sharding_per_value<[<@mesh, [{\"x\"}]>]>", xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>"}
+  %call = f32[2] call(%global_to_local), to_apply=%xla.sdy.manual_computation_body, frontend_attributes={inlineable="xla_late"}
+  ROOT %local_to_global = f32[4] custom-call(%call), custom_call_target="xla.sdy.LocalToGlobalShape", custom_call_has_side_effect=true, frontend_attributes={xla.sdy.manual_axes="#sdy<manual_axes{\"x\"}>", xla.sdy.out_shardings="#sdy.sharding_per_value<[<@mesh, [{\"x\"}]>]>"}
+}
+  )hlo";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_use_spmd_partitioning(true);
+  config.set_use_shardy_partitioner(true);
+  config.set_num_partitions(2);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GpuTopology(/*platform_version=*/"", /*num_partitions=*/2,
+                  /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/1,
+                  gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  for (const HloComputation* computation :
+       optimized_module->MakeNonfusionComputations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      EXPECT_NE(instruction->opcode(), HloOpcode::kCall);
+      EXPECT_FALSE(
+          instruction->has_frontend_attributes() &&
+          instruction->frontend_attributes().map().contains("inlineable"));
+    }
+  }
+}
+
 }  // namespace gpu
 }  // namespace xla

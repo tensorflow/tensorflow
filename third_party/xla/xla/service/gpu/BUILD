@@ -1832,6 +1832,7 @@ cc_library(
         "//xla/backends/gpu/transforms:dynamic_slice_copy",
         "//xla/backends/gpu/transforms:dynamic_slice_copy_fusion_async_wrapper",
         "//xla/backends/gpu/transforms:dynamic_slice_fusion_rewriter_v2",
+        "//xla/backends/gpu/transforms:erase_xla_late_frontend_attributes",
         "//xla/backends/gpu/transforms:estimate_cub_scan_scratch_size",
         "//xla/backends/gpu/transforms:estimate_cub_sort_scratch_size",
         "//xla/backends/gpu/transforms:explicit_collectives_group_async_wrapper",
