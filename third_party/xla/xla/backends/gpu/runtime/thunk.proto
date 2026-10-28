@@ -34,6 +34,7 @@ import "xla/service/gpu/gpu_norm_runner.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/service/hlo.proto";
 import "xla/service/shaped_slice.proto";
+import "xla/stream_executor/gpu/blas_lt_matmul_algorithm.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
 import "xla/stream_executor/gpu/tma_metadata.proto";
 import "xla/stream_executor/launch_dim.proto";
@@ -309,6 +310,8 @@ message CublasLtMatmulThunkProto {
   optional ShapedSliceProto d_amax = 15;
   optional ShapedSliceProto workspace = 16;
   int64 autotune_workspace_size = 17;
+  optional stream_executor.gpu.BlasLtMatmulAlgorithmProto algorithm_proto = 20;
+  bool require_exact_algorithm = 21;
 }
 
 message NormThunkProto {

@@ -1387,6 +1387,11 @@ message DebugOptions {
   // `NotFound` error will be returned.
   optional bool xla_gpu_require_complete_aot_autotune_results = 284;
 
+  // If true, require that BlasLt matmuls execute the exact algorithm described
+  // by `BlasLtMatmulAlgorithmProto` rather than falling back to the heuristic
+  // algorithm index.
+  optional bool xla_gpu_require_exact_blas_lt_algorithm = 563;
+
   // If true, XLA runtime will retain exclusive ownership of the GPU when
   // running a module, so there are no multi-thread conflicts on the GPU. This
   // can enable some optimizations that reduce the cost of resource management,
@@ -1983,7 +1988,7 @@ message DebugOptions {
   // (ScanRewriterTriton).
   optional bool xla_gpu_experimental_enable_triton_scan = 562;
 
-  // Next id: 563
+  // Next id: 564
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
