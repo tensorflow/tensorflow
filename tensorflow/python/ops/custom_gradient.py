@@ -556,14 +556,13 @@ def _graph_mode_decorator(f, args, kwargs):
       name,
       None)
 
-  original_tensors = all_tensors
+  original_tensors = [ops.convert_to_tensor(x) for x in all_tensors]
   graph = ops.get_default_graph()
   with graph.gradient_override_map({"IdentityN": name}):
     with graph._override_gradient_function(  # pylint: disable=protected-access
         {"IdentityN": internal_grad_fn}):
-      all_tensors = array_ops.identity_n(all_tensors)
-
-  original_tensors = [ops.convert_to_tensor(x) for x in original_tensors]
+      with record.stop_recording():
+        all_tensors = array_ops.identity_n(original_tensors)
 
   # Propagate handle data for happier shape inference for resource variables.
   for i, t in enumerate(original_tensors):

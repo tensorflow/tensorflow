@@ -25,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
@@ -1248,6 +1249,30 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertNotIn(name, ops.gradient_registry.list())
     with self.assertRaisesRegex(LookupError, "garbage collected"):
       registered_grad_fn(None)
+
+  @test_util.run_v2_only
+  def testCustomGradientForwardAccumulatorInFunction(self):
+
+    @custom_gradient.custom_gradient
+    def Square(x):
+
+      def Grad(dy):
+        return 2. * x * dy
+
+      return x * x, Grad
+
+    @def_function.function
+    def SquareJvpAndGrad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        with forwardprop.ForwardAccumulator(x, constant(1.)) as acc:
+          y = Square(x)
+      return y, acc.jvp(y), tape.gradient(y, x)
+
+    y, jvp, dx = SquareJvpAndGrad(constant(3.))
+    self.assertEqual(9., self.evaluate(y))
+    self.assertEqual(6., self.evaluate(jvp))
+    self.assertEqual(6., self.evaluate(dx))
 
   def testCustomGradientWithVariables(self):
 
