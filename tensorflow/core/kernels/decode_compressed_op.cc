@@ -18,7 +18,6 @@ limitations under the License.
 #include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <string>
 
 #include "absl/status/status.h"
@@ -60,8 +59,7 @@ class MemoryInputStream : public io::InputStreamInterface {
       s = absl::OutOfRangeError("reached end of file");
     }
     if (bytes > 0) {
-      result->resize(bytes);
-      memcpy(&(*result)[0], &buf_[pos_], bytes);
+      result->assign_as_view(&buf_[pos_], bytes);
       pos_ += bytes;
     }
     return s;
@@ -101,11 +99,6 @@ class DecodeCompressedOp : public OpKernel {
   // specified in `compression_type_`. Return absl::OkStatus() on success, and
   // anything else on failure.
   absl::Status DecompressOne(const tstring& input, tstring& output) {
-    if (compression_type_.empty()) {
-      output = input;
-      return absl::OkStatus();
-    }
-
     if (compression_type_ == "ZLIB" || compression_type_ == "GZIP") {
       // TODO: Don't use ZlibInputStream, since we're just going to read the
       // entire thing into memory.
@@ -206,6 +199,10 @@ class DecodeCompressedOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor* bytes_tensor;
     OP_REQUIRES_OK(context, context->input("bytes", &bytes_tensor));
+    if (compression_type_.empty()) {
+      OP_REQUIRES_OK(context, context->set_output("output", *bytes_tensor));
+      return;
+    }
     const auto& bytes_flat = bytes_tensor->flat<tstring>();
 
     Tensor* output_tensor = nullptr;
