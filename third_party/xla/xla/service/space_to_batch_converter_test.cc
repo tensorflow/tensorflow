@@ -250,6 +250,60 @@ ENTRY computation {
   EXPECT_GT(previous_reshape->operand(0)->shape().dimensions(batch_dim), 4);
 }
 
+TEST_F(SpaceToBatchConverterTest, BaseDilationEqualToLowPad) {
+  const std::string hlo_string = R"(
+HloModule module
+
+ENTRY computation {
+  p0 = f32[1,1,128] parameter(0)
+  p1 = f32[1,1,6] parameter(1)
+  ROOT conv = f32[1,1,384] convolution(p0, p1),
+    window={size=6 pad=3_4 lhs_dilate=3}, dim_labels=bf0_oi0->bf0
+}
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV:.*]] = f32[8,51,1]{{.*}} convolution({{.*}}), window={size=6 pad=0_1 lhs_dilate=3}, dim_labels=fb0_oi0->b0f
+// CHECK:         %[[RESHAPE:.*]] = f32[1,408,1]{{.*}} reshape(
+// CHECK:         %[[SLICE:.*]] = f32[1,384,1]{{.*}} slice(%[[RESHAPE]]), slice={[0:1], [0:384], [0:1]}
+// CHECK:         ROOT {{.*}} = f32[1,1,384]{{.*}} transpose(%[[SLICE]]), dimensions={0,2,1}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateOnConvBaseDilationEqualToLowPad) {
+  const std::string hlo_string = R"(
+HloModule module
+
+ENTRY computation {
+  p0 = f32[1,1,63] parameter(0)
+  k0 = f32[1,1,3] parameter(1)
+  conv0 = f32[1,1,63] convolution(p0, k0),
+    window={size=3 pad=1_1}, dim_labels=bf0_oi0->bf0
+  k1 = f32[1,1,26] parameter(2)
+  ROOT conv1 = f32[1,1,167] convolution(conv0, k1),
+    window={size=26 pad=3_2 lhs_dilate=3}, dim_labels=bf0_oi0->bf0
+}
+
+// CHECK-LABEL: ENTRY %computation
+// CHECK:         %[[CONV0:.*]] = f32[8,9,1]{{.*}} convolution({{.*}}), window={size=3}, dim_labels=fb0_oi0->b0f
+// CHECK:         %[[CONV1:.*]] = f32[8,27,1]{{.*}} convolution({{.*}}), window={size=26 lhs_dilate=3}, dim_labels=b0f_oi0->b0f
+// CHECK:         %[[RESHAPE:.*]] = f32[1,216,1]{{.*}} reshape(
+// CHECK:         %[[SLICE:.*]] = f32[1,167,1]{{.*}} slice(%[[RESHAPE]]), slice={[0:1], [0:167], [0:1]}
+// CHECK:         ROOT {{.*}} = f32[1,1,167]{{.*}} transpose(%[[SLICE]]), dimensions={0,2,1}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  SpaceToBatchConverter converter(SpaceToBatchController{
+      true, true, true, true, /*limit_on_batch_size=*/8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
 TEST_F(SpaceToBatchConverterTest, PropagateThroughDot) {
   std::string hlo_string = R"(
   HloModule module

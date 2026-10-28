@@ -2903,11 +2903,21 @@ absl::Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   // Keep increasing the split size so that overall size isn't smaller than the
   // original spatial dimension. Unlike for the first space-to-batch'ed
   // convolution, while propagating, we can use the last halo_size as available
-  // spatial size.
-  // If the spatial size is less than the (halo size - low padding) required,
-  // we need to increase the spatial size.
-  while (spatial_split_size * num_splits + c.halo_size - c.spatial_size < 0 ||
-         spatial_split_size < c.halo_size - c.inherent_low_padding) {
+  // spatial size when base_dilation_factor == 1 (for base-dilated
+  // convolutions, ChangeSpatialSizeOnSpaceToBatchedShape slices the collapsed
+  // spatial dimension to spatial_split_size * num_splits).
+  // If the spatial size is less than the (halo size - low padding) required by
+  // HaloDuplicateWithSlice, we need to increase the spatial size.
+  const int64_t low_padding_for_halo =
+      c.base_dilation_factor != 1 && c.inherent_low_padding != 0
+          ? (c.inherent_low_padding == c.base_dilation_factor ? 1 : 0)
+          : c.inherent_low_padding;
+  const int64_t available_halo_space =
+      c.base_dilation_factor == 1 ? c.halo_size : 0;
+  while (spatial_split_size * num_splits + available_halo_space -
+                 c.spatial_size <
+             0 ||
+         spatial_split_size < c.halo_size - low_padding_for_halo) {
     spatial_split_size += c.stride;
   }
 
@@ -2955,15 +2965,11 @@ absl::Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
 
   // For space-to-batch supported base-dilated convolutions, the low padding is
   // passed on to the new convolutions. Halo does not have to account for it.
-  ABSL_ASSIGN_OR_RETURN(
-      activations_new,
-      HaloDuplicateWithSlice(
-          activations_new, new_spatial_dims, activations_batch_dim,
-          /*low_padding=*/c.base_dilation_factor != 1 &&
-                  c.inherent_low_padding != 0
-              ? (c.inherent_low_padding == c.base_dilation_factor ? 1 : 0)
-              : c.inherent_low_padding,
-          slice_size - spatial_split_size));
+  ABSL_ASSIGN_OR_RETURN(activations_new,
+                   HaloDuplicateWithSlice(activations_new, new_spatial_dims,
+                                          activations_batch_dim,
+                                          /*low_padding=*/low_padding_for_halo,
+                                          slice_size - spatial_split_size));
 
   // We will generate output such that batch is followed by the split spatial
   // dimension.
