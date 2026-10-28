@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <iterator>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -241,8 +244,7 @@ absl::Status ValidateStridedSliceOp(
                      DataTypeString(begin_tensor->dtype()), " and ",
                      DataTypeString(strides_tensor.dtype()), "."));
   }
-  if (end_tensor != nullptr &&
-      end_tensor->dtype() != strides_tensor.dtype()) {
+  if (end_tensor != nullptr && end_tensor->dtype() != strides_tensor.dtype()) {
     return absl::InvalidArgumentError(
         absl::StrCat("Expected end and strides to have the same dtype, "
                      "but got ",

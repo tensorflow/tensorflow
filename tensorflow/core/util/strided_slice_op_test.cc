@@ -15,14 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/util/strided_slice_op.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <algorithm>
+#include <cstdint>
 #include <ostream>
 #include <tuple>
 #include <utility>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -792,7 +794,8 @@ TEST(ValidateStridedSliceOpTest, MatchingInt64BeginEndStridesSucceeds) {
   EXPECT_EQ(final_shape, AsTensorShape({7, 7}));
 }
 
-// Negative regression: reject mismatched or invalid begin, end, and strides dtypes.
+// Negative regression: reject mismatched or invalid begin, end, and strides
+// dtypes.
 TEST(ValidateStridedSliceOpTest, RejectsMismatchedOrInvalidDtypes) {
   Tensor begin_int64 = test::AsTensor<int64_t>({0, 0});
   Tensor end_int32 = test::AsTensor<int32_t>({5, 5});
@@ -815,7 +818,8 @@ TEST(ValidateStridedSliceOpTest, RejectsMismatchedOrInvalidDtypes) {
           &end, &strides, &shape_spec),
       absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
-          ::testing::ContainsRegex("Expected begin and strides to have the same dtype")));
+          ::testing::ContainsRegex(
+              "Expected begin and strides to have the same dtype")));
 
   EXPECT_THAT(
       ValidateStridedSliceOp(
@@ -826,7 +830,8 @@ TEST(ValidateStridedSliceOpTest, RejectsMismatchedOrInvalidDtypes) {
           &end, &strides, &shape_spec),
       absl_testing::StatusIs(
           tsl::error::Code::INVALID_ARGUMENT,
-          ::testing::ContainsRegex("Expected end and strides to have the same dtype")));
+          ::testing::ContainsRegex(
+              "Expected end and strides to have the same dtype")));
 
   EXPECT_THAT(
       ValidateStridedSliceOp(
