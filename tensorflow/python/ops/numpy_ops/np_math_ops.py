@@ -890,13 +890,11 @@ def floor(x):
 @tf_export.tf_export('experimental.numpy.conj', v1=[])
 @np_utils.np_doc('conj')
 def conj(x):
-  def f(x):
+  x = np_array_ops.asarray(x)
+  if x.dtype == dtypes.bool:
     # `math_ops.conj` rejects bool, which has no imaginary part to negate.
-    if x.dtype == dtypes.bool:
-      return x
-    return math_ops.conj(x)
-
-  return _scalar(f, x)
+    return x
+  return _scalar(math_ops.conj, x)
 
 
 @tf_export.tf_export('experimental.numpy.negative', v1=[])
@@ -1098,7 +1096,7 @@ def iscomplex(x):
   if x.dtype.is_complex:
     return np_array_ops.imag(x) != 0
   # Comparing against 0 would fail for bool, so answer from the dtype.
-  return np_array_ops.zeros_like(x, dtypes.bool)
+  return np_array_ops.zeros_like(x, dtype=dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isreal', v1=[])
@@ -1107,7 +1105,7 @@ def isreal(x):
   x = np_array_ops.asarray(x)
   if x.dtype.is_complex:
     return np_array_ops.imag(x) == 0
-  return np_array_ops.ones_like(x, dtypes.bool)
+  return np_array_ops.ones_like(x, dtype=dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.iscomplexobj', v1=[])
