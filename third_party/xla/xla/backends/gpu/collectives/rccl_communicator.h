@@ -113,7 +113,7 @@ class RcclCommunicator : public GpuCommunicator {
                 size_t count, RankId peer, const Executor& executor) final;
 
   absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
-      se::DeviceAddressBase addr, bool symmetric_window = false) final;
+      se::DeviceAddressBase addr, bool symmetric_window) final;
 
   absl::StatusOr<std::unique_ptr<RegisteredMemory>> CreateRegisteredMemory(
       se::DeviceAddressBase addr) final;

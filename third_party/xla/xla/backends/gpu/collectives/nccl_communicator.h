@@ -140,7 +140,7 @@ class NcclCommunicator : public GpuCommunicator {
       se::DeviceAddressBase addr) final;
 
   absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
-      se::DeviceAddressBase addr, bool symmetric_window = false) final;
+      se::DeviceAddressBase addr, bool symmetric_window) final;
 
   Future<> GroupExecute(absl::AnyInvocable<absl::Status() &&> group) final;
 
