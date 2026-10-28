@@ -1526,6 +1526,17 @@ cc_library(
 )
 
 cc_library(
+    name = "tfl_carrier",
+    srcs = ["transforms/tfl_carrier.cc"],
+    hdrs = ["transforms/tfl_carrier.h"],
+    deps = [
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_push_transpose_through_ewise_pass",
     srcs = [
         "transforms/push_transpose_through_ewise_pass.cc",
