@@ -104,7 +104,7 @@ class WorkerService final {
   class AsyncService : public ::grpc::Service {
    public:
     AsyncService();
-    virtual ~AsyncService();
+    ~AsyncService() override;
 
     // Make RequestAsyncUnary public for grpc_call.h
     using ::grpc::Service::RequestAsyncUnary;
