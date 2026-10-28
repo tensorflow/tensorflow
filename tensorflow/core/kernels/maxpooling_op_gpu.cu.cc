@@ -392,10 +392,10 @@ absl::Status MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
   }
   TF_RETURN_IF_ERROR(GpuLaunchKernel(
       MaxPoolForwardNoMaskKernel_NCHW_VECT_C,
-      (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock,
-      0, d.stream(), output_size, bottom_data, height, width, channels,
-      pooled_height, pooled_width, kernel_h, kernel_w, stride_h, stride_w,
-      pad_t, pad_l, top_data));
+      (output_size - 1) / kThreadsPerBlock + 1, kThreadsPerBlock, 0, d.stream(),
+      output_size, bottom_data, height, width, channels, pooled_height,
+      pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+      top_data));
   return d.ok() ? absl::OkStatus()
                 : absl::InternalError("GPU execution failed");
 }
@@ -430,21 +430,19 @@ absl::Status MaxPoolForwardWithOptionalArgmax<T>::operator()(
         "MaxPoolForwardWithOptionalArgmax: input size exceeds int32 bounds");
   }
   if (propagate_nans) {
-    TF_RETURN_IF_ERROR(
-        GpuLaunchKernel(MaxPoolForwardNHWC<true, T>,
-                        (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-                        kThreadsPerBlock, 0, d.stream(), output_size,
-                        bottom_data, height, width, channels, pooled_height,
-                        pooled_width, kernel_h, kernel_w, stride_h, stride_w,
-                        pad_t, pad_l, top_data, mask, include_batch_in_index));
+    TF_RETURN_IF_ERROR(GpuLaunchKernel(
+        MaxPoolForwardNHWC<true, T>, (output_size - 1) / kThreadsPerBlock + 1,
+        kThreadsPerBlock, 0, d.stream(), output_size, bottom_data, height,
+        width, channels, pooled_height, pooled_width, kernel_h, kernel_w,
+        stride_h, stride_w, pad_t, pad_l, top_data, mask,
+        include_batch_in_index));
   } else {
-    TF_RETURN_IF_ERROR(
-        GpuLaunchKernel(MaxPoolForwardNHWC<false, T>,
-                        (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-                        kThreadsPerBlock, 0, d.stream(), output_size,
-                        bottom_data, height, width, channels, pooled_height,
-                        pooled_width, kernel_h, kernel_w, stride_h, stride_w,
-                        pad_t, pad_l, top_data, mask, include_batch_in_index));
+    TF_RETURN_IF_ERROR(GpuLaunchKernel(
+        MaxPoolForwardNHWC<false, T>, (output_size - 1) / kThreadsPerBlock + 1,
+        kThreadsPerBlock, 0, d.stream(), output_size, bottom_data, height,
+        width, channels, pooled_height, pooled_width, kernel_h, kernel_w,
+        stride_h, stride_w, pad_t, pad_l, top_data, mask,
+        include_batch_in_index));
   }
   return d.ok() ? absl::OkStatus()
                 : absl::InternalError("GPU execution failed");
@@ -457,15 +455,21 @@ absl::Status MaxPoolBackwardWithArgmax<T>::operator()(
     T* bottom_diff, const Eigen::GpuDevice& d,
     const bool include_batch_in_index) {
   const int kThreadsPerBlock = 1024;
+  if (input_size < 0 || output_size < 0) {
+    return absl::InternalError(
+        "MaxPoolBackwardWithArgmax: input or output size is negative");
+  }
   if (input_size == 0) return absl::OkStatus();
   TF_RETURN_IF_ERROR(GpuLaunchKernel(
-      SetZero<T>, (input_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-      kThreadsPerBlock, 0, d.stream(), input_size, bottom_diff));
-  TF_RETURN_IF_ERROR(GpuLaunchKernel(
-      MaxPoolBackward<T>,
-      (output_size + kThreadsPerBlock - 1) / kThreadsPerBlock, kThreadsPerBlock,
-      0, d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,
-      bottom_diff, include_batch_in_index, input_size));
+      SetZero<T>, (input_size - 1) / kThreadsPerBlock + 1, kThreadsPerBlock, 0,
+      d.stream(), input_size, bottom_diff));
+  if (output_size > 0) {
+    TF_RETURN_IF_ERROR(GpuLaunchKernel(
+        MaxPoolBackward<T>, (output_size - 1) / kThreadsPerBlock + 1,
+        kThreadsPerBlock, 0, d.stream(), output_size, top_diff, mask,
+        top_offset, bottom_offset, bottom_diff, include_batch_in_index,
+        input_size));
+  }
   return d.ok() ? absl::OkStatus()
                 : absl::InternalError("GPU execution failed");
 }
@@ -524,7 +528,11 @@ absl::Status MaxPoolGradBackwardWithArgmax<T>::operator()(
     const int64_t* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d,
     const bool include_batch_in_index) {
-  if (input_size == 0) return absl::OkStatus();
+  if (input_size < 0 || output_size < 0) {
+    return absl::InternalError(
+        "MaxPoolGradBackwardWithArgmax: input or output size is negative");
+  }
+  if (input_size == 0 || output_size == 0) return absl::OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
   TF_RETURN_IF_ERROR(GpuLaunchKernel(
       MaxPoolGradBackward<T>, config.block_count, config.thread_per_block, 0,

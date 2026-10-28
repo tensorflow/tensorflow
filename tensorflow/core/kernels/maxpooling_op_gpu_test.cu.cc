@@ -86,6 +86,100 @@ TEST_F(MaxPoolingOpGpuTest, ForwardNchwVectCRejectsInputOverInt32Max) {
 }
 #endif  // GOOGLE_CUDA
 
+TEST_F(MaxPoolingOpGpuTest, RejectsInputWhoseSizeOverflowsInt64) {
+  constexpr int kHugeBatch = 1 << 20;
+  constexpr int kHugeSide = 1 << 22;
+  EXPECT_THAT(
+      MaxPoolForwardWithOptionalArgmax<float>()(
+          &dummy_, kHugeBatch, kHugeSide, kHugeSide, /*channels=*/1,
+          /*pooled_height=*/1, /*pooled_width=*/1, kWindow, kWindow, kStride,
+          kStride, /*pad_t=*/0, /*pad_l=*/0, &dummy_, &dummy_mask_, device_,
+          /*propagate_nans=*/false, /*include_batch_in_index=*/false),
+      absl_testing::StatusIs(absl::StatusCode::kInternal,
+                             HasSubstr("input size exceeds int32 bounds")));
+  EXPECT_THAT(
+      MaxPoolGradBackwardNoMask<float>()(
+          FORMAT_NHWC, &dummy_, &dummy_, kHugeBatch, /*pooled_height=*/1,
+          /*pooled_width=*/1, /*channels=*/1, kHugeSide, kHugeSide, kWindow,
+          kWindow, kStride, kStride, /*pad_t=*/0, /*pad_l=*/0, &dummy_, &dummy_,
+          device_),
+      absl_testing::StatusIs(absl::StatusCode::kInternal,
+                             HasSubstr("input size exceeds int32 bounds")));
+#if GOOGLE_CUDA
+  int32_t dummy_int = 0;
+  EXPECT_THAT(
+      MaxPoolForwardNoMask_NCHW_VECT_C()(
+          &dummy_int, kHugeBatch, kHugeSide, kHugeSide, /*channels=*/1,
+          /*pooled_height=*/1, /*pooled_width=*/1, kWindow, kWindow, kStride,
+          kStride, /*pad_t=*/0, /*pad_l=*/0, &dummy_int, device_),
+      absl_testing::StatusIs(absl::StatusCode::kInternal,
+                             HasSubstr("input size exceeds int32 bounds")));
+#endif  // GOOGLE_CUDA
+}
+
+TEST_F(MaxPoolingOpGpuTest, BackwardWithArgmaxRejectsNegativeSizes) {
+  EXPECT_THAT(MaxPoolBackwardWithArgmax<float>()(
+                  /*output_size=*/-1, /*input_size=*/1, &dummy_, &dummy_mask_,
+                  /*top_offset=*/0, /*bottom_offset=*/0, &dummy_, device_,
+                  /*include_batch_in_index=*/false),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("size is negative")));
+  EXPECT_THAT(MaxPoolBackwardWithArgmax<float>()(
+                  /*output_size=*/1, /*input_size=*/-1, &dummy_, &dummy_mask_,
+                  /*top_offset=*/0, /*bottom_offset=*/0, &dummy_, device_,
+                  /*include_batch_in_index=*/false),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("size is negative")));
+}
+
+TEST_F(MaxPoolingOpGpuTest, GradBackwardWithArgmaxRejectsNegativeSizes) {
+  EXPECT_THAT(MaxPoolGradBackwardWithArgmax<float>()(
+                  /*output_size=*/-1, /*input_size=*/1, &dummy_, &dummy_mask_,
+                  /*top_offset=*/0, /*bottom_offset=*/0, &dummy_, device_,
+                  /*include_batch_in_index=*/false),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("size is negative")));
+  EXPECT_THAT(MaxPoolGradBackwardWithArgmax<float>()(
+                  /*output_size=*/1, /*input_size=*/-1, &dummy_, &dummy_mask_,
+                  /*top_offset=*/0, /*bottom_offset=*/0, &dummy_, device_,
+                  /*include_batch_in_index=*/false),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("size is negative")));
+}
+
+TEST_F(MaxPoolingOpGpuTest, ArgmaxGradientsSucceedForEmptySizes) {
+  TF_EXPECT_OK(MaxPoolBackwardWithArgmax<float>()(
+      /*output_size=*/0, /*input_size=*/0, &dummy_, &dummy_mask_,
+      /*top_offset=*/0, /*bottom_offset=*/0, &dummy_, device_,
+      /*include_batch_in_index=*/false));
+  TF_EXPECT_OK(MaxPoolGradBackwardWithArgmax<float>()(
+      /*output_size=*/0, /*input_size=*/0, &dummy_, &dummy_mask_,
+      /*top_offset=*/0, /*bottom_offset=*/0, &dummy_, device_,
+      /*include_batch_in_index=*/false));
+  TF_EXPECT_OK(MaxPoolGradBackwardWithArgmax<float>()(
+      /*output_size=*/0, /*input_size=*/4, &dummy_, &dummy_mask_,
+      /*top_offset=*/0, /*bottom_offset=*/0, &dummy_, device_,
+      /*include_batch_in_index=*/false));
+}
+
+TEST_F(MaxPoolingOpGpuTest, BackwardWithArgmaxZeroesGradientForEmptyOutput) {
+  constexpr int kInputSize = 4;
+  float* bottom_diff =
+      static_cast<float*>(device_.allocate(kInputSize * sizeof(float)));
+  device_.memset(bottom_diff, 0xff, kInputSize * sizeof(float));
+  TF_EXPECT_OK(MaxPoolBackwardWithArgmax<float>()(
+      /*output_size=*/0, kInputSize, &dummy_, &dummy_mask_, /*top_offset=*/0,
+      /*bottom_offset=*/0, bottom_diff, device_,
+      /*include_batch_in_index=*/false));
+  float result[kInputSize];
+  device_.memcpyDeviceToHost(result, bottom_diff, sizeof(result));
+  device_.synchronize();
+  device_.deallocate(bottom_diff);
+  for (float value : result) {
+    EXPECT_EQ(value, 0.0f);
+  }
+}
+
 TEST_F(MaxPoolingOpGpuTest, EmptyOutputWithLargeInputSucceeds) {
   TF_EXPECT_OK(MaxPoolForwardWithOptionalArgmax<float>()(
       &dummy_, kBatch, kHeight, kWidth, kChannels, /*pooled_height=*/0,
@@ -96,6 +190,13 @@ TEST_F(MaxPoolingOpGpuTest, EmptyOutputWithLargeInputSucceeds) {
       FORMAT_NHWC, &dummy_, &dummy_, kBatch, /*pooled_height=*/0, kPooledSize,
       kChannels, kHeight, kWidth, kWindow, kWindow, kStride, kStride,
       /*pad_t=*/0, /*pad_l=*/0, &dummy_, &dummy_, device_));
+#if GOOGLE_CUDA
+  int32_t dummy_int = 0;
+  TF_EXPECT_OK(MaxPoolForwardNoMask_NCHW_VECT_C()(
+      &dummy_int, kBatch, kHeight, kWidth, kChannels, /*pooled_height=*/0,
+      kPooledSize, kWindow, kWindow, kStride, kStride, /*pad_t=*/0,
+      /*pad_l=*/0, &dummy_int, device_));
+#endif  // GOOGLE_CUDA
 }
 
 }  // namespace
