@@ -769,22 +769,42 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
                           filter->dims->data[1]);
 }
 
-// Block size of the activation quantization in the `cint2_fp32_int4_e8m0_drq`
-// contract. The contract fixes it rather than carrying it in the flatbuffer,
-// so a filter whose contracting dimension is not a multiple of it does not
-// describe a valid a4w2 op.
+// Block size of the activation quantization in the a4w2 DRQ contracts. The
+// contracts fix it rather than carrying it in the flatbuffer, so a filter whose
+// contracting dimension is not a multiple of it does not describe a valid a4w2
+// op.
 constexpr int kA4W2BlockSize = 32;
 // Inclusive bounds of the 4 bit activation storage.
 constexpr float kA4W2ActQMin = -8.0f;
 constexpr float kA4W2ActQMax = 7.0f;
 
-// The quantization contracts this kernel implements, as named by the opaque
-// `FullyConnectedOptions.quant_spec` payload.
-enum class QuantSpecKind {
-  // No `quant_spec`; the op uses standard FullyConnected quantization.
-  kNone,
-  // Blockwise 4 bit dynamic range activations against 2 bit centered weights.
-  kA4W2Drq,
+// The a4w2 DRQ contracts this kernel implements, as named by the opaque
+// `FullyConnectedOptions.quant_spec` payload. They share everything except
+// where the 2 bit weight grid sits: a weight code `q` dequantizes to
+// `(q + weight_offset) * per_channel_scale`.
+//
+// The offset is defined by the contract alone. The tensor-level zero point
+// cannot carry it (a per-channel zero point is an integer, so it cannot hold
+// the -0.5 of the centered grid), and `Prepare` requires the stored zero point
+// to be 0 for every contract.
+struct A4W2Contract {
+  const char* name;
+  float weight_offset;
+};
+constexpr A4W2Contract kA4W2Contracts[] = {
+    // Centered int2: the grid sits between the integers, i.e. zero point -0.5,
+    // giving `scale * {-1.5, -0.5, 0.5, 1.5}`.
+    {"cint2_fp32_int4_e8m0_drq", 0.5f},
+    // Plain int2: zero point 0, giving `scale * {-2, -1, 0, 1}`.
+    {"int2_fp32_int4_e8m0_drq", 0.0f},
+};
+
+// The quantization contract named by `FullyConnectedOptions.quant_spec`.
+struct QuantSpec {
+  // The matching entry of `kA4W2Contracts`, or nullptr when the op carries no
+  // `quant_spec` and uses standard FullyConnected quantization.
+  const A4W2Contract* a4w2 = nullptr;
+  float act_dilation = 0.0f;
 };
 
 // Parses `params->quant_spec`.
@@ -796,9 +816,8 @@ enum class QuantSpecKind {
 // error here, not a signal to ignore the field.
 TfLiteStatus ParseQuantSpec(TfLiteContext* context,
                             const TfLiteFullyConnectedParams* params,
-                            QuantSpecKind* kind, float* act_dilation) {
-  *kind = QuantSpecKind::kNone;
-  *act_dilation = 0.0f;
+                            QuantSpec* quant_spec) {
+  *quant_spec = QuantSpec();
   if (params->quant_spec == nullptr || params->quant_spec_size <= 0) {
     return kTfLiteOk;
   }
@@ -814,33 +833,45 @@ TfLiteStatus ParseQuantSpec(TfLiteContext* context,
   const flexbuffers::Map map =
       flexbuffers::GetRoot(buffer, buffer_size).AsMap();
   const flexbuffers::String spec = map["spec"].AsString();
-  if (spec.c_str() != nullptr &&
-      std::strcmp(spec.c_str(), "cint2_fp32_int4_e8m0_drq") == 0) {
-    // `act_dilation` widens the denominator of the activation scale, so a
-    // missing key, a NaN, or a value that drives `kA4W2ActQMax + act_dilation`
-    // to zero or below would yield an infinite or NaN scale rather than an
-    // error.
-    const flexbuffers::Reference dilation = map["act_dilation"];
-    TF_LITE_ENSURE_MSG(
-        context, dilation.IsNumeric(),
-        "cint2_fp32_int4_e8m0_drq requires a numeric 'act_dilation' entry.");
-    const float dilation_value = dilation.AsFloat();
-    TF_LITE_ENSURE_MSG(context,
-                       std::isfinite(dilation_value) && dilation_value >= 0.0f,
-                       "cint2_fp32_int4_e8m0_drq requires a finite, "
-                       "non-negative 'act_dilation'.");
-    *kind = QuantSpecKind::kA4W2Drq;
-    *act_dilation = dilation_value;
-    return kTfLiteOk;
+  const A4W2Contract* contract = nullptr;
+  if (spec.c_str() != nullptr) {
+    for (const A4W2Contract& candidate : kA4W2Contracts) {
+      if (std::strcmp(spec.c_str(), candidate.name) == 0) {
+        contract = &candidate;
+        break;
+      }
+    }
+  }
+  if (contract == nullptr) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "FullyConnected names quantization spec '%s', which this runtime does "
+        "not implement. Refusing to fall back to standard quantization "
+        "semantics.",
+        spec.c_str() != nullptr ? spec.c_str() : "<not a string>");
+    return kTfLiteError;
   }
 
-  TF_LITE_KERNEL_LOG(
-      context,
-      "FullyConnected names quantization spec '%s', which this runtime does "
-      "not implement. Refusing to fall back to standard quantization "
-      "semantics.",
-      spec.c_str() != nullptr ? spec.c_str() : "<not a string>");
-  return kTfLiteError;
+  // `act_dilation` widens the denominator of the activation scale, so a
+  // missing key, a NaN, or a value that drives `kA4W2ActQMax + act_dilation`
+  // to zero or below would yield an infinite or NaN scale rather than an
+  // error.
+  const flexbuffers::Reference dilation = map["act_dilation"];
+  if (!dilation.IsNumeric()) {
+    TF_LITE_KERNEL_LOG(context, "%s requires a numeric 'act_dilation' entry.",
+                       contract->name);
+    return kTfLiteError;
+  }
+  const float dilation_value = dilation.AsFloat();
+  if (!std::isfinite(dilation_value) || dilation_value < 0.0f) {
+    TF_LITE_KERNEL_LOG(context,
+                       "%s requires a finite, non-negative 'act_dilation'.",
+                       contract->name);
+    return kTfLiteError;
+  }
+  quant_spec->a4w2 = contract;
+  quant_spec->act_dilation = dilation_value;
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
@@ -866,30 +897,31 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Validate the quantization contract here rather than in the eval paths:
   // only `EvalHybridDense` knows how to honor one, so a `quant_spec` on any
   // other path would otherwise be silently ignored.
-  QuantSpecKind quant_spec_kind = QuantSpecKind::kNone;
-  float act_dilation = 0.0f;
-  TF_LITE_ENSURE_OK(context, ParseQuantSpec(context, params, &quant_spec_kind,
-                                            &act_dilation));
-  if (quant_spec_kind == QuantSpecKind::kA4W2Drq) {
+  QuantSpec quant_spec;
+  TF_LITE_ENSURE_OK(context, ParseQuantSpec(context, params, &quant_spec));
+  if (quant_spec.a4w2 != nullptr) {
     TF_LITE_ENSURE_MSG(context, is_hybrid,
-                       "cint2_fp32_int4_e8m0_drq requires float input with a "
+                       "An a4w2 DRQ quant_spec requires float input with a "
                        "quantized filter.");
     // `EvalHybrid` routes a sparse filter to `EvalHybridSparse`, which never
     // reaches `EvalHybridDense` and would therefore run standard sparse hybrid
     // math while ignoring the spec.
     TF_LITE_ENSURE_MSG(
         context, filter->sparsity == nullptr,
-        "cint2_fp32_int4_e8m0_drq does not support sparse filters.");
+        "An a4w2 DRQ quant_spec does not support sparse filters.");
     // `is_hybrid` also admits uint8, int8 and int4 filters. `EvalA4W2DRQ`
     // rejects those too, but only once the graph is already being invoked.
     TF_LITE_ENSURE_MSG(context, filter->type == kTfLiteInt2,
-                       "cint2_fp32_int4_e8m0_drq requires a 2 bit filter.");
+                       "An a4w2 DRQ quant_spec requires a 2 bit filter.");
     TF_LITE_ENSURE_MSG(context, filter->dims->size == 2,
-                       "cint2_fp32_int4_e8m0_drq requires a rank 2 filter.");
+                       "An a4w2 DRQ quant_spec requires a rank 2 filter.");
     TF_LITE_ENSURE_MSG(context, filter->dims->data[1] % kA4W2BlockSize == 0,
-                       "cint2_fp32_int4_e8m0_drq requires the filter's input "
-                       "size to be a multiple "
-                       "of the 32 element activation block size.");
+                       "An a4w2 DRQ quant_spec requires the filter's input "
+                       "size to be a multiple of the 32 element activation "
+                       "block size.");
+    // The weight offset comes from the contract, not from the stored zero
+    // point, which the int2 check below therefore requires to be 0: anything
+    // else means the producer and the contract disagree about the grid.
   }
 
   // Pie and hybrid path supports all kinds of fused activations, otherwise only
@@ -913,7 +945,10 @@ TfLiteStatus EvalA4W2DRQ(TfLiteContext* context,
                          TfLiteFullyConnectedParams* params,
                          const TfLiteTensor* input, const TfLiteTensor* filter,
                          const TfLiteTensor* bias, TfLiteTensor* output,
-                         float act_dilation) {
+                         const QuantSpec& quant_spec) {
+  TF_LITE_ENSURE(context, quant_spec.a4w2 != nullptr);
+  const float act_dilation = quant_spec.act_dilation;
+  const float weight_offset = quant_spec.a4w2->weight_offset;
   // This kernel is selected by an opaque `quant_spec` string rather than by the
   // tensor types, so nothing upstream has checked that the operands match what
   // the spec describes. Everything the loops below rely on is verified here;
@@ -932,13 +967,13 @@ TfLiteStatus EvalA4W2DRQ(TfLiteContext* context,
   TF_LITE_ENSURE(context, input_size > 0);
   TF_LITE_ENSURE(context, num_units > 0);
   TF_LITE_ENSURE_MSG(context, input_size % kA4W2BlockSize == 0,
-                     "cint2_fp32_int4_e8m0_drq requires the filter's input "
-                     "size to be a multiple of "
-                     "the 32 element activation block size.");
+                     "An a4w2 DRQ quant_spec requires the filter's input "
+                     "size to be a multiple of the 32 element activation "
+                     "block size.");
 
   const int total_input_size = input->bytes / sizeof(float);
   TF_LITE_ENSURE_MSG(context, total_input_size % input_size == 0,
-                     "cint2_fp32_int4_e8m0_drq requires the input size to be a "
+                     "An a4w2 DRQ quant_spec requires the input size to be a "
                      "whole number of rows.");
   const int batch_size = total_input_size / input_size;
   if (bias != nullptr) {
@@ -973,7 +1008,7 @@ TfLiteStatus EvalA4W2DRQ(TfLiteContext* context,
   TF_LITE_ENSURE(context, affine_quantization->scale != nullptr);
   TF_LITE_ENSURE_MSG(
       context, affine_quantization->scale->size == num_units,
-      "cint2_fp32_int4_e8m0_drq requires one weight scale per output channel.");
+      "An a4w2 DRQ quant_spec requires one weight scale per output channel.");
   const float* per_channel_scale_ptr = affine_quantization->scale->data;
 
   const float* input_ptr = GetTensorData<float>(input);
@@ -1019,7 +1054,7 @@ TfLiteStatus EvalA4W2DRQ(TfLiteContext* context,
         float blk_sum = 0.0f;
         for (int k = 0; k < kA4W2BlockSize; ++k) {
           blk_sum += static_cast<float>(a_blk[k]) *
-                     (static_cast<float>(w_blk[k]) + 0.5f);
+                     (static_cast<float>(w_blk[k]) + weight_offset);
         }
         acc += static_cast<double>(s_a) * static_cast<double>(s_w) *
                static_cast<double>(blk_sum);
@@ -1041,13 +1076,11 @@ TfLiteStatus EvalHybridDense(
     TfLiteTensor* input_quantized, TfLiteTensor* scaling_factors,
     TfLiteTensor* accum_scratch, TfLiteTensor* row_sums,
     TfLiteTensor* input_offsets, TfLiteTensor* output) {
-  QuantSpecKind quant_spec_kind = QuantSpecKind::kNone;
-  float act_dilation = 0.0f;
-  TF_LITE_ENSURE_OK(context, ParseQuantSpec(context, params, &quant_spec_kind,
-                                            &act_dilation));
-  if (quant_spec_kind == QuantSpecKind::kA4W2Drq) {
+  QuantSpec quant_spec;
+  TF_LITE_ENSURE_OK(context, ParseQuantSpec(context, params, &quant_spec));
+  if (quant_spec.a4w2 != nullptr) {
     return EvalA4W2DRQ(context, params, input, filter, bias, output,
-                       act_dilation);
+                       quant_spec);
   }
 
   int total_input_size = 1;

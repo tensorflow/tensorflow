@@ -3069,9 +3069,10 @@ TEST(FullyConnectedInt16FilterInt16IndexingTest, RejectsShapeProductOverflow) {
 
 // Builds a FullyConnected carrying an opaque `quant_spec`.
 //
-// The `cint2_fp32_int4_e8m0_drq` contract is selected by that string alone:
-// nothing in the tensor types distinguishes it from a standard hybrid
-// FullyConnected, so these tests drive the op through the flatbuffer rather
+// The a4w2 DRQ contracts (`cint2_fp32_int4_e8m0_drq` and
+// `int2_fp32_int4_e8m0_drq`) are selected by that string alone: nothing in the
+// tensor types distinguishes them from a standard hybrid FullyConnected, or
+// from each other, so these tests drive the op through the flatbuffer rather
 // than through the higher level helpers above.
 class QuantSpecFullyConnectedOpModel : public SingleOpModel {
  public:
@@ -3124,8 +3125,8 @@ class QuantSpecFullyConnectedOpModel : public SingleOpModel {
   void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
   void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
 
-  // Writes raw 2 bit codes. The centered grid this kernel implements is not
-  // reachable through the symmetric quantize-and-populate helpers.
+  // Writes raw 2 bit codes. The grid they map to is defined by the spec, which
+  // the symmetric quantize-and-populate helpers know nothing about.
   void SetRawWeights(const std::vector<int8_t>& codes) {
     PopulateTensor2bit(weights_, /*offset=*/0, codes.data(),
                        codes.data() + codes.size());
@@ -3187,6 +3188,76 @@ TEST(A4W2DrqFullyConnectedTest, MatchesHandComputedResult) {
   // Channel 1: sum(q_a * -1.5) = (-8 * -1.5) + (31 * -1.5) = -34.5
   //            out = 1.0 * 0.25 * -34.5 + 2.0 = -6.625
   EXPECT_THAT(m.GetOutput(), ElementsAre(18.25f, -6.625f));
+}
+
+TEST(A4W2DrqFullyConnectedTest, NonCenteredMatchesHandComputedResult) {
+  // Same activations as above, but under the plain int2 contract the weight
+  // codes dequantize to code * per_channel_scale, with no half step offset.
+  const std::vector<float> per_channel_scales = {0.5f, 0.25f};
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       /*min=*/0.0f,
+       /*max=*/0.0f,
+       /*scale=*/0.0f,
+       /*zero_point=*/0,
+       /*per_channel_quantization=*/true,
+       per_channel_scales,
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      /*spec_name=*/"int2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f);
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+
+  // max_abs is 8, so the activation scale is 1 and the codes are exact.
+  std::vector<float> input(kA4W2TestBlockSize, 1.0f);
+  input[0] = -8.0f;
+  m.SetInput(input);
+
+  // Channel 0 is all code 1. Channel 1 uses the most negative code, -2, which
+  // the full int2 range admits, against the -8 activation and -1 elsewhere.
+  std::vector<int8_t> weights(kA4W2TestBlockSize, 1);
+  weights.push_back(-2);
+  weights.insert(weights.end(), kA4W2TestBlockSize - 1, -1);
+  m.SetRawWeights(weights);
+
+  m.SetBias({1.0f, 2.0f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Channel 0: sum(q_a * 1) = -8 + 31 = 23
+  //            out = 1.0 * 0.5 * 23 + 1.0 = 12.5
+  // Channel 1: sum(q_a * w) = (-8 * -2) + (31 * -1) = -15
+  //            out = 1.0 * 0.25 * -15 + 2.0 = -1.75
+  EXPECT_THAT(m.GetOutput(), ElementsAre(12.5f, -1.75f));
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsNonZeroStoredZeroPoint) {
+  // The weight offset is defined by the contract. A per-channel zero point
+  // cannot hold the -0.5 of the centered grid, so the stored one must be 0 for
+  // every contract; anything else means the producer and the contract
+  // disagree about the grid.
+  for (const char* spec_name :
+       {"cint2_fp32_int4_e8m0_drq", "int2_fp32_int4_e8m0_drq"}) {
+    SCOPED_TRACE(spec_name);
+    QuantSpecFullyConnectedOpModel m(
+        /*units=*/2, /*batches=*/1,
+        /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+        /*weights=*/
+        {TensorType_INT2,
+         {2, kA4W2TestBlockSize},
+         0.0f,
+         0.0f,
+         0.0f,
+         0,
+         /*per_channel_quantization=*/true,
+         {0.5f, 0.25f},
+         /*per_channel_quantization_offsets=*/{0, -1},
+         0},
+        spec_name, /*act_dilation=*/1.5f);
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+  }
 }
 
 TEST(A4W2DrqFullyConnectedTest, RejectsUnimplementedSpec) {
