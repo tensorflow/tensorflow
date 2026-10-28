@@ -18,8 +18,10 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -99,6 +101,17 @@ class ReconstructionOpsTest(test.TestCase, parameterized.TestCase):
         np.zeros((3, 0, 5), dtype=np.float32), shape=[None, None, None])
     reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
     self.assertAllEqual(self.evaluate(array_ops.shape(reconstruction)), [3, 0])
+
+  def test_static_frames_partial_shape(self):
+    signature = [tensor_spec.TensorSpec([None, 4, None], dtypes.float32)]
+
+    @def_function.function(input_signature=signature)
+    def reconstruct(signal):
+      return reconstruction_ops.overlap_and_add(signal, 2)
+
+    reconstruction = reconstruct(np.zeros((3, 4, 5), np.float32))
+    self.assertAllEqual(
+        self.evaluate(reconstruction), np.zeros((3, 11), dtype=np.float32))
 
   def test_fast_path(self):
     # This test uses tensor names and does not work in eager mode.
