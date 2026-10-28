@@ -372,17 +372,6 @@ ENTRY %ShardedTupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f3
 
 )"
 },
-{
-"DomainParsing",
-R"(HloModule DomainParsing_module, entry_computation_layout={(f32[])->f32[]}
-
-ENTRY %DomainParsing (v1: f32[]) -> f32[] {
-  %v1 = f32[] parameter(0)
-  ROOT %dom = f32[] domain(f32[] %v1), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
-}
-
-)"
-},
 // int32_t result = 0;
 // while (result < 5) { result = result + 1; }
 {

@@ -1544,8 +1544,15 @@ def _PowGrad(op: ops.Operation, grad):
 
   def _GradCxPow(w: tensor.Tensor) -> tensor.Tensor:
     if x.dtype.is_floating:
+      # `pow(0, y - 1)` is inf for y < 1, which turns the product into NaN when
+      # either factor is zero (e.g. d/dx x**0 at x = 0 is 0, not NaN).
       w = array_ops.where_v2(
-          math_ops.logical_and(math_ops.is_inf(w), math_ops.equal(grad, 0)),
+          math_ops.logical_and(
+              math_ops.is_inf(w),
+              math_ops.logical_or(
+                  math_ops.equal(grad, 0), math_ops.equal(cy, 0)
+              ),
+          ),
           math_ops.cast(0, w.dtype),
           w,
       )

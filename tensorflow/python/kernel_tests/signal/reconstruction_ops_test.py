@@ -18,8 +18,10 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -84,6 +86,34 @@ class ReconstructionOpsTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(reconstruction.shape, None)
     expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
     self.assertAllClose(reconstruction, expected_output)
+
+  def test_zero_frames(self):
+    signal = array_ops.zeros([3, 0, 5])
+    reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
+    self.assertEqual(reconstruction.shape.as_list(), [3, 0])
+    self.assertAllEqual(self.evaluate(reconstruction), np.zeros((3, 0)))
+
+  def test_zero_frames_unknown_shape(self):
+    # This test uses placeholders and does not work in eager mode.
+    if context.executing_eagerly():
+      return
+    signal = array_ops.placeholder_with_default(
+        np.zeros((3, 0, 5), dtype=np.float32), shape=[None, None, None]
+    )
+    reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
+    self.assertAllEqual(self.evaluate(array_ops.shape(reconstruction)), [3, 0])
+
+  def test_static_frames_partial_shape(self):
+    signature = [tensor_spec.TensorSpec([None, 4, None], dtypes.float32)]
+
+    @def_function.function(input_signature=signature)
+    def reconstruct(signal):
+      return reconstruction_ops.overlap_and_add(signal, 2)
+
+    reconstruction = reconstruct(np.zeros((3, 4, 5), np.float32))
+    self.assertAllEqual(
+        self.evaluate(reconstruction), np.zeros((3, 11), dtype=np.float32)
+    )
 
   def test_fast_path(self):
     # This test uses tensor names and does not work in eager mode.

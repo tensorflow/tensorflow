@@ -937,6 +937,43 @@ class PowGradTest(test.TestCase):
     self.assertAllClose(3.9032448403173547e306, dgydx, rtol=1e-6)
     self.assertTrue(np.isfinite(dgydy))
 
+  def test_pow_grad_x_zero_base_zero_exponent(self):
+    # d/dx x**0 is 0 everywhere, including x = 0 where x**(y - 1) is inf.
+    for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ]:
+      with self.subTest(dtype=dtype):
+        x = constant_op.constant([0.0, -0.0, 0.0, 2.0], dtype=dtype)
+        y = constant_op.constant([0.0, 0.0, 1.0, 0.0], dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch([x, y])
+          z = math_ops.pow(x, y)
+        gx = self.evaluate(tape.gradient(z, x))
+        self.assertAllEqual([0.0, 0.0, 1.0, 0.0], gx)
+
+        # Scalar exponent with only x watched.
+        x1 = constant_op.constant([0.0, 1.0], dtype=dtype)
+        y1 = constant_op.constant(0.0, dtype=dtype)
+        with backprop.GradientTape() as tape:
+          tape.watch(x1)
+          z1 = math_ops.pow(x1, y1)
+        gx1 = self.evaluate(tape.gradient(z1, x1))
+        self.assertAllEqual([0.0, 0.0], gx1)
+
+    # A nonzero exponent below 1 keeps the infinite slope, and NaN
+    # still propagates.
+    x = constant_op.constant([0.0, np.nan], dtype=dtypes.float64)
+    y = constant_op.constant([0.5, 0.0], dtype=dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      z = math_ops.pow(x, y)
+    gx = self.evaluate(tape.gradient(z, x))
+    self.assertTrue(np.isposinf(gx[0]))
+    self.assertTrue(np.isnan(gx[1]))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NextAfterTest(test.TestCase):

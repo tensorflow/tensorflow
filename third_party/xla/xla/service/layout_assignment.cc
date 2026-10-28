@@ -1272,45 +1272,120 @@ absl::Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
   VLOG(2) << "Operand " << operand->ToString() << " layout does not match "
           << operand_layout.ToString() << " in " << instruction->ToString();
 
-  if (IsWhileLoopCopyDisabled(*instruction) &&
-      !instruction->parent()->caller_instructions(HloOpcode::kWhile).empty()) {
+  // `instruction` is the consumer whose operand needs `operand_layout`.
+  // IsWhileLoopCopyDisabled holds for every computation reachable from a while
+  // loop with the attribute. Requiring that computation to be the body or the
+  // condition of its unique caller excludes computations nested in the loop.
+  // Both have exactly one parameter, the loop state tuple, so parameter 0 is
+  // the loop state.
+  std::optional<HloInstruction*> xla_while =
+      instruction->parent()->GetUniqueCaller(HloOpcode::kWhile);
+  if (IsWhileLoopCopyDisabled(*instruction) && xla_while.has_value()) {
     HloComputation* comp = instruction->parent();
     HloInstruction* param = comp->parameter_instruction(0);
+    HloComputation* body = (*xla_while)->while_body();
     ShapeIndex index = {};
     HloInstruction* current = operand;
     while (current->opcode() == HloOpcode::kGetTupleElement) {
       index.insert(index.begin(), current->tuple_index());
       current = current->mutable_operand(0);
     }
-    if (current == param) {
-      Shape* param_subshape =
-          ShapeUtil::GetMutableSubshape(param->mutable_shape(), index);
-      Shape* root_subshape =
-          ShapeUtil::IndexIsValid(comp->root_instruction()->shape(), index)
-              ? ShapeUtil::GetMutableSubshape(
-                    comp->root_instruction()->mutable_shape(), index)
-              : nullptr;
-      if (param_subshape != nullptr) {
-        VLOG(2) << "Changing copy-disabled while loop parameter layout to "
-                << operand_layout.ToString();
-        *param_subshape = operand_layout.shape();
-        if (root_subshape != nullptr &&
-            ShapeUtil::Compatible(*root_subshape, operand_layout.shape())) {
-          *root_subshape = operand_layout.shape();
+    // This pass's dataflow does not propagate through control flow, so the body
+    // parameter defines its own value. The body root shares that value only if
+    // it forwards the element unchanged, i.e. the element is loop invariant.
+    const bool is_loop_invariant_element =
+        current == param && !index.empty() &&
+        dataflow_analysis_->GetValueSet(body->root_instruction(), index)
+                .values() ==
+            dataflow_analysis_
+                ->GetValueSet(body->parameter_instruction(0), index)
+                .values();
+    HloComputation* condition = (*xla_while)->while_condition();
+    // Changing the element's layout changes it for every consumer in the loop,
+    // so only do it when every consumer requires that layout. A consumer that
+    // requires another layout, or none, keeps the loop layout and gets its own
+    // copy. Operand constraints are complete after propagation, so this does
+    // not depend on the order consumers are visited in.
+    auto all_loop_consumers_require = [&](const Layout& layout) {
+      for (const HloInstruction* loop_param :
+           {body->parameter_instruction(0),
+            condition->parameter_instruction(0)}) {
+        for (const HloUse& use :
+             dataflow_analysis_->GetUniqueValueAt(loop_param, index)
+                 .GetUses()) {
+          if (use.instruction == body->root_instruction()) {
+            continue;
+          }
+          const ShapeLayout* required =
+              computation_constraints(use.instruction->parent())
+                  .OperandLayout(use.instruction, use.operand_number);
+          if (required == nullptr ||
+              !ShapeUtil::IndexIsValid(required->shape(), use.operand_index)) {
+            return false;
+          }
+          const Shape& required_subshape =
+              ShapeUtil::GetSubshape(required->shape(), use.operand_index);
+          if (!required_subshape.has_layout() ||
+              !Layout::Equal().MinorToMajorOnly()(required_subshape.layout(),
+                                                  layout)) {
+            return false;
+          }
         }
-        if (operand != param) {
-          *operand->mutable_shape() = operand_layout.shape();
-        }
-        ComputationLayout computed_computation_layout(
-            comp->ComputeProgramShape(), /*ignore_layouts=*/false);
-        mutable_computation_constraints(comp)
-            ->mutable_computation_constraint()
-            ->ResetComputationLayout(computed_computation_layout,
-                                     current_priority_ + 1,
-                                     /* prop_result_layout=*/true,
-                                     /*prop_parameter_layout=*/true);
-        return absl::OkStatus();
       }
+      return true;
+    };
+    // Only a loop invariant array element can take the new layout as a whole,
+    // since nothing inside the loop then needs a copy. Other cases fall through
+    // to the ordinary copy below.
+    if (is_loop_invariant_element && operand_layout.shape().IsArray() &&
+        all_loop_consumers_require(operand_layout.shape().layout())) {
+      const Layout& layout = operand_layout.shape().layout();
+      VLOG(2) << "Changing copy-disabled while loop parameter layout to "
+              << operand_layout.ToString();
+      // This runs after propagation, so update every place that is later
+      // checked against the element: the values at the loop boundary, the
+      // body and condition layouts, and the while operand constraint. The
+      // caller side mismatch is then resolved by a copy of the while init.
+      for (const HloInstruction* boundary :
+           {body->parameter_instruction(0), condition->parameter_instruction(0),
+            *xla_while}) {
+        const HloValue& value =
+            dataflow_analysis_->GetUniqueValueAt(boundary, index);
+        ABSL_RETURN_IF_ERROR(SetBufferLayout(layout, value, /*mandatory=*/true,
+                                        /*dfs=*/true, current_priority_));
+        for (const HloPosition& position : value.positions()) {
+          *ShapeUtil::GetMutableSubshape(position.instruction->mutable_shape(),
+                                         position.index)
+               ->mutable_layout() = layout;
+        }
+      }
+      ComputationLayout* body_layout = mutable_computation_constraints(body)
+                                           ->mutable_computation_constraint()
+                                           ->mutable_computation_layout();
+      body_layout->mutable_parameter_layout(0)->ResetLayout(layout, index);
+      body_layout->mutable_result_layout()->ResetLayout(layout, index);
+      mutable_computation_constraints(condition)
+          ->mutable_computation_constraint()
+          ->mutable_computation_layout()
+          ->mutable_parameter_layout(0)
+          ->ResetLayout(layout, index);
+      // Require the new layout for the element in the while's init tuple.
+      // AssignLayouts visits callees before callers, so the caller has not
+      // been assigned yet and will copy the init element to match. Start from
+      // the existing constraint: the init tuple's shape does not have its
+      // final layouts yet.
+      const OperandLayoutConstraint* init_constraint =
+          computation_constraints((*xla_while)->parent())
+              .GetOperandLayoutConstraint(*xla_while, 0);
+      TF_RET_CHECK(init_constraint != nullptr);
+      Shape init_shape = init_constraint->shape_layout().shape();
+      *ShapeUtil::GetMutableSubshape(&init_shape, index)->mutable_layout() =
+          layout;
+      ABSL_RETURN_IF_ERROR(SetOperandLayout(
+          init_shape, *xla_while, /*operand_no=*/0, /*mandatory=*/true,
+          /*dfs=*/true,
+          std::max(current_priority_, init_constraint->priority())));
+      return absl::OkStatus();
     }
   }
 
