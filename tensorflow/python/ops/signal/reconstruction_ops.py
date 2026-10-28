@@ -84,11 +84,23 @@ def overlap_and_add(signal, frame_step, name=None):
 
     # Compute output length.
     output_length = frame_length + frame_step * (frames - 1)
+
     # A signal with no frames reconstructs to an empty signal.
-    if tensor_util.is_tensor(frames):
+    static_frames = None
+    if (signal.shape.dims is not None and
+        signal.shape.rank is not None and
+        signal.shape.rank >= 2):
+      static_frames = signal.shape.dims[-2].value
+
+    if static_frames == 0:
+      output_shape = full_shape([0])
+      return array_ops.reshape(signal, output_shape, name="fast_path")
+    elif static_frames is None and tensor_util.is_tensor(frames):
       output_length = array_ops.where_v2(
-          math_ops.greater(frames, 0), output_length,
-          array_ops.zeros_like(output_length))
+          math_ops.greater(frames, 0),
+          output_length,
+          0,
+      )
     elif frames == 0:
       output_length = 0
 
