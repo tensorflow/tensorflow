@@ -30,15 +30,15 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
 
-// Convert mhlo.dot to mhlo.dot_general.
-LogicalResult ConvertDotToDotGeneral(mhlo::DotOp op,
-                                     PatternRewriter &rewriter) {
+// Convert stablehlo.dot to stablehlo.dot_general.
+LogicalResult ConvertDotToDotGeneral(stablehlo::DotOp op,
+                                     PatternRewriter& rewriter) {
   auto lhs_type = mlir::cast<ShapedType>(op.getLhs().getType());
   auto rhs_type = mlir::cast<ShapedType>(op.getRhs().getType());
   if (!lhs_type.hasRank() || !rhs_type.hasRank()) {
@@ -51,28 +51,28 @@ LogicalResult ConvertDotToDotGeneral(mhlo::DotOp op,
         "unsupported dot operation type; operands must be vectors or "
         "matrices");
   }
-  rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
+  rewriter.replaceOpWithNewOp<stablehlo::DotGeneralOp>(
       op, op.getType(), op.getLhs(), op.getRhs(),
-      mhlo::DotDimensionNumbersAttr::get(
+      stablehlo::DotDimensionNumbersAttr::get(
           op.getContext(),
           /*lhsBatchingDimensions=*/{},
           /*rhsBatchingDimensions=*/{},
           /*lhsContractingDimensions=*/{lhs_type.getRank() - 1},
           /*rhsContractingDimensions=*/{0}),
-      op.getPrecisionConfigAttr(), mhlo::DotAlgorithmAttr{});
+      op.getPrecisionConfigAttr(), stablehlo::DotAlgorithmAttr{});
   return success();
 }
 
 // Convert reshape(dot_general(reshape(%y), %z)) to
 // dot_general(%y, %z) if possible.
-LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
-                                            PatternRewriter &rewriter) {
-  auto dot = dyn_cast_or_null<mhlo::DotGeneralOp>(
+LogicalResult RemoveReshapeAroundDotGeneral(stablehlo::ReshapeOp reshape_after,
+                                            PatternRewriter& rewriter) {
+  auto dot = dyn_cast_or_null<stablehlo::DotGeneralOp>(
       reshape_after.getOperand().getDefiningOp());
   if (!dot) return failure();
 
   auto reshape_before =
-      dyn_cast_or_null<mhlo::ReshapeOp>(dot.getLhs().getDefiningOp());
+      dyn_cast_or_null<stablehlo::ReshapeOp>(dot.getLhs().getDefiningOp());
   if (!reshape_before) return failure();
 
   if (!dot.getLhs().getType().hasStaticShape() ||
@@ -93,7 +93,7 @@ LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
     return result;
   };
 
-  // We only support the mhlo.dot style input layouts, i.e.:
+  // We only support the stablehlo.dot style input layouts, i.e.:
   //   lhs: [batch, other dims, contract dims]
   //   rhs: [batch, contract dims, other dims]
   auto dim_nums = dot.getDotDimensionNumbers();
@@ -116,11 +116,11 @@ LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
   // (B = batch dims, C = contracting dims, Y/Z = other dims)
   //
   // This pattern converts:
-  //   %before = "mhlo.reshape"(%lhs : BxY1xC) : BxY2xC
-  //   %dot = "mhlo.dot_general"(%before, %rhs : BxCxZ) : BxY2xZ
-  //   %after = "mhlo.reshape"(%dot) : BxY1xZ
+  //   %before = "stablehlo.reshape"(%lhs : BxY1xC) : BxY2xC
+  //   %dot = "stablehlo.dot_general"(%before, %rhs : BxCxZ) : BxY2xZ
+  //   %after = "stablehlo.reshape"(%dot) : BxY1xZ
   // to:
-  //   %dot : "mhlo.dot_general"(%lhs : BxY1xC, %rhs : BxCxZ) : BxY1xZ
+  //   %dot : "stablehlo.dot_general"(%lhs : BxY1xC, %rhs : BxCxZ) : BxY1xZ
 
   // Extract B, Y1, C from %lhs.
   ArrayRef<int64_t> shape_lhs =
@@ -151,10 +151,10 @@ LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
     return failure();
   }
 
-  rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
+  rewriter.replaceOpWithNewOp<stablehlo::DotGeneralOp>(
       reshape_after, reshape_after.getType(), reshape_before.getOperand(),
       dot.getRhs(),
-      mhlo::DotDimensionNumbersAttr::get(
+      stablehlo::DotDimensionNumbersAttr::get(
           reshape_after.getContext(),
           /*lhsBatchingDimensions=*/range(0, batch_dims_count),
           /*rhsBatchingDimensions=*/range(0, batch_dims_count),
@@ -174,13 +174,14 @@ LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
 // To:
 //   %x = concatenate(%x0, %x1, ...)
 //   dot_general(%x, %w)
-LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
-                               PatternRewriter &rewriter) {
-  if (concat.getVal().size() < 2)
+LogicalResult LiftDotConcatLHS(stablehlo::ConcatenateOp concat,
+                               PatternRewriter& rewriter) {
+  if (concat.getInputs().size() < 2)
     return rewriter.notifyMatchFailure(
         concat, "Concatenate op should have at least two operands");
 
-  auto first_dot = concat.getVal()[0].getDefiningOp<mhlo::DotGeneralOp>();
+  auto first_dot =
+      concat.getInputs()[0].getDefiningOp<stablehlo::DotGeneralOp>();
   if (!first_dot)
     return rewriter.notifyMatchFailure(concat, "Operand is not dot_general");
   if (!first_dot.getLhs().getType().hasStaticShape())
@@ -190,7 +191,7 @@ LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
     return rewriter.notifyMatchFailure(first_dot, "Op has multiple uses");
 
   SmallVector<Value> all_dot_lhs;
-  all_dot_lhs.reserve(concat.getVal().size());
+  all_dot_lhs.reserve(concat.getInputs().size());
   all_dot_lhs.push_back(first_dot.getLhs());
 
   const uint64_t batch_dims_count =
@@ -209,8 +210,8 @@ LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
                                        "Not concating on LHS other dims");
   }
 
-  for (auto value : concat.getVal().drop_front()) {
-    auto dot = value.getDefiningOp<mhlo::DotGeneralOp>();
+  for (auto value : concat.getInputs().drop_front()) {
+    auto dot = value.getDefiningOp<stablehlo::DotGeneralOp>();
     if (!dot)
       return rewriter.notifyMatchFailure(concat, "Operand is not dot_general");
 
@@ -269,10 +270,10 @@ LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
         mlir::dyn_cast<ShapedType>(v.getType()).getShape()[new_concat_dim];
   }
 
-  auto new_concat = mhlo::ConcatenateOp::create(
+  auto new_concat = stablehlo::ConcatenateOp::create(
       rewriter, concat->getLoc(), concat.getType().clone(new_concat_shape),
-      all_dot_lhs, rewriter.getI64IntegerAttr(new_concat_dim));
-  rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
+      all_dot_lhs, new_concat_dim);
+  rewriter.replaceOpWithNewOp<stablehlo::DotGeneralOp>(
       concat, concat.getType(), new_concat, first_dot.getRhs(),
       first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr(),
       first_dot.getAlgorithmAttr());
@@ -291,13 +292,14 @@ LogicalResult LiftDotConcatLHS(mhlo::ConcatenateOp concat,
 //
 // To simplify the implementation, we only handle the case where the final
 // concat is on the only batching dim.
-LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
-                                     PatternRewriter &rewriter) {
-  if (concat.getVal().size() < 2)
+LogicalResult LiftDotConcatLHSAndRHS(stablehlo::ConcatenateOp concat,
+                                     PatternRewriter& rewriter) {
+  if (concat.getInputs().size() < 2)
     return rewriter.notifyMatchFailure(
         concat, "Concatenate op should have at least two operands");
 
-  auto first_dot = concat.getVal()[0].getDefiningOp<mhlo::DotGeneralOp>();
+  auto first_dot =
+      concat.getInputs()[0].getDefiningOp<stablehlo::DotGeneralOp>();
   if (!first_dot)
     return rewriter.notifyMatchFailure(concat, "Operand is not dot_general");
   if (!first_dot.getLhs().getType().hasStaticShape())
@@ -307,10 +309,10 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
     return rewriter.notifyMatchFailure(first_dot, "Op has multiple uses");
 
   SmallVector<Value> all_dot_lhs;
-  all_dot_lhs.reserve(concat.getVal().size());
+  all_dot_lhs.reserve(concat.getInputs().size());
   all_dot_lhs.push_back(first_dot.getLhs());
   SmallVector<Value> all_dot_rhs;
-  all_dot_rhs.reserve(concat.getVal().size());
+  all_dot_rhs.reserve(concat.getInputs().size());
   all_dot_rhs.push_back(first_dot.getRhs());
 
   if (first_dot.getDotDimensionNumbers().getLhsBatchingDimensions().size() != 1)
@@ -319,8 +321,8 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
     return rewriter.notifyMatchFailure(
         concat, "Not concating on the first batching dim");
 
-  for (auto value : concat.getVal().drop_front()) {
-    auto dot = value.getDefiningOp<mhlo::DotGeneralOp>();
+  for (auto value : concat.getInputs().drop_front()) {
+    auto dot = value.getDefiningOp<stablehlo::DotGeneralOp>();
     if (!dot)
       return rewriter.notifyMatchFailure(concat, "Operand is not dot_general");
 
@@ -368,13 +370,13 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
         mlir::dyn_cast<ShapedType>(v.getType()).getShape()[rhs_batch_dim];
   }
 
-  auto lhs_new_concat = mhlo::ConcatenateOp::create(
+  auto lhs_new_concat = stablehlo::ConcatenateOp::create(
       rewriter, concat->getLoc(), concat.getType().clone(lhs_new_concat_shape),
-      all_dot_lhs, rewriter.getI64IntegerAttr(lhs_batch_dim));
-  auto rhs_new_concat = mhlo::ConcatenateOp::create(
+      all_dot_lhs, lhs_batch_dim);
+  auto rhs_new_concat = stablehlo::ConcatenateOp::create(
       rewriter, concat->getLoc(), concat.getType().clone(rhs_new_concat_shape),
-      all_dot_rhs, rewriter.getI64IntegerAttr(rhs_batch_dim));
-  rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
+      all_dot_rhs, rhs_batch_dim);
+  rewriter.replaceOpWithNewOp<stablehlo::DotGeneralOp>(
       concat, concat.getType(), lhs_new_concat, rhs_new_concat,
       first_dot.getDotDimensionNumbers(), first_dot.getPrecisionConfigAttr(),
       first_dot.getAlgorithmAttr());
@@ -388,21 +390,23 @@ LogicalResult LiftDotConcatLHSAndRHS(mhlo::ConcatenateOp concat,
 // To:
 //   %y = slice(%x, start=0, limit=3)
 //   concat(%y, ...)
-LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
-                              PatternRewriter &rewriter) {
-  if (concat.getVal().size() < 2)
+LogicalResult FuseSliceConcat(stablehlo::ConcatenateOp concat,
+                              PatternRewriter& rewriter) {
+  if (concat.getInputs().size() < 2)
     return rewriter.notifyMatchFailure(
         concat, "Concatenate op should have at least two operands");
 
-  auto first = concat.getVal()[0].getDefiningOp<mhlo::SliceOp>();
-  auto second = concat.getVal()[1].getDefiningOp<mhlo::SliceOp>();
+  auto first = concat.getInputs()[0].getDefiningOp<stablehlo::SliceOp>();
+  auto second = concat.getInputs()[1].getDefiningOp<stablehlo::SliceOp>();
   if (!first || !second)
     return rewriter.notifyMatchFailure(concat, "operands are not slice ops");
   if (first.getOperand() != second.getOperand())
     return rewriter.notifyMatchFailure(concat, "slice not on the same input");
-  if (!first.getStrides().isSplat() ||
-      first.getStrides().getSplatValue<IntegerAttr>().getInt() != 1 ||
-      first.getStrides() != second.getStrides())
+
+  auto first_strides = first.getStrides();
+  auto second_strides = second.getStrides();
+  bool all_ones = llvm::all_of(first_strides, [](int64_t s) { return s == 1; });
+  if (!all_ones || first_strides != second_strides)
     return rewriter.notifyMatchFailure(concat, "slice ops must have stride=1");
   if (!first->hasOneUse() || !second->hasOneUse())
     return rewriter.notifyMatchFailure(concat, "slice ops are used elsewhere");
@@ -410,21 +414,22 @@ LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
   SmallVector<int64_t> new_start;
   SmallVector<int64_t> new_limit;
   SmallVector<int64_t> new_slice_shape;
-  new_start.reserve(first.getStrides().size());
-  new_limit.reserve(first.getStrides().size());
-  new_slice_shape.reserve(first.getStrides().size());
+  new_start.reserve(first_strides.size());
+  new_limit.reserve(first_strides.size());
+  new_slice_shape.reserve(first_strides.size());
 
-  for (int i = 0; i < first.getStrides().size(); ++i) {
-    const int64_t first_start =
-        first.getStartIndicesAttr().getValues<IntegerAttr>()[i].getInt();
-    const int64_t first_limit =
-        first.getLimitIndicesAttr().getValues<IntegerAttr>()[i].getInt();
-    const int64_t second_start =
-        second.getStartIndicesAttr().getValues<IntegerAttr>()[i].getInt();
-    const int64_t second_limit =
-        second.getLimitIndicesAttr().getValues<IntegerAttr>()[i].getInt();
+  auto first_start_indices = first.getStartIndices();
+  auto first_limit_indices = first.getLimitIndices();
+  auto second_start_indices = second.getStartIndices();
+  auto second_limit_indices = second.getLimitIndices();
 
-    if (i == concat.getDimension()) {
+  for (size_t i = 0; i < first_strides.size(); ++i) {
+    const int64_t first_start = first_start_indices[i];
+    const int64_t first_limit = first_limit_indices[i];
+    const int64_t second_start = second_start_indices[i];
+    const int64_t second_limit = second_limit_indices[i];
+
+    if (static_cast<uint64_t>(i) == concat.getDimension()) {
       if (first_limit != second_start)
         return rewriter.notifyMatchFailure(
             second, "slice is not continuous with previous slice");
@@ -439,20 +444,18 @@ LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
     new_slice_shape.push_back(second_limit - first_start);
   }
 
-  auto new_slice = mhlo::SliceOp::create(
+  auto new_slice = stablehlo::SliceOp::create(
       rewriter,
       FusedLoc::get(first->getContext(), {first.getLoc(), second.getLoc()}),
-      first.getType().clone(new_slice_shape), first.getOperand(),
-      /*start_indices=*/rewriter.getI64TensorAttr(new_start),
-      /*limit_indices=*/rewriter.getI64TensorAttr(new_limit),
-      /*strides=*/first.getStrides());
+      first.getType().clone(new_slice_shape), first.getOperand(), new_start,
+      new_limit, first_strides);
 
   SmallVector<Value> new_concat_values;
-  new_concat_values.reserve(concat.getVal().size() - 1);
+  new_concat_values.reserve(concat.getInputs().size() - 1);
   new_concat_values.push_back(new_slice);
-  llvm::append_range(new_concat_values, concat.getVal().drop_front(2));
+  llvm::append_range(new_concat_values, concat.getInputs().drop_front(2));
 
-  rewriter.replaceOpWithNewOp<mhlo::ConcatenateOp>(
+  rewriter.replaceOpWithNewOp<stablehlo::ConcatenateOp>(
       concat, concat.getType(), new_concat_values, concat.getDimension());
   return success();
 }
@@ -463,8 +466,8 @@ LogicalResult FuseSliceConcat(mhlo::ConcatenateOp concat,
 //  %y2 = pad(%y1, pad_val, (p2_1,p2_2,p2_3, ...))
 // To:
 //  %z = pad(%x, pad_val, (p1_1 + p2_1, p1_2 + p2_2, p1_3 + p2_3, ...))
-LogicalResult MergeConsecutivePad(mhlo::PadOp pad_op,
-                                  PatternRewriter &rewriter) {
+LogicalResult MergeConsecutivePad(stablehlo::PadOp pad_op,
+                                  PatternRewriter& rewriter) {
   // Fail for non-static shapes
   if (!pad_op.getOperand().getType().hasStaticShape() ||
       !pad_op.getResult().getType().hasStaticShape() ||
@@ -474,7 +477,7 @@ LogicalResult MergeConsecutivePad(mhlo::PadOp pad_op,
 
   // Check if the operand is also a Pad op
   auto parent_pad =
-      dyn_cast_or_null<mhlo::PadOp>(pad_op.getOperand().getDefiningOp());
+      dyn_cast_or_null<stablehlo::PadOp>(pad_op.getOperand().getDefiningOp());
   if (!parent_pad) {
     return rewriter.notifyMatchFailure(pad_op, "parent is not a pad operator");
   }
@@ -496,40 +499,24 @@ LogicalResult MergeConsecutivePad(mhlo::PadOp pad_op,
   }
 
   // Check if the padding values are equal (otherwise merging is illegal)
-  // Because we are using the greedy pattern rewrite driver
-  // (applyPatternsGreedily), all different constant operators with the
-  // same value will be replaced by a single constant operator of that value.
-  // Due to this, if the padding values in the input are equal, they will become
-  // the same constant operator and the following check (which compares memory
-  // addresses) works.
   if (pad_op.getPaddingValue() != parent_pad.getPaddingValue()) {
     return rewriter.notifyMatchFailure(
         pad_op, "parent and child pad have different padding values");
   }
 
-  // NOTE: Because negative paddings are allowed, we assert that if
-  // `parent_pad < 0` then `child_pad <= 0` The effect of the negative pad is to
-  // remove values, so for example if we have parent_pad = - 1, child_pad = 1
-  // the merged pad will not change anything, while the un-merged will remove a
-  // value, then insert a 0 at its place. This only holds for low and high pads,
-  // the spec does not allow negative interior pads, so we don't check there.
-  auto low_pads = pad_op.getEdgePaddingLow().getValues<IntegerAttr>();
-  auto parent_low_pads =
-      parent_pad.getEdgePaddingLow().getValues<IntegerAttr>();
-  auto high_pads = pad_op.getEdgePaddingHigh().getValues<IntegerAttr>();
-  auto parent_high_pads =
-      parent_pad.getEdgePaddingHigh().getValues<IntegerAttr>();
-  auto interior_pads = pad_op.getInteriorPadding().getValues<IntegerAttr>();
-  auto parent_interior_pads =
-      parent_pad.getInteriorPadding().getValues<IntegerAttr>();
+  auto low_pads = pad_op.getEdgePaddingLow();
+  auto parent_low_pads = parent_pad.getEdgePaddingLow();
+  auto high_pads = pad_op.getEdgePaddingHigh();
+  auto parent_high_pads = parent_pad.getEdgePaddingHigh();
+  auto interior_pads = pad_op.getInteriorPadding();
+  auto parent_interior_pads = parent_pad.getInteriorPadding();
 
-  // NOTE: Low/High/Interior pads have the same size
-  for (int i = 0; i < low_pads.size(); ++i) {
-    if (parent_low_pads[i].getInt() < 0 && low_pads[i].getInt() > 0) {
+  for (size_t i = 0; i < low_pads.size(); ++i) {
+    if (parent_low_pads[i] < 0 && low_pads[i] > 0) {
       return rewriter.notifyMatchFailure(
           pad_op, "can't merge consecutive negative and positive low pads");
     }
-    if (parent_high_pads[i].getInt() < 0 && high_pads[i].getInt() > 0) {
+    if (parent_high_pads[i] < 0 && high_pads[i] > 0) {
       return rewriter.notifyMatchFailure(
           pad_op, "can't merge consecutive negative and positive high pads");
     }
@@ -539,38 +526,33 @@ LogicalResult MergeConsecutivePad(mhlo::PadOp pad_op,
   std::vector<int64_t> new_high_pads(high_pads.size(), 0);
   std::vector<int64_t> new_interior_pads(interior_pads.size(), 0);
 
-  for (int i = 0; i < low_pads.size(); ++i) {
-    new_low_pads[i] = low_pads[i].getInt() + parent_low_pads[i].getInt();
-    new_high_pads[i] = high_pads[i].getInt() + parent_high_pads[i].getInt();
-    new_interior_pads[i] =
-        interior_pads[i].getInt() + parent_interior_pads[i].getInt();
+  for (size_t i = 0; i < low_pads.size(); ++i) {
+    new_low_pads[i] = low_pads[i] + parent_low_pads[i];
+    new_high_pads[i] = high_pads[i] + parent_high_pads[i];
+    new_interior_pads[i] = interior_pads[i] + parent_interior_pads[i];
   }
 
   // Replace pad_op with a new pad having new attributes, taking the
   // parent_pad's operand. (After this parent_pad has no users and is removed).
-  rewriter.replaceOpWithNewOp<mhlo::PadOp>(
+  rewriter.replaceOpWithNewOp<stablehlo::PadOp>(
       pad_op, pad_op.getType(), parent_pad.getOperand(),
-      parent_pad.getPaddingValue(), rewriter.getI64TensorAttr(new_low_pads),
-      rewriter.getI64TensorAttr(new_high_pads),
-      rewriter.getI64TensorAttr(new_interior_pads));
+      parent_pad.getPaddingValue(), new_low_pads, new_high_pads,
+      new_interior_pads);
   return success();
 }
 
 // Convert:
 //   %input : 1xYxC
-//   %1 = mhlo.reshape %param : (1xCxZ) -> CxZ
-//   mhlo.dot_general %input, %1 {batch_dims = []}
+//   %1 = stablehlo.reshape %param : (1xCxZ) -> CxZ
+//   stablehlo.dot_general %input, %1 {batch_dims = []}
 // To:
-//   mhlo.dot_general %input, %param {batch_dims = [0]}
-//
-// This usage will mostly come from tf-unroll-batch-matmul, so it's fine to only
-// handle the case where batching dim is the leftmost dim.
-LogicalResult ConvertReshapeDotRhsToBatchedDot(mhlo::DotGeneralOp dot,
-                                               PatternRewriter &rewriter) {
-  mhlo::DotDimensionNumbersAttr dim_nums = dot.getDotDimensionNumbers();
+//   stablehlo.dot_general %input, %param {batch_dims = [0]}
+LogicalResult ConvertReshapeDotRhsToBatchedDot(stablehlo::DotGeneralOp dot,
+                                               PatternRewriter& rewriter) {
+  stablehlo::DotDimensionNumbersAttr dim_nums = dot.getDotDimensionNumbers();
   if (!dim_nums.getLhsBatchingDimensions().empty()) return failure();
 
-  auto reshape = dot.getRhs().getDefiningOp<mhlo::ReshapeOp>();
+  auto reshape = dot.getRhs().getDefiningOp<stablehlo::ReshapeOp>();
   if (!reshape) return failure();
   if (!reshape->hasOneUse())
     return rewriter.notifyMatchFailure(reshape, "reshape has multiple usages");
@@ -607,9 +589,9 @@ LogicalResult ConvertReshapeDotRhsToBatchedDot(mhlo::DotGeneralOp dot,
     new_rhs_contracting_dims.push_back(d + 1);
   }
 
-  rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
+  rewriter.replaceOpWithNewOp<stablehlo::DotGeneralOp>(
       dot, dot.getType(), dot.getLhs(), reshape.getOperand(),
-      mhlo::DotDimensionNumbersAttr::get(
+      stablehlo::DotDimensionNumbersAttr::get(
           dot.getContext(),
           /*lhsBatchingDimensions=*/{lhs_first_other_dim},
           /*rhsBatchingDimensions=*/{0},
@@ -624,53 +606,17 @@ LogicalResult ConvertReshapeDotRhsToBatchedDot(mhlo::DotGeneralOp dot,
 //===----------------------------------------------------------------------===//
 
 // Minimizing unit dimensions in reshape(broadcast(X)).
-//
-// There are situations where X, or broadcast(X) have some number of `1` (unit)
-// sized dimensions which are not meaningful to the computation. E.g.
-//
-// ```
-// x = [1x1x1x3]
-// b = broadast(x) : [1x2x1x3]
-// r = reshape(b) : [2x3]
-// ```
-//
-// Provided the relative broadcast dims are preserved, removing any number
-// of unit dims from the input or output shape of a broadcast has no effect on
-// the semantic of the computation.
-//
-// Assume a reshape(broadcast(x)) where the shape of the broadcast and reshape
-// have the same non-unit dims in the same order. In this case we can
-// change the broadcast shape into the reshape shape simply by adding or
-// removing unit-dims, and the reshape can be replaced with the broadcast.
-//
-// When removing unit dims from the broadcast in this way, we may also need
-// to remove the corresponding unit dim from the input shape. This pattern takes
-// the approach of removing all unit dims for the broadcast input
-// rather than explicitly checking each.
-//
-// The result on the above example:
-//
-// ```
-// x = [1x1x1x3]
-// r = reshape(x) : [3]
-// b = broadast(r) : [2x3]
-// ```
-//
-// Note that the ability of removing unit dims from the input or output shape of
-// a broascast is not contingent on matching and replacing a reshaped output. We
-// require however for this pattern to not increase the net number of reshapes.
-// Additionally, we want to minimize the rank of broadcasts so only considered
-// are cases where rank(reshape) < rank(broadcast).
 class SimplifyBroadcastInDimsReshape
-    : public OpRewritePattern<mhlo::BroadcastInDimOp> {
+    : public OpRewritePattern<stablehlo::BroadcastInDimOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(mhlo::BroadcastInDimOp op,
-                                PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(stablehlo::BroadcastInDimOp op,
+                                PatternRewriter& rewriter) const override {
     if (!op->hasOneUse()) {
       return rewriter.notifyMatchFailure(op, "has more than one use.");
     }
 
-    auto reshape = mlir::dyn_cast<mhlo::ReshapeOp>(*op->getUsers().begin());
+    auto reshape =
+        mlir::dyn_cast<stablehlo::ReshapeOp>(*op->getUsers().begin());
     if (!reshape) {
       return rewriter.notifyMatchFailure(op, "user not reshape.");
     }
@@ -714,7 +660,7 @@ class SimplifyBroadcastInDimsReshape
     // Unchecked reshape dim sizes are guaranteed to be unit at this point.
 
     llvm::SmallVector<int64_t> current_broadcast_dims(
-        op.getBroadcastDimensions().getValues<int64_t>());
+        op.getBroadcastDimensions());
     llvm::SmallVector<int64_t> new_broadcast_dims;
     llvm::SmallVector<int64_t> new_broadcast_input_shape;
 
@@ -731,13 +677,11 @@ class SimplifyBroadcastInDimsReshape
 
     auto new_broadcast_input_type = RankedTensorType::get(
         new_broadcast_input_shape, broadcast_type.getElementType());
-    auto new_broadcast_input = mhlo::ReshapeOp::create(
+    auto new_broadcast_input = stablehlo::ReshapeOp::create(
         rewriter, op->getLoc(), new_broadcast_input_type, op.getOperand());
-    auto new_broadcast_dims_attr =
-        rewriter.getI64TensorAttr(new_broadcast_dims);
 
-    rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(
-        reshape, reshape_type, new_broadcast_input, new_broadcast_dims_attr);
+    rewriter.replaceOpWithNewOp<stablehlo::BroadcastInDimOp>(
+        reshape, reshape_type, new_broadcast_input, new_broadcast_dims);
 
     return success();
   }
@@ -746,9 +690,9 @@ class SimplifyBroadcastInDimsReshape
 class OptimizePass
     : public PassWrapper<OptimizePass, OperationPass<func::FuncOp>> {
  public:
-  StringRef getArgument() const final { return "mhlo-optimize"; }
+  StringRef getArgument() const final { return "stablehlo-optimize"; }
   StringRef getDescription() const final {
-    return "Applies various optimizations on MHLO IR";
+    return "Applies various optimizations on StableHLO IR";
   }
 
   void runOnOperation() override {

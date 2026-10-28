@@ -55,7 +55,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/types.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"

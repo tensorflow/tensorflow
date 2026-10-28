@@ -30,9 +30,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -69,9 +69,9 @@ LogicalResult CanonicalizeScatterUpdates(
   auto permutation_and_shape = GetPermutationAndTransposedShape(
       permutation_array, updates_type, rewriter);
 
-  auto transposed_updates = mhlo::TransposeOp::create(
+  auto transposed_updates = stablehlo::TransposeOp::create(
       rewriter, scatter_op->getLoc(), permutation_and_shape.shape, updates,
-      permutation_and_shape.permutation);
+      permutation_array);
 
   updates = transposed_updates;
   updates_type = permutation_and_shape.shape;
@@ -80,7 +80,7 @@ LogicalResult CanonicalizeScatterUpdates(
 
 template <typename BinaryOp, typename TfOp>
 LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
-    mhlo::ScatterOp scatter_op, OpAdaptor adaptor,
+    stablehlo::ScatterOp scatter_op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   OperandRange operands = scatter_op.getInputs();
   Value indices = scatter_op.getScatterIndices();
@@ -164,8 +164,8 @@ LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
 
   Location loc = scatter_op.getLoc();
   auto transposed_operand =
-      mhlo::TransposeOp::create(rewriter, loc, permutation_and_shape.shape,
-                                operands[0], permutation_and_shape.permutation);
+      stablehlo::TransposeOp::create(rewriter, loc, permutation_and_shape.shape,
+                                     operands[0], permutation_array);
 
   Value new_indices = indices;
   int64_t index_depth =
@@ -204,8 +204,8 @@ LogicalResult ConvertScatterOp<BinaryOp, TfOp>::matchAndRewrite(
                    transposed_operand, new_indices, new_updates);
 
   // Reverse the earlier transpose.
-  auto inverse_permutation = GetInversePermutation(permutation_array, rewriter);
-  rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
+  auto inverse_permutation = GetInversePermutationArray(permutation_array);
+  rewriter.replaceOpWithNewOp<stablehlo::TransposeOp>(
       scatter_op, scatter_op.getResult(0).getType(), tf_scatter_op,
       inverse_permutation);
 
