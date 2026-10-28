@@ -33,7 +33,7 @@ setup(
     version=PACKAGE_VERSION,
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
-    url='https://www.tensorflow.org/lite/',
+    url='https://developers.google.com/edge/litert',
     author='Google, LLC',
     author_email='packages@tensorflow.org',
     license='Apache 2.0',

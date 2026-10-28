@@ -639,31 +639,28 @@ def norm_v2(tensor,
   matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
 
   Args:
-    tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
-    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`,
-      `1`, `2`, `np.inf` and any positive real number yielding the corresponding
+    tensor: `Tensor` of types `float16`, `bfloat16`, `float32`, `float64`,
+      `complex64`, `complex128`
+    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`, `1`,
+      `2`, `np.inf` and any positive real number yielding the corresponding
       p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
-      `tensor` is a matrix and equivalent to 2-norm for vectors.
-      Some restrictions apply:
-        a) The Frobenius norm `'fro'` is not defined for vectors,
-        b) If axis is a 2-tuple (matrix norm), only `'euclidean'`, '`fro'`, `1`,
-           `2`, `np.inf` are supported.
-      See the description of `axis` on how to compute norms for a batch of
-      vectors or matrices stored in a tensor.
+      `tensor` is a matrix and equivalent to 2-norm for vectors. Some
+      restrictions apply: a) The Frobenius norm `'fro'` is not defined for
+      vectors, b) If axis is a 2-tuple (matrix norm), only `'euclidean'`,
+      '`fro'`, `1`, `2`, `np.inf` are supported. See the description of `axis`
+      on how to compute norms for a batch of vectors or matrices stored in a
+      tensor.
     axis: If `axis` is `None` (the default), the input is considered a vector
       and a single vector norm is computed over the entire set of values in the
       tensor, i.e. `norm(tensor, ord=ord)` is equivalent to
-      `norm(reshape(tensor, [-1]), ord=ord)`.
-      If `axis` is a Python integer, the input is considered a batch of vectors,
-      and `axis` determines the axis in `tensor` over which to compute vector
-      norms.
-      If `axis` is a 2-tuple of Python integers it is considered a batch of
-      matrices and `axis` determines the axes in `tensor` over which to compute
-      a matrix norm.
-      Negative indices are supported. Example: If you are passing a tensor that
-      can be either a matrix or a batch of matrices at runtime, pass
-      `axis=[-2,-1]` instead of `axis=None` to make sure that matrix norms are
-      computed.
+      `norm(reshape(tensor, [-1]), ord=ord)`. If `axis` is a Python integer, the
+      input is considered a batch of vectors, and `axis` determines the axis in
+      `tensor` over which to compute vector norms. If `axis` is a 2-tuple of
+      Python integers it is considered a batch of matrices and `axis` determines
+      the axes in `tensor` over which to compute a matrix norm. Negative indices
+      are supported. Example: If you are passing a tensor that can be either a
+      matrix or a batch of matrices at runtime, pass `axis=[-2,-1]` instead of
+      `axis=None` to make sure that matrix norms are computed.
     keepdims: If True, the axis indicated in `axis` are kept with size 1.
       Otherwise, the dimensions in `axis` are removed from the output shape.
     name: The name of the op.
@@ -714,31 +711,27 @@ def norm(tensor,
   matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
 
   Args:
-    tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
-    ord: Order of the norm. Supported values are 'fro', 'euclidean',
-      `1`, `2`, `np.inf` and any positive real number yielding the corresponding
-      p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
-      `tensor` is a matrix and equivalent to 2-norm for vectors.
-      Some restrictions apply:
-        a) The Frobenius norm `fro` is not defined for vectors,
-        b) If axis is a 2-tuple (matrix norm), only 'euclidean', 'fro', `1`,
-           `2`, `np.inf` are supported.
-      See the description of `axis` on how to compute norms for a batch of
-      vectors or matrices stored in a tensor.
+    tensor: `Tensor` of types `float16`, `bfloat16`, `float32`, `float64`,
+      `complex64`, `complex128`
+    ord: Order of the norm. Supported values are 'fro', 'euclidean', `1`, `2`,
+      `np.inf` and any positive real number yielding the corresponding p-norm.
+      Default is 'euclidean' which is equivalent to Frobenius norm if `tensor`
+      is a matrix and equivalent to 2-norm for vectors. Some restrictions apply:
+      a) The Frobenius norm `fro` is not defined for vectors, b) If axis is a
+      2-tuple (matrix norm), only 'euclidean', 'fro', `1`, `2`, `np.inf` are
+      supported. See the description of `axis` on how to compute norms for a
+      batch of vectors or matrices stored in a tensor.
     axis: If `axis` is `None` (the default), the input is considered a vector
       and a single vector norm is computed over the entire set of values in the
       tensor, i.e. `norm(tensor, ord=ord)` is equivalent to
-      `norm(reshape(tensor, [-1]), ord=ord)`.
-      If `axis` is a Python integer, the input is considered a batch of vectors,
-      and `axis` determines the axis in `tensor` over which to compute vector
-      norms.
-      If `axis` is a 2-tuple of Python integers it is considered a batch of
-      matrices and `axis` determines the axes in `tensor` over which to compute
-      a matrix norm.
-      Negative indices are supported. Example: If you are passing a tensor that
-      can be either a matrix or a batch of matrices at runtime, pass
-      `axis=[-2,-1]` instead of `axis=None` to make sure that matrix norms are
-      computed.
+      `norm(reshape(tensor, [-1]), ord=ord)`. If `axis` is a Python integer, the
+      input is considered a batch of vectors, and `axis` determines the axis in
+      `tensor` over which to compute vector norms. If `axis` is a 2-tuple of
+      Python integers it is considered a batch of matrices and `axis` determines
+      the axes in `tensor` over which to compute a matrix norm. Negative indices
+      are supported. Example: If you are passing a tensor that can be either a
+      matrix or a batch of matrices at runtime, pass `axis=[-2,-1]` instead of
+      `axis=None` to make sure that matrix norms are computed.
     keepdims: If True, the axis indicated in `axis` are kept with size 1.
       Otherwise, the dimensions in `axis` are removed from the output shape.
     name: The name of the op.
@@ -808,6 +801,12 @@ def norm(tensor,
               f'axis {ax} is out of bounds for tensor of rank '
               f'{tensor.shape.rank}'
           )
+
+    is_float16 = tensor.dtype == dtypes.float16
+    if is_float16:
+      # Intermediate sums of squares / powers overflow `float16` long before
+      # the norm itself does, so compute in `float32`.
+      tensor = math_ops.cast(tensor, dtypes.float32)
 
     if ord in ['fro', 'euclidean', 2, 2.0]:
       if is_matrix_norm and ord in [2, 2.0]:
@@ -908,6 +907,8 @@ def norm(tensor,
             1.0 / ord)
     if not keepdims:
       result = array_ops.squeeze(result, axis)
+    if is_float16:
+      result = math_ops.cast(result, dtypes.float16)
     return result
 
 
