@@ -21,8 +21,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
 
 namespace mlir {
 namespace odml {
@@ -30,24 +30,25 @@ namespace odml {
 // Given a Composite op that wraps a core.aten.avg_pool2d, returns the padding
 // configuration required for the `tfl.pad` if the padding part of the op is
 // to be done before average pooling.
-DenseIntElementsAttr GetPadOpAttr(Builder& builder, mhlo::CompositeOp op);
+DenseIntElementsAttr GetPadOpAttr(Builder& builder, stablehlo::CompositeOp op);
 
 // Given a Composite op that wraps a core.aten.avg_pool2d, and assuming that
 // the padding part is extracted into a tfl.pad op prior to a
 // tfl.average_pool_2d, this function finds the return type of the needed
 // tfl.pad .
-ShapedType GetPadOpType(mhlo::CompositeOp op);
+ShapedType GetPadOpType(stablehlo::CompositeOp op);
 
 // Given a Composite op that wraps a core.aten.avg_pool2d, finds the padding
 // attribute to be passed to the a tfl.average_pool_2d that can fully replace
 // this composite (here, padding is done directly by the tfl.average_pool_2d as
 // opposed to being extracted into a separate tfl.pad).
-StringAttr GetAvgPoolOpPadAttr(Builder& builder, mhlo::CompositeOp op);
+StringAttr GetAvgPoolOpPadAttr(Builder& builder, stablehlo::CompositeOp op);
 
 // Get dense attr for a matrix that corrects the over counting of divisors when
 // casting an average pool with ceil mode on in terms of average pool with it
 // off.
-DenseFPElementsAttr GetCorrectionMatrix(Builder& builder, mhlo::CompositeOp op);
+DenseFPElementsAttr GetCorrectionMatrix(Builder& builder,
+                                        stablehlo::CompositeOp op);
 
 }  // namespace odml
 }  // namespace mlir
