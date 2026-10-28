@@ -82,6 +82,7 @@ cc_library(
     name = "profiler_factory",
     hdrs = ["profiler_factory.h"],
     visibility = internal_visibility([
+        "//learning/brain/tpu/runtime/hal/xos:__subpackages__",
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "@xla//xla/python:__pkg__",
@@ -145,6 +146,7 @@ cc_library(
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
+        "//learning/brain/tpu/runtime/hal/xos:__subpackages__",
         "@xla//xla/tsl:internal",
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
