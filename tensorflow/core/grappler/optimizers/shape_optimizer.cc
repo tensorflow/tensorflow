@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
 
+#include <cstdint>
+#include <limits>
+
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -46,8 +49,9 @@ absl::Status ShapeOptimizer::Optimize(Cluster* cluster,
   bool has_shape = false;
   bool has_prod = false;
   auto is_int = [](const NodeDef& node) -> bool {
-    return node.attr().at("T").type() == DT_INT32 ||
-           node.attr().at("T").type() == DT_INT64;
+    const auto it = node.attr().find("T");
+    return it != node.attr().end() &&
+           (it->second.type() == DT_INT32 || it->second.type() == DT_INT64);
   };
   for (const NodeDef& node : item.graph.node()) {
     if (IsShape(node)) {
@@ -79,9 +83,16 @@ absl::Status ShapeOptimizer::Optimize(Cluster* cluster,
       if (!IsShape(node)) {
         continue;
       }
+      const MutableGraphView::OutputPort shape_input =
+          graph.GetRegularFanin(MutableGraphView::InputPort(&node, 0));
+      if (shape_input.node == nullptr || shape_input.port_id < 0) {
+        continue;
+      }
       for (MutableGraphView::InputPort fanout :
            graph.GetFanout(MutableGraphView::OutputPort(&node, 0))) {
-        if (fanout.node->op() != "Prod") {
+        if (fanout.port_id != 0 || fanout.node->op() != "Prod" ||
+            !is_int(*fanout.node) ||
+            NumNonControlInputs(*fanout.node) != 2) {
           continue;
         }
         if (fanout.node->attr().count("keep_dims") != 0 &&
@@ -92,6 +103,9 @@ absl::Status ShapeOptimizer::Optimize(Cluster* cluster,
         }
         const MutableGraphView::OutputPort reduce_indices =
             graph.GetRegularFanin(MutableGraphView::InputPort(fanout.node, 1));
+        if (reduce_indices.node == nullptr || reduce_indices.port_id < 0) {
+          continue;
+        }
         if (!inferred_properties) {
           // Infer properties lazily in case they are not needed.
           TF_RETURN_IF_ERROR(
@@ -147,12 +161,15 @@ absl::Status ShapeOptimizer::Optimize(Cluster* cluster,
       // Try to convert the ratio of 2 symbolic tensor sizes into a constant.
       // This is possible whenever the symbolic dimensions in the numerator and
       // denominator cancel each other.
-      if (node.op() == "Div") {
+      if (node.op() == "Div" && is_int(node)) {
         const MutableGraphView::OutputPort input1 =
             graph.GetRegularFanin(MutableGraphView::InputPort(&node, 0));
         const MutableGraphView::OutputPort input2 =
             graph.GetRegularFanin(MutableGraphView::InputPort(&node, 1));
-        if (input1.node == nullptr || input2.node == nullptr) continue;
+        if (input1.node == nullptr || input1.port_id < 0 ||
+            input2.node == nullptr || input2.port_id < 0) {
+          continue;
+        }
         if (!IsSize(*input1.node) || !IsSize(*input2.node)) {
           continue;
         }
@@ -173,9 +190,14 @@ absl::Status ShapeOptimizer::Optimize(Cluster* cluster,
         const TensorShapeProto& shape2 = prop2[0].shape();
         int64_t result = ComputeSizeRatio(shape1, shape2);
         if (result >= 0) {
+          DataType dtype = node.attr().at("T").type();
+          if (dtype == DT_INT32 &&
+              result >
+                  static_cast<int64_t>(std::numeric_limits<int32_t>::max())) {
+            continue;
+          }
           // Replace div with constant.
           node.set_op("Const");
-          DataType dtype = node.attr().at("T").type();
           node.mutable_attr()->erase("T");
           (*node.mutable_attr())["dtype"].set_type(dtype);
           TensorProto* t = (*node.mutable_attr())["value"].mutable_tensor();

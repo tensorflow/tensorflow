@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -70,6 +76,40 @@ TEST_F(ShapeOptimizerTest, OptimizeShapeProduct) {
               tensors_actual[0].scalar<int>()(), 0);
   EXPECT_NEAR(tensors_expected[1].scalar<int>()(),
               tensors_actual[1].scalar<int>()(), 0);
+}
+
+TEST_F(ShapeOptimizerTest, DoesNotOptimizeShapeAsProdReductionInput) {
+  tensorflow::Scope s =
+      tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
+  Output data = ops::Const(s.WithOpName("data"), 2, {2, 2});
+  Output x = ops::Const(s.WithOpName("x"), 3.14f, {1});
+  Output shape = ops::Shape(s.WithOpName("shape"), x);
+  Output product =
+      ops::ReduceProd(s.WithOpName("product"), data, shape);
+
+  GrapplerItem item;
+  item.fetch = {"product"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  ShapeOptimizer optimizer;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "product") {
+      ++found;
+      EXPECT_EQ(node.op(), "Prod");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "data");
+      EXPECT_EQ(node.input(1), "shape");
+    }
+  }
+  EXPECT_EQ(found, 1);
+
+  auto tensors_actual = EvaluateNodes(output, item.fetch);
+  test::ExpectTensorEqual<int>(tensors_expected[0], tensors_actual[0]);
 }
 
 TEST_F(ShapeOptimizerTest, OptimizeShapeProductMissingKernel) {
@@ -159,6 +199,211 @@ TEST_F(ShapeOptimizerTest, OptimizeShapeRatio) {
   auto tensors_actual = EvaluateNodes(output, item.fetch);
   EXPECT_NEAR(tensors_expected[0].scalar<int>()(),
               tensors_actual[0].scalar<int>()(), 0);
+}
+
+TEST_F(ShapeOptimizerTest, OptimizeStaticSizeRatioAtAndAboveInt32Limit) {
+  GrapplerItem item;
+  auto add_const = [&item](const char* name, int64_t dim) {
+    NodeDef* x = item.graph.add_node();
+    x->set_name(name);
+    x->set_op("Const");
+    (*x->mutable_attr())["dtype"].set_type(DT_FLOAT);
+    TensorProto* tx = (*x->mutable_attr())["value"].mutable_tensor();
+    tx->set_dtype(DT_FLOAT);
+    tx->add_float_val(1.0f);
+    tx->mutable_tensor_shape()->add_dim()->set_size(dim);
+  };
+  auto add_size = [&item](const char* name, const char* input,
+                          DataType out_type) {
+    NodeDef* size = item.graph.add_node();
+    size->set_name(name);
+    size->set_op("Size");
+    size->add_input(input);
+    (*size->mutable_attr())["T"].set_type(DT_FLOAT);
+    (*size->mutable_attr())["out_type"].set_type(out_type);
+  };
+  auto add_div = [&item](const char* name, const char* numerator,
+                         const char* denominator, DataType type) {
+    NodeDef* div = item.graph.add_node();
+    div->set_name(name);
+    div->set_op("Div");
+    div->add_input(numerator);
+    div->add_input(denominator);
+    (*div->mutable_attr())["T"].set_type(type);
+  };
+
+  add_const("x_at_limit", INT32_MAX);
+  add_const("x_above_limit", int64_t{1} << 31);
+  add_const("y", 1);
+  add_size("size_x_at_limit_32", "x_at_limit", DT_INT32);
+  add_size("size_x_above_limit_32", "x_above_limit", DT_INT32);
+  add_size("size_y_32", "y", DT_INT32);
+  add_size("size_x_above_limit_64", "x_above_limit", DT_INT64);
+  add_size("size_y_64", "y", DT_INT64);
+  add_div("ratio_at_limit_32", "size_x_at_limit_32", "size_y_32",
+          DT_INT32);
+  add_div("ratio_above_limit_32", "size_x_above_limit_32", "size_y_32",
+          DT_INT32);
+  add_div("ratio_above_limit_64", "size_x_above_limit_64", "size_y_64",
+          DT_INT64);
+
+  ShapeOptimizer optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "ratio_at_limit_32") {
+      ++found;
+      EXPECT_EQ(node.op(), "Const");
+      ASSERT_EQ(node.attr().at("value").tensor().int_val_size(), 1);
+      EXPECT_EQ(node.attr().at("value").tensor().int_val(0), INT32_MAX);
+    } else if (node.name() == "ratio_above_limit_32") {
+      ++found;
+      EXPECT_EQ(node.op(), "Div");
+    } else if (node.name() == "ratio_above_limit_64") {
+      ++found;
+      EXPECT_EQ(node.op(), "Const");
+      ASSERT_EQ(node.attr().at("value").tensor().int64_val_size(), 1);
+      EXPECT_EQ(node.attr().at("value").tensor().int64_val(0),
+                int64_t{1} << 31);
+    }
+  }
+  EXPECT_EQ(found, 3);
+}
+
+TEST_F(ShapeOptimizerTest, HandlesMalformedProdInputs) {
+  GrapplerItem item;
+  NodeDef* x = item.graph.add_node();
+  x->set_name("x");
+  x->set_op("Placeholder");
+  (*x->mutable_attr())["dtype"].set_type(DT_FLOAT);
+
+  NodeDef* shape_x = item.graph.add_node();
+  shape_x->set_name("shape_x");
+  shape_x->set_op("Shape");
+  shape_x->add_input("x");
+  (*shape_x->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*shape_x->mutable_attr())["out_type"].set_type(DT_INT32);
+
+  NodeDef* malformed_prod = item.graph.add_node();
+  malformed_prod->set_name("malformed_prod");
+  malformed_prod->set_op("Prod");
+  malformed_prod->add_input("shape_x");
+  malformed_prod->add_input("^x");
+  (*malformed_prod->mutable_attr())["T"].set_type(DT_INT32);
+
+  ShapeOptimizer optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "malformed_prod") {
+      ++found;
+      EXPECT_EQ(node.op(), "Prod");
+    }
+  }
+  EXPECT_EQ(found, 1);
+}
+
+TEST_F(ShapeOptimizerTest, HandlesControlInputInDivDataSlot) {
+  GrapplerItem item;
+  NodeDef* x = item.graph.add_node();
+  x->set_name("x");
+  x->set_op("Placeholder");
+  (*x->mutable_attr())["dtype"].set_type(DT_FLOAT);
+
+  NodeDef* size_x = item.graph.add_node();
+  size_x->set_name("size_x");
+  size_x->set_op("Size");
+  size_x->add_input("x");
+  (*size_x->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*size_x->mutable_attr())["out_type"].set_type(DT_INT32);
+
+  NodeDef* size_y = item.graph.add_node();
+  size_y->set_name("size_y");
+  size_y->set_op("Size");
+  size_y->add_input("x");
+  (*size_y->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*size_y->mutable_attr())["out_type"].set_type(DT_INT32);
+
+  NodeDef* div = item.graph.add_node();
+  div->set_name("control_div");
+  div->set_op("Div");
+  div->add_input("^size_x");
+  div->add_input("size_y");
+  (*div->mutable_attr())["T"].set_type(DT_INT32);
+
+  ShapeOptimizer optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "control_div") {
+      ++found;
+      EXPECT_EQ(node.op(), "Div");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "^size_x");
+      EXPECT_EQ(node.input(1), "size_y");
+    }
+  }
+  EXPECT_EQ(found, 1);
+}
+
+TEST_F(ShapeOptimizerTest, HandlesMissingIntegerTypeAttributes) {
+  GrapplerItem item;
+  NodeDef* x = item.graph.add_node();
+  x->set_name("x");
+  x->set_op("Placeholder");
+  (*x->mutable_attr())["dtype"].set_type(DT_FLOAT);
+
+  NodeDef* shape_x = item.graph.add_node();
+  shape_x->set_name("shape_x");
+  shape_x->set_op("Shape");
+  shape_x->add_input("x");
+  (*shape_x->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*shape_x->mutable_attr())["out_type"].set_type(DT_INT32);
+
+  NodeDef* untyped_prod = item.graph.add_node();
+  untyped_prod->set_name("untyped_prod");
+  untyped_prod->set_op("Prod");
+  untyped_prod->add_input("shape_x");
+  untyped_prod->add_input("shape_x");
+
+  NodeDef* size_x = item.graph.add_node();
+  size_x->set_name("size_x");
+  size_x->set_op("Size");
+  size_x->add_input("x");
+  (*size_x->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*size_x->mutable_attr())["out_type"].set_type(DT_INT32);
+
+  NodeDef* untyped_div = item.graph.add_node();
+  untyped_div->set_name("untyped_div");
+  untyped_div->set_op("Div");
+  untyped_div->add_input("size_x");
+  untyped_div->add_input("size_x");
+
+  ShapeOptimizer optimizer;
+  GraphDef output;
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
+  EXPECT_EQ(status.code(), absl::StatusCode::kAborted);
+  EXPECT_EQ(output.node_size(), 0);
+
+  int checked = 0;
+  for (const NodeDef& node : item.graph.node()) {
+    if (node.name() == "untyped_prod") {
+      ++checked;
+      EXPECT_EQ(node.op(), "Prod");
+      EXPECT_EQ(node.attr().count("T"), 0);
+    } else if (node.name() == "untyped_div") {
+      ++checked;
+      EXPECT_EQ(node.op(), "Div");
+      EXPECT_EQ(node.attr().count("T"), 0);
+    }
+  }
+  EXPECT_EQ(checked, 2);
 }
 
 }  // namespace
