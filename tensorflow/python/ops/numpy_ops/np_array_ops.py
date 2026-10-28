@@ -935,6 +935,9 @@ def real(val):
   val = asarray(val)
   # TODO(srbs): np.real returns a scalar if val is a scalar, whereas we always
   # return an ndarray.
+  if val.dtype == dtypes.bool:
+    # `math_ops.real` rejects bool, which is already real.
+    return val
   return math_ops.real(val)
 
 
