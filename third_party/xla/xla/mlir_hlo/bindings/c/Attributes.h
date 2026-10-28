@@ -255,21 +255,6 @@ MLIR_CAPI_EXPORTED MlirStringRef
 mlirMhloComparisonTypeAttrGetValue(MlirAttribute attr);
 
 //
-// DomainKindAttr.
-//
-// Creates a new DomainKind attribute with the given 'value' string
-// parameter.
-MLIR_CAPI_EXPORTED MlirAttribute mlirMhloDomainKindAttrGet(MlirContext ctx,
-                                                           MlirStringRef value);
-
-// Returns true if the given attribute is a DomainKind attribute.
-MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsADomainKindAttr(MlirAttribute attr);
-
-// Returns the value string associated with DomainKind attribute.
-MLIR_CAPI_EXPORTED MlirStringRef
-mlirMhloDomainKindAttrGetValue(MlirAttribute attr);
-
-//
 // PrecisionAttr.
 //
 // Creates a new Precision attribute with the given 'value' string

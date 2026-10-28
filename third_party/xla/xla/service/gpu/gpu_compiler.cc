@@ -703,7 +703,7 @@ absl::Status RunPreSPMDPartitionerPasses(
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
   pre_spmd_pipeline.AddPass<FlattenCallGraph>();
   pre_spmd_pipeline.AddPass<CallInliner>(
-      /*single_call_site=*/false, /*update_domain=*/false,
+      /*single_call_site=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>());
 
   // Remove zero-sized HLO from the input so that other passes don't have to
@@ -824,6 +824,8 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<TopkSpecializer>(gpu_version);
   pipeline.AddPass<TopkDecomposer>();
 
+  pipeline.AddPass<DotOperandConverter>(gpu_version);
+
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
     const auto* cuda_cc =
         gpu_target_config.device_description.gpu_compute_capability()
@@ -832,16 +834,19 @@ absl::Status RunOptimizationPasses(
         !cuda_cc->IsAtLeast(se::CudaComputeCapability::kVolta)) {
       return true;
     }
+    if (instr->opcode() == HloOpcode::kDot &&
+        DotOperandConverter::SupportsBf16Dot(gpu_version) &&
+        instr->shape().element_type() == F32 &&
+        instr->operand(0)->shape().element_type() == BF16 &&
+        instr->operand(1)->shape().element_type() == BF16) {
+      return false;
+    }
     return !gpu::IsCublasSupportedMatMul(
                 *instr, /*allow_matrix_vector_multiplication=*/false)
                 .value_or(false);
   };
   pipeline.AddPass<ResultCaster>(upcaster_filter);
   pipeline.AddPass<OperandUpcaster>(upcaster_filter);
-
-  // Add the DotOperandConverter after any potential upcasts done as part of
-  // the OperandUpcaster, so that the DotOperandConverter becomes a no-op.
-  pipeline.AddPass<DotOperandConverter>();
 
   pipeline.AddPass<SubByteNormalization>(
       SubByteNormalization::SET_ELEMENT_SIZE);
@@ -895,7 +900,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<DynamicIndexSplitter>();
 
   pipeline.AddPass<CallInliner>(
-      /*single_call_site=*/false, /*update_domain=*/false,
+      /*single_call_site=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>());
 
   // Runs AsyncCollectiveCustomCallRewriter post-SPMD (pre-layout assignment)

@@ -2067,5 +2067,213 @@ ENTRY %main (param: f32[]) -> (f32[], f32[]) {
   RunAndFilecheckHloRewrite(hlo_string, std::move(pass));
 }
 
+TEST_F(FlattenCallGraphTest, DontFlattenCallWithAttributeInlineableXlaLate) {
+  std::string hlo_string = R"(
+HloModule DontFlattenCallWithAttributeInlineableXlaLate
+%subcomp (param: f32[]) -> f32[] { ROOT %param = f32[] parameter(0) }
+ENTRY %main () -> (f32[], f32[]) {
+  %c = f32[] constant(2)
+  %call0 = f32[] call(%c), to_apply=%subcomp, frontend_attributes={inlineable="xla_late"}
+  %call1 = f32[] call(%c), to_apply=%subcomp, frontend_attributes={inlineable="xla_late"}
+  ROOT %t = (f32[], f32[]) tuple(%call0, %call1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(2, module->computation_count());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0)->to_apply(), root->operand(1)->to_apply());
+}
+
+TEST_F(FlattenCallGraphTest, FlattenCallWithAttributeInlineableFalse) {
+  std::string hlo_string = R"(
+HloModule FlattenCallWithAttributeInlineableFalse
+%subcomp (param: f32[]) -> f32[] { ROOT %param = f32[] parameter(0) }
+ENTRY %main () -> (f32[], f32[]) {
+  %c = f32[] constant(2)
+  %call0 = f32[] call(%c), to_apply=%subcomp, frontend_attributes={inlineable="false"}
+  %call1 = f32[] call(%c), to_apply=%subcomp, frontend_attributes={inlineable="false"}
+  ROOT %t = (f32[], f32[]) tuple(%call0, %call1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(3, module->computation_count());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_NE(root->operand(0)->to_apply(), root->operand(1)->to_apply());
+}
+
+TEST_F(FlattenCallGraphTest, FlattenStandardCallsAndPreserveXlaLateCalls) {
+  std::string hlo_string = R"(
+HloModule FlattenStandardCallsAndPreserveXlaLateCalls
+%subcomp_standard (param: f32[]) -> f32[] { ROOT %param = f32[] parameter(0) }
+%subcomp_late (param: f32[]) -> f32[] { ROOT %param = f32[] parameter(0) }
+ENTRY %main () -> (f32[], f32[], f32[], f32[]) {
+  %c = f32[] constant(2)
+  %call_std0 = f32[] call(%c), to_apply=%subcomp_standard
+  %call_std1 = f32[] call(%c), to_apply=%subcomp_standard
+  %call_late0 = f32[] call(%c), to_apply=%subcomp_late, frontend_attributes={inlineable="xla_late"}
+  %call_late1 = f32[] call(%c), to_apply=%subcomp_late, frontend_attributes={inlineable="xla_late"}
+  ROOT %t = (f32[], f32[], f32[], f32[]) tuple(%call_std0, %call_std1, %call_late0, %call_late1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(4, module->computation_count());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_NE(root->operand(0)->to_apply(), root->operand(1)->to_apply());
+  EXPECT_EQ(root->operand(2)->to_apply(), root->operand(3)->to_apply());
+}
+
+TEST_F(FlattenCallGraphTest, FlattenMixedCallersToSameComputation) {
+  std::string hlo_string = R"(
+HloModule FlattenMixedCallersToSameComputation
+%subcomp (param: f32[]) -> f32[] { ROOT %param = f32[] parameter(0) }
+ENTRY %main () -> (f32[], f32[], f32[]) {
+  %c = f32[] constant(2)
+  %call_late0 = f32[] call(%c), to_apply=%subcomp, frontend_attributes={inlineable="xla_late"}
+  %call_std = f32[] call(%c), to_apply=%subcomp
+  %call_late1 = f32[] call(%c), to_apply=%subcomp, frontend_attributes={inlineable="xla_late"}
+  ROOT %t = (f32[], f32[], f32[]) tuple(%call_late0, %call_std, %call_late1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(3, module->computation_count());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_NE(root->operand(0)->to_apply(), root->operand(1)->to_apply());
+  EXPECT_EQ(root->operand(0)->to_apply(), root->operand(2)->to_apply());
+}
+
+TEST_F(FlattenCallGraphTest, FlattenCallsWithOtherInlineableAttributes) {
+  std::string hlo_string = R"(
+HloModule FlattenCallsWithOtherInlineableAttributes
+%subcomp (param: f32[]) -> f32[] { ROOT %param = f32[] parameter(0) }
+ENTRY %main () -> (f32[], f32[]) {
+  %c = f32[] constant(2)
+  %call0 = f32[] call(%c), to_apply=%subcomp, frontend_attributes={inlineable="true"}
+  %call1 = f32[] call(%c), to_apply=%subcomp, frontend_attributes={inlineable="true"}
+  ROOT %t = (f32[], f32[]) tuple(%call0, %call1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(3, module->computation_count());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_NE(root->operand(0)->to_apply(), root->operand(1)->to_apply());
+}
+
+TEST_F(FlattenCallGraphTest, StressTestSubtreeCloningWithXlaLate) {
+  std::string hlo_string = R"(
+HloModule StressTestSubtreeCloningWithXlaLate
+%leaf_std (p: f32[]) -> f32[] {
+  %p = f32[] parameter(0)
+  ROOT %n = f32[] negate(%p)
+}
+%leaf_late (p: f32[]) -> f32[] {
+  %p = f32[] parameter(0)
+  ROOT %e = f32[] exponential(%p)
+}
+%mid_comp (p: f32[]) -> f32[] {
+  %p = f32[] parameter(0)
+  %c_std = f32[] call(%p), to_apply=%leaf_std
+  %c_late = f32[] call(%c_std), to_apply=%leaf_late, frontend_attributes={inlineable="xla_late"}
+  ROOT %add = f32[] add(%c_std, %c_late)
+}
+ENTRY %main () -> (f32[], f32[]) {
+  %c = f32[] constant(2)
+  %call_mid0 = f32[] call(%c), to_apply=%mid_comp
+  %call_mid1 = f32[] call(%c), to_apply=%mid_comp
+  ROOT %t = (f32[], f32[]) tuple(%call_mid0, %call_mid1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(6, module->computation_count());
+}
+
+TEST_F(FlattenCallGraphTest, Challenger2_WhileBodySharedWithXlaLateCall) {
+  std::string hlo_string = R"(
+HloModule WhileBodySharedWithXlaLateCall
+%shared_body (p: f32[]) -> f32[] {
+  %p = f32[] parameter(0)
+  %c = f32[] constant(1.0)
+  ROOT %add = f32[] add(%p, %c)
+}
+%cond (p: f32[]) -> pred[] {
+  %p = f32[] parameter(0)
+  %c = f32[] constant(10.0)
+  ROOT %lt = pred[] compare(%p, %c), direction=LT
+}
+ENTRY %main () -> (f32[], f32[]) {
+  %init = f32[] constant(0.0)
+  %call_late = f32[] call(%init), to_apply=%shared_body, frontend_attributes={inlineable="xla_late"}
+  %while = f32[] while(%init), condition=%cond, body=%shared_body
+  ROOT %t = (f32[], f32[]) tuple(%call_late, %while)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(4, module->computation_count());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_NE(root->operand(0)->to_apply(), root->operand(1)->while_body());
+}
+
+TEST_F(FlattenCallGraphTest,
+       Challenger2_ConditionalBranchSharedWithXlaLateCall) {
+  std::string hlo_string = R"(
+HloModule ConditionalBranchSharedWithXlaLateCall
+%shared_branch (p: f32[]) -> f32[] {
+  %p = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%p)
+}
+%other_branch (p: f32[]) -> f32[] {
+  %p = f32[] parameter(0)
+  ROOT %exp = f32[] exponential(%p)
+}
+ENTRY %main () -> (f32[], f32[]) {
+  %pred_ = pred[] constant(true)
+  %val = f32[] constant(1.0)
+  %call_late = f32[] call(%val), to_apply=%shared_branch, frontend_attributes={inlineable="xla_late"}
+  %cond = f32[] conditional(%pred_, %val, %val), true_computation=%shared_branch, false_computation=%other_branch
+  ROOT %t = (f32[], f32[]) tuple(%call_late, %cond)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(4, module->computation_count());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_NE(root->operand(0)->to_apply(),
+            root->operand(1)->branch_computation(0));
+}
+
+TEST_F(FlattenCallGraphTest, FlattenNonInlineableCallsWhenRequested) {
+  std::string hlo_string = R"(
+HloModule FlattenNonInlineableCallsWhenRequested
+%subcomp_late (p: f32[]) -> f32[] { ROOT %p = f32[] parameter(0) }
+ENTRY %main () -> (f32[], f32[]) {
+  %c = f32[] constant(2)
+  %call_late0 = f32[] call(%c), to_apply=%subcomp_late, frontend_attributes={inlineable="xla_late"}
+  %call_late1 = f32[] call(%c), to_apply=%subcomp_late, frontend_attributes={inlineable="xla_late"}
+  ROOT %t = (f32[], f32[]) tuple(%call_late0, %call_late1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  FlattenCallGraph flatten(/*flatten_non_inlineable_calls=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(3, module->computation_count());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_NE(root->operand(0)->to_apply(), root->operand(1)->to_apply());
+}
+
 }  // namespace
 }  // namespace xla

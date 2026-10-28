@@ -84,6 +84,37 @@ const int64_t kMinSectionSize = static_cast<int64_t>(1) << 31;
 
 namespace {
 
+// Checks the bytes that every encoded element must occupy. Call before
+// allocating from a recorded shape; a full partitioned-tensor entry has no
+// payload and must be checked through its individual stored slice entries.
+absl::Status ValidateVariableLengthEntrySize(const BundleEntryProto& entry,
+                                             int64_t num_elements,
+                                             absl::string_view key) {
+  if (entry.size() < 0) {
+    return errors::DataLoss("Invalid size in bundle entry: ", entry.size());
+  }
+  if (num_elements < 0) {
+    return errors::DataLoss("Invalid element count in bundle entry: key ", key,
+                            "; element count ", num_elements);
+  }
+  const uint64_t elements = static_cast<uint64_t>(num_elements);
+  const uint64_t entry_size = static_cast<uint64_t>(entry.size());
+  if (entry.dtype() == DT_STRING && !(elements == 0 && entry_size == 0) &&
+      (entry_size < sizeof(uint32_t) ||
+       elements > entry_size - sizeof(uint32_t))) {
+    return errors::DataLoss("Invalid size in bundle entry: key ", key,
+                            "; stored size ", entry.size(),
+                            "; string element count ", elements);
+  }
+  if (entry.dtype() == DT_VARIANT &&
+      elements > entry_size / (1 + sizeof(uint32_t))) {
+    return errors::DataLoss("Invalid size in bundle entry: key ", key,
+                            "; stored size ", entry.size(),
+                            "; variant element count ", elements);
+  }
+  return absl::OkStatus();
+}
+
 // Reads "num_elements" string elements from file[offset, offset+size) into the
 // length-N "destination".  Discards the original content of "destination".
 //
@@ -93,8 +124,16 @@ absl::Status ReadStringTensor(io::InputBuffer* buffered_file,
                               size_t num_elements, size_t offset, size_t size,
                               tstring* destination, uint32_t* actual_crc32c,
                               bool need_to_swap_bytes) {
-  if (size == 0) return absl::OkStatus();
-  CHECK_GT(size, 0);
+  if (size == 0) {
+    if (num_elements == 0) return absl::OkStatus();
+    return errors::DataLoss("Nonempty string tensor has an empty bundle entry");
+  }
+  // Every element needs at least one length byte, followed by the checksum.
+  // Check before allocating the length table from untrusted shape metadata.
+  if (size < sizeof(uint32_t) || num_elements > size - sizeof(uint32_t)) {
+    return errors::DataLoss("String element count exceeds bundle entry size ",
+                            size);
+  }
 
   // Reads "num_elements" varint64's from "buffered_file".
   TF_RETURN_IF_ERROR(buffered_file->Seek(offset));
@@ -123,9 +162,10 @@ absl::Status ReadStringTensor(io::InputBuffer* buffered_file,
                          sizeof(uint64_t));
     }
   }
-  if (offset + size < buffered_file->Tell()) {
-    return absl::DataLossError(absl::StrCat(
-        "String lengths longer than expected offset ", offset + size));
+  const size_t length_bytes = buffered_file->Tell() - offset;
+  if (length_bytes > size || size - length_bytes < sizeof(uint32_t)) {
+    return errors::DataLoss(
+        "String lengths and checksum exceed bundle entry size ", size);
   }
 
   // Reads the length-checksum.
@@ -146,6 +186,18 @@ absl::Status ReadStringTensor(io::InputBuffer* buffered_file,
   *actual_crc32c = crc32c::Extend(*actual_crc32c,
                                   reinterpret_cast<char*>(&raw_length_checksum),
                                   sizeof(uint32_t));
+
+  // Validate the combined payload against the bytes left after the length
+  // table and its checksum, without overflowing a sum of string lengths.
+  size_t remaining_bytes = size - length_bytes - sizeof(uint32_t);
+  for (const uint64_t string_length : string_lengths) {
+    if (string_length > remaining_bytes) {
+      return errors::DataLoss(
+          "String data exceeds remaining bundle entry bytes: ", string_length,
+          " > ", remaining_bytes);
+    }
+    remaining_bytes -= string_length;
+  }
 
   // Reads the actual string bytes.
   for (size_t i = 0; i < num_elements; ++i) {
@@ -170,8 +222,17 @@ absl::Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
   //   [varint64 lenN][bytes variantN][4 byte checksum]
   // Var "crc32c" checksums all the lens, variant bytes, individual variant
   // checksums (as uint32, not varint32 bytes).
-  if (size == 0) return absl::OkStatus();
   size_t num_elements = ret->NumElements();
+  if (size == 0) {
+    if (num_elements == 0) return absl::OkStatus();
+    return errors::DataLoss(
+        "Nonempty variant tensor has an empty bundle entry");
+  }
+  // Each element needs at least one length byte and a four-byte checksum.
+  if (num_elements > size / (1 + sizeof(uint32_t))) {
+    return errors::DataLoss("Variant element count exceeds bundle entry size ",
+                            size);
+  }
 
   // Reads the actual string bytes.
   TF_RETURN_IF_ERROR(buffered_file->Seek(offset));
@@ -180,6 +241,14 @@ absl::Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
     // Read the serialized variant length.
     uint64_t string_length = 0;
     TF_RETURN_IF_ERROR(buffered_file->ReadVarint64(&string_length));
+    // Tell() includes all preceding elements and the current length varint.
+    // Reserve the checksum bytes before allocating or reading the payload.
+    const size_t consumed_bytes = buffered_file->Tell() - offset;
+    if (consumed_bytes > size || size - consumed_bytes < sizeof(uint32_t) ||
+        string_length > size - consumed_bytes - sizeof(uint32_t)) {
+      return errors::DataLoss(
+          "Variant data and checksum exceed remaining bundle entry bytes");
+    }
     *actual_crc32c = crc32c::Extend(
         *actual_crc32c, reinterpret_cast<const char*>(&string_length),
         sizeof(uint64_t));
@@ -894,10 +963,23 @@ absl::Status BundleReader::GetBundleEntryProto(absl::string_view key,
 
 absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
                                     Tensor* val) {
+  if (!TensorShape::IsValid(entry.shape())) {
+    return absl::DataLossError(absl::StrCat("Invalid tensor shape: ", key(),
+                                            " ",
+                                            entry.shape().ShortDebugString()));
+  }
+  const TensorShape stored_shape(entry.shape());
+  TF_RETURN_IF_ERROR(ValidateVariableLengthEntrySize(
+      entry, stored_shape.num_elements(), key()));
+
   Tensor* ret = val;
-  const TensorShape stored_shape(TensorShape(entry.shape()));
   if (val->NumElements() == 0) {
     ret = new Tensor(entry.dtype(), stored_shape);
+  } else if (val->NumElements() != stored_shape.num_elements()) {
+    return absl::DataLossError(
+        absl::StrCat("Invalid element count in bundle entry: key ", key(),
+                     "; stored elements ", stored_shape.num_elements(),
+                     "; expected elements ", val->NumElements()));
   }
 
   // Validates the "size" field.
@@ -906,19 +988,6 @@ absl::Status BundleReader::GetValue(const BundleEntryProto& entry,
       return absl::DataLossError(absl::StrCat(
           "Invalid size in bundle entry: key ", key(), "; stored size ",
           entry.size(), "; expected size ", ret->TotalBytes()));
-    }
-  } else if (entry.dtype() == DT_STRING) {
-    // Relaxes the check for string tensors as follows:
-    //   entry.size() == bytes(varint lengths) + bytes(data)
-    //                >= NumElems + bytes(data), since size bytes(varint) >= 1.
-    //   TotalBytes() == sizeof(tstring) * NumElems + bytes(data)
-    // Since we don't know bytes(varint lengths), we just check an inequality.
-    const size_t lower_bound = ret->NumElements() + ret->TotalBytes() -
-                               sizeof(tstring) * ret->NumElements();
-    if (entry.size() < lower_bound) {
-      return absl::DataLossError(absl::StrCat(
-          "Invalid size in bundle entry: key ", key(), "; stored size ",
-          entry.size(), "; expected size is at least ", lower_bound));
     }
   }
 
@@ -1187,6 +1256,15 @@ absl::Status BundleReader::GetSliceValue(
       return status_;
     }
 
+    // Partial string/variant slice copying is unsupported. Reject before
+    // constructing a potentially large scratch tensor from stored metadata.
+    if (stored_slice_entry.dtype() == DT_STRING ||
+        stored_slice_entry.dtype() == DT_VARIANT) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Dtype ", DataTypeString(stored_slice_entry.dtype()),
+                       " not supported."));
+    }
+
     Tensor stored_slice_tensor(stored_slice_entry.dtype(), stored_slice_shape);
     status_ = GetValue(stored_slice_entry, &stored_slice_tensor);
     if (!status_.ok()) return status_;
@@ -1236,8 +1314,17 @@ absl::Status BundleReader::LookupDtypeAndShape(absl::string_view key,
                                                TensorShape* shape) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
+  if (!TensorShape::IsValid(entry.shape())) {
+    return absl::DataLossError(absl::StrCat("Invalid tensor shape: ", key, " ",
+                                            entry.shape().ShortDebugString()));
+  }
+  const TensorShape stored_shape(entry.shape());
+  if (entry.slices().empty()) {
+    TF_RETURN_IF_ERROR(ValidateVariableLengthEntrySize(
+        entry, stored_shape.num_elements(), key));
+  }
   *dtype = entry.dtype();
-  *shape = TensorShape(entry.shape());
+  *shape = stored_shape;
   return absl::OkStatus();
 }
 

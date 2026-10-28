@@ -366,6 +366,24 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
     # Check that the inverse and original signal are close.
     self.assertAllClose(inverse_mdct, signal, atol=tol, rtol=tol)
 
+  def test_inverse_stft_zero_frames(self):
+    stfts = np.zeros((0, 5), dtype=np.complex64)
+    inverse_stft = spectral_ops.inverse_stft(
+        stfts, frame_length=8, frame_step=4, fft_length=8
+    )
+    self.assertAllEqual(
+        self.evaluate(inverse_stft), np.zeros((0,), dtype=np.float32)
+    )
+
+  def test_inverse_stft_zero_frames_batched(self):
+    stfts = np.zeros((2, 0, 5), dtype=np.complex64)
+    inverse_stft = spectral_ops.inverse_stft(
+        stfts, frame_length=8, frame_step=4, fft_length=8
+    )
+    self.assertAllEqual(
+        self.evaluate(inverse_stft), np.zeros((2, 0), dtype=np.float32)
+    )
+
   def test_inverse_stft_rejects_zero_frame_length(self):
     # Regression for https://github.com/tensorflow/tensorflow/issues/117843:
     # frame_length=0 (or stfts.shape[-1] == 1, which makes the inferred

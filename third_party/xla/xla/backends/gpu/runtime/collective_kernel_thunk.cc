@@ -48,6 +48,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/collective_types.pb.h"
 #include "xla/backends/gpu/runtime/command_state.h"
+#include "xla/backends/gpu/runtime/kernel_thunk_utils.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -309,6 +310,12 @@ struct CollectiveKernelRecordState : public CommandState {
       launch_to_copy;
 };
 }  // namespace
+
+std::string CollectiveKernelThunk::ToString(int indent) const {
+  return KernelThunkToString(kernel_name_, thunk_info().profile_annotation,
+                             launch_dimensions_, /*cluster_dim=*/std::nullopt,
+                             shmem_bytes_, use_pdl_);
+}
 
 absl::Status CollectiveKernelThunk::IsSupported(
     const GpuCliqueKey& clique_key, se::StreamExecutor& executor,

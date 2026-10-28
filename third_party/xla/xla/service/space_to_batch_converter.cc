@@ -20,6 +20,7 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <queue>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -278,9 +279,11 @@ class ConvolutionVisitor {
       HloInstruction* instr, int64_t depth);
 
   // Returns true if instr feeds an unpropagatable op before it feeds 'depth'
-  // number of convolutions.
+  // number of convolutions or dots, tracking whether a non-rank-reducing
+  // reshape has already been encountered.
   bool DoesConvolutionFeedUnpropagatableOp(
-      HloInstruction* instr, int64_t depth = kUnpropagatableOpSearchDepth);
+      HloInstruction* instr, int64_t depth = kUnpropagatableOpSearchDepth,
+      bool seen_reshape = false);
 
   // Checks that the space-to-batched shape has not rendered the new spatial
   // dimension to be smaller than the window's size.
@@ -325,8 +328,9 @@ class ConvolutionVisitor {
   // Penalty on size for base dilated convs
   static constexpr int64_t kMultiplierOnSpaceForBaseDilation = 3;
 
-  // Cache for <instruction, depth> ==> unpropagatablilty decision.
-  absl::flat_hash_map<std::pair<HloInstruction*, int64_t>, bool>
+  // Cache for <instruction, depth, seen_reshape> ==> unpropagatability
+  // decision.
+  absl::flat_hash_map<std::tuple<HloInstruction*, int64_t, bool>, bool>
       unpropagatability_cache_;
 
   // Controller for various knobs.
@@ -2899,11 +2903,21 @@ absl::Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
   // Keep increasing the split size so that overall size isn't smaller than the
   // original spatial dimension. Unlike for the first space-to-batch'ed
   // convolution, while propagating, we can use the last halo_size as available
-  // spatial size.
-  // If the spatial size is less than the (halo size - low padding) required,
-  // we need to increase the spatial size.
-  while (spatial_split_size * num_splits + c.halo_size - c.spatial_size < 0 ||
-         spatial_split_size < c.halo_size - c.inherent_low_padding) {
+  // spatial size when base_dilation_factor == 1 (for base-dilated
+  // convolutions, ChangeSpatialSizeOnSpaceToBatchedShape slices the collapsed
+  // spatial dimension to spatial_split_size * num_splits).
+  // If the spatial size is less than the (halo size - low padding) required by
+  // HaloDuplicateWithSlice, we need to increase the spatial size.
+  const int64_t low_padding_for_halo =
+      c.base_dilation_factor != 1 && c.inherent_low_padding != 0
+          ? (c.inherent_low_padding == c.base_dilation_factor ? 1 : 0)
+          : c.inherent_low_padding;
+  const int64_t available_halo_space =
+      c.base_dilation_factor == 1 ? c.halo_size : 0;
+  while (spatial_split_size * num_splits + available_halo_space -
+                 c.spatial_size <
+             0 ||
+         spatial_split_size < c.halo_size - low_padding_for_halo) {
     spatial_split_size += c.stride;
   }
 
@@ -2951,15 +2965,11 @@ absl::Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
 
   // For space-to-batch supported base-dilated convolutions, the low padding is
   // passed on to the new convolutions. Halo does not have to account for it.
-  ABSL_ASSIGN_OR_RETURN(
-      activations_new,
-      HaloDuplicateWithSlice(
-          activations_new, new_spatial_dims, activations_batch_dim,
-          /*low_padding=*/c.base_dilation_factor != 1 &&
-                  c.inherent_low_padding != 0
-              ? (c.inherent_low_padding == c.base_dilation_factor ? 1 : 0)
-              : c.inherent_low_padding,
-          slice_size - spatial_split_size));
+  ABSL_ASSIGN_OR_RETURN(activations_new,
+                   HaloDuplicateWithSlice(activations_new, new_spatial_dims,
+                                          activations_batch_dim,
+                                          /*low_padding=*/low_padding_for_halo,
+                                          slice_size - spatial_split_size));
 
   // We will generate output such that batch is followed by the split spatial
   // dimension.
@@ -3821,10 +3831,11 @@ ConvolutionVisitor::DoesConvolutionFeedReduceWindowOrSelectAndScatter(
 }
 
 bool ConvolutionVisitor::DoesConvolutionFeedUnpropagatableOp(
-    HloInstruction* instr, int64_t depth) {
-  auto key = std::make_pair(instr, depth);
-  if (unpropagatability_cache_.contains(key)) {
-    return unpropagatability_cache_[key];
+    HloInstruction* instr, int64_t depth, bool seen_reshape) {
+  auto key = std::make_tuple(instr, depth, seen_reshape);
+  if (auto it = unpropagatability_cache_.find(key);
+      it != unpropagatability_cache_.end()) {
+    return it->second;
   }
 
   if (depth == 0 || instr->user_count() == 0) {
@@ -3838,6 +3849,22 @@ bool ConvolutionVisitor::DoesConvolutionFeedUnpropagatableOp(
       return true;
     }
 
+    // SpaceToBatch propagation stops at the first kReshape and inserts
+    // BatchToSpace before it. If that first kReshape collapses dimensions
+    // (reducing rank, e.g., flattening spatial dimensions into tokens before
+    // QKV projections and FlashAttention custom calls), do not walk into the
+    // post-reshape graph. If instead the first kReshape splits or reassociates
+    // dimensions without reducing rank (e.g., splitting channels into heads or
+    // sequence into chunks), continue walking with seen_reshape=true.
+    bool next_seen_reshape = seen_reshape;
+    if (user->opcode() == HloOpcode::kReshape) {
+      if (!seen_reshape && user->shape().dimensions().size() <
+                               instr->shape().dimensions().size()) {
+        continue;
+      }
+      next_seen_reshape = true;
+    }
+
     int64_t depth_to_use = depth;
     // When we see a convolution/dot, we reduce the depth to look further for.
     if (user->opcode() == HloOpcode::kConvolution ||
@@ -3845,7 +3872,8 @@ bool ConvolutionVisitor::DoesConvolutionFeedUnpropagatableOp(
       depth_to_use--;
     }
 
-    if (DoesConvolutionFeedUnpropagatableOp(user, depth_to_use)) {
+    if (DoesConvolutionFeedUnpropagatableOp(user, depth_to_use,
+                                            next_seen_reshape)) {
       unpropagatability_cache_[key] = true;
       return true;
     }
@@ -3929,9 +3957,10 @@ ConvolutionVisitor::ConvDetails ConvolutionVisitor::GetConvolutionDetails(
                                (is_base_dilated ? 0 : inherent_low_padding) +
                                inherent_high_padding;
 
-  const int64_t last_overlap = base_dilation_factor == inherent_low_padding
-                                   ? kernel_spatial_dim_size
-                                   : kernel_spatial_dim_size - 1;
+  const int64_t last_overlap =
+      base_dilation_factor == inherent_low_padding
+          ? kernel_spatial_dim_size + base_dilation_factor - 2
+          : kernel_spatial_dim_size - 1;
   const int64_t halo_size = is_base_dilated
                                 ? last_overlap / base_dilation_factor
                                 : kernel_spatial_dim_size - 1;

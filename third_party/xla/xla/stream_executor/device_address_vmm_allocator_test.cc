@@ -876,6 +876,17 @@ TEST_F(DeviceAddressVmmAllocatorTest,
   }
 }
 
+TEST_F(DeviceAddressVmmAllocatorTest,
+       HostMemorySpaceWithoutHostAllocatorFails) {
+  ASSERT_OK_AND_ASSIGN(auto allocator, TestDeviceAddressVmmAllocator::Create(
+                                           &platform_, {Config(UINT64_MAX)}));
+  EXPECT_THAT(allocator->Allocate(/*device_ordinal=*/0, kGranularity,
+                                  /*retry_on_failure=*/true,
+                                  static_cast<int64_t>(MemorySpace::kHost)),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_EQ(allocator->allocation_count(), 0);
+}
+
 TEST_F(DeviceAddressVmmAllocatorHostTest,
        HostAllocatorIsCalledWithoutDeviceLock) {
   std::vector<bool> lock_free_in_host_calls;

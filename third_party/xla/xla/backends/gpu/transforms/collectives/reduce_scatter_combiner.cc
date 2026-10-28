@@ -28,17 +28,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/transforms/collectives/reduce_scatter_combiner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/hlo_domain_map.h"
 
 namespace xla::gpu {
 namespace {
 
 std::optional<ReduceScatterCombiner::GroupKey> DefaultCombinerKey(
-    const HloInstruction* instruction, const HloDomainMap& domain_map,
-    bool combine_by_dim) {
+    const HloInstruction* instruction, bool combine_by_dim) {
   std::optional<ReduceScatterCombiner::GroupKey> key =
-      ReduceScatterCombiner::CombineKey(instruction, domain_map,
-                                        combine_by_dim);
+      ReduceScatterCombiner::CombineKey(instruction, combine_by_dim);
   if (!key.has_value()) {
     return std::nullopt;
   }
@@ -53,11 +50,9 @@ std::optional<ReduceScatterCombiner::GroupKey> DefaultCombinerKey(
 }
 
 std::optional<ReduceScatterCombiner::GroupKey> CustomCombinerKey(
-    const HloInstruction* instruction, const HloDomainMap& domain_map,
-    bool combine_by_dim) {
+    const HloInstruction* instruction, bool combine_by_dim) {
   std::optional<ReduceScatterCombiner::GroupKey> key =
-      ReduceScatterCombiner::CombineKey(instruction, domain_map,
-                                        combine_by_dim);
+      ReduceScatterCombiner::CombineKey(instruction, combine_by_dim);
   if (!key.has_value()) {
     return std::nullopt;
   }

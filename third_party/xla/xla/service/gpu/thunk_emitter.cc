@@ -532,6 +532,7 @@ absl::StatusOr<std::string> CanonicalGemmHlo(
 
   // Clear algorithm-specific fields from the cache key
   gemm_config->clear_selected_algorithm();
+  gemm_config->clear_algorithm_proto();
   gemm_config->set_autotune_workspace_size(0);
   return instr->ToString(HloPrintOptions::Fingerprint()) +
          BackendConfigWrapper(gpu_config).GetRawString();

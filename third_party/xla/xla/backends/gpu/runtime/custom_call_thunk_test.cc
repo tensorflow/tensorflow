@@ -167,6 +167,21 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kReturnErrorCustomCallName,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), kReturnErrorCustomCallName,
                          "SYCL", kReturnError);
 
+TEST(CustomCallThunkTest, ToStringIncludesPdlOnlyWhenEnabled) {
+  for (bool use_pdl : {false, true}) {
+    ASSERT_OK_AND_ASSIGN(
+        auto thunk,
+        CustomCallThunk::Create(
+            Thunk::ThunkInfo(), std::string(kReturnErrorCustomCallName),
+            /*operands=*/{}, /*results=*/{}, /*attributes=*/{},
+            /*called_computation=*/nullptr, /*platform_name=*/"CUDA",
+            se::GpuComputeCapability(), /*execution_state=*/nullptr,
+            /*cpu_target_machine_options=*/std::nullopt, use_pdl));
+    EXPECT_EQ(thunk->ToString(0),
+              use_pdl ? "kCustomCall, use_pdl=true" : "kCustomCall");
+  }
+}
+
 TEST(CustomCallThunkTest, ResolvesFFICustomCall) {
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,

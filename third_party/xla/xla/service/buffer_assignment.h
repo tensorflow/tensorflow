@@ -1132,12 +1132,12 @@ class BufferAssigner {
     buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
         Value assignment_algorithm_for_computations_without_ordering =
             buffer_assignment::
-                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::SPATIAL;
 
     buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
         Value fallback_algorithm_for_computations_without_ordering =
             buffer_assignment::
-                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::SPATIAL;
 
     // Color of "view" buffers that are pointer stand-ins aliasing into another
     // allocation (see memory_space_assignment::Options::dus_view_color for the
@@ -1155,7 +1155,30 @@ class BufferAssigner {
         fallback_algorithm =
             buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
 
-    // If true, evaluate memory usage and fallback to DEFAULT algorithm.
+    // If true, the memory usage of each color is checked against its limit,
+    // and the colors that exceed it are reassigned with fallback algorithms.
+    // The best assignment of each color is kept.
+    //
+    // The fallbacks are tried in this order:
+    //  1. FAST_MERGE falls back to FAST_SPLIT.
+    //  2. The algorithms that may use more memory than BEST_OF_SPATIAL_TEMPORAL
+    //     are replaced with the fallback ones:
+    //     * For computations without a sequential ordering, FAST_MERGE is
+    //       replaced with
+    //       `fallback_algorithm_for_computations_without_ordering`.
+    //     * For the other computations, FAST_MERGE, FAST_SPLIT, SPATIAL and
+    //       TEMPORAL are replaced with `fallback_algorithm`.
+    //
+    // A DEFAULT `fallback_algorithm` tries SPATIAL and then TEMPORAL. This is
+    // equivalent to BEST_OF_SPATIAL_TEMPORAL, but skips TEMPORAL if SPATIAL
+    // fits.
+    //
+    // For example, with the default fallback algorithms, the
+    // {without ordering, sequential} algorithms {FAST_MERGE, FAST_MERGE} fall
+    // back to:
+    //  * {FAST_MERGE, FAST_SPLIT},
+    //  * {SPATIAL, SPATIAL},
+    //  * {SPATIAL, TEMPORAL}.
     bool enable_fallback = false;
 
     // Optional callback to return the memory limit for a given buffer color.

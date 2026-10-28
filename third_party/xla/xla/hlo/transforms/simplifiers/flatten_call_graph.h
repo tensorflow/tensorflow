@@ -19,6 +19,7 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_FLATTEN_CALL_GRAPH_H_
 
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -50,14 +51,22 @@ class FlattenCallGraph : public HloModulePass {
  public:
   FlattenCallGraph()
       : skip_cloning_handler_([](const HloComputation&) { return false; }),
-        skip_cloning_if_does_not_contain_handler_(std::nullopt) {}
+        skip_cloning_if_does_not_contain_handler_(std::nullopt),
+        flatten_non_inlineable_calls_(false) {}
+  template <typename T, typename = std::enable_if_t<std::is_same_v<T, bool>>>
+  explicit FlattenCallGraph(T flatten_non_inlineable_calls)
+      : skip_cloning_handler_([](const HloComputation&) { return false; }),
+        skip_cloning_if_does_not_contain_handler_(std::nullopt),
+        flatten_non_inlineable_calls_(flatten_non_inlineable_calls) {}
   explicit FlattenCallGraph(
       absl::AnyInvocable<bool(const HloComputation&)> skip_cloning_handler,
       std::optional<absl::AnyInvocable<bool(const HloInstruction&)>>
-          skip_cloning_if_does_not_contain_handler = std::nullopt)
+          skip_cloning_if_does_not_contain_handler = std::nullopt,
+      bool flatten_non_inlineable_calls = false)
       : skip_cloning_handler_(std::move(skip_cloning_handler)),
         skip_cloning_if_does_not_contain_handler_(
-            std::move(skip_cloning_if_does_not_contain_handler)) {}
+            std::move(skip_cloning_if_does_not_contain_handler)),
+        flatten_non_inlineable_calls_(flatten_non_inlineable_calls) {}
 
   // A skip cloning handler that skips cloning for computations that are only
   // called by kCall instructions.
@@ -77,9 +86,12 @@ class FlattenCallGraph : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  bool ShouldSkipNonInlineableCall(const HloInstruction* instruction) const;
+
   absl::AnyInvocable<bool(const HloComputation&)> skip_cloning_handler_;
   std::optional<absl::AnyInvocable<bool(const HloInstruction&)>>
       skip_cloning_if_does_not_contain_handler_;
+  bool flatten_non_inlineable_calls_ = false;
 };
 
 }  // namespace xla

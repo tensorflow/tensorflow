@@ -40,12 +40,10 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
@@ -1607,43 +1605,6 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
     }
   }
   return non_root_users;
-}
-
-/*static*/ absl::Status ShardingPropagation::NormalizeDomain(
-    const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
-  if (metadata != nullptr) {
-    ABSL_ASSIGN_OR_RETURN(const auto& sharding_metadata,
-                     ShardingMetadata::ToShardingMetadata(metadata));
-    const auto& sharding = sharding_metadata->sharding();
-    if (sharding != nullptr) {
-      bool is_spatially_partitioned = !sharding->IsSingleDevice();
-      if (sharding->IsTuple()) {
-        is_spatially_partitioned = absl::c_any_of(
-            sharding->tuple_elements(),
-            [](const HloSharding& s) { return !s.IsSingleDevice(); });
-      }
-      if (is_spatially_partitioned) {
-        for (HloInstruction* d : domain.exit_domains) {
-          HloInstruction* operand = d->mutable_operand(0);
-          // Set sharding only if it is different. We don't overwrite the
-          // metadata if it has the same sharding besides metadata.
-          if (!operand->has_sharding() || operand->sharding() != *sharding) {
-            HloSharding operand_sharding = *sharding;
-            if (operand->shape().IsTuple() && !sharding->IsTuple()) {
-              // Expand sharding into tuple sharding per
-              // CloneShardingForDomain() in
-              // third_party/tensorflow/compiler/xla/hlo/ir/hlo_sharding_metadata.cc
-              operand_sharding =
-                  HloSharding::SingleTuple(operand->shape(), *sharding);
-            }
-            operand->set_sharding(std::move(operand_sharding));
-          }
-        }
-        return absl::OkStatus();
-      }
-    }
-  }
-  return ShardingMetadata::NormalizeShardingDomain(domain, metadata);
 }
 
 // Return the sharding that should be propagated from user to instruction.

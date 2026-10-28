@@ -2149,9 +2149,7 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
   FlattenCallGraph flatten_call_graph;
   ABSL_ASSIGN_OR_RETURN(bool changed,
                    flatten_call_graph.Run(module, execution_threads));
-  CallInliner call_inliner(
-      /*single_call_site=*/false,
-      /*update_domain=*/false);
+  CallInliner call_inliner(/*single_call_site=*/false);
   ABSL_ASSIGN_OR_RETURN(bool inliner_changed,
                    call_inliner.Run(module, execution_threads));
   changed |= inliner_changed;

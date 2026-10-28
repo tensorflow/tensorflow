@@ -541,7 +541,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_collective_start_as_early_as_possible(false);
   opts.set_xla_gpu_experimental_enable_selective_memcpy_overlap(false);
   opts.set_xla_gpu_experimental_parallel_async_compute_limit(2);
-  opts.set_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(-1);
+  opts.set_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(0);
   opts.set_xla_gpu_experimental_scheduler_memory_fencing_slack_windows(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(false);
@@ -2754,11 +2754,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_enable_cudnn_int8x32_convolution_reordering),
       debug_options->xla_gpu_enable_cudnn_int8x32_convolution_reordering(),
       "Enable cuDNN frontend for int8x32 convolutions with reordered filter."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_gemm_fusion_v2",
-      bool_setter_for(&DebugOptions::set_xla_gpu_experimental_gemm_fusion_v2),
-      debug_options->xla_gpu_experimental_gemm_fusion_v2(),
-      "Enable experimental rewrite of GEMM fusion pass for Triton."));
+  flag_list->push_back(tsl::Flag("xla_gpu_experimental_gemm_fusion_v2",
+                                 noop_flag_setter<bool>, true,
+                                 "Deprecated, do not use."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_triton_gemm_any",
                 bool_setter_for(&DebugOptions::set_xla_gpu_triton_gemm_any),

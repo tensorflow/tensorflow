@@ -19,6 +19,7 @@ limitations under the License.
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -126,11 +127,12 @@ struct safe_div_or_mod_op {
     if (TF_PREDICT_TRUE(safe_b != 0)) {
       // Avoid FPE for INT_MIN/-1.
       const T safe_a = tensorflow::internal::SubtleMustCopy(a);
-      if (TF_PREDICT_FALSE(std::is_signed<T>::value &&
+      if (TF_PREDICT_FALSE(std::is_signed_v<T> &&
                            safe_a == std::numeric_limits<T>::min() &&
                            safe_b == T(-1))) {
-        // Prefer to overflow 'a' instead of crashing.
-        return DivOrMod()(-safe_a, 1);
+        // Return the two's complement wraparound result (INT_MIN for
+        // division, 0 for modulo) without overflowing 'a' or crashing.
+        return DivOrMod()(safe_a, T(1));
       }
       return DivOrMod()(safe_a, safe_b);
     } else {

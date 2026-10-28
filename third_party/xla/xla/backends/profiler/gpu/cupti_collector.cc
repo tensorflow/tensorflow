@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -82,6 +83,13 @@ using tsl::profiler::XPlaneBuilder;
 bool IsNvtxActivityEvent(const CuptiTracerEvent& event) {
   return event.source == CuptiTracerEventSource::Activity &&
          event.type == CuptiTracerEventType::ThreadMarkerRange;
+}
+
+bool IsCudaGraphLaunchCallback(const CuptiTracerEvent& event) {
+  return event.source == CuptiTracerEventSource::DriverCallback &&
+         event.type == CuptiTracerEventType::CudaGraph &&
+         event.stream_id != CuptiTracerEvent::kInvalidStreamId &&
+         event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId;
 }
 
 // Returns true if the event originates from the host or false if it originates
@@ -446,8 +454,20 @@ class PerDeviceCollector {
 
   void set_start_gpu_ns(uint64_t start_gpu_ns) { start_gpu_ns_ = start_gpu_ns; }
 
+  void RecordGraphLaunchStream(uint32_t correlation_id, int64_t stream_id) {
+    if (correlation_id == CuptiTracerEvent::kInvalidCorrelationId ||
+        stream_id == CuptiTracerEvent::kInvalidStreamId) {
+      return;
+    }
+    absl::MutexLock l(m_);
+    graph_launch_streams_[correlation_id] = stream_id;
+  }
+
   void AddDeviceEvent(CuptiTracerEvent&& event, bool aggregated_tracing) {
     absl::MutexLock l(m_);
+    if (IsCudaGraphLaunchCallback(event)) {
+      graph_launch_streams_[event.correlation_id] = event.stream_id;
+    }
     if (aggregated_tracing) {
       if (event.start_time_ns < start_gpu_ns_) {
         return;
@@ -483,9 +503,30 @@ class PerDeviceCollector {
                XPlaneBuilder* host_plane, XPlaneBuilder* nvtx_plane,
                bool aggregated_tracing) {
     absl::MutexLock l(m_);
+    // When a CUDA graph forks into parallel branches, CUPTI reports a new
+    // internal stream ID for each instantiated graph's forked branch (e.g.,
+    // graph 1's fork uses stream 100, graph 2's fork uses stream 200). To avoid
+    // creating hundreds of stream rows in XProf, we number the internal streams
+    // within each graph launch (0, 1, ...) and reuse the first launch's stream
+    // IDs for later launches on the same launch stream.
+    // Example:
+    //   Launch 1 (on stream 50): internal stream 100 -> index 0 -> keeps 100.
+    //   Launch 2 (on stream 50): internal stream 200 -> index 0 -> remaps to
+    //   100.
+    absl::flat_hash_map<uint32_t, std::vector<int64_t>>
+        correlation_id_to_fork_streams;
+    std::vector<size_t> deferred_fork_event_indices;
     // Tracking event types per line.
     absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
+    auto emit_event = [&](CuptiTracerEvent& event, int64_t line_id,
+                          XPlaneBuilder* plane, int64_t num_occurrences) {
+      XLineBuilder line = plane->GetOrCreateLine(line_id);
+      line.SetTimestampNs(start_gpu_ns_);
+      CreateXEvent(event, plane, end_gpu_ns, &line, num_occurrences,
+                   aggregated_tracing);
+      events_types_per_line[line_id].emplace(event.type);
+    };
     for (xla::profiler::CuptiTracerEvent& event : events_) {
       size_t index = &event - &events_[0];
       int64_t num_occurrences =
@@ -495,6 +536,23 @@ class PerDeviceCollector {
       // regular host/device lines.
       if (event.type == CuptiTracerEventType::Environment) {
         continue;
+      }
+      if (event.source == CuptiTracerEventSource::Activity &&
+          event.graph_id != 0 &&
+          event.stream_id != CuptiTracerEvent::kInvalidStreamId &&
+          event.type != CuptiTracerEventType::Overhead &&
+          !IsNvtxActivityEvent(event)) {
+        auto launch_it = graph_launch_streams_.find(event.correlation_id);
+        if (launch_it != graph_launch_streams_.end() &&
+            event.stream_id != launch_it->second) {
+          auto& streams = correlation_id_to_fork_streams[event.correlation_id];
+          if (auto it = absl::c_lower_bound(streams, event.stream_id);
+              it == streams.end() || *it != event.stream_id) {
+            streams.insert(it, event.stream_id);
+          }
+          deferred_fork_event_indices.push_back(index);
+          continue;
+        }
       }
       int64_t line_id = CuptiTracerEvent::kInvalidThreadId;
       bool is_host_event = IsHostEvent(event, &line_id);
@@ -511,11 +569,26 @@ class PerDeviceCollector {
               << " line_id=" << line_id
               << (is_host_event ? " host plane=" : " device plane=")
               << plane->Name();
-      XLineBuilder line = plane->GetOrCreateLine(line_id);
-      line.SetTimestampNs(start_gpu_ns_);
-      CreateXEvent(event, plane, end_gpu_ns, &line, num_occurrences,
-                   aggregated_tracing);
-      events_types_per_line[line_id].emplace(event.type);
+      emit_event(event, line_id, plane, num_occurrences);
+    }
+
+    absl::flat_hash_map<std::pair<int64_t, size_t>, int64_t>
+        launch_stream_and_index_to_stream_id;
+    for (size_t index : deferred_fork_event_indices) {
+      CuptiTracerEvent& event = events_[index];
+      const int64_t launch_stream_id =
+          graph_launch_streams_.at(event.correlation_id);
+      const auto& streams =
+          correlation_id_to_fork_streams.at(event.correlation_id);
+      const size_t stream_index =
+          absl::c_lower_bound(streams, event.stream_id) - streams.begin();
+      event.stream_id =
+          launch_stream_and_index_to_stream_id
+              .try_emplace({launch_stream_id, stream_index}, event.stream_id)
+              .first->second;
+      int64_t num_occurrences =
+          aggregated_tracing ? aggregated_event_occurrence_count_[index] : 1;
+      emit_event(event, event.stream_id, device_plane, num_occurrences);
     }
 
     // Handle Environment events separately to create counter lines.
@@ -565,6 +638,7 @@ class PerDeviceCollector {
     size_t num_events = events_.size();
     VLOG(4) << "Flush: num_events: " << num_events;
     events_.clear();
+    graph_launch_streams_.clear();
     aggregated_event_index_map_.clear();
     aggregated_event_occurrence_count_.clear();
     return num_events;
@@ -684,6 +758,8 @@ class PerDeviceCollector {
   uint64_t start_gpu_ns_ = 0;
   absl::Mutex m_;
   std::vector<CuptiTracerEvent> events_ TF_GUARDED_BY(m_);
+  absl::flat_hash_map<uint32_t, int64_t> graph_launch_streams_
+      TF_GUARDED_BY(m_);
   // Maps event name to the index of the event in the events_ vector.
   // It is in use when aggregating events into a single event was requested.
   absl::flat_hash_map<std::string, size_t> aggregated_event_index_map_
@@ -856,6 +932,10 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
             {{event.graph_id, event.graph_node_id}, deduped_annotation});
       }
     }
+    if (IsCudaGraphLaunchCallback(event)) {
+      RecordGraphLaunchStream(event.device_id, event.correlation_id,
+                              event.stream_id);
+    }
     // Clear the annotation and nvtx_range of the Callback API events, as they
     // are now in the combined AnnotationMap which will be used by the
     // Activity API events. Also those real string they referenced now will
@@ -870,7 +950,9 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
   }
 
   // If we are not collecting CPU events from Callback API, we can return now.
-  if (!need_callback_events) return;
+  if (!need_callback_events) {
+    return;
+  }
 
   size_t total_dropped_callback_event_count = 0;
   for (auto& annotations_and_events : callback_annotations_and_events) {
@@ -921,8 +1003,19 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
   }
 
+  void RecordGraphLaunchStream(uint32_t device_id, uint32_t correlation_id,
+                               int64_t stream_id) override {
+    if (device_id >= num_gpus_) {
+      return;
+    }
+    per_device_collector_[device_id].RecordGraphLaunchStream(correlation_id,
+                                                             stream_id);
+  }
+
   void AddEvent(CuptiTracerEvent&& event) override {
-    if (event.device_id >= num_gpus_) return;
+    if (event.device_id >= num_gpus_) {
+      return;
+    }
     if (event.source == CuptiTracerEventSource::DriverCallback) {
       num_callback_events_++;
     } else {

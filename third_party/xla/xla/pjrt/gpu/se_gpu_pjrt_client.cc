@@ -158,7 +158,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable_buffer_allocator.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/tsl/framework/scoped_allocation_trace.h"
 #include "xla/xla.pb.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || TENSORFLOW_USE_SYCL
@@ -167,13 +166,11 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
-#elif TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/rocm/rocm_device_address_vmm_allocator.h"
 #endif
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/stream_executor/device_address_vmm_allocator.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -1601,34 +1598,28 @@ GetStreamExecutorGpuDeviceAllocator(
     }
 
     case GpuAllocatorConfig::Kind::kVmm: {
-#if GOOGLE_CUDA
       std::vector<std::pair<se::StreamExecutor*, se::Stream*>> executor_streams;
       executor_streams.reserve(addressable_devices.size());
+      std::vector<se::MultiDeviceAdapter::AllocatorInfo> host_allocators;
       for (const auto& [ordinal, device] : addressable_devices) {
         executor_streams.push_back(
             {device->executor(), device->compute_stream()});
+        // The VMM allocator only creates device memory. Pinned host buffers
+        // come from the same host allocator as with BFC.
+        ABSL_ASSIGN_OR_RETURN(
+            auto host_allocator,
+            GetGpuHostAllocator(device->executor(), preallocate_host_memory));
+        host_allocators.push_back(
+            {std::move(host_allocator), device->compute_stream(),
+             /*memory_space=*/static_cast<int>(se::MemorySpace::kHost)});
       }
-      return se::gpu::CudaDeviceAddressVmmAllocator::Create(
+      return se::DeviceAddressVmmAllocator::Create(
           platform, MemFractionStart(memory_fraction),
           allocator_config.gpu_system_memory_size, executor_streams,
           /*reclaim_exempt_memory_space=*/
-          static_cast<int64_t>(gpu::MemorySpaceColor::kCollective));
-#elif TENSORFLOW_USE_ROCM
-      std::vector<std::pair<se::StreamExecutor*, se::Stream*>> executor_streams;
-      executor_streams.reserve(addressable_devices.size());
-      for (const auto& [ordinal, device] : addressable_devices) {
-        executor_streams.push_back(
-            {device->executor(), device->compute_stream()});
-      }
-      return se::gpu::RocmDeviceAddressVmmAllocator::Create(
-          platform, MemFractionStart(memory_fraction),
-          allocator_config.gpu_system_memory_size, executor_streams,
-          /*reclaim_exempt_memory_space=*/
-          static_cast<int64_t>(gpu::MemorySpaceColor::kCollective));
-#else
-      return absl::UnimplementedError(
-          "VMM allocator is only supported with CUDA or ROCm.");
-#endif  // GOOGLE_CUDA
+          static_cast<int64_t>(gpu::MemorySpaceColor::kCollective),
+          std::make_unique<se::MultiDeviceAdapter>(platform,
+                                                   std::move(host_allocators)));
     }
   }
 
@@ -2490,10 +2481,10 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
       gpu_exec->buffer_allocator().CreateExecutionScope(
           run_options, memory_allocator, device_ordinal));
 
-  ABSL_ASSIGN_OR_RETURN(xla::gpu::BufferAllocations buffer_allocations,
-                   allocation_scope->GenerateBufferAllocations(
-                       run_options, get_parameter_buffer, globals,
-                       memory_allocator, device_ordinal));
+  ABSL_ASSIGN_OR_RETURN(
+      xla::gpu::BufferAllocations buffer_allocations,
+      allocation_scope->GenerateBufferAllocations(
+          run_options, get_parameter_buffer, globals, memory_allocator));
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "Buffer allocations: " << buffer_allocations.ToString();
 
@@ -2552,7 +2543,7 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
             result_buffer,
             allocation_scope->AllocateCopyProtectedOutputBuffer(
                 run_options, buffer_allocations, index, *allocation,
-                device_ordinal, memory_allocator, [&](absl::Status status) {
+                memory_allocator, [&](absl::Status status) {
                   return ResourceExhausted(
                       "%s\n%s\n", status.message(),
                       gpu_exec->buffer_allocations_debug_summary());
@@ -2640,15 +2631,15 @@ static absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunGpuAsync(
   }
 
   absl::Status execute_status = allocation_scope->ExecuteWithBufferAllocations(
-      buffer_allocations, device_ordinal,
+      buffer_allocations,
       [&](const gpu::BufferAllocations& execution_buffers,
           std::optional<absl::Span<const BufferAllocation::Index>>
               persistent_alloc_indices) {
         return gpu_exec->ExecuteThunks(execution_buffers, run_options,
                                        persistent_alloc_indices);
       });
-  absl::Status teardown_status = buffer_allocations.TearDown(
-      buffers_in_result, gpu_exec->GetAllocations());
+  absl::Status teardown_status =
+      allocation_scope->TearDown(buffers_in_result, buffer_allocations);
 
   ABSL_RETURN_IF_ERROR(execute_status);
   ABSL_RETURN_IF_ERROR(teardown_status);

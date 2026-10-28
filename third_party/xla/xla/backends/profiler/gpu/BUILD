@@ -288,6 +288,7 @@ xla_test(
     ],
     deps = [
         ":cuda_test",
+        ":cupti_buffer_events",
         ":cupti_collector",
         ":cupti_error_manager",
         ":cupti_interface",
@@ -752,6 +753,7 @@ cc_library(
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

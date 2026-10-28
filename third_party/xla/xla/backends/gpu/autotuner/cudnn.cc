@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -263,32 +264,16 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
                       se::StreamExecutor* stream_executor,
                       const GpuTargetConfig& target_config,
                       const DebugOptions& debug_options) {
-  std::vector<std::unique_ptr<BackendConfig>> configs;
-  bool use_deviceless = false;
-  switch (debug_options.xla_gpu_cudnn_deviceless_compilation_mode()) {
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_UNSET:
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED:
-      use_deviceless = false;
-      break;
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS:
-      use_deviceless = true;
-      break;
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO:
-    default:
-      use_deviceless = (stream_executor == nullptr);
-      break;
-  }
-  if (use_deviceless) {
-    stream_executor = nullptr;
-  } else if (stream_executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "Null stream executor is not supported when cuDNN deviceless "
-        "compilation is disabled.");
-  }
+  ABSL_ASSIGN_OR_RETURN(
+      se::dnn::DnnSupport * dnn_support,
+      ResolveCudnnSupport(debug_options, stream_executor,
+                          target_config.device_description.dnn_version()));
   ABSL_ASSIGN_OR_RETURN(int plan_count,
                    CuDnnFusionCompiler::GetAvailablePlanCount(
-                       stream_executor, target_config.device_description,
+                       dnn_support, target_config.device_description,
                        *DynCast<HloFusionInstruction>(&instr)));
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
 
   VLOG(2) << "Found " << plan_count << " plans for cudnn fusion.";
   configs.reserve(plan_count);

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_device_event.h"
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_status_utils.h"
@@ -368,9 +369,28 @@ const PJRT_RawBuffer_FunctionTable PjRtRawBuffer::kRawBufferVtable = {
                         std::move(cpp_allocation_event));
       }
     },
+    /*get_external_dma_info=*/
+    +[](const PJRT_RawBuffer* raw_buffer, int* fd, uint64_t* offset,
+        uint64_t* size) -> PJRT_Error* {
+      absl::StatusOr<PjRtRawBufferInterface::ExternalDmaInfo> info =
+          static_cast<const PjRtRawBuffer*>(raw_buffer)->GetExternalDmaInfo();
+      if (!info.ok()) {
+        return pjrt::StatusToPjRtError(info.status());
+      }
+      *fd = info->fd;
+      *offset = info->offset;
+      *size = info->size;
+      return nullptr;
+    },
 };
 
 PjRtRawBuffer::PjRtRawBuffer() { vtable = &kRawBufferVtable; }
+
+absl::StatusOr<PjRtRawBuffer::ExternalDmaInfo>
+PjRtRawBuffer::GetExternalDmaInfo() const {
+  return absl::UnimplementedError(
+      "GetExternalDmaInfo is not supported by this PjRtRawBuffer.");
+}
 
 absl::StatusOr<PjRtDeviceEventRef>
 PjRtRawBufferInterface::CopyRawHostToDeviceAndReturnEvent(
@@ -469,6 +489,24 @@ absl::StatusOr<PjRtRawBufferRef> PjRtRawBufferInterface::Slice(int64_t offset,
     return absl::UnimplementedError("Slice not supported");
   }
   return tsl::TakeRef(static_cast<PjRtRawBuffer*>(sliced_c_buffer));
+}
+
+absl::StatusOr<PjRtRawBufferInterface::ExternalDmaInfo>
+PjRtRawBufferInterface::GetExternalDmaInfo() const {
+  // Plugins built before this slot was appended have a shorter table.
+  if (vtable->struct_size < PJRT_STRUCT_SIZE(PJRT_RawBuffer_FunctionTable,
+                                             get_external_dma_info) ||
+      vtable->get_external_dma_info == nullptr) {
+    return absl::UnimplementedError(
+        "GetExternalDmaInfo is not supported by this PJRT plugin.");
+  }
+  ExternalDmaInfo info;
+  PJRT_Error* error =
+      vtable->get_external_dma_info(this, &info.fd, &info.offset, &info.size);
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error);
+  }
+  return info;
 }
 
 absl::StatusOr<std::vector<PjRtRawBufferRef>>

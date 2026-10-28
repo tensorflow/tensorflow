@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -31,11 +32,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -218,6 +221,8 @@ struct BlasLt {
     kDevice,
   };
 
+  // Opaque in-memory runtime representation of a backend matmul algorithm
+  // (e.g. wrapping `cublasLtMatmulAlgo_t` on CUDA) and its workspace size.
   struct MatmulAlgorithm {
     std::any opaque_algo;
     size_t workspace_size;
@@ -235,7 +240,8 @@ struct BlasLt {
     ScratchAllocator* scratch_allocator;  // scratch_allocator must not be null
   };
 
-  struct MatmulPlan {
+  class MatmulPlan {
+   public:
     // Execute the matmul operation on the given stream.
     virtual absl::Status ExecuteOnStream(
         Stream* stream, const MemoryArgs& args,
@@ -246,6 +252,22 @@ struct BlasLt {
     // an internal heuristic.
     virtual absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
         size_t max_algorithm_count, size_t max_workspace_size) const = 0;
+
+    // Converts `algorithm` into a `BlasLtMatmulAlgorithm` descriptor.
+    virtual absl::StatusOr<BlasLtMatmulAlgorithm> GetBlasLtMatmulAlgorithm(
+        const MatmulAlgorithm& algorithm) const {
+      return absl::UnimplementedError(
+          "GetBlasLtMatmulAlgorithm is not implemented for this platform.");
+    }
+
+    // Reconstructs a `MatmulAlgorithm` from `algorithm` and validates that it
+    // is supported by this plan within `max_workspace_size`.
+    virtual absl::StatusOr<MatmulAlgorithm> GetMatmulAlgorithm(
+        const BlasLtMatmulAlgorithm& algorithm,
+        size_t max_workspace_size) const {
+      return absl::UnimplementedError(
+          "GetMatmulAlgorithm is not implemented for this platform.");
+    }
 
     // Algorithm must to be set before calling ExecuteOnStream function(s).
     // Usually, we call ExecuteOnStream with the same algorithm ID, hence using
@@ -259,13 +281,22 @@ struct BlasLt {
                                     size_t max_algorithm_count,
                                     size_t max_workspace_size);
 
+    // Same as above but reconstructs and validates the algorithm from
+    // `algorithm` and caches the selection.
+    absl::Status SetCachedAlgorithm(const BlasLtMatmulAlgorithm& algorithm,
+                                    size_t max_workspace_size);
+
     virtual ~MatmulPlan() = default;
 
-   protected:
-    mutable size_t cached_algorithm_count_ = 0;
-    mutable size_t cached_workspace_size_ = 0;
-    mutable size_t cached_algorithm_idx_ = 0;
-    mutable std::vector<MatmulAlgorithm> cached_algorithms_;
+   private:
+    size_t cached_algorithm_count_ = 0;
+    size_t cached_workspace_size_ = 0;
+    std::vector<MatmulAlgorithm> cached_algorithms_;
+    // Currently selected algorithm on this plan: `std::monostate` when unset,
+    // `size_t` for the legacy index into `cached_algorithms_`, or
+    // `BlasLtMatmulAlgorithm` for the current explicit algorithm descriptor.
+    std::variant<std::monostate, size_t, BlasLtMatmulAlgorithm>
+        selected_algorithm_;
   };  // class MatmulPlan
 
   using MatmulPlanPtr = std::unique_ptr<MatmulPlan>;
@@ -282,8 +313,12 @@ struct BlasLt {
   static absl::StatusOr<BlasLt*> Get(StreamExecutor* executor);
 
   absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlanWithAlgorithm(
-      const std::string& key, PlanCreateFunc create, size_t algorithm_idx,
+      absl::string_view key, PlanCreateFunc create, size_t algorithm_idx,
       size_t num_algorithms, size_t max_workspace_size);
+
+  absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlanWithAlgorithm(
+      absl::string_view key, PlanCreateFunc create,
+      const BlasLtMatmulAlgorithm& algorithm, size_t max_workspace_size);
 
   void ClearMatmulPlanCache();
   size_t GetMatmulPlanCacheSize() const;
@@ -291,6 +326,10 @@ struct BlasLt {
   virtual ~BlasLt() = default;
 
  protected:
+  absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlan(absl::string_view key,
+                                                    PlanCreateFunc create)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(plan_cache_mu_);
+
   mutable absl::Mutex plan_cache_mu_;
   absl::flat_hash_map<std::string, MatmulPlanPtr> plan_cache_
       ABSL_GUARDED_BY(plan_cache_mu_);

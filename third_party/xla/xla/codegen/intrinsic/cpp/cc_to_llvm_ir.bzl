@@ -24,6 +24,8 @@ load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
+# Internally this loads a macro, but in OSS this is a function
+# buildifier: disable=out-of-order-load
 def register_extension_info(**_kwargs):
     pass
 

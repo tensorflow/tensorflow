@@ -58,6 +58,26 @@ NVIDIA_GPU_BACKENDS = _NVIDIA_GPU_BACKENDS
 NVIDIA_GPU_DEFAULT_BACKENDS = _NVIDIA_GPU_DEFAULT_BACKENDS
 prepare_gpu_backend_data = _prepare_gpu_backend_data
 
+def get_sc_offload_backend_args(
+        enable_sparse_core_copy_offloading = True,  # @unused
+        enable_sparse_core_fusion_offloading = True,  # @unused
+        enable_sparse_core_mismatch_detector = None,  # @unused
+        args = [],  # @unused
+        backend_args = {}):
+    """Returns `backend_args` unchanged: SparseCore offloading flags only apply to internal TPU tests.
+
+    Args:
+      enable_sparse_core_copy_offloading: Unused.
+      enable_sparse_core_fusion_offloading: Unused.
+      enable_sparse_core_mismatch_detector: Unused.
+      args: Unused.
+      backend_args: The test's `backend_args`.
+
+    Returns:
+      `backend_args`.
+    """
+    return backend_args
+
 def xla_test(
         name,
         srcs,

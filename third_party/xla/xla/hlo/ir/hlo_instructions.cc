@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -4785,19 +4784,6 @@ std::unique_ptr<HloInstruction> HloDomainInstruction::CloneWithNewOperandsImpl(
 
 void HloDomainInstruction::ToProto(HloInstructionProto* proto) const {
   HloInstruction::ToProto(proto);
-  auto operand_side_sharding =
-      dynamic_cast<const ShardingMetadata*>(operand_side_metadata_.get());
-  if (operand_side_sharding && operand_side_sharding->sharding() != nullptr) {
-    *proto->mutable_domain_entry_sharding() =
-        operand_side_sharding->sharding()->ToProto();
-  }
-
-  auto user_side_sharding =
-      dynamic_cast<const ShardingMetadata*>(user_side_metadata_.get());
-  if (user_side_sharding && user_side_sharding->sharding() != nullptr) {
-    *proto->mutable_domain_exit_sharding() =
-        user_side_sharding->sharding()->ToProto();
-  }
 }
 
 HloGetDimensionSizeInstruction::HloGetDimensionSizeInstruction(

@@ -182,44 +182,6 @@ absl::Status CommonHostMemoryForDeviceManager::ToHostLayout(
   return delinearize();
 }
 
-absl::Status ValidateStridedGatherBounds(const StridedGather& gather,
-                                         int64_t buffer_size) {
-  const StridedGather::Spec& spec = gather.spec();
-  if (spec.src_byte_size > buffer_size) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("StridedGather src_byte_size (%d bytes) exceeds buffer "
-                        "size (%d bytes).",
-                        spec.src_byte_size, buffer_size));
-  }
-  if (gather.num_chunks() == 0) {
-    return absl::OkStatus();
-  }
-  if (spec.src_byte_offset < 0 || gather.chunk_size() < 0) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "StridedGather has negative offset (%d) or chunk size (%d).",
-        spec.src_byte_offset, gather.chunk_size()));
-  }
-  int64_t max_end_offset = spec.src_byte_offset + gather.chunk_size();
-  for (size_t i = 0; i < spec.counts.size(); ++i) {
-    if (spec.counts[i] < 0 || spec.src_byte_strides[i] < 0) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "StridedGather has negative count (%d) or byte stride (%d) at "
-          "dimension %d.",
-          spec.counts[i], spec.src_byte_strides[i], i));
-    }
-    if (spec.counts[i] > 1) {
-      max_end_offset += (spec.counts[i] - 1) * spec.src_byte_strides[i];
-    }
-  }
-  if (max_end_offset > buffer_size) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "StridedGather max accessed byte offset (%d bytes) exceeds buffer "
-        "size (%d bytes).",
-        max_end_offset, buffer_size));
-  }
-  return absl::OkStatus();
-}
-
 int64_t DeviceChunkOffsetBytes(const TransposePlan& plan, bool is_h2d,
                                int chunk_id) {
   return is_h2d ? plan.OutputChunkOffsetBytes(chunk_id)
@@ -2231,8 +2193,8 @@ void CommonPjRtRawBufferImpl::ScheduleCopySliceTo(
     return;
   }
 
-  if (absl::Status status = ValidateStridedGatherBounds(
-          gather, static_cast<int64_t>(GetOnDeviceSizeInBytes()));
+  if (absl::Status status =
+          gather.ValidateBounds(static_cast<int64_t>(GetOnDeviceSizeInBytes()));
       !status.ok()) {
     notify_error(std::move(status));
     return;
@@ -2359,8 +2321,8 @@ void CommonPjRtRawBufferImpl::ScheduleUpdateSlice(
     return;
   }
 
-  if (absl::Status status = ValidateStridedGatherBounds(
-          gather, static_cast<int64_t>(GetOnDeviceSizeInBytes()));
+  if (absl::Status status =
+          gather.ValidateBounds(static_cast<int64_t>(GetOnDeviceSizeInBytes()));
       !status.ok()) {
     notify_error(std::move(status));
     return;
@@ -5043,8 +5005,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::CopySlice(
     const StridedGather& gather, const xla::Shape& dst_shape) {
   tsl::profiler::TraceMe traceme("CommonPjRtBufferImpl::CopySlice");
   ABSL_ASSIGN_OR_RETURN(const size_t src_bytes, GetOnDeviceSizeInBytes());
-  ABSL_RETURN_IF_ERROR(
-      ValidateStridedGatherBounds(gather, static_cast<int64_t>(src_bytes)));
+  ABSL_RETURN_IF_ERROR(gather.ValidateBounds(static_cast<int64_t>(src_bytes)));
   ABSL_ASSIGN_OR_RETURN(Shape new_on_device_shape,
                    client()->MakeDefaultShapeForMemorySpace(
                        memory_space(), dst_shape,
@@ -5104,8 +5065,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::UpdateSlice(
         memory_space()->DebugString()));
   }
   ABSL_ASSIGN_OR_RETURN(const size_t dst_bytes, GetOnDeviceSizeInBytes());
-  ABSL_RETURN_IF_ERROR(
-      ValidateStridedGatherBounds(gather, static_cast<int64_t>(dst_bytes)));
+  ABSL_RETURN_IF_ERROR(gather.ValidateBounds(static_cast<int64_t>(dst_bytes)));
   ABSL_ASSIGN_OR_RETURN(const size_t slice_bytes,
                    common_slice->GetOnDeviceSizeInBytes());
   const int64_t expected_slice_size = gather.num_chunks() * gather.chunk_size();

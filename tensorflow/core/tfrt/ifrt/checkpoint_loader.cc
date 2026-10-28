@@ -336,6 +336,7 @@ absl::Status RunShard(
   params.session_metadata = nullptr;
   params.slice_reader_cache = nullptr;
   params.runner = nullptr;
+  params.eigen_gpu_device = nullptr;
 
   auto async_state = std::make_unique<AsyncState>(
       input_tf_tensor_values, params, num_outputs,

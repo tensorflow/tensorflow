@@ -633,24 +633,30 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::RunImpl(
                    << ", " << kManualUnrollFull;
       }
     }
+    // Accumulate across loops. A later loop that is not unrolled must not hide
+    // an earlier change, or the FlattenCallGraph cleanup below is skipped.
+    bool loop_changed = false;
     if (unroll_strategy_ == UnrollStrategy::kFullUnroll) {
-      ABSL_ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
+      ABSL_ASSIGN_OR_RETURN(loop_changed, FullyUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kDoubleBuffer) {
-      ABSL_ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
+      ABSL_ASSIGN_OR_RETURN(loop_changed,
+                       DoubleBufferingUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kAuto) {
-      ABSL_ASSIGN_OR_RETURN(changed, AutoUnroll(while_instr, module));
+      ABSL_ASSIGN_OR_RETURN(loop_changed, AutoUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kManual) {
       if (absl::EqualsIgnoreCase(manual_unroll_attr_val, kManualUnrollFull)) {
-        ABSL_ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
+        ABSL_ASSIGN_OR_RETURN(loop_changed, FullyUnroll(while_instr, module));
       }
       if (absl::EqualsIgnoreCase(manual_unroll_attr_val,
                                  kManualUnrollDoubleBuffer)) {
-        ABSL_ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
+        ABSL_ASSIGN_OR_RETURN(loop_changed,
+                         DoubleBufferingUnroll(while_instr, module));
       }
     } else {
       LOG(FATAL) << absl::StrCat("Unhandled unrolling strategy: ",
                                  unroll_strategy_);
     }
+    changed |= loop_changed;
   }
 
   VLOG(2) << "LoopDoubleBufferTransformer output: " << module->ToString();

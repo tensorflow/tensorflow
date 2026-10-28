@@ -40,6 +40,8 @@ class YnnpackDelegateProvider : public DelegateProvider {
                              ToolParam::Create<bool>(false));
     default_params_.AddParam("ynnpack_enable_blockwise_quantization",
                              ToolParam::Create<bool>(false));
+    default_params_.AddParam("ynnpack_dispatch_moe_on_host",
+                             ToolParam::Create<bool>(false));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -71,6 +73,9 @@ std::vector<Flag> YnnpackDelegateProvider::CreateFlags(
                        "enable YNN_FLAG_NO_EXCESS_PRECISION."),
       CreateFlag<bool>("ynnpack_enable_blockwise_quantization", params,
                        "enable blockwise quantization support."),
+      CreateFlag<bool>("ynnpack_dispatch_moe_on_host", params,
+                       "bucket the tokens of multi-token MoE ops by expert on "
+                       "the host."),
   };
   return flags;
 }
@@ -88,6 +93,8 @@ void YnnpackDelegateProvider::LogParams(const ToolParams& params,
                  "YNNPACK no excess precision", verbose);
   LOG_TOOL_PARAM(params, bool, "ynnpack_enable_blockwise_quantization",
                  "YNNPACK enable blockwise quantization", verbose);
+  LOG_TOOL_PARAM(params, bool, "ynnpack_dispatch_moe_on_host",
+                 "YNNPACK dispatch MoE on host", verbose);
 }
 
 TfLiteDelegatePtr YnnpackDelegateProvider::CreateTfLiteDelegate(
@@ -105,6 +112,8 @@ TfLiteDelegatePtr YnnpackDelegateProvider::CreateTfLiteDelegate(
     opts.no_excess_precision = params.Get<bool>("ynnpack_no_excess_precision");
     opts.enable_blockwise_quantization =
         params.Get<bool>("ynnpack_enable_blockwise_quantization");
+    opts.dispatch_moe_on_host =
+        params.Get<bool>("ynnpack_dispatch_moe_on_host");
 
     return TfLiteDelegatePtr(reinterpret_cast<TfLiteOpaqueDelegate*>(
                                  TfLiteYNNPackDelegateCreate(&opts)),

@@ -24,12 +24,14 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cuda_test.h"
+#include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_error_manager.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
@@ -652,6 +654,116 @@ TEST_F(CuptiTracerTest, WarnsWhenGraphTraceHidesNodeAnnotations) {
 
   registry.ClearForTesting();
 }
+TEST_F(CuptiTracerTest, CuGraphLaunchRecordsLaunchStreamId) {
+  auto* const subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+  CuptiTracerOptions options;
+  options.activities_selected = {CUPTI_ACTIVITY_KIND_KERNEL};
+  options.cbids_selected = {CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch,
+                            CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz};
+
+  ::testing::InSequence in_sequence;
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
+      .WillOnce(DoAll(SetArgPointee<0>(subscriber), Return(CUPTI_SUCCESS)));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(1));
+  ExpectV2ResourceCallbacks(subscriber, /*enable=*/1);
+  EXPECT_CALL(*mock_, EnableCallback(1, subscriber, CUPTI_CB_DOMAIN_DRIVER_API,
+                                     CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              EnableCallback(1, subscriber, CUPTI_CB_DOMAIN_DRIVER_API,
+                             CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUseSystemThreadIdV2(subscriber))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityUsePerThreadBufferV2())
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityRegisterCallbacksV2(subscriber, _, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              ActivityEnableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EnableProfiling(options);
+
+  const uint64_t start_ns = cupti_collector_->GetProfileStartTimeNs();
+  auto* const context = reinterpret_cast<CUcontext>(uintptr_t{1});
+
+  auto handle_graph_launch = [&](CUpti_driver_api_trace_cbid cbid,
+                                 const char* name, uint8_t per_thread_stream,
+                                 uint32_t idx) {
+    uint64_t enter_ts = start_ns + 10 + idx * 20;
+    auto* const h_graph = reinterpret_cast<CUgraphExec>(uintptr_t{101 + idx});
+    auto* const h_stream = reinterpret_cast<CUstream>(uintptr_t{201 + idx});
+    cuGraphLaunch_params params{h_graph, h_stream};
+    CUpti_CallbackData cbdata{};
+    cbdata.callbackSite = CUPTI_API_EXIT;
+    cbdata.context = context;
+    cbdata.functionName = name;
+    cbdata.functionParams = &params;
+    cbdata.correlationData = &enter_ts;
+    cbdata.correlationId = 10 + idx;
+
+    EXPECT_CALL(*mock_, GetDeviceId(context, _))
+        .WillOnce(DoAll(SetArgPointee<1>(0), Return(CUPTI_SUCCESS)));
+    EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+        .WillOnce(SetTimestampAndReturnSuccess(enter_ts + 10));
+    EXPECT_CALL(*mock_, GetGraphExecId(h_graph, _))
+        .WillOnce(DoAll(SetArgPointee<1>(7 + idx), Return(CUPTI_SUCCESS)));
+    EXPECT_CALL(*mock_, GetStreamIdEx(context, h_stream, per_thread_stream, _))
+        .WillOnce(DoAll(SetArgPointee<3>(42), Return(CUPTI_SUCCESS)));
+    EXPECT_OK(cupti_tracer_->HandleCallback(CUPTI_CB_DOMAIN_DRIVER_API, cbid,
+                                            &cbdata));
+  };
+
+  handle_graph_launch(CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch, "cuGraphLaunch",
+                      /*per_thread_stream=*/0, /*idx=*/0);
+  handle_graph_launch(CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz,
+                      "cuGraphLaunch_ptsz", /*per_thread_stream=*/1, /*idx=*/1);
+
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(start_ns + 50));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(start_ns + 60));
+  ExpectV2ResourceCallbacks(subscriber, /*enable=*/0);
+  EXPECT_CALL(*mock_, EnableCallback(0, subscriber, CUPTI_CB_DOMAIN_DRIVER_API,
+                                     CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              EnableCallback(0, subscriber, CUPTI_CB_DOMAIN_DRIVER_API,
+                             CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_,
+              ActivityDisableV2(subscriber, CUPTI_ACTIVITY_KIND_KERNEL, _))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED))
+      .WillOnce(Return(CUPTI_SUCCESS));
+  EXPECT_CALL(*mock_, Unsubscribe(subscriber)).WillOnce(Return(CUPTI_SUCCESS));
+  DisableProfiling();
+
+  for (uint32_t idx = 0; idx < 2; ++idx) {
+    CuptiTracerEvent event{};
+    event.type = CuptiTracerEventType::Kernel;
+    event.source = CuptiTracerEventSource::Activity;
+    event.name = "graph_kernel";
+    event.start_time_ns = start_ns + 15 + idx * 20;
+    event.end_time_ns = start_ns + 25 + idx * 20;
+    event.correlation_id = 10 + idx;
+    event.stream_id = static_cast<int64_t>(99 + idx);
+    event.graph_id = 7 + idx;
+    cupti_collector_->AddEvent(std::move(event));
+  }
+
+  tensorflow::profiler::XSpace space;
+  cupti_collector_->Export(&space, /*end_gpu_ns=*/start_ns + 60);
+  const tensorflow::profiler::XPlane* gpu_plane =
+      tsl::profiler::FindPlaneWithName(space, tsl::profiler::GpuPlaneName(0));
+  ASSERT_NE(gpu_plane, nullptr);
+  ASSERT_EQ(gpu_plane->lines_size(), 1);
+  EXPECT_EQ(gpu_plane->lines(0).id(), 99);
+  EXPECT_EQ(gpu_plane->lines(0).events_size(), 2);
+}
+
 }  // namespace
 }  // namespace test
 }  // namespace profiler

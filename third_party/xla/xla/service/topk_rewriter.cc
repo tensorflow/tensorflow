@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -42,6 +43,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -426,7 +431,7 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
   }
 
   // Profitability check.
-  if (!is_profitable_to_convert_(sort, *k)) {
+  if (is_profitable_to_convert_ && !is_profitable_to_convert_(sort, *k)) {
     return nullptr;
   }
 
@@ -757,5 +762,28 @@ absl::StatusOr<bool> TopkDecomposer::RunImpl(
   return TopkDecomposerVisitor(should_decompose_)
       .RunOnModule(module, execution_threads);
 }
+
+namespace {
+
+class TopkDecomposerFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "topk-decomposer"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext&, const HloPassOptions& options) const override {
+    ABSL_ASSIGN_OR_RETURN(bool only_topk_op,
+                     options.Get<bool>("only_topk_op", false));
+    return std::make_unique<TopkDecomposer>(
+        only_topk_op ? HloPredicateIsOp<HloOpcode::kTopK> : HloPredicate());
+  }
+};
+
+const HloPassFactory* const kTopkDecomposerRegistration =
+    RegisterHloPassFactory<TopkDecomposerFactory>();
+const HloPassFactory* const kTopkRewriterRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<TopkRewriter>>(
+        "topk-rewriter");
+
+}  // namespace
 
 }  // namespace xla

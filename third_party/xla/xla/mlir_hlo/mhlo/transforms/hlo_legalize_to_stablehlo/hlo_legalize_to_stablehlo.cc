@@ -54,12 +54,11 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
   // To the best of our knowledge, none of the ML frontends are using these ops
   // directly or indirectly, so we categorized them as private to XLA.
   // Please let us know if we missed something, and we'll recategorize them.
-  if constexpr (llvm::is_one_of<HloOpTy, mhlo::AddDependencyOp,
-                                mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
-                                mhlo::AsyncUpdateOp, mhlo::BitcastOp,
-                                mhlo::CopyOp, mhlo::DomainOp, mhlo::FusionOp,
-                                mhlo::StochasticConvertOp,
-                                mhlo::XlaRngGetAndUpdateStateOp>::value) {
+  if constexpr (llvm::is_one_of<
+                    HloOpTy, mhlo::AddDependencyOp, mhlo::AsyncDoneOp,
+                    mhlo::AsyncStartOp, mhlo::AsyncUpdateOp, mhlo::BitcastOp,
+                    mhlo::CopyOp, mhlo::FusionOp, mhlo::StochasticConvertOp,
+                    mhlo::XlaRngGetAndUpdateStateOp>::value) {
     return true;
   }
   if constexpr (std::is_same<HloOpTy, mhlo::ConvolutionOp>::value) {

@@ -664,8 +664,12 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
 
   ABSL_ASSIGN_OR_RETURN(auto state, GetPerDeviceState(device_ordinal));
 
-  if (memory_space == static_cast<int64_t>(MemorySpace::kHost) &&
-      host_allocator_ != nullptr) {
+  if (memory_space == static_cast<int64_t>(MemorySpace::kHost)) {
+    if (host_allocator_ == nullptr) {
+      return absl::FailedPreconditionError(
+          "DeviceAddressVmmAllocator has no host memory allocator for "
+          "MemorySpace::kHost");
+    }
     ABSL_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> host_mem,
                      host_allocator_->Allocate(device_ordinal, size,
                                                retry_on_failure, memory_space));

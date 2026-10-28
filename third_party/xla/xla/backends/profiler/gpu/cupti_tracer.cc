@@ -737,6 +737,14 @@ void SetCudaGraphEventUponApiExit(
         static_cast<const cuGraphLaunch_params*>(cbdata->functionParams);
     cupti_interface->GetGraphExecId(params->hGraph, &graph_id_info.graph_id);
     graph_id_info.orig_graph_id = 0;
+    uint32_t stream_id = 0;
+    const uint8_t per_thread_stream =
+        (cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz) ? 1 : 0;
+    if (cupti_interface->GetStreamIdEx(cbdata->context, params->hStream,
+                                       per_thread_stream,
+                                       &stream_id) == CUPTI_SUCCESS) {
+      event.stream_id = stream_id;
+    }
   }
   // Create multiple events for cuGraphClone/cuGraphInstantiateWithFlags.
   // The multiple events are created for each node in the graph.

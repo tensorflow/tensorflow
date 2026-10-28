@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/base/call_once.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Analysis/Liveness.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -87,6 +89,10 @@ struct IfrtIrProgramMemoryStats {
 
 // Generates a xprof memory profile of a MPMD program. It does not require
 // running the program, and can be generated as part of cross compilation.
+//
+// Thread-safe. The trace is generated on demand and dropped right after use;
+// only the results are cached: the memory stats, and the xprof URL until its
+// xprof session is about to expire.
 class ProgramMemoryTracer {
  public:
   ProgramMemoryTracer(const CompiledIfrtIrProgram& program, Client* client,
@@ -97,7 +103,8 @@ class ProgramMemoryTracer {
         dump_dir_(std::move(dump_dir)) {}
 
   // Gets the predicted memory states of the given IFRT IR program.
-  absl::StatusOr<IfrtIrProgramMemoryStats> GetMemoryStats();
+  absl::StatusOr<IfrtIrProgramMemoryStats> GetMemoryStats()
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   // Returns a URL to a generated xprof of the predicted memory profile.
   // This profile differs from profiles captured at runtime in the following
@@ -107,28 +114,44 @@ class ProgramMemoryTracer {
   // being retained by live arrays.
   // 2. executable allocations are added to "allocated" memory since this
   // appears on top of the "reserved" memory.
-  absl::StatusOr<std::string> GetXprofUrl();
+  absl::StatusOr<std::string> GetXprofUrl() ABSL_LOCKS_EXCLUDED(mu_);
 
  private:
-  mlir::Liveness& GetLiveness();
+  // Generate a new trace and compute from it. The caller must reset `trace_`
+  // afterwards, also on error.
+  absl::StatusOr<IfrtIrProgramMemoryStats> ComputeMemoryStatsLocked()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::StatusOr<std::string> UploadXprofLocked()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  absl::Status GenerateEvents();
-  absl::Status GenerateEvents(CallLoadedExecutableOp call_loaded_op);
-  absl::Status GenerateEvents(RemapArraysOp remap_op);
-  absl::Status GenerateEvents(BitcastArraysOp bitcast_op);
-  absl::Status GenerateEvents(CopyArraysOp copy_arrays_op);
-  absl::Status GenerateEvents(mlir::func::ReturnOp return_op);
+  mlir::Liveness& GetLiveness() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  absl::Status GenerateEvents() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status GenerateEvents(CallLoadedExecutableOp call_loaded_op)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status GenerateEvents(RemapArraysOp remap_op)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status GenerateEvents(BitcastArraysOp bitcast_op)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status GenerateEvents(CopyArraysOp copy_arrays_op)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status GenerateEvents(mlir::func::ReturnOp return_op)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Gets the per-device size of the array in bytes.
   // This function assumes that the size per device does not differ. This is a
   // fine assumption for now since all IFRT IR shardings have this limitation.
-  absl::StatusOr<int64_t> PerDeviceByteSize(IfrtArrayType array);
+  absl::StatusOr<int64_t> PerDeviceByteSize(IfrtArrayType array)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   absl::StatusOr<int64_t> PerHostByteSize(IfrtArrayType array);
 
-  absl::Status AllocateArray(mlir::Value value, absl::string_view created_by);
-  absl::Status FreeArray(mlir::Value value);
+  absl::Status AllocateArray(mlir::Value value, absl::string_view created_by)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status FreeArray(mlir::Value value) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  mlir::SymbolTableCollection symbol_table_;
+  absl::Mutex mu_;
+
+  mlir::SymbolTableCollection symbol_table_ ABSL_GUARDED_BY(mu_);
   // The program for which the memory trace is being generated.
   const CompiledIfrtIrProgram& program_;
   Client* client_;
@@ -137,36 +160,50 @@ class ProgramMemoryTracer {
   // Directory where to dump the memory trace for the traced devices.
   std::string dump_dir_;
 
-  // Cached liveness analysis of the IFRT IR program.
-  absl::once_flag liveness_init_once_;
-  std::optional<mlir::Liveness> liveness_;
+  // State built while generating a trace. Only set during a `GetMemoryStats`
+  // or `GetXprofUrl` call that needs a new trace.
+  struct TraceState {
+    // Liveness analysis of the IFRT IR program.
+    std::optional<mlir::Liveness> liveness;
 
-  // Proto message to which the memory trace events will be added to. Lazily,
-  // populate when `GetMemoryStats` or `GetXprofUrl` is first called.
-  std::optional<ProgramMemoryTrace> memory_trace_;
+    // Proto message to which the memory trace events will be added to.
+    ProgramMemoryTrace memory_trace;
 
-  // Mapping between array and unique id and name given at array allocation
-  // time. This mapping is used to associate a free event with an allocation
-  // event.
-  llvm::DenseMap<mlir::Value, std::pair<int64_t, std::string>>
-      array_to_allocation_id_and_name_;
+    // Mapping between array and unique id and name given at array allocation
+    // time. This mapping is used to associate a free event with an allocation
+    // event.
+    llvm::DenseMap<mlir::Value, std::pair<int64_t, std::string>>
+        array_to_allocation_id_and_name;
 
-  // Monotonically increating counter for generating unique allocation ids.
-  int64_t current_allocation_id_ = 0;
+    // Monotonically increating counter for generating unique allocation ids.
+    int64_t current_allocation_id = 0;
 
-  // Set of logical device ids for which to generate a trace. The set does not
-  // contain all the device ids in order to avoid generating large traces, but
-  // it includes at least a device from each execution or transfer. It is
-  // constructed by picking the device with the smallest logical id from each
-  // `ifrt.CallLoadedExecutableOp`, and the smallest logical device ids
-  // from `ifrt.CopyArraysOp` inputs, respectively outputs.
-  absl::flat_hash_set<int> device_ids_to_trace_;
+    // Set of logical device ids for which to generate a trace. The set does
+    // not contain all the device ids in order to avoid generating large
+    // traces, but it includes at least a device from each execution or
+    // transfer. It is constructed by picking the device with the smallest
+    // logical id from each `ifrt.CallLoadedExecutableOp`, and the smallest
+    // logical device ids from `ifrt.CopyArraysOp` inputs, respectively
+    // outputs.
+    absl::flat_hash_set<int> device_ids_to_trace;
 
-  // Mapping between logical device id and topology description. This mapping is
-  // used to avoid getting the devices and constructing a topology description
-  // for each array.
-  absl::flat_hash_map<int, std::shared_ptr<const xla::PjRtTopologyDescription>>
-      logical_device_id_to_topology_desc_;
+    // Mapping between logical device id and topology description. This
+    // mapping is used to avoid getting the devices and constructing a
+    // topology description for each array.
+    absl::flat_hash_map<int,
+                        std::shared_ptr<const xla::PjRtTopologyDescription>>
+        logical_device_id_to_topology_desc;
+  };
+  std::optional<TraceState> trace_ ABSL_GUARDED_BY(mu_);
+
+  // Cached results. They are small compared to the trace.
+  std::optional<IfrtIrProgramMemoryStats> memory_stats_ ABSL_GUARDED_BY(mu_);
+  struct CachedXprofUrl {
+    std::string url;
+    // When to upload a new xprof instead, ahead of the session expiry.
+    absl::Time refresh_time;
+  };
+  std::optional<CachedXprofUrl> xprof_url_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace ifrt

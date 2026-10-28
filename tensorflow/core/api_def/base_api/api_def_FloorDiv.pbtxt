@@ -4,5 +4,10 @@ op {
   description: <<END
 *NOTE*: `FloorDiv` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+For signed integer types, dividing the minimum representable value by `-1`
+(e.g. `int_min / -1`) overflows the signed integer range and wraps around to
+the minimum signed integer value in two's complement arithmetic rather than
+raising an exception.
 END
 }
