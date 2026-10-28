@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "xla/tsl/platform/env.h"
 
@@ -49,8 +50,9 @@ class SlimModelImporterTest : public ::testing::Test {
  protected:
   void SetUp() override {
     mlir::DialectRegistry registry;
-    registry.insert<mlir::func::FuncDialect, mlir::TFL::TensorFlowLiteDialect,
-                    mlir::stablehlo::StablehloDialect>();
+    registry
+        .insert<mlir::func::FuncDialect, mlir::TFL::TensorFlowLiteDialect,
+                mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
     context_.appendDialectRegistry(registry);
     context_.loadAllAvailableDialects();
   }
@@ -172,6 +174,33 @@ TEST_F(SlimModelImporterTest, ValidSlimModelImportWithWeightInjection) {
       0, "tf_saved_model.index_path");
   ASSERT_NE(res_index_path, nullptr);
   EXPECT_EQ(mlir::cast<mlir::StringAttr>(res_index_path[0]).getValue(), "y");
+}
+
+// Producers such as JAX serialize for older consumers, so a model can hold
+// VHLO ops older than the current version. They must be upgraded first.
+TEST_F(SlimModelImporterTest, UpgradesOlderVhloOpVersions) {
+  std::string dir = JoinPath(testing::TempDir(), "older_vhlo_dir");
+  ASSERT_TRUE(tsl::Env::Default()->RecursivelyCreateDir(dir).ok());
+  WriteFile(JoinPath(dir, "weights_metadata.json"),
+            R"({"signatures": {"serve": []}})");
+
+  // `vhlo.dot_general_v1` is only legal up to VHLO 1.5.0.
+  std::string mlir_content = R"(
+    module {
+      vhlo.func_v1 @main(%arg0: !vhlo.tensor_v1<1x!vhlo.f32_v1>, %arg1: !vhlo.tensor_v1<1x!vhlo.f32_v1>) -> (!vhlo.tensor_v1<!vhlo.f32_v1>) {
+        %0 = "vhlo.dot_general_v1"(%arg0, %arg1) <{lhs_batching_dimensions = #vhlo.tensor_v1<dense<> : tensor<0xi64>>, lhs_contracting_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>, precision_config = #vhlo.array_v1<[#vhlo<precision_v1 DEFAULT>, #vhlo<precision_v1 DEFAULT>]>, rhs_batching_dimensions = #vhlo.tensor_v1<dense<> : tensor<0xi64>>, rhs_contracting_dimensions = #vhlo.tensor_v1<dense<0> : tensor<1xi64>>}> : (!vhlo.tensor_v1<1x!vhlo.f32_v1>, !vhlo.tensor_v1<1x!vhlo.f32_v1>) -> !vhlo.tensor_v1<!vhlo.f32_v1>
+        "vhlo.return_v1"(%0) : (!vhlo.tensor_v1<!vhlo.f32_v1>) -> ()
+      } {arg_attrs = #vhlo.array_v1<[]>, res_attrs = #vhlo.array_v1<[]>, sym_visibility = #vhlo.string_v1<"">}
+    }
+  )";
+  WriteFile(JoinPath(dir, "serve.mlirbc"), mlir_content);
+
+  auto result_or = LoadSlimModel(dir, &context_);
+  ASSERT_TRUE(result_or.ok()) << result_or.status();
+  mlir::OwningOpRef<mlir::ModuleOp> module = std::move(result_or.value());
+  int num_dots = 0;
+  module->walk([&](mlir::stablehlo::DotGeneralOp) { ++num_dots; });
+  EXPECT_EQ(num_dots, 1);
 }
 
 TEST_F(SlimModelImporterTest, MissingMainFunction) {
