@@ -1767,6 +1767,11 @@ def floordiv(x, y, name=None):
   Note: `x` and `y` must have the same type, and the result will have the same
   type as well.
 
+  For signed integer types, dividing the minimum representable value by `-1`
+  (e.g. `int_min / -1`) overflows the signed integer range and wraps around to
+  the minimum signed integer value in two's complement arithmetic rather than
+  raising an exception.
+
   Args:
     x: `Tensor` numerator of real numeric type.
     y: `Tensor` denominator of real numeric type.
