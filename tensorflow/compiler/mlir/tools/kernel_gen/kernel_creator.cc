@@ -482,9 +482,13 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
         module.get(), tile_sizes, unroll_factors, enable_ftz, index_64bit,
         /*jit_i64_indexed_for_large_tensors=*/false, apply_cl_options));
   } else {
+    fprintf(stderr, "STEP 5.2.1: LowerHlotoLoops\n");
+    fflush(stderr);
     TF_RETURN_IF_ERROR(LowerHlotoLoops(
         module.get(), tile_sizes, unroll_factors, enable_ftz, index_64bit,
         jit_i64_indexed_for_large_tensors, apply_cl_options));
+    fprintf(stderr, "STEP 5.2.2: LowerLoopsToGPU\n");
+    fflush(stderr);
     TF_RETURN_IF_ERROR(
         LowerLoopsToGPU(module.get(), index_64bit, apply_cl_options));
 
@@ -494,15 +498,23 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
     // architecture.
     const std::string& first_architecture =
         !architectures.empty() ? architectures[0] : "";
+    fprintf(stderr, "STEP 5.2.3: LowerKernelBodiesToLowLevelIr\n");
+    fflush(stderr);
     TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(
         module.get(), apply_cl_options, first_architecture));
+    fprintf(stderr, "STEP 5.2.4: AmendKernelLLVMIRWithStaticKnowledge\n");
+    fflush(stderr);
     TF_RETURN_IF_ERROR(
         AmendKernelLLVMIRWithStaticKnowledge(module.get(), apply_cl_options));
+    fprintf(stderr, "STEP 5.2.5: GenerateDeviceCode\n");
+    fflush(stderr);
     TF_RETURN_IF_ERROR(GenerateDeviceCode(
         module.get(), kGpuBinaryAttrName, architectures, print_ptx,
         print_llvmir, enable_ftz, apply_cl_options));
   }
 
+  fprintf(stderr, "STEP 5.2.6: LowerHostSideToFinalForm\n");
+  fflush(stderr);
   TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get(), apply_cl_options));
 
   return module;

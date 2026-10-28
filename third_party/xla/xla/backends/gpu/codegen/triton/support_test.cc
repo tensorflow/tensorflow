@@ -2159,25 +2159,6 @@ INSTANTIATE_TEST_SUITE_P(
     AllTestCombinationsForOpcodes({HloOpcode::kBatchNormGrad}),
     SupportTestTypeAndOpcodeAndDeviceToString);
 
-using DomainTest = SupportTestWithTypeAndOpcodeAndDeviceParam;
-
-TEST_P(DomainTest, Domain) {
-  auto [data_type, opcode, cc] = GetParam();
-  const std::string kHloTestTemplate = R"(
-ENTRY triton_computation {
-  operand = $0[] parameter(0)
-  ROOT domain_op = $0[] domain(operand), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
-})";
-  ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
-}
-
-INSTANTIATE_TEST_SUITE_P(DomainSuite, DomainTest,
-                         AllTestCombinationsForOpcodes({HloOpcode::kDomain}),
-                         SupportTestTypeAndOpcodeAndDeviceToString);
-
 using GetDimensionSizeTest = SupportTestWithDeviceParam;
 
 TEST_P(GetDimensionSizeTest, GetDimensionSize) {

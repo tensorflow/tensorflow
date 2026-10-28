@@ -35,6 +35,7 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
@@ -100,6 +101,9 @@ absl::StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
       mlir::translateModuleToLLVMIR(module, llvm_context);
 
   auto target_machine = GetTargetMachine(host_triple, llvm_module.get());
+  if (!target_machine) {
+    return absl::InternalError("Failed to create TargetMachine");
+  }
   llvm_module->setDataLayout(target_machine->createDataLayout());
 
   // Run LLVM's mid-level optimizer to clean up the IR.
