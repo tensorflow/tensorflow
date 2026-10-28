@@ -967,6 +967,27 @@ TEST_F(IrEmissionUtilsTest, PhysicallyMinorBatchDimIsNotSupported) {
   auto* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsCublasSupportedMatMul(*root, false),
               absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false, /*is_normalized=*/false),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(IrEmissionUtilsTest,
+       UnnormalizedMultipleContractingAndNonContractingDims) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f16[10,20,8,64] parameter(0)
+    p1 = f16[50,8,64] parameter(1)
+    ROOT t = f32[10,20,50] dot(p0, p1),
+        lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
+  })";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false, /*is_normalized=*/true),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false, /*is_normalized=*/false),
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace gpu

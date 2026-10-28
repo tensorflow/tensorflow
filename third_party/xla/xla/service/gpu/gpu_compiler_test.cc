@@ -3335,6 +3335,38 @@ ENTRY source_dots_computation {
               absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(GpuCompilerTest, MixedPrecisionMultiDimDotDoesNotUpcastOperands) {
+  if (!device_description().gpu_compute_capability().IsRocm() &&
+      !get_cuda_cc().IsAtLeast(se::CudaComputeCapability::kVolta)) {
+    GTEST_SKIP() << "Test requires Volta+ or ROCm GPU compute capability.";
+  }
+
+  const char* hlo_text = R"(
+HloModule multi_dim_mixed_precision_dot
+
+ENTRY main {
+  p0 = f16[16,32,8,64]{3,2,1,0} parameter(0)
+  p1 = f16[512,8,64]{2,1,0} parameter(1)
+  ROOT dot = f32[16,32,512]{2,1,0} dot(p0, p1),
+      lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
+}
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_enable_triton_gemm(false);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text, config));
+
+  constexpr absl::string_view expected_check = R"(
+    // CHECK-NOT: convert(
+    // CHECK: custom_call_target="__cublas
+  )";
+
+  EXPECT_THAT(RunFileCheck(optimized_module->ToString(), expected_check),
+              absl_testing::IsOkAndHolds(true));
+}
+
 TEST_F(GpuCompilerTest, PreAmpereTritonGemmEnabledDotNormalizationToCublas) {
   if (device_description().gpu_compute_capability().IsRocm()) {
     GTEST_SKIP() << "ROCm does not have Ampere compute capability concept.";

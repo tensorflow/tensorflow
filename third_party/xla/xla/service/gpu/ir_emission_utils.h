@@ -64,9 +64,12 @@ inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 // dimension.
 inline constexpr int64_t kMaxBitsInMostMinorDimension = 8 * 8;
 
-// Returns true if the given dot is supported by cuBLAS.
+// Returns true if the given dot is supported by cuBLAS. If `is_normalized` is
+// false, checks whether the dot will be supported after DotDimensionNormalizer
+// and GpuLayoutAssignment run.
 absl::StatusOr<bool> IsCublasSupportedMatMul(
-    const HloInstruction& dot, bool allow_matrix_vector_multiplication);
+    const HloInstruction& dot, bool allow_matrix_vector_multiplication,
+    bool is_normalized = true);
 
 // Returns true if the given instruction is supported by gpuBLASLt
 // GroupedMatMul.
