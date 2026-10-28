@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/loader_util.h"
 
+#include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
@@ -28,7 +30,7 @@ namespace internal {
 // A SavedModel may store the name of the initialization op to run in the
 // in the SignatureDef (v2) or a collection (v1). If an init_op collection
 // exists, then the collection must contain exactly one op.
-absl::Status GetInitOp(const std::string& export_dir,
+absl::Status GetInitOp(absl::string_view export_dir,
                        const MetaGraphDef& meta_graph_def,
                        std::string* init_op_name) {
   const auto& sig_def_map = meta_graph_def.signature_def();
