@@ -1236,10 +1236,10 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                    buffer_allocator_->CreateExecutionScope(
                        run_options, memory_allocator, device_ordinal));
 
-  ABSL_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
-                   allocation_scope->GenerateBufferAllocations(
-                       run_options, get_parameter_buffer, globals,
-                       memory_allocator, device_ordinal));
+  ABSL_ASSIGN_OR_RETURN(
+      BufferAllocations buffer_allocations,
+      allocation_scope->GenerateBufferAllocations(
+          run_options, get_parameter_buffer, globals, memory_allocator));
   XLA_VLOG_DEVICE(3, device_ordinal) << buffer_allocations.ToString();
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
 
@@ -1319,7 +1319,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             result_buffer,
             allocation_scope->AllocateCopyProtectedOutputBuffer(
                 run_options, buffer_allocations, index, *allocation,
-                device_ordinal, memory_allocator, [&](absl::Status status) {
+                memory_allocator, [&](absl::Status status) {
                   return ResourceExhausted("%s\n%s\n", status.message(),
                                            buffer_allocations_debug_summary());
                 }));
@@ -1342,7 +1342,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   }
 
   absl::Status execute_status = allocation_scope->ExecuteWithBufferAllocations(
-      buffer_allocations, device_ordinal,
+      buffer_allocations,
       [&](const BufferAllocations& execution_buffers,
           std::optional<absl::Span<const BufferAllocation::Index>>
               persistent_alloc_indices) {
@@ -1350,7 +1350,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                              persistent_alloc_indices);
       });
   absl::Status teardown_status =
-      buffer_allocations.TearDown(buffers_in_result, GetAllocations());
+      allocation_scope->TearDown(buffers_in_result, buffer_allocations);
 
   ABSL_RETURN_IF_ERROR(execute_status);
   ABSL_RETURN_IF_ERROR(teardown_status);

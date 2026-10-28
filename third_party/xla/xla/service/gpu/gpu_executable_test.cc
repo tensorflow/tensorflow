@@ -468,7 +468,7 @@ TEST_F(GpuExecutableTest, CommandBufferAllocationPolicy) {
                                          /*memory_allocator=*/nullptr);
     std::optional<std::vector<BufferAllocation::Index>> persistent_indices;
     ABSL_RETURN_IF_ERROR(allocation_scope->ExecuteWithBufferAllocations(
-        buffer_allocations, /*device_ordinal=*/0,
+        buffer_allocations,
         [&](const BufferAllocations&,
             std::optional<absl::Span<const BufferAllocation::Index>> indices) {
           if (indices.has_value()) {
