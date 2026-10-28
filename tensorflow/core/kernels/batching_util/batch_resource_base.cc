@@ -799,6 +799,12 @@ BatchResourceBase::GetBatcherQueueOptions(
   if (low_priority_max_batch_size > 0) {
     batcher_queue_options.enable_priority_queue = true;
   }
+  if (enable_priority_aware_batch_scheduler && disable_padding) {
+    LOG(WARNING) << "disable_padding is not supported when "
+                    "enable_priority_aware_batch_scheduler is true; overriding "
+                    "disable_padding to false.";
+    disable_padding = false;
+  }
   LOG(INFO) << "Batcher queue options: "
             << "num_batch_threads=" << num_batch_threads << ", "
             << "max_batch_size=" << max_batch_size << ", "

@@ -1181,6 +1181,13 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueue(
     // that may break such models.
     rewrite_options.max_enqueued_batches = 1;
   }
+  if (rewrite_options.enable_priority_aware_batch_scheduler &&
+      rewrite_options.disable_padding) {
+    LOG(WARNING) << "disable_padding is not supported when "
+                    "enable_priority_aware_batch_scheduler is true; overriding "
+                    "disable_padding to false.";
+    rewrite_options.disable_padding = false;
+  }
   return AddQueueAfterRewritingOptions(rewrite_options, process_batch_callback,
                                        queue);
 }
