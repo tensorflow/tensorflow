@@ -2122,6 +2122,11 @@ class Graph(pywrap_tf_session.PyGraph):
     self._gradient_override_map = {}
     # A map from op type to a gradient function that should be used instead.
     self._gradient_function_map = {}
+    # A map from registered gradient name to a `tf.custom_gradient` function
+    # defined in this graph. The graph owns these functions (which usually
+    # capture its tensors) so that they share the graph's lifetime instead of
+    # the gradient registry's.
+    self._custom_gradient_functions = {}
     # True if the graph is considered "finalized".  In that case no
     # new operations can be added.
     self._finalized = False
