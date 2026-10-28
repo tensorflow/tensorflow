@@ -1140,12 +1140,12 @@ xla_test(
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu:ffi",
         "//xla/ffi",
-        "//xla/ffi:api",
         "//xla/ffi:attribute_map",
         "//xla/ffi:execution_state",
         "//xla/ffi:record_ffi",
         "//xla/ffi:type_registry",
         "//xla/ffi/api:c_api",
+        "//xla/ffi/api:record_api",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
@@ -1450,11 +1450,24 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "kernel_thunk_utils",
+    srcs = ["kernel_thunk_utils.cc"],
+    hdrs = ["kernel_thunk_utils.h"],
+    deps = [
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/stream_executor:launch_dim",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "kernel_thunk",
     srcs = ["kernel_thunk.cc"],
     hdrs = ["kernel_thunk.h"],
     deps = [
         ":command",
+        ":kernel_thunk_utils",
         ":per_device_state",
         ":print_buffer_contents",
         ":thunk",
@@ -1888,6 +1901,7 @@ cc_library(
         ":collective_types_proto_cc",
         ":command",
         ":command_state",
+        ":kernel_thunk_utils",
         ":per_device_state",
         ":thunk",
         ":thunk_proto_cc",
@@ -1984,6 +1998,7 @@ xla_test(
         "//xla/service/gpu:ptx_compile_options_from_debug_options",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
@@ -2247,6 +2262,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/backends/gpu/collectives:gpu_communicator",
         "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
@@ -2260,6 +2276,7 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -5662,6 +5679,7 @@ cc_library(
     ]),
     deps = [
         ":command",
+        ":kernel_thunk_utils",
         ":per_device_state",
         ":print_buffer_contents",
         ":thunk",

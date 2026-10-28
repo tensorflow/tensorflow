@@ -980,6 +980,304 @@ TEST(TensorBundleTest, VariantTensors) {
   }
 }
 
+// Rewrites one metadata entry while preserving the data file and other entries.
+template <typename Rewrite>
+absl::Status RewriteBundleEntry(const std::string& prefix,
+                                const std::string& key,
+                                const Rewrite& rewrite) {
+  Env* env = Env::Default();
+  const std::string metadata_tmp_path =
+      absl::StrCat(MetaFilename(prefix), ".tmp");
+  std::unique_ptr<WritableFile> metadata_file;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(metadata_tmp_path, &metadata_file));
+  std::unique_ptr<table::TableBuilder> builder;
+  {
+    const std::string filename = MetaFilename(prefix);
+    uint64_t file_size;
+    TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
+    std::unique_ptr<RandomAccessFile> file;
+    TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
+
+    table::Table* table = nullptr;
+    TF_RETURN_IF_ERROR(
+        table::Table::Open(table::Options(), file.get(), file_size, &table));
+    std::unique_ptr<table::Table> table_deleter(table);
+    std::unique_ptr<table::Iterator> iter(table->NewIterator());
+
+    builder = std::make_unique<table::TableBuilder>(table::Options(),
+                                                    metadata_file.get());
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      if (iter->key() == key) {
+        BundleEntryProto entry;
+        CHECK(entry.ParseFromArray(iter->value().data(), iter->value().size()));
+        rewrite(&entry);
+        builder->Add(iter->key(), entry.SerializeAsString());
+      } else {
+        builder->Add(iter->key(), iter->value());
+      }
+    }
+  }
+  TF_RETURN_IF_ERROR(builder->Finish());
+  builder.reset();
+  TF_RETURN_IF_ERROR(metadata_file->Close());
+  return env->RenameFile(metadata_tmp_path, MetaFilename(prefix));
+}
+
+int64_t CurrentResidentPages() {
+  std::string statm;
+  if (!ReadFileToString(Env::Default(), "/proc/self/statm", &statm).ok()) {
+    return 0;
+  }
+  const std::vector<std::string> fields =
+      str_util::Split(statm, " ", str_util::SkipEmpty());
+  int64_t resident_pages = 0;
+  if (fields.size() < 2 || !absl::SimpleAtoi(fields[1], &resident_pages)) {
+    return 0;
+  }
+  return resident_pages;
+}
+
+TEST(TensorBundleTest, StringEntryRemainingBytes) {
+  {
+    const std::string empty_prefix = Prefix("string_all_empty_minimal");
+    {
+      BundleWriter writer(Env::Default(), empty_prefix);
+      TF_ASSERT_OK(writer.Add("strings", test::AsTensor<tstring>({"", ""})));
+      TF_ASSERT_OK(writer.Finish());
+    }
+    int64_t recorded_size = -1;
+    TF_ASSERT_OK(RewriteBundleEntry(empty_prefix, "strings",
+                                    [&recorded_size](BundleEntryProto* entry) {
+                                      recorded_size = entry->size();
+                                    }));
+    EXPECT_EQ(recorded_size, 6);
+    BundleReader empty_reader(Env::Default(), empty_prefix);
+    TF_ASSERT_OK(empty_reader.status());
+    Tensor empty_strings(DT_STRING, TensorShape({2}));
+    TF_ASSERT_OK(empty_reader.Lookup("strings", &empty_strings));
+    test::ExpectTensorEqual<tstring>(empty_strings,
+                                     test::AsTensor<tstring>({"", ""}));
+  }
+
+  // Two one-byte varints, a four-byte checksum, and four payload bytes.
+  // The entry-size check rejects sizes below six before allocating the
+  // length table; sizes six and nine reach the remaining-payload check.
+  for (const int64_t entry_size : {2, 5, 6, 9, 10}) {
+    const std::string prefix =
+        Prefix(absl::StrCat("string_entry_size_", entry_size));
+    {
+      BundleWriter writer(Env::Default(), prefix);
+      TF_ASSERT_OK(
+          writer.Add("strings", test::AsTensor<tstring>({"ab", "cd"})));
+      TF_ASSERT_OK(writer.Finish());
+    }
+    TF_ASSERT_OK(RewriteBundleEntry(prefix, "strings",
+                                    [entry_size](BundleEntryProto* entry) {
+                                      entry->set_size(entry_size);
+                                    }));
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    Tensor strings(DT_STRING, TensorShape({2}));
+    if (entry_size == 10) {
+      // A reused destination may hold more bytes than the saved value.
+      strings.flat<tstring>()(0) = std::string(100, 'x');
+    }
+    const absl::Status status = reader.Lookup("strings", &strings);
+    if (entry_size == 10) {
+      TF_EXPECT_OK(status);
+      test::ExpectTensorEqual<tstring>(strings,
+                                       test::AsTensor<tstring>({"ab", "cd"}));
+      Tensor wrong_count(DT_STRING, TensorShape({1}));
+      const absl::Status mismatch_status =
+          reader.Lookup("strings", &wrong_count);
+      EXPECT_TRUE(absl::IsDataLoss(mismatch_status)) << mismatch_status;
+      EXPECT_TRUE(absl::StrContains(mismatch_status.message(),
+                                    "Invalid element count in bundle entry"))
+          << mismatch_status;
+    } else {
+      EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+      const char* expected = entry_size < 6 ? "string element count"
+                                            : "String data exceeds remaining";
+      EXPECT_TRUE(absl::StrContains(status.message(), expected)) << status;
+      // Validate the entire payload budget before resizing either string.
+      EXPECT_TRUE(strings.flat<tstring>()(0).empty());
+      EXPECT_TRUE(strings.flat<tstring>()(1).empty());
+    }
+  }
+
+  const std::string prefix = Prefix("string_oversized_element_count");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.Add("strings", test::AsTensor<tstring>({"ab", "cd"})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  TF_ASSERT_OK(
+      RewriteBundleEntry(prefix, "strings", [](BundleEntryProto* entry) {
+        entry->mutable_shape()->mutable_dim(0)->set_size(1LL << 30);
+        entry->set_size(6);
+      }));
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  const int64_t rss_pages_before = CurrentResidentPages();
+  TensorShape stored_shape;
+  const absl::Status shape_status =
+      reader.LookupTensorShape("strings", &stored_shape);
+  EXPECT_TRUE(absl::IsDataLoss(shape_status)) << shape_status;
+  Tensor strings;
+  const absl::Status status = reader.Lookup("strings", &strings);
+  const int64_t rss_pages_after = CurrentResidentPages();
+  EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(), "string element count"))
+      << status;
+  // GetValue rejects the metadata before constructing the billion-element
+  // destination tensor or length table.
+  EXPECT_EQ(strings.NumElements(), 0);
+  EXPECT_LT(rss_pages_after - rss_pages_before, 16384);
+  Tensor partial(DT_STRING, TensorShape({1}));
+  const absl::Status preallocated_status = reader.Lookup("strings", &partial);
+  EXPECT_TRUE(absl::IsDataLoss(preallocated_status)) << preallocated_status;
+  EXPECT_TRUE(
+      absl::StrContains(preallocated_status.message(), "string element count"))
+      << preallocated_status;
+  const absl::Status slice_status =
+      reader.LookupSlice("strings", TensorSlice::ParseOrDie("0,1"), &partial);
+  EXPECT_TRUE(absl::IsInvalidArgument(slice_status)) << slice_status;
+}
+
+TEST(TensorBundleTest, NegativeEntrySize) {
+  for (const DataType dtype : {DT_STRING, DT_VARIANT}) {
+    const std::string prefix =
+        Prefix(absl::StrCat("negative_entry_size_", DataTypeString(dtype)));
+    {
+      BundleWriter writer(Env::Default(), prefix);
+      if (dtype == DT_STRING) {
+        TF_ASSERT_OK(writer.Add("tensor", test::AsTensor<tstring>({"value"})));
+      } else {
+        TF_ASSERT_OK(writer.Add(
+            "tensor", test::AsTensor<Variant>({VariantObject("value", 1)})));
+      }
+      TF_ASSERT_OK(writer.Finish());
+    }
+    TF_ASSERT_OK(RewriteBundleEntry(
+        prefix, "tensor",
+        [](BundleEntryProto* entry) { entry->set_size(-1); }));
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    Tensor value(dtype, TensorShape({1}));
+    const absl::Status status = reader.Lookup("tensor", &value);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_EQ(status.message(), "Invalid size in bundle entry: -1");
+  }
+}
+
+TEST(TensorBundleTest, EmptyVariantEntry) {
+  const std::string prefix = Prefix("empty_variant_entry");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.Add("variants", Tensor(DT_VARIANT, TensorShape({0}))));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  Tensor variants(DT_VARIANT, TensorShape({0}));
+  TF_ASSERT_OK(reader.Lookup("variants", &variants));
+  EXPECT_EQ(variants.NumElements(), 0);
+}
+
+TEST(TensorBundleTest, VariantEntryRemainingBytes) {
+  {
+    const std::string minimal_prefix = Prefix("variant_empty_payload_minimal");
+    {
+      BundleWriter writer(Env::Default(), minimal_prefix);
+      TF_ASSERT_OK(writer.Add("variants",
+                              test::AsTensor<Variant>({Variant(), Variant()})));
+      TF_ASSERT_OK(writer.Finish());
+    }
+    int64_t recorded_size = -1;
+    TF_ASSERT_OK(RewriteBundleEntry(minimal_prefix, "variants",
+                                    [&recorded_size](BundleEntryProto* entry) {
+                                      recorded_size = entry->size();
+                                    }));
+    EXPECT_EQ(recorded_size, 10);
+    BundleReader minimal_reader(Env::Default(), minimal_prefix);
+    TF_ASSERT_OK(minimal_reader.status());
+    Tensor minimal_variants(DT_VARIANT, TensorShape({2}));
+    TF_ASSERT_OK(minimal_reader.Lookup("variants", &minimal_variants));
+    EXPECT_TRUE(minimal_variants.flat<Variant>()(0).is_empty());
+    EXPECT_TRUE(minimal_variants.flat<Variant>()(1).is_empty());
+    Tensor wrong_count(DT_VARIANT, TensorShape({1}));
+    const absl::Status mismatch_status =
+        minimal_reader.Lookup("variants", &wrong_count);
+    EXPECT_TRUE(absl::IsDataLoss(mismatch_status)) << mismatch_status;
+    EXPECT_TRUE(absl::StrContains(mismatch_status.message(),
+                                  "Invalid element count in bundle entry"))
+        << mismatch_status;
+  }
+
+  for (const int64_t entry_size : {-1, 0, 1, 9}) {
+    const std::string prefix =
+        Prefix(absl::StrCat("variant_entry_budget_", entry_size));
+    {
+      BundleWriter writer(Env::Default(), prefix);
+      TF_ASSERT_OK(writer.Add(
+          "variants", test::AsTensor<Variant>({VariantObject("first", 1),
+                                               VariantObject("second", 2)})));
+      TF_ASSERT_OK(writer.Finish());
+    }
+    // Keep the complete data file so only the recorded entry budget changes.
+    TF_ASSERT_OK(RewriteBundleEntry(
+        prefix, "variants", [entry_size](BundleEntryProto* entry) {
+          entry->set_size(entry_size < 0 ? entry->size() - 1 : entry_size);
+        }));
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    Tensor variants(DT_VARIANT, TensorShape({2}));
+    const absl::Status status = reader.Lookup("variants", &variants);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    const char* expected =
+        entry_size < 0 ? "Variant data and checksum" : "variant element count";
+    EXPECT_TRUE(absl::StrContains(status.message(), expected)) << status;
+  }
+
+  const std::string prefix = Prefix("variant_oversized_element_count");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.Add(
+        "variants", test::AsTensor<Variant>({VariantObject("first", 1),
+                                             VariantObject("second", 2)})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  TF_ASSERT_OK(
+      RewriteBundleEntry(prefix, "variants", [](BundleEntryProto* entry) {
+        entry->mutable_shape()->mutable_dim(0)->set_size(1LL << 30);
+        entry->set_size(5);
+      }));
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  const int64_t rss_pages_before = CurrentResidentPages();
+  TensorShape stored_shape;
+  const absl::Status shape_status =
+      reader.LookupTensorShape("variants", &stored_shape);
+  EXPECT_TRUE(absl::IsDataLoss(shape_status)) << shape_status;
+  Tensor variants;
+  const absl::Status status = reader.Lookup("variants", &variants);
+  const int64_t rss_pages_after = CurrentResidentPages();
+  EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(), "variant element count"))
+      << status;
+  EXPECT_EQ(variants.NumElements(), 0);
+  EXPECT_LT(rss_pages_after - rss_pages_before, 16384);
+  Tensor partial(DT_VARIANT, TensorShape({1}));
+  const absl::Status preallocated_status = reader.Lookup("variants", &partial);
+  EXPECT_TRUE(absl::IsDataLoss(preallocated_status)) << preallocated_status;
+  EXPECT_TRUE(
+      absl::StrContains(preallocated_status.message(), "variant element count"))
+      << preallocated_status;
+  const absl::Status slice_status =
+      reader.LookupSlice("variants", TensorSlice::ParseOrDie("0,1"), &partial);
+  EXPECT_TRUE(absl::IsInvalidArgument(slice_status)) << slice_status;
+}
+
 TEST(TensorBundleTest, DirectoryStructure) {
   Env* env = Env::Default();
   // Writes two bundles.

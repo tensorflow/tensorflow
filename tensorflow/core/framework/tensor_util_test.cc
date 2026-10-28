@@ -659,6 +659,27 @@ TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
   }
 }
 
+// Positive control: an aligned byte count still compresses.
+TEST(TensorProtoUtil, CompressTensorContentValidMultipleBytes) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_FLOAT);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+  tensor_proto.set_tensor_content(std::string("12345678", 8));
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(1, 0.5f, &tensor_proto));
+  EXPECT_TRUE(tensor_proto.tensor_content().empty());
+  EXPECT_EQ(tensor_proto.float_val_size(), 2);
+}
+
+TEST(TensorProtoUtil, CompressTensorContentNonMultipleBytesRejected) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_FLOAT);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(1);
+  tensor_proto.set_tensor_content(std::string("12345", 5));
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(1, 0.5f, &tensor_proto));
+  EXPECT_EQ(tensor_proto.tensor_content(), "12345");
+  EXPECT_EQ(tensor_proto.float_val_size(), 0);
+}
+
 TEST(TensorProtoUtil, CompressTensorProtoNegatizeZero) {
   TensorProto tensor_proto;
   {
