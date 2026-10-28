@@ -111,6 +111,88 @@ struct functor_traits<tf_scalar_pow_op<T, /*IsComplex=*/true>> {
   };
 };
 
+// Maximum and Minimum keep the first operand on ties, including +0.0 vs
+// -0.0, like std::max/std::min, np.maximum/np.minimum, XLA and the
+// Maximum/Minimum gradients (x >= y, x <= y). Eigen backends do not agree on
+// that tie (NEON FMAX and GPU fmaxf return +0.0), so results could depend on
+// tensor width and platform. One compare+select is used on the scalar and
+// packet paths. Integers have no NaN or signed zero and use Eigen directly.
+template <typename T, bool IsInteger = NumTraits<T>::IsInteger>
+struct tf_scalar_max_op;
+
+template <typename T>
+struct tf_scalar_max_op<T, /*IsInteger=*/true>
+    : scalar_max_op<T, T, PropagateNaN> {};
+
+template <typename T>
+struct functor_traits<tf_scalar_max_op<T, /*IsInteger=*/true>>
+    : functor_traits<scalar_max_op<T, T, PropagateNaN>> {};
+
+template <typename T>
+struct tf_scalar_max_op<T, /*IsInteger=*/false> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
+                                                     const T& b) const {
+    if (TF_PREDICT_FALSE((numext::isnan)(b))) {
+      return b;
+    }
+    return a < b ? b : a;
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    const Packet res = pselect(pcmp_lt(a, b), b, a);
+    return pselect(pcmp_eq(b, b), res, b);
+  }
+};
+
+template <typename T>
+struct functor_traits<tf_scalar_max_op<T, /*IsInteger=*/false>> {
+  enum {
+    Cost = functor_traits<scalar_max_op<T, T, PropagateNaN>>::Cost,
+    PacketAccess =
+        functor_traits<scalar_max_op<T, T, PropagateNaN>>::PacketAccess,
+  };
+};
+
+template <typename T, bool IsInteger = NumTraits<T>::IsInteger>
+struct tf_scalar_min_op;
+
+template <typename T>
+struct tf_scalar_min_op<T, /*IsInteger=*/true>
+    : scalar_min_op<T, T, PropagateNaN> {};
+
+template <typename T>
+struct functor_traits<tf_scalar_min_op<T, /*IsInteger=*/true>>
+    : functor_traits<scalar_min_op<T, T, PropagateNaN>> {};
+
+template <typename T>
+struct tf_scalar_min_op<T, /*IsInteger=*/false> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
+                                                     const T& b) const {
+    if (TF_PREDICT_FALSE((numext::isnan)(b))) {
+      return b;
+    }
+    return b < a ? b : a;
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
+    const Packet res = pselect(pcmp_lt(b, a), b, a);
+    return pselect(pcmp_eq(b, b), res, b);
+  }
+};
+
+template <typename T>
+struct functor_traits<tf_scalar_min_op<T, /*IsInteger=*/false>> {
+  enum {
+    Cost = functor_traits<scalar_min_op<T, T, PropagateNaN>>::Cost,
+    PacketAccess =
+        functor_traits<scalar_min_op<T, T, PropagateNaN>>::PacketAccess,
+  };
+};
+
 template <typename T, typename DivOrMod>
 struct safe_div_or_mod_op {
   static_assert(std::is_integral_v<T>, "Integer type expected");
@@ -1326,12 +1408,10 @@ template <typename T>
 struct safe_pow_ignore_error : base<T, safe_pow_ignore_error_op<T>> {};
 
 template <typename T>
-struct maximum
-    : base<T, Eigen::internal::scalar_max_op<T, T, Eigen::PropagateNaN>> {};
+struct maximum : base<T, Eigen::internal::tf_scalar_max_op<T>> {};
 
 template <typename T>
-struct minimum
-    : base<T, Eigen::internal::scalar_min_op<T, T, Eigen::PropagateNaN>> {};
+struct minimum : base<T, Eigen::internal::tf_scalar_min_op<T>> {};
 
 template <typename T>
 struct igamma : base<T, Eigen::internal::igamma_op<T>> {};
