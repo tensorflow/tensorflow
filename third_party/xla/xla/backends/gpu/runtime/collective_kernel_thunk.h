@@ -96,6 +96,8 @@ class CollectiveKernelThunk : public TracedCommand {
   LaunchDimensions launch_dimensions() const { return launch_dimensions_; }
 
   bool use_pdl() const { return use_pdl_; }
+  std::string ToString(int indent) const override;
+
   const std::optional<std::vector<uint8_t>>& cubin() const { return cubin_; }
 
   // Returns the reason why the collective kernel is not supported.

@@ -31,6 +31,14 @@ _CCCL_3_2_0_GITHUB_ARCHIVE = {
     "strip_prefix": "cccl-src-v3.2.0",
 }
 
+# CCCL version 3.4.0
+# https://github.com/NVIDIA/cccl/releases/tag/v3.4.0
+_CCCL_3_4_0_GITHUB_ARCHIVE = {
+    "full_path": "https://github.com/NVIDIA/cccl/releases/download/v3.4.0/cccl-src-v3.4.0.tar.gz",
+    "sha256": "7d3f36c6236b4a9fd6e40a0520aa516e0dcbe157aa6345966eb25f35bc4cdc77",
+    "strip_prefix": "cccl-src-v3.4.0",
+}
+
 CCCL_2_8_5_DIST_DICT = {
     "cuda_cccl": {
         "linux-x86_64": _CCCL_2_8_5_GITHUB_ARCHIVE,
@@ -42,6 +50,13 @@ CCCL_3_2_0_DIST_DICT = {
     "cuda_cccl": {
         "linux-x86_64": _CCCL_3_2_0_GITHUB_ARCHIVE,
         "linux-sbsa": _CCCL_3_2_0_GITHUB_ARCHIVE,
+    },
+}
+
+CCCL_3_4_0_DIST_DICT = {
+    "cuda_cccl": {
+        "linux-x86_64": _CCCL_3_4_0_GITHUB_ARCHIVE,
+        "linux-sbsa": _CCCL_3_4_0_GITHUB_ARCHIVE,
     },
 }
 

@@ -9978,16 +9978,24 @@ absl::Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   }
   // select(PRED, PRED, PRED)
   if (ShapeUtil::HasPrimitiveType(select->shape(), xla::PRED)) {
+    HloInstruction* pred = select->mutable_operand(0);
+    HloInstruction* replacement = nullptr;
     // select(a, true, false) -> a
     if (IsAll(select->operand(1), true) && IsAll(select->operand(2), false)) {
-      return ReplaceInstruction(select, select->mutable_operand(0));
+      replacement = pred;
+    } else if (IsAll(select->operand(1), false) &&
+               IsAll(select->operand(2), true)) {
+      // select(a, false, true) -> not(a)
+      replacement = computation_->AddInstruction(
+          HloInstruction::CreateUnary(pred->shape(), HloOpcode::kNot, pred));
     }
-    // select(a, false, true) -> not(a)
-    if (IsAll(select->operand(1), false) && IsAll(select->operand(2), true)) {
-      return ReplaceWithNewInstruction(
-          select, HloInstruction::CreateUnary(
-                      select->mutable_operand(0)->shape(), HloOpcode::kNot,
-                      select->mutable_operand(0)));
+    if (replacement != nullptr) {
+      // Select permits a scalar predicate even when its result is a tensor.
+      if (ShapeUtil::IsScalar(replacement->shape()) &&
+          !ShapeUtil::IsScalar(select->shape())) {
+        replacement = MakeBroadcastHlo(replacement, {}, select->shape());
+      }
+      return ReplaceInstruction(select, replacement);
     }
     // select(compare(a, b, GT/GE), a, b) => or(a, b)
     // select(compare(a, b, LT/LE), a, b) => and(a, b)

@@ -25,8 +25,8 @@ limitations under the License.
 // First undef to prevent error when re-included.
 #undef HWY_TARGET_INCLUDE
 #define HWY_TARGET_INCLUDE "xla/packing.cc"
-#include "hwy//foreach_target.h"  // IWYU pragma: keep
-#include "hwy//highway.h"
+#include "hwy/foreach_target.h"  // IWYU pragma: keep
+#include "hwy/highway.h"
 
 HWY_BEFORE_NAMESPACE();
 namespace xla {

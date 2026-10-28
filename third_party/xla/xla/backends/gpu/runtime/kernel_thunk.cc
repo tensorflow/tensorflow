@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/kernel_thunk_utils.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -80,11 +81,9 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
       device_states_(devices_per_host) {}
 
 std::string KernelThunk::ToString(int indent) const {
-  return absl::StrFormat(
-      "kernel=%s, profile_annotation=%s, launch dimensions=%s, cluster_dim=%s",
-      kernel_name_, thunk_info().profile_annotation,
-      launch_dimensions_.ToString(),
-      cluster_dim_.has_value() ? cluster_dim_->ToString() : "nullopt");
+  return KernelThunkToString(kernel_name_, thunk_info().profile_annotation,
+                             launch_dimensions_, cluster_dim_, shmem_bytes_,
+                             use_pdl_);
 }
 
 absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
