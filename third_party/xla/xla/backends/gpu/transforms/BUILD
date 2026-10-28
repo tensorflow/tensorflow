@@ -3,6 +3,7 @@ load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_oss")
+load("//xla/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -1575,12 +1576,16 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/expanders:op_expander_pass",
-        "//xla/tsl/platform:errors",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-    ],
+        "@tsl//tsl/platform:tensor_float_32_hdr_lib",
+    ] + if_static(["@tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
 xla_test(
@@ -1601,10 +1606,15 @@ xla_test(
             "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
             "//xla/hlo/ir:hlo",
             "//xla/hlo/utils:hlo_matchers",
+            "//xla/stream_executor:device_description",
+            "//xla/stream_executor/cuda:cuda_compute_capability",
+            "//xla/stream_executor/rocm:rocm_compute_capability",
+            "@com_google_absl//absl/cleanup",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:string_view",
             "@com_google_googletest//:gtest_main",
-        ],
+            "@tsl//tsl/platform:tensor_float_32_hdr_lib",
+        ] + if_static(["@tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
 cc_library(
