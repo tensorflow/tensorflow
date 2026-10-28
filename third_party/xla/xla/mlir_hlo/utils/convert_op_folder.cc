@@ -53,11 +53,20 @@ mlir::ElementsAttr convertElementsAttr(const mlir::ElementsAttr& elements,
   if (mlir::isa<mlir::FloatType>(oldType)) {
     if (auto newFloatType = mlir::dyn_cast<mlir::FloatType>(newType)) {
       // Float -> Float
+      const auto& targetSemantics = newFloatType.getFloatSemantics();
       return mlir::cast<DenseTypedElementsAttr>(elements).mapValues(
           newType, [&](const APFloat& floatVal) -> APInt {
+            if (floatVal.isNegative() &&
+                !APFloat::semanticsHasSignedRepr(targetSemantics)) {
+              APFloat res = floatVal.isNegZero() &&
+                                    APFloat::semanticsHasZero(targetSemantics)
+                                ? APFloat::getZero(targetSemantics)
+                                : APFloat::getNaN(targetSemantics);
+              return res.bitcastToAPInt();
+            }
             APFloat convertedFloat = floatVal;
             bool losesInfo = false;
-            convertedFloat.convert(newFloatType.getFloatSemantics(),
+            convertedFloat.convert(targetSemantics,
                                    APFloat::rmNearestTiesToEven, &losesInfo);
             return convertedFloat.bitcastToAPInt();
           });
@@ -83,9 +92,14 @@ mlir::ElementsAttr convertElementsAttr(const mlir::ElementsAttr& elements,
   // old_type is Integer
   if (auto newFloatType = mlir::dyn_cast<mlir::FloatType>(newType)) {
     // Int -> Float
+    const auto& targetSemantics = newFloatType.getFloatSemantics();
     return mlir::cast<DenseTypedElementsAttr>(elements).mapValues(
         newType, [&](const APInt& intVal) -> APInt {
-          APFloat floatVal(newFloatType.getFloatSemantics(),
+          if (!isOldTypeUnsigned && intVal.isNegative() &&
+              !APFloat::semanticsHasSignedRepr(targetSemantics)) {
+            return APFloat::getNaN(targetSemantics).bitcastToAPInt();
+          }
+          APFloat floatVal(targetSemantics,
                            APInt::getZero(newFloatType.getWidth()));
           floatVal.convertFromAPInt(intVal,
                                     /*isSigned=*/!isOldTypeUnsigned,
