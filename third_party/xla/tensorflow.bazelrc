@@ -778,7 +778,7 @@ build:pjrt_cuda12 --config=cuda_nvcc
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 build:pjrt_cuda12 --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
-build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_90,sm_100,compute_120"
+build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_80,sm_90,sm_100,compute_120"
 
 build:pjrt_cuda13 --config=cuda_nvcc
 build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_VERSION="13.2.0"
