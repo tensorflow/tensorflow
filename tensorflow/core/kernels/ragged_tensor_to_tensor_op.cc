@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -116,21 +117,21 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     }
     for (Eigen::Index i = 1; i < row_split.size(); ++i) {
       if (row_split(i) < row_split(i - 1)) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "row_split must be monotonically increasing, got ", row_split(i),
-            " after ", row_split(i - 1)));
+        return absl::InvalidArgumentError(
+            absl::StrCat("row_split must be monotonically increasing, got ",
+                         row_split(i), " after ", row_split(i - 1)));
       }
     }
     return absl::OkStatus();
   }
 
   static INDEX_TYPE GetMaxWidthRowSplit(const RowPartitionTensor& row_split) {
-    const INDEX_TYPE tensor_length = row_split.size();
+    const Eigen::Index tensor_length = row_split.size();
     if (tensor_length == 0 || tensor_length == 1) {
       return 0;
     }
     INDEX_TYPE max_width = 0;
-    for (INDEX_TYPE i = 0; i < tensor_length - 1; ++i) {
+    for (Eigen::Index i = 0; i < tensor_length - 1; ++i) {
       const INDEX_TYPE current_width = row_split(i + 1) - row_split(i);
       if (current_width > max_width) {
         max_width = current_width;
@@ -229,6 +230,9 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     DCHECK_EQ(result->size(), first_dimension);
   }
 
+  // Callers validate row_split with ValidateRowSplits before calling this
+  // method. It is nonempty, nonnegative, nondecreasing, and bounded by the
+  // target size.
   absl::Status CalculateOutputIndexRowSplit(
       const RowPartitionTensor& row_split,
       const vector<INDEX_TYPE>& parent_output_index,
@@ -252,7 +256,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         result->push_back(-1);
       }
     }
-    if (row_split_size > 0 && result->size() != row_split(row_split_size - 1)) {
+    if (result->size() != row_split(row_split_size - 1)) {
       return absl::InvalidArgumentError("Invalid row split size.");
     }
 
@@ -297,10 +301,9 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     if (current_value_rowid < 0 ||
         current_value_rowid >=
             static_cast<INDEX_TYPE>(parent_output_index.size())) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Got current_value_rowid=", current_value_rowid,
-                       " which is not in [0, ", parent_output_index.size(),
-                       ")"));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Got current_value_rowid=", current_value_rowid,
+          " which is not in [0, ", parent_output_index.size(), ")"));
     }
 
     INDEX_TYPE current_output_index = parent_output_index[current_value_rowid];
@@ -358,10 +361,6 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
             row_partition_tensor, parent_output_index, output_index_multiplier,
             output_size, result);
       case RowPartitionType::ROW_SPLITS:
-        if (row_partition_tensor.size() == 0) {
-          return absl::InvalidArgumentError(
-              "Row split tensor must not be empty.");
-        }
         if (row_partition_tensor.size() - 1 >
             static_cast<Eigen::Index>(parent_output_index.size())) {
           return absl::InvalidArgumentError(
@@ -381,7 +380,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
 
   absl::Status GetFirstDimensionSize(OpKernelContext* context,
                                      INDEX_TYPE* result) {
-    const Tensor first_partition_tensor =
+    const Tensor& first_partition_tensor =
         context->input(kFirstPartitionInputIndex);
     if (row_partition_types_.empty()) {
       return absl::InvalidArgumentError("No row_partition_types given.");
@@ -421,19 +420,72 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    const int num_partitions =
+        context->num_inputs() - kFirstPartitionInputIndex;
+    OP_REQUIRES(
+        context,
+        ragged_rank_ >= 1 &&
+            num_partitions == static_cast<int>(row_partition_types_.size()),
+        absl::InvalidArgumentError(
+            absl::StrCat("Expected ", row_partition_types_.size(),
+                         " row partition tensors and ragged rank >= 1, got ",
+                         num_partitions)));
+    for (int i = 0; i < num_partitions; ++i) {
+      const Tensor& t = context->input(kFirstPartitionInputIndex + i);
+      const bool is_dim_size =
+          row_partition_types_[i] == RowPartitionType::FIRST_DIM_SIZE;
+      OP_REQUIRES(context,
+                  is_dim_size ? TensorShapeUtils::IsScalar(t.shape())
+                              : TensorShapeUtils::IsVector(t.shape()),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Row partition tensor ", i, " of type ",
+                      RowPartitionTypeToString(row_partition_types_[i]),
+                      " has invalid shape ", t.shape().DebugString())));
+    }
+
     INDEX_TYPE first_dimension;
-    const Tensor first_partition_tensor =
+    const Tensor& first_partition_tensor =
         context->input(kFirstPartitionInputIndex);
     OP_REQUIRES(
         context, first_partition_tensor.NumElements() > 0,
         absl::InvalidArgumentError("Invalid first partition input. Tensor "
                                    "requires at least one element."));
-    // Validate ordering before shape inference computes adjacent differences.
+    const int64_t nvals = context->input(kValueInputIndex).dim_size(0);
+    // Validate before runtime width and output-index calculations subtract
+    // adjacent row-split entries or reserve storage from the final entry.
     for (int dimension = 0; dimension < ragged_rank_; ++dimension) {
       if (GetRowPartitionTypeByDimension(dimension) ==
           RowPartitionType::ROW_SPLITS) {
         OP_REQUIRES_OK(context, ValidateRowSplits(
                                     GetRowPartitionTensor(context, dimension)));
+      }
+    }
+    for (int dimension = 0; dimension < ragged_rank_; ++dimension) {
+      if (GetRowPartitionTypeByDimension(dimension) ==
+          RowPartitionType::ROW_SPLITS) {
+        const RowPartitionTensor row_split =
+            GetRowPartitionTensor(context, dimension);
+        const int64_t row_partition_size =
+            static_cast<int64_t>(row_split(row_split.size() - 1));
+        if (dimension + 1 < ragged_rank_ &&
+            GetRowPartitionTypeByDimension(dimension + 1) ==
+                RowPartitionType::ROW_SPLITS) {
+          const RowPartitionTensor next_row_split =
+              GetRowPartitionTensor(context, dimension + 1);
+          const int64_t next_partition_size =
+              static_cast<int64_t>(next_row_split.size() - 1);
+          OP_REQUIRES(context, row_partition_size == next_partition_size,
+                      errors::InvalidArgument(
+                          "Row partition size (", row_partition_size,
+                          ") does not match the next row partition size (",
+                          next_partition_size, ")"));
+        }
+        if (dimension + 1 == ragged_rank_) {
+          OP_REQUIRES(context, row_partition_size <= nvals,
+                      errors::InvalidArgument(
+                          "Row partition size (", row_partition_size,
+                          ") exceeds the number of values (", nvals, ")"));
+        }
       }
     }
     OP_REQUIRES_OK(context, GetFirstDimensionSize(context, &first_dimension));
@@ -458,7 +510,6 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
     const INDEX_TYPE full_size = multiplier[0] * output_size[0];
     if (full_size > 0) {
       vector<INDEX_TYPE> output_index, new_output_index;
-      int nvals = context->input(kValueInputIndex).shape().dim_size(0);
       output_index.reserve(nvals);
       new_output_index.reserve(nvals);
 
@@ -473,11 +524,10 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
       }
 
       // Validate that row_splits do not reference beyond the values tensor.
-      OP_REQUIRES(
-          context, static_cast<INDEX_TYPE>(output_index.size()) <= nvals,
-          errors::InvalidArgument("Row partition size (", output_index.size(),
-                                  ") exceeds the number of values (", nvals,
-                                  ")"));
+      OP_REQUIRES(context, static_cast<int64_t>(output_index.size()) <= nvals,
+                  errors::InvalidArgument(
+                      "Row partition size (", output_index.size(),
+                      ") exceeds the number of values (", nvals, ")"));
 
       SetOutput(context, ragged_rank_, output_index, output_tensor);
     }
