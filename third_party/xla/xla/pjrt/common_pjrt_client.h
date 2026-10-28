@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/strided_gather.h"
+#include "xla/pjrt/tiled_linearizer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/runtime/device_id.h"
 #include "xla/shape.h"
@@ -80,7 +81,8 @@ TransferIncarnations(
 // A common base class for Pjrt clients based on raw buffers.
 class CommonPjRtClient : public PjRtClient {
  public:
-  CommonPjRtClient();
+  explicit CommonPjRtClient(std::optional<TiledLinearizer::ParallelismOptions>
+                                tiled_linearizer_options = std::nullopt);
 
   // A thread pool for dispatching background work.
   // TODO(parkers): make pure virtual and update all clients.
@@ -663,6 +665,7 @@ class CommonPjRtClient : public PjRtClient {
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_) =
       TransposePlanCache(1024);
+  std::optional<TiledLinearizer::ParallelismOptions> tiled_linearizer_options_;
 };
 
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
@@ -1260,7 +1263,9 @@ class CommonPjRtClientImpl : public CommonPjRtClient {
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       std::optional<PjRtPluginAttributes> plugin_attributes = std::nullopt,
       std::optional<LinearizeThrottler::Options> throttler_options =
-          std::nullopt);
+          std::nullopt,
+      std::optional<TiledLinearizer::ParallelismOptions>
+          tiled_linearizer_options = std::nullopt);
 
   bool allow_fallback_for_donation() const override {
     return allow_fallback_for_donation_;

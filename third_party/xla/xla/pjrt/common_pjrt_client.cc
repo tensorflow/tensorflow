@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/pjrt/raw_pjrt_client.h"
 #include "xla/pjrt/staging_buffer.h"
 #include "xla/pjrt/strided_gather.h"
+#include "xla/pjrt/tiled_linearizer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/undonatable_common_pjrt_buffer.h"
 #include "xla/pjrt/utils.h"
@@ -455,8 +456,10 @@ void RunPipelinedChunkedTransfer(
 
 }  // namespace
 
-CommonPjRtClient::CommonPjRtClient()
-    : PjRtClient(std::make_unique<CommonHostMemoryForDeviceManager>(this)) {}
+CommonPjRtClient::CommonPjRtClient(
+    std::optional<TiledLinearizer::ParallelismOptions> tiled_linearizer_options)
+    : PjRtClient(std::make_unique<CommonHostMemoryForDeviceManager>(this)),
+      tiled_linearizer_options_(std::move(tiled_linearizer_options)) {}
 
 PjRtDynamicShapeKind CommonPjRtClient::GetDynamicShapeKind(
     int memory_space_kind_id) const {
@@ -687,6 +690,27 @@ absl::Status CommonPjRtClient::Linearize(
     absl::Span<uint8_t> dest, const void* data,
     absl::Span<const int64_t> byte_strides, const Shape& device_shape,
     absl::Span<const uint32_t> dynamic_sizes, PjRtMemorySpace* memory_space) {
+  if (tiled_linearizer_options_.has_value() && IsTpuId(platform_id()) &&
+      (memory_space == nullptr ||
+       memory_space->kind_id() != UnpinnedHostMemorySpace::kKindId)) {
+    tsl::profiler::TraceMe traceme("XlaLinearize");
+    Shape host_shape = ShapeUtil::MakeShape(device_shape.element_type(),
+                                            device_shape.dimensions());
+    absl::InlinedVector<int64_t, 4> strides;
+    if (byte_strides.empty() && !device_shape.dimensions().empty()) {
+      strides.resize(device_shape.dimensions().size());
+      ABSL_RETURN_IF_ERROR(
+          ShapeUtil::ByteStrides(host_shape, absl::MakeSpan(strides)));
+      byte_strides = strides;
+    }
+    ABSL_RETURN_IF_ERROR(TiledLinearizer::LinearizeUsingTransposeInto(
+        dest, data, host_shape, byte_strides, device_shape.layout(),
+        /*set_padding_to_nan=*/false, dynamic_sizes,
+        *tiled_linearizer_options_));
+    raw_client()->RecordLinearizeBytes(/*is_h2d=*/true, dest.size());
+    return absl::OkStatus();
+  }
+
   PjRtDynamicShapeKind layout_kind =
       memory_space != nullptr ? GetDynamicShapeKind(memory_space->kind_id())
                               : GetPjRtDynamicShapeKind(device_shape);
@@ -1490,6 +1514,21 @@ absl::Status CommonPjRtClient::Delinearize(absl::Span<const uint8_t> input_data,
                                            const Shape& shape,
                                            MutableLiteralBase* literal,
                                            PjRtMemorySpace* memory_space) {
+  if (tiled_linearizer_options_.has_value() && IsTpuId(platform_id()) &&
+      (memory_space == nullptr ||
+       memory_space->kind_id() != UnpinnedHostMemorySpace::kKindId)) {
+    tsl::profiler::TraceMe traceme([&] {
+      return tsl::profiler::TraceMeEncode(
+          "CommonPjRtClient::Delinearize",
+          {{"shape", shape.ToString(/*print_layout=*/true)}});
+    });
+    ABSL_RETURN_IF_ERROR(TiledLinearizer::Delinearize(literal->shape(), input_data,
+                                                 shape.layout(), literal,
+                                                 *tiled_linearizer_options_));
+    raw_client()->RecordLinearizeBytes(/*is_h2d=*/false, input_data.size());
+    return absl::OkStatus();
+  }
+
   xla::Layout literal_layout;
   bool need_transpose = false;
   if (shape.IsArray()) {
@@ -5680,8 +5719,10 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
     std::unique_ptr<PjRtRawClient> raw_client,
     std::shared_ptr<KeyValueStoreInterface> kv_store,
     std::optional<PjRtPluginAttributes> plugin_attributes,
-    std::optional<LinearizeThrottler::Options> throttler_options)
-    : platform_id_(platform_id),
+    std::optional<LinearizeThrottler::Options> throttler_options,
+    std::optional<TiledLinearizer::ParallelismOptions> tiled_linearizer_options)
+    : CommonPjRtClient(std::move(tiled_linearizer_options)),
+      platform_id_(platform_id),
       platform_name_(std::move(platform_name)),
       platform_version_(std::move(platform_version)),
       topology_(std::move(topology)),

@@ -212,6 +212,7 @@ cc_library(
         ":raw_pjrt_client",
         ":staging_buffer",
         ":strided_gather",
+        ":tiled_linearizer",
         ":transpose",
         ":utils",
         "//xla:executable_run_options",
