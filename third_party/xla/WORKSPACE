@@ -115,10 +115,10 @@ load(
     "@rules_ml_toolchain//gpu/cuda:cuda_redist_versions.bzl",
     "REDIST_VERSIONS_TO_BUILD_TEMPLATES",
 )
-load("//third_party/cccl:workspace.bzl", "CCCL_3_2_0_DIST_DICT", "CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES")
+load("//third_party/cccl:workspace.bzl", "CCCL_3_4_0_DIST_DICT", "CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES")
 
 cuda_redist_init_repositories(
-    cuda_redistributions = CUDA_REDISTRIBUTIONS | CCCL_3_2_0_DIST_DICT,
+    cuda_redistributions = CUDA_REDISTRIBUTIONS | CCCL_3_4_0_DIST_DICT,
     redist_versions_to_build_templates = REDIST_VERSIONS_TO_BUILD_TEMPLATES | CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES,
 )
 

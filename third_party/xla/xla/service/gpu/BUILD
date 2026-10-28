@@ -3647,6 +3647,7 @@ cc_library(
         ":cublas_cudnn",
         "//xla:shape_util",
         "//xla:side_effect_util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:dynamic_slice_copy",
         "//xla/backends/gpu/transforms/collectives:collective_domain",

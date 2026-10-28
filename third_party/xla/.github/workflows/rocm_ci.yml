@@ -103,7 +103,7 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' }}
     name: JAX Linux x86 AMD Instinct GPU
     runs-on: ${{ needs.rocm-config.outputs.skip-jax == 'true' && 'ubuntu-latest' || inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-dpx-1' }}
-    timeout-minutes: 50
+    timeout-minutes: 55
     # Remove this once the JAX CI is stable.
     continue-on-error: true
     container: ${{ needs.rocm-config.outputs.skip-jax != 'true' && needs.rocm-config.outputs.docker-image || null }}  # zizmor: ignore[unpinned-images]
@@ -133,7 +133,7 @@ jobs:
 
       - name: Run JAX Unit Tests
         if: ${{ needs.rocm-config.outputs.skip-jax != 'true' }}
-        timeout-minutes: 45
+        timeout-minutes: 52
         working-directory: jax
         run: |
           ./ci/run_bazel_test_rocm_rbe.sh \

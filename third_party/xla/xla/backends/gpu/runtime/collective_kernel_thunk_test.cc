@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -100,6 +101,26 @@ using ::testing::StrictMock;
 static constexpr absl::string_view kProfileName = "test_kernel_profiler";
 static constexpr absl::string_view kKernelName = "five_argument_kernel";
 static constexpr int64_t kNumElements = 128;
+
+TEST(CollectiveKernelThunkTest, ToStringIncludesPdlOnlyWhenEnabled) {
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = kProfileName;
+  for (bool use_pdl : {false, true}) {
+    CollectiveKernelThunk thunk(
+        thunk_info, CollectiveConfig{}, CollectiveKernelSpec{},
+        /*buffers=*/{}, /*is_collective_kernel_enabled=*/true, kKernelName,
+        LaunchDimensions(se::BlockDim(3, 2, 1), se::ThreadDim(4, 5, 6)),
+        /*devices_in_process=*/1, /*shmem_bytes=*/42,
+        /*cubin=*/std::nullopt, use_pdl);
+    EXPECT_EQ(thunk.ToString(0),
+              std::string("kernel=five_argument_kernel, "
+                          "profile_annotation=test_kernel_profiler, "
+                          "launch dimensions=blocks: {3, 2, 1}, "
+                          "threads/block: {4, 5, 6}, "
+                          "cluster_dim=nullopt, shmem_bytes=42") +
+                  (use_pdl ? ", use_pdl=true" : ""));
+  }
+}
 
 // Test kernel was compiled using following CUDA source:
 // __global__ void five_argument_kernel(int64_t* input_buffer,         // 1

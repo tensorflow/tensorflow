@@ -31,7 +31,16 @@ namespace xla::gpu {
 struct NcclCommState {
   explicit NcclCommState(ncclComm_t comm) : comm(comm) {}
 
+  bool has_symmetric_window() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex) {
+    return num_symmetric_windows > 0;
+  }
+
   ncclComm_t comm ABSL_GUARDED_BY(mutex);
+
+  // Number of active NCCL_WIN_COLL_SYMMETRIC windows registered on `comm`.
+  // Neither symmetric kernels (`symk`) nor Copy Engine collectives can activate
+  // unless at least one symmetric window is registered on `comm`.
+  int num_symmetric_windows ABSL_GUARDED_BY(mutex) = 0;
 
   // NCCL API restricts concurrent usage with the same communicator.
   // See:

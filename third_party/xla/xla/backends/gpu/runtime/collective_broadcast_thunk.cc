@@ -188,11 +188,12 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
       }
       se::DeviceAddressBase src_addr = buffer.source_buffer;
       se::DeviceAddressBase dest_addr = buffer.destination_buffer;
+      // Broadcast does not support RMA kernels currently.
       ABSL_RETURN_IF_ERROR(gpu_comm->LaunchBroadcast(
           // Always use rank 0 since we always broadcast from the first id
           // in replica_groups
           src_addr, dest_addr, buffer.element_type, buffer.element_count, root,
-          GpuCollectives::On(stream)));
+          GpuCollectives::On(stream), /*is_rma=*/false));
     }
     return absl::OkStatus();
   });

@@ -215,7 +215,7 @@ Future<> MoriCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
   return Execute([send_buffer, recv_buffer, dtype, count, reduction_kind,
                   &executor, this]() -> absl::Status {
     return LaunchAllReduce(send_buffer, recv_buffer, dtype, count,
-                           reduction_kind, executor);
+                           reduction_kind, executor, /*is_rma=*/false);
   });
 }
 
@@ -226,7 +226,7 @@ Future<> MoriCommunicator::Broadcast(se::DeviceAddressBase send_buffer,
   return Execute(
       [send_buffer, recv_buffer, dtype, count, root, &executor, this]() {
         return LaunchBroadcast(send_buffer, recv_buffer, dtype, count, root,
-                               executor);
+                               executor, /*is_rma=*/false);
       });
 }
 
@@ -238,7 +238,7 @@ Future<> MoriCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
   return Execute([send_buffer, recv_buffer, dtype, count, reduction_kind,
                   &executor, this]() {
     return LaunchReduceScatter(send_buffer, recv_buffer, dtype, count,
-                               reduction_kind, executor);
+                               reduction_kind, executor, /*is_rma=*/false);
   });
 }
 
@@ -247,7 +247,8 @@ Future<> MoriCommunicator::AllGather(se::DeviceAddressBase send_buffer,
                                      PrimitiveType dtype, size_t count,
                                      const Executor& executor) {
   return Execute([send_buffer, recv_buffer, dtype, count, &executor, this]() {
-    return LaunchAllGather(send_buffer, recv_buffer, dtype, count, executor);
+    return LaunchAllGather(send_buffer, recv_buffer, dtype, count, executor,
+                           /*is_rma=*/false);
   });
 }
 
@@ -256,7 +257,8 @@ Future<> MoriCommunicator::AllToAll(
     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
   return Execute([send_buffers, recv_buffers, dtype, count, &executor, this]() {
-    return LaunchAllToAll(send_buffers, recv_buffers, dtype, count, executor);
+    return LaunchAllToAll(send_buffers, recv_buffers, dtype, count, executor,
+                          /*is_rma=*/false);
   });
 }
 
@@ -292,7 +294,7 @@ Future<> MoriCommunicator::Recv(se::DeviceAddressBase recv_buffer,
 
 absl::Status MoriCommunicator::LaunchAllGather(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
-    PrimitiveType dtype, size_t count, const Executor& executor) {
+    PrimitiveType dtype, size_t count, const Executor& executor, bool is_rma) {
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
@@ -308,7 +310,7 @@ absl::Status MoriCommunicator::LaunchAllGather(
 absl::Status MoriCommunicator::LaunchAllReduce(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
-    const Executor& executor) {
+    const Executor& executor, bool is_rma) {
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
@@ -327,7 +329,7 @@ absl::Status MoriCommunicator::LaunchAllReduce(
 absl::Status MoriCommunicator::LaunchReduceScatter(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind kind,
-    const Executor& executor) {
+    const Executor& executor, bool is_rma) {
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 
@@ -346,7 +348,7 @@ absl::Status MoriCommunicator::LaunchReduceScatter(
 absl::Status MoriCommunicator::LaunchAllToAll(
     absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
-    PrimitiveType dtype, size_t count, const Executor& executor) {
+    PrimitiveType dtype, size_t count, const Executor& executor, bool is_rma) {
   CHECK_CANCELLED()
   ABSL_ASSIGN_OR_RETURN(se::Stream * stream, ToStream(executor));
 

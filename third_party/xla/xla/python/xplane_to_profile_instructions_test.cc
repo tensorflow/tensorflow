@@ -277,5 +277,41 @@ TEST(XplaneToProfiledInstructionsProtoTest,
   EXPECT_EQ(profile_proto.costs(0).name(), "08a5::custom-call");
 }
 
+TEST(XplaneToProfiledInstructionsProtoTest, UsesSchedulingNames) {
+  // The profiled instruction was created after scheduling from one that the
+  // scheduler saw under another name, e.g. a synchronous collective converted
+  // from an asynchronous one, and its metadata carries that name.
+  XSpace xspace;
+  XPlaneBuilder metadata_plane(xspace.add_planes());
+  metadata_plane.SetName(kMetadataPlaneName);
+  xla::HloProto hlo_proto;
+  xla::HloModuleProto* module = hlo_proto.mutable_hlo_module();
+  module->set_name("test_module");
+  module->set_id(1);
+  xla::HloInstructionProto* instruction =
+      module->add_computations()->add_instructions();
+  instruction->set_name("custom-call");
+  instruction->mutable_metadata()->set_scheduling_name("custom-call-start");
+  const int64_t program_id = 1;
+  tsl::profiler::XEventMetadata* event_metadata =
+      metadata_plane.GetOrCreateEventMetadata(program_id);
+  event_metadata->set_name(
+      tsl::profiler::HloModuleNameWithProgramId(module->name(), program_id));
+  tsl::profiler::XStatsBuilder<tsl::profiler::XEventMetadata> event_stats(
+      event_metadata, &metadata_plane);
+  event_stats.AddStatValue(
+      *metadata_plane.GetOrCreateStatMetadata(
+          GetStatTypeStr(tsl::profiler::StatType::kHloProto)),
+      hlo_proto);
+  CreateXSpace(&xspace, 10000, 10000);
+
+  tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+  EXPECT_TRUE(
+      ConvertXplaneToProfiledInstructionsProto({xspace}, &profile_proto).ok());
+  ASSERT_EQ(profile_proto.costs_size(), 1);
+  EXPECT_EQ(profile_proto.costs(0).name(), "custom-call-start");
+  EXPECT_EQ(profile_proto.costs(0).cost_us(), 10);
+}
+
 }  // namespace
 }  // namespace xla
