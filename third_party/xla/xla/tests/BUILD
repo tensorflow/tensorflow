@@ -625,9 +625,10 @@ xla_test(
 
 xla_test(
     name = "conv_depthwise_backprop_filter_test",
+    # SparseCore fusion offloading and the mismatch detector make the test slower on TPU
+    # simulator backends.
+    timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
-    # TODO(b/577275792): Times out with SparseCore fusion offloading.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     shard_count = 50,
     tags = ["nozapfhahn"],  # TODO: b/445492433 - Re-enable when it doesn't time out.
     deps = [
@@ -644,9 +645,10 @@ xla_test(
 
 xla_test(
     name = "grouped_convolution_test",
+    # SparseCore fusion offloading and the mismatch detector make the test slower on TPU
+    # simulator backends.
+    timeout = "long",
     srcs = ["grouped_convolution_test.cc"],
-    # TODO(b/577275792): Times out with SparseCore fusion offloading.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     shard_count = 23,
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -2013,9 +2015,10 @@ xla_test(
 
 xla_test(
     name = "reduce_window_test",
+    # SparseCore fusion offloading and the mismatch detector make the test slower on TPU
+    # simulator backends.
+    timeout = "long",
     srcs = ["reduce_window_test.cc"],
-    # TODO(b/577275792): Times out with SparseCore fusion offloading.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     shard_count = 50,
     tags = ["optonly"],
     deps = [
