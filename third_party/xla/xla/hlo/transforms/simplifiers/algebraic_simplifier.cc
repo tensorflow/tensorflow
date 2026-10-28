@@ -1379,7 +1379,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleAllReduceOrReduceScatter(
                           primitive_util::IsFloatingPointType(type_constant)) {
               T val = literal.Get<T>({});
               T result = val * static_cast<T>(group_size);
-              new_literal = LiteralUtil::CreateR0(element_type, result);
+              new_literal = LiteralUtil::CreateR0<T>(result);
             }
           },
           element_type);
