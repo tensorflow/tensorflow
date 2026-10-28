@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
 #include <algorithm>
+#include <atomic>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -5197,6 +5198,71 @@ TEST(SharedBatchSchedulerPriorityPolicyTest, WarmupQueueCapacityTest) {
 
   // Allow the first task to complete.
   t1_continue.Notify();
+}
+
+TEST(SharedBatchSchedulerPriorityPolicyTest,
+     GlobalSchedulerGrowsBatchAndWarmupThreadsToMax) {
+  Scheduler::Options options_1;
+  options_1.use_global_scheduler = true;
+  options_1.num_batch_threads = 1;
+  options_1.num_warmup_batch_threads = 0;
+  std::shared_ptr<Scheduler> scheduler_1;
+  TF_ASSERT_OK(Scheduler::Create(options_1, &scheduler_1));
+
+  Scheduler::QueueOptions queue_options;
+  queue_options.input_batch_size_limit = 1;
+  queue_options.max_enqueued_batches = 10;
+
+  std::atomic<int> active_regular_batches{0};
+  absl::Notification two_regular_batches_running;
+  absl::Notification warmup_batch_running;
+  absl::Notification proceed;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (batch->task(0).is_warmup()) {
+      warmup_batch_running.Notify();
+      proceed.WaitForNotification();
+    } else {
+      if (active_regular_batches.fetch_add(1) + 1 == 2) {
+        two_regular_batches_running.Notify();
+      }
+      proceed.WaitForNotification();
+    }
+  };
+
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_ASSERT_OK(scheduler_1->AddQueue(queue_options, callback, &queue));
+
+  Scheduler::Options options_2;
+  options_2.use_global_scheduler = true;
+  options_2.num_batch_threads = 2;
+  options_2.num_warmup_batch_threads = 1;
+  std::shared_ptr<Scheduler> scheduler_2;
+  TF_ASSERT_OK(Scheduler::Create(options_2, &scheduler_2));
+  EXPECT_EQ(scheduler_1, scheduler_2);
+
+  Scheduler::Options options_3;
+  options_3.use_global_scheduler = true;
+  options_3.num_batch_threads = 1;
+  options_3.num_warmup_batch_threads = 0;
+  std::shared_ptr<Scheduler> scheduler_3;
+  TF_ASSERT_OK(Scheduler::Create(options_3, &scheduler_3));
+  EXPECT_EQ(scheduler_1, scheduler_3);
+
+  auto regular_task_1 = std::make_unique<FakeTask>(1);
+  auto regular_task_2 = std::make_unique<FakeTask>(1);
+  auto warmup_task = std::make_unique<FakeTask>(1);
+  warmup_task->set_is_warmup(true);
+
+  TF_EXPECT_OK(queue->Schedule(&regular_task_1));
+  TF_EXPECT_OK(queue->Schedule(&regular_task_2));
+  TF_EXPECT_OK(queue->Schedule(&warmup_task));
+
+  EXPECT_TRUE(two_regular_batches_running.WaitForNotificationWithTimeout(
+      absl::Seconds(10)));
+  EXPECT_TRUE(
+      warmup_batch_running.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+  proceed.Notify();
 }
 
 }  // namespace

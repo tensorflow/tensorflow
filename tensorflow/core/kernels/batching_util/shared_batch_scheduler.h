@@ -163,9 +163,11 @@ class SharedBatchScheduler
     // will be prioritized based on a (priority, arrival_time) key.
     bool rank_queues = false;
 
-    // If true, Create() will return a global instance of the scheduler. Only
-    // the options provided in the first Create() call will be used to
-    // initialize the global scheduler.
+    // If true, Create() will return a global instance of the scheduler. The
+    // options provided in the first Create() call are used to initialize the
+    // global scheduler, except that subsequent Create() calls grow
+    // `num_batch_threads` and `num_warmup_batch_threads` to the largest values
+    // requested.
     bool use_global_scheduler = false;
 
     // The startup delay for the batch threads. Useful for testing.
@@ -371,6 +373,8 @@ class SharedBatchScheduler
       const QueueOptions& options, ProcessBatchCallback process_batch_callback,
       std::unique_ptr<BatchScheduler<TaskType>>* queue);
 
+  void MaybeGrowThreads(const Options& options);
+
   static bool BatchExists(const BatchTaskUniquePtr& batch_to_process);
 
   const Options options_;
@@ -400,10 +404,12 @@ class SharedBatchScheduler
   condition_variable warmup_scheduler_cv_;
 
   // Threads that process batches obtained from the queues.
-  std::vector<std::unique_ptr<PeriodicFunction>> batch_threads_;
+  std::vector<std::unique_ptr<PeriodicFunction>> batch_threads_
+      TF_GUARDED_BY(mu_);
 
   // Threads that process only warmup batches obtained from the queues.
-  std::vector<std::unique_ptr<PeriodicFunction>> warmup_threads_;
+  std::vector<std::unique_ptr<PeriodicFunction>> warmup_threads_
+      TF_GUARDED_BY(mu_);
 
   SharedBatchScheduler(const SharedBatchScheduler&) = delete;
   void operator=(const SharedBatchScheduler&) = delete;
@@ -905,6 +911,11 @@ class Queue {
 
   bool closed() const TF_NO_THREAD_SAFETY_ANALYSIS { return closed_.load(); }
 
+  void EnableWarmupQueue() {
+    mutex_lock l(mu_);
+    enable_warmup_queue_ = true;
+  }
+
  private:
   PriorityTaskQueue<TaskType> tasks_priority_queue_ TF_GUARDED_BY(mu_);
 
@@ -931,7 +942,8 @@ class Queue {
   bool IsLowPriorityTask(std::unique_ptr<TaskType>* task);
 
   // Returns true iff the task is a warmup task based on the queue option.
-  bool IsWarmupTask(std::unique_ptr<TaskType>* task);
+  bool IsWarmupTask(std::unique_ptr<TaskType>* task)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Implementation of Schedule above. Enqueues `task` as it
   // is or split it inline (eagerly) to form batches to be processed by
@@ -1015,7 +1027,7 @@ class Queue {
   // If true, queue implementation splits warmup inputs from regular inputs,
   // which will be processed by a separate pool of warmup threads.
   // Requires: `num_warmup_batch_threads` > 0 in the scheduler's options.
-  bool enable_warmup_queue_ = false;
+  bool enable_warmup_queue_ TF_GUARDED_BY(mu_) = false;
 
   // The maximum batch size to be executed by `Queue::ProcessBatch`.
   // See the comment of QueueOptions and helper function
@@ -1135,6 +1147,7 @@ absl::Status SharedBatchScheduler<TaskType>::Create(
           return new std::shared_ptr<SharedBatchScheduler<TaskType>>(
               new SharedBatchScheduler<TaskType>(options));
         }();
+    (*global_scheduler)->MaybeGrowThreads(options);
     *scheduler = *global_scheduler;
     return absl::OkStatus();
   }
@@ -1159,11 +1172,18 @@ SharedBatchScheduler<TaskType>::~SharedBatchScheduler() {
   }
   // Delete the batch threads before allowing state the threads may access (e.g.
   // 'mu_') to be deleted.
-  batch_threads_.clear();
+  std::vector<std::unique_ptr<PeriodicFunction>> batch_threads;
+  std::vector<std::unique_ptr<PeriodicFunction>> warmup_threads;
+  {
+    mutex_lock l(mu_);
+    batch_threads = std::move(batch_threads_);
+    warmup_threads = std::move(warmup_threads_);
+  }
+  batch_threads.clear();
   // Warmup threads sleep for a long time, so we need to notify them to
   // wake up and exit.
   warmup_scheduler_cv_.notify_all();
-  warmup_threads_.clear();
+  warmup_threads.clear();
 }
 
 template <typename TaskType>
@@ -1279,11 +1299,15 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
     mutex_lock l(mu_);
     warmup_scheduler_cv_.notify_one();
   };
+  bool enable_warmup_queue = false;
+  {
+    mutex_lock l(mu_);
+    enable_warmup_queue = !warmup_threads_.empty();
+  }
   auto internal_queue =
       std::unique_ptr<internal::Queue<TaskType>>(new internal::Queue<TaskType>(
-          options, options_.env, options_.num_warmup_batch_threads > 0,
-          process_batch_callback, schedulable_batch_callback,
-          schedulable_warmup_batch_callback));
+          options, options_.env, enable_warmup_queue, process_batch_callback,
+          schedulable_batch_callback, schedulable_warmup_batch_callback));
   auto handle = std::unique_ptr<BatchScheduler<TaskType>>(
       new internal::QueueHandle<TaskType>(this->shared_from_this(),
                                           internal_queue.get()));
@@ -1301,27 +1325,39 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
 template <typename TaskType>
 SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
     : options_(options), next_queue_to_schedule_(queues_.end()) {
-  // Kick off the batch threads.
+  MaybeGrowThreads(options);
+}
+
+template <typename TaskType>
+void SharedBatchScheduler<TaskType>::MaybeGrowThreads(const Options& options) {
+  mutex_lock l(mu_);
   PeriodicFunction::Options periodic_fn_options;
   periodic_fn_options.thread_name_prefix =
-      strings::StrCat(options.thread_pool_name, "_");
+      strings::StrCat(options_.thread_pool_name, "_");
   periodic_fn_options.startup_delay_micros =
-      options.batch_threads_startup_delay_micros;
-  periodic_fn_options.env = options.env;
-  for (int i = 0; i < options.num_batch_threads; ++i) {
-    std::unique_ptr<PeriodicFunction> thread(new PeriodicFunction(
+      options_.batch_threads_startup_delay_micros;
+  periodic_fn_options.env = options_.env;
+  // MaybeGrowThreads() may be called multiple times for the global scheduler;
+  // start from the current pool size so only additional threads are spawned.
+  for (int i = batch_threads_.size(); i < options.num_batch_threads; ++i) {
+    auto thread = std::make_unique<PeriodicFunction>(
         [this] { this->ThreadLogic(); },
-        0 /* function invocation interval time */, periodic_fn_options));
+        0 /* function invocation interval time */, periodic_fn_options);
     batch_threads_.push_back(std::move(thread));
   }
-  // Kick off the warmup threads.
+  const int old_num_warmup_threads = warmup_threads_.size();
   int num_warmup_batch_threads =
       std::min(options.num_warmup_batch_threads, port::MaxParallelism());
-  for (int i = 0; i < num_warmup_batch_threads; ++i) {
+  for (int i = old_num_warmup_threads; i < num_warmup_batch_threads; ++i) {
     auto thread = std::make_unique<PeriodicFunction>(
         [this] { this->WarmupThreadLogic(); },
         0 /* function invocation interval time */, periodic_fn_options);
     warmup_threads_.push_back(std::move(thread));
+  }
+  if (old_num_warmup_threads == 0 && !warmup_threads_.empty()) {
+    for (auto& queue : queues_) {
+      queue->EnableWarmupQueue();
+    }
   }
 }
 
