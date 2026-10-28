@@ -19,9 +19,16 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_profiling_utils.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
@@ -34,7 +41,15 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using tensorflow::profiler::XSpace;
+using ::testing::AllOf;
+using ::testing::HasSubstr;
+using ::testing::Property;
+using ::testing::UnorderedElementsAre;
+using InstructionCost =
+    tensorflow::profiler::ProfiledInstructionsProto::InstructionCost;
 using tsl::profiler::GetStatTypeStr;
 using tsl::profiler::GpuPlaneName;
 using tsl::profiler::kHostThreadsPlaneName;
@@ -118,11 +133,42 @@ void CreateXSpace(XSpace* space, int first_device_latency,
   }
 }
 
-void CreateXSpaceWithFingerprint(XSpace* space, int first_device_latency,
-                                 int second_device_latency) {
+// Adds the module `hlo_text` to the metadata plane as the module of
+// `program_id`, tagged with its fingerprint as the GPU compiler tags modules
+// before scheduling them. Returns that fingerprint.
+absl::StatusOr<std::string> AddModuleWithFingerprint(
+    XPlaneBuilder& metadata_plane, absl::string_view hlo_text,
+    int64_t program_id) {
+  xla::HloModuleConfig config;
+  auto module = std::make_unique<VerifiedHloModule>(
+      "test_module", config, /*verifier_layout_sensitive=*/false,
+      /*allow_mixed_precision_in_hlo_verifier=*/true,
+      ShapeUtil::ByteSizeOfElements);
+  ABSL_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+  std::string fingerprint = TagWithFingerprint(
+      module.get(), HloModuleFingerprintStage::kBeforeScheduling);
+  xla::HloModuleProto hlo_module_proto = module->ToProto();
+  hlo_module_proto.set_id(program_id);
+  xla::HloProto hlo_proto;
+  *hlo_proto.mutable_hlo_module() = hlo_module_proto;
+  tsl::profiler::XEventMetadata* event_metadata =
+      metadata_plane.GetOrCreateEventMetadata(program_id);
+  event_metadata->set_name(tsl::profiler::HloModuleNameWithProgramId(
+      hlo_proto.hlo_module().name(), program_id));
+  tsl::profiler::XStatsBuilder<tsl::profiler::XEventMetadata> event_stats(
+      event_metadata, &metadata_plane);
+  auto* hlo_proto_stat = metadata_plane.GetOrCreateStatMetadata(
+      GetStatTypeStr(tsl::profiler::StatType::kHloProto));
+  event_stats.AddStatValue(*hlo_proto_stat, hlo_proto);
+  return fingerprint;
+}
+
+// Adds a module tagged with its fingerprint and returns that fingerprint.
+absl::StatusOr<std::string> CreateXSpaceWithFingerprint(
+    XSpace* space, int first_device_latency, int second_device_latency) {
   XPlaneBuilder metadata_plane(space->add_planes());
   metadata_plane.SetName(kMetadataPlaneName);
-  const char* hlo_text = R"(
+  constexpr absl::string_view kHloText = R"(
   HloModule test_module
   apply_op {
     x = f32[] parameter(0)
@@ -160,33 +206,11 @@ void CreateXSpaceWithFingerprint(XSpace* space, int first_device_latency,
     ROOT t = (f32[32], f32[64], f32[32,32]) tuple(ar-done, %ag-done, add5)
   })";
 
-  xla::HloModuleConfig config;
-  auto module = std::make_unique<VerifiedHloModule>(
-      "test_module", config, /*verifier_layout_sensitive=*/false,
-      /*allow_mixed_precision_in_hlo_verifier=*/true,
-      ShapeUtil::ByteSizeOfElements);
-  if (module->ParseHloStringAndVerifyModule(hlo_text).ok()) {
-    HloInstruction* root = module->entry_computation()->root_instruction();
-    FrontendAttributes attributes;
-    (*attributes.mutable_map())["fingerprint_before_lhs"] = "08a5";
-    root->add_frontend_attributes(attributes);
-    xla::HloModuleProto hlo_module_proto = module->ToProto();
-    hlo_module_proto.set_id(1);
-    xla::HloProto hlo_proto;
-    *hlo_proto.mutable_hlo_module() = hlo_module_proto;
-    int64_t program_id = 1;
-    tsl::profiler::XEventMetadata* event_metadata =
-        metadata_plane.GetOrCreateEventMetadata(program_id);
-    event_metadata->set_name(tsl::profiler::HloModuleNameWithProgramId(
-        hlo_proto.hlo_module().name(), program_id));
-    tsl::profiler::XStatsBuilder<tsl::profiler::XEventMetadata> event_stats(
-        event_metadata, &metadata_plane);
-    auto* hlo_proto_stat = metadata_plane.GetOrCreateStatMetadata(
-        GetStatTypeStr(tsl::profiler::StatType::kHloProto));
-    event_stats.AddStatValue(*hlo_proto_stat, hlo_proto);
-  }
-
-  return CreateXSpace(space, first_device_latency, second_device_latency);
+  ABSL_ASSIGN_OR_RETURN(
+      std::string fingerprint,
+      AddModuleWithFingerprint(metadata_plane, kHloText, /*program_id=*/1));
+  CreateXSpace(space, first_device_latency, second_device_latency);
+  return fingerprint;
 }
 
 TEST(XplaneToProfiledInstructionsProtoTest,
@@ -223,13 +247,15 @@ TEST(XplaneToProfiledInstructionsProtoTest,
   const std::string path = tsl::profiler::ProfilerJoinPath(logdir, run);
 
   XSpace xspace_first_host;
-  CreateXSpaceWithFingerprint(&xspace_first_host, 10000, 10000);
+  ASSERT_OK_AND_ASSIGN(
+      std::string fingerprint,
+      CreateXSpaceWithFingerprint(&xspace_first_host, 10000, 10000));
   auto status =
       tsl::profiler::SaveXSpace(logdir, run, "host_0", xspace_first_host);
   EXPECT_TRUE(status.ok());
 
   XSpace xspace_2nd_host;
-  CreateXSpaceWithFingerprint(&xspace_2nd_host, 15000, 5000);
+  ASSERT_OK(CreateXSpaceWithFingerprint(&xspace_2nd_host, 15000, 5000));
   status = tsl::profiler::SaveXSpace(logdir, run, "host_1", xspace_2nd_host);
   EXPECT_TRUE(status.ok());
 
@@ -238,7 +264,8 @@ TEST(XplaneToProfiledInstructionsProtoTest,
           .ok());
   EXPECT_EQ(profile_proto.costs_size(), 1);
   EXPECT_EQ(profile_proto.costs(0).cost_us(), 10);
-  EXPECT_EQ(profile_proto.costs(0).name(), "08a5::custom-call");
+  EXPECT_EQ(profile_proto.costs(0).name(),
+            FingerprintedCostName(fingerprint, "custom-call"));
 }
 
 TEST(XplaneToProfiledInstructionsProtoTest,
@@ -264,17 +291,111 @@ TEST(XplaneToProfiledInstructionsProtoTest,
   tensorflow::profiler::ProfiledInstructionsProto profile_proto;
 
   XSpace xspace_a;
-  CreateXSpaceWithFingerprint(&xspace_a, 10000, 10000);
+  ASSERT_OK_AND_ASSIGN(std::string fingerprint,
+                       CreateXSpaceWithFingerprint(&xspace_a, 10000, 10000));
 
   XSpace xspace_b;
-  CreateXSpaceWithFingerprint(&xspace_b, 15000, 5000);
+  ASSERT_OK(CreateXSpaceWithFingerprint(&xspace_b, 15000, 5000));
 
   EXPECT_TRUE(ConvertXplaneToProfiledInstructionsProto({xspace_a, xspace_b},
                                                        &profile_proto)
                   .ok());
   EXPECT_EQ(profile_proto.costs_size(), 1);
   EXPECT_EQ(profile_proto.costs(0).cost_us(), 10);
-  EXPECT_EQ(profile_proto.costs(0).name(), "08a5::custom-call");
+  EXPECT_EQ(profile_proto.costs(0).name(),
+            FingerprintedCostName(fingerprint, "custom-call"));
+}
+
+TEST(XplaneToProfiledInstructionsProtoTest,
+     RequireFingerprintsFailsForModuleWithoutFingerprint) {
+  tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+  XSpace xspace;
+  CreateXSpace(&xspace, 10000, 10000);
+  EXPECT_THAT(ConvertXplaneToProfiledInstructionsProto(
+                  {xspace}, &profile_proto, /*require_fingerprints=*/true),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("test_module(1)")));
+}
+
+TEST(XplaneToProfiledInstructionsProtoTest,
+     RequireFingerprintsSucceedsForModuleWithFingerprint) {
+  tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+  XSpace xspace;
+  ASSERT_OK_AND_ASSIGN(std::string fingerprint,
+                       CreateXSpaceWithFingerprint(&xspace, 10000, 10000));
+  EXPECT_THAT(ConvertXplaneToProfiledInstructionsProto(
+                  {xspace}, &profile_proto, /*require_fingerprints=*/true),
+              IsOk());
+  EXPECT_EQ(profile_proto.costs_size(), 1);
+  EXPECT_EQ(profile_proto.costs(0).name(),
+            FingerprintedCostName(fingerprint, "custom-call"));
+}
+
+TEST(XplaneToProfiledInstructionsProtoTest,
+     ConvertXplaneToProfiledInstructionsProtoKeepsModulesApart) {
+  // Two modules with the same name and instruction names, as when a function
+  // is compiled for two input shapes, whose instructions take different times.
+  XSpace xspace;
+  XPlaneBuilder metadata_plane(xspace.add_planes());
+  metadata_plane.SetName(kMetadataPlaneName);
+  ASSERT_OK_AND_ASSIGN(std::string fingerprint_a,
+                       AddModuleWithFingerprint(metadata_plane, R"(
+  HloModule test_module
+  ENTRY e {
+    p0 = f32[32,32] parameter(0)
+    ROOT dot0 = f32[32,32]{1,0} custom-call(p0, p0), custom_call_target="__cublas$gemm"
+  })",
+                                                /*program_id=*/1));
+  ASSERT_OK_AND_ASSIGN(std::string fingerprint_b,
+                       AddModuleWithFingerprint(metadata_plane, R"(
+  HloModule test_module
+  ENTRY e {
+    p0 = f32[64,64] parameter(0)
+    ROOT dot0 = f32[64,64]{1,0} custom-call(p0, p0), custom_call_target="__cublas$gemm"
+  })",
+                                                /*program_id=*/2));
+  ASSERT_NE(fingerprint_a, fingerprint_b);
+
+  XPlaneBuilder device_plane(xspace.add_planes());
+  device_plane.SetName(GpuPlaneName(0));
+  device_plane.SetId(0);
+  XLineBuilder stream = device_plane.GetOrCreateLine(30);
+  stream.SetName("gpu stream 1");
+  int64_t timestamp_ns = 100000;
+  for (auto [program_id, latency_ns] :
+       {std::pair<int64_t, int64_t>{1, 10000},
+        std::pair<int64_t, int64_t>{2, 30000}}) {
+    XEventBuilder event =
+        stream.AddEvent(*device_plane.GetOrCreateEventMetadata("kernel1"));
+    event.SetTimestampNs(timestamp_ns);
+    event.SetDurationNs(latency_ns);
+    timestamp_ns += latency_ns;
+    event.AddStatValue(
+        *device_plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kHloOp)),
+        *device_plane.GetOrCreateStatMetadata("custom-call"));
+    event.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                           GetStatTypeStr(StatType::kHloModule)),
+                       *device_plane.GetOrCreateStatMetadata("test_module"));
+    event.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                           GetStatTypeStr(StatType::kProgramId)),
+                       program_id);
+    event.AddStatValue(*device_plane.GetOrCreateStatMetadata(
+                           GetStatTypeStr(StatType::kScopeRangeId)),
+                       GetUniqueId());
+  }
+
+  tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+  ASSERT_TRUE(
+      ConvertXplaneToProfiledInstructionsProto({xspace}, &profile_proto).ok());
+  auto cost = [](absl::string_view name, double cost_us) {
+    return AllOf(Property(&InstructionCost::name, name),
+                 Property(&InstructionCost::cost_us, cost_us));
+  };
+  EXPECT_THAT(
+      profile_proto.costs(),
+      UnorderedElementsAre(
+          cost(FingerprintedCostName(fingerprint_a, "custom-call"), 10),
+          cost(FingerprintedCostName(fingerprint_b, "custom-call"), 30)));
 }
 
 TEST(XplaneToProfiledInstructionsProtoTest, UsesSchedulingNames) {

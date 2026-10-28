@@ -16,20 +16,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include "absl/strings/str_join.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_profiling_utils.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
@@ -44,10 +45,10 @@ limitations under the License.
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
+
 namespace {
 
 constexpr char kXPlanePb[] = "xplane.pb";
-constexpr char kCostNameSep[] = "::";
 
 using tensorflow::profiler::XPlane;
 using tensorflow::profiler::XSpace;
@@ -100,113 +101,92 @@ struct SumAndTotal {
   int64_t total = 0;
 };
 
+// Records the latency of each HLO instruction in `hlo_latency_info`, and the
+// modules whose instructions it could not find a fingerprint for in
+// `modules_without_fingerprint`.
 void GetXPlaneLatencyInfo(
     const XPlaneVisitor& xplane,
     const absl::flat_hash_map<std::string, HloModuleInfo>& hlo_module_info,
-    absl::flat_hash_map<HloOpInstance, HloLatencySpan>* hlo_latency_info) {
+    absl::flat_hash_map<HloOpInstance, HloLatencySpan>* hlo_latency_info,
+    absl::btree_set<std::string>* modules_without_fingerprint) {
   // Iterate events.
-  xplane.ForEachLine([hlo_latency_info,
-                      &hlo_module_info](const XLineVisitor& xline) {
+  xplane.ForEachLine([hlo_latency_info, &hlo_module_info,
+                      modules_without_fingerprint](const XLineVisitor& xline) {
     if (xline.DisplayName() == tsl::profiler::kXlaAsyncOpLineName) {
       return;
     }
-    xline.ForEachEvent([hlo_latency_info,
-                        &hlo_module_info](const XEventVisitor& xevent) {
-      int64_t event_type =
-          xevent.Type().value_or(HostEventType::kUnknownHostEventType);
-      if (IsInternalEvent(event_type)) return;
-      std::optional<std::string> hlo_name = std::nullopt;
-      std::optional<std::string> hlo_module_name = std::nullopt;
-      std::optional<int64_t> program_id = std::nullopt;
-      std::optional<int64_t> scope_range_id = std::nullopt;
+    xline.ForEachEvent(
+        [hlo_latency_info, &hlo_module_info,
+         modules_without_fingerprint](const XEventVisitor& xevent) {
+          int64_t event_type =
+              xevent.Type().value_or(HostEventType::kUnknownHostEventType);
+          if (IsInternalEvent(event_type)) return;
+          std::optional<std::string> hlo_name = std::nullopt;
+          std::optional<std::string> hlo_module_name = std::nullopt;
+          std::optional<int64_t> program_id = std::nullopt;
+          std::optional<int64_t> scope_range_id = std::nullopt;
 
-      auto for_each_stat = [&](const XStatVisitor& stat) {
-        if (stat.ValueCase() == tsl::profiler::XStat::VALUE_NOT_SET) return;
-        // Store latency information for HLOs.
-        if (stat.Name() == GetStatTypeStr(StatType::kHloOp)) {
-          hlo_name = stat.ToString();
-        }
-        if (stat.Name() == GetStatTypeStr(StatType::kProgramId)) {
-          program_id = stat.IntValue();
-        }
-        if (stat.Name() == GetStatTypeStr(StatType::kHloModule)) {
-          hlo_module_name = stat.ToString();
-        }
-        if (stat.Name() == GetStatTypeStr(StatType::kScopeRangeId)) {
-          scope_range_id = stat.IntValue();
-        }
-      };
-      xevent.Metadata().ForEachStat(for_each_stat);
-      xevent.ForEachStat(for_each_stat);
-      if (!hlo_name.has_value() || !hlo_module_name.has_value()) {
-        return;
-      }
+          auto for_each_stat = [&](const XStatVisitor& stat) {
+            if (stat.ValueCase() == tsl::profiler::XStat::VALUE_NOT_SET) return;
+            // Store latency information for HLOs.
+            if (stat.Name() == GetStatTypeStr(StatType::kHloOp)) {
+              hlo_name = stat.ToString();
+            }
+            if (stat.Name() == GetStatTypeStr(StatType::kProgramId)) {
+              program_id = stat.IntValue();
+            }
+            if (stat.Name() == GetStatTypeStr(StatType::kHloModule)) {
+              hlo_module_name = stat.ToString();
+            }
+            if (stat.Name() == GetStatTypeStr(StatType::kScopeRangeId)) {
+              scope_range_id = stat.IntValue();
+            }
+          };
+          xevent.Metadata().ForEachStat(for_each_stat);
+          xevent.ForEachStat(for_each_stat);
+          if (!hlo_name.has_value() || !hlo_module_name.has_value()) {
+            return;
+          }
 
-      std::string module_key = hlo_module_name.value();
-      if (program_id.has_value()) {
-        module_key = tsl::profiler::HloModuleNameWithProgramId(
-            hlo_module_name.value(), program_id.value());
-      }
-      // Record the cost under the name that the scheduler uses.
-      std::string key = hlo_name.value();
-      if (auto it = hlo_module_info.find(module_key);
-          it != hlo_module_info.end()) {
-        const HloModuleInfo& info = it->second;
-        if (auto name_it = info.scheduling_names.find(key);
-            name_it != info.scheduling_names.end()) {
-          key = name_it->second;
-        }
-        if (info.fingerprint.has_value()) {
-          key = absl::StrCat(*info.fingerprint, kCostNameSep, key);
-        }
-      }
-      // Store the enclosing [start, end] range for device activity with this
-      // fingerprint + name + scope_id. This ensures that ops that produce >1
-      // activity fragment are accounted for properly, as the fragments will
-      // share a scope_id but separate instances of the op will not. If there
-      // is no scope_range_id, use the timestamp as a ~unique key to disable
-      // merging spans.
-      auto [it, inserted] = hlo_latency_info->try_emplace(
-          HloOpInstance{key, scope_range_id.value_or(xevent.TimestampPs())},
-          HloLatencySpan{xevent.TimestampPs(), xevent.EndTimestampPs()});
-      if (!inserted) {
-        it->second.start_ps =
-            std::min(it->second.start_ps, xevent.TimestampPs());
-        it->second.end_ps =
-            std::max(it->second.end_ps, xevent.EndTimestampPs());
-      }
-    });
+          std::string module_key = hlo_module_name.value();
+          if (program_id.has_value()) {
+            module_key = tsl::profiler::HloModuleNameWithProgramId(
+                hlo_module_name.value(), program_id.value());
+          }
+          // Record the cost under the name that the scheduler uses.
+          std::string key = hlo_name.value();
+          if (auto it = hlo_module_info.find(module_key);
+              it != hlo_module_info.end()) {
+            const HloModuleInfo& info = it->second;
+            if (auto name_it = info.scheduling_names.find(key);
+                name_it != info.scheduling_names.end()) {
+              key = name_it->second;
+            }
+            if (info.fingerprint.has_value()) {
+              key = FingerprintedCostName(*info.fingerprint, key);
+            } else {
+              modules_without_fingerprint->insert(module_key);
+            }
+          } else {
+            modules_without_fingerprint->insert(module_key);
+          }
+          // Store the enclosing [start, end] range for device activity with
+          // this fingerprint + name + scope_id. This ensures that ops that
+          // produce >1 activity fragment are accounted for properly, as the
+          // fragments will share a scope_id but separate instances of the op
+          // will not. If there is no scope_range_id, use the timestamp as a
+          // ~unique key to disable merging spans.
+          auto [it, inserted] = hlo_latency_info->try_emplace(
+              HloOpInstance{key, scope_range_id.value_or(xevent.TimestampPs())},
+              HloLatencySpan{xevent.TimestampPs(), xevent.EndTimestampPs()});
+          if (!inserted) {
+            it->second.start_ps =
+                std::min(it->second.start_ps, xevent.TimestampPs());
+            it->second.end_ps =
+                std::max(it->second.end_ps, xevent.EndTimestampPs());
+          }
+        });
   });
-}
-
-std::unique_ptr<xla::HloModule> CreateModuleFromProto(
-    const xla::HloModuleProto& proto) {
-  auto config = xla::HloModule::CreateModuleConfigFromProto(proto, {});
-  if (config.ok()) {
-    auto module = xla::HloModule::CreateFromProto(proto, config.value());
-    if (module.ok()) {
-      return std::move(*module);
-    }
-  }
-  return nullptr;
-}
-
-std::optional<std::string> GetHloModuleFingerprint(
-    const xla::HloModuleProto& hlo_module_proto) {
-  std::unique_ptr<xla::HloModule> hlo_module =
-      CreateModuleFromProto(hlo_module_proto);
-  if (hlo_module == nullptr) {
-    return std::nullopt;
-  }
-  const auto& map = hlo_module->entry_computation()
-                        ->root_instruction()
-                        ->frontend_attributes()
-                        .map();
-  auto it = map.find("fingerprint_before_lhs");
-  if (it != map.end()) {
-    return it->second;
-  }
-  return std::nullopt;
 }
 
 void GetXPlaneHloModuleInfo(
@@ -221,7 +201,8 @@ void GetXPlaneHloModuleInfo(
         const xla::HloModuleProto& hlo_module_proto = hlo_proto.hlo_module();
 
         HloModuleInfo info;
-        info.fingerprint = GetHloModuleFingerprint(hlo_module_proto);
+        info.fingerprint = GetHloModuleFingerprint(
+            hlo_module_proto, HloModuleFingerprintStage::kBeforeScheduling);
         for (const xla::HloComputationProto& computation :
              hlo_module_proto.computations()) {
           for (const xla::HloInstructionProto& instruction :
@@ -274,9 +255,11 @@ absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
 absl::Status ConvertXplaneToProfiledInstructionsProto(
     std::vector<tensorflow::profiler::XSpace> xspaces,
     tensorflow::profiler::ProfiledInstructionsProto*
-        profiled_instructions_proto) {
+        profiled_instructions_proto,
+    bool require_fingerprints) {
   absl::flat_hash_map<std::string, HloModuleInfo> hlo_module_info;
   absl::flat_hash_map<std::string, SumAndTotal> duration_stats;
+  absl::btree_set<std::string> modules_without_fingerprint;
   // Iterate through each host.
   for (const XSpace& xspace : xspaces) {
     const XPlane* metadata_plane =
@@ -302,13 +285,21 @@ absl::Status ConvertXplaneToProfiledInstructionsProto(
     absl::flat_hash_map<HloOpInstance, HloLatencySpan> hlo_latency_info;
     for (const XPlane* device_plane : device_planes) {
       XPlaneVisitor xplane = CreateTfXPlaneVisitor(device_plane);
-      GetXPlaneLatencyInfo(xplane, hlo_module_info, &hlo_latency_info);
+      GetXPlaneLatencyInfo(xplane, hlo_module_info, &hlo_latency_info,
+                           &modules_without_fingerprint);
     }
     for (const auto& [key, span] : hlo_latency_info) {
       SumAndTotal& stats = duration_stats[key.name_and_fingerprint];
       stats.sum += static_cast<double>(span.end_ps - span.start_ps) / 1e6;
       ++stats.total;
     }
+  }
+
+  if (require_fingerprints && !modules_without_fingerprint.empty()) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "The profile has instructions of modules without a fingerprint, whose "
+        "costs would apply to any module: ",
+        absl::StrJoin(modules_without_fingerprint, ", ")));
   }
 
   // Get the mean duration for each hlo and store into the proto.

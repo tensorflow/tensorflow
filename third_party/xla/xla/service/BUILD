@@ -2018,6 +2018,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_profiling_utils",
+    srcs = ["hlo_profiling_utils.cc"],
+    hdrs = ["hlo_profiling_utils.h"],
+    deps = [
+        ":hlo_proto_cc",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_profiling_utils_test",
+    srcs = ["hlo_profiling_utils_test.cc"],
+    deps = [
+        ":hlo_profiling_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_cc_test(
     name = "hlo_schedule_test",
     srcs = ["hlo_schedule_test.cc"],
