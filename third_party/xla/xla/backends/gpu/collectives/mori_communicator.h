@@ -43,8 +43,6 @@ class CollectivesFacade;
 
 namespace xla::gpu {
 
-class MoriCollectives;
-
 // Dummy symmetric memory for the MORI backend. MORI collective buffers are
 // allocated directly from the symmetric shmem heap, so the local device
 // address doubles as the symmetric handle and no separate registration is
@@ -69,12 +67,11 @@ class MoriSymmetricMemory : public SymmetricMemory {
 // XLA collectives communicator wrapping a MORI communicator.
 class MoriCommunicator : public GpuCommunicator {
  public:
-  friend class MoriCollectives;
   ~MoriCommunicator() override;
 
   static absl::StatusOr<std::unique_ptr<MoriCommunicator>> Create(
-      MoriCollectives* coll, std::shared_ptr<CancellationToken> cancel,
-      int rank, absl::Span<const int> rank_to_pe);
+      std::shared_ptr<CancellationToken> cancel, int rank,
+      absl::Span<const int> rank_to_pe);
 
   // MoriCommunicator is not copyable or movable.
   MoriCommunicator(const MoriCommunicator&) = delete;
@@ -196,19 +193,11 @@ class MoriCommunicator : public GpuCommunicator {
   // Executes f on executor_, or calls f directly if executor_ is null.
   Future<> Execute(absl::AnyInvocable<absl::Status() &&> f) const;
 
-  MoriCommunicator(MoriCollectives* coll,
-                   std::shared_ptr<CancellationToken> cancel)
-      : collectives_(coll), cancel_(std::move(cancel)) {}
+  MoriCommunicator(std::shared_ptr<CancellationToken> cancel)
+      : cancel_(std::move(cancel)) {}
 
-  MoriCollectives* collectives_;  // Parent MoriCollectives instance
-
-  // `rank_` is this rank within the collective, `num_ranks_` the participant
-  // count. MoriCollectives only creates communicators over the global MORI
-  // clique, so these match the facade's PE id and PE count.
-  int rank_ = 0;
-  int num_ranks_ = 0;
-  // Non-owning; the CollectivesFacade singleton for this communicator's device.
-  mori::collective::CollectivesFacade* facade_ = nullptr;
+  // CollectivesFacade instance for this communicator's device
+  std::unique_ptr<mori::collective::CollectivesFacade> facade_;
   // Should all pending collectives cancel?
   std::shared_ptr<CancellationToken> cancel_;
   bool aborted_ = false;  // Has Abort() been called?
