@@ -19,10 +19,13 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/fingerprinting.h"
 #include "tensorflow/cc/saved_model/loader_util.h"
@@ -213,7 +216,8 @@ absl::Status RunOnce(const RunOptions& run_options,
 
 // RunInitOp will return OK if the initialization op was run successfully.
 // An empty init_op_name indicates that there are no init ops to run.
-absl::Status RunInitOp(const RunOptions& run_options, const string& export_dir,
+absl::Status RunInitOp(const RunOptions& run_options,
+                       absl::string_view export_dir,
                        const MetaGraphDef& meta_graph_def,
                        const std::vector<AssetFileDef>& asset_file_defs,
                        Session* session, const string& init_op_name) {
@@ -229,7 +233,8 @@ absl::Status RunInitOp(const RunOptions& run_options, const string& export_dir,
   return absl::OkStatus();
 }
 
-absl::Status RunRestore(const RunOptions& run_options, const string& export_dir,
+absl::Status RunRestore(const RunOptions& run_options,
+                        absl::string_view export_dir,
                         const absl::string_view restore_op_name,
                         const absl::string_view variable_filename_const_op_name,
                         const std::vector<AssetFileDef>& asset_file_defs,
@@ -295,7 +300,7 @@ absl::Status LoadGraphDefIntoSession(const SessionOptions& session_options,
 
 absl::Status LoadSavedModelInternal(const SessionOptions& session_options,
                                     const RunOptions& run_options,
-                                    const string& export_dir,
+                                    absl::string_view export_dir,
                                     const std::unordered_set<string>& tags,
                                     SavedModelBundle* const bundle) {
   TF_RETURN_IF_ERROR(ReadMetaGraphDefFromSavedModel(export_dir, tags,
@@ -443,7 +448,7 @@ class LiteSessionWrapper : public Session {
 
 absl::Status LoadSavedModelInternal(const SessionOptions& session_options,
                                     const RunOptions& run_options,
-                                    const string& export_dir,
+                                    absl::string_view export_dir,
                                     const std::unordered_set<string>& tags,
                                     SavedModelBundleLite* const bundle) {
   MetaGraphDef meta_graph_def;
@@ -464,7 +469,7 @@ absl::Status LoadSavedModelInternal(const SessionOptions& session_options,
 template <typename BundleType>
 absl::Status LoadSavedModelGeneric(const SessionOptions& session_options,
                                    const RunOptions& run_options,
-                                   const string& export_dir,
+                                   absl::string_view export_dir,
                                    const std::unordered_set<string>& tags,
                                    BundleType* const bundle) {
   metrics::SavedModelReadApi(kCCLoadLabel).IncrementBy(1);
@@ -480,7 +485,7 @@ absl::Status LoadSavedModelGeneric(const SessionOptions& session_options,
   const uint64 start_microseconds = Env::Default()->NowMicros();
   const absl::Status status = LoadSavedModelInternal(
       session_options, run_options, export_dir, tags, bundle);
-  auto log_and_count = [&](const string& status_str) {
+  auto log_and_count = [&](absl::string_view status_str) {
     LOG(INFO) << "SavedModel load for tags { " << absl::StrJoin(tags, " ")
               << " }; Status: " << status_str << ": " << status << ". Took "
               << GetLatencyMicroseconds(start_microseconds) << " microseconds.";
@@ -488,7 +493,7 @@ absl::Status LoadSavedModelGeneric(const SessionOptions& session_options,
   };
   if (status.ok()) {
     log_and_count(kLoadAttemptSuccess);
-    metrics::SavedModelReadPath().Set(export_dir);
+    metrics::SavedModelReadPath().Set(std::string(export_dir));
   } else {
     log_and_count(kLoadAttemptFail);
   }
@@ -499,7 +504,7 @@ absl::Status LoadSavedModelGeneric(const SessionOptions& session_options,
 
 absl::Status LoadSavedModel(const SessionOptions& session_options,
                             const RunOptions& run_options,
-                            const string& export_dir,
+                            absl::string_view export_dir,
                             const std::unordered_set<string>& tags,
                             SavedModelBundle* const bundle) {
   return LoadSavedModelGeneric<SavedModelBundle>(session_options, run_options,
@@ -508,7 +513,7 @@ absl::Status LoadSavedModel(const SessionOptions& session_options,
 
 absl::Status RestoreSession(const RunOptions& run_options,
                             const MetaGraphDef& meta_graph,
-                            const string& export_dir,
+                            absl::string_view export_dir,
                             std::unique_ptr<Session>* session) {
   const uint64 read_start_microseconds = Env::Default()->NowMicros();
   std::vector<AssetFileDef> asset_file_defs;
@@ -540,7 +545,7 @@ absl::Status RestoreSession(const RunOptions& run_options,
 
 absl::Status LoadSavedModel(const SessionOptions& session_options,
                             const RunOptions& run_options,
-                            const string& export_dir,
+                            absl::string_view export_dir,
                             const std::unordered_set<string>& tags,
                             SavedModelBundleLite* const bundle) {
   SessionOptions rewritten_options(session_options);

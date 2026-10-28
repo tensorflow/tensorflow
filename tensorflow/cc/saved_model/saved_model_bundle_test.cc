@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/cc/saved_model/metrics.h"
@@ -137,6 +143,21 @@ TEST_F(LoaderTest, TagMatch) {
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
+  CheckSavedModelBundle(export_dir, bundle);
+}
+
+TEST_F(LoaderTest, StringViewExportDir) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
+  const string path_with_suffix = export_dir + "/ignored_suffix";
+  absl::string_view export_dir_view =
+      absl::string_view(path_with_suffix).substr(0, export_dir.size());
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir_view,
                               {kSavedModelTagServe}, &bundle));
   CheckSavedModelBundle(export_dir, bundle);
 }

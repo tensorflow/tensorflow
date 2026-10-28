@@ -4040,19 +4040,6 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
-    name = "hlo_domain_test",
-    srcs = ["hlo_domain_test.cc"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/tests:xla_internal_test_main",
-    ],
-)
-
 cc_library(
     name = "maybe_owning_device_address",
     srcs = ["maybe_owning_device_address.cc"],
