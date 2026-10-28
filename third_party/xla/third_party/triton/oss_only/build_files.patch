@@ -3430,7 +3430,7 @@ diff --git b/third_party/nvidia/backend/BUILD b/third_party/nvidia/backend/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/backend/BUILD
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,43 @@
 +load("@pybind11_bazel//:build_defs.bzl", "pybind_extension")
 +
 +package(
@@ -3451,10 +3451,6 @@ new file mode 100644
 +            "-Wno-sometimes-uninitialized",
 +        ],
 +    }),
-+    visibility = [
-+        "@jaxlib/triton:__subpackages__",
-+        "//third_party/py/triton:__subpackages__",
-+    ],
 +    deps = [
 +        # "@libcuda",
 +        "//third_party/absl/cleanup",
