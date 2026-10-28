@@ -176,6 +176,7 @@ use_repo(
     "cython",
     "fft2d",
     "flatbuffers",
+    "fpnge",
     "gif",
     "hexagon_nn",
     "icu",
