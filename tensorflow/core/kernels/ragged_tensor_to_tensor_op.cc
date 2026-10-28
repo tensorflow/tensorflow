@@ -231,8 +231,7 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
   }
 
   // Callers validate row_split with ValidateRowSplits before calling this
-  // method. It is nonempty, nonnegative, nondecreasing, and bounded by the
-  // target size.
+  // method. It is nonempty, nonnegative, and nondecreasing.
   absl::Status CalculateOutputIndexRowSplit(
       const RowPartitionTensor& row_split,
       const vector<INDEX_TYPE>& parent_output_index,
@@ -450,7 +449,12 @@ class RaggedTensorToTensorBaseOp : public OpKernel {
         context, first_partition_tensor.NumElements() > 0,
         absl::InvalidArgumentError("Invalid first partition input. Tensor "
                                    "requires at least one element."));
-    const int64_t nvals = context->input(kValueInputIndex).dim_size(0);
+    const Tensor& values = context->input(kValueInputIndex);
+    OP_REQUIRES(context, values.dims() >= 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("values must have rank at least 1, got shape ",
+                                 values.shape().DebugString())));
+    const int64_t nvals = values.dim_size(0);
     // Validate before runtime width and output-index calculations subtract
     // adjacent row-split entries or reserve storage from the final entry.
     for (int dimension = 0; dimension < ragged_rank_; ++dimension) {
