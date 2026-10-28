@@ -86,5 +86,43 @@ TEST_F(FmaxSimpleTest, FminEdgeCases) {
                              ErrorSpec(0.0001));
 }
 
+TEST_F(FmaxSimpleTest, FminSignedZeroDefault) {
+  XlaBuilder builder(TestName());
+  XlaOp x, y;
+  const Literal x_data = CreateR1Parameter<float>(
+      {0.0f, -0.0f, 0.0f, -0.0f}, /*parameter_number=*/0, /*name=*/"x",
+      /*builder=*/&builder, /*data_handle=*/&x);
+  const Literal y_data = CreateR1Parameter<float>(
+      {-0.0f, 0.0f, 0.0f, -0.0f}, /*parameter_number=*/1, /*name=*/"y",
+      /*builder=*/&builder, /*data_handle=*/&y);
+  Min(x, y);
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          ExecuteAndTransfer(&builder, {&x_data, &y_data}));
+  EXPECT_TRUE(std::signbit(result.Get<float>({0})));
+  EXPECT_TRUE(std::signbit(result.Get<float>({1})));
+  EXPECT_FALSE(std::signbit(result.Get<float>({2})));
+  EXPECT_TRUE(std::signbit(result.Get<float>({3})));
+}
+
+TEST_F(FmaxSimpleTest, FmaxSignedZeroDefault) {
+  XlaBuilder builder(TestName());
+  XlaOp x, y;
+  const Literal x_data = CreateR1Parameter<float>(
+      {0.0f, -0.0f, 0.0f, -0.0f}, /*parameter_number=*/0, /*name=*/"x",
+      /*builder=*/&builder, /*data_handle=*/&x);
+  const Literal y_data = CreateR1Parameter<float>(
+      {-0.0f, 0.0f, 0.0f, -0.0f}, /*parameter_number=*/1, /*name=*/"y",
+      /*builder=*/&builder, /*data_handle=*/&y);
+  Max(x, y);
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          ExecuteAndTransfer(&builder, {&x_data, &y_data}));
+  EXPECT_FALSE(std::signbit(result.Get<float>({0})));
+  EXPECT_FALSE(std::signbit(result.Get<float>({1})));
+  EXPECT_FALSE(std::signbit(result.Get<float>({2})));
+  EXPECT_TRUE(std::signbit(result.Get<float>({3})));
+}
+
 }  // namespace
 }  // namespace xla

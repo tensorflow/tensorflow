@@ -602,6 +602,40 @@ TEST_F(ReduceTest, MinReduce2DToR0) {
   ComputeAndCompareR0<float>(&builder, input_min, {}, ErrorSpec(0.0001));
 }
 
+TEST_F(ReduceTest, MinReduceSignedZero) {
+  XlaBuilder builder(TestName());
+  auto min = CreateScalarMinComputation(F32, &builder);
+  XlaOp input;
+  const Literal input_data = CreateR1Parameter<float>(
+      {0.0f, -0.0f}, /*parameter_number=*/0, /*name=*/"input",
+      /*builder=*/&builder, /*data_handle=*/&input);
+  Reduce(input,
+         ConstantR0<float>(&builder,
+                           std::numeric_limits<float>::infinity()),
+         min, {0});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          ExecuteAndTransfer(&builder, {&input_data}));
+  EXPECT_TRUE(std::signbit(result.Get<float>({})));
+}
+
+TEST_F(ReduceTest, MaxReduceSignedZero) {
+  XlaBuilder builder(TestName());
+  auto max = CreateScalarMaxComputation(F32, &builder);
+  XlaOp input;
+  const Literal input_data = CreateR1Parameter<float>(
+      {-0.0f, 0.0f}, /*parameter_number=*/0, /*name=*/"input",
+      /*builder=*/&builder, /*data_handle=*/&input);
+  Reduce(input,
+         ConstantR0<float>(&builder,
+                           -std::numeric_limits<float>::infinity()),
+         max, {0});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                          ExecuteAndTransfer(&builder, {&input_data}));
+  EXPECT_FALSE(std::signbit(result.Get<float>({})));
+}
+
 TEST_F(ReduceTest, UnsignedInt_MinReduce) {
   XlaBuilder builder(TestName());
   Array2D<uint32_t> input({{1}, {2}});

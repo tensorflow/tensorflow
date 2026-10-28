@@ -295,8 +295,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // Default to true for backwards compatibility (always flush denormals).
   opts.set_xla_cpu_ftz(true);
 
-  // By default, copy TF's Eigen style min_max behavior with nans.
-  opts.set_xla_cpu_enable_fast_min_max(true);
+  // Fast min/max drops NaNs and does not order signed zeros
+  // (min(+0, -0) must be -0). Match the GPU default.
+  opts.set_xla_cpu_enable_fast_min_max(false);
 
   opts.set_xla_gpu_enable_cublaslt(true);
   opts.set_xla_gpu_trace_annotation_level(0);
@@ -1488,13 +1489,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_min_max),
       debug_options->xla_cpu_enable_fast_min_max(),
       "Enable fast floating point min/max lowering that might not propagate "
-      "NaNs."));
+      "NaNs and does not order signed zeros."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_fast_min_max",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
       debug_options->xla_gpu_enable_fast_min_max(),
       "Enable fast floating point min/max lowering that does not propagate "
-      "NaNs."));
+      "NaNs and does not order signed zeros."));
   flag_list->push_back(tsl::Flag(
       "xla_llvm_enable_alias_scope_metadata",
       bool_setter_for(&DebugOptions::set_xla_llvm_enable_alias_scope_metadata),
