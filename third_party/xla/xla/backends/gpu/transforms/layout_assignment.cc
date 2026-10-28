@@ -558,6 +558,29 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
   return absl::OkStatus();
 }
 
+absl::Status GpuLayoutAssignment::AddScaledDotBackendConstraints(
+    LayoutConstraints* constraints, HloScaledDotInstruction* instruction) {
+  for (int operand_no : {0, 1}) {
+    ABSL_ASSIGN_OR_RETURN(DotOperandDims dims,
+                     DotOperandDims::FromDotOperand(instruction, operand_no));
+    ABSL_RETURN_IF_ERROR(SetDotOperandLayoutToMinorContracting(
+        instruction, operand_no, dims.Indices(DotOperandDims::kBatch),
+        dims.Indices(DotOperandDims::kContracting),
+        dims.Indices(DotOperandDims::kNonContracting)));
+    const int scale_no = operand_no + 2;
+    if (ShapeUtil::IsScalar(instruction->operand(scale_no)->shape())) {
+      continue;
+    }
+    const Layout& operand_layout =
+        constraints->OperandLayout(instruction, operand_no)->layout();
+    // Copy only minor_to_major, not the sub-byte element size of FP4 operands.
+    ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(
+        LayoutUtil::MakeLayout(operand_layout.minor_to_major()), instruction,
+        scale_no));
+  }
+  return SetDotLayout(instruction, constraints);
+}
+
 absl::Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   // Add convolution constraints in reverse postorder that the earliest
@@ -584,6 +607,9 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
     } else if (HloPredicateIsOp<HloOpcode::kDot>(instruction)) {
       ABSL_RETURN_IF_ERROR(AddDotBackendConstraints(
           constraints, Cast<HloDotInstruction>(instruction)));
+    } else if (HloPredicateIsOp<HloOpcode::kScaledDot>(instruction)) {
+      ABSL_RETURN_IF_ERROR(AddScaledDotBackendConstraints(
+          constraints, Cast<HloScaledDotInstruction>(instruction)));
     } else if (HloPredicateIsOp<HloOpcode::kRaggedDot>(instruction)) {
       Shape op0_shape = instruction->operand(0)->shape();
       Shape op1_shape = instruction->operand(1)->shape();
