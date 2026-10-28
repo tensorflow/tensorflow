@@ -118,43 +118,19 @@ absl::StatusOr<se::Stream*> ToStream(const Communicator::Executor& executor) {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<MoriCommunicator>> MoriCommunicator::Create(
-    MoriCollectives* coll, std::shared_ptr<CancellationToken> cancel, int rank,
+    std::shared_ptr<CancellationToken> cancel, int rank,
     absl::Span<const int> rank_to_pe) {
-  auto comm = absl::WrapUnique(new MoriCommunicator(coll, cancel));
+  auto comm = absl::WrapUnique(new MoriCommunicator(cancel));
 
   const int num_ranks = static_cast<int>(rank_to_pe.size());
-  if (num_ranks <= 0) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "MoriCommunicator: unsupported number of ranks %d", num_ranks));
-  }
-  comm->rank_ = rank;
-  comm->num_ranks_ = num_ranks;
-  // Communicator obtains a reference to the CollectivesFacade singleton for
-  // the current device.
-  comm->facade_ = CollectivesFacade::Get();
+  // (Sub-)communicator owns a concrete facade instance
+  comm->facade_ = CollectivesFacade::Get(rank, num_ranks, rank_to_pe.data());
   if (comm->facade_ == nullptr) {
-    return absl::InternalError(
-        "CollectivesFacade::Get returned null: MORI is not initialized for the "
-        "current device");
-  }
-
-  const int num_pes = comm->facade_->NumPes(), my_pe = comm->facade_->MyPe();
-  if (num_ranks != num_pes || rank != my_pe) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Clique size (%d) disagrees with the MORI world size (%d) or "
-        "rank (%d) disagrees with the MORI PE id (%d). The MORI backend only "
-        "supports collectives over the full global clique with an identity "
-        "rank->PE mapping.",
-        num_ranks, num_pes, rank, my_pe));
-  }
-  for (int i = 0; i < num_ranks; ++i) {
-    if (rank_to_pe[i] != i) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "Rank_to_pe[%d]=%d is not the identity mapping. The MORI backend "
-          "only supports collectives over the full global clique with an "
-          "identity rank->PE mapping.",
-          i, rank_to_pe[i]));
-    }
+    return InvalidArgument(
+        "Failed to create MORI communicator for rank %d with rank_to_pe=[%s]. "
+        "Either MORI is not initialized for the current device, or the clique "
+        "is not supported.",
+        rank, absl::StrJoin(rank_to_pe, ","));
   }
 
   VLOG(1) << "Created " << *comm << " with participants: " << num_ranks;
@@ -194,17 +170,17 @@ absl::Status MoriCommunicator::Barrier(const Executor& executor) {
 
 absl::StatusOr<size_t> MoriCommunicator::NumRanks() const {
   CHECK_CANCELLED()
-  return static_cast<size_t>(num_ranks_);
+  return static_cast<size_t>(facade_->NumPes());
 }
 
 absl::StatusOr<size_t> MoriCommunicator::CurrentRank() {
   CHECK_CANCELLED()
-  return static_cast<size_t>(rank_);
+  return static_cast<size_t>(facade_->MyPe());
 }
 
 std::string MoriCommunicator::ToString() const {
-  return absl::StrFormat("MoriCommunicator(rank=%d, num_ranks=%d)", rank_,
-                         num_ranks_);
+  return absl::StrFormat("MoriCommunicator(rank=%d, num_ranks=%d)",
+                         facade_->MyPe(), facade_->NumPes());
 }
 
 Future<> MoriCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
@@ -362,14 +338,14 @@ absl::Status MoriCommunicator::LaunchAllToAll(
           << " count=" << count << " stream=" << AsHipStream(stream);
 
   if (send_buffers.size() != recv_buffers.size() ||
-      send_buffers.size() != static_cast<size_t>(num_ranks_)) {
+      send_buffers.size() != static_cast<size_t>(facade_->NumPes())) {
     return InvalidArgument(
-        "Number of send/recv buffers and number of  ranks mismatch");
+        "Number of send/recv buffers and number of PEs mismatch");
   }
 
   CollectivesFacade::AddressVector addrs;
-  addrs.reserve(num_ranks_);
-  for (int p = 0; p < num_ranks_; ++p) {
+  addrs.reserve(facade_->NumPes());
+  for (int p = 0; p < facade_->NumPes(); ++p) {
     addrs.emplace_back(send_buffers[p].opaque(), recv_buffers[p].opaque());
   }
   return se::gpu::ToStatus(facade_->RunAllToAll(
