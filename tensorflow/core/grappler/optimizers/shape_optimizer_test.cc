@@ -308,11 +308,17 @@ TEST_F(ShapeOptimizerTest, HandlesMalformedProdInputs) {
 }
 
 TEST_F(ShapeOptimizerTest, HandlesControlInputInDivDataSlot) {
+  // x has a static shape, so the same Div with two data inputs folds into a
+  // Const. With a control input in data slot 0 it must stay unchanged.
   GrapplerItem item;
   NodeDef* x = item.graph.add_node();
   x->set_name("x");
-  x->set_op("Placeholder");
+  x->set_op("Const");
   (*x->mutable_attr())["dtype"].set_type(DT_FLOAT);
+  TensorProto* tx = (*x->mutable_attr())["value"].mutable_tensor();
+  tx->set_dtype(DT_FLOAT);
+  tx->add_float_val(1.0f);
+  tx->mutable_tensor_shape()->add_dim()->set_size(4);
 
   NodeDef* size_x = item.graph.add_node();
   size_x->set_name("size_x");
@@ -347,6 +353,27 @@ TEST_F(ShapeOptimizerTest, HandlesControlInputInDivDataSlot) {
       ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "^size_x");
       EXPECT_EQ(node.input(1), "size_y");
+    }
+  }
+  EXPECT_EQ(found, 1);
+
+  GrapplerItem valid_item;
+  valid_item.graph = item.graph;
+  for (NodeDef& node : *valid_item.graph.mutable_node()) {
+    if (node.name() == "control_div") {
+      node.set_input(0, "size_x");
+    }
+  }
+  GraphDef valid_output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, valid_item, &valid_output));
+
+  found = 0;
+  for (const NodeDef& node : valid_output.node()) {
+    if (node.name() == "control_div") {
+      ++found;
+      EXPECT_EQ(node.op(), "Const");
+      ASSERT_EQ(node.attr().at("value").tensor().int_val_size(), 1);
+      EXPECT_EQ(node.attr().at("value").tensor().int_val(0), 1);
     }
   }
   EXPECT_EQ(found, 1);
