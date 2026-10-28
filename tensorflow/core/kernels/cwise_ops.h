@@ -130,8 +130,8 @@ struct safe_div_or_mod_op {
       if (TF_PREDICT_FALSE(std::is_signed_v<T> &&
                            safe_a == std::numeric_limits<T>::min() &&
                            safe_b == T(-1))) {
-        // Prefer to overflow 'a' (wraparound to INT_MIN in two's complement)
-        // instead of crashing.
+        // Return the two's complement wraparound result (INT_MIN for
+        // division, 0 for modulo) without overflowing 'a' or crashing.
         return DivOrMod()(safe_a, T(1));
       }
       return DivOrMod()(safe_a, safe_b);
