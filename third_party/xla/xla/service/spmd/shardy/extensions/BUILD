@@ -30,6 +30,25 @@ package_group(
 )
 
 cc_library(
+    name = "custom_call_extensions",
+    srcs = ["custom_call_extensions.cc"],
+    hdrs = ["custom_call_extensions.h"],
+    deps = [
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/service:custom_call_sharding_helper",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "mhlo_extensions",
     srcs = ["mhlo_extensions.cc"],
     hdrs = ["mhlo_extensions.h"],

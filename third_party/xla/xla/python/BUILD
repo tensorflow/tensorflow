@@ -190,6 +190,7 @@ cc_library(
     hdrs = ["inspect_sharding.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",

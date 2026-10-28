@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/extensions/custom_call_extensions.h"
 #include "xla/service/spmd/shardy/extensions/mhlo_extensions.h"
 
 namespace xla {
@@ -240,6 +241,7 @@ void loadAllRequiredDialects(mlir::MLIRContext* context) {
   mlir::func::registerAllExtensions(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   registerMhloExtensions(registry);
+  registerCustomCallExtensions(registry);
   mlir::sdy::registerAllDialects(registry);
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
