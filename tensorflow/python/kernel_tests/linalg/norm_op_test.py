@@ -155,14 +155,16 @@ class NormOpTest(test_lib.TestCase):
     expected = np.linalg.norm(mat.astype(np.float32), axis=1, keepdims=True)
     self.assertAllClose(result, expected, rtol=1e-3)
 
+  @test_util.run_in_graph_and_eager_modes
   def testFloat16LargeValuesGradient(self):
-    vec = constant_op.constant([300.0, 400.0, 100.0], dtype=dtypes.float16)
+    vec = np.array([300.0, 400.0, 100.0], dtype=np.float16)
+    t = constant_op.constant(vec, dtype=dtypes.float16)
     with backprop.GradientTape() as tape:
-      tape.watch(vec)
-      norm = linalg_ops.norm(vec)
-    grad = tape.gradient(norm, vec)
-    self.assertEqual(grad.dtype, dtypes.float16)
-    v32 = vec.numpy().astype(np.float32)
+      tape.watch(t)
+      norm = linalg_ops.norm(t)
+    grad = self.evaluate(tape.gradient(norm, t))
+    self.assertEqual(grad.dtype, np.float16)
+    v32 = vec.astype(np.float32)
     self.assertAllClose(grad, v32 / np.linalg.norm(v32), rtol=1e-2)
 
   @test_util.run_in_graph_and_eager_modes
@@ -171,7 +173,7 @@ class NormOpTest(test_lib.TestCase):
     normalized, norm = nn_impl.normalize(constant_op.constant(vec))
     normalized, norm = self.evaluate([normalized, norm])
     self.assertEqual(normalized.dtype, np.float16)
-    expected_norm = np.linalg.norm(vec.astype(np.float32))
+    expected_norm = np.linalg.norm(vec.astype(np.float32), keepdims=True)
     self.assertAllClose(norm, expected_norm, rtol=1e-3)
     self.assertAllClose(
         normalized, vec.astype(np.float32) / expected_norm, rtol=2e-3)
