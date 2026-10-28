@@ -17,14 +17,27 @@ limitations under the License.
 #define XLA_SERVICE_GPU_CONV_UTILS_H_
 
 #include <optional>
+#include <tuple>
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+
+using ConvolutionMatch = std::optional<
+    std::tuple<Window, ConvolutionDimensionNumbers, HloInstruction*>>;
+
+bool CanImplementAsGpuForwardConv(HloInstruction* conv);
+bool CanImplementAsGpuForwardConv(HloInstruction* conv,
+                                  const se::GpuComputeCapability& cc);
+ConvolutionMatch MatchBackwardFilter(HloInstruction* conv);
+ConvolutionMatch MatchBackwardInput(HloInstruction* conv);
+HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
+    HloInstruction* conv);
 
 std::optional<Window> RestoreWindowFromBackwardFilter(
     const HloConvolutionInstruction* conv);
