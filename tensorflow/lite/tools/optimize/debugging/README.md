@@ -23,7 +23,7 @@ for debugging purposes only (and not for inference).
 ### Produce a debug model
 
 Modify the
-[TFLite full integer (int8) quantization steps](https://www.tensorflow.org/lite/performance/post_training_quantization#full_integer_quantization)
+[TFLite full integer (int8) quantization steps](https://developers.google.com/edge/litert/conversion/tensorflow/quantization/post_training_quantization#full_integer_quantization)
 as shown below to produce a debug model (used for debugging purposes only, and
 not inference)
 

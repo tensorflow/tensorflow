@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
@@ -38,6 +37,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tfl_carrier.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
@@ -53,26 +53,7 @@ class ConvertCustomCallOp : public OpConversionPattern<mhlo::CustomCallOp> {
       ConversionPatternRewriter& rewriter) const final;
 };
 
-// TFL op on StableHLO CustomCall carrier must serialize its attributes in
-// the CustomCallOp's backend_config StringAttr, following MLIR
-// DictionaryAttr serialization format. If no attributes are specified,
-// the backend_config should be the serialized empty DictionaryAttr.
-mlir::DictionaryAttr ParseSerializedTFLOpAttributes(
-    std::optional<mlir::Attribute> backend_config, MLIRContext* ctx) {
-  if (!backend_config) {
-    return nullptr;
-  }
-
-  auto serialized_attributes =
-      mlir::dyn_cast_or_null<mlir::StringAttr>(*backend_config);
-  if (!serialized_attributes) {
-    return nullptr;
-  }
-
-  auto dict_attribute = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(
-      parseAttribute(serialized_attributes.getValue(), ctx));
-  return dict_attribute;
-}
+using ::mlir::TFL::ParseSerializedTFLOpAttributes;
 
 // Quantization parameters carried in the backend_config of a `tfl.quantize` /
 // `tfl.dequantize` custom call.

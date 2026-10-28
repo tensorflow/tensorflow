@@ -3318,6 +3318,135 @@ TEST(A4W2DrqFullyConnectedTest, RejectsNonFiniteActDilation) {
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
 }
 
+class MultiAxisFullyConnectedOpModel : public SingleOpModel {
+ public:
+  MultiAxisFullyConnectedOpModel(int batches, int in_channels, int out_channels,
+                                 int block_size,
+                                 const std::vector<float>& scales,
+                                 const std::vector<int8_t>& weights_data)
+      : batches_(batches),
+        in_channels_(in_channels),
+        out_channels_(out_channels),
+        block_size_(block_size) {
+    input_ = AddInput({TensorType_FLOAT32, {batches, in_channels}});
+
+    TensorData weights_tensor;
+    weights_tensor.type = TensorType_INT8;
+    weights_tensor.shape = {out_channels, in_channels};
+    weights_tensor.per_channel_quantization_scales = scales;
+    weights_tensor.per_block_quantization = block_size;
+    weights_tensor.multi_axis_quantization = true;
+    weights_tensor.quantized_dimensions = {0};
+    if (block_size > 0) {
+      weights_tensor.scale_shape = {out_channels, in_channels / block_size};
+    } else {
+      weights_tensor.scale_shape = {out_channels};
+    }
+
+    weights_ = AddConstInput(weights_tensor, weights_data);
+    bias_ = AddNullInput();
+    output_ = AddOutput({TensorType_FLOAT32, {batches, out_channels}});
+
+    SetBuiltinOp(
+        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE)
+            .Union());
+
+    BuildInterpreter({{batches, in_channels}, {out_channels, in_channels}});
+  }
+
+  void SetInput(const std::vector<float>& data) {
+    PopulateTensor(input_, data);
+  }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int batches_;
+  int in_channels_;
+  int out_channels_;
+  int block_size_;
+  int input_;
+  int weights_;
+  int bias_;
+  int output_;
+};
+
+TEST(MultiAxisFullyConnectedTest, MatchesHandComputedResultBlockwise) {
+  // 2 batches, in_channels=32, out_channels=2, block_size=16.
+  // 2 blocks per channel, 4 scales total.
+  const std::vector<float> scales = {0.1f, 0.2f, 0.3f, 0.4f};
+  std::vector<int8_t> weights;
+  // Channel 0: 16 of value 1, 16 of value 2.
+  weights.insert(weights.end(), 16, 1);
+  weights.insert(weights.end(), 16, 2);
+  // Channel 1: 16 of value -1, 16 of value 3.
+  weights.insert(weights.end(), 16, -1);
+  weights.insert(weights.end(), 16, 3);
+
+  MultiAxisFullyConnectedOpModel m(
+      /*batches=*/2, /*in_channels=*/32, /*out_channels=*/2,
+      /*block_size=*/16, scales, weights);
+
+  if (m.GetNumberOfAppliedDelegates() == 0 ||
+      m.CountOpsExecutedByCpuKernel() > 0) {
+    GTEST_SKIP() << "MultiAxisQuantization is unsupported by the CPU kernel.";
+  }
+
+  // Batch 0: all 1.0f.
+  // Batch 1: all 0.5f.
+  std::vector<float> input(32, 1.0f);
+  input.insert(input.end(), 32, 0.5f);
+  m.SetInput(input);
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Channel 0:
+  //   Batch 0: 16 * 1.0 * 1 * 0.1 + 16 * 1.0 * 2 * 0.2 = 1.6 + 6.4 = 8.0
+  //   Batch 1: 16 * 0.5 * 1 * 0.1 + 16 * 0.5 * 2 * 0.2 = 0.8 + 3.2 = 4.0
+  // Channel 1:
+  //   Batch 0: 16 * 1.0 * -1 * 0.3 + 16 * 1.0 * 3 * 0.4 = -4.8 + 19.2 = 14.4
+  //   Batch 1: 16 * 0.5 * -1 * 0.3 + 16 * 0.5 * 3 * 0.4 = -2.4 + 9.6 = 7.2
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {8.0f, 14.4f, 4.0f, 7.2f}, 1e-4f)));
+}
+
+TEST(MultiAxisFullyConnectedTest, MatchesHandComputedResultPerChannel) {
+  // 2 batches, in_channels=16, out_channels=2, block_size=0 (per-channel).
+  const std::vector<float> scales = {0.25f, 0.5f};
+  std::vector<int8_t> weights;
+  // Channel 0: 16 of value 1.
+  weights.insert(weights.end(), 16, 1);
+  // Channel 1: 16 of value -2.
+  weights.insert(weights.end(), 16, -2);
+
+  MultiAxisFullyConnectedOpModel m(
+      /*batches=*/2, /*in_channels=*/16, /*out_channels=*/2,
+      /*block_size=*/0, scales, weights);
+
+  if (m.GetNumberOfAppliedDelegates() == 0 ||
+      m.CountOpsExecutedByCpuKernel() > 0) {
+    GTEST_SKIP() << "MultiAxisQuantization is unsupported by the CPU kernel.";
+  }
+
+  // Batch 0: all 1.0f.
+  // Batch 1: all 2.0f.
+  std::vector<float> input(16, 1.0f);
+  input.insert(input.end(), 16, 2.0f);
+  m.SetInput(input);
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Channel 0:
+  //   Batch 0: 16 * 1.0 * 1 * 0.25 = 4.0
+  //   Batch 1: 16 * 2.0 * 1 * 0.25 = 8.0
+  // Channel 1:
+  //   Batch 0: 16 * 1.0 * -2 * 0.5 = -16.0
+  //   Batch 1: 16 * 2.0 * -2 * 0.5 = -32.0
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {4.0f, -16.0f, 8.0f, -32.0f}, 1e-4f)));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SparseQuantizedFullyConnectedOpTest, SparseQuantizedFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
