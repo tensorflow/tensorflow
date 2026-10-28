@@ -21,7 +21,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -365,8 +370,8 @@ TEST(TensorSliceReaderTest, MissingTensorType) {
       io::JoinPath(testing::TmpDir(), "invalid_checkpoint");
   TensorSliceWriter writer(fname, CreateTableTensorSliceBuilder);
   const int32_t data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  TensorShape shape({4, 5});
-  TensorSlice slice = TensorSlice::ParseOrDie("0,2:-");
+  TensorShape shape({2, 5});
+  TensorSlice slice(2);
   TF_CHECK_OK(writer.Add("test", shape, slice, data));
   TF_CHECK_OK(writer.Finish());
 
@@ -386,7 +391,8 @@ TEST(TensorSliceReaderTest, MissingTensorType) {
   // unset (invalid) type.
   EXPECT_TRUE(reader.HasTensor("test", nullptr, nullptr));
   std::unique_ptr<Tensor> tensor;
-  EXPECT_FALSE(reader.GetTensor("test", &tensor).ok());
+  absl::Status s = reader.GetTensor("test", &tensor);
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument) << s;
 }
 
 TEST(TensorSliceReaderTest, UnsupportedTensorType) {
@@ -394,8 +400,8 @@ TEST(TensorSliceReaderTest, UnsupportedTensorType) {
       io::JoinPath(testing::TmpDir(), "int32_ref_checkpoint");
   TensorSliceWriter writer(fname, CreateTableTensorSliceBuilder);
   const int32_t data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  TensorShape shape({4, 5});
-  TensorSlice slice = TensorSlice::ParseOrDie("0,2:-");
+  TensorShape shape({2, 5});
+  TensorSlice slice(2);
   TF_CHECK_OK(writer.Add("test", shape, slice, data));
   TF_CHECK_OK(writer.Finish());
 
@@ -415,7 +421,8 @@ TEST(TensorSliceReaderTest, UnsupportedTensorType) {
   // unsupported type.
   EXPECT_TRUE(reader.HasTensor("test", nullptr, nullptr));
   std::unique_ptr<Tensor> tensor;
-  EXPECT_FALSE(reader.GetTensor("test", &tensor).ok());
+  absl::Status s = reader.GetTensor("test", &tensor);
+  EXPECT_EQ(s.code(), absl::StatusCode::kInvalidArgument) << s;
 }
 
 TEST(TensorSliceReaderTest, NegativeTensorShapeDimension) {
@@ -471,8 +478,7 @@ TEST(TensorSliceReaderTest, MissingTensorData) {
       io::JoinPath(testing::TmpDir(), "missing_data_checkpoint");
   TensorSliceWriter writer(fname, CreateTableTensorSliceBuilder);
   const int32_t data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  TF_ASSERT_OK(writer.Add("test", TensorShape({4, 5}),
-                          TensorSlice::ParseOrDie("0,2:-"), data));
+  TF_ASSERT_OK(writer.Add("test", TensorShape({2, 5}), TensorSlice(2), data));
   TF_ASSERT_OK(writer.Finish());
 
   MutateSavedTensorSlices(fname, [&](SavedTensorSlices sts) {
@@ -490,7 +496,8 @@ TEST(TensorSliceReaderTest, MissingTensorData) {
   // data.
   EXPECT_TRUE(reader.HasTensor("test", nullptr, nullptr));
   std::unique_ptr<Tensor> tensor;
-  EXPECT_FALSE(reader.GetTensor("test", &tensor).ok());
+  absl::Status s = reader.GetTensor("test", &tensor);
+  EXPECT_EQ(s.code(), absl::StatusCode::kNotFound) << s;
 }
 
 void CachedTensorSliceReaderTesterHelper(
@@ -662,9 +669,33 @@ TEST(TensorSliceReaderTest, GetTensorFullSliceControlSucceeds) {
   TF_ASSERT_OK(reader.GetTensor("test", &tensor));
   ASSERT_NE(tensor, nullptr);
   EXPECT_EQ(tensor->shape(), shape);
-  const float* tensor_data = reinterpret_cast<const float*>(tensor->data());
+  const auto tensor_data = tensor->flat<float>();
   for (int i = 0; i < 10; ++i) {
-    EXPECT_FLOAT_EQ(tensor_data[i], static_cast<float>(i));
+    EXPECT_FLOAT_EQ(tensor_data(i), data[i]);
+  }
+}
+
+TEST(TensorSliceReaderTest, GetTensorExplicitFullSliceSucceeds) {
+  const std::string fname =
+      io::JoinPath(testing::TmpDir(), "explicit_full_slice_checkpoint");
+  TensorSliceWriter writer(fname, CreateTableTensorSliceBuilder);
+  const float data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  TensorShape shape({2, 5});
+  TensorSlice full_slice = TensorSlice::ParseOrDie("0,2:0,5");
+  // Explicit extents cover the tensor without IsFull() shorthand.
+  EXPECT_FALSE(full_slice.IsFull());
+  TF_CHECK_OK(writer.Add("test", shape, full_slice, data));
+  TF_CHECK_OK(writer.Finish());
+
+  TensorSliceReader reader(fname, OpenTableTensorSliceReader);
+  TF_EXPECT_OK(reader.status());
+  std::unique_ptr<tensorflow::Tensor> tensor;
+  TF_ASSERT_OK(reader.GetTensor("test", &tensor));
+  ASSERT_NE(tensor, nullptr);
+  EXPECT_EQ(tensor->shape(), shape);
+  const auto tensor_data = tensor->flat<float>();
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_FLOAT_EQ(tensor_data(i), data[i]);
   }
 }
 
@@ -682,8 +713,10 @@ TEST(TensorSliceReaderTest, GetTensorRejectsSinglePartialSlice) {
   TF_EXPECT_OK(reader.status());
   std::unique_ptr<tensorflow::Tensor> tensor;
   absl::Status s = reader.GetTensor("test", &tensor);
-  EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.code(), error::UNIMPLEMENTED);
+  EXPECT_EQ(s.code(), absl::StatusCode::kUnimplemented) << s;
+  EXPECT_TRUE(
+      absl::StrContains(s.message(), "Sliced checkpoints are not supported"))
+      << s;
   EXPECT_EQ(tensor, nullptr);
 }
 
