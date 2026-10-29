@@ -456,11 +456,6 @@ void RunPipelinedChunkedTransfer(
 
 }  // namespace
 
-CommonPjRtClient::CommonPjRtClient(
-    std::optional<TiledLinearizer::ParallelismOptions> tiled_linearizer_options)
-    : PjRtClient(std::make_unique<CommonHostMemoryForDeviceManager>(this)),
-      tiled_linearizer_options_(std::move(tiled_linearizer_options)) {}
-
 PjRtDynamicShapeKind CommonPjRtClient::GetDynamicShapeKind(
     int memory_space_kind_id) const {
   if (!IsTpuId(platform_id()) ||
@@ -2515,19 +2510,6 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::Bitcast(
   return std::make_unique<CommonPjRtBufferImpl>(
       std::make_shared<const Shape>(std::move(new_on_device_shape)),
       std::move(device_buffer), memory_space());
-}
-
-void CommonPjRtClient::ScheduleRemoteSend(
-    PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
-    PjRtDeviceEventRefVector definition_events,
-    PjRtDeviceEventPromiseRef usage_event_promise,
-    Future<std::string> serialized_descriptor,
-    PjRtBuffer::RemoteSendCallback on_done) {
-  auto error = absl::UnimplementedError(
-      absl::StrCat("ScheduleRemoteSend is not implemented for %s",
-                   memory_space->DebugString()));
-  on_done(error, /*sends_were_enqueued=*/false);
-  usage_event_promise.SetError(error);
 }
 
 absl::Status CommonPjRtClient::PrepareArguments(
@@ -5712,7 +5694,7 @@ bool CommonPjRtClient::RequiresRuntimeShapeMetadata(
   return requirements.metadata_size > 0;
 }
 
-CommonPjRtClientImpl::CommonPjRtClientImpl(
+CommonPjRtClient::CommonPjRtClient(
     PjRtPlatformId platform_id, std::string platform_name,
     std::string platform_version, int process_index,
     std::shared_ptr<const xla::PjRtTopologyDescription> topology,
@@ -5721,7 +5703,8 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
     std::optional<PjRtPluginAttributes> plugin_attributes,
     std::optional<LinearizeThrottler::Options> throttler_options,
     std::optional<TiledLinearizer::ParallelismOptions> tiled_linearizer_options)
-    : CommonPjRtClient(std::move(tiled_linearizer_options)),
+    : PjRtClient(std::make_unique<CommonHostMemoryForDeviceManager>(this)),
+      tiled_linearizer_options_(std::move(tiled_linearizer_options)),
       platform_id_(platform_id),
       platform_name_(std::move(platform_name)),
       platform_version_(std::move(platform_version)),
@@ -5771,7 +5754,7 @@ CommonPjRtClientImpl::CommonPjRtClientImpl(
                                   include_raw_buffer_in_ready_event_);
 }
 
-void CommonPjRtClientImpl::AttachDevices(
+void CommonPjRtClient::AttachDevices(
     std::vector<std::unique_ptr<PjRtDevice>> devices,
     std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces) {
   owned_devices_ = std::move(devices);
@@ -5801,7 +5784,7 @@ void CommonPjRtClientImpl::AttachDevices(
   }
 }
 
-absl::StatusOr<PjRtDevice*> CommonPjRtClientImpl::LookupAddressableDevice(
+absl::StatusOr<PjRtDevice*> CommonPjRtClient::LookupAddressableDevice(
     xla::LocalDeviceId local_device_id) const {
   for (auto* device : addressable_devices_) {
     if (local_device_id == device->local_device_id()) {
@@ -5812,12 +5795,12 @@ absl::StatusOr<PjRtDevice*> CommonPjRtClientImpl::LookupAddressableDevice(
                          local_device_id.value());
 }
 
-absl::Span<PjRtMemorySpace* const> CommonPjRtClientImpl::memory_spaces() const {
+absl::Span<PjRtMemorySpace* const> CommonPjRtClient::memory_spaces() const {
   return memory_spaces_;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
-CommonPjRtClientImpl::RuntimeAbiVersion() const {
+CommonPjRtClient::RuntimeAbiVersion() const {
   return raw_client_->RuntimeAbiVersion();
 }
 

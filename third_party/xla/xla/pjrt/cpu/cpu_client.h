@@ -311,9 +311,9 @@ class PjRtCpuRawClient : public PjRtRawClient {
   std::unique_ptr<ThreadPoolAsyncWorkRunner> async_work_runner_;
 };
 
-// Standalone factory that creates a CommonPjRtClientImpl for CPU using the
+// Standalone factory that creates a CommonPjRtClient for CPU using the
 // given raw client, topology, and process ID.
-std::unique_ptr<CommonPjRtClientImpl> CreatePjRtCpuClient(
+std::unique_ptr<CommonPjRtClient> CreatePjRtCpuClient(
     std::unique_ptr<PjRtCpuRawClient> raw_client,
     std::shared_ptr<const CpuTopologyDescription> topology, int process_id);
 

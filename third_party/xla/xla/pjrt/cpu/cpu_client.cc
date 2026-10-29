@@ -480,10 +480,10 @@ PjRtPluginAttributes GetDefaultCpuPluginAttributes() {
   return attrs;
 }
 
-std::unique_ptr<CommonPjRtClientImpl> CreatePjRtCpuClient(
+std::unique_ptr<CommonPjRtClient> CreatePjRtCpuClient(
     std::unique_ptr<PjRtCpuRawClient> raw_client,
     std::shared_ptr<const CpuTopologyDescription> topology, int process_id) {
-  auto client = std::make_unique<CommonPjRtClientImpl>(
+  auto client = std::make_unique<CommonPjRtClient>(
       xla::CpuPlatformId(), std::string(xla::CpuPlatformName()),
       std::string(xla::CpuPlatformVersion()), process_id, topology,
       std::move(raw_client), /*kv_store=*/nullptr,
