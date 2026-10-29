@@ -335,7 +335,7 @@ TEST(ObjectGraphTraversalTest, OutOfRangeChildNodeIdIsRejected) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(R"(
 nodes {
   children {
-    node_id: 100
+    node_id: 1
     local_name: "foo"
   }
   user_object {
