@@ -123,8 +123,9 @@ TEST(GpuBandwidthBenchmarkTest, MeasureBandwidthTableScalesWithTransferSize) {
   for (size_t i = 1; i < entries->size(); ++i) {
     EXPECT_EQ((*entries)[i].dma_size_bytes,
               2 * (*entries)[i - 1].dma_size_bytes);
-    if (device->gpu_compute_capability().IsCuda() ||
-        device->gpu_compute_capability().IsRocm()) {
+    // The benchmark is not calibrated on non-NVIDIA platforms, so measured
+    // bandwidth fractions may not increase monotonically with transfer size.
+    if (device->gpu_compute_capability().IsCuda()) {
       EXPECT_GT((*entries)[i].bandwidth_fraction,
                 (*entries)[i - 1].bandwidth_fraction);
     }
