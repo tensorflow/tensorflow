@@ -886,6 +886,7 @@ cc_library(
         ":ifrt_ir_loaded_executable_test_base",
         ":program_memory_tracer",
         "//xla/pjrt:compiled_memory_stats",
+        "//xla/pjrt:pjrt_compiler",
         "//xla/python/ifrt",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/container:flat_hash_map",
