@@ -2244,6 +2244,7 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:log_entry",
         "@com_google_absl//absl/log:log_sink",
