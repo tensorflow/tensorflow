@@ -14,6 +14,8 @@
 # ==============================================================================
 """Decorator to overrides the gradient for a function."""
 
+import weakref
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
@@ -400,6 +402,39 @@ def generate_name():
   return "CustomGradient-%s" % ops.uid()
 
 
+def _unregister_gradient(name):
+  ops._gradient_registry._registry.pop(name, None)  # pylint: disable=protected-access
+
+
+def _register_graph_owned_gradient(graph, name, grad_fn):
+  """Registers `grad_fn` under `name` for as long as `graph` is alive.
+
+  `grad_fn` usually captures tensors of `graph`. Registering it directly would
+  let the process-wide gradient registry keep `graph`, and every op in it,
+  alive forever (see https://github.com/tensorflow/tensorflow/issues/129615).
+  Instead `graph` owns `grad_fn`, the registry only holds a forwarder with a
+  weak reference to `graph`, and the registry entry is removed once `graph` is
+  garbage collected.
+
+  Args:
+    graph: The graph containing the op whose gradient is overridden.
+    name: The unique gradient name the op refers to via `_gradient_op_type`.
+    grad_fn: The gradient function, called as `grad_fn(op, *grads)`.
+  """
+  graph._custom_gradient_functions[name] = grad_fn  # pylint: disable=protected-access
+  graph_ref = weakref.ref(graph)
+
+  def graph_owned_grad_fn(op, *grads):
+    owner = graph_ref()
+    if owner is None:
+      raise LookupError(
+          f"The graph that defined custom gradient {name} no longer exists.")
+    return owner._custom_gradient_functions[name](op, *grads)  # pylint: disable=protected-access
+
+  ops.RegisterGradient(name)(graph_owned_grad_fn)
+  weakref.finalize(graph, _unregister_gradient, name).atexit = False
+
+
 def _graph_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for graph mode."""
   # TODO(rsepassi): Add support for kwargs
@@ -529,13 +564,15 @@ def _graph_mode_decorator(f, args, kwargs):
         nest.flatten(input_grads))
     return ([None] * flat_result_len) + input_grads + variable_grads
 
-  @ops.RegisterGradient(name)
-  def internal_grad_fn(unused_op, *result_grads):  # pylint: disable=unused-variable
+  def internal_grad_fn(unused_op, *result_grads):
     """Custom grad fn wrapper."""
     return tape_grad_fn(*result_grads)
 
+  graph = ops.get_default_graph()
+  _register_graph_owned_gradient(graph, name, internal_grad_fn)
+
   original_tensors = all_tensors
-  with ops.get_default_graph().gradient_override_map({"IdentityN": name}):
+  with graph.gradient_override_map({"IdentityN": name}):
     all_tensors = array_ops.identity_n(all_tensors)
 
   original_tensors = [ops.convert_to_tensor(x) for x in original_tensors]

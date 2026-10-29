@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for tensorflow.ops.gradients."""
 
+import gc
 import sys
 import warnings
+import weakref
 
 from absl.testing import parameterized
 import numpy as np
@@ -23,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
@@ -1358,6 +1361,87 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       y = constant(5.)
       dy = F(y)
       self.assertAllEqual(5., self.evaluate(dy))
+
+  def testCustomGradientRegistrationReleasedWithGraph(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/129615
+
+    @custom_gradient.custom_gradient
+    def MySquare(x):
+
+      def Grad(dy):
+        return dy * 2. * x
+
+      return x * x, Grad
+
+    graph = ops.Graph()
+    with graph.as_default():
+      x = constant(3.)
+      y = MySquare(x)
+      dx = gradients.gradients(y, [x])[0]
+      gradient_op_type = y.op.get_attr("_gradient_op_type").decode()
+      with session.Session() as sess:
+        self.assertAllEqual(6., sess.run(dx))
+    self.assertIn(gradient_op_type, ops.gradient_registry.list())
+
+    graph_ref = weakref.ref(graph)
+    del graph, x, y, dx, sess
+    gc.collect()
+    self.assertIsNone(graph_ref())
+    self.assertNotIn(gradient_op_type, ops.gradient_registry.list())
+
+  @test_util.run_v2_only
+  def testCustomGradientRegistrationReleasedWithFunction(self):
+
+    @custom_gradient.custom_gradient
+    def MySquare(x):
+
+      def Grad(dy):
+        return dy * 2. * x
+
+      return x * x, Grad
+
+    def ListCustomGradients():
+      return {
+          name for name in ops.gradient_registry.list()
+          if name.startswith("CustomGradient-")
+      }
+
+    before = ListCustomGradients()
+
+    @def_function.function
+    def F(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = MySquare(x)
+      return tape.gradient(y, x)
+
+    self.assertAllEqual(6., F(constant(3.)))
+    self.assertNotEmpty(ListCustomGradients() - before)
+
+    graph_ref = weakref.ref(F.get_concrete_function(constant(3.)).graph)
+    del F
+    gc.collect()
+    self.assertIsNone(graph_ref())
+    self.assertEmpty(ListCustomGradients() - before)
+
+  @test_util.run_v2_only
+  def testCustomGradientForwardAccumulatorInFunction(self):
+
+    @custom_gradient.custom_gradient
+    def MySquare(x):
+
+      def Grad(dy):
+        return dy * 2. * x
+
+      return x * x, Grad
+
+    @def_function.function
+    def F(x):
+      with forwardprop.ForwardAccumulator(x, constant(1.)) as acc:
+        y = MySquare(x)
+      return acc.jvp(y)
+
+    self.assertAllEqual(6., F(constant(3.)))
 
   def testCustomGradientWithVariablesNoFalsePositives(self):
 
