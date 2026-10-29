@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -45,6 +46,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -16039,6 +16042,45 @@ TEST_F(AlgebraicSimplifierTest, CanonicalizesMultiDimShuffleRotate) {
   EXPECT_EQ(shuffle->rotate().shifts(0), 3);
   EXPECT_EQ(shuffle->dimensions()[1], 1);
   EXPECT_EQ(shuffle->rotate().shifts(1), 3);
+}
+
+TEST(AlgebraicSimplifierOptionsTest, FromHloPassOptions) {
+  HloPassOptions pass_options = {{"is_layout_sensitive", true},
+                                 {"enable_dot_strength_reduction", false},
+                                 {"very_small_gather_size", 17}};
+  AlgebraicSimplifierOptions options =
+      AlgebraicSimplifierOptionsFromHloPassOptions(pass_options);
+  ASSERT_OK(pass_options.CheckAllConsumed());
+  EXPECT_TRUE(options.is_layout_sensitive());
+  EXPECT_FALSE(options.enable_dot_strength_reduction());
+  EXPECT_EQ(options.very_small_gather_size(), 17);
+  // Fields absent from `pass_options` stay unset.
+  EXPECT_FALSE(options.has_enable_conv_simplification());
+}
+
+TEST(AlgebraicSimplifierOptionsTest, FromHloPassOptionsRelativeToBase) {
+  AlgebraicSimplifierOptions base;
+  base.set_enable_dot_strength_reduction(false);
+  base.set_very_small_gather_size(17);
+  AlgebraicSimplifierOptions options =
+      AlgebraicSimplifierOptionsFromHloPassOptions(
+          {{"enable_dot_strength_reduction", true}}, base);
+  EXPECT_TRUE(options.enable_dot_strength_reduction());
+  EXPECT_EQ(options.very_small_gather_size(), 17);
+}
+
+TEST(AlgebraicSimplifierOptionsTest, FromHloPassOptionsWrongTypeIsUnconsumed) {
+  HloPassOptions pass_options = {{"is_layout_sensitive", 1}};
+  AlgebraicSimplifierOptionsFromHloPassOptions(pass_options);
+  EXPECT_THAT(pass_options.CheckAllConsumed(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(AlgebraicSimplifierOptionsTest, FromHloPassOptionsUnknownKeyIsUnconsumed) {
+  HloPassOptions pass_options = {{"no_such_option", true}};
+  AlgebraicSimplifierOptionsFromHloPassOptions(pass_options);
+  EXPECT_THAT(pass_options.CheckAllConsumed(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

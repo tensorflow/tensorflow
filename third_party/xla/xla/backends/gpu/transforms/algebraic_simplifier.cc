@@ -15,18 +15,26 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -123,5 +131,43 @@ absl::StatusOr<bool> GpuAlgebraicSimplifier::RunImpl(
       2, "GpuAlgebraicSimplifier::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
+
+AlgebraicSimplifierOptions GpuAlgebraicSimplifierBaseOptions() {
+  AlgebraicSimplifierOptions opts;
+  opts.set_enable_dot_strength_reduction(false);
+  // On GPU it helps to reorder them so that the fused cuDNN kernel can be
+  // used.
+  opts.set_enable_conv_add_multiply_reorder(true);
+  // GPU only supports canonical convolutions.
+  opts.set_supports_non_canonical_dots(false);
+  opts.set_enable_unconditional_reduce_of_concat_replacement(false);
+  opts.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
+  opts.set_enable_conditional_simplification(true);
+  opts.set_enable_fold_transpose_into_scatter(true);
+  return opts;
+}
+
+namespace {
+
+class GpuAlgebraicSimplifierFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "gpu-algebraic-simplifier"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext& context,
+      const HloPassOptions& options) const override {
+    ABSL_ASSIGN_OR_RETURN(const se::DeviceDescription& device_description,
+                     context.Get<const se::DeviceDescription>());
+    return std::make_unique<GpuAlgebraicSimplifier>(
+        AlgebraicSimplifierOptionsFromHloPassOptions(
+            options, GpuAlgebraicSimplifierBaseOptions()),
+        device_description.gpu_compute_capability());
+  }
+};
+
+const HloPassFactory* const kGpuAlgebraicSimplifierRegistration =
+    RegisterHloPassFactory<GpuAlgebraicSimplifierFactory>();
+
+}  // namespace
 
 }  // namespace xla::gpu

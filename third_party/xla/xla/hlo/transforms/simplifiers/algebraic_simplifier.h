@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier_options.pb.h"  // IWYU pragma: export
 #include "xla/literal.h"
 #include "xla/shape.h"
@@ -48,6 +49,12 @@ namespace xla {
 // The maximum number of times to run the algebraic simplifier to reach a fixed
 // point.
 static constexpr int64_t kAlgSimpRerunLimit = 50;
+
+// Applies `options` on top of `base`. Keys are AlgebraicSimplifierOptions field
+// names; only bool and int64 fields are supported. Unknown or mistyped keys are
+// left unconsumed for the caller's `CheckAllConsumed()`.
+AlgebraicSimplifierOptions AlgebraicSimplifierOptionsFromHloPassOptions(
+    const HloPassOptions& options, AlgebraicSimplifierOptions base = {});
 
 // A pass which performs algebraic simplifications.
 class AlgebraicSimplifier : public HloModulePass {
