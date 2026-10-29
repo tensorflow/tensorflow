@@ -655,6 +655,28 @@ ENTRY main {
   EXPECT_EQ(clone->operand_count(), 2);
 }
 
+TEST_F(HloInstructionTest, CloneCallPreservesIsComposite) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+decomposition {
+  ROOT p = f32[2] parameter(0)
+}
+
+ENTRY main {
+  arg = f32[2] parameter(0)
+  ROOT call = f32[2] call(arg), to_apply=decomposition, is_composite=true, frontend_attributes={composite.name="foo.bar"}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* call = module->entry_computation()->root_instruction();
+  ASSERT_EQ(call->opcode(), HloOpcode::kCall);
+  ASSERT_TRUE(call->is_composite());
+  auto clone = call->CloneWithNewOperands(call->shape(), call->operands());
+  EXPECT_TRUE(clone->is_composite());
+}
+
 TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
   const char* const kModuleStr = R"(
     HloModule m

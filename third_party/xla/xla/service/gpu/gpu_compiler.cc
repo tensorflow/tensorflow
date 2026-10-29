@@ -748,6 +748,10 @@ absl::Status RunSPMDPasses(
     AddSPMDPasses(hlo_module, layout_insensitive_algsimp_opts,
                   gpu_target_config.device_description.gpu_compute_capability(),
                   spmd_pipeline, std::nullopt, max_windowed_einsum_iteration);
+    // Custom partitioning callbacks can emit xla.scaled_dot composites during
+    // partitioning, after the pre-SPMD CompositeRewriter has already run. From
+    // here on they take the same path as the composites rewritten before SPMD.
+    spmd_pipeline.AddPass<CompositeRewriter>();
     return spmd_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
         .status();
   } else {

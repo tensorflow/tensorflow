@@ -2957,6 +2957,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     // Other supported ops.
     case HloOpcode::kCall:
       clone = CreateCall(shape, new_operands, to_apply());
+      clone->set_is_composite(is_composite());
       break;
     case HloOpcode::kConvert:
       CHECK_EQ(new_operands.size(), 1);
