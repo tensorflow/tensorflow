@@ -153,6 +153,37 @@ ENTRY entry_computation {
               StatusIs(_, HasSubstr("exceeds the maximum MMA dimension size")));
 }
 
+TEST_F(VerifyTritonConstraintsTest, ScaledDotOperandSizeConstraintIsEnforced) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+fused_computation {
+  lhs = f8e4m3fn[128,512] parameter(0)
+  rhs = f8e4m3fn[512,128] parameter(1)
+  lhs_scale = f8e8m0fnu[128,16] parameter(2)
+  rhs_scale = f8e8m0fnu[16,128] parameter(3)
+  ROOT dot = f32[128,128] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry_computation {
+  lhs = f8e4m3fn[128,512] parameter(0)
+  rhs = f8e4m3fn[512,128] parameter(1)
+  lhs_scale = f8e8m0fnu[128,16] parameter(2)
+  rhs_scale = f8e8m0fnu[16,128] parameter(3)
+  ROOT fusion = f32[128,128] fusion(lhs, rhs, lhs_scale, rhs_scale),
+    kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+
+  EXPECT_OK(CheckTiling(module.get(), {64, 64, 128}));
+  // Having any tile larger than 256 is not allowed for scaled-dots.
+  EXPECT_THAT(CheckTiling(module.get(), {64, 64, 512}),
+              StatusIs(_, HasSubstr("exceeds the maximum MMA dimension size")));
+}
+
 TEST_F(VerifyTritonConstraintsTest, TransposeSharedMemoryConstraintIsEnforced) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"hlo(
