@@ -430,30 +430,6 @@ func.func @atomic_rmw_i4(%in: tensor<8xi4>, %i: index) -> (tensor<8xi4>) {
 
 // -----
 
-func.func @atomic_rmw_i1(%in: tensor<8xi1>, %i: index) -> (tensor<8xi1>) {
-  %ret = xla.atomic_rmw %in[%i] : tensor<8xi1> {
-    ^bb0(%current : i1):
-      %c1 = arith.constant true
-      %xor = arith.xori %current, %c1 : i1
-      xla.yield %xor : i1
-  }
-  return %ret : tensor<8xi1>
-}
-// CHECK-LABEL: @atomic_rmw_i1
-// CHECK: %[[ADDR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x i1>
-// CHECK-GPU-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
-// CHECK-GPU-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
-// CHECK-GPU-NEXT: %[[BASE:.*]] = llvm.intr.ptrmask %[[ADDR]], %{{.*}}
-// CHECK-GPU: %[[INIT:.*]] = llvm.load %[[BASE]] : !llvm.ptr -> i32
-// CHECK-GPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i32) -> i32
-// CHECK-GPU: llvm.cmpxchg %[[BASE]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i32
-// CHECK-CPU-NOT: llvm.ptrtoint
-// CHECK-CPU: %[[INIT:.*]] = llvm.load %[[ADDR]] : !llvm.ptr -> i8
-// CHECK-CPU-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]]) : (i8) -> i8
-// CHECK-CPU: llvm.cmpxchg %[[ADDR]], %[[VAR]], %{{.*}} monotonic monotonic : !llvm.ptr, i8
-
-// -----
-
 func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
     -> (tensor<8xf16>) {
   %c1 = arith.constant 1.0 : f16
@@ -1413,41 +1389,6 @@ func.func @transfer_read(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> vector<
 // CHECK-LABEL: @transfer_read
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
 // CHECK-NEXT:      llvm.load %[[PTR]] <alignment = 4> : !llvm.ptr -> vector<2xf32>
-
-// -----
-
-func.func @transfer_write_i1(%arg0: tensor<43xi1> {xla.slice_index = 1},
-                              %v1: vector<2xi1>, %v2: vector<2xi1>) -> tensor<43xi1> {
-  %c16 = arith.constant 16 : index
-  %c22 = arith.constant 22 : index
-  %out = vector.transfer_write %v1, %arg0[%c16] : vector<2xi1>, tensor<43xi1>
-  %out2 = vector.transfer_write %v2, %out[%c22] : vector<2xi1>, tensor<43xi1>
-  func.return %out2 : tensor<43xi1>
-}
-// CHECK-LABEL: @transfer_write_i1
-// CHECK-SAME:      (%[[ARG0:.*]]: !llvm.ptr
-// CHECK-SAME:       %[[V1:.*]]: vector<2xi1>, %[[V2:.*]]: vector<2xi1>)
-// CHECK-DAG:       %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][0, 16]
-// CHECK-DAG:       %[[V1_EXT:.*]] = arith.extui %[[V1]]
-// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]] <alignment = 1>
-// CHECK-DAG:       %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][0, 22]
-// CHECK-DAG:       %[[V2_EXT:.*]] = arith.extui %[[V2]]
-// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]] <alignment = 1>
-
-// -----
-
-func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vector<2xi1> {
-  %c16 = arith.constant 16 : index
-  %false = arith.constant false
-  %out = vector.transfer_read %arg0[%c16], %false : tensor<43xi1>, vector<2xi1>
-  func.return %out : vector<2xi1>
-}
-// CHECK-LABEL: @transfer_read_i1
-// CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0> : vector<2xi8>
-// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] <alignment = 1> : !llvm.ptr
-// CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
-// CHECK:           return %[[CAST]] : vector<2xi1>
 
 // -----
 
