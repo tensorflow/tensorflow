@@ -2069,3 +2069,56 @@ func.func @NotFoldResizeBilinearRuntimeInput(%arg0: tensor<1x1x2x1xf32>) -> tens
   func.return %0 : tensor<1x1x4x1xf32>
   // CHECK: "tfl.resize_bilinear"(%arg0
 }
+
+// CHECK-LABEL: @ConstFoldSumNegativeAxis
+func.func @ConstFoldSumNegativeAxis() -> tensor<2xf32> {
+  %input = arith.constant dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]> : tensor<2x3xf32>
+  %axes = arith.constant dense<[-1]> : tensor<1xi32>
+  %0 = "tfl.sum"(%input, %axes) {keep_dims = false} : (tensor<2x3xf32>, tensor<1xi32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<[6.000000e+00, 1.500000e+01]> : tensor<2xf32>
+  // CHECK-NOT: tfl.sum
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstFoldSumInt32
+func.func @ConstFoldSumInt32() -> tensor<1x1xi32> {
+  %input = arith.constant dense<[[3, 4, 5]]> : tensor<1x3xi32>
+  %axes = arith.constant dense<[1]> : tensor<1xi32>
+  %0 = "tfl.sum"(%input, %axes) {keep_dims = true} : (tensor<1x3xi32>, tensor<1xi32>) -> tensor<1x1xi32>
+  func.return %0 : tensor<1x1xi32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<12> : tensor<1x1xi32>
+  // CHECK-NOT: tfl.sum
+  // CHECK: return %[[CST]]
+}
+
+// int32 SUM wraps around on overflow, like the TFLite kernel.
+// CHECK-LABEL: @ConstFoldSumInt32Wraparound
+func.func @ConstFoldSumInt32Wraparound() -> tensor<1xi32> {
+  %input = arith.constant dense<[[2147483647, 1]]> : tensor<1x2xi32>
+  %axes = arith.constant dense<[1]> : tensor<1xi32>
+  %0 = "tfl.sum"(%input, %axes) {keep_dims = false} : (tensor<1x2xi32>, tensor<1xi32>) -> tensor<1xi32>
+  func.return %0 : tensor<1xi32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<-2147483648> : tensor<1xi32>
+  // CHECK-NOT: tfl.sum
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstFoldMean
+func.func @ConstFoldMean() -> tensor<1x1x2xf32> {
+  %input = arith.constant dense<[[[1.0, 2.0], [3.0, 6.0]]]> : tensor<1x2x2xf32>
+  %axes = arith.constant dense<[1]> : tensor<1xi32>
+  %0 = "tfl.mean"(%input, %axes) {keep_dims = true} : (tensor<1x2x2xf32>, tensor<1xi32>) -> tensor<1x1x2xf32>
+  func.return %0 : tensor<1x1x2xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[}}2.000000e+00, 4.000000e+00]]]> : tensor<1x1x2xf32>
+  // CHECK-NOT: tfl.mean
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @NotFoldMeanRuntimeInput
+func.func @NotFoldMeanRuntimeInput(%arg0: tensor<1x2x2xf32>) -> tensor<1x1x2xf32> {
+  %axes = arith.constant dense<[1]> : tensor<1xi32>
+  %0 = "tfl.mean"(%arg0, %axes) {keep_dims = true} : (tensor<1x2x2xf32>, tensor<1xi32>) -> tensor<1x1x2xf32>
+  func.return %0 : tensor<1x1x2xf32>
+  // CHECK: "tfl.mean"(%arg0
+}

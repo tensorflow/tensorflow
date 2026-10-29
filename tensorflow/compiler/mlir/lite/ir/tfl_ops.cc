@@ -5591,6 +5591,18 @@ static size_t GetOutputFlatIndex(size_t input_flat_ind,
   return output_flat_ind_helper.GetFlatInd(output_shaped_ind);
 }
 
+// Collects the reduction `axes` into `axes_set`, mapping negative axes (which
+// count from the back, as in the TFLite kernels) to non-negative ones. Returns
+// false if any axis is out of range for `rank`.
+static bool NormalizeReductionAxes(DenseIntElementsAttr axes, int64_t rank,
+                                   absl::flat_hash_set<int32_t>& axes_set) {
+  for (int32_t axis : axes.getValues<int32_t>()) {
+    if (axis < -rank || axis >= rank) return false;
+    axes_set.insert(axis < 0 ? axis + rank : axis);
+  }
+  return true;
+}
+
 OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   if (!ShouldFoldOperation(this->getOperation())) return {};
 
@@ -5602,14 +5614,17 @@ OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   }
 
   auto input_type = getInput().getType();
-  if (!input_type.getElementType().isF32()) {
+  const bool is_f32 = input_type.getElementType().isF32();
+  if (!is_f32 && !input_type.getElementType().isSignlessInteger(32)) {
     return {};
   }
 
   const auto input_rank = input_type.getRank();
-  auto axes_data = llvm::cast<DenseIntElementsAttr>(axes);
-  absl::flat_hash_set<int32_t> axes_set(axes_data.getValues<int32_t>().begin(),
-                                        axes_data.getValues<int32_t>().end());
+  absl::flat_hash_set<int32_t> axes_set;
+  if (!NormalizeReductionAxes(llvm::cast<DenseIntElementsAttr>(axes),
+                              input_rank, axes_set)) {
+    return {};
+  }
 
   llvm::SmallVector<int64_t> out_shape;
   for (int input_dim = 0; input_dim < input_rank; ++input_dim) {
@@ -5626,10 +5641,26 @@ OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   int64_t output_size = std::accumulate(out_shape.begin(), out_shape.end(), 1,
                                         std::multiplies<int64_t>());
 
-  std::vector<float> out_data(output_size, 0.0);
   FlatIndHelper input_flat_ind_helper(input_type);
   FlatIndHelper output_flat_ind_helper(out_type);
 
+  if (!is_f32) {
+    // int32 SUM wraps around on overflow, as in the TFLite kernel. Accumulate
+    // in uint32 so the wraparound is well defined, then convert back.
+    auto in_data = mlir::dyn_cast<DenseIntElementsAttr>(input);
+    if (!in_data) return {};
+    std::vector<uint32_t> acc(output_size, 0);
+    size_t input_flat_ind = 0;
+    for (int32_t v : in_data.getValues<int32_t>()) {
+      acc[GetOutputFlatIndex(
+          input_flat_ind++, input_flat_ind_helper, output_flat_ind_helper,
+          axes_set, adaptor.getKeepDims())] += static_cast<uint32_t>(v);
+    }
+    std::vector<int32_t> out_data(acc.begin(), acc.end());
+    return DenseIntElementsAttr::get(out_type, out_data);
+  }
+
+  std::vector<float> out_data(output_size, 0.0);
   auto in_data = llvm::cast<DenseFPElementsAttr>(input);
 
   size_t input_flat_ind = 0;
@@ -5645,6 +5676,50 @@ OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   }
 
   return DenseFPElementsAttr::get(out_type, out_data);
+}
+
+// Folds an f32 MEAN of a constant: the SUM over the reduced axes divided by the
+// number of reduced elements. Like SUM, a MEAN of a constant would otherwise
+// survive as a runtime op that GPU delegates reject for its constant input.
+OpFoldResult MeanOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+  auto input = mlir::dyn_cast_or_null<DenseFPElementsAttr>(adaptor.getInput());
+  auto axes = mlir::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getAxis());
+  auto out_type = mlir::dyn_cast<RankedTensorType>(getType());
+  if (!input || !axes || !out_type || !out_type.hasStaticShape()) return {};
+  auto input_type = mlir::cast<ShapedType>(input.getType());
+  if (!input_type.getElementType().isF32() ||
+      !out_type.getElementType().isF32()) {
+    return {};
+  }
+  const int64_t input_rank = input_type.getRank();
+  absl::flat_hash_set<int32_t> axes_set;
+  if (!NormalizeReductionAxes(axes, input_rank, axes_set)) return {};
+  int64_t reduced = 1;
+  llvm::SmallVector<int64_t> out_shape;
+  for (int64_t d = 0; d < input_rank; ++d) {
+    if (axes_set.contains(d)) {
+      reduced *= input_type.getDimSize(d);
+      if (getKeepDims()) out_shape.push_back(1);
+    } else {
+      out_shape.push_back(input_type.getDimSize(d));
+    }
+  }
+  if (reduced == 0 ||
+      llvm::ArrayRef<int64_t>(out_shape) != out_type.getShape()) {
+    return {};
+  }
+  FlatIndHelper input_flat_ind_helper(input_type);
+  FlatIndHelper output_flat_ind_helper(out_type);
+  std::vector<float> out_data(out_type.getNumElements(), 0.0f);
+  size_t input_flat_ind = 0;
+  for (float v : input.getValues<float>()) {
+    out_data[GetOutputFlatIndex(input_flat_ind++, input_flat_ind_helper,
+                                output_flat_ind_helper, axes_set,
+                                getKeepDims())] += v;
+  }
+  for (float& v : out_data) v /= static_cast<float>(reduced);
+  return DenseFPElementsAttr::get(out_type, llvm::ArrayRef<float>(out_data));
 }
 
 void SumOp::build(OpBuilder& builder, OperationState& result, Value input,
