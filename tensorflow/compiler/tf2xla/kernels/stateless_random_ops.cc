@@ -44,12 +44,16 @@ namespace tensorflow {
 
 namespace {
 
-xla::BitGeneratorTy GetBitGeneratorForDevice(
-    absl::string_view device_type_string) {
+bool UsesPhilox(absl::string_view device_type_string) {
   // The Philox algorithm may cause performance regression on other devices.
   // Turn on the Philox algorithm for the CPU and GPU backends only.
-  if (device_type_string == DEVICE_GPU_XLA_JIT ||
-      device_type_string == DEVICE_CPU_XLA_JIT) {
+  return device_type_string == DEVICE_GPU_XLA_JIT ||
+         device_type_string == DEVICE_CPU_XLA_JIT;
+}
+
+xla::BitGeneratorTy GetBitGeneratorForDevice(
+    absl::string_view device_type_string) {
+  if (UsesPhilox(device_type_string)) {
     return [=](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
       // NOTE: key and state have already been properly mixed by
       // MixSeedsForEagerCompatibility, so we use them directly without further
@@ -76,70 +80,6 @@ xla::BitGeneratorTy GetBitGeneratorForDevice(
     return xla::RngOutput{/*value=*/xla::GetTupleElement(result, 1),
                           /*state=*/xla::GetTupleElement(result, 0)};
   };
-}
-
-// Replicates the Philox seed-mixing step from the eager/graph implementation
-// in tensorflow/core/kernels/stateless_random_ops.cc (GenerateKey()).
-//
-// The eager path uses fixed key constants {0x3ec8f720, 0x02461e29}, places
-// the two user seeds into a 128-bit counter, runs one Philox-4x32-10 round to
-// mix them, then uses the four mixed words as the real key (words 0-1) and
-// counter (words 2-3). Without this step the XLA and eager paths produce
-// different outputs for the same seed, violating the stateless RNG contract.
-//
-// Returns {key, initial_state} as U64 scalars ready to pass to
-// UniformFloatingPointDistribution / NormalFloatingPointDistribution.
-std::pair<xla::XlaOp, xla::XlaOp> MixSeedsForEagerCompatibility(
-    xla::XlaBuilder* builder, xla::XlaOp seed0, xla::XlaOp seed1) {
-  // Reinterpret each S32 seed as U32 (bit-identical, no value change).
-  xla::XlaOp s0 = xla::BitcastConvertType(seed0, xla::U32);
-  xla::XlaOp s1 = xla::BitcastConvertType(seed1, xla::U32);
-  xla::XlaOp zero_u32 = xla::ConstantR0WithType(builder, xla::U32, 0);
-
-  xla::XlaOp k0 = xla::ConstantR0WithType(builder, xla::U32, 0x3ec8f720);
-  xla::XlaOp k1 = xla::ConstantR0WithType(builder, xla::U32, 0x02461e29);
-
-  // We pack our U32 words into U64 pairs (little-endian word order).
-  auto pack_u32_to_u64 = [&](xla::XlaOp lo, xla::XlaOp hi) -> xla::XlaOp {
-    xla::XlaOp lo64 = xla::ConvertElementType(lo, xla::U64);
-    xla::XlaOp hi64 = xla::ConvertElementType(hi, xla::U64);
-    return lo64 | (hi64 << xla::ConstantR0WithType(builder, xla::U64, 32));
-  };
-
-  xla::XlaOp key_u64 = pack_u32_to_u64(k0, k1);
-  xla::XlaOp ctr_lo_u64 = pack_u32_to_u64(s0, zero_u32);
-  xla::XlaOp ctr_hi_u64 = pack_u32_to_u64(s1, zero_u32);
-
-  // Philox state layout: [key(1 x U64), counter(2 x U64)] = 3 x U64
-  xla::XlaOp philox_state = xla::ConcatInDim(
-      builder,
-      {xla::Reshape(key_u64, {1}), xla::Reshape(ctr_lo_u64, {1}),
-       xla::Reshape(ctr_hi_u64, {1})},
-      /*dimension=*/0);
-
-  // Generate 4 x U32 mixed output words via one Philox round.
-  xla::Shape mix_shape = xla::ShapeUtil::MakeShape(xla::U32, {4});
-  xla::XlaOp mix_result = xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX,
-                                               philox_state, mix_shape);
-  xla::XlaOp mixed = xla::GetTupleElement(mix_result, 1);
-
-  // Reassemble mixed words into key and counter U64 values.
-  // Mirrors the eager GenerateKey() post-mix assignment:
-  //   key[0]     = mix[0];  key[1]     = mix[1]
-  //   counter[2] = mix[2];  counter[3] = mix[3]
-  //   counter[0] = counter[1] = 0
-  auto slice_scalar = [&](int idx) -> xla::XlaOp {
-    return xla::Reshape(xla::Slice(mixed, {idx}, {idx + 1}, {1}), {});
-  };
-  xla::XlaOp mix0 = slice_scalar(0);
-  xla::XlaOp mix1 = slice_scalar(1);
-  xla::XlaOp mix2 = slice_scalar(2);
-  xla::XlaOp mix3 = slice_scalar(3);
-
-  xla::XlaOp final_key = pack_u32_to_u64(mix0, mix1);
-  xla::XlaOp final_state = pack_u32_to_u64(mix2, mix3);
-
-  return {final_key, final_state};
 }
 
 }  // namespace
@@ -253,6 +193,22 @@ class StatelessRandomUniformOp : public XlaOpKernel {
         absl::InvalidArgumentError(absl::StrCat(
             "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
+
+    if (UsesPhilox(device_type_string_)) {
+      // Build the values from the Philox bits like the TF kernel does.
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
+      xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
+      xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
+      auto [key, initial_state] =
+          MixSeedsForEagerCompatibility(builder, seed0, seed1);
+      ctx->SetOutput(0, EagerCompatibleUniformDistribution(
+                            key, initial_state,
+                            GetBitGeneratorForDevice(device_type_string_),
+                            xla_shape)
+                            .value);
+      return;
+    }
 
     auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
     xla::Shape xla_shape;
@@ -400,9 +356,6 @@ class StatelessRandomNormalOp : public XlaOpKernel {
         absl::InvalidArgumentError(absl::StrCat(
             "seed must have shape [2], not ", seed_shape.DebugString())));
     xla::XlaOp seed = ctx->Input(1);
-    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
-    xla::Shape xla_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
     xla::XlaBuilder* builder = seed.builder();
     xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
@@ -413,12 +366,25 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     auto [key, initial_state] =
         MixSeedsForEagerCompatibility(builder, seed0, seed1);
 
-    xla::XlaOp normal =
-        xla::NormalFloatingPointDistribution(
-            key, initial_state, GetBitGeneratorForDevice(device_type_string_),
-            xla_shape)
-            .value;
-    normal = MaybeConvertF32ToBF16(normal, dtype_);
+    xla::XlaOp normal;
+    if (UsesPhilox(device_type_string_)) {
+      // Build the values from the Philox bits like the TF kernel does.
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
+      normal = EagerCompatibleNormalDistribution(
+                   key, initial_state,
+                   GetBitGeneratorForDevice(device_type_string_), xla_shape)
+                   .value;
+    } else {
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
+      normal = xla::NormalFloatingPointDistribution(
+                   key, initial_state,
+                   GetBitGeneratorForDevice(device_type_string_), xla_shape)
+                   .value;
+      normal = MaybeConvertF32ToBF16(normal, dtype_);
+    }
     ctx->SetOutput(0, normal);
   }
 
