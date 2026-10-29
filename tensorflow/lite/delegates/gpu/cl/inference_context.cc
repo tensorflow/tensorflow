@@ -473,7 +473,8 @@ void InferenceContext::InitFromGpuModel(const GpuInfo& gpu_info,
     output_ids_.push_back(output.first);
   }
   if (gpu_info.opencl_info.IsCLVK() &&
-      gpu_info.SupportsExtension("cl_khr_command_buffer")) {
+      gpu_info.SupportsExtension("cl_khr_command_buffer") &&
+      clCreateCommandBufferKHR != nullptr) {
     use_command_buffer_ = true;
     command_buffer_ = nullptr;
   }
@@ -959,7 +960,8 @@ absl::Status InferenceContext::ProfileTime(ProfilingCommandQueue* queue,
   }
 
   if (gpu_info_.IsPowerVR()) {
-    if (gpu_info_.SupportsExtension("cl_khr_command_buffer")) {
+    if (gpu_info_.SupportsExtension("cl_khr_command_buffer") &&
+        clCreateCommandBufferKHR != nullptr) {
       RETURN_IF_ERROR(ClarifyTimeWithCommandBuffer(queue, result));
       RETURN_IF_ERROR(ClarifyTimeWithCommandBuffer(queue, result));
     } else {
