@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_async_execution_limiter.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
@@ -59,6 +60,10 @@ class IfrtServingExecutableTestHelper {
   void SetH2DTransferExecutorFactory(
       std::unique_ptr<H2DTransferExecutorFactory> factory) {
     h2d_transfer_executor_factory_ = std::move(factory);
+  }
+
+  void SetAsyncExecutionLimiter(IfrtAsyncExecutionLimiter* limiter) {
+    async_execution_limiter_ = limiter;
   }
 
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry() {
@@ -106,6 +111,7 @@ class IfrtServingExecutableTestHelper {
       ifrt_persistent_compilation_cache_;
   TestTfToHloCompiler tf_to_hlo_compiler_;
   std::unique_ptr<H2DTransferExecutorFactory> h2d_transfer_executor_factory_;
+  IfrtAsyncExecutionLimiter* async_execution_limiter_ = nullptr;
 };
 
 // Returns the path to the MLIR module for the given module name.
