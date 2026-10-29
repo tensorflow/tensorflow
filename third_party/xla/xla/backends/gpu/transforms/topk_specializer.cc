@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -74,145 +75,36 @@ HloInstruction* BroadcastU64(HloComputation* comp, const Shape& target_shape,
 }
 
 // Emits HLO to pack F32 values and Iota indices into U64 priority keys for
-// TOTAL order (+0.0 > -0.0).
-HloInstruction* BuildPackF32ToU64TotalOrder(HloInstruction* data,
-                                            HloComputation* comp) {
-  const Shape& shape = data->shape();
-  int64_t iota_dim = shape.dimensions().size() - 1;
-
-  Shape u32_shape = ShapeUtil::ChangeElementType(shape, U32);
-  Shape s32_shape = ShapeUtil::ChangeElementType(shape, S32);
-  Shape u64_shape = ShapeUtil::ChangeElementType(shape, U64);
-
-  // 1. Generate reversed indices: 0xFFFFFFFF - iota
-  HloInstruction* iota_u32 =
-      comp->AddInstruction(HloInstruction::CreateIota(u32_shape, iota_dim));
-  HloInstruction* broadcast_ff = BroadcastU32(comp, shape, 0xFFFFFFFF);
-  HloInstruction* iota_neg = comp->AddInstruction(HloInstruction::CreateBinary(
-      u32_shape, HloOpcode::kSubtract, broadcast_ff, iota_u32));
-
-  // 2. Pure Bitwise Radix Float Flip (F32 -> U32)
-  // s32_val = bitcast(data)
-  HloInstruction* s32_val = comp->AddInstruction(
-      HloInstruction::CreateBitcastConvert(s32_shape, data));
-
-  // sign_smeared = s32_val >> 31 (arithmetic shift)
-  HloInstruction* const_31_s32 = comp->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(31)));
-  HloInstruction* broadcast_31_s32 = comp->AddInstruction(
-      HloInstruction::CreateBroadcast(s32_shape, const_31_s32, {}));
-  HloInstruction* sign_smeared = comp->AddInstruction(
-      HloInstruction::CreateBinary(s32_shape, HloOpcode::kShiftRightArithmetic,
-                                   s32_val, broadcast_31_s32));
-
-  // mask = bitcast(sign_smeared) | 0x80000000
-  HloInstruction* sign_smeared_u32 = comp->AddInstruction(
-      HloInstruction::CreateBitcastConvert(u32_shape, sign_smeared));
-  HloInstruction* broadcast_8 = BroadcastU32(comp, shape, 0x80000000);
-  HloInstruction* mask = comp->AddInstruction(HloInstruction::CreateBinary(
-      u32_shape, HloOpcode::kOr, sign_smeared_u32, broadcast_8));
-
-  // radix_key = bitcast(data) ^ mask
-  HloInstruction* u32_val = comp->AddInstruction(
-      HloInstruction::CreateBitcastConvert(u32_shape, data));
-  HloInstruction* radix_key = comp->AddInstruction(
-      HloInstruction::CreateBinary(u32_shape, HloOpcode::kXor, u32_val, mask));
-
-  // 3. Pack into U64: (radix_key << 32) | iota_neg
-  HloInstruction* val_u64 =
-      comp->AddInstruction(HloInstruction::CreateConvert(u64_shape, radix_key));
-  HloInstruction* broadcast_32_u64 = BroadcastU64(comp, shape, 32);
-  HloInstruction* val_u64_top =
-      comp->AddInstruction(HloInstruction::CreateBinary(
-          u64_shape, HloOpcode::kShiftLeft, val_u64, broadcast_32_u64));
-
-  HloInstruction* iota_neg_u64 =
-      comp->AddInstruction(HloInstruction::CreateConvert(u64_shape, iota_neg));
-
-  return comp->AddInstruction(HloInstruction::CreateBinary(
-      u64_shape, HloOpcode::kOr, val_u64_top, iota_neg_u64));
-}
-
-// Emits HLO to unpack TOTAL-order U64 priority keys back to F32 values.
-HloInstruction* BuildUnpackU64ToF32TotalOrder(HloInstruction* u64_values,
-                                              HloComputation* comp) {
-  const Shape& shape = u64_values->shape();
-  Shape u32_shape = ShapeUtil::ChangeElementType(shape, U32);
-  Shape f32_shape = ShapeUtil::ChangeElementType(shape, F32);
-
-  // 1. Shift right by 32 and cast to U32 to extract the radix_key
-  HloInstruction* broadcast_32_u64 = BroadcastU64(comp, shape, 32);
-  HloInstruction* rshift = comp->AddInstruction(HloInstruction::CreateBinary(
-      shape, HloOpcode::kShiftRightLogical, u64_values, broadcast_32_u64));
-  HloInstruction* radix_key =
-      comp->AddInstruction(HloInstruction::CreateConvert(u32_shape, rshift));
-
-  // 2. Isolate the MSB: msb = radix_key >> 31 (Logical shift)
-  HloInstruction* const_31_u32 = comp->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(31)));
-  HloInstruction* broadcast_31_u32 = comp->AddInstruction(
-      HloInstruction::CreateBroadcast(u32_shape, const_31_u32, {}));
-  HloInstruction* msb = comp->AddInstruction(HloInstruction::CreateBinary(
-      u32_shape, HloOpcode::kShiftRightLogical, radix_key, broadcast_31_u32));
-
-  // 3. Reconstruct mask: msb_minus_one = msb - 1
-  // If MSB was 1: 1 - 1 = 0x00000000.
-  // If MSB was 0: 0 - 1 = 0xFFFFFFFF (unsigned underflow).
-  HloInstruction* broadcast_1 = BroadcastU32(comp, shape, 1);
-  HloInstruction* msb_minus_one =
-      comp->AddInstruction(HloInstruction::CreateBinary(
-          u32_shape, HloOpcode::kSubtract, msb, broadcast_1));
-
-  // 4. unmask = msb_minus_one | 0x80000000
-  HloInstruction* broadcast_8 = BroadcastU32(comp, shape, 0x80000000);
-  HloInstruction* unmask = comp->AddInstruction(HloInstruction::CreateBinary(
-      u32_shape, HloOpcode::kOr, msb_minus_one, broadcast_8));
-
-  // 5. Unflip the bits: original_u32 = radix_key ^ unmask
-  HloInstruction* original_u32 =
-      comp->AddInstruction(HloInstruction::CreateBinary(
-          u32_shape, HloOpcode::kXor, radix_key, unmask));
-
-  // 6. Bitcast back to F32
-  return comp->AddInstruction(
-      HloInstruction::CreateBitcastConvert(f32_shape, original_u32));
-}
-
-// Emits HLO to pack F32 values and Iota indices into U64 priority keys for
-// PARTIAL order (+0.0 == -0.0).
+// TOTAL (+0.0 > -0.0) or PARTIAL (+0.0 == -0.0) order.
 //
 // Key layout:
-//   [63..32]: partial_radix_key (where -0.0f's radix key 0x7FFFFFFF is
-//             canonicalized to +0.0f's radix key 0x80000000 so that +0.0f and
+// - TOTAL order (+0.0 > -0.0):
+//   [63..32]: radix_key (IEEE-754 sign-bit smeared/flipped F32 -> U32)
+//   [31..0]:  0xFFFFFFFF - iota (32-bit reversed index, breaking ties in
+//             ascending index order)
+// - PARTIAL order (+0.0 == -0.0):
+//   [63..32]: partial_radix_key (where -0.0f's radix_key 0x7FFFFFFF is
+//             canonicalized to +0.0f's radix_key 0x80000000 so that +0.0f and
 //             -0.0f tie on the upper 32 bits)
 //   [31..1]:  0x7FFFFFFF - iota (31-bit reversed index, breaking ties in
 //             ascending index order)
 //   [0]:      is_neg_zero (1 if original value was -0.0f, 0 otherwise; never
 //             affects ordering since bits [31..1] are strictly unique per
 //             index, and allows unpacking to restore -0.0f bit-identically)
-HloInstruction* BuildPackF32ToU64PartialOrder(HloInstruction* data,
-                                              HloComputation* comp) {
+absl::StatusOr<HloInstruction*> BuildPackF32ToU64(HloInstruction* data,
+                                                  ComparisonOrder order,
+                                                  HloComputation* comp) {
+  TF_RET_CHECK(order == ComparisonOrder::kTotal ||
+               order == ComparisonOrder::kPartial);
+
   const Shape& shape = data->shape();
   int64_t iota_dim = shape.dimensions().size() - 1;
 
-  Shape pred_shape = ShapeUtil::ChangeElementType(shape, PRED);
   Shape u32_shape = ShapeUtil::ChangeElementType(shape, U32);
   Shape s32_shape = ShapeUtil::ChangeElementType(shape, S32);
   Shape u64_shape = ShapeUtil::ChangeElementType(shape, U64);
 
-  // 1. Generate 31-bit reversed indices shifted left by 1:
-  //    (0x7FFFFFFF - iota) << 1
-  HloInstruction* iota_u32 =
-      comp->AddInstruction(HloInstruction::CreateIota(u32_shape, iota_dim));
-  HloInstruction* broadcast_7f = BroadcastU32(comp, shape, 0x7FFFFFFF);
-  HloInstruction* iota_neg = comp->AddInstruction(HloInstruction::CreateBinary(
-      u32_shape, HloOpcode::kSubtract, broadcast_7f, iota_u32));
-  HloInstruction* broadcast_1 = BroadcastU32(comp, shape, 1);
-  HloInstruction* iota_shifted =
-      comp->AddInstruction(HloInstruction::CreateBinary(
-          u32_shape, HloOpcode::kShiftLeft, iota_neg, broadcast_1));
-
-  // 2. Pure Bitwise Radix Float Flip (F32 -> U32)
+  // 1. Pure Bitwise Radix Float Flip (F32 -> U32)
   // s32_val = bitcast(data)
   HloInstruction* s32_val = comp->AddInstruction(
       HloInstruction::CreateBitcastConvert(s32_shape, data));
@@ -239,65 +131,90 @@ HloInstruction* BuildPackF32ToU64PartialOrder(HloInstruction* data,
   HloInstruction* radix_key = comp->AddInstruction(
       HloInstruction::CreateBinary(u32_shape, HloOpcode::kXor, u32_val, mask));
 
-  // 3. Canonicalize -0.0f (u32_val == 0x80000000, radix_key == 0x7FFFFFFF) to
-  //    +0.0f's radix_key (0x80000000) by adding is_neg_zero (1 for -0.0f, 0
-  //    otherwise), and save is_neg_zero in bit 0 of the lower 32 bits.
-  HloInstruction* is_neg_zero_pred =
-      comp->AddInstruction(HloInstruction::CreateCompare(
-          pred_shape, u32_val, broadcast_8, ComparisonDirection::kEq));
-  HloInstruction* is_neg_zero = comp->AddInstruction(
-      HloInstruction::CreateConvert(u32_shape, is_neg_zero_pred));
-  HloInstruction* partial_radix_key =
-      comp->AddInstruction(HloInstruction::CreateBinary(
-          u32_shape, HloOpcode::kAdd, radix_key, is_neg_zero));
-  HloInstruction* low_u32 = comp->AddInstruction(HloInstruction::CreateBinary(
-      u32_shape, HloOpcode::kOr, iota_shifted, is_neg_zero));
+  // 2. Build upper 32-bit key and lower 32-bit tie-breaker based on order.
+  HloInstruction* iota_u32 =
+      comp->AddInstruction(HloInstruction::CreateIota(u32_shape, iota_dim));
+  HloInstruction* high_u32 = nullptr;
+  HloInstruction* low_u32 = nullptr;
+  if (order == ComparisonOrder::kPartial) {
+    // 31-bit reversed indices shifted left by 1: (0x7FFFFFFF - iota) << 1
+    HloInstruction* broadcast_7f = BroadcastU32(comp, shape, 0x7FFFFFFF);
+    HloInstruction* iota_neg =
+        comp->AddInstruction(HloInstruction::CreateBinary(
+            u32_shape, HloOpcode::kSubtract, broadcast_7f, iota_u32));
+    HloInstruction* broadcast_1 = BroadcastU32(comp, shape, 1);
+    HloInstruction* iota_shifted =
+        comp->AddInstruction(HloInstruction::CreateBinary(
+            u32_shape, HloOpcode::kShiftLeft, iota_neg, broadcast_1));
 
-  // 4. Pack into U64: (partial_radix_key << 32) | low_u32
-  HloInstruction* val_u64 = comp->AddInstruction(
-      HloInstruction::CreateConvert(u64_shape, partial_radix_key));
+    // Canonicalize -0.0f (u32_val == 0x80000000, radix_key == 0x7FFFFFFF) to
+    // +0.0f's radix_key (0x80000000) by adding is_neg_zero (1 for -0.0f, 0
+    // otherwise), and save is_neg_zero in bit 0 of the lower 32 bits.
+    Shape pred_shape = ShapeUtil::ChangeElementType(shape, PRED);
+    HloInstruction* is_neg_zero_pred =
+        comp->AddInstruction(HloInstruction::CreateCompare(
+            pred_shape, u32_val, broadcast_8, ComparisonDirection::kEq));
+    HloInstruction* is_neg_zero = comp->AddInstruction(
+        HloInstruction::CreateConvert(u32_shape, is_neg_zero_pred));
+    high_u32 = comp->AddInstruction(HloInstruction::CreateBinary(
+        u32_shape, HloOpcode::kAdd, radix_key, is_neg_zero));
+    low_u32 = comp->AddInstruction(HloInstruction::CreateBinary(
+        u32_shape, HloOpcode::kOr, iota_shifted, is_neg_zero));
+  } else {
+    // 32-bit reversed indices: 0xFFFFFFFF - iota
+    HloInstruction* broadcast_ff = BroadcastU32(comp, shape, 0xFFFFFFFF);
+    high_u32 = radix_key;
+    low_u32 = comp->AddInstruction(HloInstruction::CreateBinary(
+        u32_shape, HloOpcode::kSubtract, broadcast_ff, iota_u32));
+  }
+
+  // 3. Pack into U64: (high_u32 << 32) | low_u32
+  HloInstruction* val_u64 =
+      comp->AddInstruction(HloInstruction::CreateConvert(u64_shape, high_u32));
   HloInstruction* broadcast_32_u64 = BroadcastU64(comp, shape, 32);
   HloInstruction* val_u64_top =
       comp->AddInstruction(HloInstruction::CreateBinary(
           u64_shape, HloOpcode::kShiftLeft, val_u64, broadcast_32_u64));
-
   HloInstruction* low_u64 =
       comp->AddInstruction(HloInstruction::CreateConvert(u64_shape, low_u32));
-
   return comp->AddInstruction(HloInstruction::CreateBinary(
       u64_shape, HloOpcode::kOr, val_u64_top, low_u64));
 }
 
-// Emits HLO to unpack PARTIAL-order U64 priority keys back to F32 values.
-HloInstruction* BuildUnpackU64ToF32PartialOrder(HloInstruction* u64_values,
-                                                HloComputation* comp) {
+// Emits HLO to unpack TOTAL- or PARTIAL-order U64 priority keys back to F32
+// values.
+absl::StatusOr<HloInstruction*> BuildUnpackU64ToF32(HloInstruction* u64_values,
+                                                    ComparisonOrder order,
+                                                    HloComputation* comp) {
+  TF_RET_CHECK(order == ComparisonOrder::kTotal ||
+               order == ComparisonOrder::kPartial);
+
   const Shape& shape = u64_values->shape();
   Shape u32_shape = ShapeUtil::ChangeElementType(shape, U32);
   Shape f32_shape = ShapeUtil::ChangeElementType(shape, F32);
 
-  // 1. Shift right by 32 and cast to U32 to extract partial_radix_key, and
-  //    subtract bit 0 (is_neg_zero) to restore the original radix_key
-  //    (0x80000000 - 1 = 0x7FFFFFFF for -0.0f).
+  // 1. Shift right by 32 and cast to U32 to extract the upper 32-bit key.
   HloInstruction* broadcast_32_u64 = BroadcastU64(comp, shape, 32);
   HloInstruction* rshift = comp->AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kShiftRightLogical, u64_values, broadcast_32_u64));
-  HloInstruction* partial_radix_key =
+  HloInstruction* radix_key =
       comp->AddInstruction(HloInstruction::CreateConvert(u32_shape, rshift));
 
-  HloInstruction* low_u32 = comp->AddInstruction(
-      HloInstruction::CreateConvert(u32_shape, u64_values));
   HloInstruction* broadcast_1 = BroadcastU32(comp, shape, 1);
-  HloInstruction* is_neg_zero =
-      comp->AddInstruction(HloInstruction::CreateBinary(
-          u32_shape, HloOpcode::kAnd, low_u32, broadcast_1));
-  HloInstruction* radix_key = comp->AddInstruction(HloInstruction::CreateBinary(
-      u32_shape, HloOpcode::kSubtract, partial_radix_key, is_neg_zero));
+  if (order == ComparisonOrder::kPartial) {
+    // Subtract bit 0 (is_neg_zero) from partial_radix_key to restore the
+    // original radix_key (0x80000000 - 1 = 0x7FFFFFFF for -0.0f).
+    HloInstruction* low_u32 = comp->AddInstruction(
+        HloInstruction::CreateConvert(u32_shape, u64_values));
+    HloInstruction* is_neg_zero =
+        comp->AddInstruction(HloInstruction::CreateBinary(
+            u32_shape, HloOpcode::kAnd, low_u32, broadcast_1));
+    radix_key = comp->AddInstruction(HloInstruction::CreateBinary(
+        u32_shape, HloOpcode::kSubtract, radix_key, is_neg_zero));
+  }
 
   // 2. Isolate the MSB: msb = radix_key >> 31 (Logical shift)
-  HloInstruction* const_31_u32 = comp->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(31)));
-  HloInstruction* broadcast_31_u32 = comp->AddInstruction(
-      HloInstruction::CreateBroadcast(u32_shape, const_31_u32, {}));
+  HloInstruction* broadcast_31_u32 = BroadcastU32(comp, shape, 31);
   HloInstruction* msb = comp->AddInstruction(HloInstruction::CreateBinary(
       u32_shape, HloOpcode::kShiftRightLogical, radix_key, broadcast_31_u32));
 
@@ -402,9 +319,8 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
         ShapeUtil::ChangeElementType(data->shape(), F32), data));
   }
   ComparisonOrder order = hlo_instruction_utils::GetTopKOrder(topk);
-  HloInstruction* packed_u64 = order == ComparisonOrder::kPartial
-                                   ? BuildPackF32ToU64PartialOrder(data, comp)
-                                   : BuildPackF32ToU64TotalOrder(data, comp);
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * packed_u64,
+                   BuildPackF32ToU64(data, order, comp));
 
   // 2. Create the specialized __gpu$TopK custom call
   Shape k_shape =
@@ -433,10 +349,8 @@ absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
       HloInstruction::CreateGetTupleElement(idx_shape, new_topk, 1));
 
   // Unpack to F32.
-  HloInstruction* unpacked_data =
-      order == ComparisonOrder::kPartial
-          ? BuildUnpackU64ToF32PartialOrder(u64_vals, comp)
-          : BuildUnpackU64ToF32TotalOrder(u64_vals, comp);
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * unpacked_data,
+                   BuildUnpackU64ToF32(u64_vals, order, comp));
 
   // If the original input was BF16, downcast the F32 result back to BF16.
   if (original_type == BF16) {
