@@ -1051,6 +1051,14 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       return MapElementwiseOp<mhlo::Expm1Op>(arg_types, operands, builder);
     case HloOpcode::kFloor:
       return MapElementwiseOp<mhlo::FloorOp>(arg_types, operands, builder);
+    case HloOpcode::kFma:
+      if (element_type != F16 && element_type != BF16 && element_type != F32 &&
+          element_type != F64) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Unsupported element type for fma: ",
+            primitive_util::LowercasePrimitiveTypeName(element_type)));
+      }
+      return MapElementwiseOp<mhlo::FmaOp>(arg_types, operands, builder);
     case HloOpcode::kIsFinite:
       return MapHloOp<mhlo::IsFiniteOp>(builder.getI1Type(), arg_types,
                                         operands, /*attributes=*/{}, builder);
