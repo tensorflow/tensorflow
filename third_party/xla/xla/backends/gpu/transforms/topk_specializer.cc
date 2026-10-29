@@ -240,6 +240,26 @@ absl::StatusOr<HloInstruction*> BuildUnpackU64ToF32(HloInstruction* u64_values,
       HloInstruction::CreateBitcastConvert(f32_shape, original_u32));
 }
 
+// Upper bounds for using RAFT select_k.
+// The heuristic for deciding when to use Raft select_k versus Sort + Slice
+// was developed as part of the initial research in b/409009349.
+size_t GetRaftSelectKMaxK(PrimitiveType dtype, size_t batch, size_t n) {
+  size_t max_k = 128;
+  if (dtype == F32) {
+    if (batch >= 64 && n >= 16384) {
+      max_k = 256;
+    }
+  } else if (dtype == BF16) {
+    if (batch >= 16 && n >= 65536) {
+      max_k = 256;
+    }
+    if (batch >= 64 && batch <= 128 && n >= 8192 && n <= 32768) {
+      max_k = 64;
+    }
+  }
+  return max_k;
+}
+
 // Checks if we can safely route stable TopK to RAFT using the Uint64 adapter.
 bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
   // The Uint64 bit-packing adapter supports TOTAL and PARTIAL ordering.
@@ -282,28 +302,7 @@ bool ShouldRewriteStableTopKToUint64(HloCustomCallInstruction* topk) {
     return false;
   }
 
-  // Upper bounds for using RAFT select_k.
-  // The heuristic for deciding when to use Raft select_k versus Sort + Slice
-  // was developed as part of the initial research in b/409009349
-  size_t max_k = 128;
-  if (dtype == F32) {
-    max_k = 128;
-    if (batch >= 64 && n >= 16384) {
-      max_k = 256;
-    }
-  } else if (dtype == BF16) {
-    max_k = 128;
-    if (batch >= 16 && n >= 65536) {
-      max_k = 256;
-    }
-    if (batch >= 64 && batch <= 128 && n >= 8192 && n <= 32768) {
-      max_k = 64;
-    }
-  }
-  if (k > max_k) {
-    return false;
-  }
-  return true;
+  return k <= GetRaftSelectKMaxK(dtype, batch, n);
 }
 
 absl::StatusOr<HloInstruction*> RewriteStableTopKToUint64(
@@ -403,24 +402,8 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
   bool use_raft = !hlo_instruction_utils::IsTopKStable(topk);
 
   if (is_cuda && use_raft) {
-    // The heuristic for deciding when to use Raft select_k versus Sort + Slice
-    // was developed as part of the initial research in b/409009349
-    if (dtype == F32) {
-      min_n = 1;
-      max_k = 128;
-      if (batch >= 64 && n >= 16384) {
-        max_k = 256;
-      }
-    } else if (dtype == BF16) {
-      min_n = 1;
-      max_k = 128;
-      if (batch >= 16 && n >= 65536) {
-        max_k = 256;
-      }
-      if (batch >= 64 && batch <= 128 && n >= 8192 && n <= 32768) {
-        max_k = 64;
-      }
-    }
+    min_n = 1;
+    max_k = GetRaftSelectKMaxK(dtype, batch, n);
   }
 
   if (k > max_k) {
