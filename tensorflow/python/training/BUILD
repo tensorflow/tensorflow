@@ -1460,6 +1460,7 @@ distribute_py_strict_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:training_ops_gen",
