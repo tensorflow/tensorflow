@@ -34,7 +34,7 @@ gpu_device_info {
   registers_per_core_limit: -1
   registers_per_block_limit: -1
   oneapi_compute_capability {
-    architecture: "PVC"
+    architecture: "XeHPC"
   }
 }
 platform_name: "SYCL"

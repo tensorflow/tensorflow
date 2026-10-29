@@ -115,6 +115,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/logging.h"
@@ -564,7 +565,10 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "Compute capability mismatch; expected {" << gpu_version_.ToString()
         << "}, but was {" << cc.ToString() << "}";
   } else if (platform_id == se::sycl::kSyclPlatformId) {
-    // TODO: Add check.
+    se::OneAPIComputeCapability cc = main_stream->GetOneAPIComputeCapability();
+    TF_RET_CHECK(cc == *gpu_version_.oneapi_compute_capability())
+        << "Compute capability mismatch; expected {" << gpu_version_.ToString()
+        << "}, but was {" << cc.ToString() << "}";
   } else {
     return Internal("Unknown platform");
   }

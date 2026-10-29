@@ -25,7 +25,7 @@
 // RUN: | FileCheck %s --check-prefix=CHECK-HOPPER
 
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
-// RUN: -xla-vectorize-loads-stores="gpu_device_info='oneapi_compute_capability {architecture: \"bmg\"}'" -cse -canonicalize \
+// RUN: -xla-vectorize-loads-stores="gpu_device_info='oneapi_compute_capability {architecture: \"xe2hpg\"}'" -cse -canonicalize \
 // RUN: | FileCheck %s --check-prefix=CHECK-ONEAPI
 
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"

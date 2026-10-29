@@ -49,7 +49,7 @@
 // RUN: | FileCheck %s --check-prefix=CHECK-GFX942-MI300
 
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
-// RUN: -xla-lower-tensors="gpu_device_info='oneapi_compute_capability {architecture: \"bmg\"}'" \
+// RUN: -xla-lower-tensors="gpu_device_info='oneapi_compute_capability {architecture: \"xe2hpg\"}'" \
 // RUN: | FileCheck %s --check-prefix=CHECK-BMG
 
 module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>} {
