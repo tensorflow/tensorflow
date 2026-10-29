@@ -761,6 +761,7 @@ xla_cc_test(
     deps = [
         ":buffer_allocations",
         ":gpu_executable_buffer_allocator",
+        ":gpu_memory_space_assignment",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
