@@ -4089,14 +4089,23 @@ ComputeLogicalBufferUnpaddedSizes(
         id_to_instruction.at(buffer_proto.defined_at().instruction_id());
     const xla::ShapeProto* subshape_proto = &instruction_proto->shape();
 
-    // If this buffer is returned as a part of a tuple, dig into said
-    // tuple to find the shape information.
-    if (!buffer_proto.defined_at().shape_index().empty()) {
-      int64_t i = buffer_proto.defined_at().shape_index(
-          buffer_proto.defined_at().shape_index_size() - 1);
-      if (i < subshape_proto->tuple_shapes_size()) {
-        subshape_proto = &subshape_proto->tuple_shapes(i);
+    // If this buffer is returned as a part of a tuple, dig into said tuple to
+    // find the shape information.
+    const auto& shape_index = buffer_proto.defined_at().shape_index();
+    for (int64_t i : shape_index) {
+      if (i < 0 || i >= subshape_proto->tuple_shapes_size()) {
+        // If any component is out of range or encounters a non-tuple before the
+        // path is exhausted, fall back to historical behavior (applying only
+        // the last component at the top level if in range, otherwise keeping
+        // the top-level shape) rather than crashing on data-dependent input.
+        subshape_proto = &instruction_proto->shape();
+        int64_t back = shape_index.Get(shape_index.size() - 1);
+        if (back >= 0 && back < subshape_proto->tuple_shapes_size()) {
+          subshape_proto = &subshape_proto->tuple_shapes(back);
+        }
+        break;
       }
+      subshape_proto = &subshape_proto->tuple_shapes(i);
     }
 
     ABSL_ASSIGN_OR_RETURN(Shape subshape, Shape::FromProto(*subshape_proto));
