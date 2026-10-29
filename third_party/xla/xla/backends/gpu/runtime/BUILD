@@ -2929,6 +2929,21 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "collective_memory_test",
+    srcs = ["collective_memory_test.cc"],
+    deps = [
+        ":collective_memory",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/core/collectives:symmetric_memory",
+        "//xla/runtime:device_id",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:device_address",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "collective_params",
     srcs = ["collective_params.cc"],
