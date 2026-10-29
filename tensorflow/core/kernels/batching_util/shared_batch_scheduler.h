@@ -373,6 +373,13 @@ class SharedBatchScheduler
       const QueueOptions& options, ProcessBatchCallback process_batch_callback,
       std::unique_ptr<BatchScheduler<TaskType>>* queue);
 
+  PeriodicFunction::Options CreateThreadPeriodicFnOptions() const;
+
+  // Grows batch_threads_ up to target_num_batch_threads if it exceeds the
+  // current thread pool size.
+  void MaybeGrowBatchThreads_Locked(int target_num_batch_threads)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   void MaybeGrowThreads(const Options& options);
 
   static bool BatchExists(const BatchTaskUniquePtr& batch_to_process);
@@ -1329,25 +1336,49 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
 }
 
 template <typename TaskType>
-void SharedBatchScheduler<TaskType>::MaybeGrowThreads(const Options& options) {
-  mutex_lock l(mu_);
+PeriodicFunction::Options
+SharedBatchScheduler<TaskType>::CreateThreadPeriodicFnOptions() const {
   PeriodicFunction::Options periodic_fn_options;
   periodic_fn_options.thread_name_prefix =
       strings::StrCat(options_.thread_pool_name, "_");
   periodic_fn_options.startup_delay_micros =
       options_.batch_threads_startup_delay_micros;
   periodic_fn_options.env = options_.env;
-  // MaybeGrowThreads() may be called multiple times for the global scheduler;
-  // start from the current pool size so only additional threads are spawned.
-  for (int i = batch_threads_.size(); i < options.num_batch_threads; ++i) {
+  return periodic_fn_options;
+}
+
+template <typename TaskType>
+void SharedBatchScheduler<TaskType>::MaybeGrowBatchThreads_Locked(
+    int target_num_batch_threads) {
+  if (target_num_batch_threads <= static_cast<int>(batch_threads_.size())) {
+    return;
+  }
+  const PeriodicFunction::Options periodic_fn_options =
+      CreateThreadPeriodicFnOptions();
+  for (int i = static_cast<int>(batch_threads_.size());
+       i < target_num_batch_threads; ++i) {
     auto thread = std::make_unique<PeriodicFunction>(
         [this] { this->ThreadLogic(); },
         0 /* function invocation interval time */, periodic_fn_options);
     batch_threads_.push_back(std::move(thread));
   }
-  const int old_num_warmup_threads = warmup_threads_.size();
-  int num_warmup_batch_threads =
+}
+
+template <typename TaskType>
+void SharedBatchScheduler<TaskType>::MaybeGrowThreads(const Options& options) {
+  mutex_lock l(mu_);
+  // MaybeGrowThreads() may be called multiple times for the global scheduler;
+  // start from the current pool size so only additional threads are spawned.
+  MaybeGrowBatchThreads_Locked(options.num_batch_threads);
+
+  const int old_num_warmup_threads = static_cast<int>(warmup_threads_.size());
+  const int num_warmup_batch_threads =
       std::min(options.num_warmup_batch_threads, port::MaxParallelism());
+  if (num_warmup_batch_threads <= old_num_warmup_threads) {
+    return;
+  }
+  const PeriodicFunction::Options periodic_fn_options =
+      CreateThreadPeriodicFnOptions();
   for (int i = old_num_warmup_threads; i < num_warmup_batch_threads; ++i) {
     auto thread = std::make_unique<PeriodicFunction>(
         [this] { this->WarmupThreadLogic(); },

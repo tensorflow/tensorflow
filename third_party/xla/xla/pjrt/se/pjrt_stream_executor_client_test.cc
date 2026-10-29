@@ -124,7 +124,7 @@ class StreamExecutorCpuCompiler : public PjRtCompiler {
       const PjRtTopologyDescription& topology,
       riegeli::Any<riegeli::Reader*> reader,
       std::optional<CompileOptions>&& options,
-      bool executable_compatibility_check_on_deserialization) override {
+      const DeserializeExecutableOptions& deserialize_options) override {
     return StreamExecutorExecutable::Deserialize(std::move(reader), topology,
                                                  std::move(options));
   }
