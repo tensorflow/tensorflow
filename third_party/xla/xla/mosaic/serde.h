@@ -34,22 +34,45 @@ struct SerdeOptions {
                           // deserializing
 };
 
-// A rule for upgrading or downgrading an operation.
+// A rule for upgrading an operation.
 //
-// The first argument is the operation to upgrade/downgrade.
-// The second argument is the target version.
-// The third argument is a boolean that the serde rule will set to true if it
+// The first argument is the operation to upgrade.
+// The second argument is the source version.
+// The third argument is a boolean that the upgrade rule will set to true if it
 // happens to erase the operation.
 //
-// The function should return success if the upgrade/downgrade was successful,
-// or an error otherwise.
-using SerdeRuleType =
+// The function should return success if the upgrade was successful, or an error
+// otherwise.
+using UpgradeRuleType =
     std::function<::mlir::LogicalResult(::mlir::Operation*, int, bool&)>;
+
+// A rule for downgrading an operation.
+//
+// The first argument is the operation to downgrade.
+// The second argument is the target version.
+//
+// The function should return success if the downgrade was successful, or an
+// error otherwise.
+using DowngradeRuleType =
+    std::function<::mlir::LogicalResult(::mlir::Operation*, int)>;
 
 // Run serialization or deserialization on the given module.
 ::mlir::LogicalResult RunSerde(
     ::mlir::ModuleOp module,
-    const llvm::StringMap<SerdeRuleType>& upgrade_rules,
+    const llvm::StringMap<UpgradeRuleType>& upgrade_rules,
+    const llvm::StringMap<DowngradeRuleType>& downgrade_rules, bool serialize,
+    SerdeOptions options, bool keep_version_attr = false);
+
+// Deprecated: use `UpgradeRuleType` or `DowngradeRuleType` instead.
+// TODO(tlongeri): Remove once JAX no longer uses it.
+using SerdeRuleType = UpgradeRuleType;
+
+// Deprecated: pass `DowngradeRuleType` downgrade rules instead. The `bool&`
+// argument of each downgrade rule is ignored.
+// TODO(tlongeri): Remove once JAX no longer uses it.
+::mlir::LogicalResult RunSerde(
+    ::mlir::ModuleOp module,
+    const llvm::StringMap<UpgradeRuleType>& upgrade_rules,
     const llvm::StringMap<SerdeRuleType>& downgrade_rules, bool serialize,
     SerdeOptions options, bool keep_version_attr = false);
 
