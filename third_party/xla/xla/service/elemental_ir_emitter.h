@@ -280,6 +280,11 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       const HloToElementGeneratorMap& operand_to_generator,
       const llvm_ir::IrArray::Index& index);
 
+  absl::StatusOr<llvm::Value*> EmitElementalFma(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index);
+
   absl::StatusOr<llvm::Value*> EmitElementalConcatenate(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator,
