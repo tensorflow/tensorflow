@@ -902,6 +902,10 @@ class Queue {
   void ProcessBatch(std::unique_ptr<Batch<TaskType>> batch,
                     std::vector<std::unique_ptr<TaskType>> padding_task);
 
+  // Processes a warmup batch that has been returned earlier by
+  // ScheduleWarmupBatch().
+  void ProcessWarmupBatch(std::unique_ptr<Batch<TaskType>> batch);
+
   // Determines whether the queue is empty, i.e. has no tasks waiting or being
   // processed.
   bool IsEmpty() const;
@@ -1019,6 +1023,10 @@ class Queue {
   // enable_priority_queue is false.
   std::vector<std::unique_ptr<TaskType>> GetLowPriorityTasks(size_t size);
 
+  void InvokeProcessBatchCallback(
+      std::unique_ptr<Batch<TaskType>> batch,
+      std::vector<std::unique_ptr<TaskType>> padding_task);
+
   const typename SharedBatchScheduler<TaskType>::QueueOptions options_;
 
   // The environment to use.
@@ -1087,6 +1095,11 @@ class Queue {
   // The number of batches currently being processed by batch threads.
   // Incremented in ScheduleBatch() and decremented in ProcessBatch().
   int num_batches_being_processed_ TF_GUARDED_BY(mu_) = 0;
+
+  // The number of warmup batches currently being processed by warmup threads.
+  // Incremented in ScheduleWarmupBatch() and decremented in
+  // ProcessWarmupBatch().
+  int num_warmup_batches_being_processed_ TF_GUARDED_BY(mu_) = 0;
 
   // Used by CloseAndWaitUntilEmpty() to wait until the queue is empty, for
   // the case in which the queue is not empty when CloseAndWaitUntilEmpty()
@@ -1482,8 +1495,7 @@ void SharedBatchScheduler<TaskType>::WarmupThreadLogic() {
     }
   }
 
-  queue_for_batch->ProcessBatch(std::move(batch_to_process),
-                                /*padding_task=*/{});
+  queue_for_batch->ProcessWarmupBatch(std::move(batch_to_process));
 }
 
 namespace internal {
@@ -2014,7 +2026,7 @@ Queue<TaskType>::GetLowPriorityTasksForPadding(size_t batch_size) {
 }
 
 template <typename TaskType>
-void Queue<TaskType>::ProcessBatch(
+void Queue<TaskType>::InvokeProcessBatchCallback(
     std::unique_ptr<Batch<TaskType>> batch,
     std::vector<std::unique_ptr<TaskType>> padding_task) {
   tsl::profiler::TraceMeConsumer trace_me(
@@ -2034,10 +2046,31 @@ void Queue<TaskType>::ProcessBatch(
     std::get<ProcessBatchCallbackWithPaddingTasks>(process_batch_callback_)(
         std::move(batch), std::move(padding_task));
   }
+}
+
+template <typename TaskType>
+void Queue<TaskType>::ProcessBatch(
+    std::unique_ptr<Batch<TaskType>> batch,
+    std::vector<std::unique_ptr<TaskType>> padding_task) {
+  InvokeProcessBatchCallback(std::move(batch), std::move(padding_task));
 
   {
     mutex_lock l(mu_);
     --num_batches_being_processed_;
+    if (empty_notification_ != nullptr && IsEmptyInternal()) {
+      empty_notification_->Notify();
+    }
+  }
+}
+
+template <typename TaskType>
+void Queue<TaskType>::ProcessWarmupBatch(
+    std::unique_ptr<Batch<TaskType>> batch) {
+  InvokeProcessBatchCallback(std::move(batch), /*padding_task=*/{});
+
+  {
+    mutex_lock l(mu_);
+    --num_warmup_batches_being_processed_;
     if (empty_notification_ != nullptr && IsEmptyInternal()) {
       empty_notification_->Notify();
     }
@@ -2069,11 +2102,13 @@ void Queue<TaskType>::CloseAndWaitUntilEmpty() {
 template <typename TaskType>
 bool Queue<TaskType>::IsEmptyInternal() const {
   if (options_.enable_priority_aware_batch_scheduler) {
-    return num_batches_being_processed_ == 0 && tasks_priority_queue_.empty() &&
-           warmup_tasks_.empty();
+    return num_batches_being_processed_ == 0 &&
+           num_warmup_batches_being_processed_ == 0 &&
+           tasks_priority_queue_.empty() && warmup_tasks_.empty();
   }
   const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
-  return num_batches_being_processed_ == 0 && batches.size() == 1 &&
+  return num_batches_being_processed_ == 0 &&
+         num_warmup_batches_being_processed_ == 0 && batches.size() == 1 &&
          batches.back()->empty() && low_priority_tasks_.empty() &&
          warmup_tasks_.empty();
 }
@@ -2228,7 +2263,7 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleWarmupBatch() {
     batch_to_schedule = std::make_unique<Batch<TaskType>>();
     batch_to_schedule->AddTask(std::move(task), env_->NowMicros());
     batch_to_schedule->Close();
-    ++num_batches_being_processed_;
+    ++num_warmup_batches_being_processed_;
   }
   return batch_to_schedule;
 }

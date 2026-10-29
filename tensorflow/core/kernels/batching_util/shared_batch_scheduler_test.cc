@@ -5201,6 +5201,100 @@ TEST(SharedBatchSchedulerPriorityPolicyTest, WarmupQueueCapacityTest) {
 }
 
 TEST(SharedBatchSchedulerPriorityPolicyTest,
+     QueueTeardownWaitsForInFlightWarmupBatch) {
+  for (bool enable_priority_aware : {false, true}) {
+    SCOPED_TRACE(absl::StrCat("enable_priority_aware=", enable_priority_aware));
+    Scheduler::Options scheduler_options;
+    scheduler_options.num_batch_threads = 1;
+    scheduler_options.num_warmup_batch_threads = 1;
+    std::shared_ptr<Scheduler> scheduler;
+    TF_ASSERT_OK(Scheduler::Create(scheduler_options, &scheduler));
+
+    Scheduler::QueueOptions queue_options;
+    queue_options.input_batch_size_limit = 10;
+    queue_options.max_execution_batch_size = 10;
+    queue_options.batch_timeout_micros = 0;
+    queue_options.max_enqueued_batches = 10;
+    if (enable_priority_aware) {
+      queue_options.enable_priority_aware_batch_scheduler = true;
+      queue_options.priority_aware_scheduler_options.max_queue_depth = 10;
+    }
+
+    absl::Notification initial_regular_batch_finished;
+    absl::Notification warmup_started;
+    absl::Notification allow_warmup_to_finish;
+    std::atomic<bool> warmup_finished{false};
+    absl::Notification concurrent_regular_batch_finished;
+
+    auto closing_queue_callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      ASSERT_TRUE(batch->IsClosed());
+      ASSERT_EQ(batch->num_tasks(), 1);
+      if (batch->task(0).is_warmup()) {
+        warmup_started.Notify();
+        allow_warmup_to_finish.WaitForNotification();
+        warmup_finished.store(true);
+      } else {
+        initial_regular_batch_finished.Notify();
+      }
+    };
+    auto active_queue_callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      ASSERT_TRUE(batch->IsClosed());
+      ASSERT_EQ(batch->num_tasks(), 1);
+      EXPECT_FALSE(batch->task(0).is_warmup());
+      concurrent_regular_batch_finished.Notify();
+    };
+
+    std::unique_ptr<BatchScheduler<FakeTask>> closing_queue;
+    std::unique_ptr<BatchScheduler<FakeTask>> active_queue;
+    TF_ASSERT_OK(scheduler->AddQueue(queue_options, closing_queue_callback,
+                                     &closing_queue));
+    TF_ASSERT_OK(scheduler->AddQueue(queue_options, active_queue_callback,
+                                     &active_queue));
+
+    // Complete a regular batch on closing_queue first so regular in-flight
+    // accounting returns to zero before warmup teardown begins.
+    auto initial_regular_task = std::make_unique<FakeTask>(1);
+    TF_ASSERT_OK(closing_queue->Schedule(&initial_regular_task));
+    ASSERT_TRUE(initial_regular_batch_finished.WaitForNotificationWithTimeout(
+        absl::Seconds(10)));
+
+    auto warmup_task = std::make_unique<FakeTask>(1);
+    warmup_task->set_is_warmup(true);
+    TF_ASSERT_OK(closing_queue->Schedule(&warmup_task));
+    ASSERT_TRUE(
+        warmup_started.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+    absl::Notification teardown_started;
+    absl::Notification teardown_finished;
+    std::unique_ptr<Thread> teardown_thread(
+        Env::Default()->StartThread({}, "CloseWarmupQueueThread", [&] {
+          teardown_started.Notify();
+          closing_queue.reset();
+          EXPECT_TRUE(warmup_finished.load());
+          teardown_finished.Notify();
+        }));
+
+    ASSERT_TRUE(
+        teardown_started.WaitForNotificationWithTimeout(absl::Seconds(10)));
+    EXPECT_FALSE(teardown_finished.WaitForNotificationWithTimeout(
+        absl::Milliseconds(50)));
+
+    // Regular batches on batch_threads_ continue to execute while closing_queue
+    // waits on its in-flight warmup batch on warmup_threads_.
+    auto concurrent_regular_task = std::make_unique<FakeTask>(1);
+    TF_ASSERT_OK(active_queue->Schedule(&concurrent_regular_task));
+    EXPECT_TRUE(
+        concurrent_regular_batch_finished.WaitForNotificationWithTimeout(
+            absl::Seconds(10)));
+    EXPECT_FALSE(teardown_finished.HasBeenNotified());
+
+    allow_warmup_to_finish.Notify();
+    EXPECT_TRUE(
+        teardown_finished.WaitForNotificationWithTimeout(absl::Seconds(10)));
+  }
+}
+
+TEST(SharedBatchSchedulerPriorityPolicyTest,
      GlobalSchedulerGrowsBatchAndWarmupThreadsToMax) {
   Scheduler::Options options_1;
   options_1.use_global_scheduler = true;
