@@ -256,8 +256,7 @@ TEST_F(StableSortExpanderTest,
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
   // Simplify away the "wrapper" tuple around the new sort.
-  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions(
-      [](const Shape&, const Shape&) { return false; }));
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   auto root = module->entry_computation()->root_instruction();
@@ -293,8 +292,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortDontReuseIotaOperandWrongType) {
   StableSortExpander stabilizer;
   EXPECT_TRUE(stabilizer.Run(module.get()).value());
   // Simplify away the "wrapper" tuple around the new sort.
-  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions(
-      [](const Shape&, const Shape&) { return false; }));
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   auto root = module->entry_computation()->root_instruction();

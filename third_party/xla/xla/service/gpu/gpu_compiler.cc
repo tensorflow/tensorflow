@@ -98,7 +98,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/legalize_collective_domain.h"
 #include "xla/backends/gpu/transforms/collectives/reduce_scatter_combiner.h"
 #include "xla/backends/gpu/transforms/composite_rewriter.h"
-#include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_converter.h"
@@ -1810,7 +1809,6 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
   switch (mode) {
     case AlgebraicSimplifierMode::kPostFusionSimplification:
     case AlgebraicSimplifierMode::kLayoutInsensitive:
-      opts.set_conv_is_lowerable_callback(ConvRewriter::ConvIsLowerable);
       // Always simplify reduce(transpose(x)) and reduce(reshape(x)), even when
       // the transpose/reshape has multiple users.  This helps int8 models,
       // which tend to have lots of transpose+reshape's (converting between NCHW

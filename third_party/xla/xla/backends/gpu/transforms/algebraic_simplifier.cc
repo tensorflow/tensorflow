@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
@@ -76,6 +77,11 @@ absl::Status GpuAlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   }
 
   return AlgebraicSimplifierVisitor::HandleAdd(add);
+}
+
+bool GpuAlgebraicSimplifierVisitor::ConvIsLowerable(
+    HloInstruction* conv) const {
+  return ConvRewriter::ConvIsLowerable(conv);
 }
 
 bool GpuAlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(

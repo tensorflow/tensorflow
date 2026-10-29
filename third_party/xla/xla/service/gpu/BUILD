@@ -1819,7 +1819,6 @@ cc_library(
         "//xla/backends/gpu/transforms:algorithm_checker",
         "//xla/backends/gpu/transforms:async_wrapper",
         "//xla/backends/gpu/transforms:composite_rewriter",
-        "//xla/backends/gpu/transforms:conv_rewriter",
         "//xla/backends/gpu/transforms:convert_triton_gemm_config",
         "//xla/backends/gpu/transforms:cublas_pad_for_gemms",
         "//xla/backends/gpu/transforms:cudnn_custom_call_converter",

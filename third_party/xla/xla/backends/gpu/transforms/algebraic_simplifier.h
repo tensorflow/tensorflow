@@ -43,6 +43,8 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
   absl::Status HandleAdd(HloInstruction* add) override;
 
  private:
+  bool ConvIsLowerable(HloInstruction* conv) const override;
+
   // Returns true if the dot precision config is supported by simplifier.
   bool SupportedDotPrecisionConfig(const PrecisionConfig& config,
                                    bool has_contracting_dim) override;

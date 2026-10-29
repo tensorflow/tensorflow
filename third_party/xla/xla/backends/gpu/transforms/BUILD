@@ -83,6 +83,7 @@ cc_library(
         "algebraic_simplifier.h",
     ],
     deps = [
+        ":conv_rewriter",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",

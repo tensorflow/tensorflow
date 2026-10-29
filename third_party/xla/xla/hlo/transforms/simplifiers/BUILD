@@ -485,12 +485,19 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "algebraic_simplifier_options_proto",
+    srcs = ["algebraic_simplifier_options.proto"],
+    make_default_target_header_only = True,
+)
+
 cc_library(
     name = "algebraic_simplifier",
     srcs = ["algebraic_simplifier.cc"],
     hdrs = ["algebraic_simplifier.h"],
     copts = tsl_copts(),
     deps = [
+        ":algebraic_simplifier_options_proto_cc",
         ":conv_operand_swapper",
         "//xla:comparison_util",
         "//xla:literal",

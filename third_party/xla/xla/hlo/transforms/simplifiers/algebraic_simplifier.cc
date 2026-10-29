@@ -152,7 +152,7 @@ bool IsPositive(const HloInstruction* hlo,
         case HloOpcode::kCustomCall: {
           const auto& target = gte_operand->custom_call_target();
           return target ==
-                     options.get_cudnn_batchnorm_forward_training_metadata() &&
+                     options.cudnn_batchnorm_forward_training_metadata() &&
                  hlo->tuple_index() == 2;
         }
         default:
@@ -324,39 +324,6 @@ bool TransposeIsBitcast(const HloInstruction* transpose) {
                        transpose->shape().layout().tiles()) &&
          ShapeUtil::ArraySize(operand->shape()) ==
              ShapeUtil::ArraySize(transpose->shape());
-}
-
-// Recursive helper for method below.
-HloInstruction* BitcastingOperandOfReshapeOrCopyChainHelper(
-    HloInstruction* instr, HloInstruction* operand,
-    const AlgebraicSimplifierOptions& options) {
-  // Can't replace chain of copies and reshapes with bitcasts if the compiler
-  // used a memory layout which isn't compatible.
-  if (options.ReshapeIsBitcast(operand->shape(), instr->shape())) {
-    return operand;
-  }
-
-  // If the operand is a copy or reshape try to see if the operand's operand
-  // would produce a bitcast with initial instruction.
-  if (HloOpcode::kReshape == operand->opcode() ||
-      HloOpcode::kCopy == operand->opcode()) {
-    return BitcastingOperandOfReshapeOrCopyChainHelper(
-        instr, operand->mutable_operand(0), options);
-  }
-  return nullptr;
-}
-
-// Returns an operand of a chain of reshapes and copies that is bit-wise
-// identical to first reshape or copy in the chain.
-HloInstruction* BitcastingOperandOfReshapeOrCopyChain(
-    HloInstruction* instr, const AlgebraicSimplifierOptions& options) {
-  if (!options.is_layout_sensitive()) {
-    return nullptr;
-  }
-  CHECK(HloOpcode::kReshape == instr->opcode() ||
-        HloOpcode::kCopy == instr->opcode());
-  return BitcastingOperandOfReshapeOrCopyChainHelper(
-      instr, instr->mutable_operand(0), options);
 }
 
 // Returns bool to determine whether a pair of converts can be eliminated.
@@ -850,6 +817,26 @@ absl::Status AlgebraicSimplifierVisitor::ScalarMultiplyReduction(
   }
   CHECK_EQ(target, dot);
   return dot->ReplaceAllUsesWith(new_multiply);
+}
+
+HloInstruction*
+AlgebraicSimplifierVisitor::BitcastingOperandOfReshapeOrCopyChain(
+    HloInstruction* instr) const {
+  if (!options_.is_layout_sensitive()) {
+    return nullptr;
+  }
+  CHECK((HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kCopy>(instr)));
+  // Walk down the chain of copies and reshapes until one of its operands is a
+  // bitcast of `instr`. Can't replace the chain with a bitcast if the compiler
+  // used a memory layout which isn't compatible.
+  HloInstruction* operand = instr->mutable_operand(0);
+  while (!ReshapeIsBitcast(operand->shape(), instr->shape())) {
+    if (!HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kCopy>(operand)) {
+      return nullptr;
+    }
+    operand = operand->mutable_operand(0);
+  }
+  return operand;
 }
 
 void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
@@ -1890,7 +1877,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
   if (!copy_is_to_different_memory_space) {
     // Do not replace a copy between different memory spaces with a bitcast.
     HloInstruction* bitcast_operand =
-        BitcastingOperandOfReshapeOrCopyChain(copy, options_);
+        BitcastingOperandOfReshapeOrCopyChain(copy);
     if (bitcast_operand != nullptr) {
       ReplaceWithBitcast(copy, bitcast_operand);
       return absl::OkStatus();
@@ -1921,7 +1908,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
 
       HloInstruction* reshape_operand = reshape->mutable_operand(0);
       bool reshape_is_hardware_bitcast =
-          options_.ReshapeIsBitcast(reshape_operand->shape(), reshape->shape());
+          ReshapeIsBitcast(reshape_operand->shape(), reshape->shape());
 
       if (auto aligned_shape = ShapeUtil::AlignLayouts(
               copy->shape(), reshape_operand->shape())) {
@@ -1930,7 +1917,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
         Shape new_copy_shape = std::move(*aligned_shape);
         simplifier_->UpdateLayout(&new_copy_shape);
         bool new_reshape_is_hardware_bitcast =
-            options_.ReshapeIsBitcast(new_copy_shape, copy->shape());
+            ReshapeIsBitcast(new_copy_shape, copy->shape());
 
         bool should_rewrite = false;
         if (!reshape_is_hardware_bitcast) {
@@ -6620,7 +6607,7 @@ AlgebraicSimplifierVisitor::TryRemovingBitcastOrReshapeTransposeChain(
       return false;
     }
     if (inst->opcode() == HloOpcode::kBitcast &&
-        !options_.ReshapeIsBitcast(inst->operand(0)->shape(), inst->shape())) {
+        !ReshapeIsBitcast(inst->operand(0)->shape(), inst->shape())) {
       return false;
     }
     return get_num_of_degenerate_dimensions(inst->shape()) <= 1 &&
@@ -6724,8 +6711,8 @@ AlgebraicSimplifierVisitor::TryRemovingBitcastOrReshapeTransposeChain(
         if (ShapeUtil::Equal(instruction->shape(), new_operand->shape())) {
           ABSL_RETURN_IF_ERROR(ReplaceInstruction(instruction, new_operand));
           replace_success = true;
-        } else if (options_.ReshapeIsBitcast(new_operand->shape(),
-                                             instruction->shape())) {
+        } else if (ReshapeIsBitcast(new_operand->shape(),
+                                    instruction->shape())) {
           // If ReshapeIsBitcast is true, the shapes are guaranteed to have the
           // same in-memory representation, including padding and tiling
           // effects. Therefore, their byte sizes must be equal.
@@ -6869,7 +6856,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
       }
 
       bool reshape_is_hardware_bitcast =
-          options_.ReshapeIsBitcast(operand->shape(), reshape->shape());
+          ReshapeIsBitcast(operand->shape(), reshape->shape());
 
       if (copy_before != nullptr) {
         if (auto aligned_input = ShapeUtil::AlignLayouts(
@@ -6877,7 +6864,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
           // We now have the option to do reshape-copy instead of copy-reshape.
           Shape new_reshape_shape = std::move(*aligned_input);
           simplifier_->UpdateLayout(&new_reshape_shape);
-          bool new_reshape_is_hardware_bitcast = options_.ReshapeIsBitcast(
+          bool new_reshape_is_hardware_bitcast = ReshapeIsBitcast(
               new_reshape_shape, copy_before->operand(0)->shape());
 
           bool should_rewrite = false;
@@ -7082,7 +7069,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
 
   // Make this a bitcast if possible.
   if (HloInstruction* bitcast_operand =
-          BitcastingOperandOfReshapeOrCopyChain(reshape, options_)) {
+          BitcastingOperandOfReshapeOrCopyChain(reshape)) {
     ReplaceWithBitcast(reshape, bitcast_operand);
   }
   return absl::OkStatus();
@@ -8966,7 +8953,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   if (ShapeUtil::ElementsIn(reduce_result_shape) ==
           ShapeUtil::ElementsIn(arg->shape()) &&
       (!options_.is_layout_sensitive() ||
-       options_.ReshapeIsBitcast(arg->shape(), reduce_result_shape))) {
+       ReshapeIsBitcast(arg->shape(), reduce_result_shape))) {
     return ReplaceReduceWithReshape(reduce_result_shape, multi_output_reduce,
                                     reduce);
   }
@@ -10725,10 +10712,11 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   if (!options_.enable_conv_operand_swap() || options_.is_layout_sensitive()) {
     return false;
   }
-  ABSL_ASSIGN_OR_RETURN(bool changed,
-                   SwapConvolutionOperandsIfBeneficial(
-                       DynCast<HloConvolutionInstruction>(convolution),
-                       options_.conv_is_lowerable_callback()));
+  ABSL_ASSIGN_OR_RETURN(
+      bool changed,
+      SwapConvolutionOperandsIfBeneficial(
+          DynCast<HloConvolutionInstruction>(convolution),
+          [this](HloInstruction* conv) { return ConvIsLowerable(conv); }));
   if (changed) {
     MarkAsChanged();
   }
