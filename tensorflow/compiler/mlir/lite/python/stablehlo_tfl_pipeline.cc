@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/python/conversion_failure_reporter.h"
+#include "tensorflow/compiler/mlir/lite/python/location_passes.h"
 #include "tensorflow/compiler/mlir/lite/python/pass_debug_instrumentation.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
@@ -209,6 +210,7 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   // Build StableHLO composite from PyTorch mark_tensor ops before MHLO bridge
   pass_manager.addPass(mlir::odml::createBuildStableHLOCompositePass());
   pass_manager.addPass(mlir::createInlinerPass());
+  pass_manager.addPass(CreateNormalizeLocationsPass());
 
   // StableHLO -> MHLO bridge
   pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
@@ -321,6 +323,7 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   pass_manager.addPass(mlir::odml::createLegalizeStablehloToVhloPass());
   pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
   pass_manager.addPass(CreatePruneDeadResourcesPass());
+  pass_manager.addPass(CreateFinalizeExportLocationsPass());
 }
 
 static absl::Status VerifyInputModule(mlir::ModuleOp module,
