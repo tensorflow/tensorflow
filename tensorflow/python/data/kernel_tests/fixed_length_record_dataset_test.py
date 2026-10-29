@@ -157,6 +157,25 @@ class FixedLengthRecordDatasetTest(FixedLengthRecordDatasetTestBase,
           [self._record(j, i) for i in range(self._num_records)])
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression_type=[None, "GZIP", "ZLIB"])))
+  def testBufferSizeLargerThanFile(self, compression_type):
+    test_filenames = self._createFiles(compression_type=compression_type)
+    dataset = readers.FixedLengthRecordDataset(
+        test_filenames,
+        self._record_bytes,
+        self._header_bytes,
+        self._footer_bytes,
+        buffer_size=2**63 - 1,
+        compression_type=compression_type)
+    expected_output = []
+    for j in range(self._num_files):
+      expected_output.extend(
+          [self._record(j, i) for i in range(self._num_records)])
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
+
   @combinations.generate(test_base.default_test_combinations())
   def testParallelRead(self):
     test_filenames = self._createFiles()
@@ -230,11 +249,13 @@ class FixedLengthRecordDatasetCheckpointTest(
     FixedLengthRecordDatasetTestBase, checkpoint_test_base.CheckpointTestBase,
     parameterized.TestCase):
 
-  def _build_dataset(self, num_epochs, compression_type=None):
-    filenames = self._createFiles()
+  def _build_dataset(self, num_epochs, compression_type=None,
+                     buffer_size=None):
+    filenames = self._createFiles(compression_type=compression_type)
     return readers.FixedLengthRecordDataset(
         filenames, self._record_bytes, self._header_bytes,
-        self._footer_bytes).repeat(num_epochs)
+        self._footer_bytes, buffer_size=buffer_size,
+        compression_type=compression_type).repeat(num_epochs)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
@@ -243,6 +264,20 @@ class FixedLengthRecordDatasetCheckpointTest(
     num_epochs = 5
     num_outputs = num_epochs * self._num_files * self._num_records
     verify_fn(self, lambda: self._build_dataset(num_epochs), num_outputs)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(compression_type=[None, "GZIP", "ZLIB"])))
+  def testBufferSizeLargerThanFile(self, verify_fn, compression_type):
+    num_epochs = 5
+    num_outputs = num_epochs * self._num_files * self._num_records
+    verify_fn(
+        self,
+        lambda: self._build_dataset(
+            num_epochs, compression_type, buffer_size=2**63 - 1),
+        num_outputs)
 
 
 if __name__ == "__main__":
