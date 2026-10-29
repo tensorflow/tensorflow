@@ -3478,6 +3478,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
         /*zero_point=*/bit_width == 8 ? -(1<<(bit_width-1)): 0);
   }
   }];
+
+  let hasFolder = 1;
 }
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [

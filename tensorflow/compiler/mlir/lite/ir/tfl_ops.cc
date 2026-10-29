@@ -7175,6 +7175,37 @@ int64_t SoftmaxOp::GetArithmeticCount(Operation* op) {
   return -1;
 }
 
+// Folds an f32 SOFTMAX of a constant along the last axis, as the TFLite kernel
+// computes it: exp(beta * (x - max)) / sum. Attention over constant queries and
+// keys (DETR's first decoder step, learned probe tokens) otherwise leaves a
+// SOFTMAX on a constant that GPU delegates reject for its constant input.
+OpFoldResult SoftmaxOp::fold(FoldAdaptor adaptor) {
+  auto input = mlir::dyn_cast_or_null<DenseFPElementsAttr>(adaptor.getInput());
+  auto out_type = mlir::dyn_cast<RankedTensorType>(getType());
+  if (!input || !out_type || !out_type.hasStaticShape() ||
+      !out_type.getElementType().isF32() ||
+      !mlir::cast<ShapedType>(input.getType()).getElementType().isF32() ||
+      out_type.getRank() == 0) {
+    return {};
+  }
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+  const int64_t depth = out_type.getShape().back();
+  if (depth == 0) return {};
+  const float beta = getBeta().convertToFloat();
+  auto values = llvm::to_vector(input.getValues<float>());
+  for (size_t row = 0; row < values.size(); row += depth) {
+    float* x = values.data() + row;
+    const float max = *std::max_element(x, x + depth);
+    float sum = 0.0f;
+    for (int64_t i = 0; i < depth; ++i) {
+      x[i] = std::exp((x[i] - max) * beta);
+      sum += x[i];
+    }
+    for (int64_t i = 0; i < depth; ++i) x[i] /= sum;
+  }
+  return DenseFPElementsAttr::get(out_type, llvm::ArrayRef<float>(values));
+}
+
 //===----------------------------------------------------------------------===//
 // TanhOp
 //===----------------------------------------------------------------------===//

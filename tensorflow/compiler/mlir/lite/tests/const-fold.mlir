@@ -2122,3 +2122,30 @@ func.func @NotFoldMeanRuntimeInput(%arg0: tensor<1x2x2xf32>) -> tensor<1x1x2xf32
   func.return %0 : tensor<1x1x2xf32>
   // CHECK: "tfl.mean"(%arg0
 }
+
+// CHECK-LABEL: @ConstFoldSoftmax
+func.func @ConstFoldSoftmax() -> tensor<2x2xf32> {
+  %input = arith.constant dense<[[0.0, 0.0], [1.0, 1.0]]> : tensor<2x2xf32>
+  %0 = "tfl.softmax"(%input) {beta = 1.000000e+00 : f32} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<5.000000e-01> : tensor<2x2xf32>
+  // CHECK-NOT: tfl.softmax
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstFoldSoftmaxBeta
+func.func @ConstFoldSoftmaxBeta() -> tensor<1x2xf32> {
+  // softmax([0, ln 3] * 1) = [1/4, 3/4]; with beta = 0 it is uniform.
+  %input = arith.constant dense<[[0.0, 1.09861229]]> : tensor<1x2xf32>
+  %0 = "tfl.softmax"(%input) {beta = 0.000000e+00 : f32} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<5.000000e-01> : tensor<1x2xf32>
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @NotFoldSoftmaxRuntimeInput
+func.func @NotFoldSoftmaxRuntimeInput(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %0 = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+  // CHECK: "tfl.softmax"(%arg0)
+}
