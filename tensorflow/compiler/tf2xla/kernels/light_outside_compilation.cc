@@ -72,6 +72,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -393,10 +394,12 @@ class WriteIntoXlaBufferAllocator : public Allocator {
   }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    VLOG(1) << "Faking allocation of " << num_bytes << " bytes into xla buffer "
-            << description_;
+    VLOG(1) << "Faking allocation of " << num_bytes
+            << " bytes into xla buffer " << description_;
 
-    if (num_bytes > buffer_size_) {
+    // TypedAllocator pads sub-32-bit requests to 4 bytes; XLA GPU buffers
+    // are at least 16-byte aligned, so the 1-3 byte slack is addressable.
+    if (num_bytes > TypedAllocator::RoundUpTo4Bytes(buffer_size_)) {
       LOG(ERROR) << "Failed allocation: requested larger size than the "
                     "underlying buffer";
       return nullptr;

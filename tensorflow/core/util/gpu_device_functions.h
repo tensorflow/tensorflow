@@ -572,6 +572,16 @@ __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
 // switching to fp16 as late as you can in the calculations.
 //
 // Note: Assumes little endian.
+//
+// IMPORTANT: This function performs a 32-bit atomicCAS on the 4-byte-aligned
+// word containing the target Eigen::half. For elements whose address is
+// 4-byte-aligned (i.e., at the lower 2 bytes of the 32-bit word), the
+// 4-byte read extends 2 bytes *past* the target element. Tensor allocations
+// for sub-32-bit types are padded to a 4-byte boundary (see
+// TypedAllocator::Allocate) so that this 32-bit access is always safe
+// even for the last element of an odd-length buffer. Note that this padding
+// guarantee applies to tensors allocated through TypedAllocator rather than
+// external buffers.
 template <typename F>
 __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)

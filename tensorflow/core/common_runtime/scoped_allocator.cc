@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 
 namespace tensorflow {
@@ -85,7 +86,9 @@ void* ScopedAllocator::AllocateRaw(int32_t field_index, size_t num_bytes) {
     }
 
     field = &fields_[field_index];
-    if (num_bytes != field->bytes_requested) {
+    size_t padded_bytes =
+        TypedAllocator::RoundUpTo4Bytes(field->bytes_requested);
+    if (num_bytes != field->bytes_requested && num_bytes != padded_bytes) {
       LOG(ERROR) << "ScopedAllocator " << name_ << " got request for "
                  << num_bytes << " bytes from field " << field_index
                  << " which has precalculated size " << field->bytes_requested
