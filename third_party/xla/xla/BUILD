@@ -371,6 +371,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@tsl//tsl/platform:bfloat16",
         "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:ml_dtypes",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/platform:protobuf",
@@ -398,6 +399,7 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@ml_dtypes_py//ml_dtypes:float8",
+        "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:ml_dtypes",
     ],
 )
