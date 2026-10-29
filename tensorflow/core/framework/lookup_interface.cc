@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/lookup_interface.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 

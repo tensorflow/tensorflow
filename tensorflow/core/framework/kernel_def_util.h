@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_UTIL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_UTIL_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 

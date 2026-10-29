@@ -17,6 +17,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
