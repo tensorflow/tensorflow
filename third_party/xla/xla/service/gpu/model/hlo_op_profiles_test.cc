@@ -157,6 +157,11 @@ TEST_F(HloOpProfilesTest, GetProfileSm107) {
   EXPECT_EQ(
       op_profile.at(std::make_pair(HloOpcode::kDivide, PrimitiveType::S8)),
       392);
+  ASSERT_TRUE(op_profile.contains(
+      std::make_pair(HloOpcode::kPower, PrimitiveType::F32)));
+  EXPECT_EQ(
+      op_profile.at(std::make_pair(HloOpcode::kPower, PrimitiveType::F32)),
+      669);
 }
 
 TEST_F(HloOpProfilesTest, GetProfileSm100) {
