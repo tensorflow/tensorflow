@@ -42,6 +42,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/layout.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/infer_dispatch_info.h"
 #include "xla/pjrt/linearize_throttler.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -192,6 +195,12 @@ class CommonPjRtClient : public PjRtClient {
   }
   bool executable_compatibility_check_on_deserialization() const {
     return executable_compatibility_check_on_deserialization_;
+  }
+  // What LoadSerializedExecutable keeps of the compiler metadata of the
+  // executables it loads. Set from the "compiler_metadata_on_load" plugin
+  // attribute, spelled as for AbslParseFlag(CompilerMetadataOnLoad).
+  CompilerMetadataOnLoad compiler_metadata_on_load() const {
+    return compiler_metadata_on_load_;
   }
   bool enable_async_compilation() const { return enable_async_compilation_; }
   // Returns true if we should skip the staging buffer during ToLiteral.
@@ -749,6 +758,11 @@ class CommonPjRtClient : public PjRtClient {
       const PjRtMemorySpace* absl_nonnull memory_space) const;
 
  private:
+  // Applies compiler_metadata_on_load() only if `for_load`.
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutableInternal(
+      riegeli::Any<riegeli::Reader*> reader,
+      std::optional<CompileOptions> options, bool for_load);
+
   mutable absl::Mutex gang_scheduler_mu_;
   absl::Mutex transpose_mu_;
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_) =
@@ -790,6 +804,8 @@ class CommonPjRtClient : public PjRtClient {
   bool dump_on_deserialize_ = false;
   bool should_stage_host_to_device_transfers_ = false;
   bool executable_compatibility_check_on_deserialization_ = true;
+  CompilerMetadataOnLoad compiler_metadata_on_load_ =
+      CompilerMetadataOnLoad::kKeep;
   bool enable_async_compilation_ = false;
   bool include_raw_buffer_in_ready_event_ = false;
 };

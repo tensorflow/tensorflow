@@ -14,16 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/status_macros.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -33,9 +42,78 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using TopkTest = HloInterpreterReferenceMixin<HloTestBase>;
+using ::absl_testing::IsOk;
 
-TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
+class TopkTest : public HloInterpreterReferenceMixin<HloTestBase>,
+                 public ::testing::WithParamInterface<bool> {};
+
+// Verifies the output of an unstable PARTIAL-order ApproxTopK computation:
+// 1. Each batch row has k in-bounds, pairwise-distinct indices.
+// 2. Output values are monotonically non-increasing and match the expected
+//    top-k value sequence up to IEEE equality (+0.0 == -0.0).
+// 3. Each output value matches input(row, actual_index) bit-for-bit, preserving
+//    the sign bit of +-0.0.
+template <typename T>
+absl::Status VerifyUnstableApproxTopKResult(
+    const Array2D<T>& input, absl::Span<const T> expected_values_64,
+    const Literal& actual_tuple, int64_t batch, int64_t n, int64_t k) {
+  static_assert(sizeof(T) == 2 || sizeof(T) == 4,
+                "Expected 16-bit or 32-bit float type");
+  using UintT = std::conditional_t<sizeof(T) == 4, uint32_t, uint16_t>;
+
+  TF_RET_CHECK(actual_tuple.shape().IsTuple());
+  TF_RET_CHECK(actual_tuple.shape().tuple_shapes().size() == 2);
+
+  for (int64_t row = 0; row < batch; ++row) {
+    absl::flat_hash_set<int32_t> seen_indices;
+    for (int64_t col = 0; col < k; ++col) {
+      const T actual_value = actual_tuple.Get<T>({row, col}, {0});
+      const int32_t actual_index = actual_tuple.Get<int32_t>({row, col}, {1});
+
+      if (actual_index < 0 || actual_index >= n) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Out-of-bounds index %d at (row=%d, col=%d) for n=%d", actual_index,
+            row, col, n));
+      }
+      if (!seen_indices.insert(actual_index).second) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Duplicate index %d at (row=%d, col=%d)", actual_index, row, col));
+      }
+      if (col > 0) {
+        const T prev_value = actual_tuple.Get<T>({row, col - 1}, {0});
+        if (static_cast<float>(prev_value) < static_cast<float>(actual_value)) {
+          return absl::InvalidArgumentError(absl::StrFormat(
+              "Non-monotonic values at (row=%d, col=%d): %g < %g", row, col,
+              static_cast<float>(prev_value),
+              static_cast<float>(actual_value)));
+        }
+      }
+      if (static_cast<float>(actual_value) !=
+          static_cast<float>(expected_values_64[col])) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Value mismatch at (row=%d, col=%d): got %g (0x%x), expected %g "
+            "(0x%x)",
+            row, col, static_cast<float>(actual_value),
+            absl::bit_cast<UintT>(actual_value),
+            static_cast<float>(expected_values_64[col]),
+            absl::bit_cast<UintT>(expected_values_64[col])));
+      }
+      const T expected_input_value = input(row, actual_index);
+      if (absl::bit_cast<UintT>(actual_value) !=
+          absl::bit_cast<UintT>(expected_input_value)) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Bitwise mismatch with input(%d, %d) at col=%d: got 0x%x, "
+            "expected 0x%x",
+            row, actual_index, col, absl::bit_cast<UintT>(actual_value),
+            absl::bit_cast<UintT>(expected_input_value)));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+TEST_P(TopkTest, ApproxTopKWithSpecialFloats) {
+  const bool is_stable = GetParam();
   // Regression test for ApproxTopK PartialOrder with special float values
   // (+-Inf, +-0, except NaNs).
   float pos_inf = absl::bit_cast<float>(0x7F800000u);
@@ -92,6 +170,8 @@ TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
       auto literal = LiteralUtil::CreateR2FromArray2D<float>(input);
 
       for (int k : {2, 4, 8, 16, 32, 64}) {
+        SCOPED_TRACE(absl::StrCat("batch=", batch, ", n=", n, ", k=", k,
+                                  ", is_stable=", is_stable));
         const auto hlo_text_module = absl::Substitute(
             R"(
       HloModule topk
@@ -108,7 +188,7 @@ TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
         x = f32[$0,$1]{1,0} parameter(0)
         %approx_top_k.60 = s32[$1]{0} iota(), iota_dimension=0
         %approx_top_k.61 = s32[$0,$1]{1,0} $3
-        %approx_top_k.62 = (f32[$0,$1]{1,0}, s32[$0,$1]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=true, to_apply=%top_k_gt_f32_comparator.4
+        %approx_top_k.62 = (f32[$0,$1]{1,0}, s32[$0,$1]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=$4, to_apply=%top_k_gt_f32_comparator.4
         %approx_top_k.64 = f32[$0,$2]{1,0} slice(%approx_top_k.62#0), slice={[0:$0], [0:$2]}
         %approx_top_k.66 = s32[$0,$2]{1,0} slice(%approx_top_k.62#1), slice={[0:$0], [0:$2]}
         ROOT %approx_top_k.67 = (f32[$0,$2]{1,0}, s32[$0,$2]{1,0}) tuple(%approx_top_k.64, %approx_top_k.66)
@@ -116,32 +196,40 @@ TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
     )",
             batch, n, k,
             batch == 1 ? "reshape(%approx_top_k.60)"
-                       : "broadcast(%approx_top_k.60), dimensions={1}");
+                       : "broadcast(%approx_top_k.60), dimensions={1}",
+            is_stable);
 
         ASSERT_OK_AND_ASSIGN(auto module,
                              ParseAndReturnVerifiedModule(hlo_text_module));
 
-        Array2D<float> expected_vals_arr(batch, k);
-        Array2D<int32_t> expected_idxs_arr(batch, k);
-        for (int i = 0; i < batch; ++i) {
-          for (int j = 0; j < k; ++j) {
-            expected_vals_arr(i, j) = expected_values_64[j];
-            expected_idxs_arr(i, j) = expected_indices_64[j];
-          }
-        }
-
-        auto expected_vals_literal =
-            LiteralUtil::CreateR2FromArray2D<float>(expected_vals_arr);
-        auto expected_idxs_literal =
-            LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
-        auto expected_tuple = LiteralUtil::MakeTuple(
-            {&expected_vals_literal, &expected_idxs_literal});
-
         ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
                              Execute(std::move(module), {&literal}));
 
-        EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
-                                          xla::ErrorSpec{0, 0}));
+        if (is_stable) {
+          Array2D<float> expected_vals_arr(batch, k);
+          Array2D<int32_t> expected_idxs_arr(batch, k);
+          for (int i = 0; i < batch; ++i) {
+            for (int j = 0; j < k; ++j) {
+              expected_vals_arr(i, j) = expected_values_64[j];
+              expected_idxs_arr(i, j) = expected_indices_64[j];
+            }
+          }
+
+          auto expected_vals_literal =
+              LiteralUtil::CreateR2FromArray2D<float>(expected_vals_arr);
+          auto expected_idxs_literal =
+              LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
+          auto expected_tuple = LiteralUtil::MakeTuple(
+              {&expected_vals_literal, &expected_idxs_literal});
+
+          EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
+                                            xla::ErrorSpec{0, 0}));
+        } else {
+          EXPECT_THAT(VerifyUnstableApproxTopKResult(
+                          input, absl::MakeConstSpan(expected_values_64),
+                          actual_tuple, batch, n, k),
+                      IsOk());
+        }
       }
     }
   }
@@ -149,7 +237,8 @@ TEST_F(TopkTest, ApproxTopKWithSpecialFloats) {
 
 bfloat16 ToBfloat16(uint16_t x) { return absl::bit_cast<bfloat16>(x); }
 
-TEST_F(TopkTest, ApproxTopKWithSpecialBFloat16) {
+TEST_P(TopkTest, ApproxTopKWithSpecialBFloat16) {
+  const bool is_stable = GetParam();
   // Regression test for ApproxTopK PartialOrder with special float values
   // (+-Inf, +-0, except NaNs).
   bfloat16 pos_inf = ToBfloat16(0x7F80u);
@@ -206,6 +295,8 @@ TEST_F(TopkTest, ApproxTopKWithSpecialBFloat16) {
       auto literal = LiteralUtil::CreateR2FromArray2D<bfloat16>(input);
 
       for (int k : {2, 4, 8, 16, 32, 64}) {
+        SCOPED_TRACE(absl::StrCat("batch=", batch, ", n=", n, ", k=", k,
+                                  ", is_stable=", is_stable));
         const auto hlo_text_module = absl::Substitute(
             R"(
       HloModule topk
@@ -222,7 +313,7 @@ TEST_F(TopkTest, ApproxTopKWithSpecialBFloat16) {
         x = bf16[$0,$1]{1,0} parameter(0)
         %approx_top_k.60 = s32[$1]{0} iota(), iota_dimension=0
         %approx_top_k.61 = s32[$0,$1]{1,0} $3
-        %approx_top_k.62 = (bf16[$0,$1]{1,0}, s32[$0,$1]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=true, to_apply=%top_k_gt_bf16_comparator.4
+        %approx_top_k.62 = (bf16[$0,$1]{1,0}, s32[$0,$1]{1,0}) sort(x, %approx_top_k.61), dimensions={1}, is_stable=$4, to_apply=%top_k_gt_bf16_comparator.4
         %approx_top_k.64 = bf16[$0,$2]{1,0} slice(%approx_top_k.62#0), slice={[0:$0], [0:$2]}
         %approx_top_k.66 = s32[$0,$2]{1,0} slice(%approx_top_k.62#1), slice={[0:$0], [0:$2]}
         ROOT %approx_top_k.67 = (bf16[$0,$2]{1,0}, s32[$0,$2]{1,0}) tuple(%approx_top_k.64, %approx_top_k.66)
@@ -230,36 +321,49 @@ TEST_F(TopkTest, ApproxTopKWithSpecialBFloat16) {
     )",
             batch, n, k,
             batch == 1 ? "reshape(%approx_top_k.60)"
-                       : "broadcast(%approx_top_k.60), dimensions={1}");
+                       : "broadcast(%approx_top_k.60), dimensions={1}",
+            is_stable);
 
         ASSERT_OK_AND_ASSIGN(auto module,
                              ParseAndReturnVerifiedModule(hlo_text_module));
 
-        Array2D<bfloat16> expected_vals_arr(batch, k);
-        Array2D<int32_t> expected_idxs_arr(batch, k);
-        for (int i = 0; i < batch; ++i) {
-          for (int j = 0; j < k; ++j) {
-            expected_vals_arr(i, j) = expected_values_64[j];
-            expected_idxs_arr(i, j) = expected_indices_64[j];
-          }
-        }
-
-        auto expected_vals_literal =
-            LiteralUtil::CreateR2FromArray2D<bfloat16>(expected_vals_arr);
-        auto expected_idxs_literal =
-            LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
-        auto expected_tuple = LiteralUtil::MakeTuple(
-            {&expected_vals_literal, &expected_idxs_literal});
-
         ASSERT_OK_AND_ASSIGN(Literal actual_tuple,
                              Execute(std::move(module), {&literal}));
 
-        EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
-                                          xla::ErrorSpec{0, 0}));
+        if (is_stable) {
+          Array2D<bfloat16> expected_vals_arr(batch, k);
+          Array2D<int32_t> expected_idxs_arr(batch, k);
+          for (int i = 0; i < batch; ++i) {
+            for (int j = 0; j < k; ++j) {
+              expected_vals_arr(i, j) = expected_values_64[j];
+              expected_idxs_arr(i, j) = expected_indices_64[j];
+            }
+          }
+
+          auto expected_vals_literal =
+              LiteralUtil::CreateR2FromArray2D<bfloat16>(expected_vals_arr);
+          auto expected_idxs_literal =
+              LiteralUtil::CreateR2FromArray2D<int32_t>(expected_idxs_arr);
+          auto expected_tuple = LiteralUtil::MakeTuple(
+              {&expected_vals_literal, &expected_idxs_literal});
+
+          EXPECT_TRUE(LiteralTestUtil::Near(expected_tuple, actual_tuple,
+                                            xla::ErrorSpec{0, 0}));
+        } else {
+          EXPECT_THAT(VerifyUnstableApproxTopKResult(
+                          input, absl::MakeConstSpan(expected_values_64),
+                          actual_tuple, batch, n, k),
+                      IsOk());
+        }
       }
     }
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(ApproxTopKStability, TopkTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "Stable" : "Unstable";
+                         });
 
 }  // namespace
 }  // namespace xla
