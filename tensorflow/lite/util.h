@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -179,6 +180,19 @@ int GetBuiltinDataSize(BuiltinOperator op);
 #define TFLITE_HAS_OVERFLOW_BUILTINS 1
 #endif
 
+// TFLITE_CHECKED_INT_MERGE_OVERFLOW is used to combine the overflow flag in the
+// `CheckedInt` operation implementations either with `||` or with `|`.
+//
+// We use this macro because different architectures will optimize differently
+// the flag update.
+#if defined(__aarch64__) || defined(_M_ARM64)
+#define TFLITE_CHECKED_INT_MERGE_OVERFLOW(OPERAND_OVERFLOW, OP_OVERFLOW) \
+  (static_cast<bool>((OPERAND_OVERFLOW) | (OP_OVERFLOW)))
+#else
+#define TFLITE_CHECKED_INT_MERGE_OVERFLOW(OPERAND_OVERFLOW, OP_OVERFLOW) \
+  (static_cast<bool>(TFLITE_EXPECT_FALSE((OPERAND_OVERFLOW) || (OP_OVERFLOW))))
+#endif
+
 template <class I>
 struct Widen;
 
@@ -206,6 +220,8 @@ struct CanWiden<T, std::void_t<decltype(Widen<T>())>> : std::true_type {};
 
 // Wraps an integer value and allows checking if standard arithmetic operations
 // used to generate that value have over/underflowed.
+//
+// The held value is unspecified if an overflow happens.
 template <class T>
 class CheckedInt {
  public:
@@ -412,7 +428,11 @@ class CheckedInt {
 
  private:
   T value_{};
-  bool overflow_ = false;
+  // Aligning the flag to the word size keeps `CheckedInt` values of types
+  // smaller than a word from being handled as a single packed 64-bit integer,
+  // which needs extra instructions to pack and unpack the value and the flag,
+  // even after inlining.
+  alignas(sizeof(void*)) bool overflow_ = false;
 };
 
 template <class T>
@@ -423,8 +443,9 @@ CheckedInt<std::common_type_t<T, U>> operator+(
     const CheckedInt<T>& a, const CheckedInt<U>& b) noexcept {
   CheckedInt<std::common_type_t<T, U>> res;
 #if TFLITE_HAS_OVERFLOW_BUILTINS
-  res.overflow_ = __builtin_add_overflow(a.value_, b.value_, &res.value_) ||
-                  a.overflow_ || b.overflow_;
+  res.overflow_ = TFLITE_CHECKED_INT_MERGE_OVERFLOW(
+      TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_, b.overflow_),
+      __builtin_add_overflow(a.value_, b.value_, &res.value_));
 #else
   if constexpr (std::is_same_v<T, U>) {
     if constexpr (std::is_unsigned_v<T>) {
@@ -461,8 +482,9 @@ CheckedInt<std::common_type_t<T, U>> operator-(
     const CheckedInt<T>& a, const CheckedInt<U>& b) noexcept {
   CheckedInt<std::common_type_t<T, U>> res;
 #if TFLITE_HAS_OVERFLOW_BUILTINS
-  res.overflow_ = __builtin_sub_overflow(a.value_, b.value_, &res.value_) ||
-                  a.overflow_ || b.overflow_;
+  res.overflow_ = TFLITE_CHECKED_INT_MERGE_OVERFLOW(
+      TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_, b.overflow_),
+      __builtin_sub_overflow(a.value_, b.value_, &res.value_));
 #else
   if constexpr (std::is_same_v<T, U>) {
     if constexpr (std::is_unsigned_v<T>) {
@@ -499,8 +521,9 @@ CheckedInt<std::common_type_t<T, U>> operator*(
     const CheckedInt<T>& a, const CheckedInt<U>& b) noexcept {
   CheckedInt<std::common_type_t<T, U>> res;
 #if TFLITE_HAS_OVERFLOW_BUILTINS
-  res.overflow_ = __builtin_mul_overflow(a.value_, b.value_, &res.value_) ||
-                  a.overflow_ || b.overflow_;
+  res.overflow_ = TFLITE_CHECKED_INT_MERGE_OVERFLOW(
+      TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_, b.overflow_),
+      __builtin_mul_overflow(a.value_, b.value_, &res.value_));
 #else
   if constexpr (std::is_same_v<T, U>) {
     using C = decltype(res.value_);
@@ -572,18 +595,31 @@ CheckedInt<std::common_type_t<T, U>> operator/(
   using limits = std::numeric_limits<C>;
   if constexpr (std::is_same_v<T, U>) {
     if constexpr (std::is_signed_v<C>) {
-      if (a.value_ == limits::lowest() && b.value_ == -1) {
+      const bool invalid =
+          b.value_ == 0 || (a.value_ == limits::lowest() && b.value_ == -1);
+      C val = limits::max();
+      if (!TFLITE_EXPECT_FALSE(invalid)) {
+        val = static_cast<C>(a.value_ / b.value_);
+      }
+      return {/*val=*/val,
+              /*overflow=*/TFLITE_CHECKED_INT_MERGE_OVERFLOW(
+                  TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_, b.overflow_),
+                  invalid)};
+    } else {
+      if (TFLITE_EXPECT_FALSE(b.value_ == 0)) {
         return {/*val=*/limits::max(), /*overflow=*/true};
       }
+      return {/*val=*/static_cast<C>(a.value_ / b.value_),
+              /*overflow=*/TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_,
+                                                             b.overflow_)};
     }
-    return {/*val=*/b.value_ != 0 ? static_cast<C>(a.value_ / b.value_)
-                                  : limits::max(),
-            /*overflow=*/b.value_ == 0 || a.overflow_ || b.overflow_};
   } else {
     return CheckedInt<std::common_type_t<T, U>>(a) /
            CheckedInt<std::common_type_t<T, U>>(b);
   }
 }
+
+#undef TFLITE_CHECKED_INT_MERGE_OVERFLOW
 
 }  // namespace tflite
 
