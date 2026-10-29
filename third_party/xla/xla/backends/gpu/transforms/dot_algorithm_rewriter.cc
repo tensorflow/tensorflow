@@ -15,17 +15,22 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -125,6 +130,43 @@ std::pair<HloInstruction*, HloInstruction*> Split2xToTF32(
   return std::make_pair(high_f32, low_f32);
 }
 
+std::array<std::pair<HloInstruction*, HloInstruction*>, 3> Make2xOperandPairs(
+    std::pair<HloInstruction*, HloInstruction*> lhs,
+    std::pair<HloInstruction*, HloInstruction*> rhs) {
+  auto [lhs_high, lhs_low] = lhs;
+  auto [rhs_high, rhs_low] = rhs;
+  return {{{lhs_low, rhs_high}, {lhs_high, rhs_low}, {lhs_high, rhs_high}}};
+}
+
+std::array<std::pair<HloInstruction*, HloInstruction*>, 3>
+Split2xToBF16OperandPairs(HloInstruction* lhs, HloInstruction* rhs) {
+  auto lhs_parts = Split2xToBF16(lhs);
+  auto rhs_parts = Split2xToBF16(rhs);
+  return Make2xOperandPairs(lhs_parts, rhs_parts);
+}
+
+std::array<std::pair<HloInstruction*, HloInstruction*>, 3>
+Split2xToTF32OperandPairs(HloInstruction* lhs, HloInstruction* rhs) {
+  auto lhs_parts = Split2xToTF32(lhs);
+  auto rhs_parts = Split2xToTF32(rhs);
+  return Make2xOperandPairs(lhs_parts, rhs_parts);
+}
+
+std::array<std::pair<HloInstruction*, HloInstruction*>, 9>
+Split3xToBF16OperandPairs(HloInstruction* lhs, HloInstruction* rhs) {
+  auto [lhs_high, lhs_mid, lhs_low] = Split3xToBF16(lhs);
+  auto [rhs_high, rhs_mid, rhs_low] = Split3xToBF16(rhs);
+  return {{{lhs_low, rhs_low},
+           {lhs_low, rhs_mid},
+           {lhs_mid, rhs_low},
+           {lhs_mid, rhs_mid},
+           {lhs_high, rhs_low},
+           {lhs_low, rhs_high},
+           {lhs_high, rhs_mid},
+           {lhs_mid, rhs_high},
+           {lhs_high, rhs_high}}};
+}
+
 // If lhs is 1.0, we will have lhs_high = 1.0 and lhs_low = 0.0.
 // If rhs is +infinity, we will have:
 // +infinity * 1.0 = +infinity
@@ -178,152 +220,87 @@ void RewriteF32ToBF16(HloInstruction* instr) {
   CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
 }
 
-void RewriteF32ToBF16X3(HloInstruction* instr) {
-  HloComputation* computation = instr->parent();
-  HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
+HloInstruction* AccumulatePartialProducts(
+    absl::Span<HloInstruction* const> partial_products,
+    absl::FunctionRef<HloInstruction*(HloInstruction*, HloInstruction*)> add) {
+  CHECK_GE(partial_products.size(), 3);
+  HloInstruction* result = add(partial_products[0], partial_products[1]);
+  for (size_t i = 2; i < partial_products.size() - 1; ++i) {
+    result = add(result, partial_products[i]);
+  }
+  result = ReplaceNaNWithZeros(result);
+  return add(result, partial_products.back());
+}
+
+void RewriteDotWithOperandPairs(
+    HloDotInstruction* original_dot, PrecisionConfig::Algorithm sub_algorithm,
+    absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
+        operand_pairs) {
+  HloComputation* computation = original_dot->parent();
   PrecisionConfig precision_config = original_dot->precision_config();
-  precision_config.set_algorithm(PrecisionConfig::ALG_DOT_BF16_BF16_F32);
+  precision_config.set_algorithm(sub_algorithm);
   const Shape& shape = original_dot->shape();
   const DotDimensionNumbers& dnums = original_dot->dot_dimension_numbers();
-  auto dot = [&](HloInstruction* lhs, HloInstruction* rhs) {
-    return computation->AddInstruction(
-        HloInstruction::CreateDot(shape, lhs, rhs, dnums, precision_config));
-  };
-  auto sum = [&](HloInstruction* lhs, HloInstruction* rhs) {
-    return computation->AddInstruction(
-        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, lhs, rhs));
-  };
 
-  auto [lhs_high_bf16, lhs_low_bf16] =
-      Split2xToBF16(original_dot->mutable_operand(0));
-  auto [rhs_high_bf16, rhs_low_bf16] =
-      Split2xToBF16(original_dot->mutable_operand(1));
+  std::vector<HloInstruction*> partial_dots;
+  partial_dots.reserve(operand_pairs.size());
+  for (auto [lhs, rhs] : operand_pairs) {
+    partial_dots.push_back(computation->AddInstruction(
+        HloInstruction::CreateDot(shape, lhs, rhs, dnums, precision_config)));
+  }
 
-  HloInstruction* low_high_dot = dot(lhs_low_bf16, rhs_high_bf16);
-  HloInstruction* high_low_dot = dot(lhs_high_bf16, rhs_low_bf16);
-  HloInstruction* high_high_dot = dot(lhs_high_bf16, rhs_high_bf16);
-  HloInstruction* low_sum = sum(low_high_dot, high_low_dot);
-  low_sum = ReplaceNaNWithZeros(low_sum);
-  HloInstruction* result = sum(low_sum, high_high_dot);
+  HloInstruction* result = AccumulatePartialProducts(
+      partial_dots, [&](HloInstruction* lhs, HloInstruction* rhs) {
+        return computation->AddInstruction(
+            HloInstruction::CreateBinary(shape, HloOpcode::kAdd, lhs, rhs));
+      });
   CHECK_OK(original_dot->ReplaceAllUsesWith(result));
-  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+  CHECK_OK(computation->RemoveInstruction(original_dot));
+}
+
+absl::StatusOr<HloInstruction*> MakeMultiplyWithOperandPairs(
+    absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
+        operand_pairs) {
+  std::vector<HloInstruction*> partial_products;
+  partial_products.reserve(operand_pairs.size());
+  for (auto [lhs, rhs] : operand_pairs) {
+    ABSL_ASSIGN_OR_RETURN(HloInstruction * product, Mult(lhs, rhs));
+    partial_products.push_back(product);
+  }
+  return AccumulatePartialProducts(partial_products, SumToF32);
+}
+
+void RewriteF32ToBF16X3(HloInstruction* instr) {
+  HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
+  auto pairs = Split2xToBF16OperandPairs(original_dot->mutable_operand(0),
+                                         original_dot->mutable_operand(1));
+  RewriteDotWithOperandPairs(original_dot,
+                             PrecisionConfig::ALG_DOT_BF16_BF16_F32, pairs);
 }
 
 void RewriteF32ToBF16X6(HloInstruction* instr) {
-  HloComputation* computation = instr->parent();
   HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
-  PrecisionConfig precision_config = original_dot->precision_config();
-  precision_config.set_algorithm(PrecisionConfig::ALG_DOT_BF16_BF16_F32);
-  const Shape& shape = original_dot->shape();
-  const DotDimensionNumbers& dnums = original_dot->dot_dimension_numbers();
-  auto dot = [&](HloInstruction* lhs, HloInstruction* rhs) {
-    return computation->AddInstruction(
-        HloInstruction::CreateDot(shape, lhs, rhs, dnums, precision_config));
-  };
-  auto sum = [&](HloInstruction* lhs, HloInstruction* rhs) {
-    return computation->AddInstruction(
-        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, lhs, rhs));
-  };
-
-  auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] =
-      Split3xToBF16(original_dot->mutable_operand(0));
-  auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] =
-      Split3xToBF16(original_dot->mutable_operand(1));
-
-  HloInstruction* mid_mid_dot = dot(lhs_mid_bf16, rhs_mid_bf16);
-  HloInstruction* high_low_dot = dot(lhs_high_bf16, rhs_low_bf16);
-  HloInstruction* low_high_dot = dot(lhs_low_bf16, rhs_high_bf16);
-  HloInstruction* high_mid_dot = dot(lhs_high_bf16, rhs_mid_bf16);
-  HloInstruction* mid_high_dot = dot(lhs_mid_bf16, rhs_high_bf16);
-  HloInstruction* high_high_dot = dot(lhs_high_bf16, rhs_high_bf16);
-
-  HloInstruction* result = nullptr;
-  result = sum(mid_mid_dot, high_low_dot);
-  result = sum(result, low_high_dot);
-  result = sum(result, high_mid_dot);
-  result = sum(result, mid_high_dot);
-  result = ReplaceNaNWithZeros(result);
-  result = sum(result, high_high_dot);
-
-  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
-  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+  auto pairs = Split3xToBF16OperandPairs(original_dot->mutable_operand(0),
+                                         original_dot->mutable_operand(1));
+  RewriteDotWithOperandPairs(original_dot,
+                             PrecisionConfig::ALG_DOT_BF16_BF16_F32,
+                             absl::MakeConstSpan(pairs).subspan(3));
 }
 
 void RewriteF32ToBF16X9(HloInstruction* instr) {
-  HloComputation* computation = instr->parent();
   HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
-  PrecisionConfig precision_config = original_dot->precision_config();
-  precision_config.set_algorithm(PrecisionConfig::ALG_DOT_BF16_BF16_F32);
-  const Shape& shape = original_dot->shape();
-  const DotDimensionNumbers& dnums = original_dot->dot_dimension_numbers();
-  auto dot = [&](HloInstruction* lhs, HloInstruction* rhs) {
-    return computation->AddInstruction(
-        HloInstruction::CreateDot(shape, lhs, rhs, dnums, precision_config));
-  };
-  auto sum = [&](HloInstruction* lhs, HloInstruction* rhs) {
-    return computation->AddInstruction(
-        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, lhs, rhs));
-  };
-
-  auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] =
-      Split3xToBF16(original_dot->mutable_operand(0));
-  auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] =
-      Split3xToBF16(original_dot->mutable_operand(1));
-
-  HloInstruction* low_low_dot = dot(lhs_low_bf16, rhs_low_bf16);
-  HloInstruction* low_mid_dot = dot(lhs_low_bf16, rhs_mid_bf16);
-  HloInstruction* mid_low_dot = dot(lhs_mid_bf16, rhs_low_bf16);
-  HloInstruction* mid_mid_dot = dot(lhs_mid_bf16, rhs_mid_bf16);
-  HloInstruction* high_low_dot = dot(lhs_high_bf16, rhs_low_bf16);
-  HloInstruction* low_high_dot = dot(lhs_low_bf16, rhs_high_bf16);
-  HloInstruction* high_mid_dot = dot(lhs_high_bf16, rhs_mid_bf16);
-  HloInstruction* mid_high_dot = dot(lhs_mid_bf16, rhs_high_bf16);
-  HloInstruction* high_high_dot = dot(lhs_high_bf16, rhs_high_bf16);
-
-  HloInstruction* result = nullptr;
-  result = sum(low_low_dot, low_mid_dot);
-  result = sum(result, mid_low_dot);
-  result = sum(result, mid_mid_dot);
-  result = sum(result, high_low_dot);
-  result = sum(result, low_high_dot);
-  result = sum(result, high_mid_dot);
-  result = sum(result, mid_high_dot);
-  result = ReplaceNaNWithZeros(result);
-  result = sum(result, high_high_dot);
-
-  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
-  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+  auto pairs = Split3xToBF16OperandPairs(original_dot->mutable_operand(0),
+                                         original_dot->mutable_operand(1));
+  RewriteDotWithOperandPairs(original_dot,
+                             PrecisionConfig::ALG_DOT_BF16_BF16_F32, pairs);
 }
 
 void RewriteF32ToTF32X3(HloInstruction* instr) {
-  HloComputation* computation = instr->parent();
   HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
-  PrecisionConfig precision_config = original_dot->precision_config();
-  precision_config.set_algorithm(PrecisionConfig::ALG_DOT_TF32_TF32_F32);
-  const Shape& shape = original_dot->shape();
-  const DotDimensionNumbers& dnums = original_dot->dot_dimension_numbers();
-  auto dot = [&](HloInstruction* lhs, HloInstruction* rhs) {
-    return computation->AddInstruction(
-        HloInstruction::CreateDot(shape, lhs, rhs, dnums, precision_config));
-  };
-  auto sum = [&](HloInstruction* lhs, HloInstruction* rhs) {
-    return computation->AddInstruction(
-        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, lhs, rhs));
-  };
-
-  auto [lhs_high_tf32, lhs_low_tf32] =
-      Split2xToTF32(original_dot->mutable_operand(0));
-  auto [rhs_high_tf32, rhs_low_tf32] =
-      Split2xToTF32(original_dot->mutable_operand(1));
-
-  HloInstruction* low_high_dot = dot(lhs_low_tf32, rhs_high_tf32);
-  HloInstruction* high_low_dot = dot(lhs_high_tf32, rhs_low_tf32);
-  HloInstruction* high_high_dot = dot(lhs_high_tf32, rhs_high_tf32);
-  HloInstruction* low_sum = sum(low_high_dot, high_low_dot);
-  low_sum = ReplaceNaNWithZeros(low_sum);
-  HloInstruction* result = sum(low_sum, high_high_dot);
-  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
-  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+  auto pairs = Split2xToTF32OperandPairs(original_dot->mutable_operand(0),
+                                         original_dot->mutable_operand(1));
+  RewriteDotWithOperandPairs(original_dot,
+                             PrecisionConfig::ALG_DOT_TF32_TF32_F32, pairs);
 }
 
 }  // namespace
@@ -451,16 +428,7 @@ DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X3(HloInstruction* lhs,
       << "Algorithm field set to BF16_BF16_F32_X3, but the lhs is not F32.";
   TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
       << "Algorithm field set to BF16_BF16_F32_X3, but the rhs is not F32.";
-
-  auto [lhs_high_bf16, lhs_low_bf16] = Split2xToBF16(lhs);
-  auto [rhs_high_bf16, rhs_low_bf16] = Split2xToBF16(rhs);
-  ABSL_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
-  auto* low_sum = SumToF32(low_high, high_low);
-  auto* low = ReplaceNaNWithZeros(low_sum);
-  auto* result = SumToF32(low, high_high);
-  return result;
+  return MakeMultiplyWithOperandPairs(Split2xToBF16OperandPairs(lhs, rhs));
 }
 
 absl::StatusOr<HloInstruction*>
@@ -470,24 +438,8 @@ DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X6(HloInstruction* lhs,
       << "Algorithm field set to BF16_BF16_F32_X6, but the lhs is not F32.";
   TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
       << "Algorithm field set to BF16_BF16_F32_X6, but the rhs is not F32.";
-
-  auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] = Split3xToBF16(lhs);
-  auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] = Split3xToBF16(rhs);
-  ABSL_ASSIGN_OR_RETURN(auto* mid_mid, Mult(lhs_mid_bf16, rhs_mid_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* high_mid, Mult(lhs_high_bf16, rhs_mid_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* mid_high, Mult(lhs_mid_bf16, rhs_high_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
-
-  HloInstruction* result = nullptr;
-  result = SumToF32(mid_mid, high_low);
-  result = SumToF32(result, low_high);
-  result = SumToF32(result, high_mid);
-  result = SumToF32(result, mid_high);
-  result = ReplaceNaNWithZeros(result);
-  result = SumToF32(result, high_high);
-  return result;
+  auto pairs = Split3xToBF16OperandPairs(lhs, rhs);
+  return MakeMultiplyWithOperandPairs(absl::MakeConstSpan(pairs).subspan(3));
 }
 
 absl::StatusOr<HloInstruction*>
@@ -497,30 +449,7 @@ DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X9(HloInstruction* lhs,
       << "Algorithm field set to BF16_BF16_F32_X9, but the lhs is not F32.";
   TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
       << "Algorithm field set to BF16_BF16_F32_X9, but the rhs is not F32.";
-
-  auto [lhs_high_bf16, lhs_mid_bf16, lhs_low_bf16] = Split3xToBF16(lhs);
-  auto [rhs_high_bf16, rhs_mid_bf16, rhs_low_bf16] = Split3xToBF16(rhs);
-  ABSL_ASSIGN_OR_RETURN(auto* low_low, Mult(lhs_low_bf16, rhs_low_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* low_mid, Mult(lhs_low_bf16, rhs_mid_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* mid_low, Mult(lhs_mid_bf16, rhs_low_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* mid_mid, Mult(lhs_mid_bf16, rhs_mid_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_bf16, rhs_low_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_bf16, rhs_high_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* high_mid, Mult(lhs_high_bf16, rhs_mid_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* mid_high, Mult(lhs_mid_bf16, rhs_high_bf16));
-  ABSL_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_bf16, rhs_high_bf16));
-
-  HloInstruction* result = nullptr;
-  result = SumToF32(low_low, low_mid);
-  result = SumToF32(result, mid_low);
-  result = SumToF32(result, mid_mid);
-  result = SumToF32(result, high_low);
-  result = SumToF32(result, low_high);
-  result = SumToF32(result, high_mid);
-  result = SumToF32(result, mid_high);
-  result = ReplaceNaNWithZeros(result);
-  result = SumToF32(result, high_high);
-  return result;
+  return MakeMultiplyWithOperandPairs(Split3xToBF16OperandPairs(lhs, rhs));
 }
 
 absl::StatusOr<HloInstruction*>
@@ -543,15 +472,7 @@ DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32X3(HloInstruction* lhs,
       << "Algorithm field set to TF32_TF32_F32_X3, but the lhs is not F32.";
   TF_RET_CHECK(rhs->shape().element_type() == PrimitiveType::F32)
       << "Algorithm field set to TF32_TF32_F32_X3, but the rhs is not F32.";
-  auto [lhs_high_tf32, lhs_low_tf32] = Split2xToTF32(lhs);
-  auto [rhs_high_tf32, rhs_low_tf32] = Split2xToTF32(rhs);
-  ABSL_ASSIGN_OR_RETURN(auto* low_high, Mult(lhs_low_tf32, rhs_high_tf32));
-  ABSL_ASSIGN_OR_RETURN(auto* high_low, Mult(lhs_high_tf32, rhs_low_tf32));
-  ABSL_ASSIGN_OR_RETURN(auto* high_high, Mult(lhs_high_tf32, rhs_high_tf32));
-  auto* low_sum = SumToF32(low_high, high_low);
-  auto* low = ReplaceNaNWithZeros(low_sum);
-  auto* result = SumToF32(low, high_high);
-  return result;
+  return MakeMultiplyWithOperandPairs(Split2xToTF32OperandPairs(lhs, rhs));
 }
 
 }  // namespace xla::gpu

@@ -118,5 +118,17 @@ TEST(HloPassOptionsTest, MoveKeepsConsumptionTracking) {
   EXPECT_THAT(moved.CheckAllConsumed(), IsOk());
 }
 
+TEST(HloPassOptionsTest, ToProtoRoundTripsWithoutConsuming) {
+  HloPassOptions options = {{"flag", true}, {"count", 10}};
+
+  HloPassOptions round_tripped(options.ToProto());
+
+  EXPECT_THAT(round_tripped.Get<bool>("flag"), Optional(true));
+  EXPECT_THAT(round_tripped.Get<int64_t>("count"), Optional(10));
+  EXPECT_THAT(round_tripped.CheckAllConsumed(), IsOk());
+  EXPECT_THAT(options.CheckAllConsumed(),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 }  // namespace
 }  // namespace xla

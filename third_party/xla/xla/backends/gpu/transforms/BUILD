@@ -34,11 +34,13 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

@@ -906,33 +906,48 @@ CommonPjRtClient::CompileAndLoad(MaybeOwningMlirModule module,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-CommonPjRtClient::DeserializeExecutable(absl::string_view serialized,
-                                        std::optional<CompileOptions> options) {
+CommonPjRtClient::DeserializeExecutableInternal(
+    riegeli::Any<riegeli::Reader*> reader,
+    std::optional<CompileOptions> options, bool for_load) {
   tsl::profiler::TraceMe traceme("CommonPjRtClient::DeserializeExecutable");
   VLOG(1) << "CommonPjRtClient::DeserializeExecutable";
   ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
                    GetTopologyDescription());
-  return PjRtDeserializeExecutable(
-      *topology, std::make_unique<riegeli::StringReader<>>(serialized),
-      std::move(options), executable_compatibility_check_on_deserialization());
+  DeserializeExecutableOptions deserialize_options;
+  deserialize_options.compatibility_check =
+      executable_compatibility_check_on_deserialization();
+  // An unloaded executable keeps all of its compiler metadata so that it can
+  // still be inspected and serialized again.
+  if (for_load) {
+    deserialize_options.compiler_metadata_on_load = compiler_metadata_on_load();
+  }
+  return PjRtDeserializeExecutable(*topology, std::move(reader),
+                                   std::move(options), deserialize_options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+CommonPjRtClient::DeserializeExecutable(absl::string_view serialized,
+                                        std::optional<CompileOptions> options) {
+  return DeserializeExecutableInternal(
+      std::make_unique<riegeli::StringReader<>>(serialized), std::move(options),
+      /*for_load=*/false);
 }
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 CommonPjRtClient::DeserializeExecutable(const absl::Cord& serialized,
                                         std::optional<CompileOptions> options) {
-  tsl::profiler::TraceMe traceme("CommonPjRtClient::DeserializeExecutable");
-  VLOG(1) << "CommonPjRtClient::DeserializeExecutable";
-  ABSL_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
-                   GetTopologyDescription());
-  return PjRtDeserializeExecutable(
-      *topology, std::make_unique<riegeli::CordReader<>>(&serialized),
-      std::move(options), executable_compatibility_check_on_deserialization());
+  return DeserializeExecutableInternal(
+      std::make_unique<riegeli::CordReader<>>(&serialized), std::move(options),
+      /*for_load=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 CommonPjRtClient::LoadSerializedExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options,
     const LoadOptions& load_options) {
-  ABSL_ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
+  ABSL_ASSIGN_OR_RETURN(auto executable,
+                   DeserializeExecutableInternal(
+                       std::make_unique<riegeli::StringReader<>>(serialized),
+                       std::move(options), /*for_load=*/true));
   return LoadInternal(std::move(executable), load_options,
                       dump_on_deserialize());
 }
@@ -941,7 +956,10 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 CommonPjRtClient::LoadSerializedExecutable(
     const absl::Cord& serialized, std::optional<CompileOptions> options,
     const LoadOptions& load_options) {
-  ABSL_ASSIGN_OR_RETURN(auto executable, DeserializeExecutable(serialized, options));
+  ABSL_ASSIGN_OR_RETURN(auto executable,
+                   DeserializeExecutableInternal(
+                       std::make_unique<riegeli::CordReader<>>(&serialized),
+                       std::move(options), /*for_load=*/true));
   return LoadInternal(std::move(executable), load_options,
                       dump_on_deserialize());
 }
@@ -5752,6 +5770,19 @@ CommonPjRtClient::CommonPjRtClient(
                                   enable_async_compilation_);
   set_bool_attr_from_plugin_attrs("include_raw_buffer_in_ready_event",
                                   include_raw_buffer_in_ready_event_);
+  if (plugin_attributes_) {
+    auto it = plugin_attributes_->attributes.find("compiler_metadata_on_load");
+    if (it != plugin_attributes_->attributes.end()) {
+      if (const std::string* s = std::get_if<std::string>(&it->second)) {
+        std::string error;
+        if (!AbslParseFlag(*s, &compiler_metadata_on_load_, &error)) {
+          LOG(WARNING)
+              << "Ignoring plugin attribute compiler_metadata_on_load: "
+              << error;
+        }
+      }
+    }
+  }
 }
 
 void CommonPjRtClient::AttachDevices(

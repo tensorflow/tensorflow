@@ -60,4 +60,8 @@ absl::Status HloPassOptions::CheckAllConsumed() const {
   return absl::OkStatus();
 }
 
+HloPassOptions::ProtoMap HloPassOptions::ToProto() const {
+  return ProtoMap(options_.begin(), options_.end());
+}
+
 }  // namespace xla
