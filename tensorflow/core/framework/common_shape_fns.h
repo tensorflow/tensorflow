@@ -201,7 +201,8 @@ absl::Status MaxPoolGradShape(shape_inference::InferenceContext* c);
 absl::Status Pool3DShape(shape_inference::InferenceContext* c);
 
 // Shape function for AvgPool3D. Like Pool3DShape, but a VALID-padded window
-// slightly larger than a known input dimension infers an output size of 0.
+// larger than a known input dimension by less than 2 * stride infers an
+// output size of 0.
 absl::Status AvgPool3DShape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPool3DGrad-like operations.

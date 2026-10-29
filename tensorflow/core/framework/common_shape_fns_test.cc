@@ -1544,6 +1544,14 @@ TEST(CommonShapeFnsTest, AvgPool3DShapeTest) {
   set_op({1, 1, 1, 1, 1}, {1, 4, 1, 1, 1}, "VALID", "NDHWC");
   INFER_ERROR("Negative dimension size", op, "[1,1,5,5,2]");
 
+  // Exact thresholds and zero-sized inputs.
+  set_op({1, 2, 1, 1, 1}, {1, 4, 1, 1, 1}, "VALID", "NDHWC");
+  INFER_OK(op, "[1,1,5,5,2]", "[d0_0,0,5,5,d0_4]");
+  set_op({1, 2, 1, 1, 1}, {1, 5, 1, 1, 1}, "VALID", "NDHWC");
+  INFER_ERROR("Negative dimension size", op, "[1,1,5,5,2]");
+  set_op({1, 1, 1, 1, 1}, {1, 1, 1, 1, 1}, "VALID", "NDHWC");
+  INFER_OK(op, "[1,0,5,5,2]", "[d0_0,0,5,5,d0_4]");
+
   // Windows that fit are unaffected.
   set_op({1, 2, 2, 2, 1}, {1, 2, 2, 2, 1}, "VALID", "NDHWC");
   INFER_OK(op, "[1,4,4,4,1]", "[d0_0,2,2,2,d0_4]");
