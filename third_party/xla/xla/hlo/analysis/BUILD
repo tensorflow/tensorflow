@@ -244,6 +244,7 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/service:call_graph",
         "//xla/service:hlo_phi_graph",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
