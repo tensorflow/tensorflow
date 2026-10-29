@@ -871,6 +871,40 @@ ENTRY r {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_P(TritonGemmTest, TransposeReductionReshapeBeforeDot) {
+  // Layout assignment inserts a layout-changing copy between the reduction
+  // and the bitcast feeding the dot. Hoisting that bitcast across the copy
+  // must preserve the permutation of the reduction's output.
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY e {
+  p0 = f32[16,16,3]{2,1,0} parameter(0)
+  p1 = f32[16,32]{1,0} parameter(1)
+  transpose = f32[3,16,16]{0,2,1} transpose(p0), dimensions={2,0,1}
+  reshape = f32[3,4,4,4,4]{4,3,2,1,0} reshape(transpose)
+  zero = f32[] constant(0)
+  reduce = f32[3,4,4]{2,1,0} reduce(reshape, zero),
+    dimensions={2,4}, to_apply=add
+  lhs = f32[3,16]{1,0} reshape(reduce)
+  ROOT dot = f32[3,32]{1,0} dot(lhs, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
+  EXPECT_THAT(GetNonBitcastRoot(module->entry_computation()),
+              GmockMatch(m::Fusion().WithFusionKind(
+                  HloInstruction::FusionKind::kCustom)));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 // TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
 // a separate, fusion-specific, deviceless test.
 TEST_P(TritonGemmTest, DoNotFuseSplitRhsContractingTranspose) {

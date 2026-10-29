@@ -2196,8 +2196,11 @@ xla_cc_test(
     deps = [
         ":gemm_fusion",
         "//xla:autotuning_proto_cc",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
