@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/topology.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_async_execution_limiter.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
@@ -216,6 +217,15 @@ class IfrtModelContext {
     use_undonatable_buffer_converter_ = use_undonatable_buffer_converter;
   }
 
+  IfrtAsyncExecutionLimiter* GetAsyncExecutionLimiter() const {
+    return async_execution_limiter_;
+  }
+
+  void set_async_execution_limiter(
+      IfrtAsyncExecutionLimiter* async_execution_limiter) {
+    async_execution_limiter_ = async_execution_limiter;
+  }
+
   tsl::protobuf::Message* GetCompilationEnvironmentProto() const {
     if (std::holds_alternative<std::unique_ptr<tsl::protobuf::Message>>(
             compilation_env_or_overrides_)) {
@@ -301,6 +311,9 @@ class IfrtModelContext {
   bool enable_propagate_static_shapes_pass_ = true;
   bool use_output_arena_ = false;
   bool use_undonatable_buffer_converter_ = false;
+  // Limits concurrent in-flight executions per device. Each such execution
+  // takes up resources such as HBM for staging inputs and outputs.
+  IfrtAsyncExecutionLimiter* async_execution_limiter_ = nullptr;
 };
 
 }  // namespace ifrt_serving
