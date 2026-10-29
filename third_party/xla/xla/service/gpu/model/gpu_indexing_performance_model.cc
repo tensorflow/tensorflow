@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -231,39 +232,63 @@ bool DoesTileFitInRegisters(int64_t tile_size,
                           device_info.registers_per_block_limit();
 }
 
-// Calculates the number of blocks that access a specific region within a tiled
-// HLO, given the number of blocks that access the tiled HLO.
+// How the instructions of a region are executed relative to the root of the
+// computation.
+struct RegionExecutionInfo {
+  // Number of blocks, times the trip count of the enclosing sequential loops.
+  int64_t num_blocks = 1;
+  // Fraction of the read elements that are within the dimension bounds of the
+  // enclosing sequential loops. Out-of-bound elements on the tail iteration are
+  // masked off and not read from memory.
+  double in_bound_read_fraction = 1.0;
+};
+
+// Calculates how the instructions of a region are executed, given how the
+// tiled HLO that owns the region is executed.
 //
-// For Dot, the block count is scaled UP by the reduction loop trip count.
+// For Dot and Reduce, the block count is scaled UP by the trip count of the
+// contracting / reduction loop.
 // For Concat, the block count is scaled DOWN to the occupancy fraction of the
 // operand.
-int64_t GetNumBlocksForRegion(
+RegionExecutionInfo GetRegionExecutionInfo(
     const experimental::TiledHloInstruction* tiled_hlo,
-    int64_t num_blocks_cur_hlo, int64_t region_id) {
+    const RegionExecutionInfo& info_cur_hlo, int64_t region_id) {
   // Avoids reading tile sizes, which symbolic tilings do not have.
-  if (num_blocks_cur_hlo == 0) {
-    return 0;
+  if (info_cur_hlo.num_blocks == 0) {
+    return info_cur_hlo;
   }
-  int64_t num_blocks_cur_region = num_blocks_cur_hlo;
+  RegionExecutionInfo info_cur_region = info_cur_hlo;
   const HloInstruction* hlo = tiled_hlo->hlo();
-  if (HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(hlo) &&
+  if (HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot,
+                       HloOpcode::kReduce>(hlo) &&
       !tiled_hlo->operands().empty()) {
-    auto contracting_dimensions =
-        hlo->dot_dimension_numbers().lhs_contracting_dimensions();
-    for (int64_t dim : contracting_dimensions) {
-      num_blocks_cur_region *=
-          CeilOfRatio(hlo->operand(0)->shape().dimensions(dim),
-                      tiled_hlo->operand(0)->tile_sizes()[dim]);
+    absl::Span<const int64_t> sequential_dims =
+        hlo->opcode() == HloOpcode::kReduce
+            ? hlo->dimensions()
+            : hlo->dot_dimension_numbers().lhs_contracting_dimensions();
+    for (int64_t dim : sequential_dims) {
+      int64_t dim_size = hlo->operand(0)->shape().dimensions(dim);
+      int64_t tile_size = tiled_hlo->operand(0)->tile_sizes()[dim];
+      int64_t trip_count = CeilOfRatio(dim_size, tile_size);
+      info_cur_region.num_blocks *= trip_count;
+      // Read element counts already clamp each tile dimension to `dim_size`, so
+      // across `trip_count` iterations the loop counts
+      // `trip_count * min(tile_size, dim_size)` elements instead of `dim_size`.
+      // Scale down by their ratio to exclude out-of-bound elements masked off
+      // on the tail iteration.
+      info_cur_region.in_bound_read_fraction *=
+          static_cast<double>(dim_size) /
+          (trip_count * std::min(tile_size, dim_size));
     }
   } else if (HloPredicateIsOp<HloOpcode::kConcatenate>(hlo)) {
     CHECK_LT(region_id, hlo->operand_count());
     int64_t concat_dim = hlo->concatenate_dimension();
-    num_blocks_cur_region =
-        num_blocks_cur_region *
+    info_cur_region.num_blocks =
+        info_cur_region.num_blocks *
         hlo->operand(region_id)->shape().dimensions(concat_dim) /
         hlo->shape().dimensions(concat_dim);
   }
-  return num_blocks_cur_region;
+  return info_cur_region;
 }
 
 // Returns how often the root tile is computed: once per output tile, and
@@ -286,30 +311,31 @@ int64_t GetNumRootTileExecutions(
 }
 
 // Visits all tiled HLOs in the computation (including those within regions)
-// using a visitor that receives the tiled HLO, the root num_blocks that
-// access that tiled HLO, and whether the instruction is within a dot region.
+// using a visitor that receives the tiled HLO, how it is executed relative to
+// the root, and whether the instruction is within a dot region.
 void ForEachInstructionInTiledHloComputation(
     const experimental::TiledHloComputation& tiled_hlo_computation,
     int64_t num_blocks_at_root,
-    absl::FunctionRef<void(const experimental::TiledHloInstruction*, int64_t,
-                           bool)>
+    absl::FunctionRef<void(const experimental::TiledHloInstruction*,
+                           const RegionExecutionInfo&, bool)>
         visitor) {
   struct WorkItem {
     const experimental::TiledHloInstruction* instruction;
-    int64_t num_blocks_cur_hlo;
+    RegionExecutionInfo info_cur_hlo;
     bool in_dot_region;
   };
   std::vector<WorkItem> worklist;
   for (const auto* instruction : tiled_hlo_computation.instructions()) {
-    worklist.push_back(
-        {instruction, num_blocks_at_root, /*in_dot_region=*/false});
+    worklist.push_back({instruction,
+                        RegionExecutionInfo{/*num_blocks=*/num_blocks_at_root},
+                        /*in_dot_region=*/false});
   }
 
   while (!worklist.empty()) {
-    auto [instruction, num_blocks_cur_hlo, in_dot_region] = worklist.back();
+    auto [instruction, info_cur_hlo, in_dot_region] = worklist.back();
     worklist.pop_back();
 
-    visitor(instruction, num_blocks_cur_hlo, in_dot_region);
+    visitor(instruction, info_cur_hlo, in_dot_region);
 
     bool child_in_dot_region =
         in_dot_region ||
@@ -317,11 +343,10 @@ void ForEachInstructionInTiledHloComputation(
             instruction->hlo());
     for (const auto& [i, region] :
          llvm::enumerate(instruction->hlo_regions())) {
-      int64_t num_blocks_cur_region =
-          GetNumBlocksForRegion(instruction, num_blocks_cur_hlo, i);
+      RegionExecutionInfo info_cur_region =
+          GetRegionExecutionInfo(instruction, info_cur_hlo, i);
       for (const auto& tiled_hlo : region.instructions()) {
-        worklist.push_back(
-            {&*tiled_hlo, num_blocks_cur_region, child_in_dot_region});
+        worklist.push_back({&*tiled_hlo, info_cur_region, child_in_dot_region});
       }
     }
   }
@@ -339,12 +364,12 @@ GetRegisterResidentInstructions(
       tiled_hlo_computation.roots().begin(),
       tiled_hlo_computation.roots().end());
   // We set num_blocks_at_root to zero because symbolic tilings have no static
-  // tile sizes to count blocks with. Zero makes GetNumBlocksForRegion skip the
+  // tile sizes to count blocks with. Zero makes GetRegionExecutionInfo skip the
   // block count calculation.
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation, /*num_blocks_at_root=*/0,
       [&](const experimental::TiledHloInstruction* tiled_hlo,
-          int64_t /*num_blocks_cur_hlo*/, bool /*in_dot_region*/) {
+          const RegionExecutionInfo& /*info_cur_hlo*/, bool /*in_dot_region*/) {
         bool is_operand = !fusion_adaptor.ContainsInstruction(tiled_hlo->hlo());
         // Iota is not an operand, but usually needs to be materialized in
         // registers.
@@ -578,8 +603,9 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation, GetNumRootTileExecutions(tiled_hlo_computation),
       [&](const experimental::TiledHloInstruction* tiled_hlo,
-          int64_t num_blocks_cur_hlo, bool in_dot_region) {
+          const RegionExecutionInfo& info_cur_hlo, bool in_dot_region) {
         const HloInstruction* hlo = tiled_hlo->hlo();
+        int64_t num_blocks_cur_hlo = info_cur_hlo.num_blocks;
         if (fusion_adaptor.ContainsInstruction(hlo)) {
           // Number of elements in the tile after padding.
           int64_t padded_tile_size = GetPaddedTileSize(tiled_hlo->tile_sizes());
@@ -637,7 +663,9 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
         // read time.
         int64_t element_type_size =
             ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type());
-        int64_t tile_bytes_read = element_type_size * num_elements;
+        int64_t tile_bytes_read =
+            std::llround(element_type_size * num_elements *
+                         info_cur_hlo.in_bound_read_fraction);
 
         bytes_read += tile_bytes_read;
         if (in_dot_region) {
@@ -898,7 +926,15 @@ FilterAndSortCandidates(
 
   absl::c_stable_sort(
       candidates, [](const TiledRunTimeData& a, const TiledRunTimeData& b) {
-        return a.runtime_data.exec_time < b.runtime_data.exec_time;
+        if (a.runtime_data.exec_time != b.runtime_data.exec_time) {
+          return a.runtime_data.exec_time < b.runtime_data.exec_time;
+        }
+        // Break exact ties towards larger contracting dimension tiles
+        // (currently reductions and scans), if they exist, i.e. fewer
+        // iterations of the sequential loop, whose per-iteration overhead the
+        // model does not charge.
+        return Product(a.block_level_parameters.sequential_tile_sizes) >
+               Product(b.block_level_parameters.sequential_tile_sizes);
       });
   if (candidates.size() > top_k) {
     candidates.resize(top_k);
@@ -1241,7 +1277,7 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation, /*num_blocks_at_root=*/1,
       [&](const experimental::TiledHloInstruction* tiled_hlo,
-          int64_t /*num_blocks_cur_hlo*/, bool /*in_dot_region*/) {
+          const RegionExecutionInfo& /*info_cur_hlo*/, bool /*in_dot_region*/) {
         bool is_root = absl::c_linear_search(roots, tiled_hlo);
         largest_live_tile_size = std::max(
             largest_live_tile_size,

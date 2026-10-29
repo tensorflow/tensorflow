@@ -729,11 +729,10 @@ ENTRY main {
                 + 86 * 2048 * (num_blocks * CeilOfRatio(257, 64))  // ==> %exp
   );
   // The bytes read contribution for a single instruction is calculated as:
-  // element_type_size * tile_size * num_blocks_cur_hlo
-  EXPECT_EQ(
-      result.bytes_read,
-      4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))        // ==> %p1
-          + 4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))  // ==> %p0
+  // element_type_size * tile_size * num_blocks_cur_hlo * in_bound_read_fraction
+  EXPECT_EQ(result.bytes_read,
+            4 * (257 * 32) * num_blocks        // ==> %p1
+                + 4 * (257 * 32) * num_blocks  // ==> %p0
   );
   EXPECT_EQ(result.l2_bytes_read, result.bytes_read);
   const HloDotInstruction* dot = Cast<HloDotInstruction>(
@@ -1992,6 +1991,66 @@ ENTRY entry {
     [](const ::testing::TestParamInfo<RegisterFitTestCase>& info) {
       return info.param.name;
     });
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ReduceWithReductionLoop) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+fused_computation {
+  param_0 = f32[128,1100] parameter(0)
+  constant_0 = f32[] constant(0)
+  ROOT reduce = f32[128] reduce(param_0, constant_0), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = f32[128,1100] parameter(0)
+  ROOT fusion = f32[128] fusion(param_0), kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  auto estimate = [&](int64_t reduction_tile_size) {
+    BlockLevelParameters block_level_parameters;
+    block_level_parameters.output_tile_sizes = {{8}};
+    block_level_parameters.num_warps = 4;
+    block_level_parameters.sequential_tile_sizes = {reduction_tile_size};
+    return indexing_cost_model_.EstimateRunTimeForTiledFusion(
+        *fusion_adaptor, block_level_parameters);
+  };
+
+  // No loop: the tile is padded to 2048 and covers the whole dimension.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData no_loop, estimate(1100));
+  // 2 iterations, the second one masks 948 elements.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData loop_1024, estimate(1024));
+  // 5 iterations, the last one masks 180 elements.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData loop_256, estimate(256));
+
+  // The operand is read exactly once regardless of the reduction tile size.
+  constexpr int64_t kOperandBytes = 128 * 1100 * 4;
+  EXPECT_EQ(no_loop.bytes_read, kOperandBytes);
+  EXPECT_EQ(loop_1024.bytes_read, kOperandBytes);
+  EXPECT_EQ(loop_256.bytes_read, kOperandBytes);
+  EXPECT_EQ(loop_1024.read_time, no_loop.read_time);
+  EXPECT_EQ(loop_256.read_time, no_loop.read_time);
+
+  // The reduce is charged once per output element regardless of the reduction
+  // tile size.
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  const int64_t reduce_flops =
+      128 * indexing_cost_model_.FlopsPerElement(reduce);
+  EXPECT_EQ(no_loop.flops, reduce_flops);
+  EXPECT_EQ(loop_1024.flops, reduce_flops);
+  EXPECT_EQ(loop_256.flops, reduce_flops);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
