@@ -915,6 +915,27 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
             init, default_value, experimental_is_anonymous=is_anonymous)
         self.initialize_table(table)
 
+  def testOversizeColumnIndex(self, is_anonymous):
+    # A column index that overflows int32 (the op attr is a plain int) used to
+    # be truncated when passed to the initializer, wrapping a large positive
+    # index into a negative one that then indexed the split tokens out of
+    # bounds. It must be rejected the same way any other too-large column index
+    # is, rather than producing a negative token index.
+    vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns_oob.txt")
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(["0\tbrain\t1", "1\tsalad\t5", "2\tsurgery\t6"]) + "\n")
+
+    oversize_index = 2**31  # Truncates to INT32_MIN if narrowed to int32.
+    for key_index, value_index in ((0, oversize_index), (oversize_index, 1)):
+      with self.cached_session():
+        init = lookup_ops.TextFileInitializer(
+            vocabulary_file, dtypes.string, key_index, dtypes.int64,
+            value_index)
+        with self.assertRaisesOpError("Invalid number of columns"):
+          table = self.getHashTable()(
+              init, -1, experimental_is_anonymous=is_anonymous)
+          self.initialize_table(table)
+
   def testInitializeSameTableWithMultipleNodes(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
       self.skipTest(SKIP_ANONYMOUS_IN_TF1_REASON)

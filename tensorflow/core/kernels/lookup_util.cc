@@ -374,7 +374,7 @@ absl::Status CheckTableDataTypes(const LookupInterface& table,
 // Helper function to initialize an InitializableLookupTable from a text file.
 absl::Status InitializeTableFromTextFile(const std::string& filename,
                                          int64_t vocab_size, char delimiter,
-                                         int32_t key_index, int32_t value_index,
+                                         int64_t key_index, int64_t value_index,
                                          int64_t offset, Env* env,
                                          InitializableLookupTable* table) {
   return InitializeTableFromTextFile(filename, vocab_size, delimiter, key_index,
@@ -384,7 +384,7 @@ absl::Status InitializeTableFromTextFile(const std::string& filename,
 
 absl::Status InitializeTableFromTextFile(
     const std::string& filename, int64_t vocab_size, char delimiter,
-    int32_t key_index, int32_t value_index, int64_t offset, Env* env,
+    int64_t key_index, int64_t value_index, int64_t offset, Env* env,
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table) {
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {
