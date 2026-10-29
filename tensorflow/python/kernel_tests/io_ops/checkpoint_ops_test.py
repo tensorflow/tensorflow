@@ -308,6 +308,76 @@ class LoadAndRemapMatrixTest(test.TestCase):
           )
       )
 
+  def test_load_and_remap_huge_num_cols_without_col_remapping(self):
+    # Regression test: when col_remapping is empty, num_cols previously sized
+    # a std::vector<bool> directly before being validated against the
+    # checkpoint's real tensor shape, so a huge, mismatched num_cols crashed
+    # instead of raising a normal error.
+    with self.cached_session(), self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'instead of being equal to num_cols='
+    ):
+      self.evaluate(
+          gen_checkpoint_ops.load_and_remap_matrix(
+              ckpt_path=[self.bundle_file],
+              old_tensor_name=self.old_tensor_name,
+              row_remapping=list(range(self.old_num_rows)),
+              col_remapping=[],
+              initializing_values=[],
+              num_rows=self.old_num_rows,
+              num_cols=2**40,
+          )
+      )
+
+  def test_load_and_remap_negative_num_rows(self):
+    # num_rows is constrained to be >= 0 by the op's own Attr definition, so
+    # this is rejected by Python's OpDef validation at graph-construction
+    # time (a ValueError), before the kernel ever runs.
+    with self.cached_session(), self.assertRaisesRegex(
+        ValueError, 'less than minimum 0'
+    ):
+      gen_checkpoint_ops.load_and_remap_matrix(
+          ckpt_path=[self.bundle_file],
+          old_tensor_name=self.old_tensor_name,
+          row_remapping=[],
+          col_remapping=[],
+          initializing_values=[],
+          num_rows=-1,
+          num_cols=self.old_num_cols,
+      )
+
+  def test_load_and_remap_negative_num_cols(self):
+    # num_cols is constrained to be >= 1 by the op's own Attr definition, so
+    # this is rejected by Python's OpDef validation at graph-construction
+    # time (a ValueError), before the kernel ever runs.
+    with self.cached_session(), self.assertRaisesRegex(
+        ValueError, 'less than minimum 1'
+    ):
+      gen_checkpoint_ops.load_and_remap_matrix(
+          ckpt_path=[self.bundle_file],
+          old_tensor_name=self.old_tensor_name,
+          row_remapping=list(range(self.old_num_rows)),
+          col_remapping=[],
+          initializing_values=[],
+          num_rows=self.old_num_rows,
+          num_cols=-1,
+      )
+
+  def test_load_and_remap_invalid_col_remapping_rank(self):
+    with self.cached_session(), self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'must be 1-D'
+    ):
+      self.evaluate(
+          gen_checkpoint_ops.load_and_remap_matrix(
+              ckpt_path=[self.bundle_file],
+              old_tensor_name=self.old_tensor_name,
+              row_remapping=list(range(self.old_num_rows)),
+              col_remapping=[[0, 1]],
+              initializing_values=[],
+              num_rows=self.old_num_rows,
+              num_cols=2,
+          )
+      )
+
   @test_util.run_deprecated_v1
   def test_load_and_remap_invalid_remapping(self):
     """Tests that errors are raised when an ID maps to multiple new IDs.
