@@ -226,7 +226,7 @@ static xla::XlaOp UnaryGradImpl(xla::XlaBuilder* b, DataType dtype,
                                 xla::XlaOp y, xla::XlaOp dy,
                                 const BCast& broadcast_helper,
                                 xla::XlaOp grad) {
-  std::tie(y, dy) = XlaBinaryOp::Broadcast(y, dy, broadcast_helper);
+  std::tie(std::ignore, dy) = XlaBinaryOp::Broadcast(y, dy, broadcast_helper);
   auto zero = XlaHelpers::Zero(b, dtype);
   auto dy_equals_0 = xla::Eq(dy, zero);
   auto zeros = xla::ZerosLike(grad);
