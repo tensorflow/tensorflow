@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
@@ -116,15 +118,16 @@ mlir::TranslateToMLIRRegistration deserializeRegistration(
       if (!serialized_proto.ParseFromString(std::string(input))) {
         return nullptr;
       }
-      auto deserialized_program_or = Deserialize<IfrtIRProgram>(
-          serialized_proto,
-          std::make_unique<DeserializeIfrtIRProgramOptions>(context));
-      if (deserialized_program_or.ok()) {
+      absl::StatusOr<std::unique_ptr<IfrtIRProgram>> deserialized_program =
+          Deserialize<IfrtIRProgram>(
+              serialized_proto,
+              std::make_unique<DeserializeIfrtIRProgramOptions>(context));
+      if (deserialized_program.ok()) {
         return mlir::OwningOpRef<mlir::ModuleOp>(
-            deserialized_program_or.value()->mlir_module);
+            (*deserialized_program)->mlir_module.clone());
       }
       llvm::dbgs() << "failed to deserialize: "
-                   << deserialized_program_or.status().message() << "\n";
+                   << deserialized_program.status().message() << "\n";
       return nullptr;
     },
     [](mlir::DialectRegistry& registry) {

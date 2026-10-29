@@ -286,7 +286,6 @@ cc_library(
         "//xla/python/ifrt:serdes_week_4_old_version_accessor",
         "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/python/ifrt/ir/transforms:passes",
-        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",

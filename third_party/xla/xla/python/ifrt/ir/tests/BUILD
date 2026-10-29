@@ -83,6 +83,7 @@ xla_cc_binary(
         "//xla/python/ifrt/ir:ifrt_ir_program_serdes",  # build_cleaner: keep
         "//xla/python/ifrt/ir:version",
         "//xla/python/ifrt/ir:vifrt",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
