@@ -179,6 +179,20 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "dynamic_shapes_test",
+    srcs = ["dynamic_shapes_test.cc"],
+    deps = [
+        ":dynamic_shapes",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "common_pjrt_client",
     srcs = [
