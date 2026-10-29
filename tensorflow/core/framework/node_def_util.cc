@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 
 #include <algorithm>
+#include <limits>
 #include <unordered_map>
 #include <vector>
 
@@ -536,6 +537,10 @@ absl::Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
 
 absl::Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                               int input_port, DataType* input_type) {
+  if (input_port < 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Input ", input_port, " not found for node ", node_def.name()));
+  }
   DataTypeVector input_types;
   for (const auto& arg : op_def.input_arg()) {
     TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &input_types));
@@ -560,6 +565,10 @@ absl::Status InputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
 
 absl::Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                                int output_port, DataType* output_type) {
+  if (output_port < 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Output ", output_port, " not found for node ", node_def.name()));
+  }
   DataTypeVector output_types;
   for (const auto& arg : op_def.output_arg()) {
     TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &output_types));
@@ -760,6 +769,11 @@ absl::Status NameRangesHelper(
   int num;
   for (const auto& arg : args) {
     TF_RETURN_IF_ERROR(ComputeArgRange(attrs, arg, op_def, &num));
+    if (num < 0 || num > std::numeric_limits<int>::max() - start) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid size ", num, " for argument '", arg.name(),
+          "' at port ", start));
+    }
     (*result)[arg.name()] = std::make_pair(start, start + num);
     start += num;
   }

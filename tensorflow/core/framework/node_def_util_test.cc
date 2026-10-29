@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 
+#include <limits>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"  // NOLINT
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -893,6 +896,86 @@ TEST(AttachDef, DisallowMultipleFormattedNode) {
   EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.message());
   absl::Status s3 = AttachDef(s2, b, false);
   EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[b]]", s3.message());
+}
+
+TEST(NodeDefUtilTest, ValidInputOutputPortAndNameRangeControl) {
+  const OpDef op_def = ToOpDef(OpDefBuilder("SimplePortAndRange")
+                                   .Input("a: N * float")
+                                   .Output("b: M * int32")
+                                   .Attr("N: int")
+                                   .Attr("M: int"));
+  const NodeDef node_def = ToNodeDef(R"pb(
+    name: 'valid_node'
+    op: 'SimplePortAndRange'
+    input: 'x0'
+    input: 'x1'
+    attr {
+      key: 'N'
+      value { i: 2 }
+    }
+    attr {
+      key: 'M'
+      value { i: 1 }
+    }
+  )pb");
+
+  DataType dtype = DT_INVALID;
+  TF_EXPECT_OK(InputTypeForNode(node_def, op_def, 0, &dtype));
+  EXPECT_EQ(dtype, DT_FLOAT);
+  TF_EXPECT_OK(InputTypeForNode(node_def, op_def, 1, &dtype));
+  EXPECT_EQ(dtype, DT_FLOAT);
+  TF_EXPECT_OK(OutputTypeForNode(node_def, op_def, 0, &dtype));
+  EXPECT_EQ(dtype, DT_INT32);
+
+  NameRangeMap inputs, outputs;
+  TF_EXPECT_OK(NameRangesForNode(node_def, op_def, &inputs, &outputs));
+  EXPECT_EQ(NameRangeMap({{"a", {0, 2}}}), inputs);
+  EXPECT_EQ(NameRangeMap({{"b", {0, 1}}}), outputs);
+}
+
+TEST(NodeDefUtilTest, RejectsNegativePortAndInvalidNameRange) {
+  const OpDef op_def = ToOpDef(OpDefBuilder("PortAndRangeBounds")
+                                   .Input("a: N * float")
+                                   .Input("b: M * float")
+                                   .Output("c: N * int32")
+                                   .Attr("N: int")
+                                   .Attr("M: int"));
+  const NodeDef valid_node_def = ToNodeDef(R"pb(
+    name: 'port_bounds_node'
+    op: 'PortAndRangeBounds'
+    input: 'x0'
+    input: 'x1'
+    attr {
+      key: 'N'
+      value { i: 1 }
+    }
+    attr {
+      key: 'M'
+      value { i: 1 }
+    }
+  )pb");
+
+  DataType dtype = DT_INVALID;
+  EXPECT_EQ(InputTypeForNode(valid_node_def, op_def, -1, &dtype).code(),
+            absl::StatusCode::kInvalidArgument);
+  EXPECT_EQ(OutputTypeForNode(valid_node_def, op_def, -1, &dtype).code(),
+            absl::StatusCode::kInvalidArgument);
+
+  NodeDef neg_range_node_def = valid_node_def;
+  (*neg_range_node_def.mutable_attr())["N"].set_i(-2);
+  NameRangeMap inputs, outputs;
+  EXPECT_EQ(
+      NameRangesForNode(neg_range_node_def, op_def, &inputs, &outputs).code(),
+      absl::StatusCode::kInvalidArgument);
+
+  NodeDef overflow_range_node_def = valid_node_def;
+  (*overflow_range_node_def.mutable_attr())["N"].set_i(
+      std::numeric_limits<int>::max());
+  (*overflow_range_node_def.mutable_attr())["M"].set_i(1);
+  EXPECT_EQ(NameRangesForNode(overflow_range_node_def, op_def, &inputs,
+                              &outputs)
+                .code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

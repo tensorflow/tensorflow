@@ -1352,6 +1352,60 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
   EXPECT_TRUE(HasEdge("import/W1", 0, "import/t1", 0));
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDefDuplicateControlInputs) {
+  Node* w1 = nullptr;
+  Node* w5 = nullptr;
+  TF_ASSERT_OK(NodeBuilder("W1", "NoOp").Finalize(&graph_, &w1));
+  TF_ASSERT_OK(NodeBuilder("W5", "NoOp").Finalize(&graph_, &w5));
+
+  GraphDef gdef;
+  ASSERT_TRUE(protobuf::TextFormat::MergeFromString(
+      R"pb(
+        node { name: 'W2' op: 'NoOp' }
+        node { name: 'W3' op: 'NoOp' }
+        node { name: 'W4' op: 'NoOp' }
+        node { name: 'W5' op: 'NoOp' }
+        node {
+          name: 't2'
+          op: 'NoOp'
+          input: '^W2'
+          input: '^W3'
+          input: '^W4'
+          input: '^W5'
+        }
+      )pb",
+      &gdef));
+
+  ImportGraphDefOptions opts;
+  opts.prefix = "import";
+  opts.validate_shape = false;
+  const int kControlSlot = Graph::kControlSlot;
+  opts.input_map[TensorId("W2", kControlSlot)] =
+      TensorId("W1", kControlSlot);
+  opts.input_map[TensorId("W3", kControlSlot)] =
+      TensorId("W1", kControlSlot);
+  opts.input_map[TensorId("W4", kControlSlot)] =
+      TensorId("W1", kControlSlot);
+  opts.input_map[TensorId("W5", kControlSlot)] =
+      TensorId("W5", kControlSlot);
+  opts.return_nodes.push_back("t2");
+
+  ImportGraphDefResults results;
+  TF_ASSERT_OK(ImportGraphDef(opts, gdef, &graph_, nullptr, &results));
+  ASSERT_EQ(results.return_nodes.size(), 1);
+  Node* imported_t2 = results.return_nodes[0];
+  bool has_existing_w5_edge = false;
+  bool has_imported_w5_edge = false;
+  for (const Edge* e : imported_t2->in_edges()) {
+    if (e->IsControlEdge()) {
+      if (e->src() == w5) has_existing_w5_edge = true;
+      if (e->src()->name() == "import/W5") has_imported_w5_edge = true;
+    }
+  }
+  EXPECT_TRUE(has_existing_w5_edge);
+  EXPECT_FALSE(has_imported_w5_edge);
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
   ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
@@ -1382,6 +1436,19 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
       opts,
       {"input_map entry W2:0->^W1 between control edge and non-control edge"},
       &refiner);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDefInputMapNegativeDstIndex) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", -2);
+  ExpectError(
+      "node { name: 'new_input' op: 'TestInput' }"
+      "node { name: 't1' op: 'TestMul' "
+      "input: ['new_input:0', 'new_input:1'] }",
+      opts, {"has invalid destination output index -2"}, &refiner);
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithInvalidNodeIndex) {
@@ -1737,6 +1804,56 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensorsErrors) {
               {"Invalid return output 2 of node 'new_input', which has 2 "
                "output(s)"},
               nullptr, &results);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDefReturnTensorsSkippedNode) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Both outputs are mapped, so 'new_input' is skipped. The control slot
+  // is not an input_map key, so the non-remapped path runs.
+  ImportGraphDefOptions opts;
+  opts.skip_mapped_nodes = true;
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 0);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 1);
+  opts.return_tensors.push_back({"new_input", Graph::kControlSlot});
+  ImportGraphDefResults results;
+  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
+              {"Requested return tensor '^new_input' refers to node "
+               "'new_input' which was not imported"},
+              &refiner, &results);
+}
+
+TEST_F(GraphConstructorTest,
+       ImportGraphDefReturnTensorsRemappedToExistingNode) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Populate graph with the existing node that input_map remaps to.
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // A return tensor remapped to a valid output of an existing node.
+  ImportGraphDefOptions opts;
+  opts.input_map[{"new_input", 0}] = {"input", 1};
+  opts.return_tensors.push_back({"new_input", 0});
+  ImportGraphDefResults results;
+  ExpectOK("node { name: 'new_input' op: 'TestInput' }", opts, &refiner,
+           &results);
+  ASSERT_EQ(results.return_tensors.size(), 1);
+  EXPECT_EQ(results.return_tensors[0].first->name(), "input");
+  EXPECT_EQ(results.return_tensors[0].second, 1);
+
+  // A return tensor remapped to a node that does not exist in the graph is
+  // rejected by input_map validation before return tensors are populated.
+  opts.input_map.clear();
+  opts.return_tensors.clear();
+  opts.input_map[{"new_input2", 0}] = {"DNE", 0};
+  opts.return_tensors.push_back({"new_input2", 0});
+  results = ImportGraphDefResults();
+  ExpectError("node { name: 'new_input2' op: 'TestInput' }", opts,
+              {"node 'DNE' in input_map does not exist in graph"}, &refiner,
+              &results);
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ReturnNodes) {
