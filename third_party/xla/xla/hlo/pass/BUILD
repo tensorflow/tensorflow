@@ -177,6 +177,30 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_pipeline_editor",
+    srcs = ["hlo_pipeline_editor.cc"],
+    hdrs = ["hlo_pipeline_editor.h"],
+    deps = [
+        ":hlo_pass_options",
+        ":hlo_pipeline_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_pipeline_editor_test",
+    srcs = ["hlo_pipeline_editor_test.cc"],
+    deps = [
+        ":hlo_pass_options",
+        ":hlo_pipeline_editor",
+        ":hlo_pipeline_proto_cc",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_pass_filter",
     srcs = ["hlo_pass_filter.cc"],
     hdrs = ["hlo_pass_filter.h"],

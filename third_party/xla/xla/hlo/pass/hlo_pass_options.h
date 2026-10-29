@@ -89,6 +89,9 @@ class HloPassOptions {
   // either because no pass reads it or because it was read as another type.
   absl::Status CheckAllConsumed() const;
 
+  // Returns all options. Does not mark any option as consumed.
+  ProtoMap ToProto() const;
+
  private:
   absl::flat_hash_map<std::string, HloPassOptionValue> options_;
   mutable absl::flat_hash_set<std::string> consumed_keys_;
