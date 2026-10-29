@@ -1276,3 +1276,91 @@ func.func @move_broadcast_through_sum_neg(%arg0: tensor<1x1x40x100x40x3xf32>) ->
   // CHECK: %1 = "tfl.sum"(%0, %cst_0) <{keep_dims = false}> : (tensor<1x4x40x100x40x3xf32>, tensor<1xi32>) -> tensor<1x40x100x40x3xf32>
   // CHECK: return %1 : tensor<1x40x100x40x3xf32>
 }
+
+//===----------------------------------------------------------------------===//
+// Move broadcast_to after select_v2 when the other operands are smaller.
+//===----------------------------------------------------------------------===//
+
+// HuggingFace attention mask: mask[1,1,1,S] expanded to [1,1,T,S], masked
+// with a scalar, then added to [B,H,T,S] scores. The select_v2 should run on
+// [1,1,1,S] and the broadcast fold into the add.
+// CHECK-LABEL: @move_broadcast_through_select_v2_into_add
+func.func @move_broadcast_through_select_v2_into_add(%arg0: tensor<1x1x1x16xi1>, %arg1: tensor<1x1x1x16xf32>, %arg2: tensor<8x4x16xf32>) -> tensor<1x8x4x16xf32> {
+  %shape = arith.constant dense<[1, 1, 4, 16]> : tensor<4xi32>
+  %fill = arith.constant dense<-3.40282347E+38> : tensor<f32>
+  %0 = "tfl.broadcast_to"(%arg1, %shape) : (tensor<1x1x1x16xf32>, tensor<4xi32>) -> tensor<1x1x4x16xf32>
+  %1 = "tfl.select_v2"(%arg0, %fill, %0) : (tensor<1x1x1x16xi1>, tensor<f32>, tensor<1x1x4x16xf32>) -> tensor<1x1x4x16xf32>
+  %2 = tfl.add(%arg2, %1) {fused_activation_function = "NONE"} : (tensor<8x4x16xf32>, tensor<1x1x4x16xf32>) -> tensor<1x8x4x16xf32>
+  return %2 : tensor<1x8x4x16xf32>
+  // CHECK: %[[SEL:.*]] = "tfl.select_v2"(%arg0, %cst, %arg1) : (tensor<1x1x1x16xi1>, tensor<f32>, tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32>
+  // CHECK-NOT: tfl.broadcast_to
+  // CHECK: %[[ADD:.*]] = tfl.add(%arg2, %[[SEL]]) <{fused_activation_function = "NONE"}> : (tensor<8x4x16xf32>, tensor<1x1x1x16xf32>) -> tensor<1x8x4x16xf32>
+  // CHECK: return %[[ADD]]
+}
+
+// Without a broadcasting consumer the broadcast_to stays, but after the
+// select_v2 so the select runs on the smaller shape.
+// CHECK-LABEL: @move_broadcast_through_select_v2
+func.func @move_broadcast_through_select_v2(%arg0: tensor<1x1x1x16xi1>, %arg1: tensor<1x1x1x16xf32>) -> tensor<1x1x4x16xf32> {
+  %shape = arith.constant dense<[1, 1, 4, 16]> : tensor<4xi32>
+  %fill = arith.constant dense<0.0> : tensor<f32>
+  %0 = "tfl.broadcast_to"(%arg1, %shape) : (tensor<1x1x1x16xf32>, tensor<4xi32>) -> tensor<1x1x4x16xf32>
+  %1 = "tfl.select_v2"(%arg0, %0, %fill) : (tensor<1x1x1x16xi1>, tensor<1x1x4x16xf32>, tensor<f32>) -> tensor<1x1x4x16xf32>
+  return %1 : tensor<1x1x4x16xf32>
+  // CHECK: %[[SEL:.*]] = "tfl.select_v2"(%arg0, %arg1, %cst_0) : (tensor<1x1x1x16xi1>, tensor<1x1x1x16xf32>, tensor<f32>) -> tensor<1x1x1x16xf32>
+  // CHECK: %[[BC:.*]] = "tfl.broadcast_to"(%[[SEL]], %cst) : (tensor<1x1x1x16xf32>, tensor<4xi32>) -> tensor<1x1x4x16xf32>
+  // CHECK: return %[[BC]]
+}
+
+// The condition already has the full shape: the existing fuse pattern drops
+// the broadcast_to outright; nothing is moved.
+// CHECK-LABEL: @move_broadcast_through_select_v2_neg_full_cond
+func.func @move_broadcast_through_select_v2_neg_full_cond(%arg0: tensor<1x1x4x16xi1>, %arg1: tensor<1x1x1x16xf32>, %arg2: tensor<1x1x4x16xf32>) -> tensor<1x1x4x16xf32> {
+  %shape = arith.constant dense<[1, 1, 4, 16]> : tensor<4xi32>
+  %0 = "tfl.broadcast_to"(%arg1, %shape) : (tensor<1x1x1x16xf32>, tensor<4xi32>) -> tensor<1x1x4x16xf32>
+  %1 = "tfl.select_v2"(%arg0, %arg2, %0) : (tensor<1x1x4x16xi1>, tensor<1x1x4x16xf32>, tensor<1x1x4x16xf32>) -> tensor<1x1x4x16xf32>
+  return %1 : tensor<1x1x4x16xf32>
+  // CHECK: %[[SEL:.*]] = "tfl.select_v2"(%arg0, %arg2, %arg1) : (tensor<1x1x4x16xi1>, tensor<1x1x4x16xf32>, tensor<1x1x1x16xf32>) -> tensor<1x1x4x16xf32>
+  // CHECK-NOT: tfl.broadcast_to
+  // CHECK: return %[[SEL]]
+}
+
+// A broadcast_to with other users is left alone.
+// CHECK-LABEL: @move_broadcast_through_select_v2_neg_multi_use
+func.func @move_broadcast_through_select_v2_neg_multi_use(%arg0: tensor<1x1x1x16xi1>, %arg1: tensor<1x1x1x16xf32>) -> (tensor<1x1x4x16xf32>, tensor<1x1x4x16xf32>) {
+  %shape = arith.constant dense<[1, 1, 4, 16]> : tensor<4xi32>
+  %fill = arith.constant dense<0.0> : tensor<f32>
+  %0 = "tfl.broadcast_to"(%arg1, %shape) : (tensor<1x1x1x16xf32>, tensor<4xi32>) -> tensor<1x1x4x16xf32>
+  %1 = "tfl.select_v2"(%arg0, %0, %fill) : (tensor<1x1x1x16xi1>, tensor<1x1x4x16xf32>, tensor<f32>) -> tensor<1x1x4x16xf32>
+  return %1, %0 : tensor<1x1x4x16xf32>, tensor<1x1x4x16xf32>
+  // CHECK: %[[BC:.*]] = "tfl.broadcast_to"(%arg1, %cst)
+  // CHECK: %[[SEL:.*]] = "tfl.select_v2"(%arg0, %[[BC]], %cst_0) : (tensor<1x1x1x16xi1>, tensor<1x1x4x16xf32>, tensor<f32>) -> tensor<1x1x4x16xf32>
+  // CHECK: return %[[SEL]], %[[BC]]
+}
+
+// The condition operand is the one fed by broadcast_to.
+// CHECK-LABEL: @move_broadcast_through_select_v2_cond
+func.func @move_broadcast_through_select_v2_cond(%arg0: tensor<1x1x1x16xi1>, %arg1: tensor<1x1x1x16xf32>) -> tensor<1x1x4x16xf32> {
+  %shape = arith.constant dense<[1, 1, 4, 16]> : tensor<4xi32>
+  %fill = arith.constant dense<0.0> : tensor<f32>
+  %0 = "tfl.broadcast_to"(%arg0, %shape) : (tensor<1x1x1x16xi1>, tensor<4xi32>) -> tensor<1x1x4x16xi1>
+  %1 = "tfl.select_v2"(%0, %arg1, %fill) : (tensor<1x1x4x16xi1>, tensor<1x1x1x16xf32>, tensor<f32>) -> tensor<1x1x4x16xf32>
+  return %1 : tensor<1x1x4x16xf32>
+  // CHECK: %[[SEL:.*]] = "tfl.select_v2"(%arg0, %arg1, %cst_0) : (tensor<1x1x1x16xi1>, tensor<1x1x1x16xf32>, tensor<f32>) -> tensor<1x1x1x16xf32>
+  // CHECK: %[[BC:.*]] = "tfl.broadcast_to"(%[[SEL]], %cst) : (tensor<1x1x1x16xf32>, tensor<4xi32>) -> tensor<1x1x4x16xf32>
+  // CHECK: return %[[BC]]
+}
+
+// An operand without a static shape (here an unranked condition) is left
+// alone.
+// CHECK-LABEL: @move_broadcast_through_select_v2_neg_unranked
+func.func @move_broadcast_through_select_v2_neg_unranked(%arg0: tensor<*xi1>, %arg1: tensor<1x1x1x16xf32>) -> tensor<1x1x4x16xf32> {
+  %shape = arith.constant dense<[1, 1, 4, 16]> : tensor<4xi32>
+  %fill = arith.constant dense<0.0> : tensor<f32>
+  %0 = "tfl.broadcast_to"(%arg1, %shape) : (tensor<1x1x1x16xf32>, tensor<4xi32>) -> tensor<1x1x4x16xf32>
+  %1 = "tfl.select_v2"(%arg0, %0, %fill) : (tensor<*xi1>, tensor<1x1x4x16xf32>, tensor<f32>) -> tensor<1x1x4x16xf32>
+  return %1 : tensor<1x1x4x16xf32>
+  // CHECK: %[[BC:.*]] = "tfl.broadcast_to"(%arg1, %cst)
+  // CHECK: %[[SEL:.*]] = "tfl.select_v2"(%arg0, %[[BC]], %cst_0) : (tensor<*xi1>, tensor<1x1x4x16xf32>, tensor<f32>) -> tensor<1x1x4x16xf32>
+  // CHECK: return %[[SEL]]
+}
