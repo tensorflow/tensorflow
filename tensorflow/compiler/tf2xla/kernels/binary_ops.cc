@@ -212,16 +212,43 @@ XLA_MAKE_BINARY(Minimum, xla::Min(lhs, rhs, extend_dimensions));
 XLA_DEFINE_BINARY_OP(RealDiv, xla::Div(lhs, rhs, extend_dimensions));
 REGISTER_XLA_OP(Name("RealDiv").TypeConstraint("T", kFloatAndComplexTypes),
                 RealDivOp);
-XLA_MAKE_BINARY(ReciprocalGrad, xla::Neg(xla::Mul(rhs, xla::Mul(lhs, lhs))));
+
+// Implementation of ReciprocalGrad, RsqrtGrad and SqrtGrad, given the output
+// `y` of the forward op, the upstream gradient `dy` and the gradient `grad`
+// computed from them. Like the TF kernels, returns 0 wherever `dy` is 0, even
+// where `grad` is inf or NaN. Pseudo-code:
+// if (dy == 0) {
+//   return 0
+// } else {
+//   return grad
+// }
+static xla::XlaOp UnaryGradImpl(xla::XlaBuilder* b, DataType dtype,
+                                xla::XlaOp y, xla::XlaOp dy,
+                                const BCast& broadcast_helper,
+                                xla::XlaOp grad) {
+  std::tie(y, dy) = XlaBinaryOp::Broadcast(y, dy, broadcast_helper);
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto dy_equals_0 = xla::Eq(dy, zero);
+  auto zeros = xla::ZerosLike(grad);
+  return xla::Select(dy_equals_0, zeros, grad);
+}
+XLA_MAKE_BINARY(ReciprocalGrad,
+                UnaryGradImpl(b, input_type(0), lhs, rhs, broadcast_helper,
+                              xla::Neg(xla::Mul(rhs, xla::Mul(lhs, lhs)))));
 XLA_MAKE_BINARY(
     RsqrtGrad,
-    xla::Mul((lhs * lhs) * lhs,
-             xla::Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
-             extend_dimensions));
+    UnaryGradImpl(
+        b, input_type(0), lhs, rhs, broadcast_helper,
+        xla::Mul((lhs * lhs) * lhs,
+                 xla::Div(rhs,
+                          XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
+                 extend_dimensions)));
 XLA_MAKE_BINARY(
     SqrtGrad,
-    xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
-             lhs, extend_dimensions));
+    UnaryGradImpl(
+        b, input_type(0), lhs, rhs, broadcast_helper,
+        xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
+                 lhs, extend_dimensions)));
 
 // Implementation of TruncateDiv.
 //

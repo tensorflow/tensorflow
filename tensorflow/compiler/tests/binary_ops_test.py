@@ -264,6 +264,26 @@ class BinaryOpsTest(xla_test.XLATestCase):
             rtol=1e-4,
             atol=1e-6)
 
+  def testUnaryGradOpsWithZeroUpstreamGradient(self):
+    for dtype in self.float_types | self.complex_types:
+      y = np.array([0, np.inf, np.nan, 4], dtype=dtype)
+      dy = np.array([0, 0, 0, 5], dtype=dtype)
+      self._testBinary(
+          gen_math_ops.reciprocal_grad,
+          y,
+          dy,
+          expected=np.array([0, 0, 0, -80], dtype=dtype))
+      self._testBinary(
+          gen_math_ops.rsqrt_grad,
+          y,
+          dy,
+          expected=np.array([0, 0, 0, -160], dtype=dtype))
+      self._testBinary(
+          gen_math_ops.sqrt_grad,
+          y,
+          dy,
+          expected=np.array([0, 0, 0, 0.625], dtype=dtype))
+
   def testIntOps(self):
     for dtype in self.signed_int_types:
       self._testBinary(
