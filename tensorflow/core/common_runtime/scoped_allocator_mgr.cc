@@ -177,12 +177,13 @@ size_t ScopedAllocatorMgr::PopulateFields(
     const DataType dtype, std::vector<ScopedAllocator::Field>* fields) {
   const int32_t num_fields = static_cast<int32_t>(shapes.size());
   fields->resize(num_fields);
+  const size_t dt_size = DataTypeSize(dtype);
   // At the end of iteration `i`, `offset` points to the offset from the start
   // of the backing buffer until the end of `field[i].bytes_allocated`.  This
   // is aligned to `kAllocatorAlignment`.
   size_t offset = 0;
   for (int32_t i = 0; i < num_fields; ++i) {
-    size_t bytes_requested = shapes[i].num_elements() * DataTypeSize(dtype);
+    size_t bytes_requested = shapes[i].num_elements() * dt_size;
     auto* field = &((*fields)[i]);
     field->scope_id = scope_id + 1 + i;
     field->bytes_requested = bytes_requested;
