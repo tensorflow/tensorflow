@@ -1634,6 +1634,7 @@ cc_library(
         "//xla/service:matmul_indexing_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
@@ -1641,6 +1642,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:tensor_float_32_utils",
     ],
 )
 
@@ -1657,6 +1659,7 @@ xla_cc_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
