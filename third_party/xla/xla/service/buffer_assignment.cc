@@ -2107,28 +2107,22 @@ bool BufferAssigner::LiveRangeInterferes(
   DCHECK((assignment->hlo_live_range().total_order_scheduled()));
 
   // An HloValue can hold multiple instruction positions during its lifetime
-  // (e.g. when passed into a while loop tuple or bitcast view).
-  // operand_live_range.end_position points to the last instruction in
-  // schedule order (which may be a tuple instruction inside a loop body).
-  // However, a downstream user instruction might directly consume a
-  // different position of the value (such as the definition instruction
-  // before the loop). Therefore, we must check all positions of the
-  // HloValue to see if any instruction can share its buffer with the user.
+  // (e.g. when passed into a while loop tuple or bitcast view). The user does
+  // not necessarily consume the position at which the live range of the value
+  // ends (which may be a tuple instruction inside a loop body). It may consume
+  // a different position (such as the definition instruction before the loop),
+  // or several positions (such as an instruction and a bitcast of it). All
+  // positions are backed by the same buffer, so the user can only share that
+  // buffer if every position that it consumes allows it.
   auto can_share_as_operand = [&assignment, this](
                                   const HloValue* user_value,
                                   const HloValue* operand_value) {
     if (user_value->instruction()->opcode() == HloOpcode::kCopy) {
       return false;
     }
-    for (const HloPosition& operand_pos : operand_value->positions()) {
-      if (user_value->instruction()->IsUserOf(operand_pos.instruction) &&
-          assignment->dataflow_analysis().CanShareOperandBufferWithUser(
-              operand_pos.instruction, operand_pos.index,
-              user_value->instruction(), user_value->index(), alias_info_)) {
-        return true;
-      }
-    }
-    return false;
+    return assignment->dataflow_analysis().CanShareOperandValueBufferWithUser(
+        *operand_value, user_value->instruction(), user_value->index(),
+        alias_info_);
   };
 
   bool interferes = false;
