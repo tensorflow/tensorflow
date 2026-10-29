@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_options.h"
 
 #include <cstdint>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -29,9 +30,9 @@ namespace xla {
 namespace {
 
 using ::absl_testing::IsOk;
-using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
+using ::testing::Optional;
 
 static_assert(!std::is_copy_constructible_v<HloPassOptions>);
 static_assert(std::is_move_constructible_v<HloPassOptions>);
@@ -40,32 +41,31 @@ HloPassOptions::ProtoMap MakeProtoMap() {
   HloPassOptions::ProtoMap proto;
   proto["flag"].set_bool_val(true);
   proto["count"].set_int_val(10);
-  proto["unset"];
   return proto;
 }
 
 TEST(HloPassOptionsTest, DefaultConstructedIsEmpty) {
   HloPassOptions options;
 
-  EXPECT_THAT(options.Get<bool>("flag", true), IsOkAndHolds(true));
-  EXPECT_THAT(options.Get<int64_t>("limit", 42), IsOkAndHolds(42));
+  EXPECT_EQ(options.Get<bool>("flag"), std::nullopt);
+  EXPECT_EQ(options.Get<int64_t>("limit"), std::nullopt);
   EXPECT_THAT(options.CheckAllConsumed(), IsOk());
 }
 
 TEST(HloPassOptionsTest, CopiesProtoMap) {
   HloPassOptions options(MakeProtoMap());
 
-  EXPECT_THAT(options.Get<bool>("flag", false), IsOkAndHolds(true));
-  EXPECT_THAT(options.Get<int64_t>("count", 5), IsOkAndHolds(10));
-  EXPECT_THAT(options.Get<int64_t>("missing", 5), IsOkAndHolds(5));
+  EXPECT_THAT(options.Get<bool>("flag"), Optional(true));
+  EXPECT_THAT(options.Get<int64_t>("count"), Optional(10));
+  EXPECT_EQ(options.Get<int64_t>("missing"), std::nullopt);
 }
 
 TEST(HloPassOptionsTest, InitializerListMapsIntegralTypes) {
   HloPassOptions options = {{"flag", true}, {"negative", -3}, {"unsigned", 7u}};
 
-  EXPECT_THAT(options.Get<bool>("flag", false), IsOkAndHolds(true));
-  EXPECT_THAT(options.Get<int64_t>("negative", 0), IsOkAndHolds(-3));
-  EXPECT_THAT(options.Get<int64_t>("unsigned", 0), IsOkAndHolds(7));
+  EXPECT_THAT(options.Get<bool>("flag"), Optional(true));
+  EXPECT_THAT(options.Get<int64_t>("negative"), Optional(-3));
+  EXPECT_THAT(options.Get<int64_t>("unsigned"), Optional(7));
   EXPECT_THAT(options.CheckAllConsumed(), IsOk());
 }
 
@@ -74,40 +74,47 @@ TEST(HloPassOptionsDeathTest, InitializerListRejectsDuplicateName) {
                "Duplicate pass option 'flag'");
 }
 
-TEST(HloPassOptionsTest, TypeMismatchReturnsInvalidArgument) {
-  HloPassOptions options(MakeProtoMap());
+TEST(HloPassOptionsTest, TypeMismatchIsReportedByCheckAllConsumed) {
+  HloPassOptions options = {{"flag", true}};
 
-  EXPECT_THAT(options.Get<int64_t>("flag", 0),
+  EXPECT_EQ(options.Get<int64_t>("flag"), std::nullopt);
+  EXPECT_THAT(
+      options.CheckAllConsumed(),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Pass option 'flag' (bool) was not consumed")));
+}
+
+TEST(HloPassOptionsTest, UnsetValueIsReportedByCheckAllConsumed) {
+  HloPassOptions::ProtoMap proto;
+  proto["unset"];
+  HloPassOptions options(proto);
+
+  EXPECT_EQ(options.Get<bool>("unset"), std::nullopt);
+  EXPECT_THAT(options.CheckAllConsumed(),
               StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("'flag' is not of type int64")));
-  EXPECT_THAT(options.Get<bool>("count", false),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("'count' is not of type bool")));
-  EXPECT_THAT(options.Get<bool>("unset", false),
-              StatusIs(absl::StatusCode::kInvalidArgument));
-  // Mistyped options are reported by Get(), not again as unconsumed.
-  EXPECT_THAT(options.CheckAllConsumed(), IsOk());
+                       HasSubstr("'unset' (unset)")));
 }
 
 TEST(HloPassOptionsTest, CheckAllConsumedDetectsUnconsumedKey) {
   HloPassOptions options = {{"used", true}, {"typo", 1}};
 
-  EXPECT_THAT(options.Get<bool>("used", false), IsOkAndHolds(true));
-  EXPECT_THAT(options.CheckAllConsumed(),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Unknown pass option 'typo'")));
+  EXPECT_THAT(options.Get<bool>("used"), Optional(true));
+  EXPECT_THAT(
+      options.CheckAllConsumed(),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Pass option 'typo' (int64) was not consumed")));
 }
 
 TEST(HloPassOptionsTest, MoveKeepsConsumptionTracking) {
   HloPassOptions source = {{"used", true}, {"unused", 1}};
-  EXPECT_THAT(source.Get<bool>("used", false), IsOkAndHolds(true));
+  EXPECT_THAT(source.Get<bool>("used"), Optional(true));
 
   HloPassOptions moved = std::move(source);
 
-  EXPECT_THAT(moved.CheckAllConsumed(),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Unknown pass option 'unused'")));
-  EXPECT_THAT(moved.Get<int64_t>("unused", 0), IsOkAndHolds(1));
+  EXPECT_THAT(
+      moved.CheckAllConsumed(),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("'unused'")));
+  EXPECT_THAT(moved.Get<int64_t>("unused"), Optional(1));
   EXPECT_THAT(moved.CheckAllConsumed(), IsOk());
 }
 

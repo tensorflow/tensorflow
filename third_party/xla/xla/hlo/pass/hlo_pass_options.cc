@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/pass/hlo_pipeline.pb.h"
 
 namespace xla {
 
@@ -30,13 +32,29 @@ HloPassOptions::HloPassOptions(std::initializer_list<Option> options) {
   }
 }
 
+namespace {
+
+absl::string_view TypeName(const HloPassOptionValue& value) {
+  switch (value.value_case()) {
+    case HloPassOptionValue::kBoolVal:
+      return "bool";
+    case HloPassOptionValue::kIntVal:
+      return "int64";
+    case HloPassOptionValue::VALUE_NOT_SET:
+      return "unset";
+  }
+}
+
+}  // namespace
+
 absl::Status HloPassOptions::CheckAllConsumed() const {
-  // Order only affects which of several unknown options gets reported.
+  // Order only affects which of several unconsumed options gets reported.
   // NOLINTNEXTLINE(google*-custom-deterministic-iteration-order)
-  for (const auto& [key, _] : options_) {
+  for (const auto& [key, value] : options_) {
     if (!consumed_keys_.contains(key)) {
       return absl::InvalidArgumentError(
-          absl::StrCat("Unknown pass option '", key, "'"));
+          absl::StrCat("Pass option '", key, "' (", TypeName(value),
+                       ") was not consumed: unknown name or wrong type"));
     }
   }
   return absl::OkStatus();

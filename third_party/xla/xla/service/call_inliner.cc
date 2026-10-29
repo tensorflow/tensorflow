@@ -253,14 +253,11 @@ class CallInlinerFactory : public HloPassFactory {
 
   absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
       const HloPassContext&, const HloPassOptions& options) const override {
-    ABSL_ASSIGN_OR_RETURN(bool single_call_site,
-                     options.Get<bool>("single_call_site", false));
-    ABSL_ASSIGN_OR_RETURN(bool propagate_metadata,
-                     options.Get<bool>("propagate_metadata", true));
     return std::make_unique<CallInliner>(
-        single_call_site,
+        options.Get<bool>("single_call_site").value_or(false),
         /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
-        /*override_policy=*/std::nullopt, propagate_metadata);
+        /*override_policy=*/std::nullopt,
+        options.Get<bool>("propagate_metadata").value_or(true));
   }
 };
 

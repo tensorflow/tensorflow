@@ -18,14 +18,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <type_traits>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/map.h"
 #include "xla/hlo/pass/hlo_pipeline.pb.h"
@@ -40,10 +39,9 @@ namespace xla {
 //
 //   absl::StatusOr<std::unique_ptr<HloPassInterface>> MakeHloDce(
 //       const HloPassOptions& options) {
-//     ABSL_ASSIGN_OR_RETURN(
-//         bool remove_collectives,
-//         options.Get<bool>("remove_cross_partition_collective_ops", false));
-//     return std::make_unique<HloDCE>(remove_collectives);
+//     return std::make_unique<HloDCE>(
+//         options.Get<bool>("remove_cross_partition_collective_ops")
+//             .value_or(false));
 //   }
 //
 // Example (building options in code):
@@ -81,13 +79,14 @@ class HloPassOptions {
   HloPassOptions(HloPassOptions&&) = default;
   HloPassOptions& operator=(HloPassOptions&&) = default;
 
-  // Returns the option value for `key` (marking it as consumed), or
-  // `default_value` if `key` is absent. Returns InvalidArgumentError if `key`
-  // is present with a different type.
+  // Returns the option value for `key` and marks it as consumed. Returns
+  // nullopt if `key` is absent or holds a different type; the latter leaves
+  // `key` unconsumed, so `CheckAllConsumed()` reports it.
   template <typename T>
-  absl::StatusOr<T> Get(absl::string_view key, T default_value) const;
+  std::optional<T> Get(absl::string_view key) const;
 
-  // Returns InvalidArgumentError if any option has not been read via `Get()`.
+  // Returns InvalidArgumentError if any option has not been read via `Get()`,
+  // either because no pass reads it or because it was read as another type.
   absl::Status CheckAllConsumed() const;
 
  private:
@@ -96,30 +95,28 @@ class HloPassOptions {
 };
 
 template <typename T>
-absl::StatusOr<T> HloPassOptions::Get(absl::string_view key,
-                                      T default_value) const {
+std::optional<T> HloPassOptions::Get(absl::string_view key) const {
   auto it = options_.find(key);
   if (it == options_.end()) {
-    return default_value;
+    return std::nullopt;
   }
-  consumed_keys_.insert(it->first);
   const HloPassOptionValue& value = it->second;
-  absl::string_view expected_type;
+  std::optional<T> result;
   if constexpr (std::is_same_v<T, bool>) {
     if (value.has_bool_val()) {
-      return value.bool_val();
+      result = value.bool_val();
     }
-    expected_type = "bool";
   } else if constexpr (std::is_same_v<T, int64_t>) {
     if (value.has_int_val()) {
-      return value.int_val();
+      result = value.int_val();
     }
-    expected_type = "int64";
   } else {
     static_assert(sizeof(T) == 0, "Unsupported HloPassOptions type");
   }
-  return absl::InvalidArgumentError(
-      absl::StrCat("Pass option '", key, "' is not of type ", expected_type));
+  if (result.has_value()) {
+    consumed_keys_.insert(it->first);
+  }
+  return result;
 }
 
 }  // namespace xla
