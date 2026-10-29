@@ -2016,3 +2016,56 @@ func.func @NotFoldBroadcastToRuntimeInput(%arg0: tensor<2x1xf32>) -> tensor<2x3x
   // CHECK: %[[BC:.*]] = "tfl.broadcast_to"(%arg0
   // CHECK: return %[[BC]]
 }
+
+// CHECK-LABEL: @ConstFoldResizeNearestNeighbor
+func.func @ConstFoldResizeNearestNeighbor() -> tensor<1x2x4x1xf32> {
+  %input = arith.constant dense<[[[[1.0], [2.0]]]]> : tensor<1x1x2x1xf32>
+  %size = arith.constant dense<[2, 4]> : tensor<2xi32>
+  %0 = "tfl.resize_nearest_neighbor"(%input, %size) {align_corners = false, half_pixel_centers = false} : (tensor<1x1x2x1xf32>, tensor<2xi32>) -> tensor<1x2x4x1xf32>
+  func.return %0 : tensor<1x2x4x1xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}1.000000e+00], [1.000000e+00], [2.000000e+00], [2.000000e+00]], {{\[\[}}1.000000e+00], [1.000000e+00], [2.000000e+00], [2.000000e+00]]]]> : tensor<1x2x4x1xf32>
+  // CHECK-NOT: tfl.resize_nearest_neighbor
+  // CHECK: return %[[CST]]
+}
+
+// align_corners: corners map exactly; the midpoint rounds half away from zero.
+// CHECK-LABEL: @ConstFoldResizeNearestNeighborAlignCorners
+func.func @ConstFoldResizeNearestNeighborAlignCorners() -> tensor<1x1x3x1xf32> {
+  %input = arith.constant dense<[[[[1.0], [2.0]]]]> : tensor<1x1x2x1xf32>
+  %size = arith.constant dense<[1, 3]> : tensor<2xi32>
+  %0 = "tfl.resize_nearest_neighbor"(%input, %size) {align_corners = true, half_pixel_centers = false} : (tensor<1x1x2x1xf32>, tensor<2xi32>) -> tensor<1x1x3x1xf32>
+  func.return %0 : tensor<1x1x3x1xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}1.000000e+00], [2.000000e+00], [2.000000e+00]]]]> : tensor<1x1x3x1xf32>
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstFoldResizeBilinear
+func.func @ConstFoldResizeBilinear() -> tensor<1x1x4x1xf32> {
+  %input = arith.constant dense<[[[[0.0], [4.0]]]]> : tensor<1x1x2x1xf32>
+  %size = arith.constant dense<[1, 4]> : tensor<2xi32>
+  %0 = "tfl.resize_bilinear"(%input, %size) {align_corners = false, half_pixel_centers = false} : (tensor<1x1x2x1xf32>, tensor<2xi32>) -> tensor<1x1x4x1xf32>
+  func.return %0 : tensor<1x1x4x1xf32>
+  // scale = 0.5: sources 0, 0.5, 1, 1.5 (clamped to 1).
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}0.000000e+00], [2.000000e+00], [4.000000e+00], [4.000000e+00]]]]> : tensor<1x1x4x1xf32>
+  // CHECK-NOT: tfl.resize_bilinear
+  // CHECK: return %[[CST]]
+}
+
+// half_pixel_centers: sources -0.25 (clamped), 0.25, 0.75, 1.25 (clamped).
+// CHECK-LABEL: @ConstFoldResizeBilinearHalfPixel
+func.func @ConstFoldResizeBilinearHalfPixel() -> tensor<1x1x4x1xf32> {
+  %input = arith.constant dense<[[[[0.0], [4.0]]]]> : tensor<1x1x2x1xf32>
+  %size = arith.constant dense<[1, 4]> : tensor<2xi32>
+  %0 = "tfl.resize_bilinear"(%input, %size) {align_corners = false, half_pixel_centers = true} : (tensor<1x1x2x1xf32>, tensor<2xi32>) -> tensor<1x1x4x1xf32>
+  func.return %0 : tensor<1x1x4x1xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[\[\[}}0.000000e+00], [1.000000e+00], [3.000000e+00], [4.000000e+00]]]]> : tensor<1x1x4x1xf32>
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @NotFoldResizeBilinearRuntimeInput
+func.func @NotFoldResizeBilinearRuntimeInput(%arg0: tensor<1x1x2x1xf32>) -> tensor<1x1x4x1xf32> {
+  %size = arith.constant dense<[1, 4]> : tensor<2xi32>
+  %0 = "tfl.resize_bilinear"(%arg0, %size) {align_corners = false, half_pixel_centers = false} : (tensor<1x1x2x1xf32>, tensor<2xi32>) -> tensor<1x1x4x1xf32>
+  func.return %0 : tensor<1x1x4x1xf32>
+  // CHECK: "tfl.resize_bilinear"(%arg0
+}
