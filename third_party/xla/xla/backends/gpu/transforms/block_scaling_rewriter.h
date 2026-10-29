@@ -16,11 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_BLOCK_SCALING_REWRITER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_BLOCK_SCALING_REWRITER_H_
 
+#include <cstdint>
+
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace xla::gpu {
@@ -96,6 +102,11 @@ class BlockScalingRewriter : public OpExpanderPass {
   static constexpr int kBlockSizeMXFP4 = 32;
   static constexpr int kBlockSizeNVFP4 = 16;
 
+  // cuDNN F8_128x4 scale tile sizes: scales are padded to multiples of these
+  // along the non-contracting and contracting dimensions, respectively.
+  static constexpr int64_t kInputNonContractingTileSize = 128;
+  static constexpr int64_t kScaleContractingTileSize = 4;
+
  private:
   se::dnn::VersionInfo cudnn_version_;
 };
@@ -103,13 +114,39 @@ class BlockScalingRewriter : public OpExpanderPass {
 // Helper class for building cuDNN scaled dot operations.
 class CudnnScaledDotHelper {
  public:
+  // Check if the device and cuDNN version support block scaled dots.
+  static bool IsAvailable(const se::DeviceDescription& device_description);
+
   // Check if the scaled dot fusion is supported by cuDNN.
   static bool IsSupported(const HloScaledDotInstruction* scaled_dot);
+
+  // Check if the scaled dot operation is supported by cuDNN (ignoring layout
+  // and operand producer opcodes, for use before layout assignment).
+  static bool IsSupportedPreLayout(const HloScaledDotInstruction* scaled_dot);
+
+  // Check if the scaled dot operation and its physical layouts are supported
+  // by cuDNN (for use after layout assignment).
+  static bool IsSupportedPostLayout(const HloScaledDotInstruction* scaled_dot);
 
   // Extract scale tensor swizzling from the block scaled dot fusion into
   // separate computations.
   static absl::StatusOr<HloInstruction*> AddScaleSwizzle(
       HloFusionInstruction* fusion);
+};
+
+// Rewrites supported kScaledDot instructions into a __cudnn$fusion custom
+// fusion with inline scale padding and F8_128x4 swizzling emitted in the parent
+// computation.
+class CudnnScaledDotRewriter : public HloModulePass {
+ public:
+  absl::string_view name() const override {
+    return "cudnn-scaled-dot-rewriter";
+  }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla::gpu
