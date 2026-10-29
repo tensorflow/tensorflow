@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
@@ -49,6 +50,8 @@ namespace profiler {
 namespace test {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::stream_executor::gpu::CudaGraphAnnotationRegistry;
 using ::testing::_;
 using ::testing::DoAll;
@@ -654,6 +657,7 @@ TEST_F(CuptiTracerTest, WarnsWhenGraphTraceHidesNodeAnnotations) {
 
   registry.ClearForTesting();
 }
+
 TEST_F(CuptiTracerTest, CuGraphLaunchRecordsLaunchStreamId) {
   auto* const subscriber =
       reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
@@ -762,6 +766,109 @@ TEST_F(CuptiTracerTest, CuGraphLaunchRecordsLaunchStreamId) {
   ASSERT_EQ(gpu_plane->lines_size(), 1);
   EXPECT_EQ(gpu_plane->lines(0).id(), 99);
   EXPECT_EQ(gpu_plane->lines(0).events_size(), 2);
+}
+
+TEST_F(CuptiTracerTest,
+       MultipleSubscribersNotSupportedBacksOffAndAllowsSubsequentSession) {
+  EXPECT_FALSE(CuptiDisabled());
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+
+  CuptiTracerOptions options = KernelTraceOptions();
+  auto* const v1_subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+
+  ::testing::InSequence in_sequence;
+
+  // First session: an external subscriber (such as Nsight Systems or Nsight
+  // Compute) holds CUPTI, so Subscribe returns
+  // CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED.
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_NOT_SUPPORTED));
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED));
+  EXPECT_CALL(*mock_, GetResultString(
+                          CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED, _))
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
+
+  EXPECT_THAT(cupti_tracer_->Enable(options, cupti_collector_.get()),
+              StatusIs(absl::StatusCode::kUnavailable));
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+
+  // Calling Disable() after a backed-off Enable() must be a safe no-op.
+  DisableProfiling();
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+
+  // Second session: external subscriber detached, so Subscribe succeeds.
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_NOT_SUPPORTED));
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(DoAll(SetArgPointee<0>(v1_subscriber), Return(CUPTI_SUCCESS)));
+  ExpectSuccessfulV1KernelTrace(v1_subscriber);
+
+  EXPECT_THAT(cupti_tracer_->Enable(options, cupti_collector_.get()), IsOk());
+  EXPECT_FALSE(cupti_tracer_->IsAvailable());
+  DisableProfiling();
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+}
+
+TEST_F(CuptiTracerTest,
+       PrepareForProfilerStartBacksOffOnMultipleSubscribersNotSupported) {
+  EXPECT_FALSE(CuptiDisabled());
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+
+  CuptiTracerOptions options = KernelTraceOptions();
+  options.prefer_cupti_v2 = false;
+  auto* const v1_subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+
+  ::testing::InSequence in_sequence;
+
+  // First session fails in PrepareForProfilerStart with error 39.
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED));
+  EXPECT_CALL(*mock_, GetResultString(
+                          CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED, _))
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
+
+  EXPECT_THAT(cupti_tracer_->PrepareForProfilerStart(options),
+              StatusIs(absl::StatusCode::kUnavailable));
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+
+  // Second session succeeds.
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(DoAll(SetArgPointee<0>(v1_subscriber), Return(CUPTI_SUCCESS)));
+  ExpectSuccessfulV1KernelTrace(v1_subscriber);
+
+  EXPECT_THAT(cupti_tracer_->PrepareForProfilerStart(options), IsOk());
+  EXPECT_THAT(cupti_tracer_->Enable(options, cupti_collector_.get()), IsOk());
+  DisableProfiling();
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+}
+
+TEST_F(CuptiTracerTest,
+       InsufficientPrivilegesInPrepareForProfilerStartSetsNeedRootAccess) {
+  EXPECT_FALSE(CuptiDisabled());
+  EXPECT_FALSE(cupti_tracer_->NeedRootAccess());
+
+  CuptiTracerOptions options = KernelTraceOptions();
+  options.prefer_cupti_v2 = false;
+
+  ::testing::InSequence in_sequence;
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_INSUFFICIENT_PRIVILEGES));
+  EXPECT_CALL(*mock_, GetResultString(CUPTI_ERROR_INSUFFICIENT_PRIVILEGES, _))
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
+
+  EXPECT_THAT(cupti_tracer_->PrepareForProfilerStart(options),
+              StatusIs(absl::StatusCode::kPermissionDenied));
+  EXPECT_TRUE(cupti_tracer_->NeedRootAccess());
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_TRUE(CuptiDisabled());
 }
 
 }  // namespace
