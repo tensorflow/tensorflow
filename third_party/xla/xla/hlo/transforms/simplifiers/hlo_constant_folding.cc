@@ -238,7 +238,6 @@ bool IsFoldable(
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kPartitionId:

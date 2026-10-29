@@ -2577,7 +2577,6 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kOptimizationBarrier:
@@ -3132,7 +3131,6 @@ bool IsCarriedAcrossWhileLoop(const HloInstruction* async_op) {
           user->opcode() == HloOpcode::kTuple ||
           user->opcode() == HloOpcode::kGetTupleElement ||
           user->opcode() == HloOpcode::kOptimizationBarrier ||
-          user->opcode() == HloOpcode::kDomain ||
           user->opcode() == HloOpcode::kCall ||
           user->opcode() == HloOpcode::kConditional) {
         worklist.push_back(user);
@@ -3165,7 +3163,6 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
                      instruction->opcode() != HloOpcode::kCall &&
                      instruction->opcode() != HloOpcode::kConditional &&
                      instruction->opcode() != HloOpcode::kOptimizationBarrier &&
-                     instruction->opcode() != HloOpcode::kDomain &&
                      !instruction->IsAllowedAsyncIntermediary()) {
             return Internal(
                 "Async instruction %s used as operand %d of %s. "

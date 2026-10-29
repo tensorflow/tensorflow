@@ -255,13 +255,12 @@ bool PositionIsUsed(const HloInstruction* instruction,
     for (const HloUse& use : value->GetUses()) {
       if (use.instruction == root &&
           (root->opcode() == HloOpcode::kTuple ||
-           root->opcode() == HloOpcode::kDomain ||
            ((root->opcode() == HloOpcode::kGetTupleElement ||
              root->opcode() == HloOpcode::kCopy) &&
             !use.operand_index.empty()))) {
         // Forwarding into the computation root is checked via root positions
-        // below so tuple and domain roots only count when the corresponding
-        // caller output (or while backedge) is used.
+        // below so tuple roots only count when the corresponding caller output
+        // (or while backedge) is used.
         continue;
       }
       if (InstructionOperandUsesBuffer(use.instruction, use.operand_number,

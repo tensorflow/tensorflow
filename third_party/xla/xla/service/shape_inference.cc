@@ -339,8 +339,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 /* static */ absl::StatusOr<Shape> ShapeInference::InferUnaryOpShape(
     HloOpcode opcode, const Shape& shape) {
   // There is no copy operation at the proto level, so handle copy explicitly.
-  // A domain shape is the same as the input one.
-  if (opcode == HloOpcode::kCopy || opcode == HloOpcode::kDomain) {
+  if (opcode == HloOpcode::kCopy) {
     return shape;
   }
 

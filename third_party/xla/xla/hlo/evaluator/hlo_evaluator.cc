@@ -834,7 +834,6 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCollectivePermuteStart:
-    case HloOpcode::kDomain:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kOutfeed:
@@ -1169,7 +1168,6 @@ bool IsBufferUnchangedInWhileBodySyntactic(const HloComputation* while_body,
       current = current->operand(0);
     } else if (current->opcode() == HloOpcode::kBitcast ||
                current->opcode() == HloOpcode::kOptimizationBarrier ||
-               current->opcode() == HloOpcode::kDomain ||
                current->opcode() == HloOpcode::kAddDependency ||
                current->opcode() == HloOpcode::kCopy) {
       if (current->operand_count() == 0) {

@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
@@ -154,7 +153,6 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kCosh:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
-    case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
@@ -4070,10 +4068,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operand_span.first(input_count), operands[input_count],
           operand_span.last(input_count), *update_computation, dim_numbers,
           indices_are_sorted.value(), unique_indices.value()));
-    }
-    case HloOpcode::kDomain: {
-      TokenError("domain instructions are no longer supported");
-      return nullptr;
     }
     case HloOpcode::kGetDimensionSize: {
       optional<std::vector<int64_t>> dimensions;

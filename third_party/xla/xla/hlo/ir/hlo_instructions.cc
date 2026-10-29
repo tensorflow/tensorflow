@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -4739,51 +4738,6 @@ HloScaledDotInstruction::CloneWithNewOperandsImpl(
   return std::make_unique<HloScaledDotInstruction>(
       shape, new_operands[0], new_operands[1], new_operands[2], new_operands[3],
       dot_dimension_numbers_, precision_config_);
-}
-
-HloDomainInstruction::HloDomainInstruction(
-    const Shape& shape, HloInstruction* operand,
-    std::unique_ptr<DomainMetadata> operand_side_metadata,
-    std::unique_ptr<DomainMetadata> user_side_metadata)
-    : HloInstruction(HloOpcode::kDomain, shape),
-      operand_side_metadata_(std::move(operand_side_metadata)),
-      user_side_metadata_(std::move(user_side_metadata)) {
-  AppendOperand(operand);
-}
-
-void HloDomainInstruction::PrintExtraAttributesImpl(
-    AttributePrinter& printer, const HloPrintOptions& options) const {
-  if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
-    printer.Next([this](Printer* printer) {
-      AppendCat(printer, "domain={kind=\"", operand_side_metadata_->Kind(),
-                "\", entry=");
-      AppendCat(printer, user_side_metadata_->ToString(),
-                ", exit=", operand_side_metadata_->ToString(), "}");
-    });
-  }
-}
-
-bool HloDomainInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
-        eq_computations) const {
-  const auto& casted_other = static_cast<const HloDomainInstruction&>(other);
-  return operand_side_metadata().Matches(
-             casted_other.operand_side_metadata()) &&
-         user_side_metadata().Matches(casted_other.user_side_metadata());
-}
-
-std::unique_ptr<HloInstruction> HloDomainInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-    HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 1);
-  return std::make_unique<HloDomainInstruction>(shape, new_operands[0],
-                                                operand_side_metadata_->Clone(),
-                                                user_side_metadata_->Clone());
-}
-
-void HloDomainInstruction::ToProto(HloInstructionProto* proto) const {
-  HloInstruction::ToProto(proto);
 }
 
 HloGetDimensionSizeInstruction::HloGetDimensionSizeInstruction(
