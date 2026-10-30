@@ -4053,12 +4053,18 @@ bool IsCrossBufferSliceCustomFusion(const HloInstruction* inst) {
   if (inst->output_operand_aliasing().empty()) {
     return false;
   }
+  // Unwrap the outer (src_param, inner_slice_fusion) tuple root of a two
+  // element tuple gather cross_buffer_slice_fusion and verify that the inner
+  // custom fusion updates its destination from a DynamicSlice.
   if (root->opcode() == HloOpcode::kTuple && root->operand_count() == 2 &&
       root->operand(0)->opcode() == HloOpcode::kParameter) {
     root = root->operand(1);
   }
-  return root->IsCustomFusion() && root->fused_expression_root()->opcode() ==
-                                       HloOpcode::kDynamicUpdateSlice;
+  return root->IsCustomFusion() &&
+         root->fused_expression_root()->opcode() ==
+             HloOpcode::kDynamicUpdateSlice &&
+         root->fused_expression_root()->operand(1)->opcode() ==
+             HloOpcode::kDynamicSlice;
 }
 
 int64_t CountWritersInUser(const HloInstruction* inst,
@@ -4525,11 +4531,14 @@ absl::Status VerifyBuffers(const HloModule& module, bool layout_sensitive) {
       if (inst->IsAsynchronous() || (inst->opcode() == HloOpcode::kCall &&
                                      inst->frontend_attributes().map().contains(
                                          kXlaStreamAnnotationAttr))) {
-        // No need for additional buffer verification as the correctness of
-        // buffer usage in AsyncStart/Update/Done is guaranteed through:
-        //   .Making sure these ops are consistent with the wrapped computation.
-        //   .Buffer verification for the custom-call op inside the wrapped
-        //    computation.
+        // No need for additional buffer verification on start/update as the
+        // correctness of buffer usage is guaranteed through consistency with
+        // the wrapped computation and buffer verification inside it. For
+        // AsyncDone, verify that any buffer outputs have at most one writer in
+        // the caller computation.
+        if (inst->opcode() == HloOpcode::kAsyncDone) {
+          ABSL_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
+        }
         continue;
       }
       if (inst->opcode() == HloOpcode::kCustomCall) {
@@ -4557,6 +4566,25 @@ absl::Status VerifyBuffers(const HloModule& module, bool layout_sensitive) {
             return InvalidArgument(
                 "DynamicUpdateSlice result must be a buffer if operand 0 is a "
                 "buffer");
+          }
+        } else {
+          ABSL_RETURN_IF_ERROR(VerifyNoBuffersInContext(inst));
+        }
+      } else if (inst->opcode() == HloOpcode::kDynamicSlice) {
+        if (inst->operand(0)->shape().IsBuffer() &&
+            comp->IsFusionComputation() &&
+            IsCrossBufferSliceCustomFusion(comp->FusionInstruction())) {
+          // DynamicSlice reading from a buffer is allowed only inside cross
+          // buffer slice custom fusions (such as async gather on stream buffer
+          // views), since generic HLO passes do not support top level buffer
+          // DynamicSlice. Enforce that start indices are not buffers and that
+          // the sliced output is a regular array rather than an escaping buffer
+          // type.
+          for (int i = 1; i < inst->operand_count(); ++i) {
+            ABSL_RETURN_IF_ERROR(VerifyNoBuffers(inst->operand(i)->shape(), inst));
+          }
+          if (inst->shape().IsBuffer()) {
+            return InvalidArgument("DynamicSlice result cannot be a buffer");
           }
         } else {
           ABSL_RETURN_IF_ERROR(VerifyNoBuffersInContext(inst));

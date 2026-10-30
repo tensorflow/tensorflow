@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -5523,6 +5524,34 @@ TEST_F(ShapeInferenceTest, UnboundedDynamicSlice) {
   EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(inferred_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, DynamicSliceOnBufferOperand) {
+  // Tests that ShapeInference::InferDynamicSliceShape accepts a buffer shaped
+  // input operand and infers a standard array output shape while still
+  // rejecting tuple inputs. Calls InferDynamicSliceShape on b(f32[4, 10]) to
+  // check that the inferred shape is f32[2, 5] (not a buffer), and on a tuple
+  // shape to check that InvalidArgument is returned.
+  ASSERT_OK_AND_ASSIGN(const Shape array_shape, ParseShape("f32[4, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape buffer_operand, ParseShape("b(f32[4, 10])"));
+  ASSERT_OK_AND_ASSIGN(const Shape start_index, ParseShape("s32[]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[2, 5]"));
+  ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferDynamicSliceShape(
+          buffer_operand, /*start_index_shapes=*/{start_index, start_index},
+          /*slice_sizes=*/{2, 5}, /*allow_scalar_indices=*/true));
+  EXPECT_FALSE(inferred_shape.IsBuffer());
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+
+  const Shape tuple_operand = ShapeUtil::MakeTupleShape({array_shape});
+  EXPECT_THAT(
+      ShapeInference::InferDynamicSliceShape(
+          tuple_operand, /*start_index_shapes=*/{start_index, start_index},
+          /*slice_sizes=*/{2, 5}, /*allow_scalar_indices=*/true),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(ShapeInferenceTest, UnboundedDynamicUpdateSlice) {
