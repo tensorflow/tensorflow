@@ -1078,9 +1078,11 @@ void HloComputation::ForEachInstructionPostOrderImpl(
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrderFrom(
     HloInstruction& postorder_root) const {
   std::vector<HloInstruction*> post_order;
+  post_order.reserve(instruction_count());
   VisitMap visited(instructions_.size());
 
   std::vector<HloInstruction*> dfs_stack_scratch;
+  dfs_stack_scratch.reserve(instruction_count());
   ComputeInstructionPostOrder(&postorder_root, visited, post_order,
                               &dfs_stack_scratch);
   return post_order;

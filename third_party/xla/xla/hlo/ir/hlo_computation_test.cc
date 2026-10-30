@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -739,6 +740,56 @@ TEST_F(HLOComputationTest, DeeplyNestedComputationsEqualIterative) {
   EXPECT_TRUE(chain1.back()->Equal(*chain2.back(), true));
   EXPECT_FALSE(chain1.back()->Equal(*chain3.back(), true));
 }
+
+TEST_F(HLOComputationTest, MakeInstructionPostOrderFromVisitsOnlyAncestors) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  a = f32[4] add(p0, p1)
+  n = f32[4] negate(p1)
+  ROOT t = (f32[4], f32[4]) tuple(a, n)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* a = entry->GetInstructionWithName("a");
+
+  EXPECT_THAT(entry->MakeInstructionPostOrderFrom(*a),
+              ::testing::ElementsAre(p0, p1, a));
+}
+
+std::unique_ptr<HloComputation> MakeAddChainComputation(
+    int num_instructions, absl::string_view name = "add_chain") {
+  const Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloComputation::Builder builder(name);
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* prev = p0;
+  for (int i = 1; i < num_instructions; ++i) {
+    prev = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, prev, p0));
+  }
+  return builder.Build(prev);
+}
+
+void BM_MakeInstructionPostOrderFrom(::testing::benchmark::State& state) {
+  std::unique_ptr<HloComputation> comp =
+      MakeAddChainComputation(state.range(0), "bm_postorder_from");
+  HloInstruction* root = comp->root_instruction();
+  for (auto s : state) {
+    std::vector<HloInstruction*> post_order =
+        comp->MakeInstructionPostOrderFrom(*root);
+    tsl::testing::DoNotOptimize(post_order);
+  }
+}
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_MakeInstructionPostOrderFrom)->Arg(16)->Arg(1024);
 
 }  // namespace
 }  // namespace xla
