@@ -789,11 +789,21 @@ using tsl::AsyncValueRef;
 using tsl::MakeConstructedAsyncValueRef;
 
 // Converts PjRt SendCallbacks to an XLA StreamExecutor send function.
+//
+// The completion events of the scheduled send operations are appended to
+// `send_events`, which must outlive the returned function. Send operations call
+// user-provided send callbacks, which may reference state that callers destroy
+// as soon as the execution completes (e.g. host callback contexts), so if the
+// execution fails, its error event must wait for the outstanding sends.
+//
+// The returned function is not thread-safe: it is only called from the thread
+// that launches the executable.
 static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
-    int replica, const ExecuteOptions& options,
-    AsyncWorkRunner* async_work_runner) {
+    int replica, absl::Span<const std::vector<SendCallback>> send_callbacks,
+    AsyncWorkRunner* async_work_runner,
+    std::vector<AsyncValueRef<std::unique_ptr<se::Event>>>* send_events) {
   // Check if we have callbacks registered for the given replica.
-  if (replica >= options.send_callbacks.size()) {
+  if (replica >= send_callbacks.size()) {
     return [replica](int64_t channel_id, se::Stream*, const Shape&,
                      const se::DeviceAddressBase&,
                      const absl::flat_hash_map<std::string, std::string>&) {
@@ -805,12 +815,14 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   }
 
   // SendCallbacks registered for a device ordinal. Can be empty.
-  absl::Span<const SendCallback> callbacks = options.send_callbacks[replica];
+  absl::Span<const SendCallback> callbacks = send_callbacks[replica];
 
-  return [callbacks, async_work_runner](
+  static constexpr size_t kMinPruneThreshold = 16;
+  return [callbacks, async_work_runner, send_events,
+          prune_threshold = kMinPruneThreshold](
              int64_t channel_id, se::Stream* stream, const Shape& shape,
              const se::DeviceAddressBase& src,
-             const absl::flat_hash_map<std::string, std::string>&)
+             const absl::flat_hash_map<std::string, std::string>&) mutable
              -> absl::StatusOr<AsyncValueRef<std::unique_ptr<se::Event>>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
@@ -822,12 +834,29 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
           channel_id);
     }
 
-    // Allocate event that will signal completion of send operation. We do not
-    // actually track the completion of the send callback, we only have to keep
-    // the device memory long enough to complete the memcpy command.
+    // Allocate event that will signal completion of send operation. It becomes
+    // available after the send callback returns (or the send fails). We have to
+    // keep the device memory long enough to complete the memcpy command, and if
+    // the execution fails, the event delays the execution's error event until
+    // the send operation is no longer running.
     ABSL_ASSIGN_OR_RETURN(auto se_event, stream->parent()->CreateEvent());
     auto done_event = MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
         std::move(se_event));
+
+    // Drop completed sends, so `send_events` does not grow in loops. Pruning
+    // only after the list has doubled keeps this amortized O(1).
+    if (send_events->size() >= prune_threshold) {
+      // Use erase-remove idiom for C++ 17 compatibility.
+      send_events->erase(
+          std::remove_if(
+              send_events->begin(), send_events->end(),
+              [](const AsyncValueRef<std::unique_ptr<se::Event>>& e) {
+                return e.IsAvailable();
+              }),
+          send_events->end());
+      prune_threshold = std::max(kMinPruneThreshold, 2 * send_events->size());
+    }
+    send_events->push_back(done_event);
 
     async_work_runner->Execute(
         [done_event, stream, src, channel_id, shape, send] {
@@ -965,9 +994,9 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
 }  // namespace
 
 static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
-    int replica, const ExecuteOptions& options) {
+    int replica, absl::Span<const std::vector<RecvCallback>> recv_callbacks) {
   // Check if we have callbacks registered for the given replica.
-  if (replica >= options.recv_callbacks.size()) {
+  if (replica >= recv_callbacks.size()) {
     return [replica](int64_t channel_id, se::Stream*, const Shape&,
                      se::DeviceAddressBase*,
                      const absl::flat_hash_map<std::string, std::string>&) {
@@ -979,7 +1008,7 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   }
 
   // RecvCallbacks registered for a device ordinal. Can be empty.
-  absl::Span<const RecvCallback> callbacks = options.recv_callbacks[replica];
+  absl::Span<const RecvCallback> callbacks = recv_callbacks[replica];
 
   return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
                      se::DeviceAddressBase* dst,
@@ -1314,16 +1343,6 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   VLOG(3) << "Replica " << replica_ << ", partition " << partition_
           << " mapped to device ordinal for execution: " << device_ordinal;
 
-  // Schedule async send operations in the client thread pool.
-  auto* async_work_runner = raw_client_->async_work_runner();
-
-  // Create a PjRt<->StreamExecutor adaptors to send/recv device memory as
-  // PjRt chunks via the user-provided callbacks.
-  SendDeviceMemoryFunction send_device_memory =
-      ConvertSendCallbacksToSendFunction(replica_, options, async_work_runner);
-  RecvDeviceMemoryFunction recv_device_memory =
-      ConvertRecvCallbacksToRecvFunction(replica_, options);
-
   // The choice of where we wait is arbitrary; the reason for the wait is
   // pacing to avoid problems such as memory fragmentation and running ahead
   // too far, not for correctness. Placing it before the executable launch
@@ -1386,8 +1405,8 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
        raw_client = raw_client_, device = device_,
        device_assignment = device_assignment_, is_predetermined_error,
        compute_reservation = std::move(compute_reservation),
-       send_device_memory = std::move(send_device_memory),
-       recv_device_memory = std::move(recv_device_memory),
+       send_callbacks = options.send_callbacks,
+       recv_callbacks = options.recv_callbacks,
        inputs = std::vector<PjRtRawBufferRef>(inputs.begin(), inputs.end()),
        results = std::vector<PjRtRawBufferRef>(results.begin(), results.end()),
        executable = executable_, execution_profile = options.execution_profile,
@@ -1398,6 +1417,18 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
        result_definition_event_promises =
            std::move(result_definition_event_promises),
        control_deps = std::move(control_deps)]() mutable -> PjRtDeviceEventRef {
+    // Create PjRt<->StreamExecutor adaptors to send/recv device memory as PjRt
+    // chunks via the user-provided callbacks. Send operations are scheduled in
+    // the client thread pool. Sends are issued from this thread, so the send
+    // adaptor records their completion events directly in `send_events`.
+    std::vector<AsyncValueRef<std::unique_ptr<se::Event>>> send_events;
+    SendDeviceMemoryFunction send_device_memory =
+        ConvertSendCallbacksToSendFunction(replica, send_callbacks,
+                                           raw_client->async_work_runner(),
+                                           &send_events);
+    RecvDeviceMemoryFunction recv_device_memory =
+        ConvertRecvCallbacksToRecvFunction(replica, recv_callbacks);
+
     ExecutableRunOptions run_options;
     run_options.set_stream(device_state->compute_stream());
     run_options.set_device_ordinal(device_state->local_device_id().value());
@@ -1587,8 +1618,34 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
 
       if (!result_buffer_or_status.ok()) {
         StallStreamOnError(device_state, stream);
-        return raw_client->CreateErrorDeviceEvent(
-            add_error_context(result_buffer_or_status.status()));
+        absl::Status error =
+            add_error_context(result_buffer_or_status.status());
+
+        // Sends scheduled before the failure may still be running user send
+        // callbacks. Don't report the error until they complete, because
+        // callers may destroy the callback state once the execution is done.
+        std::vector<AsyncValueRef<std::unique_ptr<se::Event>>> pending_sends;
+        for (auto& send_event : send_events) {
+          if (!send_event.IsAvailable()) {
+            pending_sends.push_back(std::move(send_event));
+          }
+        }
+        // If there are no pending sends, we can report the error immediately.
+        if (pending_sends.empty()) {
+          return raw_client->CreateErrorDeviceEvent(std::move(error));
+        }
+        // Otherwise, use a promise to report error once pending sends complete.
+        auto promise = tsl::MakeRef<PjRtStreamExecutorDeviceEventPromise>(
+            raw_client, device_state, raw_client->async_work_runner());
+        PjRtDeviceEventRef error_event = promise->event().CopyRef();
+        tsl::RunWhenReady(
+            absl::MakeConstSpan(pending_sends),
+            [promise = std::move(promise), error = std::move(error),
+             // Keep the pending sends alive until the callback completes.
+             pending_sends = pending_sends]() mutable {
+              promise->SetError(std::move(error));
+            });
+        return error_event;
       }
       absl::StatusOr<BufferSequencingEventRef> definition_event_or =
           device_state->GetEventForComputeStreamSyncPoint(

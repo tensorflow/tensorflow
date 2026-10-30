@@ -240,7 +240,7 @@ cc_library(
         ":tpu_inc_gen",
         ":tpu_serde_pass",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:CAPIIR",
+        "@llvm-project//mlir:CAPIIRObjects",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

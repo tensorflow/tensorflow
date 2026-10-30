@@ -372,17 +372,6 @@ ENTRY %ShardedTupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f3
 
 )"
 },
-{
-"DomainParsing",
-R"(HloModule DomainParsing_module, entry_computation_layout={(f32[])->f32[]}
-
-ENTRY %DomainParsing (v1: f32[]) -> f32[] {
-  %v1 = f32[] parameter(0)
-  ROOT %dom = f32[] domain(f32[] %v1), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
-}
-
-)"
-},
 // int32_t result = 0;
 // while (result < 5) { result = result + 1; }
 {
@@ -5451,6 +5440,21 @@ TEST(HloParserSingleOpTest, SingleOpNoNames) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST(HloParserSingleOpTest, SingleOpWithControlPredecessors) {
+  const std::string text =
+      "%multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, "
+      "f32[2,4]{1,0} %x), control-predecessors={%control_pred, %x}";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  const HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(1))));
+  ASSERT_EQ(root->control_predecessors().size(), 2);
+  EXPECT_EQ(root->control_predecessors()[0]->name(), "control_pred");
+  EXPECT_EQ(root->control_predecessors()[1]->name(), "x");
+}
+
 TEST(HloParserSingleOpTest, SkipStackFrameIndex) {
   const std::string text = R"(HloModule m, entry_computation_layout={()->pred[]}
 
@@ -8125,6 +8129,39 @@ ENTRY main {
   HloComputation* called_computation = async_done->async_wrapped_computation();
   EXPECT_EQ(called_computation->num_parameters(), 2);
   EXPECT_EQ(called_computation->root_instruction()->operand_count(), 2);
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_CallStart_InvalidToApply) {
+  // The braces open a nested computation, and `%nope` is not a valid
+  // instruction inside it.
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  call-start = ((), (), s32[]) call-start(), to_apply={%nope}
+  ROOT call-done = s32[] call-done(call-start)
+}
+  )";
+  auto module_or_status = ParseAndReturnUnverifiedModule(hlo);
+  EXPECT_FALSE(module_or_status.ok());
+  EXPECT_THAT(module_or_status.status().message(),
+              HasSubstr("expects '=' in instruction"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_CustomCallStart_MissingTarget) {
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  cc-start = ((), (), s32[]) custom-call-start()
+  ROOT cc-done = s32[] custom-call-done(cc-start)
+}
+  )";
+  auto module_or_status = ParseAndReturnUnverifiedModule(hlo);
+  EXPECT_FALSE(module_or_status.ok());
+  EXPECT_THAT(
+      module_or_status.status().message(),
+      HasSubstr("attribute custom_call_target is expected but not seen"));
 }
 
 TEST_F(HloParserTest,

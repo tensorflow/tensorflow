@@ -30,10 +30,8 @@ namespace {
 
 using Registry = CudaGraphAnnotationRegistry;
 using KeySpace = Registry::KeySpace;
-using Token = Registry::Token;
-using TrackMode = Registry::TrackMode;
 
-void ProjectGraphHierarchyDfs(CUgraph graph, uint32_t exec_id, Token exec_token,
+void ProjectGraphHierarchyDfs(CUgraph graph, uint32_t exec_id,
                               uint32_t* next_flat_local_id) {
   // Every node of `graph` occupies an ordinal whether or not it can be
   // registered. If `cuGraphGetId` fails, the nodes (and their subgraphs) are
@@ -56,9 +54,9 @@ void ProjectGraphHierarchyDfs(CUgraph graph, uint32_t exec_id, Token exec_token,
     }
     const uint64_t exec_node_id = (uint64_t{exec_id} << 32) | flat_local_id;
     if (std::optional<uint64_t> src_tools_id = GetToolsId(node)) {
-      registry.CopyNodeAnnotation(exec_id, exec_token, exec_node_id,
-                                  *src_graph_id, *src_tools_id,
-                                  /*fallback=*/"", KeySpace::kPre134ExecGraph);
+      registry.CopyNodeAnnotation(exec_id, exec_node_id, *src_graph_id,
+                                  *src_tools_id, /*fallback=*/"",
+                                  KeySpace::kPre134ExecGraph);
     }
   }
 
@@ -67,8 +65,7 @@ void ProjectGraphHierarchyDfs(CUgraph graph, uint32_t exec_id, Token exec_token,
   for (CUgraphNode node : nodes) {
     ForEachSubgraphPair(
         node, nullptr, [&](CUgraph subgraph, CUgraph /*orig_subgraph*/) {
-          ProjectGraphHierarchyDfs(subgraph, exec_id, exec_token,
-                                   next_flat_local_id);
+          ProjectGraphHierarchyDfs(subgraph, exec_id, next_flat_local_id);
         });
   }
 }
@@ -101,15 +98,13 @@ void RegisterPre134ExecGraphNodes(CUgraph root_graph, CUgraphExec exec) {
   // reference: it is attached after instantiation. So the entry lives exactly
   // as long as `root_graph`, which outlives `exec` because
   // `~CudaCommandBuffer()` destroys `graph_exec_` before `graph_`.
-  const std::optional<TrackedGraph> tracked = TrackAndAttach(
-      *exec_id, root_graph, TrackMode::kNewGraph, KeySpace::kPre134ExecGraph);
-  if (!tracked.has_value()) {
+  if (!TrackAndAttach(*exec_id, root_graph, KeySpace::kPre134ExecGraph)
+           .has_value()) {
     return;
   }
 
   uint32_t next_flat_local_id = 0;
-  ProjectGraphHierarchyDfs(root_graph, *exec_id, tracked->token,
-                           &next_flat_local_id);
+  ProjectGraphHierarchyDfs(root_graph, *exec_id, &next_flat_local_id);
 }
 
 }  // namespace stream_executor::gpu::command_buffer_telemetry

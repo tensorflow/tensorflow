@@ -21,10 +21,25 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
+
+struct ConvolutionMatch {
+  Window window;
+  ConvolutionDimensionNumbers dnums;
+  HloInstruction* instr;
+};
+
+bool CanImplementAsGpuForwardConv(HloInstruction* conv);
+bool CanImplementAsGpuForwardConv(HloInstruction* conv,
+                                  const se::GpuComputeCapability& cc);
+std::optional<ConvolutionMatch> MatchBackwardFilter(HloInstruction* conv);
+std::optional<ConvolutionMatch> MatchBackwardInput(HloInstruction* conv);
+HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
+    HloInstruction* conv);
 
 std::optional<Window> RestoreWindowFromBackwardFilter(
     const HloConvolutionInstruction* conv);

@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -91,6 +92,9 @@ bool IsNopInstruction(const HloInstruction& hlo) {
     case HloOpcode::kReplicaId:
     case HloOpcode::kOptimizationBarrier:
       return true;
+    case HloOpcode::kCustomCall:
+      // Only reserves a buffer; launches nothing.
+      return hlo.IsCustomCall("AllocateBuffer");
     default:
       return hlo.IsEffectiveBitcast();
   }
@@ -1004,11 +1008,41 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::GetLatencyBetween(
 // GPUProfileStatisticsAggregator
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+// Whether `instruction` is in the condition of while loops that all have a
+// known trip count. The GPU runtime runs the body of such a loop the given
+// number of times without evaluating the condition, so its instructions are
+// never profiled.
+bool IsInUnevaluatedLoopCondition(const HloInstruction& instruction) {
+  const HloComputation* computation = instruction.parent();
+  if (computation == nullptr) {
+    return false;
+  }
+  bool is_loop_condition = false;
+  for (const HloInstruction* loop :
+       computation->caller_instructions(HloOpcode::kWhile)) {
+    if (loop->while_condition() != computation) {
+      continue;
+    }
+    is_loop_condition = true;
+    absl::StatusOr<WhileLoopBackendConfig> config =
+        loop->backend_config<WhileLoopBackendConfig>();
+    if (!config.ok() || !config->has_known_trip_count()) {
+      return false;
+    }
+  }
+  return is_loop_condition;
+}
+
+}  // namespace
+
 void GPUProfileStatisticsAggregator::HandleMissingInstructionCost(
     const HloInstruction& instruction) {
   if (!IsNopInstruction(instruction) &&
       HloPredicateIsNotOp<HloOpcode::kWhile>(&instruction) &&
-      HloPredicateIsNotOp<HloOpcode::kCopy>(&instruction)) {
+      HloPredicateIsNotOp<HloOpcode::kCopy>(&instruction) &&
+      !IsInUnevaluatedLoopCondition(instruction)) {
     missing_instructions_.insert(&instruction);
   }
 }

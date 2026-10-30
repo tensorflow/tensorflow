@@ -154,6 +154,10 @@ absl::StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
+    // Bit-width-changing bitcast-converts are not elementwise, but padding
+    // data reinterprets to padding data; the minor dimension they add or
+    // remove is static (shape inference rejects a dynamic one).
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kConcatenate:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
@@ -164,7 +168,6 @@ absl::StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kTranspose:
     case HloOpcode::kSort:
     case HloOpcode::kSlice:
-    case HloOpcode::kDomain:
     case HloOpcode::kOptimizationBarrier:
       return nullptr;
     case HloOpcode::kCustomCall:
@@ -2149,9 +2152,7 @@ absl::StatusOr<bool> DynamicPadder::RunImpl(
   FlattenCallGraph flatten_call_graph;
   ABSL_ASSIGN_OR_RETURN(bool changed,
                    flatten_call_graph.Run(module, execution_threads));
-  CallInliner call_inliner(
-      /*single_call_site=*/false,
-      /*update_domain=*/false);
+  CallInliner call_inliner(/*single_call_site=*/false);
   ABSL_ASSIGN_OR_RETURN(bool inliner_changed,
                    call_inliner.Run(module, execution_threads));
   changed |= inliner_changed;

@@ -255,6 +255,27 @@ module @module_1 {
     %2 = stablehlo.add %1#0, %arg1 : tensor<16x8xf32>
     return %2 : tensor<16x8xf32>
   }
+
+  // CHECK-LABEL: func @compute_on_start_and_done(
+  // CHECK-SAME:    %arg0: tensor<32xi32>) -> tensor<32xi32> {
+  func.func @compute_on_start_and_done(%arg0: tensor<32xi32>) -> tensor<32xi32> {
+    // CHECK-NEXT: %[[START:.*]] = call @compute_on_body(%arg0) {mhlo.frontend_attributes = {_xla_compute_type = "sparseoffload", xla.sdy.is_compute_on_start = "true"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}]>]>} : (tensor<32xi32>) -> tensor<32xi32>
+    // CHECK-NEXT: %[[DONE:.*]] = stablehlo.custom_call @"compute-on-done"(%[[START]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"b"}]>]>} : (tensor<32xi32>) -> tensor<32xi32>
+    // CHECK-NEXT: return %[[DONE]] : tensor<32xi32>
+    %0 = stablehlo.custom_call @"compute-on-start"(%arg0) {
+      called_computations = [@compute_on_body],
+      mhlo.frontend_attributes = {_xla_compute_type = "sparseoffload"},
+      mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"
+    } : (tensor<32xi32>) -> tensor<32xi32>
+    %1 = stablehlo.custom_call @"compute-on-done"(%0) {
+      mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'b'}]}"
+    } : (tensor<32xi32>) -> tensor<32xi32>
+    return %1 : tensor<32xi32>
+  }
+
+  func.func private @compute_on_body(%arg0: tensor<32xi32>) -> tensor<32xi32> {
+    return %arg0 : tensor<32xi32>
+  }
 }
 
 // -----

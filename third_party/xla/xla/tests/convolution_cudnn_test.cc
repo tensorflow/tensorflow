@@ -166,6 +166,29 @@ ENTRY TestComputation {
       RunAndCompareTwoModules(kHlo, kHloVectorized, ErrorSpec{0, 0}, true));
 }
 
+TEST_F(ConvolutionHloTest, TestCudnnConvInt8Grouped) {
+  // CudnnPadForConvolutions must not pad a grouped int8 convolution whose
+  // kernel has fewer input features per group than the padding width
+  // (#49123). Operands are clamped so that the s8 result cannot overflow.
+  constexpr absl::string_view kHlo = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %input = s8[2,4,4,4] parameter(0)
+  %filter = s8[4,2,1,1] parameter(1)
+  %lo = s8[] constant(-3)
+  %hi = s8[] constant(3)
+  %input_lo = s8[2,4,4,4] broadcast(%lo), dimensions={}
+  %input_hi = s8[2,4,4,4] broadcast(%hi), dimensions={}
+  %filter_lo = s8[4,2,1,1] broadcast(%lo), dimensions={}
+  %filter_hi = s8[4,2,1,1] broadcast(%hi), dimensions={}
+  %input_clamped = s8[2,4,4,4] clamp(%input_lo, %input, %input_hi)
+  %filter_clamped = s8[4,2,1,1] clamp(%filter_lo, %filter, %filter_hi)
+  ROOT %conv = s8[2,4,4,4] convolution(%input_clamped, %filter_clamped), window={size=1x1}, dim_labels=bf01_oi01->bf01, feature_group_count=2
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
+}
+
 class ReorderFilterHloTest : public ConvolutionHloTest,
                              public ::testing::WithParamInterface<std::tuple<
                                  /*input_features=*/int64_t,

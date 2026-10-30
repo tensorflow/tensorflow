@@ -189,177 +189,175 @@ class HloOpcode(enum.Enum):
 
   kDivide = 51
 
-  kDomain = 52
+  kDot = 52
 
-  kDot = 53
+  kDynamicReshape = 53
 
-  kDynamicReshape = 54
+  kDynamicSlice = 54
 
-  kDynamicSlice = 55
+  kDynamicUpdateSlice = 55
 
-  kDynamicUpdateSlice = 56
+  kErf = 56
 
-  kErf = 57
+  kExp = 57
 
-  kExp = 58
+  kExp2 = 58
 
-  kExp2 = 59
+  kExpm1 = 59
 
-  kExpm1 = 60
+  kFft = 60
 
-  kFft = 61
+  kFloor = 61
 
-  kFloor = 62
+  kFma = 62
 
-  kFma = 63
+  kFusion = 63
 
-  kFusion = 64
+  kGather = 64
 
-  kGather = 65
+  kGetDimensionSize = 65
 
-  kGetDimensionSize = 66
+  kGetTupleElement = 66
 
-  kGetTupleElement = 67
+  kImag = 67
 
-  kImag = 68
+  kInfeed = 68
 
-  kInfeed = 69
+  kIota = 69
 
-  kIota = 70
+  kIsFinite = 70
 
-  kIsFinite = 71
+  kLog = 71
 
-  kLog = 72
+  kLog1p = 72
 
-  kLog1p = 73
+  kLog2 = 73
 
-  kLog2 = 74
+  kLogistic = 74
 
-  kLogistic = 75
+  kMap = 75
 
-  kMap = 76
+  kMaximum = 76
 
-  kMaximum = 77
+  kMinimum = 77
 
-  kMinimum = 78
+  kMulhi = 78
 
-  kMulhi = 79
+  kMultiply = 79
 
-  kMultiply = 80
+  kNegate = 80
 
-  kNegate = 81
+  kNot = 81
 
-  kNot = 82
+  kOptimizationBarrier = 82
 
-  kOptimizationBarrier = 83
+  kOr = 83
 
-  kOr = 84
+  kOutfeed = 84
 
-  kOutfeed = 85
+  kPad = 85
 
-  kPad = 86
+  kParameter = 86
 
-  kParameter = 87
+  kPartitionId = 87
 
-  kPartitionId = 88
+  kPopulationCount = 88
 
-  kPopulationCount = 89
+  kPower = 89
 
-  kPower = 90
+  kRaggedAllToAll = 90
 
-  kRaggedAllToAll = 91
+  kRaggedDot = 91
 
-  kRaggedDot = 92
+  kReal = 92
 
-  kReal = 93
+  kRecv = 93
 
-  kRecv = 94
+  kRecvDone = 94
 
-  kRecvDone = 95
+  kReduce = 95
 
-  kReduce = 96
+  kReducePrecision = 96
 
-  kReducePrecision = 97
+  kReduceScatter = 97
 
-  kReduceScatter = 98
+  kReduceWindow = 98
 
-  kReduceWindow = 99
+  kRemainder = 99
 
-  kRemainder = 100
+  kReplicaId = 100
 
-  kReplicaId = 101
+  kReshape = 101
 
-  kReshape = 102
+  kReverse = 102
 
-  kReverse = 103
+  kRng = 103
 
-  kRng = 104
+  kRngBitGenerator = 104
 
-  kRngBitGenerator = 105
+  kRngGetAndUpdateState = 105
 
-  kRngGetAndUpdateState = 106
+  kRoundNearestAfz = 106
 
-  kRoundNearestAfz = 107
+  kRoundNearestEven = 107
 
-  kRoundNearestEven = 108
+  kRsqrt = 108
 
-  kRsqrt = 109
+  kScaledDot = 109
 
-  kScaledDot = 110
+  kScan = 110
 
-  kScan = 111
+  kScatter = 111
 
-  kScatter = 112
+  kSelect = 112
 
-  kSelect = 113
+  kSelectAndScatter = 113
 
-  kSelectAndScatter = 114
+  kSend = 114
 
-  kSend = 115
+  kSendDone = 115
 
-  kSendDone = 116
+  kSetDimensionSize = 116
 
-  kSetDimensionSize = 117
+  kShiftLeft = 117
 
-  kShiftLeft = 118
+  kShiftRightArithmetic = 118
 
-  kShiftRightArithmetic = 119
+  kShiftRightLogical = 119
 
-  kShiftRightLogical = 120
+  kShuffle = 120
 
-  kShuffle = 121
+  kSign = 121
 
-  kSign = 122
+  kSin = 122
 
-  kSin = 123
+  kSinh = 123
 
-  kSinh = 124
+  kSlice = 124
 
-  kSlice = 125
+  kSort = 125
 
-  kSort = 126
+  kSqrt = 126
 
-  kSqrt = 127
+  kStochasticConvert = 127
 
-  kStochasticConvert = 128
+  kSubtract = 128
 
-  kSubtract = 129
+  kTan = 129
 
-  kTan = 130
+  kTanh = 130
 
-  kTanh = 131
+  kTopK = 131
 
-  kTopK = 132
+  kTranspose = 132
 
-  kTranspose = 133
+  kTriangularSolve = 133
 
-  kTriangularSolve = 134
+  kTuple = 134
 
-  kTuple = 135
+  kWhile = 135
 
-  kWhile = 136
-
-  kXor = 137
+  kXor = 136
 
 class Layout:
   @overload

@@ -95,6 +95,9 @@ void SetConstraint(
 void SeedConstantInstruction(
     const HloInstruction* inst,
     absl::flat_hash_map<const HloInstruction*, ConstraintState>& states) {
+  if (!Cast<HloConstantInstruction>(inst)->HasLiteral()) {
+    return;
+  }
   const Literal& literal = inst->literal();
   if (literal.shape().IsArray() && literal.element_count() > 0) {
     switch (literal.shape().element_type()) {
@@ -274,6 +277,9 @@ double GetMaxLogForType(PrimitiveType type, int64_t reduction_elements = 1) {
 void Seed16BitFloatingInstruction(
     const HloInstruction* inst,
     absl::flat_hash_map<const HloInstruction*, ConstraintState>& states) {
+  if (inst == nullptr) {
+    return;
+  }
   PrimitiveType type = inst->shape().element_type();
   if (type == BF16 || type == F16) {
     // 65504.0 is the maximum finite value of FP16. We deliberately use 65504.0
@@ -287,6 +293,12 @@ void Seed16BitFloatingInstruction(
     for (const HloInstruction* operand : inst->operands()) {
       Seed16BitFloatingInstruction(operand, states);
     }
+  } else if (inst->opcode() == HloOpcode::kFusion) {
+    Seed16BitFloatingInstruction(
+        inst->fused_instructions_computation()->root_instruction(), states);
+  } else if (inst->opcode() == HloOpcode::kCall &&
+             inst->to_apply() != nullptr) {
+    Seed16BitFloatingInstruction(inst->to_apply()->root_instruction(), states);
   }
 }
 
@@ -507,7 +519,9 @@ absl::Status ConstraintPropagator::SeedConstraints(
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     const HloInstruction* inst = *it;
 
-    if (inst == computation->root_instruction()) {
+    if (inst == computation->root_instruction() &&
+        (computation->parent() == nullptr ||
+         computation->IsEntryComputation())) {
       Seed16BitFloatingInstruction(inst, states_);
     }
 
@@ -1044,6 +1058,22 @@ absl::Status ConstraintPropagator::PropagateComputationBoundary(
     states_[callee_root].Merge(caller_state);
     // Forward: internal constraint computed on root flows out to caller result.
     states_[caller_instruction].Merge(root_state);
+
+    if (caller_instruction->shape().IsTuple() &&
+        callee_root->opcode() == HloOpcode::kTuple) {
+      for (const HloInstruction* user : caller_instruction->users()) {
+        if (user->opcode() == HloOpcode::kGetTupleElement &&
+            user->tuple_index() >= 0 &&
+            user->tuple_index() < callee_root->operand_count()) {
+          const HloInstruction* root_elem =
+              callee_root->operand(user->tuple_index());
+          ConstraintState gte_state = states_[user];
+          ConstraintState elem_state = states_[root_elem];
+          states_[root_elem].Merge(gte_state);
+          states_[user].Merge(elem_state);
+        }
+      }
+    }
   }
 
   // 2. Operands / Parameters binding:
@@ -1107,20 +1137,13 @@ void ConstraintPropagator::PropagateAddApprox(
           ConstraintInterval{v_min, v_max, output_interval.exclude_zero});
     }
   } else {
-    ConstraintInterval op0_interval =
-        states_[instruction->operand(0)].GetConstraintInterval();
-    ConstraintInterval op1_interval =
-        states_[instruction->operand(1)].GetConstraintInterval();
-    if (op0_interval.IsUnconstrained() && op1_interval.IsUnconstrained()) {
-      std::optional<double> max_out =
-          GetSymmetricMagnitudeBound(output_interval);
-      if (max_out.has_value()) {
-        double max_in = *max_out / 2.0;
-        ConstraintInterval target_bound{-max_in, max_in,
-                                        output_interval.exclude_zero};
-        TryAddDualConstraints(instruction->operand(0), target_bound,
-                              instruction->operand(1), target_bound);
-      }
+    std::optional<double> max_out = GetSymmetricMagnitudeBound(output_interval);
+    if (max_out.has_value()) {
+      double max_in = *max_out / 2.0;
+      ConstraintInterval target_bound{-max_in, max_in,
+                                      output_interval.exclude_zero};
+      TryAddDualConstraints(instruction->operand(0), target_bound,
+                            instruction->operand(1), target_bound);
     }
     if (output_interval.IsNegative()) {
       // Handle constraint Add(x, y) < 0
@@ -1328,8 +1351,8 @@ void ConstraintPropagator::PropagateReduceApprox(
       }
     } else if (instruction->opcode() == HloOpcode::kReduceWindow) {
       const Window& window = instruction->window();
-      for (int64_t d = 0;
-           d < window.dimensions_size() && d < operand_shape.dimensions_size();
+      for (int64_t d = 0; d < window.dimensions_size() &&
+                          d < operand_shape.dimensions().size();
            ++d) {
         int64_t win_size = window.dimensions(d).size();
         int64_t op_dim = operand_shape.dimensions(d);

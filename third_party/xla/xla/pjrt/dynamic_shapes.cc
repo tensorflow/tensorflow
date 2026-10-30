@@ -142,18 +142,24 @@ absl::StatusOr<xla::Shape> ReadDynamicShapeMetadata(
       reinterpret_cast<const int32_t*>(metadata.data());
   xla::Shape output_shape = shape;
 
+  // Metadata slot i is only meaningful if dimension i is dynamic. Producers
+  // (e.g. the SparseCore) do not necessarily write slots for static
+  // dimensions, so static dimensions keep their static extent.
   for (int i = 0; i < shape.dimensions().size(); ++i) {
-    output_shape.set_dimensions(i, runtime_sizes[i]);
+    if (shape.is_dynamic_dimension(i)) {
+      output_shape.set_dimensions(i, runtime_sizes[i]);
+    }
   }
 
-  output_shape.clear_dynamic_dimensions();
-
+  // Check the bounds while `output_shape` still carries the dynamic bits;
+  // DynamicShapeIsCompatible skips the check for static shapes.
   if (!xla::ShapeUtil::DynamicShapeIsCompatible(output_shape, shape)) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Output dynamic shape (%s) incompatible with original shape (%s)",
         output_shape.ToString(true), shape.ToString(true)));
   }
 
+  output_shape.clear_dynamic_dimensions();
   return output_shape;
 }
 

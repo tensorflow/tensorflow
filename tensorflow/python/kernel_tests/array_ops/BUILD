@@ -663,7 +663,7 @@ cuda_py_strict_test(
     name = "scatter_ops_test",
     size = "medium",  # NOTE: This is not run by default.
     srcs = ["scatter_ops_test.py"],
-    shard_count = 2,
+    shard_count = 8,
     tags = [
         "no_oss",  # TODO(b/282985589)
         "noasan",

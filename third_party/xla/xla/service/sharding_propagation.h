@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -107,7 +106,6 @@ class ShardingPropagation : public HloModulePass {
           {false},
       absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters =
           {false},
-      bool cse_prevention_only = false,
       std::unique_ptr<CustomCallShardingHelper> sharding_helper = nullptr)
       : is_spmd_(is_spmd),
         propagate_metadata_(propagate_metadata),
@@ -122,8 +120,7 @@ class ShardingPropagation : public HloModulePass {
             allow_spmd_sharding_propagation_to_output.end()),
         allow_spmd_sharding_propagation_to_parameters_vector_(
             allow_spmd_sharding_propagation_to_parameters.begin(),
-            allow_spmd_sharding_propagation_to_parameters.end()),
-        cse_prevention_only_(cse_prevention_only) {
+            allow_spmd_sharding_propagation_to_parameters.end()) {
     if (sharding_helper) {
       sharding_helper_ = std::move(sharding_helper);
     } else {
@@ -131,13 +128,6 @@ class ShardingPropagation : public HloModulePass {
     }
   }
   absl::string_view name() const override { return "sharding-propagation"; }
-
-  // Function which can be used to apply a spatially partitioned sharding onto a
-  // given domain. It will apply the sharding into the exit edges of the domain
-  // and then rely on the rest of sharding propagation to ensure that the
-  // intermediate nodes get the correct sharding.
-  static absl::Status NormalizeDomain(const DomainMetadata::Domain& domain,
-                                      const DomainMetadata* metadata);
 
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
@@ -203,10 +193,6 @@ class ShardingPropagation : public HloModulePass {
       allow_spmd_sharding_propagation_to_output_vector_;
   absl::InlinedVector<bool, 1>
       allow_spmd_sharding_propagation_to_parameters_vector_;
-  // If true, the pass keeps the propagation results only on selected
-  // instructions to prevent CSE across unrelated subgraphs. (A common case is
-  // scalar broadcasts).
-  bool cse_prevention_only_;
 };
 
 }  // namespace xla

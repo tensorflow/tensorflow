@@ -58,7 +58,7 @@ entries {
         }
       }
     }
-    optimal_backend_version: "9.10.0"
+    optimal_backend_version: "9.23.0"
   }
 }
 entries {
@@ -104,6 +104,6 @@ entries {
         }
       }
     }
-    optimal_backend_version: "9.10.0"
+    optimal_backend_version: "9.23.0"
   }
 }

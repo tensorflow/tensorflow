@@ -41,8 +41,11 @@ limitations under the License.
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -151,13 +154,66 @@ HloInstruction* ReduceDimensions(HloInstruction* instruction,
       metadata);
 }
 
+constexpr int kF32MantissaBits = 23;
+constexpr int kTf32MantissaBits = 10;
+constexpr int kBf16MantissaBits = 7;
+
 struct OneHotDotMatch {
   HloInstruction* indices;
   HloInstruction* one_hot;
   HloInstruction* weights;
   int64_t weights_contract_dim;
   bool lhs_is_one_hot;
+  // If set, round F32 gathered weights to this many mantissa bits.
+  std::optional<int> weights_round_mantissa_bits;
 };
+
+// On Ampere+ CUDA GPUs (and ROCm when defaulting to BF16), F32 dots round
+// their inputs to TF32 (10 mantissa bits) or BF16 (7 mantissa bits) unless
+// full F32 precision is requested. Returns the number of mantissa bits to
+// keep for F32 weights (23, 10, or 7), or std::nullopt if the dot algorithm
+// is not supported.
+std::optional<int> GetF32MantissaBits(
+    const HloDotInstruction* dot,
+    const se::GpuComputeCapability& compute_capability) {
+  const PrecisionConfig& precision_config = dot->precision_config();
+  switch (precision_config.algorithm()) {
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+      return kTf32MantissaBits;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      return kBf16MantissaBits;
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
+    case PrecisionConfig::ALG_UNSET: {
+      const auto& precisions = precision_config.operand_precision();
+      const auto* cuda_cc = compute_capability.cuda_compute_capability();
+      const bool is_f32_dot =
+          precision_config.algorithm() ==
+              PrecisionConfig::ALG_DOT_F32_F32_F32 ||
+          dot->shape().element_type() != F32 ||
+          dot->operand(0)->shape().element_type() != F32 ||
+          dot->operand(1)->shape().element_type() != F32 ||
+          (cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) ||
+          absl::c_any_of(precisions,
+                         [](int p) { return p == PrecisionConfig::HIGHEST; });
+      if (is_f32_dot) {
+        return kF32MantissaBits;
+      }
+      if (dot->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_default_to_alg_dot_bf16_bf16_f32() &&
+          absl::c_all_of(precisions,
+                         [](int p) { return p == PrecisionConfig::DEFAULT; })) {
+        return kBf16MantissaBits;
+      }
+      return (cuda_cc != nullptr && tsl::tensor_float_32_execution_enabled())
+                 ? kTf32MantissaBits
+                 : kF32MantissaBits;
+    }
+    default:
+      return std::nullopt;
+  }
+}
 
 // Matches a dot where one operand is a one-hot tensor built by comparing
 // integer `indices` against an `iota` along the contracting dimension.
@@ -175,7 +231,9 @@ struct OneHotDotMatch {
 // Output: `OneHotDotMatch{indices, one_hot, weights,
 // /*weights_contract_dim=*/0,
 //                         /*lhs_is_one_hot=*/true}`
-std::optional<OneHotDotMatch> MatchOneHotDot(HloDotInstruction* dot) {
+std::optional<OneHotDotMatch> MatchOneHotDot(
+    HloDotInstruction* dot,
+    const se::GpuComputeCapability& compute_capability) {
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   if (dnums.lhs_batch_dimensions_size() != 0 ||
       dnums.rhs_batch_dimensions_size() != 0 ||
@@ -184,16 +242,8 @@ std::optional<OneHotDotMatch> MatchOneHotDot(HloDotInstruction* dot) {
     return std::nullopt;
   }
 
-  // TODO(b/485881552): Default-precision F32 dots run in TF32 on GPU, while
-  // gather keeps full F32 precision. Only rewrite F32 dots when full F32
-  // precision is requested.
-  const PrecisionConfig::Algorithm alg = dot->precision_config().algorithm();
-  const auto& precisions = dot->precision_config().operand_precision();
-  const bool full_f32_precision =
-      alg == PrecisionConfig::ALG_DOT_F32_F32_F32 ||
-      (alg == PrecisionConfig::ALG_UNSET && precisions.size() == 2 &&
-       absl::c_all_of(precisions,
-                      [](int p) { return p == PrecisionConfig::HIGHEST; }));
+  const std::optional<int> f32_mantissa_bits =
+      GetF32MantissaBits(dot, compute_capability);
 
   for (int side = 0; side < 2; ++side) {
     HloInstruction* one_hot = dot->mutable_operand(side);
@@ -205,7 +255,8 @@ std::optional<OneHotDotMatch> MatchOneHotDot(HloDotInstruction* dot) {
         (side == 0) ? dnums.rhs_contracting_dimensions(0)
                     : dnums.lhs_contracting_dimensions(0);
 
-    if (weights->shape().element_type() == F32 && !full_f32_precision) {
+    if (weights->shape().element_type() == F32 &&
+        !f32_mantissa_bits.has_value()) {
       continue;
     }
     const int64_t one_hot_rank = one_hot->shape().dimensions().size();
@@ -298,8 +349,17 @@ std::optional<OneHotDotMatch> MatchOneHotDot(HloDotInstruction* dot) {
       continue;
     }
 
-    return OneHotDotMatch{indices, one_hot, weights, weights_contract_dim,
-                          /*lhs_is_one_hot=*/side == 0};
+    std::optional<int> weights_round_mantissa_bits;
+    if (weights->shape().element_type() == F32 &&
+        *f32_mantissa_bits < kF32MantissaBits) {
+      weights_round_mantissa_bits = *f32_mantissa_bits;
+    }
+    return OneHotDotMatch{indices,
+                          one_hot,
+                          weights,
+                          weights_contract_dim,
+                          /*lhs_is_one_hot=*/side == 0,
+                          weights_round_mantissa_bits};
   }
 
   return std::nullopt;
@@ -557,6 +617,13 @@ absl::StatusOr<HloInstruction*> ExpandOneHotDot(HloDotInstruction* dot,
                                    start_indices, gather_dnums, slice_sizes,
                                    /*indices_are_sorted=*/false),
       metadata);
+  if (match.weights_round_mantissa_bits.has_value()) {
+    gather = computation->AddInstruction(
+        HloInstruction::CreateReducePrecision(
+            gather->shape(), gather, /*exponent_bits=*/8,
+            /*mantissa_bits=*/*match.weights_round_mantissa_bits),
+        metadata);
+  }
   gather = ConvertTo(gather, out_type, metadata);
 
   ABSL_ASSIGN_OR_RETURN(HloInstruction * in_bounds,
@@ -596,7 +663,8 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
     HloInstruction* instruction) {
   HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
   if (enable_one_hot_dot_to_gather_) {
-    if (std::optional<OneHotDotMatch> match = MatchOneHotDot(dot)) {
+    if (std::optional<OneHotDotMatch> match =
+            MatchOneHotDot(dot, compute_capability_)) {
       return ExpandOneHotDot(dot, *match);
     }
   }
@@ -658,7 +726,8 @@ bool DotStrengthReduction::InstructionMatchesPattern(
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4) {
     return false;
   }
-  if (enable_one_hot_dot_to_gather_ && MatchOneHotDot(dot).has_value()) {
+  if (enable_one_hot_dot_to_gather_ &&
+      MatchOneHotDot(dot, compute_capability_).has_value()) {
     return true;
   }
   const HloInstruction* lhs = dot->operand(0);

@@ -14,6 +14,8 @@
 # ==============================================================================
 """Decorator to overrides the gradient for a function."""
 
+import weakref
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
@@ -529,16 +531,41 @@ def _graph_mode_decorator(f, args, kwargs):
         nest.flatten(input_grads))
     return ([None] * flat_result_len) + input_grads + variable_grads
 
-  @ops.RegisterGradient(name)
-  def internal_grad_fn(unused_op, *result_grads):  # pylint: disable=unused-variable
+  def internal_grad_fn(unused_op, *result_grads):
     """Custom grad fn wrapper."""
     return tape_grad_fn(*result_grads)
 
-  original_tensors = all_tensors
-  with ops.get_default_graph().gradient_override_map({"IdentityN": name}):
-    all_tensors = array_ops.identity_n(all_tensors)
+  # The IdentityN op below owns `internal_grad_fn`, so the gradient lives as
+  # long as the graph. The registry entry, which SavedModel export looks up by
+  # name, only holds a weak reference and is removed once the function is
+  # collected.
+  internal_grad_fn_ref = weakref.ref(internal_grad_fn)
 
-  original_tensors = [ops.convert_to_tensor(x) for x in original_tensors]
+  @ops.RegisterGradient(name)
+  def registered_grad_fn(op, *result_grads):  # pylint: disable=unused-variable
+    grad_fn = internal_grad_fn_ref()
+    if grad_fn is None:
+      raise LookupError(
+          f"Gradient function '{name}' has been garbage collected because "
+          "the associated graph was destroyed."
+      )
+    return grad_fn(op, *result_grads)
+
+  weakref.finalize(
+      internal_grad_fn,
+      ops.gradient_registry._registry.pop,  # pylint: disable=protected-access
+      name,
+      None,
+  )
+
+  original_tensors = [ops.convert_to_tensor(x) for x in all_tensors]
+  graph = ops.get_default_graph()
+  with graph.gradient_override_map({"IdentityN": name}):
+    with graph._override_gradient_function(  # pylint: disable=protected-access
+        {"IdentityN": internal_grad_fn}
+    ):
+      with record.stop_recording():
+        all_tensors = array_ops.identity_n(original_tensors)
 
   # Propagate handle data for happier shape inference for resource variables.
   for i, t in enumerate(original_tensors):

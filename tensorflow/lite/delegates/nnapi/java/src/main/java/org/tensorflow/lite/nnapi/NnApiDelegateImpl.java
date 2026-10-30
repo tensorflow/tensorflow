@@ -69,7 +69,7 @@ public class NnApiDelegateImpl implements NnApiDelegate.PrivateInterface, Delega
   /**
    * Returns the latest error code returned by an NNAPI call or zero if NO calls to NNAPI failed.
    * The error code is reset when the delegate is associated with an <a
-   * href=https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter>interpreter</a>.
+   * href=https://developers.google.com/edge/api/tflite/java/org/tensorflow/lite/Interpreter>interpreter</a>.
    *
    * <p>For details on NNAPI error codes see <a
    * href="https://developer.android.com/ndk/reference/group/neural-networks#resultcode">the NNAPI

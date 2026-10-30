@@ -2004,6 +2004,45 @@ class BinaryOpsTest(xla_test.XLATestCase):
       )
     self.assertAllClose(result, [1.0, -2.0, 0.0, 0.0, 0.0])
 
+  def testRealDivRejectsIntTypes(self):
+    jit_real_div = def_function.function(
+        gen_math_ops.real_div, jit_compile=True
+    )
+
+    for dtype in self.int_types:
+      with self.subTest(dtype=dtype):
+        with self.session() as sess, self.device_scope():
+          x = array_ops.placeholder(dtype, shape=[2])
+          y = array_ops.placeholder(dtype, shape=[2])
+          out = gen_math_ops.real_div(x, y)
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              "No OpKernel was registered to support Op 'RealDiv'",
+          ):
+            sess.run(
+                out,
+                feed_dict={
+                    x: np.array([3, 5], dtype=dtype),
+                    y: np.array([2, 2], dtype=dtype),
+                },
+            )
+
+        with self.session() as sess, self.device_scope():
+          x = array_ops.placeholder(dtype, shape=[2])
+          y = array_ops.placeholder(dtype, shape=[2])
+          out = jit_real_div(x, y)
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              r"No registered 'RealDiv' OpKernel",
+          ):
+            sess.run(
+                out,
+                feed_dict={
+                    x: np.array([3, 5], dtype=dtype),
+                    y: np.array([2, 2], dtype=dtype),
+                },
+            )
+
 
 if __name__ == "__main__":
   googletest.main()

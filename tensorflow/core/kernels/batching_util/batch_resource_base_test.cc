@@ -568,6 +568,48 @@ TEST(GetBatcherQueueOptionsTest,
   EXPECT_TRUE(queue_options.priority_aware_scheduler_options
                   .enable_lazy_cancellation_filtering);
 }
+
+TEST(GetBatcherQueueOptionsTest,
+     PriorityAwareSchedulerOverridesDisablePaddingToFalse) {
+  std::vector<int32_t> allowed_batch_sizes = {4, 8};
+  BatchResourceBase::BatcherT::QueueOptions priority_aware_options =
+      TestBatchResourceBase::GetBatcherQueueOptions(
+          /*num_batch_threads=*/1, /*max_batch_size=*/8,
+          /*batch_timeout_micros=*/1000,
+          /*max_enqueued_batches=*/10, allowed_batch_sizes,
+          /*enable_large_batch_splitting=*/true,
+          /*disable_padding=*/true, kPadUpPolicy,
+          /*low_priority_max_batch_size=*/8,
+          /*low_priority_batch_timeout_micros=*/1000,
+          /*low_priority_max_enqueued_batches=*/10,
+          /*low_priority_allowed_batch_sizes=*/allowed_batch_sizes,
+          /*mixed_priority_batching_policy=*/
+          MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
+          /*enable_priority_aware_batch_scheduler=*/true,
+          /*enable_priority_aware_batch_scheduler_resplit=*/false,
+          /*enable_batching_task_lazy_cancellation=*/false,
+          /*per_criticality_batch_timeout_micros=*/{});
+  EXPECT_FALSE(priority_aware_options.disable_padding);
+
+  BatchResourceBase::BatcherT::QueueOptions standard_options =
+      TestBatchResourceBase::GetBatcherQueueOptions(
+          /*num_batch_threads=*/1, /*max_batch_size=*/8,
+          /*batch_timeout_micros=*/1000,
+          /*max_enqueued_batches=*/10, allowed_batch_sizes,
+          /*enable_large_batch_splitting=*/true,
+          /*disable_padding=*/true, kPadUpPolicy,
+          /*low_priority_max_batch_size=*/8,
+          /*low_priority_batch_timeout_micros=*/1000,
+          /*low_priority_max_enqueued_batches=*/10,
+          /*low_priority_allowed_batch_sizes=*/allowed_batch_sizes,
+          /*mixed_priority_batching_policy=*/
+          MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
+          /*enable_priority_aware_batch_scheduler=*/false,
+          /*enable_priority_aware_batch_scheduler_resplit=*/false,
+          /*enable_batching_task_lazy_cancellation=*/false,
+          /*per_criticality_batch_timeout_micros=*/{});
+  EXPECT_TRUE(standard_options.disable_padding);
+}
 #endif
 
 // Regression test for b/466418871: When SplitInputTask creates subtasks with

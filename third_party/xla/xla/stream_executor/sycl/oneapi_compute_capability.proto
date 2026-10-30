@@ -22,5 +22,10 @@ option java_multiple_files = true;
 
 message OneAPIComputeCapabilityProto {
   string architecture = 1;
-  string variant = 2;
+  reserved 2;
+  reserved "variant";
+  // Xe generation of the device. Always written when known, but only read when
+  // `architecture` is not a known Xe architecture, to tell apart devices from
+  // different unknown generations.
+  optional uint32 generation = 3;
 }

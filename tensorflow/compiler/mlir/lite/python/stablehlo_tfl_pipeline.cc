@@ -166,8 +166,8 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   // legalization
   pass_manager.addPass(mlir::odml::CreateLegalizeVhloQuantCustomCallsPass());
 
-  // VHLO -> StableHLO
-  pass_manager.addPass(mlir::stablehlo::createVhloLegalizeToStablehloPass());
+  // VHLO -> StableHLO, upgrading VHLO to the current version first.
+  mlir::stablehlo::createStablehloDeserializePipeline(pass_manager);
 
   // Decompose newer StableHLO ops into equivalent older ops for baseline
   // compatibility with the TFLite legalization backend.

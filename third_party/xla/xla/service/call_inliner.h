@@ -71,19 +71,16 @@ class CallInliner : public HloModulePass {
 
   // If single_call_site is true, only functions with a single call site will be
   // inlined.
-  // If update_domain is true, the exit domains could be updated for calls which
-  // are being inlined if necessary.
   // If the callback `override_policy` is provided, callsites will be inlined
   // according to the policy returned.
   explicit CallInliner(
-      bool single_call_site = false, bool update_domain = false,
+      bool single_call_site = false,
       absl::flat_hash_set<std::string> composites_to_preserve = {},
       std::optional<std::function<InlineOverridePolicy(const CallGraph&,
                                                        const HloInstruction*)>>
           override_policy = std::nullopt,
       bool propagate_metadata = true)
       : single_call_site_(single_call_site),
-        update_domain_(update_domain),
         composites_to_preserve_(std::move(composites_to_preserve)),
         override_policy_(std::move(override_policy)),
         propagate_metadata_(propagate_metadata) {}
@@ -119,7 +116,6 @@ class CallInliner : public HloModulePass {
 
 
   bool single_call_site_;
-  bool update_domain_;
   absl::flat_hash_set<std::string> composites_to_preserve_;
   std::optional<std::function<InlineOverridePolicy(const CallGraph& call_graph,
                                                    const HloInstruction*)>>

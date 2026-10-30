@@ -1674,40 +1674,15 @@ std::string ToString(const Tiles& tiles) {
   return ss.str();
 }
 
-absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
-    const TilingSpace& tiling_space, const HloInstruction& hlo,
-    const Tile& output_tile, int64_t output_index) {
-  const auto& all_gather = *Cast<HloAllGatherInstruction>(&hlo);
-  int64_t gather_dim = all_gather.all_gather_dimension();
-  if (output_index < 0 || output_index >= hlo.operand_count()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Output index ", output_index, " is out of range for ",
-                     hlo.ToString()));
-  }
-  // Each output of a (possibly variadic) all-gather depends only on the operand
-  // with the same index.
-  const Shape& input_shape = hlo.operand(output_index)->shape();
-  const Shape& output_shape = GetFirstShape(&hlo, output_index);
-  int64_t output_dim_size = output_shape.dimensions(gather_dim);
-  int64_t local_size = input_shape.dimensions(gather_dim);
-  int64_t num_replicas = output_dim_size / local_size;
+namespace {
 
+// One-shot all-gather: every output tile lies inside exactly one peer's shard,
+// so the peer is `offset / local_size`. It is attached to the input tile as a
+// replica id so the emitter reads the tile from that peer.
+Tiles PropagateOneShotAllGatherTile(const Tile& output_tile, int64_t gather_dim,
+                                    int64_t local_size, int64_t output_dim_size,
+                                    int64_t num_replicas) {
   const DimTile& output_dim_tile = output_tile.dim_tiles()[gather_dim];
-
-  if (!tiling_space.IsSymbolic()) {
-    DimTile simplified_dim_tile = output_dim_tile;
-    simplified_dim_tile.Simplify(tiling_space);
-    if (simplified_dim_tile.size.GetType() != SymbolicExprType::kConstant ||
-        simplified_dim_tile.size.GetValue() <= 0 ||
-        local_size % simplified_dim_tile.size.GetValue() != 0) {
-      return absl::UnimplementedError(absl::StrCat(
-          "Output ", output_index, " of ", hlo.name(), " is tiled with size ",
-          simplified_dim_tile.size.ToString(), " on gather dimension ",
-          gather_dim, ", expected tile size to divide per-rank size ",
-          local_size, " (one peer per tile)"));
-    }
-  }
-
   SymbolicExpr replica_id = output_dim_tile.offset / local_size;
   // `offset % local_size` maps an output offset into `[0, local_size)`.
   // However, if the variadic schedule padded this tile past `output_dim_size`
@@ -1747,6 +1722,46 @@ absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
                   std::move(replica_id_dim_tiles), output_tile.constraints());
 
   return Tiles{input_tile};
+}
+
+}  // namespace
+
+absl::StatusOr<Tiles> PropagateTileToInputForAllGatherOp(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const Tile& output_tile, int64_t output_index) {
+  const auto& all_gather = *Cast<HloAllGatherInstruction>(&hlo);
+  int64_t gather_dim = all_gather.all_gather_dimension();
+  if (output_index < 0 || output_index >= hlo.operand_count()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Output index ", output_index, " is out of range for ",
+                     hlo.ToString()));
+  }
+  // Each output of a (possibly variadic) all-gather depends only on the operand
+  // with the same index.
+  const Shape& input_shape = hlo.operand(output_index)->shape();
+  const Shape& output_shape = GetFirstShape(&hlo, output_index);
+  int64_t output_dim_size = output_shape.dimensions(gather_dim);
+  int64_t local_size = input_shape.dimensions(gather_dim);
+  int64_t num_replicas = output_dim_size / local_size;
+
+  const DimTile& output_dim_tile = output_tile.dim_tiles()[gather_dim];
+
+  if (!tiling_space.IsSymbolic()) {
+    DimTile simplified_dim_tile = output_dim_tile;
+    simplified_dim_tile.Simplify(tiling_space);
+    if (simplified_dim_tile.size.GetType() != SymbolicExprType::kConstant ||
+        simplified_dim_tile.size.GetValue() <= 0 ||
+        local_size % simplified_dim_tile.size.GetValue() != 0) {
+      return absl::UnimplementedError(absl::StrCat(
+          "Output ", output_index, " of ", hlo.name(), " is tiled with size ",
+          simplified_dim_tile.size.ToString(), " on gather dimension ",
+          gather_dim, ", expected tile size to divide per-rank size ",
+          local_size, " (one peer per tile)"));
+    }
+  }
+
+  return PropagateOneShotAllGatherTile(output_tile, gather_dim, local_size,
+                                       output_dim_size, num_replicas);
 }
 
 absl::StatusOr<Tiles> PropagateTileToInputForAllToAllOp(

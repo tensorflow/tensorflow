@@ -109,10 +109,13 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
@@ -129,6 +132,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
@@ -473,11 +477,64 @@ AsyncThunkSequence MlirKernelFusion::Emit(
       });
 }
 
+namespace {
+
+bool IsSupportedGpuFmaType(PrimitiveType type,
+                           const se::GpuComputeCapability& gpu_cc) {
+  switch (type) {
+    case F32:
+    case F64:
+      return true;
+    case F16: {
+      if (gpu_cc.IsRocm()) {
+        return true;
+      }
+      const auto* cuda_cc = gpu_cc.cuda_compute_capability();
+      return cuda_cc != nullptr && cuda_cc->IsAtLeast(5, 3);
+    }
+    case BF16: {
+      if (const auto* cuda_cc = gpu_cc.cuda_compute_capability()) {
+        return cuda_cc->IsAtLeastAmpere();
+      }
+      if (const auto* rocm_cc = gpu_cc.rocm_compute_capability()) {
+        return rocm_cc->gfx1250();
+      }
+      return false;
+    }
+    default:
+      return false;
+  }
+}
+
+absl::Status CheckSupportedGpuFmaOps(const HloComputation& computation,
+                                     const se::GpuComputeCapability& gpu_cc) {
+  for (const HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() == HloOpcode::kFma) {
+      PrimitiveType type = instr->shape().element_type();
+      if (!IsSupportedGpuFmaType(type, gpu_cc)) {
+        return absl::UnimplementedError(
+            absl::StrCat("Fma is not supported for element type ",
+                         primitive_util::LowercasePrimitiveTypeName(type),
+                         " on GPU target ", gpu_cc.ToString()));
+      }
+    }
+    for (const HloComputation* called : instr->called_computations()) {
+      ABSL_RETURN_IF_ERROR(CheckSupportedGpuFmaOps(*called, gpu_cc));
+    }
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment, KernelCompiler* kernel_compiler,
     BorrowedMlirContext borrowed_context) const {
+  ABSL_RETURN_IF_ERROR(
+      CheckSupportedGpuFmaOps(*fusion.fused_instructions_computation(),
+                              device.gpu_compute_capability()));
   mlir::MLIRContext* mlir_context = borrowed_context->get();
 
   mlir_context->appendDialectRegistry(MlirKernelEmitter::GetDialectRegistry());

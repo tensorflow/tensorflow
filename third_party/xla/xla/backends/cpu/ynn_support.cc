@@ -503,15 +503,17 @@ bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo) {
     const Window& window = reduce_window->window();
     int new_axis_count = 0;
     for (const WindowDimension& dim : window.dimensions()) {
+      // Base dilation changes the output even when the window size and stride
+      // are 1, and DefineReduceWindowOp does not implement it.
+      if (dim.base_dilation() != 1) {
+        return false;
+      }
       if (dim.size() > 1 || dim.stride() > 1) {
         // TODO(ashaposhnikov): consider relaxing the constraints below.
         if (dim.size() > 1 && dim.stride() != dim.size()) {
           // When a reduce-window has a stride greater than 1 on a dimension
           // with size 1, it effectively skips input elements, resulting in a
           // smaller output dimension.
-          return false;
-        }
-        if (dim.base_dilation() != 1) {
           return false;
         }
         if (dim.window_dilation() != 1) {

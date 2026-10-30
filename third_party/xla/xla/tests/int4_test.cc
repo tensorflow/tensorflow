@@ -283,6 +283,7 @@ class Int4TestWithAlgsimpDisabled : public Int4Test {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions options = Int4Test::GetDebugOptionsForTest();
     options.add_xla_disable_hlo_passes("algsimp");
+    options.add_xla_disable_hlo_passes("gpu-algebraic-simplifier");
     return options;
   }
 };

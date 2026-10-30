@@ -362,7 +362,7 @@ TEST_P(InterProcessCollectiveInitTest, EagerInit) {
   ASSERT_EQ(custom_client->addressable_device_count(), 1);
   ASSERT_EQ(custom_client->device_count(), num_ranks());
 
-  auto* se_client = absl::down_cast<CommonPjRtClientImpl*>(custom_client.get());
+  auto* se_client = absl::down_cast<CommonPjRtClient*>(custom_client.get());
   ASSERT_NE(se_client, nullptr);
   auto* raw_client =
       absl::down_cast<PjRtStreamExecutorRawClient*>(se_client->raw_client());

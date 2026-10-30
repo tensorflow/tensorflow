@@ -202,7 +202,7 @@ RoutingStats ComputeRoutingStats(
 class MoeModel : public SingleOpModel {
  public:
   MoeModel(int B, int N, int D_in, int D_mid, int E, int K, int num_threads,
-           bool use_delegate)
+           bool use_delegate, bool dispatch_moe_on_host)
       : w_gate_data_(static_cast<size_t>(D_mid) * E * D_in),
         w_up_data_(static_cast<size_t>(D_mid) * E * D_in),
         w_down_data_(static_cast<size_t>(D_in) * E * D_mid),
@@ -273,6 +273,7 @@ class MoeModel : public SingleOpModel {
           TfLiteYNNPackDelegateOptionsDefault();
       delegate_options.num_threads = num_threads;
       delegate_options.static_shape = true;
+      delegate_options.dispatch_moe_on_host = dispatch_moe_on_host;
       SetDelegate(Interpreter::TfLiteDelegatePtr(
           TfLiteYNNPackDelegateCreate(&delegate_options),
           TfLiteYNNPackDelegateDelete));
@@ -358,7 +359,8 @@ template <WeightPrecision P>
 class QuantizedMoeModel : public SingleOpModel {
  public:
   QuantizedMoeModel(int B, int N, int D_in, int D_mid, int E, int K,
-                    int num_threads, bool use_delegate)
+                    int num_threads, bool use_delegate,
+                    bool dispatch_moe_on_host)
       : w_gate_data_(static_cast<size_t>(D_mid) * E * D_in),
         w_up_data_(static_cast<size_t>(D_mid) * E * D_in),
         w_down_data_(static_cast<size_t>(D_in) * E * D_mid),
@@ -439,6 +441,7 @@ class QuantizedMoeModel : public SingleOpModel {
           TfLiteYNNPackDelegateOptionsDefault();
       delegate_options.num_threads = num_threads;
       delegate_options.static_shape = true;
+      delegate_options.dispatch_moe_on_host = dispatch_moe_on_host;
       SetDelegate(Interpreter::TfLiteDelegatePtr(
           TfLiteYNNPackDelegateCreate(&delegate_options),
           TfLiteYNNPackDelegateDelete));
@@ -541,12 +544,14 @@ class ScopedCoutToCerr {
 
 template <typename ModelT>
 void BenchMoe(benchmark::State& state, int B, int N, int D_in, int D_mid, int E,
-              int K, int num_threads, double skew, bool vary_routing) {
+              int K, int num_threads, double skew, bool vary_routing,
+              bool dispatch_moe_on_host) {
   // Held for the whole body: the benchmark framework emits its report after
   // this function returns, so nothing of ours is diverted.
   ScopedCoutToCerr redirect_tflite_logs;
 
-  ModelT model(B, N, D_in, D_mid, E, K, num_threads, /*use_delegate=*/true);
+  ModelT model(B, N, D_in, D_mid, E, K, num_threads, /*use_delegate=*/true,
+               dispatch_moe_on_host);
 
   const int num_tokens = B * N;
   std::vector<float> tokens(static_cast<size_t>(num_tokens) * D_in, 0.5f);
@@ -584,7 +589,8 @@ void BenchMoe(benchmark::State& state, int B, int N, int D_in, int D_mid, int E,
   }
 
   // 2 matmuls of [D_in, D_mid] (gate and up) + 1 matmul of [D_mid, D_in]
-  // (down) per (token, expert) pair.
+  // (down) per (token, expert) pair. The host-dispatch arm additionally
+  // computes padding slots, see `load_imbalance`.
   const size_t flops = 6ull * static_cast<size_t>(num_tokens) *
                        static_cast<size_t>(K) * static_cast<size_t>(D_in) *
                        static_cast<size_t>(D_mid);
@@ -607,17 +613,21 @@ void BenchMoe(benchmark::State& state, int B, int N, int D_in, int D_mid, int E,
 // counts, routing skew and routing ring.
 template <typename ModelT>
 void DecodeBench(benchmark::State& state, int D_in, int D_mid, int E, int K) {
+  // A single token always uses the weight-gather lowering (see
+  // `ShouldDispatchMoeOnHost`), so there is no host-dispatch arm for decode.
   BenchMoe<ModelT>(state, /*B=*/1, /*N=*/1, D_in, D_mid, E, K,
                    /*num_threads=*/state.range(0),
                    /*skew=*/state.range(1) / 10.0,
-                   /*vary_routing=*/state.range(2) != 0);
+                   /*vary_routing=*/state.range(2) != 0,
+                   /*dispatch_moe_on_host=*/false);
 }
 
 template <typename ModelT>
 void PrefillBench(benchmark::State& state, int D_in, int D_mid, int E, int K) {
   BenchMoe<ModelT>(state, /*B=*/1, /*N=*/state.range(0), D_in, D_mid, E, K,
                    /*num_threads=*/state.range(1),
-                   /*skew=*/state.range(2) / 10.0, /*vary_routing=*/true);
+                   /*skew=*/state.range(2) / 10.0, /*vary_routing=*/true,
+                   /*dispatch_moe_on_host=*/state.range(3) != 0);
 }
 
 void QwenMoeDecodeFloat32(benchmark::State& state) {
@@ -764,14 +774,16 @@ void DecodeArguments(benchmark::internal::Benchmark* b) {
 }
 
 void PrefillArguments(benchmark::internal::Benchmark* b) {
-  b->ArgNames({"seq_len", "threads", "skew_x10"});
+  b->ArgNames({"seq_len", "threads", "skew_x10", "dispatch_on_host"});
   b->UseRealTime();
   b->MeasureProcessCPUTime();
   for (int seq_len : {128, 256, 512}) {
     for (int threads : {1, 4}) {
       // Uniform / realistic / pathological expert load.
       for (int skew : {0, 3, 12}) {
-        b->Args({seq_len, threads, skew});
+        for (int dispatch : {0, 1}) {
+          b->Args({seq_len, threads, skew, dispatch});
+        }
       }
     }
   }

@@ -387,6 +387,7 @@ CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
     : info_(GpuInfoFromDeviceID(id, platform_id)),
       id_(id),
       platform_id_(platform_id) {
+  LoadOpenCLFunctionExtensions(platform_id_);
   if (info_.IsAdreno() &&
       info_.adreno_info.adreno_gpu == AdrenoGpu::kAdreno630) {
     acceleration::AndroidInfo android_info;
@@ -500,8 +501,6 @@ absl::Status CreateDefaultGPUDevice(CLDevice* result) {
     return absl::UnknownError("No GPU detected.");
   }
   *result = CLDevice(device_id_fastest, platform_id_fastest);
-
-  LoadOpenCLFunctionExtensions(platform_id_fastest);
 
   return absl::OkStatus();
 }

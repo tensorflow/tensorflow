@@ -1787,7 +1787,7 @@ struct Decode<AttrTag<T>> {
         return false;
       }
       for (size_t i = 0; i < a->len; ++i) {
-        if (XLA_FFI_PREDICT_FALSE(a->ptr[i] != b.data()[i])) {
+        if (XLA_FFI_PREDICT_FALSE(a->ptr[i] != b[i])) {
           return false;
         }
       }

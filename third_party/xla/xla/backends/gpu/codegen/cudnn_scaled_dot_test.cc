@@ -468,9 +468,8 @@ ENTRY %main {
     HloModule& optimized_module = **optimized_module_or;
     if (custom_call_or_fusion->opcode() == HloOpcode::kFusion) {
       BinaryMap compilation_results;
-      CuDnnFusionCompiler cudnn_compiler(stream_executor()->AsDnn(),
-                                         device_description(),
-                                         compilation_results);
+      CuDnnFusionCompiler cudnn_compiler(
+          stream_executor(), device_description(), compilation_results);
       auto cloned = optimized_module.Clone();
       auto res = cudnn_compiler.Run(cloned.get());
       if (res.ok()) {
@@ -480,9 +479,8 @@ ENTRY %main {
       }
     } else if (custom_call_or_fusion->opcode() == HloOpcode::kCustomCall) {
       BinaryMap compilation_results;
-      CuDnnCustomCallCompiler custom_call_compiler(stream_executor()->AsDnn(),
-                                                   device_description(),
-                                                   compilation_results);
+      CuDnnCustomCallCompiler custom_call_compiler(
+          stream_executor(), device_description(), compilation_results);
       auto cloned = optimized_module.Clone();
       auto res = custom_call_compiler.Run(cloned.get());
       if (res.ok() && !compilation_results.empty()) {

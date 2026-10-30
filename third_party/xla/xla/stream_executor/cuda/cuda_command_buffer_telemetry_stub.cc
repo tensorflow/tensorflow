@@ -48,7 +48,6 @@ void ForEachSubgraphPair(
 
 std::optional<TrackedGraph> TrackAndAttach(
     uint32_t /*graph_id*/, CUgraph /*attach_to*/,
-    CudaGraphAnnotationRegistry::TrackMode /*mode*/,
     CudaGraphAnnotationRegistry::KeySpace /*space*/) {
   return std::nullopt;
 }
@@ -57,8 +56,6 @@ void RegisterNode(const TrackedGraph& /*graph*/, CUgraphNode /*node*/,
                   absl::string_view /*annotation*/) {}
 
 void RegisterGraphNodes(CUgraph /*graph*/, const TrackedGraph& /*tracked*/,
-                        CUgraph /*original*/, absl::string_view /*fallback*/,
-                        CudaGraphAnnotationRegistry::TrackMode /*child_mode*/) {
-}
+                        CUgraph /*original*/, absl::string_view /*fallback*/) {}
 
 }  // namespace stream_executor::gpu::command_buffer_telemetry

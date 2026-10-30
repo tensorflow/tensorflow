@@ -122,10 +122,8 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
     }
   }
 
-  // LICM in the presence of domain instructions is complex, bail.
   for (auto* instruction : while_body->MakeInstructionPostOrder()) {
-    if (instruction->opcode() == HloOpcode::kDomain ||
-        instruction->IsCustomCall("SPMDFullToShardShape") ||
+    if (instruction->IsCustomCall("SPMDFullToShardShape") ||
         instruction->IsCustomCall("SPMDShardShapeToFull")) {
       return false;
     }

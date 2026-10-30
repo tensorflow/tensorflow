@@ -92,42 +92,24 @@ class SyclBlasSupport : public blas::BlasSupport {
   }
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count, float alpha,
-                  DeviceAddress<float>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<float>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count, double alpha,
-                  DeviceAddress<double>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<double>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count, float alpha,
-                  DeviceAddress<std::complex<float>>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<std::complex<float>>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count, double alpha,
-                  DeviceAddress<std::complex<double>>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<std::complex<double>>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count,
                   std::complex<float> alpha,
-                  DeviceAddress<std::complex<float>>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<std::complex<float>>* x, int incx) override;
 
   bool DoBlasScal(Stream* stream, uint64_t elem_count,
                   std::complex<double> alpha,
-                  DeviceAddress<std::complex<double>>* x, int incx) override {
-    LOG(ERROR) << "DoBlasScal is not implemented";
-    return false;
-  }
+                  DeviceAddress<std::complex<double>>* x, int incx) override;
 
   bool DoBlasGemv(Stream* stream, blas::Transpose trans, uint64_t m, uint64_t n,
                   float alpha, const DeviceAddress<float>& a, int lda,

@@ -987,6 +987,15 @@ absl::StatusOr<HloInstruction*> FusionSearchSpace::HoistBitcast(
       if (!operand->IsElementwise()) {
         return instr;
       }
+      // Elementwise operations preserve logical indices, not necessarily
+      // physical offsets. In particular, a layout-changing copy cannot be
+      // commuted with a bitcast using the same shape for every operand.
+      if (absl::c_any_of(operand->operands(), [&](HloInstruction* arg) {
+            return !ShapeUtil::EqualIgnoringElementType(operand->shape(),
+                                                        arg->shape());
+          })) {
+        return instr;
+      }
       // bitcast(op(a, b)) -> op(bitcast(a), bitcast(b))
       std::vector<HloInstruction*> new_operands;
       for (HloInstruction* arg : operand->operands()) {
@@ -1089,6 +1098,14 @@ absl::StatusOr<HloInstruction*> FusionSearchSpace::SinkBitcast(
     }
     default: {
       if (!user->IsElementwise()) {
+        return instr;
+      }
+      // As in HoistBitcast, logical elementwise semantics do not justify
+      // commuting a bitcast across a change in physical layout.
+      if (absl::c_any_of(user->operands(), [&](HloInstruction* arg) {
+            return !ShapeUtil::EqualIgnoringElementType(user->shape(),
+                                                        arg->shape());
+          })) {
         return instr;
       }
       // Sink past elementwise users.
@@ -1321,7 +1338,7 @@ FusionDecision CanTile(mlir::MLIRContext& mlir_context,
   std::optional<HloInstructionAdaptor> dot =
       HloBfsFindIf(fusion.GetRoots(), fusion, [](HloInstructionAdaptor node) {
         return HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(
-              &node.instruction());
+            &node.instruction());
       });
   if (!dot.has_value()) {
     return FusionDecision::Forbid("No dot instruction found in the fusion.");
@@ -1548,6 +1565,8 @@ FusionDecision ShouldFuseOperand(HloInstruction* operand,
             "Not fusing power op with multiple users.");
       }
       break;
+    case HloOpcode::kDynamicSlice:
+      return FusionDecision::Allow();
     default:
       break;
   }

@@ -378,7 +378,9 @@ def FuseA4W2DRQFullyConnectedPass : Pass<"tfl-fuse-a4w2-drq-fully-connected", "m
       activations of a `tfl.fully_connected` whose filter is a
       `blockwise_dequantize` of an i2 constant, and rewrites it into one
       `tfl.fully_connected` with per-axis i2 weights and a `tfl.quant_spec`
-      naming the `cint2_fp32_int4_e8m0_drq` contract.
+      naming the contract the weight zero point selects:
+      `cint2_fp32_int4_e8m0_drq` for the centered grid (zero point -0.5), or
+      `int2_fp32_int4_e8m0_drq` for the plain grid (zero point 0 or absent).
   }];
   let constructor = "CreateFuseA4W2DRQFullyConnectedPass()";
   let dependentDialects = [

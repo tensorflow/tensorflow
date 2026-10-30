@@ -41,6 +41,10 @@ namespace gpu {
 // 1. cuBLASLt custom calls (__cublas$lt$matmul, __cublas$lt$matmul$f8)
 // 2. __triton_gemm fusions containing kScaledDot, which are converted to
 // __cublas$lt$matmul$mx custom calls.
+//
+// If hipBLASLt has no algorithm for the FP8 output of a __cublas$lt$matmul$f8,
+// the configs are for a GEMM with a wider output, and ApplyConfig adds a loop
+// fusion that converts its result to FP8.
 class HipblasLtBackend : public GpuCodegenBackend {
  public:
   explicit HipblasLtBackend(stream_executor::StreamExecutor* stream_executor,

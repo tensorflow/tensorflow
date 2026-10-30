@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor::cuda {
 namespace {

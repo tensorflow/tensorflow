@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,6 +26,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -327,6 +330,93 @@ TEST_F(HipblasLtScaledDotTest, Compile) {
     auto executable = backend_.Compile(*fusion, *config);
     EXPECT_THAT(executable, absl_testing::IsOk());
   }
+}
+
+// A hand-written FP8-output GEMM with an A of type <<A>> and an optional D
+// scale. GemmRewriter passes no D scale with the DEFAULT epilogue, so a GEMM
+// with one stands in for one created with a wrong SupportsF8OutputDScale.
+const char kFp8OutputGemmHlo[] = R"(
+HloModule module
+
+ENTRY main {
+  a = <<A>>[32,64]{1,0} parameter(0)
+  b = f8e4m3fn[16,64]{1,0} parameter(1)
+  a_scale = f32[] parameter(2)
+  b_scale = f32[] parameter(3)
+  d_scale = f32[] parameter(4)
+  gemm = (f8e4m3fn[32,16]{1,0}, s8[67108864]{0}) custom-call(a, b, a_scale, b_scale<<D_SCALE>>),
+    custom_call_target="__cublas$lt$matmul$f8",
+    backend_config={"gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","scale_mode":1<<HAS_D_SCALE>>}}
+  ROOT out = f8e4m3fn[32,16]{1,0} get-tuple-element(gemm), index=0
+})";
+
+class HipblasLtFp8OutputTest : public HipblasLtBackendTest {
+ protected:
+  absl::StatusOr<std::unique_ptr<HloModule>> ParseFp8OutputGemm(
+      absl::string_view a_type, bool has_d_scale) {
+    return ParseAndReturnVerifiedModule(absl::StrReplaceAll(
+        kFp8OutputGemmHlo,
+        {{"<<A>>", a_type},
+         {"<<D_SCALE>>", has_d_scale ? ", d_scale" : ""},
+         {"<<HAS_D_SCALE>>", has_d_scale ? R"(,"has_d_scale":true)" : ""}}));
+  }
+};
+
+// The output is unfused only if hipBLASLt has no algorithm for the FP8 output.
+// It has D-scaled algorithms only for E4M3 x E4M3 -> E4M3 on gfx950.
+TEST_F(HipblasLtFp8OutputTest, UnfusesOutputOnlyWithoutAlgorithms) {
+  const auto* rocm_cc =
+      target_config_.device_description.gpu_compute_capability()
+          .rocm_compute_capability();
+  if (rocm_cc == nullptr || !rocm_cc->has_ocp_fp8_support()) {
+    GTEST_SKIP() << "Requires OCP FP8 support.";
+  }
+  // {A type, has a D scale, unfuses the output}
+  for (auto [a_type, has_d_scale, unfused] :
+       {std::tuple{"f8e5m2", false, false}, std::tuple{"f8e4m3fn", true, false},
+        std::tuple{"f8e5m2", true, true}}) {
+    SCOPED_TRACE(testing::Message() << a_type << " " << has_d_scale);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseFp8OutputGemm(a_type, has_d_scale));
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<std::unique_ptr<BackendConfig>> configs,
+        backend_.GetSupportedConfigs(
+            *module->entry_computation()->root_instruction()->operand(0)));
+    ASSERT_THAT(configs, testing::Not(testing::IsEmpty()));
+    if (unfused && !configs[0]->gemm().unfuse_fp8_output()) {
+      GTEST_SKIP() << "hipBLASLt has D-scaled algorithms for E5M2 x E4M3.";
+    }
+    for (const std::unique_ptr<BackendConfig>& config : configs) {
+      EXPECT_EQ(config->gemm().unfuse_fp8_output(), unfused);
+    }
+  }
+}
+
+TEST_F(HipblasLtFp8OutputTest, ApplyUnfusedOutputConfig) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseFp8OutputGemm("f8e5m2", true));
+  BackendConfig config;
+  config.mutable_gemm()->set_algorithm(2);
+  config.mutable_gemm()->set_autotune_workspace_size(42);
+  config.mutable_gemm()->set_unfuse_fp8_output(true);
+  EXPECT_OK(backend_.ApplyConfig(
+      *module->entry_computation()->root_instruction()->mutable_operand(0),
+      config));
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+CHECK:      fused_computation
+CHECK-DAG:    multiply(
+CHECK-DAG:    f32[] constant(-448)
+CHECK-DAG:    f32[] constant(448)
+CHECK-DAG:    clamp(
+CHECK:        ROOT {{.*}} = f8e4m3fn[32,16]{1,0} convert(
+CHECK:      ENTRY
+CHECK:        (f32[32,16]{1,0}, s8[42]{0}) custom-call({{[^)]*}} %b_scale)
+CHECK-SAME:     custom_call_target="__cublas$lt$matmul$f8"
+CHECK-SAME:     "selected_algorithm":"2"
+CHECK-NOT:      has_d_scale
+CHECK:        ROOT {{.*}} = f8e4m3fn[32,16]{1,0} fusion({{.*}}), kind=kLoop
+)"),
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace gpu

@@ -20,7 +20,7 @@ load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tests:build_defs.bzl", "xla_py_test", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
-load("//xla/tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
+load("//xla/tsl/platform:build_config_root.bzl", "tf_exec_properties", "tf_gpu_tests_tags")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -490,4 +490,41 @@ xla_py_test(
         "@absl_py//absl/testing:absltest",
         "@transformer_engine//:transformer_engine_jax",  # buildcleaner: keep
     ],
+)
+
+tsl_pybind_extension(
+    name = "python_hlo_runner_ffi_test_lib",
+    testonly = True,
+    srcs = ["python_hlo_runner_ffi_test_lib.cc"],
+    deps = [
+        "//xla/ffi/api:ffi",
+        "//xla/ffi/api:record_ffi",
+        "@nanobind",
+    ],
+)
+
+_FFI_TEST_DEPS = [
+    ":py_hlo_multihost_runner",
+    ":python_hlo_runner_ffi_test_lib",
+    "@absl_py//absl/flags",
+    "@absl_py//absl/testing:absltest",
+    "@absl_py//absl/testing:parameterized",
+]
+
+xla_py_test(
+    name = "python_hlo_runner_ffi_test",
+    srcs = ["python_hlo_runner_ffi_test.py"],
+    tags = ["cpu"],
+    deps = _FFI_TEST_DEPS,
+)
+
+xla_py_test(
+    name = "python_hlo_runner_ffi_gpu_test",
+    srcs = ["python_hlo_runner_ffi_test.py"],
+    args = ["--device=gpu"],
+    env = {"XLA_FLAGS": "--xla_gpu_graph_min_graph_size=1 --xla_gpu_enable_command_buffer=CUSTOM_CALL"},
+    exec_properties = tf_exec_properties({"tags": tf_gpu_tests_tags()}),
+    main = "python_hlo_runner_ffi_test.py",
+    tags = ["cuda-only"] + tf_gpu_tests_tags(),
+    deps = _FFI_TEST_DEPS,
 )

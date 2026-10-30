@@ -2749,5 +2749,65 @@ TEST_F(TpuOpsVerificationTest, MemRefPadOpInvalidBounds) {
       StatusIs(_, HasSubstr("must not exceed the tile-aligned bound (16)")));
 }
 
+TEST_F(TpuOpsVerificationTest, ConcatenateOpValid) {
+  Value lhs = ConstantF32Vector(/*shape=*/{4, 128}, /*values=*/{1.0f});
+  Value rhs = ConstantF32Vector(/*shape=*/{8, 128}, /*values=*/{2.0f});
+  auto concat = Create<ConcatenateOp>(
+      /*output=*/VectorType::get({12, 128}, builder().getF32Type()),
+      /*sources=*/ValueRange{lhs, rhs},
+      /*dimension=*/0);
+  EXPECT_THAT(VerifyOp(concat), absl_testing::IsOk());
+}
+
+TEST_F(TpuOpsVerificationTest, ConcatenateOpRankMismatch) {
+  Value vec_2d = ConstantF32Vector(/*shape=*/{4, 128}, /*values=*/{1.0f});
+  Value vec_1d = ConstantF32Vector(/*shape=*/{4}, /*values=*/{2.0f});
+
+  // rank(operand_1) < rank(operand_0)
+  auto lower_rank = Create<ConcatenateOp>(
+      /*output=*/VectorType::get({8, 128}, builder().getF32Type()),
+      /*sources=*/ValueRange{vec_2d, vec_1d},
+      /*dimension=*/0);
+  EXPECT_THAT(
+      VerifyOp(lower_rank),
+      StatusIs(_, HasSubstr("Expected all operands to have the same rank.")));
+
+  // rank(operand_1) > rank(operand_0)
+  auto higher_rank = Create<ConcatenateOp>(
+      /*output=*/VectorType::get({8}, builder().getF32Type()),
+      /*sources=*/ValueRange{vec_1d, vec_2d},
+      /*dimension=*/0);
+  EXPECT_THAT(
+      VerifyOp(higher_rank),
+      StatusIs(_, HasSubstr("Expected all operands to have the same rank.")));
+
+  // rank(operand_2) < rank(operand_0) with concat dimension >= rank(operand_2)
+  auto lower_rank_dim1 = Create<ConcatenateOp>(
+      /*output=*/VectorType::get({4, 256}, builder().getF32Type()),
+      /*sources=*/ValueRange{vec_2d, vec_2d, vec_1d},
+      /*dimension=*/1);
+  EXPECT_THAT(
+      VerifyOp(lower_rank_dim1),
+      StatusIs(_, HasSubstr("Expected all operands to have the same rank.")));
+
+  // inferReturnTypes also rejects empty and mixed-rank operands.
+  SmallVector<Type> inferred;
+  EXPECT_TRUE(failed(ConcatenateOp::inferReturnTypes(
+      builder().getContext(), std::nullopt, ValueRange{}, DictionaryAttr(),
+      lower_rank->getPropertiesStorage(), RegionRange{}, inferred)));
+  EXPECT_TRUE(failed(ConcatenateOp::inferReturnTypes(
+      builder().getContext(), std::nullopt, ValueRange{vec_2d, vec_1d},
+      DictionaryAttr(), lower_rank->getPropertiesStorage(), RegionRange{},
+      inferred)));
+  EXPECT_TRUE(failed(ConcatenateOp::inferReturnTypes(
+      builder().getContext(), std::nullopt, ValueRange{vec_2d, vec_2d, vec_1d},
+      DictionaryAttr(), lower_rank_dim1->getPropertiesStorage(), RegionRange{},
+      inferred)));
+  EXPECT_TRUE(failed(ConcatenateOp::inferReturnTypes(
+      builder().getContext(), std::nullopt, ValueRange{vec_1d, vec_2d},
+      DictionaryAttr(), higher_rank->getPropertiesStorage(), RegionRange{},
+      inferred)));
+}
+
 }  // namespace
 }  // namespace mlir::tpu

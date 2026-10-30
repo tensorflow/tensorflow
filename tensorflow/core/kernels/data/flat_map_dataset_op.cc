@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,24 +27,24 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/flat_map_utils.h"
 #include "tensorflow/core/data/name_utils.h"
-#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -213,11 +214,12 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
-          // Create a new context so that we have a separate `checkpoint`
-          // different from `ctx->checkpoint()`
-          auto nested_ctx = MakeNestedIteratorContext(ctx);
+          // Create a new context if needed so that we have a separate
+          // `checkpoint` different from `ctx->checkpoint()` and strip split
+          // providers.
+          NestedIteratorContext nested_ctx(ctx);
           TF_RETURN_IF_ERROR(current_element_iterator_->GetNext(
-              &nested_ctx, out_tensors, &end_of_element));
+              nested_ctx.get(), out_tensors, &end_of_element));
 
           // Merge the checkpoint so that the changes made to
           // `current_element_iterator_` is propagated
@@ -240,13 +242,15 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         }
         // Get the next element from the input dataset.
         inputs_.clear();
-        auto input_ctx = std::make_unique<IteratorContext>(*ctx);
+        NestedIteratorContext input_ctx(ctx, /*strip_split_providers=*/false);
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(input_ctx.get(), &inputs_, end_of_sequence));
-        // Merge the checkpoint to `input_ckpt_` but do not commit to
-        // `ctx->checkpoint()` yet until the sub-iterator created from
-        // this `inputs_` is consumed.
-        input_ckpt_->Merge(input_ctx->checkpoint());
+        if (ctx->symbolic_checkpoint()) {
+          // Merge the checkpoint to `input_ckpt_` but do not commit to
+          // `ctx->checkpoint()` yet until the sub-iterator created from
+          // this `inputs_` is consumed.
+          input_ckpt_->Merge(input_ctx.checkpoint());
+        }
         if (*end_of_sequence) {
           input_impl_.reset();
           return absl::OkStatus();
@@ -274,21 +278,21 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           // next subelement.
 
           bool end_of_element;
-          // Create a new context so that we have a separate `checkpoint`
-          // different from `ctx->checkpoint()`
-          auto nested_ctx = MakeNestedIteratorContext(ctx);
-
           // `last_num_skipped` stores how many elements
           // we have actually skipped.
           int last_num_skipped;
+          // Create a new context if needed so that we have a separate
+          // `checkpoint` different from `ctx->checkpoint()` and strip split
+          // providers.
+          NestedIteratorContext nested_ctx(ctx);
           TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
-              &nested_ctx, num_to_skip - *num_skipped, &end_of_element,
+              nested_ctx.get(), num_to_skip - *num_skipped, &end_of_element,
               &last_num_skipped));
-          *num_skipped += last_num_skipped;
 
           // Merge the checkpoint so that the changes made to
           // `current_element_iterator_` is propagated
           ctx->MergeCheckpoint(nested_ctx.checkpoint());
+          *num_skipped += last_num_skipped;
           if (!end_of_element) {
             if (*num_skipped != num_to_skip) {
               return absl::InternalError(absl::StrFormat(
@@ -310,13 +314,15 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         }
         // Get the next element from the input dataset.
         inputs_.clear();
-        auto input_ctx = std::make_unique<IteratorContext>(*ctx);
+        NestedIteratorContext input_ctx(ctx, /*strip_split_providers=*/false);
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(input_ctx.get(), &inputs_, end_of_sequence));
-        // Merge the checkpoint to `input_ckpt_` but do not commit to
-        // `ctx->checkpoint()` yet until the sub-iterator created from
-        // this `inputs_` is consumed.
-        input_ckpt_->Merge(input_ctx->checkpoint());
+        if (ctx->symbolic_checkpoint()) {
+          // Merge the checkpoint to `input_ckpt_` but do not commit to
+          // `ctx->checkpoint()` yet until the sub-iterator created from
+          // this `inputs_` is consumed.
+          input_ckpt_->Merge(input_ctx.checkpoint());
+        }
         if (*end_of_sequence) {
           input_impl_.reset();
           *end_of_sequence = true;
@@ -536,6 +542,35 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
+    // Lazily constructs a child `IteratorContext` only when needed (when
+    // symbolic checkpointing is enabled to isolate `checkpoint()`, or when
+    // `strip_split_providers` is true and split providers must be stripped for
+    // a sub-iterator).
+    class NestedIteratorContext {
+     public:
+      explicit NestedIteratorContext(IteratorContext* ctx,
+                                     bool strip_split_providers = true)
+          : ctx_(ctx) {
+        if (strip_split_providers && !ctx->split_providers().empty()) {
+          nested_ctx_.emplace(MakeNestedIteratorContext(ctx));
+        } else if (ctx->symbolic_checkpoint()) {
+          nested_ctx_.emplace(*ctx);
+        }
+      }
+      NestedIteratorContext(const NestedIteratorContext&) = delete;
+      NestedIteratorContext& operator=(const NestedIteratorContext&) = delete;
+
+      IteratorContext* get() {
+        return nested_ctx_.has_value() ? &*nested_ctx_ : ctx_;
+      }
+
+      MemoryCheckpoint* checkpoint() { return get()->checkpoint(); }
+
+     private:
+      IteratorContext* ctx_;
+      std::optional<IteratorContext> nested_ctx_;
+    };
+
     absl::Status BuildCurrentElementIteratorLocked(IteratorContext* ctx,
                                                    bool is_get_next)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -577,16 +612,16 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         IteratorContext* ctx, IteratorStateReader* reader)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       bool end_of_sequence;
-      auto input_ctx = std::make_unique<IteratorContext>(*ctx);
+      IteratorContext input_ctx(*ctx);
       TF_RETURN_IF_ERROR(
-          input_impl_->GetNext(input_ctx.get(), &inputs_, &end_of_sequence));
+          input_impl_->GetNext(&input_ctx, &inputs_, &end_of_sequence));
       if (end_of_sequence) {
         return absl::FailedPreconditionError(
             "Unexpected end of sequence while symbolically restoring "
             "FlatMapDataset. Please verify that the input produces data "
             "deterministically.");
       }
-      input_ckpt_->Merge(input_ctx->checkpoint());
+      input_ckpt_->Merge(input_ctx.checkpoint());
       element_index_--;
       TF_RETURN_IF_ERROR(
           BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));

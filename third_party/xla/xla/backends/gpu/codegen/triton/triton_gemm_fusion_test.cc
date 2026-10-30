@@ -301,8 +301,43 @@ CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32
 )"));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_P(TritonTest, DISABLED_CodegenDynamicSliceWithCorrectOffsets) {
+TEST_P(TritonTest, CodegenDynamicSliceUsedByAllConcatenateOperands) {
+  // The dynamic slice is emitted in both branches of the concatenate, but its
+  // offset must be computed where it dominates both of them.
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm {
+  lhs = f32[16,32] parameter(0)
+  rhs_input = f32[64,64] parameter(1)
+  offset = s32[] parameter(2)
+  c0 = s32[] constant(0)
+  ds = f32[32,64] dynamic-slice(rhs_input, offset, c0),
+    dynamic_slice_sizes={32,64}
+  rhs = f32[32,128] concatenate(ds, ds), dimensions={1}
+  ROOT dot = f32[16,128] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  lhs = f32[16,32] parameter(0)
+  rhs_input = f32[64,64] parameter(1)
+  offset = s32[] constant(5)
+  ROOT fusion = f32[16,128] fusion(lhs, rhs_input, offset),
+    kind=kCustom, calls=triton_gemm,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,
+                         "num_stages":1,"num_warps":2,
+                         "num_ctas":1}}}
+})";
+  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                       GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_P(TritonTest, CodegenDynamicSliceWithCorrectOffsets) {
   // TODO(b/417172838): we now should support non-majormost dimensions, port
   // this test to fusion_emitter_device_test with that support.
 
@@ -344,15 +379,16 @@ ENTRY e {
   EXPECT_OK(
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters, R"(
-    CHECK: func.func @triton_fn(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x5x2xf32>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>, %[[ARG4:.*]]: tensor<i32>, %[[ARG5:.*]]: tensor<4x5xf32>) -> tensor<4x5xf32> {
+    CHECK: xtile.entry_func @triton_fn(%[[ARG0:.*]]: memref<2x4xf32>, %[[ARG1:.*]]: memref<4x5x2xf32>, %[[ARG2:.*]]: memref<i32>, %[[ARG3:.*]]: memref<i32>, %[[ARG4:.*]]: memref<i32>, %[[ARG5:.*]]: memref<4x5xf32>
     CHECK-DAG: %[[c3:.*]] = arith.constant 3 : i32
     CHECK-DAG: %[[c0:.*]] = arith.constant 0 : i32
-    CHECK-DAG: triton_xla.extract from  %[[ARG0]] {{.*}} [0, 0] [32, 32] [1, 1]
-    CHECK: %[[V2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+    CHECK: %[[START:.*]] = xtile.extract %[[ARG2]][] [] []
+    CHECK: %[[V2:.*]] = tensor.extract %[[START]][] : tensor<i32>
     CHECK: %[[CLAMP0:.*]] = arith.maxsi %[[V2]], %[[c0]] : i32
     CHECK: %[[CLAMP1:.*]] = arith.minsi %[[CLAMP0]], %[[c3]] : i32
     CHECK: %[[OFFSET:.*]] = arith.index_cast %[[CLAMP1]] : i32 to index
-    CHECK: triton_xla.extract from %[[ARG1]] {{.*}} [%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
+    CHECK-DAG: xtile.extract %[[ARG0]]{{.*}} [32, 32] [1, 1]
+    CHECK-DAG: xtile.extract %[[ARG1]][%[[OFFSET]], %{{.*}}, %{{.*}}] [1, 32, 32] [1, 1, 1]
     CHECK: tt.dot
   )"));
 }
@@ -835,6 +871,40 @@ ENTRY r {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_P(TritonGemmTest, TransposeReductionReshapeBeforeDot) {
+  // Layout assignment inserts a layout-changing copy between the reduction
+  // and the bitcast feeding the dot. Hoisting that bitcast across the copy
+  // must preserve the permutation of the reduction's output.
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY e {
+  p0 = f32[16,16,3]{2,1,0} parameter(0)
+  p1 = f32[16,32]{1,0} parameter(1)
+  transpose = f32[3,16,16]{0,2,1} transpose(p0), dimensions={2,0,1}
+  reshape = f32[3,4,4,4,4]{4,3,2,1,0} reshape(transpose)
+  zero = f32[] constant(0)
+  reduce = f32[3,4,4]{2,1,0} reduce(reshape, zero),
+    dimensions={2,4}, to_apply=add
+  lhs = f32[3,16]{1,0} reshape(reduce)
+  ROOT dot = f32[3,32]{1,0} dot(lhs, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
+  EXPECT_THAT(GetNonBitcastRoot(module->entry_computation()),
+              GmockMatch(m::Fusion().WithFusionKind(
+                  HloInstruction::FusionKind::kCustom)));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 // TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
 // a separate, fusion-specific, deviceless test.
 TEST_P(TritonGemmTest, DoNotFuseSplitRhsContractingTranspose) {
@@ -1071,8 +1141,10 @@ e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_P(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
+TEST_P(TritonGemmTest, DynamicSliceIsSupportedInLhsEndToEnd) {
+  if (!GetParam()) {
+    GTEST_SKIP() << "Only GemmFusionV2 fuses dynamic slices.";
+  }
   // The select is used to restrict the start index to values that make sense.
   // If it was constant, then the dynamic-slice would be optimized to slice. It
   // is not strictly needed, because we also support clamping the indices.
@@ -1096,18 +1168,16 @@ ENTRY e {
 })";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        GetOptimizedModule(kHloText));
+  // The dynamic slice and the computation of its start index are fused into
+  // the GEMM fusion.
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(),
-                           m::Fusion(m::Parameter()), m::Constant())
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
-  // Check that it's not optimized away.
-  MatchHloModule(*module, "; CHECK: dynamic-slice(");
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_P(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInRhs) {
+TEST_P(TritonGemmTest, DynamicSliceIsSupportedInRhs) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
@@ -1148,9 +1218,8 @@ class TritonGemmDynamicSliceClampingTest
     : public TritonTestBase,
       public ::testing::WithParamInterface<int> {};
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_P(TritonGemmDynamicSliceClampingTest,
-       DISABLED_DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
+       DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   // TODO(b/417172838): we now should support non-majormost dimensions, port
@@ -1199,9 +1268,7 @@ std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
 INSTANTIATE_TEST_SUITE_P(All, TritonGemmDynamicSliceClampingTest,
                          ::testing::Values(-100, 3, 999), OffsetParamToString);
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_P(TritonGemmTest,
-       DISABLED_DynamicSliceOfMajormostContractingDimIsSupported) {
+TEST_P(TritonGemmTest, DynamicSliceOfMajormostContractingDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is contracted.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1240,8 +1307,7 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_P(TritonGemmTest, DISABLED_DynamicSliceOfMajormostBatchDimIsSupported) {
+TEST_P(TritonGemmTest, DynamicSliceOfMajormostBatchDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is a batch.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1285,9 +1351,7 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
-TEST_P(TritonGemmTest,
-       DISABLED_DynamicSliceSingleDimensionIntoReshapeIsSupported) {
+TEST_P(TritonGemmTest, DynamicSliceSingleDimensionIntoReshapeIsSupported) {
   // This directly tests the targeted use case (b/307922364) of iterating over
   // layer weights and extracting them with dynamic slice.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1327,6 +1391,42 @@ ENTRY e {
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
+TEST_P(TritonGemmTest, DynamicSliceOfNonMajormostDimIsFusedAndCorrect) {
+  if (!GetParam()) {
+    GTEST_SKIP() << "Only GemmFusionV2 fuses dynamic slices.";
+  }
+  // The select is used to prevent the dynamic-slice from being simplified to
+  // a slice. Both the majormost and a non-majormost dimension use a dynamic
+  // offset.
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+ENTRY e {
+  dot_lhs = f32[32,64] parameter(0)
+  dynamic_slice_input = f32[16,40,64] parameter(1)
+  pred0 = pred[] parameter(2)
+  c3 = s32[] constant(3)
+  c5 = s32[] constant(5)
+  c0 = s32[] constant(0)
+  start_index0 = s32[] select(pred0, c3, c5)
+  start_index1 = s32[] select(pred0, c5, c3)
+  dynamic_slice = f32[1,32,64] dynamic-slice(dynamic_slice_input, start_index0, start_index1, c0),
+                  dynamic_slice_sizes={1,32,64}
+  reshape = f32[32,64] reshape(dynamic_slice)
+  ROOT dot = f32[32,32] dot(dot_lhs, reshape),
+             lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
+  // The dynamic slice is fused: its full input is an operand of the fusion.
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Fusion(m::Parameter(), m::Parameter(), m::Fusion(), m::Parameter())
+              .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be

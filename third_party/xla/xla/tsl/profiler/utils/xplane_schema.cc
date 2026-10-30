@@ -101,9 +101,6 @@ constexpr int kNumMegaScaleStatTypes =
     MegaScaleStatType::kLastMegaScaleStatType -
     MegaScaleStatType::kFirstMegaScaleStatType + 1;
 
-constexpr int kNumLineIdTypes =
-    LineIdType::kLastLineIdType - LineIdType::kFirstLineIdType + 1;
-
 using HostEventTypeMap = absl::flat_hash_map<absl::string_view, HostEventType>;
 using HostEventTypeStrMap =
     absl::flat_hash_map<HostEventType, absl::string_view>;
@@ -113,8 +110,6 @@ using MegaScaleStatTypeMap =
     absl::flat_hash_map<absl::string_view, MegaScaleStatType>;
 using MegaScaleStatTypeStrMap =
     absl::flat_hash_map<MegaScaleStatType, absl::string_view>;
-using LineIdTypeMap = absl::flat_hash_map<absl::string_view, LineIdType>;
-using LineIdTypeStrMap = absl::flat_hash_map<LineIdType, absl::string_view>;
 
 const HostEventTypeMap& GetHostEventTypeMap() {
   static auto* const host_event_type_map = new HostEventTypeMap({
@@ -476,16 +471,6 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
   return *stat_type_map;
 }
 
-const LineIdTypeMap& GetLineIdTypeMap() {
-  static auto* const line_id_type_map = new LineIdTypeMap({
-      {"UnknownLineIdType", kUnknownLineIdType},
-      {"DcnHostTraffic", kDcnHostTraffic},
-      {"DcnCollectiveTraffic", kDcnCollectiveTraffic},
-  });
-  DCHECK_EQ(line_id_type_map->size(), kNumLineIdTypes);
-  return *line_id_type_map;
-}
-
 const HostEventTypeStrMap& GetHostEventTypeStrMap() {
   static auto* const host_event_type_str_map = new HostEventTypeStrMap(
       gtl::ReverseMap<HostEventTypeStrMap>(GetHostEventTypeMap()));
@@ -502,12 +487,6 @@ const MegaScaleStatTypeStrMap& GetMegaScaleStatTypeStrMap() {
   static auto* const stat_type_str_map = new MegaScaleStatTypeStrMap(
       gtl::ReverseMap<MegaScaleStatTypeStrMap>(GetMegaScaleStatTypeMap()));
   return *stat_type_str_map;
-}
-
-const LineIdTypeStrMap& GetLineIdTypeStrMap() {
-  static auto* const line_id_type_str_map = new LineIdTypeStrMap(
-      gtl::ReverseMap<LineIdTypeStrMap>(GetLineIdTypeMap()));
-  return *line_id_type_str_map;
 }
 
 using TaskEnvStatTypeMap =
@@ -591,10 +570,6 @@ std::optional<int64_t> FindTaskEnvStatType(absl::string_view stat_name) {
     return *stat_type;
   }
   return std::nullopt;
-}
-
-absl::string_view GetLineIdTypeStr(LineIdType line_id_type) {
-  return GetLineIdTypeStrMap().at(line_id_type);
 }
 
 bool IsInternalEvent(std::optional<int64_t> event_type) {

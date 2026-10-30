@@ -999,3 +999,12 @@ func.func @test_copysign(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<8
 }
 // CHECK-LABEL: @test_copysign
 // CHECK: math.copysign %{{.*}}, %{{.*}} : vector<8xf32>
+
+// -----
+
+func.func @test_fma(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = math.fma %arg0, %arg1, %arg2 : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
+// CHECK-LABEL: @test_fma
+// CHECK: math.fma %{{.*}}, %{{.*}}, %{{.*}} : vector<8xf32>
