@@ -1762,6 +1762,59 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_pipeline",
+    srcs = ["gpu_pipeline.cc"],
+    hdrs = ["gpu_pipeline.h"],
+    deps = [
+        "//xla/hlo/pass:hlo_pass_options",
+        "//xla/hlo/pass:hlo_pipeline_editor",
+        "//xla/hlo/pass:hlo_pipeline_proto_cc",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+    ],
+)
+
+# Links the HloPassRegistry registrations of the passes in
+# GetDefaultCompilationPipeline. gpu_pipeline_test checks that the list is
+# complete.
+cc_library(
+    name = "gpu_pipeline_passes",
+    deps = [
+        "//xla/backends/gpu/transforms:algebraic_simplifier",
+        "//xla/backends/gpu/transforms:composite_rewriter",
+        "//xla/backends/gpu/transforms:cudnn_custom_call_converter",
+        "//xla/backends/gpu/transforms:erase_xla_late_frontend_attributes",
+        "//xla/core/host_offloading:hlo_host_device_type_call_wrapper",
+        "//xla/hlo/transforms:convert_memory_placement_to_internal_annotations",
+        "//xla/hlo/transforms/simplifiers:conditional_canonicalizer",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
+        "//xla/hlo/transforms/simplifiers:zero_sized_hlo_elimination",
+        "//xla/service:call_inliner",
+        "//xla/service:topk_rewriter",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_pipeline_test",
+    srcs = ["gpu_pipeline_test.cc"],
+    deps = [
+        ":gpu_device_info_for_tests",
+        ":gpu_pipeline",
+        ":gpu_pipeline_passes",  # keep
+        "//xla/core/host_offloading:hlo_host_device_type_call_wrapper",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_context",
+        "//xla/hlo/pass:hlo_pass_options",
+        "//xla/hlo/pass:hlo_pass_registry",
+        "//xla/hlo/pass:hlo_pipeline_proto_cc",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "gpu_compiler",
     srcs = ["gpu_compiler.cc"],
     hdrs = ["gpu_compiler.h"],
@@ -1784,6 +1837,7 @@ cc_library(
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",
         ":gpu_memory_space_assignment",
+        ":gpu_pipeline",
         ":gpu_spmd_pipeline",
         ":hlo_fusion_stats",
         ":ir_emission_utils",

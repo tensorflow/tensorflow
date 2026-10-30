@@ -286,6 +286,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
+#include "xla/service/gpu/gpu_pipeline.h"
 #include "xla/service/gpu/gpu_spmd_pipeline.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -1895,6 +1896,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
           AlgebraicSimplifierMode::kLayoutInsensitive,
           hlo_module->config().debug_options(),
           IsNonCudaPlatform(gpu_topology.gpu_target_config()));
+
+  XLA_VLOG_LINES(1, absl::StrCat("Default compilation pipeline:\n",
+                                 GetDefaultCompilationPipeline(
+                                     layout_insensitive_algsimp_opts)
+                                     .DebugString()));
 
   {
     HloPassPipeline pipeline("annotate-host-compute", compilation_stats);
