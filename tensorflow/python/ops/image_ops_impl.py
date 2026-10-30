@@ -2836,12 +2836,12 @@ def adjust_hue(image, delta, name=None):
   >>> image = tf.constant(image)
   >>> tf.image.adjust_hue(image, 0.2)
   <tf.Tensor: shape=(3, 2, 3), dtype=int32, numpy=
-  array([[[ 2,  1,  3],
-        [ 5,  4,  6]],
-       [[ 8,  7,  9],
-        [11, 10, 12]],
-       [[14, 13, 15],
-        [17, 16, 18]]], dtype=int32)>
+  array([[[ 2,  0,  2],
+        [ 5,  3,  5]],
+       [[ 8,  6,  8],
+        [11,  9, 11]],
+       [[14, 12, 14],
+        [17, 15, 17]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     if context.executing_eagerly():
