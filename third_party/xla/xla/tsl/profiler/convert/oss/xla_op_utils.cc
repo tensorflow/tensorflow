@@ -16,16 +16,19 @@ limitations under the License.
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tsl {
 namespace profiler {
 
 // LINT.IfChange
-constexpr absl::string_view kHloSparseCoreV0Infeed = "sparsecorev0 infeed";
-constexpr absl::string_view kHloSparseCoreV0Outfeed = "sparsecorev0 outfeed";
-constexpr absl::string_view kHloSparseCoreV0InfeedWait =
+TF_CONST_INIT const absl::string_view kHloSparseCoreV0Infeed =
+    "sparsecorev0 infeed";
+TF_CONST_INIT const absl::string_view kHloSparseCoreV0Outfeed =
+    "sparsecorev0 outfeed";
+TF_CONST_INIT const absl::string_view kHloSparseCoreV0InfeedWait =
     "sparsecorev0 infeed wait";
-constexpr absl::string_view kHloSparseCoreV0InfeedTransform =
+TF_CONST_INIT const absl::string_view kHloSparseCoreV0InfeedTransform =
     "sparsecorev0 infeed transform";
 // LINT.ThenChange(//tensorflow/compiler/xla/tsl/profiler/convert/google/xla_op_utils.cc)
 
