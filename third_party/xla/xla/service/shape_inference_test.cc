@@ -279,6 +279,28 @@ TEST_F(ShapeInferenceTest, BitcastConvertPredToF32) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(ShapeInferenceTest, BitcastConvertWithDynamicMajorDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[<=10,2]"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferBitcastConvertShape(operand, PrimitiveType::S64));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("s64[<=10]"));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, BitcastConvertWithDynamicContractedDimension) {
+  // Narrowing to a wider element type consumes the minor dimension, which
+  // must be static: fewer than ratio valid elements cannot form an element.
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[10,<=2]"));
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferBitcastConvertShape(operand, PrimitiveType::S64);
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("Last dimension of input shape must be static"));
+}
+
 TEST_F(ShapeInferenceTest, ClampAllMatrix) {
   const absl::StatusOr<Shape> inferred_shape =
       ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, matrix_64_48_,

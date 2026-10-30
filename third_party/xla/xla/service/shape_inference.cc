@@ -657,6 +657,13 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
           ShapeUtil::HumanString(operand_shape),
           PrimitiveType_Name(new_element_type));
     }
+    if (operand_shape.is_dynamic_dimension(last_dimension_idx)) {
+      return InvalidArgument(
+          "Last dimension of input shape must be static for bitcast-convert "
+          "from %s to %s",
+          ShapeUtil::HumanString(operand_shape),
+          PrimitiveType_Name(new_element_type));
+    }
     new_shape.DeleteDimension(last_dimension_idx);
   }
   return new_shape;
