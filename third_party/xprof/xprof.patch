@@ -193,3 +193,28 @@ diff --git a/xprof/convert/hlo_proto_to_graph_view.cc b/xprof/convert/hlo_proto_
        xla::HloOpcode::kGetDimensionSize, xla::HloOpcode::kSetDimensionSize};
    std::vector<xla::HloOpcode> green_op_codes = {
        xla::HloOpcode::kConcatenate, xla::HloOpcode::kDynamicSlice,
+diff --git a/xprof/convert/dcn_analysis.cc b/xprof/convert/dcn_analysis.cc
+--- a/xprof/convert/dcn_analysis.cc
++++ b/xprof/convert/dcn_analysis.cc
+@@ -34,9 +34,19 @@
+ namespace tensorflow {
+ namespace profiler {
+ 
+-using ::tsl::profiler::kMaxCollectivesToDisplay;
+ using ::tsl::profiler::kMegaScaleDcnReceive;
+-using ::tsl::profiler::LineIdType;
++
++constexpr uint32_t kMaxCollectivesToDisplay = 9;
++constexpr uint32_t kLineIdOffset = 10000;
++
++enum LineIdType {
++  kFirstLineIdType = kLineIdOffset,
++  kUnknownLineIdType = kFirstLineIdType,
++  kDcnHostTraffic,
++  kDcnCollectiveTraffic,
++  kDcnCollectiveTrafficMax = kDcnCollectiveTraffic + kMaxCollectivesToDisplay,
++  kLastLineIdType = kDcnCollectiveTrafficMax,
++};
+ using ::tsl::profiler::MicroToNano;
+ using ::tsl::profiler::XEventBuilder;
+ using ::tsl::profiler::XEventMetadataVisitor;
