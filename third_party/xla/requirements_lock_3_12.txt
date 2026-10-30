@@ -65,9 +65,9 @@ numpy==2.5.4 \
     --hash=sha256:fbde6962867ee75b48b0ee29b2b9372ec5d617799dbaf38e82dc0596f2f7738a \
     --hash=sha256:fe4d21ab149f15e4e6043dfb0de87e6e5f34ac176cde83060e9802981fca2ac2 \
     --hash=sha256:ffa6ce09a1c6a08e9667dd9c97aa0b14184e8d18f2a14b78b2a2328c9147f076
-lit==23.1.3 \
-    --hash=sha256:559c274005e81bd1cf55c2c828fb6b9674fb108a9ed45fdc1feed2f54e148a5a \
-    --hash=sha256:a3d02402ddbc5ecd4df89fac6e64008e0fe6e4c7bafbb8fdb5dab5c50e1396ec
+lit==23.1.4 \
+    --hash=sha256:74f38863e22900e8203a5482e01f4a4f15b6bef4d36d6193483a8c76d95e5109 \
+    --hash=sha256:a62eb1b8861e5b9a50f424e15be2bcd883a99b464d6cf3c92fb9546d8ccfcbda
 ml-dtypes==0.6.0 \
     --hash=sha256:008382aeab529df5d3f00501ad9a7dcd64494d4b5b1971fc4c79019e6c1f5010 \
     --hash=sha256:03ce583adfce34ad33aa9e1fc7a8344dcf90ea776cc4ef0e5a48d4eae84e5d20 \

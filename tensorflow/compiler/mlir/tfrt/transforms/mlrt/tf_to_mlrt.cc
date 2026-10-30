@@ -1342,15 +1342,16 @@ class TfToMlrtConversionPass
     // LINT.IfChange
     // Order the list of added ops alphabetically.
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
-    patterns
-        .add<AsyncOpConversion, GetResourceOpConversion,
-             SetResourceOpConversion, IfrtRestoreVariableOpConversion,
-             TFAwaitOpConversion, TFPromiseOpConversion,
-             IfrtResourceDeserializeOpConversion, AsyncIfrtCallOpConversion>(
-            &context);
-    patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
-                 TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
-                                                                &context);
+    patterns.add<AsyncOpConversion, GetResourceOpConversion,
+                 SetResourceOpConversion, IfrtRestoreVariableOpConversion,
+                 TFAwaitOpConversion, TFPromiseOpConversion,
+                 IfrtResourceDeserializeOpConversion>(&context);
+    // AsyncIfrtCallOpConversion needs the type converter so that
+    // `!mlrt.future` operands (e.g. outputs of async kernels or of another
+    // AsyncIfrtCall) are materialized into tensors via `tf_mlrt.await`.
+    patterns.add<AsyncIfrtCallOpConversion, BatchFunctionOpConversion,
+                 CaseOpConversion, CondOpConversion, TFAsyncWhileOpConversion,
+                 TFMapFnOpConversion>(type_converter_, &context);
     patterns.add<ExecuteOpConversion>(&context, &symbol_table, &type_converter_,
                                       &execute_op_registry_, &op_kernel_cache_,
                                       &fallback_state_);

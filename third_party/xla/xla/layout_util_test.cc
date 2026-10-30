@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -262,6 +263,9 @@ TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
 }
 
 TEST_F(LayoutUtilTest, MakeDescending) {
+  EXPECT_TRUE(
+      LayoutUtil::Equal(LayoutUtil::MakeDescendingLayout(8),
+                        LayoutUtil::MakeLayout({7, 6, 5, 4, 3, 2, 1, 0})));
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeDescendingLayout(5),
                                 LayoutUtil::MakeLayout({4, 3, 2, 1, 0})));
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeDescendingLayout(1),
@@ -271,6 +275,9 @@ TEST_F(LayoutUtilTest, MakeDescending) {
 }
 
 TEST_F(LayoutUtilTest, MakeAscending) {
+  EXPECT_TRUE(
+      LayoutUtil::Equal(LayoutUtil::MakeAscendingLayout(8),
+                        LayoutUtil::MakeLayout({0, 1, 2, 3, 4, 5, 6, 7})));
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeAscendingLayout(5),
                                 LayoutUtil::MakeLayout({0, 1, 2, 3, 4})));
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeAscendingLayout(1),
@@ -762,6 +769,26 @@ INSTANTIATE_TEST_SUITE_P(IsUntiledLayoutTests, IsUntiledLayoutTest,
                              {{{24, 128}, {Tile({8, 128})}, true},
                               {{4, 256}, {Tile({1, 128})}, true},
                               {{2, 3, 4}, {Tile({8, 128})}, false}}));
+
+void BM_MakeDescendingLayout(::testing::benchmark::State& state) {
+  const int64_t num_dims = state.range(0);
+  for (auto s : state) {
+    tsl::testing::DoNotOptimize(LayoutUtil::MakeDescendingLayout(num_dims));
+  }
+}
+
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_MakeDescendingLayout)->Arg(4)->Arg(8);
+
+void BM_MakeAscendingLayout(::testing::benchmark::State& state) {
+  const int64_t num_dims = state.range(0);
+  for (auto s : state) {
+    tsl::testing::DoNotOptimize(LayoutUtil::MakeAscendingLayout(num_dims));
+  }
+}
+
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_MakeAscendingLayout)->Arg(4)->Arg(8);
 
 }  // namespace
 }  // namespace xla

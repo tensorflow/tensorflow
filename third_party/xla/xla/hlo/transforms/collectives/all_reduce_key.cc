@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_domain_map.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -32,7 +31,6 @@ namespace xla {
 // Returns a key that will be equal for all-reduce instructions that are
 // compatible with each other, and hence might be combined, or different if not.
 std::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
-                                            const HloDomainMap* domain_map,
                                             bool ignore_replica_groups) {
   // TODO(b/396147741): Support all-reduce combining with control dependencies.
   // Currently, this would crash when replacing the original all-reduces. Such
@@ -67,14 +65,10 @@ std::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
   }
 
   const HloInstruction* to_apply_root = ar->to_apply()->root_instruction();
-  // Domain metadata id returned by `GetDomainMetadataId` is guaranteed to be >=
-  // 0, so use -1 when we don't need to track domain metadata id.
-  int64_t domain_metadata_id =
-      domain_map ? domain_map->GetDomainMetadataId(ar) : -1;
-  return AllReduceKey{
-      to_apply_root->opcode(),     to_apply_root->shape().element_type(),
-      domain_metadata_id,          ar->channel_id().has_value(),
-      ar->use_global_device_ids(), replica_groups};
+  return AllReduceKey{to_apply_root->opcode(),
+                      to_apply_root->shape().element_type(),
+                      ar->channel_id().has_value(), ar->use_global_device_ids(),
+                      replica_groups};
 }
 
 }  // namespace xla

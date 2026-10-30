@@ -1664,7 +1664,5 @@ TEST_F(SameShapeMultiOutputFusionTileAnalysisTest,
   EXPECT_EQ(reduces[0]->operands().size(), 4);
 }
 
-// TODO(b/422676780): Port the remaining tests.
-
 }  // namespace
 }  // namespace xla::gpu

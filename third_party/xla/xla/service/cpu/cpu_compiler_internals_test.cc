@@ -22,6 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -32,6 +34,8 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
+#include "xla/backends/cpu/runtime/collective_thunk.h"
+#include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -42,8 +46,10 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/thunk_emitter.h"
+#include "xla/service/executable.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -398,6 +404,83 @@ TEST_F(CpuCompilerInternalsTest,
   EXPECT_NE(root->opcode(), HloOpcode::kCompare);
   EXPECT_FALSE(ThunkEmitter::MatchSortDirection(Cast<HloSortInstruction>(sort))
                    .has_value());
+}
+
+TEST_F(CpuCompilerInternalsTest, CollectiveThunksUseInstructionUniqueIdAsOpId) {
+  static constexpr absl::string_view kHlo = R"(
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT sum = f32[] add(lhs, rhs)
+    }
+
+    while_cond {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      limit = s32[] constant(2)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    while_body {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      x = f32[4] get-tuple-element(state), index=1
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ar = f32[4] all-reduce(x), replica_groups={{0,1}}, to_apply=add
+      ROOT next_state = (s32[], f32[4]) tuple(next_i, ar)
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      zero = s32[] constant(0)
+      init = (s32[], f32[4]) tuple(zero, p0)
+      loop = (s32[], f32[4]) while(init), condition=while_cond, body=while_body
+      loop_x = f32[4] get-tuple-element(loop), index=1
+      cp = f32[4] collective-permute(loop_x), source_target_pairs={{0,1},{1,0}}
+      ROOT ag = f32[8] all-gather(cp), dimensions={0}, replica_groups={{0,1}}
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo, config));
+
+  CpuCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler.RunBackend(std::move(optimized_module), /*stream_exec=*/nullptr,
+                          /*options=*/{}));
+
+  auto* cpu_executable = static_cast<CpuExecutable*>(executable.get());
+  ASSERT_TRUE(cpu_executable->has_thunks());
+
+  absl::flat_hash_map<std::string, int64_t> hlo_unique_ids;
+  for (const HloComputation* computation :
+       cpu_executable->module().computations()) {
+    for (const HloInstruction* instr : computation->instructions()) {
+      hlo_unique_ids[instr->name()] = instr->unique_id();
+    }
+  }
+
+  absl::flat_hash_set<int64_t> unique_op_ids;
+  cpu_executable->thunks().thunk_sequence().ForEach([&](const Thunk& thunk) {
+    if (thunk.kind() == Thunk::Kind::kCollective) {
+      const auto& collective_thunk = static_cast<const CollectiveThunk&>(thunk);
+      int64_t op_id = collective_thunk.op_params().op_id;
+      unique_op_ids.insert(op_id);
+      auto it = hlo_unique_ids.find(thunk.info().op_name);
+      ASSERT_NE(it, hlo_unique_ids.end())
+          << "Missing HLO instruction " << thunk.info().op_name;
+      EXPECT_EQ(op_id, it->second)
+          << "Mismatch for collective " << thunk.info().op_name;
+    }
+  });
+
+  EXPECT_EQ(unique_op_ids.size(), 3);
 }
 
 }  // namespace

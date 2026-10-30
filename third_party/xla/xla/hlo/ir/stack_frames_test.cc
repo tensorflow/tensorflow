@@ -185,5 +185,20 @@ TEST(StackFramesTest, FromProto) {
   EXPECT_FALSE(StackFrames::FromProto(proto).ok());
 }
 
+// Verifies that out-of-bounds StackFrameIds (e.g. dangling IDs on an empty
+// StackFrames table) are ignored rather than creating a 1 -> 1 self-loop.
+TEST(StackFramesTest, OutOfBoundsIdsDoNotCreateCyclesOrHang) {
+  StackFrames dag;
+  EXPECT_EQ(dag.Concatenate(StackFrameId{1}, StackFrameId{2}), StackFrameId{});
+  EXPECT_TRUE(dag.empty());
+  EXPECT_FALSE(dag.IsPrefix(StackFrameId{3}, StackFrameId{1}));
+
+  HloStackFrame frame = {"file1.py", "func1", 10, 5, 0, 0, StackFrameId{5}};
+  StackFrameId id1 = dag.AddStackFrame(frame);
+  EXPECT_EQ(id1, StackFrameId{1});
+  EXPECT_EQ(dag.GetStackFrame(id1).parent_frame_id, StackFrameId{});
+  EXPECT_FALSE(dag.IsPrefix(StackFrameId{3}, id1));
+}
+
 }  // namespace
 }  // namespace xla

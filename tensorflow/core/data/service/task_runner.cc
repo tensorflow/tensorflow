@@ -146,6 +146,10 @@ absl::Status FirstComeFirstServedTaskRunner::GetNext(GetElementResult& result) {
   return absl::OkStatus();
 }
 
+bool FirstComeFirstServedTaskRunner::HasPrefetchedElement() const {
+  return !buffer_.Empty();
+}
+
 absl::Status FirstComeFirstServedTaskRunner::PrefetchFn() {
   while (true) {
     TF_RETURN_IF_ERROR(buffer_.Push(GetNextFromInputIterator()));
@@ -211,6 +215,21 @@ CachingTaskRunner::~CachingTaskRunner() { Cancel(); }
 
 absl::Status CachingTaskRunner::GetNext(const GetElementRequest& req,
                                         GetElementResult& result) {
+  if (req.allow_skip() && !fcfs_task_runner_.HasPrefetchedElement()) {
+    // Like `FirstComeFirstServedTaskRunner`, lets the client read from another
+    // worker instead of waiting here, when this trainer's next element is not
+    // cached and the input pipeline has not produced it yet. Errors, such as a
+    // cancelled cache, are returned by `cache_.Get` below. This check is best
+    // effort: if a concurrent request with the same trainer ID reads the
+    // element after this check, `cache_.Get` waits for the next element as if
+    // skipping were not allowed.
+    absl::StatusOr<bool> is_element_cached =
+        cache_.IsElementCached(req.trainer_id());
+    if (is_element_cached.ok() && !*is_element_cached) {
+      result.skip = true;
+      return absl::OkStatus();
+    }
+  }
   TF_ASSIGN_OR_RETURN(std::shared_ptr<const GetElementResult> element,
                       cache_.Get(req.trainer_id()));
   result = element->Copy();

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/collectives/gloo_communicator.h"
 
+#include <algorithm>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -26,11 +27,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -48,10 +52,12 @@ limitations under the License.
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_rendezvous.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla::cpu {
 
@@ -123,6 +129,31 @@ Future<> GlooCommunicator::AllReduceMany(
   return absl::OkStatus();
 }
 
+uint32_t GlooCommunicator::NextTag(const RendezvousKey& key) {
+  uint32_t loop_counter;
+  {
+    absl::MutexLock lock(mu_);
+    auto it = absl::c_find_if(run_states_, [&](const RunState& state) {
+      return state.run_id == key.run_id;
+    });
+    if (it == run_states_.end()) {
+      if (run_states_.size() == kMaxTrackedRunIds) {
+        run_states_.pop_back();
+      }
+      run_states_.insert(run_states_.begin(), RunState{key.run_id, {}});
+      it = run_states_.begin();
+    } else if (it != run_states_.begin()) {
+      std::rotate(run_states_.begin(), it, it + 1);
+      it = run_states_.begin();
+    }
+    loop_counter = it->loop_counters[key.op_id]++;
+  }
+  const int64_t values[3] = {key.op_id, key.run_id.ToInt(),
+                             static_cast<int64_t>(loop_counter)};
+  return tsl::Fingerprint32(
+      absl::string_view(reinterpret_cast<const char*>(values), sizeof(values)));
+}
+
 template <typename T>
 static absl::Status SetAllReduceOptions(ReductionKind reduction_kind,
                                         se::DeviceAddressBase input_buffer,
@@ -178,8 +209,6 @@ Future<> GlooCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
   ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
 
   gloo::AllreduceOptions options(context_);
-  // TODO(phawkins): how to do tags?
-  // options.setTag(tag);
   switch (dtype) {
     case S8:
       ABSL_RETURN_IF_ERROR(SetAllReduceOptions<int8_t>(reduction_kind, send_buffer,
@@ -241,6 +270,7 @@ Future<> GlooCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
     default:
       return absl::InvalidArgumentError("Unknown datatype in allreduce");
   }
+  options.setTag(NextTag(cpu_executor->rendezvous_key()));
   options.setAlgorithm(gloo::AllreduceOptions::Algorithm::RING);
   options.setTimeout(absl::ToChronoMilliseconds(cpu_executor->timeout()));
 
@@ -257,10 +287,9 @@ Future<> GlooCommunicator::CollectivePermute(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
-  uint32_t tag = 0;  // TODO(phawkins): come up with better tags.
-  const auto slot = gloo::Slot::build(kCollectivePermuteSlotPrefix, tag);
-
   ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  uint32_t tag = NextTag(cpu_executor->rendezvous_key());
+  const auto slot = gloo::Slot::build(kCollectivePermuteSlotPrefix, tag);
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
 
   try {
@@ -311,7 +340,6 @@ Future<> GlooCommunicator::AllToAll(
   // We can't use Gloo's all-to-all implementation directly because it assumes
   // that the inputs and outputs are contiguous. No big deal; it's just built
   // on top of send/recv and we can do the same as it.
-  uint32_t tag = 0;  // TODO(phawkins): use better tags.
   int my_rank = context_->rank;
   int world_size = context_->size;
 
@@ -319,6 +347,7 @@ Future<> GlooCommunicator::AllToAll(
   TF_RET_CHECK(world_size == recv_buffers.size());
 
   ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  uint32_t tag = NextTag(cpu_executor->rendezvous_key());
   size_t chunk_bytes = count * primitive_util::ByteWidth(dtype);
 
   try {
@@ -364,9 +393,8 @@ Future<> GlooCommunicator::AllGather(se::DeviceAddressBase send_buffer,
                                      se::DeviceAddressBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      const Executor& executor) {
-  uint32_t tag = 0;  // TODO(phawkins): use better tags.
-
   ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  uint32_t tag = NextTag(cpu_executor->rendezvous_key());
   size_t chunk_bytes = count * primitive_util::ByteWidth(dtype);
 
   gloo::AllgatherOptions options(context_);
@@ -391,8 +419,9 @@ Future<> GlooCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
                                          ReductionKind reduction_kind,
                                          const Executor& executor) {
   ABSL_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
+  uint32_t tag = NextTag(cpu_executor->rendezvous_key());
   return GlooReduceScatter(context_, send_buffer, recv_buffer, dtype, count,
-                           reduction_kind, cpu_executor->timeout());
+                           reduction_kind, cpu_executor->timeout(), tag);
 }
 
 }  // namespace xla::cpu

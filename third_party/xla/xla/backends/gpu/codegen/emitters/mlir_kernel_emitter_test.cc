@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
@@ -192,6 +194,62 @@ TEST_F(MlirKernelFusionTest, CreateLLVMModule) {
                                  ? "@llvm.amdgcn.workitem.id.x"
                                  : "@llvm.nvvm.read.ptx.sreg.tid.x"}})));
   EXPECT_TRUE(filecheck_result);
+}
+
+TEST_F(MlirKernelFusionTest, CreateLLVMModuleRejectsUnsupportedFmaTypes) {
+  auto check_rejected = [&](absl::string_view dtype,
+                            const se::DeviceDescription& dev_info) {
+    const std::string hlo = absl::StrReplaceAll(
+        R"(
+          fused_computation {
+            %p0 = DTYPE[100] parameter(0)
+            %p1 = DTYPE[100] parameter(1)
+            %p2 = DTYPE[100] parameter(2)
+            ROOT %out = DTYPE[100] fma(%p0, %p1, %p2)
+          }
+
+          ENTRY main {
+            %p0 = DTYPE[100] parameter(0)
+            %p1 = DTYPE[100] parameter(1)
+            %p2 = DTYPE[100] parameter(2)
+            ROOT fusion = DTYPE[100] fusion(%p0, %p1, %p2), kind=kLoop,
+              calls=fused_computation
+          })",
+        {{"DTYPE", dtype}});
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hlo));
+    GpuTopology gpu_topology(
+        /*platform_version=*/"", /*num_partitions=*/1,
+        /*num_hosts_per_partition=*/1, /*num_devices_per_host=*/1);
+    CubinCustomKernelCompiler kernel_compiler(
+        [](llvm::Module&, const se::DeviceDescription&, const DebugOptions&) {
+          return std::vector<uint8_t>{};
+        },
+        dev_info, module->config().debug_options(), gpu_topology);
+    MlirContextPool mlir_context_pool([]() { return CreateMlirContext(); });
+    MlirKernelFusion emitter(std::make_unique<DummyCopyEmitter>());
+    ASSERT_OK_AND_ASSIGN(BorrowedMlirContext borrowed_context,
+                         mlir_context_pool.GetOrCreate());
+    EXPECT_THAT(emitter
+                    .CreateLLVMModule(
+                        dev_info,
+                        *Cast<HloFusionInstruction>(
+                            module->entry_computation()->root_instruction()),
+                        "fusion", /*buffer_assignment=*/nullptr,
+                        &kernel_compiler, std::move(borrowed_context))
+                    .Await(),
+                absl_testing::StatusIs(absl::StatusCode::kUnimplemented))
+        << "dtype=" << dtype;
+  };
+
+  check_rejected(
+      "f16", TestGpuDeviceInfo::A100SXMDeviceInfo(
+                 se::GpuComputeCapability{se::CudaComputeCapability(5, 2)}));
+  check_rejected("bf16",
+                 TestGpuDeviceInfo::A100SXMDeviceInfo(se::GpuComputeCapability{
+                     se::CudaComputeCapability::Volta()}));
+  check_rejected("bf16", TestGpuDeviceInfo::AMDMI300DeviceInfo());
+  check_rejected("f8e4m3fn", TestGpuDeviceInfo::H100SXMDeviceInfo());
 }
 
 }  // namespace

@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for tensorflow.ops.gradients."""
 
+import gc
 import sys
 import warnings
+import weakref
 
 from absl.testing import parameterized
 import numpy as np
@@ -23,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
@@ -1217,6 +1220,59 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       y = F(x)
       with self.assertRaises(RuntimeError):
         gradients.gradients(y, x)
+
+  def testCustomGradientReleasedWithGraph(self):
+
+    @custom_gradient.custom_gradient
+    def Square(x):
+
+      def Grad(dy):
+        return 2.0 * x * dy
+
+      return x * x, Grad
+
+    graph = ops.Graph()
+    with graph.as_default():
+      x = constant(3.0)
+      y = Square(x)
+      dx = gradients.gradients(y, x)[0]
+      with session.Session() as sess:
+        self.assertEqual(6.0, sess.run(dx))
+    name = y.op.get_attr("_gradient_op_type").decode()
+    self.assertIn(name, ops.gradient_registry.list())
+    registered_grad_fn = ops.gradient_registry.lookup(name)
+
+    graph_ref = weakref.ref(graph)
+    del graph, x, y, dx, sess
+    gc.collect()
+    self.assertIsNone(graph_ref())
+    self.assertNotIn(name, ops.gradient_registry.list())
+    with self.assertRaisesRegex(LookupError, "garbage collected"):
+      registered_grad_fn(None)
+
+  @test_util.run_v2_only
+  def testCustomGradientForwardAccumulatorInFunction(self):
+
+    @custom_gradient.custom_gradient
+    def Square(x):
+
+      def Grad(dy):
+        return 2.0 * x * dy
+
+      return x * x, Grad
+
+    @def_function.function
+    def SquareJvpAndGrad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        with forwardprop.ForwardAccumulator(x, constant(1.0)) as acc:
+          y = Square(x)
+      return y, acc.jvp(y), tape.gradient(y, x)
+
+    y, jvp, dx = SquareJvpAndGrad(constant(3.0))
+    self.assertEqual(9.0, self.evaluate(y))
+    self.assertEqual(6.0, self.evaluate(jvp))
+    self.assertEqual(6.0, self.evaluate(dx))
 
   def testCustomGradientWithVariables(self):
 

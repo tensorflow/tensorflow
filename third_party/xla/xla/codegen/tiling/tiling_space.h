@@ -42,6 +42,11 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// Scan dimensions up to this size are covered by a single row-local tile
+// without a sequential loop; PriorityFusion relies on this invariant to fuse
+// arbitrary row-wise producers (such as a softmax) into the scan fusion.
+inline constexpr int64_t kMaxRowLocalScanDimSize = 128;
+
 // TilingSpace holds information about all tiling parameters of a fusion.
 //
 // It defines symbolic tiles for the fusion roots as symbolic expressions and
@@ -247,7 +252,9 @@ class TilingSpace {
   // Returns the list of valid tilings for the tiling space. If
   // `tile_reduction_dimensions` is set, tile sizes for the sequential
   // dimensions of reduces are enumerated too; otherwise each of them is covered
-  // by a single tile of the dimension size.
+  // by a single tile of the dimension size. Scan dimensions that fit into a
+  // single row-local tile (`<= kMaxRowLocalScanDimSize`) are also covered by a
+  // single tile of the dimension size.
   absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings(
       bool tile_reduction_dimensions = false);
 

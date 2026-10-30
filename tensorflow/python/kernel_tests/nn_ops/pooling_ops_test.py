@@ -848,6 +848,29 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         self.evaluate(t)
 
   @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolAttrOutOfInt32Range(self):
+    # Regression test for GitHub issue 128940: with oneDNN, a ksize or
+    # strides value outside the int32 range aborted the process while the
+    # graph was rewritten to use the oneDNN MaxPool and MaxPool3D kernels.
+    for rank, pool in ((4, nn_ops.max_pool), (5, nn_ops.max_pool3d)):
+      ones = [1] * rank
+      out_of_range = [1, 2**31] + [1] * (rank - 2)
+      for ksize, strides in ((out_of_range, ones), (ones, out_of_range)):
+        with self.subTest(rank=rank, ksize=ksize, strides=strides):
+          with self.assertRaisesRegex(
+              (ValueError, errors_impl.InvalidArgumentError),
+              "out of range for an int32",
+          ):
+            self.evaluate(
+                pool(
+                    array_ops.zeros(ones),
+                    ksize=ksize,
+                    strides=strides,
+                    padding="VALID",
+                )
+            )
+
+  @test_util.run_in_graph_and_eager_modes
   @test_util.disable_xla(
       "XLA handles NCHW_VECT_C without CPU MaxPoolingOp error"
   )

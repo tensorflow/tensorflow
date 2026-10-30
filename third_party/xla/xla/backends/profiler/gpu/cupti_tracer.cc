@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler_factory.h"
 #include "xla/backends/profiler/gpu/cupti_utils.h"
+#include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
@@ -736,6 +737,14 @@ void SetCudaGraphEventUponApiExit(
         static_cast<const cuGraphLaunch_params*>(cbdata->functionParams);
     cupti_interface->GetGraphExecId(params->hGraph, &graph_id_info.graph_id);
     graph_id_info.orig_graph_id = 0;
+    uint32_t stream_id = 0;
+    const uint8_t per_thread_stream =
+        (cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz) ? 1 : 0;
+    if (cupti_interface->GetStreamIdEx(cbdata->context, params->hStream,
+                                       per_thread_stream,
+                                       &stream_id) == CUPTI_SUCCESS) {
+      event.stream_id = stream_id;
+    }
   }
   // Create multiple events for cuGraphClone/cuGraphInstantiateWithFlags.
   // The multiple events are created for each node in the graph.
@@ -1114,6 +1123,26 @@ const char* GetCuptiErrorString(CuptiInterface* cupti_interface,
   return err_str;
 }
 
+// Warns once per process if a session selects graph-level tracing while
+// command buffer telemetry has recorded node annotations. CUPTI then reports
+// one record per graph launch instead of one per graph node, so the collector
+// has no node records to resolve the annotations for.
+void WarnIfGraphTraceHidesNodeAnnotations(
+    absl::Span<const CUpti_ActivityKind> activities) {
+  // Only graphs recorded before the session starts are registered at this
+  // point. That covers the usual flow, where command buffers are recorded
+  // during warmup and a profiler attaches later, but not graphs that are first
+  // recorded during the session.
+  if (absl::c_contains(activities, CUPTI_ACTIVITY_KIND_GRAPH_TRACE) &&
+      !::stream_executor::gpu::CudaGraphAnnotationRegistry::Default().empty()) {
+    LOG_FIRST_N(WARNING, 1)
+        << "CUPTI graph-level tracing (CUPTI_ACTIVITY_KIND_GRAPH_TRACE) "
+           "reports one record per CUDA graph launch, so the per-node HLO "
+           "annotations recorded by --xla_gpu_enable_command_buffer_telemetry "
+           "can't be used.";
+  }
+}
+
 }  // namespace
 
 CuptiTracer::CuptiTracer(CuptiInterface* cupti_interface)
@@ -1150,6 +1179,14 @@ absl::Status CuptiTracer::Enable(
   option_ = option;
   collector_ = collector;
 
+  // Take the harvest hold before any tracing is enabled, so that it covers
+  // every record of the session. If an earlier Enable() left a hold behind,
+  // emplace() releases it only after the new one is taken, so the registry
+  // never purges in between.
+  annotation_harvest_hold_.emplace(
+      ::stream_executor::gpu::CudaGraphAnnotationRegistry::Default()
+          .AcquireHarvestHold());
+
   // For nvtx tracking, utilize CUPTI activity marker and marker_data.
   if (option_->enable_nvtx_tracking) {
     VLOG(1) << "NVTX tracking Enabled.";
@@ -1171,7 +1208,11 @@ absl::Status CuptiTracer::Enable(
   cupti_driver_api_hook_ = std::make_unique<CuptiDriverApiHookWithActivityApi>(
       *option_, cupti_interface_, this);
 
+  // Callers don't call Disable() after a failed Enable(), so reset session
+  // state (including releasing annotation_harvest_hold_) on every error return
+  // after tracing has been disabled.
   absl::Cleanup api_tracing_cleanup = [&] {
+    const bool was_api_tracing_enabled = api_tracing_enabled_;
     if (cupti_interface_->Disabled()) {
       api_tracing_enabled_ = false;
       // A subscriber created by this session is owned by the error manager
@@ -1180,14 +1221,14 @@ absl::Status CuptiTracer::Enable(
     } else {
       DisableApiTracing(/*unsubscribe=*/true).IgnoreError();
     }
-    using_v2_subscriber_api_ = false;
+    if (was_api_tracing_enabled) {
+      GatherCallbackAnnotationsAndEvents(/*stop_recording=*/true);
+    }
     cupti_interface_->CleanUp();
+    ResetSessionState();
   };
 
   tsl::profiler::AnnotationStack::Enable(true);
-  absl::Cleanup annotation_cleanup = [] {
-    tsl::profiler::AnnotationStack::Enable(false);
-  };
 
   absl::Status api_status = EnableApiTracing();
   need_root_access_ |= api_status.code() == tsl::error::PERMISSION_DENIED;
@@ -1239,13 +1280,40 @@ absl::Status CuptiTracer::Enable(
     std::move(pm_sampler_cleanup).Cancel();
   }
 
-  std::move(annotation_cleanup).Cancel();
+  WarnIfGraphTraceHidesNodeAnnotations(option_->activities_selected);
+
   std::move(activity_tracing_cleanup).Cancel();
   std::move(api_tracing_cleanup).Cancel();
   return absl::OkStatus();
 }
 
+void CuptiTracer::ResetSessionState() {
+  annotation_harvest_hold_.reset();
+  activity_buffers_.reset();
+  cupti_pm_sampler_.reset();
+  collector_ = nullptr;
+  option_.reset();
+  cupti_driver_api_hook_.reset();
+  using_v2_subscriber_api_ = false;
+  subscriber_prepared_for_current_session_ = false;
+  tsl::profiler::AnnotationStack::Enable(false);
+}
+
 void CuptiTracer::Disable() {
+  if (!api_tracing_enabled_ && !activity_tracing_enabled_ &&
+      !pm_sampling_enabled_) {
+    if (subscriber_ != nullptr) {
+      if (cupti_interface_->Disabled()) {
+        ClearSubscriberState();
+      } else {
+        UnsubscribeAndClearSubscriber().IgnoreError();
+      }
+      cupti_interface_->CleanUp();
+    }
+    ResetSessionState();
+    return;
+  }
+
   // Disables the PM Sampling before Cupti Tracer is disabled.
   if (pm_sampling_enabled_) {
     if (absl::Status status = cupti_pm_sampler_->StopSampler(); !status.ok()) {
@@ -1348,12 +1416,12 @@ void CuptiTracer::Disable() {
   }
 
   collector_->Flush();
-  collector_ = nullptr;
-  option_.reset();
-  cupti_driver_api_hook_.reset();
-  using_v2_subscriber_api_ = false;
-  subscriber_prepared_for_current_session_ = false;
-  tsl::profiler::AnnotationStack::Enable(false);
+  // The collector has resolved every record of the session, so the registry
+  // can purge the annotations it kept for graphs destroyed during the session.
+  VLOG(1) << "Command buffer annotation registry at the end of the session: "
+          << ::stream_executor::gpu::CudaGraphAnnotationRegistry::Default()
+                 .GetStats();
+  ResetSessionState();
 }
 
 // Generate default callback ids list that tracer needs to enable them.
@@ -1550,10 +1618,24 @@ absl::Status CuptiTracer::PrepareSubscriberForSession(
     }
   }
   if (ABSL_PREDICT_FALSE(subscribe_status != CUPTI_SUCCESS)) {
+    ClearSubscriberState();
     const char* errstr = "";
     cupti_interface_->GetResultString(subscribe_status, &errstr);
+    if (subscribe_status == CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED ||
+        subscribe_status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
+      LOG(WARNING)
+          << "Skip enabling CUPTI tracer for this profiling session because an "
+             "external CUPTI subscriber (such as Nsight Systems or Nsight "
+             "Compute) is active: "
+          << errstr;
+      return absl::UnavailableError(absl::StrCat(
+          "Cannot enable CUPTI tracer because another CUPTI subscriber (such "
+          "as Nsight Systems or Nsight Compute) is active: ",
+          errstr));
+    }
     LOG(ERROR) << "function Subscribe failed with error " << errstr;
     if (subscribe_status == CUPTI_ERROR_INSUFFICIENT_PRIVILEGES) {
+      need_root_access_ = true;
       return absl::PermissionDeniedError("CUPTI needs root access");
     }
     return absl::InternalError(absl::StrCat("CUPTI call error: ", errstr));
@@ -1568,9 +1650,9 @@ absl::Status CuptiTracer::EnableApiTracing() {
     return absl::OkStatus();
   }
 
-  PrepareCallbackStart();
   using_v2_subscriber_api_ = false;
   ABSL_RETURN_IF_ERROR(PrepareSubscriberForSession(*option_));
+  PrepareCallbackStart();
   using_v2_subscriber_api_ = subscriber_is_v2_;
   api_tracing_enabled_ = true;
 

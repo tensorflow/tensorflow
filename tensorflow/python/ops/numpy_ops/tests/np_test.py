@@ -2925,7 +2925,12 @@ class LaxBackedNumpyTests(jtu.TestCase):
                     endpoint, dtype, rng_factory):
     rng = rng_factory()
     # relax default tolerances slightly
-    tol = {onp.float16: 4e-3, onp.float32: 2e-3, onp.complex128: 1e-14}
+    tol = {
+        onp.float16: 4e-3,
+        onp.float32: 2e-3,
+        onp.float64: 1e-14,
+        onp.complex128: 1e-14,
+    }
     def args_maker():
       """Test the set of inputs onp.geomspace is well-defined on."""
       start, stop = self._GetArgsMaker(rng,

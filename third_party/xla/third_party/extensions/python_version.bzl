@@ -29,8 +29,8 @@ REQUIREMENTS = "//:requirements.txt"
 
 def _python_version_repo_impl(repository_ctx):
     version = repository_ctx.os.environ.get("HERMETIC_PYTHON_VERSION", "3.11")
-    use_pywrap_rules = bool(
-        repository_ctx.os.environ.get("USE_PYWRAP_RULES", False),
+    use_pywrap_rules = (
+        repository_ctx.os.environ.get("USE_PYWRAP_RULES", "").lower() in ("true", "1")
     )
     repository_ctx.file("BUILD.bazel", "")
     repository_ctx.file(

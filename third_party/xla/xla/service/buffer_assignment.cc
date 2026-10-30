@@ -2107,28 +2107,22 @@ bool BufferAssigner::LiveRangeInterferes(
   DCHECK((assignment->hlo_live_range().total_order_scheduled()));
 
   // An HloValue can hold multiple instruction positions during its lifetime
-  // (e.g. when passed into a while loop tuple or bitcast view).
-  // operand_live_range.end_position points to the last instruction in
-  // schedule order (which may be a tuple instruction inside a loop body).
-  // However, a downstream user instruction might directly consume a
-  // different position of the value (such as the definition instruction
-  // before the loop). Therefore, we must check all positions of the
-  // HloValue to see if any instruction can share its buffer with the user.
+  // (e.g. when passed into a while loop tuple or bitcast view). The user does
+  // not necessarily consume the position at which the live range of the value
+  // ends (which may be a tuple instruction inside a loop body). It may consume
+  // a different position (such as the definition instruction before the loop),
+  // or several positions (such as an instruction and a bitcast of it). All
+  // positions are backed by the same buffer, so the user can only share that
+  // buffer if every position that it consumes allows it.
   auto can_share_as_operand = [&assignment, this](
                                   const HloValue* user_value,
                                   const HloValue* operand_value) {
     if (user_value->instruction()->opcode() == HloOpcode::kCopy) {
       return false;
     }
-    for (const HloPosition& operand_pos : operand_value->positions()) {
-      if (user_value->instruction()->IsUserOf(operand_pos.instruction) &&
-          assignment->dataflow_analysis().CanShareOperandBufferWithUser(
-              operand_pos.instruction, operand_pos.index,
-              user_value->instruction(), user_value->index(), alias_info_)) {
-        return true;
-      }
-    }
-    return false;
+    return assignment->dataflow_analysis().CanShareOperandValueBufferWithUser(
+        *operand_value, user_value->instruction(), user_value->index(),
+        alias_info_);
   };
 
   bool interferes = false;
@@ -3709,16 +3703,60 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
     backup_presets = opts_.preset_assignments->ClonePresetAssignments();
   }
 
-  // 2. Define the assignment strategies to try.
-  const std::vector<BufferAssigner::AssignmentStrategy> assignment_strategies =
-      {
-          {opts_.assignment_algorithm_for_computations_without_ordering,
-           opts_.buffer_assignment_algorithm},
-          {opts_.assignment_algorithm_for_computations_without_ordering,
-           buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT},
-          {opts_.fallback_algorithm_for_computations_without_ordering,
-           opts_.fallback_algorithm},
-      };
+  // 2. Define the assignment strategies to try. The (non-sequential,
+  // sequential) pairs are, depending on the sequential algorithm:
+  //  * FAST_MERGE: (FAST_MERGE, FAST_MERGE) -> (FAST_MERGE, FAST_SPLIT) ->
+  //    (SPATIAL, SPATIAL) -> (SPATIAL, TEMPORAL)
+  //  * FAST_SPLIT: (FAST_MERGE, FAST_SPLIT) -> (SPATIAL, SPATIAL) ->
+  //    (SPATIAL, TEMPORAL)
+  //  * SPATIAL: (FAST_MERGE, SPATIAL) -> (SPATIAL, SPATIAL) ->
+  //    (SPATIAL, TEMPORAL)
+  //  * TEMPORAL: (FAST_MERGE, TEMPORAL) -> (SPATIAL, SPATIAL) ->
+  //    (SPATIAL, TEMPORAL)
+  //  * DEFAULT, BEST_OF_SPATIAL_TEMPORAL: (FAST_MERGE, X) -> (SPATIAL, X)
+  // The best assignment of each color is kept, so trying SPATIAL and then
+  // TEMPORAL is like BEST_OF_SPATIAL_TEMPORAL, but skips TEMPORAL if SPATIAL
+  // fits.
+  using SequentialAlgorithm = buffer_assignment::BufferAssignmentAlgorithmProto;
+  using NonSequentialAlgorithm =
+      buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto;
+  const NonSequentialAlgorithm::Value non_sequential =
+      opts_.assignment_algorithm_for_computations_without_ordering;
+  const SequentialAlgorithm::Value sequential =
+      opts_.buffer_assignment_algorithm;
+  std::vector<BufferAssigner::AssignmentStrategy> assignment_strategies;
+  // Adds the strategy unless it was already added.
+  auto add_strategy = [&](NonSequentialAlgorithm::Value strategy_non_sequential,
+                          SequentialAlgorithm::Value strategy_sequential) {
+    for (const BufferAssigner::AssignmentStrategy& strategy :
+         assignment_strategies) {
+      if (strategy.non_sequential_algorithm == strategy_non_sequential &&
+          strategy.sequential_algorithm == strategy_sequential) {
+        return;
+      }
+    }
+    assignment_strategies.push_back(
+        {strategy_non_sequential, strategy_sequential});
+  };
+
+  add_strategy(non_sequential, sequential);
+  if (sequential == SequentialAlgorithm::FAST_MERGE) {
+    add_strategy(non_sequential, SequentialAlgorithm::FAST_SPLIT);
+  }
+
+  const NonSequentialAlgorithm::Value fallback_non_sequential =
+      non_sequential == NonSequentialAlgorithm::FAST_MERGE
+          ? opts_.fallback_algorithm_for_computations_without_ordering
+          : non_sequential;
+  if (sequential == SequentialAlgorithm::DEFAULT ||
+      sequential == SequentialAlgorithm::BEST_OF_SPATIAL_TEMPORAL) {
+    add_strategy(fallback_non_sequential, sequential);
+  } else if (opts_.fallback_algorithm == SequentialAlgorithm::DEFAULT) {
+    add_strategy(fallback_non_sequential, SequentialAlgorithm::SPATIAL);
+    add_strategy(fallback_non_sequential, SequentialAlgorithm::TEMPORAL);
+  } else {
+    add_strategy(fallback_non_sequential, opts_.fallback_algorithm);
+  }
 
   // The first step of RunAssignBuffers (AssignBuffersForGlobalComputations)
   // only depends on the non-sequential algorithm. Its result, i.e. the
@@ -4051,14 +4089,23 @@ ComputeLogicalBufferUnpaddedSizes(
         id_to_instruction.at(buffer_proto.defined_at().instruction_id());
     const xla::ShapeProto* subshape_proto = &instruction_proto->shape();
 
-    // If this buffer is returned as a part of a tuple, dig into said
-    // tuple to find the shape information.
-    if (!buffer_proto.defined_at().shape_index().empty()) {
-      int64_t i = buffer_proto.defined_at().shape_index(
-          buffer_proto.defined_at().shape_index_size() - 1);
-      if (i < subshape_proto->tuple_shapes_size()) {
-        subshape_proto = &subshape_proto->tuple_shapes(i);
+    // If this buffer is returned as a part of a tuple, dig into said tuple to
+    // find the shape information.
+    const auto& shape_index = buffer_proto.defined_at().shape_index();
+    for (int64_t i : shape_index) {
+      if (i < 0 || i >= subshape_proto->tuple_shapes_size()) {
+        // If any component is out of range or encounters a non-tuple before the
+        // path is exhausted, fall back to historical behavior (applying only
+        // the last component at the top level if in range, otherwise keeping
+        // the top-level shape) rather than crashing on data-dependent input.
+        subshape_proto = &instruction_proto->shape();
+        int64_t back = shape_index.Get(shape_index.size() - 1);
+        if (back >= 0 && back < subshape_proto->tuple_shapes_size()) {
+          subshape_proto = &subshape_proto->tuple_shapes(back);
+        }
+        break;
       }
+      subshape_proto = &subshape_proto->tuple_shapes(i);
     }
 
     ABSL_ASSIGN_OR_RETURN(Shape subshape, Shape::FromProto(*subshape_proto));

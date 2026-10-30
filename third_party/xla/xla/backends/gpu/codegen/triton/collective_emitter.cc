@@ -467,11 +467,7 @@ mlir::LogicalResult PopulateReductionComputation(
 mlir::Value EmitDeviceInvocationCount(mlir::ImplicitLocOpBuilder& b,
                                       mlir::Value signal_buffers,
                                       mlir::Value rank, mlir::Value block_id,
-                                      int64_t world_size,
-                                      mlir::Value signal_slot = nullptr,
-                                      int64_t signal_stride = 0) {
-  CHECK_EQ(signal_slot != nullptr, signal_stride > 0)
-      << "signal_slot and signal_stride must be set together";
+                                      int64_t world_size) {
   const auto ptr_to_i32_type =
       ttir::PointerType::get(b.getI32Type(), kGlobalAddressSpace);
   const auto ptr_to_i64_type =
@@ -484,30 +480,11 @@ mlir::Value EmitDeviceInvocationCount(mlir::ImplicitLocOpBuilder& b,
       /*isVolatile=*/false);
   mlir::Value local_signal_buffer =
       ttir::IntToPtrOp::create(b, ptr_to_i32_type, local_signal_buffer_i64);
+  // SignalBuffers[rank][block_id * world_size + rank]
   mlir::Value world_size_op = arith::ConstantOp::create(
       b, b.getI32IntegerAttr(static_cast<int32_t>(world_size)));
-  mlir::Value counter_index;
-  if (signal_slot != nullptr) {
-    // Computes:
-    // counter_index = ((block_id - signal_slot * signal_stride +
-    //                   rank * signal_stride) * world_size) + signal_slot
-    // See LowerBlockBarrierOp in triton_xla_lower_block_barrier_pass.cc for
-    // details on the asymmetric barrier indexing.
-    mlir::Value stride_op = arith::ConstantOp::create(
-        b, b.getI32IntegerAttr(static_cast<int32_t>(signal_stride)));
-    mlir::Value slot_offset = arith::MulIOp::create(b, signal_slot, stride_op);
-    mlir::Value base_block = arith::SubIOp::create(b, block_id, slot_offset);
-    mlir::Value rank_offset = arith::MulIOp::create(b, rank, stride_op);
-    mlir::Value target_block =
-        arith::AddIOp::create(b, base_block, rank_offset);
-    mlir::Value target_block_offset =
-        arith::MulIOp::create(b, target_block, world_size_op);
-    counter_index = arith::AddIOp::create(b, target_block_offset, signal_slot);
-  } else {
-    // SignalBuffers[rank][block_id * world_size + rank]
-    counter_index = arith::AddIOp::create(
-        b, arith::MulIOp::create(b, block_id, world_size_op), rank);
-  }
+  mlir::Value counter_index = arith::AddIOp::create(
+      b, arith::MulIOp::create(b, block_id, world_size_op), rank);
   mlir::Value counter_ptr = ttir::AddPtrOp::create(
       b, ptr_to_i32_type, local_signal_buffer, counter_index);
   // Volatile to make sure that every launch reads the counter from memory.
@@ -1536,9 +1513,8 @@ absl::StatusOr<BlockLevelFusionConfig> GetBlockLevelConfigForAllGather(
   const int64_t elements_per_warp =
       WarpSize(gpu_topology.gpu_target_config().device_description) *
       se::gpu::kNumElementsPerThread;
-  // All-gather always uses a one-shot strategy: every rank reads its peers'
-  // slices directly, so the work is proportional to the full output element
-  // count with no rank-based partitioning.
+  // Blocks are partitioned across the full output element count (all peers'
+  // slices).
   const int64_t total_warps =
       CeilOfRatio(all_gather_info.max_output_elements, elements_per_warp);
   const int64_t num_warps = std::min<int64_t>(
@@ -1628,7 +1604,6 @@ struct AllGatherOperandContext {
   mlir::TypedValue<mlir::MemRefType> input_buffer;
   // !tt.ptr<i64> table of the gathered parameter's per-rank remote buffers.
   mlir::Value remote_buffers_arg;
-  int64_t split_dim = -1;
   PrimitiveType element_type = PrimitiveType::PRIMITIVE_TYPE_INVALID;
   llvm::ArrayRef<int64_t> per_rank_shape;
   llvm::ArrayRef<int64_t> tile_sizes;
@@ -1660,7 +1635,7 @@ int64_t ProgramsPerRank(const AllGatherOperandContext& operand) {
 absl::StatusOr<AllGatherOperandContext> BuildAllGatherOperandContext(
     mlir::stablehlo::AllGatherOp op, int64_t operand_index,
     xtile::EntryFuncOp entry_func, int64_t num_parameters,
-    int32_t metadata_args_start, int64_t world_size, int64_t gather_dim) {
+    int32_t metadata_args_start, int64_t gather_dim) {
   ABSL_ASSIGN_OR_RETURN(
       CollectiveOperandExtractInfo operand_info,
       ExtractCollectiveOperand(
@@ -1683,25 +1658,6 @@ absl::StatusOr<AllGatherOperandContext> BuildAllGatherOperandContext(
         "AllGather tile size (%d) must divide the per-rank size (%d) along the "
         "gather dimension.",
         tile_size, per_rank_size));
-  }
-
-  // Find a dimension to split the tile size across `world_size` to balance
-  // the in-kernel D2D subtile copy work across participating ranks.
-  // We prefer splitting along `gather_dim`, but fallback to the innermost
-  // cleanly divisible dimension. If none are found, split_dim remains -1
-  // (unsplit).
-  if (ctx.tile_sizes[gather_dim] >= world_size &&
-      ctx.tile_sizes[gather_dim] % world_size == 0) {
-    ctx.split_dim = gather_dim;
-  } else {
-    for (int64_t d = static_cast<int64_t>(ctx.tile_sizes.size()) - 1; d >= 0;
-         --d) {
-      if (ctx.tile_sizes[d] >= world_size &&
-          ctx.tile_sizes[d] % world_size == 0) {
-        ctx.split_dim = d;
-        break;
-      }
-    }
   }
   return ctx;
 }
@@ -1761,10 +1717,10 @@ absl::StatusOr<AllGatherRewriteContext> BuildAllGatherContext(
   ctx.signal_buffers_arg = entry_func.getArgument(metadata_args_start + 2);
 
   for (int64_t i = 0; i < op.getNumOperands(); ++i) {
-    ABSL_ASSIGN_OR_RETURN(AllGatherOperandContext operand,
-                     BuildAllGatherOperandContext(
-                         op, i, entry_func, num_parameters, metadata_args_start,
-                         ctx.world_size, ctx.gather_dim));
+    ABSL_ASSIGN_OR_RETURN(
+        AllGatherOperandContext operand,
+        BuildAllGatherOperandContext(op, i, entry_func, num_parameters,
+                                     metadata_args_start, ctx.gather_dim));
     ctx.operands.push_back(std::move(operand));
   }
 
@@ -1794,11 +1750,9 @@ absl::StatusOr<AllGatherRewriteContext> BuildAllGatherContext(
   return ctx;
 }
 
-// Returns the rank whose output slice contains this program's tile. Programs
-// enumerate output tiles in row-major order (same assumption as
-// `signal_stride` and the asymmetric barrier), so each run of `signal_stride`
-// consecutive programs covers one rank's slice along `gather_dim` /
-// `split_dim`.
+// Returns the peer rank assigned to `block_id`. Each run of `signal_stride`
+// consecutive programs covers one peer rank's slice (wrapping modulo
+// `world_size`), matching `signal_stride` and the pairwise barrier.
 template <typename ContextT>
 mlir::Value EmitPeerReplicaId(mlir::ImplicitLocOpBuilder& b,
                               const ContextT& ctx, mlir::Value block_id) {
@@ -1823,59 +1777,60 @@ mlir::Value EmitRemoteBufferMemref(mlir::ImplicitLocOpBuilder& b,
   return mtx::PtrToMemrefOp::create(b, memref_type, ptr);
 }
 
-// Copies this program's slice of `operand`'s local input into this rank's
-// scratch buffer. If `split_dim != -1`, the tile is split across `world_size`
-// ranks so each peer copies `1 / world_size` of it; otherwise (`split_dim ==
-// -1`) the whole tile is copied.
-void CopySubtileToScratch(mlir::ImplicitLocOpBuilder& b,
-                          const AllGatherRewriteContext& ctx,
-                          const AllGatherOperandContext& operand,
-                          mlir::Value peer_replica_id,
-                          mlir::Value& peer_replica_idx,
-                          mlir::Value buffer_offset) {
-  // Op handles are value types; MLIR accessors are not const-qualified.
-  xtile::ExtractTileOp input_extract = operand.input_extract;
-  llvm::SmallVector<mlir::Value> stage_offsets(
-      input_extract.getOffsets().begin(), input_extract.getOffsets().end());
-  llvm::SmallVector<int64_t> subtile_shape(operand.tile_sizes.begin(),
-                                           operand.tile_sizes.end());
-  if (operand.split_dim != -1) {
-    const int64_t subtile_size =
-        operand.tile_sizes[operand.split_dim] / ctx.world_size;
-    mlir::Value subtile_size_val =
-        arith::ConstantIndexOp::create(b, subtile_size);
-    if (!peer_replica_idx) {
-      peer_replica_idx =
-          arith::IndexCastOp::create(b, b.getIndexType(), peer_replica_id);
-    }
-    mlir::Value subtile_off =
-        arith::MulIOp::create(b, peer_replica_idx, subtile_size_val);
-    stage_offsets[operand.split_dim] =
-        arith::AddIOp::create(b, stage_offsets[operand.split_dim], subtile_off);
-    subtile_shape[operand.split_dim] = subtile_size;
-  }
-
-  auto subtile_tensor_type = mlir::RankedTensorType::get(
-      subtile_shape, input_extract.getType().getElementType());
-  auto subtile = xtile::ExtractTileOp::create(
-      b, subtile_tensor_type, operand.input_buffer, stage_offsets,
-      subtile_shape, input_extract.getStrides());
-
-  mlir::Value own_scratch_slot =
-      EmitRemoteBufferMemref(b, operand, ctx.rank_arg, buffer_offset);
-  xtile::InsertTileOp::create(b, subtile, own_scratch_slot, stage_offsets,
-                              subtile_shape, input_extract.getStrides());
+// Each rank's scratch buffer is split into `world_size` equal slots, one per
+// sender rank: `[slot_0 | slot_1 | ... | slot_{world_size-1}]`.
+// Returns a memref for `src_rank`'s slot inside `dst_rank`'s scratch buffer
+// (e.g., `dst_rank=2, src_rank=0` is where rank 0 writes its data on GPU 2).
+mlir::Value EmitRemoteBufferMemref(mlir::ImplicitLocOpBuilder& b,
+                                   const AllGatherOperandContext& operand,
+                                   mlir::Value dst_rank, mlir::Value src_rank,
+                                   mlir::Value buffer_index,
+                                   int64_t world_size) {
+  const int64_t per_rank_elements = Product(operand.per_rank_shape);
+  mlir::Value double_buf_offset = EmitDoubleBufferOffsetFromIndex(
+      b, buffer_index, per_rank_elements * world_size, operand.element_type);
+  mlir::Value src_rank_i64 =
+      arith::ExtUIOp::create(b, b.getI64Type(), src_rank);
+  mlir::Value per_rank_elements_val = arith::ConstantOp::create(
+      b, b.getI64Type(), b.getI64IntegerAttr(per_rank_elements));
+  mlir::Value slot_offset =
+      arith::MulIOp::create(b, src_rank_i64, per_rank_elements_val);
+  mlir::Value total_offset =
+      arith::AddIOp::create(b, double_buf_offset, slot_offset);
+  return EmitRemoteBufferMemref(b, operand, dst_rank, total_offset);
 }
 
-// Emits the tile of `operand` read from the peer's remote buffer: a clone of
-// the local `input_extract` (and of the i1 cast, if any) that reads from
-// `pull_scratch_slot` instead.
-mlir::Value EmitPullTileFromPeer(mlir::PatternRewriter& rewriter,
+// Writes our local tile of `operand` into `dst_rank`'s scratch buffer at our
+// own slot (`src_rank`).
+void CopyTileToScratch(mlir::ImplicitLocOpBuilder& b,
+                       const AllGatherOperandContext& operand,
+                       mlir::Value src_rank, mlir::Value dst_rank,
+                       mlir::Value buffer_index, int64_t world_size) {
+  // Op handles are value types; MLIR accessors are not const-qualified.
+  xtile::ExtractTileOp input_extract = operand.input_extract;
+  auto tile_tensor_type = mlir::RankedTensorType::get(
+      operand.tile_sizes, input_extract.getType().getElementType());
+  auto tile = xtile::ExtractTileOp::create(
+      b, tile_tensor_type, operand.input_buffer, input_extract.getOffsets(),
+      operand.tile_sizes, input_extract.getStrides());
+  mlir::Value scratch_slot = EmitRemoteBufferMemref(
+      b, operand, dst_rank, src_rank, buffer_index, world_size);
+  xtile::InsertTileOp::create(b, tile, scratch_slot, input_extract.getOffsets(),
+                              operand.tile_sizes, input_extract.getStrides());
+}
+
+// Reads the tile that `src_rank` wrote into our own local scratch buffer
+// (`dst_rank=own_rank`, `src_rank=peer_rank`).
+mlir::Value EmitPullTileFromPeer(mlir::ImplicitLocOpBuilder& b,
+                                 mlir::PatternRewriter& rewriter,
                                  const AllGatherOperandContext& operand,
-                                 mlir::Value pull_scratch_slot) {
+                                 mlir::Value own_rank, mlir::Value src_rank,
+                                 mlir::Value buffer_index, int64_t world_size) {
+  mlir::Value own_scratch_slot = EmitRemoteBufferMemref(
+      b, operand, /*dst_rank=*/own_rank, src_rank, buffer_index, world_size);
   xtile::ExtractTileOp input_extract = operand.input_extract;
   mlir::IRMapping mapping;
-  mapping.map(operand.input_buffer, pull_scratch_slot);
+  mapping.map(operand.input_buffer, own_scratch_slot);
   mlir::Operation* peer_extract = rewriter.clone(*input_extract, mapping);
   if (operand.input_tile.getDefiningOp() == input_extract) {
     return peer_extract->getResult(0);
@@ -2541,36 +2496,27 @@ mlir::LogicalResult RewriteAllGather(mlir::stablehlo::AllGatherOp op,
   mlir::Value block_id = ttir::GetProgramIdOp::create(builder, 0);
   mlir::Value peer_replica_id = EmitPeerReplicaId(builder, ctx, block_id);
   mlir::Value signal_value = EmitDeviceInvocationCount(
-      builder, ctx.signal_buffers_arg, ctx.rank_arg, block_id, ctx.world_size,
-      /*signal_slot=*/peer_replica_id, ctx.signal_stride);
+      builder, ctx.signal_buffers_arg, ctx.rank_arg, block_id, ctx.world_size);
 
-  // Copy this program's subtile of every local tile to this rank's remote
-  // buffers.
+  // Push-based AllGather (e.g., rank 0 paired with peer rank 2):
+  //   1. Rank 0 writes its local tile into GPU 2's scratch buffer (at slot 0).
+  //   2. Ranks 0 and 2 wait for each other's write to finish.
+  //   3. Rank 0 reads GPU 2's tile from its own local scratch buffer (slot 2).
   mlir::Value buffer_index = EmitDoubleBufferIndex(builder, signal_value);
-  mlir::Value peer_replica_idx;
-  llvm::SmallVector<mlir::Value, 2> buffer_offsets;
-  buffer_offsets.reserve(ctx.operands.size());
   for (const AllGatherOperandContext& operand : ctx.operands) {
-    buffer_offsets.push_back(EmitDoubleBufferOffsetFromIndex(
-        builder, buffer_index, Product(operand.per_rank_shape),
-        operand.element_type));
-    CopySubtileToScratch(builder, ctx, operand, peer_replica_id,
-                         peer_replica_idx, buffer_offsets.back());
+    CopyTileToScratch(builder, operand, /*src_rank=*/ctx.rank_arg,
+                      /*dst_rank=*/peer_replica_id, buffer_index,
+                      ctx.world_size);
   }
-  // Wait until the peer has staged the whole tile of every operand. A single
-  // barrier covers all operands because every program stages all of them.
   EmitBlockBarrier(builder, ctx.signal_buffers_arg, ctx.rank_arg, signal_value,
                    ctx.world_size, /*signal_slot=*/peer_replica_id,
-                   ctx.signal_stride, mtx::BarrierMode::kConsumerSymmetric);
-  // Pull the tiles from the peer's remote buffers.
+                   ctx.signal_stride, mtx::BarrierMode::kPairwiseSymmetric);
   llvm::SmallVector<mlir::Value, 2> peer_tiles;
   peer_tiles.reserve(ctx.operands.size());
-  for (const auto& [operand, buffer_offset] :
-       llvm::zip(ctx.operands, buffer_offsets)) {
-    mlir::Value pull_scratch_slot = EmitRemoteBufferMemref(
-        builder, operand, peer_replica_id, buffer_offset);
-    peer_tiles.push_back(
-        EmitPullTileFromPeer(rewriter, operand, pull_scratch_slot));
+  for (const AllGatherOperandContext& operand : ctx.operands) {
+    peer_tiles.push_back(EmitPullTileFromPeer(
+        builder, rewriter, operand, /*own_rank=*/ctx.rank_arg,
+        /*src_rank=*/peer_replica_id, buffer_index, ctx.world_size));
   }
   rewriter.replaceOp(op, peer_tiles);
   // The local tiles were only used by `op`.

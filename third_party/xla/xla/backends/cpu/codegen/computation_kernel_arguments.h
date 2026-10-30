@@ -31,10 +31,11 @@ namespace xla::cpu {
 
 // Deterministic argument table for a computation emitted as a single kernel.
 //
-// Operand slices of all instructions become arguments and slices of all
-// non-parameter instructions become results, including nested tuple elements
-// and instructions of nested non-fusion computations. Thread-local slices are
-// skipped. Entries are deduplicated by (shape, slice) in first-visit order.
+// Slices of parameters and of operands of all instructions become arguments
+// and slices of all non-parameter instructions become results, including
+// nested tuple elements and instructions of nested non-fusion computations.
+// Thread-local slices are skipped. Entries are deduplicated by (shape, slice)
+// in first-visit order.
 //
 // The fingerprint does not use emitters::GetComputationFingerprint, which only
 // describes kernel operands and outputs, not the buffers of intermediate

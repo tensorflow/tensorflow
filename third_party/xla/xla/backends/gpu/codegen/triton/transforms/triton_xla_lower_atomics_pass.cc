@@ -52,6 +52,22 @@ mlir::Type GetResultType(mlir::Type ptr_type, PatternRewriter& rewriter) {
   return result_type;
 }
 
+// tt.extern_elementwise requires all operands to have the same shape: when
+// lowered to LLVM, each operand is unpacked into per-thread elements, and a
+// scalar operand contributes only one element. Splat scalar operands to the
+// pointer tensor shape so that every thread gets one value per pointer.
+mlir::Value SplatToPtrShape(mlir::ImplicitLocOpBuilder& builder,
+                            mlir::Value scalar, mlir::Type ptr_type) {
+  auto ptr_tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(ptr_type);
+  if (!ptr_tensor_type || mlir::isa<mlir::RankedTensorType>(scalar.getType())) {
+    return scalar;
+  }
+  return triton::SplatOp::create(
+      builder,
+      mlir::RankedTensorType::get(ptr_tensor_type.getShape(), scalar.getType()),
+      scalar);
+}
+
 // Lower AtomicWriteOp to tt.extern_elementwise.
 // This creates extern calls that will be implemented in a separate ROCm pass.
 LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
@@ -83,8 +99,9 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
           << func_name;
   // Get result type (handles both tensor and scalar pointers)
   mlir::Type result_type = GetResultType(ptr.getType(), rewriter);
-  // Prepare operands: ptr (tensor or scalar), value (always scalar)
-  llvm::SmallVector<mlir::Value> operands = {ptr, value};
+  // Prepare operands: ptr (tensor or scalar), value splat to ptr's shape.
+  llvm::SmallVector<mlir::Value> operands = {
+      ptr, SplatToPtrShape(builder, value, ptr.getType())};
 
   // If mask is provided, pass it as third argument
   if (mask) {
@@ -93,8 +110,6 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
 
   // Create tt.extern_elementwise call
   // The function will perform atomic exchange and return the old value
-  // Note: extern_elementwise handles broadcasting scalar value to tensor
-  // automatically
   builder.create<triton::ExternElementwiseOp>(
       /*resultType=*/result_type,
       /*srcs=*/operands,
@@ -142,8 +157,9 @@ LogicalResult LowerAtomicSpinWaitOp(AtomicSpinWaitOp atomic_wait,
   // Get result type (handles both tensor and scalar pointers)
   mlir::Type result_type = GetResultType(ptr.getType(), rewriter);
 
-  // Prepare operands: ptr (tensor or scalar), expected (always scalar)
-  llvm::SmallVector<mlir::Value> operands = {ptr, expected};
+  // Prepare operands: ptr (tensor or scalar), expected splat to ptr's shape.
+  llvm::SmallVector<mlir::Value> operands = {
+      ptr, SplatToPtrShape(builder, expected, ptr.getType())};
 
   // If mask is provided, pass it as third argument
   if (mask) {
@@ -152,8 +168,6 @@ LogicalResult LowerAtomicSpinWaitOp(AtomicSpinWaitOp atomic_wait,
 
   // Create tt.extern_elementwise call
   // The function will spin-wait until the condition is met
-  // Note: extern_elementwise handles broadcasting scalar expected to tensor
-  // automatically
   builder.create<triton::ExternElementwiseOp>(
       /*resultType=*/result_type,
       /*srcs=*/operands,

@@ -126,6 +126,9 @@ absl::StatusOr<bool> HloModuleSplitter::RunImpl(
           HloComputation* cloned_callee =
               sub_module->DeepCloneComputation(callee, &context);
           sub_module->ReplaceEntryComputation(cloned_callee);
+          // Populate the submodule's stack frames for any instructions cloned
+          // with non-zero stack_frame_id metadata.
+          sub_module->CanonicalizeStackFrameIds(module->stack_frames().proto());
           map_it->second = sub_module.get();
           submodules_.push_back(std::move(sub_module));
         }
@@ -149,12 +152,13 @@ absl::StatusOr<bool> HloModuleSplitter::RunImpl(
           custom_call->set_custom_call_has_side_effect(true);
         }
         custom_call->set_frontend_attributes(inst->frontend_attributes());
+        custom_call->set_metadata(inst->metadata());
 
         ABSL_RETURN_IF_ERROR(comp->ReplaceInstruction(inst, custom_call));
         changed = true;
       }
-      }
     }
+  }
 
   return changed;
 }

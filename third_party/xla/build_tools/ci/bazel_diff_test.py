@@ -386,92 +386,6 @@ class BazelDiffTest(parameterized.TestCase):
     self.assertIn("Failed to get git changed files", decision.reason)
 
   @mock.patch.object(
-      bazel_diff, "run_get_impacted_targets", autospec=True, spec_set=True
-  )
-  @mock.patch.object(
-      bazel_diff, "run_generate_hashes", autospec=True, spec_set=True
-  )
-  @mock.patch.object(
-      bazel_diff, "download_and_verify_jar", autospec=True, spec_set=True
-  )
-  @mock.patch.object(bazel_diff.subprocess, "run", autospec=True, spec_set=True)
-  @mock.patch.object(
-      change_detector, "get_diff_base", autospec=True, spec_set=True
-  )
-  @mock.patch.object(
-      change_detector, "get_changed_files", autospec=True, spec_set=True
-  )
-  @mock.patch.object(
-      change_detector, "ensure_base_fetched", autospec=True, spec_set=True
-  )
-  @mock.patch.object(
-      change_detector, "run_git_best_effort", autospec=True, spec_set=True
-  )
-  def test_compute_impacted_targets_checkout_and_restore(
-      self,
-      mock_git_best_effort,
-      mock_ensure_fetched,
-      mock_changed_files,
-      mock_diff_base,
-      mock_subprocess_run,
-      mock_download_jar,
-      mock_generate_hashes,
-      mock_get_impacted,
-  ):
-    del mock_ensure_fetched, mock_generate_hashes
-    mock_git_best_effort.side_effect = [
-        subprocess.CompletedProcess(
-            args=["git", "rev-parse", "HEAD"],
-            returncode=0,
-            stdout="orig_head_sha\n",
-        ),
-        subprocess.CompletedProcess(
-            args=["git", "checkout", "-f", "orig_head_sha"],
-            returncode=0,
-            stdout="",
-        ),
-    ]
-    mock_changed_files.return_value = ["xla/service/cpu/cpu_compiler.cc"]
-    mock_diff_base.return_value = "merge_base_sha"
-    mock_download_jar.return_value = "/tmp/bazel-diff.jar"
-    mock_get_impacted.side_effect = _write_impacted_targets
-
-    decision = bazel_diff.compute_impacted_targets(
-        _FakeBuildConfig(), "base_sha", "HEAD", workspace_dir="/workspace"
-    )
-
-    self.assertEqual(
-        decision.decision, bazel_diff.BazelDiffDecisionType.IMPACTED
-    )
-    self.assertEqual(
-        decision.impacted_targets, ("//xla/service/cpu:cpu_compiler_test",)
-    )
-    self.assertEqual(
-        mock_subprocess_run.call_args_list,
-        [
-            mock.call(
-                ["git", "checkout", "-f", "merge_base_sha"],
-                cwd="/workspace",
-                check=True,
-                capture_output=True,
-            ),
-            mock.call(
-                ["git", "checkout", "-f", "orig_head_sha"],
-                cwd="/workspace",
-                check=True,
-                capture_output=True,
-            ),
-        ],
-    )
-    self.assertEqual(
-        mock_git_best_effort.call_args_list,
-        [
-            mock.call(["rev-parse", "HEAD"], cwd="/workspace"),
-            mock.call(["checkout", "-f", "orig_head_sha"], cwd="/workspace"),
-        ],
-    )
-
-  @mock.patch.object(
       bazel_diff, "compute_impacted_targets", autospec=True, spec_set=True
   )
   @mock.patch.object(
@@ -559,6 +473,297 @@ class BazelDiffTest(parameterized.TestCase):
         capture_output=True,
         text=True,
         check=True,
+    )
+
+
+class ComputeImpactedTargetsCheckoutTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.mock_git_best_effort = self.enter_context(
+        mock.patch.object(
+            change_detector,
+            "run_git_best_effort",
+            autospec=True,
+            spec_set=True,
+        )
+    )
+    self.enter_context(
+        mock.patch.object(
+            change_detector,
+            "ensure_base_fetched",
+            autospec=True,
+            spec_set=True,
+        )
+    )
+    self.mock_changed_files = self.enter_context(
+        mock.patch.object(
+            change_detector,
+            "get_changed_files",
+            autospec=True,
+            spec_set=True,
+        )
+    )
+    self.mock_diff_base = self.enter_context(
+        mock.patch.object(
+            change_detector, "get_diff_base", autospec=True, spec_set=True
+        )
+    )
+    self.mock_subprocess_run = self.enter_context(
+        mock.patch.object(
+            bazel_diff.subprocess, "run", autospec=True, spec_set=True
+        )
+    )
+    self.mock_download_jar = self.enter_context(
+        mock.patch.object(
+            bazel_diff,
+            "download_and_verify_jar",
+            autospec=True,
+            spec_set=True,
+        )
+    )
+    self.mock_generate_hashes = self.enter_context(
+        mock.patch.object(
+            bazel_diff, "run_generate_hashes", autospec=True, spec_set=True
+        )
+    )
+    self.mock_get_impacted = self.enter_context(
+        mock.patch.object(
+            bazel_diff,
+            "run_get_impacted_targets",
+            autospec=True,
+            spec_set=True,
+        )
+    )
+
+  def test_compute_impacted_targets_checkout_and_restore(self):
+    self.mock_git_best_effort.side_effect = [
+        subprocess.CompletedProcess(
+            args=["git", "rev-parse", "HEAD"],
+            returncode=0,
+            stdout="orig_head_sha\n",
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "checkout", "-f", "orig_head_sha"],
+            returncode=0,
+            stdout="",
+        ),
+    ]
+    self.mock_changed_files.return_value = ["xla/service/cpu/cpu_compiler.cc"]
+    self.mock_diff_base.return_value = "merge_base_sha"
+    self.mock_download_jar.return_value = "/tmp/bazel-diff.jar"
+    self.mock_get_impacted.side_effect = _write_impacted_targets
+
+    decision = bazel_diff.compute_impacted_targets(
+        _FakeBuildConfig(), "base_sha", "HEAD", workspace_dir="/workspace"
+    )
+
+    self.assertEqual(
+        decision.decision, bazel_diff.BazelDiffDecisionType.IMPACTED
+    )
+    self.assertEqual(
+        decision.impacted_targets, ("//xla/service/cpu:cpu_compiler_test",)
+    )
+    self.assertEqual(
+        self.mock_subprocess_run.call_args_list,
+        [
+            mock.call(
+                ["git", "checkout", "-f", "merge_base_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
+            ),
+            mock.call(
+                ["git", "checkout", "-f", "orig_head_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
+            ),
+        ],
+    )
+    self.assertEqual(
+        self.mock_git_best_effort.call_args_list,
+        [
+            mock.call(["rev-parse", "HEAD"], cwd="/workspace"),
+            mock.call(["checkout", "-f", "orig_head_sha"], cwd="/workspace"),
+        ],
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="bazelversion_updated_on_main",
+          skewed_stdout=".bazelversion\n",
+      ),
+      dict(
+          testcase_name="bazelrc_updated_on_main",
+          skewed_stdout="build_tools/rocm/rocm_xla.bazelrc\n",
+      ),
+      dict(
+          testcase_name="module_bazel_updated_on_main",
+          skewed_stdout="MODULE.bazel\n",
+      ),
+  )
+  def test_compute_impacted_targets_global_config_skew_against_checked_out_head(
+      self,
+      skewed_stdout,
+  ):
+    self.mock_git_best_effort.return_value = subprocess.CompletedProcess(
+        args=["git", "rev-parse", "HEAD"],
+        returncode=0,
+        stdout="merge_commit_sha\n",
+    )
+    self.mock_changed_files.return_value = ["xla/service/gpu/foo.cc"]
+    self.mock_subprocess_run.return_value = subprocess.CompletedProcess(
+        args=["git", "diff"], returncode=0, stdout=skewed_stdout
+    )
+
+    decision = bazel_diff.compute_impacted_targets(
+        _FakeBuildConfig(),
+        "base_sha",
+        "pr_head_sha",
+        workspace_dir="/workspace",
+    )
+
+    self.assertEqual(decision.decision, bazel_diff.BazelDiffDecisionType.FULL)
+    self.assertIn(
+        "Global Bazel configuration differs from checked-out HEAD",
+        decision.reason,
+    )
+    self.assertEqual(decision.changed_files_count, 1)
+    self.mock_subprocess_run.assert_called_once_with(
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "--end-of-options",
+            "pr_head_sha",
+            "merge_commit_sha",
+            "--",
+        ],
+        cwd="/workspace",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    self.mock_download_jar.assert_not_called()
+    self.mock_generate_hashes.assert_not_called()
+
+  def test_compute_impacted_targets_skew_check_git_error_fails_open(self):
+    self.mock_git_best_effort.return_value = subprocess.CompletedProcess(
+        args=["git", "rev-parse", "HEAD"],
+        returncode=0,
+        stdout="merge_commit_sha\n",
+    )
+    self.mock_changed_files.return_value = ["xla/service/gpu/foo.cc"]
+    self.mock_subprocess_run.side_effect = subprocess.CalledProcessError(
+        128, ["git", "diff"]
+    )
+
+    decision = bazel_diff.compute_impacted_targets(
+        _FakeBuildConfig(),
+        "base_sha",
+        "pr_head_sha",
+        workspace_dir="/workspace",
+    )
+
+    self.assertEqual(decision.decision, bazel_diff.BazelDiffDecisionType.FULL)
+    self.assertIn(
+        "Global Bazel configuration differs from checked-out HEAD",
+        decision.reason,
+    )
+    self.mock_download_jar.assert_not_called()
+    self.mock_generate_hashes.assert_not_called()
+
+  def test_compute_impacted_targets_merge_commit_without_config_skew_proceeds(
+      self,
+  ):
+    self.mock_git_best_effort.side_effect = [
+        subprocess.CompletedProcess(
+            args=["git", "rev-parse", "HEAD"],
+            returncode=0,
+            stdout="merge_commit_sha\n",
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "checkout", "-f", "merge_commit_sha"],
+            returncode=0,
+            stdout="",
+        ),
+    ]
+    self.mock_changed_files.return_value = ["xla/service/cpu/cpu_compiler.cc"]
+    self.mock_diff_base.return_value = "merge_base_sha"
+    self.mock_subprocess_run.side_effect = [
+        subprocess.CompletedProcess(
+            args=["git", "diff"],
+            returncode=0,
+            stdout="xla/hlo/ir/hlo.cc\n",
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "checkout", "-f", "merge_base_sha"],
+            returncode=0,
+            stdout="",
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "checkout", "-f", "pr_head_sha"],
+            returncode=0,
+            stdout="",
+        ),
+    ]
+    self.mock_download_jar.return_value = "/tmp/bazel-diff.jar"
+    self.mock_get_impacted.side_effect = _write_impacted_targets
+
+    decision = bazel_diff.compute_impacted_targets(
+        _FakeBuildConfig(),
+        "base_sha",
+        "pr_head_sha",
+        workspace_dir="/workspace",
+    )
+
+    self.assertEqual(
+        decision.decision, bazel_diff.BazelDiffDecisionType.IMPACTED
+    )
+    self.assertEqual(
+        decision.impacted_targets, ("//xla/service/cpu:cpu_compiler_test",)
+    )
+    self.assertEqual(
+        self.mock_subprocess_run.call_args_list,
+        [
+            mock.call(
+                [
+                    "git",
+                    "diff",
+                    "--name-only",
+                    "--end-of-options",
+                    "pr_head_sha",
+                    "merge_commit_sha",
+                    "--",
+                ],
+                cwd="/workspace",
+                capture_output=True,
+                text=True,
+                check=True,
+            ),
+            mock.call(
+                ["git", "checkout", "-f", "merge_base_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
+            ),
+            mock.call(
+                ["git", "checkout", "-f", "pr_head_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
+            ),
+        ],
+    )
+    self.assertEqual(
+        self.mock_git_best_effort.call_args_list,
+        [
+            mock.call(["rev-parse", "HEAD"], cwd="/workspace"),
+            mock.call(
+                ["checkout", "-f", "merge_commit_sha"], cwd="/workspace"
+            ),
+        ],
     )
 
 

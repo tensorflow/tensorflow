@@ -31,6 +31,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
@@ -178,6 +179,20 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "dynamic_shapes_test",
+    srcs = ["dynamic_shapes_test.cc"],
+    deps = [
+        ":dynamic_shapes",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "common_pjrt_client",
     srcs = [
@@ -212,6 +227,7 @@ cc_library(
         ":raw_pjrt_client",
         ":staging_buffer",
         ":strided_gather",
+        ":tiled_linearizer",
         ":transpose",
         ":utils",
         "//xla:executable_run_options",
@@ -259,7 +275,9 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@riegeli//riegeli/base:any",
         "@riegeli//riegeli/bytes:cord_reader",
+        "@riegeli//riegeli/bytes:reader",
         "@riegeli//riegeli/bytes:string_reader",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:context",
@@ -682,6 +700,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/flags:marshalling",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1017,6 +1036,52 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tiled_linearizer_highway",
+    hdrs = ["tiled_linearizer_highway.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/numeric:bits",
+        "@highway//:hwy",
+    ],
+)
+
+cc_library(
+    name = "tiled_linearizer",
+    srcs = ["tiled_linearizer.cc"],
+    hdrs = ["tiled_linearizer.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":tiled_linearizer_highway",
+        ":transpose",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/tpu:noncopyable_buffer",
+        "//xla/tsl/platform:byte_order",
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme_encode",
+    ],
+)
+
 xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
@@ -1068,6 +1133,7 @@ cc_library(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -1080,6 +1146,8 @@ xla_cc_test(
     deps = [
         ":strided_gather",
         ":transpose",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
@@ -1312,6 +1380,7 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla/pjrt/c:pjrt_c_api_device_event_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_raw_buffer_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/tsl/concurrency:async_value",

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
@@ -40,6 +41,17 @@ bool FlattenCallGraph::SkipCloningForCalls(const HloComputation& computation) {
 }
 
 namespace {
+
+bool IsNonInlineableCall(const HloInstruction* instruction) {
+  if (instruction->opcode() != HloOpcode::kCall) {
+    return false;
+  }
+  auto it = instruction->frontend_attributes().map().find("inlineable");
+  if (it == instruction->frontend_attributes().map().end()) {
+    return false;
+  }
+  return it->second == "xla_late";
+}
 
 // Pure read-only predicate returning true if `computation` is itself an async
 // computation or has at least one caller path from an enclosing async
@@ -129,6 +141,10 @@ bool SetIdenticalCalledComputationForAsyncChain(
   return changed;
 }
 
+const HloPassFactory* const kFlattenCallGraphRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<FlattenCallGraph>>(
+        "flatten-call-graph");
+
 }  // namespace
 
 bool FlattenCallGraph::SkipCloningForNonAsync(
@@ -136,6 +152,11 @@ bool FlattenCallGraph::SkipCloningForNonAsync(
   // Skip cloning only when `computation` is neither an async computation nor
   // transitively called from inside an async computation.
   return !IsInAsyncComputationSubtree(computation);
+}
+
+bool FlattenCallGraph::ShouldSkipNonInlineableCall(
+    const HloInstruction* instruction) const {
+  return !flatten_non_inlineable_calls_ && IsNonInlineableCall(instruction);
 }
 
 absl::StatusOr<bool> FlattenCallGraph::RunImpl(
@@ -196,14 +217,24 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
     absl::c_sort(callers, [](const HloInstruction* a, const HloInstruction* b) {
       return a->unique_id() < b->unique_id();
     });
+    const bool has_non_inlineable_callers =
+        absl::c_any_of(callers, [&](const HloInstruction* caller) {
+          return ShouldSkipNonInlineableCall(caller);
+        });
+    // Non-inlineable callers keep calling the original computation, so any
+    // other callers must get their own clone.
+    bool original_computation_claimed = has_non_inlineable_callers;
     for (int i = 0; i < callers.size(); ++i) {
       HloInstruction* caller = callers[i];
+      if (ShouldSkipNonInlineableCall(caller)) {
+        continue;
+      }
 
       // If this is the first (or only) caller, and it only refers to the
       // computation once (consider an `if` instruction that leads to the same
       // computation on multiple branches, or a pathological `while` where
       // the condition and body are the same computation), no need to clone.
-      if (i == 0) {
+      if (!original_computation_claimed) {
         int computation_count = 0;
         for (const HloComputation* callee : caller->called_computations()) {
           if (callee == computation) {
@@ -211,6 +242,7 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
           }
         }
         if (computation_count <= 1) {
+          original_computation_claimed = true;
           continue;
         }
       }
@@ -247,7 +279,8 @@ absl::StatusOr<bool> FlattenCallGraph::RunImpl(
         HloComputation* current = worklist.back();
         worklist.pop_back();
         for (HloInstruction* instruction : current->instructions()) {
-          if (HasIncludedAsyncChainStart(instruction, execution_threads)) {
+          if (HasIncludedAsyncChainStart(instruction, execution_threads) ||
+              ShouldSkipNonInlineableCall(instruction)) {
             continue;
           }
           instruction->ReplaceCalledComputations([&](HloComputation* callee) {

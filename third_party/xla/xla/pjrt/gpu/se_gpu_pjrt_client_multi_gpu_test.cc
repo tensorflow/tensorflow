@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -85,14 +86,14 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -1048,6 +1049,57 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
   EXPECT_OK(client->DmaUnmap(host_dma_ptr));
 }
 
+TEST(StreamExecutorGpuClientTest,
+     VmmPinnedHostBufferOnEachDeviceIsHostAccessible) {
+  // Creating the client initializes the VMM allocator, which fails on GPUs
+  // without VMM support, so check the GPU first.
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       PlatformUtil::GetPlatform("gpu"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  const se::GpuComputeCapability& cc =
+      executor->GetDeviceDescription().gpu_compute_capability();
+  if (!cc.IsCuda() && !cc.IsRocm()) {
+    GTEST_SKIP() << "VMM allocator is only supported on CUDA and ROCm.";
+  }
+  if (cc.IsCuda() && !cc.cuda_compute_capability()->IsAtLeastHopper()) {
+    GTEST_SKIP() << "This test requires at least a Hopper GPU (SM 9.0).";
+  }
+
+  GpuClientOptions options = GetTestGpuClientOptions(2);
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_GE(client->addressable_devices().size(), 2);
+
+  // All buffers stay alive until the end, so the host allocations of every
+  // device are live at once and each is released through its own device.
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  for (int i = 0; i < client->addressable_devices().size(); ++i) {
+    PjRtDevice* device = client->addressable_devices()[i];
+    ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * pinned_memory_space,
+                         device->memory_space_by_kind("pinned_host"));
+    std::vector<float> data(4, 10.0f * (i + 1));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> buffer,
+        client->BufferFromHostBuffer(
+            data.data(), shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*on_done_with_host_buffer=*/nullptr, pinned_memory_space,
+            /*device_layout=*/nullptr));
+    ASSERT_OK(buffer->GetReadyFuture().Await());
+    ASSERT_TRUE(buffer->IsOnCpu());
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                         buffer->AcquireExternalReference());
+    const float* host_ptr =
+        reinterpret_cast<const float*>(ref->OpaqueDeviceMemoryDataPointer());
+    EXPECT_EQ(host_ptr[0], data[0]);
+    EXPECT_EQ(host_ptr[3], data[3]);
+    buffers.push_back(std::move(buffer));
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, FailedCrossHostSendArgsSizeMismatch) {
   // Create the client.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -1191,7 +1243,7 @@ TEST(StreamExecutorGpuClientTest,
 TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
   ASSERT_OK_AND_ASSIGN(auto pjrt_client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
-  auto* client = absl::down_cast<CommonPjRtClientImpl*>(pjrt_client.get());
+  auto* client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
   auto* memory_space = client->memory_spaces()[0];
   auto literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
   ASSERT_OK_AND_ASSIGN(
@@ -1255,7 +1307,7 @@ TEST(StreamExecutorGpuClientTest, DeviceErrorCallbackPropagatesToPeerNodes) {
   EXPECT_THAT(kv_store->TryGet("gpu_fatal_error"),
               StatusIs(absl::StatusCode::kNotFound));
 
-  auto* se_client_0 = absl::down_cast<CommonPjRtClientImpl*>(client_0.get());
+  auto* se_client_0 = absl::down_cast<CommonPjRtClient*>(client_0.get());
   auto* raw_client_0 =
       absl::down_cast<PjRtStreamExecutorRawClient*>(se_client_0->raw_client());
   ASSERT_OK_AND_ASSIGN(LocalDeviceState * device_state_0,

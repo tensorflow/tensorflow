@@ -5480,6 +5480,18 @@ static size_t GetOutputFlatIndex(size_t input_flat_ind,
   return output_flat_ind_helper.GetFlatInd(output_shaped_ind);
 }
 
+// Collects the reduction `axes` into `axes_set`, mapping negative axes (which
+// count from the back, as in the TFLite kernels) to non-negative ones. Returns
+// false if any axis is out of range for `rank`.
+static bool NormalizeReductionAxes(DenseIntElementsAttr axes, int64_t rank,
+                                   absl::flat_hash_set<int32_t>& axes_set) {
+  for (int32_t axis : axes.getValues<int32_t>()) {
+    if (axis < -rank || axis >= rank) return false;
+    axes_set.insert(axis < 0 ? axis + rank : axis);
+  }
+  return true;
+}
+
 OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   if (!ShouldFoldOperation(this->getOperation())) return {};
 
@@ -5491,14 +5503,17 @@ OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   }
 
   auto input_type = getInput().getType();
-  if (!input_type.getElementType().isF32()) {
+  const bool is_f32 = input_type.getElementType().isF32();
+  if (!is_f32 && !input_type.getElementType().isSignlessInteger(32)) {
     return {};
   }
 
   const auto input_rank = input_type.getRank();
-  auto axes_data = llvm::cast<DenseIntElementsAttr>(axes);
-  absl::flat_hash_set<int32_t> axes_set(axes_data.getValues<int32_t>().begin(),
-                                        axes_data.getValues<int32_t>().end());
+  absl::flat_hash_set<int32_t> axes_set;
+  if (!NormalizeReductionAxes(llvm::cast<DenseIntElementsAttr>(axes),
+                              input_rank, axes_set)) {
+    return {};
+  }
 
   llvm::SmallVector<int64_t> out_shape;
   for (int input_dim = 0; input_dim < input_rank; ++input_dim) {
@@ -5515,10 +5530,26 @@ OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   int64_t output_size = std::accumulate(out_shape.begin(), out_shape.end(), 1,
                                         std::multiplies<int64_t>());
 
-  std::vector<float> out_data(output_size, 0.0);
   FlatIndHelper input_flat_ind_helper(input_type);
   FlatIndHelper output_flat_ind_helper(out_type);
 
+  if (!is_f32) {
+    // int32 SUM wraps around on overflow, as in the TFLite kernel. Accumulate
+    // in uint32 so the wraparound is well defined, then convert back.
+    auto in_data = mlir::dyn_cast<DenseIntElementsAttr>(input);
+    if (!in_data) return {};
+    std::vector<uint32_t> acc(output_size, 0);
+    size_t input_flat_ind = 0;
+    for (int32_t v : in_data.getValues<int32_t>()) {
+      acc[GetOutputFlatIndex(
+          input_flat_ind++, input_flat_ind_helper, output_flat_ind_helper,
+          axes_set, adaptor.getKeepDims())] += static_cast<uint32_t>(v);
+    }
+    std::vector<int32_t> out_data(acc.begin(), acc.end());
+    return DenseIntElementsAttr::get(out_type, out_data);
+  }
+
+  std::vector<float> out_data(output_size, 0.0);
   auto in_data = llvm::cast<DenseFPElementsAttr>(input);
 
   size_t input_flat_ind = 0;
@@ -5534,6 +5565,50 @@ OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   }
 
   return DenseFPElementsAttr::get(out_type, out_data);
+}
+
+// Folds an f32 MEAN of a constant: the SUM over the reduced axes divided by the
+// number of reduced elements. Like SUM, a MEAN of a constant would otherwise
+// survive as a runtime op that GPU delegates reject for its constant input.
+OpFoldResult MeanOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+  auto input = mlir::dyn_cast_or_null<DenseFPElementsAttr>(adaptor.getInput());
+  auto axes = mlir::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getAxis());
+  auto out_type = mlir::dyn_cast<RankedTensorType>(getType());
+  if (!input || !axes || !out_type || !out_type.hasStaticShape()) return {};
+  auto input_type = mlir::cast<ShapedType>(input.getType());
+  if (!input_type.getElementType().isF32() ||
+      !out_type.getElementType().isF32()) {
+    return {};
+  }
+  const int64_t input_rank = input_type.getRank();
+  absl::flat_hash_set<int32_t> axes_set;
+  if (!NormalizeReductionAxes(axes, input_rank, axes_set)) return {};
+  int64_t reduced = 1;
+  llvm::SmallVector<int64_t> out_shape;
+  for (int64_t d = 0; d < input_rank; ++d) {
+    if (axes_set.contains(d)) {
+      reduced *= input_type.getDimSize(d);
+      if (getKeepDims()) out_shape.push_back(1);
+    } else {
+      out_shape.push_back(input_type.getDimSize(d));
+    }
+  }
+  if (reduced == 0 ||
+      llvm::ArrayRef<int64_t>(out_shape) != out_type.getShape()) {
+    return {};
+  }
+  FlatIndHelper input_flat_ind_helper(input_type);
+  FlatIndHelper output_flat_ind_helper(out_type);
+  std::vector<float> out_data(out_type.getNumElements(), 0.0f);
+  size_t input_flat_ind = 0;
+  for (float v : input.getValues<float>()) {
+    out_data[GetOutputFlatIndex(input_flat_ind++, input_flat_ind_helper,
+                                output_flat_ind_helper, axes_set,
+                                getKeepDims())] += v;
+  }
+  for (float& v : out_data) v /= static_cast<float>(reduced);
+  return DenseFPElementsAttr::get(out_type, llvm::ArrayRef<float>(out_data));
 }
 
 void SumOp::build(OpBuilder& builder, OperationState& result, Value input,
@@ -6832,6 +6907,148 @@ int64_t LogSoftmaxOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ResizeBilinearOp / ResizeNearestNeighborOp
+//===----------------------------------------------------------------------===//
+
+// Constant operands of a RESIZE_* op that can be folded: an f32 NHWC input and
+// a static output of shape [N, size[0], size[1], C]. Left unfolded, a resize of
+// a constant survives as a runtime op that GPU delegates reject for its
+// constant input; ViTs build interpolated relative-position tables this way,
+// and DETR resizes its constant pixel mask.
+struct ResizeFoldOperands {
+  DenseFPElementsAttr input;
+  int64_t batch, in_h, in_w, depth, out_h, out_w;
+};
+
+static std::optional<ResizeFoldOperands> GetResizeFoldOperands(
+    Operation* op, Attribute input_attr, Attribute size_attr, Type result) {
+  auto input = mlir::dyn_cast_or_null<DenseFPElementsAttr>(input_attr);
+  auto size = mlir::dyn_cast_or_null<DenseIntElementsAttr>(size_attr);
+  auto out_type = mlir::dyn_cast<RankedTensorType>(result);
+  if (!input || !size || !out_type || !out_type.hasStaticShape() ||
+      !out_type.getElementType().isF32() || size.getNumElements() != 2) {
+    return std::nullopt;
+  }
+  auto in_type = mlir::cast<ShapedType>(input.getType());
+  if (in_type.getRank() != 4 || out_type.getRank() != 4 ||
+      !in_type.getElementType().isF32()) {
+    return std::nullopt;
+  }
+  if (!ShouldFoldOperation(op)) return std::nullopt;
+  const auto sizes = llvm::to_vector(size.getValues<int32_t>());
+  const ArrayRef<int64_t> in_shape = in_type.getShape();
+  const ArrayRef<int64_t> out_shape = out_type.getShape();
+  if (sizes[0] <= 0 || sizes[1] <= 0 || out_shape[0] != in_shape[0] ||
+      out_shape[1] != sizes[0] || out_shape[2] != sizes[1] ||
+      out_shape[3] != in_shape[3]) {
+    return std::nullopt;
+  }
+  return ResizeFoldOperands{input,       in_shape[0], in_shape[1], in_shape[2],
+                            in_shape[3], sizes[0],    sizes[1]};
+}
+
+// Matches GetNearestNeighbor in the TFLite reference kernel.
+static int64_t ResizeNearestSourceIndex(int64_t out_index, int64_t in_size,
+                                        int64_t out_size, bool align_corners,
+                                        bool half_pixel_centers) {
+  const float scale =
+      (align_corners && out_size > 1)
+          ? static_cast<float>(in_size - 1) / static_cast<float>(out_size - 1)
+          : static_cast<float>(in_size) / static_cast<float>(out_size);
+  const float offset = half_pixel_centers ? 0.5f : 0.0f;
+  const float scaled = (static_cast<float>(out_index) + offset) * scale;
+  int64_t src = align_corners ? static_cast<int64_t>(std::round(scaled))
+                              : static_cast<int64_t>(std::floor(scaled));
+  src = std::min(src, in_size - 1);
+  if (half_pixel_centers) src = std::max<int64_t>(0, src);
+  return src;
+}
+
+OpFoldResult ResizeNearestNeighborOp::fold(FoldAdaptor adaptor) {
+  auto operands = GetResizeFoldOperands(getOperation(), adaptor.getInput(),
+                                        adaptor.getSize(), getType());
+  if (!operands) return {};
+  const auto& o = *operands;
+  const auto in = llvm::to_vector(o.input.getValues<float>());
+  std::vector<float> out(o.batch * o.out_h * o.out_w * o.depth);
+  float* dst = out.data();
+  for (int64_t b = 0; b < o.batch; ++b) {
+    for (int64_t y = 0; y < o.out_h; ++y) {
+      const int64_t in_y = ResizeNearestSourceIndex(
+          y, o.in_h, o.out_h, getAlignCorners(), getHalfPixelCenters());
+      for (int64_t x = 0; x < o.out_w; ++x) {
+        const int64_t in_x = ResizeNearestSourceIndex(
+            x, o.in_w, o.out_w, getAlignCorners(), getHalfPixelCenters());
+        const float* src =
+            in.data() + ((b * o.in_h + in_y) * o.in_w + in_x) * o.depth;
+        dst = std::copy(src, src + o.depth, dst);
+      }
+    }
+  }
+  return DenseFPElementsAttr::get(mlir::cast<ShapedType>(getType()),
+                                  llvm::ArrayRef<float>(out));
+}
+
+// Matches ComputeInterpolationValues in the TFLite reference kernel.
+static void ResizeBilinearSource(int64_t out_index, float scale,
+                                 bool half_pixel_centers, int64_t in_size,
+                                 float* source, int64_t* lower,
+                                 int64_t* upper) {
+  *source = half_pixel_centers
+                ? (static_cast<float>(out_index) + 0.5f) * scale - 0.5f
+                : static_cast<float>(out_index) * scale;
+  *lower = std::max<int64_t>(static_cast<int64_t>(std::floor(*source)), 0);
+  *upper =
+      std::min<int64_t>(static_cast<int64_t>(std::ceil(*source)), in_size - 1);
+}
+
+OpFoldResult ResizeBilinearOp::fold(FoldAdaptor adaptor) {
+  // The kernel requires align_corners and half_pixel_centers to be exclusive.
+  if (getAlignCorners() && getHalfPixelCenters()) return {};
+  auto operands = GetResizeFoldOperands(getOperation(), adaptor.getInput(),
+                                        adaptor.getSize(), getType());
+  if (!operands) return {};
+  const auto& o = *operands;
+  float h_scale = static_cast<float>(o.in_h) / static_cast<float>(o.out_h);
+  float w_scale = static_cast<float>(o.in_w) / static_cast<float>(o.out_w);
+  if (getAlignCorners() && o.out_h > 1) {
+    h_scale = static_cast<float>(o.in_h - 1) / static_cast<float>(o.out_h - 1);
+  }
+  if (getAlignCorners() && o.out_w > 1) {
+    w_scale = static_cast<float>(o.in_w - 1) / static_cast<float>(o.out_w - 1);
+  }
+  const auto in = llvm::to_vector(o.input.getValues<float>());
+  auto at = [&](int64_t b, int64_t y, int64_t x, int64_t c) {
+    return in[((b * o.in_h + y) * o.in_w + x) * o.depth + c];
+  };
+  std::vector<float> out(o.batch * o.out_h * o.out_w * o.depth);
+  int64_t i = 0;
+  for (int64_t b = 0; b < o.batch; ++b) {
+    for (int64_t y = 0; y < o.out_h; ++y) {
+      float in_y;
+      int64_t y0, y1;
+      ResizeBilinearSource(y, h_scale, getHalfPixelCenters(), o.in_h, &in_y,
+                           &y0, &y1);
+      for (int64_t x = 0; x < o.out_w; ++x) {
+        float in_x;
+        int64_t x0, x1;
+        ResizeBilinearSource(x, w_scale, getHalfPixelCenters(), o.in_w, &in_x,
+                             &x0, &x1);
+        const float dy = in_y - y0, dx = in_x - x0;
+        for (int64_t c = 0; c < o.depth; ++c) {
+          out[i++] = at(b, y0, x0, c) * (1 - dy) * (1 - dx) +
+                     at(b, y1, x0, c) * dy * (1 - dx) +
+                     at(b, y0, x1, c) * (1 - dy) * dx +
+                     at(b, y1, x1, c) * dy * dx;
+        }
+      }
+    }
+  }
+  return DenseFPElementsAttr::get(mlir::cast<ShapedType>(getType()),
+                                  llvm::ArrayRef<float>(out));
+}
+
+//===----------------------------------------------------------------------===//
 // SoftmaxOp
 //===----------------------------------------------------------------------===//
 
@@ -6845,6 +7062,37 @@ int64_t SoftmaxOp::GetArithmeticCount(Operation* op) {
     return 64 * count;
 
   return -1;
+}
+
+// Folds an f32 SOFTMAX of a constant along the last axis, as the TFLite kernel
+// computes it: exp(beta * (x - max)) / sum. Attention over constant queries and
+// keys (DETR's first decoder step, learned probe tokens) otherwise leaves a
+// SOFTMAX on a constant that GPU delegates reject for its constant input.
+OpFoldResult SoftmaxOp::fold(FoldAdaptor adaptor) {
+  auto input = mlir::dyn_cast_or_null<DenseFPElementsAttr>(adaptor.getInput());
+  auto out_type = mlir::dyn_cast<RankedTensorType>(getType());
+  if (!input || !out_type || !out_type.hasStaticShape() ||
+      !out_type.getElementType().isF32() ||
+      !mlir::cast<ShapedType>(input.getType()).getElementType().isF32() ||
+      out_type.getRank() == 0) {
+    return {};
+  }
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+  const int64_t depth = out_type.getShape().back();
+  if (depth == 0) return {};
+  const float beta = getBeta().convertToFloat();
+  auto values = llvm::to_vector(input.getValues<float>());
+  for (size_t row = 0; row < values.size(); row += depth) {
+    float* x = values.data() + row;
+    const float max = *std::max_element(x, x + depth);
+    float sum = 0.0f;
+    for (int64_t i = 0; i < depth; ++i) {
+      x[i] = std::exp((x[i] - max) * beta);
+      sum += x[i];
+    }
+    for (int64_t i = 0; i < depth; ++i) x[i] /= sum;
+  }
+  return DenseFPElementsAttr::get(out_type, llvm::ArrayRef<float>(values));
 }
 
 //===----------------------------------------------------------------------===//

@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -35,8 +36,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -739,6 +742,140 @@ TEST_F(HLOComputationTest, DeeplyNestedComputationsEqualIterative) {
   EXPECT_TRUE(chain1.back()->Equal(*chain2.back(), true));
   EXPECT_FALSE(chain1.back()->Equal(*chain3.back(), true));
 }
+
+TEST_F(HLOComputationTest, MakeInstructionPostOrderFromVisitsOnlyAncestors) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  a = f32[4] add(p0, p1)
+  n = f32[4] negate(p1)
+  ROOT t = (f32[4], f32[4]) tuple(a, n)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* a = entry->GetInstructionWithName("a");
+
+  EXPECT_THAT(entry->MakeInstructionPostOrderFrom(*a),
+              ::testing::ElementsAre(p0, p1, a));
+}
+
+TEST_F(HLOComputationTest, CloneRewiresMultiOperandInstructions) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  p2 = f32[4] parameter(2)
+  t0 = (f32[4], f32[4], f32[4]) tuple(p0, p1, p2)
+  t1 = (f32[4], f32[4], f32[4]) tuple(p2, p0, p1)
+  gte = f32[4] get-tuple-element(t1), index=0
+  ROOT out = ((f32[4], f32[4], f32[4]), (f32[4], f32[4], f32[4]), f32[4]) tuple(t0, t1, gte)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  std::unique_ptr<HloComputation> cloned = entry->Clone();
+  const HloInstruction* cloned_p0 = cloned->parameter_instruction(0);
+  const HloInstruction* cloned_p1 = cloned->parameter_instruction(1);
+  const HloInstruction* cloned_p2 = cloned->parameter_instruction(2);
+  const HloInstruction* cloned_root = cloned->root_instruction();
+  ASSERT_EQ(cloned_root->operand_count(), 3);
+  const HloInstruction* cloned_t0 = cloned_root->operand(0);
+  const HloInstruction* cloned_t1 = cloned_root->operand(1);
+  const HloInstruction* cloned_gte = cloned_root->operand(2);
+  EXPECT_THAT(cloned_t0->operands(),
+              ::testing::ElementsAre(cloned_p0, cloned_p1, cloned_p2));
+  EXPECT_THAT(cloned_t1->operands(),
+              ::testing::ElementsAre(cloned_p2, cloned_p0, cloned_p1));
+  EXPECT_THAT(cloned_gte->operands(), ::testing::ElementsAre(cloned_t1));
+}
+
+std::unique_ptr<HloComputation> MakeAddChainComputation(
+    int num_instructions, absl::string_view name = "add_chain") {
+  const Shape shape = ShapeUtil::MakeShape(F32, {4});
+  HloComputation::Builder builder(name);
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* prev = p0;
+  for (int i = 1; i < num_instructions; ++i) {
+    prev = builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, prev, p0));
+  }
+  return builder.Build(prev);
+}
+
+void BM_MakeInstructionPostOrderFrom(::testing::benchmark::State& state) {
+  std::unique_ptr<HloComputation> comp =
+      MakeAddChainComputation(state.range(0), "bm_postorder_from");
+  HloInstruction* root = comp->root_instruction();
+  for (auto s : state) {
+    std::vector<HloInstruction*> post_order =
+        comp->MakeInstructionPostOrderFrom(*root);
+    tsl::testing::DoNotOptimize(post_order);
+  }
+}
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_MakeInstructionPostOrderFrom)->Arg(16)->Arg(1024);
+
+void BM_CloneComputation(::testing::benchmark::State& state) {
+  std::unique_ptr<HloComputation> comp =
+      MakeAddChainComputation(state.range(0), "bm_clone");
+  for (auto s : state) {
+    std::unique_ptr<HloComputation> cloned = comp->Clone();
+    tsl::testing::DoNotOptimize(cloned);
+  }
+}
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_CloneComputation)->Arg(16)->Arg(1024);
+
+void BM_Defuse(::testing::benchmark::State& state) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {4});
+  std::unique_ptr<HloComputation> fused_template =
+      MakeAddChainComputation(state.range(0), "fused_template");
+
+  constexpr int kBatchSize = 16;
+  while (state.KeepRunningBatch(kBatchSize)) {
+    state.PauseTiming();
+    auto module = std::make_unique<HloModule>("bm_defuse", HloModuleConfig());
+    HloComputation::Builder entry_builder("entry");
+    HloInstruction* p0 = entry_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, shape, "p0"));
+    std::vector<HloInstruction*> fusions;
+    fusions.reserve(kBatchSize);
+    HloInstruction* root = p0;
+    for (int b = 0; b < kBatchSize; ++b) {
+      HloComputation* fused_comp =
+          module->AddEmbeddedComputation(fused_template->Clone());
+      HloInstruction* fusion =
+          entry_builder.AddInstruction(HloInstruction::CreateFusion(
+              shape, HloInstruction::FusionKind::kLoop, {p0}, fused_comp));
+      fusions.push_back(fusion);
+      root = entry_builder.AddInstruction(
+          HloInstruction::CreateUnary(shape, HloOpcode::kNegate, fusion));
+    }
+    module->AddEntryComputation(entry_builder.Build(root));
+    state.ResumeTiming();
+
+    for (HloInstruction* fusion : fusions) {
+      CHECK_OK(fusion->Defuse());
+    }
+
+    state.PauseTiming();
+    module.reset();
+    state.ResumeTiming();
+  }
+}
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_Defuse)->Arg(16)->Arg(1024);
 
 }  // namespace
 }  // namespace xla

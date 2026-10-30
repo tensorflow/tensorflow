@@ -286,7 +286,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     // dataflow graph.
     case HloOpcode::kAfterAll:             // Defines an execution order.
     case HloOpcode::kAddDependency:        // Defines an execution order.
-    case HloOpcode::kDomain:               // Defines an HLO domain.
     case HloOpcode::kOptimizationBarrier:  // Prevents moving ops past barrier.
       return ThunkSequence::Empty();
 
@@ -429,9 +428,7 @@ template <typename CollectiveInstruction>
 static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
     const CollectiveInstruction* instruction) {
   return CollectiveThunk::OpParams{
-      /*op_id=*/instruction->channel_id().has_value()
-          ? instruction->channel_id().value()
-          : instruction->GetModule()->unique_id(),
+      /*op_id=*/instruction->unique_id(),
       /*has_channel_id=*/instruction->channel_id().has_value(),
       /*use_global_device_ids=*/instruction->use_global_device_ids(),
       /*replica_groups=*/instruction->replica_groups(),
@@ -444,9 +441,7 @@ static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
 static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
     const HloAllToAllInstruction* instruction) {
   return CollectiveThunk::OpParams{
-      /*op_id=*/instruction->channel_id().has_value()
-          ? instruction->channel_id().value()
-          : instruction->GetModule()->unique_id(),
+      /*op_id=*/instruction->unique_id(),
       /*has_channel_id=*/instruction->channel_id().has_value(),
       /*use_global_device_ids=*/std::nullopt,
       /*replica_groups=*/instruction->replica_groups(),
@@ -459,9 +454,7 @@ static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
 static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
     const HloCollectivePermuteInstruction* instruction) {
   return CollectiveThunk::OpParams{
-      /*op_id=*/instruction->channel_id().has_value()
-          ? instruction->channel_id().value()
-          : instruction->GetModule()->unique_id(),
+      /*op_id=*/instruction->unique_id(),
       /*has_channel_id=*/instruction->channel_id().has_value(),
       /*use_global_device_ids=*/std::nullopt,
       /*replica_groups=*/{},  // CollectivePermute does not have replica groups

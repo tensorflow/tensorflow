@@ -115,6 +115,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/logging.h"
@@ -564,7 +565,10 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "Compute capability mismatch; expected {" << gpu_version_.ToString()
         << "}, but was {" << cc.ToString() << "}";
   } else if (platform_id == se::sycl::kSyclPlatformId) {
-    // TODO: Add check.
+    se::OneAPIComputeCapability cc = main_stream->GetOneAPIComputeCapability();
+    TF_RET_CHECK(cc == *gpu_version_.oneapi_compute_capability())
+        << "Compute capability mismatch; expected {" << gpu_version_.ToString()
+        << "}, but was {" << cc.ToString() << "}";
   } else {
     return Internal("Unknown platform");
   }
@@ -1236,10 +1240,10 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                    buffer_allocator_->CreateExecutionScope(
                        run_options, memory_allocator, device_ordinal));
 
-  ABSL_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
-                   allocation_scope->GenerateBufferAllocations(
-                       run_options, get_parameter_buffer, globals,
-                       memory_allocator, device_ordinal));
+  ABSL_ASSIGN_OR_RETURN(
+      BufferAllocations buffer_allocations,
+      allocation_scope->GenerateBufferAllocations(
+          run_options, get_parameter_buffer, globals, memory_allocator));
   XLA_VLOG_DEVICE(3, device_ordinal) << buffer_allocations.ToString();
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
 
@@ -1319,7 +1323,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             result_buffer,
             allocation_scope->AllocateCopyProtectedOutputBuffer(
                 run_options, buffer_allocations, index, *allocation,
-                device_ordinal, memory_allocator, [&](absl::Status status) {
+                memory_allocator, [&](absl::Status status) {
                   return ResourceExhausted("%s\n%s\n", status.message(),
                                            buffer_allocations_debug_summary());
                 }));
@@ -1342,7 +1346,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   }
 
   absl::Status execute_status = allocation_scope->ExecuteWithBufferAllocations(
-      buffer_allocations, device_ordinal,
+      buffer_allocations,
       [&](const BufferAllocations& execution_buffers,
           std::optional<absl::Span<const BufferAllocation::Index>>
               persistent_alloc_indices) {
@@ -1350,7 +1354,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                              persistent_alloc_indices);
       });
   absl::Status teardown_status =
-      buffer_allocations.TearDown(buffers_in_result, GetAllocations());
+      allocation_scope->TearDown(buffers_in_result, buffer_allocations);
 
   ABSL_RETURN_IF_ERROR(execute_status);
   ABSL_RETURN_IF_ERROR(teardown_status);
@@ -1650,7 +1654,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     if (params.debug_options.xla_gpu_experimental_nccl_window_symmetric()) {
       params.debug_module->mutable_config()
           .mutable_debug_options()
-          .set_xla_gpu_experimental_nccl_window_symmetric(false);
+          .set_xla_gpu_experimental_nccl_window_symmetric(true);
     }
   }
   if (!proto.has_buffer_assignment()) {
@@ -1706,10 +1710,11 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   *thunk_sequence_proto.mutable_thunks() = proto.thunks();
   ABSL_ASSIGN_OR_RETURN(
       ThunkSequence thunk_sequence,
-      DeserializeThunkSequenceProto(
-          thunk_sequence_proto, params.allocations, params.debug_module.get(),
-          platform_name, gpu_compute_capability, params.gpu_topology,
-          symbol_resolver, params.cpu_target_machine_options));
+      DeserializeThunkSequenceProto(thunk_sequence_proto, params.allocations,
+                                    params.debug_module.get(), platform_name,
+                                    gpu_compute_capability, params.gpu_topology,
+                                    params.debug_options, symbol_resolver,
+                                    params.cpu_target_machine_options));
 
   params.executable =
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));

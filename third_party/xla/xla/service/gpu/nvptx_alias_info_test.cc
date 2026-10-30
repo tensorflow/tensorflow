@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -117,6 +118,88 @@ ENTRY main {
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(0), {0}));
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(1), {0}));
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(2), {0}));
+}
+
+TEST_F(NVPTXAliasInfoTest, VariadicAllReduceSharesOnlyUniqueMatchingOperands) {
+  const char* const kDistinctModuleString = R"(
+HloModule m
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  ROOT ar = (f32[8]{0}, f32[8]{0}) all-reduce(p0, p1), replica_groups={},
+      to_apply=add
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> distinct_module,
+                       ParseAndReturnVerifiedModule(kDistinctModuleString));
+  HloInstruction* ar = distinct_module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(MayAlias(ar, ar->operand(0), {0}));
+  ExpectOptionalTrue(MayAlias(ar, ar->operand(1), {1}));
+  ExpectOptionalFalse(MayAlias(ar, ar->operand(0), {1}));
+  ExpectOptionalFalse(MayAlias(ar, ar->operand(1), {0}));
+
+  const char* const kDuplicateModuleString = R"(
+HloModule m
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  ROOT ar = (f32[8]{0}, f32[8]{0}) all-reduce(p0, p0), replica_groups={},
+      to_apply=add
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> duplicate_module,
+                       ParseAndReturnVerifiedModule(kDuplicateModuleString));
+  HloInstruction* dup_ar =
+      duplicate_module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(dup_ar, dup_ar->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(dup_ar, dup_ar->operand(0), {1}));
+}
+
+TEST_F(NVPTXAliasInfoTest,
+       CollectiveBroadcastCannotShareDuplicateVariadicOperand) {
+  const char* const kSingleModuleString = R"(
+HloModule m, replica_count=2
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  ROOT cb = f32[8]{0} collective-broadcast(p0), replica_groups={{0,1}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::HloModule> single_module,
+      ParseAndReturnVerifiedModule(
+          kSingleModuleString, GetModuleConfigForTest(/*replica_count=*/2)));
+  HloInstruction* single_cb =
+      single_module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(MayAlias(single_cb, single_cb->operand(0), {}));
+
+  const char* const kDuplicateModuleString = R"(
+HloModule m, replica_count=2
+
+ENTRY main {
+  p0 = f32[8]{0} parameter(0)
+  ROOT cb = (f32[8]{0}, f32[8]{0}) collective-broadcast(p0, p0),
+      replica_groups={{0,1}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> dup_module,
+                       ParseAndReturnUnverifiedModule(kDuplicateModuleString));
+  HloInstruction* dup_cb = dup_module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(dup_cb, dup_cb->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(dup_cb, dup_cb->operand(0), {1}));
 }
 
 }  // namespace

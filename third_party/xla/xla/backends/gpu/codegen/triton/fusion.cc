@@ -362,13 +362,13 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
 }
 
 namespace {
-int64_t GetNumberOfBlocks(absl::Span<const int64_t> dimensions,
-                          absl::Span<const int64_t> tile_sizes) {
-  int64_t num_blocks = 1;
+int64_t GetNumberOfTiles(absl::Span<const int64_t> dimensions,
+                         absl::Span<const int64_t> tile_sizes) {
+  int64_t num_tiles = 1;
   for (auto [dim_size, dim_tile_size] : llvm::zip(dimensions, tile_sizes)) {
-    num_blocks *= (dim_size + dim_tile_size - 1) / dim_tile_size;
+    num_tiles *= (dim_size + dim_tile_size - 1) / dim_tile_size;
   }
-  return num_blocks;
+  return num_tiles;
 }
 }  // namespace
 
@@ -385,25 +385,28 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::GetLaunchConfig(
 
   CHECK_EQ(analysis->fusion_root_count(),
            block_level_parameters.output_tile_sizes.size());
-  int64_t num_blocks =
-      GetNumberOfBlocks(analysis->fusion_root(0).shape().dimensions(),
-                        block_level_parameters.output_tile_sizes[0]);
+  int64_t num_tiles =
+      GetNumberOfTiles(analysis->fusion_root(0).shape().dimensions(),
+                       block_level_parameters.output_tile_sizes[0]);
   for (int64_t i = 1; i < analysis->fusion_root_count(); ++i) {
-    int64_t root_blocks =
-        GetNumberOfBlocks(analysis->fusion_root(i).shape().dimensions(),
-                          block_level_parameters.output_tile_sizes[i]);
+    int64_t root_tiles =
+        GetNumberOfTiles(analysis->fusion_root(i).shape().dimensions(),
+                         block_level_parameters.output_tile_sizes[i]);
     if (analysis->fusion_backend_config().kind() ==
         kTritonCollectiveFusionKind) {
       // Variadic collective fusion: each output has its own tile size, and
-      // smaller outputs are padded with masked-out blocks to match the largest
-      // output's block count. So the launch grid is the max across outputs.
-      num_blocks = std::max(num_blocks, root_blocks);
+      // smaller outputs are padded with masked-out tiles to match the largest
+      // output's tile count. So the launch grid is the max across outputs.
+      num_tiles = std::max(num_tiles, root_tiles);
     } else {
-      // We expect all roots to have the same number of blocks. Otherwise we
+      // We expect all roots to have the same number of tiles. Otherwise we
       // cannot codegen it.
-      CHECK_EQ(root_blocks, num_blocks);
+      CHECK_EQ(root_tiles, num_tiles);
     }
   }
+
+  const int64_t num_blocks =
+      CeilOfRatio<int64_t>(num_tiles, block_level_parameters.num_tiles_per_pid);
 
   LaunchConfig launch_config;
   // TODO(b/451901200): We eventually also want to be able to predict this

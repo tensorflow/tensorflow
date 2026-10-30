@@ -46,6 +46,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -279,6 +281,21 @@ class CompileOnlyIfRtClient final
       xla::ifrt::ArrayCopySemantics semantics) override {
     return Unimplemented(
         "ReshardArrays not available with compile-only client.");
+  }
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> CopyArraySlices(
+      absl::Span<const xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::IndexDomain> index_domains) override {
+    return Unimplemented(
+        "CopyArraySlices not available with compile-only client.");
+  }
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> UpdateArraySlices(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArrayRef> slices,
+      absl::Span<const xla::ifrt::Index> origins) override {
+    return Unimplemented(
+        "UpdateArraySlices not available with compile-only client.");
   }
 
   tsl::Future<> GetReadyFuture(

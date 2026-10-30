@@ -64,9 +64,12 @@ inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 // dimension.
 inline constexpr int64_t kMaxBitsInMostMinorDimension = 8 * 8;
 
-// Returns true if the given dot is supported by cuBLAS.
+// Returns true if the given dot is supported by cuBLAS. If `is_normalized` is
+// false, checks whether the dot will be supported after DotDimensionNormalizer
+// and GpuLayoutAssignment run.
 absl::StatusOr<bool> IsCublasSupportedMatMul(
-    const HloInstruction& dot, bool allow_matrix_vector_multiplication);
+    const HloInstruction& dot, bool allow_matrix_vector_multiplication,
+    bool is_normalized = true);
 
 // Returns true if the given instruction is supported by gpuBLASLt
 // GroupedMatMul.
@@ -169,6 +172,14 @@ bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo);
 // Returns true if `instr` is a slice (or dynamic slice) instruction and
 // operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);
+
+// Returns true if no thunks are emitted for `hlo`, i.e. it does no work on any
+// device stream when the executable runs: its semantics are encoded by buffer
+// assignment, by the schedule, or by data that is set up when the executable
+// is loaded. This is stricter than the latency hiding scheduler's notion of a
+// no-op, which also covers instructions whose work is negligible (e.g.
+// partition-id, a memset of 4 bytes).
+bool EmitsNoThunks(const HloInstruction& hlo);
 
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.

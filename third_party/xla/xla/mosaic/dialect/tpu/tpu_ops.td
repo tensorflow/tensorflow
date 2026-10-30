@@ -1965,7 +1965,7 @@ def TPU_PRNGRandomBitsOp : TPU_Op<"prng_random_bits"> {
   let results = (outs AnyVectorOfNonZeroRank:$output);
 }
 
-def TPU_SublaneShuffleOp : TPU_Op<"sublane_shuffle", [SameOperandsAndResultType]> {
+def TPU_SublaneShuffleOp : TPU_Op<"sublane_shuffle", [Pure, SameOperandsAndResultType]> {
   // This op takes 2 physical vregs and a pattern, applies the pattern,
   // and returns the result as 1 vreg.
   //

@@ -5106,6 +5106,29 @@ tf_kernel_library(
     ] + PARSING_DEPS,
 )
 
+tf_cc_test(
+    name = "decode_compressed_op_test",
+    srcs = ["decode_compressed_op_test.cc"],
+    deps = [
+        ":decode_compressed_op",
+        ":ops_testutil",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_benchmark//:benchmark",
+    ],
+)
+
 tf_kernel_library(
     name = "example_parsing_ops",
     prefix = "example_parsing_ops",
@@ -6419,12 +6442,30 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:word2vec_ops",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_test(
+    name = "word2vec_kernels_test",
+    size = "small",
+    srcs = ["word2vec_kernels_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":word2vec_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

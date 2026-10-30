@@ -157,29 +157,33 @@ bool RocmTracer::IsAvailable() const {
   return ts;
 }
 
-absl::Status RocmTracer::Enable(const RocmTracerOptions& options,
-                                RocmTraceCollector* collector) {
+absl::Status RocmTracer::Enable(RocmTraceCollector* collector) {
   absl::MutexLock lock(collector_mutex_);
   if (collector_ != nullptr) {
     return absl::AlreadyExistsError("ROCM tracer is already running");
   }
+  const auto& max_annotation_strings =
+      collector->GetOptions().max_annotation_strings;
+  if (!max_annotation_strings.has_value()) {
+    return absl::InvalidArgumentError(
+        "RocmTraceCollectorOptions::max_annotation_strings is not set.");
+  }
 
-  // Clear per-session state while holding collector_mutex_ so no in-flight
-  // callback can race between the clear and the new session start.
-  annotation_map_.Clear();
+  // Must run before rocprofiler_start_context opens the gate for the new
+  // session. rocprofiler_stop_context does not join callbacks already past the
+  // gate; see AnnotationMap::Reset() for what that means for the map.
+  annotation_map_.Reset(*max_annotation_strings);
   // ROCTX frames live on thread_local stacks this thread cannot reach, so
   // isolate by generation instead of clearing: any frame pushed before this
   // point is now stale and will be dropped at pop rather than emitted into
   // the new session. See roctx_generation_ in rocm_tracer.h.
   roctx_generation_.fetch_add(1, std::memory_order_relaxed);
 
-  options_ = options;
   collector_ = collector;
 
   rocprofiler_status_t rc = rocprofiler_start_context(context_);
   if (rc != ROCPROFILER_STATUS_SUCCESS) {
     const char* errstr = rocprofiler_get_status_string(rc);
-    options_ = {};
     collector_ = nullptr;
     return absl::InternalError(
         absl::StrCat("rocprofiler_start_context failed: ", errstr));

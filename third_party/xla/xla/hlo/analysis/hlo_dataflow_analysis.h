@@ -185,6 +185,17 @@ class HloDataflowAnalysis {
                                      const ShapeIndex& user_index,
                                      const AliasInfo* alias_info) const;
 
+  // Returns true if 'user' (at 'user_index') can share the buffer of
+  // 'operand_value'. The user may read the value through several positions
+  // (e.g. an instruction and a bitcast of it) or through several operands, and
+  // all of them are backed by the same buffer. So this returns true only if
+  // 'user' uses 'operand_value' at least once and every such use allows
+  // sharing according to CanShareOperandBufferWithUser.
+  bool CanShareOperandValueBufferWithUser(const HloValue& operand_value,
+                                          HloInstruction* user,
+                                          const ShapeIndex& user_index,
+                                          const AliasInfo* alias_info) const;
+
   const HloModule& module() const { return module_; }
 
   // Returns true if the operation is the start/done of an asynchronous
@@ -271,7 +282,6 @@ class HloDataflowAnalysis {
   bool UpdateCallValueSet(HloInstruction* call);
   bool UpdateConditionalValueSet(HloInstruction* conditional);
   bool UpdateCopyValueSet(HloInstruction* copy);
-  bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
   // Async op propagation rules:
@@ -367,14 +377,11 @@ class HloDataflowAnalysis {
   // An explicit graph holding phi values and edges.
   PhiGraph phi_graph_;
 
-  // Caches for CanShareOperandBufferWithUser.
+  // Cache for CanShareOperandBufferWithUser.
   mutable absl::flat_hash_map<
       HloInstruction*,
       absl::flat_hash_map<ShapeIndex, std::vector<HloOperandIndex>>>
       cache_share_buffer_with_user_;
-  mutable absl::flat_hash_map<std::pair<HloInstruction*, ShapeIndex>,
-                              absl::flat_hash_set<HloUse>>
-      cache_share_buffer_with_operand_;
 };
 
 // Options controlling which computation boundaries are visited by

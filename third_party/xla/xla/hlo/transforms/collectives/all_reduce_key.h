@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_domain_map.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -33,14 +32,12 @@ namespace xla {
 // combine the instructions).
 using AllReduceKey =
     std::tuple<HloOpcode, PrimitiveType,
-               /*domain metadata id*/ int64_t,
                /*has channel id*/ bool,
                /*use_global_device_ids*/ bool,
                /*replica_groups*/ std::vector<std::vector<int64_t>>>;
 
-std::optional<AllReduceKey> GetAllReduceKey(
-    const HloInstruction* instruction, const HloDomainMap* domain_map = nullptr,
-    bool ignore_replica_groups = false);
+std::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
+                                            bool ignore_replica_groups = false);
 
 }  // namespace xla
 

@@ -1629,7 +1629,7 @@ class PjRtCApiAsyncHostToDeviceTransferManager
   absl::Status TransferLiteralToBuffer(
       int buffer_index, const LiteralSlice& literal,
       absl::AnyInvocable<void() &&> on_done) override {
-    PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args args;
+    PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args args = {};
     args.struct_size =
         PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
@@ -1640,6 +1640,15 @@ class PjRtCApiAsyncHostToDeviceTransferManager
     if (shape.IsArray()) {
       args.shape_dims = shape.dimensions().data();
       args.shape_num_dims = shape.dimensions().size();
+    } else if (shape.IsToken()) {
+      args.shape_dims = nullptr;
+      args.shape_num_dims = 0;
+    } else {
+      return absl::InvalidArgumentError(
+          absl::StrCat("PjRtCApiAsyncHostToDeviceTransferManager::"
+                       "TransferLiteralToBuffer only supports array or "
+                       "token shapes, got ",
+                       shape.ToString()));
     }
     args.shape_element_type =
         pjrt::ConvertToPjRtBufferType(shape.element_type());

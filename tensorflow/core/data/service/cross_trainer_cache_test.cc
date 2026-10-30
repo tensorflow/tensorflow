@@ -599,6 +599,65 @@ TEST(CrossTrainerCacheTest, TrainerIDMustBeNonEmpty) {
                                      "requires a non-empty trainer ID."));
 }
 
+TEST(CrossTrainerCacheTest, IsElementCached) {
+  CrossTrainerCache<int64_t> cache(
+      /*max_cache_size_bytes=*/1024, std::make_unique<InfiniteRange>());
+  EXPECT_THAT(cache.IsElementCached("Trainer 1"),
+              absl_testing::IsOkAndHolds(false));
+
+  // After trainer 1 reads elements 0 and 1, both are cached for trainer 2, but
+  // trainer 1's next element is not cached yet.
+  EXPECT_THAT(cache.Get("Trainer 1"), absl_testing::IsOkAndHolds(Pointee(0)));
+  EXPECT_THAT(cache.Get("Trainer 1"), absl_testing::IsOkAndHolds(Pointee(1)));
+  EXPECT_THAT(cache.IsElementCached("Trainer 1"),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(cache.IsElementCached("Trainer 2"),
+              absl_testing::IsOkAndHolds(true));
+
+  // After trainer 2 reads element 0, its next element is still cached.
+  EXPECT_THAT(cache.Get("Trainer 2"), absl_testing::IsOkAndHolds(Pointee(0)));
+  EXPECT_THAT(cache.IsElementCached("Trainer 2"),
+              absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(cache.Get("Trainer 2"), absl_testing::IsOkAndHolds(Pointee(1)));
+  EXPECT_THAT(cache.IsElementCached("Trainer 2"),
+              absl_testing::IsOkAndHolds(false));
+}
+
+TEST(CrossTrainerCacheTest, IsElementCachedForSlowTrainer) {
+  CrossTrainerCache<int64_t> cache(
+      /*max_cache_size_bytes=*/5 * sizeof(int64_t),
+      std::make_unique<InfiniteRange>());
+  EXPECT_THAT(cache.Get("Slow trainer"),
+              absl_testing::IsOkAndHolds(Pointee(0)));
+  for (int64_t i = 0; i < 10; ++i) {
+    EXPECT_THAT(cache.Get("Fast trainer"),
+                absl_testing::IsOkAndHolds(Pointee(i)));
+  }
+
+  // A trainer whose next element was evicted, like a new trainer, reads the
+  // oldest cached element.
+  EXPECT_THAT(cache.IsElementCached("Slow trainer"),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(cache.IsElementCached("New trainer"),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(cache.Get("Slow trainer"),
+              absl_testing::IsOkAndHolds(Pointee(5)));
+}
+
+TEST(CrossTrainerCacheTest, IsElementCachedErrors) {
+  CrossTrainerCache<int64_t> cache(
+      /*max_cache_size_bytes=*/1024, std::make_unique<InfiniteRange>());
+  EXPECT_THAT(cache.IsElementCached(""),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     "tf.data service cross-trainer cache "
+                                     "requires a non-empty trainer ID."));
+
+  cache.Cancel(absl::CancelledError("Cancelled"));
+  EXPECT_THAT(cache.IsElementCached("Trainer 1"),
+              absl_testing::StatusIs(error::CANCELLED));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

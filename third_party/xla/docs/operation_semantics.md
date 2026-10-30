@@ -2282,16 +2282,6 @@ in detail on the [broadcasting page](broadcasting.md).
 For StableHLO information see
 [StableHLO - divide](https://openxla.org/stablehlo/spec#divide).
 
-## Domain
-
-See also
-[`HloInstruction::CreateDomain`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
-
-`Domain` may appear in HLO dumps, but it is not intended to be constructed
-manually by end users.
-
-> **Note:** `Domain` is only found in HLO. It is not found in StableHLO.
-
 ## Dot
 
 See also

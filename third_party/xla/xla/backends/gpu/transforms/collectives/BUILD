@@ -312,7 +312,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/collectives:all_gather_combiner",
-        "//xla/service:hlo_domain_map",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -356,7 +355,6 @@ cc_library(
         ":gpu_collective_combiner_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/collectives:reduce_scatter_combiner",
-        "//xla/service:hlo_domain_map",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:status_macros",
@@ -398,7 +396,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/collectives:all_reduce_combiner",
-        "//xla/service:hlo_domain_map",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -794,40 +791,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "collective_send_recv_combiner",
-    srcs = ["collective_send_recv_combiner.cc"],
-    hdrs = ["collective_send_recv_combiner.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:side_effect_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "collective_send_recv_combiner_test",
-    srcs = ["collective_send_recv_combiner_test.cc"],
-    deps = [
-        ":collective_send_recv_combiner",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",  # fixdeps: keep
-        "@tsl//tsl/platform:statusor",
     ],
 )
 

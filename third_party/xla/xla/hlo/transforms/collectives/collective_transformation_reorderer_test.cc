@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
@@ -34,6 +35,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::ElementsAre;
 namespace op = xla::testing::opcode_matchers;
 
@@ -414,6 +416,97 @@ TEST_F(CollectiveTransformationReordererTest,
       all_gather_after_transformation->frontend_attributes();
   EXPECT_EQ(front_end_attributes_after_transformation.SerializeAsString(),
             frontend_attributes.SerializeAsString());
+}
+
+TEST_F(CollectiveTransformationReordererTest,
+       InspectionDoesNotCrossCallBoundaries) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+
+  foo {
+    p = bf16[8,4,1024] parameter(0)
+    ROOT all-gather = bf16[8,32,1024] all-gather(p), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+  }
+
+  ENTRY entry {
+    param = bf16[8,4,1024] parameter(0)
+    call = bf16[8,32,1024] call(param), to_apply=foo
+    ROOT reshape = bf16[8,32,8,128] reshape(call)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(RunCollectiveTransformationReorderer(module.get()),
+              IsOkAndHolds(false));
+}
+
+TEST_F(CollectiveTransformationReordererTest,
+       EntryCallsFooTransformationInsideFoo) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+
+  // CHECK-LABEL: %foo (
+  // CHECK: %[[PARAM:.*]] = bf16[8,4,1024]{{.*}} parameter(0)
+  // CHECK: %[[RESHAPE:.*]] = bf16[8,4,8,128]{{.*}} reshape(%[[PARAM]])
+  // CHECK: ROOT %[[ALL_GATHER:.*]] = bf16[8,32,8,128]{{.*}} all-gather(%[[RESHAPE]]){{.*}}dimensions={1}
+  foo {
+    p = bf16[8,4,1024] parameter(0)
+    all-gather = bf16[8,32,1024] all-gather(p), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    ROOT reshape = bf16[8,32,8,128] reshape(all-gather)
+  }
+
+  // CHECK-LABEL: ENTRY %entry (
+  // CHECK: %[[PARAM:.*]] = bf16[8,4,1024]{{.*}} parameter(0)
+  // CHECK: ROOT %[[CALL:.*]] = bf16[8,32,8,128]{{.*}} call(%[[PARAM]]), to_apply=%foo
+  ENTRY entry {
+    param = bf16[8,4,1024] parameter(0)
+    ROOT call = bf16[8,32,8,128] call(param), to_apply=foo
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(RunCollectiveTransformationReorderer(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+TEST_F(CollectiveTransformationReordererTest,
+       EntryCallsFooAndBarFooCallsBarTransformationInsideBar) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+
+  // CHECK-LABEL: %bar (
+  // CHECK: %[[PARAM:.*]] = bf16[8,4,1024]{{.*}} parameter(0)
+  // CHECK: %[[RESHAPE:.*]] = bf16[8,4,8,128]{{.*}} reshape(%[[PARAM]])
+  // CHECK: ROOT %[[ALL_GATHER:.*]] = bf16[8,32,8,128]{{.*}} all-gather(%[[RESHAPE]]){{.*}}dimensions={1}
+  bar {
+    p = bf16[8,4,1024] parameter(0)
+    all-gather = bf16[8,32,1024] all-gather(p), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    ROOT reshape = bf16[8,32,8,128] reshape(all-gather)
+  }
+
+  // CHECK-LABEL: %foo (
+  // CHECK: %[[PARAM:.*]] = bf16[8,4,1024]{{.*}} parameter(0)
+  // CHECK: ROOT %[[CALL:.*]] = bf16[8,32,8,128]{{.*}} call(%[[PARAM]]), to_apply=%bar
+  foo {
+    p = bf16[8,4,1024] parameter(0)
+    ROOT call_bar = bf16[8,32,8,128] call(p), to_apply=bar
+  }
+
+  // CHECK-LABEL: ENTRY %entry (
+  // CHECK: %[[PARAM:.*]] = bf16[8,4,1024]{{.*}} parameter(0)
+  // CHECK-DAG: %[[CALL_FOO:.*]] = bf16[8,32,8,128]{{.*}} call(%[[PARAM]]), to_apply=%foo
+  // CHECK-DAG: %[[CALL_BAR:.*]] = bf16[8,32,8,128]{{.*}} call(%[[PARAM]]), to_apply=%bar
+  // CHECK: ROOT %[[ADD:.*]] = bf16[8,32,8,128]{{.*}} add(%[[CALL_FOO]], %[[CALL_BAR]])
+  ENTRY entry {
+    param = bf16[8,4,1024] parameter(0)
+    call_foo = bf16[8,32,8,128] call(param), to_apply=foo
+    call_bar = bf16[8,32,8,128] call(param), to_apply=bar
+    ROOT add = bf16[8,32,8,128] add(call_foo, call_bar)
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(RunCollectiveTransformationReorderer(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
 }  // namespace

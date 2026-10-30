@@ -1150,9 +1150,11 @@ cc_library(
     name = "large_constant_fold",
     srcs = [
         "transforms/large_constant_fold_pass.cc",
+        "transforms/resource_elementwise_fold.cc",
     ],
     hdrs = [
         "transforms/large_constant_fold_pass.h",
+        "transforms/resource_elementwise_fold.h",
     ],
     deps = [
         ":attribute_utils",
@@ -1520,6 +1522,17 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "tfl_carrier",
+    srcs = ["transforms/tfl_carrier.cc"],
+    hdrs = ["transforms/tfl_carrier.h"],
+    deps = [
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 

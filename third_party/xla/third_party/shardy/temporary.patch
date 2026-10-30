@@ -1,0 +1,51 @@
+diff --git a/docs/sdy_export_passes.md b/docs/sdy_export_passes.md
+index c2866d88..bf2a682e 100755
+--- a/docs/sdy_export_passes.md
++++ b/docs/sdy_export_passes.md
+@@ -50,6 +50,18 @@ _Removes the mesh op and sharding notation from the program._
+ 
+ _Drops `OpShardingRuleAttr` from all registered ops._
+ 
++### `-sdy-export-named-computations`
++
++_Outline calls from `NamedComputationOp`._
++
++Creates a pass that converts a `NamedComputationOp` to a `CallOp` with a new
++private function called the `NamedComputationOp`'s `name`. The new `FuncOp`
++and `CallOp` have the same shardings as the original `NamedComputationOp`s
++operands/results.
++
++If there is a function with the same name as the `NamedComputationOp` in the
++module, the MLIR symbol table will change it to `{name}_#`.
++
+ ### `-sdy-insert-explicit-reshards`
+ 
+ _Inserts explicit reshards to make all operations have compatible shardings._
+diff --git a/docs/sdy_import_passes.md b/docs/sdy_import_passes.md
+index 541053bd..511ad51e 100755
+--- a/docs/sdy_import_passes.md
++++ b/docs/sdy_import_passes.md
+@@ -119,6 +119,23 @@ _Flattens the call graph._
+ 
+ Flattens the call graph.
+ 
++### `-sdy-import-func-calls`
++
++_Inline calls into `NamedComputationOp`._
++
++Creates a pass to convert a CallOp to a NamedComputationOp with the
++function body inlined and the name of the callee. Note that the func bodies
++are cloned if the func is used by multiple calls.
++
++In case there are multiple call ops for the same callee, we will clone the
++function body for each call op and emit a warning.
++
++#### Options
++
++```
++-add-data-flow-edges-on-named-computations : Whether to add data flow edges on named computations.
++```
++
+ ### `-sdy-lift-inlined-meshes`
+ 
+ _Lifts inlined `MeshAttr`s in shardings as symbol `MeshOp`s._

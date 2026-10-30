@@ -420,6 +420,7 @@ xla_test(
     tags = ["no_mac"],
     deps = [
         ":test_utils",
+        "//xla:array2d",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
         "//xla:literal",
@@ -438,6 +439,7 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:errors",

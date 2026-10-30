@@ -186,6 +186,10 @@ bool IsNestableVariadicReduceWindow(const HloInstruction& instr);
 // is either an unfused scatter op or a scatter input fusion.
 bool IsInputFusibleScatter(const HloInstruction& instr);
 
+// Whether `instr` is an input fusion whose heroes are all concatenates. Loop
+// fusions can also use the concatenate emitter but do not count.
+bool IsConcatenateFusion(const HloInstruction& instr);
+
 // Determines whether the combination of `instr1` and `instr2` into a (possibly
 // multi-output) fusion fits within the maximum number of parameters that can be
 // passed to a kernel. If the fusion is a producer/consumer fusion and `instr1`
@@ -222,9 +226,9 @@ FusionDecision FusionHeroesAreCompatible(
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-consumer multi-output
 // fusion.
-// So far, multi-output fusion is supported for loop fusions and reduce
-// input fusions only. It is up to the caller to ensure the instructions
-// themselves are fusible!
+// So far, multi-output fusion is supported for loop, reduce, transpose and
+// concatenate input fusions only. It is up to the caller to ensure the
+// instructions themselves are fusible!
 FusionDecision ShapesCompatibleForMultiOutputFusion(
     const HloInstruction& instr1, const HloInstruction& instr2,
     const se::DeviceDescription& device_info);

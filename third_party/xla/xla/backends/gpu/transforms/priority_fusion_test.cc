@@ -1980,6 +1980,195 @@ CHECK: ROOT %fusion = f32[8,128]{1,0} fusion(%data), kind=kCustom, calls=%fused_
       )");
 }
 
+TEST_F(HerolessPriorityFusionTest,
+       FuseScalarBroadcastProducerIntoScanFusionDim32768) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p0, p1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[8,32768]{1,0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  scan = (f32[8,32768]{1,0}, f32[8]{0}) scan(p0, p1), to_apply=add_computation, dimensions={1}, num_carries=1, is_associative=true
+  ROOT gte = f32[8,32768]{1,0} get-tuple-element(scan), index=0
+}
+
+ENTRY entry {
+  scalar = f32[] parameter(0)
+  bcast = f32[8,32768]{1,0} broadcast(scalar), dimensions={}
+  init = f32[8]{0} parameter(1)
+  ROOT scan_fusion = f32[8,32768]{1,0} fusion(bcast, init), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
+      {"output_tiles":[{"sizes":["1"]}],"num_warps":"1"}}}
+}
+  )";
+
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
+                                 &mlir_context_);
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion), R"(
+CHECK: %scan_fusion (
+CHECK: broadcast(
+CHECK: scan(
+CHECK: ENTRY
+CHECK: ROOT %scan_fusion = f32[8,32768]{1,0} fusion(
+      )");
+}
+
+TEST_F(HerolessPriorityFusionTest,
+       FuseEpilogueIotaAndBroadcastIntoScanFusionDim32768) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p0, p1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[8,32768]{1,0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  scan = (f32[8,32768]{1,0}, f32[8]{0}) scan(p0, p1), to_apply=add_computation, dimensions={1}, num_carries=1, is_associative=true
+  ROOT gte = f32[8,32768]{1,0} get-tuple-element(scan), index=0
+}
+
+ENTRY entry {
+  data = f32[8,32768]{1,0} parameter(0)
+  c_zero = f32[] constant(0)
+  init_bcast = f32[8]{0} broadcast(c_zero), dimensions={}
+  scan = f32[8,32768]{1,0} fusion(data, init_bcast), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
+      {"output_tiles":[{"sizes":["1"]}],"num_warps":"1"}}}
+  iota = s32[8,32768]{1,0} iota(), iota_dimension=1
+  c_zero_s32 = s32[] constant(0)
+  bcast_zero = s32[8,32768]{1,0} broadcast(c_zero_s32), dimensions={}
+  mask = pred[8,32768]{1,0} compare(iota, bcast_zero), direction=EQ
+  c_one = f32[] constant(1)
+  bcast_one = f32[8,32768]{1,0} broadcast(c_one), dimensions={}
+  ROOT select = f32[8,32768]{1,0} select(mask, scan, bcast_one)
+}
+  )";
+
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
+                                 &mlir_context_);
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion), R"(
+CHECK: %fused_computation (
+CHECK: iota()
+CHECK: broadcast(
+CHECK: scan(
+CHECK: ROOT %select
+CHECK: ENTRY
+CHECK: ROOT %fusion = f32[8,32768]{1,0} fusion(%data), kind=kCustom, calls=%fused_computation
+      )");
+}
+
+TEST_F(HerolessPriorityFusionTest,
+       DoNotFuseNonCheapProducerIntoScanFusionDim32768) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+add_computation {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p0, p1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[8,32768]{1,0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  scan = (f32[8,32768]{1,0}, f32[8]{0}) scan(p0, p1), to_apply=add_computation, dimensions={1}, num_carries=1, is_associative=true
+  ROOT gte = f32[8,32768]{1,0} get-tuple-element(scan), index=0
+}
+
+ENTRY entry {
+  data = f32[8,32768]{1,0} parameter(0)
+  neg = f32[8,32768]{1,0} negate(data)
+  init = f32[8]{0} parameter(1)
+  ROOT scan_fusion = f32[8,32768]{1,0} fusion(neg, init), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
+      {"output_tiles":[{"sizes":["1"]}],"num_warps":"1"}}}
+}
+  )";
+
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
+                                 &mlir_context_);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(priority_fusion.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(HerolessPriorityFusionTest,
+       FuseScalarBroadcastFromReduceAndGteIntoScanFusionDim32768) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+
+scalar_add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+add_computation {
+  p0 = f32[8]{0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  add = f32[8]{0} add(p0, p1)
+  ROOT tuple = (f32[8]{0}, f32[8]{0}) tuple(add, add)
+}
+
+scan_fusion {
+  p0 = f32[8,32768]{1,0} parameter(0)
+  p1 = f32[8]{0} parameter(1)
+  scan = (f32[8,32768]{1,0}, f32[8]{0}) scan(p0, p1), to_apply=add_computation, dimensions={1}, num_carries=1, is_associative=true
+  ROOT gte = f32[8,32768]{1,0} get-tuple-element(scan), index=0
+}
+
+ENTRY entry {
+  tuple_param = (f32[], f32[256]{0}) parameter(0)
+  scalar_gte = f32[] get-tuple-element(tuple_param), index=0
+  vec = f32[256]{0} get-tuple-element(tuple_param), index=1
+  c_zero = f32[] constant(0)
+  scalar_reduce = f32[] reduce(vec, c_zero), dimensions={0}, to_apply=scalar_add
+  bcast_gte = f32[8,32768]{1,0} broadcast(scalar_gte), dimensions={}
+  bcast_reduce = f32[8,32768]{1,0} broadcast(scalar_reduce), dimensions={}
+  sum = f32[8,32768]{1,0} add(bcast_gte, bcast_reduce)
+  init = f32[8]{0} parameter(1)
+  ROOT scan_fusion = f32[8,32768]{1,0} fusion(sum, init), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":
+      {"output_tiles":[{"sizes":["1"]}],"num_warps":"1"}}}
+}
+  )";
+
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  PriorityFusion priority_fusion(nullptr, device_info_, &alias_info_, options,
+                                 &mlir_context_);
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion), R"(
+CHECK: %scan_fusion (
+CHECK: broadcast(
+CHECK: broadcast(
+CHECK: scan(
+CHECK: ENTRY
+CHECK: %[[REDUCE_FUSION:.*]] = f32[] fusion(%vec), kind=kInput
+CHECK: %[[GTE:.*]] = f32[] get-tuple-element(%tuple_param), index=0
+CHECK: ROOT %scan_fusion = f32[8,32768]{1,0} fusion(%init, %[[REDUCE_FUSION]], %[[GTE]])
+      )");
+}
+
 TEST_F(PriorityFusionTest, DoesNotFuseUnalignedConcatenateIntoTriton) {
   const std::string kHloText = R"(
 HloModule test_module

@@ -651,5 +651,213 @@ TEST(GlooCollectives, ReverseLastNBits) {
   }
 }
 
+TEST(GlooCollectives, RepeatedCollectivesAndRunIds) {
+  std::vector<GlobalDeviceId> global_devices = {GlobalDeviceId(0),
+                                                GlobalDeviceId(1)};
+  auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
+  std::vector<absl::Status> statuses(2, absl::OkStatus());
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "RepeatedTags", 2);
+    for (int rank = 0; rank < 2; ++rank) {
+      thread_pool.Schedule([rank, &statuses, &kv_store, &global_devices]() {
+        auto comm_or = GetCommunicator(global_devices, kv_store, rank);
+        if (!comm_or.ok()) {
+          statuses[rank] = comm_or.status();
+          return;
+        }
+        Communicator* comm = comm_or->get();
+
+        auto run_all_reduce = [&](RunId run_id, int64_t op_id,
+                                  int32_t value) -> absl::StatusOr<int32_t> {
+          std::vector<int32_t> in = {value};
+          std::vector<int32_t> out = {0};
+          RendezvousKey key(run_id, global_devices, global_devices.size(),
+                            RendezvousKey::kCrossReplica, op_id);
+          CpuCollectives::Executor executor(key, kTimeout);
+          ABSL_RETURN_IF_ERROR(comm->AllReduce(AsDeviceMemory(in),
+                                          AsDeviceMemory(out), S32, 1,
+                                          ReductionKind::SUM, executor)
+                              .Await());
+          return out[0];
+        };
+
+        for (int iter = 0; iter < 3; ++iter) {
+          for (int64_t op_id : {int64_t{10}, int64_t{20}}) {
+            int32_t input =
+                (rank + 1) * 100 + iter * 10 + static_cast<int32_t>(op_id);
+            int32_t expected = 300 + 2 * iter * 10 + 2 * op_id;
+            auto out_or = run_all_reduce(RunId(1), op_id, input);
+            if (!out_or.ok()) {
+              statuses[rank] = out_or.status();
+              return;
+            }
+            if (*out_or != expected) {
+              statuses[rank] = absl::InternalError("AllReduce mismatch");
+              return;
+            }
+          }
+        }
+
+        // Interleaving another RunId preserves per-op loop counters for each
+        // active RunId rather than resetting mid-run.
+        for (int iter = 0; iter < 2; ++iter) {
+          for (RunId run_id : {RunId(2), RunId(3)}) {
+            auto out_or =
+                run_all_reduce(run_id, /*op_id=*/10, (rank + 1) * 7 + iter);
+            if (!out_or.ok()) {
+              statuses[rank] = out_or.status();
+              return;
+            }
+            if (*out_or != 21 + 2 * iter) {
+              statuses[rank] = absl::InternalError(
+                  "AllReduce mismatch on interleaved RunId");
+              return;
+            }
+          }
+        }
+      });
+    }
+  }
+
+  for (int rank = 0; rank < 2; ++rank) {
+    TF_ASSERT_OK(statuses[rank]);
+  }
+}
+
+// Checks that two ranks calling different collectives (different op_id) do not
+// match each other's messages and instead time out.
+TEST(GlooCollectives, MismatchedOpIdTimesOut) {
+  std::vector<GlobalDeviceId> global_devices = {GlobalDeviceId(0),
+                                                GlobalDeviceId(1)};
+  auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
+  std::vector<absl::Status> statuses(2, absl::OkStatus());
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "MismatchedOpId",
+                                        2);
+    for (int rank = 0; rank < 2; ++rank) {
+      thread_pool.Schedule([rank, &statuses, &kv_store, &global_devices]() {
+        auto comm_or = GetCommunicator(global_devices, kv_store, rank);
+        if (!comm_or.ok()) {
+          statuses[rank] = comm_or.status();
+          return;
+        }
+        std::vector<int32_t> in = {rank + 1};
+        std::vector<int32_t> out = {0};
+        const int64_t op_id = (rank == 0) ? 100 : 200;
+        RendezvousKey key(RunId(1), global_devices, global_devices.size(),
+                          RendezvousKey::kCrossReplica, op_id);
+        CpuCollectives::Executor executor(key, absl::Milliseconds(200));
+        const RankId peer(1 - rank);
+        std::vector<RankId> targets = {peer};
+        statuses[rank] =
+            comm_or.value()
+                ->CollectivePermute(AsDeviceMemory(in), AsDeviceMemory(out),
+                                    S32, 1, peer, targets, executor)
+                .Await();
+      });
+    }
+  }
+
+  EXPECT_FALSE(statuses[0].ok());
+  EXPECT_FALSE(statuses[1].ok());
+}
+
+// Checks that two ranks in different program runs (different RunId) do not
+// match each other's messages and instead time out.
+TEST(GlooCollectives, MismatchedRunIdTimesOut) {
+  std::vector<GlobalDeviceId> global_devices = {GlobalDeviceId(0),
+                                                GlobalDeviceId(1)};
+  auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
+  std::vector<absl::Status> statuses(2, absl::OkStatus());
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "MismatchedRunId",
+                                        2);
+    for (int rank = 0; rank < 2; ++rank) {
+      thread_pool.Schedule([rank, &statuses, &kv_store, &global_devices]() {
+        auto comm_or = GetCommunicator(global_devices, kv_store, rank);
+        if (!comm_or.ok()) {
+          statuses[rank] = comm_or.status();
+          return;
+        }
+        std::vector<int32_t> in = {rank + 1};
+        std::vector<int32_t> out = {0};
+        const RunId run_id(rank == 0 ? 1 : 2);
+        RendezvousKey key(run_id, global_devices, global_devices.size(),
+                          RendezvousKey::kCrossReplica, /*op_id=*/100);
+        CpuCollectives::Executor executor(key, absl::Milliseconds(200));
+        const RankId peer(1 - rank);
+        std::vector<RankId> targets = {peer};
+        statuses[rank] =
+            comm_or.value()
+                ->CollectivePermute(AsDeviceMemory(in), AsDeviceMemory(out),
+                                    S32, 1, peer, targets, executor)
+                .Await();
+      });
+    }
+  }
+
+  EXPECT_FALSE(statuses[0].ok());
+  EXPECT_FALSE(statuses[1].ok());
+}
+
+// Checks that two ranks on different calls of the same collective (different
+// loop_counter, with the same RunId and op_id) do not match each other's
+// messages and instead time out.
+TEST(GlooCollectives, MismatchedLoopCounterTimesOut) {
+  std::vector<GlobalDeviceId> global_devices = {GlobalDeviceId(0),
+                                                GlobalDeviceId(1)};
+  auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
+  std::vector<absl::Status> statuses(2, absl::OkStatus());
+
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                        "MismatchedLoopCounter", 2);
+    for (int rank = 0; rank < 2; ++rank) {
+      thread_pool.Schedule([rank, &statuses, &kv_store, &global_devices]() {
+        auto comm_or = GetCommunicator(global_devices, kv_store, rank);
+        if (!comm_or.ok()) {
+          statuses[rank] = comm_or.status();
+          return;
+        }
+        std::vector<int32_t> in = {rank + 1};
+        std::vector<int32_t> out = {0};
+        RendezvousKey key(RunId(1), global_devices, global_devices.size(),
+                          RendezvousKey::kCrossReplica, /*op_id=*/100);
+        CpuCollectives::Executor executor(key, absl::Milliseconds(200));
+
+        // Advance rank 0's loop counter for (RunId(1), op_id=100) by running a
+        // local-only CollectivePermute first.
+        if (rank == 0) {
+          std::vector<RankId> empty_targets;
+          absl::Status advance =
+              comm_or.value()
+                  ->CollectivePermute(AsDeviceMemory(in), AsDeviceMemory(out),
+                                      S32, 1, /*source_rank=*/std::nullopt,
+                                      empty_targets, executor)
+                  .Await();
+          if (!advance.ok()) {
+            statuses[rank] = advance;
+            return;
+          }
+        }
+
+        const RankId peer(1 - rank);
+        std::vector<RankId> targets = {peer};
+        statuses[rank] =
+            comm_or.value()
+                ->CollectivePermute(AsDeviceMemory(in), AsDeviceMemory(out),
+                                    S32, 1, peer, targets, executor)
+                .Await();
+      });
+    }
+  }
+
+  EXPECT_FALSE(statuses[0].ok());
+  EXPECT_FALSE(statuses[1].ok());
+}
+
 }  // namespace
 }  // namespace xla::cpu

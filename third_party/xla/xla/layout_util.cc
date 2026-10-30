@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -36,7 +35,6 @@ limitations under the License.
 #include "xla/printer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -57,6 +55,16 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   }
 }
 
+// Internal helper that creates a default layout for an array of the given
+// number of dimensions.
+Layout CreateDefaultLayoutForRank(int64_t num_dims) {
+  Layout layout;
+  DimensionVector* minor_to_major = layout.mutable_minor_to_major();
+  minor_to_major->resize(num_dims, 0);
+  SetDefaultLayoutToContainer(minor_to_major);
+  return layout;
+}
+
 }  // namespace
 
 /* static */ Layout LayoutUtil::MakeLayout(
@@ -68,9 +76,8 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
     std::optional<Shape> physical_shape,
     int64_t dynamic_shape_metadata_prefix_bytes) {
   Layout layout;
-  for (int64_t dimension_number : minor_to_major) {
-    layout.add_minor_to_major(dimension_number);
-  }
+  layout.mutable_minor_to_major()->assign(minor_to_major.begin(),
+                                          minor_to_major.end());
   for (const Tile& tile : tiles) {
     for (int64_t dim : tile.dimensions()) {
       if (dim < 0 && dim != Tile::kCombineDimension &&
@@ -100,9 +107,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 }
 
 /* static */ Layout LayoutUtil::MakeDescendingLayout(int64_t num_dims) {
-  std::vector<int64_t> layout(num_dims);
-  std::iota(layout.rbegin(), layout.rend(), 0);
-  return MakeLayout(layout);
+  return CreateDefaultLayoutForRank(num_dims);
 }
 
 /* static */ bool LayoutUtil::HasDescendingLayout(const Layout& layout) {
@@ -110,9 +115,11 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 }
 
 /* static */ Layout LayoutUtil::MakeAscendingLayout(int64_t num_dims) {
-  std::vector<int64_t> layout(num_dims);
-  absl::c_iota(layout, 0);
-  return MakeLayout(layout);
+  Layout layout;
+  DimensionVector* minor_to_major = layout.mutable_minor_to_major();
+  minor_to_major->resize(num_dims);
+  absl::c_iota(*minor_to_major, 0);
+  return layout;
 }
 
 /* static */ bool LayoutUtil::HasAscendingLayout(const Layout& layout) {
@@ -127,20 +134,6 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   }
   return layout;
 }
-
-namespace {
-
-// Internal helper that creates a default layout for an array of the given
-// number of dimensions.
-Layout CreateDefaultLayoutForRank(int64_t num_dims) {
-  Layout layout;
-  auto* minor_to_major = layout.mutable_minor_to_major();
-  minor_to_major->resize(num_dims, 0);
-  SetDefaultLayoutToContainer(minor_to_major);
-  return layout;
-}
-
-}  // namespace
 
 /* static */ Layout LayoutUtil::GetDefaultLayoutForShape(const Shape& shape) {
   if (shape.IsOpaque() || shape.IsToken()) {

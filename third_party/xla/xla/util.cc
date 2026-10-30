@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/denormal.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/stacktrace.h"
@@ -146,8 +148,28 @@ static void RoundTripNanPayload(FloatT value, std::string* result) {
   }
 }
 
+// Reads the bits: floating point compares see subnormals as zero on threads
+// that flush denormals.
+template <typename T>
+static bool IsSubnormal(T value) {
+  using Bits = UnsignedIntegerTypeForSizeType<sizeof(T)>;
+  const Bits magnitude =
+      absl::bit_cast<Bits>(value) & (std::numeric_limits<Bits>::max() >> 1);
+  return magnitude != 0 &&
+         magnitude < absl::bit_cast<Bits>(std::numeric_limits<T>::min());
+}
+
 template <typename FloatT>
 static std::string GenericRoundTripFpToString(FloatT value) {
+  // On threads that flush denormals, such as tsl::thread::ThreadPool workers,
+  // a conversion through a subnormal float (bfloat16 converts so) reads as
+  // zero. Switching the mode is slow, so only subnormals do it.
+  std::optional<tsl::port::ScopedDontFlushDenormal> dont_flush;
+  if constexpr (!std::is_same_v<FloatT, double>) {
+    if (IsSubnormal(static_cast<float>(value))) {
+      dont_flush.emplace();
+    }
+  }
   // TODO(majnemer): Remove this temporary variable once Eigen creates a symbol
   // definition for `max_digits10`.
   int max_decimal_digits = std::numeric_limits<FloatT>::max_digits10;
@@ -225,6 +247,12 @@ std::string RoundTripFpToString(half value) {
 }
 
 std::string RoundTripFpToString(float value) {
+  // On threads that flush denormals, a subnormal would print as 0 and pass the
+  // round trip check.
+  std::optional<tsl::port::ScopedDontFlushDenormal> dont_flush;
+  if (IsSubnormal(value)) {
+    dont_flush.emplace();
+  }
   float parsed_result;
   std::string result =
       absl::StrFormat("%.*g", std::numeric_limits<float>::digits10, value);
@@ -236,6 +264,12 @@ std::string RoundTripFpToString(float value) {
 }
 
 std::string RoundTripFpToString(double value) {
+  // On threads that flush denormals, a subnormal would print as 0 and pass the
+  // round trip check.
+  std::optional<tsl::port::ScopedDontFlushDenormal> dont_flush;
+  if (IsSubnormal(value)) {
+    dont_flush.emplace();
+  }
   double parsed_result;
   std::string result =
       absl::StrFormat("%.*g", std::numeric_limits<double>::digits10, value);

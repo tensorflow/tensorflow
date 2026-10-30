@@ -38,8 +38,10 @@ get_targets_from_diff() {
     echo "Example: git pull --rebase $REMOTE main" >&2
     exit 1
   fi
+  # Skip `.cu.cc` and `.cu.h` files because `@bazel_clang_tidy` unconditionally
+  # appends `-xc++` and forwards NVCC-only flags to `clang-tidy`.
   CHANGED_FILES=$(git diff --name-only --diff-filter=d "$MERGE_BASE" |
-    grep -E '\.(cc|h)$' || true)
+    grep -E '\.(cc|h)$' | grep -Ev '\.cu\.(cc|h)$' || true)
   if [ -z "$CHANGED_FILES" ]; then
     set +x
     echo "No C++ files changed."
@@ -49,11 +51,18 @@ get_targets_from_diff() {
       echo "//$(dirname "$file"):all"
   done | sort -u | tr '\n' ' ')
   BASE_QUERY="kind('cc_(library|binary|test)', rdeps(set($PACKAGES), set($CHANGED_FILES), 1))"
+  # Exclude `cuda_library` targets and targets containing CUDA device sources
+  # or flags in case a modified `.h` or `.cc` file belongs to one.
+  CU_FILE_REGEX='\.cu(\.cc|\.h|\.h\.inc)?(\]|, )'
+  CUDA_COPTS_REGEX='(-nvcc_options|-Xcuda-fatbinary|(\[|, )-x, cuda(\]|, ))'
+  EXCLUDED_QUERY="attr('generator_function', '^(embeddable_)?cuda_library$', \$base)"
+  EXCLUDED_QUERY+=" + attr('srcs', '${CU_FILE_REGEX}', \$base)"
+  EXCLUDED_QUERY+=" + attr('hdrs', '${CU_FILE_REGEX}', \$base)"
+  EXCLUDED_QUERY+=" + attr('copts', '${CUDA_COPTS_REGEX}', \$base)"
   if [ -n "$TAGS_TO_IGNORE" ]; then
-    QUERY="(${BASE_QUERY} except attr('tags', '${TAGS_TO_IGNORE}', (${BASE_QUERY})))"
-  else
-    QUERY="${BASE_QUERY}"
+    EXCLUDED_QUERY+=" + attr('tags', '${TAGS_TO_IGNORE}', \$base)"
   fi
+  QUERY="let base = ${BASE_QUERY} in \$base except (${EXCLUDED_QUERY})"
   
   # Populate global TARGETS variable.
   # xla_test expands into multiple per-backend cc_test targets (e.g., _a100,

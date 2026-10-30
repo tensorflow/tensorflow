@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <zlib.h>
 
+#include <cstring>
+#include <utility>
+
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "xla/tsl/platform/logging.h"
@@ -146,7 +149,8 @@ absl::Status ZlibInputStream::ReadFromStream() {
   // TODO(rohanj): Add a char* version of ReadNBytes to InputStreamInterface
   // and use that instead to make this more efficient.
   absl::Status s = input_stream_->ReadNBytes(bytes_to_read, &data);
-  memcpy(read_location, data.data(), data.size());
+  // Non-const `tstring::data()` copies `VIEW` strings into an owned buffer.
+  memcpy(read_location, std::as_const(data).data(), data.size());
 
   // Since we moved unread data to the head of the input stream we can point
   // next_in to the head of the input stream.

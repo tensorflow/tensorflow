@@ -57,6 +57,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:llvm_compiler",
         "//xla/service:platform_util",
+        "//xla/service/cpu:cpu_compiler",
         "//xla/stream_executor:platform",
         "//xla/tests:codegen_utils",
         "//xla/tests:hlo_pjrt_test_base",
@@ -310,6 +311,22 @@ xla_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ],
+)
+
+xla_test(
+    name = "cpu_sort_test",
+    srcs = ["cpu_sort_test.cc"],
+    backends = ["cpu"],
+    deps = [
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest",
     ],
 )
 

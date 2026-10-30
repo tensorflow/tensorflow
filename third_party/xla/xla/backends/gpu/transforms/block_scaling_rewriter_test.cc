@@ -15,22 +15,30 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
 
+#include <optional>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace xla::gpu {
 namespace {
+
+using ::testing::Pair;
 
 using BlockScalingRewriterTest = HloHardwareIndependentTestBase;
 
@@ -617,6 +625,465 @@ ENTRY main {
 )";
   EXPECT_THAT(RunFileCheck(test_module->ToString(), expected),
               absl_testing::IsOkAndHolds(true));
+}
+
+class CudnnScaledDotRewriterTest : public HloHardwareIndependentTestBase {
+ protected:
+  CudnnScaledDotRewriterTest()
+      : HloHardwareIndependentTestBase(/*verifier_layout_sensitive=*/true) {}
+
+  // Returns {IsSupportedPreLayout, IsSupportedPostLayout} for the root.
+  static std::pair<bool, bool> IsSupported(const HloModule& module) {
+    const auto* scaled_dot = Cast<HloScaledDotInstruction>(
+        module.entry_computation()->root_instruction());
+    return {CudnnScaledDotHelper::IsSupportedPreLayout(scaled_dot),
+            CudnnScaledDotHelper::IsSupportedPostLayout(scaled_dot)};
+  }
+};
+
+TEST_F(CudnnScaledDotRewriterTest, IsSupported2dNN) {
+  // lhs [M, K]{1,0}, rhs [K, N]{0,1}
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[256,128]{0,1} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[8,128]{0,1} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(true, true));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsSupported2dTN) {
+  // lhs [K, M]{0,1}, rhs [K, N]{0,1}
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[256,128]{0,1} parameter(0)
+  %rhs = f8e4m3fn[256,128]{0,1} parameter(1)
+  %lhs_scale = f8e8m0fnu[8,128]{0,1} parameter(2)
+  %rhs_scale = f8e8m0fnu[8,128]{0,1} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(true, true));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsSupported3dTT) {
+  // lhs [B, K, M]{1,2,0}, rhs [B, N, K]{2,1,0}
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e5m2[4,256,128]{1,2,0} parameter(0)
+  %rhs = f8e4m3fn[4,128,256]{2,1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[4,8,128]{1,2,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[4,128,8]{2,1,0} parameter(3)
+  ROOT %result = bf16[4,128,128]{2,1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={1}, rhs_contracting_dims={2}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(true, true));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsSupportedNonZeroBatchDimNvfp4) {
+  // Batch at dim 1 on LHS and dim 2 on RHS, NVFP4 (block size 16) with K=32.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f4e2m1fn[128,4,32]{2,0,1} parameter(0)
+  %rhs = f4e2m1fn[32,256,4]{0,1,2} parameter(1)
+  %lhs_scale = f8e4m3fn[128,4,2]{2,0,1} parameter(2)
+  %rhs_scale = f8e4m3fn[2,256,4]{0,1,2} parameter(3)
+  ROOT %result = bf16[4,128,256]{2,1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_batch_dims={1}, rhs_batch_dims={2},
+      lhs_contracting_dims={2}, rhs_contracting_dims={0}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(true, true));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsNotSupportedUnalignedKForNvfp4) {
+  // K=16 of 4-bit F4E2M1FN is 8 bytes (< 16-byte TMA contiguous alignment).
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f4e2m1fn[128,16]{1,0} parameter(0)
+  %rhs = f4e2m1fn[16,128]{0,1} parameter(1)
+  %lhs_scale = f8e4m3fn[128,1]{1,0} parameter(2)
+  %rhs_scale = f8e4m3fn[1,128]{0,1} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(false, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsNotSupportedPostLayoutColumnMajorMxfp4) {
+  // cuDNN has no engine for MXFP4 with an M-minor output.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f4e2m1fn[128,64]{1,0} parameter(0)
+  %rhs = f4e2m1fn[128,64]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,2]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[128,2]{1,0} parameter(3)
+  ROOT %result = f32[128,128]{0,1} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(true, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsSupportedOutputTypes) {
+  constexpr absl::string_view kHloTemplate = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[256,128]{0,1} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[8,128]{0,1} parameter(3)
+  ROOT %result = $0[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  for (absl::string_view type : {"f16", "bf16", "f32"}) {
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnVerifiedModule(absl::Substitute(kHloTemplate, type)));
+    EXPECT_THAT(IsSupported(*module), Pair(true, true)) << type;
+  }
+  ASSERT_OK_AND_ASSIGN(
+      auto f64_module,
+      ParseAndReturnVerifiedModule(absl::Substitute(kHloTemplate, "f64")));
+  EXPECT_THAT(IsSupported(*f64_module), Pair(false, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsNotSupportedPostLayoutNonKMinorRhs) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[256,128]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(true, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest,
+       IsNotSupportedPostLayoutScaleLayoutMismatch) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[256,128]{0,1} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(true, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsNotSupportedPostLayoutBatchInTheMiddle) {
+  // Physical layout {k, batch, nc}.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[4,128,256]{2,0,1} parameter(0)
+  %rhs = f8e4m3fn[4,128,256]{2,1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[4,128,8]{2,0,1} parameter(2)
+  %rhs_scale = f8e8m0fnu[4,128,8]{2,1,0} parameter(3)
+  ROOT %result = bf16[4,128,128]{2,1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={2}, rhs_contracting_dims={2}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(true, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsNotSupportedScalarScale) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[128,256]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[] parameter(2)
+  %rhs_scale = f8e8m0fnu[128,8]{1,0} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(false, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest,
+       IsNotSupportedBroadcastedScaleNonContracting) {
+  // scale_nc == 1 != input_nc.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[128,256]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[1,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[128,8]{1,0} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(false, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsNotSupportedNonDefaultPrecision) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[128,256]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[128,8]{1,0} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+      operand_precision={highest,default}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(false, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsNotSupportedUnalignedPaddedScaleK) {
+  // K=352, K_scale=11 -> padded to 12, 352 % 12 != 0.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,352]{1,0} parameter(0)
+  %rhs = f8e4m3fn[128,352]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,11]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[128,11]{1,0} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(false, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, IsNotSupportedUnalignedNonContracting) {
+  // M=100 and N=200 are not multiples of the 128-row F8_128x4 scale tile.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[100,64]{1,0} parameter(0)
+  %rhs = f8e4m3fn[64,200]{0,1} parameter(1)
+  %lhs_scale = f8e8m0fnu[100,2]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[2,200]{0,1} parameter(3)
+  ROOT %result = bf16[100,200]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(IsSupported(*module), Pair(false, false));
+}
+
+TEST_F(CudnnScaledDotRewriterTest, Rewrites3dNN) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[4,384,256]{2,1,0} parameter(0)
+  %rhs = f8e4m3fn[4,256,512]{1,2,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[4,384,8]{2,1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[4,8,512]{1,2,0} parameter(3)
+  ROOT %result = bf16[4,384,512]{2,1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={2}, rhs_contracting_dims={1}
+})";
+  RunAndFilecheckHloRewrite(kHlo, CudnnScaledDotRewriter(), R"(
+  CHECK: %[[P0:.+]] = f8e4m3fn[4,384,256]{2,1,0} parameter(0)
+  CHECK: %[[P1:.+]] = f8e4m3fn[4,256,512]{1,2,0} parameter(1)
+  CHECK: %[[P2:.+]] = f8e8m0fnu[4,384,8]{2,1,0} parameter(2)
+  CHECK: %[[P3:.+]] = f8e8m0fnu[4,8,512]{1,2,0} parameter(3)
+  CHECK: ROOT %{{.+}} = bf16[4,384,512]{2,1,0} scaled-dot(%[[P0]], %[[P1]], %[[P2]], %[[P3]]), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  CHECK: ENTRY
+  CHECK: %[[LHS_BC1:.+]] = f8e8m0fnu[4,3,4,32,2,4]{5,4,3,2,1,0} bitcast(%lhs_scale)
+  CHECK: %[[LHS_TR:.+]] = f8e8m0fnu[4,3,2,32,4,4]{5,4,3,2,1,0} transpose(%[[LHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[LHS_SW:.+]] = f8e8m0fnu[4,384,8]{2,1,0} bitcast(%[[LHS_TR]])
+  CHECK: %[[RHS_BC1:.+]] = f8e8m0fnu[4,4,4,32,2,4]{5,4,3,2,1,0} bitcast(%rhs_scale)
+  CHECK: %[[RHS_TR:.+]] = f8e8m0fnu[4,4,2,32,4,4]{5,4,3,2,1,0} transpose(%[[RHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[RHS_SW:.+]] = f8e8m0fnu[4,8,512]{1,2,0} bitcast(%[[RHS_TR]])
+  CHECK: ROOT %{{.+}} = bf16[4,384,512]{2,1,0} fusion(%lhs, %rhs, %[[LHS_SW]], %[[RHS_SW]]), kind=kCustom
+  CHECK-SAME: "__cudnn$fusion"
+)");
+}
+
+TEST_F(CudnnScaledDotRewriterTest, Rewrites2dTN) {
+  // lhs [K, M]{0,1}, rhs [K, N]{0,1}
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[256,128]{0,1} parameter(0)
+  %rhs = f8e4m3fn[256,256]{0,1} parameter(1)
+  %lhs_scale = f8e8m0fnu[8,128]{0,1} parameter(2)
+  %rhs_scale = f8e8m0fnu[8,256]{0,1} parameter(3)
+  ROOT %result = bf16[128,256]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})";
+  RunAndFilecheckHloRewrite(kHlo, CudnnScaledDotRewriter(), R"(
+  CHECK: %[[P0:.+]] = f8e4m3fn[256,128]{0,1} parameter(0)
+  CHECK: %[[P1:.+]] = f8e4m3fn[256,256]{0,1} parameter(1)
+  CHECK: %[[P2:.+]] = f8e8m0fnu[8,128]{0,1} parameter(2)
+  CHECK: %[[P3:.+]] = f8e8m0fnu[8,256]{0,1} parameter(3)
+  CHECK: ROOT %{{.+}} = bf16[128,256]{1,0} scaled-dot(%[[P0]], %[[P1]], %[[P2]], %[[P3]]), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  CHECK: ENTRY
+  CHECK: %[[LHS_BC1:.+]] = f8e8m0fnu[1,1,4,32,2,4]{5,4,3,2,1,0} bitcast(%lhs_scale)
+  CHECK: %[[LHS_TR:.+]] = f8e8m0fnu[1,1,2,32,4,4]{5,4,3,2,1,0} transpose(%[[LHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[LHS_SW:.+]] = f8e8m0fnu[8,128]{0,1} bitcast(%[[LHS_TR]])
+  CHECK: %[[RHS_BC1:.+]] = f8e8m0fnu[1,2,4,32,2,4]{5,4,3,2,1,0} bitcast(%rhs_scale)
+  CHECK: %[[RHS_TR:.+]] = f8e8m0fnu[1,2,2,32,4,4]{5,4,3,2,1,0} transpose(%[[RHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[RHS_SW:.+]] = f8e8m0fnu[8,256]{0,1} bitcast(%[[RHS_TR]])
+  CHECK: ROOT %{{.+}} = bf16[128,256]{1,0} fusion(%lhs, %rhs, %[[LHS_SW]], %[[RHS_SW]]), kind=kCustom
+)");
+}
+
+TEST_F(CudnnScaledDotRewriterTest, Rewrites3dTT) {
+  // lhs [B, K, M]{1,2,0}, rhs [B, N, K]{2,1,0}
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e5m2[4,256,128]{1,2,0} parameter(0)
+  %rhs = f8e4m3fn[4,256,256]{2,1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[4,8,128]{1,2,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[4,256,8]{2,1,0} parameter(3)
+  ROOT %result = bf16[4,128,256]{2,1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={1}, rhs_contracting_dims={2}
+})";
+  RunAndFilecheckHloRewrite(kHlo, CudnnScaledDotRewriter(), R"(
+  CHECK: %[[P0:.+]] = f8e5m2[4,256,128]{1,2,0} parameter(0)
+  CHECK: %[[P1:.+]] = f8e4m3fn[4,256,256]{2,1,0} parameter(1)
+  CHECK: %[[P2:.+]] = f8e8m0fnu[4,8,128]{1,2,0} parameter(2)
+  CHECK: %[[P3:.+]] = f8e8m0fnu[4,256,8]{2,1,0} parameter(3)
+  CHECK: ROOT %{{.+}} = bf16[4,128,256]{2,1,0} scaled-dot(%[[P0]], %[[P1]], %[[P2]], %[[P3]]), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={2}
+  CHECK: ENTRY
+  CHECK: %[[LHS_BC1:.+]] = f8e8m0fnu[4,1,4,32,2,4]{5,4,3,2,1,0} bitcast(%lhs_scale)
+  CHECK: %[[LHS_TR:.+]] = f8e8m0fnu[4,1,2,32,4,4]{5,4,3,2,1,0} transpose(%[[LHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[LHS_SW:.+]] = f8e8m0fnu[4,8,128]{1,2,0} bitcast(%[[LHS_TR]])
+  CHECK: %[[RHS_BC1:.+]] = f8e8m0fnu[4,2,4,32,2,4]{5,4,3,2,1,0} bitcast(%rhs_scale)
+  CHECK: %[[RHS_TR:.+]] = f8e8m0fnu[4,2,2,32,4,4]{5,4,3,2,1,0} transpose(%[[RHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[RHS_SW:.+]] = f8e8m0fnu[4,256,8]{2,1,0} bitcast(%[[RHS_TR]])
+  CHECK: ROOT %{{.+}} = bf16[4,128,256]{2,1,0} fusion(%lhs, %rhs, %[[LHS_SW]], %[[RHS_SW]]), kind=kCustom
+)");
+}
+
+TEST_F(CudnnScaledDotRewriterTest, RewritesWithContractingPadding) {
+  // K=64: K_scale=2 is padded to 4 (64 % 4 == 0); M and N need no padding.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,64]{1,0} parameter(0)
+  %rhs = f8e4m3fn[64,256]{0,1} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,2]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[2,256]{0,1} parameter(3)
+  ROOT %result = bf16[128,256]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+  RunAndFilecheckHloRewrite(kHlo, CudnnScaledDotRewriter(), R"(
+  CHECK: %[[P0:.+]] = f8e4m3fn[128,64]{1,0} parameter(0)
+  CHECK: %[[P1:.+]] = f8e4m3fn[64,256]{0,1} parameter(1)
+  CHECK: %[[P2:.+]] = f8e8m0fnu[128,4]{1,0} parameter(2)
+  CHECK: %[[P3:.+]] = f8e8m0fnu[4,256]{0,1} parameter(3)
+  CHECK: ROOT %{{.+}} = bf16[128,256]{1,0} scaled-dot(%[[P0]], %[[P1]], %[[P2]], %[[P3]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  CHECK: ENTRY
+  CHECK: %[[LHS_PAD:.+]] = f8e8m0fnu[128,4]{1,0} pad(%lhs_scale, %{{.+}}), padding=0_0x0_2
+  CHECK: %[[LHS_BC1:.+]] = f8e8m0fnu[1,1,4,32,1,4]{5,4,3,2,1,0} bitcast(%[[LHS_PAD]])
+  CHECK: %[[LHS_TR:.+]] = f8e8m0fnu[1,1,1,32,4,4]{5,4,3,2,1,0} transpose(%[[LHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[LHS_SW:.+]] = f8e8m0fnu[128,4]{1,0} bitcast(%[[LHS_TR]])
+  CHECK: %[[RHS_PAD:.+]] = f8e8m0fnu[4,256]{0,1} pad(%rhs_scale, %{{.+}}), padding=0_2x0_0
+  CHECK: %[[RHS_BC1:.+]] = f8e8m0fnu[1,2,4,32,1,4]{5,4,3,2,1,0} bitcast(%[[RHS_PAD]])
+  CHECK: %[[RHS_TR:.+]] = f8e8m0fnu[1,2,1,32,4,4]{5,4,3,2,1,0} transpose(%[[RHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[RHS_SW:.+]] = f8e8m0fnu[4,256]{0,1} bitcast(%[[RHS_TR]])
+  CHECK: ROOT %{{.+}} = bf16[128,256]{1,0} fusion(%lhs, %rhs, %[[LHS_SW]], %[[RHS_SW]]), kind=kCustom
+)");
+}
+
+TEST_F(CudnnScaledDotRewriterTest, RewritesNonZeroBatchDimensionAndKBlockSize) {
+  // Batch at dim 1 on both operands, K = 32 (K_scale = 1 -> padded to 4).
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+ENTRY main {
+  %lhs = f8e4m3fn[128,4,32]{2,0,1} parameter(0)
+  %rhs = f8e4m3fn[32,4,256]{0,2,1} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,4,1]{2,0,1} parameter(2)
+  %rhs_scale = f8e8m0fnu[1,4,256]{0,2,1} parameter(3)
+  ROOT %result = bf16[4,128,256]{2,1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_batch_dims={1}, rhs_batch_dims={1},
+      lhs_contracting_dims={2}, rhs_contracting_dims={0}
+})";
+  RunAndFilecheckHloRewrite(kHlo, CudnnScaledDotRewriter(), R"(
+  CHECK: %[[P0:.+]] = f8e4m3fn[128,4,32]{2,0,1} parameter(0)
+  CHECK: %[[P1:.+]] = f8e4m3fn[32,4,256]{0,2,1} parameter(1)
+  CHECK: %[[P2:.+]] = f8e8m0fnu[128,4,4]{2,0,1} parameter(2)
+  CHECK: %[[P3:.+]] = f8e8m0fnu[4,4,256]{0,2,1} parameter(3)
+  CHECK: ROOT %{{.+}} = bf16[4,128,256]{2,1,0} scaled-dot(%[[P0]], %[[P1]], %[[P2]], %[[P3]]), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={1}, rhs_contracting_dims={0}
+  CHECK: ENTRY
+  CHECK: %[[LHS_PAD:.+]] = f8e8m0fnu[128,4,4]{2,0,1} pad(%lhs_scale, %{{.+}}), padding=0_0x0_0x0_3
+  CHECK: %[[LHS_BC1:.+]] = f8e8m0fnu[4,1,4,32,1,4]{5,4,3,2,1,0} bitcast(%[[LHS_PAD]])
+  CHECK: %[[LHS_TR:.+]] = f8e8m0fnu[4,1,1,32,4,4]{5,4,3,2,1,0} transpose(%[[LHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[LHS_SW:.+]] = f8e8m0fnu[128,4,4]{2,0,1} bitcast(%[[LHS_TR]])
+  CHECK: %[[RHS_PAD:.+]] = f8e8m0fnu[4,4,256]{0,2,1} pad(%rhs_scale, %{{.+}}), padding=0_3x0_0x0_0
+  CHECK: %[[RHS_BC1:.+]] = f8e8m0fnu[4,2,4,32,1,4]{5,4,3,2,1,0} bitcast(%[[RHS_PAD]])
+  CHECK: %[[RHS_TR:.+]] = f8e8m0fnu[4,2,1,32,4,4]{5,4,3,2,1,0} transpose(%[[RHS_BC1]]), dimensions={0,1,4,3,2,5}
+  CHECK: %[[RHS_SW:.+]] = f8e8m0fnu[4,4,256]{0,2,1} bitcast(%[[RHS_TR]])
+  CHECK: ROOT %{{.+}} = bf16[4,128,256]{2,1,0} fusion(%lhs, %rhs, %[[LHS_SW]], %[[RHS_SW]]), kind=kCustom
+)");
+}
+
+TEST_F(CudnnScaledDotRewriterTest, SkipsAlreadyFusedScaledDot) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+fusion {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[128,256]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[128,8]{1,0} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} scaled-dot(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+ENTRY main {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[128,256]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[128,8]{1,0} parameter(3)
+  ROOT %result = bf16[128,128]{1,0} fusion(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      kind=kCustom, calls=fusion,
+      backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
+})";
+  RunAndFilecheckHloRewrite(kHlo, CudnnScaledDotRewriter(), std::nullopt);
+}
+
+TEST(CudnnScaledDotHelperTest, IsAvailable) {
+  se::DeviceDescription blackwell = TestGpuDeviceInfo::B200SXMDeviceInfo();
+  blackwell.set_dnn_version({9, 10, 0});
+  EXPECT_TRUE(CudnnScaledDotHelper::IsAvailable(blackwell));
+
+  se::DeviceDescription old_cudnn = blackwell;
+  old_cudnn.set_dnn_version({9, 9, 0});
+  EXPECT_FALSE(CudnnScaledDotHelper::IsAvailable(old_cudnn));
+
+  se::DeviceDescription hopper = TestGpuDeviceInfo::H100SXMDeviceInfo();
+  hopper.set_dnn_version({9, 10, 0});
+  EXPECT_FALSE(CudnnScaledDotHelper::IsAvailable(hopper));
+
+  for (se::CudaComputeCapability cc :
+       {se::CudaComputeCapability(10, 3), se::CudaComputeCapability(12, 0)}) {
+    se::DeviceDescription untested = blackwell;
+    untested.set_gpu_compute_capability(cc);
+    EXPECT_FALSE(CudnnScaledDotHelper::IsAvailable(untested)) << cc.ToString();
+  }
 }
 
 }  // namespace
