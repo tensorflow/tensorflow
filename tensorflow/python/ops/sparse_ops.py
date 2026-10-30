@@ -85,16 +85,14 @@ def _convert_to_sparse_tensors(sp_inputs):
       objects.
 
   Returns:
-    `sp_inputs` converted to `SparseTensor` objects.
+    A list of `SparseTensor` objects.
 
   Raises:
-    ValueError: if any item in `sp_inputs` is neither `SparseTensor` nor
-      `SparseTensorValue`.
+    TypeError: if `sp_inputs` is not a list or tuple, or if any element is not
+      a `SparseTensor` or `SparseTensorValue`.
   """
-  if isinstance(sp_inputs, list):
+  if isinstance(sp_inputs, (list, tuple)):
     return [_convert_to_sparse_tensor(sp_input) for sp_input in sp_inputs]
-  if isinstance(sp_inputs, tuple):
-    return (_convert_to_sparse_tensor(sp_input) for sp_input in sp_inputs)
   raise TypeError("Inputs must be a list or tuple.")
 
 
@@ -385,7 +383,8 @@ def sparse_concat(axis,
     A `SparseTensor` with the concatenated output.
 
   Raises:
-    TypeError: If `sp_inputs` is not a list of `SparseTensor`.
+    TypeError: If `sp_inputs` is not a list or tuple of `SparseTensor`.
+    ValueError: If `sp_inputs` is empty.
   """
   expand_nonconcat_dim = deprecation.deprecated_argument_lookup(
       "expand_nonconcat_dims", expand_nonconcat_dims,
@@ -400,6 +399,9 @@ def sparse_concat(axis,
 @tf_export("sparse.concat", v1=[])
 def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  # pylint: disable=missing-docstring
   sp_inputs = _convert_to_sparse_tensors(sp_inputs)
+
+  if not sp_inputs:
+    raise ValueError("sp_inputs must not be empty.")
 
   if len(sp_inputs) == 1:  # Degenerate case of one tensor.
     return sp_inputs[0]

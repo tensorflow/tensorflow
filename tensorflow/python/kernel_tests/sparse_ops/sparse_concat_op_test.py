@@ -573,5 +573,86 @@ class SparseConcatTest(test.TestCase):
       self.evaluate(sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
 
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConcatTupleInputs(self):
+    sp1 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 1]], values=[1, 2], dense_shape=[2, 2]
+    )
+    sp2 = sparse_tensor.SparseTensor(
+        indices=[[0, 1]], values=[3], dense_shape=[2, 2]
+    )
+    # Concat along axis 0 with tuple of SparseTensors
+    res0 = sparse_ops.sparse_concat(axis=0, sp_inputs=(sp1, sp2))
+    self.assertAllEqual(
+        self.evaluate(res0.indices), [[0, 0], [1, 1], [2, 1]]
+    )
+    self.assertAllEqual(self.evaluate(res0.values), [1, 2, 3])
+    self.assertAllEqual(self.evaluate(res0.dense_shape), [4, 2])
+
+    # Concat along axis 1 with tuple of SparseTensors
+    res1 = sparse_ops.sparse_concat(axis=1, sp_inputs=(sp1, sp2))
+    self.assertAllEqual(
+        self.evaluate(res1.indices), [[0, 0], [0, 3], [1, 1]]
+    )
+    self.assertAllEqual(self.evaluate(res1.values), [1, 3, 2])
+    self.assertAllEqual(self.evaluate(res1.dense_shape), [2, 4])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcatTupleWithExpandNonConcatDims(self):
+    sp1 = sparse_tensor.SparseTensor(
+        indices=[[0, 1]], values=[1.0], dense_shape=[2, 3]
+    )
+    sp2 = sparse_tensor.SparseTensor(
+        indices=[[1, 0]], values=[2.0], dense_shape=[3, 4]
+    )
+    res = sparse_ops.sparse_concat(
+        axis=0, sp_inputs=(sp1, sp2), expand_nonconcat_dim=True
+    )
+    self.assertAllEqual(self.evaluate(res.dense_shape), [5, 4])
+    self.assertAllEqual(self.evaluate(res.values), [1.0, 2.0])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcatSingleTupleInput(self):
+    sp1 = sparse_tensor.SparseTensor(
+        indices=[[0, 0]], values=[5], dense_shape=[1, 1]
+    )
+    res = sparse_ops.sparse_concat(axis=0, sp_inputs=(sp1,))
+    self.assertAllEqual(self.evaluate(res.indices), sp1.indices)
+    self.assertAllEqual(self.evaluate(res.values), sp1.values)
+    self.assertAllEqual(self.evaluate(res.dense_shape), sp1.dense_shape)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcatTupleSparseTensorValue(self):
+    spv1 = sparse_tensor.SparseTensorValue(
+        np.array([[0, 0]], dtype=np.int64),
+        np.array([10], dtype=np.int32),
+        np.array([1, 2], dtype=np.int64),
+    )
+    spv2 = sparse_tensor.SparseTensorValue(
+        np.array([[0, 1]], dtype=np.int64),
+        np.array([20], dtype=np.int32),
+        np.array([1, 2], dtype=np.int64),
+    )
+    res = sparse_ops.sparse_concat(axis=0, sp_inputs=(spv1, spv2))
+    self.assertAllEqual(self.evaluate(res.dense_shape), [2, 2])
+    self.assertAllEqual(self.evaluate(res.values), [10, 20])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcatEmptyInputsRaises(self):
+    with self.assertRaisesRegex(ValueError, "sp_inputs must not be empty"):
+      sparse_ops.sparse_concat(axis=0, sp_inputs=[])
+    with self.assertRaisesRegex(ValueError, "sp_inputs must not be empty"):
+      sparse_ops.sparse_concat(axis=0, sp_inputs=())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcatInvalidInputsRaises(self):
+    sp1 = sparse_tensor.SparseTensor(
+        indices=[[0, 0]], values=[1], dense_shape=[1, 1]
+    )
+    with self.assertRaisesRegex(TypeError, "Inputs must be a list or tuple"):
+      sparse_ops.sparse_concat(axis=0, sp_inputs=sp1)
+    with self.assertRaisesRegex(TypeError, "Input must be a SparseTensor"):
+      sparse_ops.sparse_concat(axis=0, sp_inputs=[sp1, "invalid"])
+
 if __name__ == "__main__":
   test.main()
