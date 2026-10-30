@@ -16,19 +16,15 @@ limitations under the License.
 #include <array>
 #include <numeric>
 
-#include "absl/base/casts.h"
-#include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/pjrt/maybe_owning_mlir_module.h"
-#include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -37,15 +33,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "absl/types/span.h"
+#include "mlir/Dialect/Func/IR/FuncDialect.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -54,12 +53,16 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_execute_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/strided_gather.h"
@@ -75,10 +78,14 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 namespace {
@@ -2275,6 +2282,196 @@ TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceInvalidArgument) {
     EXPECT_THAT(target_buffer->UpdateSlice(valid_gather, slice_buffer.get()),
                 ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   }
+}
+
+class CountingThreadPool : public Eigen::ThreadPoolInterface {
+ public:
+  explicit CountingThreadPool(int num_threads)
+      : pool_(tsl::Env::Default(), "CountingPool", num_threads) {}
+
+  void Schedule(std::function<void()> fn) override {
+    schedule_count_.fetch_add(1, std::memory_order_relaxed);
+    pool_.AsEigenThreadPool()->Schedule(std::move(fn));
+  }
+
+  void ScheduleWithHint(std::function<void()> fn, int start, int end) override {
+    schedule_count_.fetch_add(1, std::memory_order_relaxed);
+    pool_.AsEigenThreadPool()->ScheduleWithHint(std::move(fn), start, end);
+  }
+
+  void Cancel() override { pool_.AsEigenThreadPool()->Cancel(); }
+
+  int NumThreads() const override {
+    return pool_.AsEigenThreadPool()->NumThreads();
+  }
+
+  int CurrentThreadId() const override {
+    return pool_.AsEigenThreadPool()->CurrentThreadId();
+  }
+
+  int schedule_count() const {
+    return schedule_count_.load(std::memory_order_relaxed);
+  }
+
+ private:
+  tsl::thread::ThreadPool pool_;
+  std::atomic<int> schedule_count_{0};
+};
+
+TEST(PjRtCpuClientTest, CustomIntraOpThreadPoolInClientOptions) {
+  static constexpr char kProgram[] = R"hlo(
+HloModule ParallelElementwise
+ENTRY main {
+  p0 = f32[65536] parameter(0)
+  m1 = f32[65536] multiply(p0, p0)
+  m2 = f32[65536] multiply(m1, p0)
+  m3 = f32[65536] multiply(m2, p0)
+  m4 = f32[65536] multiply(m3, p0)
+  m5 = f32[65536] multiply(m4, p0)
+  m6 = f32[65536] multiply(m5, p0)
+  m7 = f32[65536] multiply(m6, p0)
+  m8 = f32[65536] multiply(m7, p0)
+  ROOT m9 = f32[65536] add(m8, p0)
+}
+)hlo";
+
+  CountingThreadPool custom_pool(4);
+  Eigen::ThreadPoolDevice custom_device(&custom_pool, custom_pool.NumThreads());
+
+  CpuClientOptions options;
+  options.asynchronous = false;
+  options.intra_op_device = &custom_device;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetXlaPjrtCpuClient(options));
+
+  auto* raw_client = absl::down_cast<PjRtCpuRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  EXPECT_EQ(raw_client->eigen_intraop_device(), &custom_device);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {65536});
+  std::vector<float> input_data(65536, 1.0f);
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> input_buffer,
+      client->BufferFromHostBuffer(
+          input_data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          memory_space, /*device_layout=*/nullptr));
+
+  EXPECT_EQ(custom_pool.schedule_count(), 0);
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+      executable->Execute({{input_buffer.get()}}, /*options=*/{}));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       result[0][0]->ToLiteral().Await());
+  EXPECT_GT(custom_pool.schedule_count(), 0);
+  EXPECT_FLOAT_EQ(out_literal->Get<float>({0}), 2.0f);
+}
+
+TEST(PjRtCpuClientTest, CustomIntraOpThreadPoolInExecuteContext) {
+  static constexpr char kProgram[] = R"hlo(
+HloModule ParallelElementwise
+ENTRY main {
+  p0 = f32[65536] parameter(0)
+  m1 = f32[65536] multiply(p0, p0)
+  m2 = f32[65536] multiply(m1, p0)
+  m3 = f32[65536] multiply(m2, p0)
+  m4 = f32[65536] multiply(m3, p0)
+  m5 = f32[65536] multiply(m4, p0)
+  m6 = f32[65536] multiply(m5, p0)
+  m7 = f32[65536] multiply(m6, p0)
+  m8 = f32[65536] multiply(m7, p0)
+  ROOT m9 = f32[65536] add(m8, p0)
+}
+)hlo";
+
+  CountingThreadPool client_pool(4);
+  Eigen::ThreadPoolDevice client_device(&client_pool, client_pool.NumThreads());
+  CountingThreadPool override_pool(4);
+  Eigen::ThreadPoolDevice override_device(&override_pool,
+                                          override_pool.NumThreads());
+
+  CpuClientOptions options;
+  options.asynchronous = false;
+  options.intra_op_device = &client_device;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetXlaPjrtCpuClient(options));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {65536});
+  std::vector<float> input_data(65536, 1.0f);
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> input_buffer,
+      client->BufferFromHostBuffer(
+          input_data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          memory_space, /*device_layout=*/nullptr));
+
+  // Execute with an override intra-op thread pool in CpuExecuteContext.
+  CpuExecuteContext execute_context;
+  execute_context.set_intra_op_thread_pool(&override_device);
+  ExecuteOptions execute_options;
+  execute_options.context = &execute_context;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> override_result,
+      executable->Execute({{input_buffer.get()}}, execute_options));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> override_literal,
+                       override_result[0][0]->ToLiteral().Await());
+  EXPECT_GT(override_pool.schedule_count(), 0);
+  EXPECT_EQ(client_pool.schedule_count(), 0);
+  EXPECT_FLOAT_EQ(override_literal->Get<float>({0}), 2.0f);
+
+  // Execute with an unset intra-op thread pool in CpuExecuteContext; execution
+  // should fall back to the client's intra-op device.
+  int override_count_before = override_pool.schedule_count();
+  CpuExecuteContext empty_context;
+  execute_options.context = &empty_context;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> fallback_result,
+      executable->Execute({{input_buffer.get()}}, execute_options));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> fallback_literal,
+                       fallback_result[0][0]->ToLiteral().Await());
+  EXPECT_EQ(override_pool.schedule_count(), override_count_before);
+  EXPECT_GT(client_pool.schedule_count(), 0);
+  EXPECT_FLOAT_EQ(fallback_literal->Get<float>({0}), 2.0f);
+
+  // Execute with a single-threaded Eigen::ThreadPoolDevice (getPool() ==
+  // nullptr); execution should run inline without dereferencing a null pool.
+  int client_count_before = client_pool.schedule_count();
+  Eigen::ThreadPoolDevice single_thread_device(/*pool=*/nullptr,
+                                               /*num_cores=*/1);
+  CpuExecuteContext single_thread_context;
+  single_thread_context.set_intra_op_thread_pool(&single_thread_device);
+  execute_options.context = &single_thread_context;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> single_result,
+      executable->Execute({{input_buffer.get()}}, execute_options));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> single_literal,
+                       single_result[0][0]->ToLiteral().Await());
+  EXPECT_EQ(override_pool.schedule_count(), override_count_before);
+  EXPECT_EQ(client_pool.schedule_count(), client_count_before);
+  EXPECT_FLOAT_EQ(single_literal->Get<float>({0}), 2.0f);
 }
 
 }  // namespace
