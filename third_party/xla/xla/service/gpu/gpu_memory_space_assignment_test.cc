@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -526,10 +527,12 @@ TEST(ParseIndexMemorySpacePairsTest, InvalidMemorySpace) {
 
 // Helper to find the HloValue color for a given instruction name.
 static int FindColorByName(const HloAliasAnalysis& alias_analysis,
-                           absl::string_view name) {
+                           absl::string_view name,
+                           const ShapeIndex& index = {}) {
   for (const auto& buffer : alias_analysis.buffers()) {
     for (const HloValue* value : buffer.values()) {
-      if (value->instruction()->name() == name) {
+      if (value->instruction()->name() == name &&
+          value->defining_index() == index) {
         return value->color();
       }
     }
@@ -631,6 +634,130 @@ TEST_F(GpuMemorySpaceAssignmentTest, CustomCallTupleResultMemorySpace) {
             << "Tuple element " << idx[0] << " should have color kCollective";
       }
     }
+  }
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       DynamicSliceFusionOperandAndResultMemorySpaces) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m
+
+    fused {
+      p0 = f32[1024]{0} parameter(0)
+      p1 = f32[1024]{0} parameter(1)
+      ROOT call = f32[1024]{0} custom-call(p0, p1),
+        custom_call_target="my_custom_call"
+    }
+
+    ENTRY main {
+      input = f32[1024]{0} parameter(0)
+      weights = f32[1024]{0} parameter(1)
+      ROOT fusion = f32[1024]{0} fusion(input, weights), kind=kCustom, calls=fused,
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_slice_fusion"}}},
+        frontend_attributes={operands_memory_spaces="{0:7}", results_memory_spaces="{0:7}"}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  ASSERT_OK(CreateColorer(module->config().debug_options())(
+      alias_analysis.get(), ordering));
+
+  EXPECT_EQ(FindColorByName(*alias_analysis, "input"),
+            static_cast<int>(MemorySpaceColor::kCollective));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "weights"),
+            static_cast<int>(MemorySpaceColor::kDefault));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "fusion"),
+            static_cast<int>(MemorySpaceColor::kCollective));
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  const DebugOptions& options = module->config().debug_options();
+  EXPECT_TRUE(RequiresCollectiveInput(HloUse(fusion, 0), options));
+  EXPECT_FALSE(RequiresCollectiveInput(HloUse(fusion, 1), options));
+  EXPECT_TRUE(RequiresCollectiveOutput(
+      alias_analysis->dataflow_analysis().GetUniqueValueAt(fusion, {}),
+      options));
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest,
+       DynamicSliceFusionTupleResultMemorySpaces) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m
+
+    fused {
+      ROOT call = (f32[1024]{0}, f32[512]{0}) custom-call(),
+        custom_call_target="my_custom_call"
+    }
+
+    ENTRY main {
+      ROOT fusion = (f32[1024]{0}, f32[512]{0}) fusion(), kind=kCustom, calls=fused,
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_slice_fusion"}}},
+        frontend_attributes={results_memory_spaces="{1:7}"}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
+  AliasInfo alias_info;
+  ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info));
+  DependencyHloOrdering ordering(module.get());
+  ASSERT_OK(CreateColorer(module->config().debug_options())(
+      alias_analysis.get(), ordering));
+
+  EXPECT_EQ(FindColorByName(*alias_analysis, "fusion"),
+            static_cast<int>(MemorySpaceColor::kDefault));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "fusion", {0}),
+            static_cast<int>(MemorySpaceColor::kDefault));
+  EXPECT_EQ(FindColorByName(*alias_analysis, "fusion", {1}),
+            static_cast<int>(MemorySpaceColor::kCollective));
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest, UnrelatedFusionMemorySpacesIgnored) {
+  constexpr absl::string_view kFusionConfigs[] = {
+      "kind=kLoop",
+      "kind=kCustom",
+      R"(kind=kCustom, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"unrelated_fusion"}}})",
+  };
+  for (absl::string_view fusion_config : kFusionConfigs) {
+    SCOPED_TRACE(fusion_config);
+    std::string hlo = absl::StrCat(R"(
+      HloModule m
+
+      fused {
+        p = f32[1024]{0} parameter(0)
+        ROOT neg = f32[1024]{0} negate(p)
+      }
+
+      ENTRY main {
+        input = f32[1024]{0} parameter(0)
+        ROOT fusion = f32[1024]{0} fusion(input), calls=fused,
+    )",
+                                   fusion_config, R"(,
+          frontend_attributes={operands_memory_spaces="{0:7}", results_memory_spaces="{0:7}"}
+      }
+    )");
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+    AliasInfo alias_info;
+    ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                         HloAliasAnalysis::Run(module.get(), &alias_info));
+    DependencyHloOrdering ordering(module.get());
+    ASSERT_OK(CreateColorer(module->config().debug_options())(
+        alias_analysis.get(), ordering));
+
+    EXPECT_EQ(FindColorByName(*alias_analysis, "input"),
+              static_cast<int>(MemorySpaceColor::kDefault));
+    EXPECT_EQ(FindColorByName(*alias_analysis, "fusion"),
+              static_cast<int>(MemorySpaceColor::kDefault));
+
+    HloInstruction* fusion = module->entry_computation()->root_instruction();
+    const DebugOptions& options = module->config().debug_options();
+    EXPECT_FALSE(RequiresCollectiveInput(HloUse(fusion, 0), options));
+    EXPECT_FALSE(RequiresCollectiveOutput(
+        alias_analysis->dataflow_analysis().GetUniqueValueAt(fusion, {}),
+        options));
   }
 }
 

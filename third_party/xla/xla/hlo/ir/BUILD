@@ -68,7 +68,7 @@ cc_library(
     deps = [
         ":backend_config",
         ":hlo_payload_deduplicator",
-        ":hlo_sharding",
+        ":hlo_sharding",  # keep: provides implementations for re-exported hlo_sharding.h.
         ":mesh_and_axis",
         ":named_sharding",
         ":ptrvec",
@@ -392,9 +392,11 @@ cc_library(
         ":hlo",
         "//xla:comparison_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -408,6 +410,7 @@ xla_cc_test(
         "//xla:comparison_util",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_query",
