@@ -1320,6 +1320,7 @@ void BatchResourceBase::ProcessFuncBatch(
   const CostMeasurement::Context batching_context{/*is_per_query=*/false};
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements =
       CreateCostMeasurements(batching_context);
+  const absl::Time batch_start_time = absl::FromUnixNanos(EnvTime::NowNanos());
 
   auto& last_task = batch->task(batch->num_tasks() - 1);
   OpKernelContext* last_task_context = last_task.context;
@@ -1336,12 +1337,14 @@ void BatchResourceBase::ProcessFuncBatch(
     if (cleanup_done) {
       return;
     }
+    const absl::Duration batch_latency =
+        absl::FromUnixNanos(EnvTime::NowNanos()) - batch_start_time;
     // TODO(b/316379576): Update this to take the unbatch task cost into
     // consideration when excluding the wasted cost and propagate cost to the
     // unbatched tasks.
     SplitBatchCostsAndRecordMetrics(
         /* model_name= */ model_name, /* op_name= */ op_name,
-        batch_cost_measurements, processed_size, *batch);
+        batch_cost_measurements, processed_size, *batch, batch_latency);
     // Clear the measurements before unblocking the batch task, as measurements
     // are associated with the task's thread context.
     batch_cost_measurements.clear();
@@ -1425,6 +1428,7 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   const CostMeasurement::Context batching_context{/*is_per_query=*/false};
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements =
       CreateCostMeasurements(batching_context);
+  const absl::Time batch_start_time = absl::FromUnixNanos(EnvTime::NowNanos());
 
   int64_t processed_size = batch->size();
 
@@ -1434,9 +1438,11 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   const std::string& op_name = last_task_context->op_kernel().name();
 
   auto batch_cost_cleanup = gtl::MakeCleanup([&] {
+    const absl::Duration batch_latency =
+        absl::FromUnixNanos(EnvTime::NowNanos()) - batch_start_time;
     SplitBatchCostsAndRecordMetrics(
         /* model_name= */ model_name, /* op_name= */ op_name,
-        batch_cost_measurements, processed_size, *batch);
+        batch_cost_measurements, processed_size, *batch, batch_latency);
   });
 
   const absl::Status validate_status = ValidateBatch(*batch);
@@ -1597,7 +1603,8 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
     const std::string& model_name, const std::string& op_name,
     const std::vector<std::unique_ptr<CostMeasurement>>&
         batch_cost_measurements,
-    const int64_t processed_size, BatchT& batch) {
+    const int64_t processed_size, BatchT& batch,
+    const absl::Duration batch_latency) {
   absl::flat_hash_map<std::string, absl::Duration> batch_costs;
   // 1. Split the batch costs to each task.
   for (const auto& batch_cost_measurement : batch_cost_measurements) {
@@ -1633,6 +1640,7 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
       ModelBatchStats& model_stats = GlobalBatchStatsRegistry().model(
           /* model_name= */ model_name, /* op_name= */ op_name);
       model_stats.batch_size(processed_size).tpu_cost().Register(total_cost);
+      model_stats.tpu_cost().Register(total_cost);
       // batch.size() is the size of the original batch before padding.
       model_stats.RegisterProcessedSize(batch.size());
     }
@@ -1654,6 +1662,15 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
           {{absl::StrCat(cost_type, kWithSmearSuffix), cost_with_smear},
            {absl::StrCat(cost_type, kNoSmearSuffix), cost_no_smear}});
     }
+  }
+  if (batch_latency > absl::ZeroDuration() && !batch.empty() &&
+      processed_size > 0) {
+    ModelBatchStats& model_stats = GlobalBatchStatsRegistry().model(
+        /* model_name= */ model_name, /* op_name= */ op_name);
+    model_stats.batch_size(processed_size)
+        .batch_latency()
+        .Register(batch_latency);
+    model_stats.batch_latency().Register(batch_latency);
   }
 
   // 2. Records the batch metrics in each task.

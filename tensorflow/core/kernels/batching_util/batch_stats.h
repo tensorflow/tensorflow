@@ -120,10 +120,14 @@ class CostTracker {
 // Thread-safe.
 class BatchSizeStats {
  public:
-  CostTracker& tpu_cost() { return tpu_cost_; };
+  CostTracker& tpu_cost() { return tpu_cost_; }
+  const CostTracker& tpu_cost() const { return tpu_cost_; }
+  CostTracker& batch_latency() { return batch_latency_; }
+  const CostTracker& batch_latency() const { return batch_latency_; }
 
  private:
   CostTracker tpu_cost_;
+  CostTracker batch_latency_;
 };
 
 // Tracks statistics for a particular model.
@@ -144,6 +148,11 @@ class ModelBatchStats {
     mutex_lock l(mu_);
     return batch_size_stats_by_batch_size_[batch_size];
   }
+
+  CostTracker& tpu_cost() { return tpu_cost_; }
+  const CostTracker& tpu_cost() const { return tpu_cost_; }
+  CostTracker& batch_latency() { return batch_latency_; }
+  const CostTracker& batch_latency() const { return batch_latency_; }
 
   // Registers that the model server has processed a batch of size `size`
   // non-padding tasks for this model, updating the current cumulative
@@ -212,6 +221,11 @@ class ModelBatchStats {
   // The timeout in microseconds for this model (after which the current batch
   // is sent to be processed by the TPU).
   std::atomic<int64_t> batch_timeout_micros_ = kBatchTimeoutMicrosUnknown;
+
+  // Model-level moving average of TPU execution duration and end-to-end
+  // ProcessBatch latency.
+  CostTracker tpu_cost_;
+  CostTracker batch_latency_;
 };
 
 // Tracks batch statistics for all models.

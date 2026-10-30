@@ -1259,14 +1259,33 @@ TEST(SplitBatchCostsAndRecordMetricsTest, UpdatesGlobalBatchStats) {
 
   BatchResourceBase::SplitBatchCostsAndRecordMetrics(
       /* model_name= */ kModelName, /* op_name= */ "op_name",
-      batch_cost_measurements, /* processed_size= */ 17, batch);
+      batch_cost_measurements, /* processed_size= */ 17, batch,
+      /* batch_latency= */ absl::Hours(1110));
 
-  EXPECT_EQ(GlobalBatchStatsRegistry()
-                .model(/* model_name= */ kModelName, /* op_name= */ "op_name")
-                .batch_size(17)
-                .tpu_cost()
-                .mean(),
-            absl::Hours(555));
+  ModelBatchStats& model_stats = GlobalBatchStatsRegistry().model(
+      /* model_name= */ kModelName, /* op_name= */ "op_name");
+  EXPECT_EQ(model_stats.batch_size(17).tpu_cost().mean(), absl::Hours(555));
+  EXPECT_EQ(model_stats.batch_size(17).batch_latency().mean(),
+            absl::Hours(1110));
+  EXPECT_EQ(model_stats.tpu_cost().mean(), absl::Hours(555));
+  EXPECT_EQ(model_stats.batch_latency().mean(), absl::Hours(1110));
+
+  // Verify that batch_latency is also recorded when no TPU cost measurements
+  // are present.
+  std::vector<std::unique_ptr<CostMeasurement>> empty_cost_measurements;
+  const char kNoTpuCostModelName[] = "test_batch_latency_without_tpu_cost";
+  BatchResourceBase::SplitBatchCostsAndRecordMetrics(
+      /* model_name= */ kNoTpuCostModelName, /* op_name= */ "op_name",
+      empty_cost_measurements, /* processed_size= */ 8, batch,
+      /* batch_latency= */ absl::Milliseconds(42));
+
+  ModelBatchStats& no_tpu_model_stats = GlobalBatchStatsRegistry().model(
+      /* model_name= */ kNoTpuCostModelName, /* op_name= */ "op_name");
+  EXPECT_FALSE(no_tpu_model_stats.batch_size(8).tpu_cost().mean().has_value());
+  EXPECT_FALSE(no_tpu_model_stats.tpu_cost().mean().has_value());
+  EXPECT_EQ(no_tpu_model_stats.batch_size(8).batch_latency().mean(),
+            absl::Milliseconds(42));
+  EXPECT_EQ(no_tpu_model_stats.batch_latency().mean(), absl::Milliseconds(42));
 }
 
 TEST(SplitBatchCostsAndRecordMetricsTest, GlobalBatchStatsProcessedSize) {
