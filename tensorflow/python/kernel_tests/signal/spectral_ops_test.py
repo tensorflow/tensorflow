@@ -38,13 +38,7 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
   def _np_hann_periodic_window(length):
     if length == 1:
       return np.ones(1)
-    odd = length % 2
-    if not odd:
-      length += 1
-    window = 0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
-    if not odd:
-      window = window[:-1]
-    return window
+    return 0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(length) / length)
 
   @staticmethod
   def _np_frame(data, window_length, hop_length):

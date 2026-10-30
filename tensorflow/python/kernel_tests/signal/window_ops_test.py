@@ -45,7 +45,10 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
   """A simple implementation of a raised cosine window that matches SciPy.
 
   https://en.wikipedia.org/wiki/Window_function#Hann_window
-  https://github.com/scipy/scipy/blob/v0.14.0/scipy/signal/windows.py#L615
+
+  Like `scipy.signal.windows.hann(length, sym=symmetric)`, a periodic window
+  is the symmetric window of length `length + 1` with its last point dropped,
+  for both even and odd `length`.
 
   Args:
     length: The window length.
@@ -58,11 +61,10 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
   """
   if length == 1:
     return np.ones(1)
-  odd = length % 2
-  if not symmetric and not odd:
+  if not symmetric:
     length += 1
   window = a - b * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
-  if not symmetric and not odd:
+  if not symmetric:
     window = window[:-1]
   return window
 
@@ -246,6 +248,33 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     self._compare_window_fns(
         functools.partial(_scipy_raised_cosine, a=0.54, b=0.46),
         window_ops.hamming_window, window_length, periodic, tf_dtype_tol)
+
+  @parameterized.parameters(
+      itertools.product(
+          (window_ops.hann_window, window_ops.hamming_window),
+          (3, 5, 9, 31),
+          (False, True)))
+  def test_periodic_window_odd_length(self, window_fn, window_length,
+                                      dynamic_length):
+    """A periodic window is a truncated symmetric window, even for odd N."""
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)]
+    )
+    def periodic_window(length):
+      return window_fn(length, periodic=True, dtype=dtypes.float64)
+
+    if dynamic_length:
+      periodic = periodic_window(window_length)
+    else:
+      periodic = window_fn(window_length, periodic=True, dtype=dtypes.float64)
+    symmetric = window_fn(
+        window_length + 1, periodic=False, dtype=dtypes.float64)
+    self.assertAllClose(self.evaluate(symmetric)[:-1],
+                        self.evaluate(periodic))
+    # The first point is the only zero of a periodic Hann window.
+    if window_fn is window_ops.hann_window:
+      self.assertAllGreater(self.evaluate(periodic)[1:], 0.0)
 
   @parameterized.parameters(
       itertools.product(
