@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -141,12 +142,18 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
   }
 
  private:
-  // Returns the size of the buffers used to read a file of `file_size` bytes.
-  // An input buffer larger than the file is never filled, and the output
-  // buffer of a compressed file only sets how much is inflated per step, so
-  // neither needs to exceed the file size.
+  // Returns the size in [1, INT_MAX] of the buffers used to read a file of
+  // `file_size` bytes. An input buffer larger than the file is never filled,
+  // and the output buffer of a compressed file only sets how much is inflated
+  // per step, so neither needs to exceed the file size. The size is at most
+  // INT_MAX, the `int` limit of `io::InputBuffer` and `io::ZlibInputStream`,
+  // and at least 1 byte, so a compressed stream can read a file that reports
+  // a size of 0.
   size_t ReadBufferSize(uint64_t file_size) const {
-    return std::min<uint64_t>(buffer_size_, file_size);
+    const uint64_t max_buffer = std::numeric_limits<int>::max();
+    const uint64_t capped = std::min<uint64_t>(
+        std::min<uint64_t>(buffer_size_, file_size), max_buffer);
+    return static_cast<size_t>(std::max<uint64_t>(1, capped));
   }
 
   class UncompressedIterator : public DatasetIterator<Dataset> {
