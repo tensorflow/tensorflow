@@ -2285,14 +2285,18 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           // and pass them to construct the async-wrapped computation.
           // Any mismatch between the actual operands and the expected shapes
           // in the wrapped computation will be caught by the verifier.
-          async_computation = CreateAsyncWrappedComputation(
-              *async_wrapped_opcode, /*result_shape=*/shape->tuple_shapes(1),
-              /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes(), attrs,
-              allow_attributes);
-
-          if (!async_computation) {
+          HloComputation* async_wrapped_computation =
+              CreateAsyncWrappedComputation(
+                  *async_wrapped_opcode,
+                  /*result_shape=*/shape->tuple_shapes(1),
+                  /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes(),
+                  attrs, allow_attributes);
+          // Check the raw pointer: storing it would engage the optional even
+          // when it is null.
+          if (async_wrapped_computation == nullptr) {
             return nullptr;
           }
+          async_computation = async_wrapped_computation;
         } else {
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
