@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -198,6 +200,21 @@ class NullWritableFile : public tensorflow::WritableFile {
   absl::Status Sync() override { return absl::OkStatus(); }
 };
 
+// Formats `message` with every zlib option, so the error names the bad value.
+absl::Status ZlibOptionsError(
+    absl::string_view message,
+    const tensorflow::io::ZlibCompressionOptions& zlib) {
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Invalid TFRecordWriter options for ZLIB/GZIP compression: ", message,
+      " (window_bits=", static_cast<int>(zlib.window_bits),
+      ", compression_level=", static_cast<int>(zlib.compression_level),
+      ", compression_method=", static_cast<int>(zlib.compression_method),
+      ", mem_level=", static_cast<int>(zlib.mem_level),
+      ", compression_strategy=", static_cast<int>(zlib.compression_strategy),
+      ", input_buffer_size=", zlib.input_buffer_size,
+      ", output_buffer_size=", zlib.output_buffer_size, ")"));
+}
+
 // RecordWriter aborts the process when its zlib stream fails to initialize.
 // Run the same ZlibOutputBuffer::Init() on a NullWritableFile first, so that
 // invalid options are returned as an error instead.
@@ -208,21 +225,26 @@ absl::Status CheckZlibOptions(
     return absl::OkStatus();
   }
   const tensorflow::io::ZlibCompressionOptions& zlib = options.zlib_options;
-  NullWritableFile null_file;
-  tensorflow::io::ZlibOutputBuffer buffer(&null_file, zlib.input_buffer_size,
-                                          zlib.output_buffer_size, zlib);
-  absl::Status status = buffer.Init();
-  if (!status.ok()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Invalid TFRecordWriter options for ZLIB/GZIP compression: ",
-        status.message(), " (window_bits=", static_cast<int>(zlib.window_bits),
-        ", compression_level=", static_cast<int>(zlib.compression_level),
-        ", compression_method=", static_cast<int>(zlib.compression_method),
-        ", mem_level=", static_cast<int>(zlib.mem_level),
-        ", compression_strategy=", static_cast<int>(zlib.compression_strategy),
-        ", input_buffer_size=", zlib.input_buffer_size,
-        ", output_buffer_size=", zlib.output_buffer_size, ")"));
+  // ZlibOutputBuffer takes int32_t sizes. Reject sizes that do not fit
+  // instead of letting them wrap.
+  constexpr int64_t kMaxSize = std::numeric_limits<int32_t>::max();
+  if (zlib.input_buffer_size < 0 || zlib.input_buffer_size > kMaxSize ||
+      zlib.output_buffer_size < 0 || zlib.output_buffer_size > kMaxSize) {
+    return ZlibOptionsError(
+        absl::StrCat("buffer sizes must be between 0 and ", kMaxSize), zlib);
   }
+  // Init() reads the output size only to reject values <= 1 and does not
+  // touch the buffers, so small probe buffers give the same result.
+  // Do not call Close() when Init() fails: for output_buffer_size <= 1 the
+  // zlib stream was never set up, and the destructor's data-loss warning is
+  // expected there.
+  NullWritableFile null_file;
+  tensorflow::io::ZlibOutputBuffer buffer(
+      &null_file, /*input_buffer_bytes=*/0,
+      static_cast<int32_t>(std::min<int64_t>(zlib.output_buffer_size, 64)),
+      zlib);
+  absl::Status status = buffer.Init();
+  if (!status.ok()) return ZlibOptionsError(status.message(), zlib);
   return buffer.Close();
 }
 

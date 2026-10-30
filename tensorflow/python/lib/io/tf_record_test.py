@@ -302,6 +302,12 @@ class TFRecordWriterTest(TFCompressionTestCase):
         ("ZLIB", {"compression_strategy": -2}, r"compression_strategy=-2,"),
         ("GZIP", {"window_bits": 7}, r"\(window_bits=7,"),
         ("ZLIB", {"output_buffer_size": 1}, r"output_buffer_size=1\)"),
+        ("ZLIB", {"input_buffer_size": -1},
+         r"between 0 and 2147483647 .*input_buffer_size=-1,"),
+        ("ZLIB", {"input_buffer_size": 2**31},
+         r"between 0 and 2147483647 .*input_buffer_size=2147483648,"),
+        ("ZLIB", {"output_buffer_size": 2**32 + 2},
+         r"between 0 and 2147483647 .*output_buffer_size=4294967298\)"),
     ]
     for i, (compression_type, kwargs, regex) in enumerate(tests):
       options = tf_record.TFRecordOptions(
