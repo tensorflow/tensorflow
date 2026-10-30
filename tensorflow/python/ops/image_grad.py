@@ -140,14 +140,18 @@ def _ScaleAndTranslateGrad(op, grad):
     The gradients w.r.t. the input.
   """
 
+  image = op.inputs[0]
+  # ScaleAndTranslateGrad only has a float32 kernel and only reads the shape of
+  # the original image, while the forward op also accepts half, bfloat16 and
+  # double images. Run it in float32 and return the input's dtype.
   grad0 = gen_image_ops.scale_and_translate_grad(
       grad,
-      op.inputs[0],
+      math_ops.cast(image, grad.dtype),
       op.inputs[2],
       op.inputs[3],
       kernel_type=op.get_attr("kernel_type"),
       antialias=op.get_attr("antialias"))
-  return [grad0, None, None, None]
+  return [math_ops.cast(grad0, image.dtype), None, None, None]
 
 
 @ops.RegisterGradient("ResizeBicubic")
@@ -162,13 +166,19 @@ def _ResizeBicubicGrad(op: ops.Operation, grad):
     The gradients w.r.t. the input.
   """
   allowed_types = [dtypes.float32, dtypes.float64]
+  image = op.inputs[0]
   grad0 = None
-  if op.inputs[0].dtype in allowed_types:
+  if image.dtype.is_floating:
+    # ResizeBicubicGrad only takes float32 and float64 images, so compute the
+    # gradient for half and bfloat16 images in float32.
+    if image.dtype not in allowed_types:
+      image = math_ops.cast(image, dtypes.float32)
     grad0 = gen_image_ops.resize_bicubic_grad(
         grad,
-        op.inputs[0],
+        image,
         align_corners=op.get_attr("align_corners"),
         half_pixel_centers=op.get_attr("half_pixel_centers"))
+    grad0 = math_ops.cast(grad0, op.inputs[0].dtype)
   return [grad0, None]
 
 
