@@ -680,6 +680,127 @@ TEST(TensorProtoUtil, CompressTensorContentNonMultipleBytesRejected) {
   EXPECT_EQ(tensor_proto.float_val_size(), 0);
 }
 
+// Positive control: a matching repeated-field element count still compresses.
+TEST(TensorProtoUtil, CompressRepeatedFieldValidCountCompresses) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_INT8);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(65);
+  for (int i = 0; i < 65; ++i) {
+    tensor_proto.add_int_val(i + 1);
+  }
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor_proto.int_val_size(), 0);
+  EXPECT_EQ(tensor_proto.tensor_content().size(), 65 * sizeof(int8_t));
+  Tensor parsed;
+  ASSERT_TRUE(parsed.FromProto(tensor_proto));
+  EXPECT_EQ(parsed.flat<int8_t>()(0), 1);
+  EXPECT_EQ(parsed.flat<int8_t>()(64), 65);
+}
+
+TEST(TensorProtoUtil, CompressRepeatedFieldComplexValuesCompress) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_COMPLEX64);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(3);
+  for (float value : {1.0f, 2.0f, 3.0f, 4.0f, 3.0f, 4.0f}) {
+    tensor_proto.add_scomplex_val(value);
+  }
+  ASSERT_TRUE(tensor::CompressTensorProtoInPlace(0, 1.0f, &tensor_proto));
+  EXPECT_TRUE(tensor_proto.tensor_content().empty());
+  ASSERT_EQ(tensor_proto.scomplex_val_size(), 4);
+  EXPECT_EQ(tensor_proto.scomplex_val(0), 1.0f);
+  EXPECT_EQ(tensor_proto.scomplex_val(1), 2.0f);
+  EXPECT_EQ(tensor_proto.scomplex_val(2), 3.0f);
+  EXPECT_EQ(tensor_proto.scomplex_val(3), 4.0f);
+  Tensor parsed;
+  ASSERT_TRUE(parsed.FromProto(tensor_proto));
+  ASSERT_EQ(parsed.NumElements(), 3);
+  EXPECT_EQ(parsed.flat<complex64>()(0), complex64(1.0f, 2.0f));
+  EXPECT_EQ(parsed.flat<complex64>()(1), complex64(3.0f, 4.0f));
+  EXPECT_EQ(parsed.flat<complex64>()(2), complex64(3.0f, 4.0f));
+}
+
+TEST(TensorProtoUtil, CompressRepeatedFieldZeroElementsRejected) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_INT8);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(0);
+  tensor_proto.add_int_val(1);
+  tensor_proto.add_int_val(2);
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(0, 1.0f, &tensor_proto));
+  EXPECT_TRUE(tensor_proto.tensor_content().empty());
+  ASSERT_EQ(tensor_proto.int_val_size(), 2);
+  EXPECT_EQ(tensor_proto.int_val(0), 1);
+  EXPECT_EQ(tensor_proto.int_val(1), 2);
+}
+
+TEST(TensorProtoUtil, CompressRepeatedFieldExcessValuesRejected) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_FLOAT);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(65);
+  for (int i = 0; i < 65; ++i) {
+    tensor_proto.add_float_val(1.0f);
+  }
+  tensor_proto.add_float_val(2.0f);
+  for (int i = 66; i < 130; ++i) {
+    tensor_proto.add_float_val(3.0f);
+  }
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_TRUE(tensor_proto.tensor_content().empty());
+  ASSERT_EQ(tensor_proto.float_val_size(), 130);
+  EXPECT_EQ(tensor_proto.float_val(0), 1.0f);
+  EXPECT_EQ(tensor_proto.float_val(65), 2.0f);
+  EXPECT_EQ(tensor_proto.float_val(129), 3.0f);
+}
+
+TEST(TensorProtoUtil, CompressRepeatedFieldByteCountOverflowRejected) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_FLOAT);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size((int64_t{1} << 61) +
+                                                           1);
+  tensor_proto.add_float_val(1.0f);
+  tensor_proto.add_float_val(2.0f);
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_TRUE(tensor_proto.tensor_content().empty());
+  ASSERT_EQ(tensor_proto.float_val_size(), 2);
+  EXPECT_EQ(tensor_proto.float_val(0), 1.0f);
+  EXPECT_EQ(tensor_proto.float_val(1), 2.0f);
+}
+
+TEST(TensorProtoUtil, CompressRepeatedFieldZeroByteCountOverflowRejected) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_FLOAT);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size((int64_t{1} << 61) +
+                                                           1);
+  tensor_proto.add_float_val(0.0f);
+  tensor_proto.add_float_val(0.0f);
+  const auto before = tensor_proto.SerializeAsString();
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor_proto.SerializeAsString(), before);
+}
+
+TEST(TensorProtoUtil, CompressTensorProtoInvalidShapeRejected) {
+  TensorProto negative_dim_proto;
+  negative_dim_proto.set_dtype(DT_FLOAT);
+  negative_dim_proto.mutable_tensor_shape()->add_dim()->set_size(-1);
+  negative_dim_proto.add_float_val(1.0f);
+  EXPECT_FALSE(
+      tensor::CompressTensorProtoInPlace(1, 1.0f, &negative_dim_proto));
+  EXPECT_EQ(negative_dim_proto.tensor_shape().dim(0).size(), -1);
+  ASSERT_EQ(negative_dim_proto.float_val_size(), 1);
+  EXPECT_EQ(negative_dim_proto.float_val(0), 1.0f);
+
+  TensorProto overflow_shape_proto;
+  overflow_shape_proto.set_dtype(DT_FLOAT);
+  overflow_shape_proto.mutable_tensor_shape()->add_dim()->set_size(int64_t{1}
+                                                                   << 40);
+  overflow_shape_proto.mutable_tensor_shape()->add_dim()->set_size(int64_t{1}
+                                                                   << 40);
+  overflow_shape_proto.add_float_val(1.0f);
+  EXPECT_FALSE(
+      tensor::CompressTensorProtoInPlace(1, 1.0f, &overflow_shape_proto));
+  ASSERT_EQ(overflow_shape_proto.float_val_size(), 1);
+  EXPECT_EQ(overflow_shape_proto.float_val(0), 1.0f);
+}
+
 TEST(TensorProtoUtil, CompressTensorProtoNegatizeZero) {
   TensorProto tensor_proto;
   {
