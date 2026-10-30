@@ -2400,7 +2400,9 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
   // does -- we only care about operand dependencies -- so let's just do it
   // ourselves.
   std::vector<const HloInstruction*> postorder;
+  postorder.reserve(instruction_count());
   absl::flat_hash_map<const HloInstruction*, VisitState> visited;
+  visited.reserve(instruction_count());
   std::vector<const HloInstruction*> dfs_stack;
   for (const auto& instr : instructions()) {
     const HloInstruction* new_instr = replace(instr);
@@ -2435,14 +2437,16 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
   }
 
   std::vector<std::unique_ptr<HloInstruction>> instructions;
+  instructions.reserve(postorder.size() + extra_parameters.size());
   // First add the extra parameters to 'instructions'.
   for (const auto& instr : extra_parameters) {
     CHECK_EQ(instr->opcode(), HloOpcode::kParameter)
         << "Only parameter instructions are allowed in 'extra_parameters'";
     instructions.emplace_back(instr->Clone());
   }
+  HloInstruction::InstructionVector new_operands;
   for (const HloInstruction* instr : postorder) {
-    std::vector<HloInstruction*> new_operands;
+    new_operands.clear();
     for (HloInstruction* operand : instr->operands()) {
       auto replaced_operand = replace(operand);
       CHECK_NE(replaced_operand, nullptr)

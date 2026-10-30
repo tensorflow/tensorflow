@@ -3669,6 +3669,7 @@ absl::Status HloInstruction::Defuse() {
   // A map from fused instruction to its defused clone.
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       defused_instructions;
+  defused_instructions.reserve(fused_computation->instruction_count());
   // Initialize map to contain the fusion instruction parameters mapping
   // to the operands of the fusion instruction.
   for (int64_t i = 0; i < operand_count(); ++i) {
@@ -3681,13 +3682,13 @@ absl::Status HloInstruction::Defuse() {
   // TODO(b/68227302): Moving instruction to new computation rather than
   // cloning and deleting.
   HloInstruction* first_defused = nullptr;
+  InstructionVector new_operands;
   for (HloInstruction* fused_instruction :
        fused_computation->MakeInstructionPostOrder()) {
     if (fused_instruction->opcode() == HloOpcode::kParameter) {
       continue;
     }
-    std::vector<HloInstruction*> new_operands;
-    new_operands.reserve(fused_instruction->operand_count());
+    new_operands.clear();
     for (HloInstruction* operand : fused_instruction->operands()) {
       new_operands.push_back(defused_instructions.at(operand));
     }
