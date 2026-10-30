@@ -137,7 +137,6 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_opt_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -439,12 +438,7 @@ Future<ThunkSequence> ThunkEmitter::DispatchCustomCall(
     // TODO(slebedev): Remove this after June 15th 2025.
     return EmitTritonCustomCall(custom_call);
   }
-  if (hlo->custom_call_target() == kNopCustomCallTarget) {
-    return ThunkSequence::Empty();
-  }
-  if (hlo->custom_call_target() == kPinCustomCallTarget ||
-      hlo->custom_call_target() == kUnpinCustomCallTarget ||
-      hlo->custom_call_target() == kCreateBufferCustomCallTarget) {
+  if (EmitsNoThunks(*hlo)) {
     return ThunkSequence::Empty();
   }
   if (hlo->custom_call_target() == "GetRngSeed") {
@@ -2970,18 +2964,10 @@ Future<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kCopyDone:
       return EmitCopyDone(hlo);
 
-    // HLO module is already scheduled, so instructions for ordering
-    // are noops.
-    case HloOpcode::kAddDependency:
-    case HloOpcode::kAfterAll:
-    // We don't need to emit thunks for these operations because
-    // their semantics are encoded by buffers.
-    case HloOpcode::kBitcast:
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kParameter:
-    case HloOpcode::kTuple:
-      return ThunkSequence::Empty();
     default:
+      if (EmitsNoThunks(*hlo)) {
+        return ThunkSequence::Empty();
+      }
       return Internal("Unsupported instruction opcode: %s",
                       HloOpcodeString(hlo->opcode()));
   }
