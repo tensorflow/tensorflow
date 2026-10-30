@@ -1271,9 +1271,16 @@ def square(x):
   return _scalar(math_ops.square, x)
 
 
+# Sentinel for the optional `prepend`/`append` arguments of `diff`,
+# distinguishing an unset argument from any value, including `None`.
+_diff_no_value = object()
+
+
 @tf_export.tf_export('experimental.numpy.diff', v1=[])
 @np_utils.np_doc('diff')
-def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
+def diff(  # pylint: disable=missing-function-docstring
+    a, n=1, axis=-1, prepend=_diff_no_value, append=_diff_no_value
+):
   def f(a):
     # TODO(agarwal): transpose and reshape to N, H, 1 and do a 1D convolution
     # TODO(agarwal): avoid depending on static rank.
@@ -1293,6 +1300,40 @@ def diff(a, n=1, axis=-1):  # pylint: disable=missing-function-docstring
       raise ValueError(
           f'Argument `n` must be a non-negative integer. Received: n={n}'
       )
+    # NumPy converts and broadcasts `prepend`/`append` against `a` before
+    # computing the differences: a scalar is expanded to length 1 along
+    # `axis` and all other dimensions of `a`, and an array is concatenated
+    # as-is (raising for dimensions that do not match `a` except along
+    # `axis`). tf.concat requires a shared dtype, so both sides are
+    # promoted like NumPy's concatenate would.
+    for first, value in ((True, prepend), (False, append)):
+      if value is _diff_no_value:
+        continue
+      val = np_array_ops.asarray(value)
+      promoted = np_utils.result_type(a, val)
+      if promoted != a.dtype:
+        a = math_ops.cast(a, promoted)
+      if val.shape.rank == 0:
+        shape = array_ops.shape(a)
+        target_shape = array_ops.concat(
+            [shape[:axis_normalized], [1], shape[axis_normalized + 1 :]], 0
+        )
+        val = array_ops.broadcast_to(math_ops.cast(val, promoted), target_shape)
+      elif (
+          val.shape.rank is not None
+          and nd is not None
+          and a.shape.is_fully_defined()
+          and val.shape.is_fully_defined()
+      ):
+        for i in range(nd):
+          if i != axis_normalized and val.shape[i] != a.shape[i]:
+            # NumPy raises ValueError from its concatenate instead of
+            # letting the backend fail with InvalidArgumentError.
+            raise ValueError(
+                'all the input array dimensions except for the concatenation '
+                'axis must match exactly'
+            )
+      a = array_ops.concat(([val, a] if first else [a, val]), axis_normalized)
     slice1 = [slice(None)] * nd
     slice2 = [slice(None)] * nd
     slice1[axis] = slice(1, None)
