@@ -284,8 +284,8 @@ cc_library(
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:serdes_week_4_old_version_accessor",
+        "//xla/python/ifrt/ir/export:passes",
         "//xla/python/ifrt/ir/support:module_parsing",
-        "//xla/python/ifrt/ir/transforms:passes",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -431,111 +431,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-    ],
-)
-
-td_library(
-    name = "vifrt_td",
-    srcs = [
-        "vifrt_dialect.td",
-        "vifrt_interfaces.td",
-        "vifrt_ops.td",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@llvm-project//mlir:BuiltinDialectTdFiles",
-        "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:ShapeOpsTdFiles",
-    ],
-)
-
-gentbl_cc_library(
-    name = "vifrt_interfaces_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = {
-        "vifrt_attr_interfaces.h.inc": ["-gen-attr-interface-decls"],
-        "vifrt_attr_interfaces.cc.inc": ["-gen-attr-interface-defs"],
-        "vifrt_type_interfaces.h.inc": ["-gen-type-interface-decls"],
-        "vifrt_type_interfaces.cc.inc": ["-gen-type-interface-defs"],
-        "vifrt_op_interfaces.h.inc": ["-gen-op-interface-decls"],
-        "vifrt_op_interfaces.cc.inc": ["-gen-op-interface-defs"],
-    },
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "vifrt_interfaces.td",
-    test = True,
-    deps = [":vifrt_td"],
-)
-
-gentbl_cc_library(
-    name = "vifrt_dialect_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = {
-        "vifrt_dialect.h.inc": [
-            "-gen-dialect-decls",
-            "-dialect=vifrt",
-        ],
-        "vifrt_dialect.cc.inc": [
-            "-gen-dialect-defs",
-            "-dialect=vifrt",
-        ],
-        "vifrt_types.h.inc": [
-            "-gen-typedef-decls",
-            "--typedefs-dialect=vifrt",
-        ],
-        "vifrt_types.cc.inc": [
-            "-gen-typedef-defs",
-            "--typedefs-dialect=vifrt",
-        ],
-        "vifrt_attrs.h.inc": [
-            "-gen-attrdef-decls",
-            "--attrdefs-dialect=vifrt",
-        ],
-        "vifrt_attrs.cc.inc": [
-            "-gen-attrdef-defs",
-            "--attrdefs-dialect=vifrt",
-        ],
-    },
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "vifrt_dialect.td",
-    test = True,
-    deps = [":vifrt_td"],
-)
-
-gentbl_cc_library(
-    name = "vifrt_ops_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = {
-        "vifrt_ops.h.inc": ["-gen-op-decls"],
-        "vifrt_ops.cc.inc": ["-gen-op-defs"],
-    },
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "vifrt_ops.td",
-    test = True,
-    deps = [":vifrt_td"],
-)
-
-cc_library(
-    name = "vifrt",
-    srcs = [
-        "vifrt_bytecode.cc",
-        "vifrt_dialect.cc",
-    ],
-    hdrs = [
-        "vifrt_bytecode.h",
-        "vifrt_dialect.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":sharding_param",
-        ":version",
-        ":vifrt_dialect_inc_gen",
-        ":vifrt_interfaces_inc_gen",
-        ":vifrt_ops_inc_gen",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:BytecodeOpInterface",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
     ],
 )
 

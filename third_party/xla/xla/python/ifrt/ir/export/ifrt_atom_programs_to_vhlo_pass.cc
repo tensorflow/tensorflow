@@ -43,9 +43,9 @@ limitations under the License.
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/python/ifrt/ir/export/passes.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "tsl/platform/protobuf.h"
 

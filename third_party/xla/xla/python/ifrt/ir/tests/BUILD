@@ -48,6 +48,7 @@ xla_cc_binary(
         "//xla/python/ifrt/ir:atom_program_compiler",
         "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir/conversions/mpmd:lower_to_ifrt",
+        "//xla/python/ifrt/ir/export:passes",
         "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/python/ifrt/ir/transforms:passes",
         "//xla/tsl/concurrency:future",
@@ -68,33 +69,5 @@ xla_cc_binary(
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:platform_port",
-    ],
-)
-
-xla_cc_binary(
-    name = "ifrt-translate",
-    testonly = True,
-    srcs = ["ifrt-translate.cc"],
-    deps = [
-        "//xla/python/ifrt:serdes",
-        "//xla/python/ifrt:serdes_proto_cc",
-        "//xla/python/ifrt/ir",
-        "//xla/python/ifrt/ir:ifrt_ir_program",
-        "//xla/python/ifrt/ir:ifrt_ir_program_serdes",  # build_cleaner: keep
-        "//xla/python/ifrt/ir:version",
-        "//xla/python/ifrt/ir:vifrt",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-        "@llvm-project//mlir:TranslateLib",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
-        "@stablehlo//:register",
-        "@stablehlo//:version",
     ],
 )

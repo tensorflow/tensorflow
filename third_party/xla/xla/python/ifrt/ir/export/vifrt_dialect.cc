@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/ir/vifrt_dialect.h"
+#include "xla/python/ifrt/ir/export/vifrt_dialect.h"
 
 #include <cassert>
 
@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
-#include "xla/python/ifrt/ir/vifrt_bytecode.h"
+#include "xla/python/ifrt/ir/export/vifrt_bytecode.h"
 
 namespace xla {
 namespace ifrt {
@@ -153,17 +153,17 @@ mlir::ParseResult parseFunctionBody(mlir::OpAsmParser& parser,
 }
 
 // Attributes
-#include "xla/python/ifrt/ir/vifrt_attr_interfaces.cc.inc"
+#include "xla/python/ifrt/ir/export/vifrt_attr_interfaces.cc.inc"
 #define GET_ATTRDEF_CLASSES
-#include "xla/python/ifrt/ir/vifrt_attrs.cc.inc"
+#include "xla/python/ifrt/ir/export/vifrt_attrs.cc.inc"
 // Types
-#include "xla/python/ifrt/ir/vifrt_type_interfaces.cc.inc"
+#include "xla/python/ifrt/ir/export/vifrt_type_interfaces.cc.inc"
 #define GET_TYPEDEF_CLASSES
-#include "xla/python/ifrt/ir/vifrt_types.cc.inc"
+#include "xla/python/ifrt/ir/export/vifrt_types.cc.inc"
 // Ops
-#include "xla/python/ifrt/ir/vifrt_op_interfaces.cc.inc"
+#include "xla/python/ifrt/ir/export/vifrt_op_interfaces.cc.inc"
 #define GET_OP_CLASSES
-#include "xla/python/ifrt/ir/vifrt_ops.cc.inc"
+#include "xla/python/ifrt/ir/export/vifrt_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
 // VIFRT Dialect
@@ -177,15 +177,15 @@ VifrtDialect::VifrtDialect(mlir::MLIRContext* context)
   addBytecodeInterface(this);
   addAttributes<
 #define GET_ATTRDEF_LIST
-#include "xla/python/ifrt/ir/vifrt_attrs.cc.inc"
+#include "xla/python/ifrt/ir/export/vifrt_attrs.cc.inc"
       >();
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "xla/python/ifrt/ir/vifrt_types.cc.inc"
+#include "xla/python/ifrt/ir/export/vifrt_types.cc.inc"
       >();
   addOperations<
 #define GET_OP_LIST
-#include "xla/python/ifrt/ir/vifrt_ops.cc.inc"
+#include "xla/python/ifrt/ir/export/vifrt_ops.cc.inc"
       >();
 }
 

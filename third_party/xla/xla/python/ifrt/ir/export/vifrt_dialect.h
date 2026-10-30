@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_H_
-#define XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_H_
+#ifndef XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_DIALECT_H_
+#define XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_DIALECT_H_
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
@@ -33,23 +33,23 @@ namespace ifrt {
 
 class VifrtDialect : public mlir::Dialect {
  public:
-  explicit VifrtDialect(mlir::MLIRContext *context);
+  explicit VifrtDialect(mlir::MLIRContext* context);
 
   static mlir::StringRef getDialectNamespace() { return "vifrt"; }
 
   // Parses a type registered in the VIFRT dialect.
-  mlir::Type parseType(mlir::DialectAsmParser &parser) const override;
+  mlir::Type parseType(mlir::DialectAsmParser& parser) const override;
 
   // Prints a type registered in the VIFRT dialect.
-  void printType(mlir::Type type, mlir::DialectAsmPrinter &os) const override;
+  void printType(mlir::Type type, mlir::DialectAsmPrinter& os) const override;
 
   // Parses an attribute registered in the VIFRT dialect.
-  mlir::Attribute parseAttribute(mlir::DialectAsmParser &parser,
+  mlir::Attribute parseAttribute(mlir::DialectAsmParser& parser,
                                  mlir::Type type) const override;
 
   // Prints an attribute registered in the VIFRT dialect.
   void printAttribute(mlir::Attribute attr,
-                      mlir::DialectAsmPrinter &os) const override;
+                      mlir::DialectAsmPrinter& os) const override;
 };
 
 class VifrtTypeConverterBase : public mlir::TypeConverter {
@@ -74,26 +74,26 @@ class VifrtTypeConverterBuiltin : public VifrtTypeConverterBase {
 };
 
 // Auto-generated VIFRT type printers and parsers.
-mlir::LogicalResult printVifrtType(mlir::Type type, mlir::AsmPrinter &printer);
-mlir::OptionalParseResult parseVifrtType(mlir::AsmParser &parser,
-                                         llvm::StringRef *mnemonic,
-                                         mlir::Type &type);
+mlir::LogicalResult printVifrtType(mlir::Type type, mlir::AsmPrinter& printer);
+mlir::OptionalParseResult parseVifrtType(mlir::AsmParser& parser,
+                                         llvm::StringRef* mnemonic,
+                                         mlir::Type& type);
 
 }  // namespace ifrt
 }  // namespace xla
 
 // Generated definitions.
 // Attributes
-#include "xla/python/ifrt/ir/vifrt_attr_interfaces.h.inc"
+#include "xla/python/ifrt/ir/export/vifrt_attr_interfaces.h.inc"
 #define GET_ATTRDEF_CLASSES
-#include "xla/python/ifrt/ir/vifrt_attrs.h.inc"
+#include "xla/python/ifrt/ir/export/vifrt_attrs.h.inc"
 // Types
-#include "xla/python/ifrt/ir/vifrt_type_interfaces.h.inc"
+#include "xla/python/ifrt/ir/export/vifrt_type_interfaces.h.inc"
 #define GET_TYPEDEF_CLASSES
-#include "xla/python/ifrt/ir/vifrt_types.h.inc"
+#include "xla/python/ifrt/ir/export/vifrt_types.h.inc"
 // Ops
-#include "xla/python/ifrt/ir/vifrt_op_interfaces.h.inc"
+#include "xla/python/ifrt/ir/export/vifrt_op_interfaces.h.inc"
 #define GET_OP_CLASSES
-#include "xla/python/ifrt/ir/vifrt_ops.h.inc"
+#include "xla/python/ifrt/ir/export/vifrt_ops.h.inc"
 
-#endif  // XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_H_
+#endif  // XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_DIALECT_H_

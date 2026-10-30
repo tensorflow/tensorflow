@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/conversions/mpmd/lower_to_ifrt.h"
+#include "xla/python/ifrt/ir/export/passes.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
@@ -159,6 +160,7 @@ int main(int argc, char** argv) {
   mlir::registerAllPasses();
   xla::ifrt::registerIfrtPassesAndPipelines(
       compiler, compile_options, atom_executable_map, bound_executable_map);
+  xla::ifrt::registerIfrtIrExportPasses();
   xla::ifrt::mpmd::RegisterLowerToIfrtPasses();
   mlir::DialectRegistry registry;
   xla::ifrt::support::InitializeMlirDialectRegistry(registry);

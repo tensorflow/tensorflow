@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_TD_
-#define XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_TD_
+#ifndef XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_DIALECT_TD_
+#define XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_DIALECT_TD_
 
 include "mlir/IR/BuiltinTypes.td"
 include "mlir/IR/DialectBase.td"
-include "xla/python/ifrt/ir/vifrt_interfaces.td"
+include "xla/python/ifrt/ir/export/vifrt_interfaces.td"
 
 //===---------------------------------------------------------------------------
 // Dialect
@@ -228,4 +228,4 @@ def Vifrt_FunctionV1 : Vifrt_TypeDef<"VifrtFunctionV1", "func_v1", "0.1.0", "cur
   let assemblyFormat = "`<` `(` custom<TypeArray>($inputs) `)` `->` custom<TypeArray>($outputs) `>`";
 }
 
-#endif  // XLA_PYTHON_IFRT_IR_VIFRT_DIALECT_TD_
+#endif  // XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_DIALECT_TD_

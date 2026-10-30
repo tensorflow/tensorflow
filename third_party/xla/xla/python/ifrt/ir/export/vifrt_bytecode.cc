@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/ir/vifrt_bytecode.h"
+#include "xla/python/ifrt/ir/export/vifrt_bytecode.h"
 
 #include <cstdint>
 #include <utility>
@@ -31,8 +31,8 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/python/ifrt/ir/export/vifrt_dialect.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/python/ifrt/ir/vifrt_dialect.h"
 
 // Tag to be passed to `-debug-only` argument so that the mlir opt tool prints
 // the debug info for this bytecode writer.
@@ -112,7 +112,7 @@ namespace {
 // Implements the BytecodeDialectInterface for the VIFRT dialect.
 class VifrtBytecodeInterface : public mlir::BytecodeDialectInterface {
  public:
-  explicit VifrtBytecodeInterface(mlir::Dialect *dialect)
+  explicit VifrtBytecodeInterface(mlir::Dialect* dialect)
       : mlir::BytecodeDialectInterface(dialect) {}
 
   //===--------------------------------------------------------------------===//
@@ -121,66 +121,66 @@ class VifrtBytecodeInterface : public mlir::BytecodeDialectInterface {
 
   // Methods invoked by superclass when an attr from VIFRT dialect is found.
   mlir::Attribute readAttribute(
-      mlir::DialectBytecodeReader &reader) const override;
+      mlir::DialectBytecodeReader& reader) const override;
   mlir::LogicalResult writeAttribute(
-      mlir::Attribute attr, mlir::DialectBytecodeWriter &writer) const override;
+      mlir::Attribute attr, mlir::DialectBytecodeWriter& writer) const override;
 
   // ADD ATTRIBUTE: Include a read method for each attribute in VIFRT.
   VifrtDevicesV1Attr readDevicesV1Attr(
-      mlir::DialectBytecodeReader &reader) const;
+      mlir::DialectBytecodeReader& reader) const;
   VifrtUnspecifiedShardingV1Attr readUnspecifiedShardingV1Attr(
-      mlir::DialectBytecodeReader &reader) const;
+      mlir::DialectBytecodeReader& reader) const;
   VifrtShardingParamV1Attr readShardingParamV1Attr(
-      mlir::DialectBytecodeReader &reader) const;
+      mlir::DialectBytecodeReader& reader) const;
   VifrtShardingParamV2Attr readShardingParamV2Attr(
       mlir::DialectBytecodeReader& reader) const;
   VifrtIntervalV1Attr readIntervalV1Attr(
-      mlir::DialectBytecodeReader &reader) const;
+      mlir::DialectBytecodeReader& reader) const;
   VifrtMappingV1Attr readMappingV1Attr(
-      mlir::DialectBytecodeReader &reader) const;
+      mlir::DialectBytecodeReader& reader) const;
   VifrtArrayMappingV1Attr readArrayMappingV1Attr(
-      mlir::DialectBytecodeReader &reader) const;
-  VifrtTypeV1Attr readTypeV1Attr(mlir::DialectBytecodeReader &reader) const;
+      mlir::DialectBytecodeReader& reader) const;
+  VifrtTypeV1Attr readTypeV1Attr(mlir::DialectBytecodeReader& reader) const;
 
   // ADD ATTRIBUTE: Include a write method for each attribute in VIFRT
   void write(VifrtDevicesV1Attr attr,
-             mlir::DialectBytecodeWriter &writer) const;
+             mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtUnspecifiedShardingV1Attr attr,
-             mlir::DialectBytecodeWriter &writer) const;
+             mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtShardingParamV1Attr attr,
-             mlir::DialectBytecodeWriter &writer) const;
+             mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtShardingParamV2Attr attr,
              mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtIntervalV1Attr attr,
-             mlir::DialectBytecodeWriter &writer) const;
+             mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtMappingV1Attr attr,
-             mlir::DialectBytecodeWriter &writer) const;
+             mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtArrayMappingV1Attr attr,
-             mlir::DialectBytecodeWriter &writer) const;
-  void write(VifrtTypeV1Attr attr, mlir::DialectBytecodeWriter &writer) const;
+             mlir::DialectBytecodeWriter& writer) const;
+  void write(VifrtTypeV1Attr attr, mlir::DialectBytecodeWriter& writer) const;
 
   //===--------------------------------------------------------------------===//
   // Types
   //===--------------------------------------------------------------------===//
 
   // Methods invoked by superclass when a type from VIFRT dialect is found.
-  mlir::Type readType(mlir::DialectBytecodeReader &reader) const override;
+  mlir::Type readType(mlir::DialectBytecodeReader& reader) const override;
   mlir::LogicalResult writeType(
-      mlir::Type type, mlir::DialectBytecodeWriter &writer) const override;
+      mlir::Type type, mlir::DialectBytecodeWriter& writer) const override;
 
   // ADD TYPE: Include a read method for each type in VIFRT
-  VifrtArrayV1Type readArrayV1Type(mlir::DialectBytecodeReader &reader) const;
+  VifrtArrayV1Type readArrayV1Type(mlir::DialectBytecodeReader& reader) const;
   VifrtControlV1Type readControlV1Type(
-      mlir::DialectBytecodeReader &reader) const;
+      mlir::DialectBytecodeReader& reader) const;
   VifrtFunctionV1Type readFunctionV1Type(
-      mlir::DialectBytecodeReader &reader) const;
+      mlir::DialectBytecodeReader& reader) const;
 
   // ADD TYPE: Include a write method for each type in VIFRT
-  void write(VifrtArrayV1Type type, mlir::DialectBytecodeWriter &writer) const;
+  void write(VifrtArrayV1Type type, mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtControlV1Type type,
-             mlir::DialectBytecodeWriter &writer) const;
+             mlir::DialectBytecodeWriter& writer) const;
   void write(VifrtFunctionV1Type type,
-             mlir::DialectBytecodeWriter &writer) const;
+             mlir::DialectBytecodeWriter& writer) const;
 };
 
 //===----------------------------------------------------------------------===//
@@ -189,7 +189,7 @@ class VifrtBytecodeInterface : public mlir::BytecodeDialectInterface {
 
 // ADD ATTRIBUTE: Update the switch to include a branch for the new attr.
 mlir::Attribute VifrtBytecodeInterface::readAttribute(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   uint64_t marker;
   if (mlir::failed(reader.readVarInt(marker))) {
     reader.emitError() << "Failed to read attribute marker";
@@ -222,7 +222,7 @@ mlir::Attribute VifrtBytecodeInterface::readAttribute(
 // If this method returns failure, the string serialization is used in the
 // bytecode.
 mlir::LogicalResult VifrtBytecodeInterface::writeAttribute(
-    mlir::Attribute attr, mlir::DialectBytecodeWriter &writer) const {
+    mlir::Attribute attr, mlir::DialectBytecodeWriter& writer) const {
   return llvm::TypeSwitch<mlir::Attribute, mlir::LogicalResult>(attr)
       .Case<VifrtDevicesV1Attr, VifrtUnspecifiedShardingV1Attr,
             VifrtShardingParamV1Attr, VifrtShardingParamV2Attr,
@@ -239,7 +239,7 @@ mlir::LogicalResult VifrtBytecodeInterface::writeAttribute(
 }
 
 VifrtDevicesV1Attr VifrtBytecodeInterface::readDevicesV1Attr(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   llvm::SmallVector<int64_t> device_ids;
   if (mlir::failed(reader.readSignedVarInts(device_ids))) {
@@ -252,7 +252,7 @@ VifrtDevicesV1Attr VifrtBytecodeInterface::readDevicesV1Attr(
 }
 
 void VifrtBytecodeInterface::write(VifrtDevicesV1Attr attr,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kDevicesV1Attr);
   writer.writeList(attr.getIds(), [&](int device_id) {
     return writer.writeSignedVarInt(static_cast<int64_t>(device_id));
@@ -261,18 +261,18 @@ void VifrtBytecodeInterface::write(VifrtDevicesV1Attr attr,
 
 VifrtUnspecifiedShardingV1Attr
 VifrtBytecodeInterface::readUnspecifiedShardingV1Attr(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   return VifrtUnspecifiedShardingV1Attr::get(getContext());
 }
 
 void VifrtBytecodeInterface::write(VifrtUnspecifiedShardingV1Attr attr,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kUnspecifiedShardingV1Attr);
 }
 
 VifrtShardingParamV1Attr VifrtBytecodeInterface::readShardingParamV1Attr(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   llvm::SmallVector<int64_t> dim_shards;
   llvm::SmallVector<int64_t> permutation;
@@ -295,7 +295,7 @@ VifrtShardingParamV1Attr VifrtBytecodeInterface::readShardingParamV1Attr(
 }
 
 void VifrtBytecodeInterface::write(VifrtShardingParamV1Attr attr,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kShardingParamV1Attr);
   auto sharding = attr.getSharding();
   writer.writeSignedVarInts(sharding.dim_shards());
@@ -350,7 +350,7 @@ void VifrtBytecodeInterface::write(VifrtShardingParamV2Attr attr,
 }
 
 VifrtIntervalV1Attr VifrtBytecodeInterface::readIntervalV1Attr(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   int64_t start;
   int64_t end;
@@ -367,7 +367,7 @@ VifrtIntervalV1Attr VifrtBytecodeInterface::readIntervalV1Attr(
 }
 
 void VifrtBytecodeInterface::write(VifrtIntervalV1Attr attr,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kIntervalV1Attr);
   writer.writeSignedVarInt(static_cast<int64_t>(attr.getStart()));
   writer.writeSignedVarInt(static_cast<int64_t>(attr.getEnd()));
@@ -375,7 +375,7 @@ void VifrtBytecodeInterface::write(VifrtIntervalV1Attr attr,
 }
 
 VifrtMappingV1Attr VifrtBytecodeInterface::readMappingV1Attr(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   VifrtIntervalV1Attr from_shards;
   VifrtIntervalV1Attr to_shards;
@@ -388,14 +388,14 @@ VifrtMappingV1Attr VifrtBytecodeInterface::readMappingV1Attr(
 }
 
 void VifrtBytecodeInterface::write(VifrtMappingV1Attr attr,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kMappingV1Attr);
   writer.writeAttribute(attr.getFromShards());
   writer.writeAttribute(attr.getToShards());
 }
 
 VifrtArrayMappingV1Attr VifrtBytecodeInterface::readArrayMappingV1Attr(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   int64_t in_array_index;
   int64_t out_array_index;
@@ -415,7 +415,7 @@ VifrtArrayMappingV1Attr VifrtBytecodeInterface::readArrayMappingV1Attr(
 }
 
 void VifrtBytecodeInterface::write(VifrtArrayMappingV1Attr attr,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kArrayMappingV1Attr);
   writer.writeSignedVarInt(attr.getInArrayIndex());
   writer.writeSignedVarInt(attr.getOutArrayIndex());
@@ -423,7 +423,7 @@ void VifrtBytecodeInterface::write(VifrtArrayMappingV1Attr attr,
 }
 
 VifrtTypeV1Attr VifrtBytecodeInterface::readTypeV1Attr(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   mlir::Type type;
   if (mlir::failed(reader.readType(type))) {
@@ -434,7 +434,7 @@ VifrtTypeV1Attr VifrtBytecodeInterface::readTypeV1Attr(
 }
 
 void VifrtBytecodeInterface::write(VifrtTypeV1Attr attr,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kTypeV1Attr);
   writer.writeType(attr.getValue());
 }
@@ -445,7 +445,7 @@ void VifrtBytecodeInterface::write(VifrtTypeV1Attr attr,
 
 // ADD TYPE: Update the case selection to include the new type.
 mlir::Type VifrtBytecodeInterface::readType(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   uint64_t marker;
   if (mlir::failed(reader.readVarInt(marker))) {
     reader.emitError() << "Failed to read type marker";
@@ -468,7 +468,7 @@ mlir::Type VifrtBytecodeInterface::readType(
 // If this method returns failure, the string serialization is used in the
 // bytecode.
 mlir::LogicalResult VifrtBytecodeInterface::writeType(
-    mlir::Type type, mlir::DialectBytecodeWriter &writer) const {
+    mlir::Type type, mlir::DialectBytecodeWriter& writer) const {
   return llvm::TypeSwitch<mlir::Type, mlir::LogicalResult>(type)
       .Case<VifrtArrayV1Type, VifrtControlV1Type, VifrtFunctionV1Type>(
           [&](auto type) {
@@ -482,7 +482,7 @@ mlir::LogicalResult VifrtBytecodeInterface::writeType(
 }
 
 VifrtArrayV1Type VifrtBytecodeInterface::readArrayV1Type(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   mlir::RankedTensorType shape;
   mlir::Attribute sharding;
@@ -502,7 +502,7 @@ VifrtArrayV1Type VifrtBytecodeInterface::readArrayV1Type(
 }
 
 void VifrtBytecodeInterface::write(VifrtArrayV1Type type,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kArrayV1Type);
   writer.writeType(type.getShape());
   writer.writeAttribute(type.getShardingAttr());
@@ -512,18 +512,18 @@ void VifrtBytecodeInterface::write(VifrtArrayV1Type type,
 }
 
 VifrtControlV1Type VifrtBytecodeInterface::readControlV1Type(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   return VifrtControlV1Type::get(getContext());
 }
 
 void VifrtBytecodeInterface::write(VifrtControlV1Type type,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kControlV1Type);
 }
 
 VifrtFunctionV1Type VifrtBytecodeInterface::readFunctionV1Type(
-    mlir::DialectBytecodeReader &reader) const {
+    mlir::DialectBytecodeReader& reader) const {
   LOG_READ_CALL;
   llvm::SmallVector<mlir::Type> inputs;
   llvm::SmallVector<mlir::Type> outputs;
@@ -536,7 +536,7 @@ VifrtFunctionV1Type VifrtBytecodeInterface::readFunctionV1Type(
 }
 
 void VifrtBytecodeInterface::write(VifrtFunctionV1Type type,
-                                   mlir::DialectBytecodeWriter &writer) const {
+                                   mlir::DialectBytecodeWriter& writer) const {
   writer.writeVarInt(vifrt_encoding::kFunctionV1Type);
   writer.writeTypes(type.getInputs());
   writer.writeTypes(type.getOutputs());
@@ -544,7 +544,7 @@ void VifrtBytecodeInterface::write(VifrtFunctionV1Type type,
 
 }  // namespace
 
-void addBytecodeInterface(VifrtDialect *dialect) {
+void addBytecodeInterface(VifrtDialect* dialect) {
   dialect->addInterfaces<VifrtBytecodeInterface>();
 }
 

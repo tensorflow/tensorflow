@@ -42,11 +42,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "xla/python/ifrt/ir/constants.h"
+#include "xla/python/ifrt/ir/export/map_ifrt_to_vifrt.h"
+#include "xla/python/ifrt/ir/export/passes.h"
+#include "xla/python/ifrt/ir/export/vifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
-#include "xla/python/ifrt/ir/transforms/map_ifrt_to_vifrt.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
-#include "xla/python/ifrt/ir/vifrt_dialect.h"
 
 // Tag to be passed to `-debug-only` argument so that the mlir opt tool prints
 // the debug info for this pass.
@@ -56,7 +56,7 @@ namespace xla {
 namespace ifrt {
 
 #define GEN_PASS_DEF_VIFRTLEGALIZETOIFRTPASS
-#include "xla/python/ifrt/ir/transforms/passes.h.inc"
+#include "xla/python/ifrt/ir/export/passes.h.inc"
 
 namespace {
 

@@ -30,8 +30,6 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
-#include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
-#include "xla/python/ifrt/ir/version.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
 
@@ -134,34 +132,6 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
                                    atom_executable_future_map));
   }
   return absl::OkStatus();
-}
-
-void createIfrtToVersionedPipeline(mlir::OpPassManager& pm,
-                                   std::string ifrt_target_version,
-                                   std::string vhlo_target_version,
-                                   std::string sdy_target_version,
-                                   IfrtIrProgramProto& ifrt_ir_program) {
-  pm.addPass(createIfrtRemoveAttrsFromOtherDialectsPass());
-  pm.addPass(createIfrtAtomProgramsToVhloPass(
-      ifrt_ir_program.mutable_atom_programs(), std::move(vhlo_target_version),
-      std::move(sdy_target_version)));
-  pm.addPass(createIfrtLegalizeToVifrtPass());
-  pm.addPass(createVifrtToVersionPass({std::move(ifrt_target_version)}));
-  // Run symbol DCE to remove atom programs that have been legalized to VHLO.
-  pm.addPass(mlir::createSymbolDCEPass());
-}
-
-void createIfrtFromVersionedPipeline(
-    mlir::OpPassManager& pm, const IfrtIrProgramProto& ifrt_ir_program) {
-  // Converts from given VIFRT version to the current VIFRT version.
-  pm.addPass(
-      createVifrtToVersionPass({Version::getCurrentVersion().toString()}));
-  // Deserializes atom programs (including VHLO serialized version to VHLO
-  // current conversion), and inserts them to the IFRT IR program ModuleOp.
-  pm.addPass(
-      createIfrtAtomProgramsFromVhloPass(ifrt_ir_program.atom_programs()));
-  // Converts VIFRT current to IFRT.
-  pm.addPass(createVifrtLegalizeToIfrtPass());
 }
 
 void registerIfrtPassesAndPipelines(

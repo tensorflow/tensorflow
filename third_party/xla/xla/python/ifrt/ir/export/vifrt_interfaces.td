@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_VIFRT_INTERFACES_TD_
-#define XLA_PYTHON_IFRT_IR_VIFRT_INTERFACES_TD_
+#ifndef XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_INTERFACES_TD_
+#define XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_INTERFACES_TD_
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
@@ -83,4 +83,4 @@ def Vifrt_VersionedTypeInterface : TypeInterface<"VifrtVersionedTypeInterface"> 
   ];
 }
 
-#endif // XLA_PYTHON_IFRT_IR_VIFRT_INTERFACES_TD_
+#endif // XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_INTERFACES_TD_

@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_MAP_IFRT_TO_VIFRT_H_
-#define XLA_PYTHON_IFRT_IR_TRANSFORMS_MAP_IFRT_TO_VIFRT_H_
+#ifndef XLA_PYTHON_IFRT_IR_EXPORT_MAP_IFRT_TO_VIFRT_H_
+#define XLA_PYTHON_IFRT_IR_EXPORT_MAP_IFRT_TO_VIFRT_H_
 
 #include <type_traits>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "xla/python/ifrt/ir/export/vifrt_dialect.h"  // IWYU pragma: export
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/vifrt_dialect.h"  // IWYU pragma: export
 
 namespace xla {
 namespace ifrt {
@@ -85,4 +85,4 @@ MAP_OTHER_TO_VIFRT(::mlir::func::ReturnOp, ::xla::ifrt::ReturnOp, V1)
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_MAP_IFRT_TO_VIFRT_H_
+#endif  // XLA_PYTHON_IFRT_IR_EXPORT_MAP_IFRT_TO_VIFRT_H_

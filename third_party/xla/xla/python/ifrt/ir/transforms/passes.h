@@ -23,18 +23,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
-#include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
-#include "xla/python/ifrt/ir/version.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -82,29 +76,6 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createIfrtToDotPass(
     IfrtToDotPassOptions options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map);
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createIfrtAtomProgramsToVhloPass(
-    tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
-    std::string vhlo_target_version, std::string sdy_target_version);
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createIfrtAtomProgramsFromVhloPass(
-    const tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>&
-        atom_programs);
-
-void populateIfrtToVifrtPatterns(mlir::RewritePatternSet* patterns,
-                                 mlir::TypeConverter* converter,
-                                 mlir::MLIRContext* context);
-
-void populateVifrtToIfrtPatterns(mlir::RewritePatternSet* patterns,
-                                 mlir::TypeConverter* converter,
-                                 mlir::MLIRContext* context);
-
-void populateVifrtToVersionPatterns(mlir::RewritePatternSet* patterns,
-                                    mlir::TypeConverter* converter,
-                                    Version version,
-                                    mlir::MLIRContext* context);
-
 // Registers IfrtCompileAtomProgramPass to ifrt-opt.
 void registerIfrtCompileAtomProgramPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
@@ -150,24 +121,6 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     std::shared_ptr<IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
-
-// Creates a pipeline that converts an IFRT IR program to a versioned IFRT IR
-// program, and a versioned VHLO programs populated within `IfrtIrProgramProto`.
-void createIfrtToVersionedPipeline(mlir::OpPassManager& pm,
-                                   std::string ifrt_target_version,
-                                   std::string vhlo_target_version,
-                                   std::string sdy_target_version,
-                                   IfrtIrProgramProto& ifrt_ir_program);
-
-// Creates a pipeline that converts a versioned IFRT IR program to an IFRT IR
-// program.
-// The pipeline runs over a versioned IFRT IR module without any atom programs
-// present inside the module. The atom programs are expected to be present and
-// versioned in the given `ifrt_ir_program`. The pipeline will convert these
-// atom programs (i.e., from VHLO to StableHLO) and add them to the IFRT IR
-// program.
-void createIfrtFromVersionedPipeline(mlir::OpPassManager& pm,
-                                     const IfrtIrProgramProto& ifrt_ir_program);
 
 // Registers passes and pipelines to ifrt-opt.
 void registerIfrtPassesAndPipelines(

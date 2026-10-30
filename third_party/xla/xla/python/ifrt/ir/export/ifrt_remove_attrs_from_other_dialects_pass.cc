@@ -29,14 +29,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/WalkResult.h"
+#include "xla/python/ifrt/ir/export/passes.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
 
 namespace xla {
 namespace ifrt {
 
 #define GEN_PASS_DEF_IFRTREMOVEATTRSFROMOTHERDIALECTSPASS
-#include "xla/python/ifrt/ir/transforms/passes.h.inc"
+#include "xla/python/ifrt/ir/export/passes.h.inc"
 
 namespace {
 

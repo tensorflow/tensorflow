@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("//xla:lit.bzl", "lit_test_suite")
+load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
@@ -33,8 +34,36 @@ lit_test_suite(
         "ifrt_legalize_to_vifrt.0_4_0.mlir.bytes",
     ],
     tools = [
+        ":ifrt-translate",
         "//xla/python/ifrt/ir/tests:ifrt-opt",
-        "//xla/python/ifrt/ir/tests:ifrt-translate",
         "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+xla_cc_binary(
+    name = "ifrt-translate",
+    testonly = True,
+    srcs = ["ifrt-translate.cc"],
+    deps = [
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
+        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:ifrt_ir_program",
+        "//xla/python/ifrt/ir:ifrt_ir_program_serdes",  # build_cleaner: keep
+        "//xla/python/ifrt/ir:version",
+        "//xla/python/ifrt/ir/export:vifrt",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:TranslateLib",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:register",
+        "@stablehlo//:version",
     ],
 )

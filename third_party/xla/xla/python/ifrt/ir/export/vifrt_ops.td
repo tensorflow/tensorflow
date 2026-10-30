@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_VIFRT_OPS_TD_
-#define XLA_PYTHON_IFRT_IR_VIFRT_OPS_TD_
+#ifndef XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_OPS_TD_
+#define XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_OPS_TD_
 
 include "mlir/IR/OpBase.td"
-include "xla/python/ifrt/ir/vifrt_dialect.td"
-include "xla/python/ifrt/ir/vifrt_interfaces.td"
+include "xla/python/ifrt/ir/export/vifrt_dialect.td"
+include "xla/python/ifrt/ir/export/vifrt_interfaces.td"
 
 // VIFRT is a bare mininum versioned copy of IFRT. In the pursuit of minimality,
 // it adopts the following conventions (similar to VHLO):
@@ -194,4 +194,4 @@ def Vifrt_CallFuncOpV1 : Vifrt_Op<"CallFuncV1", "0.1.0", "current"> {
   let results = (outs Variadic<Vifrt_AnyType>:$results);
 }
 
-#endif  // XLA_PYTHON_IFRT_IR_VIFRT_OPS_TD_
+#endif  // XLA_PYTHON_IFRT_IR_EXPORT_VIFRT_OPS_TD_
