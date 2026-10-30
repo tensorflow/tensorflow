@@ -2244,6 +2244,7 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:log_entry",
         "@com_google_absl//absl/log:log_sink",
@@ -2333,6 +2334,7 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":cuda_command_buffer",
+        ":cuda_command_buffer_telemetry",
         ":cuda_command_buffer_telemetry_pre_13_4",
         ":cuda_command_buffer_telemetry_test_util",
         "//xla/stream_executor:command_buffer",
@@ -3709,7 +3711,6 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

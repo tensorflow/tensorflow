@@ -73,6 +73,14 @@ TEST_F(HloOpProfilerTest, UnsupportedCombinationsDoNotCrash) {
               absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT));
 }
 
+TEST_F(HloOpProfilerTest, PowerCalibration) {
+  HloOpProfiler profiler(&test_runner(), &device_description());
+  EXPECT_FALSE(HloOpProfiler::Unsupported().count(HloOpcode::kPower));
+  auto profile = profiler.MeasureClockCyclesPerOp(HloOpcode::kPower, F32);
+  ASSERT_OK(profile);
+  EXPECT_GT(profile->clock_cycles(), 0);
+}
+
 TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
   absl::flat_hash_set<HloOpcode> FloatTypes = {
       // go/keep-sorted start
@@ -89,6 +97,7 @@ TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
       HloOpcode::kLog,
       HloOpcode::kLog1p,
       HloOpcode::kLogistic,
+      HloOpcode::kPower,
       HloOpcode::kReal,
       HloOpcode::kRoundNearestAfz,
       HloOpcode::kRoundNearestEven,

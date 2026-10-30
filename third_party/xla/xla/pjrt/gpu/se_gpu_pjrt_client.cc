@@ -1619,7 +1619,8 @@ GetStreamExecutorGpuDeviceAllocator(
           /*reclaim_exempt_memory_space=*/
           static_cast<int64_t>(gpu::MemorySpaceColor::kCollective),
           std::make_unique<se::MultiDeviceAdapter>(platform,
-                                                   std::move(host_allocators)));
+                                                   std::move(host_allocators)),
+          allocator_config.sub_allocator_free_visitors);
     }
   }
 
@@ -2046,7 +2047,7 @@ std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
   attrs.attributes["dump_on_deserialize"] = true;
   attrs.attributes["should_stage_host_to_device_transfers"] =
       raw_client->should_stage_host_to_device_transfers();
-  auto result = std::make_unique<CommonPjRtClientImpl>(
+  auto result = std::make_unique<CommonPjRtClient>(
       tsl::Fingerprint64(platform_name), platform_name, platform_version,
       process_index, std::move(topology), std::move(raw_client),
       std::move(kv_store), std::move(attrs));

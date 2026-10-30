@@ -613,7 +613,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_persistent_symmetric_memory(false);
   opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
   opts.set_xla_gpu_experimental_enable_tensor_ir(false);
-  opts.set_xla_gpu_experimental_enable_triton_scan(false);
+  opts.set_xla_gpu_experimental_enable_triton_scan(true);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -4070,6 +4070,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "--xla_gpu_exclude_nondeterministic_ops). "
       "Supported modes: 'off' (default) and 'unchecked' (enables Triton and "
       "skips correctness checks)."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_require_exact_blas_lt_algorithm",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_require_exact_blas_lt_algorithm),
+      debug_options->xla_gpu_require_exact_blas_lt_algorithm(),
+      "If true, require that BlasLt matmuls execute the exact algorithm "
+      "described by BlasLtMatmulAlgorithmProto rather than falling back to the "
+      "heuristic algorithm index."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

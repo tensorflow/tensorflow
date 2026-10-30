@@ -655,6 +655,28 @@ ENTRY main {
   EXPECT_EQ(clone->operand_count(), 2);
 }
 
+TEST_F(HloInstructionTest, CloneCallPreservesIsComposite) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+decomposition {
+  ROOT p = f32[2] parameter(0)
+}
+
+ENTRY main {
+  arg = f32[2] parameter(0)
+  ROOT call = f32[2] call(arg), to_apply=decomposition, is_composite=true, frontend_attributes={composite.name="foo.bar"}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* call = module->entry_computation()->root_instruction();
+  ASSERT_EQ(call->opcode(), HloOpcode::kCall);
+  ASSERT_TRUE(call->is_composite());
+  auto clone = call->CloneWithNewOperands(call->shape(), call->operands());
+  EXPECT_TRUE(clone->is_composite());
+}
+
 TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
   const char* const kModuleStr = R"(
     HloModule m
@@ -1377,6 +1399,55 @@ ENTRY %main (x: f32[8]) -> f32[8] {
   EXPECT_EQ(inner_start->async_execution_thread(), "inner_thread");
   EXPECT_EQ(inner_start->async_wrapped_computation()->execution_thread(),
             "inner_thread");
+}
+
+TEST_F(HloInstructionTest, DefuseMultiOperandFusion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+fused_comp {
+  fp0 = f32[4] parameter(0)
+  fp1 = f32[4] parameter(1)
+  fp2 = f32[4] parameter(2)
+  fadd = f32[4] add(fp0, fp1)
+  ftup = (f32[4], f32[4], f32[4]) tuple(fadd, fp1, fp2)
+  fgte = f32[4] get-tuple-element(ftup), index=2
+  ROOT froot = ((f32[4], f32[4], f32[4]), f32[4]) tuple(ftup, fgte)
+}
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  p2 = f32[4] parameter(2)
+  ROOT fus = ((f32[4], f32[4], f32[4]), f32[4]) fusion(p0, p1, p2), kind=kLoop, calls=fused_comp
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* p2 = entry->parameter_instruction(2);
+  HloInstruction* fus = entry->root_instruction();
+
+  ASSERT_OK(fus->Defuse());
+
+  HloInstruction* defused_root = entry->root_instruction();
+  ASSERT_EQ(defused_root->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(defused_root->operand_count(), 2);
+
+  const HloInstruction* defused_ftup = defused_root->operand(0);
+  const HloInstruction* defused_fgte = defused_root->operand(1);
+  ASSERT_EQ(defused_ftup->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(defused_fgte->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(defused_fgte->operands(), ::testing::ElementsAre(defused_ftup));
+
+  ASSERT_EQ(defused_ftup->operand_count(), 3);
+  const HloInstruction* defused_fadd = defused_ftup->operand(0);
+  EXPECT_EQ(defused_fadd->opcode(), HloOpcode::kAdd);
+  EXPECT_THAT(defused_fadd->operands(), ::testing::ElementsAre(p0, p1));
+  EXPECT_THAT(defused_ftup->operands(),
+              ::testing::ElementsAre(defused_fadd, p1, p2));
 }
 }  // namespace
 }  // namespace xla

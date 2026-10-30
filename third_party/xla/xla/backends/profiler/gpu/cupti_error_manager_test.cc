@@ -67,7 +67,7 @@ class TestableCuptiTracer : public CuptiTracer {
 // MockCupti is used to simulate a CUPTI call failure.
 class CuptiErrorManagerTest : public ::testing::Test {
  protected:
-  CuptiErrorManagerTest() {}
+  CuptiErrorManagerTest() = default;
 
   void SetUp() override {
     ASSERT_GT(CuptiTracer::NumGpus(), 0) << "No devices found";
@@ -124,6 +124,10 @@ class CuptiV2ActivityConfigurationErrorTest
       public ::testing::WithParamInterface<CUptiResult> {};
 
 class CuptiV2ActivityRecordErrorTest
+    : public CuptiErrorManagerTest,
+      public ::testing::WithParamInterface<CUptiResult> {};
+
+class CuptiSubscribeConflictErrorTest
     : public CuptiErrorManagerTest,
       public ::testing::WithParamInterface<CUptiResult> {};
 
@@ -302,6 +306,21 @@ TEST_P(CuptiV2ActivityRecordErrorTest, DoesNotDisableCuptiOrUseV1Parser) {
 INSTANTIATE_TEST_SUITE_P(NonfatalErrors, CuptiV2ActivityRecordErrorTest,
                          ::testing::Values(CUPTI_ERROR_NOT_SUPPORTED,
                                            CUPTI_ERROR_UNKNOWN));
+
+TEST_P(CuptiSubscribeConflictErrorTest, DoesNotDisableCupti) {
+  const CUptiResult result = GetParam();
+  CUpti_SubscriberHandle subscriber = nullptr;
+  EXPECT_CALL(*mock_, Subscribe(&subscriber, _, _)).WillOnce(Return(result));
+
+  EXPECT_EQ(cupti_error_manager_->Subscribe(&subscriber, nullptr, nullptr),
+            result);
+  EXPECT_FALSE(CuptiDisabled());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    NonfatalSubscribeErrors, CuptiSubscribeConflictErrorTest,
+    ::testing::Values(CUPTI_ERROR_MAX_LIMIT_REACHED,
+                      CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED));
 
 }  // namespace test
 }  // namespace profiler

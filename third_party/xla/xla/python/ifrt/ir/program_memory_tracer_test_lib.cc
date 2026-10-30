@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/compiled_memory_stats.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
@@ -223,8 +224,10 @@ module {
                        GetIfrtIrExecutable(source, devices));
   ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
+  const int64_t expected_arg_bytes =
+      xla::IsTpuId(client_->platform_id()) ? 1024 : 4;
   EXPECT_EQ(memory_stats.output_size_in_bytes, 5 * kGiB);
-  EXPECT_EQ(memory_stats.argument_size_in_bytes, 1024);
+  EXPECT_EQ(memory_stats.argument_size_in_bytes, expected_arg_bytes);
   EXPECT_EQ(memory_stats.host_argument_size_in_bytes, 0);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
 
@@ -242,10 +245,10 @@ module {
           stats.temp_size_in_bytes + stats.generated_code_size_in_bytes);
     }
   }
-  EXPECT_EQ(
-      memory_stats
-          .device_to_peak_bytes_used[devices->devices()[0]->Id().value()],
-      1024 + 5 * kGiB + expected_memory[devices->devices()[0]->Id().value()]);
+  EXPECT_EQ(memory_stats
+                .device_to_peak_bytes_used[devices->devices()[0]->Id().value()],
+            expected_arg_bytes + 5 * kGiB +
+                expected_memory[devices->devices()[0]->Id().value()]);
   EXPECT_EQ(memory_stats
                 .device_to_peak_bytes_used[devices->devices()[1]->Id().value()],
             5 * kGiB + expected_memory[devices->devices()[1]->Id().value()]);
@@ -291,8 +294,10 @@ module {
                        GetIfrtIrExecutable(source, devices));
   ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
+  const int64_t expected_arg_bytes =
+      xla::IsTpuId(client_->platform_id()) ? 1024 : 4;
   EXPECT_EQ(memory_stats.output_size_in_bytes, 3 * kGiB);
-  EXPECT_EQ(memory_stats.argument_size_in_bytes, 1024);
+  EXPECT_EQ(memory_stats.argument_size_in_bytes, expected_arg_bytes);
   EXPECT_EQ(memory_stats.host_argument_size_in_bytes, 0);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
 
@@ -308,10 +313,10 @@ module {
         std::max(expected_memory[devices[0]->Id().value()],
                  stats.temp_size_in_bytes + stats.generated_code_size_in_bytes);
   }
-  EXPECT_EQ(
-      memory_stats
-          .device_to_peak_bytes_used[devices->devices()[0]->Id().value()],
-      1024 + 3 * kGiB + expected_memory[devices->devices()[0]->Id().value()]);
+  EXPECT_EQ(memory_stats
+                .device_to_peak_bytes_used[devices->devices()[0]->Id().value()],
+            expected_arg_bytes + 3 * kGiB +
+                expected_memory[devices->devices()[0]->Id().value()]);
 }
 
 TEST_F(ProgramMemoryTracerTest, IfrtIrProgramMemoryStatsWithOffloadedInput) {
@@ -348,10 +353,13 @@ module @sin_from_offloaded_arg {
                        GetIfrtIrExecutable(source, devices));
   ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
-  // Arrays allocated on host memory should not be counted in the memory stats.
+  const int64_t expected_bytes =
+      xla::IsTpuId(client_->platform_id()) ? 1024 : 32;
+  // Arrays allocated on host memory should not be counted in the device memory
+  // stats.
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 0);
-  EXPECT_EQ(memory_stats.output_size_in_bytes, 1024);
-  EXPECT_EQ(memory_stats.host_argument_size_in_bytes, 32);
+  EXPECT_EQ(memory_stats.output_size_in_bytes, expected_bytes);
+  EXPECT_EQ(memory_stats.host_argument_size_in_bytes, expected_bytes);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
 }
 
@@ -378,6 +386,136 @@ module @padded_arrays_with_layouts {
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 11264);
   // The second dimension is padded to 128.
   EXPECT_EQ(memory_stats.output_size_in_bytes, 3072);
+}
+
+TEST_F(ProgramMemoryTracerTest, IfrtIrProgramMemoryStatsWithSubByteTypes) {
+  std::string source = R"mlir(
+!array_dev = !ifrt.array<tensor<1024x1024x768xf4E2M1FN>,
+                         #ifrt.sharding_param<1x1x1 to [0] on 1>, [0]>
+!array_host = !ifrt.array<tensor<1024x1024x768xf4E2M1FN>,
+                          #ifrt.sharding_param<1x1x1 to [0] on 1>, [0],
+                          memory_kind = "pinned_host">
+module @sub_byte_types {
+  func.func public @main(%arg0: !array_dev, %arg1: !array_host)
+      -> (!array_dev, !array_host) attributes {ifrt.function} {
+    return %arg0, %arg1 : !array_dev, !array_host
+  }
+}
+  )mlir";
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(/*count=*/1));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
+                       GetIfrtIrExecutable(source, devices));
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
+                       executable->GetIfrtIrProgramMemoryStats());
+  // 1024 * 1024 * 768 * 4 bits = 384 MiB when packed on GPU; simulated TPU does
+  // not pack `f4E2M1FN` and use 1 byte/element (768 MiB) for both device and
+  // `pinned_host` memory.
+  const int64_t expected_bytes = xla::IsTpuId(client_->platform_id())
+                                     ? 768LL * 1024 * 1024
+                                     : 384LL * 1024 * 1024;
+  EXPECT_EQ(memory_stats.host_argument_size_in_bytes, expected_bytes);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, expected_bytes);
+  EXPECT_EQ(memory_stats.argument_size_in_bytes, expected_bytes);
+  EXPECT_EQ(memory_stats.output_size_in_bytes, expected_bytes);
+  EXPECT_EQ(
+      memory_stats
+          .device_to_peak_bytes_used[devices->devices().front()->Id().value()],
+      expected_bytes);
+}
+
+TEST_F(ProgramMemoryTracerTest,
+       IfrtIrProgramMemoryStatsWithUnpinnedHostSubByteTypes) {
+  std::string source = R"mlir(
+!array_host = !ifrt.array<tensor<1024x1024x768xf4E2M1FN>,
+                          #ifrt.sharding_param<1x1x1 to [0] on 1>, [0],
+                          memory_kind = "unpinned_host">
+module @unpinned_host_sub_byte_types {
+  func.func public @main(%arg0: !array_host)
+      -> (!array_host) attributes {ifrt.function} {
+    return %arg0 : !array_host
+  }
+}
+  )mlir";
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(/*count=*/1));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
+                       GetIfrtIrExecutable(source, devices));
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
+                       executable->GetIfrtIrProgramMemoryStats());
+  // `unpinned_host` uses an untiled descending layout with 4 bits/element
+  // (1024 * 1024 * 768 * 4 bits = 384 MiB).
+  constexpr int64_t kExpectedHostBytes = 384LL * 1024 * 1024;
+  EXPECT_EQ(memory_stats.host_argument_size_in_bytes, kExpectedHostBytes);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, kExpectedHostBytes);
+  EXPECT_EQ(memory_stats.argument_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.output_size_in_bytes, 0);
+}
+
+TEST_F(ProgramMemoryTracerTest, IfrtIrProgramMemoryStatsWithAutoLayout) {
+  std::string source = R"mlir(
+!array = !ifrt.array<tensor<1024x1024xf32>,
+                     #ifrt.sharding_param<1x1 to [0] on 1>, [0],
+                     layout = "auto">
+module @auto_layout {
+  func.func public @main(%arg0: !array) -> (!array) attributes {ifrt.function} {
+    %out, %ctrl = ifrt.Call @identity(%arg0) on devices [0]
+      : (!array) -> !array
+    return %out : !array
+  }
+
+  func.func private @identity(%arg0: tensor<1024x1024xf32>)
+      -> tensor<1024x1024xf32> {
+    return %arg0 : tensor<1024x1024xf32>
+  }
+}
+  )mlir";
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(/*count=*/1));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
+                       GetIfrtIrExecutable(source, devices));
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
+                       executable->GetIfrtIrProgramMemoryStats());
+  constexpr int64_t kExpectedBytes = 4LL * 1024 * 1024;
+  EXPECT_EQ(memory_stats.argument_size_in_bytes, kExpectedBytes);
+  EXPECT_EQ(memory_stats.output_size_in_bytes, kExpectedBytes);
+  EXPECT_EQ(memory_stats.host_argument_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
+}
+
+TEST_F(ProgramMemoryTracerTest,
+       IfrtIrProgramMemoryStatsWithCpuAndDeviceInputs) {
+  absl::StatusOr<DeviceListRef> cpu_device =
+      PickDevices(/*count=*/1, /*platform_name=*/"cpu");
+  if (!cpu_device.ok()) {
+    GTEST_SKIP() << "Test requires at least one cpu device";
+  }
+  std::string source = R"mlir(
+!accel_array = !ifrt.array<tensor<1x1xi32>,
+                           #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!cpu_array = !ifrt.array<tensor<1x1xi32>,
+                         #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+module @cpu_and_device_inputs {
+  func.func public @main(%arg0: !accel_array, %arg1: !cpu_array)
+      -> (!accel_array) attributes {ifrt.function} {
+    return %arg0 : !accel_array
+  }
+}
+  )mlir";
+  ASSERT_OK_AND_ASSIGN(DeviceListRef accel_device, PickDevices(/*count=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceListRef devices,
+      client_->MakeDeviceList(
+          {accel_device->devices().front(), (*cpu_device)->devices().front()}));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
+                       GetIfrtIrExecutable(source, devices));
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
+                       executable->GetIfrtIrProgramMemoryStats());
+  const int64_t expected_accel_bytes =
+      xla::IsTpuId(client_->platform_id()) ? 1024 : 4;
+  constexpr int64_t kExpectedCpuBytes = 4;
+  EXPECT_EQ(memory_stats.argument_size_in_bytes,
+            expected_accel_bytes + kExpectedCpuBytes);
+  EXPECT_EQ(memory_stats.output_size_in_bytes, expected_accel_bytes);
+  EXPECT_EQ(memory_stats.host_argument_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
 }
 
 }  // namespace

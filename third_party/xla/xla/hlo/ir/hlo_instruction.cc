@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
@@ -1262,11 +1261,6 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = std::make_unique<HloScaledDotInstruction>(
           shape, operands(0), operands(1), operands(2), operands(3),
           proto.dot_dimension_numbers(), precision_config);
-      break;
-    }
-    case HloOpcode::kDomain: {
-      instruction = std::make_unique<HloDomainInstruction>(shape, operands(0),
-                                                           nullptr, nullptr);
       break;
     }
     case HloOpcode::kGetDimensionSize:
@@ -2758,15 +2752,6 @@ HloInstruction::CreateCompositeCall(const Shape& shape,
       unique_indices);
 }
 
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDomain(
-    const Shape& shape, HloInstruction* operand,
-    std::unique_ptr<DomainMetadata> operand_side_metadata,
-    std::unique_ptr<DomainMetadata> user_side_metadata) {
-  return std::make_unique<HloDomainInstruction>(
-      shape, operand, std::move(operand_side_metadata),
-      std::move(user_side_metadata));
-}
-
 /* static */ bool HloInstruction::IsThreadIncluded(
     absl::string_view execution_thread,
     const absl::flat_hash_set<absl::string_view>& execution_threads_set) {
@@ -2887,7 +2872,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDot:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kScaledDot:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
@@ -2973,6 +2957,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     // Other supported ops.
     case HloOpcode::kCall:
       clone = CreateCall(shape, new_operands, to_apply());
+      clone->set_is_composite(is_composite());
       break;
     case HloOpcode::kConvert:
       CHECK_EQ(new_operands.size(), 1);
@@ -3570,7 +3555,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDot:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kScaledDot:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kSetDimensionSize:
@@ -3685,6 +3669,7 @@ absl::Status HloInstruction::Defuse() {
   // A map from fused instruction to its defused clone.
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
       defused_instructions;
+  defused_instructions.reserve(fused_computation->instruction_count());
   // Initialize map to contain the fusion instruction parameters mapping
   // to the operands of the fusion instruction.
   for (int64_t i = 0; i < operand_count(); ++i) {
@@ -3697,13 +3682,13 @@ absl::Status HloInstruction::Defuse() {
   // TODO(b/68227302): Moving instruction to new computation rather than
   // cloning and deleting.
   HloInstruction* first_defused = nullptr;
+  InstructionVector new_operands;
   for (HloInstruction* fused_instruction :
        fused_computation->MakeInstructionPostOrder()) {
     if (fused_instruction->opcode() == HloOpcode::kParameter) {
       continue;
     }
-    std::vector<HloInstruction*> new_operands;
-    new_operands.reserve(fused_instruction->operand_count());
+    new_operands.clear();
     for (HloInstruction* operand : fused_instruction->operands()) {
       new_operands.push_back(defused_instructions.at(operand));
     }
@@ -4902,7 +4887,6 @@ bool HloInstruction::IsCustomFusion() const {
 bool HloInstruction::IsFusible() const {
   // Some kinds of instructions don't make sense to fuse.
   switch (opcode_) {
-    case HloOpcode::kDomain:
     case HloOpcode::kParameter:
     case HloOpcode::kWhile:
     case HloOpcode::kConditional:
@@ -5199,8 +5183,6 @@ absl::Status HloInstruction::Visit(
         return visitor->HandleGather(this);
       case HloOpcode::kScatter:
         return visitor->HandleScatter(this);
-      case HloOpcode::kDomain:
-        return visitor->HandleDomain(this);
       case HloOpcode::kAfterAll:
         return visitor->HandleAfterAll(this);
       case HloOpcode::kAddDependency:
@@ -6611,14 +6593,6 @@ void HloInstruction::set_block_scaling_config(
   }
   Cast<HloConvolutionInstruction>(this)->set_block_scaling_config(
       block_scaling_config);
-}
-
-const DomainMetadata& HloInstruction::operand_side_metadata() const {
-  return Cast<HloDomainInstruction>(this)->operand_side_metadata();
-}
-
-const DomainMetadata& HloInstruction::user_side_metadata() const {
-  return Cast<HloDomainInstruction>(this)->user_side_metadata();
 }
 
 HloInstruction* HloInstruction::async_chain_start() const {

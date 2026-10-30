@@ -1509,10 +1509,13 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
     std::string serialized_executable;
     ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(), std::string(hlo_file), &serialized_executable));
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<PjRtLoadedExecutable> executable,
-        client.LoadSerializedExecutable(serialized_executable, compile_options,
-                                        LoadOptions()));
+    std::unique_ptr<PjRtLoadedExecutable> executable;
+    {
+      XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::LoadSerializedExecutable");
+      ABSL_ASSIGN_OR_RETURN(executable, client.LoadSerializedExecutable(
+                                       serialized_executable, compile_options,
+                                       LoadOptions()));
+    }
     return Run(client, executable.get(), *final_arguments, running_options,
                engine);
   }

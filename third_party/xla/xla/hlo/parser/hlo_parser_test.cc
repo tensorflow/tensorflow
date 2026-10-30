@@ -8131,6 +8131,39 @@ ENTRY main {
   EXPECT_EQ(called_computation->root_instruction()->operand_count(), 2);
 }
 
+TEST_F(HloParserTest, DesugarParsingTest_CallStart_InvalidToApply) {
+  // The braces open a nested computation, and `%nope` is not a valid
+  // instruction inside it.
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  call-start = ((), (), s32[]) call-start(), to_apply={%nope}
+  ROOT call-done = s32[] call-done(call-start)
+}
+  )";
+  auto module_or_status = ParseAndReturnUnverifiedModule(hlo);
+  EXPECT_FALSE(module_or_status.ok());
+  EXPECT_THAT(module_or_status.status().message(),
+              HasSubstr("expects '=' in instruction"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_CustomCallStart_MissingTarget) {
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  cc-start = ((), (), s32[]) custom-call-start()
+  ROOT cc-done = s32[] custom-call-done(cc-start)
+}
+  )";
+  auto module_or_status = ParseAndReturnUnverifiedModule(hlo);
+  EXPECT_FALSE(module_or_status.ok());
+  EXPECT_THAT(
+      module_or_status.status().message(),
+      HasSubstr("attribute custom_call_target is expected but not seen"));
+}
+
 TEST_F(HloParserTest,
        DesugarParsingTest_CallStart_RootShape_CallDone_Mismatch) {
   const char* const hlo = R"(

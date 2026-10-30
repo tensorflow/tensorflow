@@ -1243,7 +1243,7 @@ TEST(StreamExecutorGpuClientTest,
 TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
   ASSERT_OK_AND_ASSIGN(auto pjrt_client,
                        GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
-  auto* client = absl::down_cast<CommonPjRtClientImpl*>(pjrt_client.get());
+  auto* client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
   auto* memory_space = client->memory_spaces()[0];
   auto literal = LiteralUtil::CreateR1<float>({41.0f, 42.0f, 43.0f, 44.0f});
   ASSERT_OK_AND_ASSIGN(
@@ -1307,7 +1307,7 @@ TEST(StreamExecutorGpuClientTest, DeviceErrorCallbackPropagatesToPeerNodes) {
   EXPECT_THAT(kv_store->TryGet("gpu_fatal_error"),
               StatusIs(absl::StatusCode::kNotFound));
 
-  auto* se_client_0 = absl::down_cast<CommonPjRtClientImpl*>(client_0.get());
+  auto* se_client_0 = absl::down_cast<CommonPjRtClient*>(client_0.get());
   auto* raw_client_0 =
       absl::down_cast<PjRtStreamExecutorRawClient*>(se_client_0->raw_client());
   ASSERT_OK_AND_ASSIGN(LocalDeviceState * device_state_0,

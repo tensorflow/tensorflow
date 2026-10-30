@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -38,8 +37,11 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.pb.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -53,7 +55,9 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
     std::optional<ShapedSlice> aux, std::optional<ShapedSlice> a_scale,
     std::optional<ShapedSlice> b_scale, std::optional<ShapedSlice> c_scale,
     std::optional<ShapedSlice> d_scale, std::optional<ShapedSlice> d_amax,
-    std::optional<const ShapedSlice> workspace)
+    std::optional<const ShapedSlice> workspace,
+    std::optional<se::gpu::BlasLtMatmulAlgorithm> blas_lt_algorithm,
+    bool require_exact_algorithm)
     : TracedCommand(Kind::kCublasLtMatmul, std::move(thunk_info)),
       gemm_config_(std::move(gemm_config)),
       epilogue_(epilogue),
@@ -72,7 +76,9 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
       c_scale_(c_scale),
       d_scale_(d_scale),
       d_amax_(d_amax),
-      workspace_(workspace) {}
+      workspace_(workspace),
+      blas_lt_algorithm_(std::move(blas_lt_algorithm)),
+      require_exact_algorithm_(require_exact_algorithm) {}
 
 absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Running cublas_lt matmul thunk";
@@ -147,6 +153,24 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
                                     gemm_config_));
     return std::move(plan);
   };
+  if (blas_lt_algorithm_.has_value()) {
+    absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> plan =
+        blas_lt->GetOrCreateMatmulPlanWithAlgorithm(canonical_hlo_, create,
+                                                    *blas_lt_algorithm_,
+                                                    autotune_workspace_size_);
+    if (plan.ok() || require_exact_algorithm_) {
+      return plan;
+    }
+    LOG(WARNING) << "Failed to initialize BlasLt algorithm from descriptor ("
+                 << plan.status()
+                 << "); falling back to heuristic algorithm index "
+                 << algorithm_idx_;
+  } else if (require_exact_algorithm_) {
+    return absl::FailedPreconditionError(
+        "Exact BlasLt algorithm is required, but no algorithm descriptor "
+        "proto was provided.");
+  }
+
   // Always request the full algorithm list: plans are shared across thunks by
   // canonical_hlo_, and a varying count would invalidate the cached list.
   return blas_lt->GetOrCreateMatmulPlanWithAlgorithm(
@@ -257,13 +281,19 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
     ABSL_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_workspace(),
                      workspace_->ToProto());
   }
+  if (blas_lt_algorithm_.has_value()) {
+    *cublas_lt_matmul_thunk->mutable_algorithm_proto() =
+        blas_lt_algorithm_->ToProto();
+  }
+  cublas_lt_matmul_thunk->set_require_exact_algorithm(require_exact_algorithm_);
   return proto;
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<Thunk>>
 CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo thunk_info,
                                const CublasLtMatmulThunkProto& proto,
-                               absl::Span<const BufferAllocation> allocations) {
+                               absl::Span<const BufferAllocation> allocations,
+                               const DebugOptions& runtime_debug_options) {
   ABSL_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue epilogue,
                    se::gpu::BlasLt::EpilogueFromProto(proto.epilogue()));
   ABSL_ASSIGN_OR_RETURN(ShapedSlice a,
@@ -329,13 +359,31 @@ CublasLtMatmulThunk::FromProto(Thunk::ThunkInfo thunk_info,
                      se::gpu::GemmConfig::FromProto(proto.gemm_config()));
   }
 
+  std::optional<se::gpu::BlasLtMatmulAlgorithm> blas_lt_algorithm;
+  if (proto.has_algorithm_proto()) {
+    ABSL_ASSIGN_OR_RETURN(
+        blas_lt_algorithm,
+        se::gpu::BlasLtMatmulAlgorithm::FromProto(proto.algorithm_proto()));
+  }
+
+  // `--xla_gpu_require_exact_blas_lt_algorithm` can be set either at compile
+  // time (stored in `proto.require_exact_algorithm()`) or at runtime when
+  // loading an AOT executable (via `runtime_debug_options`). Because the field
+  // in `DebugOptions` defaults to unset, an explicit runtime setting (true or
+  // false) overrides the compile-time value in the proto.
+  const bool require_exact_algorithm =
+      runtime_debug_options.has_xla_gpu_require_exact_blas_lt_algorithm()
+          ? runtime_debug_options.xla_gpu_require_exact_blas_lt_algorithm()
+          : proto.require_exact_algorithm();
+
   return std::make_unique<CublasLtMatmulThunk>(
       std::move(thunk_info), std::move(proto.canonical_hlo()),
       std::move(*gemm_config), std::move(epilogue), proto.algorithm_idx(),
       proto.autotune_workspace_size(), std::move(a), std::move(b), std::move(c),
       std::move(d), std::move(group_sizes), std::move(bias), std::move(aux),
       std::move(a_scale), std::move(b_scale), std::move(c_scale),
-      std::move(d_scale), std::move(d_amax), std::move(workspace));
+      std::move(d_scale), std::move(d_amax), std::move(workspace),
+      std::move(blas_lt_algorithm), require_exact_algorithm);
 }
 
 }  // namespace gpu

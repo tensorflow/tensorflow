@@ -3745,7 +3745,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kConditional);
   ret.emplace(HloOpcode::kConvolution);
   ret.emplace(HloOpcode::kCustomCall);
-  ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
   ret.emplace(HloOpcode::kFft);
   ret.emplace(HloOpcode::kFusion);

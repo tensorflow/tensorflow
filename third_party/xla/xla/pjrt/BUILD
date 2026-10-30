@@ -31,6 +31,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
@@ -178,6 +179,20 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "dynamic_shapes_test",
+    srcs = ["dynamic_shapes_test.cc"],
+    deps = [
+        ":dynamic_shapes",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "common_pjrt_client",
     srcs = [
@@ -212,6 +227,7 @@ cc_library(
         ":raw_pjrt_client",
         ":staging_buffer",
         ":strided_gather",
+        ":tiled_linearizer",
         ":transpose",
         ":utils",
         "//xla:executable_run_options",
@@ -259,7 +275,9 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@riegeli//riegeli/base:any",
         "@riegeli//riegeli/bytes:cord_reader",
+        "@riegeli//riegeli/bytes:reader",
         "@riegeli//riegeli/bytes:string_reader",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:context",
@@ -682,6 +700,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/flags:marshalling",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

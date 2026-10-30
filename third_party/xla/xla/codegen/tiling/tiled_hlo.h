@@ -136,32 +136,6 @@ class TiledHloInstruction {
     sink.Append(tiled_hlo.ToString());
   }
 
-  // Temporary helpers to match API of the old TiledHloInstruction.
-  // TODO: b/509505290 -- Remove these once we migrate to this tiling and the
-  // old API is removed.
-  llvm::SmallVector<int64_t> tile_sizes() const {
-    auto tile_sizes = tile().GetStaticTileSizes();
-    CHECK_OK(tile_sizes);
-    return *tile_sizes;
-  }
-  llvm::SmallVector<int64_t> tile_strides() const {
-    auto tile_strides = tile().GetStaticTileStrides();
-    CHECK_OK(tile_strides);
-    return *tile_strides;
-  }
-
-  int64_t tile_size(int64_t dim) const {
-    auto tile_sizes = this->tile_sizes();
-    CHECK_LT(dim, tile_sizes.size());
-    return tile_sizes[dim];
-  }
-
-  int64_t tile_stride(int64_t dim) const {
-    auto tile_strides = this->tile_strides();
-    CHECK_LT(dim, tile_strides.size());
-    return tile_strides[dim];
-  }
-
  private:
   // Pointer to the original HLO instruction.
   const HloInstruction* hlo_;
@@ -253,9 +227,6 @@ class TiledHloComputation {
     sink.Append(tiled_computation.ToString());
   }
 
-  // Temporary helpers to match API of the old TiledHloComputation.
-  // TODO: b/509505290 -- Remove these once we migrate to this tiling and the
-  // old API is removed.
   int64_t num_output_tiles() const {
     int64_t res = 1;
     for (const auto& dimension : tiling_space_->dimensions()) {

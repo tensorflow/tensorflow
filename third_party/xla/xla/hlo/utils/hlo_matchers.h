@@ -338,7 +338,6 @@ HLO_MATCHER(CopyDone);
 HLO_MATCHER(CopyStart);
 HLO_MATCHER(Cosh);
 HLO_MATCHER(Divide);
-HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
 HLO_MATCHER(Erf);

@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -32,11 +31,11 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/python/ifrt/ir/export/passes.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/support/module_parsing.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -158,22 +157,16 @@ class IfrtIRProgramSerDes : public RTTIExtends<IfrtIRProgramSerDes, SerDes> {
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_options =
         dyn_cast_or_null<DeserializeIfrtIRProgramOptions>(options.get());
-    bool use_existing_context = false;
-    std::unique_ptr<mlir::MLIRContext> context;
-    if (!deserialize_options || !deserialize_options->context) {
-      context = std::make_unique<mlir::MLIRContext>(
+    std::unique_ptr<mlir::MLIRContext> owned_context;
+    mlir::MLIRContext* context = nullptr;
+    if (deserialize_options == nullptr ||
+        deserialize_options->context == nullptr) {
+      owned_context = std::make_unique<mlir::MLIRContext>(
           mlir::MLIRContext::Threading::DISABLED);
+      context = owned_context.get();
     } else {
-      use_existing_context = true;
-      context =
-          std::unique_ptr<mlir::MLIRContext>(deserialize_options->context);
+      context = deserialize_options->context;
     }
-    absl::Cleanup release_context_pointer = [&]() {
-      if (use_existing_context) {
-        // Release the pointer s.t. the existing context is not freed.
-        context.release();
-      }
-    };
 
     IfrtIrProgramProto program_proto;
     if (!program_proto.ParseFromString(serialized)) {
@@ -184,33 +177,23 @@ class IfrtIRProgramSerDes : public RTTIExtends<IfrtIRProgramSerDes, SerDes> {
     // parsing text-based IFRT IR, we copy the serialized data to a
     // `std::string` to guarantee null-termination before deserialization.
     std::string flat_str(program_proto.ifrt_program());
-    ABSL_ASSIGN_OR_RETURN(auto module,
+    ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                      support::ParseMlirModuleString(flat_str, *context));
 
-    if (program_proto.ifrt_version().empty()) {
-      // The program was not versioned on serialization. The whole IFRT IR
-      // program was serialized to bytecode.
-      if (use_existing_context) {
-        return std::make_unique<IfrtIRProgram>(module.release());
+    if (!program_proto.ifrt_version().empty()) {
+      // Run the pipeline to convert a versioned IFRT IR program artifact to
+      // an IFRT IR program.
+      mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
+      mlir::PassManager pm(context);
+      createIfrtFromVersionedPipeline(pm, program_proto);
+      if (mlir::failed(pm.run(*module))) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Failed to deserialize versioned IFRT IR program: %s",
+            diagnostic_handler.ConsumeStatus().message()));
       }
-      return std::make_unique<IfrtIRProgram>(std::move(context),
-                                             std::move(module));
-    }
-    // Run the pipeline to convert a versioned IFRT IR program artifact to
-    // an IFRT IR program.
-    mlir::BaseScopedDiagnosticHandler diagnostic_handler(context.get());
-    mlir::PassManager pm(context.get());
-    createIfrtFromVersionedPipeline(pm, program_proto);
-    if (mlir::failed(pm.run(*module))) {
-      return absl::InvalidArgumentError(
-          absl::StrFormat("Failed to deserialize versioned IFRT IR program: %s",
-                          diagnostic_handler.ConsumeStatus().message()));
     }
 
-    if (use_existing_context) {
-      return std::make_unique<IfrtIRProgram>(module.release());
-    }
-    return std::make_unique<IfrtIRProgram>(std::move(context),
+    return std::make_unique<IfrtIRProgram>(std::move(owned_context),
                                            std::move(module));
   }
 

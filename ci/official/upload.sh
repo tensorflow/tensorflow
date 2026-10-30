@@ -63,7 +63,11 @@ if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then
   # an upload fails. This guarantees that both PyPI and GAR uploads are attempted
   # sequentially, while preserving their exit codes to fail the build afterwards.
   twine upload $TFCI_ARTIFACT_FINAL_PYPI_ARGS "$DOWNLOADS"/*.whl || py_exit=$?
-  twine upload $TFCI_ARTIFACT_FINAL_GAR_ARGS "$DOWNLOADS"/*.whl || gar_exit=$?
+  # Without a repository URL twine falls back to PyPI and would try to upload
+  # the same wheels there again, so only upload to GAR when it is configured.
+  if [[ -n "$TFCI_ARTIFACT_FINAL_GAR_ARGS" ]]; then
+    twine upload $TFCI_ARTIFACT_FINAL_GAR_ARGS "$DOWNLOADS"/*.whl || gar_exit=$?
+  fi
   if [[ $py_exit -ne 0 || $gar_exit -ne 0 ]]; then
     echo "One or more uploads failed (PyPI exit code: $py_exit, GAR exit code: $gar_exit)." >&2
     exit 1

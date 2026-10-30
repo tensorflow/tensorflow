@@ -485,12 +485,19 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "algebraic_simplifier_options_proto",
+    srcs = ["algebraic_simplifier_options.proto"],
+    make_default_target_header_only = True,
+)
+
 cc_library(
     name = "algebraic_simplifier",
     srcs = ["algebraic_simplifier.cc"],
     hdrs = ["algebraic_simplifier.h"],
     copts = tsl_copts(),
     deps = [
+        ":algebraic_simplifier_options_proto_cc",
         ":conv_operand_swapper",
         "//xla:comparison_util",
         "//xla:literal",
@@ -532,6 +539,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -566,6 +574,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1368,6 +1377,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/pass:hlo_pass_registry",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1376,6 +1386,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:errors",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(

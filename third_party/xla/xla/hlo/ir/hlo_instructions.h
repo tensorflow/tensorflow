@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -3077,44 +3076,6 @@ class HloScaledDotInstruction : public HloInstruction {
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
   PrecisionConfig precision_config_;
-};
-
-class HloDomainInstruction : public HloInstruction {
- public:
-  explicit HloDomainInstruction(
-      const Shape& shape, HloInstruction* operand,
-      std::unique_ptr<DomainMetadata> operand_side_metadata,
-      std::unique_ptr<DomainMetadata> user_side_metadata);
-
-  void ToProto(HloInstructionProto* proto) const override;
-
-  // Retrieves the operand side metadata of a kDomain instruction.
-  const DomainMetadata& operand_side_metadata() const {
-    return *operand_side_metadata_;
-  }
-  // Retrieves the user side metadata of a kDomain instruction.
-  const DomainMetadata& user_side_metadata() const {
-    return *user_side_metadata_;
-  }
-
-  static bool ClassOf(const HloInstruction* hlo) {
-    return hlo->opcode() == HloOpcode::kDomain;
-  }
-
- private:
-  void PrintExtraAttributesImpl(AttributePrinter& printer,
-                                const HloPrintOptions& options) const override;
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
-          eq_computations) const override;
-  // Implementation for non-common logic of CloneWithNewOperands.
-  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
-      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-      HloCloneContext* context) const override;
-
-  std::unique_ptr<DomainMetadata> operand_side_metadata_;
-  std::unique_ptr<DomainMetadata> user_side_metadata_;
 };
 
 class HloGetDimensionSizeInstruction : public HloInstruction {

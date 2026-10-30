@@ -143,8 +143,8 @@ void CudaCommandBufferTelemetryTest::SetUp() {
     GTEST_SKIP() << "Command buffer telemetry needs CUDA 13.2+ (toolkit, "
                     "runtime and driver)";
   }
-  // Entries of earlier tests may still be waiting for their cleanups. Their
-  // tokens are never reissued, so late cleanups can't affect this test.
+  // Earlier tests may have left entries behind, e.g. ones they tracked
+  // directly in the registry.
   registry().ClearForTesting();
 
   ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream());

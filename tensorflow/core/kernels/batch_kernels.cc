@@ -910,7 +910,19 @@ class UnbatchResource : public ResourceBase {
       auto batch_indices =
           batch_index_t.shaped<int64_t, 2>({batch_index_t.dim_size(0), 3});
       for (int i = 0; i < batch_index_t.dim_size(0); ++i) {
-        sizes.push_back(batch_indices(i, 2) - batch_indices(i, 1));
+        const int64_t start = batch_indices(i, 1);
+        const int64_t end = batch_indices(i, 2);
+        if (start < 0 || end < start) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid start/end indices in batch_index at row ", i, ": start=",
+              start, ", end=", end, ". Expected 0 <= start <= end."));
+        }
+        if (end > data_t.shape().dim_size(0)) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid end index in batch_index at row ", i, ": end=", end,
+              " exceeds dimension 0 size ", data_t.shape().dim_size(0), "."));
+        }
+        sizes.push_back(end - start);
         batch_keys.push_back(batch_indices(i, 0));
       }
 

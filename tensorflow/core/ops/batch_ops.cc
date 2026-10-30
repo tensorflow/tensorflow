@@ -170,9 +170,18 @@ REGISTER_OP("Unbatch")
     .Attr("shared_name: string = ''")
     .Attr("T: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle batched_tensor;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &batched_tensor));
+      shape_inference::ShapeHandle batch_index;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &batch_index));
+      shape_inference::DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(batch_index, 1), 3, &unused_dim));
+      shape_inference::ShapeHandle id;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &id));
+
       shape_inference::ShapeHandle out_shape;
       TF_RETURN_IF_ERROR(
-          c->ReplaceDim(c->input(0), 0, c->UnknownDim(), &out_shape));
+          c->ReplaceDim(batched_tensor, 0, c->UnknownDim(), &out_shape));
       c->set_output(0, out_shape);
       return absl::OkStatus();
     });

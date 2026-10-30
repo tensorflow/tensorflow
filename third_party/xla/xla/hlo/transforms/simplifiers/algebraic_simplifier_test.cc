@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -4689,8 +4691,8 @@ TEST_F(AlgebraicSimplifierTest, CopyEqualsBitcast) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Parameter(0))));
 
-  AlgebraicSimplifierOptions options(
-      [](const Shape&, const Shape&) { return false; });
+  AlgebraicSimplifierOptions options;
+  options.set_enable_reshape_is_bitcast(false);
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier1(options);
   ASSERT_FALSE(simplifier1.Run(m.get()).value());
@@ -5252,8 +5254,8 @@ TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Reshape(m::Parameter(0))));
 
-  AlgebraicSimplifierOptions options(
-      [](const Shape&, const Shape&) { return false; });
+  AlgebraicSimplifierOptions options;
+  options.set_enable_reshape_is_bitcast(false);
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(m.get()).value());
@@ -9204,6 +9206,24 @@ TEST_F(AlgebraicSimplifierTest, ConcatToBroadcast) {
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, BinaryConcatToBroadcast) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      p = f32[2,1,4] parameter(0)
+      ROOT concat = f32[2,2,4] concatenate(p,p), dimensions={1}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
+}
+
 TEST_F(AlgebraicSimplifierTest, NegateNegate) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module
@@ -11044,8 +11064,8 @@ TEST_F(AlgebraicSimplifierTest, CopyReshape) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   Shape result_shape = m->entry_computation()->root_instruction()->shape();
-  AlgebraicSimplifierOptions options(
-      [](const Shape&, const Shape&) { return false; });
+  AlgebraicSimplifierOptions options;
+  options.set_enable_reshape_is_bitcast(false);
   options.set_is_layout_sensitive(true);
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
   EXPECT_THAT(
@@ -11253,8 +11273,8 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegLayout) {
   // We disable converting reshape to bitcast to make sure algsimp pass does
   // not catch the reshape in this test, then we can simply check if algsimp
   // pass does not make any change.
-  AlgebraicSimplifierOptions options(
-      [](const Shape&, const Shape&) { return false; });
+  AlgebraicSimplifierOptions options;
+  options.set_enable_reshape_is_bitcast(false);
   options.set_is_layout_sensitive(true);
   // The transformation of moving transpose and reshape to the constant side is
   // layout insensitive. It should not happen if AlgebraicSimplifier is set up
@@ -15283,10 +15303,8 @@ TEST_F(AlgebraicSimplifierTest, CopyReshapeToReshapeCopyWithHostCopies) {
     ROOT copy.10970 = f32[16,8,8]{1,2,0:T(8,128)} copy(reshape.37527)
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo));
-  auto reshape_is_bitcast = [](const Shape& from_shape, const Shape& to_shape) {
-    return false;
-  };
-  AlgebraicSimplifierOptions options(reshape_is_bitcast);
+  AlgebraicSimplifierOptions options;
+  options.set_enable_reshape_is_bitcast(false);
   options.set_enable_floats_are_real(true);
   options.set_is_layout_sensitive(true);
   options.set_enable_conv_simplification(false);

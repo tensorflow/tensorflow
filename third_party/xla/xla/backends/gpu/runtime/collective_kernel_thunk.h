@@ -146,10 +146,6 @@ class CollectiveKernelThunk : public TracedCommand {
   absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
-  // We use a double buffering strategy for the buffers.
-  // See docs on struct StreamState for more details.
-  static constexpr int64_t kNumBuffers = 2;
-
   // Per-executor state that needs to be synchronized for access.
   struct StreamState {
     int device_ordinal = 0;

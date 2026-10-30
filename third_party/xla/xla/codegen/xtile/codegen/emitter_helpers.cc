@@ -714,6 +714,21 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
           MaybeBroadcastScalarToShape(b, inputs[2], inputs[1].getType());
       return Minimum(b, {Maximum(b, {min_val, inputs[1]}), max_val});
     }
+    case HloOpcode::kFma: {
+      PrimitiveType element_type = hlo.shape().element_type();
+      if (element_type != F16 && element_type != BF16 && element_type != F32 &&
+          element_type != F64) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Unsupported element type for fma: ",
+            primitive_util::LowercasePrimitiveTypeName(element_type)));
+      }
+      Value lhs =
+          MaybeBroadcastScalarToShape(b, inputs[0], inputs[1].getType());
+      lhs = MaybeBroadcastScalarToShape(b, lhs, inputs[2].getType());
+      Value rhs = MaybeBroadcastScalarToShape(b, inputs[1], lhs.getType());
+      Value addend = MaybeBroadcastScalarToShape(b, inputs[2], lhs.getType());
+      return mlir::stablehlo::FmaOp::create(b, lhs, rhs, addend);
+    }
     case HloOpcode::kAnd:
       return mlir::stablehlo::AndOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kOr:

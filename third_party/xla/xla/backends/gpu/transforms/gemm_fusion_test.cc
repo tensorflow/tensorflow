@@ -25,12 +25,15 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
@@ -182,6 +185,33 @@ ENTRY e {
                                    m::Bitcast(m::Parameter()))));
 }
 
+TEST_F(GemmFusionTestV2, BitcastIsNotHoistedAboveLayoutChangingCopy) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[2,3]{0,1} parameter(0)
+  p1 = f32[2,2]{1,0} parameter(1)
+  copy = f32[2,3]{1,0} copy(p0)
+  bitcast = f32[3,2]{1,0} bitcast(copy)
+  ROOT dot = f32[3,2]{1,0} dot(bitcast, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  Literal lhs = LiteralUtil::CreateR2<float>({{0, 1, 2}, {3, 4, 5}});
+  lhs = lhs.Relayout(
+      module->entry_computation()->parameter_instruction(0)->shape());
+  Literal rhs = LiteralUtil::CreateR2<float>({{1, 0}, {0, 1}});
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       HloEvaluator().Evaluate(*module, {&lhs, &rhs}));
+
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  ASSERT_OK(module->Verify());
+
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       HloEvaluator().Evaluate(*module, {&lhs, &rhs}));
+  EXPECT_EQ(expected, actual);
+}
+
 TEST_F(GemmFusionTestV2, BitcastIsHoistedAboveBroadcast) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -234,6 +264,31 @@ ENTRY e {
   ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Bitcast(m::Fusion())));
+}
+
+TEST_F(GemmFusionTestV2, BitcastDoesNotSinkPastLayoutChangingCopy) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[3,2]{1,0} parameter(0)
+  p1 = f32[2,2]{1,0} parameter(1)
+  dot = f32[3,2]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcast = f32[2,3]{1,0} bitcast(dot)
+  ROOT copy = f32[2,3]{0,1} copy(bitcast)
+})"));
+  Literal lhs = LiteralUtil::CreateR2<float>({{0, 1}, {2, 3}, {4, 5}});
+  Literal rhs = LiteralUtil::CreateR2<float>({{1, 0}, {0, 1}});
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       HloEvaluator().Evaluate(*module, {&lhs, &rhs}));
+
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  ASSERT_OK(module->Verify());
+
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       HloEvaluator().Evaluate(*module, {&lhs, &rhs}));
+  EXPECT_EQ(expected, actual);
 }
 
 TEST_F(GemmFusionTestV2, MultipleBitcastsSink) {
@@ -2112,9 +2167,9 @@ TEST_P(GemmFusionTestVersioned, ScaledDotScaleBroadcastsAreFusedOnRocm) {
   )";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(GemmFusion(TestGpuDeviceInfo::AMDMI350DeviceInfo())
-                  .Run(module.get()),
-              IsOkAndHolds(true));
+  EXPECT_THAT(
+      GemmFusion(TestGpuDeviceInfo::AMDMI350DeviceInfo()).Run(module.get()),
+      IsOkAndHolds(true));
   MatchHloModule(*module, R"(
     CHECK: f8e8m0fnu[3,128,4]{2,1,0} broadcast(
     CHECK: f8e8m0fnu[3,128,4]{2,1,0} broadcast(

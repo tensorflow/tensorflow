@@ -177,7 +177,9 @@ xla_test(
     srcs = ["ynn_matcher_test.cc"],
     backends = ["cpu"],
     deps = [
+        "//xla:error_spec",
         "//xla:xla_proto_cc",
+        "//xla/tests:hlo_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

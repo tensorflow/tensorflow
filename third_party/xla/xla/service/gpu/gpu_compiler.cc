@@ -98,7 +98,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/legalize_collective_domain.h"
 #include "xla/backends/gpu/transforms/collectives/reduce_scatter_combiner.h"
 #include "xla/backends/gpu/transforms/composite_rewriter.h"
-#include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_converter.h"
@@ -112,6 +111,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_copy_fusion_async_wrapper.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
+#include "xla/backends/gpu/transforms/erase_xla_late_frontend_attributes.h"
 #include "xla/backends/gpu/transforms/estimate_cub_scan_scratch_size.h"
 #include "xla/backends/gpu/transforms/estimate_cub_sort_scratch_size.h"
 #include "xla/backends/gpu/transforms/explicit_collectives_group_async_wrapper.h"
@@ -286,6 +286,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
+#include "xla/service/gpu/gpu_pipeline.h"
 #include "xla/service/gpu/gpu_spmd_pipeline.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -698,6 +699,7 @@ absl::Status RunPreSPMDPartitionerPasses(
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner", compilation_stats);
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
+  pre_spmd_pipeline.AddPass<EraseXlaLateFrontendAttributes>();
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<CompositeRewriter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
@@ -747,6 +749,10 @@ absl::Status RunSPMDPasses(
     AddSPMDPasses(hlo_module, layout_insensitive_algsimp_opts,
                   gpu_target_config.device_description.gpu_compute_capability(),
                   spmd_pipeline, std::nullopt, max_windowed_einsum_iteration);
+    // Custom partitioning callbacks can emit xla.scaled_dot composites during
+    // partitioning, after the pre-SPMD CompositeRewriter has already run. From
+    // here on they take the same path as the composites rewritten before SPMD.
+    spmd_pipeline.AddPass<CompositeRewriter>();
     return spmd_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
         .status();
   } else {
@@ -842,7 +848,8 @@ absl::Status RunOptimizationPasses(
       return false;
     }
     return !gpu::IsCublasSupportedMatMul(
-                *instr, /*allow_matrix_vector_multiplication=*/false)
+                *instr, /*allow_matrix_vector_multiplication=*/false,
+                /*is_normalized=*/false)
                 .value_or(false);
   };
   pipeline.AddPass<ResultCaster>(upcaster_filter);
@@ -1807,7 +1814,6 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
   switch (mode) {
     case AlgebraicSimplifierMode::kPostFusionSimplification:
     case AlgebraicSimplifierMode::kLayoutInsensitive:
-      opts.set_conv_is_lowerable_callback(ConvRewriter::ConvIsLowerable);
       // Always simplify reduce(transpose(x)) and reduce(reshape(x)), even when
       // the transpose/reshape has multiple users.  This helps int8 models,
       // which tend to have lots of transpose+reshape's (converting between NCHW
@@ -1890,6 +1896,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
           AlgebraicSimplifierMode::kLayoutInsensitive,
           hlo_module->config().debug_options(),
           IsNonCudaPlatform(gpu_topology.gpu_target_config()));
+
+  XLA_VLOG_LINES(1, absl::StrCat("Default compilation pipeline:\n",
+                                 GetDefaultCompilationPipeline(
+                                     layout_insensitive_algsimp_opts)
+                                     .DebugString()));
 
   {
     HloPassPipeline pipeline("annotate-host-compute", compilation_stats);
@@ -2219,7 +2230,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           gpu_target_config.device_description, ShapeSizeBytesFunction(),
           alias_info, mlir_context,
           /*only_fuse_if_profitable=*/true, thread_pool, &mlir_context_pool_);
-      if (debug_options.xla_gpu_experimental_enable_triton_scan()) {
+      if (debug_options.xla_gpu_experimental_enable_triton_scan() &&
+          gpu_version.cuda_compute_capability() != nullptr) {
         pipeline.AddPass<ScanRewriterTriton>(
             gpu_target_config.device_description);
       }

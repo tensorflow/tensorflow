@@ -79,8 +79,8 @@ class ConfigurablePassFactory : public HloPassFactory {
       const HloPassContext& context,
       const HloPassOptions& options) const override {
     ABSL_ASSIGN_OR_RETURN(const FakeEnv& env, context.Get<const FakeEnv>());
-    ABSL_ASSIGN_OR_RETURN(int64_t threshold, options.Get<int64_t>("threshold", 10));
-    return std::make_unique<ConfigurablePass>(env.device_count, threshold);
+    return std::make_unique<ConfigurablePass>(
+        env.device_count, options.Get<int64_t>("threshold").value_or(10));
   }
 };
 

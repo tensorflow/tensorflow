@@ -115,6 +115,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":backend_configs_cc",
+        ":ir_emission_utils",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_proto_cc",
@@ -147,6 +148,7 @@ xla_cc_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -542,7 +544,6 @@ cc_library(
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
         "//xla/service:call_graph",
-        "//xla/service:collective_ops_utils",
         "//xla/service:collective_opt_utils",
         "//xla/service:gpu_topology",
         "//xla/service:hlo_proto_cc",
@@ -552,6 +553,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:memory_space",
+        "//xla/stream_executor/gpu:blas_lt_matmul_algorithm",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/concurrency:future",
@@ -760,6 +762,7 @@ xla_cc_test(
     deps = [
         ":buffer_allocations",
         ":gpu_executable_buffer_allocator",
+        ":gpu_memory_space_assignment",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -878,6 +881,7 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/stream_executor/sycl:oneapi_compute_capability",
         "//xla/stream_executor/sycl:sycl_platform_id",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:logging",
@@ -1068,6 +1072,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
+        "//xla/service:collective_ops_utils",
         "//xla/service:matmul_indexing_utils",
         "//xla/stream_executor:device_description",
         "//xla/tsl/lib/strings:proto_serialization",
@@ -1757,6 +1762,59 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_pipeline",
+    srcs = ["gpu_pipeline.cc"],
+    hdrs = ["gpu_pipeline.h"],
+    deps = [
+        "//xla/hlo/pass:hlo_pass_options",
+        "//xla/hlo/pass:hlo_pipeline_editor",
+        "//xla/hlo/pass:hlo_pipeline_proto_cc",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+    ],
+)
+
+# Links the HloPassRegistry registrations of the passes in
+# GetDefaultCompilationPipeline. gpu_pipeline_test checks that the list is
+# complete.
+cc_library(
+    name = "gpu_pipeline_passes",
+    deps = [
+        "//xla/backends/gpu/transforms:algebraic_simplifier",
+        "//xla/backends/gpu/transforms:composite_rewriter",
+        "//xla/backends/gpu/transforms:cudnn_custom_call_converter",
+        "//xla/backends/gpu/transforms:erase_xla_late_frontend_attributes",
+        "//xla/core/host_offloading:hlo_host_device_type_call_wrapper",
+        "//xla/hlo/transforms:convert_memory_placement_to_internal_annotations",
+        "//xla/hlo/transforms/simplifiers:conditional_canonicalizer",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
+        "//xla/hlo/transforms/simplifiers:zero_sized_hlo_elimination",
+        "//xla/service:call_inliner",
+        "//xla/service:topk_rewriter",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_pipeline_test",
+    srcs = ["gpu_pipeline_test.cc"],
+    deps = [
+        ":gpu_device_info_for_tests",
+        ":gpu_pipeline",
+        ":gpu_pipeline_passes",  # keep
+        "//xla/core/host_offloading:hlo_host_device_type_call_wrapper",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_context",
+        "//xla/hlo/pass:hlo_pass_options",
+        "//xla/hlo/pass:hlo_pass_registry",
+        "//xla/hlo/pass:hlo_pipeline_proto_cc",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "gpu_compiler",
     srcs = ["gpu_compiler.cc"],
     hdrs = ["gpu_compiler.h"],
@@ -1779,6 +1837,7 @@ cc_library(
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",
         ":gpu_memory_space_assignment",
+        ":gpu_pipeline",
         ":gpu_spmd_pipeline",
         ":hlo_fusion_stats",
         ":ir_emission_utils",
@@ -1818,7 +1877,6 @@ cc_library(
         "//xla/backends/gpu/transforms:algorithm_checker",
         "//xla/backends/gpu/transforms:async_wrapper",
         "//xla/backends/gpu/transforms:composite_rewriter",
-        "//xla/backends/gpu/transforms:conv_rewriter",
         "//xla/backends/gpu/transforms:convert_triton_gemm_config",
         "//xla/backends/gpu/transforms:cublas_pad_for_gemms",
         "//xla/backends/gpu/transforms:cudnn_custom_call_converter",
@@ -1832,6 +1890,7 @@ cc_library(
         "//xla/backends/gpu/transforms:dynamic_slice_copy",
         "//xla/backends/gpu/transforms:dynamic_slice_copy_fusion_async_wrapper",
         "//xla/backends/gpu/transforms:dynamic_slice_fusion_rewriter_v2",
+        "//xla/backends/gpu/transforms:erase_xla_late_frontend_attributes",
         "//xla/backends/gpu/transforms:estimate_cub_scan_scratch_size",
         "//xla/backends/gpu/transforms:estimate_cub_sort_scratch_size",
         "//xla/backends/gpu/transforms:explicit_collectives_group_async_wrapper",
@@ -2110,6 +2169,7 @@ xla_test(
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -2129,6 +2189,7 @@ xla_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:buffer_assignment",
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:device_assignment",
@@ -3155,8 +3216,8 @@ cc_library(
     hdrs = ["alias_info.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":backend_configs_cc",
         ":hlo_fusion_analysis",
+        ":ir_emission_utils",
         "//xla:shape_util",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
@@ -3175,6 +3236,7 @@ xla_cc_test(
         ":alias_info",
         ":gpu_device_info_for_tests",
         "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
@@ -3209,6 +3271,7 @@ xla_cc_test(
         ":nvptx_alias_info",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
         "//xla/stream_executor:device_description",

@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
@@ -154,7 +153,6 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kCosh:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
-    case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
@@ -2287,14 +2285,18 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           // and pass them to construct the async-wrapped computation.
           // Any mismatch between the actual operands and the expected shapes
           // in the wrapped computation will be caught by the verifier.
-          async_computation = CreateAsyncWrappedComputation(
-              *async_wrapped_opcode, /*result_shape=*/shape->tuple_shapes(1),
-              /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes(), attrs,
-              allow_attributes);
-
-          if (!async_computation) {
+          HloComputation* async_wrapped_computation =
+              CreateAsyncWrappedComputation(
+                  *async_wrapped_opcode,
+                  /*result_shape=*/shape->tuple_shapes(1),
+                  /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes(),
+                  attrs, allow_attributes);
+          // Check the raw pointer: storing it would engage the optional even
+          // when it is null.
+          if (async_wrapped_computation == nullptr) {
             return nullptr;
           }
+          async_computation = async_wrapped_computation;
         } else {
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
@@ -4070,10 +4072,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operand_span.first(input_count), operands[input_count],
           operand_span.last(input_count), *update_computation, dim_numbers,
           indices_are_sorted.value(), unique_indices.value()));
-    }
-    case HloOpcode::kDomain: {
-      TokenError("domain instructions are no longer supported");
-      return nullptr;
     }
     case HloOpcode::kGetDimensionSize: {
       optional<std::vector<int64_t>> dimensions;

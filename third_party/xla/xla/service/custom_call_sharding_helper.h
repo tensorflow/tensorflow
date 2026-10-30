@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -65,6 +66,13 @@ class CustomCallPartitioner : public CustomCallShardingHelper {
  public:
   virtual absl::Status Partition(spmd::SpmdPartitioningVisitor* partitioner,
                                  HloInstruction* hlo) const;
+
+  // Invokes a sharding-inspection callback for custom calls such as
+  // `InspectSharding` without requiring an HloInstruction or GSPMD visitor.
+  // `backend_config` may contain raw binary bytes (including embedded null
+  // bytes).
+  virtual absl::Status InspectSharding(const HloSharding& sharding,
+                                       absl::string_view backend_config) const;
 
   // Returns if the given side-effecting custom-call is allowed to have
   // replicated sharding.

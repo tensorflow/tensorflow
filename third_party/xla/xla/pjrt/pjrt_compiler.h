@@ -539,6 +539,33 @@ inline bool IsInterpreterId(PjRtPlatformId platform_id) {
 
 class PjRtPhaseCompiler;
 
+// What a deserialized executable keeps of its compiler metadata, i.e. data that
+// is not needed to run it but that profilers and debuggers read (such as the
+// HLO module and symbol tables). Compilers without such metadata ignore it.
+enum class CompilerMetadataOnLoad {
+  // All of it.
+  kKeep,
+  // Only what is read after loading. Serializing the loaded executable again
+  // may fail.
+  kStrip,
+  // kStrip, and also keep the larger retained fields compressed. Readers
+  // decompress them on demand.
+  kStripAndCompress,
+};
+
+// Flag support. The spellings are "keep", "strip" and "strip_and_compress".
+bool AbslParseFlag(absl::string_view text, CompilerMetadataOnLoad* on_load,
+                   std::string* error);
+std::string AbslUnparseFlag(CompilerMetadataOnLoad on_load);
+
+// Options for PjRtCompiler::DeserializeExecutable.
+struct DeserializeExecutableOptions {
+  // Whether to check that the executable is compatible with the topology.
+  bool compatibility_check = true;
+  CompilerMetadataOnLoad compiler_metadata_on_load =
+      CompilerMetadataOnLoad::kKeep;
+};
+
 // Abstract interface that all registered compilers must implement.
 class PjRtCompiler {
  public:
@@ -576,7 +603,7 @@ class PjRtCompiler {
       const PjRtTopologyDescription& topology,
       riegeli::Any<riegeli::Reader*> reader,
       std::optional<CompileOptions>&& options,
-      bool executable_compatibility_check_on_deserialization) {
+      const DeserializeExecutableOptions& deserialize_options) {
     return absl::UnimplementedError(
         absl::StrCat("DeserializeExecutable is not implemented for: ",
                      topology.platform_name(), "."));
@@ -631,7 +658,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtDeserializeExecutable(
     const PjRtTopologyDescription& topology,
     riegeli::Any<riegeli::Reader*> reader,
     std::optional<CompileOptions> options = std::nullopt,
-    bool executable_compatibility_check_on_deserialization = true);
+    const DeserializeExecutableOptions& deserialize_options = {});
 
 // Stores a compilation phase's compiler and validator functions.
 // This struct bundles the essential functional components required to define

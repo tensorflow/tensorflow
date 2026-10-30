@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -41,6 +42,8 @@ namespace xla::gpu {
 // - `gpu_topology` is the topology the executable was compiled for. It is only
 //   absent for executables serialized before `GpuExecutableProto.gpu_topology`
 //   existed.
+// - `runtime_debug_options` carries runtime DebugOptions that can override
+//   compile-time thunk settings when loading an AOT executable.
 // - `symbol_resolver` is used to deserialize custom kernels where the kernel is
 //   not inlined in the proto, but rather loaded at runtime via symbol
 //   resolution.
@@ -50,10 +53,24 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,
     const std::optional<GpuTopology>& gpu_topology,
+    const DebugOptions& runtime_debug_options,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver = std::nullopt,
     const std::optional<xla::cpu::TargetMachineOptions>&
         cpu_target_machine_options = std::nullopt);
+
+// Overload without `runtime_debug_options` for cross-repo callers (such as
+// `jaxlib/thunky/proto_to_thunks.cc`).
+inline absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
+    const ThunkSequenceProto& thunk_sequence_proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const std::optional<GpuTopology>& gpu_topology) {
+  return DeserializeThunkSequenceProto(
+      thunk_sequence_proto, buffer_allocations, hlo_module, platform_name,
+      gpu_compute_capability, gpu_topology, DebugOptions());
+}
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_PROTO_DESERIALIZATION_H_
