@@ -425,9 +425,10 @@ class MatrixRankNumpyInputTest(test.TestCase):
 
   def test_complex_numpy_input_raises(self):
     # Same as for a complex Tensor, instead of using only the real part.
-    x_ = np.array([[1., 1j], [1j, -1.]])
-    with self.assertRaisesRegex(TypeError, "float"):
-      linalg.matrix_rank(x_)
+    for dtype in (np.complex64, np.complex128):
+      x_ = np.array([[1., 1j], [1j, -1.]], dtype=dtype)
+      with self.assertRaisesRegex(TypeError, "float"):
+        linalg.matrix_rank(x_)
 
 
 class _PinvTest(object):
@@ -671,7 +672,12 @@ class LUNumpyInputTest(test.TestCase):
   def test_float64_and_complex_numpy_inputs_keep_dtype(self):
     # These used to be converted to float32, dropping the imaginary part.
     rng = np.random.RandomState(0)
-    for x_ in [rng.randn(3, 3), rng.randn(3, 3) + 1j * rng.randn(3, 3)]:
+    z_ = rng.randn(3, 3) + 1j * rng.randn(3, 3)
+    for x_, tol in [
+        (rng.randn(3, 3), 1e-10),
+        (z_.astype(np.complex64), 1e-3),
+        (z_, 1e-10),
+    ]:
       lower_upper_, perm_ = self.evaluate(linalg.lu(x_))
       rhs_ = np.ones((3, 1), dtype=x_.dtype)
       for y, expected in [
@@ -681,7 +687,7 @@ class LUNumpyInputTest(test.TestCase):
            np.linalg.solve(x_, rhs_)),
       ]:
         self.assertEqual(y.dtype, x_.dtype)
-        self.assertAllClose(expected, self.evaluate(y), rtol=1e-10, atol=1e-10)
+        self.assertAllClose(expected, self.evaluate(y), rtol=tol, atol=tol)
 
 
 @test_util.run_all_in_graph_and_eager_modes

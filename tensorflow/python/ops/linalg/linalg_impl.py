@@ -811,7 +811,7 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
 
 
 def _convert_with_float32_hint(value, name):
-  """Like `convert_to_tensor(value, dtype_hint=float32)`, but never narrows.
+  """Converts to tensor with a float32 hint, keeping float64 and complex.
 
   The hint alone also casts float64 and complex NumPy inputs to float32,
   silently dropping precision and imaginary parts.
