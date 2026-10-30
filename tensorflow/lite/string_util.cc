@@ -50,24 +50,43 @@ void DynamicBuffer::AddJoinedString(const std::vector<StringRef>& strings,
 
 void DynamicBuffer::AddJoinedString(const std::vector<StringRef>& strings,
                                     StringRef separator) {
-  // Resize the data buffer.
-  int total_len = (strings.size() - 1) * separator.len;
+  if (strings.empty()) {
+    AddString("", 0);
+    return;
+  }
+  const size_t num_separators = strings.size() - 1;
+  if (separator.len > 0 && num_separators > max_length_ / separator.len) {
+    return;
+  }
+  size_t total_len = num_separators * separator.len;
   for (StringRef ref : strings) {
+    if (ref.len > max_length_ - total_len) {
+      return;
+    }
     total_len += ref.len;
+  }
+  if (total_len > max_length_ || data_.size() > max_length_ - total_len) {
+    return;
+  }
+  if (total_len == 0) {
+    offset_.push_back(offset_.back());
+    return;
   }
   data_.resize(data_.size() + total_len);
 
   char* dst = data_.data() + offset_.back();
   for (size_t i = 0; i < strings.size(); ++i) {
     // Fill separator if not first string.
-    if (i != 0) {
+    if (i != 0 && separator.len > 0) {
       memcpy(dst, separator.str, separator.len);
       dst += separator.len;
     }
 
     // Fill content of the string.
-    memcpy(dst, strings[i].str, strings[i].len);
-    dst += strings[i].len;
+    if (strings[i].len > 0) {
+      memcpy(dst, strings[i].str, strings[i].len);
+      dst += strings[i].len;
+    }
   }
   offset_.push_back(offset_.back() + total_len);
 }
