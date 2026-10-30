@@ -366,9 +366,9 @@ tf_cc_test(
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/platform:test_benchmark",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_benchmark//:benchmark",
     ],
 )
 

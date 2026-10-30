@@ -19,9 +19,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "benchmark/registration.h"  // from @com_google_benchmark
-#include "benchmark/state.h"  // from @com_google_benchmark
-#include "benchmark/utils.h"  // from @com_google_benchmark
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/data/dataset_test_base.h"
@@ -35,6 +32,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/platform/test.h"
+// IWYU pragma: begin_keep
+#include "tensorflow/core/platform/test_benchmark.h"
+// IWYU pragma: end_keep
 
 namespace tensorflow {
 namespace data {
@@ -339,6 +339,11 @@ FlatMapDatasetParams FlatMapBenchmarkDatasetParams() {
       /*node_name=*/kNodeName);
 }
 
+// `test_benchmark.h` provides `BENCHMARK`, `benchmark::State`, and
+// `benchmark::DoNotOptimize` without re-exporting the internal headers that
+// define them (`registration.h`, `state.h`, `utils.h`), which do not exist in
+// the benchmark release that open-source TensorFlow builds with.
+// NOLINTBEGIN(misc-include-cleaner)
 void BM_FlatMapDatasetGetNext(benchmark::State& state) {
   auto dataset_params = FlatMapBenchmarkDatasetParams();
   FlatMapDatasetOpTest test_base;
@@ -379,6 +384,7 @@ void BM_FlatMapDatasetSkip(benchmark::State& state) {
   state.SetItemsProcessed(state.iterations() * 1000);
 }
 BENCHMARK(BM_FlatMapDatasetSkip);
+// NOLINTEND(misc-include-cleaner)
 
 }  // namespace
 }  // namespace data
