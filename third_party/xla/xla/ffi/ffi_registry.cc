@@ -62,6 +62,24 @@ static bool IsSupportedApiVersion(const XLA_FFI_Api_Version& api_version) {
          version <= kMaxSupportedApiVersion;
 }
 
+static absl::Status CheckSupportedApiVersion(
+    absl::string_view name, absl::string_view platform,
+    absl::string_view canonical_platform, absl::string_view stage,
+    const XLA_FFI_Api_Version& api_version) {
+  if (IsSupportedApiVersion(api_version)) {
+    return absl::OkStatus();
+  }
+  return InvalidArgument(
+      "XLA FFI handler registration for %s on platform %s (canonical %s) "
+      "failed because the %s handler's API version (%d.%d) is incompatible "
+      "with the framework's API version (%d.%d). Minimum supported API "
+      "version is (%d.%d).",
+      name, platform, canonical_platform, stage, api_version.major_version,
+      api_version.minor_version, kMaxSupportedApiVersion.first,
+      kMaxSupportedApiVersion.second, kMinSupportedApiVersion.first,
+      kMinSupportedApiVersion.second);
+}
+
 bool IsCommandBufferCompatible(const XLA_FFI_Metadata& metadata) {
   return metadata.traits & XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
 }
@@ -80,6 +98,9 @@ static std::vector<std::string> GetHandlerStages(
   }
   if (bundle.execute != nullptr) {
     stages.push_back("execute");
+  }
+  if (bundle.record != nullptr) {
+    stages.push_back("record");
   }
   return stages;
 }
@@ -100,17 +121,8 @@ absl::Status RegisterHandler(const XLA_FFI_Api* api, absl::string_view name,
 
   // Check the API version that FFI handler was compiled with is supported.
   ABSL_ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(api, bundle.execute));
-  if (!IsSupportedApiVersion(metadata.api_version)) {
-    return InvalidArgument(
-        "XLA FFI handler registration for %s on platform %s (canonical %s) "
-        "failed because the handler's API version (%d.%d) is incompatible "
-        "with the framework's API version (%d.%d). Minimum supported API "
-        "version is (%d.%d).",
-        name, platform, canonical_platform, metadata.api_version.major_version,
-        metadata.api_version.minor_version, kMaxSupportedApiVersion.first,
-        kMaxSupportedApiVersion.second, kMinSupportedApiVersion.first,
-        kMinSupportedApiVersion.second);
-  }
+  ABSL_RETURN_IF_ERROR(CheckSupportedApiVersion(name, platform, canonical_platform,
+                                           "execute", metadata.api_version));
 
   // Incorporate handler traits passed explicitly via handler registration API.
   metadata.traits |= traits;
@@ -120,6 +132,18 @@ absl::Status RegisterHandler(const XLA_FFI_Api* api, absl::string_view name,
     ABSL_ASSIGN_OR_RETURN(XLA_FFI_Metadata instantiate_metadata,
                      GetMetadata(api, bundle.instantiate));
     metadata.state_type_id = instantiate_metadata.state_type_id;
+  }
+
+  // Validate record implementation metadata and mark handler as command buffer
+  // compatible if a record stage is provided.
+  if (bundle.record != nullptr) {
+    ABSL_ASSIGN_OR_RETURN(XLA_FFI_Metadata record_metadata,
+                     GetMetadata(api, bundle.record));
+    ABSL_RETURN_IF_ERROR(CheckSupportedApiVersion(name, platform, canonical_platform,
+                                             "record",
+                                             record_metadata.api_version));
+    metadata.traits |= record_metadata.traits |
+                       XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
   }
 
   auto& registry = internal::StaticHandlerRegistrationMap();
