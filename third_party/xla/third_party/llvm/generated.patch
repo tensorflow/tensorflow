@@ -1,4 +1,1208 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/source/Target/ThreadPlanStack.cpp b/lldb/source/Target/ThreadPlanStack.cpp
+--- a/lldb/source/Target/ThreadPlanStack.cpp
++++ b/lldb/source/Target/ThreadPlanStack.cpp
+@@ -13,8 +13,6 @@
+ #include "lldb/Target/ThreadPlan.h"
+ #include "lldb/Utility/Log.h"
+ 
+-#include <unordered_set>
+-
+ using namespace lldb;
+ using namespace lldb_private;
+ 
+@@ -426,24 +424,19 @@
+     }
+   }
+ 
+-  // If we aren't reaping missing threads or have no plans, we are done.
+-  if (!delete_missing || m_plans_list.empty())
++  // If we aren't reaping missing threads at this point,
++  // we are done.
++  if (!delete_missing)
+     return;
+-
+-  // Index the already-current thread list rather than searching it separately
+-  // for every plan. Repeated linear searches become prohibitively expensive
+-  // for targets with large thread counts.
+-  std::unordered_set<lldb::tid_t> live_tids;
+-  live_tids.reserve(current_threads.GetSize(/*can_update=*/false));
+-  for (const auto &thread : current_threads.Threads())
+-    live_tids.insert(thread->GetID());
+-
++  // Otherwise scan for absent TID's.
+   std::vector<lldb::tid_t> missing_threads;
+   // If we are going to delete plans from the plan stack,
+   // then scan for absent TID's:
+   for (auto &thread_plans : m_plans_list) {
+     lldb::tid_t cur_tid = thread_plans.first;
+-    if (live_tids.find(cur_tid) == live_tids.end())
++    ThreadSP thread_sp =
++        current_threads.FindThreadByID(cur_tid, /*can_update=*/false);
++    if (!thread_sp)
+       missing_threads.push_back(cur_tid);
+   }
+   for (lldb::tid_t tid : missing_threads) {
+diff -ruN --strip-trailing-cr a/lldb/unittests/Target/CMakeLists.txt b/lldb/unittests/Target/CMakeLists.txt
+--- a/lldb/unittests/Target/CMakeLists.txt
++++ b/lldb/unittests/Target/CMakeLists.txt
+@@ -20,7 +20,6 @@
+   SummaryStatisticsTest.cpp
+   TargetAPIMutexTest.cpp
+   TargetGroupTest.cpp
+-  ThreadPlanStackTest.cpp
+   FindFileTest.cpp
+ 
+   LINK_COMPONENTS
+diff -ruN --strip-trailing-cr a/lldb/unittests/Target/ThreadPlanStackTest.cpp b/lldb/unittests/Target/ThreadPlanStackTest.cpp
+--- a/lldb/unittests/Target/ThreadPlanStackTest.cpp
++++ b/lldb/unittests/Target/ThreadPlanStackTest.cpp
+@@ -1,181 +0,0 @@
+-//===-- ThreadPlanStackTest.cpp --------------------------------------===//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#include "lldb/Target/ThreadPlanStack.h"
+-#include "Plugins/Platform/Linux/PlatformLinux.h"
+-#include "TestingSupport/TestUtilities.h"
+-#include "lldb/Core/Debugger.h"
+-#include "lldb/Host/FileSystem.h"
+-#include "lldb/Host/HostInfo.h"
+-#include "lldb/Target/Process.h"
+-#include "lldb/Target/Target.h"
+-#include "lldb/Target/Thread.h"
+-#include "lldb/Target/ThreadList.h"
+-#include "lldb/Utility/Listener.h"
+-#include "gtest/gtest.h"
+-
+-#include <limits>
+-#include <mutex>
+-
+-using namespace lldb;
+-using namespace lldb_private;
+-
+-namespace {
+-class TestProcess : public Process {
+-public:
+-  TestProcess(TargetSP target, ListenerSP listener)
+-      : Process(target, listener) {}
+-
+-  bool CanDebug(TargetSP, bool) override { return true; }
+-  Status DoDestroy() override { return {}; }
+-  void RefreshStateAfterStop() override {}
+-  size_t DoReadMemory(const ProcessAddress &, void *, size_t,
+-                      Status &) override {
+-    return 0;
+-  }
+-  bool DoUpdateThreadList(ThreadList &, ThreadList &new_threads) override {
+-    if (!refresh_threads)
+-      return false;
+-    ++refresh_count;
+-    for (const auto &thread : next_threads)
+-      new_threads.AddThread(thread);
+-    return true;
+-  }
+-  llvm::StringRef GetPluginName() override { return "thread-plan-test"; }
+-
+-  ThreadPlanStackMap &Plans() { return m_thread_plans; }
+-  void PrepareThreadRefresh(std::vector<ThreadSP> threads) {
+-    next_threads = std::move(threads);
+-    refresh_threads = true;
+-    m_current_private_state_thread_sp->SetPrivateState(eStateStopped);
+-    m_mod_id.BumpStopID();
+-  }
+-
+-  unsigned refresh_count = 0;
+-
+-private:
+-  bool refresh_threads = false;
+-  std::vector<ThreadSP> next_threads;
+-};
+-
+-class TestThread : public Thread {
+-public:
+-  using Thread::Thread;
+-  ~TestThread() override { DestroyThread(); }
+-  void RefreshStateAfterStop() override {}
+-  RegisterContextSP GetRegisterContext() override { return nullptr; }
+-  RegisterContextSP CreateRegisterContextForFrame(StackFrame *) override {
+-    return nullptr;
+-  }
+-  bool CalculateStopInfo() override { return false; }
+-};
+-
+-class ThreadPlanStackMapTest : public testing::Test {
+-protected:
+-  static void SetUpTestSuite() {
+-    FileSystem::Initialize();
+-    HostInfo::Initialize();
+-    platform_linux::PlatformLinux::Initialize();
+-    std::call_once(TestUtilities::g_debugger_initialize_flag,
+-                   [] { Debugger::Initialize(nullptr); });
+-  }
+-  static void TearDownTestSuite() {
+-    platform_linux::PlatformLinux::Terminate();
+-    HostInfo::Terminate();
+-    FileSystem::Terminate();
+-  }
+-  void SetUp() override {
+-    debugger = Debugger::CreateInstance();
+-    ASSERT_TRUE(debugger);
+-    ArchSpec arch(HostInfo::GetTargetTriple());
+-    PlatformSP platform =
+-        platform_linux::PlatformLinux::CreateInstance(true, &arch);
+-    ASSERT_TRUE(platform);
+-    Platform::SetHostPlatform(platform);
+-    TargetSP target;
+-    ASSERT_TRUE(debugger->GetTargetList()
+-                    .CreateTarget(*debugger, "", arch, eLoadDependentsNo,
+-                                  platform, target)
+-                    .Success());
+-    process = std::make_shared<TestProcess>(
+-        target, Listener::MakeListener("thread-plan-test"));
+-  }
+-
+-  ThreadSP AddThread(tid_t tid) {
+-    auto thread = std::make_shared<TestThread>(*process, tid);
+-    process->GetThreadList().AddThread(thread);
+-    return thread;
+-  }
+-  void Update(bool delete_missing = true, bool check_for_new = true) {
+-    process->Plans().Update(process->GetThreadList(), delete_missing,
+-                            check_for_new);
+-  }
+-
+-  DebuggerSP debugger;
+-  std::shared_ptr<TestProcess> process;
+-};
+-} // namespace
+-
+-TEST_F(ThreadPlanStackMapTest, RemovesOnlyMissingPlans) {
+-  const tid_t live_tid = std::numeric_limits<tid_t>::max() - 1;
+-  AddThread(live_tid);
+-  auto removed = AddThread(42);
+-  Update();
+-  auto *survivor = process->Plans().Find(live_tid);
+-  ASSERT_NE(nullptr, survivor);
+-  ASSERT_NE(nullptr, process->Plans().Find(42));
+-  process->GetThreadList().RemoveThreadByID(42, false);
+-  Update();
+-  EXPECT_EQ(survivor, process->Plans().Find(live_tid));
+-  EXPECT_EQ(nullptr, process->Plans().Find(42));
+-}
+-
+-TEST_F(ThreadPlanStackMapTest, PreservesMissingPlansWhenRequested) {
+-  auto removed = AddThread(42);
+-  Update();
+-  auto *plans = process->Plans().Find(42);
+-  ASSERT_NE(nullptr, plans);
+-  process->GetThreadList().Clear();
+-  Update(false, false);
+-  EXPECT_EQ(plans, process->Plans().Find(42));
+-}
+-
+-TEST_F(ThreadPlanStackMapTest, RemovesAllPlansForAnEmptyList) {
+-  auto first = AddThread(7);
+-  auto second = AddThread(42);
+-  Update();
+-  ASSERT_NE(nullptr, process->Plans().Find(7));
+-  ASSERT_NE(nullptr, process->Plans().Find(42));
+-  process->GetThreadList().Clear();
+-  Update(true, false);
+-  EXPECT_EQ(nullptr, process->Plans().Find(7));
+-  EXPECT_EQ(nullptr, process->Plans().Find(42));
+-}
+-
+-TEST_F(ThreadPlanStackMapTest, DoesNotRefreshProcessWhilePruningSnapshot) {
+-  auto survivor = AddThread(7);
+-  auto removed = AddThread(42);
+-  Update();
+-  ASSERT_NE(nullptr, process->Plans().Find(7));
+-  ASSERT_NE(nullptr, process->Plans().Find(42));
+-  process->PrepareThreadRefresh({survivor});
+-
+-  // The caller supplies a current snapshot. Pruning must not refresh the
+-  // process's separate, stale list as a side effect of inspecting this one.
+-  ThreadList snapshot(*process);
+-  snapshot.AddThread(survivor);
+-  snapshot.SetStopID(process->GetStopID());
+-  process->Plans().Update(snapshot, true, false);
+-
+-  EXPECT_EQ(0u, process->refresh_count);
+-  EXPECT_NE(nullptr, process->Plans().Find(7));
+-  EXPECT_EQ(nullptr, process->Plans().Find(42));
+-
+-  process->UpdateThreadListIfNeeded();
+-  EXPECT_EQ(1u, process->refresh_count);
+-}
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp
+--- a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp
+@@ -860,32 +860,6 @@
+       return DAG.getConstant(0, SDLoc(Op), VT);
+     break;
+   }
+-  case ISD::TRUNCATE:
+-  case ISD::ZERO_EXTEND:
+-  case ISD::SIGN_EXTEND:
+-  case ISD::ANY_EXTEND: {
+-    SDValue Src = Op.getOperand(0);
+-    // Preserve shared casts unless the cast is free and its source is not
+-    // shared, or the truncate cancels an extension.
+-    bool FreeAnyExt = Op.getOpcode() == ISD::ANY_EXTEND &&
+-                      isAnyExtFree(Src.getValueType(), VT) && Src.hasOneUse();
+-    bool CancelsExt = Op.getOpcode() == ISD::TRUNCATE &&
+-                      ISD::isExtOpcode(Src.getOpcode()) &&
+-                      Src.getOperand(0).getValueType() == VT;
+-    if (!Op.hasOneUse() && !FreeAnyExt && !CancelsExt)
+-      break;
+-    unsigned SrcBits = Src.getScalarValueSizeInBits();
+-    APInt SrcDemandedBits = DemandedBits.zextOrTrunc(SrcBits);
+-    if (Op.getOpcode() == ISD::SIGN_EXTEND &&
+-        DemandedBits.getActiveBits() > SrcBits)
+-      SrcDemandedBits.setSignBit();
+-
+-    // Do not preserve flags that the simplified source may invalidate.
+-    if (SDValue NewSrc = SimplifyMultipleUseDemandedBits(
+-            Src, SrcDemandedBits, DemandedElts, DAG, Depth + 1))
+-      return DAG.getNode(Op.getOpcode(), SDLoc(Op), VT, NewSrc);
+-    break;
+-  }
+   case ISD::BITCAST: {
+     if (VT.isScalableVector())
+       return SDValue();
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/trunc-to-tbl.ll b/llvm/test/CodeGen/AArch64/trunc-to-tbl.ll
+--- a/llvm/test/CodeGen/AArch64/trunc-to-tbl.ll
++++ b/llvm/test/CodeGen/AArch64/trunc-to-tbl.ll
+@@ -605,35 +605,35 @@
+ ; CHECK-BE-NEXT:    mov x8, xzr
+ ; CHECK-BE-NEXT:  .LBB5_1: // %loop
+ ; CHECK-BE-NEXT:    // =>This Inner Loop Header: Depth=1
+-; CHECK-BE-NEXT:    ldp x9, x10, [x0]
++; CHECK-BE-NEXT:    ldp x10, x9, [x0]
++; CHECK-BE-NEXT:    ldrh w16, [x0, #16]
++; CHECK-BE-NEXT:    ldrb w17, [x0, #18]
++; CHECK-BE-NEXT:    add x0, x0, #32
+ ; CHECK-BE-NEXT:    lsl x11, x9, #24
+ ; CHECK-BE-NEXT:    lsr x12, x9, #40
+-; CHECK-BE-NEXT:    lsl x13, x10, #24
+-; CHECK-BE-NEXT:    lsr x14, x10, #40
+-; CHECK-BE-NEXT:    lsr x15, x9, #45
+-; CHECK-BE-NEXT:    extr x11, x12, x11, #50
+-; CHECK-BE-NEXT:    extr x12, x14, x13, #57
+-; CHECK-BE-NEXT:    fmov s0, w15
+-; CHECK-BE-NEXT:    lsr w14, w10, #14
+-; CHECK-BE-NEXT:    ldrh w15, [x0, #16]
++; CHECK-BE-NEXT:    lsr x13, x10, #45
++; CHECK-BE-NEXT:    lsl x14, x10, #24
++; CHECK-BE-NEXT:    lsr x15, x10, #40
++; CHECK-BE-NEXT:    extr x12, x12, x11, #57
++; CHECK-BE-NEXT:    fmov s0, w13
++; CHECK-BE-NEXT:    lsr w13, w10, #7
++; CHECK-BE-NEXT:    extr x14, x15, x14, #50
++; CHECK-BE-NEXT:    lsr w15, w9, #14
++; CHECK-BE-NEXT:    extr x9, x10, x9, #40
+ ; CHECK-BE-NEXT:    fmov s1, w12
+-; CHECK-BE-NEXT:    mov v0.s[1], w11
+-; CHECK-BE-NEXT:    bfi w13, w15, #8, #16
+-; CHECK-BE-NEXT:    lsr w11, w9, #7
+-; CHECK-BE-NEXT:    extr x9, x9, x10, #40
+-; CHECK-BE-NEXT:    ldrb w10, [x0, #18]
+-; CHECK-BE-NEXT:    add x0, x0, #32
+-; CHECK-BE-NEXT:    mov v1.s[1], w14
+-; CHECK-BE-NEXT:    lsr w12, w13, #19
++; CHECK-BE-NEXT:    orr w12, w17, w16, lsl #8
++; CHECK-BE-NEXT:    mov v0.s[1], w14
+ ; CHECK-BE-NEXT:    lsr w9, w9, #12
+-; CHECK-BE-NEXT:    orr w10, w10, w15, lsl #8
+-; CHECK-BE-NEXT:    mov v0.s[2], w11
+-; CHECK-BE-NEXT:    mov v1.s[2], w12
++; CHECK-BE-NEXT:    orr w11, w12, w11
++; CHECK-BE-NEXT:    mov v1.s[1], w15
++; CHECK-BE-NEXT:    lsr w11, w11, #19
++; CHECK-BE-NEXT:    mov v0.s[2], w13
++; CHECK-BE-NEXT:    mov v1.s[2], w11
+ ; CHECK-BE-NEXT:    mov v0.s[3], w9
+ ; CHECK-BE-NEXT:    add x9, x1, x8, lsl #3
+ ; CHECK-BE-NEXT:    add x8, x8, #1
+ ; CHECK-BE-NEXT:    cmp x8, #1000
+-; CHECK-BE-NEXT:    mov v1.s[3], w10
++; CHECK-BE-NEXT:    mov v1.s[3], w12
+ ; CHECK-BE-NEXT:    uzp1 v0.8h, v0.8h, v1.8h
+ ; CHECK-BE-NEXT:    xtn v0.8b, v0.8h
+ ; CHECK-BE-NEXT:    st1 { v0.8b }, [x9]
+@@ -646,35 +646,35 @@
+ ; CHECK-DISABLE-NEXT:    mov x8, xzr
+ ; CHECK-DISABLE-NEXT:  .LBB5_1: // %loop
+ ; CHECK-DISABLE-NEXT:    // =>This Inner Loop Header: Depth=1
+-; CHECK-DISABLE-NEXT:    ldp x9, x10, [x0]
++; CHECK-DISABLE-NEXT:    ldp x10, x9, [x0]
++; CHECK-DISABLE-NEXT:    ldrh w16, [x0, #16]
++; CHECK-DISABLE-NEXT:    ldrb w17, [x0, #18]
++; CHECK-DISABLE-NEXT:    add x0, x0, #32
+ ; CHECK-DISABLE-NEXT:    lsl x11, x9, #24
+ ; CHECK-DISABLE-NEXT:    lsr x12, x9, #40
+-; CHECK-DISABLE-NEXT:    lsl x13, x10, #24
+-; CHECK-DISABLE-NEXT:    lsr x14, x10, #40
+-; CHECK-DISABLE-NEXT:    lsr x15, x9, #45
+-; CHECK-DISABLE-NEXT:    extr x11, x12, x11, #50
+-; CHECK-DISABLE-NEXT:    extr x12, x14, x13, #57
+-; CHECK-DISABLE-NEXT:    fmov s0, w15
+-; CHECK-DISABLE-NEXT:    lsr w14, w10, #14
+-; CHECK-DISABLE-NEXT:    ldrh w15, [x0, #16]
++; CHECK-DISABLE-NEXT:    lsr x13, x10, #45
++; CHECK-DISABLE-NEXT:    lsl x14, x10, #24
++; CHECK-DISABLE-NEXT:    lsr x15, x10, #40
++; CHECK-DISABLE-NEXT:    extr x12, x12, x11, #57
++; CHECK-DISABLE-NEXT:    fmov s0, w13
++; CHECK-DISABLE-NEXT:    lsr w13, w10, #7
++; CHECK-DISABLE-NEXT:    extr x14, x15, x14, #50
++; CHECK-DISABLE-NEXT:    lsr w15, w9, #14
++; CHECK-DISABLE-NEXT:    extr x9, x10, x9, #40
+ ; CHECK-DISABLE-NEXT:    fmov s1, w12
+-; CHECK-DISABLE-NEXT:    mov v0.s[1], w11
+-; CHECK-DISABLE-NEXT:    bfi w13, w15, #8, #16
+-; CHECK-DISABLE-NEXT:    lsr w11, w9, #7
+-; CHECK-DISABLE-NEXT:    extr x9, x9, x10, #40
+-; CHECK-DISABLE-NEXT:    ldrb w10, [x0, #18]
+-; CHECK-DISABLE-NEXT:    add x0, x0, #32
+-; CHECK-DISABLE-NEXT:    mov v1.s[1], w14
+-; CHECK-DISABLE-NEXT:    lsr w12, w13, #19
++; CHECK-DISABLE-NEXT:    orr w12, w17, w16, lsl #8
++; CHECK-DISABLE-NEXT:    mov v0.s[1], w14
+ ; CHECK-DISABLE-NEXT:    lsr w9, w9, #12
+-; CHECK-DISABLE-NEXT:    orr w10, w10, w15, lsl #8
+-; CHECK-DISABLE-NEXT:    mov v0.s[2], w11
+-; CHECK-DISABLE-NEXT:    mov v1.s[2], w12
++; CHECK-DISABLE-NEXT:    orr w11, w12, w11
++; CHECK-DISABLE-NEXT:    mov v1.s[1], w15
++; CHECK-DISABLE-NEXT:    lsr w11, w11, #19
++; CHECK-DISABLE-NEXT:    mov v0.s[2], w13
++; CHECK-DISABLE-NEXT:    mov v1.s[2], w11
+ ; CHECK-DISABLE-NEXT:    mov v0.s[3], w9
+ ; CHECK-DISABLE-NEXT:    add x9, x1, x8, lsl #3
+ ; CHECK-DISABLE-NEXT:    add x8, x8, #1
+ ; CHECK-DISABLE-NEXT:    cmp x8, #1000
+-; CHECK-DISABLE-NEXT:    mov v1.s[3], w10
++; CHECK-DISABLE-NEXT:    mov v1.s[3], w12
+ ; CHECK-DISABLE-NEXT:    uzp1 v0.8h, v0.8h, v1.8h
+ ; CHECK-DISABLE-NEXT:    xtn v0.8b, v0.8h
+ ; CHECK-DISABLE-NEXT:    st1 { v0.8b }, [x9]
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/idot4u.ll b/llvm/test/CodeGen/AMDGPU/idot4u.ll
+--- a/llvm/test/CodeGen/AMDGPU/idot4u.ll
++++ b/llvm/test/CodeGen/AMDGPU/idot4u.ll
+@@ -2536,16 +2536,18 @@
+ ; GFX8-NEXT:    s_waitcnt vmcnt(1)
+ ; GFX8-NEXT:    v_lshrrev_b32_e32 v6, 16, v2
+ ; GFX8-NEXT:    v_mul_lo_u16_sdwa v7, v3, v2 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:BYTE_3 src1_sel:BYTE_3
+-; GFX8-NEXT:    v_mul_lo_u16_e32 v8, v5, v6
+-; GFX8-NEXT:    v_lshrrev_b32_e32 v9, 8, v7
+-; GFX8-NEXT:    v_or_b32_sdwa v7, v8, v7 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD
+-; GFX8-NEXT:    v_mul_lo_u16_sdwa v7, v3, v2 dst_sel:BYTE_1 dst_unused:UNUSED_PRESERVE src0_sel:BYTE_1 src1_sel:BYTE_1
+-; GFX8-NEXT:    v_lshrrev_b32_e32 v7, 8, v7
++; GFX8-NEXT:    v_mul_lo_u16_e32 v9, v5, v6
++; GFX8-NEXT:    v_or_b32_sdwa v7, v9, v7 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD
++; GFX8-NEXT:    v_mul_lo_u16_sdwa v8, v3, v2 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:BYTE_1 src1_sel:BYTE_1
++; GFX8-NEXT:    v_lshlrev_b32_e32 v9, 16, v7
++; GFX8-NEXT:    v_or_b32_e32 v8, v8, v9
++; GFX8-NEXT:    v_lshrrev_b32_e32 v8, 8, v8
+ ; GFX8-NEXT:    s_waitcnt vmcnt(0)
+ ; GFX8-NEXT:    v_mad_u16 v2, v3, v2, v4
+-; GFX8-NEXT:    v_add_u16_e32 v2, v2, v7
++; GFX8-NEXT:    v_add_u16_e32 v2, v2, v8
++; GFX8-NEXT:    v_lshrrev_b32_e32 v7, 8, v7
+ ; GFX8-NEXT:    v_mad_u16 v2, v5, v6, v2
+-; GFX8-NEXT:    v_add_u16_e32 v2, v2, v9
++; GFX8-NEXT:    v_add_u16_e32 v2, v2, v7
+ ; GFX8-NEXT:    flat_store_byte v[0:1], v2
+ ; GFX8-NEXT:    s_endpgm
+ ;
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/idot8s.ll b/llvm/test/CodeGen/AMDGPU/idot8s.ll
+--- a/llvm/test/CodeGen/AMDGPU/idot8s.ll
++++ b/llvm/test/CodeGen/AMDGPU/idot8s.ll
+@@ -2615,58 +2615,59 @@
+ ; GFX8-NEXT:    v_lshlrev_b16_sdwa v2, v5, v2 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:WORD_1
+ ; GFX8-NEXT:    v_lshlrev_b16_e32 v5, 12, v10
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v10, 12, v16
+-; GFX8-NEXT:    v_lshlrev_b16_e32 v9, 12, v9
+-; GFX8-NEXT:    v_lshlrev_b16_e32 v8, 12, v8
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v16, 12, v17
+ ; GFX8-NEXT:    v_lshlrev_b16_e32 v7, 12, v7
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v17, 12, v3
+ ; GFX8-NEXT:    v_lshlrev_b16_e32 v3, 12, v6
+ ; GFX8-NEXT:    v_lshlrev_b16_e32 v6, 12, v15
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v15, 12, v18
+-; GFX8-NEXT:    v_lshlrev_b16_e32 v14, 12, v14
+-; GFX8-NEXT:    v_lshlrev_b16_e32 v13, 12, v13
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v18, 12, v19
+ ; GFX8-NEXT:    v_lshlrev_b16_e32 v12, 12, v12
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v19, 12, v2
+ ; GFX8-NEXT:    v_lshlrev_b16_e32 v2, 12, v11
+-; GFX8-NEXT:    v_ashrrev_i16_e32 v9, 12, v9
+-; GFX8-NEXT:    v_ashrrev_i16_e32 v8, 12, v8
++; GFX8-NEXT:    v_lshlrev_b16_e32 v9, 12, v9
++; GFX8-NEXT:    v_lshlrev_b16_e32 v8, 12, v8
++; GFX8-NEXT:    v_lshlrev_b16_e32 v14, 12, v14
++; GFX8-NEXT:    v_lshlrev_b16_e32 v13, 12, v13
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v7, 12, v7
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v3, 12, v3
+-; GFX8-NEXT:    v_ashrrev_i16_e32 v11, 12, v14
+-; GFX8-NEXT:    v_ashrrev_i16_e32 v13, 12, v13
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v12, 12, v12
+ ; GFX8-NEXT:    v_ashrrev_i16_e32 v2, 12, v2
+-; GFX8-NEXT:    v_ashrrev_i16_e32 v5, 12, v5
+-; GFX8-NEXT:    v_ashrrev_i16_e32 v6, 12, v6
+-; GFX8-NEXT:    v_mul_lo_u16_e32 v14, v17, v19
++; GFX8-NEXT:    v_ashrrev_i16_e32 v9, 12, v9
++; GFX8-NEXT:    v_ashrrev_i16_e32 v8, 12, v8
++; GFX8-NEXT:    v_ashrrev_i16_e32 v11, 12, v14
++; GFX8-NEXT:    v_ashrrev_i16_e32 v13, 12, v13
+ ; GFX8-NEXT:    v_mul_lo_u16_e32 v10, v10, v15
+ ; GFX8-NEXT:    v_mul_lo_u16_e32 v15, v16, v18
+ ; GFX8-NEXT:    v_mul_lo_u16_sdwa v2, v3, v2 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+ ; GFX8-NEXT:    v_mul_lo_u16_sdwa v3, v7, v12 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
++; GFX8-NEXT:    v_ashrrev_i16_e32 v5, 12, v5
++; GFX8-NEXT:    v_ashrrev_i16_e32 v6, 12, v6
++; GFX8-NEXT:    v_mul_lo_u16_e32 v14, v17, v19
+ ; GFX8-NEXT:    v_mul_lo_u16_sdwa v7, v8, v13 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+ ; GFX8-NEXT:    v_mul_lo_u16_e32 v8, v9, v11
++; GFX8-NEXT:    v_or_b32_sdwa v3, v15, v3 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD
+ ; GFX8-NEXT:    v_mul_lo_u16_sdwa v5, v5, v6 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+-; GFX8-NEXT:    v_or_b32_sdwa v2, v14, v2 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD
+-; GFX8-NEXT:    v_or_b32_sdwa v6, v15, v3 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD
++; GFX8-NEXT:    v_or_b32_sdwa v6, v14, v2 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD
+ ; GFX8-NEXT:    v_or_b32_sdwa v7, v8, v7 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD
+-; GFX8-NEXT:    v_lshrrev_b32_e32 v9, 8, v3
+-; GFX8-NEXT:    v_or_b32_sdwa v3, v2, v6 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
+-; GFX8-NEXT:    v_lshlrev_b32_e32 v2, 16, v7
++; GFX8-NEXT:    v_lshlrev_b32_e32 v9, 16, v3
+ ; GFX8-NEXT:    v_or_b32_sdwa v8, v10, v5 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:BYTE_0 src1_sel:DWORD
+-; GFX8-NEXT:    v_lshrrev_b32_e32 v6, 8, v3
++; GFX8-NEXT:    v_lshlrev_b32_e32 v2, 16, v7
++; GFX8-NEXT:    v_lshrrev_b32_e32 v10, 8, v3
++; GFX8-NEXT:    v_or_b32_sdwa v3, v6, v9 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
+ ; GFX8-NEXT:    v_or_b32_e32 v5, v5, v2
++; GFX8-NEXT:    v_lshrrev_b32_e32 v6, 8, v3
+ ; GFX8-NEXT:    v_lshrrev_b64 v[2:3], 24, v[2:3]
+-; GFX8-NEXT:    v_lshrrev_b32_e32 v3, 8, v5
++; GFX8-NEXT:    v_lshrrev_b32_e32 v5, 8, v5
+ ; GFX8-NEXT:    s_waitcnt vmcnt(0)
+-; GFX8-NEXT:    v_add_u16_e32 v4, v8, v4
+-; GFX8-NEXT:    v_add_u16_e32 v3, v4, v3
++; GFX8-NEXT:    v_add_u16_e32 v3, v8, v4
++; GFX8-NEXT:    v_add_u16_e32 v3, v3, v5
+ ; GFX8-NEXT:    v_add_u16_e32 v3, v3, v7
+ ; GFX8-NEXT:    v_add_u16_e32 v2, v3, v2
+ ; GFX8-NEXT:    v_mad_u16 v2, v17, v19, v2
+ ; GFX8-NEXT:    v_add_u16_e32 v2, v2, v6
+ ; GFX8-NEXT:    v_mad_u16 v2, v16, v18, v2
+-; GFX8-NEXT:    v_add_u16_e32 v2, v2, v9
++; GFX8-NEXT:    v_add_u16_e32 v2, v2, v10
+ ; GFX8-NEXT:    flat_store_byte v[0:1], v2
+ ; GFX8-NEXT:    s_endpgm
+ ;
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/idot8u.ll b/llvm/test/CodeGen/AMDGPU/idot8u.ll
+--- a/llvm/test/CodeGen/AMDGPU/idot8u.ll
++++ b/llvm/test/CodeGen/AMDGPU/idot8u.ll
+@@ -2483,51 +2483,52 @@
+ ; GFX8-NEXT:    s_add_u32 s12, s12, s11
+ ; GFX8-NEXT:    s_addc_u32 s13, s13, 0
+ ; GFX8-NEXT:    s_waitcnt vmcnt(2)
+-; GFX8-NEXT:    v_bfe_u32 v7, v3, 12, 4
+-; GFX8-NEXT:    v_bfe_u32 v8, v3, 8, 4
+ ; GFX8-NEXT:    v_lshrrev_b32_e32 v9, 28, v3
+ ; GFX8-NEXT:    v_bfe_u32 v10, v3, 24, 4
+ ; GFX8-NEXT:    v_bfe_u32 v11, v3, 20, 4
++; GFX8-NEXT:    v_bfe_u32 v7, v3, 12, 4
++; GFX8-NEXT:    v_bfe_u32 v8, v3, 8, 4
+ ; GFX8-NEXT:    v_bfe_u32 v12, v3, 16, 4
+ ; GFX8-NEXT:    s_waitcnt vmcnt(1)
+-; GFX8-NEXT:    v_bfe_u32 v14, v2, 12, 4
+-; GFX8-NEXT:    v_bfe_u32 v15, v2, 8, 4
+ ; GFX8-NEXT:    v_lshrrev_b32_e32 v16, 28, v2
+ ; GFX8-NEXT:    v_bfe_u32 v17, v2, 24, 4
+ ; GFX8-NEXT:    v_bfe_u32 v18, v2, 20, 4
++; GFX8-NEXT:    v_bfe_u32 v14, v2, 12, 4
++; GFX8-NEXT:    v_bfe_u32 v15, v2, 8, 4
+ ; GFX8-NEXT:    v_bfe_u32 v19, v2, 16, 4
++; GFX8-NEXT:    v_mul_lo_u16_sdwa v11, v11, v18 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
++; GFX8-NEXT:    v_mul_lo_u16_e32 v18, v10, v17
++; GFX8-NEXT:    v_mul_lo_u16_sdwa v9, v9, v16 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+ ; GFX8-NEXT:    v_bfe_u32 v5, v3, 4, 4
+ ; GFX8-NEXT:    v_and_b32_e32 v6, 15, v3
+ ; GFX8-NEXT:    v_bfe_u32 v3, v2, 4, 4
+ ; GFX8-NEXT:    v_and_b32_e32 v13, 15, v2
+ ; GFX8-NEXT:    v_mul_lo_u16_e32 v2, v12, v19
+-; GFX8-NEXT:    v_mul_lo_u16_sdwa v11, v11, v18 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+-; GFX8-NEXT:    v_mul_lo_u16_e32 v18, v10, v17
+-; GFX8-NEXT:    v_mul_lo_u16_sdwa v9, v9, v16 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+ ; GFX8-NEXT:    v_mul_lo_u16_e32 v8, v8, v15
+ ; GFX8-NEXT:    v_mul_lo_u16_sdwa v7, v7, v14 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
++; GFX8-NEXT:    v_or_b32_e32 v9, v18, v9
+ ; GFX8-NEXT:    v_mul_lo_u16_sdwa v5, v5, v3 dst_sel:BYTE_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
+-; GFX8-NEXT:    v_or_b32_e32 v2, v2, v11
+-; GFX8-NEXT:    v_or_b32_sdwa v3, v18, v9 dst_sel:WORD_1 dst_unused:UNUSED_PAD src0_sel:DWORD src1_sel:DWORD
++; GFX8-NEXT:    v_or_b32_e32 v3, v2, v11
+ ; GFX8-NEXT:    v_or_b32_e32 v7, v8, v7
++; GFX8-NEXT:    v_lshlrev_b32_e32 v8, 16, v9
+ ; GFX8-NEXT:    v_mul_lo_u16_e32 v6, v6, v13
+-; GFX8-NEXT:    v_or_b32_sdwa v3, v2, v3 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
+ ; GFX8-NEXT:    v_lshlrev_b32_e32 v2, 16, v7
++; GFX8-NEXT:    v_or_b32_sdwa v3, v3, v8 dst_sel:DWORD dst_unused:UNUSED_PAD src0_sel:WORD_0 src1_sel:DWORD
+ ; GFX8-NEXT:    v_or_b32_e32 v6, v6, v5
+-; GFX8-NEXT:    v_lshrrev_b32_e32 v8, 8, v9
+-; GFX8-NEXT:    v_lshrrev_b32_e32 v9, 8, v3
+ ; GFX8-NEXT:    v_or_b32_e32 v5, v5, v2
++; GFX8-NEXT:    v_lshrrev_b32_e32 v8, 8, v3
+ ; GFX8-NEXT:    v_lshrrev_b64 v[2:3], 24, v[2:3]
+-; GFX8-NEXT:    v_lshrrev_b32_e32 v3, 8, v5
++; GFX8-NEXT:    v_lshrrev_b32_e32 v5, 8, v5
+ ; GFX8-NEXT:    s_waitcnt vmcnt(0)
+-; GFX8-NEXT:    v_add_u16_e32 v4, v6, v4
+-; GFX8-NEXT:    v_add_u16_e32 v3, v4, v3
++; GFX8-NEXT:    v_add_u16_e32 v3, v6, v4
++; GFX8-NEXT:    v_add_u16_e32 v3, v3, v5
+ ; GFX8-NEXT:    v_add_u16_e32 v3, v3, v7
+ ; GFX8-NEXT:    v_add_u16_e32 v2, v3, v2
+ ; GFX8-NEXT:    v_mad_u16 v2, v12, v19, v2
+-; GFX8-NEXT:    v_add_u16_e32 v2, v2, v9
+-; GFX8-NEXT:    v_mad_u16 v2, v10, v17, v2
+ ; GFX8-NEXT:    v_add_u16_e32 v2, v2, v8
++; GFX8-NEXT:    v_lshrrev_b32_e32 v9, 8, v9
++; GFX8-NEXT:    v_mad_u16 v2, v10, v17, v2
++; GFX8-NEXT:    v_add_u16_e32 v2, v2, v9
+ ; GFX8-NEXT:    flat_store_byte v[0:1], v2
+ ; GFX8-NEXT:    s_endpgm
+ ;
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/vector-reduce-fmaximum.ll b/llvm/test/CodeGen/AMDGPU/vector-reduce-fmaximum.ll
+--- a/llvm/test/CodeGen/AMDGPU/vector-reduce-fmaximum.ll
++++ b/llvm/test/CodeGen/AMDGPU/vector-reduce-fmaximum.ll
+@@ -260,9 +260,11 @@
+ ; GFX7-NEXT:    v_cndmask_b32_e32 v2, v5, v4, vcc
+ ; GFX7-NEXT:    v_max_f32_e32 v3, v0, v1
+ ; GFX7-NEXT:    v_cmp_o_f32_e32 vcc, v0, v1
+-; GFX7-NEXT:    v_cndmask_b32_e32 v0, v5, v3, vcc
+ ; GFX7-NEXT:    v_cvt_f16_f32_e32 v2, v2
++; GFX7-NEXT:    v_cndmask_b32_e32 v0, v5, v3, vcc
+ ; GFX7-NEXT:    v_cvt_f16_f32_e32 v0, v0
++; GFX7-NEXT:    v_lshlrev_b32_e32 v1, 16, v2
++; GFX7-NEXT:    v_or_b32_e32 v0, v0, v1
+ ; GFX7-NEXT:    v_cvt_f32_f16_e32 v1, v2
+ ; GFX7-NEXT:    v_cvt_f32_f16_e32 v0, v0
+ ; GFX7-NEXT:    v_max_f32_e32 v2, v0, v1
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/vector-reduce-fminimum.ll b/llvm/test/CodeGen/AMDGPU/vector-reduce-fminimum.ll
+--- a/llvm/test/CodeGen/AMDGPU/vector-reduce-fminimum.ll
++++ b/llvm/test/CodeGen/AMDGPU/vector-reduce-fminimum.ll
+@@ -336,9 +336,11 @@
+ ; GFX7-NEXT:    v_cndmask_b32_e32 v2, v5, v4, vcc
+ ; GFX7-NEXT:    v_min_f32_e32 v3, v0, v1
+ ; GFX7-NEXT:    v_cmp_o_f32_e32 vcc, v0, v1
+-; GFX7-NEXT:    v_cndmask_b32_e32 v0, v5, v3, vcc
+ ; GFX7-NEXT:    v_cvt_f16_f32_e32 v2, v2
++; GFX7-NEXT:    v_cndmask_b32_e32 v0, v5, v3, vcc
+ ; GFX7-NEXT:    v_cvt_f16_f32_e32 v0, v0
++; GFX7-NEXT:    v_lshlrev_b32_e32 v1, 16, v2
++; GFX7-NEXT:    v_or_b32_e32 v0, v0, v1
+ ; GFX7-NEXT:    v_cvt_f32_f16_e32 v1, v2
+ ; GFX7-NEXT:    v_cvt_f32_f16_e32 v0, v0
+ ; GFX7-NEXT:    v_min_f32_e32 v2, v0, v1
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/vector-reduce-umax.ll b/llvm/test/CodeGen/AMDGPU/vector-reduce-umax.ll
+--- a/llvm/test/CodeGen/AMDGPU/vector-reduce-umax.ll
++++ b/llvm/test/CodeGen/AMDGPU/vector-reduce-umax.ll
+@@ -1676,8 +1676,8 @@
+ ; GFX7-SDAG-NEXT:    v_and_b32_e32 v0, 0xffff, v0
+ ; GFX7-SDAG-NEXT:    v_lshrrev_b32_e32 v3, 16, v1
+ ; GFX7-SDAG-NEXT:    v_and_b32_e32 v1, 0xffff, v1
+-; GFX7-SDAG-NEXT:    v_max_u32_e32 v0, v0, v1
+-; GFX7-SDAG-NEXT:    v_max3_u32 v0, v0, v2, v3
++; GFX7-SDAG-NEXT:    v_max3_u32 v0, v0, v1, v2
++; GFX7-SDAG-NEXT:    v_max_u32_e32 v0, v0, v3
+ ; GFX7-SDAG-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GFX7-GISEL-LABEL: test_vector_reduce_umax_v4i16:
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/vector-reduce-umin.ll b/llvm/test/CodeGen/AMDGPU/vector-reduce-umin.ll
+--- a/llvm/test/CodeGen/AMDGPU/vector-reduce-umin.ll
++++ b/llvm/test/CodeGen/AMDGPU/vector-reduce-umin.ll
+@@ -1488,8 +1488,8 @@
+ ; GFX7-SDAG-NEXT:    v_and_b32_e32 v0, 0xffff, v0
+ ; GFX7-SDAG-NEXT:    v_lshrrev_b32_e32 v3, 16, v1
+ ; GFX7-SDAG-NEXT:    v_and_b32_e32 v1, 0xffff, v1
+-; GFX7-SDAG-NEXT:    v_min_u32_e32 v0, v0, v1
+-; GFX7-SDAG-NEXT:    v_min3_u32 v0, v0, v2, v3
++; GFX7-SDAG-NEXT:    v_min3_u32 v0, v0, v1, v2
++; GFX7-SDAG-NEXT:    v_min_u32_e32 v0, v0, v3
+ ; GFX7-SDAG-NEXT:    s_setpc_b64 s[30:31]
+ ;
+ ; GFX7-GISEL-LABEL: test_vector_reduce_umin_v4i16:
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/i8x4-instructions.ll b/llvm/test/CodeGen/NVPTX/i8x4-instructions.ll
+--- a/llvm/test/CodeGen/NVPTX/i8x4-instructions.ll
++++ b/llvm/test/CodeGen/NVPTX/i8x4-instructions.ll
+@@ -1444,80 +1444,84 @@
+ define void @test_srem_v3i8(ptr %a, ptr %b, ptr %c) {
+ ; O0-LABEL: test_srem_v3i8(
+ ; O0:       {
+-; O0-NEXT:    .reg .b16 %rs<18>;
++; O0-NEXT:    .reg .b16 %rs<20>;
+ ; O0-NEXT:    .reg .b32 %r<8>;
+ ; O0-NEXT:    .reg .b64 %rd<4>;
+ ; O0-EMPTY:
+ ; O0-NEXT:  // %bb.0: // %entry
+ ; O0-NEXT:    ld.param.b64 %rd1, [test_srem_v3i8_param_0];
+-; O0-NEXT:    ld.s8 %rs1, [%rd1+2];
++; O0-NEXT:    ld.b8 %rs1, [%rd1];
+ ; O0-NEXT:    ld.b8 %rs2, [%rd1+1];
+ ; O0-NEXT:    shl.b16 %rs3, %rs2, 8;
+-; O0-NEXT:    cvt.u32.u16 %r1, %rs3;
+-; O0-NEXT:    ld.s8 %rs4, [%rd1];
++; O0-NEXT:    or.b16 %rs4, %rs3, %rs1;
++; O0-NEXT:    cvt.u32.u16 %r1, %rs4;
++; O0-NEXT:    ld.s8 %rs5, [%rd1+2];
+ ; O0-NEXT:    ld.param.b64 %rd2, [test_srem_v3i8_param_1];
+-; O0-NEXT:    ld.b8 %rs5, [%rd2];
+-; O0-NEXT:    ld.b8 %rs6, [%rd2+1];
+-; O0-NEXT:    shl.b16 %rs7, %rs6, 8;
+-; O0-NEXT:    or.b16 %rs8, %rs7, %rs5;
+-; O0-NEXT:    ld.s8 %rs9, [%rd2+2];
+-; O0-NEXT:    cvt.u32.u16 %r2, %rs7;
++; O0-NEXT:    ld.b8 %rs6, [%rd2];
++; O0-NEXT:    ld.b8 %rs7, [%rd2+1];
++; O0-NEXT:    shl.b16 %rs8, %rs7, 8;
++; O0-NEXT:    or.b16 %rs9, %rs8, %rs6;
++; O0-NEXT:    cvt.u32.u16 %r2, %rs9;
++; O0-NEXT:    ld.s8 %rs10, [%rd2+2];
+ ; O0-NEXT:    ld.param.b64 %rd3, [test_srem_v3i8_param_2];
+-; O0-NEXT:    cvt.s16.s8 %rs10, %rs8;
+-; O0-NEXT:    rem.s16 %rs11, %rs4, %rs10;
+-; O0-NEXT:    cvt.u32.u16 %r3, %rs11;
++; O0-NEXT:    cvt.s16.s8 %rs11, %rs9;
++; O0-NEXT:    cvt.s16.s8 %rs12, %rs4;
++; O0-NEXT:    rem.s16 %rs13, %rs12, %rs11;
++; O0-NEXT:    cvt.u32.u16 %r3, %rs13;
+ ; O0-NEXT:    prmt.b32 %r4, %r2, 0, 0x9991U;
+-; O0-NEXT:    cvt.u16.u32 %rs12, %r4;
++; O0-NEXT:    cvt.u16.u32 %rs14, %r4;
+ ; O0-NEXT:    prmt.b32 %r5, %r1, 0, 0x9991U;
+-; O0-NEXT:    cvt.u16.u32 %rs13, %r5;
+-; O0-NEXT:    rem.s16 %rs14, %rs13, %rs12;
+-; O0-NEXT:    cvt.u32.u16 %r6, %rs14;
++; O0-NEXT:    cvt.u16.u32 %rs15, %r5;
++; O0-NEXT:    rem.s16 %rs16, %rs15, %rs14;
++; O0-NEXT:    cvt.u32.u16 %r6, %rs16;
+ ; O0-NEXT:    prmt.b32 %r7, %r3, %r6, 0x3340U;
+-; O0-NEXT:    rem.s16 %rs15, %rs1, %rs9;
+-; O0-NEXT:    cvt.u16.u32 %rs16, %r7;
+-; O0-NEXT:    st.b8 [%rd3], %rs16;
+-; O0-NEXT:    shr.u16 %rs17, %rs16, 8;
+-; O0-NEXT:    st.b8 [%rd3+1], %rs17;
+-; O0-NEXT:    st.b8 [%rd3+2], %rs15;
++; O0-NEXT:    rem.s16 %rs17, %rs5, %rs10;
++; O0-NEXT:    cvt.u16.u32 %rs18, %r7;
++; O0-NEXT:    st.b8 [%rd3], %rs18;
++; O0-NEXT:    shr.u16 %rs19, %rs18, 8;
++; O0-NEXT:    st.b8 [%rd3+1], %rs19;
++; O0-NEXT:    st.b8 [%rd3+2], %rs17;
+ ; O0-NEXT:    ret;
+ ;
+ ; O3-LABEL: test_srem_v3i8(
+ ; O3:       {
+-; O3-NEXT:    .reg .b16 %rs<18>;
++; O3-NEXT:    .reg .b16 %rs<20>;
+ ; O3-NEXT:    .reg .b32 %r<8>;
+ ; O3-NEXT:    .reg .b64 %rd<4>;
+ ; O3-EMPTY:
+ ; O3-NEXT:  // %bb.0: // %entry
+ ; O3-NEXT:    ld.param.b64 %rd1, [test_srem_v3i8_param_0];
+-; O3-NEXT:    ld.s8 %rs1, [%rd1+2];
++; O3-NEXT:    ld.b8 %rs1, [%rd1];
+ ; O3-NEXT:    ld.b8 %rs2, [%rd1+1];
+ ; O3-NEXT:    shl.b16 %rs3, %rs2, 8;
+-; O3-NEXT:    cvt.u32.u16 %r1, %rs3;
+-; O3-NEXT:    ld.s8 %rs4, [%rd1];
++; O3-NEXT:    or.b16 %rs4, %rs3, %rs1;
++; O3-NEXT:    cvt.u32.u16 %r1, %rs4;
++; O3-NEXT:    ld.s8 %rs5, [%rd1+2];
+ ; O3-NEXT:    ld.param.b64 %rd2, [test_srem_v3i8_param_1];
+-; O3-NEXT:    ld.b8 %rs5, [%rd2];
+-; O3-NEXT:    ld.b8 %rs6, [%rd2+1];
+-; O3-NEXT:    shl.b16 %rs7, %rs6, 8;
+-; O3-NEXT:    or.b16 %rs8, %rs7, %rs5;
+-; O3-NEXT:    ld.s8 %rs9, [%rd2+2];
+-; O3-NEXT:    cvt.u32.u16 %r2, %rs7;
++; O3-NEXT:    ld.b8 %rs6, [%rd2];
++; O3-NEXT:    ld.b8 %rs7, [%rd2+1];
++; O3-NEXT:    shl.b16 %rs8, %rs7, 8;
++; O3-NEXT:    or.b16 %rs9, %rs8, %rs6;
++; O3-NEXT:    cvt.u32.u16 %r2, %rs9;
++; O3-NEXT:    ld.s8 %rs10, [%rd2+2];
+ ; O3-NEXT:    ld.param.b64 %rd3, [test_srem_v3i8_param_2];
+-; O3-NEXT:    cvt.s16.s8 %rs10, %rs8;
+-; O3-NEXT:    rem.s16 %rs11, %rs4, %rs10;
+-; O3-NEXT:    cvt.u32.u16 %r3, %rs11;
++; O3-NEXT:    cvt.s16.s8 %rs11, %rs9;
++; O3-NEXT:    cvt.s16.s8 %rs12, %rs4;
++; O3-NEXT:    rem.s16 %rs13, %rs12, %rs11;
++; O3-NEXT:    cvt.u32.u16 %r3, %rs13;
+ ; O3-NEXT:    prmt.b32 %r4, %r2, 0, 0x9991U;
+-; O3-NEXT:    cvt.u16.u32 %rs12, %r4;
++; O3-NEXT:    cvt.u16.u32 %rs14, %r4;
+ ; O3-NEXT:    prmt.b32 %r5, %r1, 0, 0x9991U;
+-; O3-NEXT:    cvt.u16.u32 %rs13, %r5;
+-; O3-NEXT:    rem.s16 %rs14, %rs13, %rs12;
+-; O3-NEXT:    cvt.u32.u16 %r6, %rs14;
++; O3-NEXT:    cvt.u16.u32 %rs15, %r5;
++; O3-NEXT:    rem.s16 %rs16, %rs15, %rs14;
++; O3-NEXT:    cvt.u32.u16 %r6, %rs16;
+ ; O3-NEXT:    prmt.b32 %r7, %r3, %r6, 0x3340U;
+-; O3-NEXT:    rem.s16 %rs15, %rs1, %rs9;
+-; O3-NEXT:    st.b8 [%rd3+2], %rs15;
+-; O3-NEXT:    cvt.u16.u32 %rs16, %r7;
+-; O3-NEXT:    st.b8 [%rd3], %rs16;
+-; O3-NEXT:    shr.u16 %rs17, %rs16, 8;
+-; O3-NEXT:    st.b8 [%rd3+1], %rs17;
++; O3-NEXT:    rem.s16 %rs17, %rs5, %rs10;
++; O3-NEXT:    st.b8 [%rd3+2], %rs17;
++; O3-NEXT:    cvt.u16.u32 %rs18, %r7;
++; O3-NEXT:    st.b8 [%rd3], %rs18;
++; O3-NEXT:    shr.u16 %rs19, %rs18, 8;
++; O3-NEXT:    st.b8 [%rd3+1], %rs19;
+ ; O3-NEXT:    ret;
+ entry:
+   %t57 = load <3 x i8>, ptr %a, align 1
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pr161013.ll b/llvm/test/CodeGen/X86/pr161013.ll
+--- a/llvm/test/CodeGen/X86/pr161013.ll
++++ b/llvm/test/CodeGen/X86/pr161013.ll
+@@ -521,19 +521,132 @@
+ ; AVX2-LABEL: avir_v4i4_to_v128i4:
+ ; AVX2:       # %bb.0:
+ ; AVX2-NEXT:    movq %rdi, %rax
+-; AVX2-NEXT:    vpextrb $8, %xmm0, %ecx
++; AVX2-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[0,u,8,12,u,u,u,u,u,u,u,u,u,u,u,u]
++; AVX2-NEXT:    vpmovzxbw {{.*#+}} ymm0 = xmm0[0],zero,xmm0[1],zero,xmm0[2],zero,xmm0[3],zero,xmm0[4],zero,xmm0[5],zero,xmm0[6],zero,xmm0[7],zero,xmm0[8],zero,xmm0[9],zero,xmm0[10],zero,xmm0[11],zero,xmm0[12],zero,xmm0[13],zero,xmm0[14],zero,xmm0[15],zero
++; AVX2-NEXT:    vextracti128 $1, %ymm0, %xmm1
++; AVX2-NEXT:    vpextrb $8, %xmm1, %ecx
+ ; AVX2-NEXT:    andl $15, %ecx
+-; AVX2-NEXT:    shll $16, %ecx
+-; AVX2-NEXT:    vpmovzxbw {{.*#+}} xmm1 = xmm0[0],zero,xmm0[1],zero,xmm0[2],zero,xmm0[3],zero,xmm0[4],zero,xmm0[5],zero,xmm0[6],zero,xmm0[7],zero
++; AVX2-NEXT:    shlq $32, %rcx
+ ; AVX2-NEXT:    vmovd %xmm1, %edx
+ ; AVX2-NEXT:    andl $15, %edx
+-; AVX2-NEXT:    orl %ecx, %edx
+-; AVX2-NEXT:    vpextrb $12, %xmm0, %ecx
++; AVX2-NEXT:    vpextrb $1, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $4, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $2, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $8, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $3, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $12, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $4, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $16, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $5, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $20, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $6, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $24, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $7, %xmm1, %esi
++; AVX2-NEXT:    shll $28, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    orq %rcx, %rsi
++; AVX2-NEXT:    vpextrb $9, %xmm1, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $36, %rcx
++; AVX2-NEXT:    orq %rsi, %rcx
++; AVX2-NEXT:    vpextrb $10, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $40, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $11, %xmm1, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $44, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
++; AVX2-NEXT:    vpextrb $12, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $48, %rdx
++; AVX2-NEXT:    vpextrb $13, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shlq $52, %rsi
++; AVX2-NEXT:    orq %rdx, %rsi
++; AVX2-NEXT:    vpextrb $14, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $56, %rdx
++; AVX2-NEXT:    orq %rsi, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $15, %xmm1, %ecx
++; AVX2-NEXT:    shlq $60, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
++; AVX2-NEXT:    movq %rcx, 8(%rdi)
++; AVX2-NEXT:    vpextrb $8, %xmm0, %ecx
+ ; AVX2-NEXT:    andl $15, %ecx
+-; AVX2-NEXT:    shll $24, %ecx
+-; AVX2-NEXT:    orl %edx, %ecx
++; AVX2-NEXT:    shlq $32, %rcx
++; AVX2-NEXT:    vmovd %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    vpextrb $1, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $4, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $2, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $8, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $3, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $12, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $4, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $16, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $5, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $20, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $6, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $24, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $7, %xmm0, %esi
++; AVX2-NEXT:    shll $28, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    orq %rcx, %rsi
++; AVX2-NEXT:    vpextrb $9, %xmm0, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $36, %rcx
++; AVX2-NEXT:    orq %rsi, %rcx
++; AVX2-NEXT:    vpextrb $10, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $40, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $11, %xmm0, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $44, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
++; AVX2-NEXT:    vpextrb $12, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $48, %rdx
++; AVX2-NEXT:    vpextrb $13, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shlq $52, %rsi
++; AVX2-NEXT:    orq %rdx, %rsi
++; AVX2-NEXT:    vpextrb $14, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $56, %rdx
++; AVX2-NEXT:    orq %rsi, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $15, %xmm0, %ecx
++; AVX2-NEXT:    shlq $60, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
+ ; AVX2-NEXT:    movq %rcx, (%rdi)
+-; AVX2-NEXT:    movq $0, 8(%rdi)
++; AVX2-NEXT:    vzeroupper
+ ; AVX2-NEXT:    retq
+ ;
+ ; AVX512-LABEL: avir_v4i4_to_v128i4:
+@@ -633,19 +746,132 @@
+ ; AVX2-LABEL: avir_v8i4_to_v128i4:
+ ; AVX2:       # %bb.0:
+ ; AVX2-NEXT:    movq %rdi, %rax
+-; AVX2-NEXT:    vpextrb $4, %xmm0, %ecx
++; AVX2-NEXT:    vpshufb {{.*#+}} xmm0 = xmm0[0,u,4,6,u,u,u,u,u,u,u,u,u,u,u,u]
++; AVX2-NEXT:    vpmovzxbw {{.*#+}} ymm0 = xmm0[0],zero,xmm0[1],zero,xmm0[2],zero,xmm0[3],zero,xmm0[4],zero,xmm0[5],zero,xmm0[6],zero,xmm0[7],zero,xmm0[8],zero,xmm0[9],zero,xmm0[10],zero,xmm0[11],zero,xmm0[12],zero,xmm0[13],zero,xmm0[14],zero,xmm0[15],zero
++; AVX2-NEXT:    vextracti128 $1, %ymm0, %xmm1
++; AVX2-NEXT:    vpextrb $8, %xmm1, %ecx
+ ; AVX2-NEXT:    andl $15, %ecx
+-; AVX2-NEXT:    shll $16, %ecx
+-; AVX2-NEXT:    vpmovzxbw {{.*#+}} xmm1 = xmm0[0],zero,xmm0[1],zero,xmm0[2],zero,xmm0[3],zero,xmm0[4],zero,xmm0[5],zero,xmm0[6],zero,xmm0[7],zero
++; AVX2-NEXT:    shlq $32, %rcx
+ ; AVX2-NEXT:    vmovd %xmm1, %edx
+ ; AVX2-NEXT:    andl $15, %edx
+-; AVX2-NEXT:    orl %ecx, %edx
+-; AVX2-NEXT:    vpextrb $6, %xmm0, %ecx
++; AVX2-NEXT:    vpextrb $1, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $4, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $2, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $8, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $3, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $12, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $4, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $16, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $5, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $20, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $6, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $24, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $7, %xmm1, %esi
++; AVX2-NEXT:    shll $28, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    orq %rcx, %rsi
++; AVX2-NEXT:    vpextrb $9, %xmm1, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $36, %rcx
++; AVX2-NEXT:    orq %rsi, %rcx
++; AVX2-NEXT:    vpextrb $10, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $40, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $11, %xmm1, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $44, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
++; AVX2-NEXT:    vpextrb $12, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $48, %rdx
++; AVX2-NEXT:    vpextrb $13, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shlq $52, %rsi
++; AVX2-NEXT:    orq %rdx, %rsi
++; AVX2-NEXT:    vpextrb $14, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $56, %rdx
++; AVX2-NEXT:    orq %rsi, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $15, %xmm1, %ecx
++; AVX2-NEXT:    shlq $60, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
++; AVX2-NEXT:    movq %rcx, 8(%rdi)
++; AVX2-NEXT:    vpextrb $8, %xmm0, %ecx
+ ; AVX2-NEXT:    andl $15, %ecx
+-; AVX2-NEXT:    shll $24, %ecx
+-; AVX2-NEXT:    orl %edx, %ecx
++; AVX2-NEXT:    shlq $32, %rcx
++; AVX2-NEXT:    vmovd %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    vpextrb $1, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $4, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $2, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $8, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $3, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $12, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $4, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $16, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $5, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $20, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $6, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $24, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $7, %xmm0, %esi
++; AVX2-NEXT:    shll $28, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    orq %rcx, %rsi
++; AVX2-NEXT:    vpextrb $9, %xmm0, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $36, %rcx
++; AVX2-NEXT:    orq %rsi, %rcx
++; AVX2-NEXT:    vpextrb $10, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $40, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $11, %xmm0, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $44, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
++; AVX2-NEXT:    vpextrb $12, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $48, %rdx
++; AVX2-NEXT:    vpextrb $13, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shlq $52, %rsi
++; AVX2-NEXT:    orq %rdx, %rsi
++; AVX2-NEXT:    vpextrb $14, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $56, %rdx
++; AVX2-NEXT:    orq %rsi, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $15, %xmm0, %ecx
++; AVX2-NEXT:    shlq $60, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
+ ; AVX2-NEXT:    movq %rcx, (%rdi)
+-; AVX2-NEXT:    movq $0, 8(%rdi)
++; AVX2-NEXT:    vzeroupper
+ ; AVX2-NEXT:    retq
+ ;
+ ; AVX512-LABEL: avir_v8i4_to_v128i4:
+@@ -754,30 +980,60 @@
+ ; AVX2-NEXT:    shlq $32, %rcx
+ ; AVX2-NEXT:    vmovd %xmm1, %edx
+ ; AVX2-NEXT:    andl $15, %edx
+-; AVX2-NEXT:    vpextrb $2, %xmm1, %esi
+-; AVX2-NEXT:    andl $15, %esi
+-; AVX2-NEXT:    shll $8, %esi
++; AVX2-NEXT:    vpextrb $1, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $4, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $2, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $8, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $3, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $12, %esi
+ ; AVX2-NEXT:    orl %edx, %esi
+ ; AVX2-NEXT:    vpextrb $4, %xmm1, %edx
+ ; AVX2-NEXT:    andl $15, %edx
+ ; AVX2-NEXT:    shll $16, %edx
+ ; AVX2-NEXT:    orl %esi, %edx
+-; AVX2-NEXT:    vpextrb $6, %xmm1, %esi
+-; AVX2-NEXT:    andl $15, %esi
+-; AVX2-NEXT:    shll $24, %esi
++; AVX2-NEXT:    vpextrb $5, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $20, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $6, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $24, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $7, %xmm1, %esi
++; AVX2-NEXT:    shll $28, %esi
+ ; AVX2-NEXT:    orl %edx, %esi
+ ; AVX2-NEXT:    orq %rcx, %rsi
+-; AVX2-NEXT:    vpextrb $10, %xmm1, %ecx
+-; AVX2-NEXT:    andl $15, %ecx
+-; AVX2-NEXT:    shlq $40, %rcx
++; AVX2-NEXT:    vpextrb $9, %xmm1, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $36, %rcx
+ ; AVX2-NEXT:    orq %rsi, %rcx
++; AVX2-NEXT:    vpextrb $10, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $40, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $11, %xmm1, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $44, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
+ ; AVX2-NEXT:    vpextrb $12, %xmm1, %edx
+ ; AVX2-NEXT:    andl $15, %edx
+ ; AVX2-NEXT:    shlq $48, %rdx
++; AVX2-NEXT:    vpextrb $13, %xmm1, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shlq $52, %rsi
++; AVX2-NEXT:    orq %rdx, %rsi
++; AVX2-NEXT:    vpextrb $14, %xmm1, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $56, %rdx
++; AVX2-NEXT:    orq %rsi, %rdx
+ ; AVX2-NEXT:    orq %rcx, %rdx
+-; AVX2-NEXT:    vpextrb $14, %xmm1, %ecx
+-; AVX2-NEXT:    andl $15, %ecx
+-; AVX2-NEXT:    shlq $56, %rcx
++; AVX2-NEXT:    vpextrb $15, %xmm1, %ecx
++; AVX2-NEXT:    shlq $60, %rcx
+ ; AVX2-NEXT:    orq %rdx, %rcx
+ ; AVX2-NEXT:    movq %rcx, 8(%rdi)
+ ; AVX2-NEXT:    vpextrb $8, %xmm0, %ecx
+@@ -785,30 +1041,60 @@
+ ; AVX2-NEXT:    shlq $32, %rcx
+ ; AVX2-NEXT:    vmovd %xmm0, %edx
+ ; AVX2-NEXT:    andl $15, %edx
+-; AVX2-NEXT:    vpextrb $2, %xmm0, %esi
+-; AVX2-NEXT:    andl $15, %esi
+-; AVX2-NEXT:    shll $8, %esi
++; AVX2-NEXT:    vpextrb $1, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $4, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $2, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $8, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $3, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $12, %esi
+ ; AVX2-NEXT:    orl %edx, %esi
+ ; AVX2-NEXT:    vpextrb $4, %xmm0, %edx
+ ; AVX2-NEXT:    andl $15, %edx
+ ; AVX2-NEXT:    shll $16, %edx
+ ; AVX2-NEXT:    orl %esi, %edx
+-; AVX2-NEXT:    vpextrb $6, %xmm0, %esi
+-; AVX2-NEXT:    andl $15, %esi
+-; AVX2-NEXT:    shll $24, %esi
++; AVX2-NEXT:    vpextrb $5, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shll $20, %esi
++; AVX2-NEXT:    orl %edx, %esi
++; AVX2-NEXT:    vpextrb $6, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shll $24, %edx
++; AVX2-NEXT:    orl %esi, %edx
++; AVX2-NEXT:    vpextrb $7, %xmm0, %esi
++; AVX2-NEXT:    shll $28, %esi
+ ; AVX2-NEXT:    orl %edx, %esi
+ ; AVX2-NEXT:    orq %rcx, %rsi
+-; AVX2-NEXT:    vpextrb $10, %xmm0, %ecx
+-; AVX2-NEXT:    andl $15, %ecx
+-; AVX2-NEXT:    shlq $40, %rcx
++; AVX2-NEXT:    vpextrb $9, %xmm0, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $36, %rcx
+ ; AVX2-NEXT:    orq %rsi, %rcx
++; AVX2-NEXT:    vpextrb $10, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $40, %rdx
++; AVX2-NEXT:    orq %rcx, %rdx
++; AVX2-NEXT:    vpextrb $11, %xmm0, %ecx
++; AVX2-NEXT:    movzwl %cx, %ecx
++; AVX2-NEXT:    shlq $44, %rcx
++; AVX2-NEXT:    orq %rdx, %rcx
+ ; AVX2-NEXT:    vpextrb $12, %xmm0, %edx
+ ; AVX2-NEXT:    andl $15, %edx
+ ; AVX2-NEXT:    shlq $48, %rdx
++; AVX2-NEXT:    vpextrb $13, %xmm0, %esi
++; AVX2-NEXT:    movzwl %si, %esi
++; AVX2-NEXT:    shlq $52, %rsi
++; AVX2-NEXT:    orq %rdx, %rsi
++; AVX2-NEXT:    vpextrb $14, %xmm0, %edx
++; AVX2-NEXT:    andl $15, %edx
++; AVX2-NEXT:    shlq $56, %rdx
++; AVX2-NEXT:    orq %rsi, %rdx
+ ; AVX2-NEXT:    orq %rcx, %rdx
+-; AVX2-NEXT:    vpextrb $14, %xmm0, %ecx
+-; AVX2-NEXT:    andl $15, %ecx
+-; AVX2-NEXT:    shlq $56, %rcx
++; AVX2-NEXT:    vpextrb $15, %xmm0, %ecx
++; AVX2-NEXT:    shlq $60, %rcx
+ ; AVX2-NEXT:    orq %rdx, %rcx
+ ; AVX2-NEXT:    movq %rcx, (%rdi)
+ ; AVX2-NEXT:    vzeroupper
 diff -ruN --strip-trailing-cr a/mlir/lib/IR/MLIRContext.cpp b/mlir/lib/IR/MLIRContext.cpp
 --- a/mlir/lib/IR/MLIRContext.cpp
 +++ b/mlir/lib/IR/MLIRContext.cpp
