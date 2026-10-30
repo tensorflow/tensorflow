@@ -74,6 +74,9 @@ void swap(MMapHandle& a, MMapHandle& b) {
   swap(a.offset_, b.offset_);
   swap(a.offset_page_adjustment_, b.offset_page_adjustment_);
   swap(a.data_, b.data_);
+#if defined(_WIN32)
+  swap(a.file_mapping_, b.file_mapping_);
+#endif
 }
 
 MMapHandle::~MMapHandle() { UnMap(); }
@@ -189,11 +192,16 @@ void MMapHandle::UnMap() {
     delete[] data_;
 #elif defined(_WIN32)
     UnmapViewOfFile(data_);
-    CloseHandle(file_mapping_);
 #else
     munmap(data_, size_ + offset_page_adjustment_);
 #endif
   }
+#if defined(_WIN32)
+  if (file_mapping_) {
+    CloseHandle(file_mapping_);
+    file_mapping_ = nullptr;
+  }
+#endif
   data_ = nullptr;
   offset_ = 0;
   offset_page_adjustment_ = 0;

@@ -463,11 +463,6 @@ ENTRY e {
     ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(hlo));
     HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
         *optimized_module, HloOpcode::kScaledDot);
-    if (scale_type == F8E8M0FNU && block_size == 16 &&
-        GetCudaComputeCapability().IsAtLeastBlackwell() && !lhs_k_minor) {
-      EXPECT_EQ(scaled_dot_computation, nullptr);
-      return;
-    }
     ASSERT_NE(scaled_dot_computation, nullptr);
     EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                  "CHECK: tt.dot_scaled"),
@@ -805,15 +800,13 @@ TEST_F(TritonScaledDotTest, Fp4Succeeds) {
   ASSERT_EQ(output_tile_sizes.size(), 3);
   const int64_t output_m = output_tile_sizes.Get(1);
   const int64_t output_n = output_tile_sizes.Get(2);
-  ASSERT_EQ(output_n % 2, 0);
-  const std::string expected_triton_ir =
-      absl::Substitute(R"(
+  const std::string expected_triton_ir = absl::Substitute(R"(
       CHECK: tt.dot_scaled
       CHECK: tensor<$0x64xi8>, tensor<$0x4xi8>
-      CHECK: tensor<128x$1xi8>, tensor<$2x4xi8>
-      CHECK: -> tensor<$0x$2xf32>
+      CHECK: tensor<64x$1xi8>, tensor<$1x4xi8>
+      CHECK: -> tensor<$0x$1xf32>
   )",
-                       output_m, output_n / 2, output_n);
+                                                          output_m, output_n);
 
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                expected_triton_ir),

@@ -47,7 +47,6 @@ bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
@@ -56,6 +55,13 @@ bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
     case HloOpcode::kConvert:
       CHECK_EQ(operand_index, 0);
       return hlo.operand(0)->shape().element_type() == low_precision_type_;
+    case HloOpcode::kFma:
+      // Promoting fma to a wider float type double-rounds, so existing
+      // low-precision fma ops must not be normalized (unsupported targets
+      // return Unimplemented in codegen), while higher-precision fma ops must
+      // not be demoted.
+      return hlo.operand(operand_index)->shape().element_type() ==
+             low_precision_type_;
     case HloOpcode::kClz:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kShiftRightArithmetic:
@@ -82,13 +88,13 @@ bool FloatSupport::SupportsLowPrecisionOutput(const HloInstruction& hlo) const {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
     case HloOpcode::kOptimizationBarrier:
       return true;
     case HloOpcode::kConvert:
+    case HloOpcode::kFma:
       return hlo.shape().element_type() == low_precision_type_;
     case HloOpcode::kClz:
     case HloOpcode::kShiftRightLogical:
@@ -140,7 +146,6 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kConcatenate:
     case HloOpcode::kCopy:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:

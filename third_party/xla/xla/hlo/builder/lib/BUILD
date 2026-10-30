@@ -16,7 +16,13 @@
 # Common computation builders for XLA.
 
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tests:build_defs.bzl", "ALL_HARDWARE_BACKENDS", "generate_backend_suites", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "ALL_HARDWARE_BACKENDS",
+    "generate_backend_suites",
+    "get_sc_offload_backend_args",
+    "xla_test",
+)
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -262,6 +268,8 @@ cc_library(
 xla_test(
     name = "math_test",
     srcs = ["math_test.cc"],
+    # TODO(b/574644567): SparseCore fusion in a while loop halts on a megacore barrier.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     deps = [
         ":constants",
         ":math",
@@ -711,6 +719,8 @@ cc_library(
 xla_test(
     name = "svd_test",
     srcs = ["svd_test.cc"],
+    # TODO(b/577451636): Offloaded SparseCore fusions fail on some TPU hardware.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     backends = ALL_HARDWARE_BACKENDS,
     shard_count = 10,
     tags = ["optonly"],
@@ -763,6 +773,8 @@ cc_library(
 xla_test(
     name = "tridiagonal_test",
     srcs = ["tridiagonal_test.cc"],
+    # TODO(b/577451636): Offloaded SparseCore fusions fail to compile on some TPU hardware.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     backends = ALL_HARDWARE_BACKENDS,
     shard_count = 10,
     tags = ["optonly"],

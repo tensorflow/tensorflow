@@ -668,6 +668,11 @@ absl::Status GraphConstructor::ValidateInputMapAndControlDependencies() {
           absl::StrCat("input_map entry ", src.ToString(), "->", dst.ToString(),
                        " between ", "control edge and non-control edge"));
     }
+    if (dst.second < 0 && dst.second != Graph::kControlSlot) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("input_map entry ", src.ToString(), "->", dst.ToString(),
+                       " has invalid destination output index ", dst.second));
+    }
   }
   for (const std::string& node : opts_.control_dependencies) {
     if (existing_nodes_.count(node) == 0) {
@@ -883,22 +888,22 @@ absl::Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
 
 void RemoveInputs(const std::vector<int>& inputs_to_remove, NodeDef* node_def,
                   std::vector<bool>* input_already_exists) {
-  // Remove 'inputs_to_remove' from 'node_def'
+  // Remove 'inputs_to_remove' from 'node_def' and from 'input_already_exists'.
+  // Assumes 'inputs_to_remove' is sorted in ascending order.
   NodeDef copy;
   copy.mutable_input()->Reserve(node_def->input_size() -
                                 inputs_to_remove.size());
+  int write_idx = 0;
   for (int i = 0, j = 0; i < node_def->input_size(); ++i) {
     if (j < inputs_to_remove.size() && i == inputs_to_remove[j]) {
       ++j;
     } else {
       copy.add_input()->swap(*node_def->mutable_input(i));
+      (*input_already_exists)[write_idx++] = (*input_already_exists)[i];
     }
   }
   node_def->mutable_input()->Swap(copy.mutable_input());
-  // Remove 'inputs_to_remove' from 'input_already_exists'
-  for (int idx : inputs_to_remove) {
-    input_already_exists->erase(input_already_exists->begin() + idx);
-  }
+  input_already_exists->resize(write_idx);
   DCHECK_EQ(input_already_exists->size(), node_def->input_size());
 }
 
@@ -1428,6 +1433,11 @@ absl::Status GraphConstructor::PopulateReturnTensors() {
             absl::StrCat("Requested return tensor '", id.ToString(),
                          "' not found in graph def"));
       }
+      if (iter->second.node == nullptr) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Requested return tensor '", id.ToString(), "' refers to node '",
+            id.first, "' which was not imported"));
+      }
       int num_outputs = iter->second.node->num_outputs();
       if ((id.second < 0 || id.second >= num_outputs) &&
           id.second != Graph::kControlSlot) {
@@ -1439,8 +1449,14 @@ absl::Status GraphConstructor::PopulateReturnTensors() {
     } else {
       // id was remapped to existing node
       TensorId remapped_id = iter->second;
-      DCHECK_GT(existing_nodes_.count(remapped_id.first), 0);
-      Node* node = existing_nodes_[remapped_id.first];
+      auto node_iter = existing_nodes_.find(remapped_id.first);
+      if (node_iter == existing_nodes_.end() || node_iter->second == nullptr) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Requested return tensor '", id.ToString(),
+                         "' is remapped to node '", remapped_id.first,
+                         "' which was not found in graph"));
+      }
+      Node* node = node_iter->second;
       return_tensors_->push_back({node, remapped_id.second});
     }
   }
@@ -1500,12 +1516,12 @@ void GraphConstructor::Undo() {
 
 absl::Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
                                         int input_index) {
-  if (output_index >= src->num_outputs()) {
+  if (output_index < 0 || output_index >= src->num_outputs()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Output ", output_index, " of node ", src->name(),
         " does not exist. Node only has ", src->num_outputs(), " outputs."));
   }
-  if (input_index >= dst->num_inputs()) {
+  if (input_index < 0 || input_index >= dst->num_inputs()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Input ", input_index, " of node ", dst->name(),
         " does not exist. Node only has ", dst->num_inputs(), " inputs."));

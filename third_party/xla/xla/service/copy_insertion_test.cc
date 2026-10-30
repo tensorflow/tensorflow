@@ -3458,6 +3458,44 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 1);
 }
 
+TEST_F(CopyInsertionTest,
+       FusedDynamicUpdateSliceMultiPositionBitcastRequiresCopy) {
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+fused_computation {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  rev = f32[8] reverse(p1), dimensions={0}
+  slice = f32[3] slice(rev), slice={[0:3]}
+  c0 = s32[] constant(0)
+  ROOT dus = f32[8] dynamic-update-slice(p0, slice, c0)
+}
+
+ENTRY main {
+  param = f32[8] parameter(0)
+  negate = f32[8] negate(param)
+  bc = f32[8] bitcast(negate)
+  ROOT fusion = f32[8] fusion(negate, bc), kind=kLoop, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+  EXPECT_EQ(CountCopies(*module), 1);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Fusion(op::Copy(op::Negate()), op::Bitcast(op::Negate())));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> special_case_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_);
+  ASSERT_THAT(copy_insertion.AddSpecialCaseCopies(special_case_module.get()),
+              ::absl_testing::IsOk());
+  EXPECT_EQ(CountCopies(*special_case_module), 1);
+  EXPECT_THAT(special_case_module->entry_computation()->root_instruction(),
+              op::Fusion(op::Negate(), op::Copy(op::Bitcast(op::Negate()))));
+}
+
 TEST_F(CopyInsertionTest, MultiOutputFusedDynamicUpdateSliceCopy) {
   // Tests multi-output fusion with two DUS outputs, requiring two copies.
   absl::string_view hlo_string = R"(

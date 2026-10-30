@@ -42,31 +42,26 @@ ENTRY entry {
 // CHECK:       %[[SLICE:.*]] = arith.divui %[[PID]], %[[TILES_PER_RANK]]
 // CHECK:       %[[PEER:.*]] = arith.remui %[[SLICE]], %[[WORLD_SIZE]]
 
-// The invocation count is loaded from this rank's signal buffer at the slot
-// of the asymmetric block barrier: (pid - peer * 64 + rank * 64) * 2 + peer.
-// CHECK:       %[[SLOT_OFFSET:.*]] = arith.muli %[[PEER]], %[[TILES_PER_RANK]]
-// CHECK:       %[[BASE_BLOCK:.*]] = arith.subi %[[PID]], %[[SLOT_OFFSET]]
-// CHECK:       %[[RANK_OFFSET:.*]] = arith.muli %[[RANK]], %[[TILES_PER_RANK]]
-// CHECK:       %[[TARGET_BLOCK:.*]] = arith.addi %[[BASE_BLOCK]], %[[RANK_OFFSET]]
-// CHECK:       %[[TARGET_OFFSET:.*]] = arith.muli %[[TARGET_BLOCK]], %[[WORLD_SIZE]]
-// CHECK:       %[[COUNTER_IDX:.*]] = arith.addi %[[TARGET_OFFSET]], %[[PEER]]
+// The invocation count is loaded from this rank's signal buffer at
+// (pid * 2) + rank.
+// CHECK:       %[[PID_OFFSET:.*]] = arith.muli %[[PID]], %[[WORLD_SIZE]]
+// CHECK:       %[[COUNTER_IDX:.*]] = arith.addi %[[PID_OFFSET]], %[[RANK]]
 // CHECK:       tt.addptr %{{.*}}, %[[COUNTER_IDX]] : !tt.ptr<i32>, i32
 
-// Stage this program's half of the local tile (8 of 16 rows) in this rank's
-// remote buffer. The program 64 apart stages the other half.
-// CHECK:       %[[HALF:.*]] = xtile.extract %[[INPUT]]{{.*}} [8, 16] [1, 1]
-// CHECK:       tt.addptr %[[REMOTE_BUFFERS]], %[[RANK]]
-// CHECK:       %[[OWN_BUFFER:.*]] = triton_xla.ptr_to_memref
-// CHECK:       xtile.insert %[[HALF]] into %[[OWN_BUFFER]]
+// Push this program's local tile into the peer's scratch buffer at slice `rank`.
+// CHECK:       %[[LOCAL_TILE:.*]] = xtile.extract %[[INPUT]]{{.*}} [16, 16] [1, 1]
+// CHECK:       tt.addptr %[[REMOTE_BUFFERS]], %[[PEER]]
+// CHECK:       %[[PEER_SCRATCH:.*]] = triton_xla.ptr_to_memref
+// CHECK:       xtile.insert %[[LOCAL_TILE]] into %[[PEER_SCRATCH]]
 
-// Wait until the peer has staged the whole tile.
+// Wait until the peer has pushed its tile into this rank's scratch buffer.
 // CHECK:       ttg.barrier local
 // CHECK:       triton_xla.block_barrier %[[SIGNAL_BUFFERS]], %[[RANK]], %{{.*}}, %[[PEER]]
-// CHECK-SAME:    <world_size = 2, signal_stride = 64, barrier_mode = consumer_symmetric>
+// CHECK-SAME:    <world_size = 2, signal_stride = 64, barrier_mode = pairwise_symmetric>
 
-// Copy the tile from the peer's remote buffer to the output.
-// CHECK:       tt.addptr %[[REMOTE_BUFFERS]], %[[PEER]]
-// CHECK:       %[[PEER_BUFFER:.*]] = triton_xla.ptr_to_memref
-// CHECK:       %[[TILE:.*]] = xtile.extract %[[PEER_BUFFER]]{{.*}} [16, 16] [1, 1]
+// Copy the tile from this rank's scratch buffer at slice `peer` to the output.
+// CHECK:       tt.addptr %[[REMOTE_BUFFERS]], %[[RANK]]
+// CHECK:       %[[OWN_SCRATCH:.*]] = triton_xla.ptr_to_memref
+// CHECK:       %[[TILE:.*]] = xtile.extract %[[OWN_SCRATCH]]{{.*}} [16, 16] [1, 1]
 // CHECK:       xtile.insert %[[TILE]] into %[[OUTPUT]]
 // CHECK:       xtile.return

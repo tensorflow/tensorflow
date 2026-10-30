@@ -113,6 +113,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cudnn_device_props_test_util",
+    testonly = True,
+    srcs = ["cudnn_device_props_test_util.cc"],
+    hdrs = ["cudnn_device_props_test_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = internal_visibility([
+        "//xla:friends",
+    ]),
+    deps = [
+        ":cudnn_device_props",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_for_library",
+        "@cudnn_frontend_archive//:cudnn_frontend",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
 xla_test(
     name = "cudnn_device_props_test",
     srcs = ["cudnn_device_props_test.cc"],
@@ -133,7 +158,7 @@ xla_test(
     ],
     tags = ["cuda-only"],
     deps = [
-        ":cudnn_device_props",
+        ":cudnn_device_props_test_util",
         ":target_config",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
@@ -142,14 +167,11 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@cudnn_frontend_archive//:cudnn_frontend",
-        "@jsoncpp_git//:jsoncpp",
     ],
 )
 

@@ -49,53 +49,6 @@ ReorderOp CreateReorderOp(const dnnl::memory& src, const dnnl::memory& dst) {
   return reorder;
 }
 
-// Pointers to the input, filter, and output buffers of a conv primitive.
-//
-// Two things depend on the conv primitive kind:
-//   * Which XLA buffer backs each slot: see GetConvBufferPointers.
-//   * Which DNNL_ARG_* key each slot uses: see CreateConv*Primitive.
-//
-// Arg-key mapping (`DNNL_ARG_` prefix omitted):
-//
-//   +---------------+------------+--------------+-------------+
-//   | PrimitiveKind | input_data | filter_data  | output_data |
-//   +---------------+------------+--------------+-------------+
-//   | Fwd/FwdAct    | SRC        | WEIGHTS      | DST         |
-//   | BwdInput      | DIFF_SRC   | WEIGHTS      | DIFF_DST    |
-//   | BwdFilter     | SRC        | DIFF_WEIGHTS | DIFF_DST    |
-//   +---------------+------------+--------------+-------------+
-struct ConvBufferPointers {
-  void* input_data;
-  void* filter_data;
-  void* output_data;
-};
-
-absl::StatusOr<ConvBufferPointers> GetConvBufferPointers(
-    dnn::ConvolutionKind conv_kind,
-    absl::Span<const DeviceAddressBase> operand_buffers,
-    const DeviceAddressBase& result_buffer) {
-  auto opaque_ptr = [](const DeviceAddressBase& addr) {
-    return const_cast<void*>(addr.opaque());
-  };
-  if (operand_buffers.size() < 2) {
-    return absl::InvalidArgumentError("Insufficient operand buffers");
-  }
-  void* op0 = opaque_ptr(operand_buffers[0]);
-  void* op1 = opaque_ptr(operand_buffers[1]);
-  void* res = opaque_ptr(result_buffer);
-  switch (conv_kind) {
-    case dnn::ConvolutionKind::FORWARD:
-    case dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION:
-      return ConvBufferPointers{op0, op1, res};
-    case dnn::ConvolutionKind::BACKWARD_DATA:
-      return ConvBufferPointers{res, op1, op0};
-    case dnn::ConvolutionKind::BACKWARD_FILTER:
-      return ConvBufferPointers{op0, res, op1};
-    default:
-      return absl::InvalidArgumentError("Unknown convolution kind");
-  }
-}
-
 // Converts XLA's DataLayout enum to oneDNN's memory format tag.
 // For 2D convolutions: NCHW (batch, channels, height, width) or NHWC.
 // For 3D convolutions: NCDHW (batch, channels, depth, height, width)
@@ -257,6 +210,10 @@ absl::StatusOr<OneDnnConvPrimitiveDesc> CreateOneDnnConvPrimitiveDesc(
       break;
     default:
       return absl::InvalidArgumentError("Unknown convolution kind");
+  }
+  if (config.conv_desc.convolution_not_crosscorr()) {
+    return absl::UnimplementedError(
+        "oneDNN only supports cross-correlation convolutions");
   }
 
   // TODO(intel-tf): depthwise-conv
@@ -442,26 +399,21 @@ absl::StatusOr<OneDnnConvPrimitiveDesc> CreateOneDnnConvPrimitiveDesc(
 }
 
 absl::StatusOr<OneDnnConvPrimitive> CreateOneDnnConvPrimitive(
-    const OneDnnConvPrimitiveDesc& pd,
-    absl::Span<const DeviceAddressBase> operand_buffers,
-    DeviceAddressBase result_buffer, Stream* stream) {
+    const OneDnnConvPrimitiveDesc& pd, Stream* stream,
+    const OnednnConvBufferPointers& buffer_pointers) {
   OneDnnConvPrimitive onednn_conv_primitive;
   ::sycl::queue* sycl_queue =
       absl::bit_cast<::sycl::queue*>(stream->platform_specific_handle().stream);
   onednn_conv_primitive.engine = pd.engine;
 
   const dnn::ConvolutionKind conv_kind = pd.kind;
-  ABSL_ASSIGN_OR_RETURN(
-      ConvBufferPointers buffers,
-      GetConvBufferPointers(conv_kind, operand_buffers, result_buffer));
-
   void* bias_data = nullptr;
   void* side_input_data = nullptr;
-  if (pd.bias.has_value() && operand_buffers.size() >= 3) {
-    bias_data = const_cast<void*>(operand_buffers[2].opaque());
+  if (pd.bias.has_value()) {
+    bias_data = buffer_pointers.bias_data;
   }
-  if (pd.has_side_input_sum && operand_buffers.size() >= 4) {
-    side_input_data = const_cast<void*>(operand_buffers[3].opaque());
+  if (pd.has_side_input_sum) {
+    side_input_data = buffer_pointers.side_input_data;
   }
   if (pd.has_side_input_sum && side_input_data == nullptr) {
     return absl::InvalidArgumentError(
@@ -475,18 +427,19 @@ absl::StatusOr<OneDnnConvPrimitive> CreateOneDnnConvPrimitive(
     onednn_conv_primitive.stream = dnnl::sycl_interop::make_stream(
         onednn_conv_primitive.engine, *sycl_queue);
     dnnl::memory src_memory = CreateDnnlMemory(
-        pd.src_md, onednn_conv_primitive.engine, buffers.input_data);
-    dnnl::memory filter_memory = CreateDnnlMemory(
-        pd.filter_md, onednn_conv_primitive.engine, buffers.filter_data);
+        pd.src_md, onednn_conv_primitive.engine, buffer_pointers.input_data);
+    dnnl::memory filter_memory =
+        CreateDnnlMemory(pd.filter_md, onednn_conv_primitive.engine,
+                         buffer_pointers.filter_data);
     dnnl::memory dst_memory = CreateDnnlMemory(
-        pd.dst_md, onednn_conv_primitive.engine, buffers.output_data);
+        pd.dst_md, onednn_conv_primitive.engine, buffer_pointers.result_data);
 
     // oneDNN's `sum` post-op computes `dst = conv + beta * dst`, reading the
     // current dst buffer. When the side input uses a separate buffer, copy it
     // into dst before each conv execute.
     dnnl::memory side_input_memory;
     if (pd.has_side_input_sum && side_input_data != nullptr &&
-        side_input_data != buffers.output_data) {
+        side_input_data != buffer_pointers.result_data) {
       side_input_memory = CreateDnnlMemory(
           pd.dst_md, onednn_conv_primitive.engine, side_input_data);
       onednn_conv_primitive.side_input_reorder =

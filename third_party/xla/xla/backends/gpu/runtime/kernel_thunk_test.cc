@@ -91,7 +91,7 @@ TEST(KernelThunkTest, CreateWithDefaultValues) {
   EXPECT_EQ(thunk.ToString(0),
             "kernel=, profile_annotation=, launch dimensions="
             "blocks: {1, 1, 1}, threads/block: {1, 1, 1}, "
-            "cluster_dim=ClusterDim{1, 1, 1}");
+            "cluster_dim=ClusterDim{1, 1, 1}, shmem_bytes=0");
 }
 
 TEST(KernelThunkTest, CreateAndGettersAndToString) {
@@ -121,7 +121,9 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
                     /*cluster_dim=*/se::ClusterDim(1, 1, 1),
                     /*shmem_bytes=*/1024,
                     /*tma_metadata=*/se::gpu::TmaMetadata(),
-                    /*devices_per_host=*/1);
+                    /*devices_per_host=*/1,
+                    /*zeroed_output_buffer_indices=*/{},
+                    /*use_pdl=*/true);
   EXPECT_EQ(thunk.kind(), Kind::kKernel);
   EXPECT_EQ(thunk.kernel_name(), "kernel123");
   EXPECT_EQ(thunk.arguments(),
@@ -137,7 +139,7 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
       thunk.ToString(0),
       "kernel=kernel123, profile_annotation=DotGeneral, "
       "launch dimensions=blocks: {32, 31, 30}, threads/block: {256, 255, 254}, "
-      "cluster_dim=ClusterDim{1, 1, 1}");
+      "cluster_dim=ClusterDim{1, 1, 1}, shmem_bytes=1024, use_pdl=true");
 }
 
 TEST(KernelThunkTest, ToProto) {

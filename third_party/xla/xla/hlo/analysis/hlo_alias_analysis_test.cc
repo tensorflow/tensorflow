@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <set>
 #include <vector>
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
@@ -1507,6 +1510,232 @@ ENTRY main {
   EXPECT_EQ(analysis.GetUniqueBufferAt(init, {0}), while_buffer);
   EXPECT_EQ(analysis.GetUniqueBufferAt(body_param, {0}), while_buffer);
   EXPECT_EQ(analysis.GetUniqueBufferAt(body_root, {0}), while_buffer);
+}
+
+// Tests TensorCore async barrier `all-to-all` aliasing and buffer lifecycles:
+// `barrier_start` allocates `(output_buf, sflag0, sflag1)` ahead of `a2a_start`
+// and aliases them into `a2a_start`'s result `{1}` and sflag context `{2, 3}`
+// via `output_to_operand_aliasing` on `a2a_start`. Verifies via
+// `HloAliasAnalysis` and `HloLiveRange` that all 3 buffers share the same
+// `HloBuffer`s across `barrier_start`, `a2a_start`, and `a2a_done`, and remain
+// live to or past `a2a_done`.
+TEST_F(HloAliasAnalysisTest, TcAsyncBarrierAllToAllBufferAliasingAndLifecycle) {
+  // Aliasing could be simplified by b/579561154.
+  absl::string_view hlo_string = R"(
+HloModule NonOverlappedA2A_TensorCore, is_scheduled=true
+
+async_computation {
+  param_0 = (f32[4,16,1024], (f32[4,16,1024], u32[], u32[])) parameter(0)
+  gte = f32[4,16,1024] get-tuple-element(param_0), index=0
+  ROOT a2a = f32[4,16,1024] all-to-all(gte), channel_id=1,
+    replica_groups={{0,1,2,3}}, dimensions={0}
+}
+
+ENTRY main {
+  barrier_start = (f32[4,16,1024], u32[], u32[]) custom-call(),
+    custom_call_target="BarrierStart"
+  param = f32[4,16,1024] parameter(0)
+  tuple = (f32[4,16,1024], (f32[4,16,1024], u32[], u32[]))
+    tuple(param, barrier_start)
+  a2a_start = (
+        (                       // BEGIN OF 0
+          (                     // BEGIN OF 0, 0
+            f32[4,16,1024],     // 0, 0, 0
+            (                   // BEGIN OF 0, 0, 1
+              f32[4,16,1024],   // 0, 0, 1, 0
+              u32[],            // 0, 0, 1, 1
+              u32[]             // 0, 0, 1, 2
+            )                   // END OF 0, 0, 1
+          )                     // END OF 0, 0
+        ),                      // END OF 0
+        f32[4,16,1024],         // 1
+        u32[],                  // 2 (could be simplified by b/579561154)
+        u32[]                   // 3 (could be simplified by b/579561154)
+      )
+      async-start(tuple),
+      // Aliasing could be simplified by b/579561154.
+      output_to_operand_aliasing={
+        {0,0,1,0}: (0, {1,0}),
+        {1}: (0, {1,0}),
+        {0,0,1,1}: (0, {1,1}),
+        {2}: (0, {1,1}),
+        {0,0,1,2}: (0, {1,2}),
+        {3}: (0, {1,2})
+      },
+      calls=async_computation
+  a2a_done = f32[4,16,1024] async-done(a2a_start)
+  ROOT copy = f32[4,16,1024] copy(a2a_done)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  HloAliasAnalysis& analysis = RunAnalysis();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
+                       HloLiveRange::Run(module_->schedule(), analysis,
+                                         module_->entry_computation()));
+
+  auto buffer_end_time = [&](const HloBuffer& buffer) {
+    int64_t end_time = -1;
+    for (const HloValue* value : buffer.values()) {
+      auto it = live_range->buffer_live_ranges().find(value);
+      if (it != live_range->buffer_live_ranges().end()) {
+        end_time = std::max(end_time, it->second.end);
+      }
+    }
+    return end_time;
+  };
+
+  const HloInstruction* barrier_start =
+      FindInstruction(module_.get(), "barrier_start");
+  const HloInstruction* a2a_start = FindInstruction(module_.get(), "a2a_start");
+  const HloInstruction* a2a_done = FindInstruction(module_.get(), "a2a_done");
+  ASSERT_NE(barrier_start, nullptr);
+  ASSERT_NE(a2a_start, nullptr);
+  ASSERT_NE(a2a_done, nullptr);
+
+  const HloBuffer& out_buf = analysis.GetUniqueBufferAt(barrier_start, {0});
+  const HloBuffer& sflag0_buf = analysis.GetUniqueBufferAt(barrier_start, {1});
+  const HloBuffer& sflag1_buf = analysis.GetUniqueBufferAt(barrier_start, {2});
+
+  // All 3 buffers allocated by BarrierStart are aliased by a2a_start (and the
+  // output buffer is also aliased by a2a_done).
+  EXPECT_EQ(&out_buf, &analysis.GetUniqueBufferAt(a2a_start, {0, 0, 1, 0}));
+  EXPECT_EQ(&out_buf, &analysis.GetUniqueBufferAt(a2a_start, {1}));
+  EXPECT_EQ(&out_buf, &analysis.GetUniqueBufferAt(a2a_done, {}));
+
+  EXPECT_EQ(&sflag0_buf, &analysis.GetUniqueBufferAt(a2a_start, {0, 0, 1, 1}));
+  EXPECT_EQ(&sflag0_buf, &analysis.GetUniqueBufferAt(a2a_start, {2}));
+
+  EXPECT_EQ(&sflag1_buf, &analysis.GetUniqueBufferAt(a2a_start, {0, 0, 1, 2}));
+  EXPECT_EQ(&sflag1_buf, &analysis.GetUniqueBufferAt(a2a_start, {3}));
+
+  // All 3 buffers' lifecycles extend to or past a2a_done.
+  int64_t done_time = live_range->instruction_schedule().at(a2a_done);
+  EXPECT_GT(buffer_end_time(out_buf), done_time);
+  EXPECT_GE(buffer_end_time(sflag0_buf), done_time);
+  EXPECT_GE(buffer_end_time(sflag1_buf), done_time);
+}
+
+// Tests SparseCore async barrier `all-to-all` aliasing and buffer lifecycles:
+// `sc_barrier_start` / `sc_barrier_done` allocates `(output_buf, send_sflag,
+// recv_sflag)` on the `"sparsecore"` thread and passes them as operands to
+// `sc_start`, whose inner `SparseCoreBarrierDoneAndCollective` custom-call
+// aliases its output `{}` to operand `1` (`output_alias`). Verifies via
+// `HloAliasAnalysis` and `HloLiveRange` that `output_buf` aliases `sc_start{1}`
+// and `sc_output{}`, and that all 3 buffers remain live to or past `sc_output`.
+TEST_F(HloAliasAnalysisTest, ScAsyncBarrierAllToAllBufferAliasingAndLifecycle) {
+  absl::string_view hlo_string = R"(
+HloModule NonOverlappedA2A_SparseCore, is_scheduled=true
+
+sc_custom_call_comp {
+  ROOT custom_call = (f32[4,16,1024], u32[], u32[]) custom-call(),
+    custom_call_target="SparseCoreBarrierStart",
+    custom_call_has_side_effect=true
+}, execution_thread="sparsecore"
+
+async_computation_barrier {
+  ROOT call_barrier = (f32[4,16,1024], u32[], u32[]) call(),
+    to_apply=sc_custom_call_comp
+}, execution_thread="sparsecore"
+
+sc_main {
+  input = f32[4,16,1024] parameter(0)
+  barrier_start_buf_0 = f32[4,16,1024] parameter(1)
+  barrier_start_buf_1 = u32[] parameter(2)
+  barrier_start_buf_2 = u32[] parameter(3)
+  ROOT custom_call_done = f32[4,16,1024] custom-call(
+    input, barrier_start_buf_0, barrier_start_buf_1, barrier_start_buf_2),
+    custom_call_target="SparseCoreBarrierDoneAndCollective",
+    output_to_operand_aliasing={{}: (1, {})}
+}, execution_thread="sparsecore"
+
+async_computation_collective {
+  param_0 = f32[4,16,1024] parameter(0)
+  param_1 = f32[4,16,1024] parameter(1)
+  param_2 = u32[] parameter(2)
+  param_3 = u32[] parameter(3)
+  ROOT call_collective = f32[4,16,1024] call(
+    param_0, param_1, param_2, param_3), to_apply=sc_main
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  sc_barrier_start = (
+        (),                     // 0
+        (                       // BEGIN OF 1
+          f32[4,16,1024],       // 1, 0
+          u32[],                // 1, 1
+          u32[]                 // 1, 2
+        )                       // END OF 1
+      )
+      async-start(),
+      async_execution_thread="sparsecore",
+      calls=async_computation_barrier
+  sc_barrier_done = (f32[4,16,1024], u32[], u32[])
+    async-done(sc_barrier_start)
+  output_alias = f32[4,16,1024] get-tuple-element(sc_barrier_done), index=0
+  send_sflag = u32[] get-tuple-element(sc_barrier_done), index=1
+  recv_sflag = u32[] get-tuple-element(sc_barrier_done), index=2
+  param = f32[4,16,1024] parameter(0)
+  sc_start = (
+        (                       // BEGIN OF 0
+          f32[4,16,1024],       // 0, 0
+          f32[4,16,1024],       // 0, 1
+          u32[],                // 0, 2
+          u32[]                 // 0, 3
+        ),                      // END OF 0
+        f32[4,16,1024]          // 1
+      )
+      async-start(param, output_alias, send_sflag, recv_sflag),
+      async_execution_thread="sparsecore",
+      calls=async_computation_collective
+  sc_output = f32[4,16,1024] async-done(sc_start)
+  ROOT copy = f32[4,16,1024] copy(sc_output)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  HloAliasAnalysis& analysis = RunAnalysis();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
+                       HloLiveRange::Run(module_->schedule(), analysis,
+                                         module_->entry_computation()));
+
+  auto buffer_end_time = [&](const HloBuffer& buffer) {
+    int64_t end_time = -1;
+    for (const HloValue* value : buffer.values()) {
+      auto it = live_range->buffer_live_ranges().find(value);
+      if (it != live_range->buffer_live_ranges().end()) {
+        end_time = std::max(end_time, it->second.end);
+      }
+    }
+    return end_time;
+  };
+
+  const HloInstruction* sc_barrier_start =
+      FindInstruction(module_.get(), "sc_barrier_start");
+  const HloInstruction* sc_start = FindInstruction(module_.get(), "sc_start");
+  const HloInstruction* sc_output = FindInstruction(module_.get(), "sc_output");
+  ASSERT_NE(sc_barrier_start, nullptr);
+  ASSERT_NE(sc_start, nullptr);
+  ASSERT_NE(sc_output, nullptr);
+
+  const HloBuffer& out_buf =
+      analysis.GetUniqueBufferAt(sc_barrier_start, {1, 0});
+  const HloBuffer& sflag0_buf =
+      analysis.GetUniqueBufferAt(sc_barrier_start, {1, 1});
+  const HloBuffer& sflag1_buf =
+      analysis.GetUniqueBufferAt(sc_barrier_start, {1, 2});
+
+  // Check aliasing at sc_start and sc_output.
+  EXPECT_EQ(&out_buf, &analysis.GetUniqueBufferAt(sc_start, {0, 1}));
+  EXPECT_EQ(&out_buf, &analysis.GetUniqueBufferAt(sc_start, {1}));
+  EXPECT_EQ(&out_buf, &analysis.GetUniqueBufferAt(sc_output, {}));
+
+  EXPECT_EQ(&sflag0_buf, &analysis.GetUniqueBufferAt(sc_start, {0, 2}));
+  EXPECT_EQ(&sflag1_buf, &analysis.GetUniqueBufferAt(sc_start, {0, 3}));
+
+  // All 3 buffers' lifecycles extend to or past sc_output.
+  int64_t done_time = live_range->instruction_schedule().at(sc_output);
+  EXPECT_GT(buffer_end_time(out_buf), done_time);
+  EXPECT_GE(buffer_end_time(sflag0_buf), done_time);
+  EXPECT_GE(buffer_end_time(sflag1_buf), done_time);
 }
 
 }  // namespace

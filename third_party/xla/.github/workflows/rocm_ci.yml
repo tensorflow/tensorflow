@@ -45,8 +45,8 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'main' }}
 
 env:
-  ROCM_DISTRO_URL: https://stable.repo.amd.com/rocm/core/tarball/therock-dist-linux-multiarch-10.0.0.tar.gz
-  ROCM_DISTRO_HASH: 1c5e807875d26a2470ecc7323daa5b5b9009208a55c3290ac255a909cde15fc6
+  ROCM_DISTRO_URL: https://rocm.devreleases.amd.com/tarball-multi-arch/therock-dist-linux-multiarch-10.0.0.dev0%2Bc247febed686e713051e4cf7bcce437a8dcbfad9.tar.gz
+  ROCM_DISTRO_HASH: 1c5beccd46d06ae9b68602b955eae9f4ddf5b0dbb561e521c8040a1c87b1c555
   ROCM_AMD_GPU_TARGETS: gfx950
   ROCM_SINGLE_GPU_RBE_POOL: linux_x64_gpu
 
@@ -103,9 +103,7 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' }}
     name: JAX Linux x86 AMD Instinct GPU
     runs-on: ${{ needs.rocm-config.outputs.skip-jax == 'true' && 'ubuntu-latest' || inputs.runner_label || 'amd-do-linux-xla-gpu-gfx950-dpx-1' }}
-    timeout-minutes: 50
-    # Remove this once the JAX CI is stable.
-    continue-on-error: true
+    timeout-minutes: 55
     container: ${{ needs.rocm-config.outputs.skip-jax != 'true' && needs.rocm-config.outputs.docker-image || null }}  # zizmor: ignore[unpinned-images]
     env:
       DOCKER_IMAGE: ${{ needs.rocm-config.outputs.docker-image }}
@@ -133,7 +131,7 @@ jobs:
 
       - name: Run JAX Unit Tests
         if: ${{ needs.rocm-config.outputs.skip-jax != 'true' }}
-        timeout-minutes: 45
+        timeout-minutes: 52
         working-directory: jax
         run: |
           ./ci/run_bazel_test_rocm_rbe.sh \
@@ -228,9 +226,7 @@ jobs:
           XLA_ROCM_TARGET_PATTERN_FILE: ${{ steps.bazel_diff.outputs.target_pattern_file }}
         run: |
           build_tools/rocm/run_xla_ci_build.sh \
-            ${{ env.ROCM_COMMON_BAZEL_ARGS }} \
             --config=ci_single_gpu \
-            --test_env=HSA_CO_DMACOPY_SIZE=-1 \
             --config=no_flaky \
             --local_test_jobs=1 \
             --bes_keywords=xla \
@@ -238,6 +234,7 @@ jobs:
             --bes_keywords=gpu \
             --bes_keywords=pull_request \
             --build_event_json_file=xla_single_gpu_build_events.json \
+            ${{ env.ROCM_COMMON_BAZEL_ARGS }} \
             -- \
             //xla/...
 
@@ -248,16 +245,15 @@ jobs:
           XLA_ROCM_TARGET_PATTERN_FILE: ${{ steps.bazel_diff.outputs.target_pattern_file }}
         run: |
           build_tools/rocm/run_xla_ci_build.sh \
-            ${{ env.ROCM_COMMON_BAZEL_ARGS }} \
             --config=ci_rocm_cpu \
             --config=no_flaky \
             --local_test_jobs=200 \
-            --test_env=HSA_CO_DMACOPY_SIZE=-1 \
             --bes_keywords=xla \
             --bes_keywords=upstream \
             --bes_keywords=cpu \
             --bes_keywords=pull_request \
             --build_event_json_file=xla_rocm_cpu_build_events.json \
+            ${{ env.ROCM_COMMON_BAZEL_ARGS }} \
             -- \
             //xla/...
 

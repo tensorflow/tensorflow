@@ -729,11 +729,10 @@ ENTRY main {
                 + 86 * 2048 * (num_blocks * CeilOfRatio(257, 64))  // ==> %exp
   );
   // The bytes read contribution for a single instruction is calculated as:
-  // element_type_size * tile_size * num_blocks_cur_hlo
-  EXPECT_EQ(
-      result.bytes_read,
-      4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))        // ==> %p1
-          + 4 * (64 * 32) * (num_blocks * CeilOfRatio(257, 64))  // ==> %p0
+  // element_type_size * tile_size * num_blocks_cur_hlo * in_bound_read_fraction
+  EXPECT_EQ(result.bytes_read,
+            4 * (257 * 32) * num_blocks        // ==> %p1
+                + 4 * (257 * 32) * num_blocks  // ==> %p0
   );
   EXPECT_EQ(result.l2_bytes_read, result.bytes_read);
   const HloDotInstruction* dot = Cast<HloDotInstruction>(
@@ -1113,6 +1112,30 @@ ENTRY main {
           *fusion_adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{4, 8}},
                                                 /*num_warps=*/4}));
   EXPECT_TRUE(res3.IsInfinite());
+
+  // With a tiled reduction dimension of size 512, output tile [16, 8] gives a
+  // 3D intermediate broadcast/multiply tile of size 16 * 8 * 512 = 65536, which
+  // fits within the full register limit (65536).
+  BlockLevelParameters tiled_reduction_fits;
+  tiled_reduction_fits.output_tile_sizes = {{16, 8}};
+  tiled_reduction_fits.num_warps = 8;
+  tiled_reduction_fits.sequential_tile_sizes = {512};
+  ASSERT_OK_AND_ASSIGN(auto res4,
+                       indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                           *fusion_adaptor, tiled_reduction_fits));
+  EXPECT_FALSE(res4.IsInfinite());
+
+  // Output tile [16, 16] with reduction tile 512 keeps all boundary and iota
+  // tiles at <= 8192 elements (within 0.4 * 65536), but the 3D intermediate
+  // broadcast/multiply tile is 16 * 16 * 512 = 131072 > 65536 and spills.
+  BlockLevelParameters tiled_reduction_spills;
+  tiled_reduction_spills.output_tile_sizes = {{16, 16}};
+  tiled_reduction_spills.num_warps = 8;
+  tiled_reduction_spills.sequential_tile_sizes = {512};
+  ASSERT_OK_AND_ASSIGN(auto res5,
+                       indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                           *fusion_adaptor, tiled_reduction_spills));
+  EXPECT_TRUE(res5.IsInfinite());
 }
 
 TEST_F(
@@ -1704,9 +1727,6 @@ TEST_P(RegisterFitConsistencyTest, PreFilterMatchesExactFitCheck) {
   ASSERT_OK_AND_ASSIGN(experimental::TiledHloComputation symbolic,
                        experimental::TiledHloComputation::Tile(
                            *fusion_adaptor, tiling_space->Clone()));
-  std::vector<const experimental::TiledHloInstruction*>
-      register_resident_instructions =
-          internal::GetRegisterResidentInstructions(*fusion_adaptor, symbolic);
 
   auto tile = [&](absl::Span<const int64_t> tile_sizes)
       -> absl::StatusOr<experimental::TiledHloComputation> {
@@ -1717,8 +1737,7 @@ TEST_P(RegisterFitConsistencyTest, PreFilterMatchesExactFitCheck) {
                                                    std::move(concrete_space));
   };
   auto passes_precheck = [&](absl::Span<const int64_t> tile_sizes) {
-    return internal::DoesTilingFitInRegisters(*tiling_space,
-                                              register_resident_instructions,
+    return internal::DoesTilingFitInRegisters(*fusion_adaptor, symbolic,
                                               tile_sizes, device_info_);
   };
   auto passes_check = [&](absl::Span<const int64_t> tile_sizes) {
@@ -1916,10 +1935,96 @@ ENTRY entry {
   p1 = f32[1024,2048] parameter(1)
   ROOT fusion = f32[2048,2048] fusion(p0, p1), kind=kCustom, calls=fused
 }
+)"},
+                      RegisterFitTestCase{/*name=*/"BroadcastReduce",
+                                          /*hlo=*/R"(
+HloModule m
+add {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT add = s32[] add(p0, p1)
+}
+fused {
+  p0 = s32[32,4096] parameter(0)
+  b0 = s32[4096,32,4096] broadcast(p0), dimensions={1,2}
+  iota0 = s32[4096,4096] iota(), iota_dimension=0
+  iota1 = s32[4096,4096] iota(), iota_dimension=1
+  cmp = pred[4096,4096] compare(iota0, iota1), direction=GE
+  conv = s32[4096,4096] convert(cmp)
+  b1 = s32[4096,32,4096] broadcast(conv), dimensions={0,2}
+  mul = s32[4096,32,4096] multiply(b0, b1)
+  c0 = s32[] constant(0)
+  ROOT reduce = s32[4096,32] reduce(mul, c0), dimensions={2}, to_apply=add
+}
+ENTRY entry {
+  p0 = s32[32,4096] parameter(0)
+  ROOT fusion = s32[4096,32] fusion(p0), kind=kCustom, calls=fused,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
 )"}),
     [](const ::testing::TestParamInfo<RegisterFitTestCase>& info) {
       return info.param.name;
     });
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ReduceWithReductionLoop) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+fused_computation {
+  param_0 = f32[128,1100] parameter(0)
+  constant_0 = f32[] constant(0)
+  ROOT reduce = f32[128] reduce(param_0, constant_0), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = f32[128,1100] parameter(0)
+  ROOT fusion = f32[128] fusion(param_0), kind=kCustom, calls=fused_computation
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  auto estimate = [&](int64_t reduction_tile_size) {
+    BlockLevelParameters block_level_parameters;
+    block_level_parameters.output_tile_sizes = {{8}};
+    block_level_parameters.num_warps = 4;
+    block_level_parameters.sequential_tile_sizes = {reduction_tile_size};
+    return indexing_cost_model_.EstimateRunTimeForTiledFusion(
+        *fusion_adaptor, block_level_parameters);
+  };
+
+  // No loop: the tile is padded to 2048 and covers the whole dimension.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData no_loop, estimate(1100));
+  // 2 iterations, the second one masks 948 elements.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData loop_1024, estimate(1024));
+  // 5 iterations, the last one masks 180 elements.
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData loop_256, estimate(256));
+
+  // The operand is read exactly once regardless of the reduction tile size.
+  constexpr int64_t kOperandBytes = 128 * 1100 * 4;
+  EXPECT_EQ(no_loop.bytes_read, kOperandBytes);
+  EXPECT_EQ(loop_1024.bytes_read, kOperandBytes);
+  EXPECT_EQ(loop_256.bytes_read, kOperandBytes);
+  EXPECT_EQ(loop_1024.read_time, no_loop.read_time);
+  EXPECT_EQ(loop_256.read_time, no_loop.read_time);
+
+  // The reduce is charged once per output element regardless of the reduction
+  // tile size.
+  const HloInstruction* reduce =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  const int64_t reduce_flops =
+      128 * indexing_cost_model_.FlopsPerElement(reduce);
+  EXPECT_EQ(no_loop.flops, reduce_flops);
+  EXPECT_EQ(loop_1024.flops, reduce_flops);
+  EXPECT_EQ(loop_256.flops, reduce_flops);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -59,9 +59,10 @@ class ThunkExecutor;
 //    preallocated temp buffers, profiles the address stability of the other
 //    non-constant, non-thread-local allocations over the first executions,
 //    and then remaps the union of the temp buffers and stable profile
-//    candidates.
-// Host memory space allocations are never remapped: remapping backs an
-// allocation with VMM device memory, and these must stay host memory.
+//    candidates. The temp buffers are allocated at their reservation
+//    addresses from the first execution, as in SKIP_TEMP.
+// Host memory space allocations are never remapped: the VMM allocator serves
+// them from its host allocator, not from VMM physical memory.
 //
 // When VA remapping is unavailable for an execution (no VMM allocator,
 // nothing to remap, or SKIP_PROFILED has neither automatically selected temp
@@ -106,7 +107,8 @@ class GpuExecutableVaRemapAllocator : public GpuExecutableBufferAllocator {
     enum class ProfilePhase {
       // Not a SKIP_PROFILED remapping (SKIP_TEMP).
       kInactive,
-      // Observing allocation addresses; executions pass std::nullopt.
+      // Observing allocation addresses; executions pass std::nullopt and
+      // allocate the automatically selected temp buffers in the reservation.
       kProfiling,
       // Profile transition done; the selected allocation set is VA-remapped.
       kActive,

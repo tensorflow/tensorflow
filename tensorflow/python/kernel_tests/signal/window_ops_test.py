@@ -144,6 +144,23 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
         tol,
     )
 
+  @parameterized.parameters(_TF_DTYPE_TOLERANCE)
+  def test_kaiser_window_zero_length(self, tf_dtype, _):
+    """A zero-length window is empty, like np.kaiser and the other windows."""
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)]
+    )
+    def kaiser(length):
+      return window_ops.kaiser_window(length, 8.0, tf_dtype)
+
+    static_window = window_ops.kaiser_window(0, 8.0, tf_dtype)
+    self.assertEqual(tf_dtype, static_window.dtype)
+    self.assertAllEqual(np.kaiser(0, 8.0), self.evaluate(static_window))
+    dynamic_window = self.evaluate(kaiser(0))
+    self.assertEqual(tf_dtype.as_numpy_dtype, dynamic_window.dtype)
+    self.assertEqual((0,), dynamic_window.shape)
+
   def test_kaiser_window_dynamic_length_one_gradient(self):
     """The length-1 window must not leak NaNs into the gradient of beta."""
 

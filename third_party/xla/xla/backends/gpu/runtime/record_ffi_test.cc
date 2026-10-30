@@ -60,7 +60,6 @@ namespace {
 
 struct KernelBinary {
   absl::Span<const uint8_t> bytes;
-  ffi::SourceFormat format;
 
   const void* data() const { return bytes.data(); }
   size_t size() const { return bytes.size(); }
@@ -69,7 +68,7 @@ struct KernelBinary {
 // Select the kernel bytes based on the platform.
 // Selects the device binary (CUBIN on CUDA, HSACO on ROCm) via the fatbin.
 // The bytes must outlive the handler, so the fatbin is kept in a static
-// variable with a stable address that is also used as the kernel cache key.
+// variable with a stable address.
 absl::StatusOr<KernelBinary> GetKernelSpec() {
   static const absl::NoDestructor<absl::StatusOr<std::vector<uint8_t>>> kFatbin(
       []() -> absl::StatusOr<std::vector<uint8_t>> {
@@ -79,46 +78,7 @@ absl::StatusOr<KernelBinary> GetKernelSpec() {
         return fatbin;
       }());
   ABSL_RETURN_IF_ERROR(kFatbin->status());
-  return KernelBinary{/*.bytes=*/kFatbin->value(),
-                      /*.format=*/ffi::SourceFormat::kCubin};
-}
-
-absl::Status RecordFfiHandler(ffi::RecordContext record_ctx,
-                              ffi::AnyBuffer input_0, ffi::AnyBuffer input_1,
-                              ffi::AnyBuffer buffer_scratch,
-                              ffi::AnyBuffer result) {
-  void* in0 = input_0.untyped_data();
-  void* in1 = input_1.untyped_data();
-  void* scratch = buffer_scratch.untyped_data();
-  void* res = result.untyped_data();
-  size_t size = 8 * sizeof(int32_t);
-
-  const auto action = record_ctx.action();
-  if (action == ffi::RecordAction::kCreate) {
-    ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Command* memcpy_d2d,
-                     record_ctx.CreateMemcpyD2D(scratch, in0, size));
-    ABSL_ASSIGN_OR_RETURN(KernelBinary binary, GetKernelSpec());
-    ABSL_RETURN_IF_ERROR(
-        record_ctx
-            .CreateLaunch("AddI32", binary.data(), binary.size(), binary.format,
-                          /*launch_dims=*/{{1, 1, 1}, {8, 1, 1}},
-                          /*shared_mem_bytes=*/0, /*uses_pdl=*/false,
-                          std::vector<ffi::KernelArg>{
-                              ffi::DevicePointer{scratch},
-                              ffi::DevicePointer{in1}, ffi::DevicePointer{res}},
-                          /*dependencies=*/{memcpy_d2d})
-            .status());
-  } else if (action == ffi::RecordAction::kUpdate) {
-    auto cmds = record_ctx.commands();
-    TF_RET_CHECK(cmds.size() == 2) << "Expected 2 commands recorded.";
-
-    ABSL_RETURN_IF_ERROR(record_ctx.UpdateMemcpyD2D(cmds[0], scratch, in0, size));
-    ABSL_RETURN_IF_ERROR(record_ctx.UpdateLaunch(
-        cmds[1], std::vector<ffi::KernelArg>{ffi::DevicePointer{scratch},
-                                             ffi::DevicePointer{in1},
-                                             ffi::DevicePointer{res}}));
-  }
-  return absl::OkStatus();
+  return KernelBinary{/*.bytes=*/kFatbin->value()};
 }
 
 struct DeviceMemoryBundle {
@@ -220,29 +180,6 @@ void RunRecordFfiTest(se::StreamExecutor* executor, ffi::Ffi& handler) {
   std::vector<int32_t> expected_update = {101, 202, 303, 404,
                                           505, 606, 707, 808};
   EXPECT_EQ(c, expected_update);
-}
-
-TEST(RecordFfiTest, KernelLaunchBoundFfi) {
-  ASSERT_OK_AND_ASSIGN(auto platform,
-                       stream_executor::PlatformManager::PlatformWithName(
-                           stream_executor::GpuPlatformName()));
-  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
-  const auto* cuda_cc = executor->GetDeviceDescription()
-                            .gpu_compute_capability()
-                            .cuda_compute_capability();
-  if (cuda_cc && !cuda_cc->IsAtLeastAmpere()) {
-    GTEST_SKIP() << "Skipping test for compute capability less than Ampere.";
-  }
-
-  std::unique_ptr<ffi::Ffi> handler =
-      ffi::Ffi::BindRecord()
-          .Ctx<ffi::Extension<ffi::RecordExtension>>()
-          .Arg<ffi::AnyBuffer>()
-          .Arg<ffi::AnyBuffer>()
-          .Arg<ffi::AnyBuffer>()
-          .Arg<ffi::AnyBuffer>()
-          .To(RecordFfiHandler);
-  RunRecordFfiTest(executor, *handler);
 }
 
 TEST(RecordFfiTest, KernelLaunchWithCuFunc) {

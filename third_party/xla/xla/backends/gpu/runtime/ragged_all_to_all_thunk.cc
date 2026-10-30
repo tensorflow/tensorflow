@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/collectives/gxl_communicator.h"
+#include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
@@ -84,6 +85,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace gpu {
@@ -807,11 +809,10 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
                            LoadRaggedAllToAllWithSymmetricMemoryKernel(
                                executor, config_.config.operand_element_type[0],
                                config_.num_row_elements));
-        }
-
-        if (is_local(params.local_device_count) ||
-            (state->lsa_size.has_value() &&
-             state->lsa_size.value() == state->clique_key.num_devices())) {
+        } else if (is_local(params.local_device_count) ||
+                   (state->lsa_size.has_value() &&
+                    state->lsa_size.value() ==
+                        state->clique_key.num_devices())) {
           using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
 
           ABSL_ASSIGN_OR_RETURN(
@@ -971,6 +972,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> RaggedAllToAllThunk::Record(
       se::TraceCommandBufferFactory::Create(
           executor, execute_params.command_buffer_trace_stream,
           [&](se::Stream* stream) -> absl::Status {
+            std::optional<tsl::profiler::ScopedAnnotation> annotation =
+                std::holds_alternative<RecordUpdate>(record_action)
+                    ? GetInstructionAnnotation(profile_annotation())
+                    : std::nullopt;
             ABSL_ASSIGN_OR_RETURN(
                 std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>
                     participants,
@@ -1189,14 +1194,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
     }
   }
 
-  FabricHomogeneity homogeneity =
-      CheckFabricHomogeneity(stream.parent(), clique_key);
-  // The fabric is "safe" unless we have confirmed a mismatch.
-  // This allows H100/Borg (kUnknown) to still use one-shot kernels.
-  // FabricInfo queries are unavailable with old driver (e.g. 535.xx).
-  bool fabric_safe = (homogeneity != FabricHomogeneity::kHeterogeneous);
-
-  if (is_one_shot_kernel_enabled() && fabric_safe) {
+  if (is_one_shot_kernel_enabled()) {
     if (ShouldUseSymmetricMemoryKernel(*this, state)) {
       TF_RET_CHECK(static_cast<bool>(state->sym_mem_kernel))
           << "RaggedAllToAllThunk::RunCollective: symmetric-memory kernel was "

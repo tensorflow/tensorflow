@@ -654,7 +654,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     }
     spmd_pipeline.AddPass<xla::CallInliner>(
         /*single_call_site=*/false,
-        /*update_domain=*/false,
         /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
         /*override_policy=*/
         [](const xla::CallGraph& call_graph,
@@ -1599,23 +1598,6 @@ inline void VlogMaxIsa(absl::string_view max_cpu_isa) {
     } else {
       VLOG(1) << "`xla_cpu_max_isa` is set to `" << max_cpu_isa
               << "`. This flag is not supported on non-x86 CPUs yet.";
-    }
-  }
-}
-
-// We keep HloProto in the CpuExecutable, but we don't need to keep literals
-// payload in it as we use it only for debugging and memory analysis.
-static void StripPayloadFromLiteralProto(HloProto& proto) {
-  auto* module = proto.mutable_hlo_module();
-  for (auto& computation : *module->mutable_computations()) {
-    for (auto& instruction : *computation.mutable_instructions()) {
-      // We only keep literal shape to correctly estimate memory usage of the
-      // HLO module, but we don't need the actual literal data.
-      if (instruction.has_literal()) {
-        LiteralProto literal;
-        *literal.mutable_shape() = instruction.literal().shape();
-        *instruction.mutable_literal() = std::move(literal);
-      }
     }
   }
 }

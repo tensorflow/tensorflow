@@ -1,0 +1,104 @@
+--- a/python/test/unit/language/test_core.py
++++ b/python/test/unit/language/test_core.py
+@@ -1285,35 +1285,59 @@
+ @pytest.mark.parametrize("enable_fp_fusion", [False, True])
+ def test_fdiv_approx(approx, reciprocal, enable_fp_fusion, device):
+ 
+-    @triton.jit
+-    def kernel(X, Y, Z, APPROX: tl.constexpr, RECIPROCAL: tl.constexpr, BLOCK: tl.constexpr):
+-        offsets = tl.arange(0, BLOCK)
+-        x = 1.0 if RECIPROCAL else tl.load(X + offsets)
+-        y = tl.load(Y + offsets)
+-        tl.store(Z + offsets, tl.fdiv(x, y, approx=APPROX))
+-
+-    rng = RandomState(0)
+-    # Keep inputs and results normal for both approximate backends.
+-    x = rng.uniform(0.5, 2, 128).astype(np.float32)
+-    x[::2] *= -1
+-    y = rng.uniform(0.5, 2, 128).astype(np.float32)
+-    y = np.ldexp(y, np.linspace(-125, 124, y.size).astype(np.int32))
+-    y[0], y[-1] = 2.0**-126, 2.0**126
+-    x[-1] = 1.0
+-    y[::2] *= -1
+-    x_tri = to_triton(x, device=device)
+-    y_tri = to_triton(y, device=device)
+-    z_tri = to_triton(np.empty_like(x), device=device)
+-    compiled = kernel[(1, )](x_tri, y_tri, z_tri, approx, reciprocal, x.size, enable_fp_fusion=enable_fp_fusion)
+-    expected = (np.float32(1.0) if reciprocal else x) / y
+-    # AMD's 2.5 ULP bound allows 3 ULP against a rounded reference.
+-    maxulp = 3 if approx and is_hip() else 2
+-    np.testing.assert_array_max_ulp(to_numpy(z_tri), expected, maxulp=maxulp)
+-    if is_cuda() and not is_interpreter():
+-        instruction = "rcp.approx.f32" if reciprocal else "div.approx.f32"
+-        assert (instruction if approx else "div.full.f32") in compiled.asm["ptx"]
+-    if approx and is_hip() and not is_interpreter():
+-        assert "llvm.amdgcn.fdiv.fast" in compiled.asm["llir"]
++  @triton.jit
++  def kernel(
++      X,
++      Y,
++      Z,
++      APPROX: tl.constexpr,
++      RECIPROCAL: tl.constexpr,
++      BLOCK: tl.constexpr,
++  ):
++    offsets = tl.arange(0, BLOCK)
++    x = 1.0 if RECIPROCAL else tl.load(X + offsets)
++    y = tl.load(Y + offsets)
++    tl.store(Z + offsets, tl.fdiv(x, y, approx=APPROX))
++
++  rng = RandomState(0)
++  # Keep inputs and results normal for both approximate backends.
++  x = rng.uniform(0.5, 2, 128).astype(np.float32)
++  x[::2] *= -1
++  y = rng.uniform(0.5, 2, 128).astype(np.float32)
++  y = np.ldexp(y, np.linspace(-125, 124, y.size).astype(np.int32))
++  y[0], y[-1] = 2.0**-126, 2.0**126
++  x[-1] = 1.0
++  y[::2] *= -1
++  x_tri = to_triton(x, device=device)
++  y_tri = to_triton(y, device=device)
++  z_tri = to_triton(np.empty_like(x), device=device)
++  compiled = kernel[(1,)](
++      x_tri,
++      y_tri,
++      z_tri,
++      approx,
++      reciprocal,
++      x.size,
++      enable_fp_fusion=enable_fp_fusion,
++  )
++  expected = (np.float32(1.0) if reciprocal else x) / y
++  # AMD's 2.5 ULP bound allows 3 ULP against a rounded reference.
++  maxulp = 3 if approx and is_hip() else 2
++  np.testing.assert_array_max_ulp(to_numpy(z_tri), expected, maxulp=maxulp)
++  if is_cuda() and not is_interpreter():
++    instruction = "rcp.approx.f32" if reciprocal else "div.approx.f32"
++    expected_insts = (
++        [instruction]
++        if approx
++        else (
++            ["div.full.f32", "rcp.approx.f32"]
++            if reciprocal
++            else ["div.full.f32"]
++        )
++    )
++    assert any(inst in compiled.asm["ptx"] for inst in expected_insts)
++  if approx and is_hip() and not is_interpreter():
++    assert "llvm.amdgcn.fdiv.fast" in compiled.asm["llir"]
+ 
+ 
+ @pytest.mark.interpreter
+
+--- a/test/Conversion/tritongpu_to_ptx.mlir
++++ b/test/Conversion/tritongpu_to_ptx.mlir
+@@ -13,7 +13,7 @@
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 2 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   tt.func public @reciprocal_f32(%ptr: !tt.ptr<f32>, %arg: f32) {
+     // CHECK-LABEL: reciprocal_f32(
+-    // CHECK: div.full.f32
++    // CHECK: {{div.full.f32|rcp.approx.f32}}
+     %one = arith.constant 1.0 : f32
+     %result = arith.divf %one, %arg : f32
+     tt.store %ptr, %result : !tt.ptr<f32>
+

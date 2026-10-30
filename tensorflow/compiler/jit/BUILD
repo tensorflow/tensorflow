@@ -561,6 +561,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -751,6 +758,57 @@ tf_cuda_only_cc_test(
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/tests:literal_test_util",
         "@xla//xla/tsl/lib/core:status_test_util",
+    ],
+)
+
+tf_cc_test(
+    name = "variable_info_util_test",
+    srcs = ["variable_info_util_test.cc"],
+    deps = [
+        ":variable_info",
+        ":variable_info_util",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:version_lib",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# Same tests with host-resident variable staging enabled. The flag is read once
+# per process, so it needs its own target.
+tf_cc_test(
+    name = "variable_info_util_host_resident_vars_test",
+    srcs = ["variable_info_util_test.cc"],
+    env = {"TF_XLA_ALLOW_HOST_RESIDENT_VARS": "1"},
+    deps = [
+        ":variable_info",
+        ":variable_info_util",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:version_lib",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 

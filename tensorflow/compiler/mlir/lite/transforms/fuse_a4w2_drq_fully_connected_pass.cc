@@ -46,17 +46,25 @@ namespace {
 #define GEN_PASS_DEF_FUSEA4W2DRQFULLYCONNECTEDPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
-// The contract named by `kA4W2SpecName`. Every one of these is baked into the
-// runtime kernel rather than carried in the flatbuffer, so the pattern below
-// has to verify each one explicitly: a graph that differs in any of them would
-// still be serialized as `cint2_fp32_int4_e8m0_drq` and then silently evaluated
-// with the wrong numerics.
-constexpr char kA4W2SpecName[] = "cint2_fp32_int4_e8m0_drq";
+// The a4w2 DRQ contracts. Every property they fix is baked into the runtime
+// kernel rather than carried in the flatbuffer, so the pattern below has to
+// verify each one explicitly: a graph that differs in any of them would still
+// be serialized under one of these names and then silently evaluated with the
+// wrong numerics.
+//
+// The two contracts differ only in where the int2 weight grid sits, which the
+// weight zero point selects:
+// - Centered (zero point -0.5): `(q + 0.5) * scale`, i.e. the grid
+//   `scale * {-1.5, -0.5, 0.5, 1.5}`. See `pure_observer.CENTERED_ZERO_POINT`
+//   on the JAX side.
+// - Plain (zero point 0, or no zero point at all): `q * scale`, i.e. the grid
+//   `scale * {-2, -1, 0, 1}`.
+// In both cases the offset is implied by the contract name; the per-axis
+// zero point written to the weights is always 0.
+constexpr char kCenteredInt2SpecName[] = "cint2_fp32_int4_e8m0_drq";
+constexpr char kInt2SpecName[] = "int2_fp32_int4_e8m0_drq";
 // Activations are quantized in blocks of 32 along the contracting axis.
 constexpr int64_t kActBlockSize = 32;
-// Weights use a grid centered between the integers; see
-// `pure_observer.CENTERED_ZERO_POINT` on the JAX side and the `+ 0.5f` in
-// `EvalA4W2DRQ` on the runtime side.
 constexpr double kCenteredZeroPoint = -0.5;
 
 // Returns true if `value` is a constant whose elements are all exactly
@@ -78,6 +86,22 @@ bool IsSplatFloatConstant(mlir::Value value, double expected) {
   });
 }
 
+// Returns the name of the contract whose weight grid `weight_deq` describes,
+// or nullptr if it matches neither.
+const char* SelectWeightSpecName(BlockwiseDequantizeOp weight_deq) {
+  // A symmetric dequantize ignores its zero point operand (typically
+  // `tfl.no_value`, which is what a JAX weight observed without centering
+  // lowers to), i.e. the zero point is 0.
+  if (weight_deq.getSymmetric()) return kInt2SpecName;
+  mlir::Value zero_points = weight_deq.getZeroPoints();
+  if (IsSplatFloatConstant(zero_points, kCenteredZeroPoint)) {
+    return kCenteredInt2SpecName;
+  }
+  if (IsSplatFloatConstant(zero_points, 0.0)) return kInt2SpecName;
+  // Any other zero point puts the grid somewhere neither kernel reconstructs.
+  return nullptr;
+}
+
 // Pattern to match an a4w2 dynamic range fully connected pattern:
 //
 //   %act_q:3 = tfl.blockwise_quantize(%x, block_shape=[..., 32], ...)
@@ -90,8 +114,8 @@ bool IsSplatFloatConstant(mlir::Value value, double expected) {
 //   %q_w_per_axis = tfl.pseudo_qconst(...) : tensor<NxK x
 //   !quant.uniform<i2:f32:0, {scales}>> %res = tfl.fully_connected(%x,
 //   %q_w_per_axis, %bias)
-//          { tfl.quant_spec = { spec = "cint2_fp32_int4_e8m0_drq", act_dilation
-//          = ... }
+//          { tfl.quant_spec = { spec = <kCenteredInt2SpecName or
+//          kInt2SpecName, per the weight zero point>, act_dilation = ... }
 //          }
 struct FuseA4W2DRQFullyConnectedPattern
     : public OpRewritePattern<TFL::FullyConnectedOp> {
@@ -159,14 +183,12 @@ struct FuseA4W2DRQFullyConnectedPattern
     auto weight_deq = filter_val.getDefiningOp<BlockwiseDequantizeOp>();
     if (!weight_deq) return failure();
 
-    // The kernel reconstructs the weights as `(q + 0.5) * scale`, i.e. it
-    // assumes a grid centered between the integers. Applying that to weights
-    // quantized on a plain symmetric grid would shift every value by half a
-    // step, so the centered zero point has to be verified rather than assumed.
-    if (weight_deq.getSymmetric()) return failure();
-    if (!IsSplatFloatConstant(weight_deq.getZeroPoints(), kCenteredZeroPoint)) {
-      return failure();
-    }
+    // The kernel reconstructs the weights as `(q + offset) * scale`, with the
+    // offset fixed by the contract name. Applying one contract to weights
+    // quantized on the other grid would shift every value by half a step, so
+    // the zero point has to be verified rather than assumed.
+    const char* spec_name = SelectWeightSpecName(weight_deq);
+    if (spec_name == nullptr) return failure();
 
     mlir::Value q_weight_val = weight_deq.getInput();
     ElementsAttr q_weight_attr;
@@ -241,7 +263,7 @@ struct FuseA4W2DRQFullyConnectedPattern
     // 4. Create tfl.quant_spec attribute dictionary.
     SmallVector<NamedAttribute, 2> spec_entries;
     spec_entries.push_back(
-        rewriter.getNamedAttr("spec", rewriter.getStringAttr(kA4W2SpecName)));
+        rewriter.getNamedAttr("spec", rewriter.getStringAttr(spec_name)));
     spec_entries.push_back(rewriter.getNamedAttr(
         "act_dilation", rewriter.getF32FloatAttr(act_dilation)));
     DictionaryAttr quant_spec_dict = rewriter.getDictionaryAttr(spec_entries);

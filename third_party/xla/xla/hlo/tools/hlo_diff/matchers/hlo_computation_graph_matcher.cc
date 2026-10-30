@@ -14,9 +14,11 @@
 
 #include "xla/hlo/tools/hlo_diff/matchers/hlo_computation_graph_matcher.h"
 
+#include <cstdint>
 #include <vector>
 
 #include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
@@ -24,6 +26,7 @@
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/matchers/bipartite_matching.h"
 #include "xla/service/call_graph.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -55,6 +58,45 @@ void MatchCallSites(const HloGumgraph& left, const HloGumgraph& right,
       MatcherType::kComputationGraphExactSignatureMatcher);
 }
 
+// Matches the entry parameters by parameter number if the two entry
+// computations have aligned signatures, i.e. the same number of parameters and
+// at least half of them have the same shape at the same position. Entry
+// parameter numbers define the module signature, so aligned parameters must
+// not be cross-matched by shape or graph structure, e.g. for (x, y) -> x - y
+// vs. (y, x) -> x - y.
+void MatchAlignedEntryParameters(const HloGumgraph& left,
+                                 const HloGumgraph& right,
+                                 const HloComputation& left_computation,
+                                 const HloComputation& right_computation,
+                                 HloGumgraphMappings& mappings) {
+  if (!left_computation.IsEntryComputation() ||
+      !right_computation.IsEntryComputation()) {
+    return;
+  }
+  const int64_t num_parameters = left_computation.num_parameters();
+  if (num_parameters == 0 ||
+      num_parameters != right_computation.num_parameters()) {
+    return;
+  }
+  int64_t num_compatible_shapes = 0;
+  for (int64_t i = 0; i < num_parameters; ++i) {
+    if (ShapeUtil::Compatible(
+            left_computation.parameter_instruction(i)->shape(),
+            right_computation.parameter_instruction(i)->shape())) {
+      ++num_compatible_shapes;
+    }
+  }
+  if (2 * num_compatible_shapes < num_parameters) {
+    return;
+  }
+  for (int64_t i = 0; i < num_parameters; ++i) {
+    mappings.MapInstructionsIfAbsent(
+        left.GetNode(left_computation.parameter_instruction(i)),
+        right.GetNode(right_computation.parameter_instruction(i)),
+        MatcherType::kComputationGraphExactSignatureMatcher);
+  }
+}
+
 }  // namespace
 
 void MatchComputationGraphs(const HloGumgraph& left, const HloGumgraph& right,
@@ -66,6 +108,8 @@ void MatchComputationGraphs(const HloGumgraph& left, const HloGumgraph& right,
   }
 
   MatchCallSites(left, right, left_computation, right_computation, mappings);
+  MatchAlignedEntryParameters(left, right, *left_computation.computation(),
+                              *right_computation.computation(), mappings);
 
   // If the two computations are exact matches, we can match all
   // instructions in the two computations.

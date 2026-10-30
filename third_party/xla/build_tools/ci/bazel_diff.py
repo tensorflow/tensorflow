@@ -488,6 +488,63 @@ def _touches_build_keywords(
   return False
 
 
+def _has_global_config_skew_from_head(
+    head_sha: str,
+    original_head: str,
+    cwd: str = ".",
+) -> bool:
+  """Returns True if global Bazel configs differ from checked-out HEAD.
+
+  Assumes global Bazel configs were already verified unchanged between
+  diff_base and head_sha.
+
+  Args:
+    head_sha: Head git SHA or ref of the PR branch.
+    original_head: Git SHA or ref currently checked out at HEAD.
+    cwd: Directory where the git command should be executed.
+
+  Returns:
+    True if global Bazel configuration files differ or if the git check fails.
+  """
+  if original_head == head_sha:
+    return False
+
+  try:
+    safe_head = change_detector.validate_git_ref(head_sha)
+    safe_original_head = change_detector.validate_git_ref(original_head)
+    command = [
+        "git",
+        "diff",
+        "--name-only",
+        "--end-of-options",
+        safe_head,
+        safe_original_head,
+        "--",
+    ]
+    result = subprocess.run(
+        command, cwd=cwd, capture_output=True, text=True, check=True
+    )
+    skewed_files = [
+        line.strip().replace("\\", "/")
+        for line in result.stdout.splitlines()
+        if line.strip()
+    ]
+    if change_detector.is_global_config_changed(skewed_files):
+      logging.info(
+          "Global Bazel configuration differs between %s and checked-out"
+          " HEAD %s; forcing full run",
+          safe_head,
+          safe_original_head,
+      )
+      return True
+  except (OSError, subprocess.SubprocessError, ValueError) as e:
+    logging.warning(
+        "Failed to check global Bazel config skew against HEAD: %s", e
+    )
+    return True
+  return False
+
+
 def compute_impacted_targets(
     build: BuildConfig,
     base_sha: str,
@@ -570,6 +627,16 @@ def compute_impacted_targets(
         reason=(
             "Diff touches label_flag, config_setting, or alias (b/519689071)"
         ),
+        changed_files_count=changed_count,
+        elapsed_seconds=time.time() - start_time,
+    )
+
+  if _has_global_config_skew_from_head(
+      head_sha, original_head, cwd=workspace_dir
+  ):
+    return BazelDiffDecision(
+        decision=BazelDiffDecisionType.FULL,
+        reason="Global Bazel configuration differs from checked-out HEAD",
         changed_files_count=changed_count,
         elapsed_seconds=time.time() - start_time,
     )

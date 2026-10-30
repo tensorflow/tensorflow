@@ -806,6 +806,165 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
                                 "of size 8 (0 already transferred)"));
 }
 
+TEST(StreamExecutorGpuClientTest, SendErrorWaitsForOutstandingSends) {
+  // This test confirms a fix to a use-after-free bug. Specifically:
+  // 1) send1's callback fails, 2) send-done1 observes the error and aborts
+  // before send-done2, 3) send2's callback runs and references the now-deleted
+  // send1 buffer, and 4) the program is still blocked.
+  static constexpr absl::string_view kTwoSendsProgram = R"(
+    HloModule TwoSends
+
+    ENTRY main() -> f32[2] {
+      in_chain = token[] after-all()
+      data = f32[2] constant({2, 3})
+      send1 = (f32[2], u32[], token[]) send(data, in_chain),
+        channel_id=1,
+        is_host_transfer=true,
+        frontend_attributes={
+          _xla_host_transfer_handler_name="undef",
+          _xla_host_transfer_rendezvous="undef"
+        }
+      send2 = (f32[2], u32[], token[]) send(data, in_chain),
+        channel_id=2,
+        is_host_transfer=true,
+        frontend_attributes={
+          _xla_host_transfer_handler_name="undef",
+          _xla_host_transfer_rendezvous="undef"
+        }
+      send-done1 = token[] send-done(send1),
+        channel_id=1, is_host_transfer=true, control-predecessors={send2}
+      send-done2 = token[] send-done(send2),
+        channel_id=2, is_host_transfer=true, control-predecessors={send-done1}
+      ROOT result = f32[2] add(data, data)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       CompileExecutable(kTwoSendsProgram, *client));
+
+  absl::Notification send2_started;
+  absl::Notification release_send2;
+
+  // Always-failing Send handler.
+  SendCallback send_callback1 = {
+      /*channel_id=*/1, [](const PjRtTransferMetadata&, PjRtChunk, int64_t,
+                           bool) { return Internal("Fake send failure"); }};
+
+  // Send handler that blocks until the test releases it. The wait is bounded,
+  // so that an unexpected schedule fails the test instead of deadlocking it.
+  SendCallback send_callback2 = {
+      /*channel_id=*/2,
+      [&](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
+        send2_started.Notify();
+        release_send2.WaitForNotificationWithTimeout(absl::Seconds(30));
+        return absl::OkStatus();
+      }};
+
+  std::vector<std::vector<SendCallback>> send_callbacks = {
+      {send_callback1, send_callback2}};
+  std::vector<std::vector<RecvCallback>> recv_callbacks = {{}};
+
+  ExecuteOptions opts;
+  opts.send_callbacks = send_callbacks;
+  opts.recv_callbacks = recv_callbacks;
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       executable->Execute(/*argument_handles=*/{{}}, opts));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  Future<> ready = result[0][0]->GetReadyFuture();
+
+  // Ensure send2 has started, then wait to allow time for send1 to fail.
+  // Test the promise is still not ready since send2 is waiting for release,
+  // then release it and assure clean completion with expected error.
+  ASSERT_TRUE(send2_started.WaitForNotificationWithTimeout(absl::Seconds(60)));
+  absl::SleepFor(absl::Milliseconds(100));
+  EXPECT_FALSE(ready.IsReady());
+  release_send2.Notify();
+  const absl::Status status = ready.Await();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal,
+                               HasSubstr("Fake send failure")));
+}
+
+TEST(StreamExecutorGpuClientTest, SendErrorWaitsForPendingSendAfterPruning) {
+  // Like SendErrorWaitsForOutstandingSends, but many sends complete while
+  // `blocked` is pending, so the outstanding sends are pruned several times.
+  constexpr int kNumCompletedSends = 150;
+  constexpr absl::string_view kHostTransfer =
+      R"(is_host_transfer=true, frontend_attributes={)"
+      R"(_xla_host_transfer_handler_name="undef", )"
+      R"(_xla_host_transfer_rendezvous="undef"})";
+  std::string completed_sends;
+  std::string prev = "blocked";
+  for (int i = 0; i < kNumCompletedSends; ++i) {
+    absl::StrAppendFormat(
+        &completed_sends,
+        "send%1$d = (f32[2], u32[], token[]) send(data, tok), channel_id=%2$d, "
+        "%3$s, control-predecessors={%4$s}\n"
+        "send%1$d-done = token[] send-done(send%1$d), channel_id=%2$d, "
+        "is_host_transfer=true\n",
+        i, /*channel_id=*/3 + i, kHostTransfer, prev);
+    prev = absl::StrFormat("send%d-done", i);
+  }
+  std::string hlo = absl::StrFormat(R"(
+    HloModule PruneSends
+    ENTRY main() -> f32[2] {
+      tok = token[] after-all()
+      data = f32[2] constant({2, 3})
+      blocked = (f32[2], u32[], token[]) send(data, tok), channel_id=1, %1$s
+      %2$s
+      failing = (f32[2], u32[], token[]) send(data, tok), channel_id=2, %1$s,
+        control-predecessors={%3$s}
+      failing-done = token[] send-done(failing),
+        channel_id=2, is_host_transfer=true
+      blocked-done = token[] send-done(blocked),
+        channel_id=1, is_host_transfer=true, control-predecessors={failing-done}
+      ROOT result = f32[2] add(data, data)
+    })",
+                                    kHostTransfer, completed_sends, prev);
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto executable, CompileExecutable(hlo, *client));
+
+  absl::Notification blocked_started;
+  absl::Notification release_blocked;
+  auto block = [&](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
+    blocked_started.Notify();
+    release_blocked.WaitForNotificationWithTimeout(absl::Seconds(30));
+    return absl::OkStatus();
+  };
+  auto fail = [](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
+    return Internal("Fake send failure");
+  };
+  auto ok = [](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
+    return absl::OkStatus();
+  };
+  std::vector<SendCallback> callbacks = {{/*channel_id=*/1, block},
+                                         {/*channel_id=*/2, fail}};
+  for (int i = 0; i < kNumCompletedSends; ++i) {
+    callbacks.push_back({/*channel_id=*/3 + i, ok});
+  }
+  std::vector<std::vector<SendCallback>> send_callbacks = {callbacks};
+  std::vector<std::vector<RecvCallback>> recv_callbacks = {{}};
+  ExecuteOptions opts;
+  opts.send_callbacks = send_callbacks;
+  opts.recv_callbacks = recv_callbacks;
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       executable->Execute(/*argument_handles=*/{{}}, opts));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  Future<> ready = result[0][0]->GetReadyFuture();
+
+  ASSERT_TRUE(
+      blocked_started.WaitForNotificationWithTimeout(absl::Seconds(60)));
+  absl::SleepFor(absl::Milliseconds(100));
+  EXPECT_FALSE(ready.IsReady());
+  release_blocked.Notify();
+  EXPECT_THAT(ready.Await(), StatusIs(absl::StatusCode::kInternal,
+                                      HasSubstr("Fake send failure")));
+}
+
 // User-defined data type to be passed to FFI handler via the execute context
 // side channel.
 
@@ -3856,6 +4015,9 @@ TEST_F(VmmTest, VmmAllocatorCanBeSet) {
                 raw_client->allocator()),
             nullptr);
 #endif
+  // The pinned host allocator keeps this true; otherwise every execution would
+  // block the host until the GPU is done.
+  EXPECT_TRUE(raw_client->allocator()->AllowsAsynchronousDeallocation());
 }
 
 TEST_F(VmmTest, VmmAllocatorE2ETest) {
@@ -3894,6 +4056,68 @@ ENTRY main (a: f32[], b: f32[]) -> f32[] {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
                           results[0][0]->ToLiteral().Await());
   EXPECT_EQ(literal->Get<float>({}), 3.0f);
+}
+
+TEST_F(VmmTest, PinnedHostBufferIsHostAccessible) {
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  options.allowed_devices = {0};
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_memory_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  std::vector<float> data{12.0, 34.0, 56.0, 78.0};
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr, pinned_memory_space,
+          /*device_layout=*/nullptr));
+  ASSERT_OK(buffer->GetReadyFuture().Await());
+  ASSERT_TRUE(buffer->IsOnCpu());
+
+  // A pinned_host buffer served from device VMM memory has no CPU mapping, so
+  // a regression faults here instead of failing the expectations.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                       buffer->AcquireExternalReference());
+  const float* host_ptr =
+      reinterpret_cast<const float*>(ref->OpaqueDeviceMemoryDataPointer());
+  EXPECT_THAT(host_ptr[0], FloatEq(12.0));
+  EXPECT_THAT(host_ptr[3], FloatEq(78.0));
+}
+
+TEST_F(VmmTest, ExecutePinnedHostOutputIsHostAccessible) {
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  options.allowed_devices = {0};
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       CompileExecutable(kD2HProgram, *client));
+
+  // Outputs are dropped between runs, so later runs may reuse host memory.
+  for (int run = 0; run < 3; ++run) {
+    ASSERT_OK_AND_ASSIGN(
+        auto result, executable->Execute({{input.get()}}, ExecuteOptions()));
+    ASSERT_EQ(result[0].size(), 1);
+    PjRtBuffer* output = result[0][0].get();
+    ASSERT_EQ(output->memory_space()->kind(), "pinned_host");
+    ASSERT_TRUE(output->IsOnCpu());
+    ASSERT_OK(output->GetReadyFuture().Await());
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                         output->AcquireExternalReference());
+    const int32_t* host_ptr =
+        reinterpret_cast<const int32_t*>(ref->OpaqueDeviceMemoryDataPointer());
+    EXPECT_THAT(absl::MakeConstSpan(host_ptr, 4), ElementsAre(1, 2, 3, 4))
+        << "run " << run;
+  }
 }
 
 GpuClientOptions VmmClientOptions() {

@@ -24,6 +24,7 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -152,7 +153,8 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           FullyConnectedOptionsWeightsFormat_DEFAULT,
       int input_size = -1, bool weights_per_channel_quantized = false,
       std::vector<float> per_channel_quantization_scales = {},
-      const TensorType& filter_type = TensorType_FLOAT32, int channel_index = 0)
+      const TensorType& filter_type = TensorType_FLOAT32, int channel_index = 0,
+      std::optional<TensorType> quantized_bias_type = std::nullopt)
       : batches_(batches),
         units_(units),
         input_size_(input_size),
@@ -241,7 +243,8 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
                  BuiltinOptions_FullyConnectedOptions,
                  CreateFullyConnectedOptions(
                      builder_, activation_func, weights_format, keep_num_dims,
-                     /*asymmetric_quantize_inputs=*/true, bias_type)
+                     /*asymmetric_quantize_inputs=*/true,
+                     quantized_bias_type.value_or(bias_type))
                      .Union());
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
@@ -297,11 +300,13 @@ class QuantizedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
       ActivationFunctionType activation_func = ActivationFunctionType_RELU,
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT,
-      int input_size = -1, const TensorType& filter_type = TensorType_INT8)
+      int input_size = -1, const TensorType& filter_type = TensorType_INT8,
+      std::optional<TensorType> quantized_bias_type = std::nullopt)
       : BaseFullyConnectedOpModel(
             registration, units, batches, input, output, bias_type,
             keep_num_dims, bias_tensor_optional, activation_func,
-            weights_format, input_size, false, {}, filter_type) {}
+            weights_format, input_size, false, {}, filter_type,
+            /*channel_index=*/0, quantized_bias_type) {}
 
   void SetBias(const std::vector<float>& data) {
     if (bias_type_ == TensorType_INT32) {
@@ -386,12 +391,13 @@ class PerChannelQuantizedFullyConnectedOpModel
       FullyConnectedOptionsWeightsFormat weights_format =
           FullyConnectedOptionsWeightsFormat_DEFAULT,
       int input_size = -1, const TensorType& filter_type = TensorType_INT8,
-      int channel_index = 0)
+      int channel_index = 0,
+      std::optional<TensorType> quantized_bias_type = std::nullopt)
       : BaseFullyConnectedOpModel(
             registration, units, batches, input, output, bias_type,
             keep_num_dims, bias_tensor_optional, activation_func,
             weights_format, input_size, true, per_channel_quantization_scales,
-            filter_type, channel_index) {}
+            filter_type, channel_index, quantized_bias_type) {}
 
   void SetBias(const std::vector<float>& data) {
     PerChannelQuantizeBias(bias_, data);
@@ -1055,33 +1061,44 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16NoBias) {
               ElementsAre(11776, 11776, 11776, 29184, 29184, 29184));
 }
 
+// The int32 bias selects the int32 path whether `quantized_bias_type` says so
+// or keeps its FLOAT32 default, as in models written before the option existed.
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias32) {
-  const float scale = 128.0 / 65536;
-  QuantizedFullyConnectedOpModel m(
-      GetRegistration(), /*units=*/3, /*batches*/ 2,
-      /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
-      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
-      /*bias_type=*/TensorType_INT32);
+  for (TensorType quantized_bias_type :
+       {TensorType_INT32, TensorType_FLOAT32}) {
+    SCOPED_TRACE(EnumNameTensorType(quantized_bias_type));
+    const float scale = 128.0 / 65536;
+    QuantizedFullyConnectedOpModel m(
+        GetRegistration(), /*units=*/3, /*batches*/ 2,
+        /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
+        /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+        /*bias_type=*/TensorType_INT32, /*keep_num_dims=*/false,
+        /*bias_tensor_optional=*/false,
+        /*activation_func=*/ActivationFunctionType_RELU,
+        /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+        /*input_size=*/-1, /*filter_type=*/TensorType_INT8,
+        quantized_bias_type);
 
-  // input_product_scale < output_scale was not true.
-  m.SetWeights<int8_t>({
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
-  });
-  m.SetBias({1, 2, 3});
+    // input_product_scale < output_scale was not true.
+    m.SetWeights<int8_t>({
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+    });
+    m.SetBias({1, 2, 3});
 
-  m.SetInput<int16_t>({
-      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-  });
+    m.SetInput<int16_t>({
+        1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+        1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+    });
 
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
-              ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
-  EXPECT_THAT(m.GetOutput<int16_t>(),
-              ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+    EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+                ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
+    EXPECT_THAT(m.GetOutput<int16_t>(),
+                ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+  }
 }
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias32Weight16) {
@@ -1148,35 +1165,46 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias32Weight4) {
               ElementsAre(1536, 2048, 2560, 11776, 12288, 12800));
 }
 
+// The int32 bias selects the int32 path whether `quantized_bias_type` says so
+// or keeps its FLOAT32 default.
 TEST_P(QuantizedFullyConnectedOpTest,
        SimpleTestPerChannelQuantizedInt16Bias32) {
-  const float scale = 128.0 / 65536;
-  PerChannelQuantizedFullyConnectedOpModel m(
-      GetRegistration(), /*units=*/3, /*batches*/ 2,
-      /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
-      /*per_channel_quantization_scales=*/{0.2, 0.25, 0.5},
-      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
-      /*bias_type=*/TensorType_INT32);
+  for (TensorType quantized_bias_type :
+       {TensorType_INT32, TensorType_FLOAT32}) {
+    SCOPED_TRACE(EnumNameTensorType(quantized_bias_type));
+    const float scale = 128.0 / 65536;
+    PerChannelQuantizedFullyConnectedOpModel m(
+        GetRegistration(), /*units=*/3, /*batches*/ 2,
+        /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
+        /*per_channel_quantization_scales=*/{0.2, 0.25, 0.5},
+        /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+        /*bias_type=*/TensorType_INT32, /*keep_num_dims=*/false,
+        /*bias_tensor_optional=*/false,
+        /*activation_func=*/ActivationFunctionType_RELU,
+        /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+        /*input_size=*/-1, /*filter_type=*/TensorType_INT8,
+        /*channel_index=*/0, quantized_bias_type);
 
-  // input_product_scale < output_scale was not true.
-  m.SetWeights<int8_t>({
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
-  });
-  m.SetBias({1, 2, 3});
+    // input_product_scale < output_scale was not true.
+    m.SetWeights<int8_t>({
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+    });
+    m.SetBias({1, 2, 3});
 
-  m.SetInput<int16_t>({
-      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-  });
+    m.SetInput<int16_t>({
+        1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+        1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+    });
 
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
-              ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
-  EXPECT_THAT(m.GetOutput<int16_t>(),
-              ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+    EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+                ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
+    EXPECT_THAT(m.GetOutput<int16_t>(),
+                ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+  }
 }
 
 TEST_P(QuantizedFullyConnectedOpTest,
@@ -1304,36 +1332,43 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias64) {
               ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
 }
 
+// The int64 bias selects the int64 path whether `quantized_bias_type` says so
+// or keeps its FLOAT32 default.
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias64Weight16) {
-  const float scale = 128.0 / 65536;
-  QuantizedFullyConnectedOpModel m(
-      GetRegistration(), /*units=*/3, /*batches*/ 2,
-      /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
-      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
-      /*bias_type=*/TensorType_INT64, /*keep_num_dims=*/false,
-      /*bias_tensor_optional=*/false,
-      /*activation_func=*/ActivationFunctionType_RELU,
-      /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
-      /*input_size=*/-1, /*filter_type=*/TensorType_INT16);
+  for (TensorType quantized_bias_type :
+       {TensorType_INT64, TensorType_FLOAT32}) {
+    SCOPED_TRACE(EnumNameTensorType(quantized_bias_type));
+    const float scale = 128.0 / 65536;
+    QuantizedFullyConnectedOpModel m(
+        GetRegistration(), /*units=*/3, /*batches*/ 2,
+        /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
+        /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0},
+        /*bias_type=*/TensorType_INT64, /*keep_num_dims=*/false,
+        /*bias_tensor_optional=*/false,
+        /*activation_func=*/ActivationFunctionType_RELU,
+        /*weights_format=*/FullyConnectedOptionsWeightsFormat_DEFAULT,
+        /*input_size=*/-1, /*filter_type=*/TensorType_INT16,
+        quantized_bias_type);
 
-  m.SetWeights<int16_t>({
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
-  });
-  m.SetBias({1, 2, 3});
+    m.SetWeights<int16_t>({
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+    });
+    m.SetBias({1, 2, 3});
 
-  m.SetInput<int16_t>({
-      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-  });
+    m.SetInput<int16_t>({
+        1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+        1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+    });
 
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
-              ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
-  EXPECT_THAT(m.GetOutput<int16_t>(),
-              ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+    EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+                ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
+    EXPECT_THAT(m.GetOutput<int16_t>(),
+                ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
+  }
 }
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8NoBias) {
@@ -3034,9 +3069,10 @@ TEST(FullyConnectedInt16FilterInt16IndexingTest, RejectsShapeProductOverflow) {
 
 // Builds a FullyConnected carrying an opaque `quant_spec`.
 //
-// The `cint2_fp32_int4_e8m0_drq` contract is selected by that string alone:
-// nothing in the tensor types distinguishes it from a standard hybrid
-// FullyConnected, so these tests drive the op through the flatbuffer rather
+// The a4w2 DRQ contracts (`cint2_fp32_int4_e8m0_drq` and
+// `int2_fp32_int4_e8m0_drq`) are selected by that string alone: nothing in the
+// tensor types distinguishes them from a standard hybrid FullyConnected, or
+// from each other, so these tests drive the op through the flatbuffer rather
 // than through the higher level helpers above.
 class QuantSpecFullyConnectedOpModel : public SingleOpModel {
  public:
@@ -3089,8 +3125,8 @@ class QuantSpecFullyConnectedOpModel : public SingleOpModel {
   void SetBias(const std::vector<float>& f) { PopulateTensor(bias_, f); }
   void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
 
-  // Writes raw 2 bit codes. The centered grid this kernel implements is not
-  // reachable through the symmetric quantize-and-populate helpers.
+  // Writes raw 2 bit codes. The grid they map to is defined by the spec, which
+  // the symmetric quantize-and-populate helpers know nothing about.
   void SetRawWeights(const std::vector<int8_t>& codes) {
     PopulateTensor2bit(weights_, /*offset=*/0, codes.data(),
                        codes.data() + codes.size());
@@ -3152,6 +3188,76 @@ TEST(A4W2DrqFullyConnectedTest, MatchesHandComputedResult) {
   // Channel 1: sum(q_a * -1.5) = (-8 * -1.5) + (31 * -1.5) = -34.5
   //            out = 1.0 * 0.25 * -34.5 + 2.0 = -6.625
   EXPECT_THAT(m.GetOutput(), ElementsAre(18.25f, -6.625f));
+}
+
+TEST(A4W2DrqFullyConnectedTest, NonCenteredMatchesHandComputedResult) {
+  // Same activations as above, but under the plain int2 contract the weight
+  // codes dequantize to code * per_channel_scale, with no half step offset.
+  const std::vector<float> per_channel_scales = {0.5f, 0.25f};
+  QuantSpecFullyConnectedOpModel m(
+      /*units=*/2, /*batches=*/1,
+      /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+      /*weights=*/
+      {TensorType_INT2,
+       {2, kA4W2TestBlockSize},
+       /*min=*/0.0f,
+       /*max=*/0.0f,
+       /*scale=*/0.0f,
+       /*zero_point=*/0,
+       /*per_channel_quantization=*/true,
+       per_channel_scales,
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      /*spec_name=*/"int2_fp32_int4_e8m0_drq", /*act_dilation=*/1.5f);
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+
+  // max_abs is 8, so the activation scale is 1 and the codes are exact.
+  std::vector<float> input(kA4W2TestBlockSize, 1.0f);
+  input[0] = -8.0f;
+  m.SetInput(input);
+
+  // Channel 0 is all code 1. Channel 1 uses the most negative code, -2, which
+  // the full int2 range admits, against the -8 activation and -1 elsewhere.
+  std::vector<int8_t> weights(kA4W2TestBlockSize, 1);
+  weights.push_back(-2);
+  weights.insert(weights.end(), kA4W2TestBlockSize - 1, -1);
+  m.SetRawWeights(weights);
+
+  m.SetBias({1.0f, 2.0f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Channel 0: sum(q_a * 1) = -8 + 31 = 23
+  //            out = 1.0 * 0.5 * 23 + 1.0 = 12.5
+  // Channel 1: sum(q_a * w) = (-8 * -2) + (31 * -1) = -15
+  //            out = 1.0 * 0.25 * -15 + 2.0 = -1.75
+  EXPECT_THAT(m.GetOutput(), ElementsAre(12.5f, -1.75f));
+}
+
+TEST(A4W2DrqFullyConnectedTest, RejectsNonZeroStoredZeroPoint) {
+  // The weight offset is defined by the contract. A per-channel zero point
+  // cannot hold the -0.5 of the centered grid, so the stored one must be 0 for
+  // every contract; anything else means the producer and the contract
+  // disagree about the grid.
+  for (const char* spec_name :
+       {"cint2_fp32_int4_e8m0_drq", "int2_fp32_int4_e8m0_drq"}) {
+    SCOPED_TRACE(spec_name);
+    QuantSpecFullyConnectedOpModel m(
+        /*units=*/2, /*batches=*/1,
+        /*input=*/{TensorType_FLOAT32, {1, kA4W2TestBlockSize}},
+        /*weights=*/
+        {TensorType_INT2,
+         {2, kA4W2TestBlockSize},
+         0.0f,
+         0.0f,
+         0.0f,
+         0,
+         /*per_channel_quantization=*/true,
+         {0.5f, 0.25f},
+         /*per_channel_quantization_offsets=*/{0, -1},
+         0},
+        spec_name, /*act_dilation=*/1.5f);
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+  }
 }
 
 TEST(A4W2DrqFullyConnectedTest, RejectsUnimplementedSpec) {
@@ -3281,6 +3387,135 @@ TEST(A4W2DrqFullyConnectedTest, RejectsNonFiniteActDilation) {
       /*spec_name=*/"cint2_fp32_int4_e8m0_drq",
       /*act_dilation=*/std::numeric_limits<float>::quiet_NaN());
   EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+class MultiAxisFullyConnectedOpModel : public SingleOpModel {
+ public:
+  MultiAxisFullyConnectedOpModel(int batches, int in_channels, int out_channels,
+                                 int block_size,
+                                 const std::vector<float>& scales,
+                                 const std::vector<int8_t>& weights_data)
+      : batches_(batches),
+        in_channels_(in_channels),
+        out_channels_(out_channels),
+        block_size_(block_size) {
+    input_ = AddInput({TensorType_FLOAT32, {batches, in_channels}});
+
+    TensorData weights_tensor;
+    weights_tensor.type = TensorType_INT8;
+    weights_tensor.shape = {out_channels, in_channels};
+    weights_tensor.per_channel_quantization_scales = scales;
+    weights_tensor.per_block_quantization = block_size;
+    weights_tensor.multi_axis_quantization = true;
+    weights_tensor.quantized_dimensions = {0};
+    if (block_size > 0) {
+      weights_tensor.scale_shape = {out_channels, in_channels / block_size};
+    } else {
+      weights_tensor.scale_shape = {out_channels};
+    }
+
+    weights_ = AddConstInput(weights_tensor, weights_data);
+    bias_ = AddNullInput();
+    output_ = AddOutput({TensorType_FLOAT32, {batches, out_channels}});
+
+    SetBuiltinOp(
+        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE)
+            .Union());
+
+    BuildInterpreter({{batches, in_channels}, {out_channels, in_channels}});
+  }
+
+  void SetInput(const std::vector<float>& data) {
+    PopulateTensor(input_, data);
+  }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ protected:
+  int batches_;
+  int in_channels_;
+  int out_channels_;
+  int block_size_;
+  int input_;
+  int weights_;
+  int bias_;
+  int output_;
+};
+
+TEST(MultiAxisFullyConnectedTest, MatchesHandComputedResultBlockwise) {
+  // 2 batches, in_channels=32, out_channels=2, block_size=16.
+  // 2 blocks per channel, 4 scales total.
+  const std::vector<float> scales = {0.1f, 0.2f, 0.3f, 0.4f};
+  std::vector<int8_t> weights;
+  // Channel 0: 16 of value 1, 16 of value 2.
+  weights.insert(weights.end(), 16, 1);
+  weights.insert(weights.end(), 16, 2);
+  // Channel 1: 16 of value -1, 16 of value 3.
+  weights.insert(weights.end(), 16, -1);
+  weights.insert(weights.end(), 16, 3);
+
+  MultiAxisFullyConnectedOpModel m(
+      /*batches=*/2, /*in_channels=*/32, /*out_channels=*/2,
+      /*block_size=*/16, scales, weights);
+
+  if (m.GetNumberOfAppliedDelegates() == 0 ||
+      m.CountOpsExecutedByCpuKernel() > 0) {
+    GTEST_SKIP() << "MultiAxisQuantization is unsupported by the CPU kernel.";
+  }
+
+  // Batch 0: all 1.0f.
+  // Batch 1: all 0.5f.
+  std::vector<float> input(32, 1.0f);
+  input.insert(input.end(), 32, 0.5f);
+  m.SetInput(input);
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Channel 0:
+  //   Batch 0: 16 * 1.0 * 1 * 0.1 + 16 * 1.0 * 2 * 0.2 = 1.6 + 6.4 = 8.0
+  //   Batch 1: 16 * 0.5 * 1 * 0.1 + 16 * 0.5 * 2 * 0.2 = 0.8 + 3.2 = 4.0
+  // Channel 1:
+  //   Batch 0: 16 * 1.0 * -1 * 0.3 + 16 * 1.0 * 3 * 0.4 = -4.8 + 19.2 = 14.4
+  //   Batch 1: 16 * 0.5 * -1 * 0.3 + 16 * 0.5 * 3 * 0.4 = -2.4 + 9.6 = 7.2
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {8.0f, 14.4f, 4.0f, 7.2f}, 1e-4f)));
+}
+
+TEST(MultiAxisFullyConnectedTest, MatchesHandComputedResultPerChannel) {
+  // 2 batches, in_channels=16, out_channels=2, block_size=0 (per-channel).
+  const std::vector<float> scales = {0.25f, 0.5f};
+  std::vector<int8_t> weights;
+  // Channel 0: 16 of value 1.
+  weights.insert(weights.end(), 16, 1);
+  // Channel 1: 16 of value -2.
+  weights.insert(weights.end(), 16, -2);
+
+  MultiAxisFullyConnectedOpModel m(
+      /*batches=*/2, /*in_channels=*/16, /*out_channels=*/2,
+      /*block_size=*/0, scales, weights);
+
+  if (m.GetNumberOfAppliedDelegates() == 0 ||
+      m.CountOpsExecutedByCpuKernel() > 0) {
+    GTEST_SKIP() << "MultiAxisQuantization is unsupported by the CPU kernel.";
+  }
+
+  // Batch 0: all 1.0f.
+  // Batch 1: all 2.0f.
+  std::vector<float> input(16, 1.0f);
+  input.insert(input.end(), 16, 2.0f);
+  m.SetInput(input);
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // Channel 0:
+  //   Batch 0: 16 * 1.0 * 1 * 0.25 = 4.0
+  //   Batch 1: 16 * 2.0 * 1 * 0.25 = 8.0
+  // Channel 1:
+  //   Batch 0: 16 * 1.0 * -2 * 0.5 = -16.0
+  //   Batch 1: 16 * 2.0 * -2 * 0.5 = -32.0
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {4.0f, -16.0f, 8.0f, -32.0f}, 1e-4f)));
 }
 
 INSTANTIATE_TEST_SUITE_P(

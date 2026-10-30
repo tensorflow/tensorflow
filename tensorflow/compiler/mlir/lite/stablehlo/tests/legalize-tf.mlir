@@ -2563,3 +2563,24 @@ func.func @xla_scatter(%arg0: tensor<2x10xi1>, %arg1: tensor<1xi32>, %arg2: tens
 func.func private @scatter_update(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<i1> {
   return %arg1 : tensor<i1>
 }
+
+// -----
+
+// CHECK-LABEL: func @real_div_f32
+func.func @real_div_f32(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: stablehlo.divide %arg0, %arg0 : tensor<2xf32>
+  %0 = "tf.RealDiv"(%arg0, %arg0)
+      : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @real_div_i32
+func.func @real_div_i32(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK: "tf.RealDiv"
+  // CHECK-NOT: stablehlo.divide
+  %0 = "tf.RealDiv"(%arg0, %arg0)
+      : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  func.return %0 : tensor<2xi32>
+}

@@ -1,177 +1,368 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/compiler-rt/lib/builtins/extendhfsf2.c b/compiler-rt/lib/builtins/extendhfsf2.c
---- a/compiler-rt/lib/builtins/extendhfsf2.c
-+++ b/compiler-rt/lib/builtins/extendhfsf2.c
-@@ -16,13 +16,13 @@
-   return __extendXfYf2__(a);
- }
- 
--#if defined(__ARM_EABI__)
- // arm32-gnueabi-only routine that uses integers in the signature. This should
- // be gnueabi-specific, but LLVM currently emits it on more eabi platforms.
- COMPILER_RT_ABI uint32_t __gnu_h2f_ieee(uint16_t a) {
-   return dstToRep(__extendhfsf2(srcFromRep(a)));
- }
- 
-+#if defined(__ARM_EABI__)
- #if defined(COMPILER_RT_ARMHF_TARGET)
- AEABI_RTABI float __aeabi_h2f(src_t a) { return __extendhfsf2(a); }
- #else
-diff -ruN --strip-trailing-cr a/compiler-rt/lib/builtins/truncsfhf2.c b/compiler-rt/lib/builtins/truncsfhf2.c
---- a/compiler-rt/lib/builtins/truncsfhf2.c
-+++ b/compiler-rt/lib/builtins/truncsfhf2.c
-@@ -16,13 +16,13 @@
-   return __truncXfYf2__(a);
- }
- 
--#if defined(__ARM_EABI__)
- // arm32-gnueabi-only routine that uses integers in the signature. This should
- // be gnueabi-specific, but LLVM currently emits it on more eabi platforms.
- COMPILER_RT_ABI uint16_t __gnu_f2h_ieee(uint32_t a) {
-   return dstToRep(__truncsfhf2(srcFromRep(a)));
- }
- 
-+#if defined(__ARM_EABI__)
- #if defined(COMPILER_RT_ARMHF_TARGET)
- AEABI_RTABI dst_t __aeabi_f2h(float a) { return __truncsfhf2(a); }
- #else
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/AArch64/AArch64MacroFusion.cpp b/llvm/lib/Target/AArch64/AArch64MacroFusion.cpp
---- a/llvm/lib/Target/AArch64/AArch64MacroFusion.cpp
-+++ b/llvm/lib/Target/AArch64/AArch64MacroFusion.cpp
-@@ -150,24 +150,21 @@
-   return false;
- }
- 
--// True unless the pair provably writes non overlapping physical registers.
--// Pre-RA the dests are still virtual, and post-RA it requires a genuine WAW,
--// that is overlapping dest regs. Overlapping includes sub and super register
--// relations, e.g. W0 and X0, which matches the register unit based dependency
--// model of the scheduling DAG.
-+// True unless the pair provably writes different physical registers. Pre-RA
-+// the dests are still virtual, and post-RA it requires a genuine WAW (same dest
-+// reg).
- static bool mayHaveWAWDependency(const MachineInstr &FirstMI,
--                                 const MachineInstr &SecondMI,
--                                 const TargetRegisterInfo *TRI) {
-+                                 const MachineInstr &SecondMI) {
-   Register DestFirst = FirstMI.getOperand(0).getReg();
-   Register DestSecond = SecondMI.getOperand(0).getReg();
-   if (!DestFirst.isPhysical() || !DestSecond.isPhysical())
-     return true;
--  return TRI->regsOverlap(DestFirst, DestSecond);
-+  return DestFirst == DestSecond;
- }
- 
- /// AES crypto encoding or decoding.
--static bool isAESPair(const MachineInstr *FirstMI, const MachineInstr &SecondMI,
--                      const TargetRegisterInfo *TRI) {
-+static bool isAESPair(const MachineInstr *FirstMI,
-+                      const MachineInstr &SecondMI) {
-   // Assume the 1st instr to be a wildcard if it is unspecified.
-   unsigned SecondOpcode = SecondMI.getOpcode();
-   switch (SecondOpcode) {
-@@ -179,7 +176,7 @@
-     if (FirstMI->getOpcode() != AArch64::AESErr)
-       return false;
-     return SecondOpcode == AArch64::AESMCrrTied ||
--           mayHaveWAWDependency(*FirstMI, SecondMI, TRI);
-+           mayHaveWAWDependency(*FirstMI, SecondMI);
-   // AES decode.
-   case AArch64::AESIMCrr:
-   case AArch64::AESIMCrrTied:
-@@ -188,7 +185,7 @@
-     if (FirstMI->getOpcode() != AArch64::AESDrr)
-       return false;
-     return SecondOpcode == AArch64::AESIMCrrTied ||
--           mayHaveWAWDependency(*FirstMI, SecondMI, TRI);
-+           mayHaveWAWDependency(*FirstMI, SecondMI);
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/CodeGen/TargetLowering.h b/llvm/include/llvm/CodeGen/TargetLowering.h
+--- a/llvm/include/llvm/CodeGen/TargetLowering.h
++++ b/llvm/include/llvm/CodeGen/TargetLowering.h
+@@ -1225,18 +1225,6 @@
+     }
    }
  
-   return false;
-@@ -628,8 +625,7 @@
+-  /// For vector types that are widened, this returns the type reached by
+-  /// widening repeatedly, i.e. the first type whose action is not
+-  /// TypeWidenVector. Unlike getLegalTypeToTransformTo, this does not follow
+-  /// other actions, so the result may still be illegal (e.g. if it is split).
+-  /// For vector types that are not widened, this is an identity function.
+-  EVT getTypeToWidenTo(LLVMContext &Context, EVT VT) const {
+-    assert(VT.isVector());
+-    while (getTypeAction(Context, VT) == TypeWidenVector)
+-      VT = getTypeToTransformTo(Context, VT);
+-    return VT;
+-  }
+-
+   /// Vector types are broken down into some number of legal first class types.
+   /// For example, EVT::v8f32 maps to 2 EVT::v4f32 with Altivec or SSE1, or 8
+   /// promoted EVT::f64 values with the X86 FP stack.  Similarly, EVT::v2i64
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
+--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
+@@ -25624,19 +25624,11 @@
+       VT = VT.changeElementType(*DAG.getContext(), EltVT);
+     }
  
- // FMIN + FMAX.
- static bool isFMinFMaxPair(const MachineInstr *FirstMI,
--                           const MachineInstr &SecondMI,
--                           const TargetRegisterInfo *TRI) {
-+                           const MachineInstr &SecondMI) {
-   if (!isFMinFMax(SecondMI.getOpcode()))
-     return false;
+-    // Check if this operation will be handled the default way for its type,
+-    // i.e. legalized through a stack temporary.
++    // Check if this operation will be handled the default way for its type.
+     auto IsTypeDefaultHandled = [this](EVT VT) {
+-      LLVMContext &Ctx = *DAG.getContext();
+-      TargetLowering::LegalizeTypeAction Action = TLI.getTypeAction(Ctx, VT);
+-      if (Action != TargetLowering::TypeWidenVector)
+-        return Action == TargetLowering::TypeSplitVector ||
+-               TLI.isOperationExpand(ISD::INSERT_VECTOR_ELT, VT);
+-      // Widening redoes the insert on the widened type, where it does not go
+-      // through memory if it is Legal, or Promote to another type. Custom
+-      // lowering may still fall back to the stack, so treat it like Expand.
+-      return !TLI.isOperationLegalOrPromote(ISD::INSERT_VECTOR_ELT,
+-                                            TLI.getTypeToWidenTo(Ctx, VT));
++      return TLI.getTypeAction(*DAG.getContext(), VT) ==
++                 TargetLowering::TypeSplitVector ||
++             TLI.isOperationExpand(ISD::INSERT_VECTOR_ELT, VT);
+     };
  
-@@ -640,7 +636,7 @@
-   if (!isFMinFMax(FirstMI->getOpcode()))
-     return false;
- 
--  return mayHaveWAWDependency(*FirstMI, SecondMI, TRI);
-+  return mayHaveWAWDependency(*FirstMI, SecondMI);
- }
- 
- /// \brief Check if the instr pair, FirstMI and SecondMI, should be fused
-@@ -679,7 +675,7 @@
-     ++NumFusedArithmeticCbz;
-     return true;
+     // Check if this operation is illegal and will be handled the default way,
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/insertelt-dynamic-chain-widen.ll b/llvm/test/CodeGen/AMDGPU/insertelt-dynamic-chain-widen.ll
+--- a/llvm/test/CodeGen/AMDGPU/insertelt-dynamic-chain-widen.ll
++++ b/llvm/test/CodeGen/AMDGPU/insertelt-dynamic-chain-widen.ll
+@@ -1,282 +0,0 @@
+-; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 6
+-; RUN: llc -mtriple=amdgpu9.42-amd-amdhsa < %s | FileCheck %s
+-
+-; A chain of runtime-known index INSERT_VECTOR_ELT on a TypeWidenVector value
+-; stays in registers when the widened insert is Legal or Promote, instead of
+-; being combined into one scratch object. Otherwise the chain still uses
+-; scratch.
+-;
+-; On gfx942 <9 x double> widens to <16 x double> and that insert is Promote. A
+-; per-lane index is lowered with v_cndmask; an index shared by the wave uses
+-; s_set_gpr_idx. 
+-;
+-; <3 x half> widens to <4 x half>, whose insert is Custom,
+-; <5 x half> widens to <8 x half>, whose insert is Expand, and  
+-; <3 x i8> widens to <4 x i8>, which is split, so these still use scratch.
+-
+-define amdgpu_kernel void @v9f64_divergent_idx(ptr addrspace(1) %out, double %a, double %b) {
+-; CHECK-LABEL: v9f64_divergent_idx:
+-; CHECK:       ; %bb.0:
+-; CHECK-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x0
+-; CHECK-NEXT:    s_load_dwordx2 s[6:7], s[4:5], 0x10
+-; CHECK-NEXT:    v_and_b32_e32 v1, 0x3ff, v0
+-; CHECK-NEXT:    v_lshlrev_b32_e32 v4, 7, v1
+-; CHECK-NEXT:    v_and_b32_e32 v0, 7, v0
+-; CHECK-NEXT:    s_waitcnt lgkmcnt(0)
+-; CHECK-NEXT:    global_load_dwordx4 v[6:9], v4, s[0:1] offset:32
+-; CHECK-NEXT:    global_load_dwordx4 v[10:13], v4, s[0:1] offset:48
+-; CHECK-NEXT:    global_load_dwordx4 v[14:17], v4, s[0:1]
+-; CHECK-NEXT:    global_load_dwordx4 v[18:21], v4, s[0:1] offset:16
+-; CHECK-NEXT:    global_load_dwordx4 v[22:25], v4, s[0:1] offset:64
+-; CHECK-NEXT:    v_mov_b32_e32 v1, s2
+-; CHECK-NEXT:    v_mov_b32_e32 v2, s3
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 4, v0
+-; CHECK-NEXT:    v_add_u32_e32 v5, 1, v0
+-; CHECK-NEXT:    s_waitcnt vmcnt(0)
+-; CHECK-NEXT:    v_mov_b32_e32 v24, s7
+-; CHECK-NEXT:    v_mov_b32_e32 v25, s6
+-; CHECK-NEXT:    v_cndmask_b32_e32 v26, v6, v1, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v27, v7, v2, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 5, v0
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v28, v8, v1, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v29, v9, v2, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 6, v0
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v10, v10, v1, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v11, v11, v2, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 7, v0
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v12, v12, v1, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v13, v13, v2, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 0, v0
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v6, v14, v1, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v7, v15, v2, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 1, v0
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v8, v16, v1, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v9, v17, v2, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 2, v0
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v14, v18, v1, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v15, v19, v2, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 3, v0
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v16, v20, v1, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v3, v21, v2, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 8, v0
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v0, v22, v1, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v1, v23, v2, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 8, v5
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v19, v1, v24, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v18, v0, v25, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 3, v5
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v3, v3, v24, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v2, v16, v25, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 2, v5
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v1, v15, v24, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v0, v14, v25, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 1, v5
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v9, v9, v24, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v8, v8, v25, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 0, v5
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v7, v7, v24, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v6, v6, v25, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 7, v5
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v13, v13, v24, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v12, v12, v25, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 6, v5
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v11, v11, v24, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v10, v10, v25, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 5, v5
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v17, v29, v24, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v16, v28, v25, vcc
+-; CHECK-NEXT:    v_cmp_eq_u32_e32 vcc, 4, v5
+-; CHECK-NEXT:    s_nop 1
+-; CHECK-NEXT:    v_cndmask_b32_e32 v15, v27, v24, vcc
+-; CHECK-NEXT:    v_cndmask_b32_e32 v14, v26, v25, vcc
+-; CHECK-NEXT:    global_store_dwordx2 v4, v[18:19], s[0:1] offset:64
+-; CHECK-NEXT:    global_store_dwordx4 v4, v[14:17], s[0:1] offset:32
+-; CHECK-NEXT:    global_store_dwordx4 v4, v[10:13], s[0:1] offset:48
+-; CHECK-NEXT:    global_store_dwordx4 v4, v[6:9], s[0:1]
+-; CHECK-NEXT:    global_store_dwordx4 v4, v[0:3], s[0:1] offset:16
+-; CHECK-NEXT:    s_endpgm
+-  %tid = call i32 @llvm.amdgcn.workitem.id.x()
+-  %gep = getelementptr <9 x double>, ptr addrspace(1) %out, i32 %tid
+-  %vec = load <9 x double>, ptr addrspace(1) %gep
+-  %i1 = urem i32 %tid, 8
+-  %i2 = add i32 %i1, 1
+-  %v1 = insertelement <9 x double> %vec, double %a, i32 %i1
+-  %v2 = insertelement <9 x double> %v1, double %b, i32 %i2
+-  store <9 x double> %v2, ptr addrspace(1) %gep
+-  ret void
+-}
+-
+-define amdgpu_kernel void @v9f64_uniform_idx(ptr addrspace(1) %out, double %a, double %b, i32 %idx) {
+-; CHECK-LABEL: v9f64_uniform_idx:
+-; CHECK:       ; %bb.0:
+-; CHECK-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x0
+-; CHECK-NEXT:    s_load_dwordx2 s[6:7], s[4:5], 0x10
+-; CHECK-NEXT:    v_and_b32_e32 v0, 0x3ff, v0
+-; CHECK-NEXT:    v_lshlrev_b32_e32 v32, 7, v0
+-; CHECK-NEXT:    s_load_dword s4, s[4:5], 0x18
+-; CHECK-NEXT:    s_waitcnt lgkmcnt(0)
+-; CHECK-NEXT:    global_load_dwordx4 v[16:19], v32, s[0:1] offset:64
+-; CHECK-NEXT:    global_load_dwordx4 v[12:15], v32, s[0:1] offset:48
+-; CHECK-NEXT:    global_load_dwordx4 v[8:11], v32, s[0:1] offset:32
+-; CHECK-NEXT:    global_load_dwordx4 v[4:7], v32, s[0:1] offset:16
+-; CHECK-NEXT:    global_load_dwordx4 v[0:3], v32, s[0:1]
+-; CHECK-NEXT:    s_waitcnt vmcnt(4)
+-; CHECK-NEXT:    v_mov_b32_e32 v18, s2
+-; CHECK-NEXT:    v_mov_b32_e32 v33, s3
+-; CHECK-NEXT:    v_mov_b32_e32 v34, s6
+-; CHECK-NEXT:    s_lshl_b32 s4, s4, 1
+-; CHECK-NEXT:    s_add_i32 s2, s4, 2
+-; CHECK-NEXT:    s_add_i32 s3, s4, 3
+-; CHECK-NEXT:    v_mov_b32_e32 v35, s7
+-; CHECK-NEXT:    s_waitcnt vmcnt(0)
+-; CHECK-NEXT:    s_set_gpr_idx_on s4, gpr_idx(DST)
+-; CHECK-NEXT:    v_mov_b32_e32 v0, v18
+-; CHECK-NEXT:    v_mov_b32_e32 v1, v33
+-; CHECK-NEXT:    s_set_gpr_idx_off
+-; CHECK-NEXT:    s_set_gpr_idx_on s2, gpr_idx(DST)
+-; CHECK-NEXT:    v_mov_b32_e32 v0, v34
+-; CHECK-NEXT:    s_set_gpr_idx_off
+-; CHECK-NEXT:    s_set_gpr_idx_on s3, gpr_idx(DST)
+-; CHECK-NEXT:    v_mov_b32_e32 v0, v35
+-; CHECK-NEXT:    s_set_gpr_idx_off
+-; CHECK-NEXT:    global_store_dwordx2 v32, v[16:17], s[0:1] offset:64
+-; CHECK-NEXT:    global_store_dwordx4 v32, v[8:11], s[0:1] offset:32
+-; CHECK-NEXT:    global_store_dwordx4 v32, v[12:15], s[0:1] offset:48
+-; CHECK-NEXT:    global_store_dwordx4 v32, v[0:3], s[0:1]
+-; CHECK-NEXT:    global_store_dwordx4 v32, v[4:7], s[0:1] offset:16
+-; CHECK-NEXT:    s_endpgm
+-  %tid = call i32 @llvm.amdgcn.workitem.id.x()
+-  %gep = getelementptr <9 x double>, ptr addrspace(1) %out, i32 %tid
+-  %vec = load <9 x double>, ptr addrspace(1) %gep
+-  %i2 = add i32 %idx, 1
+-  %v1 = insertelement <9 x double> %vec, double %a, i32 %idx
+-  %v2 = insertelement <9 x double> %v1, double %b, i32 %i2
+-  store <9 x double> %v2, ptr addrspace(1) %gep
+-  ret void
+-}
+-
+-define amdgpu_kernel void @v3f16_uniform_idx(ptr addrspace(1) %out, half %a, half %b, i32 %idx) {
+-; CHECK-LABEL: v3f16_uniform_idx:
+-; CHECK:       ; %bb.0:
+-; CHECK-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x0
+-; CHECK-NEXT:    v_and_b32_e32 v0, 0x3ff, v0
+-; CHECK-NEXT:    v_lshlrev_b32_e32 v0, 3, v0
+-; CHECK-NEXT:    s_waitcnt lgkmcnt(0)
+-; CHECK-NEXT:    global_load_dwordx2 v[2:3], v0, s[0:1]
+-; CHECK-NEXT:    s_min_u32 s4, s3, 2
+-; CHECK-NEXT:    s_add_i32 s3, s3, 1
+-; CHECK-NEXT:    s_min_u32 s3, s3, 2
+-; CHECK-NEXT:    v_mov_b32_e32 v1, s2
+-; CHECK-NEXT:    s_lshl_b32 s2, s4, 1
+-; CHECK-NEXT:    s_lshl_b32 s3, s3, 1
+-; CHECK-NEXT:    s_or_b32 s2, s2, 0
+-; CHECK-NEXT:    s_or_b32 s3, s3, 0
+-; CHECK-NEXT:    s_waitcnt vmcnt(0)
+-; CHECK-NEXT:    scratch_store_short off, v3, off offset:4
+-; CHECK-NEXT:    scratch_store_dword off, v2, off
+-; CHECK-NEXT:    scratch_store_short off, v1, s2
+-; CHECK-NEXT:    scratch_store_short_d16_hi off, v1, s3
+-; CHECK-NEXT:    scratch_load_dwordx2 v[2:3], off, off
+-; CHECK-NEXT:    s_waitcnt vmcnt(0)
+-; CHECK-NEXT:    global_store_short v0, v3, s[0:1] offset:4
+-; CHECK-NEXT:    global_store_dword v0, v2, s[0:1]
+-; CHECK-NEXT:    s_endpgm
+-  %tid = call i32 @llvm.amdgcn.workitem.id.x()
+-  %gep = getelementptr <3 x half>, ptr addrspace(1) %out, i32 %tid
+-  %vec = load <3 x half>, ptr addrspace(1) %gep
+-  %i2 = add i32 %idx, 1
+-  %v1 = insertelement <3 x half> %vec, half %a, i32 %idx
+-  %v2 = insertelement <3 x half> %v1, half %b, i32 %i2
+-  store <3 x half> %v2, ptr addrspace(1) %gep
+-  ret void
+-}
+-
+-define amdgpu_kernel void @v5f16_uniform_idx(ptr addrspace(1) %out, half %a, half %b, i32 %idx) {
+-; CHECK-LABEL: v5f16_uniform_idx:
+-; CHECK:       ; %bb.0:
+-; CHECK-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x0
+-; CHECK-NEXT:    v_and_b32_e32 v0, 0x3ff, v0
+-; CHECK-NEXT:    v_lshlrev_b32_e32 v0, 4, v0
+-; CHECK-NEXT:    s_waitcnt lgkmcnt(0)
+-; CHECK-NEXT:    global_load_dwordx4 v[2:5], v0, s[0:1]
+-; CHECK-NEXT:    s_min_u32 s4, s3, 4
+-; CHECK-NEXT:    s_add_i32 s3, s3, 1
+-; CHECK-NEXT:    s_min_u32 s3, s3, 4
+-; CHECK-NEXT:    v_mov_b32_e32 v1, s2
+-; CHECK-NEXT:    s_lshl_b32 s2, s4, 1
+-; CHECK-NEXT:    s_lshl_b32 s3, s3, 1
+-; CHECK-NEXT:    s_or_b32 s2, s2, 0
+-; CHECK-NEXT:    s_or_b32 s3, s3, 0
+-; CHECK-NEXT:    s_waitcnt vmcnt(0)
+-; CHECK-NEXT:    scratch_store_short off, v4, off offset:8
+-; CHECK-NEXT:    scratch_store_dwordx2 off, v[2:3], off
+-; CHECK-NEXT:    scratch_store_short off, v1, s2
+-; CHECK-NEXT:    scratch_store_short_d16_hi off, v1, s3
+-; CHECK-NEXT:    scratch_load_dwordx4 v[2:5], off, off
+-; CHECK-NEXT:    s_waitcnt vmcnt(0)
+-; CHECK-NEXT:    global_store_short v0, v4, s[0:1] offset:8
+-; CHECK-NEXT:    global_store_dwordx2 v0, v[2:3], s[0:1]
+-; CHECK-NEXT:    s_endpgm
+-  %tid = call i32 @llvm.amdgcn.workitem.id.x()
+-  %gep = getelementptr <5 x half>, ptr addrspace(1) %out, i32 %tid
+-  %vec = load <5 x half>, ptr addrspace(1) %gep
+-  %i2 = add i32 %idx, 1
+-  %v1 = insertelement <5 x half> %vec, half %a, i32 %idx
+-  %v2 = insertelement <5 x half> %v1, half %b, i32 %i2
+-  store <5 x half> %v2, ptr addrspace(1) %gep
+-  ret void
+-}
+-
+-define amdgpu_kernel void @v3i8_uniform_idx(ptr addrspace(1) %out, i8 %a, i8 %b, i32 %idx) {
+-; CHECK-LABEL: v3i8_uniform_idx:
+-; CHECK:       ; %bb.0:
+-; CHECK-NEXT:    s_load_dwordx4 s[0:3], s[4:5], 0x0
+-; CHECK-NEXT:    v_and_b32_e32 v0, 0x3ff, v0
+-; CHECK-NEXT:    v_lshlrev_b32_e32 v0, 2, v0
+-; CHECK-NEXT:    s_waitcnt lgkmcnt(0)
+-; CHECK-NEXT:    global_load_dword v1, v0, s[0:1]
+-; CHECK-NEXT:    s_min_u32 s4, s3, 2
+-; CHECK-NEXT:    s_add_i32 s3, s3, 1
+-; CHECK-NEXT:    s_lshr_b32 s5, s2, 8
+-; CHECK-NEXT:    s_min_u32 s3, s3, 2
+-; CHECK-NEXT:    v_mov_b32_e32 v2, s2
+-; CHECK-NEXT:    s_or_b32 s2, s4, 0
+-; CHECK-NEXT:    v_mov_b32_e32 v3, s5
+-; CHECK-NEXT:    s_or_b32 s3, s3, 0
+-; CHECK-NEXT:    s_waitcnt vmcnt(0)
+-; CHECK-NEXT:    scratch_store_byte_d16_hi off, v1, off offset:2
+-; CHECK-NEXT:    scratch_store_short off, v1, off
+-; CHECK-NEXT:    scratch_store_byte off, v2, s2
+-; CHECK-NEXT:    scratch_store_byte off, v3, s3
+-; CHECK-NEXT:    scratch_load_dword v1, off, off
+-; CHECK-NEXT:    s_waitcnt vmcnt(0)
+-; CHECK-NEXT:    global_store_byte_d16_hi v0, v1, s[0:1] offset:2
+-; CHECK-NEXT:    global_store_short v0, v1, s[0:1]
+-; CHECK-NEXT:    s_endpgm
+-  %tid = call i32 @llvm.amdgcn.workitem.id.x()
+-  %gep = getelementptr <3 x i8>, ptr addrspace(1) %out, i32 %tid
+-  %vec = load <3 x i8>, ptr addrspace(1) %gep
+-  %i2 = add i32 %idx, 1
+-  %v1 = insertelement <3 x i8> %vec, i8 %a, i32 %idx
+-  %v2 = insertelement <3 x i8> %v1, i8 %b, i32 %i2
+-  store <3 x i8> %v2, ptr addrspace(1) %gep
+-  ret void
+-}
+-
+-declare i32 @llvm.amdgcn.workitem.id.x()
+diff -ruN --strip-trailing-cr a/mlir/lib/IR/MLIRContext.cpp b/mlir/lib/IR/MLIRContext.cpp
+--- a/mlir/lib/IR/MLIRContext.cpp
++++ b/mlir/lib/IR/MLIRContext.cpp
+@@ -286,16 +286,8 @@
+     if (threadingIsEnabled) {
+       ownedThreadPool = std::make_unique<llvm::DefaultThreadPool>();
+       threadPool = ownedThreadPool.get();
+-    } else {
+-      disableUniquerMultithreading(true);
+     }
    }
--  if (ST.hasFuseAES() && isAESPair(FirstMI, SecondMI, TRI)) {
-+  if (ST.hasFuseAES() && isAESPair(FirstMI, SecondMI)) {
-     ++NumFusedAES;
-     return true;
-   }
-@@ -720,7 +716,7 @@
-     ++NumFusedAddSub2RegAndConstOne;
-     return true;
-   }
--  if (ST.hasFuseFMinFMax() && isFMinFMaxPair(FirstMI, SecondMI, TRI)) {
-+  if (ST.hasFuseFMinFMax() && isFMinFMaxPair(FirstMI, SecondMI)) {
-     ++NumFusedFMinFMax;
-     return true;
-   }
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/misched-fusion-fmin-fmax-post-ra.mir b/llvm/test/CodeGen/AArch64/misched-fusion-fmin-fmax-post-ra.mir
---- a/llvm/test/CodeGen/AArch64/misched-fusion-fmin-fmax-post-ra.mir
-+++ b/llvm/test/CodeGen/AArch64/misched-fusion-fmin-fmax-post-ra.mir
-@@ -1030,21 +1030,3 @@
-     $q6 = FADDv2f64 $q3, $q4, implicit $fpcr
-     $q7 = FMINv2f64 $q5, $q2, implicit $fpcr
- ...
--# A representative pair that writes different but overlapping architectural registers,
--# which share physical register storage and form a WAW dependency.
-----
--name: fmax_fmin_h_s_overlap
--tracksRegLiveness: true
--body: |
--  bb.0:
--    liveins: $h0, $h1, $s2, $h3, $h4
--    ; CHECK-LABEL: fmax_fmin_h_s_overlap
--    ; CHECK: SU(0): $h5 = FMAXHrr
--    ; CHECK: Successors:
--    ; FUSE: SU(2): Ord  Latency={{[0-9]+}} Cluster
--    ; NOFUSE-NOT: SU(2): Ord  Latency={{[0-9]+}} Cluster
--    ; CHECK: SU(2): $s5 = FMINSrr
--    $h5 = FMAXHrr $h0, $h1, implicit $fpcr
--    $h6 = FADDHrr $h3, $h4, implicit $fpcr
--    $s5 = FMINSrr $s5, $s2, implicit $fpcr
--...
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/dead-mi-elim-require-ssa.mir b/llvm/test/CodeGen/AMDGPU/dead-mi-elim-require-ssa.mir
---- a/llvm/test/CodeGen/AMDGPU/dead-mi-elim-require-ssa.mir
-+++ b/llvm/test/CodeGen/AMDGPU/dead-mi-elim-require-ssa.mir
-@@ -1,3 +1,4 @@
-+# REQUIRES: asserts
- # RUN: not llc -mtriple=amdgpu9 -run-pass=dead-mi-elimination -filetype=null %s 2>&1 | FileCheck %s
- # RUN: not llc -mtriple=amdgpu9 -passes=dead-mi-elimination -filetype=null %s 2>&1 | FileCheck %s
+-  /// Update the threading mode for each of the uniquers.
+-  void disableUniquerMultithreading(bool disable) {
+-    affineUniquer.disableMultithreading(disable);
+-    attributeUniquer.disableMultithreading(disable);
+-    typeUniquer.disableMultithreading(disable);
+-  }
+   ~MLIRContextImpl() {
+     for (auto typeMapping : registeredTypes)
+       typeMapping.second->~AbstractType();
+@@ -632,7 +624,10 @@
  
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-extendedLLTs-err.mir b/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-extendedLLTs-err.mir
---- a/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-extendedLLTs-err.mir
-+++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-extendedLLTs-err.mir
-@@ -1,3 +1,4 @@
-+# REQUIRES: asserts
- # RUN: llc -mtriple=amdgpu12.51 -run-pass=instruction-select -verify-machineinstrs -global-isel-abort=2 -pass-remarks-missed='gisel*' %s -o /dev/null 2>&1 | FileCheck -check-prefix=ERR %s
+   impl->threadingIsEnabled = !disable;
  
- # ERR: remark: <unknown>:0:0: cannot select: %2:vcc(s1) = G_FCMP floatpred(oeq), %1:vgpr(s32), %0:vgpr (in function: g_fcmp_op2_fconstant_s32)
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-extendedLLTs.mir b/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-extendedLLTs.mir
---- a/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-extendedLLTs.mir
-+++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/inst-select-extendedLLTs.mir
-@@ -1,4 +1,5 @@
- # NOTE: Assertions have been autogenerated by utils/update_mir_test_checks.py
-+# REQUIRES: asserts
- # RUN: llc -mtriple=amdgpu12.51 -run-pass=instruction-select -verify-machineinstrs -global-isel-abort=2 -pass-remarks-missed='gisel*' %s -o - 2> %t | FileCheck -check-prefix=GCN %s
+-  impl->disableUniquerMultithreading(disable);
++  // Update the threading mode for each of the uniquers.
++  impl->affineUniquer.disableMultithreading(disable);
++  impl->attributeUniquer.disableMultithreading(disable);
++  impl->typeUniquer.disableMultithreading(disable);
  
- # G_ADD i32: -> tablegen S_ADD_I32;
+   // Destroy thread pool (stop all threads) if it is no longer needed, or create
+   // a new one if multithreading was re-enabled.

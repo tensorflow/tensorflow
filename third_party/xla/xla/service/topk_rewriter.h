@@ -39,7 +39,7 @@ namespace xla {
 class TopkRewriter : public HloModulePass {
  public:
   explicit TopkRewriter(std::function<bool(const HloSortInstruction*, int64_t)>
-                            is_profitable_to_convert)
+                            is_profitable_to_convert = {})
       : is_profitable_to_convert_(std::move(is_profitable_to_convert)) {}
 
   absl::string_view name() const override { return "topk-rewriter"; }

@@ -23,7 +23,13 @@ load(
 )
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
-load("//xla/tests:build_defs.bzl", "ALL_HARDWARE_BACKENDS", "generate_backend_suites", "xla_test")
+load(
+    "//xla/tests:build_defs.bzl",
+    "ALL_HARDWARE_BACKENDS",
+    "generate_backend_suites",
+    "get_sc_offload_backend_args",
+    "xla_test",
+)
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -619,12 +625,16 @@ xla_test(
 
 xla_test(
     name = "conv_depthwise_backprop_filter_test",
+    # SparseCore fusion offloading and the mismatch detector make the test slower on TPU
+    # simulator backends.
+    timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
     shard_count = 50,
     tags = ["nozapfhahn"],  # TODO: b/445492433 - Re-enable when it doesn't time out.
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
+        ":xla_test_backend_predicates",
         "//xla:error_spec",
         "//xla/hlo/testlib:test",
         "@com_google_absl//absl/algorithm:container",
@@ -636,6 +646,9 @@ xla_test(
 
 xla_test(
     name = "grouped_convolution_test",
+    # SparseCore fusion offloading and the mismatch detector make the test slower on TPU
+    # simulator backends.
+    timeout = "long",
     srcs = ["grouped_convolution_test.cc"],
     shard_count = 23,
     deps = [
@@ -1331,6 +1344,8 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
+    # TODO(b/577281374): The SparseCore mismatch detector fails on SparseCore scatter offloads.
+    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
@@ -1993,6 +2008,9 @@ xla_test(
 
 xla_test(
     name = "reduce_window_test",
+    # SparseCore fusion offloading and the mismatch detector make the test slower on TPU
+    # simulator backends.
+    timeout = "long",
     srcs = ["reduce_window_test.cc"],
     shard_count = 50,
     tags = ["optonly"],
@@ -2157,10 +2175,16 @@ xla_test(
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:status_macros",
         "//xla:types",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -3550,6 +3574,30 @@ xla_test(
         "//xla:literal_util",
         "//xla/hlo/builder:xla_builder",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "fma_test",
+    srcs = ["fma_test.cc"],
+    deps = [
+        ":hlo_interpreter_reference_mixin",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:xla_test_backend_predicates",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
     ],
 )
 

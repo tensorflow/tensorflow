@@ -283,5 +283,94 @@ ENTRY entry {
                                                    Pair("tuple", "tuple")));
 }
 
+TEST_F(HloComputationGraphMatcherTest, MatchSwappedEntryParametersByNumber) {
+  // (x, y) -> x - y vs. (y, x) -> x - y.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY entry {
+  x = f32[4]{0} parameter(0)
+  y = f32[4]{0} parameter(1)
+  ROOT sub = f32[4]{0} subtract(x, y)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY entry {
+  y = f32[4]{0} parameter(0)
+  x = f32[4]{0} parameter(1)
+  ROOT sub = f32[4]{0} subtract(x, y)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                          HloGumgraph::Create(left_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                          HloGumgraph::Create(right_module.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  const CallGraphNode& left_entry_computation =
+      left_gumgraph->GetCallGraph().GetNode(left_module->entry_computation());
+  const CallGraphNode& right_entry_computation =
+      right_gumgraph->GetCallGraph().GetNode(right_module->entry_computation());
+
+  mappings->MapComputationsIfAbsent(left_entry_computation,
+                                    right_entry_computation,
+                                    ComputationMatchType::kExact);
+  MatchComputationGraphs(*left_gumgraph, *right_gumgraph,
+                         left_entry_computation, right_entry_computation,
+                         *mappings);
+
+  EXPECT_THAT(
+      ExtractMappedInstructionNames(*mappings),
+      UnorderedElementsAre(Pair("x", "y"), Pair("y", "x"), Pair("sub", "sub")));
+}
+
+TEST_F(HloComputationGraphMatcherTest,
+       MatchEntryParametersByNumberWhenOneChangesShape) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[1]{0} parameter(0)
+  p1 = f32[1]{0} parameter(1)
+  ROOT add = f32[1]{0} add(p0, p1)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f64[1]{0} parameter(0)
+  p1 = f32[1]{0} parameter(1)
+  convert = f32[1]{0} convert(p0)
+  ROOT add = f32[1]{0} add(convert, p1)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                          HloGumgraph::Create(left_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                          HloGumgraph::Create(right_module.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  const CallGraphNode& left_entry_computation =
+      left_gumgraph->GetCallGraph().GetNode(left_module->entry_computation());
+  const CallGraphNode& right_entry_computation =
+      right_gumgraph->GetCallGraph().GetNode(right_module->entry_computation());
+
+  mappings->MapComputationsIfAbsent(left_entry_computation,
+                                    right_entry_computation,
+                                    ComputationMatchType::kSignature);
+  MatchComputationGraphs(*left_gumgraph, *right_gumgraph,
+                         left_entry_computation, right_entry_computation,
+                         *mappings);
+
+  EXPECT_THAT(ExtractMappedInstructionNames(*mappings),
+              UnorderedElementsAre(Pair("p0", "p0"), Pair("p1", "p1"),
+                                   Pair("add", "add")));
+}
+
 }  // namespace
 }  // namespace xla::hlo_diff

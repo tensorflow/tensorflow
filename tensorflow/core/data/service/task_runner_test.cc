@@ -15,6 +15,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -37,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -100,6 +104,71 @@ class InfiniteRangeIterator : public TaskIterator {
   int64_t next_ = 0;
 };
 
+// Like `InfiniteRangeIterator`, but each element waits until the test releases
+// it through a `Gate`, so a test controls when the input pipeline produces
+// elements.
+class GatedInfiniteRangeIterator : public TaskIterator {
+ public:
+  class Gate {
+   public:
+    // Lets the iterator produce `num_elements` more elements.
+    void Release(int64_t num_elements) {
+      mutex_lock l(mu_);
+      num_released_ += num_elements;
+      cv_.notify_all();
+    }
+
+    // Lets the iterator produce all remaining elements without waiting.
+    void Open() {
+      mutex_lock l(mu_);
+      num_released_ = std::numeric_limits<int64_t>::max();
+      cv_.notify_all();
+    }
+
+   private:
+    friend class GatedInfiniteRangeIterator;
+
+    mutex mu_;
+    condition_variable cv_;
+    int64_t num_released_ TF_GUARDED_BY(mu_) = 0;
+  };
+
+  explicit GatedInfiniteRangeIterator(std::shared_ptr<Gate> gate)
+      : gate_(std::move(gate)) {}
+
+  absl::Status GetNext(std::vector<Tensor>& element,
+                       bool& end_of_sequence) override {
+    {
+      mutex_lock l(gate_->mu_);
+      while (next_ >= gate_->num_released_) {
+        gate_->cv_.wait(l);
+      }
+    }
+    element = {Tensor{next_++}};
+    end_of_sequence = false;
+    return absl::OkStatus();
+  }
+
+  int64_t Cardinality() const override { return kInfiniteCardinality; }
+
+ private:
+  const std::shared_ptr<Gate> gate_;
+  int64_t next_ = 0;
+};
+
+// Opens a gate when it goes out of scope. A task runner can only be cancelled
+// and destroyed after its input iterator returns, so declare a `GateOpener`
+// after the task runner that reads from the gated iterator.
+class GateOpener {
+ public:
+  explicit GateOpener(std::shared_ptr<GatedInfiniteRangeIterator::Gate> gate)
+      : gate_(std::move(gate)) {}
+  ~GateOpener() { gate_->Open(); }
+
+ private:
+  const std::shared_ptr<GatedInfiniteRangeIterator::Gate> gate_;
+};
+
 template <class T>
 class ElementOrErrorIterator : public TaskIterator {
  public:
@@ -156,6 +225,30 @@ StatusOr<T> GetNextFromTaskRunner(TaskRunner& runner,
     return absl::InternalError("GetElementResult Tensor size should be 1.");
   }
   return result.components[0].unaligned_flat<T>().data()[0];
+}
+
+// Like `GetNextFromTaskRunner`, but retries for up to 10 seconds while the task
+// runner answers "skip".
+template <class T>
+StatusOr<T> GetNextFromTaskRunnerWithRetries(TaskRunner& runner,
+                                             const GetElementRequest& request) {
+  for (int attempt = 0; attempt < 100000; ++attempt) {
+    GetElementResult result;
+    TF_RETURN_IF_ERROR(runner.GetNext(request, result));
+    if (result.skip) {
+      Env::Default()->SleepForMicroseconds(100);
+      continue;
+    }
+    if (result.end_of_sequence) {
+      return absl::OutOfRangeError(
+          "TaskRunner has reached the end of sequence.");
+    }
+    if (result.components.size() != 1) {
+      return absl::InternalError("GetElementResult Tensor size should be 1.");
+    }
+    return result.components[0].unaligned_flat<T>().data()[0];
+  }
+  return absl::DeadlineExceededError("TaskRunner kept skipping.");
 }
 
 template <class T>
@@ -499,6 +592,167 @@ TEST(CachingTaskRunnerTest, Errors) {
                 ElementsAre(tstring("First element"), tstring("Second element"),
                             tstring("Third element")));
   }
+}
+
+TEST(CachingTaskRunnerTest, SkipsWhenElementIsNotReady) {
+  auto gate = std::make_shared<GatedInfiniteRangeIterator::Gate>();
+  CachingTaskRunner runner(std::make_unique<GatedInfiniteRangeIterator>(gate),
+                           /*max_cache_size_bytes=*/kLargeCache);
+  GateOpener gate_opener(gate);
+
+  GetElementRequest request;
+  request.set_trainer_id("Trainer ID");
+  request.set_allow_skip(true);
+  GetElementResult result;
+  TF_ASSERT_OK(runner.GetNext(request, result));
+  EXPECT_TRUE(result.skip);
+  EXPECT_TRUE(result.components.empty());
+
+  // Once the input pipeline produces an element, the trainer gets it.
+  gate->Release(1);
+  EXPECT_THAT(GetNextFromTaskRunnerWithRetries<int64_t>(runner, request),
+              absl_testing::IsOkAndHolds(0));
+
+  // The next element is not produced yet, so the trainer skips again.
+  GetElementResult next_result;
+  TF_ASSERT_OK(runner.GetNext(request, next_result));
+  EXPECT_TRUE(next_result.skip);
+}
+
+TEST(CachingTaskRunnerTest, WaitsWhenSkipIsNotAllowed) {
+  auto gate = std::make_shared<GatedInfiniteRangeIterator::Gate>();
+  CachingTaskRunner runner(std::make_unique<GatedInfiniteRangeIterator>(gate),
+                           /*max_cache_size_bytes=*/kLargeCache);
+  GateOpener gate_opener(gate);
+  std::unique_ptr<Thread> releaser(Env::Default()->StartThread(
+      /*thread_options=*/{}, /*name=*/"releaser", [gate]() {
+        Env::Default()->SleepForMicroseconds(100 * 1000);
+        gate->Release(1);
+      }));
+
+  GetElementRequest request;
+  request.set_trainer_id("Trainer ID");
+  request.set_allow_skip(false);
+  EXPECT_THAT(GetNextFromTaskRunner<int64_t>(runner, request),
+              absl_testing::IsOkAndHolds(0));
+}
+
+TEST(CachingTaskRunnerTest, DoesNotSkipCachedElements) {
+  auto gate = std::make_shared<GatedInfiniteRangeIterator::Gate>();
+  CachingTaskRunner runner(std::make_unique<GatedInfiniteRangeIterator>(gate),
+                           /*max_cache_size_bytes=*/kLargeCache);
+  GateOpener gate_opener(gate);
+  gate->Release(1);
+
+  GetElementRequest request;
+  request.set_allow_skip(true);
+  request.set_trainer_id("Trainer 1");
+  EXPECT_THAT(GetNextFromTaskRunnerWithRetries<int64_t>(runner, request),
+              absl_testing::IsOkAndHolds(0));
+
+  // Trainer 2 gets element 0 from the cache, even though the input pipeline
+  // has not produced element 1.
+  request.set_trainer_id("Trainer 2");
+  EXPECT_THAT(GetNextFromTaskRunner<int64_t>(runner, request),
+              absl_testing::IsOkAndHolds(0));
+
+  // Neither trainer's next element is cached or produced, so both skip.
+  GetElementResult trainer2_result;
+  TF_ASSERT_OK(runner.GetNext(request, trainer2_result));
+  EXPECT_TRUE(trainer2_result.skip);
+  request.set_trainer_id("Trainer 1");
+  GetElementResult trainer1_result;
+  TF_ASSERT_OK(runner.GetNext(request, trainer1_result));
+  EXPECT_TRUE(trainer1_result.skip);
+}
+
+TEST(CachingTaskRunnerTest, SkipsDoNotLoseElements) {
+  const size_t range = 100;
+  const size_t num_trainers = 5;
+  auto gate = std::make_shared<GatedInfiniteRangeIterator::Gate>();
+  CachingTaskRunner runner(std::make_unique<GatedInfiniteRangeIterator>(gate),
+                           /*max_cache_size_bytes=*/kLargeCache);
+  GateOpener gate_opener(gate);
+
+  // The input pipeline has not produced any element, so every trainer's first
+  // request is skipped.
+  GetElementRequest first_request;
+  first_request.set_allow_skip(true);
+  for (size_t i = 0; i < num_trainers; ++i) {
+    first_request.set_trainer_id(absl::StrCat("Trainer_", i));
+    GetElementResult result;
+    TF_ASSERT_OK(runner.GetNext(first_request, result));
+    EXPECT_TRUE(result.skip);
+  }
+
+  // The input pipeline then produces one element at a time while the trainers
+  // read concurrently. When the cache is large enough, every trainer reads
+  // every element in order, whether or not some of its requests are answered
+  // with "skip".
+  std::unique_ptr<Thread> releaser(Env::Default()->StartThread(
+      /*thread_options=*/{}, /*name=*/"releaser", [gate]() {
+        for (size_t i = 0; i < range; ++i) {
+          gate->Release(1);
+          Env::Default()->SleepForMicroseconds(100);
+        }
+      }));
+  std::vector<std::unique_ptr<Thread>> reader_threads;
+  for (size_t i = 0; i < num_trainers; ++i) {
+    reader_threads.push_back(absl::WrapUnique(Env::Default()->StartThread(
+        /*thread_options=*/{}, /*name=*/absl::StrCat("Trainer_", i),
+        [&runner, i]() {
+          GetElementRequest request;
+          request.set_trainer_id(absl::StrCat("Trainer_", i));
+          request.set_allow_skip(true);
+          std::vector<int64_t> output;
+          for (size_t j = 0; j < range; ++j) {
+            TF_ASSERT_OK_AND_ASSIGN(
+                int64_t element,
+                GetNextFromTaskRunnerWithRetries<int64_t>(runner, request));
+            output.push_back(element);
+          }
+          EXPECT_THAT(output, ElementsAreArray(GetRange(range)));
+        })));
+  }
+}
+
+TEST(CachingTaskRunnerTest, ReturnsErrorInsteadOfSkippingAfterCancel) {
+  auto gate = std::make_shared<GatedInfiniteRangeIterator::Gate>();
+  CachingTaskRunner runner(std::make_unique<GatedInfiniteRangeIterator>(gate),
+                           /*max_cache_size_bytes=*/kLargeCache);
+  // `Cancel` cancels the cache, then waits for the input iterator, which
+  // returns only when `gate_opener` opens the gate at the end of the test. So
+  // the input pipeline produces no element while the requests below run.
+  std::unique_ptr<Thread> canceller(Env::Default()->StartThread(
+      /*thread_options=*/{}, /*name=*/"canceller",
+      [&runner]() { runner.Cancel(); }));
+  GateOpener gate_opener(gate);
+
+  // Requests are skipped until the cache is cancelled, and then fail.
+  GetElementRequest request;
+  request.set_trainer_id("Trainer ID");
+  request.set_allow_skip(true);
+  EXPECT_THAT(GetNextFromTaskRunnerWithRetries<int64_t>(runner, request),
+              absl_testing::StatusIs(error::CANCELLED));
+}
+
+TEST(CachingTaskRunnerTest, ReturnsInputErrorsWhenSkipIsAllowed) {
+  CachingTaskRunner runner(std::make_unique<ElementOrErrorIterator<tstring>>(
+                               std::vector<absl::StatusOr<tstring>>{
+                                   tstring("First element"),
+                                   absl::UnavailableError("Unavailable"),
+                               }),
+                           /*max_cache_size_bytes=*/kLargeCache);
+
+  // An error from the input pipeline waits in the worker's buffer like an
+  // element, so the trainer gets the error instead of a skip.
+  GetElementRequest request;
+  request.set_trainer_id("Trainer ID");
+  request.set_allow_skip(true);
+  EXPECT_THAT(GetNextFromTaskRunnerWithRetries<tstring>(runner, request),
+              absl_testing::IsOkAndHolds(tstring("First element")));
+  EXPECT_THAT(GetNextFromTaskRunnerWithRetries<tstring>(runner, request),
+              absl_testing::StatusIs(error::UNAVAILABLE));
 }
 
 class ConsumeParallelTest

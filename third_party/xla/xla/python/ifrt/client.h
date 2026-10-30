@@ -43,6 +43,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -377,6 +379,36 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   virtual absl::StatusOr<std::vector<ArrayRef>> ReshardArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) = 0;
+
+  // Copies a slice of each array in `arrays` specified by the corresponding
+  // `IndexDomain` in `index_domains` into a new array.
+  //
+  // For each `i`, `index_domains[i]` must be within the bounds of
+  // `arrays[i]->shape()` and intersect with at least one shard of `arrays[i]`,
+  // and all intersecting shards must have the same sliced shard shape. The
+  // output array has the same dtype, memory kind, and layout as `arrays[i]`,
+  // shape `index_domains[i].shape()`, and a sharding formed by the shards of
+  // `arrays[i]` that intersect with `index_domains[i]` (with non-intersecting
+  // shards omitted).
+  virtual absl::StatusOr<std::vector<ArrayRef>> CopyArraySlices(
+      absl::Span<const ArrayRef> arrays,
+      absl::Span<const IndexDomain> index_domains) = 0;
+
+  // Updates a slice of each array in `arrays` with the corresponding array in
+  // `slices` at the specified `origin` in `origins`.
+  //
+  // For each `i`, the slice region `IndexDomain(origins[i],
+  // slices[i]->shape())` must be within the bounds of `arrays[i]->shape()`, and
+  // `slices[i]` must have the same dtype, memory kind, layout, and sharding on
+  // the slice region as a slice copied from `arrays[i]` at that region.
+  //
+  // `arrays` are updated in place and the original arrays in `arrays` are
+  // deleted (equivalent to `ArrayCopySemantics::kDonateInput`). `slices` are
+  // copied without being donated (equivalent to
+  // `ArrayCopySemantics::kAlwaysCopy`).
+  virtual absl::StatusOr<std::vector<ArrayRef>> UpdateArraySlices(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArrayRef> slices,
+      absl::Span<const Index> origins) = 0;
 
   // Returns a future that becomes ready once all of the values become ready.
   //

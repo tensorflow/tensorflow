@@ -123,6 +123,13 @@ class CrossTrainerCache {
   // Returns true if the cache has been cancelled.
   bool IsCancelled() const;
 
+  // Returns true if the next element for `trainer_id` is already in the cache,
+  // so `Get(trainer_id)` would return it without reading a new element from
+  // the sequence. Concurrent `Get` calls can change the answer as soon as this
+  // returns. Returns an error if `trainer_id` is empty or the cache has been
+  // cancelled.
+  StatusOr<bool> IsElementCached(const std::string& trainer_id) const;
+
  private:
   struct CacheQueryResult {
     std::shared_ptr<const ElementType> element;
@@ -385,6 +392,27 @@ bool CrossTrainerCache<ElementType>::IsCancelled() const
     TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   return !status_.ok();
+}
+
+template <class ElementType>
+StatusOr<bool> CrossTrainerCache<ElementType>::IsElementCached(
+    const std::string& trainer_id) const TF_LOCKS_EXCLUDED(mu_) {
+  if (trainer_id.empty()) {
+    return absl::InvalidArgumentError(
+        "tf.data service cross-trainer cache requires a non-empty trainer ID.");
+  }
+
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(status_);
+  // Same index as `GetElementIndex`, but without adding `trainer_id` to
+  // `trainer_to_element_index_map_`.
+  size_t element_index = cache_start_index_;
+  auto it = trainer_to_element_index_map_.find(trainer_id);
+  if (it != trainer_to_element_index_map_.end() &&
+      it->second > cache_start_index_) {
+    element_index = it->second;
+  }
+  return element_index < cache_start_index_ + cache_.size();
 }
 
 template <class ElementType>

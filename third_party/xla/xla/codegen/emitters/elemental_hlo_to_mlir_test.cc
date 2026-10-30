@@ -1884,6 +1884,25 @@ ENTRY main {
       )"));
 }
 
+TEST_F(ElementalHloToMlirTest, Fma) {
+  EXPECT_OK(Run(
+      R"(
+HloModule fma_test
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  p2 = f32[4] parameter(2)
+  ROOT out = f32[4] fma(p0, p1, p2)
+}
+      )",
+      R"(
+      // CHECK: func.func private @main_out
+      // CHECK: %[[FMA:.*]] = math.fma {{.*}}, {{.*}}, {{.*}} : f32
+      // CHECK: return %[[FMA]] : f32
+      )"));
+}
+
 }  // namespace
 }  // namespace emitters
 }  // namespace xla

@@ -377,6 +377,11 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   a = asarray(a)
 
   maybe_rank = a.shape.rank
+  if maybe_rank is not None and maybe_rank < 2:
+    # NumPy checks the rank before any per-axis checks, so a rank-0 or
+    # rank-1 input gets this message instead of the out-of-bounds or
+    # same-axis errors below. `trace` inherits this check.
+    raise ValueError('diag requires an array of at least two dimensions')
   if (
       maybe_rank is not None
       and isinstance(axis1, (int, np.integer))
@@ -395,7 +400,7 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
           f'for input of rank {maybe_rank}.'
       )
     if norm1 == norm2:
-      raise ValueError('axis1 and axis2 cannot be the same axis')
+      raise ValueError('axis1 and axis2 cannot be the same')
     # Reassign after validation so the error messages above keep the
     # original user-supplied values and the fast path below consumes
     # normalized, non-negative axes.
@@ -930,6 +935,9 @@ def real(val):
   val = asarray(val)
   # TODO(srbs): np.real returns a scalar if val is a scalar, whereas we always
   # return an ndarray.
+  if val.dtype == dtypes.bool:
+    # `math_ops.real` rejects bool, which is already real.
+    return val
   return math_ops.real(val)
 
 

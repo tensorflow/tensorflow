@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,9 +48,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/iterator_util.h"
-#include "xla/online_topsort.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/name_uniquer.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -121,21 +121,10 @@ class HloComputation {
     }
 
     absl::StatusOr<HloInstruction*> AddParameter(
-        std::unique_ptr<HloInstruction> parameter) {
-      if (!parameter_numbers_.insert(parameter->parameter_number()).second) {
-        return Internal("Duplicate parameter number %d",
-                        parameter->parameter_number());
-      }
-      return AddInstruction(std::move(parameter));
-    }
+        std::unique_ptr<HloInstruction> parameter);
 
     absl::Status ForEachInstruction(
-        absl::FunctionRef<absl::Status(const HloInstruction*)> func) const {
-      for (const auto& instruction : instructions_) {
-        ABSL_RETURN_IF_ERROR(func(instruction.get()));
-      }
-      return absl::OkStatus();
-    }
+        absl::FunctionRef<absl::Status(const HloInstruction*)> func) const;
 
     HloInstruction* last_added_instruction() const {
       return instructions_.empty() ? nullptr : instructions_.back().get();
@@ -304,7 +293,7 @@ class HloComputation {
   // ignore_control_dependencies is set to true, if will remove the unused
   // operands even when they have control dependencies, and transitively pass
   // the control dependencies from the predecessors to the successors of the
-  // removed instructions, so that the logical exeuction order of the remaining
+  // removed instructions, so that the logical execution order of the remaining
   // unremoved instructions are preserved.
   //
   // Parameters from the entry computation can never be removed.
@@ -354,7 +343,7 @@ class HloComputation {
   // match the regexp "[a-zA-Z_][a-zA-Z0-9_.-]*".
   //
   // See also HloModule::SetAndUniquifyComputationName(), which does this plus
-  // UniqufyName().
+  // UniquifyName().
   void SetAndSanitizeName(absl::string_view name) {
     name_ = NameUniquer::GetSanitizedName(name);
   }
@@ -438,11 +427,12 @@ class HloComputation {
     // Absl::Hash after each instruction to use to as an operand for
     // subsequent instructions.
     auto instructions = computation.MakeInstructionPostOrder();
-    absl::flat_hash_map<HloInstruction*, size_t> instruction_hash_cache;
+    absl::flat_hash_map<const HloInstruction*, size_t> instruction_hash_cache;
     instruction_hash_cache.reserve(instructions.size());
-    for (auto* instruction : instructions) {
+    for (const HloInstruction* instruction : instructions) {
       absl::InlinedVector<size_t, 2> operand_hashes;
-      for (auto* operand : instruction->operands()) {
+      operand_hashes.reserve(instruction->operand_count());
+      for (const HloInstruction* operand : instruction->operands()) {
         operand_hashes.push_back(instruction_hash_cache[operand]);
       }
       instruction_hash_cache.emplace(
@@ -784,7 +774,7 @@ class HloComputation {
 
   // Like CloneWithReplacements(), but this is a const method and `context` must
   // be specified.
-  // If `clone_sequence` is not nullptr, the module must be have a schedule for
+  // If `clone_sequence` is not nullptr, the module must have a schedule for
   // this computation.
   std::unique_ptr<HloComputation> CloneInContext(
       HloCloneContext& context,
@@ -850,11 +840,7 @@ class HloComputation {
   bool HasSideEffect() const;
 
   // Returns if this computation is a fusion computation.
-  bool IsFusionComputation() const {
-    // TODO(b/418034360): There should be at most one fusion instruction calling
-    // a fusion computation. Assert this and fix all related tests.
-    return !caller_instructions(HloOpcode::kFusion).empty();
-  }
+  bool IsFusionComputation() const;
 
   // Returns if this computation is the entry computation of the module.
   bool IsEntryComputation() const;
@@ -868,32 +854,13 @@ class HloComputation {
   // Returns the owning fusion instruction, or nullptr if this is not a fusion
   // computation. Note that this is just one of the fusion instructions that
   // calls this computation, there may be more than one callers.
-  //
-  // TODO(b/418034360): There should be at most one fusion instruction calling
-  // a fusion computation. Assert this and fix all related tests.
-  HloInstruction* FusionInstruction() const {
-    auto callers = caller_instructions(HloOpcode::kFusion);
-    return callers.empty() ? nullptr : callers.front();
-  }
+  HloInstruction* FusionInstruction() const;
 
   // Returns if this computation is an async computation.
-  bool IsAsyncComputation() const {
-    return !caller_instructions(HloOpcode::kAsyncStart).empty() ||
-           !caller_instructions(HloOpcode::kAsyncDone).empty() ||
-           !caller_instructions(HloOpcode::kAsyncUpdate).empty();
-  }
+  bool IsAsyncComputation() const;
 
   // Returns true if this computation only contains send/recv instructions.
-  bool OnlyContainsSendRecv() {
-    for (const HloInstruction* instruction : this->instructions()) {
-      if (!HloPredicateIsOp<HloOpcode::kSend, HloOpcode::kRecv,
-                            HloOpcode::kBitcast, HloOpcode::kParameter,
-                            HloOpcode::kTuple>(instruction)) {
-        return false;
-      }
-    }
-    return true;
-  }
+  bool OnlyContainsSendRecv() const;
 
   // Clear the unique ID of the computation so that it can be re-assigned, such
   // as for the purpose of compacting the unique IDs.
@@ -983,42 +950,10 @@ class HloComputation {
 
   // The returned callers are in no particular order.
   absl::InlinedVector<HloInstruction*, 1> caller_instructions(
-      std::optional<HloOpcode> caller_opcode = std::nullopt) const {
-    if (const auto* map = GetCallersMap()) {
-      absl::InlinedVector<HloInstruction*, 1> result;
-      for (auto [instr, count] : *map) {
-        if (count == 0) {
-          continue;
-        }
-        if (caller_opcode == std::nullopt ||
-            instr->opcode() == *caller_opcode) {
-          result.push_back(instr);
-        }
-      }
-      return result;
-    }
-
-    if (callers_ == 0) {
-      return {};
-    }
-
-    auto* instr =
-        reinterpret_cast<HloInstruction*>(callers_ & ~kCallerTypeMask);
-    if (caller_opcode == std::nullopt || instr->opcode() == *caller_opcode) {
-      return {instr};
-    }
-
-    return {};
-  }
+      std::optional<HloOpcode> caller_opcode = std::nullopt) const;
 
   // Returns the only caller with the given opcode, if there is exactly one.
-  std::optional<HloInstruction*> GetUniqueCaller(HloOpcode opcode) const {
-    auto callers = caller_instructions(opcode);
-    if (callers.size() == 1) {
-      return callers.front();
-    }
-    return std::nullopt;
-  }
+  std::optional<HloInstruction*> GetUniqueCaller(HloOpcode opcode) const;
 
   void ClearCalledComputations();
 
@@ -1068,12 +1003,6 @@ class HloComputation {
 
  private:
   friend class HloModule;
-
-  enum class CallersType : uint8_t {
-    kHloInstruction = 0,
-    kCallerCountHashMap = 1,
-  };
-  static constexpr uintptr_t kCallerTypeMask = 0b1;
 
   explicit HloComputation(
       const std::string& name, int parameter_count,
@@ -1143,9 +1072,11 @@ class HloComputation {
   void AddCallee(HloInstruction* caller, HloComputation* callee);
   void RemoveCallee(HloInstruction* caller, HloComputation* callee);
 
-  // Returns nullptr if `callers_` is not a map.
+  // Returns the map of calling instructions to their call counts (the number
+  // of times each instruction invokes this computation), or nullptr if
+  // `callers_` is empty or stores a single caller inline without a map.
   absl::flat_hash_map<HloInstruction*, int>* GetCallersMap();
-  absl::flat_hash_map<HloInstruction*, int>* const GetCallersMap() const;
+  const absl::flat_hash_map<HloInstruction*, int>* GetCallersMap() const;
 
   // Unique ID of this computation.
   // This is set to -1 if the computation is not in a module. Should only be
@@ -1273,56 +1204,15 @@ class HloComputation {
   HloComputation& operator=(const HloComputation&) = delete;
 };
 
-template <typename HloInstructionPtr>
-absl::Status HloComputation::Accept(
-    DfsHloVisitorBase<HloInstructionPtr>* visitor) const {
-  // Visit unreachable roots. Beware that the visitor might delete the currently
-  // visited root, which would invalidate iterators if the unreachable roots
-  // weren't computed ahead of time.
-  for (HloInstruction* root : CollectUnreachableRoots()) {
-    VLOG(3) << "Traversing unreachable root: " << root->ToString();
-    // Call FinishVisit only at the end.
-    ABSL_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
-  }
-  // Visit the computation root instruction last.
-  return root_instruction()->Accept(visitor, /*call_finish_visit=*/true);
-}
+extern template absl::Status HloComputation::Accept(
+    DfsHloVisitor* visitor) const;
+extern template absl::Status HloComputation::Accept(
+    ConstDfsHloVisitor* visitor) const;
 
-// Explicit instantiations.
-template absl::Status HloComputation::Accept(DfsHloVisitor* visitor) const;
-template absl::Status HloComputation::Accept(ConstDfsHloVisitor* visitor) const;
-
-template <typename HloInstructionPtr>
-absl::Status HloComputation::AcceptOrdered(
-    DfsHloVisitorBase<HloInstructionPtr>* visitor,
-    absl::Span<HloInstruction* const> order) const {
-  VLOG(3) << "Accepting visitor with order.";
-  for (HloInstruction* root : CollectUnreachableRoots()) {
-    TF_RET_CHECK(absl::c_linear_search(order, root)) << root->ToString();
-  }
-  TF_RET_CHECK(order.size() == instruction_count());
-  absl::flat_hash_set<const HloInstruction*> visited;
-  for (const HloInstruction* instruction : order) {
-    VLOG(3) << "Visiting ordered: " << instruction->ToString();
-    TF_RET_CHECK(!visited.contains(instruction))
-        << "Instruction " << instruction->name()
-        << " appears more than once in order";
-    HloInstruction* mutable_instruction =
-        const_cast<HloInstruction*>(instruction);
-    ABSL_RETURN_IF_ERROR(visitor->Preprocess(mutable_instruction));
-    ABSL_RETURN_IF_ERROR(mutable_instruction->Visit(visitor));
-    visitor->SetVisited(*mutable_instruction);
-    ABSL_RETURN_IF_ERROR(visitor->Postprocess(mutable_instruction));
-    visited.insert(instruction);
-  }
-  return visitor->FinishVisit(root_instruction());
-}
-
-// Explicit instantiations.
-template absl::Status HloComputation::AcceptOrdered(
-    DfsHloVisitor*, absl::Span<HloInstruction* const>) const;
-template absl::Status HloComputation::AcceptOrdered(
-    ConstDfsHloVisitor*, absl::Span<HloInstruction* const>) const;
+extern template absl::Status HloComputation::AcceptOrdered(
+    DfsHloVisitor* visitor, absl::Span<HloInstruction* const> order) const;
+extern template absl::Status HloComputation::AcceptOrdered(
+    ConstDfsHloVisitor* visitor, absl::Span<HloInstruction* const> order) const;
 
 }  // namespace xla
 

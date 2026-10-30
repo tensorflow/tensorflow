@@ -142,7 +142,6 @@ class CpuOptProvider : public CompiledOptProvider {
         /*propagate_metadata=*/false,
         module_config.allow_spmd_sharding_propagation_to_output(),
         module_config.allow_spmd_sharding_propagation_to_parameters(),
-        /*cse_prevention_only=*/false,
         /*sharding_helper=*/nullptr);
 
     RegisterPass<spmd::StatefulRngSpmdPartitioner>(

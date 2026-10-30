@@ -243,7 +243,7 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
   void MaybeRegisterUpdatedChildAnnotations(CUgraph child_graph);
   // On CUDA 13.2-13.3, projects exec-graph keys.
   void MaybeFinalizeGraphTelemetry();
-  // Tracks `graph_` once with `kNewGraph` and caches the result.
+  // Tracks `graph_` once and caches the result.
   std::optional<command_buffer_telemetry::TrackedGraph>
   TrackOwnGraphForTelemetry();
 

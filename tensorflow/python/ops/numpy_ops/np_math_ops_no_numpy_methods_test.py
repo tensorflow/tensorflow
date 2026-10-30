@@ -149,6 +149,19 @@ class MathWithoutNumpyMethodsOnTensorTest(test.TestCase):
           err_msg='logaddexp2({}, {})'.format(x1, x2),
       )
 
+  def testComplexPartsOfBool(self):
+    # `isreal` and `iscomplex` compared the imaginary part of a bool array
+    # against 0, which only works once numpy methods are on `Tensor`.
+    x = np.array([True, False])
+    for arg in (x, x.tolist(), ops.convert_to_tensor(x)):
+      np.testing.assert_array_equal(np_math_ops.isreal(arg), np.isreal(x))
+      np.testing.assert_array_equal(np_math_ops.iscomplex(arg), np.iscomplex(x))
+      # Like the other real dtypes, bool is returned unchanged.
+      for fn in (np_math_ops.conj, np_math_ops.conjugate):
+        actual = np.asarray(fn(arg))
+        self.assertEqual(actual.dtype, np.bool_)
+        np.testing.assert_array_equal(actual, x)
+
   def testFloatInputsAreUnchanged(self):
     arg = np.array([1.5, 2.5, 3.5], dtype=np.float32)
     for name, tf_fun, np_fun in _PROMOTING_UNARY_OPS:

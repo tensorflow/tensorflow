@@ -41,12 +41,10 @@ limitations under the License.
 // that can run the nodes.
 namespace stream_executor::gpu::command_buffer_telemetry {
 
-// A graph tracked in `CudaGraphAnnotationRegistry::Default()`, with the
-// token that its registrations must present and its KeySpace.
+// A graph tracked in `CudaGraphAnnotationRegistry::Default()`, with its
+// KeySpace.
 struct TrackedGraph {
   uint32_t graph_id = 0;
-  CudaGraphAnnotationRegistry::Token token =
-      CudaGraphAnnotationRegistry::kInvalidToken;
   CudaGraphAnnotationRegistry::KeySpace space =
       CudaGraphAnnotationRegistry::KeySpace::kTemplateGraph;
 };
@@ -77,7 +75,6 @@ void ForEachSubgraphPair(
 // attach_to. On attach failure, untracks and returns nullopt.
 std::optional<TrackedGraph> TrackAndAttach(
     uint32_t graph_id, CUgraph attach_to,
-    CudaGraphAnnotationRegistry::TrackMode mode,
     CudaGraphAnnotationRegistry::KeySpace space =
         CudaGraphAnnotationRegistry::KeySpace::kTemplateGraph);
 
@@ -88,11 +85,10 @@ void RegisterNode(const TrackedGraph& graph, CUgraphNode node,
 
 // Registers every node of `graph` (recursing into subgraphs) using `fallback`
 // or a copy from `original`. Relies on `cuGraphGetNodes` returning nodes of a
-// cloned graph in the same order as its original's. `kGetOrCreate` skips
-// subgraphs that are tracked already.
+// cloned graph in the same order as its original's. Skips subgraphs that are
+// tracked already.
 void RegisterGraphNodes(CUgraph graph, const TrackedGraph& tracked,
-                        CUgraph original, absl::string_view fallback,
-                        CudaGraphAnnotationRegistry::TrackMode child_mode);
+                        CUgraph original, absl::string_view fallback);
 
 }  // namespace stream_executor::gpu::command_buffer_telemetry
 

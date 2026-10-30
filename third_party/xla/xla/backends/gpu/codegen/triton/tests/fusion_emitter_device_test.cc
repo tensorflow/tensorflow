@@ -2825,6 +2825,50 @@ CHECK-NOT: ld.global{{(\.nc)?(\.v2)?}}.b{{(16|32)}}
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
+
+TEST_F(ScanTritonEmitterTest, LoopedScanWithEpilogueScalarBroadcastAndIota) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = f32[4]{0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  add = f32[4]{0} add(p0, p1)
+  ROOT tuple = (f32[4]{0}, f32[4]{0}) tuple(add, add)
+}
+
+scan_fusion {
+  data = f32[4,8192]{1,0} parameter(0)
+  init = f32[4]{0} parameter(1)
+  scan = (f32[4,8192]{1,0}, f32[4]{0}) scan(data, init), dimensions={1}, num_carries=1,
+    is_associative=true, to_apply=add_computation
+  cumsum = f32[4,8192]{1,0} get-tuple-element(scan), index=0
+
+  threshold = f32[] parameter(2)
+  bcast_threshold = f32[4,8192]{1,0} broadcast(threshold), dimensions={}
+  cmp = pred[4,8192]{1,0} compare(cumsum, bcast_threshold), direction=LE
+
+  iota = s32[4,8192]{1,0} iota(), iota_dimension=1
+  c_zero_s32 = s32[] constant(0)
+  bcast_zero_s32 = s32[4,8192]{1,0} broadcast(c_zero_s32), dimensions={}
+  iota_eq_0 = pred[4,8192]{1,0} compare(iota, bcast_zero_s32), direction=EQ
+
+  mask = pred[4,8192]{1,0} or(cmp, iota_eq_0)
+  c_zero = f32[] constant(0)
+  bcast_zero = f32[4,8192]{1,0} broadcast(c_zero), dimensions={}
+  ROOT result = f32[4,8192]{1,0} select(mask, cumsum, bcast_zero)
+}
+
+ENTRY entry_computation {
+  p0 = f32[4,8192]{1,0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  p2 = f32[] parameter(2)
+  ROOT fusion = f32[4,8192]{1,0} fusion(p0, p1, p2), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["1"]}],
+        "sequential_tile_sizes":["1024"],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3});
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -49,6 +49,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
       }
       entries {
         instruction {
+          opcode: "power"
+          shape { element_type: S8 }
+        }
+        clock_cycles: 218
+      }
+      entries {
+        instruction {
           opcode: "popcnt"
           shape { element_type: S16 }
         }
@@ -70,6 +77,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
       }
       entries {
         instruction {
+          opcode: "power"
+          shape { element_type: S16 }
+        }
+        clock_cycles: 218
+      }
+      entries {
+        instruction {
           opcode: "popcnt"
           shape { element_type: S32 }
         }
@@ -88,6 +102,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
           shape { element_type: S32 }
         }
         clock_cycles: 4
+      }
+      entries {
+        instruction {
+          opcode: "power"
+          shape { element_type: S32 }
+        }
+        clock_cycles: 150
       }
       entries {
         instruction {
@@ -119,6 +140,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
       }
       entries {
         instruction {
+          opcode: "power"
+          shape { element_type: S64 }
+        }
+        clock_cycles: 436
+      }
+      entries {
+        instruction {
           opcode: "subtract"
           shape { element_type: S64 }
         }
@@ -147,6 +175,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
       }
       entries {
         instruction {
+          opcode: "power"
+          shape { element_type: U8 }
+        }
+        clock_cycles: 223
+      }
+      entries {
+        instruction {
           opcode: "popcnt"
           shape { element_type: U16 }
         }
@@ -168,6 +203,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
       }
       entries {
         instruction {
+          opcode: "power"
+          shape { element_type: U16 }
+        }
+        clock_cycles: 218
+      }
+      entries {
+        instruction {
           opcode: "popcnt"
           shape { element_type: U32 }
         }
@@ -186,6 +228,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
           shape { element_type: U32 }
         }
         clock_cycles: 4
+      }
+      entries {
+        instruction {
+          opcode: "power"
+          shape { element_type: U32 }
+        }
+        clock_cycles: 150
       }
       entries {
         instruction {
@@ -214,6 +263,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
           shape { element_type: U64 }
         }
         clock_cycles: 9
+      }
+      entries {
+        instruction {
+          opcode: "power"
+          shape { element_type: U64 }
+        }
+        clock_cycles: 431
       }
       entries {
         instruction {
@@ -357,6 +413,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
       }
       entries {
         instruction {
+          opcode: "power"
+          shape { element_type: F16 }
+        }
+        clock_cycles: 664
+      }
+      entries {
+        instruction {
           opcode: "subtract"
           shape { element_type: F16 }
         }
@@ -494,6 +557,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
           shape { element_type: F32 }
         }
         clock_cycles: 4
+      }
+      entries {
+        instruction {
+          opcode: "power"
+          shape { element_type: F32 }
+        }
+        clock_cycles: 669
       }
       entries {
         instruction {
@@ -637,6 +707,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
       }
       entries {
         instruction {
+          opcode: "power"
+          shape { element_type: F64 }
+        }
+        clock_cycles: 2550
+      }
+      entries {
+        instruction {
           opcode: "subtract"
           shape { element_type: F64 }
         }
@@ -749,6 +826,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
       }
       entries {
         instruction {
+          opcode: "power"
+          shape { element_type: C64 }
+        }
+        clock_cycles: 5972
+      }
+      entries {
+        instruction {
           opcode: "subtract"
           shape { element_type: C64 }
         }
@@ -858,6 +942,13 @@ inline constexpr char kDeviceHloOpProfiles[] = R"pb(
           shape { element_type: C128 }
         }
         clock_cycles: 106
+      }
+      entries {
+        instruction {
+          opcode: "power"
+          shape { element_type: C128 }
+        }
+        clock_cycles: 9744
       }
       entries {
         instruction {

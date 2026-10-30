@@ -53,7 +53,7 @@ TFLite on GPU supports the following ops in 16-bit and 32-bit float precision:
 
 **Note:** Following section describes the example usage for Android GPU delegate
 with C++. For other languages and platforms, please see
-[the documentation](https://www.tensorflow.org/lite/performance/gpu).
+[the documentation](https://developers.google.com/edge/litert/performance/gpu).
 
 Using TFLite on GPU is as simple as getting the GPU delegate via
 `TfLiteGpuDelegateV2Create()` and then passing it to
@@ -160,7 +160,7 @@ performs FP16 calculation internally, and set `wait_type` to
   that 4-channel input is significantly faster as a memory copy (from 3-channel
   RGB to 4-channel RGBX) can be avoided.
 
-* For performance [best practices](https://www.tensorflow.org/lite/performance/best_practices), do not hesitate to re-train your classifier with
+* For performance [best practices](https://developers.google.com/edge/litert/conversion/tensorflow/build/best_practices), do not hesitate to re-train your classifier with
   mobile-optimized network architecture.  That is a significant part of
   optimization for on-device inference.
 
