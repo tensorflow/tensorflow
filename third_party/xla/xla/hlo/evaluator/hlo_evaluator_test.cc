@@ -6576,6 +6576,45 @@ ENTRY main {
   EXPECT_EQ(actual.GetFirstElement<int32_t>(), static_cast<int32_t>(3));
 }
 
+// An out-of-contract size operand of set-dimension-size must not crash the
+// evaluator; it is clamped to [0, bound].
+constexpr absl::string_view kSetDimensionSizeHlo = R"(
+HloModule Test
+
+ENTRY main {
+  data = s32[4] parameter(0)
+  size = s32[] parameter(1)
+  ROOT sds = s32[<=4] set-dimension-size(data, size), dimensions={0}
+}
+)";
+
+TEST_F(HloEvaluatorTest, SetDimensionSizeClampsOversizedSize) {
+  TF_ASSERT_OK_AND_ASSIGN(m_,
+                          ParseAndReturnVerifiedModule(kSetDimensionSizeHlo));
+  Literal data_arg = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal size_arg = LiteralUtil::CreateR0<int32_t>(1851888704);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&data_arg, &size_arg}));
+  EXPECT_EQ(result.GetDynamicSize(0), 4);
+}
+
+TEST_F(HloEvaluatorTest, SetDimensionSizeClampsNegativeSize) {
+  TF_ASSERT_OK_AND_ASSIGN(m_,
+                          ParseAndReturnVerifiedModule(kSetDimensionSizeHlo));
+  Literal data_arg = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal size_arg = LiteralUtil::CreateR0<int32_t>(-3);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&data_arg, &size_arg}));
+  EXPECT_EQ(result.GetDynamicSize(0), 0);
+}
+
+TEST_F(HloEvaluatorTest, SetDimensionSizeKeepsSizeEqualToBound) {
+  TF_ASSERT_OK_AND_ASSIGN(m_,
+                          ParseAndReturnVerifiedModule(kSetDimensionSizeHlo));
+  Literal data_arg = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal size_arg = LiteralUtil::CreateR0<int32_t>(4);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&data_arg, &size_arg}));
+  EXPECT_EQ(result.GetDynamicSize(0), 4);
+}
+
 // Check that we get a useful error if we pass inputs of the wrong shape.
 TEST_F(HloEvaluatorTest, EvaluateWithWrongInputShapes) {
   const absl::string_view hlo_text = R"(
