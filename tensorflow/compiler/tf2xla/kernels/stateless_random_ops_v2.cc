@@ -113,34 +113,43 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     TensorShape shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
                             0, &shape, xla::ValueInferenceMode::kUpperBound));
+
+    xla::XlaOp key = ctx->Input(kRandomKeyInputIdx);
+    xla::XlaOp counter = ctx->Input(kRandomCounterInputIdx);
+
     OP_REQUIRES_VALUE(
         auto alg, ctx,
         AlgorithmFromInput(ctx, kRandomAlgInputIdx, device_type_string_));
+
+    auto counter_shape = ctx->InputShape(kRandomCounterInputIdx);
+    OP_REQUIRES_OK(ctx,
+                   CheckKeyCounterShape(xla::GetCounterSize(alg),
+                                        ctx->InputShape(kRandomKeyInputIdx),
+                                        counter_shape));
+
+    using std::placeholders::_1;
+    using std::placeholders::_2;
+    using std::placeholders::_3;
+    auto generator = std::bind(BitGenerator, alg, _1, _2, _3);
+    counter = MaybeSliceCounter(alg, counter_shape, counter);
     xla::XlaOp uniform;
     if (alg == xla::RandomAlgorithm::RNG_PHILOX) {
       // Build the values from the Philox bits like the TF kernel does.
-      xla::XlaOp key = ctx->Input(kRandomKeyInputIdx);
-      xla::XlaOp counter = ctx->Input(kRandomCounterInputIdx);
-      auto counter_shape = ctx->InputShape(kRandomCounterInputIdx);
-      OP_REQUIRES_OK(ctx,
-                     CheckKeyCounterShape(xla::GetCounterSize(alg),
-                                          ctx->InputShape(kRandomKeyInputIdx),
-                                          counter_shape));
-      counter = MaybeSliceCounter(alg, counter_shape, counter);
       xla::Shape xla_shape;
       OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
-      using std::placeholders::_1;
-      using std::placeholders::_2;
-      using std::placeholders::_3;
-      uniform = EagerCompatibleUniformDistribution(
-                    key, counter, std::bind(BitGenerator, alg, _1, _2, _3),
-                    xla_shape)
-                    .value;
+      uniform =
+          EagerCompatibleUniformDistribution(key, counter, generator, xla_shape)
+              .value;
     } else {
-      absl::StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
-          ctx, dtype_, device_type_string_, shape, xla::Zero, xla::One);
-      OP_REQUIRES_OK(ctx, randoms_or.status());
-      uniform = MaybeConvertF32ToBF16(randoms_or.value(), dtype_);
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
+      xla::PrimitiveType rng_primitive_type = xla_shape.element_type();
+      xla::XlaBuilder* builder = ctx->builder();
+      auto result = xla::UniformFloatingPointDistribution(
+          key, counter, generator, xla::Zero(builder, rng_primitive_type),
+          xla::One(builder, rng_primitive_type), xla_shape);
+      uniform = MaybeConvertF32ToBF16(result.value, dtype_);
     }
 
     // If the input shape is constant, no need to set dimension sizes.

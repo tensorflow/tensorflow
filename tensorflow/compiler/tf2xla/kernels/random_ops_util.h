@@ -82,7 +82,8 @@ xla::RngOutput EagerCompatibleUniformDistribution(
 // do: each pair of consecutive values comes from two consecutive 32-bit words,
 // or four for double, and half and bfloat16 values are computed in float.
 // Given the key and counter of a TF kernel and a Philox bit generator, the
-// values match that kernel's up to the rounding of `sin`, `cos` and `log`.
+// values match that kernel's up to rounding in the `2 * pi * v` angle
+// multiply and in `sin`, `cos` and `log`.
 xla::RngOutput EagerCompatibleNormalDistribution(
     xla::XlaOp key, xla::XlaOp counter, xla::BitGeneratorTy bit_generator,
     const xla::Shape& shape);

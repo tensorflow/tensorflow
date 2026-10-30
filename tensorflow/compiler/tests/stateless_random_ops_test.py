@@ -228,37 +228,63 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           self.assertAllEqual(expected_key, actual_key)
           self.assertAllEqual(expected_counter, actual_counter)
 
-  @parameterized.named_parameters(
-      (f'_{op_name}_{dtype.name}', op, exact, dtype)  # pylint: disable=g-complex-comprehension
+  @parameterized.named_parameters(  # pylint: disable=g-complex-comprehension
+      (f'_{op_name}_{dtype.name}', op, exact, dtype)
       for dtype in _allowed_types()
       for op_name, op, exact in (
           ('uniform', stateless.stateless_random_uniform, True),
           ('normal', stateless.stateless_random_normal, False),
-          ('uniform_v1', gen_stateless_random_ops.stateless_random_uniform,
-           True),
-          ('normal_v1', gen_stateless_random_ops.stateless_random_normal,
-           False),
-      ))
+          (
+              'uniform_philox',
+              functools.partial(
+                  stateless.stateless_random_uniform, alg='philox'
+              ),
+              True,
+          ),
+          (
+              'normal_philox',
+              functools.partial(
+                  stateless.stateless_random_normal, alg='philox'
+              ),
+              False,
+          ),
+          (
+              'uniform_v1',
+              gen_stateless_random_ops.stateless_random_uniform,
+              True,
+          ),
+          (
+              'normal_v1',
+              gen_stateless_random_ops.stateless_random_normal,
+              False,
+          ),
+      )
+  )
   def testMatchesTfKernel(self, op, exact, dtype):
     if xla_device().device_type == 'TPU':
       self.skipTest('XLA uses Philox like the TF kernels only on CPU and GPU.')
-    shape = [3, 7]
     with self.session() as sess:
       seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
-      with ops.device('CPU'):
-        expected = op(shape, seed=seed_t, dtype=dtype)
-      with self.test_scope():
-        actual = op(shape, seed=seed_t, dtype=dtype)
-      for seed in ([1, 2], [0, 0], [-1, 7], [123456, -5]):
-        expected_value, actual_value = sess.run(
-            [expected, actual], {seed_t: seed})
-        if exact:
-          self.assertAllEqual(expected_value, actual_value)
-        else:
-          # Normal values go through sin, cos and log, which can round
-          # differently in XLA.
-          self.assertAllCloseAccordingToType(
-              expected_value, actual_value, float_rtol=1e-5, float_atol=1e-5)
+      for shape in ([], [0], [3, 7]):
+        with ops.device('CPU'):
+          expected = op(shape, seed=seed_t, dtype=dtype)
+        with self.test_scope():
+          actual = op(shape, seed=seed_t, dtype=dtype)
+        for seed in ([1, 2], [0, 0], [-1, 7], [123456, -5]):
+          expected_value, actual_value = sess.run(
+              [expected, actual], {seed_t: seed}
+          )
+          if exact:
+            self.assertAllEqual(expected_value, actual_value)
+          else:
+            # Normal values go through sin, cos and log, which can
+            # round differently in XLA.
+            self.assertAllCloseAccordingToType(
+                expected_value,
+                actual_value,
+                float_rtol=1e-5,
+                float_atol=1e-5,
+            )
 
   def testRandomUniformIsInRange(self):
     with self.session() as sess, self.test_scope():
