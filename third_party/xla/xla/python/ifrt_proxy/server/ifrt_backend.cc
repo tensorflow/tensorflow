@@ -715,6 +715,8 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
     case IfrtRequest::RequestCase::kCancelExecutionRequest:
       return tsl::Future<Response>(
           HandleCancelExecutionRequest(std::move(request)));
+    case IfrtRequest::RequestCase::kHashValuesRequest:
+      return HandleHashValuesRequest(std::move(request));
     default:
       LOG(ERROR) << "Got unimplemented request type: "
                  << request->DebugString();
@@ -2361,6 +2363,38 @@ IfrtBackend::HandleCancelExecutionRequest(
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
   ifrt_resp->mutable_cancel_execution_response();
   return ifrt_resp;
+}
+
+tsl::Future<BackendInterface::Response> IfrtBackend::HandleHashValuesRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const HashValuesRequest& hash_request = request->hash_values_request();
+  absl::StatusOr<xla::ifrt::Client::HashMode> hash_mode =
+      FromHashModeProto(hash_request.hash_mode());
+  if (!hash_mode.ok()) {
+    return tsl::Future<Response>(hash_mode.status());
+  }
+
+  std::vector<xla::ifrt::ValueRef> values;
+  values.reserve(hash_request.value_handles_size());
+  for (const uint64_t value_handle : hash_request.value_handles()) {
+    // TODO(b/261991179): Support other Value types.
+    absl::StatusOr<IfrtArrayRef> array = array_store_.Find(value_handle);
+    if (!array.ok()) {
+      return tsl::Future<Response>(array.status());
+    }
+    values.push_back(*std::move(array));
+  }
+
+  return client_->HashValues(values, *hash_mode)
+      .Map<BackendInterface::Response>(
+          [op_id = request->request_metadata().op_id()](
+              const std::vector<uint64_t>& hashes) {
+            Response ifrt_resp = NewIfrtResponse(op_id);
+            HashValuesResponse* hash_resp =
+                ifrt_resp->mutable_hash_values_response();
+            hash_resp->mutable_hashes()->Assign(hashes.begin(), hashes.end());
+            return ifrt_resp;
+          });
 }
 
 absl::StatusOr<std::shared_ptr<IfrtBackend::LoadedExecutableWithInfo>>

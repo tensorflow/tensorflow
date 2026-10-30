@@ -2274,6 +2274,32 @@ TEST_P(IfrtBackendHandlerTest, CancelExecutionWithoutFillStatusIsNoOp) {
   }
 }
 
+TEST_P(IfrtBackendHandlerTest, HashValues) {
+  constexpr uint64_t kHash0 = 100;
+  constexpr uint64_t kHash1 = 200;
+
+  auto array0 = tsl::MakeRef<MockArray>();
+  auto array1 = tsl::MakeRef<MockArray>();
+  ASSERT_OK_AND_ASSIGN(uint64_t handle0, MakeTestArray(array0));
+  ASSERT_OK_AND_ASSIGN(uint64_t handle1, MakeTestArray(array1));
+
+  EXPECT_CALL(*mock_client_, HashValues(ElementsAre(array0, array1),
+                                        xla::ifrt::Client::HashMode::kLogical))
+      .WillOnce(Return(tsl::Future<std::vector<uint64_t>>(
+          std::vector<uint64_t>{kHash0, kHash1})));
+
+  auto request = NewIfrtRequest(NewOpId());
+  HashValuesRequest* hash_request = request->mutable_hash_values_request();
+  hash_request->add_value_handles(handle0);
+  hash_request->add_value_handles(handle1);
+  hash_request->set_hash_mode(proto::HASH_MODE_LOGICAL);
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                       CallBackend(std::move(request)));
+  EXPECT_THAT(response->hash_values_response().hashes(),
+              ElementsAre(kHash0, kHash1));
+}
+
 INSTANTIATE_TEST_SUITE_P(
     IfrtBackendHandlerTestWithAllVersions, IfrtBackendHandlerTest,
     testing::Range(protocol_version::kServerMin,

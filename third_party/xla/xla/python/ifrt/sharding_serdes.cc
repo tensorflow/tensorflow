@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,8 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/index_domain.pb.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/rtti.h"
 #include "xla/python/ifrt/serdes.h"
@@ -198,6 +201,11 @@ class ConcreteShardingSerDes
       for (const Shape& shape : sharding.shard_shapes()) {
         *proto.add_shard_shapes() = shape.ToProto(version);
       }
+      if (sharding.index_domains().has_value()) {
+        for (const IndexDomain& index_domain : *sharding.index_domains()) {
+          *proto.add_index_domains() = index_domain.ToProto(version);
+        }
+      }
     } else {
       sharding.dynamic_shape().ToProto(*proto.mutable_dynamic_shape(), version);
       for (const DynamicShape& dynamic_shape :
@@ -244,9 +252,19 @@ class ConcreteShardingSerDes
         ABSL_ASSIGN_OR_RETURN(auto shard_shape, Shape::FromProto(shard_shape_proto));
         shard_shapes.push_back(std::move(shard_shape));
       }
+      std::optional<std::vector<IndexDomain>> index_domains;
+      if (!proto.index_domains().empty()) {
+        index_domains.emplace();
+        index_domains->reserve(proto.index_domains_size());
+        for (const auto& index_domain_proto : proto.index_domains()) {
+          ABSL_ASSIGN_OR_RETURN(auto index_domain,
+                           IndexDomain::FromProto(index_domain_proto));
+          index_domains->push_back(std::move(index_domain));
+        }
+      }
       return ConcreteSharding::Create(std::move(devices), memory_kind,
-                                      std::move(shape),
-                                      std::move(shard_shapes));
+                                      std::move(shape), std::move(shard_shapes),
+                                      std::move(index_domains));
     }
     if (!proto.has_dynamic_shape()) {
       return absl::InvalidArgumentError(

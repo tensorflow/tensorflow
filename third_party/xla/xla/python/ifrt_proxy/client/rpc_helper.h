@@ -178,6 +178,8 @@ class RpcHelper {
       std::unique_ptr<GetDefaultLayoutRequest> req);
   ResponseFuture<CancelExecutionResponse> CancelExecution(
       std::unique_ptr<CancelExecutionRequest> req);
+  ResponseFuture<HashValuesResponse> HashValues(
+      std::unique_ptr<HashValuesRequest> req);
 
   // Utility functions.
 
