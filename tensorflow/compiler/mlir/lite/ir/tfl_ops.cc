@@ -52,6 +52,7 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Threading.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -738,9 +739,151 @@ struct TensorFlowLiteDialectFoldInterface : public DialectFoldInterface {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// BlockwiseQuantType
+//===----------------------------------------------------------------------===//
+
+LogicalResult BlockwiseQuantType::verifyInvariants(
+    function_ref<InFlightDiagnostic()> emit_error, Type storage_type,
+    Type expressed_type, ArrayRef<int64_t> block_shape, ElementsAttr scales,
+    ElementsAttr zero_points) {
+  auto storage_int = mlir::dyn_cast_or_null<IntegerType>(storage_type);
+  if (!storage_int || storage_int.getWidth() < 2 ||
+      storage_int.getWidth() > 32) {
+    return emit_error() << "expects an integer storage type of 2 to 32 bits, "
+                           "got "
+                        << storage_type;
+  }
+  if (!mlir::isa_and_nonnull<FloatType>(expressed_type)) {
+    return emit_error() << "expects a floating point expressed type, got "
+                        << expressed_type;
+  }
+  for (int64_t block_size : block_shape) {
+    if (block_size <= 0) {
+      return emit_error() << "expects a positive block_shape, got ["
+                          << block_shape << "]";
+    }
+  }
+
+  auto verify_params = [&](ElementsAttr params,
+                           StringRef name) -> LogicalResult {
+    auto type = mlir::dyn_cast<RankedTensorType>(params.getType());
+    if (!type || !type.hasStaticShape()) {
+      return emit_error() << "expects statically shaped " << name << ", got "
+                          << params.getType();
+    }
+    if (type.getRank() != static_cast<int64_t>(block_shape.size())) {
+      return emit_error() << "expects " << name << " of rank "
+                          << block_shape.size() << " to match block_shape, got "
+                          << type;
+    }
+    return success();
+  };
+
+  if (!scales) return emit_error() << "expects scales";
+  if (failed(verify_params(scales, "scales"))) return failure();
+  if (!mlir::isa<FloatType>(scales.getElementType())) {
+    return emit_error() << "expects floating point scales, got "
+                        << scales.getType();
+  }
+  if (zero_points) {
+    if (failed(verify_params(zero_points, "zero_points"))) return failure();
+    if (!mlir::isa<IntegerType, FloatType>(zero_points.getElementType())) {
+      return emit_error() << "expects integer or floating point zero_points, "
+                             "got "
+                          << zero_points.getType();
+    }
+  }
+  return success();
+}
+
+LogicalResult BlockwiseQuantType::verifyForShape(
+    function_ref<InFlightDiagnostic()> emit_error,
+    ArrayRef<int64_t> shape) const {
+  ArrayRef<int64_t> block_shape = getBlockShape();
+  if (shape.size() != block_shape.size()) {
+    return emit_error() << "expects one block_shape entry per dimension of a "
+                           "tensor of rank "
+                        << shape.size() << ", got [" << block_shape << "]";
+  }
+  auto verify_grid = [&](ElementsAttr params, StringRef name) -> LogicalResult {
+    if (!params) return success();
+    ArrayRef<int64_t> params_shape = params.getShapedType().getShape();
+    for (auto [dim, dim_size] : llvm::enumerate(shape)) {
+      if (ShapedType::isDynamic(dim_size)) continue;
+      const int64_t num_blocks = llvm::divideCeil(dim_size, block_shape[dim]);
+      if (params_shape[dim] != 1 && params_shape[dim] != num_blocks) {
+        return emit_error()
+               << "expects " << name << " dimension " << dim << " to be 1 or "
+               << num_blocks << " (the number of blocks), got "
+               << params.getType();
+      }
+    }
+    return success();
+  };
+  if (failed(verify_grid(getScales(), "scales")) ||
+      failed(verify_grid(getZeroPoints(), "zero_points"))) {
+    return failure();
+  }
+  return success();
+}
+
+namespace {
+
+void PrintBlockwiseQuantType(BlockwiseQuantType type, DialectAsmPrinter& os) {
+  os << "blockwise_quant<" << type.getStorageType() << " -> "
+     << type.getExpressedType() << ", block_shape = [";
+  llvm::interleaveComma(type.getBlockShape(), os);
+  os << "], scales = " << type.getScales();
+  if (type.getZeroPoints()) {
+    os << ", zero_points = " << type.getZeroPoints();
+  }
+  os << ">";
+}
+
+Type ParseBlockwiseQuantType(MLIRContext* context, DialectAsmParser& parser) {
+  const llvm::SMLoc loc = parser.getCurrentLocation();
+  Type storage_type, expressed_type;
+  SmallVector<int64_t> block_shape;
+  ElementsAttr scales, zero_points;
+
+  auto parse_block_size = [&]() -> ParseResult {
+    int64_t block_size;
+    if (parser.parseInteger(block_size)) return failure();
+    block_shape.push_back(block_size);
+    return success();
+  };
+  if (parser.parseLess() || parser.parseType(storage_type) ||
+      parser.parseArrow() || parser.parseType(expressed_type) ||
+      parser.parseComma() || parser.parseKeyword("block_shape") ||
+      parser.parseEqual() ||
+      parser.parseCommaSeparatedList(AsmParser::Delimiter::Square,
+                                     parse_block_size) ||
+      parser.parseComma() || parser.parseKeyword("scales") ||
+      parser.parseEqual() || parser.parseAttribute(scales)) {
+    return nullptr;
+  }
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseKeyword("zero_points") || parser.parseEqual() ||
+        parser.parseAttribute(zero_points)) {
+      return nullptr;
+    }
+  }
+  if (parser.parseGreater()) return nullptr;
+  return BlockwiseQuantType::getChecked([&] { return parser.emitError(loc); },
+                                        context, storage_type, expressed_type,
+                                        block_shape, scales, zero_points);
+}
+
+}  // namespace
+
 void TFLDialect::printType(Type type, DialectAsmPrinter& os) const {
   if (mlir::isa<ControlType>(type)) {
     os << "control";
+    return;
+  }
+  if (auto blockwise_type = mlir::dyn_cast<BlockwiseQuantType>(type)) {
+    PrintBlockwiseQuantType(blockwise_type, os);
     return;
   }
   os << "<unknown TFL type>";
@@ -750,6 +893,9 @@ Type TFLDialect::parseType(DialectAsmParser& parser) const {
   StringRef data_type;
   if (parser.parseKeyword(&data_type)) return Type();
   if (data_type == "control") return ControlType::get(getContext());
+  if (data_type == "blockwise_quant") {
+    return ParseBlockwiseQuantType(getContext(), parser);
+  }
   parser.emitError(parser.getNameLoc()) << "unknown TFL type: " << data_type;
   return nullptr;
 }
@@ -765,7 +911,7 @@ void TFLDialect::initialize() {
       >();
   addInterfaces<TensorFlowLiteInlinerInterface,
                 TensorFlowLiteDialectFoldInterface>();
-  addTypes<ControlType>();
+  addTypes<ControlType, BlockwiseQuantType>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2215,6 +2361,46 @@ LogicalResult BlockwiseDequantizeOp::verify() {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DequantizeOp / QConstOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DequantizeOp::verify() {
+  auto input_type = mlir::dyn_cast<RankedTensorType>(getInput().getType());
+  if (!input_type) return success();
+  auto blockwise_type =
+      mlir::dyn_cast<BlockwiseQuantType>(input_type.getElementType());
+  if (!blockwise_type) return success();
+  return blockwise_type.verifyForShape([&] { return emitOpError(); },
+                                       input_type.getShape());
+}
+
+LogicalResult QConstOp::verify() {
+  auto output_type = mlir::dyn_cast<RankedTensorType>(getOutput().getType());
+  if (!output_type) return success();
+  auto blockwise_type =
+      mlir::dyn_cast<BlockwiseQuantType>(output_type.getElementType());
+  if (!blockwise_type) return success();
+
+  ShapedType value_type = getValue().getShapedType();
+  if (value_type.getShape() != output_type.getShape()) {
+    return emitOpError("expects the value to have the shape of qtype, got ")
+           << value_type << " and " << output_type;
+  }
+  auto value_int_type =
+      mlir::dyn_cast<IntegerType>(value_type.getElementType());
+  if (!value_int_type || value_int_type.getWidth() !=
+                             blockwise_type.getStorageTypeIntegralWidth()) {
+    return emitOpError(
+               "expects the value element type to match the storage "
+               "type of qtype (")
+           << blockwise_type.getStorageType() << "), got "
+           << value_type.getElementType();
+  }
+  return blockwise_type.verifyForShape([&] { return emitOpError(); },
+                                       output_type.getShape());
 }
 
 //===----------------------------------------------------------------------===//
