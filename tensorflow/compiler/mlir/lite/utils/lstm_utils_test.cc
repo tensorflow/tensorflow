@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -122,7 +124,8 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
 
   auto result = convert.RewriteFunc();
   EXPECT_FALSE(failed(result));
-  fused_lstm_func_.dump();
+  fused_lstm_func_.print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
+  llvm::errs() << "\n";
 
   // verify transpose
   EXPECT_EQ(
@@ -190,7 +193,9 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
 
   auto result = convert.RewriteFunc();
   EXPECT_FALSE(failed(result));
-  fused_lstm_func_cifg_.dump();
+  fused_lstm_func_cifg_.print(llvm::errs(),
+                              mlir::OpPrintingFlags().useLocalScope());
+  llvm::errs() << "\n";
 
   llvm::SmallVector<std::string, 2> attributes{kLstmCellSimple,
                                                kCoupleInputForgetGates};
@@ -217,7 +222,9 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
 
   auto result = convert.RewriteFunc();
   EXPECT_FALSE(failed(result));
-  fused_ln_lstm_func_.dump();
+  fused_ln_lstm_func_.print(llvm::errs(),
+                            mlir::OpPrintingFlags().useLocalScope());
+  llvm::errs() << "\n";
 
   EXPECT_EQ(
       fused_ln_lstm_func_->getAttrOfType<StringAttr>(kTFImplements).getValue(),

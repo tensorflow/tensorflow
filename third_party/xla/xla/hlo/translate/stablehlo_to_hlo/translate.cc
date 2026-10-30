@@ -17,12 +17,13 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
@@ -42,7 +43,8 @@ mlir::LogicalResult StablehloToHloTranslateFunction(mlir::ModuleOp module,
   mlir::PassManager pm(module->getContext());
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   if (failed(pm.run(module))) {
-    module->dump();
+    module->print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
+    llvm::errs() << "\n";
     return mlir::failure();
   }
 
@@ -61,7 +63,8 @@ mlir::LogicalResult StablehloToHloTextTranslateFunction(
   shlo_pass_opts.convert_xla_supported_stablehlo_ = false;
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(shlo_pass_opts));
   if (failed(pm.run(module))) {
-    module->dump();
+    module->print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
+    llvm::errs() << "\n";
     return mlir::failure();
   }
 

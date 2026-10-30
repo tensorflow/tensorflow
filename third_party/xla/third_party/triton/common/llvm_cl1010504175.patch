@@ -1,0 +1,43 @@
+Migrate MLIR dump() callers in WSDataPartition.cpp to print(llvm::errs())
+ahead of LLVM commit 4d787f35aaba (PR #233398 / r643334) for cl/1010504175.
+
+--- a/third_party/nvidia/hopper/lib/Transforms/WarpSpecialization/WSDataPartition.cpp
++++ b/third_party/nvidia/hopper/lib/Transforms/WarpSpecialization/WSDataPartition.cpp
+@@ -1,4 +1,6 @@
+ #include "Utility.h"
++#include "llvm/Support/raw_ostream.h"
++#include "mlir/IR/OperationSupport.h"
+ #include "mlir/Transforms/Passes.h"
+ #include "mlir/Transforms/RegionUtils.h"
+ #include "nvidia/hopper/include/Transforms/Passes.h"
+@@ -156,13 +158,15 @@
+       }
+       assert(opPartitionDims.contains(op) && "missing partition dim");
+       LDBG(" dim " << opPartitionDims.at(op) << " " << operand);
+-      op->dump();
++      op->print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
++      llvm::errs() << "\n";
+     }
+     LDBG("\n");
+     if (!rematerializedOps.empty()) {
+       LDBG(" ops to rematerialize\n");
+       for (auto &op : rematerializedOps) {
+-        op.first->dump();
++        op.first->print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
++        llvm::errs() << "\n";
+         LDBG(" along dim ");
+         for (auto &dim : op.second) {
+           LDBG(dim << " ");
+@@ -173,8 +177,10 @@
+ 
+     if (!opsToSkip.empty()) {
+       LDBG(" ops to skip\n");
+-      for (auto &op : opsToSkip)
+-        op->dump();
++      for (auto& op : opsToSkip) {
++        op->print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
++        llvm::errs() << "\n";
++      }
+       LDBG("\n");
+     }
+
