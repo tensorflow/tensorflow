@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/spmd/shardy/constants.h"
 
 namespace xla {
@@ -39,6 +40,11 @@ bool IsShardyManualComputationCall(const HloModule* module,
   return absl::StrContains(callee_name, "shmap_body") ||
          absl::StrContains(callee_name, sdy::kManualComputationFuncName);
 }
+
+const HloPassFactory* const kEraseXlaLateFrontendAttributesRegistration =
+    RegisterHloPassFactory<
+        DefaultHloPassFactory<EraseXlaLateFrontendAttributes>>(
+        "erase-xla-late-frontend-attributes");
 
 }  // namespace
 
