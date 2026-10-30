@@ -2213,7 +2213,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           gpu_target_config.device_description, ShapeSizeBytesFunction(),
           alias_info, mlir_context,
           /*only_fuse_if_profitable=*/true, thread_pool, &mlir_context_pool_);
-      if (debug_options.xla_gpu_experimental_enable_triton_scan()) {
+      if (debug_options.xla_gpu_experimental_enable_triton_scan() &&
+          gpu_version.cuda_compute_capability() != nullptr) {
         pipeline.AddPass<ScanRewriterTriton>(
             gpu_target_config.device_description);
       }
