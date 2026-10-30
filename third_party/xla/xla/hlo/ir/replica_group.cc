@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <typeinfo>
 #include <utility>
 #include <vector>
 
@@ -42,6 +43,16 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+bool operator==(const CollectiveDeviceListBase& lhs,
+                const CollectiveDeviceListBase& rhs) {
+  if (typeid(lhs) != typeid(rhs)) {
+    return false;
+  }
+  // If types are the same, delegate to the derived implementation.
+  return lhs.isEqual(rhs);
+}
+
 namespace {
 // Generates new unique mesh axis names by splitting sub-axes and appending
 // suffixes to resolve naming conflicts.
