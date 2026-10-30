@@ -132,21 +132,6 @@ absl::StatusOr<bool> GpuAlgebraicSimplifier::RunImpl(
   return changed;
 }
 
-AlgebraicSimplifierOptions GpuAlgebraicSimplifierBaseOptions() {
-  AlgebraicSimplifierOptions opts;
-  opts.set_enable_dot_strength_reduction(false);
-  // On GPU it helps to reorder them so that the fused cuDNN kernel can be
-  // used.
-  opts.set_enable_conv_add_multiply_reorder(true);
-  // GPU only supports canonical convolutions.
-  opts.set_supports_non_canonical_dots(false);
-  opts.set_enable_unconditional_reduce_of_concat_replacement(false);
-  opts.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
-  opts.set_enable_conditional_simplification(true);
-  opts.set_enable_fold_transpose_into_scatter(true);
-  return opts;
-}
-
 namespace {
 
 class GpuAlgebraicSimplifierFactory : public HloPassFactory {
@@ -159,8 +144,7 @@ class GpuAlgebraicSimplifierFactory : public HloPassFactory {
     ABSL_ASSIGN_OR_RETURN(const se::DeviceDescription& device_description,
                      context.Get<const se::DeviceDescription>());
     return std::make_unique<GpuAlgebraicSimplifier>(
-        AlgebraicSimplifierOptionsFromHloPassOptions(
-            options, GpuAlgebraicSimplifierBaseOptions()),
+        AlgebraicSimplifierOptionsFromHloPassOptions(options),
         device_description.gpu_compute_capability());
   }
 };

@@ -86,10 +86,6 @@ class GpuAlgebraicSimplifier : public AlgebraicSimplifier {
   se::GpuComputeCapability compute_capability_;
 };
 
-// Returns the options shared by every GpuAlgebraicSimplifier invocation.
-// HloPassOptions of "gpu-algebraic-simplifier" are relative to these.
-AlgebraicSimplifierOptions GpuAlgebraicSimplifierBaseOptions();
-
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_TRANSFORMS_ALGEBRAIC_SIMPLIFIER_H_

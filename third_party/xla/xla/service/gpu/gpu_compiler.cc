@@ -1791,7 +1791,18 @@ bool GpuCompiler::IsScaledDotSupportedByBackend(
 AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
     AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
     bool is_non_cuda_platform) {
-  AlgebraicSimplifierOptions opts = GpuAlgebraicSimplifierBaseOptions();
+  AlgebraicSimplifierOptions opts;
+
+  opts.set_enable_dot_strength_reduction(false);
+  // On GPU it helps to reorder them so that the fused cuDNN kernel can be
+  // used.
+  opts.set_enable_conv_add_multiply_reorder(true);
+  // GPU only supports canonical convolutions.
+  opts.set_supports_non_canonical_dots(false);
+  opts.set_enable_unconditional_reduce_of_concat_replacement(false);
+  opts.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
+  opts.set_enable_conditional_simplification(true);
+  opts.set_enable_fold_transpose_into_scatter(true);
 
   if (!is_non_cuda_platform &&
       debug_options.xla_gpu_experimental_enable_conv_fusion()) {
