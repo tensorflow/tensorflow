@@ -64,6 +64,7 @@ try:
   _FRAMEWORK_PATH_PREFIXES.extend([
       os.path.join(package_path, "keras") + os.sep
       for package_path in site.getsitepackages() + [site.getusersitepackages()]
+      if package_path is not None
   ])
 except AttributeError:
   # if site.getsitepackages is not available somehow, we just use the "keras" as
