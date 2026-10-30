@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -35,7 +36,8 @@ DeviceAddressVmmAllocator::Create(
     std::optional<int64_t> gpu_system_memory_size,
     absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
     std::optional<int64_t> reclaim_exempt_memory_space,
-    std::unique_ptr<DeviceAddressAllocator> host_allocator) {
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors) {
   return absl::UnimplementedError(
       "VMM allocator is only supported with CUDA or ROCm.");
 }

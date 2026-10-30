@@ -48,9 +48,11 @@ namespace stream_executor::gpu {
 RocmDeviceAddressVmmAllocator::RocmDeviceAddressVmmAllocator(
     const Platform* platform,
     std::optional<int64_t> reclaim_exempt_memory_space,
-    std::unique_ptr<DeviceAddressAllocator> host_allocator)
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors)
     : DeviceAddressVmmAllocator(platform, reclaim_exempt_memory_space,
-                                std::move(host_allocator)) {}
+                                std::move(host_allocator),
+                                std::move(free_visitors)) {}
 
 RocmDeviceAddressVmmAllocator::~RocmDeviceAddressVmmAllocator() = default;
 
@@ -58,9 +60,11 @@ absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>>
 RocmDeviceAddressVmmAllocator::Create(
     const Platform* platform, absl::Span<const DeviceConfig> devices,
     std::optional<int64_t> reclaim_exempt_memory_space,
-    std::unique_ptr<DeviceAddressAllocator> host_allocator) {
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors) {
   auto allocator = absl::WrapUnique(new RocmDeviceAddressVmmAllocator(
-      platform, reclaim_exempt_memory_space, std::move(host_allocator)));
+      platform, reclaim_exempt_memory_space, std::move(host_allocator),
+      std::move(free_visitors)));
   ABSL_RETURN_IF_ERROR(PopulateDevices(allocator.get(), devices));
   return allocator;
 }
@@ -68,10 +72,12 @@ RocmDeviceAddressVmmAllocator::Create(
 absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>>
 RocmDeviceAddressVmmAllocator::Create(
     StreamExecutor* executor, Stream* stream, uint64_t pa_budget,
-    std::optional<int64_t> reclaim_exempt_memory_space) {
+    std::optional<int64_t> reclaim_exempt_memory_space,
+    std::vector<FreeVisitor> free_visitors) {
   return Create(executor->GetPlatform(),
                 {{DeviceConfig{executor, stream, pa_budget}}},
-                reclaim_exempt_memory_space);
+                reclaim_exempt_memory_space, /*host_allocator=*/nullptr,
+                std::move(free_visitors));
 }
 
 absl::StatusOr<std::unique_ptr<RocmDeviceAddressVmmAllocator>>
@@ -80,7 +86,8 @@ RocmDeviceAddressVmmAllocator::Create(
     std::optional<int64_t> gpu_system_memory_size,
     absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
     std::optional<int64_t> reclaim_exempt_memory_space,
-    std::unique_ptr<DeviceAddressAllocator> host_allocator) {
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors) {
   LOG(INFO) << "Using VMM (Virtual Memory Management) allocator for ROCm.";
   std::vector<DeviceConfig> device_configs;
   device_configs.reserve(devices.size());
@@ -103,7 +110,7 @@ RocmDeviceAddressVmmAllocator::Create(
     device_configs.push_back({executor, stream, pa_budget});
   }
   return Create(platform, device_configs, reclaim_exempt_memory_space,
-                std::move(host_allocator));
+                std::move(host_allocator), std::move(free_visitors));
 }
 
 absl::Status RocmDeviceAddressVmmAllocator::InitializeDeviceState(
