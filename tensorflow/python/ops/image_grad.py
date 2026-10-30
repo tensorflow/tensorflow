@@ -117,11 +117,14 @@ def _ResizeBilinearGrad(op: ops.Operation, grad):
   Returns:
     The gradients w.r.t. the input.
   """
-  grad0 = gen_image_ops.resize_bilinear_grad(
-      grad,
-      op.inputs[0],
-      align_corners=op.get_attr("align_corners"),
-      half_pixel_centers=op.get_attr("half_pixel_centers"))
+  image = op.inputs[0]
+  grad0 = None
+  if image.dtype.is_floating:
+    grad0 = gen_image_ops.resize_bilinear_grad(
+        grad,
+        image,
+        align_corners=op.get_attr("align_corners"),
+        half_pixel_centers=op.get_attr("half_pixel_centers"))
   return [grad0, None]
 
 
@@ -148,7 +151,7 @@ def _ScaleAndTranslateGrad(op, grad):
     # and double images. Run it in float32 and return the input's dtype.
     grad0 = gen_image_ops.scale_and_translate_grad(
         grad,
-        math_ops.cast(image, grad.dtype),
+        math_ops.cast(image, dtypes.float32),
         op.inputs[2],
         op.inputs[3],
         kernel_type=op.get_attr("kernel_type"),
