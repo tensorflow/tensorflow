@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "google/protobuf/map.h"
 #include "xla/hlo/pass/hlo_pipeline.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -72,6 +73,9 @@ class HloPassOptions {
       : options_(options.begin(), options.end()) {}
   // Option names must be unique.
   HloPassOptions(std::initializer_list<Option> options);
+  // Maps each set field of `message` to an option named after the field.
+  // CHECK-fails on set fields of unsupported field type.
+  explicit HloPassOptions(const tsl::protobuf::Message& message);
 
   // Non-copyable to avoid splitting `consumed_keys_`; can be enabled if needed.
   HloPassOptions(const HloPassOptions&) = delete;
@@ -91,6 +95,12 @@ class HloPassOptions {
 
   // Returns all options. Does not mark any option as consumed.
   ProtoMap ToProto() const;
+
+  // Inverse of `HloPassOptions(const tsl::protobuf::Message&)`: sets the bool
+  // and int64 fields of `message` that have a same-named, same-typed option,
+  // and marks those options as consumed. Leaves other options unconsumed for
+  // `CheckAllConsumed()`.
+  void MergeInto(tsl::protobuf::Message& message) const;
 
  private:
   absl::flat_hash_map<std::string, HloPassOptionValue> options_;

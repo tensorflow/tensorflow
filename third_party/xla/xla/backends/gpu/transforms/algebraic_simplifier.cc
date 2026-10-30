@@ -143,9 +143,10 @@ class GpuAlgebraicSimplifierFactory : public HloPassFactory {
       const HloPassOptions& options) const override {
     ABSL_ASSIGN_OR_RETURN(const se::DeviceDescription& device_description,
                      context.Get<const se::DeviceDescription>());
+    AlgebraicSimplifierOptions simplifier_options;
+    options.MergeInto(simplifier_options);
     return std::make_unique<GpuAlgebraicSimplifier>(
-        AlgebraicSimplifierOptionsFromHloPassOptions(options),
-        device_description.gpu_compute_capability());
+        simplifier_options, device_description.gpu_compute_capability());
   }
 };
 
