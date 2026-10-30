@@ -315,6 +315,22 @@ xla_test(
 )
 
 xla_test(
+    name = "cpu_sort_test",
+    srcs = ["cpu_sort_test.cc"],
+    backends = ["cpu"],
+    deps = [
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
     name = "cpu_profiling_test",
     srcs = ["cpu_profiling_test.cc"],
     backends = ["cpu"],
