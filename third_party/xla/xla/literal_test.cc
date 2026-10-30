@@ -26,6 +26,7 @@ limitations under the License.
 #include <random>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -3958,6 +3959,285 @@ TEST_F(LiteralUtilTest, MakeFakeLiteralIntegralBounds) {
 
   // Signed 8-bit with out-of-range bounds
   VerifyMakeFakeLiteralLimit<int8_t>({-500, 500}, -128, 127);
+}
+
+// Verifies that parallel population of N = 65537 elements (>= 2 * 16384)
+// produces the exact same sequence and final engine state as sequential inline
+// chunks in [16384, 32768).
+template <typename NativeT>
+void VerifyParallelMatchesInlineChunks(PrimitiveType type,
+                                       bool use_large_range) {
+  constexpr int64_t kTotalElements = 65537;
+  constexpr int64_t kChunkSizes[] = {16384, 16384, 16384, 16385};
+
+  std::minstd_rand0 parallel_engine(42);
+  Shape full_shape = ShapeUtil::MakeShape(type, {kTotalElements});
+  ASSERT_OK_AND_ASSIGN(
+      Literal parallel_lit,
+      MakeFakeLiteral(full_shape, &parallel_engine, /*limit=*/std::nullopt,
+                      /*is_sorted=*/false, /*no_duplicates=*/false,
+                      use_large_range, /*max_bits_of_precision=*/std::nullopt,
+                      /*index_alignment=*/std::nullopt,
+                      /*index_known_zeroes=*/std::nullopt,
+                      /*float_generator=*/nullptr));
+
+  std::minstd_rand0 sequential_engine(42);
+  absl::Span<const NativeT> parallel_data = parallel_lit.data<NativeT>();
+  int64_t offset = 0;
+  for (int64_t chunk_size : kChunkSizes) {
+    Shape chunk_shape = ShapeUtil::MakeShape(type, {chunk_size});
+    ASSERT_OK_AND_ASSIGN(
+        Literal chunk_lit,
+        MakeFakeLiteral(chunk_shape, &sequential_engine, /*limit=*/std::nullopt,
+                        /*is_sorted=*/false, /*no_duplicates=*/false,
+                        use_large_range, /*max_bits_of_precision=*/std::nullopt,
+                        /*index_alignment=*/std::nullopt,
+                        /*index_known_zeroes=*/std::nullopt,
+                        /*float_generator=*/nullptr));
+    absl::Span<const NativeT> chunk_data = chunk_lit.data<NativeT>();
+    for (int64_t i = 0; i < chunk_size; ++i) {
+      if constexpr (std::is_floating_point_v<NativeT>) {
+        if (std::isnan(parallel_data[offset + i])) {
+          ASSERT_TRUE(std::isnan(chunk_data[i]))
+              << "type=" << PrimitiveType_Name(type) << " idx=" << (offset + i);
+          continue;
+        }
+      }
+      ASSERT_EQ(parallel_data[offset + i], chunk_data[i])
+          << "type=" << PrimitiveType_Name(type)
+          << " large_range=" << use_large_range << " idx=" << (offset + i);
+    }
+    offset += chunk_size;
+  }
+  EXPECT_EQ(parallel_engine(), sequential_engine())
+      << "Final engine state mismatch for " << PrimitiveType_Name(type)
+      << " large_range=" << use_large_range;
+}
+
+template <typename ComplexT, typename ComponentT>
+void VerifyComplexParallelMatchesInlineChunks(PrimitiveType complex_type,
+                                              PrimitiveType component_type,
+                                              bool use_large_range) {
+  constexpr int64_t kTotalElements = 65537;
+  constexpr int64_t kChunkSizes[] = {16384, 16384, 16384, 16385};
+
+  std::minstd_rand0 parallel_engine(42);
+  Shape full_shape = ShapeUtil::MakeShape(complex_type, {kTotalElements});
+  ASSERT_OK_AND_ASSIGN(
+      Literal parallel_lit,
+      MakeFakeLiteral(full_shape, &parallel_engine, /*limit=*/std::nullopt,
+                      /*is_sorted=*/false, /*no_duplicates=*/false,
+                      use_large_range, /*max_bits_of_precision=*/std::nullopt));
+
+  // PopulateWithComplexData populates all N real elements first and then all N
+  // imaginary elements. Reconstruct both halves via inline chunks in
+  // [16384, 32768).
+  std::minstd_rand0 sequential_engine(42);
+  std::vector<ComponentT> expected_real;
+  std::vector<ComponentT> expected_imag;
+  expected_real.reserve(kTotalElements);
+  expected_imag.reserve(kTotalElements);
+  for (std::vector<ComponentT>* dst : {&expected_real, &expected_imag}) {
+    for (int64_t chunk_size : kChunkSizes) {
+      ASSERT_OK_AND_ASSIGN(
+          Literal chunk_lit,
+          MakeFakeLiteral(ShapeUtil::MakeShape(component_type, {chunk_size}),
+                          &sequential_engine, /*limit=*/std::nullopt,
+                          /*is_sorted=*/false, /*no_duplicates=*/false,
+                          use_large_range,
+                          /*max_bits_of_precision=*/std::nullopt));
+      absl::Span<const ComponentT> chunk_data = chunk_lit.data<ComponentT>();
+      dst->insert(dst->end(), chunk_data.begin(), chunk_data.end());
+    }
+  }
+
+  absl::Span<const ComplexT> parallel_data = parallel_lit.data<ComplexT>();
+  int64_t equal_real_imag_count = 0;
+  for (int64_t i = 0; i < kTotalElements; ++i) {
+    ASSERT_EQ(parallel_data[i], ComplexT(expected_real[i], expected_imag[i]))
+        << "type=" << PrimitiveType_Name(complex_type)
+        << " large_range=" << use_large_range << " idx=" << i;
+    if (parallel_data[i].real() == parallel_data[i].imag()) {
+      ++equal_real_imag_count;
+    }
+  }
+  EXPECT_LT(equal_real_imag_count, 16)
+      << "type=" << PrimitiveType_Name(complex_type)
+      << " large_range=" << use_large_range;
+  EXPECT_EQ(parallel_engine(), sequential_engine())
+      << "Final engine state mismatch for " << PrimitiveType_Name(complex_type)
+      << " large_range=" << use_large_range;
+}
+
+// Verifies that parallel partitioned population (triggered at >= 32,768
+// elements) produces the exact same values and final RNG state as sequential
+// single-partition chunks across all supported primitive types.
+TEST_F(LiteralUtilTest, MakeFakeLiteralParallelMatchesSequentialAcrossTypes) {
+  for (bool use_large_range : {false, true}) {
+    VerifyParallelMatchesInlineChunks<bool>(PRED, use_large_range);
+    VerifyParallelMatchesInlineChunks<s4>(S4, use_large_range);
+    VerifyParallelMatchesInlineChunks<u4>(U4, use_large_range);
+    VerifyParallelMatchesInlineChunks<int8_t>(S8, use_large_range);
+    VerifyParallelMatchesInlineChunks<uint8_t>(U8, use_large_range);
+    VerifyParallelMatchesInlineChunks<int16_t>(S16, use_large_range);
+    VerifyParallelMatchesInlineChunks<uint16_t>(U16, use_large_range);
+    VerifyParallelMatchesInlineChunks<int32_t>(S32, use_large_range);
+    VerifyParallelMatchesInlineChunks<uint32_t>(U32, use_large_range);
+    VerifyParallelMatchesInlineChunks<int64_t>(S64, use_large_range);
+    VerifyParallelMatchesInlineChunks<uint64_t>(U64, use_large_range);
+    VerifyParallelMatchesInlineChunks<tsl::float4_e2m1fn>(F4E2M1FN,
+                                                          use_large_range);
+    VerifyParallelMatchesInlineChunks<tsl::float8_e4m3fn>(F8E4M3FN,
+                                                          use_large_range);
+    VerifyParallelMatchesInlineChunks<tsl::float8_e5m2>(F8E5M2,
+                                                        use_large_range);
+    VerifyParallelMatchesInlineChunks<half>(F16, use_large_range);
+    VerifyParallelMatchesInlineChunks<bfloat16>(BF16, use_large_range);
+    VerifyParallelMatchesInlineChunks<float>(F32, use_large_range);
+    VerifyParallelMatchesInlineChunks<double>(F64, use_large_range);
+    VerifyComplexParallelMatchesInlineChunks<complex64, float>(C64, F32,
+                                                               use_large_range);
+    VerifyComplexParallelMatchesInlineChunks<complex128, double>(
+        C128, F64, use_large_range);
+  }
+}
+
+// Verifies that `S4` random generation samples all 16 valid 4-bit signed values
+// in `[-8, 7]`.
+TEST_F(LiteralUtilTest, MakeFakeLiteralSubByteS4CoversAllValues) {
+  constexpr int64_t kCount = 65536;
+  std::minstd_rand0 engine(1);
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal s4_lit,
+      MakeFakeLiteral(ShapeUtil::MakeShape(S4, {kCount}), &engine,
+                      /*limit=*/std::nullopt, /*is_sorted=*/false,
+                      /*no_duplicates=*/false, /*use_large_range=*/true,
+                      /*max_bits_of_precision=*/std::nullopt));
+  int s4_seen_mask = 0;
+  absl::Span<const s4> s4_data = s4_lit.data<s4>();
+  for (int64_t i = 0; i < s4_data.size(); ++i) {
+    const int iv = static_cast<int>(s4_data[i]);
+    ASSERT_GE(iv, -8) << "idx=" << i;
+    ASSERT_LE(iv, 7) << "idx=" << i;
+    s4_seen_mask |= (1 << (iv + 8));
+  }
+  EXPECT_EQ(s4_seen_mask, 0xFFFF);
+}
+
+// Verifies that `PRED` random generation produces a balanced distribution of
+// `true` and `false` values.
+TEST_F(LiteralUtilTest, MakeFakeLiteralPredIsBalanced) {
+  constexpr int64_t kCount = 65536;
+  std::minstd_rand0 engine(1);
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal pred_lit,
+      MakeFakeLiteral(ShapeUtil::MakeShape(PRED, {kCount}), &engine,
+                      /*limit=*/std::nullopt, /*is_sorted=*/false,
+                      /*no_duplicates=*/false, /*use_large_range=*/false,
+                      /*max_bits_of_precision=*/std::nullopt));
+  int64_t true_count = 0;
+  for (bool b : pred_lit.data<bool>()) {
+    true_count += b ? 1 : 0;
+  }
+  EXPECT_GT(true_count, 31000);
+  EXPECT_LT(true_count, 34536);
+}
+
+// Verifies that passing a layoutless shape to `MakeFakeLiteral` assigns the
+// default layout before allocating and populating the returned `Literal`.
+TEST_F(LiteralUtilTest, MakeFakeLiteralAssignsDefaultLayoutWhenLayoutless) {
+  constexpr int64_t kCount = 65536;
+  std::minstd_rand0 engine(1);
+
+  Shape layoutless = ShapeUtil::MakeShape(F32, {kCount});
+  LayoutUtil::ClearLayout(&layoutless);
+  ASSERT_OK_AND_ASSIGN(
+      Literal layoutless_lit,
+      MakeFakeLiteral(layoutless, &engine, /*limit=*/std::nullopt,
+                      /*is_sorted=*/false, /*no_duplicates=*/false,
+                      /*use_large_range=*/false,
+                      /*max_bits_of_precision=*/std::nullopt));
+  EXPECT_TRUE(layoutless_lit.shape().has_layout());
+}
+
+// Verifies that `ConstraintInterval` with `exclude_zero=true` never emits zero
+// after narrowing to `BF16` and matches single-partition chunks identically.
+TEST_F(LiteralUtilTest, MakeFakeLiteralExcludeZeroMatchesInlineChunks) {
+  constexpr int64_t kCount = 65536;
+
+  ConstraintInterval non_zero_interval(-1e-3, 1e-3, /*exclude_zero=*/true);
+  std::minstd_rand0 parallel_eng(7);
+  ASSERT_OK_AND_ASSIGN(
+      Literal bf16_full,
+      MakeFakeLiteral(ShapeUtil::MakeShape(BF16, {kCount}), &parallel_eng,
+                      /*limit=*/std::nullopt, /*is_sorted=*/false,
+                      /*no_duplicates=*/false, /*use_large_range=*/false,
+                      /*max_bits_of_precision=*/std::nullopt,
+                      /*index_alignment=*/std::nullopt,
+                      /*index_known_zeroes=*/std::nullopt,
+                      /*float_generator=*/nullptr, non_zero_interval));
+  bool saw_pos = false;
+  bool saw_neg = false;
+  absl::Span<const bfloat16> bf16_data = bf16_full.data<bfloat16>();
+  for (int64_t i = 0; i < bf16_data.size(); ++i) {
+    const float fv = static_cast<float>(bf16_data[i]);
+    ASSERT_NE(fv, 0.0f) << "idx=" << i;
+    saw_pos |= (fv > 0.0f);
+    saw_neg |= (fv < 0.0f);
+  }
+  EXPECT_TRUE(saw_pos);
+  EXPECT_TRUE(saw_neg);
+
+  std::minstd_rand0 seq_eng(7);
+  for (int c = 0; c < 4; ++c) {
+    ASSERT_OK_AND_ASSIGN(
+        Literal chunk,
+        MakeFakeLiteral(ShapeUtil::MakeShape(BF16, {16384}), &seq_eng,
+                        /*limit=*/std::nullopt, /*is_sorted=*/false,
+                        /*no_duplicates=*/false, /*use_large_range=*/false,
+                        /*max_bits_of_precision=*/std::nullopt,
+                        /*index_alignment=*/std::nullopt,
+                        /*index_known_zeroes=*/std::nullopt,
+                        /*float_generator=*/nullptr, non_zero_interval));
+    for (int i = 0; i < 16384; ++i) {
+      ASSERT_EQ(bf16_data[c * 16384 + i], chunk.data<bfloat16>()[i])
+          << "chunk=" << c << " idx=" << i;
+    }
+  }
+  EXPECT_EQ(parallel_eng(), seq_eng());
+}
+
+// Verifies that wide `F64` intervals such as `[-1e308, 1e308]` sample via the
+// overflow-safe convex interpolation `SampleUniformDouble(min_d, max_d)`
+// without producing `Inf` or collapsing to `high`.
+TEST_F(LiteralUtilTest, MakeFakeLiteralWideF64BoundsDoNotOverflow) {
+  constexpr int64_t kCount = 65536;
+
+  ConstraintInterval wide_f64_interval(-1e308, 1e308, /*exclude_zero=*/false);
+  std::minstd_rand0 f64_eng(13);
+  ASSERT_OK_AND_ASSIGN(
+      Literal f64_lit,
+      MakeFakeLiteral(ShapeUtil::MakeShape(F64, {kCount}), &f64_eng,
+                      /*limit=*/std::nullopt, /*is_sorted=*/false,
+                      /*no_duplicates=*/false, /*use_large_range=*/false,
+                      /*max_bits_of_precision=*/std::nullopt,
+                      /*index_alignment=*/std::nullopt,
+                      /*index_known_zeroes=*/std::nullopt,
+                      /*float_generator=*/nullptr, wide_f64_interval));
+  int64_t neg_count = 0;
+  int64_t clamped_max_count = 0;
+  absl::Span<const double> f64_data = f64_lit.data<double>();
+  for (int64_t i = 0; i < f64_data.size(); ++i) {
+    const double d = f64_data[i];
+    ASSERT_TRUE(std::isfinite(d)) << "idx=" << i;
+    neg_count += (d < 0.0) ? 1 : 0;
+    clamped_max_count += (d == 1e308) ? 1 : 0;
+  }
+  EXPECT_GT(neg_count, 30000);
+  EXPECT_LT(neg_count, 35536);
+  EXPECT_LT(clamped_max_count, 64);
 }
 
 }  // namespace

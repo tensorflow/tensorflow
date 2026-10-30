@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -50,7 +51,8 @@ absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForGpu(
     absl::Duration init_timeout);
 
 // Creates a PjRtClient which can run HLOs on Host CPU.
-absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient();
+absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient(
+    std::optional<int> cpu_device_count = std::nullopt);
 
 // Creates a PjRtClient which can run HLOs on GPU.
 absl::StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient(

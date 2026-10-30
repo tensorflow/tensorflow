@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/log/check.h"
@@ -104,8 +105,10 @@ absl::StatusOr<PjRtEnvironment> GetPjRtEnvironmentForGpu(
   return env;
 }
 
-absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient() {
+absl::StatusOr<std::unique_ptr<PjRtClient>> CreateHostClient(
+    std::optional<int> cpu_device_count) {
   xla::CpuClientOptions options;
+  options.cpu_device_count = cpu_device_count;
   return xla::GetXlaPjrtCpuClient(options);
 }
 
