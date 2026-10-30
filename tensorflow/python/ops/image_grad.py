@@ -141,17 +141,20 @@ def _ScaleAndTranslateGrad(op, grad):
   """
 
   image = op.inputs[0]
-  # ScaleAndTranslateGrad only has a float32 kernel and only reads the shape of
-  # the original image, while the forward op also accepts half, bfloat16 and
-  # double images. Run it in float32 and return the input's dtype.
-  grad0 = gen_image_ops.scale_and_translate_grad(
-      grad,
-      math_ops.cast(image, grad.dtype),
-      op.inputs[2],
-      op.inputs[3],
-      kernel_type=op.get_attr("kernel_type"),
-      antialias=op.get_attr("antialias"))
-  return [math_ops.cast(grad0, image.dtype), None, None, None]
+  grad0 = None
+  if image.dtype.is_floating:
+    # ScaleAndTranslateGrad only has a float32 kernel and only reads the shape
+    # of the original image, while the forward op also accepts half, bfloat16
+    # and double images. Run it in float32 and return the input's dtype.
+    grad0 = gen_image_ops.scale_and_translate_grad(
+        grad,
+        math_ops.cast(image, grad.dtype),
+        op.inputs[2],
+        op.inputs[3],
+        kernel_type=op.get_attr("kernel_type"),
+        antialias=op.get_attr("antialias"))
+    grad0 = math_ops.cast(grad0, image.dtype)
+  return [grad0, None, None, None]
 
 
 @ops.RegisterGradient("ResizeBicubic")
