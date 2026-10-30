@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/ffi.h"
@@ -1450,86 +1449,29 @@ TEST(FfiTest, DuplicateHandlerTraits) {
       << status.message() << "\n";
 }
 
-TEST(FfiTest, RegisterRecordHandlerImpliesCmdBufferCompatible) {
+TEST(FfiTest, DuplicateHandlerAddress) {
+  static constexpr auto* noop1 = +[] { return absl::OkStatus(); };
+  static constexpr auto* noop2 = +[] { return absl::OkStatus(); };
+  XLA_FFI_DEFINE_HANDLER(NoOp1, noop1, Ffi::Bind());
+  XLA_FFI_DEFINE_HANDLER(NoOp2, noop2, Ffi::Bind());
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-address", "Host", NoOp1);
+  auto status = TakeError(Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(), "duplicate-address", "Host", NoOp2));
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "Duplicate FFI handler registration"))
+      << "status.message():\n"
+      << status.message() << "\n";
+}
+
+TEST(FfiTest, AllowRegisterDuplicateWhenEqual) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
-  XLA_FFI_DEFINE_HANDLER(ExecuteNoOp, noop, Ffi::BindExecute());
-  XLA_FFI_DEFINE_HANDLER(RecordNoOp, noop, Ffi::BindRecord());
-
-  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "record-implies-cmd-buffer", "Host",
-                           XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr,
-                                                  ExecuteNoOp, RecordNoOp});
-
-  ASSERT_OK_AND_ASSIGN(auto registration,
-                       FindHandler("record-implies-cmd-buffer", "Host"));
-  EXPECT_EQ(registration.bundle.execute, ExecuteNoOp);
-  EXPECT_EQ(registration.bundle.record, RecordNoOp);
-  EXPECT_TRUE(IsCommandBufferCompatible(registration.metadata));
+  XLA_FFI_DEFINE_HANDLER(NoOp, noop, Ffi::Bind());
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "duplicate-when-equal", "Host",
+                           NoOp);
+  auto status = TakeError(Ffi::RegisterStaticHandler(
+      GetXlaFfiApi(), "duplicate-when-equal", "Host", NoOp));
+  TF_ASSERT_OK(status);
 }
-
-class FfiStageRegistrationTest
-    : public ::testing::TestWithParam<ExecutionStage> {
- protected:
-  static constexpr auto* kNoOp1 = +[] { return absl::OkStatus(); };
-  static constexpr auto* kNoOp2 = +[] { return absl::OkStatus(); };
-
-  static XLA_FFI_Handler_Bundle MakeBundle(ExecutionStage stage,
-                                           XLA_FFI_Handler* handler,
-                                           XLA_FFI_Handler* default_execute) {
-    return stage == ExecutionStage::kExecute
-               ? XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr, handler,
-                                        nullptr}
-               : XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr,
-                                        default_execute, handler};
-  }
-};
-
-TEST_P(FfiStageRegistrationTest, DuplicateAddressAndEquality) {
-  ExecutionStage stage = GetParam();
-  XLA_FFI_DEFINE_HANDLER(DefaultExecute, kNoOp1, Ffi::BindExecute());
-  XLA_FFI_DEFINE_HANDLER(Handler1, kNoOp1, Ffi::Bind());
-  XLA_FFI_DEFINE_HANDLER(Handler2, kNoOp2, Ffi::Bind());
-
-  std::string name = absl::StrCat("dup-addr-", static_cast<int>(stage));
-  XLA_FFI_Handler_Bundle b1 = MakeBundle(stage, Handler1, DefaultExecute);
-  XLA_FFI_Handler_Bundle b2 = MakeBundle(stage, Handler2, DefaultExecute);
-
-  ASSERT_OK(
-      TakeError(Ffi::RegisterStaticHandler(GetXlaFfiApi(), name, "Host", b1)));
-  EXPECT_OK(
-      TakeError(Ffi::RegisterStaticHandler(GetXlaFfiApi(), name, "Host", b1)));
-  EXPECT_THAT(
-      TakeError(Ffi::RegisterStaticHandler(GetXlaFfiApi(), name, "Host", b2)),
-      ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                               HasSubstr("with different bundle addresses")));
-}
-
-TEST_P(FfiStageRegistrationTest, IncompatibleApiVersion) {
-  ExecutionStage stage = GetParam();
-  XLA_FFI_DEFINE_HANDLER(DefaultExecute, kNoOp1, Ffi::BindExecute());
-
-  static constexpr XLA_FFI_Handler* kBadVersion =
-      +[](XLA_FFI_CallFrame* call_frame) -> XLA_FFI_Error* {
-    auto* ext = reinterpret_cast<XLA_FFI_Metadata_Extension*>(
-        call_frame->extension_start);
-    ext->metadata->api_version = XLA_FFI_Api_Version{
-        XLA_FFI_Api_Version_STRUCT_SIZE, nullptr, /*major=*/99, /*minor=*/0};
-    return nullptr;
-  };
-
-  std::string name = absl::StrCat("bad-ver-", static_cast<int>(stage));
-  XLA_FFI_Handler_Bundle bundle =
-      MakeBundle(stage, kBadVersion, DefaultExecute);
-
-  EXPECT_THAT(TakeError(Ffi::RegisterStaticHandler(GetXlaFfiApi(), name, "Host",
-                                                   bundle)),
-              ::absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("handler's API version (99.0) is incompatible")));
-}
-
-INSTANTIATE_TEST_SUITE_P(Stages, FfiStageRegistrationTest,
-                         ::testing::Values(ExecutionStage::kExecute,
-                                           ExecutionStage::kRecord));
 
 TEST(FfiTest, AsyncHandler) {
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "ffi-test", 2);
