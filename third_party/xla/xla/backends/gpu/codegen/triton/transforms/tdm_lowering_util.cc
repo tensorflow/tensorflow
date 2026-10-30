@@ -56,7 +56,7 @@ SmallVector<int64_t> GetSingletonTileDims(
                           ArrayRef<int64_t> tile_sizes,
                           ArrayRef<int64_t> tile_strides,
                           ArrayRef<int64_t> minor_to_major_layout,
-                          int64_t element_bit_width) {
+                          ValueRange tile_offsets, int64_t element_bit_width) {
   if (!allow_tdm) {
     return ::xla::Decision::Forbid("TDM is disabled.");
   }
@@ -96,6 +96,16 @@ SmallVector<int64_t> GetSingletonTileDims(
   if (tile_sizes[*minor_survivor] * element_bit_width < kMinPadIntervalBits) {
     return ::xla::Decision::Forbid(
         "surviving minor-most dim spans fewer than 2 dwords.");
+  }
+  // Singleton dims are folded into the base pointer and escape the hardware
+  // bounds check, so their offsets must be provably in bounds.
+  CHECK_EQ(tile_offsets.size(), tile_sizes.size());
+  for (auto [dim, size] : llvm::enumerate(tile_sizes)) {
+    if (size == 1 && !xtriton::IsGuaranteedInBounds(tile_offsets[dim], size,
+                                                    original_shape[dim])) {
+      return ::xla::Decision::Forbid(
+          "singleton tile dim offset is not provably in bounds.");
+    }
   }
   return ::xla::Decision::Allow();
 }
