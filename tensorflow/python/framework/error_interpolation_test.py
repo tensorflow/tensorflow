@@ -323,8 +323,8 @@ class IsFrameworkFilenameTest(test.TestCase):
     )
     module = importlib.util.module_from_spec(spec)
     with mock.patch.object(
-        site, "getsitepackages", return_value=["/site-packages"]
-    ), mock.patch.object(site, "getusersitepackages", return_value=None):
+        site, "getsitepackages", return_value=["/site-packages"], create=True
+    ), mock.patch.object(site, "getusersitepackages", return_value=None, create=True):
       spec.loader.exec_module(module)
     self.assertIn(
         os.path.join("/site-packages", "keras") + os.sep,
