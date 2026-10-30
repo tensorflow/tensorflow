@@ -633,13 +633,9 @@ TEST_F(CuptiTracerTest, WarnsWhenGraphTraceHidesNodeAnnotations) {
   // Recorded annotations, but node-level tracing.
   constexpr uint32_t kGraphId = 1;
   constexpr uint64_t kNodeId = 1001;
-  const CudaGraphAnnotationRegistry::Token token =
-      registry
-          .TrackGraph(kGraphId,
-                      CudaGraphAnnotationRegistry::TrackMode::kNewGraph)
-          .token;
+  ASSERT_TRUE(registry.TrackGraph(kGraphId));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kGraphId, token, kNodeId,
+      kGraphId, kNodeId,
       "XlaModule:#hlo_module=test_mod#::fusion.1:#hlo_op=fusion.1#"));
   ASSERT_OK(tracer.Enable(KernelTraceOptions(), cupti_collector_.get()));
   tracer.Disable();

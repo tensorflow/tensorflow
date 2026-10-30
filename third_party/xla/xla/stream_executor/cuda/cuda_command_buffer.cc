@@ -77,7 +77,6 @@ void HostCallbackTrampoline(void* user_data) {
 }
 
 using command_buffer_telemetry::TrackedGraph;
-using TrackMode = CudaGraphAnnotationRegistry::TrackMode;
 
 template <typename... Args>
 void LogAppend(std::string& out, const absl::FormatSpec<Args...>& format,
@@ -285,10 +284,8 @@ void CudaCommandBuffer::MaybeRegisterGraphAnnotations() {
     return;
   }
   if (std::optional<TrackedGraph> tracked = TrackOwnGraphForTelemetry()) {
-    // Child graphs of a graph that was just captured or populated are new too.
     command_buffer_telemetry::RegisterGraphNodes(
-        graph_, *tracked, /*original=*/nullptr, annotation,
-        TrackMode::kNewGraph);
+        graph_, *tracked, /*original=*/nullptr, annotation);
   }
 }
 
@@ -320,16 +317,15 @@ void CudaCommandBuffer::MaybeRegisterClonedChildAnnotations(
   // added before the first `Finalize`, so every executable graph containing the
   // clone is instantiated later and clones the cleanup's reference too.
   std::optional<TrackedGraph> tracked =
-      command_buffer_telemetry::TrackAndAttach(*embedded_id, embedded,
-                                               TrackMode::kNewGraph);
+      command_buffer_telemetry::TrackAndAttach(*embedded_id, embedded);
   if (!tracked.has_value()) {
     return;
   }
   // The only registration that copies from an original: each node in the
   // embedded clone is paired with its counterpart in `original` and copies the
   // precise annotation that the counterpart got when it was created.
-  command_buffer_telemetry::RegisterGraphNodes(
-      embedded, *tracked, original, annotation, TrackMode::kNewGraph);
+  command_buffer_telemetry::RegisterGraphNodes(embedded, *tracked, original,
+                                               annotation);
 }
 
 void CudaCommandBuffer::MaybeRegisterUpdatedChildAnnotations(
@@ -351,14 +347,12 @@ void CudaCommandBuffer::MaybeRegisterUpdatedChildAnnotations(
   // The graph may belong to someone else, so reuse its entry if it has one.
   // Registration is insert-if-absent: the current annotation only fills gaps.
   std::optional<TrackedGraph> tracked =
-      command_buffer_telemetry::TrackAndAttach(*graph_id, child_graph,
-                                               TrackMode::kGetOrCreate);
+      command_buffer_telemetry::TrackAndAttach(*graph_id, child_graph);
   if (!tracked.has_value()) {
     return;
   }
-  command_buffer_telemetry::RegisterGraphNodes(child_graph, *tracked,
-                                               /*original=*/nullptr, annotation,
-                                               TrackMode::kGetOrCreate);
+  command_buffer_telemetry::RegisterGraphNodes(
+      child_graph, *tracked, /*original=*/nullptr, annotation);
 }
 
 void CudaCommandBuffer::MaybeFinalizeGraphTelemetry() {
@@ -388,8 +382,8 @@ std::optional<TrackedGraph> CudaCommandBuffer::TrackOwnGraphForTelemetry() {
   }
   if (std::optional<uint32_t> graph_id =
           command_buffer_telemetry::GetGraphId(graph_)) {
-    telemetry_graph_ = command_buffer_telemetry::TrackAndAttach(
-        *graph_id, root->graph_, TrackMode::kNewGraph);
+    telemetry_graph_ =
+        command_buffer_telemetry::TrackAndAttach(*graph_id, root->graph_);
   }
   return telemetry_graph_;
 }
