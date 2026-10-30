@@ -689,5 +689,136 @@ class BatchOpsTest(test.TestCase):
               shared_name="",
               name=""))
 
+  def testUnbatchInvalidSliceBounds(self):
+    # Regression test for GitHub issue 65633: invalid slice bounds or
+    # cumulative sizes in batch_index caused fatal CHECK failures.
+    # Inverted slice range (end < start)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "Expected 0 <= start <= end"
+    ):
+      self.evaluate(
+          batch_ops.unbatch(
+              batched_tensor=constant_op.constant(
+                  [[1, 2], [3, 4]], dtype=dtypes.int32
+              ),
+              batch_index=constant_op.constant([[0, 2, 1]], dtype=dtypes.int64),
+              id=constant_op.constant(0, dtype=dtypes.int64),
+              timeout_micros=0,
+              container="",
+              shared_name="",
+          )
+      )
+
+    # Negative start index
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "Expected 0 <= start <= end"
+    ):
+      self.evaluate(
+          batch_ops.unbatch(
+              batched_tensor=constant_op.constant(
+                  [[1, 2], [3, 4]], dtype=dtypes.int32
+              ),
+              batch_index=constant_op.constant(
+                  [[0, -1, 1]], dtype=dtypes.int64
+              ),
+              id=constant_op.constant(0, dtype=dtypes.int64),
+              timeout_micros=0,
+              container="",
+              shared_name="",
+          )
+      )
+
+    # End index exceeds dim0
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "exceeds dimension 0 size"
+    ):
+      self.evaluate(
+          batch_ops.unbatch(
+              batched_tensor=constant_op.constant(
+                  [[1, 2], [3, 4]], dtype=dtypes.int32
+              ),
+              batch_index=constant_op.constant([[0, 1, 5]], dtype=dtypes.int64),
+              id=constant_op.constant(0, dtype=dtypes.int64),
+              timeout_micros=0,
+              container="",
+              shared_name="",
+          )
+      )
+
+    # Cumulative split sizes exceed dim0 (overlapping rows)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "Sum of split sizes must not exceed"
+    ):
+      self.evaluate(
+          batch_ops.unbatch(
+              batched_tensor=constant_op.constant(
+                  [[1], [2], [3]], dtype=dtypes.int32
+              ),
+              batch_index=constant_op.constant(
+                  [[0, 0, 2], [1, 1, 3]], dtype=dtypes.int64
+              ),
+              id=constant_op.constant(0, dtype=dtypes.int64),
+              timeout_micros=0,
+              container="",
+              shared_name="",
+          )
+      )
+
+  def testUnbatchSplitSizesOverflow(self):
+    # Two valid rows whose sizes sum past INT64_MAX on a zero-element input.
+    int64_max = np.iinfo(np.int64).max
+    shape = constant_op.constant([int64_max, 0], dtype=dtypes.int64)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, "Sum of split sizes must not exceed"
+    ):
+      self.evaluate(
+          batch_ops.unbatch(
+              batched_tensor=array_ops.zeros(shape, dtypes.int32),
+              batch_index=constant_op.constant(
+                  [[0, 0, int64_max], [1, 0, 1]], dtype=dtypes.int64
+              ),
+              id=constant_op.constant(0, dtype=dtypes.int64),
+              timeout_micros=0,
+              container="",
+              shared_name="",
+          )
+      )
+
+  def testUnbatchShapeInference(self):
+    # Shape functions run only when the op is added to a graph.
+    with ops.Graph().as_default():
+      with self.assertRaisesRegex(ValueError, "Shape must be at least rank 1"):
+        gen_batch_ops.unbatch(
+            batched_tensor=constant_op.constant(1.0),
+            batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
+            id=constant_op.constant(0, dtype=dtypes.int64),
+            timeout_micros=0,
+        )
+
+      with self.assertRaisesRegex(ValueError, "Shape must be rank 2"):
+        gen_batch_ops.unbatch(
+            batched_tensor=constant_op.constant([1.0, 2.0]),
+            batch_index=constant_op.constant([0, 0, 1], dtype=dtypes.int64),
+            id=constant_op.constant(0, dtype=dtypes.int64),
+            timeout_micros=0,
+        )
+
+      with self.assertRaisesRegex(ValueError, "Dimension must be 3"):
+        gen_batch_ops.unbatch(
+            batched_tensor=constant_op.constant([1.0, 2.0]),
+            batch_index=constant_op.constant([[0, 1]], dtype=dtypes.int64),
+            id=constant_op.constant(0, dtype=dtypes.int64),
+            timeout_micros=0,
+        )
+
+      with self.assertRaisesRegex(ValueError, "Shape must be rank 0"):
+        gen_batch_ops.unbatch(
+            batched_tensor=constant_op.constant([1.0, 2.0]),
+            batch_index=constant_op.constant([[0, 0, 1]], dtype=dtypes.int64),
+            id=constant_op.constant([0], dtype=dtypes.int64),
+            timeout_micros=0,
+        )
+
+
 if __name__ == "__main__":
   test.main()
