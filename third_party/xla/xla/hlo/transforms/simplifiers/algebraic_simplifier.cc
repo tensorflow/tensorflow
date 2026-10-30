@@ -2134,32 +2134,32 @@ absl::Status AlgebraicSimplifierVisitor::HandleConcatenate(
         operands[0], m::Broadcast(m::Op().WithShape(m::Shape().IsScalar())));
     bool is_effective_high_pad = Match(
         operands[1], m::Broadcast(m::Op().WithShape(m::Shape().IsScalar())));
-    if (!is_effective_low_pad && !is_effective_high_pad) {
-      return absl::OkStatus();
-    }
-    PaddingConfig padding_config;
-    for (int64_t dim = 0; dim < operands[0]->shape().dimensions().size();
-         ++dim) {
-      auto padding_config_dim = padding_config.add_dimensions();
-      padding_config_dim->set_edge_padding_high(0);
-      padding_config_dim->set_edge_padding_low(0);
-      padding_config_dim->set_interior_padding(0);
-      if (dim == concatenate_dimension) {
-        if (is_effective_low_pad) {
-          padding_config_dim->set_edge_padding_low(
-              operands[0]->shape().dimensions(dim));
-        } else {
-          padding_config_dim->set_edge_padding_high(
-              operands[1]->shape().dimensions(dim));
+    if (is_effective_low_pad || is_effective_high_pad) {
+      PaddingConfig padding_config;
+      for (int64_t dim = 0; dim < operands[0]->shape().dimensions().size();
+           ++dim) {
+        auto padding_config_dim = padding_config.add_dimensions();
+        padding_config_dim->set_edge_padding_high(0);
+        padding_config_dim->set_edge_padding_low(0);
+        padding_config_dim->set_interior_padding(0);
+        if (dim == concatenate_dimension) {
+          if (is_effective_low_pad) {
+            padding_config_dim->set_edge_padding_low(
+                operands[0]->shape().dimensions(dim));
+          } else {
+            padding_config_dim->set_edge_padding_high(
+                operands[1]->shape().dimensions(dim));
+          }
         }
       }
+      int64_t operand_to_pad = is_effective_low_pad ? 1 : 0;
+      int64_t pad_value_operand = is_effective_low_pad ? 0 : 1;
+      HloInstruction* pad =
+          concatenate->AddInstruction(HloInstruction::CreatePad(
+              concatenate->shape(), operands[operand_to_pad],
+              operands[pad_value_operand]->mutable_operand(0), padding_config));
+      return ReplaceInstruction(concatenate, pad);
     }
-    int64_t operand_to_pad = is_effective_low_pad ? 1 : 0;
-    int64_t pad_value_operand = is_effective_low_pad ? 0 : 1;
-    HloInstruction* pad = concatenate->AddInstruction(HloInstruction::CreatePad(
-        concatenate->shape(), operands[operand_to_pad],
-        operands[pad_value_operand]->mutable_operand(0), padding_config));
-    return ReplaceInstruction(concatenate, pad);
   }
 
   if (absl::c_count(operands, operands[0]) == operands.size() &&
