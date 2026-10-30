@@ -505,11 +505,27 @@ def _tf_repositories():
     tflite_mobilenet()
     tflite_ovic_testdata()
 
+    rules_android_patch_cmds = [
+        "sed -i -e 's|@androidsdk//:sdk|:toolchain_type|g' toolchains/android_sdk/BUILD",
+        "sed -i -e 's|:bootclasspath_android_only|@rules_java//toolchains:platformclasspath|g' tools/jdk/BUILD",
+        "sed -i -e '/@bazel_gazelle/d; /gazelle(/d' BUILD",
+        "sed -i -e 's|jars = \\[.*\\]|jars = []|g; s|runtime_deps = \\[.*\\]|runtime_deps = []|g; /r8:desugar/d; /:d8_desugar_params/d; /:full_desugar_jdk_libs_config_json/d' tools/android/BUILD",
+    ]
+
     tf_http_archive(
         name = "build_bazel_rules_android",
-        sha256 = "cd06d15dd8bb59926e4d65f9003bfc20f9da4b2519985c27e190cddc8b7a7806",
-        strip_prefix = "rules_android-0.1.1",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android/archive/v0.1.1.zip"),
+        patch_cmds = rules_android_patch_cmds,
+        sha256 = "af84b69ab3d16dd1a41056286e6511f147a94ccea995603e13e934c915c1631c",
+        strip_prefix = "rules_android-0.6.0",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android/releases/download/v0.6.0/rules_android-v0.6.0.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "rules_android",
+        patch_cmds = rules_android_patch_cmds,
+        sha256 = "af84b69ab3d16dd1a41056286e6511f147a94ccea995603e13e934c915c1631c",
+        strip_prefix = "rules_android-0.6.0",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android/releases/download/v0.6.0/rules_android-v0.6.0.tar.gz"),
     )
 
     tf_http_archive(
@@ -523,15 +539,15 @@ def _tf_repositories():
     # https://github.com/bazelbuild/rules_apple/releases
     tf_http_archive(
         name = "build_bazel_rules_apple",
-        sha256 = "b4df908ec14868369021182ab191dbd1f40830c9b300650d5dc389e0b9266c8d",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_apple/releases/download/3.5.1/rules_apple.3.5.1.tar.gz"),
+        sha256 = "a78f26c22ac8d6e3f3fcaad50eace4d9c767688bd7254b75bdf4a6735b299f6a",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_apple/releases/download/3.22.0/rules_apple.3.22.0.tar.gz"),
     )
 
     # https://github.com/bazelbuild/rules_swift/releases
     tf_http_archive(
         name = "build_bazel_rules_swift",
-        sha256 = "bb01097c7c7a1407f8ad49a1a0b1960655cf823c26ad2782d0b7d15b323838e2",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/releases/download/1.18.0/rules_swift.1.18.0.tar.gz"),
+        sha256 = "f7a67197cd8a79debfe70b8cef4dc19d03039af02cc561e31e0718e98cad83ac",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/releases/download/2.9.0/rules_swift.2.9.0.tar.gz"),
     )
 
     # https://github.com/bazelbuild/apple_support/releases
