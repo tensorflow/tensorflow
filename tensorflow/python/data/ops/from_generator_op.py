@@ -335,7 +335,7 @@ def _from_generator(generator, output_types, output_shapes, args,
   # tensor, allowing those callbacks to be garbage collected during iteration.
   # The user-provided generator still executes in Python.
   return flat_map_op._FlatMapDataset(  # pylint: disable=protected-access
-      id_dataset, flat_map_fn, name=name, debug_mode_flag=False)
+      id_dataset, flat_map_fn, name=name, trace_graph_in_debug_mode=True)
 
 
 class _GeneratorDataset(dataset_ops.DatasetSource):
