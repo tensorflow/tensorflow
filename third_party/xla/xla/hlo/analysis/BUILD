@@ -515,6 +515,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/transforms/simplifiers:flatten_call_graph",
+        "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_value",
         "//xla/tsl/lib/core:status_test_util",
