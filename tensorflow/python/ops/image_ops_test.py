@@ -5383,14 +5383,21 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       for saturate in [False, True]:
         y = image_ops.convert_image_dtype(image, int_dtype, saturate)
         self.assertAllEqual(self.evaluate(y), expected)
-    image = constant_op.constant([0., 1.], dtypes.float32)
-    y = image_ops.convert_image_dtype(image, dtypes.uint32)
-    self.assertAllEqual(self.evaluate(y), [0, 4294967040])
+    for float_dtype, int_dtype, expected in [
+        (dtypes.float32, dtypes.uint32, 4294967040),
+        (dtypes.float32, dtypes.uint64, 18446742974197923840),
+        (dtypes.float64, dtypes.uint64, 18446744073709549568)]:
+      image = constant_op.constant([0., 1.], float_dtype)
+      for saturate in [False, True]:
+        y = image_ops.convert_image_dtype(image, int_dtype, saturate)
+        self.assertAllEqual(self.evaluate(y), [0, expected])
 
   def testConvertWideIntegerToHalf(self):
     # uint16 and wider integers used to overflow half in the cast, turning the
     # max value into inf (or nan once scaled).
-    for int_dtype in [dtypes.uint16, dtypes.int32, dtypes.int64]:
+    for int_dtype in [
+        dtypes.uint16, dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64
+    ]:
       image = constant_op.constant(
           [0, int_dtype.max // 2, int_dtype.max], int_dtype)
       y = image_ops.convert_image_dtype(image, dtypes.float16)
