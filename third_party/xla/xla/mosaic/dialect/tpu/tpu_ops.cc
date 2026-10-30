@@ -3374,6 +3374,8 @@ LogicalResult ReduceOp::verify() {
     }
   }
 
+  const Type input_element_type = input_type.getElementType();
+  const Type output_element_type = output_type.getElementType();
   switch (getKind()) {
     case ReductionKind::kArgMax:
     case ReductionKind::kArgMin:
@@ -3389,11 +3391,11 @@ LogicalResult ReduceOp::verify() {
           "minui instead");
     case ReductionKind::kMaxF:
     case ReductionKind::kMinF:
-      if (!isa<FloatType>(input_type.getElementType())) {
+      if (!isa<FloatType>(input_element_type)) {
         return emitOpError(
             "maxf and minf reductions require float element type");
       }
-      if (input_type.getElementType() != output_type.getElementType()) {
+      if (input_element_type != output_element_type) {
         return emitOpError(
             "Input and output must have the same element type for sum, max and "
             "min reductions");
@@ -3403,12 +3405,12 @@ LogicalResult ReduceOp::verify() {
     case ReductionKind::kMinSI:
     case ReductionKind::kMaxUI:
     case ReductionKind::kMinUI:
-      if (!isa<IntegerType>(input_type.getElementType())) {
+      if (!isa<IntegerType>(input_element_type)) {
         return emitOpError(
             "maxsi, minsi, maxui and minui reductions require integer element "
             "type");
       }
-      if (input_type.getElementType() != output_type.getElementType()) {
+      if (input_element_type != output_element_type) {
         return emitOpError(
             "Input and output must have the same element type for sum, max and "
             "min reductions");
@@ -3416,7 +3418,7 @@ LogicalResult ReduceOp::verify() {
       break;
     case ReductionKind::kSum:
       // TODO(tlongeri): Might be worth allowing things like bf16 -> f32.
-      if (input_type.getElementType() != output_type.getElementType()) {
+      if (input_element_type != output_element_type) {
         return emitOpError(
             "Input and output must have the same element type for sum, max and "
             "min reductions");
