@@ -392,13 +392,11 @@ void convertShardyAttrsWithoutHloShardingV3(FuncOp funcOp,
           if (auto sharding = parseStringAttr<TensorShardingAttr>(
                   dictAttr, attributeName)) {
             attrs.set(kShardingAttr, sharding);
-            llvm::SmallVector<NamedAttribute> existingAttributes =
-                getExistingFrontendAttributes(
-                    dictAttr, /*excludedAttribute=*/attributeName);
-            if (!existingAttributes.empty()) {
-              attrs.set(
-                  kFrontendAttributesAttr,
-                  DictionaryAttr::get(funcOp.getContext(), existingAttributes));
+            mlir::NamedAttrList frontendAttrs(dictAttr);
+            frontendAttrs.erase(attributeName);
+            if (!frontendAttrs.empty()) {
+              attrs.set(kFrontendAttributesAttr,
+                        frontendAttrs.getDictionary(funcOp.getContext()));
             } else {
               attrs.erase(kFrontendAttributesAttr);
             }
