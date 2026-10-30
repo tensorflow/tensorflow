@@ -94,7 +94,6 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
 
   // Returns the number of warps for the given tiled HLO computation.
   static int64_t EstimateNumWarps(
-      const HloFusionAdaptor& fusion_adaptor,
       const experimental::TiledHloComputation& tiled_hlo_computation);
 
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(

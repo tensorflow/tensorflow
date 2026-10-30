@@ -499,43 +499,6 @@ int64_t GetNumWarps(int64_t largest_live_tile_size) {
   return 8;
 }
 
-// Estimates the effective live tile size of `tiled_hlo` for warp-count
-// selection, discounting non-materialized ops and scaling down narrow
-// intermediates.
-int64_t GetLiveTileSizeForNumWarps(
-    const HloFusionAdaptor& fusion_adaptor,
-    const experimental::TiledHloInstruction* tiled_hlo, bool is_root) {
-  const HloInstruction* hlo = tiled_hlo->hlo();
-  bool is_operand = !fusion_adaptor.ContainsInstruction(hlo);
-  if (!is_root && !is_operand &&
-      (hlo->opcode() == HloOpcode::kBroadcast ||
-       hlo->opcode() == HloOpcode::kConstant)) {
-    return 1;
-  }
-  absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
-      tiled_hlo->tile(0).GetStaticTileSizes();
-  CHECK_OK(tile_sizes);
-  if (is_root || is_operand) {
-    return GetPaddedTileSize(*tile_sizes);
-  }
-  int64_t padded_tile_size = 0;
-  if (hlo->opcode() == HloOpcode::kIota) {
-    int64_t iota_dim = Cast<HloIotaInstruction>(hlo)->iota_dimension();
-    CHECK_LT(iota_dim, tile_sizes->size());
-    padded_tile_size = llvm::PowerOf2Ceil((*tile_sizes)[iota_dim]);
-  } else {
-    padded_tile_size = GetPaddedTileSize(*tile_sizes);
-  }
-  if (!hlo->shape().IsArray()) {
-    return padded_tile_size;
-  }
-  int64_t element_bytes = std::min<int64_t>(
-      ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type()),
-      sizeof(uint32_t));
-  return CeilOfRatio<int64_t>(padded_tile_size * element_bytes,
-                              sizeof(uint32_t));
-}
-
 // Holds dot launch resource footprints and compute/runtime estimates.
 struct DotEstimates {
   absl::Duration compute_time = absl::ZeroDuration();
@@ -740,14 +703,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
     bytes_written += bytes_written_for_root;
   }
 
-  int64_t blocks_per_core =
-      CeilOfRatio<int64_t>(num_blocks, device_info.core_count());
-  int64_t active_threads_per_core = blocks_per_core *
-                                    block_level_parameters.num_warps *
-                                    WarpSize(device_info);
   absl::Duration compute_time =
-      GpuPerformanceModelBase::ComputeTime(device_info, flops, num_blocks,
-                                           active_threads_per_core) +
+      GpuPerformanceModelBase::ComputeTime(
+          device_info, flops, num_blocks,
+          block_level_parameters.num_warps * WarpSize(device_info)) +
       dot_estimates.compute_time;
 
   absl::Duration memory_access_time = read_time + write_time;
@@ -882,7 +841,7 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
       BlockLevelParametersForTiling(tiled_hlo_computation);
   block_level_parameters.num_warps =
       GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-          fusion_adaptor, tiled_hlo_computation);
+          tiled_hlo_computation);
 
   ABSL_ASSIGN_OR_RETURN(
       EstimateRunTimeData estimate_run_time_data,
@@ -1300,20 +1259,19 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
 
 /*static*/
 int64_t GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-    const HloFusionAdaptor& fusion_adaptor,
     const experimental::TiledHloComputation& tiled_hlo_computation) {
   // Decide on the number of warps to use based on the largest live tile size
   // at any given point within the computation.
   int64_t largest_live_tile_size = 1;
-  const auto roots = tiled_hlo_computation.roots();
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation, /*num_blocks_at_root=*/1,
       [&](const experimental::TiledHloInstruction* tiled_hlo,
           const RegionExecutionInfo& /*info_cur_hlo*/, bool /*in_dot_region*/) {
-        bool is_root = absl::c_linear_search(roots, tiled_hlo);
-        largest_live_tile_size = std::max(
-            largest_live_tile_size,
-            GetLiveTileSizeForNumWarps(fusion_adaptor, tiled_hlo, is_root));
+        absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
+            tiled_hlo->tile(0).GetStaticTileSizes();
+        CHECK_OK(tile_sizes);
+        largest_live_tile_size =
+            std::max(largest_live_tile_size, GetPaddedTileSize(*tile_sizes));
       });
   return GetNumWarps(largest_live_tile_size);
 }
