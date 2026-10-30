@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -79,6 +80,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_space.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
@@ -202,9 +204,13 @@ static constexpr absl::string_view kKernelSource = R"(
   )";
 
 se::StreamExecutor* GetGpuExecutor(int64_t device_ordinal) {
-  auto* platform =
-      se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
-  return platform->ExecutorForDevice(device_ordinal).value();
+  absl::StatusOr<se::Platform*> platform =
+      se::PlatformManager::PlatformWithName(se::GpuPlatformName());
+  CHECK_OK(platform.status());
+  absl::StatusOr<se::StreamExecutor*> executor =
+      (*platform)->ExecutorForDevice(device_ordinal);
+  CHECK_OK(executor.status());
+  return *executor;
 }
 
 struct CollectiveKernelThunkMetadata {
@@ -340,8 +346,6 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
     CollectiveKernelThunkMetadata& metadata, se::StreamExecutor* executor,
     std::vector<uint64_t> input_data, bool emulate_multiprocess = false,
     GpuCollectives* collectives = nullptr) {
-  BufferAllocation buffer_allocation(
-      /*index=*/0, /*size=*/metadata.total_buffer_size, /*color=*/0);
   GpuExecutableRunOptions gpu_options;
   gpu_options.set_gpu_global_device_ids(GpuExecutableRunOptions::DeviceIdMap{
       std::make_pair(LocalDeviceId(0), GlobalDeviceId(0)),
