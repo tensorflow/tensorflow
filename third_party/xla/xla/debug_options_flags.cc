@@ -613,7 +613,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_persistent_symmetric_memory(false);
   opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
   opts.set_xla_gpu_experimental_enable_tensor_ir(false);
-  opts.set_xla_gpu_experimental_enable_triton_scan(true);
+  opts.set_xla_gpu_experimental_enable_triton_scan(false);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
