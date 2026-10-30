@@ -37,15 +37,15 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/python/ifrt/ir/compilation/passes.h"  // IWYU pragma: keep
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"  // IWYU pragma: keep
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
 namespace xla {
 namespace ifrt {
 
 #define GEN_PASS_DEF_IFRTVERIFYDEVICETYPECONSISTENCYPASS
-#include "xla/python/ifrt/ir/transforms/passes.h.inc"
+#include "xla/python/ifrt/ir/compilation/passes.h.inc"
 
 namespace {
 
@@ -154,54 +154,55 @@ bool IfrtVerifyDeviceTypeConsistencyPass::IsConsistentWithModuleType(
 void IfrtVerifyDeviceTypeConsistencyPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
   mlir::SymbolTableCollection symbol_table;
-  mlir::WalkResult result = module_op.walk([&](CallOp call_op)
-                                               -> mlir::WalkResult {
-    llvm::ArrayRef<int> devices = call_op.getDevices();
-    DCHECK(!devices.empty()) << "has empty device list";
+  mlir::WalkResult result =
+      module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
+        llvm::ArrayRef<int> devices = call_op.getDevices();
+        DCHECK(!devices.empty()) << "has empty device list";
 
-    mlir::FailureOr<ModuleType> callee_module_type =
-        getChildAnalysis<ModuleTypeAnalysis>(call_op.getCalleeOp(symbol_table))
-            .GetModuleType();
-    if (mlir::failed(callee_module_type)) {
-      return mlir::WalkResult::interrupt();
-    }
+        mlir::FailureOr<ModuleType> callee_module_type =
+            getChildAnalysis<ModuleTypeAnalysis>(
+                call_op.getCalleeOp(symbol_table))
+                .GetModuleType();
+        if (mlir::failed(callee_module_type)) {
+          return mlir::WalkResult::interrupt();
+        }
 
-    // Use the first device ID to find platform name.
-    int first_device_id = devices.front();
-    if (first_device_id >= platform_names_.size()) {
-      call_op->emitOpError()
-          << "cannot find mapping for logical device id " << first_device_id
-          << ". Mapping size: " << platform_names_.size();
-      return mlir::WalkResult::interrupt();
-    }
+        // Use the first device ID to find platform name.
+        int first_device_id = devices.front();
+        if (first_device_id >= platform_names_.size()) {
+          call_op->emitOpError()
+              << "cannot find mapping for logical device id " << first_device_id
+              << ". Mapping size: " << platform_names_.size();
+          return mlir::WalkResult::interrupt();
+        }
 
-    if (!IsConsistentWithModuleType(*callee_module_type,
-                                    platform_names_[first_device_id])) {
-      call_op->emitOpError()
-          << "has platform: " << platform_names_[first_device_id]
-          << ", which is incompatible with the module type inferred from "
-             "callee.";
-      return mlir::WalkResult::interrupt();
-    }
+        if (!IsConsistentWithModuleType(*callee_module_type,
+                                        platform_names_[first_device_id])) {
+          call_op->emitOpError()
+              << "has platform: " << platform_names_[first_device_id]
+              << ", which is incompatible with the module type inferred from "
+                 "callee.";
+          return mlir::WalkResult::interrupt();
+        }
 
-    for (int device_id : devices) {
-      if (device_id >= platform_names_.size()) {
-        call_op->emitOpError()
-            << "cannot find mapping for logical device id " << device_id
-            << ". Mapping size: " << platform_names_.size();
-        return mlir::WalkResult::interrupt();
-      }
-      if (platform_names_[device_id] != platform_names_[first_device_id]) {
-        call_op->emitOpError()
-            << "requires a single platform type. Expected platform: "
-            << platform_names_[first_device_id]
-            << ". Actual platform of logical device " << device_id << ": "
-            << platform_names_[device_id];
-        return mlir::WalkResult::interrupt();
-      }
-    }
-    return mlir::WalkResult::advance();
-  });
+        for (int device_id : devices) {
+          if (device_id >= platform_names_.size()) {
+            call_op->emitOpError()
+                << "cannot find mapping for logical device id " << device_id
+                << ". Mapping size: " << platform_names_.size();
+            return mlir::WalkResult::interrupt();
+          }
+          if (platform_names_[device_id] != platform_names_[first_device_id]) {
+            call_op->emitOpError()
+                << "requires a single platform type. Expected platform: "
+                << platform_names_[first_device_id]
+                << ". Actual platform of logical device " << device_id << ": "
+                << platform_names_[device_id];
+            return mlir::WalkResult::interrupt();
+          }
+        }
+        return mlir::WalkResult::advance();
+      });
 
   if (result.wasInterrupted()) {
     signalPassFailure();

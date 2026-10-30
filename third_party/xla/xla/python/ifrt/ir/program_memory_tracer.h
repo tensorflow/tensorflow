@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/compilation/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/program_memory_trace.pb.h"

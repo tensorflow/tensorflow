@@ -41,11 +41,11 @@ limitations under the License.
 #include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/passes.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/mlir/fingerprint_utils.h"
 #include "xla/python/ifrt/shape.h"
@@ -59,7 +59,7 @@ namespace xla {
 namespace ifrt {
 
 #define GEN_PASS_DEF_IFRTTODOTPASS
-#include "xla/python/ifrt/ir/transforms/passes.h.inc"
+#include "xla/python/ifrt/ir/compilation/passes.h.inc"
 
 namespace {
 

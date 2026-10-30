@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
-#define XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
+#ifndef XLA_PYTHON_IFRT_IR_COMPILATION_COMPILED_IFRT_IR_PROGRAM_H_
+#define XLA_PYTHON_IFRT_IR_COMPILATION_COMPILED_IFRT_IR_PROGRAM_H_
 
 #include <memory>
 #include <optional>
@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/tsl/concurrency/future.h"
 
@@ -88,4 +88,4 @@ struct CompiledIfrtIrProgram {
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
+#endif  // XLA_PYTHON_IFRT_IR_COMPILATION_COMPILED_IFRT_IR_PROGRAM_H_

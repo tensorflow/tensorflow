@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_ATOM_PROGRAM_COMPILER_H_
-#define XLA_PYTHON_IFRT_IR_ATOM_PROGRAM_COMPILER_H_
+#ifndef XLA_PYTHON_IFRT_IR_COMPILATION_ATOM_PROGRAM_COMPILER_H_
+#define XLA_PYTHON_IFRT_IR_COMPILATION_ATOM_PROGRAM_COMPILER_H_
 
 #include <memory>
 #include <string>
@@ -66,4 +66,4 @@ class AtomProgramCompiler {
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_ATOM_PROGRAM_COMPILER_H_
+#endif  // XLA_PYTHON_IFRT_IR_COMPILATION_ATOM_PROGRAM_COMPILER_H_

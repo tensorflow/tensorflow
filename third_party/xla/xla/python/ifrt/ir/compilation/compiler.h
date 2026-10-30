@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_PYTHON_IFRT_IR_COMPILER_H_
-#define XLA_PYTHON_IFRT_IR_COMPILER_H_
+#ifndef XLA_PYTHON_IFRT_IR_COMPILATION_COMPILER_H_
+#define XLA_PYTHON_IFRT_IR_COMPILATION_COMPILER_H_
 
 #include <memory>
 
@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
-#include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/rtti.h"
@@ -81,4 +81,4 @@ class IfrtIrProgramCompiler final
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_COMPILER_H_
+#endif  // XLA_PYTHON_IFRT_IR_COMPILATION_COMPILER_H_

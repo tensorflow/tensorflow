@@ -36,7 +36,8 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/passes.h"
 #include "xla/python/ifrt/ir/conversions/mpmd/lower_to_ifrt.h"
 #include "xla/python/ifrt/ir/export/passes.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -158,7 +159,8 @@ int main(int argc, char** argv) {
   auto bound_executable_map = std::make_shared<xla::ifrt::AtomExecutableMap>();
 
   mlir::registerAllPasses();
-  xla::ifrt::registerIfrtPassesAndPipelines(
+  xla::ifrt::registerIfrtPassesAndPipelines();
+  xla::ifrt::registerIfrtCompilationPassesAndPipelines(
       compiler, compile_options, atom_executable_map, bound_executable_map);
   xla::ifrt::registerIfrtIrExportPasses();
   xla::ifrt::mpmd::RegisterLowerToIfrtPasses();

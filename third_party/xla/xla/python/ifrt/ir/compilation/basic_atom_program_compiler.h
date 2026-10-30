@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_BASIC_ATOM_PROGRAM_COMPILER_H_
-#define XLA_PYTHON_IFRT_IR_BASIC_ATOM_PROGRAM_COMPILER_H_
+#ifndef XLA_PYTHON_IFRT_IR_COMPILATION_BASIC_ATOM_PROGRAM_COMPILER_H_
+#define XLA_PYTHON_IFRT_IR_COMPILATION_BASIC_ATOM_PROGRAM_COMPILER_H_
 
 #include <memory>
 #include <vector>
@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/future.h"
@@ -69,4 +69,4 @@ class BasicAtomProgramCompiler final : public AtomProgramCompiler {
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_BASIC_ATOM_PROGRAM_COMPILER_H_
+#endif  // XLA_PYTHON_IFRT_IR_COMPILATION_BASIC_ATOM_PROGRAM_COMPILER_H_

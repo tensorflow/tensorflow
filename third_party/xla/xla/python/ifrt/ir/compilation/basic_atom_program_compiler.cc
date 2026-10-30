@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/ir/basic_atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/basic_atom_program_compiler.h"
 
 #include <cstdint>
 #include <memory>
@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
-#include "xla/python/ifrt/ir/atom_program_compiler.h"
-#include "xla/python/ifrt/ir/compilation_utils.h"
+#include "xla/python/ifrt/ir/compilation/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compilation/utils.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
