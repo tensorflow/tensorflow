@@ -14,6 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
+source ./ci/official/utilities/tfrun_bazel.sh
 
 # Extract hermetic CUDA User-Mode Driver (UMD) flags
 HERMETIC_CUDA_UMD_FLAGS=""
@@ -32,9 +33,9 @@ if [[ $(uname -s) == "MSYS_NT"* ]] || [[ $(uname -s) == "MINGW64_NT"* ]]; then
 fi
 
 if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" $HERMETIC_CUDA_UMD_FLAGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+  tfrun_bazel_with_retries $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" $HERMETIC_CUDA_UMD_FLAGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 else
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" $HERMETIC_CUDA_UMD_FLAGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+  tfrun_bazel_with_retries $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" $HERMETIC_CUDA_UMD_FLAGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 fi
 
 # Note: the profile can be viewed by visiting chrome://tracing in a Chrome browser.

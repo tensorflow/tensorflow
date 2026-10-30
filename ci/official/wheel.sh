@@ -14,6 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
+source ./ci/official/utilities/tfrun_bazel.sh
 
 # Extract hermetic CUDA User-Mode Driver (UMD) flags
 HERMETIC_CUDA_UMD_BUILD_FLAGS=""
@@ -41,7 +42,7 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
   export TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES="$(echo $TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES | sed 's/tensorflow/tf_nightly/g')"
 fi
 
-tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG $HERMETIC_CUDA_UMD_BUILD_FLAGS --verbose_failures
+tfrun_bazel_with_retries $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG $HERMETIC_CUDA_UMD_BUILD_FLAGS --verbose_failures
 
 tfrun "$TFCI_FIND_BIN" ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} $TFCI_OUTPUT_DIR \;
 tfrun mkdir -p ./dist
@@ -55,7 +56,7 @@ if [[ -n "$TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES" ]]; then
   for wheel_name in ${TFCI_BUILD_PIP_PACKAGE_ADDITIONAL_WHEEL_NAMES}; do
     echo "Building for additional WHEEL_NAME: ${wheel_name}"
     CURRENT_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=${wheel_name}"
-    tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $CURRENT_WHEEL_NAME_ARG $HERMETIC_CUDA_UMD_BUILD_FLAGS
+    tfrun_bazel_with_retries $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $CURRENT_WHEEL_NAME_ARG $HERMETIC_CUDA_UMD_BUILD_FLAGS
     # Copy the wheel that was just created, and platform-tag it to match the
     # primary wheel.
     tfrun bash ./ci/official/utilities/collect_additional_wheel.sh "${wheel_name}"
@@ -73,5 +74,5 @@ if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
 fi
 
 if [[ "$TFCI_WHL_BAZEL_TEST_ENABLE" == 1 ]]; then
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG $HERMETIC_CUDA_UMD_TEST_FLAGS --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_test"
+  tfrun_bazel_with_retries $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS $TFCI_BUILD_PIP_PACKAGE_BASE_ARGS $TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG $HERMETIC_CUDA_UMD_TEST_FLAGS --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_test"
 fi

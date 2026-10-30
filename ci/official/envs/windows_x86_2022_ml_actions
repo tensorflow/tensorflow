@@ -19,7 +19,12 @@ fi
 TFCI_DOCKER_PULL_ENABLE=1
 TFCI_DOCKER_IMAGE="us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-windows@sha256:d9849afa6a7b074be0f3663969020d53099fa082d92e4796828e1bcbdee5bd25"
 TFCI_BAZEL_BAZELRC_ARGS="--output_user_root=C:/x"
-TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --repo_env=USE_PYWRAP_RULES=True --config=windows_x86_cpu_2022"
+# Retry failed Bazel commands against the warm RBE/C:/x cache to mitigate
+# transient Windows lld-link wcifs.sys file-open races (b/571437556,
+# b/579961854). Pass --keep_going so healthy targets finish compiling on
+# attempt 1 and retries hit a warm cache.
+TFCI_BAZEL_COMMAND_RETRIES=2
+TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION --repo_env=USE_PYWRAP_RULES=True --config=windows_x86_cpu_2022 --keep_going"
 
 # For RBE, we explicitly set invalid paths to force the auto-configuration to fail.
 TFCI_BAZEL_VC="C:/RBE_ISOLATED_INVALID_PATH"
