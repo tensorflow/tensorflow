@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 
+#include <string>
+
 #include "absl/status/status.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_function.h"
