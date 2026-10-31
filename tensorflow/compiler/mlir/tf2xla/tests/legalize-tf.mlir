@@ -2809,3 +2809,24 @@ func.func @func_xla_sharding_consistent(%arg0: tensor<4x8xi32>) -> (tensor<4x8xi
   %1 = "tf.A"(%0) : (tensor<4x8xi32>) -> (tensor<4x8xi32>)
   func.return %1 : tensor<4x8xi32>
 }
+
+// -----
+
+// CHECK-LABEL: @tensor_scatter_sub_scalar_updates
+func.func @tensor_scatter_sub_scalar_updates(%tensor: tensor<4x3xf32>, %indices: tensor<2x1xi32>, %updates: tensor<f32>) -> tensor<4x3xf32> {
+  // CHECK: %[[SHAPE:.*]] = mhlo.constant dense<[2, 3]> : tensor<2xi64>
+  // CHECK: %[[BCAST:.*]] = "mhlo.dynamic_broadcast_in_dim"(%arg2, %[[SHAPE]]) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>, tensor<2xi64>) -> tensor<2x3xf32>
+  // CHECK: "mhlo.scatter"(%arg0, %arg1, %[[BCAST]])
+  // CHECK: mhlo.subtract
+  %0 = "tf.TensorScatterSub"(%tensor, %indices, %updates) : (tensor<4x3xf32>, tensor<2x1xi32>, tensor<f32>) -> tensor<4x3xf32>
+  func.return %0 : tensor<4x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @tensor_scatter_sub_scalar_updates_invalid_index_depth
+func.func @tensor_scatter_sub_scalar_updates_invalid_index_depth(%tensor: tensor<4xf32>, %indices: tensor<2x2xi32>, %updates: tensor<f32>) -> tensor<4xf32> {
+  // CHECK: tf.TensorScatterSub
+  %0 = "tf.TensorScatterSub"(%tensor, %indices, %updates) : (tensor<4xf32>, tensor<2x2xi32>, tensor<f32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}

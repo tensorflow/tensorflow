@@ -1355,6 +1355,19 @@ def _ExtractVolumePatchesGrad(op: ops.Operation, grad):  # pylint:disable=missin
   return [grad_out]
 
 
+def _ReduceScatterNdUpdatesGrad(updates, updates_grad):
+  """Reduces updates_grad to scalar if updates is a scalar."""
+  if updates.shape.ndims is not None:
+    if updates.shape.ndims == 0:
+      return math_ops.reduce_sum(updates_grad)
+    return updates_grad
+  return cond.cond(
+      math_ops.equal(array_ops.rank(updates), 0),
+      lambda: math_ops.reduce_sum(updates_grad),
+      lambda: updates_grad,
+  )
+
+
 @ops.RegisterGradient("ScatterNd")
 def _ScatterNdGrad(op: ops.Operation, grad):
   indices = op.inputs[0]
@@ -1372,6 +1385,7 @@ def _TensorScatterUpdateGrad(op: ops.Operation, grad):
       grad,
       indices,
   )
+  updates_grad = _ReduceScatterNdUpdatesGrad(op.inputs[2], updates_grad)
   tensor_grad = array_ops.tensor_scatter_update(
       array_ops.identity(grad),
       indices,
@@ -1387,6 +1401,7 @@ def _TensorScatterAddGrad(op: ops.Operation, grad):
       grad,
       indices,
   )
+  updates_grad = _ReduceScatterNdUpdatesGrad(op.inputs[2], updates_grad)
   tensor_grad = array_ops.identity(grad)
   return [tensor_grad, None, updates_grad]
 
@@ -1419,6 +1434,7 @@ def _TensorScatterMinOrMaxGrad(op: ops.Operation, grad):
       )
       * y_indicators
   )
+  y_grad = _ReduceScatterNdUpdatesGrad(y, y_grad)
   return [x_grad, None, y_grad]
 
 
@@ -1441,6 +1457,7 @@ def _TensorScatterSubGrad(op: ops.Operation, grad):
       grad,
       indices,
   )
+  updates_grad = _ReduceScatterNdUpdatesGrad(op.inputs[2], updates_grad)
   tensor_grad = array_ops.identity(grad)
   return [tensor_grad, None, -updates_grad]
 
