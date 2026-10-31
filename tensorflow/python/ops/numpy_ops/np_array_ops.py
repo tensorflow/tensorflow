@@ -957,6 +957,22 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
           f'for input of rank {maybe_rank}.'
       )
     axis = normalized
+  # NumPy raises ValueError for negative `repeats` entries before any
+  # computation instead of failing in the Tile kernel with an
+  # InvalidArgumentError, with a different message for a scalar and for a
+  # sequence of entries. The check only inspects the Python value, so a
+  # Tensor `repeats` keeps the previous behavior.
+  if not builtins.isinstance(repeats, core_tf_types.Tensor):
+    try:
+      np_repeats_check = np.asarray(repeats)
+    except (TypeError, ValueError):
+      # Ragged input: leave it to the backend.
+      np_repeats_check = None
+    if np_repeats_check is not None and np_repeats_check.dtype != object:
+      if np_repeats_check.ndim == 0 and np_repeats_check < 0:
+        raise ValueError('negative dimensions are not allowed')
+      elif np_repeats_check.ndim > 0 and (np_repeats_check < 0).any():
+        raise ValueError('repeats may not contain negative values.')
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
   known_shape = original_shape is not None and None not in original_shape
