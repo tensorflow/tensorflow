@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_util.h"
 
+#include <cstdint>
+
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/lookup_interface.h"
@@ -141,8 +143,8 @@ class TextFileLineIterator
     std::vector<std::string> tokens;
     if (!ignore_split_) {
       tokens = str_util::Split(line, delimiter_);
-      const auto expected_size =
-          static_cast<size_t>(std::max(key_index_, value_index_) + 1);
+      const uint64_t expected_size =
+          static_cast<uint64_t>(std::max(key_index_, value_index_)) + 1;
       if (tokens.size() < expected_size) {
         status_ = absl::InvalidArgumentError(
             absl::StrCat("Invalid number of columns in ", filename_, " line ",
@@ -387,6 +389,11 @@ absl::Status InitializeTableFromTextFile(
     int64_t key_index, int64_t value_index, int64_t offset, Env* env,
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table) {
+  if (key_index < kWholeLine || value_index < kWholeLine) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Key and value indices must be >= -2, got key_index=", key_index,
+        ", value_index=", value_index));
+  }
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Key index for line number requires table key dtype of int64, got ",

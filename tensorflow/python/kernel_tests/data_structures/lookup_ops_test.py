@@ -921,20 +921,30 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
     # index into a negative one that then indexed the split tokens out of
     # bounds. It must be rejected the same way any other too-large column index
     # is, rather than producing a negative token index.
+    # 2**31 narrows to INT32_MIN, 2**32 - 1 wraps a 32-bit size_t column count,
+    # and 2**63 - 1 overflows int64 when the count is computed.
     vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns_oob.txt")
     with open(vocabulary_file, "w") as f:
       f.write("\n".join(["0\tbrain\t1", "1\tsalad\t5", "2\tsurgery\t6"]) + "\n")
 
-    oversize_index = 2**31  # Truncates to INT32_MIN if narrowed to int32.
-    for key_index, value_index in ((0, oversize_index), (oversize_index, 1)):
-      with self.cached_session():
-        init = lookup_ops.TextFileInitializer(
-            vocabulary_file, dtypes.string, key_index, dtypes.int64,
-            value_index)
-        with self.assertRaisesOpError("Invalid number of columns"):
-          table = self.getHashTable()(
-              init, -1, experimental_is_anonymous=is_anonymous)
-          self.initialize_table(table)
+    for oversize_index in (2**31, 2**32 - 1, 2**63 - 1):
+      for key_index, value_index in (
+          (0, oversize_index),
+          (oversize_index, 1),
+      ):
+        with self.cached_session():
+          init = lookup_ops.TextFileInitializer(
+              vocabulary_file,
+              dtypes.string,
+              key_index,
+              dtypes.int64,
+              value_index,
+          )
+          with self.assertRaisesOpError("Invalid number of columns"):
+            table = self.getHashTable()(
+                init, -1, experimental_is_anonymous=is_anonymous
+            )
+            self.initialize_table(table)
 
   def testInitializeSameTableWithMultipleNodes(self, is_anonymous):
     if is_anonymous and not tf2.enabled():
