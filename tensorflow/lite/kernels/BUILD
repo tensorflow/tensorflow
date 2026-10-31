@@ -2214,6 +2214,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -2426,6 +2427,7 @@ cc_test(
         ":lstm_eval",
         ":test_main",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:common",
         "@com_google_googletest//:gtest",
     ],
 )

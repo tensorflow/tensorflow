@@ -435,9 +435,6 @@ cc_library(
 cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
-    defines = [
-        "TFLITE_SINGLE_ROUNDING=0",
-    ],
     deps = [
         ":common",
         ":quantization_util",

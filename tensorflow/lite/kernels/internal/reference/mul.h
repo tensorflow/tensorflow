@@ -33,14 +33,18 @@ constexpr int kMaxMulBroadcastDim = 6;
 inline void MulElementwise(int size, const ArithmeticParams& params,
                            const uint8_t* input1_data,
                            const uint8_t* input2_data, uint8_t* output_data) {
+  const int left_shift = params.output_shift > 0 ? params.output_shift : 0;
+  const int right_shift = params.output_shift > 0 ? 0 : -params.output_shift;
   for (int i = 0; i < size; ++i) {
     const int32_t input1_val = params.input1_offset + input1_data[i];
     const int32_t input2_val = params.input2_offset + input2_data[i];
     const int32_t unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplier(input1_val * input2_val,
-                                      params.output_multiplier,
-                                      params.output_shift);
+        gemmlowp::RoundingDivideByPOT(
+            gemmlowp::SaturatingRoundingDoublingHighMul(
+                (input1_val * input2_val) * (1 << left_shift),
+                params.output_multiplier),
+            right_shift);
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -102,11 +106,16 @@ inline void BroadcastMul6DSlow(const ArithmeticParams& params,
   auto op = [&params](uint8_t input1_val, uint8_t input2_val) {
     const int32_t offsetted_input1_val = params.input1_offset + input1_val;
     const int32_t offsetted_input2_val = params.input2_offset + input2_val;
+    const int left_shift = params.output_shift > 0 ? params.output_shift : 0;
+    const int right_shift = params.output_shift > 0 ? 0 : -params.output_shift;
     const int32_t unclamped_result =
-        params.output_offset + MultiplyByQuantizedMultiplier(
-                                   offsetted_input1_val * offsetted_input2_val,
-                                   params.output_multiplier,
-                                   params.output_shift);
+        params.output_offset +
+        gemmlowp::RoundingDivideByPOT(
+            gemmlowp::SaturatingRoundingDoublingHighMul(
+                (offsetted_input1_val * offsetted_input2_val) *
+                    (1 << left_shift),
+                params.output_multiplier),
+            right_shift);
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));

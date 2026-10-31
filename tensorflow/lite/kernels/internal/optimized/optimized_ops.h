@@ -1461,8 +1461,10 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
 
     for (int c = 0; c < depth; c++) {
       int32_t diff = *input_data - input_zero_point;
-      int32_t rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
+      int32_t rescaled_diff = gemmlowp::RoundingDivideByPOT(
+          gemmlowp::SaturatingRoundingDoublingHighMul(128 * diff,
+                                                      inv_l2norm_multiplier),
+          -inv_l2norm_shift);
       int32_t unclamped_output_val = 128 + rescaled_diff;
       int32_t output_val = std::min(255, std::max(0, unclamped_output_val));
       *output_data = static_cast<uint8_t>(output_val);

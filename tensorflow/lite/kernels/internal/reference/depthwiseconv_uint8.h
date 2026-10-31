@@ -68,8 +68,6 @@ inline int32_t DepthwiseConvRound(int32_t x, int32_t quantized_multiplier,
   return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
 }
 
-// Single-rounding MultiplyByQuantizedMultiplier
-#if TFLITE_SINGLE_ROUNDING
 template <>
 inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kAwayFromZero>(
     int32_t x, int32_t quantized_multiplier, int shift) {
@@ -85,19 +83,6 @@ inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kAwayFromZero>(
 template <>
 inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kUpward>(
     int32_t x, int32_t quantized_multiplier, int shift) {
-  return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
-}
-// Double-rounding MultiplyByQuantizedMultiplier
-#else
-template <>
-inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kAwayFromZero>(
-    int32_t x, int32_t quantized_multiplier, int shift) {
-  return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
-}
-
-template <>
-inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kUpward>(
-    int32_t x, int32_t quantized_multiplier, int shift) {
   using gemmlowp::SaturatingRoundingDoublingHighMul;
   const int left_shift = shift > 0 ? shift : 0;
   const int right_shift = shift > 0 ? 0 : -shift;
@@ -107,7 +92,6 @@ inline int32_t DepthwiseConvRound<DepthwiseConvOutputRounding::kUpward>(
           rounding_offset) >>
          right_shift;
 }
-#endif  // TFLITE_SINGLE_ROUNDING
 
 template <DepthwiseConvOutputRounding output_rounding>
 struct DepthwiseConvBasicKernel {

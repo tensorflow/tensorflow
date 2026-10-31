@@ -334,8 +334,12 @@ inline void LstmCell(const LstmCellParams& params,
       // (16-bit, using 3 integer bits) fixed-point format. The quantized
       // multiplier and shift here have been pre-computed offline
       // (e.g. by toco).
-      accum =
-          MultiplyByQuantizedMultiplier(accum, accum_multiplier, accum_shift);
+      int left_shift = accum_shift > 0 ? accum_shift : 0;
+      int right_shift = accum_shift > 0 ? 0 : -accum_shift;
+      accum = gemmlowp::RoundingDivideByPOT(
+          gemmlowp::SaturatingRoundingDoublingHighMul(accum * (1 << left_shift),
+                                                      accum_multiplier),
+          right_shift);
       // Saturate, cast to int16, and store to the temporary activations array.
       accum = std::max(-32768, std::min(32767, accum));
       activ_temp_data_int16[out_c + fc_output_depth * b] = accum;

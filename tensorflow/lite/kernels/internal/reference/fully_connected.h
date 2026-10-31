@@ -156,7 +156,12 @@ inline void FullyConnected(
       if (bias_data) {
         acc += bias_data[out_c];
       }
-      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+      int left_shift = output_shift > 0 ? output_shift : 0;
+      int right_shift = output_shift > 0 ? 0 : -output_shift;
+      acc = gemmlowp::RoundingDivideByPOT(
+          gemmlowp::SaturatingRoundingDoublingHighMul(acc * (1 << left_shift),
+                                                      output_multiplier),
+          right_shift);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
@@ -208,8 +213,12 @@ inline void FullyConnected(
       // (16-bit, typically 3 integer bits) fixed-point format. The quantized
       // multiplier and shift here have been pre-computed offline
       // (e.g. by toco).
-      accum =
-          MultiplyByQuantizedMultiplier(accum, output_multiplier, output_shift);
+      int left_shift = output_shift > 0 ? output_shift : 0;
+      int right_shift = output_shift > 0 ? 0 : -output_shift;
+      accum = gemmlowp::RoundingDivideByPOT(
+          gemmlowp::SaturatingRoundingDoublingHighMul(accum * (1 << left_shift),
+                                                      output_multiplier),
+          right_shift);
       // Saturate, cast to int16_t, and store to output array.
       accum = std::max(accum, output_activation_min - output_offset);
       accum = std::min(accum, output_activation_max - output_offset);
@@ -360,8 +369,12 @@ inline void ShuffledFullyConnected(
         // (16-bit, typically 3 integer bits) fixed-point format. The quantized
         // multiplier and shift here have been pre-computed offline
         // (e.g. by toco).
-        acc =
-            MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
+        int left_shift = output_shift > 0 ? output_shift : 0;
+        int right_shift = output_shift > 0 ? 0 : -output_shift;
+        acc = gemmlowp::RoundingDivideByPOT(
+            gemmlowp::SaturatingRoundingDoublingHighMul(acc * (1 << left_shift),
+                                                        output_multiplier),
+            right_shift);
         // Saturate, cast to int16_t, and store to output array.
         acc = std::max(acc, output_activation_min);
         acc = std::min(acc, output_activation_max);
@@ -411,8 +424,12 @@ inline void ShuffledFullyConnected(
           // (16-bit, typically 3 integer bits) fixed-point format. The
           // quantized multiplier and shift here have been pre-computed offline
           // (e.g. by toco).
-          acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              output_shift);
+          int left_shift = output_shift > 0 ? output_shift : 0;
+          int right_shift = output_shift > 0 ? 0 : -output_shift;
+          acc = gemmlowp::RoundingDivideByPOT(
+              gemmlowp::SaturatingRoundingDoublingHighMul(
+                  acc * (1 << left_shift), output_multiplier),
+              right_shift);
           // Saturate, cast to int16_t, and store to output array.
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
