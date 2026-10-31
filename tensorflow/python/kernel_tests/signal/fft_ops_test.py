@@ -1374,6 +1374,7 @@ class FFTShiftTest(test.TestCase, parameterized.TestCase):
   def test_unknown_rank_placeholder(self):
     if context.executing_eagerly():
       return
+    np.random.seed(0)
     x = array_ops.placeholder(shape=None, dtype="float32")
     y_fftshift = fft_ops.fftshift(x)
     y_ifftshift = fft_ops.ifftshift(x)
@@ -1392,6 +1393,7 @@ class FFTShiftTest(test.TestCase, parameterized.TestCase):
     def shift_fn(x):
       return fft_ops.fftshift(x), fft_ops.ifftshift(x)
 
+    np.random.seed(0)
     x_np = np.random.rand(4, 8, 16).astype(np.float32)
     shifted, unshifted = self.evaluate(shift_fn(x_np))
     self.assertAllClose(shifted, np.fft.fftshift(x_np))
