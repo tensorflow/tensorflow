@@ -2581,12 +2581,29 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
     else:
       if image.dtype.is_integer:
         # Converting to float: first cast, then scale. No saturation possible.
+        if image.dtype.max > float(dtype.max):
+          # Large integers overflow half (uint16 max casts to inf), so scale in
+          # float32 and only cast the result, which is in [-1, 1], to `dtype`.
+          scaled = math_ops.multiply(
+              math_ops.cast(image, dtypes.float32), 1. / image.dtype.max)
+          return math_ops.cast(scaled, dtype, name=name)
         cast = math_ops.cast(image, dtype)
         scale = 1. / image.dtype.max
         return math_ops.multiply(cast, scale, name=name)
       else:
         # Converting from float: first scale, then cast
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
+        if (float(image.dtype.max) < scale or
+            float(image.dtype.as_numpy_dtype(scale)) >= dtype.max + 1):
+          # The scale rounds up to dtype.max + 1 or more in the image's type
+          # (e.g. 256 in bfloat16 for uint8, 2**31 in float32 for int32), so
+          # 1.0 would overflow the cast. Scale half and bfloat16 in float32
+          # instead, and keep the scale below dtype.max + 1.
+          if image.dtype.size < 4:
+            image = math_ops.cast(image, dtypes.float32)
+          np_dtype = image.dtype.as_numpy_dtype
+          scale = min(np_dtype(scale),
+                      np.nextafter(np_dtype(dtype.max + 1), np_dtype(0)))
         scaled = math_ops.multiply(image, scale)
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
@@ -2819,12 +2836,12 @@ def adjust_hue(image, delta, name=None):
   >>> image = tf.constant(image)
   >>> tf.image.adjust_hue(image, 0.2)
   <tf.Tensor: shape=(3, 2, 3), dtype=int32, numpy=
-  array([[[ 2,  1,  3],
-        [ 5,  4,  6]],
-       [[ 8,  7,  9],
-        [11, 10, 12]],
-       [[14, 13, 15],
-        [17, 16, 18]]], dtype=int32)>
+  array([[[ 2,  0,  2],
+        [ 5,  3,  5]],
+       [[ 8,  6,  8],
+        [11,  9, 11]],
+       [[14, 12, 14],
+        [17, 15, 17]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     if context.executing_eagerly():

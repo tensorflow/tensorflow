@@ -5358,6 +5358,51 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([0, 1.1 / 255.0, 1], dtypes.float32, dtypes.uint8,
                     [0, 1, 255])
 
+  def testConvertHalfAndBfloat16ToInteger(self):
+    # dtype.max + 0.5 rounds up to dtype.max + 1 in half and bfloat16 (e.g. 256
+    # in bfloat16 for uint8), which used to wrap 1.0 around in the cast.
+    for float_dtype in [dtypes.float16, dtypes.bfloat16]:
+      image = constant_op.constant([0., 0.5, 1.], float_dtype)
+      for int_dtype, expected in [(dtypes.uint8, [0, 127, 255]),
+                                  (dtypes.int16, [0, 16383, 32767]),
+                                  (dtypes.uint16, [0, 32767, 65535])]:
+        for saturate in [False, True]:
+          y = image_ops.convert_image_dtype(image, int_dtype, saturate)
+          self.assertAllEqual(self.evaluate(y), expected)
+
+  def testConvertFloatToWideIntegerStaysInRange(self):
+    # dtype.max + 0.5 rounds up to 2**31 in float32 and to 2**63 in float64, so
+    # 1.0 used to overflow the cast. It now maps to the largest float below.
+    for float_dtype, int_dtype, expected in [
+        (dtypes.float16, dtypes.int32, [0, -2147483520, 2147483520]),
+        (dtypes.bfloat16, dtypes.int32, [0, -2147483520, 2147483520]),
+        (dtypes.float32, dtypes.int32, [0, -2147483520, 2147483520]),
+        (dtypes.float64, dtypes.int64,
+         [0, -9223372036854774784, 9223372036854774784])]:
+      image = constant_op.constant([0., -1., 1.], float_dtype)
+      for saturate in [False, True]:
+        y = image_ops.convert_image_dtype(image, int_dtype, saturate)
+        self.assertAllEqual(self.evaluate(y), expected)
+    for float_dtype, int_dtype, expected in [
+        (dtypes.float32, dtypes.uint32, 4294967040),
+        (dtypes.float32, dtypes.uint64, 18446742974197923840),
+        (dtypes.float64, dtypes.uint64, 18446744073709549568)]:
+      image = constant_op.constant([0., 1.], float_dtype)
+      for saturate in [False, True]:
+        y = image_ops.convert_image_dtype(image, int_dtype, saturate)
+        self.assertAllEqual(self.evaluate(y), [0, expected])
+
+  def testConvertWideIntegerToHalf(self):
+    # uint16 and wider integers used to overflow half in the cast, turning the
+    # max value into inf (or nan once scaled).
+    for int_dtype in [
+        dtypes.uint16, dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64
+    ]:
+      image = constant_op.constant(
+          [0, int_dtype.max // 2, int_dtype.max], int_dtype)
+      y = image_ops.convert_image_dtype(image, dtypes.float16)
+      self.assertAllClose(self.evaluate(y), [0., 0.5, 1.])
+
   def testConvertBetweenInt16AndInt8(self):
     with self.cached_session():
       # uint8, uint16
