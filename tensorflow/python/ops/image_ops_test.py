@@ -4109,6 +4109,30 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
             antialias=True)
         self.evaluate(op)
 
+  def testImageResizeAntialiasUpsample(self):
+    img = np.array([[[1.0], [2.0]], [[3.0], [4.0]]], dtype=np.float32)
+    img = img[np.newaxis, ...]
+    with self.session():
+      up_no_anti = self.evaluate(
+          image_ops.resize_images_v2(
+              img, [10, 10], method=image_ops.ResizeMethod.BILINEAR,
+              antialias=False))
+      up_anti = self.evaluate(
+          image_ops.resize_images_v2(
+              img, [10, 10], method=image_ops.ResizeMethod.BILINEAR,
+              antialias=True))
+      self.assertAllClose(up_no_anti, up_anti, atol=1e-05)
+
+  def testImageResizeAntialiasDownsample(self):
+    checkerboard = (np.indices((8, 8)).sum(axis=0) % 2).astype(np.float32)
+    checkerboard = checkerboard[np.newaxis, ..., np.newaxis]
+    with self.session():
+      down_anti = self.evaluate(
+          image_ops.resize_images_v2(
+              checkerboard, [2, 2], method=image_ops.ResizeMethod.BILINEAR,
+              antialias=True))
+      self.assertAllClose(down_anti, np.full((1, 2, 2, 1), 0.5), atol=0.05)
+
 
 # half_pixel_centers not supported by XLA
 @test_util.for_all_test_methods(test_util.disable_xla, "b/127616992")

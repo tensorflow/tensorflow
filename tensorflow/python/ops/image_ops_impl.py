@@ -1680,23 +1680,51 @@ def resize_images_v2(images,
   >>> tf.image.resize(image[0], [3,5]).shape.as_list()
   [3, 5, 1]
 
-  When `antialias` is true, the sampling filter will anti-alias the input image
-  as well as interpolate.  When downsampling an image with [anti-aliasing](
-  https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
-  kernel is scaled in order to properly anti-alias the input image signal.
-  `antialias` has no effect when upsampling an image:
+  When shrinking an image (downsampling), fine details or high-contrast patterns
+  can create jagged or distorted artifacts (called aliasing). Setting
+  `antialias=True` smooths the image by blending neighboring pixels together:
 
-  >>> a = tf.image.resize(image, [5,10])
-  >>> b = tf.image.resize(image, [5,10], antialias=True)
+  >>> # Downsampling without antialiasing:
+  >>> tf.image.resize(image, [3, 5], antialias=False)[0, ..., 0].numpy()
+  array([[0.6666667, 0.3333333, 0.       , 0.       , 0.       ],
+         [0.       , 0.       , 1.       , 0.       , 0.       ],
+         [0.       , 0.       , 0.       , 0.3333335, 0.6666665]],
+        dtype=float32)
+
+  >>> # Downsampling with antialiasing blends adjacent pixels smoothly:
+  >>> tf.image.resize(image, [3, 5], antialias=True)[0, ..., 0].numpy()
+  array([[0.5714286, 0.4285714, 0.       , 0.       , 0.       ],
+         [0.       , 0.2222222, 0.5555556, 0.2222222, 0.       ],
+         [0.       , 0.       , 0.       , 0.4285714, 0.5714285]],
+        dtype=float32)
+
+  How it works:
+  * When shrinking, the filter stretches out to cover more neighboring
+    pixels—the more you shrink the image, the wider the area it blends.
+  * For `bilinear`, it uses a smooth triangular blending filter. For `bicubic`,
+    it uses a Keys cubic filter.
+  * For `nearest` and `area`, `antialias` has no effect.
+  * When enlarging an image (upsampling), `antialias` has no effect because no
+    pixels are skipped:
+
+  >>> a = tf.image.resize(image, [5, 10])
+  >>> b = tf.image.resize(image, [5, 10], antialias=True)
   >>> tf.reduce_max(abs(a - b)).numpy()
   0.0
+
+  Note on OpenCV and Pillow:
+  Libraries like OpenCV sample individual points without extra blending by
+  default to maximize speed. Because TensorFlow blends nearby pixels when
+  `antialias=True`, resized pixel values will differ slightly from OpenCV or
+  Pillow. This difference is normal and expected.
 
   The `method` argument expects an item from the `image.ResizeMethod` enum, or
   the string equivalent. The options are:
 
   *   <b>`bilinear`</b>: [Bilinear interpolation.](
     https://en.wikipedia.org/wiki/Bilinear_interpolation) If `antialias` is
-    true, becomes a hat/tent filter function with radius 1 when downsampling.
+    true, uses a triangular filter that stretches to blend nearby pixels
+    when shrinking.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
     https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
     High-quality practical filter but may have some ringing, especially on
@@ -1706,7 +1734,8 @@ def resize_images_v2(images,
     Very-high-quality filter but may have stronger ringing.
   *   <b>`bicubic`</b>: [Cubic interpolant](
     https://en.wikipedia.org/wiki/Bicubic_interpolation) of Keys. Equivalent to
-    Catmull-Rom kernel. Reasonably good quality and faster than Lanczos3Kernel,
+    Catmull-Rom kernel. If `antialias` is true, uses a smooth Keys cubic filter
+    when shrinking. Reasonably good quality and faster than Lanczos3Kernel,
     particularly when upsampling.
   *   <b>`gaussian`</b>: [Gaussian kernel](
     https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3,
@@ -1762,8 +1791,12 @@ def resize_images_v2(images,
       then `images` will be resized to a size that fits in `size` while
       preserving the aspect ratio of the original image. Scales up the image if
       `size` is bigger than the current size of the `image`. Defaults to False.
-    antialias: Whether to use an anti-aliasing filter when downsampling an
-      image.
+    antialias: bool. Whether to use an anti-aliasing filter when shrinking an
+      image. When True, neighboring pixels are blended together before
+      downsampling to prevent jagged patterns. Supported for `bilinear` and
+      `bicubic`; ignored for `nearest` and `area`. Results differ slightly from
+      OpenCV and Pillow because TensorFlow blends neighboring pixels.
+      Defaults to False.
     name: A name for this operation (optional).
 
   Raises:
@@ -1968,7 +2001,8 @@ def resize_image_with_pad_v2(image,
     target_height: Target height.
     target_width: Target width.
     method: Method to use for resizing image. See `image.resize()`
-    antialias: Whether to use anti-aliasing when resizing. See 'image.resize()'.
+    antialias: bool. Whether to use an anti-aliasing filter when shrinking an
+      image. Passed directly to `tf.image.resize`. Defaults to False.
 
   Raises:
     ValueError: if `target_height` or `target_width` are zero or negative.
