@@ -235,23 +235,20 @@ class UniformQuantizedAddOp : public OpKernel {
             "If rhs and output is both per-axis quantized, the "
             "quantization axis must match."));
 
-    // output_quantization_axis_ and output_scales/output_zero_points are only
-    // validated against output_shape above, but EvalQuantizedAdd requantizes
-    // lhs and rhs to the output scale using that same axis applied to the
-    // operand shapes. A per-axis output combined with a per-tensor operand
-    // therefore drives the per-channel requantize past the operand's bounds
-    // (out-of-bounds reads of the scale/zero-point buffers, out-of-bounds
-    // writes of the per-channel multiplier temporaries, or a fatal single
-    // element check when the operand falls back to the per-tensor path). Only
-    // all-per-tensor or all-per-axis configurations are supported, so reject a
-    // per-axis output unless both operands are per-axis as well.
+    // EvalQuantizedAdd requantizes lhs and rhs in their unbroadcasted shapes
+    // using output_scales, so a per-axis output requires both operands to be
+    // per-axis with matching quantization dimension sizes.
     OP_REQUIRES(
         context,
         (output_quantization_axis_ == -1 ||
-         (lhs_quantization_axis_ >= 0 && rhs_quantization_axis_ >= 0)),
+         (lhs_quantization_axis_ >= 0 && rhs_quantization_axis_ >= 0 &&
+          lhs.dim_size(lhs_quantization_axis_) ==
+              output_shape.dim_size(output_quantization_axis_) &&
+          rhs.dim_size(rhs_quantization_axis_) ==
+              output_shape.dim_size(output_quantization_axis_))),
         absl::InvalidArgumentError(
             "If output is per-axis quantized, both lhs and rhs must be "
-            "per-axis quantized as well."));
+            "per-axis quantized with matching quantization dimension sizes."));
 
     OP_REQUIRES(context,
                 (AllElementsPositive<float>(lhs_scales) &&
