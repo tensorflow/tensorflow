@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 
-#include <algorithm>
 #include <cassert>
 #include <climits>
 #include <cstddef>
