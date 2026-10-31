@@ -138,7 +138,7 @@ TEST_F(PartitioningUtilsTest, GraphWithoutAssignedDevicesFails) {
   std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs;
   absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
-  ASSERT_TRUE(absl::IsInvalidArgument(status)) << status.ToString();
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << status;
 }
 
 TEST_F(PartitioningUtilsTest, OneDevice) {
@@ -149,7 +149,7 @@ TEST_F(PartitioningUtilsTest, OneDevice) {
   std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs;
   absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   ASSERT_EQ(1, subgraphs.size());
   const auto& pair = *subgraphs.begin();
@@ -164,7 +164,7 @@ TEST_F(PartitioningUtilsTest, TwoDevices) {
   std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs;
   absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   ASSERT_EQ(2, subgraphs.size());
 
@@ -333,7 +333,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   absl::Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
       &ret_alloc_attrs, /*ints_on_device=*/false);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   CheckArgIndices({{3, -1}}, arg_indices);
   CheckRetIndices({5}, ret_indices);
@@ -363,7 +363,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsNotOnDevice) {
   absl::Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
       &ret_alloc_attrs, /*ints_on_device=*/false);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   CheckAlloc({true}, arg_alloc_attrs);
   CheckAlloc({true}, ret_alloc_attrs);
@@ -381,7 +381,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsOnDevice) {
   absl::Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
       &ret_alloc_attrs, /*ints_on_device=*/true);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   CheckAlloc({false}, arg_alloc_attrs);
   CheckAlloc({false}, ret_alloc_attrs);
@@ -410,7 +410,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
   absl::Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,
       &ret_alloc_attrs, /*ints_on_device=*/false);
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   CheckArgIndices({{1, 0}, {3, 1}, {5, 2}, {7, 2}, {9, 0}}, arg_indices);
   CheckRetIndices({2, 4, 6, 8, 10}, ret_indices);
