@@ -189,7 +189,7 @@ absl::Status RegisterFunctionDefForSubgraphs(
   return absl::OkStatus();
 }
 
-DelegateData::DelegateData() {}
+DelegateData::DelegateData() = default;
 
 DelegateData::~DelegateData() {
   if (eager_context_) {
