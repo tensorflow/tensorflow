@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #define EIGEN_USE_THREADS
@@ -1473,8 +1474,9 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
                                data_format_, tensor_in, out_shape,
                                propagate_nans_);
     } else {
-      CHECK(data_format_ == FORMAT_NHWC)
-          << "MaxPool only supports NCHW or NHWC format";
+      OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
+                  absl::InvalidArgumentError(
+                      "MaxPool only supports NCHW or NHWC format"));
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
       LaunchMaxPoolingNoMask<Device, T>::launch(context, params, tensor_in,

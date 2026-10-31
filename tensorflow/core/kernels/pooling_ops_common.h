@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_H_
 #define TENSORFLOW_CORE_KERNELS_POOLING_OPS_COMMON_H_
 
+#include <type_traits>
 #include <vector>
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -311,13 +313,16 @@ template <>
 struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output) {
+    OP_REQUIRES(context, input.dims() == 5 && input.dim_size(4) == 4,
+                absl::InvalidArgumentError(
+                    "NCHW_VECT_C requires 5-D input with inner dimension 4."));
 #if GOOGLE_CUDA
     absl::Status status = functor::MaxPoolForwardNoMask_NCHW_VECT_C()(
         reinterpret_cast<const int32_t*>(input.flat<qint8>().data()),
         params.tensor_in_batch, params.tensor_in_rows, params.tensor_in_cols,
-        params.depth, params.out_height, params.out_width, params.window_rows,
-        params.window_cols, params.row_stride, params.col_stride,
-        params.pad_top, params.pad_left,
+        params.depth / 4, params.out_height, params.out_width,
+        params.window_rows, params.window_cols, params.row_stride,
+        params.col_stride, params.pad_top, params.pad_left,
         reinterpret_cast<int32_t*>(output->flat<qint8>().data()),
         context->eigen_gpu_device());
     if (!status.ok()) {
@@ -368,10 +373,20 @@ class MaxPoolingV2Op : public OpKernel {
                       "Pooling is not yet supported on the batch dimension."));
     }
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    constexpr bool is_int8x4 = std::is_same_v<T, qint8>;
+    OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),
+                absl::InvalidArgumentError(
+                    "qint8 should be used with data_format NCHW_VECT_C."));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
+    if (data_format_ == FORMAT_NCHW_VECT_C) {
+      OP_REQUIRES(
+          context, tensor_in.dims() == 5 && tensor_in.dim_size(4) == 4,
+          absl::InvalidArgumentError(
+              "NCHW_VECT_C requires 5-D input with inner dimension 4."));
+    }
 
     std::vector<int32_t> ksize = ksize_;
     std::vector<int32_t> stride = stride_;
