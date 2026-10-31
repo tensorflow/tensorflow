@@ -126,7 +126,7 @@ def stack(values, axis=0, name="stack"):
           "Argument `values` cannot be empty when axis != 0 "
           f"(got axis = {axis})."
       )
-  elif not isinstance(values, Sequence):
+  elif not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
     raise TypeError(
         "Argument `values` must be a sequence of Tensor objects, but got an "
         f"instance of {type(values).__name__}."

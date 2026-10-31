@@ -450,6 +450,16 @@ class AutomaticStackingTest(test.TestCase):
     ):
       array_ops_stack.stack(3.14, axis=1)
 
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack("abc", axis=1)
+
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(b"abc", axis=1)
+
   def testMappingTypeRaisesTypeError(self):
     t = constant_op.constant([1, 2, 3])
     with self.assertRaisesRegex(
