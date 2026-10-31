@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/graph/testlib.h"
 
+#include <cstdint>
+#include <string>
 #include <vector>
+
+#include "absl/log/check.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
