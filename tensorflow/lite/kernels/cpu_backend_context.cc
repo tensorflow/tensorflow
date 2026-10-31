@@ -139,7 +139,7 @@ CpuBackendContext::CpuBackendContext()
 #endif
 }
 
-CpuBackendContext::~CpuBackendContext() {}
+CpuBackendContext::~CpuBackendContext() = default;
 
 void CpuBackendContext::SetMaxNumThreads(int max_num_threads) {
   const int target_num_threads =
