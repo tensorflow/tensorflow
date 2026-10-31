@@ -2587,6 +2587,14 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
       else:
         # Converting from float: first scale, then cast
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
+        if dtype in (dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64):
+          if image.dtype in (dtypes.float16, dtypes.bfloat16, dtypes.float32):
+            image = math_ops.cast(image, dtypes.float64)
+        elif image.dtype in (dtypes.float16, dtypes.bfloat16):
+          # `scale` is not exactly representable in half precision (and may
+          # overflow), which makes `1.0` wrap around when cast; scale in
+          # `float32` instead.
+          image = math_ops.cast(image, dtypes.float32)
         scaled = math_ops.multiply(image, scale)
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
