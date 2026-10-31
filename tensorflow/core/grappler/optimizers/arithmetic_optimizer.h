@@ -110,7 +110,8 @@ class ArithmeticOptimizer : public GraphOptimizer {
 
   // Runs peep-hole optimizations on `optimized_graph`, e.g., removing inverse
   // transposes.
-  absl::Status SimplifyArithmeticOps(bool can_use_shapes);
+  absl::Status SimplifyArithmeticOps(GraphDef& optimized_graph,
+                                     bool can_use_shapes);
   // Tries to simplify the expression that roots at `node` and replaces the uses
   // of `node` to the simplified expression. Returns the name of the simplified
   // tensor (e.g. "split:1") or an empty string if no simplification is
@@ -136,7 +137,6 @@ class ArithmeticOptimizer : public GraphOptimizer {
   std::unordered_set<std::string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;
   std::unique_ptr<GraphProperties> graph_properties_;
-  GraphDef* optimized_graph_ = nullptr;  // Not owned.
   gtl::FlatSet<std::string> feed_nodes_;
 };
 

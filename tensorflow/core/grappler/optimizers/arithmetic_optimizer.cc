@@ -20,8 +20,10 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <limits>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -4396,14 +4398,15 @@ class RemoveCastIntoSegmentReductionStage : public ArithmeticOptimizerStage {
 
 }  // namespace
 
-absl::Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
+absl::Status ArithmeticOptimizer::SimplifyArithmeticOps(
+    GraphDef& optimized_graph, bool can_use_shapes) {
   SetVector<NodeDef*> nodes_to_simplify;
-  nodes_to_simplify.Reserve(optimized_graph_->node_size());
-  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    nodes_to_simplify.PushBack(optimized_graph_->mutable_node(i));
+  nodes_to_simplify.Reserve(optimized_graph.node_size());
+  for (int i = 0; i < optimized_graph.node_size(); ++i) {
+    nodes_to_simplify.PushBack(optimized_graph.mutable_node(i));
   }
 
-  const GraphOptimizerContext ctx(&nodes_to_preserve_, optimized_graph_,
+  const GraphOptimizerContext ctx(&nodes_to_preserve_, &optimized_graph,
                                   graph_properties_.get(), node_map_.get(),
                                   &feed_nodes_, opt_level_);
   const ArithmeticOptimizerContext ctx_ext(&nodes_to_simplify);
@@ -4534,9 +4537,8 @@ absl::Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
   GrapplerItem optimized_item(item);
-  optimized_graph_ = &optimized_item.graph;
 
-  node_map_.reset(new NodeMap(optimized_graph_));
+  node_map_ = std::make_unique<NodeMap>(&optimized_item.graph);
   for (const auto& feed : item.feed) {
     feed_nodes_.insert(NodeName(feed.first));
   }
@@ -4548,7 +4550,7 @@ absl::Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   // Perform topological sort on the graph in order to help DedupComputations
   // and AddOpsRewrite to optimize larger subgraphs starting from the roots
   // with more inputs.
-  TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
+  TF_RETURN_IF_ERROR(TopologicalSort(&optimized_item.graph));
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   graph_properties_.reset(new GraphProperties(optimized_item));
@@ -4563,8 +4565,9 @@ absl::Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   }
 
   // Perform the optimizations.
-  TF_RETURN_IF_ERROR(SimplifyArithmeticOps(can_use_shapes));
-  *optimized_graph = std::move(*optimized_graph_);
+  TF_RETURN_IF_ERROR(
+      SimplifyArithmeticOps(optimized_item.graph, can_use_shapes));
+  *optimized_graph = std::move(optimized_item.graph);
   return absl::OkStatus();
 }
 
