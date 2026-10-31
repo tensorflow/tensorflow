@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringSet.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
