@@ -1099,7 +1099,7 @@ TEST(TensorBundleTest, StringTensors) {
 
 class VariantObject {
  public:
-  VariantObject() {}
+  VariantObject() = default;
   VariantObject(const std::string& metadata, int64_t value)
       : metadata_(metadata), value_(value) {}
 
