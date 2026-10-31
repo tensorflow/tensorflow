@@ -602,10 +602,13 @@ __device__ Eigen::bfloat16 GpuAtomicCasHelper(Eigen::bfloat16* ptr,
   Eigen::half ret = detail::GpuAtomicCasHelper(
       reinterpret_cast<Eigen::half*>(ptr), [accumulate](Eigen::half a) {
         Eigen::bfloat16 acc =
-            accumulate(Eigen::numext::bit_cast<Eigen::bfloat16>(a));
-        return Eigen::numext::bit_cast<Eigen::half>(acc);
+            accumulate(Eigen::numext::bit_cast<Eigen::bfloat16>(
+                Eigen::numext::bit_cast<uint16_t>(a)));
+        return Eigen::numext::bit_cast<Eigen::half>(
+            Eigen::numext::bit_cast<uint16_t>(acc));
       });
-  return Eigen::numext::bit_cast<Eigen::bfloat16>(ret);
+  return Eigen::numext::bit_cast<Eigen::bfloat16>(
+      Eigen::numext::bit_cast<uint16_t>(ret));
 }
 
 template <typename F>
