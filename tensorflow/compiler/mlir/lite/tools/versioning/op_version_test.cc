@@ -218,6 +218,12 @@ TEST(OpVersionTest, VersioningLessEqualTest) {
 
 TEST(OpVersionTest, VersioningGreaterTest) {
   SimpleVersioningTest(BuiltinOperator_GREATER);
+
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_GREATER,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 
 TEST(OpVersionTest, VersioningGreaterEqualTest) {
@@ -1419,6 +1425,13 @@ TEST(OpVersionTest, VersioningBroadcastToTest) {
       .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_BROADCAST_TO,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 
 TEST(OpVersionTest, VersioningGeluTest) {
