@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -397,8 +398,16 @@ class RaggedCrossOp : public OpKernel {
       }
 
       int64_t num_values = ragged_values_list[i].NumElements();
-      TF_RETURN_IF_ERROR(RaggedTensorVerifySplits<SplitsType>(
-          ragged_splits_list[i], true, num_values));
+      if (ragged_splits_list[i].dtype() == DT_INT32) {
+        TF_RETURN_IF_ERROR(RaggedTensorVerifySplits<int32_t>(
+            ragged_splits_list[i], true, num_values));
+      } else if (ragged_splits_list[i].dtype() == DT_INT64) {
+        TF_RETURN_IF_ERROR(RaggedTensorVerifySplits<int64_t>(
+            ragged_splits_list[i], true, num_values));
+      } else {
+        return absl::InvalidArgumentError(
+            "ragged_splits must have type int32 or int64.");
+      }
     }
     for (int i = 0; i < num_sparse; ++i) {
       if (!TensorShapeUtils::IsMatrix(sparse_indices_list[i].shape()) ||
@@ -410,6 +419,18 @@ class RaggedCrossOp : public OpKernel {
       if (sparse_shape_list[i].NumElements() != 2) {
         return absl::InvalidArgumentError(
             "tf.ragged.cross only supports inputs with rank=2.");
+      }
+      if (sparse_indices_list[i].shape().dim_size(1) != 2) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Expected sparse indices to have 2 columns, got ",
+            sparse_indices_list[i].shape().dim_size(1), " at position ", i));
+      }
+      // sparse_shape_list[i].NumElements() == 2 is verified above.
+      auto shape_vec = sparse_shape_list[i].flat<int64_t>();
+      if (shape_vec(0) < 0 || shape_vec(1) < 0) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Sparse shape dimensions must be non-negative, got [", shape_vec(0),
+            ", ", shape_vec(1), "] at position ", i));
       }
       if (sparse_indices_list[i].shape().dim_size(0) !=
           sparse_values_list[i].shape().dim_size(0)) {

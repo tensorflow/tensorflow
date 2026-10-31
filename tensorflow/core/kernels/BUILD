@@ -1643,6 +1643,24 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "ragged_cross_op_test",
+    size = "small",
+    srcs = ["ragged_cross_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_cross_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/ops:ragged_array_ops_op_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_kernel_library(
     name = "ragged_fill_empty_rows_op",
     prefix = "ragged_fill_empty_rows_op",
