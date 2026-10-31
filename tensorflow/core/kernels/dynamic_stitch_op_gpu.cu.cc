@@ -39,7 +39,7 @@ __global__ void DynamicStitchKernel(const int64_t slice_size,
   int32_t* data_indices = GetGpuDeviceArrayOnDevice(&input_indices);
   const T** data_ptrs = GetGpuDeviceArrayOnDevice(&input_ptrs);
   for (int64_t output_index : GpuGridRangeX<int64_t>(output_size)) {
-    static_assert(std::is_same<decltype(output_index), int64_t>::value,
+    static_assert(std::is_same_v<decltype(output_index), int64_t>,
                   "Expected int64_t index");
     const int64_t slice_id = output_index / slice_size;
     const int64_t slice_offset = output_index % slice_size;

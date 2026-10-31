@@ -154,7 +154,7 @@ class Conv2DBackpropFilterOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     cudnn_use_autotune_ = CudnnUseAutotune();
 
-    if (std::is_same<Device, CPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice>) {
       OP_REQUIRES(
           context, data_format_ == FORMAT_NHWC,
           absl::InvalidArgumentError("Conv2DBackpropFilterOp [CPU] "
@@ -269,8 +269,8 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                 absl::InvalidArgumentError(
                     "Current implementation does not yet support "
                     "dilations in the batch and depth dimensions."));
-    if (std::is_same<Device, CPUDevice>::value ||
-        std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, CPUDevice> ||
+        std::is_same_v<Device, GPUDevice>) {
       // TODO(yangzihao): Add a CPU implementation for dilated convolution.
       OP_REQUIRES(
           context, (dilations_[1] == 1 && dilations_[2] == 1),
