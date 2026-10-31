@@ -34,7 +34,7 @@ namespace resource {
 // to invoke the initalization subgraph can be ignored safely.
 class InitializationStatus : public ResourceBase {
  public:
-  InitializationStatus() {}
+  InitializationStatus() = default;
   InitializationStatus(InitializationStatus&& other) noexcept {
     is_initialized_ = other.is_initialized_;
   }
@@ -42,7 +42,7 @@ class InitializationStatus : public ResourceBase {
   InitializationStatus(const InitializationStatus&) = delete;
   InitializationStatus& operator=(const InitializationStatus&) = delete;
 
-  ~InitializationStatus() override {}
+  ~InitializationStatus() override = default;
 
   ResourceType GetResourceType() const override {
     return ResourceType::kInitializationStatus;
