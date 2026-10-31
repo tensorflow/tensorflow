@@ -365,6 +365,49 @@ TEST(BasicFlatBufferModel, TestZeroSubgraphs) {
   ASSERT_NE(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
 }
 
+TEST(BasicFlatBufferModel, TestOmittedSubgraphsVector) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto empty_buffer = CreateBuffer(fbb);
+  auto buffers = fbb.CreateVector({empty_buffer});
+  auto model_offset = CreateModel(fbb, TFLITE_SCHEMA_VERSION,
+                                  /*operator_codes=*/0, /*subgraphs=*/0,
+                                  /*description=*/0, buffers);
+  FinishModelBuffer(fbb, model_offset);
+
+  auto m = FlatBufferModel::VerifyAndBuildFromBuffer(
+      reinterpret_cast<const char*>(fbb.GetBufferPointer()), fbb.GetSize());
+  ASSERT_NE(m, nullptr);
+  ASSERT_EQ(m->GetModel()->subgraphs(), nullptr);
+
+  std::unique_ptr<Interpreter> interpreter;
+  EXPECT_EQ(InterpreterBuilder(*m, TrivialResolver())(&interpreter),
+            kTfLiteError);
+  EXPECT_EQ(interpreter, nullptr);
+}
+
+TEST(BasicFlatBufferModel, TestValidInMemorySingleSubgraph) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto empty_buffer = CreateBuffer(fbb);
+  auto buffers = fbb.CreateVector({empty_buffer});
+  auto empty_tensors = fbb.CreateVector<flatbuffers::Offset<Tensor>>({});
+  auto empty_subgraph = CreateSubGraph(fbb, empty_tensors);
+  auto subgraphs = fbb.CreateVector({empty_subgraph});
+  auto model_offset = CreateModel(fbb, TFLITE_SCHEMA_VERSION,
+                                  /*operator_codes=*/0, subgraphs,
+                                  /*description=*/0, buffers);
+  FinishModelBuffer(fbb, model_offset);
+
+  auto m = FlatBufferModel::VerifyAndBuildFromBuffer(
+      reinterpret_cast<const char*>(fbb.GetBufferPointer()), fbb.GetSize());
+  ASSERT_NE(m, nullptr);
+  ASSERT_NE(m->GetModel()->subgraphs(), nullptr);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+  EXPECT_EQ(interpreter->subgraphs_size(), 1);
+}
+
 TEST(BasicFlatBufferModel, TestMultipleSubgraphs) {
   auto m = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/2_subgraphs.bin");
