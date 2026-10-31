@@ -62,8 +62,8 @@ struct safe_scalar_binary_pow_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE safe_scalar_binary_pow_op(bool* error)
       : error(error) {}
 
-  EIGEN_DEVICE_FUNC inline Scalar operator()(const Scalar& a,
-                                             const Exponent& b) const {
+  EIGEN_DEVICE_FUNC Scalar operator()(const Scalar& a,
+                                      const Exponent& b) const {
     const Exponent safe_b = tensorflow::internal::SubtleMustCopy(b);
     if (TF_PREDICT_TRUE(safe_b >= 0)) {
       return numext::pow(a, safe_b);
@@ -248,18 +248,18 @@ struct scalar_left : private Binary {
 
   const Tin* left;
 
-  inline scalar_left(const scalar_left& other) = default;
+  scalar_left(const scalar_left& other) = default;
 
   template <typename... Args>
-  EIGEN_DEVICE_FUNC inline explicit scalar_left(const Tin* c, Args... args)
+  EIGEN_DEVICE_FUNC explicit scalar_left(const Tin* c, Args... args)
       : Binary(args...), left(c) {}
 
-  EIGEN_DEVICE_FUNC inline Tout operator()(const Tin& right) const {
+  EIGEN_DEVICE_FUNC Tout operator()(const Tin& right) const {
     return Binary::operator()(*left, right);
   }
 
   template <typename Packet>
-  EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& right_packet) const {
+  EIGEN_DEVICE_FUNC Packet packetOp(const Packet& right_packet) const {
     return Binary::packetOp(Eigen::internal::pset1<Packet>(*left),
                             right_packet);
   }
@@ -279,18 +279,18 @@ struct scalar_right : private Binary {
 
   const Tin* right;
 
-  inline scalar_right(const scalar_right& other) = default;
+  scalar_right(const scalar_right& other) = default;
 
   template <typename... Args>
-  EIGEN_DEVICE_FUNC inline explicit scalar_right(const Tin* c, Args... args)
+  EIGEN_DEVICE_FUNC explicit scalar_right(const Tin* c, Args... args)
       : Binary(args...), right(c) {}
 
-  EIGEN_DEVICE_FUNC inline Tout operator()(const Tin& left) const {
+  EIGEN_DEVICE_FUNC Tout operator()(const Tin& left) const {
     return Binary::operator()(left, *right);
   }
 
   template <typename Packet>
-  EIGEN_DEVICE_FUNC inline Packet packetOp(const Packet& left_packet) const {
+  EIGEN_DEVICE_FUNC Packet packetOp(const Packet& left_packet) const {
     return Binary::packetOp(left_packet,
                             Eigen::internal::pset1<Packet>(*right));
   }
@@ -859,7 +859,7 @@ struct functor_traits<digamma_op<Scalar>> {
 // accurately.  This keeps the eager and XLA float results in agreement.
 template <>
 struct scalar_erfinv_op<float> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float& x) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(const float x) const {
     constexpr int kDegree = 9;
     constexpr float w_less_than_5_constants[kDegree] = {
         2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
