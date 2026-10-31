@@ -82,6 +82,7 @@ TEST(DumpHloIfEnabled, LargeConstantElided) {
                        ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
+  DrainAsyncDumpWriter();
   EXPECT_EQ(paths.size(), 2);  // debug options dump + HLO dump.
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
@@ -112,6 +113,7 @@ TEST(DumpHloIfEnabled, LargeConstantPrinted) {
                        ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
+  DrainAsyncDumpWriter();
   EXPECT_EQ(paths.size(), 2);
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
@@ -158,6 +160,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
   std::string dump_name = "dump";
   std::vector<std::string> paths =
       DumpHloModuleIfEnabled(*m, *buffer_assignment, dump_name);
+  DrainAsyncDumpWriter();
   EXPECT_EQ(paths.size(), 6);
   std::string data;
   // First file is the HLO.
@@ -258,6 +261,7 @@ TEST(DumpTest, DumpProtobufToFileWhenEnabled) {
   options.set_xla_dump_to(tsl::testing::TmpDir());
   options.set_xla_enable_dumping(true);
   DumpProtobufToFile(module, options, "enable_proto_dumping");
+  DrainAsyncDumpWriter();
 
   HloModuleProto mod;
   ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), filename, &mod));
@@ -303,6 +307,7 @@ TEST(DumpTest, DumpFdoProfileToFileWhenEnabled) {
                        ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
+  DrainAsyncDumpWriter();
   EXPECT_EQ(paths.size(), 3);
 
   std::string data;
@@ -328,6 +333,7 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshot) {
   options.set_xla_dump_hlo_unoptimized_snapshots(true);
 
   DumpHloUnoptimizedSnapshotIfEnabled(hlo_snapshot, options);
+  DrainAsyncDumpWriter();
 
   std::vector<std::string> matches;
   std::string pattern_filename =
@@ -533,6 +539,7 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
   )",
                                                       config));
   DumpNonDefaultDebugOptions(*m, kNonDefaultDebugOptionsDumpSuffix);
+  DrainAsyncDumpWriter();
   std::string real_contents;
   ASSERT_OK(tsl::ReadFileToString(
       tsl::Env::Default(),
@@ -571,6 +578,7 @@ TEST(DumpTest, DumpPerExecutionProtoToFile) {
   DumpPerExecutionProtobufToFile(hlo_module, proto, debug_options,
                                  /*name=*/"test_name",
                                  /*text_formatter=*/nullptr);
+  DrainAsyncDumpWriter();
 
   std::vector<std::string> matches;
   ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
@@ -671,6 +679,7 @@ TEST(DumpPerModuleProtobufToFile, DumpsToSubfolder) {
   HloModuleProto proto;
   proto.set_name("my_proto");
   DumpPerModuleProtobufToFile(*m, proto, options, "my_name");
+  DrainAsyncDumpWriter();
 
   std::string pid_hostname_dir = SanitizeFileName(absl::StrFormat(
       "%s_%d", tsl::port::Hostname(), tsl::Env::Default()->GetProcessId()));
@@ -681,6 +690,36 @@ TEST(DumpPerModuleProtobufToFile, DumpsToSubfolder) {
       tsl::io::JoinPath(expected_subfolder, "*my_name*");
   ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(pattern_filename, &matches));
   EXPECT_THAT(matches, Not(IsEmpty()));
+}
+
+TEST(DumpTest, DumpToFileInDirAsyncWorksWhenEnabled) {
+  HloModuleConfig config;
+  DebugOptions options = GetDebugOptionsFromFlags();
+  auto env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  options.set_xla_enable_dumping(true);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      ROOT c = s32[] constant(42)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m,
+                       ParseAndReturnUnverifiedModule(kModuleStr, config));
+  std::string contents = "async_content";
+  DumpToFileInDirAsync(*m, "prefix", "suffix", contents);
+  DrainAsyncDumpWriter();
+
+  std::vector<std::string> matches;
+  ASSERT_OK(
+      env->GetMatchingPaths(tsl::io::JoinPath(dump_dir, "*suffix*"), &matches));
+  ASSERT_EQ(matches.size(), 1);
+  std::string read_contents;
+  ASSERT_OK(tsl::ReadFileToString(env, matches[0], &read_contents));
+  EXPECT_EQ(read_contents, contents);
 }
 
 TEST(DumpHloIfEnabled, CompactGte) {
@@ -706,6 +745,7 @@ TEST(DumpHloIfEnabled, CompactGte) {
                        ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
+  DrainAsyncDumpWriter();
   EXPECT_EQ(paths.size(), 2);
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
@@ -739,6 +779,7 @@ class DumpModuleFilterTest : public ::testing::Test {
     HloModuleProto proto;
     proto.set_name("my_proto");
     DumpPerModuleProtobufToFile(*m, proto, options_, "my_name");
+    DrainAsyncDumpWriter();
 
     std::vector<std::string> matches;
     if (!env_->GetMatchingPaths(tsl::io::JoinPath(dump_dir_, "*my_name*"),
