@@ -3983,6 +3983,38 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
     self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
 
 
+def _assertNoExtraPaddingFromRounding(test, resize_image_with_pad):
+  """Checks the padding when the scaled size is a whole number.
+
+  For these sizes the scaled size used to be computed in float32 as slightly
+  less than a whole number, so a row or column of the image was dropped and
+  replaced by zeros, e.g. a 512x512 image resized to 224x224 got a one-pixel
+  border.
+
+  Args:
+    test: The test case.
+    resize_image_with_pad: Called as `resize_image_with_pad(image,
+      target_height, target_width, use_tensor_inputs)`.
+  """
+  # (height, width, target_height, target_width, pad_top, pad_bottom,
+  #  pad_left, pad_right)
+  for (height, width, target_height, target_width, pad_top, pad_bottom,
+       pad_left, pad_right) in [
+           (512, 512, 224, 224, 0, 0, 0, 0),
+           (480, 640, 300, 300, 37, 38, 0, 0),
+           (720, 1280, 600, 600, 131, 132, 0, 0),
+       ]:
+    x = np.ones([height, width, 1], dtype=np.float32)
+    expected = np.pad(
+        np.ones([target_height - pad_top - pad_bottom,
+                 target_width - pad_left - pad_right, 1]),
+        [[pad_top, pad_bottom], [pad_left, pad_right], [0, 0]])
+    for use_tensor_inputs in [False, True]:
+      y = resize_image_with_pad(x, target_height, target_width,
+                                use_tensor_inputs)
+      test.assertAllClose(expected, y)
+
+
 class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
@@ -4099,6 +4131,9 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     y_shape = [1, 2, 1]
 
     self._assertReturns(x, x_shape, y, y_shape)
+
+  def testNoExtraPaddingFromRounding(self):
+    _assertNoExtraPaddingFromRounding(self, self._ResizeImageWithPad)
 
   def testImageResizeAntialiasWithInvalidInput(self):
     with self.session():
@@ -4228,6 +4263,9 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     y_shape = [1, 2, 1]
 
     self._assertReturns(x, x_shape, y, y_shape)
+
+  def testNoExtraPaddingFromRounding(self):
+    _assertNoExtraPaddingFromRounding(self, self._ResizeImageWithPad)
 
 
 class ResizeNearestNeighborGrad(test_util.TensorFlowTestCase):
