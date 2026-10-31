@@ -1,0 +1,97 @@
+// Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+edition = "2023";
+
+package xla;
+
+import "google/protobuf/timestamp.proto";
+import "xla/pjrt/proto/pjrt_value_type.proto";
+
+option features.field_presence = IMPLICIT;
+
+// Represents a compile-time component (such as a custom call handler, an FFI
+// compile-time Instantiate handler, or a dialect lowering engine) that carries
+// an opaque source/implementation hash. Used solely to fold code that is not a
+// direct dependency of the compiler binary into
+// `PjRtBuildStamp::full_source_hash()` for cache invalidation; has no ordering
+// or compatibility semantics.
+message PjRtComponentBuildStampProto {
+  // Category or subsystem of the component, e.g. "xla.ffi.handler".
+  string kind = 1;
+
+  // Target or symbol identifier, e.g. "custom_matmul".
+  string name = 2;
+
+  // Build target or package owning the component, e.g.
+  // "@openxla//xla/backends/gpu:custom_kernel".
+  string owner = 3;
+
+  string hash = 4;
+}
+
+// Represents the `(major, minor)` compatibility version of a compiler
+// interface, IR dialect, or runtime target (e.g. Mosaic, TPU runtime). Unlike
+// `PjRtComponentBuildStampProto` (which holds an opaque implementation hash for
+// cache invalidation), `PjRtCompatibilityVersionProto` defines a
+// lexicographically ordered `(major_version, minor_version)` version that
+// callers can query via `PjRtBuildStamp::GetVersion()` for IR/ABI compatibility
+// checks and target negotiation.
+message PjRtCompatibilityVersionProto {
+  // Identifier of the versioned interface, dialect, or target, e.g. "mosaic".
+  string name = 1;
+  int64 major_version = 2;
+  int64 minor_version = 3;
+}
+
+// Represents the build stamp of a PjRt plugin or compiler.
+message PjRtBuildStampProto {
+  // The build label with which the binary was built.
+  string build_label = 1;
+
+  // The timestamp at which the binary was built. Unset defaults to
+  // absl::InfinitePast().
+  google.protobuf.Timestamp build_timestamp = 2;
+
+  // The VCS revision (Git commit SHA or Piper source URI) from which the
+  // binary was built.
+  string vcs_revision = 3;
+
+  // Hash of the PjRt plugin or compiler, but not including entries that are
+  // specified separately in `components` or `compatibility_versions`.
+  string source_hash = 4;
+
+  // Compile-time components (such as a custom call handler, an FFI compile-time
+  // Instantiate handler, or a dialect lowering engine) that are not a direct
+  // dependency of the compiler binary and must be included to get a
+  // comprehensive source hash of the compiler.
+  repeated PjRtComponentBuildStampProto components = 5;
+
+  // Environment-specific attributes using dot-separated namespaces, e.g.
+  // "vendor.candidate" -> "xla_tpu_candidate_1".
+  // Attributes are informational-only metadata and do NOT affect compilation
+  // semantics or `PjRtBuildStamp::full_source_hash()`.
+  map<string, PjRtValueTypeProto> attributes = 6;
+
+  // Compatibility versions of compiler interfaces, IR dialects, or runtime
+  // targets (such as Mosaic IR version) used for compatibility checks and
+  // target negotiation. Also included in `PjRtBuildStamp::full_source_hash()`.
+  //
+  // Prefer the typed helpers over accessing this field directly: getters in
+  // `xla/pjrt/pjrt_compatibility_versions.h` and setters in
+  // `xla/pjrt/pjrt_build_stamp_writer.h` (compiler build stamp
+  // factories only). For a new well-known version, add a helper there.
+  repeated PjRtCompatibilityVersionProto compatibility_versions = 7;
+}
