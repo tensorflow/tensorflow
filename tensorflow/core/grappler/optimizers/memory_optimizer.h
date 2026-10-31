@@ -38,7 +38,7 @@ class MemoryOptimizer : public GraphOptimizer {
       const std::string& recomputation_targets_name_scope = "gradients/")
       : optimization_level_(optimization_level),
         recomputation_targets_name_scope_(recomputation_targets_name_scope) {}
-  ~MemoryOptimizer() override {}
+  ~MemoryOptimizer() override = default;
 
   std::string name() const override { return "memory_optimizer"; };
 
