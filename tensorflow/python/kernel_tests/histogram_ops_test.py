@@ -86,6 +86,19 @@ class BinValuesFixedWidth(test.TestCase, parameterized.TestCase):
       self.assertEqual(dtypes.int32, bins.dtype)
       self.assertAllClose(expected_bins, self.evaluate(bins))
 
+  @parameterized.parameters(dtypes.int32, dtypes.int64)
+  @test_util.run_in_graph_and_eager_modes
+  def test_output_dtype(self, dtype):
+    # Bins will be:
+    #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+    value_range = [0.0, 5.0]
+    values = [[-1.0, 0.0, 1.5], [2.0, 5.0, 15]]
+    expected_bins = [[0, 0, 1], [2, 4, 4]]
+    bins = histogram_ops.histogram_fixed_width_bins(
+        values, value_range, nbins=5, dtype=dtype)
+    self.assertEqual(dtype, bins.dtype)
+    self.assertAllEqual(expected_bins, self.evaluate(bins))
+
   def test_negative_nbins(self):
     value_range = [0.0, 5.0]
     values = []
