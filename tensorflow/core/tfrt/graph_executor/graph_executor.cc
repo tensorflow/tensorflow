@@ -190,14 +190,12 @@ absl::Status RunMlrtFunction(
   absl::InlinedVector<mlrt::Value, 4> mlrt_outputs(
       function.output_regs().size());
 
-  // Set up exit handler. We are using tsl::AsyncValue here because we need to
-  // use ConcurrentWorkQueue::Await() to wait for the execution.
-  // ConcurrentWorkQueue::Await() may be implemented in a special way instead of
-  // blocking, e.g. tfrt::SingleThreadedWorkQueue.
+  // Set up exit handler and deferred op tracking. We are using tsl::AsyncValue
+  // here because we need to use ConcurrentWorkQueue::Await() to wait for the
+  // execution and any launched AsyncOpKernels (e.g. batching kernels) before
+  // tearing down per-request state such as RequestInfo and RequestCost.
   tsl::RCReference<tsl::AsyncValue> chain =
-      tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
-  execution_context.set_exit_handler(
-      [chain = chain.get()]() { chain->SetStateConcrete(); });
+      tf_mlrt::SetUpExitAndDeferredOpsHandler(execution_context);
 
   execution_context.CallByMove(function, absl::MakeSpan(mlrt_inputs),
                                absl::MakeSpan(mlrt_outputs));
