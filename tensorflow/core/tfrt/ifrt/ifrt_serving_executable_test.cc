@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -25,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/globals.h"
 #include "absl/log/log.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -48,6 +51,7 @@ limitations under the License.
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/test_util.h"
@@ -69,6 +73,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_async_execution_limiter.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test_util.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
@@ -937,6 +942,445 @@ TEST(GetInputDonationMaskTest, OutOfRangeDonatedParameterFails) {
                 .status()
                 .code(),
             absl::StatusCode::kInternal);
+}
+
+// H2DTransferExecutorFactory that can hold `ScheduledH2DTransfers` behind an
+// explicit gate without blocking caller threads, while recording how many H2D
+// transfers started and peak `IfrtAsyncExecutionLimiter` inflight count.
+class GatedH2DTransferExecutor : public H2DTransferExecutor {
+ public:
+  struct SharedState {
+    absl::Mutex mu;
+    bool gate_open ABSL_GUARDED_BY(mu) = false;
+    std::vector<absl::AnyInvocable<void() &&>> release_callbacks
+        ABSL_GUARDED_BY(mu);
+
+    std::atomic<int> h2d_started{0};
+    std::atomic<int> max_observed_inflight{0};
+    IfrtAsyncExecutionLimiter* limiter = nullptr;
+    xla::ifrt::DeviceId monitored_device = xla::ifrt::DeviceId(0);
+
+    void RecordStart() {
+      h2d_started.fetch_add(1, std::memory_order_acq_rel);
+      if (limiter != nullptr) {
+        int current = limiter->InflightForDevice(monitored_device);
+        int prev = max_observed_inflight.load(std::memory_order_relaxed);
+        while (prev < current &&
+               !max_observed_inflight.compare_exchange_weak(
+                   prev, current, std::memory_order_relaxed)) {
+        }
+      }
+    }
+
+    void OpenGate() {
+      std::vector<absl::AnyInvocable<void() &&>> callbacks;
+      {
+        absl::MutexLock lock(mu);
+        gate_open = true;
+        callbacks = std::move(release_callbacks);
+        release_callbacks.clear();
+      }
+      for (auto& cb : callbacks) {
+        std::move(cb)();
+      }
+    }
+  };
+
+  GatedH2DTransferExecutor(xla::ifrt::Client& client,
+                           std::shared_ptr<SharedState> state)
+      : H2DTransferExecutor(client), state_(std::move(state)) {}
+
+  absl::StatusOr<tsl::Future<std::vector<xla::ifrt::ArrayRef>>>
+  ScheduledH2DTransfers(absl::Span<const InputHandle> handles,
+                        tsl::thread::ThreadPool& thread_pool) override {
+    state_->RecordStart();
+    TF_ASSIGN_OR_RETURN(
+        tsl::Future<std::vector<xla::ifrt::ArrayRef>> real_future,
+        H2DTransferExecutor::ScheduledH2DTransfers(handles, thread_pool));
+
+    absl::MutexLock lock(state_->mu);
+    if (state_->gate_open) {
+      return real_future;
+    }
+
+    auto [gated_promise, gated_future] =
+        tsl::MakePromise<std::vector<xla::ifrt::ArrayRef>>();
+    state_->release_callbacks.push_back(
+        [real_future = std::move(real_future),
+         gated_promise = std::move(gated_promise)]() mutable {
+          std::move(real_future)
+              .OnReady([gated_promise = std::move(gated_promise)](
+                           absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+                               arrays) mutable {
+                gated_promise.Set(std::move(arrays));
+              });
+        });
+    return std::move(gated_future);
+  }
+
+ private:
+  std::shared_ptr<SharedState> state_;
+};
+
+class GatedH2DTransferExecutorFactory : public H2DTransferExecutorFactory {
+ public:
+  explicit GatedH2DTransferExecutorFactory(
+      std::shared_ptr<GatedH2DTransferExecutor::SharedState> state)
+      : state_(std::move(state)) {}
+
+  absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
+  CreateH2DTransferExecutor(xla::ifrt::Client& ifrt_client) override {
+    return std::make_unique<GatedH2DTransferExecutor>(ifrt_client, state_);
+  }
+
+ private:
+  std::shared_ptr<GatedH2DTransferExecutor::SharedState> state_;
+};
+
+void WaitForAllDevicesIdle(const IfrtAsyncExecutionLimiter& limiter,
+                           int num_cores) {
+  for (int i = 0; i < num_cores; ++i) {
+    while (limiter.InflightForDevice(xla::ifrt::DeviceId(i)) != 0) {
+    }
+  }
+}
+
+TEST(IfrtServingExecutableLimiterTest,
+     ExecuteAsyncLimiterCapsConcurrentH2DAndExecutionWithoutBlockingCaller) {
+  IfrtAsyncExecutionLimiter limiter(/*max_inflight_per_device=*/2);
+  tsl::test_util::MockServingDeviceSelector selector;
+  auto helper =
+      std::make_unique<test_utils::IfrtServingExecutableTestHelper>(&selector);
+  helper->SetAsyncExecutionLimiter(&limiter);
+
+  constexpr int64_t kProgramId = 246810;
+  std::atomic<int> reserve_calls{0};
+  EXPECT_CALL(selector, ReserveDevice(absl::StrCat(kProgramId)))
+      .WillRepeatedly([&reserve_calls](::testing::Unused) {
+        reserve_calls.fetch_add(1, std::memory_order_acq_rel);
+        return tsl::DeviceReservation(0, /*selector=*/nullptr);
+      });
+
+  auto state = std::make_shared<GatedH2DTransferExecutor::SharedState>();
+  state->limiter = &limiter;
+  state->monitored_device = xla::ifrt::DeviceId(0);
+  // Open gate initially for warmup so compilation and variable loading finish.
+  state->OpenGate();
+  helper->SetH2DTransferExecutorFactory(
+      std::make_unique<GatedH2DTransferExecutorFactory>(state));
+
+  auto executable =
+      helper->MakeExecutable(kProgramId, GetMlirModulePath("executable.mlir"));
+
+  auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  const auto expected_out =
+      AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  // Warmup execution across all cores so `IfrtServingCoreSelector` finishes its
+  // round-robin warmup phase and delegates subsequent calls to `selector`; also
+  // exercises synchronous Execute() with the limiter active.
+  for (int i = 0; i < helper->num_cores(); ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<tensorflow::Tensor> warmup_out,
+                            executable->Execute(absl::MakeSpan(inputs),
+                                                /*variable_arg_indices=*/{}));
+    EXPECT_THAT(warmup_out, ElementsAre(TensorEq(expected_out)));
+  }
+
+  // Wait if background cleanup tasks from warmup are still releasing permits on
+  // `thread_pool_`.
+  WaitForAllDevicesIdle(limiter, helper->num_cores());
+
+  // Close gate and reset counters before launching a burst of 6 concurrent
+  // ExecuteAsync calls from this single test thread.
+  {
+    absl::MutexLock lock(state->mu);
+    state->gate_open = false;
+  }
+  state->h2d_started.store(0, std::memory_order_release);
+  state->max_observed_inflight.store(0, std::memory_order_release);
+  reserve_calls.store(0, std::memory_order_release);
+
+  constexpr int kNumRequests = 6;
+  std::vector<tsl::Future<std::vector<tensorflow::Tensor>>> futures;
+  futures.reserve(kNumRequests);
+  for (int i = 0; i < kNumRequests; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        tsl::Future<std::vector<tensorflow::Tensor>> future,
+        executable->ExecuteAsync(absl::MakeSpan(inputs),
+                                 /*variable_arg_indices=*/{}));
+    futures.push_back(std::move(future));
+  }
+
+  // All 6 ExecuteAsync calls returned immediately without blocking the caller:
+  // - ReserveDevice ran upfront for all 6 requests (load-shedding visibility).
+  // - Strictly 2 requests entered H2D; the other 4 are queued in FIFO order
+  //   without allocating H2D buffers!
+  EXPECT_EQ(reserve_calls.load(std::memory_order_acquire), kNumRequests);
+  EXPECT_EQ(state->h2d_started.load(std::memory_order_acquire), 2);
+  EXPECT_EQ(limiter.InflightForDevice(xla::ifrt::DeviceId(0)), 2);
+  EXPECT_EQ(limiter.QueueDepthForDevice(xla::ifrt::DeviceId(0)), 4);
+
+  // Release the gate and verify all 6 complete while respecting the <= 2 cap.
+  state->OpenGate();
+
+  for (auto& future : futures) {
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<tensorflow::Tensor> out,
+                            future.Await());
+    EXPECT_THAT(out, ElementsAre(TensorEq(expected_out)));
+  }
+
+  EXPECT_EQ(state->h2d_started.load(std::memory_order_acquire), kNumRequests);
+  EXPECT_LE(state->max_observed_inflight.load(std::memory_order_acquire), 2);
+
+  // Drain ThreadPool before `limiter` goes out of scope.
+  executable.reset();
+  helper.reset();
+  EXPECT_EQ(limiter.InflightForDevice(xla::ifrt::DeviceId(0)), 0);
+  EXPECT_EQ(limiter.QueueDepthForDevice(xla::ifrt::DeviceId(0)), 0);
+}
+
+TEST(IfrtServingExecutableLimiterTest,
+     ExecuteAsyncLimiterSharedAcrossMultipleExecutables) {
+  IfrtAsyncExecutionLimiter limiter(/*max_inflight_per_device=*/2);
+  tsl::test_util::MockServingDeviceSelector selector;
+  auto helper =
+      std::make_unique<test_utils::IfrtServingExecutableTestHelper>(&selector);
+  helper->SetAsyncExecutionLimiter(&limiter);
+
+  constexpr int64_t kProgramId1 = 101;
+  constexpr int64_t kProgramId2 = 102;
+  EXPECT_CALL(selector, ReserveDevice(absl::StrCat(kProgramId1)))
+      .WillRepeatedly(
+          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  EXPECT_CALL(selector, ReserveDevice(absl::StrCat(kProgramId2)))
+      .WillRepeatedly(
+          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+
+  auto state = std::make_shared<GatedH2DTransferExecutor::SharedState>();
+  state->limiter = &limiter;
+  state->monitored_device = xla::ifrt::DeviceId(0);
+  state->OpenGate();
+  helper->SetH2DTransferExecutorFactory(
+      std::make_unique<GatedH2DTransferExecutorFactory>(state));
+
+  auto exec1 =
+      helper->MakeExecutable(kProgramId1, GetMlirModulePath("executable.mlir"));
+  auto exec2 =
+      helper->MakeExecutable(kProgramId2, GetMlirModulePath("executable.mlir"));
+
+  auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  const auto expected_out =
+      AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  for (int i = 0; i < helper->num_cores(); ++i) {
+    ASSERT_THAT(exec1->Execute(absl::MakeSpan(inputs), {}),
+                absl_testing::IsOk());
+    ASSERT_THAT(exec2->Execute(absl::MakeSpan(inputs), {}),
+                absl_testing::IsOk());
+  }
+  WaitForAllDevicesIdle(limiter, helper->num_cores());
+
+  {
+    absl::MutexLock lock(state->mu);
+    state->gate_open = false;
+  }
+  state->h2d_started.store(0, std::memory_order_release);
+  state->max_observed_inflight.store(0, std::memory_order_release);
+
+  std::vector<tsl::Future<std::vector<tensorflow::Tensor>>> futures;
+  futures.reserve(8);
+  for (int i = 0; i < 4; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(auto f1,
+                            exec1->ExecuteAsync(absl::MakeSpan(inputs), {}));
+    TF_ASSERT_OK_AND_ASSIGN(auto f2,
+                            exec2->ExecuteAsync(absl::MakeSpan(inputs), {}));
+    futures.push_back(std::move(f1));
+    futures.push_back(std::move(f2));
+  }
+
+  // Combined H2D concurrency across both co-hosted executables is strictly 2!
+  EXPECT_EQ(state->h2d_started.load(std::memory_order_acquire), 2);
+  EXPECT_EQ(limiter.InflightForDevice(xla::ifrt::DeviceId(0)), 2);
+  EXPECT_EQ(limiter.QueueDepthForDevice(xla::ifrt::DeviceId(0)), 6);
+
+  state->OpenGate();
+  for (auto& future : futures) {
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<tensorflow::Tensor> out,
+                            future.Await());
+    EXPECT_THAT(out, ElementsAre(TensorEq(expected_out)));
+  }
+
+  EXPECT_EQ(state->h2d_started.load(std::memory_order_acquire), 8);
+  EXPECT_LE(state->max_observed_inflight.load(std::memory_order_acquire), 2);
+
+  exec1.reset();
+  exec2.reset();
+  helper.reset();
+  EXPECT_EQ(limiter.InflightForDevice(xla::ifrt::DeviceId(0)), 0);
+}
+
+TEST(IfrtServingExecutableLimiterTest, ExecuteAsyncLimiterMultiDeviceSpmd) {
+  IfrtAsyncExecutionLimiter limiter(/*max_inflight_per_device=*/2);
+  tsl::test_util::MockServingDeviceSelector selector;
+  auto helper =
+      std::make_unique<test_utils::IfrtServingExecutableTestHelper>(&selector);
+  helper->SetAsyncExecutionLimiter(&limiter);
+
+  constexpr int64_t kProgramId = 333333;
+  EXPECT_CALL(selector, ReserveDevice(absl::StrCat(kProgramId))).Times(0);
+
+  auto state = std::make_shared<GatedH2DTransferExecutor::SharedState>();
+  state->limiter = &limiter;
+  state->monitored_device = xla::ifrt::DeviceId(0);
+  state->OpenGate();
+  helper->SetH2DTransferExecutorFactory(
+      std::make_unique<GatedH2DTransferExecutorFactory>(state));
+
+  auto executable = helper->MakeExecutable(
+      kProgramId, GetMlirModulePath("spmd_executable.mlir"));
+
+  auto x = AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
+                             tensorflow::TensorShape({4, 2}));
+  auto y = AsTensor<int32_t>({11, 12, 13, 14, 15, 16, 17, 18},
+                             tensorflow::TensorShape({4, 2}));
+  auto z = AsTensor<int32_t>({21, 22, 23, 24, 25, 26, 27, 28},
+                             tensorflow::TensorShape({4, 2}));
+  const auto expected_out = AsTensor<int32_t>({33, 36, 39, 42, 45, 48, 51, 54},
+                                              tensorflow::TensorShape({4, 2}));
+  std::vector<tensorflow::Tensor> inputs{x, y, z};
+
+  // Warmup SPMD compilation.
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<tensorflow::Tensor> warmup,
+                          executable->Execute(absl::MakeSpan(inputs), {}));
+  EXPECT_THAT(warmup, ElementsAre(TensorEq(expected_out)));
+  while (limiter.InflightForDevice(xla::ifrt::DeviceId(0)) != 0) {
+  }
+
+  {
+    absl::MutexLock lock(state->mu);
+    state->gate_open = false;
+  }
+  state->h2d_started.store(0, std::memory_order_release);
+  state->max_observed_inflight.store(0, std::memory_order_release);
+
+  std::vector<tsl::Future<std::vector<tensorflow::Tensor>>> futures;
+  for (int i = 0; i < 5; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto future, executable->ExecuteAsync(absl::MakeSpan(inputs), {}));
+    futures.push_back(std::move(future));
+  }
+
+  EXPECT_EQ(state->h2d_started.load(std::memory_order_acquire), 2);
+  EXPECT_EQ(limiter.InflightForDevice(xla::ifrt::DeviceId(0)), 2);
+
+  state->OpenGate();
+  for (auto& future : futures) {
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<tensorflow::Tensor> out,
+                            future.Await());
+    EXPECT_THAT(out, ElementsAre(TensorEq(expected_out)));
+  }
+  EXPECT_LE(state->max_observed_inflight.load(std::memory_order_acquire), 2);
+
+  executable.reset();
+  helper.reset();
+  EXPECT_EQ(limiter.InflightForDevice(xla::ifrt::DeviceId(0)), 0);
+}
+
+TEST(IfrtServingExecutableLimiterTest,
+     ExecuteAsyncLimiterReleasesPermitOnH2DError) {
+  IfrtAsyncExecutionLimiter limiter(/*max_inflight_per_device=*/1);
+  tsl::test_util::MockServingDeviceSelector selector;
+  auto helper =
+      std::make_unique<test_utils::IfrtServingExecutableTestHelper>(&selector);
+  helper->SetAsyncExecutionLimiter(&limiter);
+
+  constexpr int64_t kProgramId = 444444;
+  EXPECT_CALL(selector, ReserveDevice(absl::StrCat(kProgramId)))
+      .WillRepeatedly(
+          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+
+  auto mock_factory =
+      std::make_unique<NiceMock<MockH2DTransferExecutorFactory>>();
+  auto* raw_factory = mock_factory.get();
+  helper->SetH2DTransferExecutorFactory(std::move(mock_factory));
+
+  auto executable =
+      helper->MakeExecutable(kProgramId, GetMlirModulePath("executable.mlir"));
+
+  auto x = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  const auto expected_out =
+      AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  // Warmup all cores so `IfrtServingCoreSelector` routes subsequent calls to
+  // `selector` (`DeviceId(0)`).
+  for (int i = 0; i < helper->num_cores(); ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<tensorflow::Tensor> warmup,
+                            executable->Execute(absl::MakeSpan(inputs), {}));
+    EXPECT_THAT(warmup, ElementsAre(TensorEq(expected_out)));
+  }
+  WaitForAllDevicesIdle(limiter, helper->num_cores());
+
+  // Case 1: Asynchronous H2D future failure while a 2nd request is queued.
+  auto [fail_promise, fail_future] =
+      tsl::MakePromise<std::vector<xla::ifrt::ArrayRef>>();
+  std::atomic<int> call_num{0};
+  EXPECT_CALL(*raw_factory, CreateH2DTransferExecutor(_))
+      .WillRepeatedly([&call_num, fail_future](xla::ifrt::Client& client) {
+        auto executor =
+            std::make_unique<NiceMock<MockH2DTransferExecutor>>(client);
+        int idx = call_num.fetch_add(1, std::memory_order_acq_rel);
+        if (idx == 0) {
+          EXPECT_CALL(*executor, ScheduledH2DTransfers(_, _))
+              .WillOnce(Return(fail_future));
+        } else if (idx == 2) {
+          EXPECT_CALL(*executor, ScheduledH2DTransfers(_, _))
+              .WillOnce(Return(absl::InternalError("sync H2D failure")));
+        }
+        return executor;
+      });
+
+  TF_ASSERT_OK_AND_ASSIGN(auto future1,
+                          executable->ExecuteAsync(absl::MakeSpan(inputs), {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto future2,
+                          executable->ExecuteAsync(absl::MakeSpan(inputs), {}));
+
+  // Request 1 holds the single permit; Request 2 is queued behind it.
+  EXPECT_EQ(limiter.InflightForDevice(xla::ifrt::DeviceId(0)), 1);
+  EXPECT_EQ(limiter.QueueDepthForDevice(xla::ifrt::DeviceId(0)), 1);
+
+  fail_promise.Set(absl::InternalError("async H2D failure"));
+
+  EXPECT_THAT(future1.Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("async H2D failure")));
+  // Request 2 must acquire the released permit and succeed!
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<tensorflow::Tensor> out2,
+                          future2.Await());
+  EXPECT_THAT(out2, ElementsAre(TensorEq(expected_out)));
+  while (limiter.InflightForDevice(xla::ifrt::DeviceId(0)) != 0) {
+  }
+
+  // Case 2: Synchronous ScheduledH2DTransfers error also releases the permit.
+  EXPECT_THAT(executable->ExecuteAsync(absl::MakeSpan(inputs), {}),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("sync H2D failure")));
+  EXPECT_EQ(limiter.InflightForDevice(xla::ifrt::DeviceId(0)), 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto future4,
+                          executable->ExecuteAsync(absl::MakeSpan(inputs), {}));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<tensorflow::Tensor> out4,
+                          future4.Await());
+  EXPECT_THAT(out4, ElementsAre(TensorEq(expected_out)));
+
+  executable.reset();
+  helper.reset();
+  EXPECT_EQ(limiter.InflightForDevice(xla::ifrt::DeviceId(0)), 0);
 }
 
 }  // namespace

@@ -56,12 +56,14 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_async_execution_limiter.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
@@ -108,7 +110,8 @@ class IfrtServingExecutable {
       IfrtPersistentCompilationCache* persistent_compilation_cache,
       H2DTransferExecutorFactory* h2d_transfer_executor_factory,
       bool use_output_arena = false,
-      bool use_undonatable_buffer_converter = false);
+      bool use_undonatable_buffer_converter = false,
+      IfrtAsyncExecutionLimiter* async_execution_limiter = nullptr);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -277,7 +280,8 @@ class IfrtServingExecutable {
       IfrtPersistentCompilationCache* persistent_compilation_cache,
       H2DTransferExecutorFactory* h2d_transfer_executor_factory,
       bool use_output_arena = false,
-      bool use_undonatable_buffer_converter = false)
+      bool use_undonatable_buffer_converter = false,
+      IfrtAsyncExecutionLimiter* async_execution_limiter = nullptr)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
@@ -306,7 +310,8 @@ class IfrtServingExecutable {
         persistent_compilation_cache_(persistent_compilation_cache),
         h2d_transfer_executor_factory_(h2d_transfer_executor_factory),
         use_output_arena_(use_output_arena),
-        use_undonatable_buffer_converter_(use_undonatable_buffer_converter) {
+        use_undonatable_buffer_converter_(use_undonatable_buffer_converter),
+        async_execution_limiter_(async_execution_limiter) {
     execute_options_.fill_status = true;
     if (use_output_arena_) {
       execute_options_.custom_options =
@@ -319,11 +324,38 @@ class IfrtServingExecutable {
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
 
   struct ExecutionInfo {
+    // Declared first so C++ reverse member destruction order releases the
+    // device execution permit *after* `execution_result` and `transfer_result`
+    // device buffers have been destroyed and returned to the allocator.
+    std::shared_ptr<IfrtAsyncExecutionLimiter::Permit> execution_permit;
     xla::ifrt::LoadedExecutable::ExecuteResult execution_result;
     SharedCachedExecutableBundle executable_bundle;
     xla::ifrt::DeviceListRef device_list;
     std::vector<xla::ifrt::ArrayRef> transfer_result;
     std::shared_ptr<tsl::DeviceReservation> device_reservation;
+  };
+
+  // Host-side metadata, core reservation, and executable lookup produced when
+  // preparing for execution (BEFORE acquiring an execution permit).
+  struct PreparedExecution {
+    std::vector<DtypeAndShape> dtypes_and_shapes;
+    xla::ifrt::DeviceListRef device_list;
+    std::shared_ptr<tsl::DeviceReservation> device_reservation;
+    tsl::Future<SharedCachedExecutableBundle> executable_bundle_future;
+    bool use_portable_execution = false;
+  };
+
+  // In-flight H2D input transfers and variable array futures. Created once an
+  // execution permit is held.
+  struct ScheduledInputs {
+    // Kept alive until `input_futures` completes.
+    std::unique_ptr<H2DTransferExecutor> h2d_transfer_executor;
+    std::vector<InputHandle> input_handles;
+    // Maps each user-input entry in `input_handles` to its argument slot in
+    // the compiled executable.
+    std::vector<int> input_handle_result_indices;
+    std::vector<tsl::Future<xla::ifrt::ArrayRef>> variable_args;
+    tsl::Future<std::vector<xla::ifrt::ArrayRef>> input_futures;
   };
 
   std::string model_name_;
@@ -375,6 +407,7 @@ class IfrtServingExecutable {
   H2DTransferExecutorFactory* h2d_transfer_executor_factory_ = nullptr;
   bool use_output_arena_ = false;
   bool use_undonatable_buffer_converter_ = false;
+  IfrtAsyncExecutionLimiter* async_execution_limiter_ = nullptr;
 
   xla::ifrt::ExecuteOptions execute_options_;
 
@@ -405,6 +438,67 @@ class IfrtServingExecutable {
   absl::StatusOr<ExecutionInfo> ExecuteCore(
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices);
+
+  // Validates inputs, reserves target device(s), and looks up or compiles the
+  // executable on the host before acquiring a permit or staging HBM.
+  absl::StatusOr<PreparedExecution> PrepareExecution(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices);
+
+  // Reshapes user inputs, gathers variable futures, and starts H2D transfers
+  // (allocating per-request input buffers in HBM).
+  absl::StatusOr<ScheduledInputs> ScheduleInputsAndVariables(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices,
+      absl::Span<const DtypeAndShape> dtypes_and_shapes,
+      const xla::ifrt::DeviceListRef& device_list, bool use_portable_execution,
+      const SharedCachedExecutableBundle& executable_bundle);
+
+  // Assembles resolved variable and user-input arrays in parameter order and
+  // dispatches device execution, bundling lifetime-managed execution state.
+  absl::StatusOr<ExecutionInfo> LaunchExecutable(
+      size_t num_inputs, absl::Span<const int> variable_arg_indices,
+      absl::Span<const int> input_handle_result_indices,
+      absl::Span<const xla::ifrt::ArrayRef> resolved_variable_arrays,
+      std::vector<xla::ifrt::ArrayRef> resolved_input_arrays,
+      SharedCachedExecutableBundle executable_bundle,
+      xla::ifrt::DeviceListRef device_list,
+      std::shared_ptr<tsl::DeviceReservation> device_reservation,
+      std::shared_ptr<IfrtAsyncExecutionLimiter::Permit> execution_permit);
+
+  // Asynchronously converts device outputs to host tensors and offloads buffer
+  // and permit teardown to the thread pool once execution and D2H finish.
+  tsl::Future<std::vector<tensorflow::Tensor>> ConvertOutputsAsync(
+      ExecutionInfo exec_info);
+
+  // Executes asynchronously under the per-device limiter WITHOUT blocking
+  // caller threads, deferring HBM staging until a device permit is held.
+  absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>>
+  ExecuteAsyncWithLimiter(absl::Span<const tensorflow::Tensor> inputs,
+                          absl::Span<const int> variable_arg_indices);
+
+  // Resumes a queued async execution on the thread pool once its device permit
+  // is granted, starting H2D transfers and launching device execution.
+  void ContinueExecuteAsyncAfterPermit(
+      std::vector<tensorflow::Tensor> owned_inputs,
+      std::vector<int> owned_variable_arg_indices,
+      std::vector<DtypeAndShape> dtypes_and_shapes,
+      xla::ifrt::DeviceListRef device_list,
+      std::shared_ptr<tsl::DeviceReservation> device_reservation,
+      bool use_portable_execution,
+      SharedCachedExecutableBundle executable_bundle,
+      std::shared_ptr<IfrtAsyncExecutionLimiter::Permit> execution_permit,
+      tsl::Promise<std::vector<tensorflow::Tensor>> result_promise);
+
+  // Launches device execution and schedules output conversion once H2D input
+  // transfers and variable futures complete (or releases resources on error).
+  void FinishExecuteAsyncAfterScheduledInputs(
+      size_t num_inputs, std::vector<int> owned_variable_arg_indices,
+      ScheduledInputs scheduled, SharedCachedExecutableBundle executable_bundle,
+      xla::ifrt::DeviceListRef device_list,
+      std::shared_ptr<tsl::DeviceReservation> device_reservation,
+      std::shared_ptr<IfrtAsyncExecutionLimiter::Permit> execution_permit,
+      tsl::Promise<std::vector<tensorflow::Tensor>> result_promise);
 
   // Creates an executable by calling tf2xla and xla compiler
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>

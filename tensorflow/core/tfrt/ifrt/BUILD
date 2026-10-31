@@ -39,6 +39,38 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "ifrt_async_execution_limiter",
+    srcs = ["ifrt_async_execution_limiter.cc"],
+    hdrs = ["ifrt_async_execution_limiter.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@xla//xla/python/ifrt",
+        "@xla//xla/tsl/concurrency:executor",
+        "@xla//xla/tsl/platform:env",
+    ],
+)
+
+tf_cc_test(
+    name = "ifrt_async_execution_limiter_test",
+    srcs = ["ifrt_async_execution_limiter_test.cc"],
+    deps = [
+        ":ifrt_async_execution_limiter",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/python/ifrt",
+        "@xla//xla/tsl/platform:env",
+    ],
+)
+
+cc_library(
     name = "ifrt_serving_core_selector",
     srcs = ["ifrt_serving_core_selector.cc"],
     hdrs = ["ifrt_serving_core_selector.h"],
@@ -137,6 +169,7 @@ cc_library(
     srcs = ["ifrt_serving_executable.cc"],
     hdrs = ["ifrt_serving_executable.h"],
     deps = [
+        ":ifrt_async_execution_limiter",
         ":ifrt_config_proto_cc",
         ":ifrt_device_utils",
         ":ifrt_loaded_variable_registry",
@@ -337,6 +370,7 @@ cc_library(
         "//tensorflow/core/tfrt/mlrt:__subpackages__",
     ],
     deps = [
+        ":ifrt_async_execution_limiter",
         ":ifrt_config_proto_cc",
         ":ifrt_executable_registry",
         ":ifrt_loaded_variable_registry",
@@ -517,6 +551,7 @@ cc_library(
         "//tensorflow/core/tfrt/ifrt/testdata",
     ],
     deps = [
+        ":ifrt_async_execution_limiter",
         ":ifrt_loaded_variable_registry",
         ":ifrt_persistent_compilation_cache",
         ":ifrt_restore_tensor_registry",
@@ -537,7 +572,7 @@ cc_library(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
         "@tf_runtime//:hostcontext",
         "@xla//xla/python/ifrt",
         "@xla//xla/python/ifrt:test_util",
@@ -698,6 +733,7 @@ tf_cc_test(
     ],
     tags = ["no_oss"],
     deps = [
+        ":ifrt_async_execution_limiter",
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_executable",
         ":ifrt_serving_executable_test_util",
@@ -714,6 +750,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_matcher",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:globals",
@@ -721,12 +758,14 @@ tf_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
         "@llvm-project//mlir:Support",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:core_runtime_alwayslink",
