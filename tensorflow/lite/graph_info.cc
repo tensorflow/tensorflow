@@ -34,10 +34,53 @@ bool IsValidIndex(int index, size_t size) {
   return index >= 0 && static_cast<size_t>(index) < size;
 }
 
+bool IsValidTensorIndexOrOptional(int index, size_t num_tensors) {
+  return index == kTfLiteOptionalTensor || IsValidIndex(index, num_tensors);
+}
+
 TfLiteStatus ValidateNodesToPartition(
     const GraphInfo* info, const TfLiteIntArray* nodes_to_partition) {
+  if (info == nullptr || nodes_to_partition == nullptr ||
+      nodes_to_partition->size < 0) {
+    return kTfLiteError;
+  }
   for (const int node_index : TfLiteIntArrayView(nodes_to_partition)) {
     if (!IsValidIndex(node_index, info->num_total_nodes())) {
+      return kTfLiteError;
+    }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus ValidateGraphIndices(const GraphInfo* info) {
+  if (info == nullptr) {
+    return kTfLiteError;
+  }
+  const size_t num_tensors = info->num_tensors();
+  const size_t num_total_nodes = info->num_total_nodes();
+  const size_t num_execution_nodes = info->num_execution_nodes();
+  for (size_t i = 0; i < num_execution_nodes; ++i) {
+    if (info->node_index(i) >= num_total_nodes) {
+      return kTfLiteError;
+    }
+    const TfLiteNode& node = info->node(i);
+    if (node.inputs == nullptr || node.inputs->size < 0 ||
+        node.outputs == nullptr || node.outputs->size < 0) {
+      return kTfLiteError;
+    }
+    for (const int input_tensor_index : TfLiteIntArrayView(node.inputs)) {
+      if (!IsValidTensorIndexOrOptional(input_tensor_index, num_tensors)) {
+        return kTfLiteError;
+      }
+    }
+    for (const int output_tensor_index : TfLiteIntArrayView(node.outputs)) {
+      if (!IsValidTensorIndexOrOptional(output_tensor_index, num_tensors)) {
+        return kTfLiteError;
+      }
+    }
+  }
+  for (const int output_index : info->outputs()) {
+    if (!IsValidTensorIndexOrOptional(output_index, num_tensors)) {
       return kTfLiteError;
     }
   }
@@ -130,6 +173,12 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
     // Mark model outputs as node sub set outputs. All the rest have already
     // been identified.
     for (int output_index : info_->outputs()) {
+      if (output_index == kTfLiteOptionalTensor) {
+        continue;
+      }
+      if (!IsValidIndex(output_index, tensor_epochs_.size())) {
+        return kTfLiteError;
+      }
       int output_epoch = tensor_epochs_[output_index];
       if (output_epoch == kEpochAlwaysReady) {
         // This happens when an input of subgraph is also an output of subgraph.
@@ -306,7 +355,12 @@ TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
     const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
     std::vector<NodeSubset>* node_subsets, bool greedily,
     const ControlEdges* control_edges, bool disable_node_fusion) {
-  if (ValidateNodesToPartition(info, nodes_to_partition) != kTfLiteOk) {
+  if (info == nullptr || nodes_to_partition == nullptr ||
+      node_subsets == nullptr) {
+    return kTfLiteError;
+  }
+  if (ValidateNodesToPartition(info, nodes_to_partition) != kTfLiteOk ||
+      ValidateGraphIndices(info) != kTfLiteOk) {
     return kTfLiteError;
   }
 
