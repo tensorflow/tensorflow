@@ -1747,7 +1747,11 @@ class ArrayMethodsTest(test.TestCase):
       self.evaluate(np_array_ops.flip(a, axis=np.array([3])))
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
       self.evaluate(np_array_ops.flip(a, axis=range(4)))
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+    # flipud/fliplr with too few dimensions raise NumPy's ValueError
+    # instead of a kernel error; see testFlipudFliplrMinimumRank below.
+    with self.assertRaisesRegex(ValueError, 'must be >= 1-d'):
+      np_array_ops.flipud(np.float64(1.0))
+    with self.assertRaisesRegex(ValueError, 'must be >= 2-d'):
       self.evaluate(np_array_ops.fliplr(np.arange(3)))
     # The C++ kernel raises at execution time (or shape inference at trace time).
     with self.assertRaisesRegex(
@@ -1778,6 +1782,30 @@ class ArrayMethodsTest(test.TestCase):
     )
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
       self.evaluate(flip_unknown_rank_invalid_pos(a))
+
+  def testFlipudFliplrMinimumRank(self):  # pylint: disable=invalid-name
+    # NumPy raises ValueError when the input rank is too low for
+    # flipud/fliplr, instead of failing in the C++ kernel with a
+    # confusing axis error.
+    with self.assertRaisesRegex(ValueError, 'must be >= 1-d'):
+      np_array_ops.flipud(5)
+    with self.assertRaisesRegex(ValueError, 'must be >= 2-d'):
+      np_array_ops.fliplr(5)
+    with self.assertRaisesRegex(ValueError, 'must be >= 2-d'):
+      np_array_ops.fliplr(np.arange(3))
+    # Valid ranks keep working.
+    self.assertAllEqual(
+        np_array_ops.flipud([1, 2, 3]), np.flipud([1, 2, 3]))
+    self.assertAllEqual(
+        np_array_ops.fliplr([[1, 2, 3], [4, 5, 6]]),
+        np.fliplr([[1, 2, 3], [4, 5, 6]]))
+    # Unknown-rank inputs keep the previous behavior.
+    flipud_unknown_rank = def_function.function(
+        lambda x: np_array_ops.flipud(x),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
+    )
+    self.assertAllEqual(
+        flipud_unknown_rank(np.arange(3.)), np.flipud(np.arange(3.)))
 
   def testRoll(self):
     np.random.seed(0)

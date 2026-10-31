@@ -1790,12 +1790,24 @@ def flip(m, axis=None):  # pylint: disable=missing-docstring
 @tf_export.tf_export('experimental.numpy.flipud', v1=[])
 @np_utils.np_doc('flipud')
 def flipud(m):  # pylint: disable=missing-docstring
+  m = asarray(m)
+  maybe_rank = m.shape.rank
+  if maybe_rank is not None and maybe_rank < 1:
+    # NumPy raises a ValueError instead of failing in the C++ kernel with
+    # a confusing out-of-range axis error.
+    raise ValueError('Input must be >= 1-d.')
   return flip(m, 0)
 
 
 @tf_export.tf_export('experimental.numpy.fliplr', v1=[])
 @np_utils.np_doc('fliplr')
 def fliplr(m):  # pylint: disable=missing-docstring
+  m = asarray(m)
+  maybe_rank = m.shape.rank
+  if maybe_rank is not None and maybe_rank < 2:
+    # NumPy raises a ValueError instead of failing in the C++ kernel with
+    # a confusing out-of-range axis error.
+    raise ValueError('Input must be >= 2-d.')
   return flip(m, 1)
 
 
