@@ -765,12 +765,7 @@ class ResourceGatherOp : public OpKernel {
     // reference count greater than one and make a copy of the
     // (potentially very large) tensor buffer.
     tf_shared_lock ml(*v->mu());
-    OP_REQUIRES(
-        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
-        absl::InvalidArgumentError(absl::StrCat(
-            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
-            " but got ", DataTypeString(v->tensor()->dtype()),
-            " (resource variable dtype)")));
+    OP_REQUIRES_OK(c, ValidateVariableDtype<T>(v.get()));
     const Tensor& params = *v->tensor();
     const Tensor& indices = c->input(1);
 
@@ -958,12 +953,7 @@ class ResourceGatherNdOp : public OpKernel {
     // reference count greater than one and make a copy of the
     // (potentially very large) tensor buffer.
     tf_shared_lock ml(*v->mu());
-    OP_REQUIRES(
-        c, v->tensor()->dtype() == DataTypeToEnum<T>::v(),
-        absl::InvalidArgumentError(absl::StrCat(
-            "dtype mismatch: expected ", DataTypeString(DataTypeToEnum<T>::v()),
-            " but got ", DataTypeString(v->tensor()->dtype()),
-            " (resource variable dtype)")));
+    OP_REQUIRES_OK(c, ValidateVariableDtype<T>(v.get()));
     const Tensor& params = *v->tensor();
     const Tensor& indices = c->input(1);
 
@@ -1189,16 +1179,12 @@ class ResourceScatterUpdateOp : public OpKernel {
         update_dtype == DT_STRING || update_dtype == DT_VARIANT;
     if (is_non_pod_dtype || use_exclusive_lock_) {
       mutex_lock ml(*v->mu());
-      OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
-                  absl::InvalidArgumentError(
-                      "DType of scatter resource and updates does not match."));
+      OP_REQUIRES_OK(c, ValidateVariableDtype<T>(v.get()));
       DoCompute(c, v.get());
     } else {
       // For POD dtypes, we can safely run the update without the mutex.
       tf_shared_lock ml(*v->mu());
-      OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
-                  absl::InvalidArgumentError(
-                      "DType of scatter resource and updates does not match."));
+      OP_REQUIRES_OK(c, ValidateVariableDtype<T>(v.get()));
       DoCompute(c, v.get());
     }
   }
