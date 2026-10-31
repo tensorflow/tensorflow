@@ -52,7 +52,7 @@ template <class T>
 class Arg final {
  public:
   explicit Arg(T default_ = T()) : value_(default_) {}
-  virtual ~Arg() {}
+  virtual ~Arg() = default;
 
   // Provide default_value() to arg list
   T default_value() const { return value_; }
