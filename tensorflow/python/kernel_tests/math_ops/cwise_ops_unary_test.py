@@ -456,7 +456,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(z, compute_f32(np.log), math_ops.log)
     self._compareCpu(z, compute_f32(np.log1p), math_ops.log1p)
     self._compareBoth(y, np.sign, math_ops.sign)
-    self._compareCpu(z, self._rsqrt, math_ops.rsqrt)
+    self._compareCpu(z, compute_f32(self._rsqrt), math_ops.rsqrt)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareBoth(x, compute_f32(np.sin), math_ops.sin)
     self._compareBoth(x, compute_f32(np.cos), math_ops.cos)
@@ -474,6 +474,28 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, compute_f32(np.vectorize(math.erf)), math_ops.erf)
     self._compareBoth(x, compute_f32(np.vectorize(math.erfc)), math_ops.erfc)
     self._compareBoth(x, compute_f32(np.square), math_ops.square)
+
+  def testBFloat16RsqrtLengthIndependent(self):
+    # Regression test for https://github.com/tensorflow/tensorflow/issues/123551
+    # Scalar and packet CPU paths must agree for the same bfloat16 value.
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
+    test_values = [0.53125, 0.0, 1.0, 2.0, float("inf")]
+
+    # Pin to CPU: the length dependence comes from CPU SIMD packet
+    # boundaries (8 lanes for AVX, 16 for AVX-512).
+    with ops.device("/cpu:0"):
+      for val in test_values:
+        value = np.array(val, dtype=bfloat16)
+        with np.errstate(divide="ignore"):
+          reference = np.array(
+              1.0 / np.sqrt(np.float64(value)), dtype=bfloat16)
+        for length in (0, 1, 7, 8, 9, 15, 16, 17, 32):
+          x = np.full([length], value, dtype=bfloat16)
+          y = self.evaluate(math_ops.rsqrt(x))
+          self.assertAllEqual(
+              y,
+              np.full([length], reference, dtype=bfloat16),
+              msg=f"value={val}, length={length}")
 
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)
