@@ -793,6 +793,45 @@ class MinMaxOpTest(test.TestCase):
         self._compare(x.astype(t), t(y), use_gpu=False)
         self._compare(x.astype(t), t(y), use_gpu=True)
 
+  def testSignedZeroWidthConsistency(self):
+    test_dtypes = [
+        dtypes_lib.float16,
+        dtypes_lib.bfloat16,
+        dtypes_lib.float32,
+        dtypes_lib.float64,
+    ]
+    for dtype in test_dtypes:
+      for n in (1, 2, 4, 7, 8, 9, 16, 17, 33):
+        with self.subTest(dtype=dtype, n=n):
+          with test_util.device(use_gpu=False):
+            pos = array_ops.zeros([n], dtype=dtype)
+            neg = -pos
+            vals = self.evaluate([
+                math_ops.maximum(pos, neg),
+                math_ops.maximum(neg, pos),
+                math_ops.minimum(pos, neg),
+                math_ops.minimum(neg, pos),
+            ])
+          signs = [np.signbit(v.astype(np.float32)) for v in vals]
+          self.assertFalse(np.any(signs[0]))
+          self.assertTrue(np.all(signs[1]))
+          self.assertFalse(np.any(signs[2]))
+          self.assertTrue(np.all(signs[3]))
+
+  @test_util.set_xla_env_flag(flag="--xla_cpu_enable_fast_min_max=false")
+  def testNaNPropagationWidths(self):
+    for t in [np.float16, np.float32, np.float64]:
+      for n in (1, 4, 7, 8, 9, 16, 17, 33):
+        with self.subTest(t=t, n=n):
+          x = np.ones(n, dtype=t)
+          y = -np.ones(n, dtype=t)
+          x[0] = np.nan
+          y[n - 1] = np.nan
+          self._compare(x, y, use_gpu=False)
+          with test_util.device(use_gpu=False):
+            out = self.evaluate(math_ops.maximum(x, y))
+          self.assertFalse(np.signbit(out[0]))
+
   def _compareGradientX(self, func, x, y):
     with self.cached_session():
       inx = ops.convert_to_tensor(x)
