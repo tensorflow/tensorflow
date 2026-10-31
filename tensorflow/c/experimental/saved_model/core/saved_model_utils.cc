@@ -357,6 +357,9 @@ std::optional<int> FindNodeAtPath(absl::string_view path,
     }
 
     node_id = child_node_iter->node_id();
+    if (node_id < 0 || node_id >= nodes.size()) {
+      return std::nullopt;
+    }
     current_node = &nodes.Get(node_id);
   }
 
