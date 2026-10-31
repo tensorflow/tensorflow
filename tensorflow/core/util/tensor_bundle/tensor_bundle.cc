@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <utility>
 
 #include "absl/base/call_once.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/io/buffered_file.h"
 #include "xla/tsl/util/byte_swap_array.h"
@@ -1172,6 +1176,47 @@ absl::Status BundleReader::GetSliceValue(
   DCHECK_GE(full_tensor_entry.slices_size(), 0);
 
   const TensorShape full_shape(TensorShape(full_tensor_entry.shape()));
+  // SliceTensorShape only checks the rank and the extent end, so the extents
+  // are checked here as TensorSlice::BuildTensorSlice checks them.
+  for (int d = 0; d < slice_spec.dims(); ++d) {
+    if (slice_spec.IsFullAt(d)) continue;
+    const int64_t start = slice_spec.start(d);
+    const int64_t length = slice_spec.length(d);
+    if (start < 0 || length <= 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expected non-negative start and positive length but got start = ",
+          start, ", length = ", length, ": requested slice for ",
+          full_tensor_key, " in dimension ", d));
+    }
+    // Calculating the extent end must not cause signed integer overflow.
+    if (static_cast<uint64_t>(start) + static_cast<uint64_t>(length) >
+        (std::numeric_limits<int64_t>::max)()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Extent end exceeds the maximum possible size: requested slice for ",
+          full_tensor_key, " in dimension ", d, ", start = ", start,
+          ", length = ", length));
+    }
+  }
+
+  TensorShape destination_shape;
+  const absl::Status slice_status =
+      slice_spec.SliceTensorShape(full_shape, &destination_shape);
+  if (!slice_status.ok()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid requested slice for ", full_tensor_key, ": ",
+                     slice_status.message()));
+  }
+  bool allocate_destination = (val->NumElements() == 0);
+  if (!allocate_destination &&
+      (val->dtype() != full_tensor_entry.dtype() ||
+       val->shape() != destination_shape)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Destination tensor for ", full_tensor_key, " has dtype ",
+        DataTypeString(val->dtype()), " and shape ", val->shape().DebugString(),
+        "; expected dtype ", DataTypeString(full_tensor_entry.dtype()),
+        " and shape ", destination_shape.DebugString()));
+  }
+
   std::vector<std::pair<TensorSlice, std::string>> details;
   const std::string full_tensor_key_string(full_tensor_key);
   const TensorSliceSet* tss =
@@ -1243,12 +1288,20 @@ absl::Status BundleReader::GetSliceValue(
     // same shape.
     TensorShape stored_slice_shape(stored_slice_entry.shape());
     if (stored_slice == slice_spec ||
-        (stored_slice_shape == val->shape() &&
+        (stored_slice_shape == destination_shape &&
          IsFullSlice(stored_slice, stored_slice_shape) &&
          IsFullSlice(slice_spec, stored_slice_shape))) {
       VLOG(1) << "Optimized for common case: directly copying into "
                  "pre-allocated buffer; spec: "
               << slice_spec.DebugString();
+      if (destination_shape.num_elements() > 0 &&
+          stored_slice_shape != destination_shape) {
+        return errors::InvalidArgument(
+            "Stored slice shape ", stored_slice_shape.DebugString(),
+            " for tensor ", full_tensor_key_string,
+            " does not match destination shape ",
+            destination_shape.DebugString());
+      }
       status_ = GetValue(stored_slice_entry, val);
       return status_;
     }
@@ -1264,7 +1317,7 @@ absl::Status BundleReader::GetSliceValue(
     if (stored_slice_shape != expected_slice_shape) {
       status_ = absl::DataLossError(
           absl::StrCat("Stored slice shape ", stored_slice_shape.DebugString(),
-                       " for tensor ", full_tensor_key,
+                       " for tensor ", full_tensor_key_string,
                        " does not match the expected slice shape ",
                        expected_slice_shape.DebugString(),
                        " derived from full shape ", full_shape.DebugString()));
@@ -1280,6 +1333,13 @@ absl::Status BundleReader::GetSliceValue(
                        " not supported."));
     }
 
+    if (full_shape.dims() > kTensorSliceMaxRank) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Partitioned tensor ", full_tensor_key_string, " has rank ",
+          full_shape.dims(), "; slice copying supports at most rank ",
+          kTensorSliceMaxRank));
+    }
+
     Tensor stored_slice_tensor(stored_slice_entry.dtype(), stored_slice_shape);
     status_ = GetValue(stored_slice_entry, &stored_slice_tensor);
     if (!status_.ok()) return status_;
@@ -1289,6 +1349,10 @@ absl::Status BundleReader::GetSliceValue(
     switch (common_dtype) {
 #define HANDLE_COPY(T)                                                 \
   case DataTypeToEnum<T>::value:                                       \
+    if (allocate_destination) {                                        \
+      *val = Tensor(common_dtype, destination_shape);                  \
+      allocate_destination = false;                                    \
+    }                                                                  \
     CHECK(CopyDataFromTensorSliceToTensorSlice(                        \
         full_shape, stored_slice, slice_spec,                          \
         stored_slice_tensor.flat<T>().data(), val->flat<T>().data())); \
@@ -1315,6 +1379,10 @@ absl::Status BundleReader::GetSliceValue(
             "Dtype ", DataTypeString(common_dtype), " not supported."));
     }
 #undef HANDLE_COPY
+  }
+  if (allocate_destination) {
+    TF_RETURN_IF_ERROR(Tensor::BuildTensor(full_tensor_entry.dtype(),
+                                         destination_shape, val));
   }
   return absl::OkStatus();
 }
