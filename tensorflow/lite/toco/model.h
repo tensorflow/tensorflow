@@ -313,7 +313,7 @@ struct GenericBuffer {
 
   // We need a virtual destructor so we can store pointers-to-Buffer
   // in containers and have the containers call the right subclass destructor.
-  virtual ~GenericBuffer() {}
+  virtual ~GenericBuffer() = default;
 
   virtual int Length() const = 0;
 
@@ -342,7 +342,7 @@ class Shape {
   // anticipate which flavor of more hermetic encapsulation would
   // actually buy us future-proof-ness without being needlessly
   // cumbersome.
-  Shape() {}
+  Shape() = default;
   Shape(std::initializer_list<int> dim_list) : dims_(dim_list) {}
 
   void ReplaceDims(std::initializer_list<int> dim_list) {
@@ -387,7 +387,7 @@ struct Operator {
 
   // We need a virtual destructor so we can store pointers-to-Operator
   // in containers and have the containers call the right subclass destructor.
-  virtual ~Operator() {}
+  virtual ~Operator() = default;
 
   // The specific type of operator. Corresponds 1:1 to subclasses.
   const OperatorType type;
