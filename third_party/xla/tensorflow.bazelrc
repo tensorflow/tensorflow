@@ -699,15 +699,6 @@ common:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload
 # flags seem to be actually used to specify the execution platform details. It
 # seems it is this way because these flags are old and predate the distinction
 # between host and execution platform.
-common:cross_compile_base --config=clang_local
-common:cross_compile_base --host_cpu=k8
-common:cross_compile_base --host_crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
-common:cross_compile_base --extra_execution_platforms=//tools/toolchains/cross_compile/config:linux_x86_64
-common:cross_compile_base --extra_toolchains=//tools/toolchains/cross_compile/cc:linux_x86_toolchain
-# Map XLA-owned cross-compile platforms to legacy --cpu values and vice versa
-# so platform-based selects remain compatible with legacy toolchain flags.
-common:cross_compile_base --platform_mappings=tools/toolchains/cross_compile/config/platform_mappings
-
 common:rbe_cross_compile_base --config=rbe_base
 common:rbe_cross_compile_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 common:rbe_cross_compile_base --remote_instance_name=projects/tensorflow-testing/instances/default_instance
@@ -719,13 +710,10 @@ test:rbe_cross_compile_base --strategy=TestRunner=local --build_tests_only
 test:rbe_cross_compile_base --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
 
 # START LINUX AARCH64 CROSS-COMPILE CONFIGS
-common:cross_compile_linux_arm64 --config=cross_compile_base
-
-# Set the target CPU to Aarch64
-common:cross_compile_linux_arm64 --platforms=//tools/toolchains/cross_compile/config:linux_aarch64
 common:cross_compile_linux_arm64 --cpu=aarch64
-common:cross_compile_linux_arm64 --crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
-common:cross_compile_linux_arm64 --extra_toolchains=//tools/toolchains/cross_compile/cc:linux_aarch64_toolchain
+common:cross_compile_linux_arm64 --platforms=//tools/toolchains:linux_aarch64
+common:cross_compile_linux_arm64 --host_cpu=k8
+common:cross_compile_linux_arm64 --extra_execution_platforms=//tools/toolchains:rbe_linux_x86_64
 common:cross_compile_linux_arm64 --define=ynn_enable_arm64_neonfp8=false
 
 # RBE cross-compile configs for Linux Aarch64
@@ -734,35 +722,6 @@ common:rbe_cross_compile_linux_arm64 --config=rbe_cross_compile_base
 test:rbe_cross_compile_linux_arm64 --config=rbe_cross_compile_base
 
 # END LINUX AARCH64 CROSS-COMPILE CONFIGS
-
-# START MACOS CROSS-COMPILE CONFIGS
-common:cross_compile_macos_x86 --config=cross_compile_base
-common:cross_compile_macos_x86 --config=nonccl
-# Target Catalina (10.15) as the minimum supported OS
-common:cross_compile_macos_x86 --action_env  MACOSX_DEPLOYMENT_TARGET=10.15
-
-# Set the target CPU to Darwin x86
-common:cross_compile_macos_x86 --platforms=//tools/toolchains/cross_compile/config:darwin_x86_64
-common:cross_compile_macos_x86 --cpu=darwin
-common:cross_compile_macos_x86 --crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
-# When RBE cross-compiling for macOS, we need to explicitly register the
-# toolchain. Otherwise, oddly, RBE complains that a "docker container must be
-# specified".
-common:cross_compile_macos_x86 --extra_toolchains=//tools/toolchains/cross_compile/config:macos-x86-cross-compile-cc-toolchain
-
-# RBE cross-compile configs for Darwin x86
-common:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86
-common:rbe_cross_compile_macos_x86 --bes_backend="" --bes_results_url="" --bes_timeout="0s"
-common:rbe_cross_compile_macos_x86 --experimental_remote_build_event_upload="minimal"
-common:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
-common:rbe_cross_compile_macos_x86 --bes_upload_mode=nowait_for_upload_complete
-test:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
-# Increase the test timeout as tests often take longer on mac.
-test:rbe_cross_compile_macos_x86 --test_timeout=300,450,1200,3600
-# Limit jobs to 100 to avoid running into "out of memory" issues (b/316266643)
-common:rbe_cross_compile_macos_x86 --jobs=100
-test:rbe_cross_compile_macos_x86 --jobs=100
-# END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS
 
 # START PJRT RELEASE CONFIGS
