@@ -251,6 +251,11 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
              return pos;
            })
+      .def("seek",
+           [](WritableFile* self, int64_t pos) {
+             py::gil_scoped_release release;
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(self->Seek(pos));
+           })
       .def("flush",
            [](WritableFile* self) {
              py::gil_scoped_release release;
