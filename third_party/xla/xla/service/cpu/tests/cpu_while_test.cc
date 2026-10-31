@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -21,12 +23,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 
 namespace xla {
 namespace cpu {
@@ -379,6 +383,49 @@ TEST_F(CpuWhileTest, IdenticalSmallWhileLoopsSharedKernelCorrect) {
       absl::MakeConstSpan({124.0f, 156.0f, 188.0f, 220.0f}), results[0]);
   LiteralTestUtil::ExpectR1Equal(
       absl::MakeConstSpan({444.0f, 764.0f, 1084.0f, 1404.0f}), results[1]);
+}
+
+// Small while loops are emitted by the legacy elemental emitter, which must
+// upcast F16 log1p to an F32 intrinsic.
+TEST_F(CpuWhileTest, F16Log1pInSmallWhileLoop) {
+  constexpr absl::string_view hlo_text = R"(
+    HloModule F16Log1pInSmallWhileLoop
+
+    body {
+      state = (s32[], s32[], f16[]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      n = s32[] get-tuple-element(state), index=1
+      x = f16[] get-tuple-element(state), index=2
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      next_x = f16[] log-plus-one(x)
+      ROOT next_state = (s32[], s32[], f16[]) tuple(next_i, n, next_x)
+    }
+
+    cond {
+      state = (s32[], s32[], f16[]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      n = s32[] get-tuple-element(state), index=1
+      ROOT lt = pred[] compare(i, n), direction=LT
+    }
+
+    ENTRY main {
+      x = f16[] parameter(0)
+      n = s32[] parameter(1)
+      zero = s32[] constant(0)
+      init = (s32[], s32[], f16[]) tuple(zero, n, x)
+      loop = (s32[], s32[], f16[]) while(init), condition=cond, body=body
+      ROOT result = f16[] get-tuple-element(loop), index=2
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  Literal x = LiteralUtil::CreateR0<half>(half(1.0f));
+  Literal n = LiteralUtil::CreateR0<int32_t>(1);
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&x, &n}));
+  EXPECT_TRUE(
+      LiteralTestUtil::Near(LiteralUtil::CreateR0<half>(half(std::log1p(1.0f))),
+                            result, ErrorSpec{1e-3}));
 }
 
 }  // namespace

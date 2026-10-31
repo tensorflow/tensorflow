@@ -52,6 +52,14 @@ class CppGenIntrinsicLibrary;
 std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
     const intrinsics::IntrinsicOptions& options);
 
+// Returns the LLVM IR bitcode string for YNNPACK unary math functions matching
+// the given options.
+const std::string& GetYnnpackIrString(
+    const intrinsics::IntrinsicOptions& options);
+
+// Returns true if the YNNPACK intrinsics were compiled and are available.
+bool AreYnnpackIntrinsicsAvailable(absl::string_view features = "");
+
 // Helper for Intrinsic<T> classes that use CppGen backend for some types.
 // Looks up a function by name in the module (assuming it was linked from
 // a CppGen library) and configures its linkage and attributes for inlining.
