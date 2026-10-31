@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@xla//xla/tsl:tsl.bzl", "if_google")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -22,56 +23,56 @@ package(
 
 cc_library(
     name = "trace_events_filter_interface",
-    hdrs = ["trace_events_filter_interface.h"],
-    deps = [
+    hdrs = if_google(["trace_events_filter_interface.h"]),
+    deps = if_google([
         "@org_xprof//xprof/convert/trace_viewer:trace_events_filter_interface",
-    ],
+    ]),
 )
 
 cc_library(
     name = "trace_viewer_visibility",
-    hdrs = ["trace_viewer_visibility.h"],
-    deps = [
+    hdrs = if_google(["trace_viewer_visibility.h"]),
+    deps = if_google([
         "@org_xprof//xprof/convert/trace_viewer:trace_viewer_visibility",
-    ],
+    ]),
 )
 
 cc_library(
     name = "trace_viewer_color",
-    hdrs = ["trace_viewer_color.h"],
-    deps = [
+    hdrs = if_google(["trace_viewer_color.h"]),
+    deps = if_google([
         "@org_xprof//xprof/convert/trace_viewer:trace_viewer_color",
-    ],
+    ]),
 )
 
 cc_library(
     name = "trace_events_to_json",
-    hdrs = ["trace_events_to_json.h"],
-    deps = [
+    hdrs = if_google(["trace_events_to_json.h"]),
+    deps = if_google([
         "@org_xprof//xprof/convert/trace_viewer:trace_events_to_json",
-    ],
+    ]),
 )
 
 cc_library(
     name = "trace_event_arguments_builder",
-    hdrs = ["trace_event_arguments_builder.h"],
-    deps = [
+    hdrs = if_google(["trace_event_arguments_builder.h"]),
+    deps = if_google([
         "@org_xprof//xprof/convert/trace_viewer:trace_event_arguments_builder",
-    ],
+    ]),
 )
 
 cc_library(
     name = "trace_events_util",
-    hdrs = ["trace_events_util.h"],
-    deps = [
+    hdrs = if_google(["trace_events_util.h"]),
+    deps = if_google([
         "@org_xprof//xprof/convert/trace_viewer:trace_events_util",
-    ],
+    ]),
 )
 
 cc_library(
     name = "trace_events",
-    hdrs = ["trace_events.h"],
-    deps = [
+    hdrs = if_google(["trace_events.h"]),
+    deps = if_google([
         "@org_xprof//xprof/convert/trace_viewer:trace_events",
-    ],
+    ]),
 )

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@xla//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -35,32 +35,32 @@ package_group(
 
 cc_library(
     name = "diagnostics",
-    hdrs = ["diagnostics.h"],
+    hdrs = if_google(["diagnostics.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:diagnostics",
-    ],
+    ]),
 )
 
 cc_library(
     name = "event_span",
-    hdrs = ["event_span.h"],
+    hdrs = if_google(["event_span.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:event_span",
-    ],
+    ]),
 )
 
 cc_library(
     name = "hardware_type_utils",
-    hdrs = ["hardware_type_utils.h"],
+    hdrs = if_google(["hardware_type_utils.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:hardware_type_utils",
-    ],
+    ]),
 )
 
 cc_library(
@@ -77,31 +77,31 @@ cc_library(
 
 cc_library(
     name = "html_utils",
-    hdrs = ["html_utils.h"],
+    hdrs = if_google(["html_utils.h"]),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:html_utils",
-    ],
+    ]),
 )
 
 cc_library(
     name = "op_metrics_db_utils",
-    hdrs = ["op_metrics_db_utils.h"],
+    hdrs = if_google(["op_metrics_db_utils.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:op_metrics_db_utils",
-    ],
+    ]),
 )
 
 cc_library(
     name = "op_utils",
-    hdrs = ["op_utils.h"],
+    hdrs = if_google(["op_utils.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:op_utils",
-    ],
+    ]),
 )
 
 cc_library(
@@ -163,133 +163,131 @@ cc_library(
 
 cc_library(
     name = "cost_utils",
-    hdrs = ["cost_utils.h"],
+    hdrs = if_google(["cost_utils.h"]),
     copts = tf_profiler_copts(),
     visibility = ["//visibility:private"],
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:cost_utils",
-    ],
+    ]),
 )
 
 cc_library(
     name = "derived_timeline",
-    hdrs = ["derived_timeline.h"],
+    hdrs = if_google(["derived_timeline.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:derived_timeline",
-    ],
+    ]),
 )
 
 cc_library(
     name = "kernel_stats_utils",
-    hdrs = ["kernel_stats_utils.h"],
+    hdrs = if_google(["kernel_stats_utils.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = ["@org_xprof//xprof/utils:kernel_stats_utils"],
+    deps = if_google(["@org_xprof//xprof/utils:kernel_stats_utils"]),
 )
 
 cc_library(
     name = "tfstreamz_utils",
-    hdrs = ["tfstreamz_utils.h"],
+    hdrs = if_google(["tfstreamz_utils.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:tfstreamz_utils",
-    ],
+    ]),
 )
 
 cc_library(
     name = "step_intersection",
-    hdrs = ["step_intersection.h"],
+    hdrs = if_google(["step_intersection.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:step_intersection",
-    ],
+    ]),
 )
 
 cc_library(
     name = "device_caps_utils",
-    hdrs = ["device_caps_utils.h"],
+    hdrs = if_google(["device_caps_utils.h"]),
     copts = tf_profiler_copts(),
     visibility = internal_visibility([]),
-    deps = ["@org_xprof//xprof/utils:device_caps_utils"],
+    deps = if_google(["@org_xprof//xprof/utils:device_caps_utils"]),
 )
 
 cc_library(
     name = "gpu_event_stats",
-    hdrs = ["gpu_event_stats.h"],
+    hdrs = if_google(["gpu_event_stats.h"]),
     copts = tf_profiler_copts(),
-    visibility = internal_visibility([
-        "//tensorflow/core/profiler/convert:__pkg__",
-    ]),
-    deps = [
+    visibility = internal_visibility([]),
+    deps = if_google([
         "@org_xprof//xprof/utils:gpu_event_stats",
-    ],
+    ]),
 )
 
 cc_library(
     name = "hlo_proto_map",
-    hdrs = ["hlo_proto_map.h"],
+    hdrs = if_google(["hlo_proto_map.h"]),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:hlo_proto_map",
-    ],
+    ]),
 )
 
 cc_library(
     name = "hlo_proto_to_module",
-    hdrs = ["hlo_proto_to_module.h"],
+    hdrs = if_google(["hlo_proto_to_module.h"]),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:hlo_proto_to_module",
-    ],
+    ]),
 )
 
 cc_library(
     name = "hlo_module_map",
-    hdrs = ["hlo_module_map.h"],
+    hdrs = if_google(["hlo_module_map.h"]),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:hlo_module_map",
-    ],
+    ]),
 )
 
 cc_library(
     name = "hlo_module_utils",
-    hdrs = ["hlo_module_utils.h"],
+    hdrs = if_google(["hlo_module_utils.h"]),
     visibility = internal_visibility([
         "//third_party/odml/model_explorer/backend/adapters/hlo:__pkg__",
     ]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:hlo_module_utils",
-    ],
+    ]),
 )
 
 cc_library(
     name = "xprof_gpu_cost_analysis",
-    hdrs = ["xprof_gpu_cost_analysis.h"],
+    hdrs = if_google(["xprof_gpu_cost_analysis.h"]),
     visibility = ["//visibility:private"],
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:xprof_gpu_cost_analysis",
-    ],
+    ]),
 )
 
 cc_library(
     name = "tpu_step_breakdown_utils",
-    hdrs = ["tpu_step_breakdown_utils.h"],
+    hdrs = if_google(["tpu_step_breakdown_utils.h"]),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:tpu_step_breakdown_utils",
-    ],
+    ]),
 )
 
 cc_library(
     name = "tpu_step_details_utils",
-    hdrs = ["tpu_step_details_utils.h"],
+    hdrs = if_google(["tpu_step_details_utils.h"]),
     visibility = internal_visibility([]),
-    deps = [
+    deps = if_google([
         "@org_xprof//xprof/utils:tpu_step_details_utils",
-    ],
+    ]),
 )

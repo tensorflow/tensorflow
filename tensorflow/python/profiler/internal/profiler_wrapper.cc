@@ -18,21 +18,20 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/profiler/internal/profiler_pywrap_impl.h"
-#include "xprof/convert/repository.h"  // from @org_xprof
-#include "xprof/convert/tool_options.h"  // from @org_xprof
-#include "xprof/convert/xplane_to_tools_data.h"  // from @org_xprof
 
 namespace py = ::pybind11;
 
 namespace {
 
-using ::tensorflow::profiler::ToolOptions;
 using ::tensorflow::profiler::pywrap::ProfilerSessionWrapper;
+using ToolOptions =
+    absl::flat_hash_map<std::string, std::variant<bool, int, std::string>>;
 
 // These must be called under GIL because it reads Python objects. Reading
 // Python objects require GIL because the objects can be mutated by other Python
