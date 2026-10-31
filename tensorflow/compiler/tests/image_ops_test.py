@@ -732,6 +732,25 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
         expected=np.array(result, dtype=np.float32),
         large_tolerance=True)
 
+  def testNaNPropagation(self):
+    # Test that a single NaN value in a bilinear resize only propagates to
+    # the local 2x2 interpolation neighborhood, and not the entire output.
+    # This regression test is for Issue #120240.
+    for dtype in self.float_types:
+      data = np.arange(1, 28, dtype=dtype).reshape(1, 3, 3, 3)
+      data[0, 1, 2, 0] = np.nan
+
+      with self.session() as sess:
+        x_tf = array_ops.placeholder(dtype, shape=data.shape)
+        with self.test_scope():
+          resized = gen_image_ops.resize_bilinear(x_tf, (5, 5))
+        out = sess.run(resized, feed_dict={x_tf: data})
+
+      # The NaN count in channel 0 should be exactly 6 (local neighborhood).
+      # If the bug is present, it will be 25 (entire channel).
+      nan_count = np.isnan(out[0, :, :, 0]).sum()
+      self.assertEqual(nan_count, 6)
+
 
 class ResizeBilinearGradTest(parameterized.TestCase, xla_test.XLATestCase):
 
@@ -813,6 +832,28 @@ class ResizeBilinearGradTest(parameterized.TestCase, xla_test.XLATestCase):
         np.array(input_data, dtype=np.float32), [src_y, src_x],
         expected=np.array(result, dtype=np.float32),
         large_tolerance=True)
+
+  def testNaNPropagation(self):
+    # Test that a single NaN value in the incoming gradient for bilinear resize
+    # only propagates to the local interpolation neighborhood in the input gradient.
+    # This regression test is for Issue #120240.
+    for dtype in self.float_types:
+      # Gradients shape: [batch, out_height, out_width, channels] -> [1, 5, 5, 1]
+      grads_np = np.ones([1, 5, 5, 1], dtype=dtype)
+      grads_np[0, 2, 2, 0] = np.nan
+
+      with self.session() as sess:
+        grads_tf = array_ops.placeholder(dtype, shape=grads_np.shape)
+        with self.test_scope():
+          dummy_image = array_ops.zeros([1, 3, 3, 1], dtype=dtype)
+          input_grads = gen_image_ops.resize_bilinear_grad(
+              grads_tf, dummy_image, align_corners=True)
+        out = sess.run(input_grads, feed_dict={grads_tf: grads_np})
+
+      # The NaN count in the input gradients [1, 3, 3, 1] should be exactly 1.
+      # If the bug is present, it will be 9 (entire image).
+      nan_count = np.isnan(out[0, :, :, 0]).sum()
+      self.assertEqual(nan_count, 1)
 
 
 class ResizeBilinearNonAlignCornersTest(xla_test.XLATestCase):
