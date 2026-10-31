@@ -41,6 +41,12 @@ const int32_t kInt16Min = std::numeric_limits<int16_t>::min();
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
                                      float* max_value, float* scaling_factor) {
+  if (size <= 0) {
+    *min_value = 0.0f;
+    *max_value = 0.0f;
+    *scaling_factor = 1.0f;
+    return;
+  }
   auto minmax = std::minmax_element(values, values + size);
   *min_value = *minmax.first;
   *max_value = *minmax.second;
@@ -52,6 +58,10 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float min_value,
                                      float max_value, float* scaling_factor) {
+  if (size <= 0) {
+    *scaling_factor = 1.0f;
+    return;
+  }
   const int32_t kScale = 127;
   const float range = std::max(std::abs(min_value), std::abs(max_value));
   if (range == 0) {
@@ -74,6 +84,11 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
 void PortableAsymmetricQuantizeFloats(const float* values, const int size,
                                       int8_t* quantized_values,
                                       float* scaling_factor, int32_t* offset) {
+  if (size <= 0) {
+    *scaling_factor = 1.0f;
+    *offset = 0;
+    return;
+  }
   const int32_t kMinScale = -128;
   const int32_t kMaxScale = 127;
   const double qmin_double = kMinScale;

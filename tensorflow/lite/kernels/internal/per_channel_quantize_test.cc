@@ -15,6 +15,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -112,6 +118,91 @@ TEST(PerChannelQuantize, TestFloatToInt8_4DDim3) {
               ElementsAreArray({-128, -127, -126, -125, -124, 123,  124,
                                 125,  126,  127,  -128, -127, -126, -125,
                                 -124, 123,  124,  125,  126,  127}));
+}
+
+// Positive control: non-empty portable quantization scales values as expected.
+TEST(PerChannelQuantize, PortableQuantizeFloatsValidNonEmptyControl) {
+  const float values[2] = {-12.7f, 12.7f};
+  int8_t sym_out[2] = {0, 0};
+  float min_val = 0.0f;
+  float max_val = 0.0f;
+  float sym_scale = 0.0f;
+  tensor_utils::PortableSymmetricQuantizeFloats(values, 2, sym_out, &min_val,
+                                                &max_val, &sym_scale);
+  EXPECT_FLOAT_EQ(min_val, -12.7f);
+  EXPECT_FLOAT_EQ(max_val, 12.7f);
+  EXPECT_EQ(sym_out[0], -127);
+  EXPECT_EQ(sym_out[1], 127);
+
+  int8_t asym_out[2] = {0, 0};
+  float asym_scale = 0.0f;
+  int32_t offset = 0;
+  tensor_utils::PortableAsymmetricQuantizeFloats(values, 2, asym_out,
+                                                 &asym_scale, &offset);
+  EXPECT_GT(asym_scale, 0.0f);
+  EXPECT_LT(asym_out[0], asym_out[1]);
+}
+
+TEST(PerChannelQuantize, PortableSymmetricQuantizeFloatsNonPositiveSizeSafe) {
+  auto backing = std::make_unique<float[]>(1);
+  backing[0] = 42.0f;
+  const float* one_past_end = backing.get() + 1;
+  int8_t sentinel = 77;
+  float min_val = -5.0f;
+  float max_val = 9.0f;
+  float scale = 0.0f;
+
+  tensor_utils::PortableSymmetricQuantizeFloats(one_past_end, 0, &sentinel,
+                                                &min_val, &max_val, &scale);
+  EXPECT_FLOAT_EQ(min_val, 0.0f);
+  EXPECT_FLOAT_EQ(max_val, 0.0f);
+  EXPECT_FLOAT_EQ(scale, 1.0f);
+  EXPECT_EQ(sentinel, 77);
+
+  scale = 0.0f;
+  tensor_utils::PortableSymmetricQuantizeFloats(nullptr, 0, nullptr, 0.0f, 0.0f,
+                                                &scale);
+  EXPECT_FLOAT_EQ(scale, 1.0f);
+
+  min_val = -3.0f;
+  max_val = 3.0f;
+  scale = 0.0f;
+  tensor_utils::PortableSymmetricQuantizeFloats(one_past_end, -1, &sentinel,
+                                                &min_val, &max_val, &scale);
+  EXPECT_FLOAT_EQ(min_val, 0.0f);
+  EXPECT_FLOAT_EQ(max_val, 0.0f);
+  EXPECT_FLOAT_EQ(scale, 1.0f);
+  EXPECT_EQ(sentinel, 77);
+}
+
+TEST(PerChannelQuantize, PortableAsymmetricQuantizeFloatsNonPositiveSizeSafe) {
+  auto backing = std::make_unique<float[]>(1);
+  backing[0] = -19.0f;
+  const float* one_past_end = backing.get() + 1;
+  int8_t sentinel = 55;
+  float scale = 0.0f;
+  int32_t offset = -9;
+
+  tensor_utils::PortableAsymmetricQuantizeFloats(one_past_end, 0, &sentinel,
+                                                 &scale, &offset);
+  EXPECT_FLOAT_EQ(scale, 1.0f);
+  EXPECT_EQ(offset, 0);
+  EXPECT_EQ(sentinel, 55);
+
+  scale = 0.0f;
+  offset = -9;
+  tensor_utils::PortableAsymmetricQuantizeFloats(nullptr, 0, nullptr, &scale,
+                                                 &offset);
+  EXPECT_FLOAT_EQ(scale, 1.0f);
+  EXPECT_EQ(offset, 0);
+
+  scale = 0.0f;
+  offset = -9;
+  tensor_utils::PortableAsymmetricQuantizeFloats(one_past_end, -1, &sentinel,
+                                                 &scale, &offset);
+  EXPECT_FLOAT_EQ(scale, 1.0f);
+  EXPECT_EQ(offset, 0);
+  EXPECT_EQ(sentinel, 55);
 }
 
 }  // namespace

@@ -16,10 +16,16 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <cstddef>
-#include <string>
+#ifndef _WIN32
+#include <sys/mman.h>
+#endif
 
 #include <gtest/gtest.h>
+
+#include <cstddef>
+#include <string>
+#include <vector>
+
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/string_type.h"
@@ -247,5 +253,132 @@ TEST(StringUtil, EmptyStringWithEmptyBuffer) {
   StringRef added_string = GetString(t0, 0);
   EXPECT_EQ(added_string.len, 0);
 }
+
+// Positive control: bounded AddJoinedString still appends joined text.
+TEST(StringUtil, AddJoinedStringWithinMaxLengthSucceeds) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+
+  DynamicBuffer buf{16};
+  const char a[] = "AB";
+  const char b[] = "CD";
+  buf.AddJoinedString({{a, 2}, {b, 2}}, '-');
+  buf.WriteToTensorAsVector(t0);
+
+  ASSERT_EQ(GetStringCount(t0), 1);
+  StringRef joined = GetString(t0, 0);
+  EXPECT_EQ(std::string(joined.str, joined.len), "AB-CD");
+}
+
+TEST(StringUtil, AddJoinedStringAtMaxLengthSucceeds) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* tensor = interpreter.tensor(0);
+  tensor->type = kTfLiteString;
+  tensor->allocation_type = kTfLiteDynamic;
+
+  // The limit counts payload bytes, including separators, but not the header.
+  DynamicBuffer buf{8};
+  ASSERT_EQ(buf.AddString("PRE", 3), kTfLiteOk);
+  buf.AddJoinedString({{"AB", 2}, {"CD", 2}}, '-');
+  buf.WriteToTensorAsVector(tensor);
+
+  ASSERT_EQ(GetStringCount(tensor), 2);
+  const StringRef first = GetString(tensor, 0);
+  const StringRef joined = GetString(tensor, 1);
+  EXPECT_EQ(std::string(first.str, first.len), "PRE");
+  EXPECT_EQ(std::string(joined.str, joined.len), "AB-CD");
+  EXPECT_EQ(tensor->bytes, 8 + 4 * sizeof(int32_t));
+
+  // A further non-empty join must leave the full buffer unchanged.
+  buf.AddJoinedString({{"X", 1}}, '-');
+  buf.WriteToTensorAsVector(tensor);
+  EXPECT_EQ(GetStringCount(tensor), 2);
+  EXPECT_EQ(tensor->bytes, 8 + 4 * sizeof(int32_t));
+}
+
+TEST(StringUtil, AddJoinedStringEmptyVectorAppendsEmptyEntry) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+
+  DynamicBuffer buf;
+  ASSERT_EQ(buf.AddString("KEEP", 4), kTfLiteOk);
+  const std::vector<StringRef> empty_parts;
+  const char sep[] = ", ";
+  buf.AddJoinedString(empty_parts, {sep, 2});
+  buf.WriteToTensorAsVector(t0);
+
+  ASSERT_EQ(GetStringCount(t0), 2);
+  StringRef first = GetString(t0, 0);
+  StringRef second = GetString(t0, 1);
+  EXPECT_EQ(std::string(first.str, first.len), "KEEP");
+  EXPECT_EQ(second.len, 0);
+}
+
+TEST(StringUtil, AddJoinedStringEmptyPartsInEmptyBufferSafe) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+
+  DynamicBuffer buf;
+  buf.AddJoinedString({{nullptr, 0}, {nullptr, 0}}, {nullptr, 0});
+  buf.WriteToTensorAsVector(t0);
+
+  ASSERT_EQ(GetStringCount(t0), 1);
+  EXPECT_EQ(GetString(t0, 0).len, 0);
+}
+
+// Negative boundary: overflow and underflow lengths are safely ignored.
+TEST(StringUtil, AddJoinedStringOverflowLengthIgnored) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+
+  DynamicBuffer small_buf{8};
+  ASSERT_EQ(small_buf.AddString("OK", 2), kTfLiteOk);
+  const char part[] = "12345";
+  small_buf.AddJoinedString({{part, 5}, {part, 5}}, '-');
+  small_buf.WriteToTensorAsVector(t0);
+  ASSERT_EQ(GetStringCount(t0), 1);
+  StringRef kept = GetString(t0, 0);
+  EXPECT_EQ(std::string(kept.str, kept.len), "OK");
+}
+
+#ifndef _WIN32
+TEST(StringUtil, AddJoinedStringInt32WrapOverflowIgnored) {
+  Interpreter interpreter;
+  interpreter.AddTensors(1);
+  TfLiteTensor* t0 = interpreter.tensor(0);
+  t0->type = kTfLiteString;
+  t0->allocation_type = kTfLiteDynamic;
+
+  constexpr size_t kChunk = size_t{1} << 30;
+  void* mapping =
+      mmap(nullptr, kChunk, PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (mapping != MAP_FAILED) {
+    const char* ptr = static_cast<const char*>(mapping);
+    DynamicBuffer wrap_buf;
+    ASSERT_EQ(wrap_buf.AddString("SAFE", 4), kTfLiteOk);
+    wrap_buf.AddJoinedString(
+        {{ptr, kChunk}, {ptr, kChunk}, {ptr, kChunk}, {ptr, kChunk}}, ' ');
+    munmap(mapping, kChunk);
+
+    wrap_buf.WriteToTensorAsVector(t0);
+    ASSERT_EQ(GetStringCount(t0), 1);
+    StringRef still_safe = GetString(t0, 0);
+    EXPECT_EQ(std::string(still_safe.str, still_safe.len), "SAFE");
+  }
+}
+#endif
 
 }  // namespace tflite
