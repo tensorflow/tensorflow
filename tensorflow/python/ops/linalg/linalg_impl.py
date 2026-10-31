@@ -810,6 +810,17 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
   return linalg_ops.tridiagonal_mat_mul(superdiag, maindiag, subdiag, rhs, name)
 
 
+def _convert_with_float32_hint(value, name):
+  """Converts to tensor with a float32 hint, keeping float64 and complex.
+
+  The hint alone also casts float64 and complex NumPy inputs to float32,
+  silently dropping precision and imaginary parts.
+  """
+  if getattr(value, 'dtype', None) in (np.float64, np.complex64, np.complex128):
+    return ops.convert_to_tensor(value, name=name)
+  return ops.convert_to_tensor(value, dtype_hint=dtypes.float32, name=name)
+
+
 def _maybe_validate_matrix(a, validate_args):
   """Checks that input is a `float` matrix."""
   assertions = []
@@ -848,7 +859,7 @@ def matrix_rank(a, tol=None, validate_args=False, name=None):
       singular values.
   """
   with ops.name_scope(name or 'matrix_rank'):
-    a = ops.convert_to_tensor(a, dtype_hint=dtypes.float32, name='a')
+    a = _convert_with_float32_hint(a, name='a')
     assertions = _maybe_validate_matrix(a, validate_args)
     if assertions:
       with ops.control_dependencies(assertions):
@@ -1041,8 +1052,7 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
   """
 
   with ops.name_scope(name or 'lu_solve'):
-    lower_upper = ops.convert_to_tensor(
-        lower_upper, dtype_hint=dtypes.float32, name='lower_upper')
+    lower_upper = _convert_with_float32_hint(lower_upper, name='lower_upper')
     perm = ops.convert_to_tensor(perm, dtype_hint=dtypes.int32, name='perm')
     rhs = ops.convert_to_tensor(rhs, dtype_hint=lower_upper.dtype, name='rhs')
 
@@ -1143,8 +1153,7 @@ def lu_matrix_inverse(lower_upper, perm, validate_args=False, name=None):
   """
 
   with ops.name_scope(name or 'lu_matrix_inverse'):
-    lower_upper = ops.convert_to_tensor(
-        lower_upper, dtype_hint=dtypes.float32, name='lower_upper')
+    lower_upper = _convert_with_float32_hint(lower_upper, name='lower_upper')
     perm = ops.convert_to_tensor(perm, dtype_hint=dtypes.int32, name='perm')
     assertions = lu_reconstruct_assertions(lower_upper, perm, validate_args)
     if assertions:
@@ -1195,8 +1204,7 @@ def lu_reconstruct(lower_upper, perm, validate_args=False, name=None):
 
   """
   with ops.name_scope(name or 'lu_reconstruct'):
-    lower_upper = ops.convert_to_tensor(
-        lower_upper, dtype_hint=dtypes.float32, name='lower_upper')
+    lower_upper = _convert_with_float32_hint(lower_upper, name='lower_upper')
     perm = ops.convert_to_tensor(perm, dtype_hint=dtypes.int32, name='perm')
 
     assertions = lu_reconstruct_assertions(lower_upper, perm, validate_args)
