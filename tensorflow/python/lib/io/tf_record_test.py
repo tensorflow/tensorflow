@@ -292,6 +292,42 @@ class TFRecordWriterTest(TFCompressionTestCase):
             "Setting {} = {}, file was {} smaller didn't match sign of {}"
             .format(prop, value, delta, delta_sign))
 
+  def testInvalidZlibOptionsRaiseError(self):
+    """Invalid ZLIB and GZIP options raise an error instead of aborting."""
+    tests = [
+        ("ZLIB", {"compression_method": 3}, r"compression_method=3,"),
+        ("ZLIB", {"window_bits": -8}, r"\(window_bits=-8,"),
+        ("ZLIB", {"compression_level": -9}, r"compression_level=-9,"),
+        ("ZLIB", {"mem_level": -10}, r"mem_level=-10,"),
+        ("ZLIB", {"compression_strategy": -2}, r"compression_strategy=-2,"),
+        ("GZIP", {"window_bits": 7}, r"\(window_bits=7,"),
+        ("ZLIB", {"output_buffer_size": 1}, r"output_buffer_size=1\)"),
+        ("ZLIB", {"input_buffer_size": -1},
+         r"between 0 and 2147483647 .*input_buffer_size=-1,"),
+        ("ZLIB", {"input_buffer_size": 2**31},
+         r"between 0 and 2147483647 .*input_buffer_size=2147483648,"),
+        ("ZLIB", {"output_buffer_size": 2**32 + 2},
+         r"between 0 and 2147483647 .*output_buffer_size=4294967298\)"),
+    ]
+    for i, (compression_type, kwargs, regex) in enumerate(tests):
+      options = tf_record.TFRecordOptions(
+          compression_type=compression_type, **kwargs)
+      fn = os.path.join(self.get_temp_dir(), "invalid_options_%d" % i)
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Invalid TFRecordWriter options.*" + regex):
+        tf_record.TFRecordWriter(fn, options=options)
+      self.assertFalse(os.path.exists(fn))
+
+  def testInvalidZlibOptionsIgnoredWithoutCompression(self):
+    """ZLIB options are not used when the records are not compressed."""
+    options = tf_record.TFRecordOptions(
+        compression_type=TFRecordCompressionType.NONE,
+        window_bits=-8,
+        compression_level=-9)
+    fn = self._WriteRecordsToFile([b"record"], "uncompressed", options=options)
+    self.assertEqual([b"record"],
+                     list(tf_record.tf_record_iterator(fn, options=options)))
+
 
 class TFRecordWriterZlibTest(TFCompressionTestCase):
   """TFRecordWriter Zlib test"""
