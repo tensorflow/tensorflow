@@ -376,6 +376,13 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
       TF_LITE_ENSURE_STATUS(
           ResolveTensorAllocation(tensors_allocated[i], tensors));
     }
+    for (int i = 0; i < static_cast<int>(num_tensors); ++i) {
+      if ((tensors[i].allocation_type == kTfLiteArenaRw ||
+           tensors[i].allocation_type == kTfLiteArenaRwPersistent) &&
+          tensors[i].data.raw == nullptr && tensors[i].bytes > 0) {
+        TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i, tensors));
+      }
+    }
   }
 
   return kTfLiteOk;

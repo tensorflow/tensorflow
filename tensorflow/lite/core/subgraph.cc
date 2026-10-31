@@ -1570,7 +1570,7 @@ TfLiteStatus Subgraph::MayAllocateOpOutput(TfLiteNode* node) {
       TfLiteTensor* tensor = &context_.tensors[tensor_index];
       if (tensor->data.raw == nullptr &&
           tensor->allocation_type == kTfLiteDynamic) {
-        TfLiteTensorRealloc(tensor->bytes, tensor);
+        TF_LITE_ENSURE_STATUS(TfLiteTensorRealloc(tensor->bytes, tensor));
       }
     }
   }
@@ -1808,7 +1808,21 @@ TfLiteStatus Subgraph::InvokeImpl() {
     }
     // Allocate dynamic tensors which memory is required to be allocated
     // before executing the node.
-    MayAllocateOpOutput(&node);
+    TF_LITE_ENSURE_STATUS(MayAllocateOpOutput(&node));
+
+    for (int i = 0; i < node.outputs->size; ++i) {
+      int tensor_index = node.outputs->data[i];
+      if (tensor_index == kTfLiteOptionalTensor) {
+        continue;
+      }
+      TfLiteTensor* tensor = &tensors_[tensor_index];
+      if (tensor->data.raw == nullptr && tensor->bytes > 0 &&
+          tensor->allocation_type != kTfLiteNonCpu &&
+          tensor->allocation_type != kTfLiteDynamic) {
+        ReportError("Output tensor %d lacks data", tensor_index);
+        return kTfLiteError;
+      }
+    }
 
     if (check_cancelled_func_ != nullptr &&
         check_cancelled_func_(cancellation_data_)) {
