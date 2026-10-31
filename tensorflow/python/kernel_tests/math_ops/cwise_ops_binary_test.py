@@ -23,6 +23,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -1068,6 +1069,187 @@ class BinaryOpTest(test.TestCase):
       expected = np.array([4, 0, np.inf, -np.inf, 0, -1], dtype=dtype)
 
       self.assertAllClose(self.evaluate(math_ops.mod(x, y)), expected)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testComplexDivLengthIndependent(self):
+    """Complex division must not depend on tensor length.
+
+    Div and RealDiv share functor::div. Eigen's pdiv_complex disagrees with
+    scalar complex division for exact zeros and for subnormals flushed under
+    FTZ/DAZ. math.divide uses RealDiv; gen_math_ops.div uses Div. Infinite
+    denominators already agree. The numerator is 1+0j except for the finite
+    case, which uses a non-trivial numerator so the packet path is a quotient.
+    """
+    # Cover scalar, SSE (2), AVX (4), AVX-512 (8), and a remainder element.
+    lengths = (0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17)
+
+    def divide_of(numer, denom, op):
+      with test_util.force_cpu():
+        return self.evaluate(
+            op(constant_op.constant(numer), constant_op.constant(denom)))
+
+    def filled(n, real, imag, dtype):
+      # Assign parts separately so a signed zero is not flushed by complex
+      # addition.
+      real_dtype = np.float32 if dtype == np.complex64 else np.float64
+      values = np.empty((n,), dtype=dtype)
+      values.real = np.full((n,), real, dtype=real_dtype)
+      values.imag = np.full((n,), imag, dtype=real_dtype)
+      return values
+
+    def matches_reference(got, ref, tol):
+      """True when every element matches ref, including inf and NaN."""
+      ref = np.resize(np.asarray(ref), got.shape)
+      return np.all(
+          np.isclose(got.real, ref.real, rtol=tol, atol=tol, equal_nan=True)
+      ) and np.all(
+          np.isclose(got.imag, ref.imag, rtol=tol, atol=tol, equal_nan=True))
+
+    for dtype in (np.complex64, np.complex128):
+      real_dtype = np.float32 if dtype == np.complex64 else np.float64
+      tol = _default_tolerance(dtype)
+
+      positive_zero = filled(1, 0.0, 0.0, dtype)
+      negative_zero = filled(1, -0.0, 0.0, dtype)
+      self.assertFalse(
+          np.signbit(positive_zero.real[0]),
+          msg=f"{dtype.__name__} +0 sign: {positive_zero}")
+      self.assertTrue(
+          np.signbit(negative_zero.real[0]),
+          msg=f"{dtype.__name__} -0 sign: {negative_zero}")
+
+      for n in lengths:
+        numer = filled(n, 1.0, 0.0, dtype)
+        zeros = filled(n, 0.0, 0.0, dtype)
+        neg_zeros = filled(n, -0.0, 0.0, dtype)
+        for op in (math_ops.divide, gen_math_ops.div):
+          got = divide_of(numer, zeros, op)
+          neg = divide_of(numer, neg_zeros, op)
+          self.assertEqual(got.shape, (n,))
+          self.assertEqual(neg.shape, (n,))
+          if n == 0:
+            continue
+          # (1+0j)/(+0+0j) is +inf+nanj, matching scalar division.
+          self.assertTrue(
+              np.all(np.isposinf(got.real)),
+              msg=f"{dtype.__name__} n={n} op={op.__name__}: {got}")
+          self.assertTrue(
+              np.all(np.isnan(got.imag)),
+              msg=f"{dtype.__name__} n={n} op={op.__name__}: {got}")
+          # (1+0j)/(-0+0j) keeps the sign of the infinite real part.
+          self.assertTrue(
+              np.all(np.isneginf(neg.real)),
+              msg=f"{dtype.__name__} n={n} op={op.__name__}: {neg}")
+          self.assertTrue(
+              np.all(np.isnan(neg.imag)),
+              msg=f"{dtype.__name__} n={n} op={op.__name__}: {neg}")
+          # (0+0j)/(0+0j) is nan+nanj at every length.
+          zero_over_zero = divide_of(zeros, zeros, op)
+          self.assertTrue(
+              np.all(np.isnan(zero_over_zero.real)),
+              msg=(f"0/0 real {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{zero_over_zero}"))
+          self.assertTrue(
+              np.all(np.isnan(zero_over_zero.imag)),
+              msg=(f"0/0 imag {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{zero_over_zero}"))
+
+      for op in (math_ops.divide, gen_math_ops.div):
+        finite_numer = np.array([2.0 + 1.0j], dtype=dtype)
+        finite_denom = np.array([0.5 + 0.25j], dtype=dtype)
+        finite_ref = (finite_numer / finite_denom).astype(dtype)
+        # 1e-40 is subnormal for float32 only. float64's subnormals start near
+        # 1e-308, so complex128 needs its own value.
+        if dtype == np.complex64:
+          subnormal = np.array([1e-40j], dtype=dtype)
+        else:
+          subnormal = np.array([1e-310j], dtype=dtype)
+        one = filled(1, 1.0, 0.0, dtype)
+        subnormal_ref = divide_of(one, subnormal, op)
+        inf_ref = divide_of(one, filled(1, np.inf, 0.0, dtype), op)
+        # 1e-40 is subnormal for float32; complex128 uses 1e-310. A normal
+        # component must not hide the subnormal one.
+        tiny = np.float32(1e-40) if dtype == np.complex64 else np.float64(
+            1e-310)
+        normal_sub = filled(1, 1.0, tiny, dtype)
+        sub_normal = filled(1, tiny, 1.0, dtype)
+        normal_sub_ref = divide_of(one, normal_sub, op)
+        sub_normal_ref = divide_of(one, sub_normal, op)
+        for n in lengths:
+          if n == 0:
+            continue
+          got_finite = divide_of(
+              np.repeat(finite_numer, n), np.repeat(finite_denom, n), op)
+          self.assertTrue(
+              matches_reference(got_finite, finite_ref, tol),
+              msg=(f"finite {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_finite}"))
+          got_subnormal = divide_of(filled(n, 1.0, 0.0, dtype),
+                                     np.repeat(subnormal, n), op)
+          self.assertTrue(
+              matches_reference(got_subnormal, subnormal_ref, tol),
+              msg=(f"subnormal {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_subnormal}"))
+          got_nan = divide_of(filled(n, 1.0, 0.0, dtype),
+                              filled(n, np.nan, 0.0, dtype), op)
+          self.assertTrue(
+              np.all(np.isnan(got_nan.real)),
+              msg=(f"nan real {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_nan}"))
+          self.assertTrue(
+              np.all(np.isnan(got_nan.imag)),
+              msg=(f"nan imag {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_nan}"))
+          got_inf = divide_of(filled(n, 1.0, 0.0, dtype),
+                              filled(n, np.inf, 0.0, dtype), op)
+          # Scalar and packet division already agree on 1/(inf+0j).
+          self.assertTrue(
+              np.all(got_inf.real == 0),
+              msg=(f"inf real {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_inf}"))
+          self.assertTrue(
+              np.all(got_inf.imag == 0),
+              msg=(f"inf imag {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_inf}"))
+          self.assertTrue(
+              matches_reference(got_inf, inf_ref, tol),
+              msg=(f"inf {dtype.__name__} n={n} op={op.__name__}: {got_inf}"))
+          got_normal_sub = divide_of(filled(n, 1.0, 0.0, dtype),
+                                      np.repeat(normal_sub, n), op)
+          self.assertTrue(
+              matches_reference(got_normal_sub, normal_sub_ref, tol),
+              msg=(f"normal+sub {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_normal_sub}"))
+          got_sub_normal = divide_of(filled(n, 1.0, 0.0, dtype),
+                                      np.repeat(sub_normal, n), op)
+          self.assertTrue(
+              matches_reference(got_sub_normal, sub_normal_ref, tol),
+              msg=(f"sub+normal {dtype.__name__} n={n} op={op.__name__}: "
+                   f"{got_sub_normal}"))
+
+        # Length 20 holds two AVX-512 packets plus a remainder. Each packet
+        # contains a zero, so those lanes are selected from scalar division.
+        numer = filled(20, 1.0, 0.0, dtype)
+        mixed = np.zeros(20, dtype=dtype)
+        mixed[1::4] = 0.5 + 0.25j
+        mixed[3::4] = -1.0 + 2.0j
+        got_mixed = divide_of(numer, mixed, op)
+        self.assertTrue(
+            np.all(np.isposinf(got_mixed.real[0::2])),
+            msg=f"mixed real {dtype.__name__} op={op.__name__}: {got_mixed}")
+        self.assertTrue(
+            np.all(np.isnan(got_mixed.imag[0::2])),
+            msg=f"mixed imag {dtype.__name__} op={op.__name__}: {got_mixed}")
+        one_over_finite = (
+            np.array([1.0 + 0.0j], dtype=dtype) /
+            np.array([0.5 + 0.25j], dtype=dtype)).astype(dtype)
+        self.assertAllClose(
+            got_mixed[1::4], np.tile(one_over_finite, 5), rtol=tol, atol=tol)
+        expected_last = (
+            np.array([1.0 + 0.0j], dtype=dtype) /
+            np.array([-1.0 + 2.0j], dtype=dtype))
+        self.assertAllClose(
+            got_mixed[3::4], np.tile(expected_last, 5), rtol=tol, atol=tol)
 
 
 class ComparisonOpTest(test.TestCase):
