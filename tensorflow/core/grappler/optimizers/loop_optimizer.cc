@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -189,6 +191,21 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleConst(
 
 absl::Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
     NodeDef* node, const int num_outputs, const int frame_id) {
+  int piterations = 0;
+  std::string fname;
+  if (num_outputs > 0) {
+    const auto& enter_attr = invariant_enters_[frame_id][0]->attr();
+    const auto piter_it = enter_attr.find("parallel_iterations");
+    if (piter_it == enter_attr.end() ||
+        piter_it->second.value_case() != AttrValue::kI ||
+        piter_it->second.i() <= 0 ||
+        piter_it->second.i() > std::numeric_limits<int>::max()) {
+      return absl::InvalidArgumentError(
+          "Invariant Enter node is missing positive parallel_iterations");
+    }
+    fname = enter_attr.at("frame_name").s();
+    piterations = static_cast<int>(piter_it->second.i());
+  }
   // have to remove control inputs to the invariant node from the same frame
   // when moving this node out of this frame
   for (int i = 0; i < node->input_size(); ++i) {
@@ -210,10 +227,6 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
                                        &output_types));
 
   auto consumers = node_map_->GetOutputs(node->name());
-  std::string fname =
-      invariant_enters_[frame_id][0]->attr().at("frame_name").s();
-  int piterations =
-      invariant_enters_[frame_id][0]->attr().at("parallel_iterations").i();
   for (auto* consumer : consumers) {
     if (!invariant_nodes_.count(consumer)) {
       for (int i = 0; i < consumer->input_size(); ++i) {
@@ -226,6 +239,11 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
           return absl::InvalidArgumentError(
               "Invariant node should not have control outputs "
               "to variant node");
+        }
+        if (port >= static_cast<int>(output_types.size())) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Invariant node output port ", port,
+                           " out of range for ", node->name()));
         }
         DataType output_type = output_types[port];
         NodeDef* new_enter = optimized_graph_->add_node();
@@ -413,7 +431,8 @@ absl::Status LoopInvariantNodeMotionOptimizer::Optimize() {
         }
         loop_cond_[frame_ids.back()] = &node;
       }
-      if (IsEnter(node) && node.attr().at("is_constant").b()) {
+      if (IsEnter(node) && node.attr().contains("is_constant") &&
+          node.attr().at("is_constant").b()) {
         invariant_enters_[frame_ids.back()].push_back(
             const_cast<NodeDef*>(&node));
       }
@@ -555,6 +574,14 @@ bool IsSimpleBinaryOperator(const NodeDef& node) {
           IsGreaterEqual(node) || IsEqual(node));
 }
 
+bool ExtractConstTensor(const NodeDef& const_node, Tensor* tensor) {
+  const auto value_it = const_node.attr().find("value");
+  if (value_it == const_node.attr().end() || !value_it->second.has_tensor()) {
+    return false;
+  }
+  return tensor->FromProto(value_it->second.tensor());
+}
+
 absl::Status EvaluateBoolOpForConstantOperands(
     const NodeDef& op_node, const NodeDef& constant_operand_0,
     const NodeDef& constant_operand_1, DeviceBase* cpu_device,
@@ -562,28 +589,36 @@ absl::Status EvaluateBoolOpForConstantOperands(
   VLOG(4) << "Evaluate bool op: op_node=" << op_node.name()
           << " input0=" << constant_operand_0.name()
           << " input1=" << constant_operand_1.name();
+  Tensor value_0;
+  Tensor value_1;
+  if (!ExtractConstTensor(constant_operand_0, &value_0) ||
+      !ExtractConstTensor(constant_operand_1, &value_1)) {
+    return absl::InvalidArgumentError(
+        "Constant operand is missing a valid TensorProto value.");
+  }
   TensorVector inputs;
-
-  const TensorProto& raw_val_0 = constant_operand_0.attr().at("value").tensor();
-  Tensor value_0(raw_val_0.dtype(), raw_val_0.tensor_shape());
-  CHECK(value_0.FromProto(raw_val_0));
   inputs.emplace_back(&value_0);
-  const TensorProto& raw_val_1 = constant_operand_1.attr().at("value").tensor();
-  Tensor value_1(raw_val_1.dtype(), raw_val_1.tensor_shape());
-  CHECK(value_1.FromProto(raw_val_1));
   inputs.emplace_back(&value_1);
 
   TensorVector outputs;
-  TF_RETURN_IF_ERROR(
-      EvaluateNode(op_node, inputs, cpu_device, resource_mgr, &outputs));
-
-  if (outputs.size() != 1 || outputs[0].tensor == nullptr) {
-    return absl::Status(absl::StatusCode::kInvalidArgument,
-                        "Expected one output.");
+  absl::Status eval_status =
+      EvaluateNode(op_node, inputs, cpu_device, resource_mgr, &outputs);
+  auto free_outputs = [&outputs]() {
+    for (auto& output : outputs) {
+      delete output.tensor;
+    }
+  };
+  if (!eval_status.ok()) {
+    free_outputs();
+    return eval_status;
+  }
+  if (outputs.size() != 1 || outputs[0].tensor == nullptr ||
+      outputs[0].tensor->dtype() != DT_BOOL || outputs[0].tensor->dims() != 0) {
+    free_outputs();
+    return absl::InvalidArgumentError("Expected one scalar bool output.");
   }
   *value = outputs[0].tensor->scalar<bool>()();
-  delete outputs[0].tensor;
-
+  free_outputs();
   return absl::OkStatus();
 }
 
@@ -603,9 +638,16 @@ absl::Status CheckForDeadFanout(
     DeviceBase* cpu_device, ResourceMgr* resource_mgr, bool* has_dead_fanout,
     int* dead_fanout) {
   *has_dead_fanout = false;
-  GraphView::InputPort switch_loopcond_port(&switch_node, 1);
-  const NodeDef* switch_predicate =
-      view.GetRegularFanin(switch_loopcond_port).node;
+  const auto switch_input_fanin =
+      view.GetRegularFanin(GraphView::InputPort(&switch_node, 0));
+  const auto switch_loopcond_fanin =
+      view.GetRegularFanin(GraphView::InputPort(&switch_node, 1));
+  const NodeDef* switch_input = switch_input_fanin.node;
+  const NodeDef* switch_predicate = switch_loopcond_fanin.node;
+  if (switch_input == nullptr || switch_input_fanin.port_id < 0 ||
+      switch_predicate == nullptr || switch_loopcond_fanin.port_id < 0) {
+    return absl::OkStatus();
+  }
 
   // CASE 1: Control is a constant.
   if (IsReallyConstant(*switch_predicate, feed_nodes)) {
@@ -613,14 +655,16 @@ absl::Status CheckForDeadFanout(
             << " switch_node=" << switch_node.name()
             << " switch_predicate=" << switch_predicate->name();
     Tensor selector;
-    CHECK(selector.FromProto(switch_predicate->attr().at("value").tensor()));
+    if (!ExtractConstTensor(*switch_predicate, &selector) ||
+        selector.dtype() != DT_BOOL || selector.dims() != 0) {
+      VLOG(3) << "Skipping malformed constant switch predicate: "
+              << switch_predicate->name();
+      return absl::OkStatus();
+    }
     *has_dead_fanout = true;
     *dead_fanout = selector.scalar<bool>()() ? 0 : 1;
     return absl::OkStatus();
   }
-
-  GraphView::InputPort switch_input_port(&switch_node, 0);
-  const NodeDef* switch_input = view.GetRegularFanin(switch_input_port).node;
 
   // CASE 2: Zero-iteration while loop.
   // We check if its a while loop such that the condition is a simple binary
@@ -634,8 +678,10 @@ absl::Status CheckForDeadFanout(
           << " switch_node=" << switch_node.name();
 
   // Find the boolean predicate from a LoopCond node (e.g. Greater).
-  NodeDef* switch_ctrl_node = view.GetRegularFanin({switch_predicate, 0}).node;
-  if (!switch_ctrl_node || !IsSimpleBinaryOperator(*switch_ctrl_node)) {
+  const auto switch_ctrl = view.GetRegularFanin({switch_predicate, 0});
+  NodeDef* switch_ctrl_node = switch_ctrl.node;
+  if (!switch_ctrl_node || switch_ctrl.port_id < 0 ||
+      !IsSimpleBinaryOperator(*switch_ctrl_node)) {
     return absl::OkStatus();
   }
 
@@ -648,7 +694,8 @@ absl::Status CheckForDeadFanout(
     const std::string& input = switch_ctrl_node->input(i);
     if (IsControlInput(input)) continue;
 
-    NodeDef* node = view.GetNode(switch_ctrl_node->input(i));
+    NodeDef* node = node_map.GetNode(input);
+    if (node == nullptr) return absl::OkStatus();
     if (IsMerge(*node)) {
       merge_node = node;
     }
@@ -665,7 +712,9 @@ absl::Status CheckForDeadFanout(
   NodeDef* enter_node = nullptr;
   NodeDef* constant_init_node = nullptr;
   for (const auto& input : merge_node->input()) {
+    if (IsControlInput(input)) continue;
     NodeDef* node = node_map.GetNode(input);
+    if (node == nullptr) return absl::OkStatus();
     if (IsEnter(*node)) {
       enter_node = node;
     }
@@ -676,7 +725,9 @@ absl::Status CheckForDeadFanout(
   if (enter_node != nullptr) {
     if (constant_init_node != nullptr) return absl::OkStatus();
     for (const auto& input : enter_node->input()) {
+      if (IsControlInput(input)) continue;
       NodeDef* node = node_map.GetNode(input);
+      if (node == nullptr) return absl::OkStatus();
       if (IsReallyConstant(*node, feed_nodes)) {
         constant_init_node = node;
       }
@@ -702,9 +753,12 @@ absl::Status CheckForDeadFanout(
   NodeDef* operand_1 =
       constant_index ? constant_ctrl_input : constant_init_node;
   bool constant_switch_value;
-  TF_RETURN_IF_ERROR(EvaluateBoolOpForConstantOperands(
-      *switch_ctrl_node, *operand_0, *operand_1, cpu_device, resource_mgr,
-      &constant_switch_value));
+  if (!EvaluateBoolOpForConstantOperands(*switch_ctrl_node, *operand_0,
+                                         *operand_1, cpu_device, resource_mgr,
+                                         &constant_switch_value)
+           .ok()) {
+    return absl::OkStatus();
+  }
 
   if (constant_switch_value == false) {
     VLOG(3) << "Remove 0 iteration while loop:"
