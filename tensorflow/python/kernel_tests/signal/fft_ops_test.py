@@ -22,9 +22,11 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_spectral_ops
@@ -1368,6 +1370,32 @@ class FFTShiftTest(test.TestCase, parameterized.TestCase):
           feed_dict={x: x_np})
     self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np, axes=axes))
     self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np, axes=axes))
+
+  def test_unknown_rank_placeholder(self):
+    if context.executing_eagerly():
+      return
+    x = array_ops.placeholder(shape=None, dtype="float32")
+    y_fftshift = fft_ops.fftshift(x)
+    y_ifftshift = fft_ops.ifftshift(x)
+    x_np = np.random.rand(16, 32, 64).astype(np.float32)
+    with self.session() as sess:
+      y_fftshift_res, y_ifftshift_res = sess.run(
+          [y_fftshift, y_ifftshift],
+          feed_dict={x: x_np})
+    self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np))
+    self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np))
+
+  def test_unknown_rank_dynamic(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    def shift_fn(x):
+      return fft_ops.fftshift(x), fft_ops.ifftshift(x)
+
+    x_np = np.random.rand(4, 8, 16).astype(np.float32)
+    shifted, unshifted = self.evaluate(shift_fn(x_np))
+    self.assertAllClose(shifted, np.fft.fftshift(x_np))
+    self.assertAllClose(unshifted, np.fft.ifftshift(x_np))
 
   def test_negative_axes(self):
     with self.session():
