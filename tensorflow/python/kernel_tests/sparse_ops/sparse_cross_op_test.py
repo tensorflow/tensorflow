@@ -413,6 +413,28 @@ class SparseCrossOpTest(test.TestCase):
       all_values_are_different = len(out.values) == len(set(out.values))
       self.assertTrue(all_values_are_different)
 
+  def test_hashed_dense_int64_strong_hash(self):
+    """Strong-hash crossing of an int64 dense column.
+
+    Regression test for a wild-pointer read in
+    KeyedDenseTensorColumn<int64>::Feature, which hashed the bytes at the
+    address numerically equal to each int64 element instead of the element
+    itself. Before the fix this segfaulted for any int64 dense input.
+    """
+    dense = constant_op.constant([[1], [2]], dtype=dtypes.int64)
+    op = gen_sparse_ops.sparse_cross_hashed(
+        indices=[],
+        values=[],
+        shapes=[],
+        dense_inputs=[dense],
+        num_buckets=1024,
+        strong_hash=True,
+        salt=[1, 2])
+    with self.cached_session():
+      values = self.evaluate(op.output_values)
+      self.assertAllEqual([2], values.shape)
+      self.assertTrue(all(0 <= x < 1024 for x in values))
+
   def _assert_sparse_tensor_empty(self, sp):
     self.assertEqual(0, sp.indices.size)
     self.assertEqual(0, sp.values.size)
