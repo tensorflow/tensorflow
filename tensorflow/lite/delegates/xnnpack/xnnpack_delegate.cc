@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
 #include "tensorflow/lite/delegates/xnnpack/moe_delegate_kernel.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
+#include "tensorflow/lite/delegates/xnnpack/sdpa_delegate_kernel.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 #include "tensorflow/lite/experimental/resource/resource_variable.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -1048,6 +1049,12 @@ class Subgraph {
       return new Subgraph(delegate, std::move(moe_kernel));
     }
 
+    std::unique_ptr<SdpaDelegateKernel> sdpa_kernel =
+        SdpaDelegateKernel::Create(context, params, delegate.threadpool());
+    if (sdpa_kernel != nullptr) {
+      return new Subgraph(delegate, std::move(sdpa_kernel));
+    }
+
     // Convert subgraph inputs and outputs to hash sets for faster lookup.
     const std::unordered_set<int> inputs(
         &params->input_tensors->data[0],
@@ -1532,6 +1539,9 @@ class Subgraph {
     if (moe_kernel_ != nullptr) {
       return moe_kernel_->Prepare(context);
     }
+    if (sdpa_kernel_ != nullptr) {
+      return sdpa_kernel_->Prepare(context);
+    }
 
     std::lock_guard<std::mutex> lock(*workspace_mutex_);
     if (runtime_ == nullptr) {
@@ -1615,6 +1625,9 @@ class Subgraph {
   TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping) {
     if (moe_kernel_ != nullptr) {
       return moe_kernel_->Invoke(context);
+    }
+    if (sdpa_kernel_ != nullptr) {
+      return sdpa_kernel_->Invoke(context);
     }
 
     std::lock_guard<std::mutex> lock(*workspace_mutex_);
@@ -7226,6 +7239,12 @@ class Subgraph {
         enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
         workspace_mutex_(delegate.workspace_mutex_) {}
 
+  Subgraph(Delegate& delegate, std::unique_ptr<SdpaDelegateKernel> sdpa_kernel)
+      : runtime_(nullptr, &xnn_delete_runtime),
+        sdpa_kernel_(std::move(sdpa_kernel)),
+        enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
+        workspace_mutex_(delegate.workspace_mutex_) {}
+
   // Keep track of expanded scales for shared tensors to manage their lifetime.
   // Must be declared before runtime_ so it outlives runtime_ during
   // destruction.
@@ -7238,6 +7257,8 @@ class Subgraph {
   // prototype path for moe, where dynamic routing cannot be
   // expressed as a pure XNNPACK subgraph today.
   std::unique_ptr<MoeExpertsDelegateKernel> moe_kernel_;
+  // Optional single-op SDPA / Fused-SDPA-Cache-Update executor.
+  std::unique_ptr<SdpaDelegateKernel> sdpa_kernel_;
   // Mapping from TFLite Tensor IDs for input/output tensors in the delegated
   // subgraph to their data locations.
   std::unordered_map<int, void*> externals_;
@@ -7347,6 +7368,15 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
         MoeExpertsDelegateKernel::IsMoeExpertsNode(registration, node)) {
       if (MoeExpertsDelegateKernel::IsSupported(context, node, registration,
                                                 node_index) == kTfLiteOk) {
+        moe_nodes_to_delegate->data[moe_nodes_to_delegate->size++] = node_index;
+      }
+      continue;
+    }
+
+    if (moe_nodes_to_delegate != nullptr && registration != nullptr &&
+        node != nullptr && SdpaDelegateKernel::IsSdpaNode(registration, node)) {
+      if (SdpaDelegateKernel::IsSupported(context, node, registration,
+                                          node_index) == kTfLiteOk) {
         moe_nodes_to_delegate->data[moe_nodes_to_delegate->size++] = node_index;
       }
       continue;
@@ -7750,10 +7780,18 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
   // not supported by the delegate, they will cause a failure in
   // ::tflite::Interpreter::ModifyGraphWithDelegate, to be caught in the unit
   // tests.
-  nodes_to_delegate->size = execution_plan->size;
-  std::copy(&execution_plan->data[0],
-            &execution_plan->data[execution_plan->size],
-            &nodes_to_delegate->data[0]);
+  nodes_to_delegate->size = 0;
+  for (int i = 0; i < execution_plan->size; ++i) {
+    const int node_index = execution_plan->data[i];
+    if (moe_nodes_to_delegate != nullptr &&
+        std::binary_search(
+            &moe_nodes_to_delegate->data[0],
+            &moe_nodes_to_delegate->data[moe_nodes_to_delegate->size],
+            node_index)) {
+      continue;
+    }
+    nodes_to_delegate->data[nodes_to_delegate->size++] = node_index;
+  }
 #endif
   if (moe_ops_to_delegate != nullptr) {
     *moe_ops_to_delegate = moe_nodes_to_delegate;
@@ -7804,6 +7842,25 @@ const TfLiteRegistration kSubgraphRegistration = {
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  if (context != nullptr && context->impl_ != nullptr) {
+    auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
+    auto filter = [context](const TfLiteNode* node,
+                            const TfLiteRegistration* reg) -> bool {
+      if (MoeExpertsDelegateKernel::IsMoeExpertsNode(reg, node) &&
+          MoeExpertsDelegateKernel::IsSupported(context, node, reg,
+                                                /*node_index=*/0) ==
+              kTfLiteOk) {
+        return false;
+      }
+      if (SdpaDelegateKernel::IsSdpaNode(reg, node) &&
+          SdpaDelegateKernel::IsSupported(context, node, reg,
+                                          /*node_index=*/0) == kTfLiteOk) {
+        return false;
+      }
+      return true;
+    };
+    TF_LITE_ENSURE_STATUS(subgraph->InlineCompositeNodes(filter));
+  }
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> moe_ops_to_replace(
       nullptr, TfLiteIntArrayFree);
   TfLiteIntArray* moe_ops_to_replace_raw = nullptr;
