@@ -926,7 +926,10 @@ void Subgraph::SetCancellationFunction(void* data,
 }
 
 TfLiteStatus Subgraph::EnsureTensorDataIsReadable(int tensor_index) {
-  TfLiteTensor* t = &tensors_[tensor_index];
+  TF_LITE_ENSURE(&context_,
+                 tensor_index >= 0 &&
+                     static_cast<size_t>(tensor_index) < tensors_.size());
+  TfLiteTensor* t = tensor(tensor_index);
   TF_LITE_ENSURE(&context_, t != nullptr);
   TfLiteStatus status = kTfLiteOk;
   if (t->data_is_stale) {
@@ -1026,13 +1029,21 @@ std::vector<int> Subgraph::GetInputTensorsCount() {
     if (node.inputs->size > 0) {
       for (int i = 0; i < node.inputs->size; ++i) {
         const int input_idx = node.inputs->data[i];
-        if (input_idx == kTfLiteOptionalTensor) continue;
+        if (input_idx == kTfLiteOptionalTensor || input_idx < 0 ||
+            static_cast<size_t>(input_idx) >= input_tensors_count.size()) {
+          continue;
+        }
         input_tensors_count[input_idx]++;
       }
     }
   }
   for (int i = 0; i < outputs_.size(); ++i) {
-    input_tensors_count[outputs_[i]]++;
+    const int output_idx = outputs_[i];
+    if (output_idx == kTfLiteOptionalTensor || output_idx < 0 ||
+        static_cast<size_t>(output_idx) >= input_tensors_count.size()) {
+      continue;
+    }
+    input_tensors_count[output_idx]++;
   }
   return input_tensors_count;
 }
@@ -1779,6 +1790,9 @@ TfLiteStatus Subgraph::InvokeImpl() {
       if (tensor_index == kTfLiteOptionalTensor) {
         continue;
       }
+      TF_LITE_ENSURE(&context_,
+                     tensor_index >= 0 &&
+                         static_cast<size_t>(tensor_index) < tensors_.size());
       TfLiteTensor* tensor = &tensors_[tensor_index];
       if (tensor->delegate && tensor->delegate != node.delegate &&
           tensor->data_is_stale) {
