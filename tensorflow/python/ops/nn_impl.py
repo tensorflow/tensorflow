@@ -647,6 +647,17 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
       norm_real = math_ops.multiply(math_ops.real(x), x_inv_norm)
       norm_imag = math_ops.multiply(math_ops.imag(x), x_inv_norm)
       return math_ops.complex(norm_real, norm_imag, name=name)
+    if x.dtype.base_dtype in (dtypes.float16, dtypes.bfloat16):
+      # The sum of squares overflows float16 (and `epsilon` underflows it),
+      # and bfloat16 loses precision, so normalize in `float32`.
+      x32 = math_ops.cast(x, dtypes.float32)
+      square_sum = math_ops.reduce_sum(
+          math_ops.square(x32), axis, keepdims=True)
+      x_inv_norm = math_ops.rsqrt(
+          math_ops.maximum(square_sum, math_ops.cast(epsilon, dtypes.float32))
+      )
+      return math_ops.cast(math_ops.multiply(x32, x_inv_norm), x.dtype,
+                           name=name)
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.multiply(x, x_inv_norm, name=name)
