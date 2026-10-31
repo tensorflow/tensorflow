@@ -5,8 +5,8 @@ load("//third_party:repo.bzl", "tf_mirror_urls")
 
 def repo():
     """Imports Tensor IR."""
-    TENSOR_IR_COMMIT = "0fd8eeda5a9d85219a38c1ea9ec04d66952b85ef"
-    TENSOR_IR_SHA256 = "39e1108188c6cd60d8575762c2d4186a56ba1c11269bcacd272437165a315319"
+    TENSOR_IR_COMMIT = "05ada823a8495dd042d20691d662bef0ee54dd5d"
+    TENSOR_IR_SHA256 = "72d57d8463495f7af7e34296d8b2ce6bb7e9f0ec4d450695ba3f72c30bb9be7f"
 
     quilt_http_archive(
         name = "tensor_ir",
