@@ -53,17 +53,22 @@ namespace tensorflow {
 
 namespace {
 std::tuple<xla::XlaOp, xla::XlaOp> GetKeyCounter(
-    absl::string_view device_type_string, xla::XlaOp key) {
+    absl::string_view device_type_string, xla::XlaOp seed0, xla::XlaOp seed1) {
+  xla::XlaBuilder* builder = seed0.builder();
   // The Philox algorithm may cause performance regression on other devices.
   // Turn on the Philox algorithm for the CPU and GPU backends only.
   if (device_type_string == DEVICE_GPU_XLA_JIT ||
       device_type_string == DEVICE_CPU_XLA_JIT) {
-    auto counter_key = xla::ScramblePhiloxKey(key);
-    return std::make_tuple(counter_key.second, counter_key.first);
+    auto [key, counter_high] =
+        MixSeedsForEagerCompatibility(builder, seed0, seed1);
+    auto counter = xla::ConcatScalars(
+        builder, {xla::ConstantR0WithType(builder, xla::U64, 0), counter_high});
+    return std::make_tuple(key, counter);
   } else {
+    auto key = GetU64FromS32Seeds(seed0, seed1);
     auto counter_shape =
         xla::ShapeUtil::MakeShape(xla::U64, {RNG_MAX_COUNTER_SIZE});
-    auto counter = xla::Zeros(key.builder(), counter_shape);
+    auto counter = xla::Zeros(builder, counter_shape);
     return std::make_tuple(key, counter);
   }
 }
@@ -108,10 +113,44 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     TensorShape shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(
                             0, &shape, xla::ValueInferenceMode::kUpperBound));
-    absl::StatusOr<xla::XlaOp> randoms_or = BuildUniformRandoms(
-        ctx, dtype_, device_type_string_, shape, xla::Zero, xla::One);
-    OP_REQUIRES_OK(ctx, randoms_or.status());
-    xla::XlaOp uniform = MaybeConvertF32ToBF16(randoms_or.value(), dtype_);
+
+    xla::XlaOp key = ctx->Input(kRandomKeyInputIdx);
+    xla::XlaOp counter = ctx->Input(kRandomCounterInputIdx);
+
+    OP_REQUIRES_VALUE(
+        auto alg, ctx,
+        AlgorithmFromInput(ctx, kRandomAlgInputIdx, device_type_string_));
+
+    auto counter_shape = ctx->InputShape(kRandomCounterInputIdx);
+    OP_REQUIRES_OK(ctx,
+                   CheckKeyCounterShape(xla::GetCounterSize(alg),
+                                        ctx->InputShape(kRandomKeyInputIdx),
+                                        counter_shape));
+
+    using std::placeholders::_1;
+    using std::placeholders::_2;
+    using std::placeholders::_3;
+    auto generator = std::bind(BitGenerator, alg, _1, _2, _3);
+    counter = MaybeSliceCounter(alg, counter_shape, counter);
+    xla::XlaOp uniform;
+    if (alg == xla::RandomAlgorithm::RNG_PHILOX) {
+      // Build the values from the Philox bits like the TF kernel does.
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
+      uniform =
+          EagerCompatibleUniformDistribution(key, counter, generator, xla_shape)
+              .value;
+    } else {
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
+      xla::PrimitiveType rng_primitive_type = xla_shape.element_type();
+      xla::XlaBuilder* builder = ctx->builder();
+      auto result = xla::UniformFloatingPointDistribution(
+          key, counter, generator, xla::Zero(builder, rng_primitive_type),
+          xla::One(builder, rng_primitive_type), xla_shape);
+      uniform = MaybeConvertF32ToBF16(result.value, dtype_);
+    }
 
     // If the input shape is constant, no need to set dimension sizes.
     // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
@@ -283,18 +322,27 @@ class StatelessRandomNormalOp : public XlaOpKernel {
                                         ctx->InputShape(kRandomKeyInputIdx),
                                         counter_shape));
 
-    auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
-    xla::Shape xla_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
-
     using std::placeholders::_1;
     using std::placeholders::_2;
     using std::placeholders::_3;
     auto generator = std::bind(BitGenerator, alg, _1, _2, _3);
     counter = MaybeSliceCounter(alg, counter_shape, counter);
-    auto result = xla::NormalFloatingPointDistribution(key, counter, generator,
-                                                       xla_shape);
-    auto normal = MaybeConvertF32ToBF16(result.value, dtype_);
+    xla::XlaOp normal;
+    if (alg == xla::RandomAlgorithm::RNG_PHILOX) {
+      // Build the values from the Philox bits like the TF kernel does.
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
+      normal = EagerCompatibleNormalDistribution(key, counter, generator,
+                                                 xla_shape)
+                   .value;
+    } else {
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
+      auto result = xla::NormalFloatingPointDistribution(key, counter,
+                                                         generator, xla_shape);
+      normal = MaybeConvertF32ToBF16(result.value, dtype_);
+    }
 
     // If the input shape is constant, no need to set dimension sizes.
     // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
@@ -377,9 +425,8 @@ class GetKeyCounterOp : public XlaOpKernel {
 
     xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
     xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-    xla::XlaOp key = GetU64FromS32Seeds(seed0, seed1);
-    auto key_counter = GetKeyCounter(device_type_string_, key);
-    key = std::get<0>(key_counter);
+    auto key_counter = GetKeyCounter(device_type_string_, seed0, seed1);
+    xla::XlaOp key = std::get<0>(key_counter);
     auto counter = std::get<1>(key_counter);
     key = xla::Reshape(key, {RNG_KEY_SIZE});
     ctx->SetOutput(0, key);
@@ -435,9 +482,8 @@ class GetKeyCounterAlgOp : public XlaOpKernel {
     xla::XlaBuilder* builder = seed.builder();
     xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
     xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-    xla::XlaOp key = GetU64FromS32Seeds(seed0, seed1);
-    auto key_counter = GetKeyCounter(device_type_string_, key);
-    key = std::get<0>(key_counter);
+    auto key_counter = GetKeyCounter(device_type_string_, seed0, seed1);
+    xla::XlaOp key = std::get<0>(key_counter);
     auto counter = std::get<1>(key_counter);
     auto alg = DefaultRngAlgForDeviceType(device_type_string_);
     key = xla::Reshape(key, {RNG_KEY_SIZE});

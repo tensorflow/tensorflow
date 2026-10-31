@@ -30,6 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops_util
@@ -204,6 +205,86 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
             # lead to the same output. So we skip those dtypes.
             if not (dtype in (dtypes.bfloat16, dtypes.float16) and shape == ()):  # pylint: disable=g-explicit-bool-comparison
               self.assertNotAllEqual(v0, v1)
+
+  def testGetKeyCounterMatchesTfKernel(self):
+    if xla_device().device_type == 'TPU':
+      self.skipTest('XLA uses Philox like the TF kernels only on CPU and GPU.')
+    with self.session() as sess:
+      for seed_dtype, seeds in (
+          (dtypes.int32, ([1, 2], [-1, 7], [2**31 - 1, -2**31])),
+          (dtypes.int64, ([1, 2], [-1, 7], [2**40 + 3, -2**35])),
+      ):
+        seed_t = array_ops.placeholder(seed_dtype, shape=[2])
+        with ops.device('CPU'):
+          expected = (
+              gen_stateless_random_ops_v2.stateless_random_get_key_counter(
+                  seed_t))
+        with self.test_scope():
+          actual = gen_stateless_random_ops_v2.stateless_random_get_key_counter(
+              seed_t)
+        for seed in seeds:
+          (expected_key, expected_counter), (actual_key, actual_counter) = (
+              sess.run([expected, actual], {seed_t: seed}))
+          self.assertAllEqual(expected_key, actual_key)
+          self.assertAllEqual(expected_counter, actual_counter)
+
+  @parameterized.named_parameters(  # pylint: disable=g-complex-comprehension
+      (f'_{op_name}_{dtype.name}', op, exact, dtype)
+      for dtype in _allowed_types()
+      for op_name, op, exact in (
+          ('uniform', stateless.stateless_random_uniform, True),
+          ('normal', stateless.stateless_random_normal, False),
+          (
+              'uniform_philox',
+              functools.partial(
+                  stateless.stateless_random_uniform, alg='philox'
+              ),
+              True,
+          ),
+          (
+              'normal_philox',
+              functools.partial(
+                  stateless.stateless_random_normal, alg='philox'
+              ),
+              False,
+          ),
+          (
+              'uniform_v1',
+              gen_stateless_random_ops.stateless_random_uniform,
+              True,
+          ),
+          (
+              'normal_v1',
+              gen_stateless_random_ops.stateless_random_normal,
+              False,
+          ),
+      )
+  )
+  def testMatchesTfKernel(self, op, exact, dtype):
+    if xla_device().device_type == 'TPU':
+      self.skipTest('XLA uses Philox like the TF kernels only on CPU and GPU.')
+    with self.session() as sess:
+      seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+      for shape in ([], [0], [3, 7]):
+        with ops.device('CPU'):
+          expected = op(shape, seed=seed_t, dtype=dtype)
+        with self.test_scope():
+          actual = op(shape, seed=seed_t, dtype=dtype)
+        for seed in ([1, 2], [0, 0], [-1, 7], [123456, -5]):
+          expected_value, actual_value = sess.run(
+              [expected, actual], {seed_t: seed}
+          )
+          if exact:
+            self.assertAllEqual(expected_value, actual_value)
+          else:
+            # Normal values go through sin, cos and log, which can
+            # round differently in XLA.
+            self.assertAllCloseAccordingToType(
+                expected_value,
+                actual_value,
+                float_rtol=1e-5,
+                float_atol=1e-5,
+            )
 
   def testRandomUniformIsInRange(self):
     with self.session() as sess, self.test_scope():

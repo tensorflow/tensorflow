@@ -1764,6 +1764,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops_util",
         "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:stateless_random_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops_v2_gen",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
