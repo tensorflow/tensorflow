@@ -56,7 +56,7 @@ namespace {
 // TODO: b/500201192 - Use a common library for safe integer arithmetic.
 template <typename T>
 bool CheckedAdd(T lhs, T rhs, T* result) {
-  static_assert(std::is_unsigned<T>::value,
+  static_assert(std::is_unsigned_v<T>,
                 "CheckedAdd requires an unsigned integer type");
   if (lhs > std::numeric_limits<T>::max() - rhs) {
     return false;
@@ -67,7 +67,7 @@ bool CheckedAdd(T lhs, T rhs, T* result) {
 
 template <typename T>
 bool CheckedAlignTo(size_t alignment, T offset, T* aligned_offset) {
-  static_assert(std::is_unsigned<T>::value,
+  static_assert(std::is_unsigned_v<T>,
                 "CheckedAlignTo requires an unsigned integer type");
   if (alignment == 0) {
     return false;
