@@ -1366,7 +1366,7 @@ void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
 
 template <FusedActivationFunctionType Ac>
 inline void BroadcastAddFivefold(
-    int y0, int y1, int y2, int y3, int y4, int left_shift,
+    int64_t y0, int64_t y1, int64_t y2, int64_t y3, int64_t y4, int left_shift,
     const uint8_t* input1_data, const Dims<4>& input1_dims,
     int32_t input1_offset, int32_t input1_multiplier, int input1_shift,
     const uint8_t* input2_data, const Dims<4>& input2_dims,
