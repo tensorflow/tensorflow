@@ -50,10 +50,10 @@ class BroadcastToOp : public XlaOpKernel {
     // A dynamic size is only known by its bound here.
     const TensorShape input_shape = context->InputShape(0);
     OP_REQUIRES(context, input_shape.dims() <= output_shape.dims(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Rank of input (", input_shape.dims(),
                     ") must be no greater than rank of output shape (",
-                    output_shape.dims(), ")."));
+                    output_shape.dims(), ").")));
     // The input's XLA shape is only needed to check whether a dimension that
     // doesn't match is dynamic, so look it up only then.
     bool has_input_xla_shape = false;
@@ -76,9 +76,9 @@ class BroadcastToOp : public XlaOpKernel {
           OP_REQUIRES(
               context,
               dynamic_dims[i + rank_difference] && input_size <= output_size,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Incompatible shapes: ", input_shape.DebugString(), " vs. ",
-                  output_shape.DebugString()));
+                  output_shape.DebugString())));
           output_shape.set_dim(i + rank_difference, input_size);
           dynamic_dims[i + rank_difference] = false;
         }
