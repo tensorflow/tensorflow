@@ -71,13 +71,21 @@ SubgraphDelegationMetadata GetNodeDelegationMetadata(const Subgraph& subgraph) {
 
     const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
         subgraph.node_and_registration(static_cast<int>(node_index));
+    if (node_and_reg == nullptr) continue;
     const TfLiteNode& node = node_and_reg->first;
     auto* const delegate = node.delegate;
 
     if (delegate != nullptr) {
       metadata.has_delegate_applied = true;
       auto* params = static_cast<TfLiteDelegateParams*>(node.builtin_data);
+      if (params == nullptr || params->nodes_to_replace == nullptr) {
+        continue;
+      }
       for (int nid : TfLiteIntArrayView(params->nodes_to_replace)) {
+        if (nid < 0 ||
+            static_cast<size_t>(nid) >= metadata.is_node_delegated.size()) {
+          continue;
+        }
         metadata.is_node_delegated[nid] = true;
         metadata.replaced_by_node[nid] = node_index;
       }
@@ -536,9 +544,13 @@ void PrintInterpreterState(const Interpreter* interpreter,
         printf("Node %3zu Operator Custom Name %s %s\n", node_index,
                reg.custom_name, delegated_status.c_str());
       } else {
+        const char* builtin_name = EnumNameBuiltinOperator(
+            static_cast<BuiltinOperator>(reg.builtin_code));
+        if (builtin_name == nullptr || builtin_name[0] == '\0') {
+          builtin_name = "(invalid)";
+        }
         printf("Node %3zu Operator Builtin Code %3d %s %s\n", node_index,
-               reg.builtin_code, EnumNamesBuiltinOperator()[reg.builtin_code],
-               delegated_status.c_str());
+               reg.builtin_code, builtin_name, delegated_status.c_str());
       }
       printf("  %d Input Tensors:",
              node.inputs != nullptr ? node.inputs->size : 0);
@@ -587,18 +599,27 @@ void PrintInterpreterState(const Interpreter* interpreter,
       for (int node_id : subgraph.execution_plan()) {
         const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
             subgraph.node_and_registration(node_id);
+        if (node_and_reg == nullptr) continue;
         const TfLiteNode& node = node_and_reg->first;
         auto* const delegate = node.delegate;
         if (delegate == nullptr) continue;
         const char* delegate_name = node_and_reg->second.custom_name;
         auto* delegate_params =
             static_cast<TfLiteDelegateParams*>(node.builtin_data);
+        const TfLiteIntArray* nodes_to_replace =
+            delegate_params != nullptr ? delegate_params->nodes_to_replace
+                                       : nullptr;
         printf("  Node %d is a %s node (%p), which has delegated %d nodes: ",
                node_id, delegate_name == nullptr ? "[n/a]" : delegate_name,
-               delegate, delegate_params->nodes_to_replace->size);
-        PrintTfLiteIntVector(delegate_params->nodes_to_replace,
-                             /*collapse_consecutives=*/true,
-                             /*add_newline=*/true);
+               delegate,
+               nodes_to_replace != nullptr ? nodes_to_replace->size : 0);
+        if (nodes_to_replace != nullptr) {
+          PrintTfLiteIntVector(nodes_to_replace,
+                               /*collapse_consecutives=*/true,
+                               /*add_newline=*/true);
+        } else {
+          printf("[]\n");
+        }
       }
     }
 
