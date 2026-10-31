@@ -87,5 +87,12 @@ TEST(EncodePrimitiveTypeAsDataType, QuantizedTypesMapToUnquantized) {
   }
 }
 
+TEST(EncodePrimitiveTypeAsDataType, Float8E8M0FnuMapsToUint8) {
+  absl::StatusOr<DataType> data_type_or =
+      EncodePrimitiveTypeAsDataType(xla::F8E8M0FNU);
+  ASSERT_TRUE(data_type_or.ok());
+  EXPECT_EQ(*data_type_or, DT_UINT8);
+}
+
 }  // namespace
 }  // namespace tensorflow
