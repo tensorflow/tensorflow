@@ -15,8 +15,12 @@
 # Tests for this file live in python/kernel_tests/array_ops_test.py
 """Operations to stack and unstack tensors."""
 
+from collections.abc import Iterator, Mapping, Sequence
 import warnings
 
+import numpy as np
+
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.util import dispatch
@@ -68,10 +72,22 @@ def stack(values, axis=0, name="stack"):
     output: A stacked `Tensor` with the same type as `values`.
 
   Raises:
-    ValueError: If `axis` is out of the range [-(R+1), R+1).
+    TypeError: If `values` is not a sequence of Tensor objects (e.g. if a
+      single Tensor or non-iterable object is passed).
+    ValueError: If `axis` is out of the range `[-(R+1), R+1)`, or if `values`
+      is empty and `axis != 0`.
   """
-  if ops.is_dense_tensor_like(values):
-    if axis == 0:
+  # Fast-path for list and tuple (covers >99% of calls).
+  if isinstance(values, (list, tuple)):
+    if len(values) == 0 and axis != 0:
+      raise ValueError(
+          "Argument `values` cannot be empty when axis != 0 "
+          f"(got axis = {axis})."
+      )
+  elif ops.is_dense_tensor_like(values) or isinstance(
+      values, composite_tensor.CompositeTensor
+  ):
+    if axis == 0 and ops.is_dense_tensor_like(values):
       warnings.warn(
           "Passing a single Tensor to tf.stack is deprecated and will be"
           " removed in a future release. Argument `values` must be a sequence"
@@ -82,7 +98,43 @@ def stack(values, axis=0, name="stack"):
       return ops.convert_to_tensor(values, name=name)
     raise TypeError(
         "Argument `values` must be a sequence of Tensor objects, but got a "
-        f"single Tensor of type {type(values).__name__}."
+        f"single {type(values).__name__}."
+    )
+  elif isinstance(values, Mapping):
+    raise TypeError(
+        "Argument `values` must be a sequence of Tensor objects, but got a "
+        f"mapping of type {type(values).__name__}."
+    )
+  elif isinstance(values, Iterator) or (
+      not isinstance(values, (Sequence, np.ndarray))
+      and hasattr(values, "__iter__")
+  ):
+    values = list(values)
+    if len(values) == 0 and axis != 0:
+      raise ValueError(
+          "Argument `values` cannot be empty when axis != 0 "
+          f"(got axis = {axis})."
+      )
+  elif isinstance(values, np.ndarray):
+    if values.ndim == 0:
+      raise TypeError(
+          "Argument `values` must be a sequence of Tensor objects, but got a "
+          "0-dimensional numpy ndarray."
+      )
+    if len(values) == 0 and axis != 0:
+      raise ValueError(
+          "Argument `values` cannot be empty when axis != 0 "
+          f"(got axis = {axis})."
+      )
+  elif not isinstance(values, Sequence):
+    raise TypeError(
+        "Argument `values` must be a sequence of Tensor objects, but got an "
+        f"instance of {type(values).__name__}."
+    )
+  elif len(values) == 0 and axis != 0:
+    raise ValueError(
+        "Argument `values` cannot be empty when axis != 0 "
+        f"(got axis = {axis})."
     )
 
   if axis == 0:
