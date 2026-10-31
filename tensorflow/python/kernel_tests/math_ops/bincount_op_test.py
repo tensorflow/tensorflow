@@ -296,6 +296,63 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       )
     self.assertAllEqual(expected_out, out)
 
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("XLA does not use DeviceHistogram")
+  def test_size_too_large_for_gpu_histogram(self):
+    max_gpu_bins = 2**31 - 1 - 1024
+    with test_util.force_gpu():
+      for bad_size in (max_gpu_bins + 1, 2**31 - 2):
+        size_i32 = array_ops.placeholder_with_default(
+            np.int32(bad_size), shape=[])
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "must be at most"):
+          self.evaluate(
+              gen_math_ops.dense_bincount(
+                  input=[0, 1, 1],
+                  weights=[],
+                  size=size_i32,
+                  binary_output=False))
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "must be at most"):
+          self.evaluate(
+              gen_math_ops.bincount(arr=[0, 1, 1], size=size_i32, weights=[]))
+
+      for bad_size_i64 in (max_gpu_bins + 1, 2**31):
+        size_i64 = array_ops.placeholder_with_default(
+            np.int64(bad_size_i64), shape=[])
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "must be at most"):
+          self.evaluate(
+              gen_math_ops.dense_bincount(
+                  input=np.array([0, 1, 1], dtype=np.int64),
+                  weights=[],
+                  size=size_i64,
+                  binary_output=False))
+
+      overflow_2d_size = array_ops.placeholder_with_default(
+          np.int64(1 << 62), shape=[])
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Encountered overflow when multiplying"):
+        self.evaluate(
+            gen_math_ops.dense_bincount(
+                input=np.zeros((2, 1), dtype=np.int64),
+                weights=[],
+                size=overflow_2d_size,
+                binary_output=False))
+
+      empty_high_rows = array_ops.zeros(
+          constant_op.constant([2**31, 0], dtype=dtypes.int64),
+          dtype=dtypes.int32)
+      zero_size = array_ops.placeholder_with_default(np.int32(0), shape=[])
+      out = self.evaluate(
+          gen_math_ops.dense_bincount(
+              input=empty_high_rows,
+              weights=[],
+              size=zero_size,
+              binary_output=False))
+      self.assertEqual(out.shape, (2**31, 0))
+
   def _test_bincount_col_binary_with_negative_input(
       self, num_rows, num_cols, size, dtype
   ):
