@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
+#include "tensorflow/lite/tools/benchmark/partition_report.h"
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
@@ -723,6 +724,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("print_postinvoke_state",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("print_partition_report",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("release_dynamic_tensors",
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("optimize_memory_for_large_tensors",
@@ -830,6 +833,13 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "print out the interpreter internals just before benchmark completes "
           "(i.e. after all repeated Invoke calls complete). The internals will "
           "include allocated memory size of each tensor etc."),
+      CreateFlag<bool>(
+          "print_partition_report", &params_,
+          "print out how the primary subgraph is split between delegate "
+          "partitions and CPU fallback nodes after all delegates are applied: "
+          "one line per execution-plan entry, fallback islands with an opcode "
+          "histogram, bytes crossing each CPU<->delegate boundary, and a "
+          "single PARTITION_REPORT summary line."),
       CreateFlag<bool>("release_dynamic_tensors", &params_,
                        "Ensure dynamic tensor's memory is released when they "
                        "are not used."),
@@ -923,6 +933,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Print pre-invoke interpreter state", verbose);
   LOG_BENCHMARK_PARAM(bool, "print_postinvoke_state",
                       "Print post-invoke interpreter state", verbose);
+  LOG_BENCHMARK_PARAM(bool, "print_partition_report",
+                      "Print delegate partition report", verbose);
   LOG_BENCHMARK_PARAM(bool, "release_dynamic_tensors",
                       "Release dynamic tensor memory", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "optimize_memory_for_large_tensors",
@@ -1401,6 +1413,10 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   if (interpreter_runner_->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
     return kTfLiteError;
+  }
+
+  if (params_.Get<bool>("print_partition_report")) {
+    TFLITE_LOG(INFO) << "\n" << GeneratePartitionReport(*interpreter_);
   }
 
   AddOwnedListener(
