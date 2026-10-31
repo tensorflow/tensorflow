@@ -73,12 +73,12 @@ void MakeDeterministicPseudoRandomVector(int size,
   const double random_min = static_cast<double>(random_engine.min());
   const double random_max = static_cast<double>(random_engine.max());
   const double result_min =
-      std::is_floating_point<Scalar>::value
+      std::is_floating_point_v<Scalar>
           ? -1.0
           : std::max(-256., static_cast<double>(
                                 std::numeric_limits<Scalar>::lowest()));
   const double result_max =
-      std::is_floating_point<Scalar>::value
+      std::is_floating_point_v<Scalar>
           ? 1.0
           : std::min(256.,
                      static_cast<double>(std::numeric_limits<Scalar>::max()));
@@ -186,7 +186,7 @@ bool CheckErrorStats(const ErrorStats& error_stats, int accumulation_depth) {
 
   double inverse_size = 1. / error_stats.size;
 
-  if (std::is_floating_point<AccumScalar>::value) {
+  if (std::is_floating_point_v<AccumScalar>) {
     // Somewhat naive requirement: the worst case should be epsilons
     // adding up towards the same direction, on values of same magnitude.
     tolerated_relative_max_abs_diff =
@@ -401,9 +401,9 @@ void TestSomeGemm(int rows, int depth, int cols,
   // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
   // zero_point as 0 because int16 might cause overflow in acuum int32.
   // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
-  if (!std::is_floating_point<LhsScalar>::value &&
-      (!std::is_same<LhsScalar, int8_t>::value &&
-       !std::is_same<RhsScalar, int16_t>::value)) {
+  if (!std::is_floating_point_v<LhsScalar> &&
+      (!std::is_same_v<LhsScalar, int8_t> &&
+       !std::is_same_v<RhsScalar, int16_t>)) {
     lhs_params.zero_point = 1;
     if (!use_golden) {
       lhs_params.zero_point += random_engine() % 8;
@@ -418,9 +418,9 @@ void TestSomeGemm(int rows, int depth, int cols,
   // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
   // zero_point as 0 because int16 might cause overflow in acuum int32.
   // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
-  if (!std::is_floating_point<RhsScalar>::value &&
-      (!std::is_same<LhsScalar, int8_t>::value &&
-       !std::is_same<RhsScalar, int16_t>::value)) {
+  if (!std::is_floating_point_v<RhsScalar> &&
+      (!std::is_same_v<LhsScalar, int8_t> &&
+       !std::is_same_v<RhsScalar, int16_t>)) {
     rhs_params.zero_point = 1;
     if (!use_golden) {
       rhs_params.zero_point += random_engine() % 8;
@@ -435,9 +435,9 @@ void TestSomeGemm(int rows, int depth, int cols,
   // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
   // zero_point as 0 because int16 might cause overflow in acuum int32.
   // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
-  if (!std::is_floating_point<DstScalar>::value &&
-      (!std::is_same<LhsScalar, int8_t>::value &&
-       !std::is_same<RhsScalar, int16_t>::value)) {
+  if (!std::is_floating_point_v<DstScalar> &&
+      (!std::is_same_v<LhsScalar, int8_t> &&
+       !std::is_same_v<RhsScalar, int16_t>)) {
     dst_params.zero_point = 1;
     if (!use_golden) {
       dst_params.zero_point += random_engine() % 8;
@@ -452,7 +452,7 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
   static constexpr std::int32_t kMultiplierFixedpointMin = 1234567890;
   static constexpr std::int32_t kMultiplierFixedpointMax = 1987654321;
-  if (!std::is_floating_point<AccumScalar>::value) {
+  if (!std::is_floating_point_v<AccumScalar>) {
     // some large int32 value. Not being a multiple of a large
     // power of two helps testing rounding behavior.
     params.multiplier_fixedpoint = kMultiplierFixedpointMin;
@@ -484,7 +484,7 @@ void TestSomeGemm(int rows, int depth, int cols,
       lhs_params, lhs_data, rhs_params, rhs_data, dst_params, &dst_data, params,
       expected, &cpu_backend_context);
 
-  if (!use_golden && !std::is_floating_point<AccumScalar>::value) {
+  if (!use_golden && !std::is_floating_point_v<AccumScalar>) {
     // Try with per-channel quantized multipliers.
     std::vector<AccumScalar> multiplier_fixedpoint_perchannel(rows);
     std::vector<int> multiplier_exponent_perchannel(rows);
@@ -499,7 +499,7 @@ void TestSomeGemm(int rows, int depth, int cols,
           exponent_min + (random_engine() % (exponent_max + 1 - exponent_min));
     }
     static constexpr QuantizationFlavor perchannel_flavor =
-        std::is_floating_point<AccumScalar>::value
+        std::is_floating_point_v<AccumScalar>
             ? QuantizationFlavor::kFloatingPoint
             : QuantizationFlavor::kIntegerWithPerRowMultiplier;
     GemmParams<AccumScalar, DstScalar, perchannel_flavor> params_perchannel;
@@ -545,9 +545,9 @@ void TestMaybeValidGemm(int lhs_rows, int lhs_cols, int rhs_rows, int rhs_cols,
   // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
   // zero_point as 0 because int16 might cause overflow in acuum int32.
   // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
-  if (!std::is_floating_point<LhsScalar>::value &&
-      (!std::is_same<LhsScalar, int8_t>::value &&
-       !std::is_same<RhsScalar, int16_t>::value)) {
+  if (!std::is_floating_point_v<LhsScalar> &&
+      (!std::is_same_v<LhsScalar, int8_t> &&
+       !std::is_same_v<RhsScalar, int16_t>)) {
     lhs_params.zero_point = 1;
   }
 
@@ -558,9 +558,9 @@ void TestMaybeValidGemm(int lhs_rows, int lhs_cols, int rhs_rows, int rhs_cols,
   // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
   // zero_point as 0 because int16 might cause overflow in acuum int32.
   // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
-  if (!std::is_floating_point<RhsScalar>::value &&
-      (!std::is_same<LhsScalar, int8_t>::value &&
-       !std::is_same<RhsScalar, int16_t>::value)) {
+  if (!std::is_floating_point_v<RhsScalar> &&
+      (!std::is_same_v<LhsScalar, int8_t> &&
+       !std::is_same_v<RhsScalar, int16_t>)) {
     rhs_params.zero_point = 1;
   }
 
@@ -571,16 +571,16 @@ void TestMaybeValidGemm(int lhs_rows, int lhs_cols, int rhs_rows, int rhs_cols,
   // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
   // zero_point as 0 because int16 might cause overflow in acuum int32.
   // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
-  if (!std::is_floating_point<DstScalar>::value &&
-      (!std::is_same<LhsScalar, int8_t>::value &&
-       !std::is_same<RhsScalar, int16_t>::value)) {
+  if (!std::is_floating_point_v<DstScalar> &&
+      (!std::is_same_v<LhsScalar, int8_t> &&
+       !std::is_same_v<RhsScalar, int16_t>)) {
     dst_params.zero_point = 1;
   }
 
   GemmParams<AccumScalar, DstScalar> params;
   params.bias = bias_data.data();
   static constexpr std::int32_t kMultiplierFixedpointMin = 1234567890;
-  if (!std::is_floating_point<AccumScalar>::value) {
+  if (!std::is_floating_point_v<AccumScalar>) {
     // some large int32 value. Not being a multiple of a large
     // power of two helps testing rounding behavior.
     params.multiplier_fixedpoint = kMultiplierFixedpointMin;
