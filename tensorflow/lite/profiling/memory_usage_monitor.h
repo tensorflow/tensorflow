@@ -46,6 +46,8 @@ class MemoryUsageMonitor {
     virtual MemoryUsage GetMemoryUsage() {
       return tflite::profiling::memory::GetMemoryUsage();
     }
+    virtual int64_t GetCurrentCpuRssKb() { return -1; }
+    virtual int64_t GetCurrentGpuMemoryKb() { return -1; }
     virtual void SleepFor(const absl::Duration& duration) {
       absl::SleepFor(duration);
     }
@@ -55,8 +57,7 @@ class MemoryUsageMonitor {
   static constexpr int64_t kInvalidMemUsageBytes =
       kInvalidMemUsageMB * 1024 * 1024;
 
-  explicit MemoryUsageMonitor(int sampling_interval_ms = 50)
-      : MemoryUsageMonitor(sampling_interval_ms, std::make_unique<Sampler>()) {}
+  explicit MemoryUsageMonitor(int sampling_interval_ms = 50);
   MemoryUsageMonitor(int sampling_interval_ms,
                      std::unique_ptr<Sampler> sampler);
   ~MemoryUsageMonitor() { StopInternal(); }
@@ -102,13 +103,35 @@ class MemoryUsageMonitor {
     return BytesToMegabytes(peak_private_footprint_bytes_);
   }
 
+  float GetPeakCpuRssInMB() const ABSL_LOCKS_EXCLUDED(mutex_) {
+    if (!is_supported_) {
+      return kInvalidMemUsageMB;
+    }
+    absl::MutexLock lock(mutex_);
+    if (peak_cpu_rss_bytes_ < 0) {
+      return kInvalidMemUsageMB;
+    }
+    return BytesToMegabytes(peak_cpu_rss_bytes_);
+  }
+
+  float GetPeakGpuFootprintInMB() const ABSL_LOCKS_EXCLUDED(mutex_) {
+    if (!is_supported_) {
+      return kInvalidMemUsageMB;
+    }
+    absl::MutexLock lock(mutex_);
+    if (peak_gpu_footprint_bytes_ < 0) {
+      return kInvalidMemUsageMB;
+    }
+    return BytesToMegabytes(peak_gpu_footprint_bytes_);
+  }
+
   MemoryUsageMonitor(MemoryUsageMonitor&) = delete;
   MemoryUsageMonitor& operator=(const MemoryUsageMonitor&) = delete;
   MemoryUsageMonitor(MemoryUsageMonitor&&) = delete;
   MemoryUsageMonitor& operator=(const MemoryUsageMonitor&&) = delete;
 
  private:
-  inline float BytesToMegabytes(int64_t bytes) const {
+  float BytesToMegabytes(int64_t bytes) const {
     return bytes / 1024.0 / 1024.0;
   }
   void StopInternal();
@@ -124,6 +147,9 @@ class MemoryUsageMonitor {
   int64_t peak_in_use_mem_bytes_ ABSL_GUARDED_BY(mutex_) =
       kInvalidMemUsageBytes;
   int64_t peak_private_footprint_bytes_ ABSL_GUARDED_BY(mutex_) =
+      kInvalidMemUsageBytes;
+  int64_t peak_cpu_rss_bytes_ ABSL_GUARDED_BY(mutex_) = kInvalidMemUsageBytes;
+  int64_t peak_gpu_footprint_bytes_ ABSL_GUARDED_BY(mutex_) =
       kInvalidMemUsageBytes;
 };
 

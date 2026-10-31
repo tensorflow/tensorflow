@@ -44,13 +44,19 @@ enum RunType {
 class BenchmarkResults {
  public:
   BenchmarkResults() = default;
-  BenchmarkResults(double model_size_mb, int64_t startup_latency_us,
-                   uint64_t input_bytes,
-                   tensorflow::StatWithPercentiles<int64_t> warmup_time_us,
-                   tensorflow::StatWithPercentiles<int64_t> inference_time_us,
-                   const profiling::memory::MemoryUsage& init_mem_usage,
-                   const profiling::memory::MemoryUsage& overall_mem_usage,
-                   float peak_mem_mb)
+  BenchmarkResults(
+      double model_size_mb, int64_t startup_latency_us, uint64_t input_bytes,
+      tensorflow::StatWithPercentiles<int64_t> warmup_time_us,
+      tensorflow::StatWithPercentiles<int64_t> inference_time_us,
+      const profiling::memory::MemoryUsage& init_mem_usage,
+      const profiling::memory::MemoryUsage& overall_mem_usage,
+      float peak_mem_mb,
+      float peak_cpu_rss_mb =
+          profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB,
+      float peak_gpu_mem_mb =
+          profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB,
+      double init_cpu_rss_mb = 0.0, double init_gpu_mem_mb = 0.0,
+      double overall_cpu_rss_mb = 0.0, double overall_gpu_mem_mb = 0.0)
       : model_size_mb_(model_size_mb),
         startup_latency_us_(startup_latency_us),
         input_bytes_(input_bytes),
@@ -58,9 +64,15 @@ class BenchmarkResults {
         inference_time_us_(inference_time_us),
         init_mem_usage_(init_mem_usage),
         overall_mem_usage_(overall_mem_usage),
-        peak_mem_mb_(peak_mem_mb) {}
+        peak_mem_mb_(peak_mem_mb),
+        peak_cpu_rss_mb_(peak_cpu_rss_mb),
+        peak_gpu_mem_mb_(peak_gpu_mem_mb),
+        init_cpu_rss_mb_(init_cpu_rss_mb),
+        init_gpu_mem_mb_(init_gpu_mem_mb),
+        overall_cpu_rss_mb_(overall_cpu_rss_mb),
+        overall_gpu_mem_mb_(overall_gpu_mem_mb) {}
 
-  const double model_size_mb() const { return model_size_mb_; }
+  double model_size_mb() const { return model_size_mb_; }
   tensorflow::StatWithPercentiles<int64_t> inference_time_us() const {
     return inference_time_us_;
   }
@@ -82,6 +94,12 @@ class BenchmarkResults {
     return overall_mem_usage_;
   }
   float peak_mem_mb() const { return peak_mem_mb_; }
+  float peak_cpu_rss_mb() const { return peak_cpu_rss_mb_; }
+  float peak_gpu_mem_mb() const { return peak_gpu_mem_mb_; }
+  double init_cpu_rss_mb() const { return init_cpu_rss_mb_; }
+  double init_gpu_mem_mb() const { return init_gpu_mem_mb_; }
+  double overall_cpu_rss_mb() const { return overall_cpu_rss_mb_; }
+  double overall_gpu_mem_mb() const { return overall_gpu_mem_mb_; }
 
  private:
   double model_size_mb_ = 0.0;
@@ -96,6 +114,14 @@ class BenchmarkResults {
   // platform.
   float peak_mem_mb_ =
       profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB;
+  float peak_cpu_rss_mb_ =
+      profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB;
+  float peak_gpu_mem_mb_ =
+      profiling::memory::MemoryUsageMonitor::kInvalidMemUsageMB;
+  double init_cpu_rss_mb_ = 0.0;
+  double init_gpu_mem_mb_ = 0.0;
+  double overall_cpu_rss_mb_ = 0.0;
+  double overall_gpu_mem_mb_ = 0.0;
 };
 
 class BenchmarkListener {

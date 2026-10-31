@@ -134,6 +134,15 @@ struct MemoryUsage {
 // in a WASM environment.
 MemoryUsage GetMemoryUsage();
 
+// Return the pure CPU VMA-backed resident set size (in kilobytes) read from
+// /proc/self/smaps_rollup on Linux/Android, or -1 if unavailable. Excludes GPU
+// driver pages injected into mm->rss_stat[MM_FILEPAGES] on Mali (mali_kbase).
+int64_t GetCurrentCpuRssKb();
+
+// Return the per-process GPU memory footprint (in kilobytes) on Linux/Android,
+// or -1 if unavailable.
+int64_t GetCurrentGpuMemoryKb();
+
 }  // namespace memory
 }  // namespace profiling
 }  // namespace tflite
