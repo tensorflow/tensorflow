@@ -467,6 +467,9 @@ tf_gen_op_strict_wrapper_private_py(
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/security/fuzzing/google:__pkg__",
     ],
+    deps = [
+        "//tensorflow/core:nn_ops_op_lib",
+    ],
 )
 
 tf_gen_op_strict_wrapper_private_py(
@@ -1062,9 +1065,15 @@ tf_py_strict_test(
         ":collective_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:kernels",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
     ],
 )
 
@@ -4883,3 +4892,47 @@ tf_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
     ],
 )
+
+py_library(
+    name = "fused_linear_cross_entropy_op",
+    srcs = ["fused_linear_cross_entropy_op.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:gen_nn_ops",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+ py_library(
+     name = "nn_ops",
+     srcs = ["nn_ops.py"],
+     srcs_version = "PY3",
+     deps = [
+         ":array_ops",
+         ":candidate_sampling_ops",
+         ":check_ops",
+         ":control_flow_ops",
+         ":ctc_ops",
+         ":custom_gradient",
+         ":embedding_ops",
+         ":fused_linear_cross_entropy_op",
+         ":math_ops",
+         ":nn",
+         ":nn_grad",
+         ":nn_ops_gen",
+         ":sparse_ops",
+         ":variables",
+         "//tensorflow/python/framework:constant_op",
+         "//tensorflow/python/framework:dtypes",
+         "//tensorflow/python/framework:errors",
+         "//tensorflow/python/framework:graph_util",
+         "//tensorflow/python/framework:ops",
+         "//tensorflow/python/framework:random_seed",
+         "//tensorflow/python/framework:tensor",
+         "//tensorflow/python/framework:tensor_util",
+         "//tensorflow/python/util:dispatch",
+     ],
+ )
+
+
