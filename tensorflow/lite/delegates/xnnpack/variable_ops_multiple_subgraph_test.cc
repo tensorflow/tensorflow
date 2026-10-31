@@ -55,5 +55,55 @@ TEST(ReadAssignVariable, TwoSubgraphsReadAssignOneVarHandle2) {
       .TestTwoSubgraphsReadAssignOneVarHandle2(delegate);
 }
 
+class MalformedVariableOpModelTest
+    : public ::testing::TestWithParam<MalformedVariableOpModelCase> {};
+
+TEST_P(MalformedVariableOpModelTest, RejectsMalformedFlatBufferModel) {
+  auto xnnpack_delegate = NewXnnPackDelegateSupportingVariableOps();
+  VariableOpsTester().TestMalformedVariableOpModelCase(xnnpack_delegate.get(),
+                                                       GetParam());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MalformedFlatBufferCases, MalformedVariableOpModelTest,
+    ::testing::Values(
+        MalformedVariableOpModelCase::kVarHandleZeroOutputs,
+        MalformedVariableOpModelCase::kReadVariableZeroInputs,
+        MalformedVariableOpModelCase::kReadVariableZeroOutputs,
+        MalformedVariableOpModelCase::kAssignVariableZeroInputs,
+        MalformedVariableOpModelCase::kAssignVariableOneInput,
+        MalformedVariableOpModelCase::kAssignVariableUnexpectedOutput,
+        MalformedVariableOpModelCase::kAssignVariableNegativeValueInput,
+        MalformedVariableOpModelCase::kAssignVariableOutOfBoundsValueInput,
+        MalformedVariableOpModelCase::kReadVariableNegativeValueOutput,
+        MalformedVariableOpModelCase::kReadVariableOutOfBoundsValueOutput,
+        MalformedVariableOpModelCase::
+            kVarHandleAndReadVariableNegativeResourceWire,
+        MalformedVariableOpModelCase::
+            kVarHandleAndAssignVariableNegativeResourceWire),
+    [](const ::testing::TestParamInfo<MalformedVariableOpModelCase>& info) {
+      return MalformedVariableOpModelCaseName(info.param);
+    });
+
+TEST(ReadAssignVariable, TwoSubgraphsRejectsMismatchedShape) {
+  auto xnnpack_delegate = NewXnnPackDelegateSupportingVariableOps();
+  VariableOpsTester().TestTwoSubgraphsRejectsMismatchedShape(
+      xnnpack_delegate.get());
+}
+
+TEST(ReadAssignVariable, TwoSubgraphsRejectsUninitializedRead) {
+  auto xnnpack_delegate = NewXnnPackDelegateSupportingVariableOps();
+  VariableOpsTester().TestTwoSubgraphsRejectsUninitializedRead(
+      xnnpack_delegate.get());
+}
+
+TEST(ReadAssignVariable,
+     ConflictingLocalResourceVarHandleFallsBackWithoutCorruptingFirstVar) {
+  auto xnnpack_delegate = NewXnnPackDelegateSupportingVariableOps();
+  VariableOpsTester()
+      .TestConflictingLocalResourceVarHandleFallsBackWithoutCorruptingFirstVar(
+          xnnpack_delegate.get());
+}
+
 }  // namespace xnnpack
 }  // namespace tflite
