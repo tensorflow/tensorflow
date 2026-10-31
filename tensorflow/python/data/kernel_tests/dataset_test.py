@@ -15,8 +15,10 @@
 """Tests for `tf.data.Dataset`."""
 
 import collections
+import gc
 import os
 import warnings
+import weakref
 
 from absl.testing import parameterized
 import numpy as np
@@ -671,6 +673,91 @@ class DebugDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         output_signature=(tensor_spec.TensorSpec(shape=(), dtype=dtypes.int64),
                           tensor_spec.TensorSpec(shape=(), dtype=dtypes.int64)))
     self.assertDatasetProduces(ds, data)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(signature=["scalar", "nested", "legacy"])))
+  def testDebugModeGeneratorGarbageCollection(self, signature):
+    data = [(1, 2), (3, 4)] if signature == "nested" else [1, 2]
+    iterator_refs = []
+
+    def gen():
+      result = (value for value in data)
+      iterator_refs.append(weakref.ref(result))
+      return result
+
+    generator_ref = weakref.ref(gen)
+    spec = tensor_spec.TensorSpec(shape=(), dtype=dtypes.int64)
+    if signature == "legacy":
+      ds = dataset_ops.Dataset.from_generator(
+          gen, output_types=dtypes.int64, output_shapes=())
+    else:
+      ds = dataset_ops.Dataset.from_generator(
+          gen, output_signature=(spec, spec) if signature == "nested" else spec)
+    iterator = iter(ds)
+    # The iterator alone must keep the generator and its callbacks alive.
+    del ds, gen
+    for value in data:
+      gc.collect()
+      self.assertAllEqual(self.evaluate(next(iterator)), value)
+    gc.collect()
+    with self.assertRaises(StopIteration):
+      next(iterator)
+    gc.collect()
+    # Finalization must release the Python iterator even while the dataset's
+    # functions are still retained by the outer iterator.
+    self.assertLen(iterator_refs, 1)
+    self.assertIsNone(iterator_refs[0]())
+    self.assertIsNotNone(generator_ref())
+    del iterator
+    gc.collect()
+    self.assertIsNone(generator_ref())
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDebugModeGeneratorWithFunctionsRunEagerly(self):
+    self.addCleanup(def_function.run_functions_eagerly,
+                    def_function.functions_run_eagerly())
+    def_function.run_functions_eagerly(True)
+
+    def gen():
+      yield from range(2)
+
+    # Debug mode is already enabled, so no warning should suggest enabling it.
+    with warnings.catch_warnings():
+      warnings.simplefilter("error", UserWarning)
+      ds = dataset_ops.Dataset.from_generator(
+          gen, output_signature=tensor_spec.TensorSpec((), dtypes.int64))
+      self.assertDatasetProduces(ds, [0, 1])
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDebugModeGeneratorMapEagerExecution(self):
+    generated = []
+    mapped = []
+
+    def gen():
+      for value in range(2):
+        generated.append(context.executing_eagerly())
+        yield value
+
+    def map_fn(value):
+      mapped.append(context.executing_eagerly())
+      return value + 1
+
+    ds = dataset_ops.Dataset.from_generator(
+        gen, output_signature=tensor_spec.TensorSpec((), dtypes.int64))
+    ds = ds.map(map_fn, num_parallel_calls=2).prefetch(2)
+    iterator = iter(ds)
+    self.assertEmpty(generated)
+    self.assertEqual(mapped, [False])  # Output structure inference only.
+    for value in range(2):
+      gc.collect()
+      self.assertEqual(self.evaluate(next(iterator)), value + 1)
+      self.assertEqual(generated, [True] * (value + 1))
+      self.assertEqual(mapped, [False] + [True] * (value + 1))
+    gc.collect()
+    with self.assertRaises(StopIteration):
+      next(iterator)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDebugModeSequentialExecution(self):
