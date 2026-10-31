@@ -8347,6 +8347,8 @@ tf_kernel_library(
         "//tensorflow/core/summary:schema",
         "//tensorflow/core/summary:summary_db_writer",
         "//tensorflow/core/summary:summary_file_writer",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
