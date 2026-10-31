@@ -309,11 +309,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
 
   for (int i = 1; i < arrays.size(); ++i) {
     const auto& sharding = arrays[i]->sharding();
-    if (*sharding.devices() != *arrays[0]->sharding().devices() ||
+    if ((devices.has_value() &&
+         *sharding.devices() != *arrays[0]->sharding().devices()) ||
         sharding.memory_kind() != arrays[0]->sharding().memory_kind()) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports arrays with the same device list and "
-          "memory kind");
+          "memory kind when `devices` is specified");
     }
   }
 
