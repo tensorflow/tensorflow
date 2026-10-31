@@ -19,6 +19,8 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <algorithm>
+#include <array>
 #include <functional>
 #include <map>
 #include <memory>
@@ -29,9 +31,12 @@ limitations under the License.
 #include "ruy/denormal.h"  // from @ruy
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
@@ -97,6 +102,65 @@ TfLiteQuantization GetQuantizationFromLegacy(
                                      static_cast<int64_t>(status));         \
     TF_LITE_ENSURE_STATUS(status);                                          \
   } while (0)
+
+using CalleeSubgraphIndices =
+    std::array<int, TFLITE_STABLEHLO_CASE_PARAMS_MAX_BRANCHES_COUNT>;
+static_assert(TFLITE_STABLEHLO_CASE_PARAMS_MAX_BRANCHES_COUNT >= 2,
+              "IF and WHILE write two callees.");
+
+// Writes into `callees` the subgraph indices that `node` may invoke, as read
+// from its builtin params, and returns how many were written. Keep in sync with
+// the *_subgraph_index fields set by ParseOpData in
+// core/api/flatbuffer_conversions.cc.
+uint32_t GetCalleeSubgraphIndices(const TfLiteNode& node,
+                                  const TfLiteRegistration& registration,
+                                  CalleeSubgraphIndices& callees) {
+  const void* params = node.builtin_data;
+  if (params == nullptr) return 0;
+  switch (registration.builtin_code) {
+    case kTfLiteBuiltinIf: {
+      const auto* if_params = static_cast<const TfLiteIfParams*>(params);
+      callees[0] = if_params->then_subgraph_index;
+      callees[1] = if_params->else_subgraph_index;
+      return 2;
+    }
+    case kTfLiteBuiltinWhile: {
+      const auto* while_params = static_cast<const TfLiteWhileParams*>(params);
+      callees[0] = while_params->cond_subgraph_index;
+      callees[1] = while_params->body_subgraph_index;
+      return 2;
+    }
+    case kTfLiteBuiltinCallOnce:
+      callees[0] =
+          static_cast<const TfLiteCallOnceParams*>(params)->init_subgraph_index;
+      return 1;
+    case kTfLiteBuiltinStablehloCase: {
+      const auto* case_params =
+          static_cast<const TfLiteStablehloCaseParams*>(params);
+      const uint32_t num_branches =
+          std::min<uint32_t>(case_params->num_branches,
+                             TFLITE_STABLEHLO_CASE_PARAMS_MAX_BRANCHES_COUNT);
+      for (uint32_t i = 0; i < num_branches; ++i) {
+        callees[i] = case_params->branch_subgraph_indices[i];
+      }
+      return num_branches;
+    }
+    case kTfLiteBuiltinStablehloComposite:
+      callees[0] = static_cast<const TfLiteStablehloCompositeParams*>(params)
+                       ->subgraph_index;
+      return 1;
+    case kTfLiteBuiltinStablehloReduceWindow:
+      callees[0] = static_cast<const TfLiteStablehloReduceWindowParams*>(params)
+                       ->body_subgraph_index;
+      return 1;
+    case kTfLiteBuiltinStablehloScatter:
+      callees[0] = static_cast<const TfLiteStablehloScatterParams*>(params)
+                       ->update_computation_subgraph_index;
+      return 1;
+    default:
+      return 0;
+  }
+}
 
 }  // namespace
 
@@ -455,6 +519,76 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
     TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
   }
   return status;
+}
+
+TfLiteStatus Interpreter::GetReachableSubgraphIndices(
+    const std::vector<int>& root_subgraph_indices,
+    std::vector<int>* reachable_subgraph_indices) const {
+  if (reachable_subgraph_indices == nullptr) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Reachable subgraph indices output must not be null.");
+    return kTfLiteApplicationError;
+  }
+  if (root_subgraph_indices.empty()) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Root subgraph indices must not be empty.");
+    return kTfLiteApplicationError;
+  }
+  const int num_subgraphs = static_cast<int>(subgraphs_.size());
+  std::vector<uint8_t> is_reachable(num_subgraphs, 0);
+  std::vector<int> pending;
+  for (int root : root_subgraph_indices) {
+    if (root < 0 || root >= num_subgraphs) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Root subgraph index %d is out of range.", root);
+      return kTfLiteApplicationError;
+    }
+    if (!is_reachable[root]) {
+      is_reachable[root] = 1;
+      pending.push_back(root);
+    }
+  }
+
+  // Each subgraph is visited at most once, so this terminates on recursive
+  // references. Delegate kernels hide the nodes they replace, so read the
+  // pre-delegation plan to make the result independent of applied delegates.
+  CalleeSubgraphIndices callees;
+  while (!pending.empty()) {
+    const int caller = pending.back();
+    pending.pop_back();
+    const Subgraph& subgraph = *subgraphs_[caller];
+    const std::vector<int>& plan =
+        subgraph.pre_delegation_execution_plan().empty()
+            ? subgraph.execution_plan()
+            : subgraph.pre_delegation_execution_plan();
+    for (int node_index : plan) {
+      const auto* node_and_registration =
+          subgraph.node_and_registration(node_index);
+      if (node_and_registration == nullptr) continue;
+      const uint32_t num_callees = GetCalleeSubgraphIndices(
+          node_and_registration->first, node_and_registration->second, callees);
+      for (uint32_t i = 0; i < num_callees; ++i) {
+        const int callee = callees[i];
+        if (callee < 0 || callee >= num_subgraphs) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter_,
+              "Node %d in subgraph %d references invalid subgraph index %d.",
+              node_index, caller, callee);
+          return kTfLiteError;
+        }
+        if (!is_reachable[callee]) {
+          is_reachable[callee] = 1;
+          pending.push_back(callee);
+        }
+      }
+    }
+  }
+
+  reachable_subgraph_indices->clear();
+  for (int i = 0; i < num_subgraphs; ++i) {
+    if (is_reachable[i]) reachable_subgraph_indices->push_back(i);
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::RemoveAllDelegates() {

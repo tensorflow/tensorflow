@@ -682,7 +682,8 @@ class Interpreter {
   /// The complete index list is validated before any subgraph is modified.
   /// Duplicate indices are ignored and subgraphs are visited in model order.
   /// The caller is responsible for including any required callee subgraphs;
-  /// this method does not perform transitive dependency discovery.
+  /// this method does not perform transitive dependency discovery. See
+  /// `GetReachableSubgraphIndices` for computing such a closure.
   /// \warning This is an experimental API and subject to change. \n
   TfLiteStatus ModifyGraphWithDelegate(
       TfLiteDelegate* delegate,
@@ -690,6 +691,30 @@ class Interpreter {
   TfLiteStatus ModifyGraphWithDelegate(
       TfLiteOpaqueDelegateStruct* delegate,
       const std::vector<int>& active_subgraph_indices);
+
+  /// \brief Computes the subgraphs that can execute when running any of
+  /// `root_subgraph_indices`, e.g. `{GetSubgraphIndexFromSignature(key)}`.
+  ///
+  /// On success, `reachable_subgraph_indices` holds the roots plus every
+  /// subgraph transitively referenced by the builtins IF, WHILE, CALL_ONCE,
+  /// STABLEHLO_CASE, STABLEHLO_COMPOSITE, STABLEHLO_REDUCE_WINDOW and
+  /// STABLEHLO_SCATTER, sorted ascending. Subgraph references made by custom
+  /// ops are not visible. Applied delegates do not affect the result.
+  ///
+  /// To delegate only one signature, pass the result to
+  /// `ModifyGraphWithDelegate(delegate, active_subgraph_indices)`, and build
+  /// the interpreter with an op resolver without default delegates (e.g.
+  /// `BuiltinOpResolverWithoutDefaultDelegates`) so that XNNPACK is not lazily
+  /// applied to the other subgraphs.
+  ///
+  /// Returns kTfLiteApplicationError if `reachable_subgraph_indices` is null,
+  /// `root_subgraph_indices` is empty or a root is out of range, and
+  /// kTfLiteError if a reachable node references an out-of-range subgraph. On
+  /// failure, `reachable_subgraph_indices` is left unmodified.
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus GetReachableSubgraphIndices(
+      const std::vector<int>& root_subgraph_indices,
+      std::vector<int>* reachable_subgraph_indices) const;
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
