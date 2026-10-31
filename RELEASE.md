@@ -27,6 +27,12 @@
     dimensions instead of raising an `InvalidArgumentError`. This matches the
     documented definition of the op and the behavior of the XLA lowering used by
     `tf.function(jit_compile=True)`.
+*   `tf.signal.hann_window` and `tf.signal.hamming_window`: `periodic=True`
+    (the default) now also produces a periodic window for odd
+    `window_length`. Previously odd lengths always got the symmetric window,
+    so `tf.signal.stft` and `tf.signal.inverse_stft` with the default window
+    and an odd `frame_length` now return different values. The new values
+    match `scipy.signal.get_window` and `tf.raw_ops.AudioSpectrogram`.
 
 ## Thanks to our Contributors
 
