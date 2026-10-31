@@ -19,6 +19,10 @@ limitations under the License.
 #include <set>
 #include <string>
 
+namespace Eigen {
+struct ThreadPoolDevice;
+}  // namespace Eigen
+
 namespace xla {
 // PjrtClientFactoryOptions store arguments to create PJRT client.
 // Caller is responsible to set option value for corresponding PJRT client
@@ -33,6 +37,7 @@ struct PjrtClientFactoryOptions {
 
   struct CpuClientCreateOptions {
     bool asynchronous = false;
+    const Eigen::ThreadPoolDevice* intra_op_device = nullptr;
   };
   GpuClientCreateOptions gpu_options;
   CpuClientCreateOptions cpu_options;
