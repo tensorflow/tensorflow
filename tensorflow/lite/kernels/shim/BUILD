@@ -13,6 +13,15 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(
+    [
+        "shape.cc",
+        "tf_op_shim.cc",
+        "tf_tensor_view.cc",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 filegroup(
     name = "tf_headers",
     srcs = [
