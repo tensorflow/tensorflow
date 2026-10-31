@@ -15,6 +15,10 @@ limitations under the License.
 // Unit test for TFLite Sequential LSTM op.
 
 #include <tuple>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -3019,6 +3023,550 @@ TEST(IntegerUnidirectionalSequenceLstmOpTest,
   lstm.SetInput(lstm_input);
   ASSERT_EQ(lstm.Invoke(), kTfLiteOk);
   EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output));
+}
+
+class ConstantQuantizedUnidirectionalSequenceLstmOpModel
+    : public SingleOpModel {
+ public:
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel(
+      int n_batch, int n_input, int n_cell, int n_output, int sequence_length,
+      bool use_layer_norm, int hidden_intermediate_override = -2,
+      bool omit_hidden_intermediate_quantization = false)
+      : n_input_(n_input), n_cell_(n_cell), n_output_(n_output) {
+    input_ = AddInput(
+        {TensorType_INT8, {sequence_length, n_batch, n_input}, -0.5f, 1.5f});
+
+    std::vector<int8_t> i2w(n_cell * n_input);
+    for (int i = 0; i < n_cell * n_input; ++i) {
+      i2w[i] = static_cast<int8_t>(32 + (i % 5) * 12);
+    }
+    std::vector<int8_t> r2w(n_cell * n_output);
+    for (int i = 0; i < n_cell * n_output; ++i) {
+      r2w[i] = static_cast<int8_t>((i % 2 == 0) ? 45 : -35);
+    }
+    std::vector<int32_t> gate_bias(n_cell);
+    for (int i = 0; i < n_cell; ++i) {
+      gate_bias[i] = 120 * (i + 1);
+    }
+    std::vector<int8_t> proj_w(n_output * n_cell);
+    for (int i = 0; i < n_output * n_cell; ++i) {
+      proj_w[i] = static_cast<int8_t>((i % 3 == 0) ? -70 : 85);
+    }
+    std::vector<int32_t> proj_b(n_output);
+    for (int i = 0; i < n_output; ++i) {
+      proj_b[i] = (i % 2 == 0) ? 250 : -180;
+    }
+    const std::vector<int16_t> ln_coeff(n_cell, 256);
+
+    input_to_input_weights_ = AddConstInput(
+        {TensorType_INT8, {n_cell, n_input}, -1.0f, 1.0f}, i2w);
+    input_to_forget_weights_ = AddConstInput(
+        {TensorType_INT8, {n_cell, n_input}, -1.0f, 1.0f}, i2w);
+    input_to_cell_weights_ = AddConstInput(
+        {TensorType_INT8, {n_cell, n_input}, -1.0f, 1.0f}, i2w);
+    input_to_output_weights_ = AddConstInput(
+        {TensorType_INT8, {n_cell, n_input}, -1.0f, 1.0f}, i2w);
+
+    recurrent_to_input_weights_ = AddConstInput(
+        {TensorType_INT8, {n_cell, n_output}, -1.0f, 1.0f}, r2w);
+    recurrent_to_forget_weights_ = AddConstInput(
+        {TensorType_INT8, {n_cell, n_output}, -1.0f, 1.0f}, r2w);
+    recurrent_to_cell_weights_ = AddConstInput(
+        {TensorType_INT8, {n_cell, n_output}, -1.0f, 1.0f}, r2w);
+    recurrent_to_output_weights_ = AddConstInput(
+        {TensorType_INT8, {n_cell, n_output}, -1.0f, 1.0f}, r2w);
+
+    AddNullInput();  // cell_to_input_weights
+    AddNullInput();  // cell_to_forget_weights
+    AddNullInput();  // cell_to_output_weights
+
+    const float bias_scale = (2.0f / 255.0f) * (2.0f / 255.0f);
+    input_gate_bias_ = AddConstInput(
+        {TensorType_INT32, {n_cell}, 0.0f, 0.0f, bias_scale, 0}, gate_bias);
+    forget_gate_bias_ = AddConstInput(
+        {TensorType_INT32, {n_cell}, 0.0f, 0.0f, bias_scale, 0}, gate_bias);
+    cell_gate_bias_ = AddConstInput(
+        {TensorType_INT32, {n_cell}, 0.0f, 0.0f, bias_scale, 0}, gate_bias);
+    output_gate_bias_ = AddConstInput(
+        {TensorType_INT32, {n_cell}, 0.0f, 0.0f, bias_scale, 0}, gate_bias);
+
+    projection_weights_ = AddConstInput(
+        {TensorType_INT8, {n_output, n_cell}, -1.0f, 1.0f}, proj_w);
+    const float proj_bias_scale = 0.007f * (2.0f / 255.0f);
+    projection_bias_ = AddConstInput(
+        {TensorType_INT32, {n_output}, 0.0f, 0.0f, proj_bias_scale, 0}, proj_b);
+
+    output_state_ = AddVariableInput(
+        {TensorType_INT8, {n_batch, n_output}, -1.0f, 127.0f / 128.0f});
+    cell_state_ = AddVariableInput(
+        {TensorType_INT16, {n_batch, n_cell}, -1.0f, 32767.0f / 32768.0f});
+
+    if (use_layer_norm) {
+      AddConstInput({TensorType_INT16, {n_cell}, -0.5f, 0.5f}, ln_coeff);
+      AddConstInput({TensorType_INT16, {n_cell}, -0.5f, 0.5f}, ln_coeff);
+      AddConstInput({TensorType_INT16, {n_cell}, -0.5f, 0.5f}, ln_coeff);
+      AddConstInput({TensorType_INT16, {n_cell}, -0.5f, 0.5f}, ln_coeff);
+    } else {
+      AddNullInput();
+      AddNullInput();
+      AddNullInput();
+      AddNullInput();
+    }
+
+    for (int i = 0; i < 4; ++i) {
+      AddIntermediate(TensorType_INT16, {0.007f}, {0});
+    }
+    if (omit_hidden_intermediate_quantization) {
+      AddIntermediate(TensorType_INT16, {}, {});
+    } else {
+      AddIntermediate(TensorType_INT16, {0.007f}, {3});
+    }
+
+    output_ = AddOutput({TensorType_INT8,
+                         {sequence_length, n_batch, n_output},
+                         -1.0f,
+                         127.0f / 128.0f});
+
+    SetBuiltinOp(
+        BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
+        BuiltinOptions_UnidirectionalSequenceLSTMOptions,
+        CreateUnidirectionalSequenceLSTMOptions(
+            builder_, ActivationFunctionType_TANH, /*cell_clip=*/0.0f,
+            /*proj_clip=*/0.0f, /*time_major=*/true,
+            /*asymmetric_quantize_inputs=*/false)
+            .Union());
+
+    BuildInterpreter(/*input_shapes=*/{}, /*num_threads=*/1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+    if (hidden_intermediate_override != -2) {
+      const auto* node_and_reg = interpreter_->node_and_registration(0);
+      if (node_and_reg != nullptr &&
+          node_and_reg->first.intermediates != nullptr &&
+          node_and_reg->first.intermediates->size == 5) {
+        node_and_reg->first.intermediates->data[4] =
+            hidden_intermediate_override;
+      }
+    }
+  }
+
+  TfLiteStatus Allocate() { return AllocateTensors(); }
+
+  void SetRawInput(const std::vector<int8_t>& values) {
+    PopulateTensor<int8_t>(input_, values);
+  }
+
+  std::vector<int8_t> GetOutput() { return ExtractVector<int8_t>(output_); }
+
+  TfLiteStatus ReplaceForgetGateBiasWithUndersizedSparseBuffer(
+      const int32_t* data, size_t bytes) {
+    // First switch shape so SetTensorParametersReadOnly takes the full
+    // TfLiteTensorReset path and records the caller-supplied byte length.
+    TfLiteQuantization no_quant{kTfLiteNoQuantization, nullptr};
+    TF_LITE_ENSURE_STATUS(
+        interpreter_->primary_subgraph().SetTensorParametersReadOnly(
+            forget_gate_bias_, kTfLiteInt32, "forget_bias_tmp", {1}, no_quant,
+            reinterpret_cast<const char*>(data), bytes));
+    auto* sparsity =
+        static_cast<TfLiteSparsity*>(calloc(1, sizeof(TfLiteSparsity)));
+    TfLiteQuantization reset_quant{kTfLiteNoQuantization, nullptr};
+    return interpreter_->primary_subgraph().SetTensorParametersReadOnly(
+        forget_gate_bias_, kTfLiteInt32, "forget_bias_sparse", {n_cell_},
+        reset_quant, reinterpret_cast<const char*>(data), bytes,
+        /*allocation=*/nullptr, sparsity);
+  }
+
+  TfLiteStatus ReplaceInputToCellWeightsWithInt4Buffer(const char* data,
+                                                       size_t bytes) {
+    auto* affine = static_cast<TfLiteAffineQuantization*>(
+        calloc(1, sizeof(TfLiteAffineQuantization)));
+    affine->scale = TfLiteFloatArrayCreate(1);
+    affine->scale->data[0] = 0.5f / 14.0f;
+    affine->zero_point = TfLiteIntArrayCreate(1);
+    affine->zero_point->data[0] = 0;
+    TfLiteQuantization quant{kTfLiteAffineQuantization, affine};
+    return interpreter_->primary_subgraph().SetTensorParametersReadOnly(
+        input_to_cell_weights_, kTfLiteInt4, "i2c_int4", {n_cell_, n_input_},
+        quant, data, bytes);
+  }
+
+  TfLiteStatus ReplaceInputToCellWeightsWithUndersizedInt8Buffer(
+      const int8_t* data, size_t bytes) {
+    TfLiteQuantization tmp_quant{kTfLiteNoQuantization, nullptr};
+    TF_LITE_ENSURE_STATUS(
+        interpreter_->primary_subgraph().SetTensorParametersReadOnly(
+            input_to_cell_weights_, kTfLiteInt8, "i2c_tmp", {1}, tmp_quant,
+            reinterpret_cast<const char*>(data), bytes));
+    auto* affine = static_cast<TfLiteAffineQuantization*>(
+        calloc(1, sizeof(TfLiteAffineQuantization)));
+    affine->scale = TfLiteFloatArrayCreate(1);
+    affine->scale->data[0] = 0.5f / 255.0f;
+    affine->zero_point = TfLiteIntArrayCreate(1);
+    affine->zero_point->data[0] = 0;
+    TfLiteQuantization quant{kTfLiteAffineQuantization, affine};
+    auto* sparsity =
+        static_cast<TfLiteSparsity*>(calloc(1, sizeof(TfLiteSparsity)));
+    return interpreter_->primary_subgraph().SetTensorParametersReadOnly(
+        input_to_cell_weights_, kTfLiteInt8, "i2c_int8_sparse",
+        {n_cell_, n_input_}, quant, reinterpret_cast<const char*>(data), bytes,
+        /*allocation=*/nullptr, sparsity);
+  }
+
+  TfLiteStatus ReplaceForgetGateBiasValues(const std::vector<int32_t>& values) {
+    TfLiteQuantization no_quant{kTfLiteNoQuantization, nullptr};
+    TF_LITE_ENSURE_STATUS(
+        interpreter_->primary_subgraph().SetTensorParametersReadOnly(
+            forget_gate_bias_, kTfLiteInt32, "forget_bias_tmp", {1}, no_quant,
+            reinterpret_cast<const char*>(values.data()), sizeof(int32_t)));
+    TfLiteQuantization reset_quant{kTfLiteNoQuantization, nullptr};
+    return interpreter_->primary_subgraph().SetTensorParametersReadOnly(
+        forget_gate_bias_, kTfLiteInt32, "forget_bias_full", {n_cell_},
+        reset_quant, reinterpret_cast<const char*>(values.data()),
+        values.size() * sizeof(int32_t));
+  }
+
+  void SetInputZeroPoint(int32_t zero_point) {
+    SetTensorZeroPoint(input_, zero_point);
+  }
+
+  void SetOutputStateZeroPoint(int32_t zero_point) {
+    SetTensorZeroPoint(output_state_, zero_point);
+  }
+
+  void SetIntermediateAffineArrays(int slot, int scale_size,
+                                   int zero_point_size) {
+    const auto* node_and_reg = interpreter_->node_and_registration(0);
+    ASSERT_NE(node_and_reg, nullptr);
+    ASSERT_NE(node_and_reg->first.intermediates, nullptr);
+    ASSERT_LT(slot, node_and_reg->first.intermediates->size);
+    const int tensor_index = node_and_reg->first.intermediates->data[slot];
+    TfLiteTensor* tensor = interpreter_->tensor(tensor_index);
+    ASSERT_NE(tensor, nullptr);
+    ASSERT_EQ(tensor->quantization.type, kTfLiteAffineQuantization);
+    auto* params =
+        static_cast<TfLiteAffineQuantization*>(tensor->quantization.params);
+    ASSERT_NE(params, nullptr);
+    TfLiteFloatArrayFree(params->scale);
+    if (scale_size < 0) {
+      params->scale = nullptr;
+    } else {
+      params->scale = TfLiteFloatArrayCreate(scale_size);
+      for (int i = 0; i < scale_size; ++i) {
+        params->scale->data[i] = 0.007f;
+      }
+    }
+    TfLiteIntArrayFree(params->zero_point);
+    if (zero_point_size < 0) {
+      params->zero_point = nullptr;
+    } else {
+      params->zero_point = TfLiteIntArrayCreate(zero_point_size);
+      for (int i = 0; i < zero_point_size; ++i) {
+        params->zero_point->data[i] = 3;
+      }
+    }
+  }
+
+  void OverrideShapesForZeroBatch(int n_input_override, int n_cell_override) {
+    ReplaceTensorDims(input_, {1, 0, n_input_override});
+    for (int idx : {input_to_input_weights_, input_to_forget_weights_,
+                    input_to_cell_weights_, input_to_output_weights_}) {
+      ReplaceTensorDims(idx, {n_cell_override, n_input_override});
+    }
+    for (int idx : {recurrent_to_input_weights_, recurrent_to_forget_weights_,
+                    recurrent_to_cell_weights_, recurrent_to_output_weights_}) {
+      ReplaceTensorDims(idx, {n_cell_override, n_output_});
+    }
+    for (int idx : {input_gate_bias_, forget_gate_bias_, cell_gate_bias_,
+                    output_gate_bias_}) {
+      ReplaceTensorDims(idx, {n_cell_override});
+    }
+    ReplaceTensorDims(projection_weights_, {n_output_, n_cell_override});
+    ReplaceTensorDims(output_state_, {0, n_output_});
+    ReplaceTensorDims(cell_state_, {0, n_cell_override});
+  }
+
+ private:
+  void SetTensorZeroPoint(int tensor_index, int32_t zero_point) {
+    TfLiteTensor* tensor = interpreter_->tensor(tensor_index);
+    if (tensor == nullptr) return;
+    tensor->params.zero_point = zero_point;
+    if (tensor->quantization.type == kTfLiteAffineQuantization &&
+        tensor->quantization.params != nullptr) {
+      auto* affine =
+          static_cast<TfLiteAffineQuantization*>(tensor->quantization.params);
+      if (affine->zero_point != nullptr && affine->zero_point->size > 0) {
+        affine->zero_point->data[0] = zero_point;
+      }
+    }
+  }
+
+  void ReplaceTensorDims(int tensor_index, const std::vector<int>& dims) {
+    TfLiteTensor* tensor = interpreter_->tensor(tensor_index);
+    if (tensor == nullptr) return;
+    TfLiteIntArrayFree(tensor->dims);
+    tensor->dims = TfLiteIntArrayCreate(static_cast<int>(dims.size()));
+    for (size_t i = 0; i < dims.size(); ++i) {
+      tensor->dims->data[i] = dims[i];
+    }
+  }
+
+  int input_;
+  int input_to_input_weights_;
+  int input_to_forget_weights_;
+  int input_to_cell_weights_;
+  int input_to_output_weights_;
+  int recurrent_to_input_weights_;
+  int recurrent_to_forget_weights_;
+  int recurrent_to_cell_weights_;
+  int recurrent_to_output_weights_;
+  int input_gate_bias_;
+  int forget_gate_bias_;
+  int cell_gate_bias_;
+  int output_gate_bias_;
+  int projection_weights_;
+  int projection_bias_;
+  int output_state_;
+  int cell_state_;
+  int output_;
+  int n_input_;
+  int n_cell_;
+  int n_output_;
+};
+
+TEST(IntegerUnidirectionalSequenceLstmOpTest,
+     ConstantWeightsAndBiasesWithNonZeroZeroPointSucceeds) {
+  const std::vector<int8_t> expected_output = {14, 18, 24, 26};
+
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel lstm_a(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/2, /*use_layer_norm=*/false);
+  ASSERT_EQ(lstm_a.Allocate(), kTfLiteOk);
+  lstm_a.SetRawInput({10, -20, 30, -40});
+  ASSERT_EQ(lstm_a.Invoke(), kTfLiteOk);
+  const std::vector<int8_t> out_a = lstm_a.GetOutput();
+  EXPECT_THAT(out_a, ElementsAreArray(expected_output));
+
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel lstm_b(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/2, /*use_layer_norm=*/false);
+  ASSERT_EQ(lstm_b.Allocate(), kTfLiteOk);
+  lstm_b.SetRawInput({10, -20, 30, -40});
+  ASSERT_EQ(lstm_b.Invoke(), kTfLiteOk);
+  EXPECT_THAT(lstm_b.GetOutput(), ElementsAreArray(expected_output));
+}
+
+TEST(IntegerUnidirectionalSequenceLstmOpTest,
+     RejectsUndersizedBiasBufferInPrecompute) {
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel lstm(
+      /*n_batch=*/1, /*n_input=*/4, /*n_cell=*/16, /*n_output=*/4,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  const std::vector<int32_t> short_bias(1, 7);
+  ASSERT_EQ(lstm.ReplaceForgetGateBiasWithUndersizedSparseBuffer(
+                short_bias.data(), short_bias.size() * sizeof(int32_t)),
+            kTfLiteOk);
+  EXPECT_EQ(lstm.Allocate(), kTfLiteError);
+}
+
+TEST(IntegerUnidirectionalSequenceLstmOpTest,
+     RejectsMismatchedWeightTypeAndByteSizeInPrecompute) {
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel lstm(
+      /*n_batch=*/1, /*n_input=*/8, /*n_cell=*/16, /*n_output=*/4,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  // 16 * 8 INT4 elements require 64 bytes, whereas INT8 precomputation reads
+  // 128 bytes.
+  const std::vector<char> packed_int4_weights(64, 0x11);
+  ASSERT_EQ(lstm.ReplaceInputToCellWeightsWithInt4Buffer(
+                packed_int4_weights.data(), packed_int4_weights.size()),
+            kTfLiteOk);
+  EXPECT_EQ(lstm.Allocate(), kTfLiteError);
+}
+
+TEST(IntegerUnidirectionalSequenceLstmOpTest,
+     RejectsNullWeightAndBiasDataDuringPrecompute) {
+  const std::vector<std::pair<float, float>> non_zero_zp_ranges = {
+      {-0.5f, 1.5f},                // input tensor (non-zero zero_point)
+      {-1.0f, 1.0f},                // input_to_input_weight tensor
+      {-1.0f, 1.0f},                // input_to_forget_weight tensor
+      {-1.0f, 1.0f},                // input_to_cell_weight tensor
+      {-1.0f, 1.0f},                // input_to_output_weight tensor
+      {-1.0f, 1.0f},                // recurrent_to_input_weight tensor
+      {-1.0f, 1.0f},                // recurrent_to_forget_weight tensor
+      {-1.0f, 1.0f},                // recurrent_to_cell_weight tensor
+      {-1.0f, 1.0f},                // recurrent_to_output_weight tensor
+      {-1.0f, 1.0f},                // cell_to_input_weight tensor
+      {-1.0f, 1.0f},                // cell_to_forget_weight tensor
+      {-1.0f, 1.0f},                // cell_to_output_weight tensor
+      {-100.0f, 100.0f},            // input_gate_bias tensor
+      {-100.0f, 100.0f},            // forget_gate_bias tensor
+      {-100.0f, 100.0f},            // cell_gate_bias tensor
+      {-100.0f, 100.0f},            // output_gate_bias tensor
+      {-0.5f, 0.5f},                // projection_weight tensor
+      {-1.0f, 1.0f},                // projection_bias tensor
+      {-1.0f, 32767.0f / 32768.0f},  // output_state tensor
+      {-1.0f, 32767.0f / 32768.0f},  // cell_state tensor
+      {-0.5f, 0.5f},                // input_layer_norm_coefficient tensor
+      {-0.5f, 0.5f},                // forget_layer_norm_coefficient tensor
+      {-1.0f, 1.0f},                // cell_layer_norm_coefficient tensor
+      {-1.0f, 1.0f},                // output_layer_norm_coefficient tensor
+      {-1.0f, 32767.0f / 32768.0f},  // output tensor
+  };
+  const std::vector<std::pair<float, int>> intermediates = {
+      {0.007059f, 0}, {0.007812f, 0}, {0.007059f, 0}, {0.007812f, 0},
+      {0.007f, 0}};
+
+  // Non-constant arena weights have null data during Prepare(); non-zero
+  // input zero_point must reject null weight data instead of dereferencing it.
+  UnidirectionalSequenceLSTMIntegerOpModel non_const_weight_lstm(
+      /*n_batch=*/1, /*n_input=*/4, /*n_cell=*/4, /*n_output=*/3,
+      /*sequence_length=*/1, /*time_major=*/true, /*use_cifg=*/false,
+      /*use_peephole=*/false, /*use_projection_weights=*/true,
+      /*use_projection_bias=*/false, /*use_layer_norm=*/true,
+      /*use_8x8_8_implementation=*/false, non_zero_zp_ranges, intermediates);
+  EXPECT_EQ(non_const_weight_lstm.AllocateTensors(), kTfLiteError);
+
+  // Without layer norm, non-constant gate bias tensors also have null data
+  // during Prepare() and must be rejected before memcpy.
+  std::vector<std::pair<float, float>> zero_zp_ranges = non_zero_zp_ranges;
+  zero_zp_ranges[0] = {-1.0f, 127.0f / 128.0f};
+  UnidirectionalSequenceLSTMIntegerOpModel non_const_bias_lstm(
+      /*n_batch=*/1, /*n_input=*/4, /*n_cell=*/4, /*n_output=*/3,
+      /*sequence_length=*/1, /*time_major=*/true, /*use_cifg=*/false,
+      /*use_peephole=*/false, /*use_projection_weights=*/true,
+      /*use_projection_bias=*/false, /*use_layer_norm=*/false,
+      /*use_8x8_8_implementation=*/false, zero_zp_ranges, intermediates);
+  EXPECT_EQ(non_const_bias_lstm.AllocateTensors(), kTfLiteError);
+}
+
+TEST(IntegerUnidirectionalSequenceLstmOpTest,
+     RejectsOutOfBoundsHiddenIntermediateInPrecompute) {
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel negative_intermediate_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false,
+      /*hidden_intermediate_override=*/kTfLiteOptionalTensor);
+  EXPECT_EQ(negative_intermediate_lstm.Allocate(), kTfLiteError);
+
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel oob_intermediate_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false,
+      /*hidden_intermediate_override=*/9999);
+  EXPECT_EQ(oob_intermediate_lstm.Allocate(), kTfLiteError);
+
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel empty_quant_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false,
+      /*hidden_intermediate_override=*/-2,
+      /*omit_hidden_intermediate_quantization=*/true);
+  EXPECT_EQ(empty_quant_lstm.Allocate(), kTfLiteError);
+}
+
+TEST(IntegerUnidirectionalSequenceLstmOpTest,
+     RejectsUndersizedInt8WeightBufferInPrecompute) {
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel lstm(
+      /*n_batch=*/1, /*n_input=*/8, /*n_cell=*/16, /*n_output=*/4,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  // kTfLiteInt8 weight tensor of shape {16, 8} requires 128 bytes; supply a
+  // 16-byte sparse buffer so execution passes the kTfLiteInt8 type check and
+  // exercises the weight_tensor->bytes capacity guard directly.
+  const std::vector<int8_t> short_int8_weights(16, 3);
+  ASSERT_EQ(lstm.ReplaceInputToCellWeightsWithUndersizedInt8Buffer(
+                short_int8_weights.data(), short_int8_weights.size()),
+            kTfLiteOk);
+  EXPECT_EQ(lstm.Allocate(), kTfLiteError);
+}
+
+TEST(IntegerUnidirectionalSequenceLstmOpTest,
+     RejectsEmptyOrNullAffineQuantizationArraysOnHiddenIntermediate) {
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel empty_scale_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  empty_scale_lstm.SetIntermediateAffineArrays(/*slot=*/4, /*scale_size=*/0,
+                                               /*zero_point_size=*/1);
+  EXPECT_EQ(empty_scale_lstm.Allocate(), kTfLiteError);
+
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel empty_zp_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  empty_zp_lstm.SetIntermediateAffineArrays(/*slot=*/4, /*scale_size=*/1,
+                                            /*zero_point_size=*/0);
+  EXPECT_EQ(empty_zp_lstm.Allocate(), kTfLiteError);
+
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel null_zp_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  null_zp_lstm.SetIntermediateAffineArrays(/*slot=*/4, /*scale_size=*/1,
+                                           /*zero_point_size=*/-1);
+  EXPECT_EQ(null_zp_lstm.Allocate(), kTfLiteError);
+
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel ln_empty_zp_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/true);
+  ln_empty_zp_lstm.SetIntermediateAffineArrays(/*slot=*/0, /*scale_size=*/1,
+                                               /*zero_point_size=*/0);
+  EXPECT_EQ(ln_empty_zp_lstm.Allocate(), kTfLiteError);
+}
+
+TEST(IntegerUnidirectionalSequenceLstmOpTest,
+     RejectsNegativeDimensionAndOverflowingWeightShapeInPrecompute) {
+  // With n_batch == 0, negative n_input passes earlier shape checks and
+  // reaches PrecomputeZeroPointTimesWeightWithBias with col < 0.
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel neg_col_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  neg_col_lstm.OverrideShapesForZeroBatch(/*n_input_override=*/-2,
+                                          /*n_cell_override=*/4);
+  EXPECT_EQ(neg_col_lstm.Allocate(), kTfLiteError);
+
+  // 46341 * 46341 = 2,147,488,281 > INT32_MAX, exercising size_t byte-product
+  // computation and buffer-capacity rejection without signed 32-bit overflow.
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel large_prod_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  large_prod_lstm.OverrideShapesForZeroBatch(/*n_input_override=*/46341,
+                                             /*n_cell_override=*/46341);
+  EXPECT_EQ(large_prod_lstm.Allocate(), kTfLiteError);
+}
+
+TEST(IntegerUnidirectionalSequenceLstmOpTest,
+     RejectsExtremeZeroPointAndPrecomputeAccumulatorOverflow) {
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel min_input_zp_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  min_input_zp_lstm.SetInputZeroPoint(std::numeric_limits<int32_t>::min());
+  EXPECT_EQ(min_input_zp_lstm.Allocate(), kTfLiteError);
+
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel min_state_zp_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  min_state_zp_lstm.SetOutputStateZeroPoint(
+      std::numeric_limits<int32_t>::min());
+  EXPECT_EQ(min_state_zp_lstm.Allocate(), kTfLiteError);
+
+  // Positive int32_t accumulator overflow: INT32_MAX bias + (3 + 3) * 64.
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel pos_overflow_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  const std::vector<int32_t> max_bias = {std::numeric_limits<int32_t>::max(), 0,
+                                         0, 0};
+  ASSERT_EQ(pos_overflow_lstm.ReplaceForgetGateBiasValues(max_bias), kTfLiteOk);
+  EXPECT_EQ(pos_overflow_lstm.Allocate(), kTfLiteError);
+
+  // Negative int32_t accumulator underflow: INT32_MIN bias + (3 + 3) * (-64).
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel neg_overflow_lstm(
+      /*n_batch=*/1, /*n_input=*/2, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  neg_overflow_lstm.SetInputZeroPoint(64);
+  const std::vector<int32_t> min_bias = {std::numeric_limits<int32_t>::min(), 0,
+                                         0, 0};
+  ASSERT_EQ(neg_overflow_lstm.ReplaceForgetGateBiasValues(min_bias), kTfLiteOk);
+  EXPECT_EQ(neg_overflow_lstm.Allocate(), kTfLiteError);
+
+  // Product magnitude exceeding int32_t span before bias addition.
+  ConstantQuantizedUnidirectionalSequenceLstmOpModel huge_product_lstm(
+      /*n_batch=*/1, /*n_input=*/8, /*n_cell=*/4, /*n_output=*/2,
+      /*sequence_length=*/1, /*use_layer_norm=*/false);
+  huge_product_lstm.SetInputZeroPoint(-1000000000);
+  EXPECT_EQ(huge_product_lstm.Allocate(), kTfLiteError);
 }
 
 class IndyLSTMOpTest
