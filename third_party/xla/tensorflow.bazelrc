@@ -299,6 +299,8 @@ common:rocm_base --define=using_rocm_hipcc=true
 common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
 common:rocm_base --action_env=HIPCC_COMPILE_FLAGS_APPEND="--offload-compress"
 common:rocm_base --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a,gfx942,gfx950,gfx1030,gfx1100,gfx1101,gfx1200,gfx1201"
+common:rocm_base --@rules_ml_toolchain//common:stdlib=libstdc++
+common:rocm_base --@rules_ml_toolchain//common:static_libcxx=False
 
 common:rocm_clang_local --config=rocm_base
 common:rocm_clang_local --config=clang_local
@@ -313,7 +315,6 @@ common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_cuda=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_sycl=False
 common:rocm_clang_hermetic --@rules_ml_toolchain//common:enable_hermetic_cc=True
 common:rocm_clang_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
-common:rocm_clang_hermetic --@rules_ml_toolchain//common:static_libcxx=False
 common:rocm_clang_hermetic --strategy=CppLink=local
 
 common:rocm --config=rocm_clang_hermetic
@@ -331,6 +332,8 @@ common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 # This config option is used for SYCL as GPU backend.
 # SYCL Configuration (non-hermetic)
 common:sycl --@rules_ml_toolchain//common:enable_sycl=True
+common:sycl --@rules_ml_toolchain//common:stdlib=libstdc++
+common:sycl --@rules_ml_toolchain//common:static_libcxx=False
 common:sycl --repo_env=TF_NEED_SYCL=1
 common:sycl --repo_env=ENABLE_INTEL_XPU_TRITON=1
 common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
@@ -413,9 +416,15 @@ common:macos --define=INCLUDEDIR=$(PREFIX)/include
 common:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
+# Add LLVM 22 and libc++ static linking flags.
+common:linux --repo_env=LLVM_VERSION=22
+common:linux --repo_env=SYSROOT_DIST=linux_glibc_2_27
+common:linux --@rules_ml_toolchain//common:stdlib=libc++
+common:linux --@rules_ml_toolchain//common:static_libcxx=true
+
 # By default, build TF in C++ 17 mode.
-common:linux --cxxopt=-std=c++17
-common:linux --host_cxxopt=-std=c++17
+common:linux --cxxopt=-std=c++20
+common:linux --host_cxxopt=-std=c++20
 common:macos --cxxopt=-std=c++17
 common:macos --host_cxxopt=-std=c++17
 common:windows --cxxopt=/std:c++17
@@ -740,7 +749,7 @@ build:pjrt_cuda12 --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_80,sm_90,sm_100,compute_120"
 
 build:pjrt_cuda13 --config=cuda_nvcc
-build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_VERSION="13.2.0"
+build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_VERSION="13.4.1"
 build:pjrt_cuda13 --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
 build:pjrt_cuda13 --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
 build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_75,sm_80,sm_90,sm_100,compute_120"
