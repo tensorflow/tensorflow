@@ -30,6 +30,103 @@ namespace xnnpack {
 std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
 NewXnnPackDelegateSupportingVariableOps();
 
+enum class VariableOpGuardCase {
+  kNullContextInPrepare,
+  kNullExecutionPlanInPrepare,
+  kNullParamsInSubgraphCreate,
+  kNegativeInputTensorsSizeInSubgraphCreate,
+  kOutOfBoundsOutputTensorIndexInSubgraphCreate,
+  kNullNodeInputsVarHandle,
+  kNullNodeInputsAssignVariable,
+  kNullNodeInputsReadVariable,
+  kNullNodeOutputsVarHandle,
+  kNullNodeOutputsAssignVariable,
+  kNullNodeOutputsReadVariable,
+  kNegativeInputsSizeVarHandle,
+  kUnexpectedInputArityVarHandle,
+  kUnexpectedOutputArityAssignVariable,
+  kNullVarHandleBuiltinData,
+  kVarHandleOutputNegativeOne,
+  kVarHandleOutputNegativeTwo,
+  kVarHandleOutputOutOfBounds,
+  kAssignResourceInputNegativeOne,
+  kAssignResourceInputNegativeTwo,
+  kAssignResourceInputOutOfBounds,
+  kAssignValueInputNegativeOne,
+  kAssignValueInputNegativeTwo,
+  kAssignValueInputOutOfBounds,
+  kReadResourceInputNegativeOne,
+  kReadResourceInputNegativeTwo,
+  kReadResourceInputOutOfBounds,
+  kReadValueOutputNegativeOne,
+  kReadValueOutputNegativeTwo,
+  kReadValueOutputOutOfBounds,
+  kWrongResourceTensorType,
+  kAssignInputNullDims,
+  kAssignInputScalarRankZero,
+  kAssignInputNegativeDim,
+  kAssignInputExcessiveRank,
+  kAssignInputByteSizeOverflow,
+  kAssignInputShapeExceedsTensorBytes,
+  kReadOutputNullDims,
+  kReadOutputNegativeDim,
+  kReadOutputExcessiveRank,
+  kReadOutputByteSizeOverflow,
+  kReadOutputShapeExceedsTensorBytes,
+  kConflictingVarHandlesOnSameLocalResourceTensor,
+  kExternalOutputBytesSmallerThanXnnpackShapeAtInvoke,
+  kExternalNullDataWithNonZeroXnnpackShapeAtInvoke,
+  kReshapedExternalInputBytesSmallerThanShapeInPrepare,
+  kCreateReshapeZeroInputs,
+  kCreateReshapeOutOfBoundsInput,
+  kCreateReshapeOutOfBoundsShapeInput,
+  kCreateMeanZeroInputs,
+  kCreatePadOutOfBoundsPaddingsInput,
+  kCreateResizeBilinearZeroInputs,
+  kCreateSliceLackingInputs,
+  kCreateStridedSliceLackingInputs,
+  kCreateSplitMissingInputSlot1,
+  kCreateSplitOutOfBoundsValueInput,
+  kCreateSplitOutOfBoundsAxisInput,
+  kCreateTransposeZeroInputs,
+  kCreateTransposeOutOfBoundsInput,
+  kCreateTransposeOutOfBoundsPermInput,
+  kCreateTransposeConvOutOfBoundsFilterInput,
+  kCreateTransposeConvOutOfBoundsBiasInput,
+  kCreateTransposeConvOutOfBoundsOutputShapeInput,
+  kCreateSliceZeroOutputs,
+  kCreateStridedSliceZeroOutputs,
+  kCreateBatchMatMulZeroInputs,
+  kCreateBatchMatMulZeroOutputs,
+  kCreateSdpaCustomZeroInputs,
+  kCreateSdpaCustomZeroOutputs,
+  kCreateOptionalNegativeInputInDefaultUnaryOp,
+  kCreateOptionalNegativeOutputInSubgraphCreate,
+  kCreateLeakyReluNullBuiltinData,
+  kCreateGeluNullBuiltinData,
+  kCreateSdpaCustomNegativeInitialDataSize,
+};
+
+const char* VariableOpGuardCaseName(VariableOpGuardCase test_case);
+
+enum class MalformedVariableOpModelCase {
+  kVarHandleZeroOutputs,
+  kReadVariableZeroInputs,
+  kReadVariableZeroOutputs,
+  kAssignVariableZeroInputs,
+  kAssignVariableOneInput,
+  kAssignVariableUnexpectedOutput,
+  kAssignVariableNegativeValueInput,
+  kAssignVariableOutOfBoundsValueInput,
+  kReadVariableNegativeValueOutput,
+  kReadVariableOutOfBoundsValueOutput,
+  kVarHandleAndReadVariableNegativeResourceWire,
+  kVarHandleAndAssignVariableNegativeResourceWire,
+};
+
+const char* MalformedVariableOpModelCaseName(
+    MalformedVariableOpModelCase test_case);
+
 class VariableOpsTester {
  public:
   void TestAssignOnly(TfLiteDelegate* delegate) const {
@@ -74,6 +171,24 @@ class VariableOpsTester {
         CreateModelTwoSubgraphsReadAssignOneVarHandle2();
     Test(delegate, model);
   }
+
+  void TestResizeAssignOnly(TfLiteDelegate* delegate) const;
+  void TestResizeAssignThenRead(TfLiteDelegate* delegate) const;
+  void TestRepeatedResizeCyclesHaveNoLeaksOrStaleCapacity(
+      TfLiteDelegate* delegate) const;
+  void TestGuardRejectCase(VariableOpGuardCase test_case) const;
+  void TestRejectsConflictingAliasedVarHandleShapes(
+      TfLiteDelegate* delegate) const;
+  void TestRejectsConflictingAliasedVarHandleTypes(
+      TfLiteDelegate* delegate) const;
+  void TestSingleSubgraphRejectsUninitializedRead(
+      TfLiteDelegate* delegate) const;
+  void TestMalformedVariableOpModelCase(
+      TfLiteDelegate* delegate, MalformedVariableOpModelCase test_case) const;
+  void TestTwoSubgraphsRejectsMismatchedShape(TfLiteDelegate* delegate) const;
+  void TestTwoSubgraphsRejectsUninitializedRead(TfLiteDelegate* delegate) const;
+  void TestConflictingLocalResourceVarHandleFallsBackWithoutCorruptingFirstVar(
+      TfLiteDelegate* delegate) const;
 
   // Creates a model with this subgraph:
   //   (initial_input) ----\
