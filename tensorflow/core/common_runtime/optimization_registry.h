@@ -91,7 +91,7 @@ struct GraphOptimizationPassOptions {
 // GraphOptimizationPass.
 class GraphOptimizationPass {
  public:
-  virtual ~GraphOptimizationPass() {}
+  virtual ~GraphOptimizationPass() = default;
   virtual absl::Status Run(const GraphOptimizationPassOptions& options) = 0;
   void set_name(const std::string& name) { name_ = name; }
   std::string name() const { return name_; }

@@ -48,7 +48,7 @@ class GPUDeviceContext : public DeviceContext {
         host_memory_allocator_(host_memory_allocator) {
   }
 
-  ~GPUDeviceContext() override {}
+  ~GPUDeviceContext() override = default;
 
   se::Stream* stream() const override { return stream_; }
 #if TENSORFLOW_USE_ROCM

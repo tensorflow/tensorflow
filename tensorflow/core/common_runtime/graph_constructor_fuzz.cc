@@ -114,8 +114,8 @@ bool HasNode(const std::string& name, Graph* graph) {
 
 class EmptyErrorCollector : public protobuf::io::ErrorCollector {
  public:
-  EmptyErrorCollector() {}
-  ~EmptyErrorCollector() override {}
+  EmptyErrorCollector() = default;
+  ~EmptyErrorCollector() override = default;
   void RecordError(int line, protobuf::io::ColumnNumber column,
                    absl::string_view message) override {}
 };

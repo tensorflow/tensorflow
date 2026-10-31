@@ -33,7 +33,7 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
   }
 }
 
-GraphOptimizer::~GraphOptimizer() {}
+GraphOptimizer::~GraphOptimizer() = default;
 
 void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
                               const Device* device,
