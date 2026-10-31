@@ -1145,6 +1145,8 @@ def TPU_MatmulPopFifoOp : TPU_Op<"matmul_pop_fifo"> {
   }];
 }
 
+include "xla/mosaic/dialect/tpu/tpu_matmul_ops.td"
+
 def TPU_ConcatenateOp : TPU_Op<"concatenate", [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins
     Variadic<AnyVectorOfNonZeroRank>:$sources,

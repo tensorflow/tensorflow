@@ -170,6 +170,7 @@ td_library(
     srcs = [
         "dialect/tpu/tpu.td",
         "dialect/tpu/tpu_enums.td",
+        "dialect/tpu/tpu_matmul_ops.td",
         "dialect/tpu/tpu_ops.td",
         "dialect/tpu/tpu_types.td",
     ],
