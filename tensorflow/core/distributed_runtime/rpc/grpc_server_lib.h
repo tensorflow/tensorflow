@@ -99,7 +99,7 @@ class GrpcServer : public ServerInterface {
 
   // Destruction is only supported in the factory method. Clean
   // shutdown is not currently implemented for this server type.
-  virtual ~GrpcServer();
+  ~GrpcServer() override;
 
   // Implementations of ServerInterface methods.
   absl::Status Start() override;
