@@ -83,6 +83,158 @@ TEST(RemoveUnusedInputs, BypassInputsWithoutOp) {
   ASSERT_EQ(subgraph.inputs(), std::vector<int>({0, -1, 2}));
 }
 
+TEST(SubgraphTensorBoundsTest,
+     ZeroTensorSubgraphRejectsReadabilityAndSkipsOptionalOutput) {
+  Interpreter interpreter;
+  Subgraph& subgraph = interpreter.primary_subgraph();
+  ASSERT_EQ(subgraph.tensors_size(), 0u);
+  EXPECT_EQ(subgraph.EnsureTensorDataIsReadable(0), kTfLiteError);
+  EXPECT_EQ(subgraph.EnsureTensorDataIsReadable(kTfLiteOptionalTensor),
+            kTfLiteError);
+  ASSERT_EQ(subgraph.SetOutputs({kTfLiteOptionalTensor}), kTfLiteOk);
+  EXPECT_EQ(subgraph.RemoveUnusedInputs(), kTfLiteOk);
+}
+
+TEST(SubgraphTensorBoundsTest, EnsureTensorDataIsReadableValidControlSucceeds) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({1}), kTfLiteOk);
+  TfLiteQuantizationParams quant = {};
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "in",
+                                                     {1}, quant),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(1, kTfLiteFloat32, "out",
+                                                     {1}, quant),
+            kTfLiteOk);
+  TfLiteRegistration* neg_op = tflite::ops::builtin::Register_NEG();
+  ASSERT_EQ(interpreter.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr,
+                                              neg_op),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  interpreter.typed_tensor<float>(0)[0] = 3.5f;
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+  EXPECT_EQ(interpreter.EnsureTensorDataIsReadable(0), kTfLiteOk);
+  EXPECT_EQ(interpreter.EnsureTensorDataIsReadable(1), kTfLiteOk);
+  EXPECT_FLOAT_EQ(interpreter.typed_tensor<float>(1)[0], -3.5f);
+}
+
+TEST(SubgraphTensorBoundsTest,
+     EnsureTensorDataIsReadableRejectsOutOfBoundsAndOptionalOutput) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({kTfLiteOptionalTensor}), kTfLiteOk);
+  TfLiteQuantizationParams quant = {};
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "in",
+                                                     {1}, quant),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(1, kTfLiteFloat32, "out",
+                                                     {1}, quant),
+            kTfLiteOk);
+  TfLiteRegistration* neg_op = tflite::ops::builtin::Register_NEG();
+  ASSERT_EQ(interpreter.AddNodeWithParameters({0}, {1}, nullptr, 0, nullptr,
+                                              neg_op),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  interpreter.typed_tensor<float>(0)[0] = 1.0f;
+
+  EXPECT_EQ(interpreter.EnsureTensorDataIsReadable(kTfLiteOptionalTensor),
+            kTfLiteError);
+  EXPECT_EQ(interpreter.EnsureTensorDataIsReadable(-2), kTfLiteError);
+  EXPECT_EQ(interpreter.EnsureTensorDataIsReadable(2), kTfLiteError);
+  EXPECT_EQ(interpreter.Invoke(), kTfLiteError);
+}
+
+TEST(SubgraphTensorBoundsTest,
+     RemoveUnusedInputsSkipsOptionalOutputWithoutOutOfBoundsWrite) {
+  Interpreter interpreter;
+  Subgraph& subgraph = interpreter.primary_subgraph();
+  ASSERT_EQ(subgraph.AddTensors(3), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetInputs({0, 1}), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetOutputs({2, kTfLiteOptionalTensor}), kTfLiteOk);
+  TfLiteRegistration* neg_op = tflite::ops::builtin::Register_NEG();
+  ASSERT_EQ(
+      subgraph.AddNodeWithParameters({0}, {2}, {}, nullptr, 0, nullptr, neg_op),
+      kTfLiteOk);
+
+  ASSERT_EQ(subgraph.RemoveUnusedInputs(), kTfLiteOk);
+  EXPECT_EQ(subgraph.inputs(),
+            std::vector<int>({0, kTfLiteOptionalTensor}));
+}
+
+TEST(SubgraphTensorBoundsTest,
+     RemoveUnusedInputsSkipsMutatedOutOfBoundsNodeInput) {
+  Interpreter interpreter;
+  Subgraph& subgraph = interpreter.primary_subgraph();
+  ASSERT_EQ(subgraph.AddTensors(2), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetOutputs({1}), kTfLiteOk);
+  TfLiteQuantization quant = {kTfLiteNoQuantization, nullptr};
+  const int dims[1] = {1};
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "in", 1, dims, quant, /*is_variable=*/false),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(1, kTfLiteFloat32, "out", 1,
+                                                  dims, quant,
+                                                  /*is_variable=*/false),
+            kTfLiteOk);
+
+  TfLiteRegistration mutate_input_on_invoke = {};
+  mutate_input_on_invoke.invoke = [](TfLiteContext* context,
+                                     TfLiteNode* node) -> TfLiteStatus {
+    if (node->inputs && node->inputs->size > 0) {
+      node->inputs->data[0] = 4096;
+    }
+    return kTfLiteOk;
+  };
+
+  int node_index = -1;
+  ASSERT_EQ(subgraph.AddNodeWithParameters({0}, {1}, {}, nullptr, 0, nullptr,
+                                           &mutate_input_on_invoke,
+                                           &node_index),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(subgraph.Invoke(), kTfLiteOk);
+  ASSERT_EQ(subgraph.RemoveUnusedInputs(), kTfLiteOk);
+  EXPECT_EQ(subgraph.inputs(), std::vector<int>({kTfLiteOptionalTensor}));
+}
+
+TEST(SubgraphTensorBoundsTest, InvokeRejectsNodeInputMutatedOutOfBounds) {
+  Interpreter interpreter;
+  Subgraph& subgraph = interpreter.primary_subgraph();
+  ASSERT_EQ(subgraph.AddTensors(2), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetOutputs({1}), kTfLiteOk);
+  TfLiteQuantization quant = {kTfLiteNoQuantization, nullptr};
+  const int dims[1] = {1};
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "in", 1, dims, quant, /*is_variable=*/false),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(1, kTfLiteFloat32, "out", 1,
+                                                  dims, quant,
+                                                  /*is_variable=*/false),
+            kTfLiteOk);
+
+  TfLiteRegistration corrupt_on_first_invoke_reg = {};
+  corrupt_on_first_invoke_reg.invoke = [](TfLiteContext* context,
+                                          TfLiteNode* node) -> TfLiteStatus {
+    if (node->inputs && node->inputs->size > 0 && node->inputs->data[0] == 0) {
+      node->inputs->data[0] = 4096;
+    }
+    return kTfLiteOk;
+  };
+
+  int node_index = -1;
+  ASSERT_EQ(
+      subgraph.AddNodeWithParameters({0}, {1}, {}, nullptr, 0, nullptr,
+                                     &corrupt_on_first_invoke_reg, &node_index),
+      kTfLiteOk);
+  ASSERT_EQ(subgraph.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(subgraph.Invoke(), kTfLiteOk);
+  EXPECT_EQ(subgraph.Invoke(), kTfLiteError);
+}
+
 TEST(GetSubgraphContext, NonConstGetSubgraphContext) {
   Interpreter interpreter;
   auto& subgraph = interpreter.primary_subgraph();
