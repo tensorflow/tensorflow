@@ -1275,29 +1275,36 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
         self.evaluate(v)
 
-  @test_util.disable_xla("XLA may handle zero fft_length differently")
-  def test_zero_fft_length_raises(self):
-    # fft_length=[0] must raise InvalidArgumentError instead of crashing the
-    # process with a fatal assertion in the DUCC FFT library (GitHub #123399).
-    x = array_ops.fill([3, 3, 31], -1.0)
-    fft_length = [0]
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
-      with self.session():
-        v = gen_spectral_ops.rfft(input=x, fft_length=fft_length)
-        self.evaluate(v)
+  def test_raw_ops_zero_fft_length(self):
+    # Regression test for tf.raw_ops.RFFT in GitHub issue 123399.
+    x = np.ones([3, 3, 31], dtype=np.float32)
+    y = gen_spectral_ops.rfft(input=x, fft_length=[0])
+    self.assertEqual(self.evaluate(y).shape, (3, 3, 0))
 
-  @test_util.disable_xla("XLA may handle zero fft_length differently")
-  def test_zero_fft_length_raises_multidim_and_inverse(self):
-    # The zero fft_length guard also applies to multi-dimensional and
-    # inverse transforms, not just the 1-D forward case above.
-    x = array_ops.fill([3, 3, 31], -1.0)
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
-      self.evaluate(gen_spectral_ops.rfft2d(input=x, fft_length=[0, 31]))
-    y = math_ops.complex(
-        array_ops.ones([3, 3, 16]), array_ops.zeros([3, 3, 16])
+  def test_zero_fft_length_multidimensional(self):
+    x = np.ones([2, 16, 32], dtype=np.float32)
+    self.assertEqual(
+        self.evaluate(fft_ops.rfft2d(x, fft_length=[0, 16])).shape,
+        (2, 0, 9),
     )
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
-      self.evaluate(gen_spectral_ops.irfft(input=y, fft_length=[0]))
+    self.assertEqual(
+        self.evaluate(fft_ops.rfft2d(x, fft_length=[16, 0])).shape,
+        (2, 16, 0),
+    )
+
+    x = np.ones([8, 16, 32], dtype=np.float32)
+    self.assertEqual(
+        self.evaluate(fft_ops.rfft3d(x, fft_length=[0, 16, 32])).shape,
+        (0, 16, 17),
+    )
+    self.assertEqual(
+        self.evaluate(fft_ops.rfft3d(x, fft_length=[8, 0, 32])).shape,
+        (8, 0, 17),
+    )
+    self.assertEqual(
+        self.evaluate(fft_ops.rfft3d(x, fft_length=[8, 16, 0])).shape,
+        (8, 16, 0),
+    )
 
   def test_zero_fft_length_empty_input_passthrough(self):
     # Empty inputs keep the existing passthrough behavior for fft_length=[0].
