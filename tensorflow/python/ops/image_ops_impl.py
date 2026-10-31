@@ -1856,39 +1856,41 @@ def _resize_image_with_pad_common(image, target_height, target_width,
 
     image = control_flow_ops.with_dependencies(assert_ops, image)
 
-    def max_(x, y):
-      if _is_tensor(x) or _is_tensor(y):
-        return math_ops.maximum(x, y)
-      else:
-        return max(x, y)
-
     _, height, width, _ = _ImageDimensions(image, rank=4)
 
-    # convert values to float, to ease divisions
-    f_height = math_ops.cast(height, dtype=dtypes.float32)
-    f_width = math_ops.cast(width, dtype=dtypes.float32)
-    f_target_height = math_ops.cast(target_height, dtype=dtypes.float32)
-    f_target_width = math_ops.cast(target_width, dtype=dtypes.float32)
+    # The image is scaled by min(target_width / width, target_height / height)
+    # so that it fits within the target. Compute the resized size and the
+    # padding in exact integer arithmetic: in float32 the scaled size can land
+    # just below a whole number, and the floor below would then drop a row or
+    # column of the image and pad it with zeros instead.
+    i_height = math_ops.cast(height, dtype=dtypes.int64)
+    i_width = math_ops.cast(width, dtype=dtypes.int64)
+    i_target_height = math_ops.cast(target_height, dtype=dtypes.int64)
+    i_target_width = math_ops.cast(target_width, dtype=dtypes.int64)
 
-    # Find the ratio by which the image must be adjusted
-    # to fit within the target
-    ratio = max_(f_width / f_target_width, f_height / f_target_height)
-    resized_height_float = f_height / ratio
-    resized_width_float = f_width / ratio
-    resized_height = math_ops.cast(
-        math_ops.floor(resized_height_float), dtype=dtypes.int32)
-    resized_width = math_ops.cast(
-        math_ops.floor(resized_width_float), dtype=dtypes.int32)
+    resized_height = math_ops.minimum(
+        i_target_height, i_height * i_target_width // i_width)
+    resized_width = math_ops.minimum(
+        i_target_width, i_width * i_target_height // i_height)
 
-    padding_height = (f_target_height - resized_height_float) / 2
-    padding_width = (f_target_width - resized_width_float) / 2
-    f_padding_height = math_ops.floor(padding_height)
-    f_padding_width = math_ops.floor(padding_width)
-    p_height = max_(0, math_ops.cast(f_padding_height, dtype=dtypes.int32))
-    p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
+    # floor((target - scaled size) / 2), where the scaled size need not be a
+    # whole number.
+    p_height = math_ops.maximum(
+        math_ops.cast(0, dtypes.int64),
+        (i_target_height * i_width - i_height * i_target_width) //
+        (2 * i_width))
+    p_width = math_ops.maximum(
+        math_ops.cast(0, dtypes.int64),
+        (i_target_width * i_height - i_width * i_target_height) //
+        (2 * i_height))
+    p_height = math_ops.cast(p_height, dtype=dtypes.int32)
+    p_width = math_ops.cast(p_width, dtype=dtypes.int32)
 
     # Resize first, then pad to meet requested dimensions
-    resized = resize_fn(image, [resized_height, resized_width])
+    resized = resize_fn(
+        image,
+        [math_ops.cast(resized_height, dtype=dtypes.int32),
+         math_ops.cast(resized_width, dtype=dtypes.int32)])
 
     padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
                                  target_width)

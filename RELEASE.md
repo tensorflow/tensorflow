@@ -27,6 +27,10 @@
     dimensions instead of raising an `InvalidArgumentError`. This matches the
     documented definition of the op and the behavior of the XLA lowering used by
     `tf.function(jit_compile=True)`.
+*   `tf.image.resize_with_pad`: the resized size and padding are now computed
+    exactly instead of in float32. For some sizes the image used to be scaled
+    one pixel short of the target and padded with a row or column of zeros
+    (e.g. 512x512 to 224x224), or placed one pixel off center.
 
 ## Thanks to our Contributors
 
