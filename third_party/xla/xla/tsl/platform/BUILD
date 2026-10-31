@@ -620,6 +620,25 @@ cc_library(
     deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
+tsl_cc_test(
+    name = "numa_hwloc_test",
+    size = "small",
+    srcs = select({
+        "//xla/tsl:with_numa_support": ["numa_hwloc_test.cc"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test",
+        "@com_google_googletest//:gtest_main",
+    ] + select({
+        "//xla/tsl:with_numa_support": [
+            "@hwloc",
+            "@tsl//tsl/platform:platform_port",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
 cc_library(
     name = "status",
     srcs = ["status.cc"],
