@@ -1703,7 +1703,9 @@ def resize_images_v2(images,
     pixels—the more you shrink the image, the wider the area it blends.
   * For `bilinear`, it uses a smooth triangular blending filter. For `bicubic`,
     it uses a Keys cubic filter.
-  * For `nearest` and `area`, `antialias` has no effect.
+  * For `nearest` and `area`, `antialias` has no effect (they never anti-alias).
+  * For `lanczos3` and `gaussian`, anti-aliasing is always enabled, so the
+    `antialias` parameter has no effect.
   * When enlarging an image (upsampling), `antialias` has no effect because no
     pixels are skipped:
 
@@ -1793,9 +1795,11 @@ def resize_images_v2(images,
       `size` is bigger than the current size of the `image`. Defaults to False.
     antialias: bool. Whether to use an anti-aliasing filter when shrinking an
       image. When True, neighboring pixels are blended together before
-      downsampling to prevent jagged patterns. Supported for `bilinear` and
-      `bicubic`; ignored for `nearest` and `area`. Results differ slightly from
-      OpenCV and Pillow because TensorFlow blends neighboring pixels.
+      downsampling to prevent jagged patterns. Supported as a toggleable option
+      for bilinear and bicubic; ignored for nearest and area (which never
+      anti-alias), and ignored for lanczos3 and gaussian (which always
+      anti-alias). Results differ slightly from OpenCV and Pillow because
+      TensorFlow blends neighboring pixels.
       Defaults to False.
     name: A name for this operation (optional).
 
