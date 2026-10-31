@@ -358,8 +358,35 @@ class EuclideanNormGradientTest(test.TestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class LinalgNormGradientTest(test.TestCase):
 
+  def testInfiniteComplexNorm(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      for value in [complex(np.inf, 0), complex(0, np.inf),
+                    complex(np.inf, np.inf)]:
+        x = constant_op.constant([value, 0.0], dtype=dtype)
+        self.assertAllEqual(linalg_ops.norm_v2(x), complex(np.inf, 0))
+
+  def testSmallFloat16NormAndGrad(self):
+    # The nonzero row has an exactly representable subnormal sum of squares.
+    # Clamping it to float16's smallest normal value changes the norm and
+    # incorrectly makes its gradient zero.
+    for keepdims in [False, True]:
+      x = constant_op.constant(
+          [[0.0, 0.0], [3.0 / 1024, 4.0 / 1024]], dtype=dtypes.float16
+      )
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_ops.norm_v2(x, axis=-1, keepdims=keepdims)
+
+      dx = tape.gradient(y, x)
+      expected_norm = [[0.0], [5.0 / 1024]] if keepdims else [0.0, 5.0 / 1024]
+      self.assertAllEqual(y, expected_norm)
+      self.assertAllClose(dx, [[0.0, 0.0], [0.6, 0.8]], rtol=1e-3)
+
   def testZeroGrad(self):
     for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
         dtypes.float32,
         dtypes.float64,
         dtypes.complex64,
@@ -376,20 +403,24 @@ class LinalgNormGradientTest(test.TestCase):
 
   def testNonZeroGrad(self):
     for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
         dtypes.float32,
         dtypes.float64,
         dtypes.complex64,
         dtypes.complex128,
     ]:
-      x = constant_op.constant([3.0, 4.0], dtype=dtype)
+      values = [3.0j, 4.0] if dtype.is_complex else [3.0, 4.0]
+      x = constant_op.constant(values, dtype=dtype)
 
       with backprop.GradientTape() as tape:
         tape.watch(x)
         y = linalg_ops.norm_v2(x)
 
       dx = tape.gradient(y, x)
-      # Expected: x / norm(x) = [3/5, 4/5]
-      self.assertAllClose(dx, [0.6, 0.8])
+      # The gradient preserves the phase of complex inputs.
+      expected = [0.6j, 0.8] if dtype.is_complex else [0.6, 0.8]
+      self.assertAllCloseAccordingToType(dx, expected)
 
 
 class SegmentMinOrMaxGradientTest(test.TestCase):
