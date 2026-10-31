@@ -53,11 +53,6 @@ struct Prod {
 
 // Note that we don't use gpuprim::Min/Max because they use operator<, which is
 // not implemented for AlignedVector types.
-// Note: While functor::Min and functor::Max check for NaNs to support NaN
-// propagation, GPU segment reductions using atomic operations (GpuAtomicMin/
-// GpuAtomicMax) or standard CUDA min/max functions do not propagate NaNs
-// in the same way. This leads to a CPU-GPU discrepancy where CPU propagates
-// NaNs but GPU prefers numeric values (ignores NaNs).
 struct Min {
   template <typename T>
   __host__ __device__ T operator()(const T& a, const T& b) const {
