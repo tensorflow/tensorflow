@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrappers for reader Datasets."""
+import codecs
 import collections
 import csv
 import functools
@@ -464,7 +465,9 @@ def make_csv_dataset_v2(
       such as malformed data or empty lines, and moves on to the next valid
       CSV record. Otherwise, the dataset raises an error and stops processing
       when encountering any invalid records. Defaults to `False`.
-    encoding: Encoding to use when reading. Defaults to `UTF-8`.
+    encoding: Encoding to use when reading. Defaults to `UTF-8`. A byte order
+      mark at the start of a UTF-8 file is skipped when the column names and
+      types are inferred.
 
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
@@ -490,6 +493,9 @@ def make_csv_dataset_v2(
 
   # Clean arguments; figure out column names and defaults
   if column_names is None or column_defaults is None:
+    # A UTF-8 byte order mark is not part of the first column name.
+    if encoding and codecs.lookup(encoding).name == "utf-8":
+      encoding = "utf-8-sig"
     # Find out which io function to open the file
     file_io_fn = lambda filename: file_io.FileIO(  # pylint: disable=g-long-lambda
         filename, "r", encoding=encoding)
