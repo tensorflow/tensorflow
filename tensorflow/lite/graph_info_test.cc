@@ -768,5 +768,217 @@ TEST(PartitionTest, ComplexNonGreedily) {
                                 })));
 }
 
+class ExplicitBoundsTestGraph : public GraphInfo {
+ public:
+  ExplicitBoundsTestGraph(size_t num_tensors, size_t num_total_nodes,
+                          const std::vector<int>& inputs,
+                          const std::vector<int>& outputs,
+                          const std::vector<int>& node_inputs,
+                          const std::vector<int>& node_outputs,
+                          size_t mapped_node_index = 0)
+      : tensors_(num_tensors),
+        num_total_nodes_(num_total_nodes),
+        inputs_(inputs),
+        outputs_(outputs),
+        mapped_node_index_(mapped_node_index),
+        registrations_(1) {
+    TfLiteNode n{};
+    n.inputs = ConvertVector(node_inputs);
+    n.outputs = ConvertVector(node_outputs);
+    n.might_have_side_effect = false;
+    nodes_.push_back(n);
+  }
+
+  ~ExplicitBoundsTestGraph() override {
+    for (auto& n : nodes_) {
+      TfLiteIntArrayFree(n.inputs);
+      TfLiteIntArrayFree(n.outputs);
+    }
+  }
+
+  void SetNullNodeInputs(size_t index) {
+    TfLiteIntArrayFree(nodes_[index].inputs);
+    nodes_[index].inputs = nullptr;
+  }
+
+  void SetNullNodeOutputs(size_t index) {
+    TfLiteIntArrayFree(nodes_[index].outputs);
+    nodes_[index].outputs = nullptr;
+  }
+
+  TfLiteNode* MutableNode(size_t index) { return &nodes_[index]; }
+
+  size_t num_total_nodes() const override { return num_total_nodes_; }
+  size_t num_execution_nodes() const override { return nodes_.size(); }
+  const TfLiteNode& node(size_t index) const override { return nodes_[index]; }
+  size_t node_index(size_t index) const override {
+    return mapped_node_index_ + index;
+  }
+  size_t num_tensors() const override { return tensors_.size(); }
+  const TfLiteRegistration& registration(size_t index) const override {
+    return registrations_[index];
+  }
+  TfLiteTensor* tensor(size_t index) override { return &tensors_[index]; }
+  TfLiteTensor* tensors() override { return tensors_.data(); }
+  const std::vector<int>& inputs() const override { return inputs_; }
+  const std::vector<int>& outputs() const override { return outputs_; }
+  const std::vector<int>& variables() const override { return variables_; }
+
+ private:
+  std::vector<TfLiteTensor> tensors_;
+  size_t num_total_nodes_;
+  std::vector<int> inputs_;
+  std::vector<int> outputs_;
+  size_t mapped_node_index_;
+  std::vector<int> variables_;
+  std::vector<TfLiteNode> nodes_;
+  std::vector<TfLiteRegistration> registrations_;
+};
+
+TfLiteStatus RunExplicitBoundsPartition(const ExplicitBoundsTestGraph& graph,
+                                        const std::vector<int>& to_partition) {
+  NodeSubsets subsets;
+  TfLiteIntArray* arr = ConvertVector(to_partition);
+  const TfLiteStatus status = PartitionGraphIntoIndependentNodeSubsets(
+      &graph, arr, &subsets, /*greedily=*/true);
+  TfLiteIntArrayFree(arr);
+  return status;
+}
+
+TEST(PartitionTest, SkipsOptionalSubgraphOutputs) {
+  EXPECT_THAT(
+      PartitionGraph({
+                         /*inputs=*/{0},
+                         /*outputs=*/{kTfLiteOptionalTensor, 2,
+                                      kTfLiteOptionalTensor},
+                         /*nodes=*/
+                         {
+                             {{0}, {1}, false},
+                             {{1}, {2}, false},
+                         },
+                     },
+                     /*nodes_to_partition=*/{0, 1}),
+      Pointwise(EqNodeSubset(), NodeSubsets({
+                                    {
+                                        /*type=*/NodeSubset::kTfPartition,
+                                        /*nodes=*/{0, 1},
+                                        /*inputs=*/{0},
+                                        /*outputs=*/{2},
+                                    },
+                                })));
+}
+
+TEST(PartitionTest, RejectsNullPartitionArgumentsAndNodeArrays) {
+  ExplicitBoundsTestGraph valid_graph(
+      /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+      /*outputs=*/{1}, /*node_inputs=*/{0}, /*node_outputs=*/{1});
+  NodeSubsets subsets;
+  TfLiteIntArray* arr = ConvertVector({0});
+
+  EXPECT_EQ(PartitionGraphIntoIndependentNodeSubsets(
+                /*info=*/nullptr, arr, &subsets, /*greedily=*/true),
+            kTfLiteError);
+  EXPECT_EQ(PartitionGraphIntoIndependentNodeSubsets(
+                &valid_graph, /*nodes_to_partition=*/nullptr, &subsets,
+                /*greedily=*/true),
+            kTfLiteError);
+  EXPECT_EQ(PartitionGraphIntoIndependentNodeSubsets(
+                &valid_graph, arr, /*node_subsets=*/nullptr,
+                /*greedily=*/true),
+            kTfLiteError);
+
+  const int saved_arr_size = arr->size;
+  arr->size = -1;
+  EXPECT_EQ(PartitionGraphIntoIndependentNodeSubsets(
+                &valid_graph, arr, &subsets, /*greedily=*/true),
+            kTfLiteError);
+  arr->size = saved_arr_size;
+  TfLiteIntArrayFree(arr);
+
+  {
+    ExplicitBoundsTestGraph null_inputs_graph(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{1}, /*node_inputs=*/{0}, /*node_outputs=*/{1});
+    null_inputs_graph.SetNullNodeInputs(0);
+    EXPECT_EQ(RunExplicitBoundsPartition(null_inputs_graph, {0}), kTfLiteError);
+  }
+  {
+    ExplicitBoundsTestGraph null_outputs_graph(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{1}, /*node_inputs=*/{0}, /*node_outputs=*/{1});
+    null_outputs_graph.SetNullNodeOutputs(0);
+    EXPECT_EQ(RunExplicitBoundsPartition(null_outputs_graph, {0}),
+              kTfLiteError);
+  }
+  {
+    ExplicitBoundsTestGraph neg_node_inputs_size(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{1}, /*node_inputs=*/{0}, /*node_outputs=*/{1});
+    const int orig = neg_node_inputs_size.MutableNode(0)->inputs->size;
+    neg_node_inputs_size.MutableNode(0)->inputs->size = -1;
+    EXPECT_EQ(RunExplicitBoundsPartition(neg_node_inputs_size, {0}),
+              kTfLiteError);
+    neg_node_inputs_size.MutableNode(0)->inputs->size = orig;
+  }
+}
+
+TEST(PartitionTest, RejectsOutOfBoundsSubgraphOutputIndex) {
+  {
+    ExplicitBoundsTestGraph bad_neg_subgraph_out(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{-2}, /*node_inputs=*/{0}, /*node_outputs=*/{1});
+    EXPECT_EQ(RunExplicitBoundsPartition(bad_neg_subgraph_out, {0}),
+              kTfLiteError);
+  }
+  {
+    ExplicitBoundsTestGraph bad_hi_subgraph_out(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{2}, /*node_inputs=*/{0}, /*node_outputs=*/{1});
+    EXPECT_EQ(RunExplicitBoundsPartition(bad_hi_subgraph_out, {0}),
+              kTfLiteError);
+  }
+}
+
+TEST(PartitionTest, RejectsOutOfBoundsNodeTensorAndExecutionIndices) {
+  {
+    ExplicitBoundsTestGraph valid_graph(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{kTfLiteOptionalTensor, 1},
+        /*node_inputs=*/{0, kTfLiteOptionalTensor},
+        /*node_outputs=*/{1, kTfLiteOptionalTensor});
+    EXPECT_EQ(RunExplicitBoundsPartition(valid_graph, {0}), kTfLiteOk);
+  }
+  {
+    ExplicitBoundsTestGraph bad_neg_node_in(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{1}, /*node_inputs=*/{-2}, /*node_outputs=*/{1});
+    EXPECT_EQ(RunExplicitBoundsPartition(bad_neg_node_in, {0}), kTfLiteError);
+
+    ExplicitBoundsTestGraph bad_hi_node_in(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{1}, /*node_inputs=*/{2}, /*node_outputs=*/{1});
+    EXPECT_EQ(RunExplicitBoundsPartition(bad_hi_node_in, {0}), kTfLiteError);
+  }
+  {
+    ExplicitBoundsTestGraph bad_neg_node_out(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{1}, /*node_inputs=*/{0}, /*node_outputs=*/{-2});
+    EXPECT_EQ(RunExplicitBoundsPartition(bad_neg_node_out, {0}), kTfLiteError);
+
+    ExplicitBoundsTestGraph bad_hi_node_out(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{1}, /*node_inputs=*/{0}, /*node_outputs=*/{2});
+    EXPECT_EQ(RunExplicitBoundsPartition(bad_hi_node_out, {0}), kTfLiteError);
+  }
+  {
+    ExplicitBoundsTestGraph bad_mapped_node_idx(
+        /*num_tensors=*/2, /*num_total_nodes=*/1, /*inputs=*/{0},
+        /*outputs=*/{1}, /*node_inputs=*/{0}, /*node_outputs=*/{1},
+        /*mapped_node_index=*/1);
+    EXPECT_EQ(RunExplicitBoundsPartition(bad_mapped_node_idx, {0}),
+              kTfLiteError);
+  }
+}
+
 }  // namespace
 }  // namespace tflite
