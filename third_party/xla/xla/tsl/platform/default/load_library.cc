@@ -16,22 +16,43 @@ limitations under the License.
 #include "tsl/platform/load_library.h"
 
 #include <dlfcn.h>
+#include <stdlib.h>
 
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "tsl/platform/path.h"
 
 namespace tsl {
 
 namespace internal {
 
-absl::Status LoadDynamicLibrary(const char* library_filename, void** handle) {
+namespace {
+absl::Status LoadDynamicLibraryImpl(const char* library_filename,
+                                    void** handle) {
   *handle = dlopen(library_filename, RTLD_NOW | RTLD_LOCAL);
   if (!*handle) {
     const char* const error_msg = dlerror();
     return absl::NotFoundError(error_msg ? error_msg : "(null error message)");
   }
   return absl::OkStatus();
+}
+}  // namespace
+
+absl::Status LoadDynamicLibrary(const char* library_filename, void** handle) {
+  if (const char* env_path = getenv("XLA_GPU_LIBRARY_PATH")) {
+    std::vector<absl::string_view> paths = absl::StrSplit(env_path, ':');
+    for (const auto& root : paths) {
+      std::string full_path = tsl::io::JoinPath(root, library_filename);
+      if (LoadDynamicLibraryImpl(full_path.c_str(), handle).ok()) {
+        return absl::OkStatus();
+      }
+    }
+  }
+  return LoadDynamicLibraryImpl(library_filename, handle);
 }
 
 absl::Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
