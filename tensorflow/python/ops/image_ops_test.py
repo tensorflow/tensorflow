@@ -4109,6 +4109,39 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
             antialias=True)
         self.evaluate(op)
 
+  def testImageResizeAntialiasUpsample(self):
+    img = np.array([[[1.0], [2.0]], [[3.0], [4.0]]], dtype=np.float32)
+    img = img[np.newaxis, ...]
+    with self.session():
+      up_no_anti = self.evaluate(
+          image_ops.resize_images_v2(
+              img, [10, 10], method=image_ops.ResizeMethod.BILINEAR,
+              antialias=False))
+      up_anti = self.evaluate(
+          image_ops.resize_images_v2(
+              img, [10, 10], method=image_ops.ResizeMethod.BILINEAR,
+              antialias=True))
+      self.assertAllClose(up_no_anti, up_anti, atol=1e-05)
+
+  def testImageResizeAntialiasDownsample(self):
+    checkerboard = (np.indices((8, 8)).sum(axis=0) % 2).astype(np.float32)
+    checkerboard = checkerboard[np.newaxis, ..., np.newaxis]
+    with self.session():
+      # Downsample to 3x3: without antialias, aliasing creates uneven values.
+      down_no_anti = self.evaluate(
+          image_ops.resize_images_v2(
+              checkerboard, [3, 3], method=image_ops.ResizeMethod.BILINEAR,
+              antialias=False))
+      # With antialias, neighboring pixels are smoothly blended to ~0.5.
+      down_anti = self.evaluate(
+          image_ops.resize_images_v2(
+              checkerboard, [3, 3], method=image_ops.ResizeMethod.BILINEAR,
+              antialias=True))
+      self.assertAllClose(down_anti, np.full((1, 3, 3, 1), 0.5), atol=0.05)
+      # Assert that down_no_anti suffered from aliasing and is NOT uniform 0.5.
+      with self.assertRaises(AssertionError):
+        self.assertAllClose(down_no_anti, np.full((1, 3, 3, 1), 0.5), atol=0.05)
+
 
 # half_pixel_centers not supported by XLA
 @test_util.for_all_test_methods(test_util.disable_xla, "b/127616992")
