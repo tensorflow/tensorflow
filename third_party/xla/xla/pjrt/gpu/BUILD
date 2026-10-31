@@ -1137,7 +1137,7 @@ xla_test(
         "v100",
     ],
     # Each test case is a separate process since cuda stream errors are sticky.
-    shard_count = 4,
+    shard_count = 6,
     tags = [
         "gpu",
     ],
