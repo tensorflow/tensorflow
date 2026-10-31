@@ -2783,6 +2783,10 @@ def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis, keepdims):
         f"Received integer type {means.dtype}."
     )
   diff = input_tensor - means
+  # Rounding error in `means` shifts every element of `diff` by the same
+  # amount. Subtracting the squared mean of `diff` removes that shift from the
+  # result instead of counting it as variance.
+  mean_diff = reduce_mean(diff, axis=axis, keepdims=keepdims)
   if diff.dtype.is_complex:
     # For complex values we need to take the absolute value before squaring.
     # This is achieved by multiplying with the conjugate.
@@ -2790,9 +2794,18 @@ def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis, keepdims):
     squared_deviations = gen_math_ops.real(
         gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype
     )
+    squared_mean_diff = gen_math_ops.real(
+        gen_math_ops.mul(gen_math_ops.conj(mean_diff), mean_diff),
+        Tout=real_dtype,
+    )
   else:
     squared_deviations = gen_math_ops.square(diff)
-  return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+    squared_mean_diff = gen_math_ops.square(mean_diff)
+  return gen_math_ops.maximum(
+      reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+      - squared_mean_diff,
+      0,
+  )
 
 
 @tf_export("math.reduce_std")
