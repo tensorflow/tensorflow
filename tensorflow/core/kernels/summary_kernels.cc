@@ -331,9 +331,10 @@ class WriteAudioSummaryOp : public OpKernel {
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &s));
     const Tensor* tmp;
     OP_REQUIRES_OK(ctx, ctx->input("step", &tmp));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
-                errors::InvalidArgument("step must be a scalar, got shape ",
-                                        tmp->shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(tmp->shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "step must be a scalar, got shape ", tmp->shape().DebugString())));
     const int64_t step = tmp->scalar<int64_t>()();
     OP_REQUIRES_OK(ctx, ctx->input("tag", &tmp));
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tmp->shape()),
