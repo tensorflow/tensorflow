@@ -66,7 +66,7 @@ void TestOneResizeBilinear(const tflite::ResizeBilinearParams& op_params,
       output_size_data.data(), output_dims_inference, output_data.data());
 
   bool strict_match = false;
-  if (std::is_same<T, uint8_t>::value && ((depth % 8) == 0) &&
+  if (std::is_same_v<T, uint8_t> && ((depth % 8) == 0) &&
       ((input_width * 8) == output_width) &&
       ((input_height * 8) == output_height)) {
     strict_match = true;
