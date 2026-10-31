@@ -96,8 +96,9 @@ TfLiteStatus ArenaPlanner::ResetAllocationsAfter(int node) {
 
 int ArenaPlanner::FindSharedTensor(int tensor_index) {
   auto actual_tensor_it = actual_tensor_id_.find(tensor_index);
-  if (actual_tensor_it != actual_tensor_id_.end()) {
+  while (actual_tensor_it != actual_tensor_id_.end()) {
     tensor_index = actual_tensor_it->second;
+    actual_tensor_it = actual_tensor_id_.find(tensor_index);
   }
   return tensor_index;
 }
@@ -194,6 +195,17 @@ void ArenaPlanner::IdentifyInPlaceTensors() {
     int32_t actual_output_tensor_id = FindSharedTensor(input_id);
     if (tensor_changed) {
       if (refcounts_[actual_output_tensor_id] > 1) {
+        continue;
+      }
+      bool has_other_active_consumers = false;
+      for (const auto& pair : actual_tensor_id_) {
+        if (FindSharedTensor(pair.first) == actual_output_tensor_id &&
+            refcounts_[pair.first] > 1) {
+          has_other_active_consumers = true;
+          break;
+        }
+      }
+      if (has_other_active_consumers) {
         continue;
       }
     }
