@@ -624,6 +624,33 @@ class ResizeBicubicOpTestBase(test.TestCase, parameterized.TestCase):
         grad = tape.gradient(resize_out, [input_tensor])
     self.assertEqual([None], grad)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGradForHalfAndBfloat16(self):
+    # ResizeBicubicGrad has no half or bfloat16 kernel, so these images used to
+    # get a None gradient.
+    in_shape = [1, 4, 6, 1]
+    out_shape = [1, 2, 3, 1]
+    x = np.arange(0, 24).reshape(in_shape)
+    weights = np.arange(0, 6).reshape(out_shape).astype(np.float32)
+
+    def grad_for(dtype):
+      input_tensor = constant_op.constant(x, dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(input_tensor)
+        resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3])
+        loss = math_ops.reduce_sum(resize_out * weights)
+      return tape.gradient(loss, input_tensor)
+
+    expected = self.evaluate(grad_for(dtypes.float32))
+    for dtype in [dtypes.float16, dtypes.bfloat16]:
+      grad = grad_for(dtype)
+      self.assertEqual(grad.dtype, dtype)
+      self.assertAllClose(
+          self.evaluate(math_ops.cast(grad, dtypes.float32)),
+          expected,
+          rtol=1e-2,
+          atol=1e-2)
+
 
 class ScaleAndTranslateOpTestBase(test.TestCase):
   """Tests scale and translate op."""
@@ -666,6 +693,59 @@ class ScaleAndTranslateOpTestBase(test.TestCase):
                                                         [input_tensor]))
 
             self.assertLess(err, 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradsForNonFloat32Images(self):
+    # ScaleAndTranslateGrad only has a float32 kernel, so the gradient used to
+    # fail for half, bfloat16 and double images.
+    in_shape = [1, 2, 3, 1]
+    out_shape = [1, 4, 6, 1]
+    x = np.arange(0, 6).reshape(in_shape)
+    weights = np.arange(0, 24).reshape(out_shape).astype(np.float32)
+
+    def grad_for(dtype, kernel_type, antialias):
+      input_tensor = constant_op.constant(x, dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(input_tensor)
+        out = image_ops.scale_and_translate(
+            input_tensor,
+            out_shape[1:3],
+            scale=constant_op.constant((0.37, 2.1)),
+            translation=constant_op.constant((1.19, 0.0)),
+            kernel_type=kernel_type,
+            antialias=antialias)
+        loss = math_ops.reduce_sum(out * weights)
+      return tape.gradient(loss, input_tensor)
+
+    for kernel_type in ['lanczos3', 'gaussian', 'mitchellcubic']:
+      for antialias in [True, False]:
+        expected = self.evaluate(
+            grad_for(dtypes.float32, kernel_type, antialias))
+        for dtype in [dtypes.float16, dtypes.bfloat16, dtypes.float64]:
+          grad = grad_for(dtype, kernel_type, antialias)
+          self.assertEqual(grad.dtype, dtype)
+          self.assertAllClose(
+              self.evaluate(math_ops.cast(grad, dtypes.float32)),
+              expected,
+              rtol=1e-2,
+              atol=1e-2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradOnUnsupportedType(self):
+    in_shape = [1, 2, 3, 1]
+    out_shape = [1, 4, 6, 1]
+    x = np.arange(0, 6).reshape(in_shape).astype(np.uint8)
+    input_tensor = constant_op.constant(x, shape=in_shape)
+    scale = constant_op.constant((0.37, 2.1))
+    translation = constant_op.constant((1.19, 0.0))
+    with backprop.GradientTape() as tape:
+      tape.watch(input_tensor)
+      tape.watch(scale)
+      out = image_ops.scale_and_translate(
+          input_tensor, out_shape[1:3], scale=scale, translation=translation)
+    grad_image, grad_scale = tape.gradient(out, [input_tensor, scale])
+    self.assertIsNone(grad_image)
+    self.assertIsNone(grad_scale)
 
   def testIdentityGrads(self):
     """Tests that Gradients for 1.0 scale should be ones for some kernels."""
