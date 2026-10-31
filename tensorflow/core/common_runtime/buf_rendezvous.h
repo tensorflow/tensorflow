@@ -104,8 +104,7 @@ class BufRendezvous {
   // callback to delete the hook and invoke provider/consumer callbacks with
   // cancelled error.
   virtual void ConsumeBuf(const std::string& key, const std::string& device,
-                          const uint64_t incarnation,
-                          const ConsumerCallback& done,
+                          uint64_t incarnation, const ConsumerCallback& done,
                           CancellationManager* cancellation_manager);
 
   // Cancel the rendezvous entry corresponding to `key`.  Triggered by the
