@@ -14,33 +14,43 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
-#include <string>
+#include <memory>
+#include <random>
 #include <utility>
+#include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
-#include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -168,17 +178,6 @@ float V(const Tensor& tensor) {
   CHECK_EQ(tensor.dtype(), DT_FLOAT);
   CHECK(TensorShapeUtils::IsScalar(tensor.shape()));
   return tensor.scalar<float>()();
-}
-
-Rendezvous::ParsedKey Key(const std::string& sender, const uint64_t incarnation,
-                          const std::string& receiver,
-                          const std::string& name) {
-  Rendezvous::ParsedKey result;
-  TF_CHECK_OK(
-      Rendezvous::ParseKey(Rendezvous::CreateKey(sender, incarnation, receiver,
-                                                 name, FrameAndIter(0, 0)),
-                           &result));
-  return result;
 }
 
 TEST_F(ExecutorTest, UserIntraOpThreadPool) {
@@ -357,6 +356,45 @@ TEST_F(ExecutorTest, ControlDependenciesFromSpecialNodes) {
   EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
 }
 
+TEST_F(ExecutorTest, HostMemoryInputAllocAttrs) {
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
+  Node* in = test::graph::Arg(g.get(), 0, DT_FLOAT);
+  Node* c = test::graph::Constant(g.get(), V(2.0));
+  c->AddAttr("_output_hostmem", std::vector<int32_t>{0});
+  Node* mock_arg;
+  TF_ASSERT_OK(NodeBuilder(g->NewName("mock_arg"), "Mock")
+                   .Input(in)
+                   .Attr("_input_hostmem", std::vector<int32_t>{0})
+                   .Finalize(g.get(), &mock_arg));
+  Node* mock_const;
+  TF_ASSERT_OK(NodeBuilder(g->NewName("mock_const"), "Mock")
+                   .Input(c)
+                   .Finalize(g.get(), &mock_const));
+  Node* mock_dev;
+  TF_ASSERT_OK(
+      NodeBuilder("mock_dev", "Mock").Input(in).Finalize(g.get(), &mock_dev));
+  auto add = test::graph::Add(g.get(), mock_arg, mock_const);
+  auto sum = test::graph::Add(g.get(), add, mock_dev);
+  test::graph::Retval(g.get(), 0, sum);
+  FixupSourceAndSinkEdges(g.get());
+
+  int mock_calls = 0;
+  Create(std::move(g), [&](OpKernelContext* ctx) {
+    ++mock_calls;
+    const bool want_host = ctx->op_kernel().name() != "mock_dev";
+    EXPECT_EQ(want_host, ctx->input_alloc_attr(0).on_host())
+        << ctx->op_kernel().name();
+    ctx->set_output(0, ctx->input(0));
+  });
+  FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT});
+  TF_ASSERT_OK(call_frame.SetArgs({V(1.0)}));
+  TF_ASSERT_OK(Run(&call_frame));
+  EXPECT_EQ(3, mock_calls);
+  std::vector<Tensor> retvals;
+  TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
+  EXPECT_EQ(4.0, V(retvals[0]));
+}
+
 void BM_executor(::testing::benchmark::State& state) {
   const int width = state.range(0);
   const int depth = state.range(1);
@@ -397,6 +435,7 @@ void BM_executor(::testing::benchmark::State& state) {
   state.SetItemsProcessed(cur * static_cast<int64_t>(state.iterations()));
 }
 
+// NOLINTBEGIN(misc-include-cleaner)
 // Tall skinny graphs
 BENCHMARK(BM_executor)->UseRealTime()->ArgPair(16, 1024);
 BENCHMARK(BM_executor)->UseRealTime()->ArgPair(32, 8192);
@@ -407,6 +446,7 @@ BENCHMARK(BM_executor)->UseRealTime()->ArgPair(8192, 32);
 
 // Tall fat graph
 BENCHMARK(BM_executor)->UseRealTime()->ArgPair(1024, 1024);
+// NOLINTEND(misc-include-cleaner)
 
 void BM_const_identity(::testing::benchmark::State& state) {
   const int width = state.range(0);
@@ -430,11 +470,13 @@ void BM_const_identity(::testing::benchmark::State& state) {
                           static_cast<int64_t>(state.iterations()));
 }
 
+// NOLINTBEGIN(misc-include-cleaner)
 // Graph with actual op execution.
 BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(1, 1);
 BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(1, 100);
 BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(100, 1);
 BENCHMARK(BM_const_identity)->UseRealTime()->ArgPair(100, 100);
+// NOLINTEND(misc-include-cleaner)
 
 // TODO(mrry): This benchmark currently crashes with a use-after free, because
 // test::Benchmark::RunWithArgs() assumes that the executor will take ownership
