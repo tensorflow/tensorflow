@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include <cstdint>
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
@@ -55,15 +56,34 @@ class ArgOp : public OpKernel {
                     "dim must be a scalar, but received tensor of shape: ",
                     dimension.shape().DebugString())));
 
-    const int32_t dim = internal::SubtleMustCopy(dimension.scalar<int32_t>()());
+    int64_t dim = 0;
+    switch (dimension.dtype()) {
+      case DT_INT16:
+        dim = internal::SubtleMustCopy(dimension.scalar<int16_t>()());
+        break;
+      case DT_INT32:
+        dim = internal::SubtleMustCopy(dimension.scalar<int32_t>()());
+        break;
+      case DT_INT64:
+        dim = internal::SubtleMustCopy(dimension.scalar<int64_t>()());
+        break;
+      default:
+        OP_REQUIRES(
+            context, false,
+            absl::InvalidArgumentError(absl::StrCat(
+                "Invalid dimension type ", DataTypeString(dimension.dtype()))));
+    }
     const int input_dims = input.dims();
 
-    int axis = dim < 0 ? dim + input_dims : dim;
+    const int64_t raw_axis = dim < 0 ? dim + input_dims : dim;
 
-    OP_REQUIRES(context, FastBoundsCheck(axis, input_dims),
+    OP_REQUIRES(context, FastBoundsCheck(raw_axis, input_dims),
                 absl::InvalidArgumentError(absl::StrCat(
                     "Expected dimension in the range [", -input_dims, ", ",
                     input_dims, "), but got ", dim)));
+
+    const int axis = static_cast<int>(raw_axis);
+
     OP_REQUIRES(context, input.dim_size(axis) > 0,
                 absl::InvalidArgumentError(
                     absl::StrCat("Reduction axis ", dim, " is empty in shape ",

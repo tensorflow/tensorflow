@@ -124,6 +124,28 @@ class ArgMaxTest(test.TestCase, parameterized.TestCase):
             r"Reduction axis 0 is empty in shape \[0\]"):
           op([], 0).eval()
 
+  def testInt64AndInt16Dimension(self):
+    x = np.asarray([[1, 5, 3], [4, 2, 6]], dtype=np.float32)
+    with self.session(use_gpu=False):
+      for axis in (0, 1, -1, -2):
+        dim_i64 = array_ops.placeholder_with_default(np.int64(axis), shape=())
+        self.assertAllEqual(
+            self.evaluate(math_ops.argmax(x, axis=dim_i64)),
+            x.argmax(axis=axis),
+        )
+        self.assertAllEqual(
+            self.evaluate(math_ops.argmin(x, axis=dim_i64)),
+            x.argmin(axis=axis),
+        )
+        dim_i16 = array_ops.placeholder_with_default(np.int16(axis), shape=())
+        self.assertAllEqual(
+            self.evaluate(math_ops.gen_math_ops.arg_max(x, dimension=dim_i16)),
+            x.argmax(axis=axis),
+        )
+      bad_dim = array_ops.placeholder_with_default(np.int64(1 << 32), shape=())
+      with self.assertRaisesOpError(r"Expected dimension in the range"):
+        self.evaluate(math_ops.argmax(x, axis=bad_dim))
+
   @test_util.run_deprecated_v1
   def testDefaultAxis(self):
     with self.cached_session():
