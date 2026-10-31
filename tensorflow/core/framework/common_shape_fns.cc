@@ -1345,6 +1345,33 @@ absl::Status DepthwiseConv2DNativeShapeWithExplicitPadding(
   return DepthwiseConv2DNativeShapeImpl(c, true);
 }
 
+namespace {
+
+// Computes the output size of a pooling window along one dimension. If
+// `allow_empty_valid_output` is true and the padding is VALID, a known input
+// dimension smaller than `window` by less than 2 * `stride` (window - input <
+// 2 * stride) infers an output size of 0 instead of a negative dimension
+// error, matching the runtime kernel.
+absl::Status GetPoolingOutputSizeFromDims(
+    shape_inference::InferenceContext* c, DimensionHandle input_size,
+    int32_t window, int32_t stride, Padding padding,
+    bool allow_empty_valid_output, DimensionHandle* output_size) {
+  if (allow_empty_valid_output && padding == Padding::VALID && stride > 0 &&
+      c->ValueKnown(input_size) && c->Value(input_size) < window) {
+    // Runtime pooling uses signed division, which truncates toward zero.
+    // Compare the gap with twice the stride without overflowing.
+    const int64_t gap = static_cast<int64_t>(window) - c->Value(input_size);
+    if (gap - stride < stride) {
+      *output_size = c->MakeDim(0);
+      return absl::OkStatus();
+    }
+  }
+  return GetWindowedOutputSizeFromDims(c, input_size, window, stride, padding,
+                                       output_size);
+}
+
+}  // namespace
+
 absl::Status AvgPoolShape(shape_inference::InferenceContext* c) {
   std::string data_format_str;
   TensorFormat data_format;
@@ -1401,25 +1428,12 @@ absl::Status AvgPoolShape(shape_inference::InferenceContext* c) {
   // in the kernel implementation.
 
   DimensionHandle output_rows, output_cols;
-  auto pooling_output_size = [&](DimensionHandle input_size, int32_t window,
-                                 int32_t stride, DimensionHandle* output_size) {
-    if (padding == Padding::VALID && stride > 0 && c->ValueKnown(input_size) &&
-        c->Value(input_size) < window) {
-      // Runtime pooling uses signed division, which truncates toward zero.
-      // Compare the gap with twice the stride without overflowing.
-      const int64_t gap = static_cast<int64_t>(window) - c->Value(input_size);
-      if (gap - stride < stride) {
-        *output_size = c->MakeDim(0);
-        return absl::OkStatus();
-      }
-    }
-    return GetWindowedOutputSizeFromDims(c, input_size, window, stride, padding,
-                                         output_size);
-  };
-  TF_RETURN_IF_ERROR(
-      pooling_output_size(in_rows_dim, kernel_rows, stride_rows, &output_rows));
-  TF_RETURN_IF_ERROR(
-      pooling_output_size(in_cols_dim, kernel_cols, stride_cols, &output_cols));
+  TF_RETURN_IF_ERROR(GetPoolingOutputSizeFromDims(
+      c, in_rows_dim, kernel_rows, stride_rows, padding,
+      /*allow_empty_valid_output=*/true, &output_rows));
+  TF_RETURN_IF_ERROR(GetPoolingOutputSizeFromDims(
+      c, in_cols_dim, kernel_cols, stride_cols, padding,
+      /*allow_empty_valid_output=*/true, &output_cols));
 
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(MakeShapeFromFormat(data_format, batch_size_dim,
@@ -2072,7 +2086,14 @@ absl::Status MaxPoolV2Shape(shape_inference::InferenceContext* c,
   return absl::OkStatus();
 }
 
-absl::Status Pool3DShape(shape_inference::InferenceContext* c) {
+namespace {
+
+// If `allow_empty_valid_output` is true, a VALID-padded window larger than a
+// known input dimension by less than 2 * stride infers an output size of 0
+// instead of a negative dimension error, matching the runtime kernel (see
+// GetPoolingOutputSizeFromDims).
+absl::Status Pool3DShapeImpl(shape_inference::InferenceContext* c,
+                             bool allow_empty_valid_output) {
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
 
@@ -2134,12 +2155,15 @@ absl::Status Pool3DShape(shape_inference::InferenceContext* c) {
   // information in the input to be ignored. This will require a change
   // in the kernel implementation.
   DimensionHandle output_planes, output_rows, output_cols;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_planes_dim, kernel_planes, stride_planes, padding, &output_planes));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, kernel_rows, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, kernel_cols, stride_cols, padding, &output_cols));
+  TF_RETURN_IF_ERROR(GetPoolingOutputSizeFromDims(
+      c, in_planes_dim, kernel_planes, stride_planes, padding,
+      allow_empty_valid_output, &output_planes));
+  TF_RETURN_IF_ERROR(GetPoolingOutputSizeFromDims(
+      c, in_rows_dim, kernel_rows, stride_rows, padding,
+      allow_empty_valid_output, &output_rows));
+  TF_RETURN_IF_ERROR(GetPoolingOutputSizeFromDims(
+      c, in_cols_dim, kernel_cols, stride_cols, padding,
+      allow_empty_valid_output, &output_cols));
 
   ShapeHandle output_shape;
   if (data_format == "NCDHW") {
@@ -2152,6 +2176,16 @@ absl::Status Pool3DShape(shape_inference::InferenceContext* c) {
 
   c->set_output(0, output_shape);
   return absl::OkStatus();
+}
+
+}  // namespace
+
+absl::Status Pool3DShape(shape_inference::InferenceContext* c) {
+  return Pool3DShapeImpl(c, /*allow_empty_valid_output=*/false);
+}
+
+absl::Status AvgPool3DShape(shape_inference::InferenceContext* c) {
+  return Pool3DShapeImpl(c, /*allow_empty_valid_output=*/true);
 }
 
 absl::Status MaxPool3DGradShape(shape_inference::InferenceContext* c) {
