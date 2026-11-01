@@ -1700,12 +1700,14 @@ def resize_images_v2(images,
 
   How it works:
   * When shrinking, the filter stretches out to cover more neighboring
-    pixels—the more you shrink the image, the wider the area it blends.
+    pixels. The more you shrink the image, the wider the area it blends.
   * For `bilinear`, it uses a smooth triangular blending filter. For `bicubic`,
     it uses a Keys cubic filter.
-  * For `nearest` and `area`, `antialias` has no effect (they never anti-alias).
-  * For `lanczos3` and `gaussian`, anti-aliasing is always enabled, so the
-    `antialias` parameter has no effect.
+  * For `nearest`, `antialias` has no effect, since no filtering is applied.
+  * For `area`, `antialias` is ignored because area resampling already averages
+    over the whole output footprint, so it always anti-aliases.
+  * For `lanczos3`, `lanczos5`, `gaussian` and `mitchellcubic`, `antialias`
+    behaves the same way it does for `bilinear` and `bicubic`.
   * When enlarging an image (upsampling), `antialias` has no effect because no
     pixels are skipped:
 
@@ -1715,18 +1717,21 @@ def resize_images_v2(images,
   0.0
 
   Note on OpenCV and Pillow:
-  Libraries like OpenCV sample individual points without extra blending by
-  default to maximize speed. Because TensorFlow blends nearby pixels when
-  `antialias=True`, resized pixel values will differ slightly from OpenCV or
-  Pillow. This difference is normal and expected.
+  Pillow scales its filter support by the reduction factor when downscaling, so
+  `antialias=True` brings TensorFlow close to Pillow rather than away from it.
+  OpenCV's `INTER_LINEAR` does not prefilter when shrinking, so results there
+  will differ; `INTER_AREA` is OpenCV's anti-aliased downsampling filter and is
+  the fairer comparison. Small differences remain in every case because the
+  kernels are not identical.
 
   The `method` argument expects an item from the `image.ResizeMethod` enum, or
   the string equivalent. The options are:
 
   *   <b>`bilinear`</b>: [Bilinear interpolation.](
     https://en.wikipedia.org/wiki/Bilinear_interpolation) If `antialias` is
-    true, uses a triangular filter that stretches to blend nearby pixels
-    when shrinking.
+    true, becomes a hat/tent filter function with radius 1, passed to
+    `ScaleAndTranslate` as the `'triangle'` kernel, whose support widens by the
+    downsampling factor.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
     https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
     High-quality practical filter but may have some ringing, especially on
@@ -1795,11 +1800,11 @@ def resize_images_v2(images,
       `size` is bigger than the current size of the `image`. Defaults to False.
     antialias: bool. Whether to use an anti-aliasing filter when shrinking an
       image. When True, neighboring pixels are blended together before
-      downsampling to prevent jagged patterns. Supported as a toggleable option
-      for bilinear and bicubic; ignored for nearest and area (which never
-      anti-alias), and ignored for lanczos3 and gaussian (which always
-      anti-alias). Results differ slightly from OpenCV and Pillow because
-      TensorFlow blends neighboring pixels.
+      downsampling to prevent jagged patterns. Honoured by `bilinear`,
+      `bicubic`, `lanczos3`, `lanczos5`, `gaussian` and `mitchellcubic`;
+      ignored by `nearest` (no filtering) and by `area` (which always
+      anti-aliases). Results differ from OpenCV's `INTER_LINEAR`, which does
+      not prefilter when shrinking; Pillow prefilters the same way this does.
       Defaults to False.
     name: A name for this operation (optional).
 

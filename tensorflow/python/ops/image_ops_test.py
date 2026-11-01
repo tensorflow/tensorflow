@@ -4189,9 +4189,9 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
               checkerboard, [3, 3], method=image_ops.ResizeMethod.BILINEAR,
               antialias=True))
       self.assertAllClose(down_anti, np.full((1, 3, 3, 1), 0.5), atol=0.05)
-      # Assert that down_no_anti suffered from aliasing and is NOT uniform 0.5.
-      with self.assertRaises(AssertionError):
-        self.assertAllClose(down_no_anti, np.full((1, 3, 3, 1), 0.5), atol=0.05)
+      # down_no_anti should show aliasing, so it is NOT uniform 0.5.
+      self.assertNotAllClose(
+          down_no_anti, np.full((1, 3, 3, 1), 0.5), atol=0.05)
 
 
 # half_pixel_centers not supported by XLA
