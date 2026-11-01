@@ -1313,17 +1313,19 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
   array = asarray(array)
   # NumPy requires `pad_width` entries to be integral and rejects negative
   # ones before any computation, and broadcasts `pad_width` against the
-  # input rank (scalar, pair, single-pair, and (rank, 1) forms all pad
-  # every axis; a 0-d array has zero axes to pad, so every `pad_width`
+  # input rank (scalar, pair, single-pair, (1, 1), and (rank, 1) forms all
+  # pad every axis; a 0-d array has zero axes to pad, so every `pad_width`
   # broadcastable to (0, 2) leaves it unchanged). The backend `pad`
   # instead requires an exact (rank, 2) paddings tensor, so the other
   # forms fail with a confusing InvalidArgumentError, and float entries
   # were previously silently truncated to int32. Mirror NumPy's semantics
   # for Python/NumPy values; `pad_width` containing a Tensor keeps the
   # previous behavior, except that a bare Tensor also expands its
-  # scalar/single-entry/pair/(rank, 1) forms for a statically-known rank.
-  # With an unknown input rank, the dtype and negative checks still run
-  # and only the broadcast step is skipped.
+  # scalar/single-entry/pair/(1, 1)/(rank, 1) forms for a statically-known
+  # rank. A 0-d input skips the backend, so Tensor and ragged values are
+  # also validated against the (0, 2) broadcast target. With an unknown
+  # input rank, the dtype and negative checks still run and only the
+  # broadcast step is skipped.
   maybe_rank = array.shape.rank
   if isinstance(pad_width, core_tf_types.Tensor):
     # A bare Tensor cannot contain nested tensors, so skip the
@@ -1337,16 +1339,37 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
         # sequences against every axis before padding, so expand the
         # Tensor with the same broadcast rules.
         pad_width = array_ops.broadcast_to(pad_width, (maybe_rank, 2))
-      elif width_shape.rank == 2 and width_shape[0] == 1:
+      elif (
+          width_shape.rank == 2
+          and width_shape[0] == 1
+          and width_shape[1] == 2
+      ):
         # A single pair in a sequence: tile it across the axes.
         pad_width = array_ops.tile(pad_width, [maybe_rank, 1])
       elif (
           width_shape.rank == 2
-          and width_shape[0] == maybe_rank
           and width_shape[1] == 1
+          and width_shape[0] in (1, maybe_rank)
       ):
-        # (rank, 1): NumPy broadcasts each entry across (before, after).
+        # (1, 1), (rank, 1), or a single row: NumPy broadcasts each
+        # entry across (before, after).
         pad_width = array_ops.broadcast_to(pad_width, (maybe_rank, 2))
+      if maybe_rank == 0:
+        # The 0-d early return below skips the backend, so shapes
+        # outside the forms above would otherwise go unvalidated.
+        # NumPy requires every `pad_width` to broadcast to (0, 2);
+        # `tf.broadcast_to` reports a mismatch as InvalidArgumentError
+        # in eager mode, so check the static shape and raise ValueError
+        # like NumPy instead.
+        static_shape = pad_width.shape.as_list()
+        if None not in static_shape:
+          try:
+            np.broadcast_shapes(static_shape, (0, 2))
+          except ValueError:
+            raise ValueError(
+                '`pad_width` with shape %s cannot be broadcast to (0, 2) '
+                'for a 0-d array.' % static_shape
+            ) from None
     # Other Tensor shapes, including the exact (rank, 2), go to the
     # backend unchanged, as before.
   elif builtins.isinstance(pad_width, (list, tuple)) and builtins.any(
@@ -1354,15 +1377,23 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
   ):
     # Symbolic tensors inside a nested list cannot be converted with
     # `np.asarray` under tracing, and eager tensors would be copied to
-    # the host, so leave `pad_width` to the backend as before.
-    pass
+    # the host, so leave `pad_width` to the backend as before. A 0-d
+    # input skips the backend below, so validate the Python nesting
+    # against NumPy's (0, 2) broadcast target instead.
+    if maybe_rank == 0:
+      np.broadcast_to(
+          np.asarray(nest.map_structure(lambda _: 0, pad_width)), (0, 2)
+      )
   else:
     # A scalar or Python/NumPy value cannot contain Tensor leaves.
     try:
       np_pw = np.asarray(pad_width)
     except (TypeError, ValueError):
-      # Ragged input: leave it to the backend, like NumPy's own
-      # "inhomogeneous shape" error path.
+      # Ragged input: NumPy rejects it too. A 0-d input skips the backend
+      # below, so surface NumPy's error here; otherwise leave it to the
+      # backend's "inhomogeneous shape" path.
+      if maybe_rank == 0:
+        raise
       np_pw = None
     if np_pw is not None:
       if not np.issubdtype(np_pw.dtype, np.integer):

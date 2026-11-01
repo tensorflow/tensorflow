@@ -1576,6 +1576,7 @@ class ArrayMethodsTest(test.TestCase):
         (1, np_array_ops.array(1)),
         ([1, 2], np_array_ops.array([1, 2])),
         ([[1, 2]], np_array_ops.array([[1, 2]])),
+        ([[1]], np_array_ops.array([[1]])),
         ([[1], [2], [3]], np_array_ops.array([[1], [2], [3]])),
     ):
       self.assertAllEqual(
@@ -1598,6 +1599,20 @@ class ArrayMethodsTest(test.TestCase):
       np_array_ops.pad(x, [[1.5, 2]], 'constant')
     with self.assertRaisesRegex(ValueError, 'broadcast'):
       np_array_ops.pad(x, [[1, 2], [3, 4]], 'constant')
+    # Tensor `pad_width` values are validated against the same (0, 2)
+    # target even though the backend is skipped for a 0-d input.
+    self.assertAllEqual(
+        np_array_ops.pad(x, np_array_ops.array(1), 'constant'), np_x)
+    with self.assertRaisesRegex(ValueError, 'broadcast'):
+      np_array_ops.pad(x, np_array_ops.array([[1, 2, 3]]), 'constant')
+    with self.assertRaisesRegex(ValueError, 'broadcast'):
+      np_array_ops.pad(
+          x, [[np_array_ops.array(1), np_array_ops.array(2)],
+              [np_array_ops.array(3), np_array_ops.array(4)],
+              [np_array_ops.array(5), np_array_ops.array(6)]], 'constant')
+    # Ragged values raise like NumPy instead of being left to the backend.
+    with self.assertRaisesRegex(ValueError, 'inhomogeneous'):
+      np_array_ops.pad(x, [[1], [2, 3]], 'constant')
 
   def testPadWidthUnknownRank(self):
     # With an unknown input rank, the dtype and negative checks still run
@@ -1621,7 +1636,9 @@ class ArrayMethodsTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "can't contain negative"):
       g(np_x)
 
-    @def_function.function
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)]
+    )
     def f_float(x):
       return np_array_ops.pad(x, 1.5, 'constant')
 
