@@ -755,10 +755,10 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.tensordot(a, b, axes=(np.int64(2), 0))
     # The error message reports the offending input's shape, not the tensor.
-    try:
+    with self.assertRaisesRegex(
+        ValueError, r'out of bounds for input with shape \(2, 3\)'
+    ):
       np_math_ops.tensordot(a, b, axes=3)
-    except ValueError as e:
-      self.assertIn('shape (2, 3)', str(e))
     # Valid axes, negative entries included, must keep working.
     onesa = np_array_ops.array(np.ones([2, 3]))
     onesb = np_array_ops.array(np.ones([3, 4]))

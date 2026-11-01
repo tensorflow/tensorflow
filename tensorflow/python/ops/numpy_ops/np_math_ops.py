@@ -281,10 +281,11 @@ def tensordot(a, b, axes=2):
     # NumPy raises IndexError: tuple index out of range (its own internal
     # indexing over `axes`) before any computation on out-of-bounds axes.
     # The backend `tensordot` instead normalizes the raw entries itself and
-    # only checks an integer count against the first input: a negative
-    # out-of-bounds entry leaves a leftover negative value in the transpose
-    # `perm`, and a too-large entry only surfaces later inside
-    # `array_ops.transpose` with a shape/perm error unrelated to `axes`.
+    # only checks an integer count against the first input: a too-large
+    # entry fails with a bare `IndexError` while indexing the static shape,
+    # and a negative out-of-bounds entry leaves a leftover negative value
+    # in the transpose `perm`, which fails in `array_ops.transpose` with a
+    # perm error unrelated to `axes`.
     # Validate statically-known ranks and Python-int entries against NumPy's
     # bounds up front; tensor axes or unknown ranks (e.g. `@tf.function` with
     # an unspecified input signature) behave exactly as before, and no graph
