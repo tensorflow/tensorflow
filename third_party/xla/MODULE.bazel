@@ -52,9 +52,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-jS+3cXmAQJFifU4JZOQcuH+ZfB9bhnyj7/C+tDSq6QM=",
-    strip_prefix = "rules_ml_toolchain-acf23037903eff6359c5bac21379957725fb9dda",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/acf23037903eff6359c5bac21379957725fb9dda.tar.gz"],
+    integrity = "sha256-Xw6dSRhyTXUXkFZd37QMeB/Qx4qcs2uUlMdVGmN5kiM=",
+    strip_prefix = "rules_ml_toolchain-37c4dabbe0d074cc2413ceb1decd926f95f8cd02",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/37c4dabbe0d074cc2413ceb1decd926f95f8cd02.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -326,6 +326,8 @@ register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_sycl")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_rocm")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_aarch64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 

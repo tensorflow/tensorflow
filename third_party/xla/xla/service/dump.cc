@@ -857,7 +857,9 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
                              mlir::Operation* op) {
   DumpOptions opts = GetDumpOptions(module);
   if (opts.dumping_to_stdout()) {
-    return op->dump();
+    op->print(llvm::outs(), mlir::OpPrintingFlags().useLocalScope());
+    llvm::outs() << "\n";
+    return;
   }
 
   mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags();

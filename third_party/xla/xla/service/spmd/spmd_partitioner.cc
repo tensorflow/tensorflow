@@ -140,6 +140,97 @@ bool IsControlFlowLikeCallee(const CallGraphNode& node) {
            return IsCallLikeCustomCall(call_site.instruction());
          });
 }
+
+// Packs `operands` into a single flat tuple by unpacking one level of any
+// tuple-shaped operand. Nested tuple operands are not supported.
+HloInstruction* PackFlatTuple(absl::Span<HloInstruction* const> operands,
+                              SpmdBuilder* b) {
+  std::vector<HloInstruction*> flat_elements;
+  for (HloInstruction* operand : operands) {
+    if (operand->shape().IsTuple()) {
+      for (int64_t j = 0; j < operand->shape().tuple_shapes().size(); ++j) {
+        CHECK(!operand->shape().tuple_shapes(j).IsTuple());
+        flat_elements.push_back(b->AddInstruction(
+            HloInstruction::CreateGetTupleElement(operand, j)));
+      }
+    } else {
+      flat_elements.push_back(operand);
+    }
+  }
+  return b->AddInstruction(HloInstruction::CreateTuple(flat_elements));
+}
+
+// Reconstructs all `prototype_operands` in order from `flat_param`.
+// Exact inverse of `PackFlatTuple`. Nested tuple operands are not supported.
+std::vector<HloInstruction*> UnpackFlatTuple(
+    HloInstruction* flat_param,
+    absl::Span<const HloInstruction* const> prototype_operands,
+    SpmdBuilder* b) {
+  CHECK(flat_param->shape().IsTuple());
+  std::vector<HloInstruction*> unpacked;
+  unpacked.reserve(prototype_operands.size());
+  int64_t flat_idx = 0;
+  for (const HloInstruction* op : prototype_operands) {
+    const Shape& shape = op->shape();
+    if (shape.IsTuple()) {
+      const int64_t n = shape.tuple_shapes().size();
+      std::vector<HloInstruction*> elements;
+      elements.reserve(n);
+      for (int64_t j = 0; j < n; ++j) {
+        CHECK(!shape.tuple_shapes(j).IsTuple());
+        CHECK_LT(flat_idx, flat_param->shape().tuple_shapes().size());
+        elements.push_back(b->AddInstruction(
+            HloInstruction::CreateGetTupleElement(flat_param, flat_idx++)));
+      }
+      unpacked.push_back(
+          b->AddInstruction(HloInstruction::CreateTuple(elements)));
+    } else {
+      CHECK_LT(flat_idx, flat_param->shape().tuple_shapes().size());
+      unpacked.push_back(b->AddInstruction(
+          HloInstruction::CreateGetTupleElement(flat_param, flat_idx++)));
+    }
+  }
+  CHECK_EQ(flat_idx, flat_param->shape().tuple_shapes().size());
+  return unpacked;
+}
+
+// Slices `data` to match `target_shape` if shapes are not already compatible.
+// Supports array shapes and flat tuple shapes. Nested tuple shapes are not
+// supported.
+HloInstruction* MaybeSliceOutfeedData(HloInstruction* data,
+                                      const Shape& target_shape,
+                                      SpmdBuilder* b) {
+  if (ShapeUtil::Compatible(data->shape(), target_shape)) {
+    return data;
+  }
+  if (target_shape.IsTuple()) {
+    CHECK(data->shape().IsTuple());
+    const int64_t n = target_shape.tuple_shapes().size();
+    CHECK_EQ(n, data->shape().tuple_shapes().size());
+    std::vector<HloInstruction*> elements;
+    elements.reserve(n);
+    for (int64_t j = 0; j < n; ++j) {
+      CHECK(!target_shape.tuple_shapes(j).IsTuple());
+      CHECK(!data->shape().tuple_shapes(j).IsTuple());
+      HloInstruction* elem =
+          data->opcode() == HloOpcode::kTuple
+              ? data->mutable_operand(j)
+              : b->AddInstruction(
+                    HloInstruction::CreateGetTupleElement(data, j));
+      elements.push_back(
+          MaybeSliceOutfeedData(elem, target_shape.tuple_shapes(j), b));
+    }
+    return b->AddInstruction(HloInstruction::CreateTuple(elements));
+  }
+  CHECK(data->shape().IsArray());
+  CHECK(target_shape.IsArray());
+  std::vector<int64_t> start_indices(target_shape.dimensions().size(), 0);
+  std::vector<int64_t> slice_strides(target_shape.dimensions().size(), 1);
+  return b->AddInstruction(
+      HloInstruction::CreateSlice(target_shape, data, start_indices,
+                                  target_shape.dimensions(), slice_strides));
+}
+
 }  // namespace
 
 std::string SpmdLogger::MakeReport() {
@@ -4382,18 +4473,13 @@ absl::Status SpmdPartitioningVisitor::HandleSingleDevice(
   int64_t device = hlo->sharding().GetUniqueDevice();
   const HloSharding sharding = HloSharding::SingleDevice(device);
 
-  std::vector<HloInstruction*> operands;
-  std::vector<const Shape*> operand_shapes;
-  const auto& old_operands = hlo->operands();
-  const auto old_operands_size = old_operands.size();
-  operands.reserve(old_operands_size);
-  operand_shapes.reserve(old_operands_size);
-  for (const HloInstruction* operand : old_operands) {
-    operands.push_back(GetPartitionedHlo(operand).Reshard(sharding).hlo());
-    operand_shapes.push_back(&operand->shape());
+  std::vector<HloInstruction*> resharded_operands;
+  resharded_operands.reserve(hlo->operand_count());
+  for (const HloInstruction* old_operand : hlo->operands()) {
+    resharded_operands.push_back(
+        GetPartitionedHlo(old_operand).Reshard(sharding).hlo());
   }
-  auto operand = b_.AddInstruction(HloInstruction::CreateTuple(operands));
-  auto operand_shape = ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes);
+  HloInstruction* operand = PackFlatTuple(resharded_operands, &b_);
 
   auto on_device = b_.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(device)));
@@ -4404,14 +4490,11 @@ absl::Status SpmdPartitioningVisitor::HandleSingleDevice(
   SpmdBuilder true_b("true_computation", visiting_hlo_);
   HloComputation* true_computation;
   {
-    auto param = true_b.AddInstruction(HloInstruction::CreateParameter(
-        /*parameter_number=*/0, operand_shape, "true_branch_param"));
-    std::vector<HloInstruction*> new_operands;
-    new_operands.reserve(operands.size());
-    for (int64_t i = 0; i < operands.size(); ++i) {
-      new_operands.push_back(true_b.AddInstruction(
-          HloInstruction::CreateGetTupleElement(*operand_shapes[i], param, i)));
-    }
+    HloInstruction* param =
+        true_b.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/0, operand->shape(), "true_branch_param"));
+    std::vector<HloInstruction*> new_operands =
+        UnpackFlatTuple(param, resharded_operands, &true_b);
     auto root = true_b.AddInstruction(
         hlo->CloneWithNewOperands(hlo->shape(), new_operands));
     true_computation = module_->AddEmbeddedComputation(true_b.Build(root));
@@ -4421,7 +4504,7 @@ absl::Status SpmdPartitioningVisitor::HandleSingleDevice(
   HloComputation* false_computation;
   {
     false_b.AddInstruction(HloInstruction::CreateParameter(
-        /*parameter_number=*/0, operand_shape, "false_branch_param"));
+        /*parameter_number=*/0, operand->shape(), "false_branch_param"));
     auto root = CreateZero(hlo->shape(), &false_b);
     false_computation = module_->AddEmbeddedComputation(false_b.Build(root));
   }
@@ -6224,7 +6307,6 @@ absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
 
   auto partitioned_operand =
       GetPartitionedHlo(hlo->operand(0)).Reshard(sharding);
-  const auto& shard_shape = partitioned_operand.hlo()->shape();
   const auto& operand = partitioned_operand.hlo();
   auto token = GetPartitionedHlo(hlo->operand(1)).hlo();
 
@@ -6285,67 +6367,24 @@ absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
         ShapeUtil::MakeShape(S32, {}), branch_index));
   }
 
+  // Flatten tuple-shaped operand elements together with token so the
+  // conditional branch parameter is a flat tuple.
+  HloInstruction* branch_arg = PackFlatTuple({operand, token}, &b_);
+
   // Create conditional for the outfeed.
   std::vector<HloComputation*> branches(per_branch_partitioned_shapes.size());
   for (int64_t i = 0; i < branches.size(); ++i) {
     SpmdBuilder branch_b(absl::StrCat("outfeed_branch_", i), visiting_hlo_);
-    // Create tuple param within the branch.
-    auto param = branch_b.AddInstruction(HloInstruction::CreateParameter(
-        /*parameter_number=*/0,
-        ShapeUtil::MakeTupleShape({operand->shape(), token->shape()}),
-        "outfeed_token_param"));
-    auto outfeed_data = branch_b.AddInstruction(
-        HloInstruction::CreateGetTupleElement(operand->shape(), param, 0));
-    auto outfeed_token = branch_b.AddInstruction(
-        HloInstruction::CreateGetTupleElement(token->shape(), param, 1));
-    if (!ShapeUtil::Compatible(per_branch_partitioned_shapes[i], shard_shape)) {
-      std::function<HloInstruction*(const ShapeIndex&, HloInstruction*)>
-          slice_outfeed =
-              [&](const ShapeIndex& index,
-                  HloInstruction* outfeed_operand) -> HloInstruction* {
-        // Get outfeed element shape.
-        const Shape& element_shape =
-            ShapeUtil::GetSubshape(outfeed_data->shape(), index);
-        // Recursively call slice_outfeed for tuple shapes.
-        if (element_shape.IsTuple() &&
-            element_shape.tuple_shapes().size() > 0) {
-          std::vector<HloInstruction*> slice_elements(
-              element_shape.tuple_shapes().size());
-          for (int64_t i = 0; i < slice_elements.size(); ++i) {
-            auto sub_index = index;
-            sub_index.push_back(i);
-            slice_elements[i] = slice_outfeed(
-                sub_index,
-                branch_b.AddInstruction(HloInstruction::CreateGetTupleElement(
-                    ShapeUtil::GetSubshape(element_shape, {i}), outfeed_operand,
-                    i)));
-          }
-          return branch_b.AddInstruction(
-              HloInstruction::CreateTuple(slice_elements));
-        }
-        // Get the slice shape.
-        const Shape& slice_shape = ShapeUtil::GetSubshape(
-            per_branch_partitioned_shapes[i], ShapeIndexView(index));
-        if (ShapeUtil::Compatible(element_shape, slice_shape)) {
-          return outfeed_operand;
-        }
-        // Slice out useful data.
-        if (element_shape.IsArray()) {
-          CHECK(slice_shape.IsArray());
-          std::vector<int64_t> start_indices(slice_shape.dimensions().size(),
-                                             0);
-          std::vector<int64_t> slice_strides(slice_shape.dimensions().size(),
-                                             1);
-          return branch_b.AddInstruction(HloInstruction::CreateSlice(
-              slice_shape, outfeed_operand, start_indices,
-              slice_shape.dimensions(), slice_strides));
-        }
-        CHECK(element_shape.IsTuple());
-        CHECK(element_shape.tuple_shapes().empty());
-        return outfeed_operand;
-      };
-      outfeed_data = slice_outfeed({}, outfeed_data);
-    }
+    // Create flat tuple param within the branch.
+    HloInstruction* param =
+        branch_b.AddInstruction(HloInstruction::CreateParameter(
+            /*parameter_number=*/0, branch_arg->shape(),
+            "outfeed_token_param"));
+    std::vector<HloInstruction*> unpacked =
+        UnpackFlatTuple(param, {operand, token}, &branch_b);
+    HloInstruction* outfeed_data = MaybeSliceOutfeedData(
+        unpacked[0], per_branch_partitioned_shapes[i], &branch_b);
+    HloInstruction* outfeed_token = unpacked[1];
     ABSL_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         hlo->outfeed_shape(), &per_branch_partitioned_shapes[i]));
     branch_b.AddInstruction(HloInstruction::CreateOutfeed(
@@ -6354,12 +6393,9 @@ absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
     branches[i] = module_->AddEmbeddedComputation(branch_b.Build());
   }
   SetPartitionedHlo(
-      hlo,
-      b_.AddInstruction(HloInstruction::CreateConditional(
-          token->shape(), branch_index, branches,
-          std::vector<HloInstruction*>(
-              branches.size(), b_.AddInstruction(HloInstruction::CreateTuple(
-                                   {operand, token}))))));
+      hlo, b_.AddInstruction(HloInstruction::CreateConditional(
+               token->shape(), branch_index, branches,
+               std::vector<HloInstruction*>(branches.size(), branch_arg))));
   return absl::OkStatus();
 }
 

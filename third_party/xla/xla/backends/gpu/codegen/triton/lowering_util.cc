@@ -250,13 +250,13 @@ bool IsGuaranteedDivisible(mlir::Value value, int64_t divisor) {
   return false;
 }
 
-bool IsGuaranteedInBounds(mlir::Value value, int64_t tile_size,
+bool IsGuaranteedInBounds(mlir::Value offset, int64_t tile_size,
                           int64_t original_shape) {
-  if (auto const_op = value.getDefiningOp<arith::ConstantIndexOp>()) {
+  if (auto const_op = offset.getDefiningOp<arith::ConstantIndexOp>()) {
     return const_op.value() >= 0 &&
            const_op.value() + tile_size <= original_shape;
   }
-  if (auto apply_indexing = value.getDefiningOp<::xla::ApplyIndexingOp>()) {
+  if (auto apply_indexing = offset.getDefiningOp<::xla::ApplyIndexingOp>()) {
     IndexingMap indexing_map = apply_indexing.getIndexingMap();
     if (indexing_map.GetNumResults() != 1) {
       return false;

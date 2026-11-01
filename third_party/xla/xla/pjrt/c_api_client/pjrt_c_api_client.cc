@@ -4629,6 +4629,49 @@ PjRtCApiTopologyDescription::Subslice(
   return Subslice(subslice_chips_per_host_bounds, subslice_host_bounds);
 }
 
+absl::StatusOr<PjRtSubsliceBounds>
+PjRtCApiTopologyDescription::ComputeSubsliceForDevices(
+    absl::Span<const int> device_ids) const {
+  if (tpu_topology_extension_ == nullptr ||
+      tpu_topology_extension_->base.struct_size <
+          PJRT_STRUCT_SIZE(PJRT_TpuTopology_Extension,
+                           compute_subslice_for_devices) ||
+      tpu_topology_extension_->compute_subslice_for_devices == nullptr) {
+    return Unimplemented(
+        "ComputeSubsliceForDevices is not supported by the PJRT C API.");
+  }
+  std::vector<int32_t> device_ids_storage(device_ids.begin(), device_ids.end());
+  std::vector<int32_t> origin(kMaxDims);
+  std::vector<int32_t> chips_per_host_bounds(kMaxDims);
+  std::vector<int32_t> host_bounds(kMaxDims);
+  PJRT_TpuTopology_ComputeSubsliceForDevices_Args args;
+  args.struct_size =
+      PJRT_TpuTopology_ComputeSubsliceForDevices_Args_STRUCT_SIZE;
+  args.topology = c_topology_;
+  args.device_ids = device_ids_storage.data();
+  args.num_device_ids = device_ids_storage.size();
+  args.max_dims = kMaxDims;
+  args.origin = origin.data();
+  args.chips_per_host_bounds = chips_per_host_bounds.data();
+  args.host_bounds = host_bounds.data();
+  args.num_dims = 0;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      tpu_topology_extension_->compute_subslice_for_devices(&args), c_api_);
+  if (args.num_dims > kMaxDims) {
+    return Internal(
+        "Plugin returned `num_dims` (%zu) exceeding `max_dims` (%d).",
+        args.num_dims, kMaxDims);
+  }
+  PjRtSubsliceBounds bounds;
+  bounds.origin =
+      PjRtDeviceDimensions(absl::MakeSpan(origin.data(), args.num_dims));
+  bounds.chips_per_host_bounds = PjRtDeviceDimensions(
+      absl::MakeSpan(chips_per_host_bounds.data(), args.num_dims));
+  bounds.host_bounds =
+      PjRtDeviceDimensions(absl::MakeSpan(host_bounds.data(), args.num_dims));
+  return bounds;
+}
+
 bool PjRtCApiTopologyDescription::is_subslice_topology() const {
   CHECK(tpu_topology_extension_ != nullptr)
       << "Subslice is not supported by the PJRT C API.";

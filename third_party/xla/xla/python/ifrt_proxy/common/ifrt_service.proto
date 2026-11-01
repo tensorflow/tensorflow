@@ -38,7 +38,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
-// Next ID: 36.
+// Next ID: 37.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -103,12 +103,13 @@ message IfrtRequest {
         19;
     GetDefaultLayoutRequest get_default_layout_request = 27;
     CancelExecutionRequest cancel_execution_request = 35;
+    HashValuesRequest hash_values_request = 36;
   }
 
   reserved 10;
 }
 
-// Next ID: 36.
+// Next ID: 37.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -172,6 +173,7 @@ message IfrtResponse {
         19;
     GetDefaultLayoutResponse get_default_layout_response = 27;
     CancelExecutionResponse cancel_execution_response = 35;
+    HashValuesResponse hash_values_response = 36;
   }
 
   reserved 10;
@@ -764,3 +766,11 @@ message CancelExecutionRequest {
   tensorflow.StatusProto error = 2;
 }
 message CancelExecutionResponse {}
+
+message HashValuesRequest {
+  repeated fixed64 value_handles = 1;
+  proto.HashMode hash_mode = 2;
+}
+message HashValuesResponse {
+  repeated fixed64 hashes = 1;
+}

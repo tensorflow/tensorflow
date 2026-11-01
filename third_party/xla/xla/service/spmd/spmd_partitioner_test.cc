@@ -260,6 +260,75 @@ ENTRY entry {
                           op::Shape("s32[2,3]")));
 }
 
+TEST_P(SpmdPartitioningTest, SingleDeviceCustomCallWithTupleOperand) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %c0 = s32[2,3]{1,0} constant({{1,1,1},{1,1,1}}),
+    sharding={maximal device=0}
+  %c1 = f32[4]{0} constant({2,2,2,2}),
+    sharding={maximal device=0}
+  %tuple = (s32[2,3]{1,0}, f32[4]{0}) tuple(%c0, %c1),
+    sharding={{maximal device=0}, {maximal device=0}}
+  %cc = s32[2,3] custom-call(%tuple, %c1), custom_call_target="SomeCustomCall",
+    sharding={maximal device=0}
+  ROOT %copy = s32[2,3]{1,0} copy(%cc), sharding={replicated}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* custom_call = FindInstruction(module.get(), "cc.1");
+  EXPECT_NE(custom_call, nullptr);
+  EXPECT_NE(custom_call->parent(), module->entry_computation());
+  EXPECT_THAT(custom_call->operand(0),
+              AllOf(op::Shape("(s32[2,3], f32[4])"),
+                    op::Tuple(op::GetTupleElement(op::Parameter(), 0),
+                              op::GetTupleElement(op::Parameter(), 1))));
+  EXPECT_THAT(
+      custom_call->operand(1),
+      AllOf(op::Shape("f32[4]"), op::GetTupleElement(op::Parameter(), 2)));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Copy(op::AllReduce(
+                              op::Select(op::Broadcast(op::Compare()),
+                                         op::Conditional(), op::Broadcast()))),
+                          op::Shape("s32[2,3]")));
+  for (const HloComputation* comp : module->computations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      EXPECT_FALSE(ShapeUtil::IsNestedTuple(inst->shape())) << inst->ToString();
+    }
+  }
+}
+
+TEST_P(SpmdPartitioningTest, SingleDeviceCustomCallWithEmptyTupleOperand) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %tuple = () tuple(), sharding={{maximal device=0}}
+  %cc = s32[2,3] custom-call(%tuple), custom_call_target="SomeCustomCall",
+    sharding={maximal device=0}
+  ROOT %copy = s32[2,3]{1,0} copy(%cc), sharding={replicated}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* custom_call = FindInstruction(module.get(), "cc.1");
+  EXPECT_NE(custom_call, nullptr);
+  EXPECT_NE(custom_call->parent(), module->entry_computation());
+  EXPECT_THAT(custom_call->operand(0), AllOf(op::Shape("()"), op::Tuple()));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Copy(op::AllReduce(
+                              op::Select(op::Broadcast(op::Compare()),
+                                         op::Conditional(), op::Broadcast()))),
+                          op::Shape("s32[2,3]")));
+  for (const HloComputation* comp : module->computations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      EXPECT_FALSE(ShapeUtil::IsNestedTuple(inst->shape())) << inst->ToString();
+    }
+  }
+}
+
 TEST_P(SpmdPartitioningTest, GetRngSeedCustomCall) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -1288,6 +1357,47 @@ ENTRY entry {
   EXPECT_THAT(root_b1, AllOf(op::Shape("token[]"), op::AfterAll()));
 }
 
+TEST_P(SpmdPartitioningTest, OutfeedTupleSingleDevice) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token.0 = token[] after-all()
+  data = (f32[1024,2]{1,0}, f32[2]{0}) parameter(0),
+    sharding={{maximal device=0}, {maximal device=0}}
+  ROOT outfeed = token[] outfeed(data, token.0),
+    outfeed_shape=(f32[1024,2]{0,1}, f32[2]{0}),
+    sharding={{maximal device=0}, {maximal device=0}}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto branch_arg =
+      op::Tuple(op::GetTupleElement(op::Parameter(0), 0),
+                op::GetTupleElement(op::Parameter(0), 1), op::AfterAll());
+  EXPECT_THAT(root, AllOf(op::Shape("token[]"),
+                          op::Conditional(
+                              op::Compare(op::PartitionId(), op::Constant()),
+                              branch_arg, branch_arg)));
+
+  HloInstruction* root_b0 = root->branch_computation(0)->root_instruction();
+  EXPECT_THAT(
+      root_b0,
+      AllOf(op::Shape("token[]"),
+            op::Outfeed(op::Tuple(op::GetTupleElement(op::Parameter(), 0),
+                                  op::GetTupleElement(op::Parameter(), 1)),
+                        op::GetTupleElement(op::Parameter(), 2))));
+
+  HloInstruction* root_b1 = root->branch_computation(1)->root_instruction();
+  EXPECT_THAT(root_b1, AllOf(op::Shape("token[]"), op::AfterAll()));
+  for (const HloComputation* comp : module->computations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      EXPECT_FALSE(ShapeUtil::IsNestedTuple(inst->shape())) << inst->ToString();
+    }
+  }
+}
+
 TEST_P(SpmdPartitioningTest, OutfeedEvenlyTiled) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -1367,19 +1477,25 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root, AllOf(op::Shape("token[]"),
-                  op::Conditional(op::Convert(),
-                                  op::Tuple(op::Parameter(), op::AfterAll()),
-                                  op::Tuple(op::Parameter(), op::AfterAll()))));
+  auto branch_arg =
+      op::Tuple(op::GetTupleElement(op::Parameter(), 0),
+                op::GetTupleElement(op::Parameter(), 1), op::AfterAll());
+  EXPECT_THAT(root,
+              AllOf(op::Shape("token[]"),
+                    op::Conditional(op::Convert(), branch_arg, branch_arg)));
 
   auto first_outfeed =
-      AllOf(op::Shape("(f32[512,2], f32[2])"), op::GetTupleElement());
+      AllOf(op::Shape("(f32[512,2], f32[2])"),
+            op::Tuple(op::GetTupleElement(op::Parameter(), 0),
+                      op::GetTupleElement(op::Parameter(), 1)));
   EXPECT_THAT(root->called_computations()[0]->root_instruction(),
               AllOf(op::Shape("token[]"),
                     op::Outfeed(first_outfeed, op::GetTupleElement())));
 
-  auto second_outfeed = AllOf(op::Shape("(f32[511,2], f32[1])"), op::Tuple());
+  auto second_outfeed =
+      AllOf(op::Shape("(f32[511,2], f32[1])"),
+            op::Tuple(op::Slice(op::GetTupleElement(op::Parameter(), 0)),
+                      op::Slice(op::GetTupleElement(op::Parameter(), 1))));
   EXPECT_THAT(root->called_computations()[1]->root_instruction(),
               AllOf(op::Shape("token[]"),
                     op::Outfeed(second_outfeed, op::GetTupleElement())));
@@ -1401,6 +1517,138 @@ ENTRY entry {
   EXPECT_TRUE(LayoutUtil::Equal(
       second_outfeed_instr->outfeed_shape().tuple_shapes(1).layout(),
       expected_layout1));
+  for (const HloComputation* comp : module->computations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      EXPECT_FALSE(ShapeUtil::IsNestedTuple(inst->shape())) << inst->ToString();
+    }
+  }
+}
+
+TEST_P(SpmdPartitioningTest, OutfeedEmptyTupleSingleDevice) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token.0 = token[] after-all()
+  data = () parameter(0), sharding={{maximal device=0}}
+  ROOT outfeed = token[] outfeed(data, token.0),
+    outfeed_shape=(),
+    sharding={{maximal device=0}}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto branch_arg = op::Tuple(op::AfterAll());
+  EXPECT_THAT(root, AllOf(op::Shape("token[]"),
+                          op::Conditional(
+                              op::Compare(op::PartitionId(), op::Constant()),
+                              branch_arg, branch_arg)));
+
+  HloInstruction* root_b0 = root->branch_computation(0)->root_instruction();
+  EXPECT_THAT(
+      root_b0,
+      AllOf(op::Shape("token[]"),
+            op::Outfeed(op::Tuple(), op::GetTupleElement(op::Parameter(), 0))));
+
+  HloInstruction* root_b1 = root->branch_computation(1)->root_instruction();
+  EXPECT_THAT(root_b1, AllOf(op::Shape("token[]"), op::AfterAll()));
+  for (const HloComputation* comp : module->computations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      EXPECT_FALSE(ShapeUtil::IsNestedTuple(inst->shape())) << inst->ToString();
+    }
+  }
+}
+
+TEST_P(SpmdPartitioningTest, OutfeedShardedTupleToSingleDevice) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token.0 = token[] after-all()
+  data = (f32[1023,2]{1,0}, f32[3]{0}) parameter(0),
+    sharding={{devices=[2,1]<=[2]}, {devices=[2]<=[2]}}
+  ROOT outfeed = token[] outfeed(data, token.0),
+    outfeed_shape=(f32[1023,2]{0,1}, f32[3]{0}),
+    sharding={{maximal device=0}, {maximal device=0}}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("token[]"),
+                          op::Conditional(
+                              op::Compare(op::PartitionId(), op::Constant()),
+                              op::Tuple(op::Shape("f32[1023,2]"),
+                                        op::Shape("f32[3]"), op::AfterAll()),
+                              op::Tuple(op::Shape("f32[1023,2]"),
+                                        op::Shape("f32[3]"), op::AfterAll()))));
+
+  HloInstruction* root_b0 = root->branch_computation(0)->root_instruction();
+  EXPECT_THAT(
+      root_b0,
+      AllOf(
+          op::Shape("token[]"),
+          op::Outfeed(AllOf(op::Shape("(f32[1023,2], f32[3])"),
+                            op::Tuple(op::GetTupleElement(op::Parameter(), 0),
+                                      op::GetTupleElement(op::Parameter(), 1))),
+                      op::GetTupleElement(op::Parameter(), 2))));
+  for (const HloComputation* comp : module->computations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      EXPECT_FALSE(ShapeUtil::IsNestedTuple(inst->shape())) << inst->ToString();
+    }
+  }
+}
+
+TEST_P(SpmdPartitioningTest, OutfeedArrayUnevenlyTiled) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  token.0 = token[] after-all()
+  data = f32[1023,2]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT outfeed = token[] outfeed(data, token.0),
+    outfeed_shape=f32[1023,2]{0,1}, sharding={devices=[2,1]<=[2]}
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto branch_arg = op::Tuple(op::Parameter(0), op::AfterAll());
+  EXPECT_THAT(root,
+              AllOf(op::Shape("token[]"),
+                    op::Conditional(op::Convert(), branch_arg, branch_arg)));
+
+  EXPECT_THAT(root->called_computations()[0]->root_instruction(),
+              AllOf(op::Shape("token[]"),
+                    op::Outfeed(AllOf(op::Shape("f32[512,2]"),
+                                      op::GetTupleElement(op::Parameter(), 0)),
+                                op::GetTupleElement(op::Parameter(), 1))));
+  EXPECT_THAT(
+      root->called_computations()[1]->root_instruction(),
+      AllOf(
+          op::Shape("token[]"),
+          op::Outfeed(AllOf(op::Shape("f32[511,2]"),
+                            op::Slice(op::GetTupleElement(op::Parameter(), 0))),
+                      op::GetTupleElement(op::Parameter(), 1))));
+
+  auto expected_layout = LayoutUtil::MakeLayout({0, 1});
+  EXPECT_TRUE(LayoutUtil::Equal(root->called_computations()[0]
+                                    ->root_instruction()
+                                    ->outfeed_shape()
+                                    .layout(),
+                                expected_layout));
+  EXPECT_TRUE(LayoutUtil::Equal(root->called_computations()[1]
+                                    ->root_instruction()
+                                    ->outfeed_shape()
+                                    .layout(),
+                                expected_layout));
+  for (const HloComputation* comp : module->computations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      EXPECT_FALSE(ShapeUtil::IsNestedTuple(inst->shape())) << inst->ToString();
+    }
+  }
 }
 
 TEST_P(SpmdPartitioningTest, ReduceWindowReplicatedInput) {
