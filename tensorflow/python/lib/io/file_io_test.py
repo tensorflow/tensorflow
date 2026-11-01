@@ -16,6 +16,7 @@
 """Testing File IO operations in file_io.py."""
 
 import os.path
+from unittest import mock
 
 from absl.testing import parameterized
 import numpy as np
@@ -370,6 +371,18 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     dir_path = file_io.join(self._base_dir, "test_dir")
     with self.assertRaises(errors.NotFoundError):
       file_io.list_directory(dir_path)
+
+  def testListDirectoryStripsTrailingSlash(self):
+    dir_path = file_io.join(self._base_dir, "test_dir_trailing")
+    file_io.create_dir(dir_path)
+    with mock.patch.object(
+        file_io._pywrap_file_io,
+        "GetChildren",
+        return_value=[b"eval/", b"train/", b"file.txt", b"nested/"]):
+      dir_list = file_io.list_directory(dir_path)
+      self.assertEqual(dir_list, ["eval", "train", "file.txt", "nested"])
+      dir_list_v2 = file_io.list_directory_v2(dir_path)
+      self.assertEqual(dir_list_v2, ["eval", "train", "file.txt", "nested"])
 
   def _setupWalkDirectories(self, dir_path):
     # Creating a file structure as follows
