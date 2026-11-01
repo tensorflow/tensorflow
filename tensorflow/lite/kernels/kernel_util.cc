@@ -43,14 +43,22 @@ namespace tflite {
 
 namespace {
 
-// Assumes tensor_index is a valid index (in bounds)
+#define KERNEL_UTIL_LOG(context, ...)                              \
+  do {                                                             \
+    if ((context) != nullptr && (context)->ReportError != nullptr) \
+      TF_LITE_KERNEL_LOG(const_cast<TfLiteContext*>(context),      \
+                         __VA_ARGS__);                             \
+  } while (false)
+
+// Assumes context != nullptr and tensor_index is in [0, context->tensors_size).
 inline TfLiteTensor* GetTensorAtIndex(const TfLiteContext* context,
                                       int tensor_index) {
   if (context->tensors != nullptr) {
     return &context->tensors[tensor_index];
-  } else {
+  } else if (context->GetTensor != nullptr) {
     return context->GetTensor(context, tensor_index);
   }
+  return nullptr;
 }
 
 // Validate in a single place to reduce binary size
@@ -58,20 +66,32 @@ inline TfLiteStatus ValidateTensorIndexingSafe(const TfLiteContext* context,
                                                int index, int max_size,
                                                const int* tensor_indices,
                                                int* tensor_index) {
-  if (index < 0 || index >= max_size) {
-    TF_LITE_KERNEL_LOG(const_cast<TfLiteContext*>(context),
-                       "Invalid tensor index %d (not in [0, %d))\n", index,
-                       max_size);
+  if (context == nullptr || tensor_index == nullptr) {
+    KERNEL_UTIL_LOG(context, "Invalid null context or tensor index pointer\n");
     return kTfLiteError;
   }
-  if (tensor_indices[index] == kTfLiteOptionalTensor) {
-    TF_LITE_KERNEL_LOG(const_cast<TfLiteContext*>(context),
-                       "Tensor at index %d was optional but was expected\n",
-                       index);
+  if (index < 0 || index >= max_size || tensor_indices == nullptr) {
+    KERNEL_UTIL_LOG(context, "Invalid tensor index %d (not in [0, %d))\n",
+                    index, max_size);
+    return kTfLiteError;
+  }
+  const int subgraph_tensor_index = tensor_indices[index];
+  if (subgraph_tensor_index == kTfLiteOptionalTensor) {
+    KERNEL_UTIL_LOG(context,
+                    "Tensor at index %d was optional but was expected\n",
+                    index);
+    return kTfLiteError;
+  }
+  if (subgraph_tensor_index < 0 ||
+      static_cast<size_t>(subgraph_tensor_index) >= context->tensors_size) {
+    KERNEL_UTIL_LOG(
+        context,
+        "Invalid subgraph tensor index %d at index %d (not in [0, %zu))\n",
+        subgraph_tensor_index, index, context->tensors_size);
     return kTfLiteError;
   }
 
-  *tensor_index = tensor_indices[index];
+  *tensor_index = subgraph_tensor_index;
   return kTfLiteOk;
 }
 
@@ -79,34 +99,75 @@ inline TfLiteStatus ValidateTensorIndexingSafe(const TfLiteContext* context,
 // error.
 inline int ValidateTensorIndexing(const TfLiteContext* context, int index,
                                   int max_size, const int* tensor_indices) {
-  if (index >= 0 && index < max_size) {
+  if (context != nullptr && tensor_indices != nullptr && index >= 0 &&
+      index < max_size) {
     const int tensor_index = tensor_indices[index];
-    if (tensor_index != kTfLiteOptionalTensor) {
+    if (tensor_index >= 0 &&
+        static_cast<size_t>(tensor_index) < context->tensors_size) {
       return tensor_index;
     }
   }
   return -1;
 }
 
-inline TfLiteTensor* GetMutableInput(const TfLiteContext* context,
-                                     const TfLiteNode* node, int index) {
+inline TfLiteTensor* GetTensorImpl(const TfLiteContext* context,
+                                   const TfLiteNode* node,
+                                   const TfLiteIntArray* tensor_indices,
+                                   int index) {
+  if (node == nullptr || tensor_indices == nullptr) {
+    return nullptr;
+  }
   const int tensor_index = ValidateTensorIndexing(
-      context, index, node->inputs->size, node->inputs->data);
+      context, index, tensor_indices->size, tensor_indices->data);
   if (tensor_index < 0) {
     return nullptr;
   }
   return GetTensorAtIndex(context, tensor_index);
 }
 
+template <typename TensorPtr>
+inline TfLiteStatus GetTensorSafeImpl(const TfLiteContext* context,
+                                      const TfLiteNode* node,
+                                      const TfLiteIntArray* tensor_indices,
+                                      int index, TensorPtr* tensor) {
+  if (tensor == nullptr) {
+    KERNEL_UTIL_LOG(context, "Invalid null output tensor pointer\n");
+    return kTfLiteError;
+  }
+  *tensor = nullptr;
+  if (node == nullptr || tensor_indices == nullptr) {
+    KERNEL_UTIL_LOG(context, "Invalid null node or tensor index array\n");
+    return kTfLiteError;
+  }
+  int tensor_index;
+  TF_LITE_ENSURE_STATUS(ValidateTensorIndexingSafe(
+      context, index, tensor_indices->size, tensor_indices->data,
+      &tensor_index));
+  TfLiteTensor* resolved = GetTensorAtIndex(context, tensor_index);
+  if (resolved == nullptr) {
+    KERNEL_UTIL_LOG(context,
+                    "Failed to resolve subgraph tensor %d at index %d\n",
+                    tensor_index, index);
+    return kTfLiteError;
+  }
+  *tensor = resolved;
+  return kTfLiteOk;
+}
+
+inline TfLiteTensor* GetMutableInput(const TfLiteContext* context,
+                                     const TfLiteNode* node, int index) {
+  return GetTensorImpl(context, node, node != nullptr ? node->inputs : nullptr,
+                       index);
+}
+
 inline TfLiteStatus GetMutableInputSafe(const TfLiteContext* context,
                                         const TfLiteNode* node, int index,
                                         const TfLiteTensor** tensor) {
-  int tensor_index;
-  TF_LITE_ENSURE_STATUS(ValidateTensorIndexingSafe(
-      context, index, node->inputs->size, node->inputs->data, &tensor_index));
-  *tensor = GetTensorAtIndex(context, tensor_index);
-  return kTfLiteOk;
+  return GetTensorSafeImpl(
+      context, node, node != nullptr ? node->inputs : nullptr, index, tensor);
 }
+
+#undef KERNEL_UTIL_LOG
 
 }  // anonymous namespace.
 
@@ -129,21 +190,14 @@ TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
 
 TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                         int index) {
-  const int tensor_index = ValidateTensorIndexing(
-      context, index, node->outputs->size, node->outputs->data);
-  if (tensor_index < 0) {
-    return nullptr;
-  }
-  return GetTensorAtIndex(context, tensor_index);
+  return GetTensorImpl(context, node, node != nullptr ? node->outputs : nullptr,
+                       index);
 }
 
 TfLiteStatus GetOutputSafe(const TfLiteContext* context, const TfLiteNode* node,
                            int index, TfLiteTensor** tensor) {
-  int tensor_index;
-  TF_LITE_ENSURE_STATUS(ValidateTensorIndexingSafe(
-      context, index, node->outputs->size, node->outputs->data, &tensor_index));
-  *tensor = GetTensorAtIndex(context, tensor_index);
-  return kTfLiteOk;
+  return GetTensorSafeImpl(
+      context, node, node != nullptr ? node->outputs : nullptr, index, tensor);
 }
 
 const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
@@ -154,44 +208,30 @@ const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
 #ifndef TF_LITE_STATIC_MEMORY
 TfLiteTensor* GetTemporary(TfLiteContext* context, const TfLiteNode* node,
                            int index) {
-  const int tensor_index = ValidateTensorIndexing(
-      context, index, node->temporaries->size, node->temporaries->data);
-  if (tensor_index < 0) {
-    return nullptr;
-  }
-  return GetTensorAtIndex(context, tensor_index);
+  return GetTensorImpl(context, node,
+                       node != nullptr ? node->temporaries : nullptr, index);
 }
 
 TfLiteStatus GetTemporarySafe(const TfLiteContext* context,
                               const TfLiteNode* node, int index,
                               TfLiteTensor** tensor) {
-  int tensor_index;
-  TF_LITE_ENSURE_STATUS(
-      ValidateTensorIndexingSafe(context, index, node->temporaries->size,
-                                 node->temporaries->data, &tensor_index));
-  *tensor = GetTensorAtIndex(context, tensor_index);
-  return kTfLiteOk;
+  return GetTensorSafeImpl(context, node,
+                           node != nullptr ? node->temporaries : nullptr, index,
+                           tensor);
 }
 
 const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                      const TfLiteNode* node, int index) {
-  const int tensor_index = ValidateTensorIndexing(
-      context, index, node->intermediates->size, node->intermediates->data);
-  if (tensor_index < 0) {
-    return nullptr;
-  }
-  return GetTensorAtIndex(context, tensor_index);
+  return GetTensorImpl(context, node,
+                       node != nullptr ? node->intermediates : nullptr, index);
 }
 
 TfLiteStatus GetIntermediatesSafe(const TfLiteContext* context,
                                   const TfLiteNode* node, int index,
                                   TfLiteTensor** tensor) {
-  int tensor_index;
-  TF_LITE_ENSURE_STATUS(
-      ValidateTensorIndexingSafe(context, index, node->intermediates->size,
-                                 node->intermediates->data, &tensor_index));
-  *tensor = GetTensorAtIndex(context, tensor_index);
-  return kTfLiteOk;
+  return GetTensorSafeImpl(context, node,
+                           node != nullptr ? node->intermediates : nullptr,
+                           index, tensor);
 }
 #endif  // TF_LITE_STATIC_MEMORY
 

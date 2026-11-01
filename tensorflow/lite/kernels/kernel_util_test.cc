@@ -20,7 +20,9 @@ limitations under the License.
 #include <string.h>
 
 #include <initializer_list>
+#include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -32,6 +34,9 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/util.h"
 
@@ -69,6 +74,528 @@ class TestWithTfLiteContext : public ::testing::Test {
  protected:
   TestContext context_;
 };
+
+TfLiteStatus CheckIntermediatesCustomOpPrepare(TfLiteContext* context,
+                                               TfLiteNode* node) {
+  TfLiteTensor* intermediate = nullptr;
+  TF_LITE_ENSURE_OK(context,
+                    GetIntermediatesSafe(context, node, 0, &intermediate));
+  TF_LITE_ENSURE(context, intermediate != nullptr);
+  volatile size_t observed_bytes = intermediate->bytes;
+  (void)observed_bytes;
+  const TfLiteTensor* nonsafe = GetIntermediates(context, node, 0);
+  TF_LITE_ENSURE(context, nonsafe == intermediate);
+  return kTfLiteOk;
+}
+
+std::vector<uint8_t> BuildCustomIntermediatesModelBuffer(
+    int32_t intermediate_tensor_index) {
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<Buffer>> buffers = {CreateBuffer(fbb)};
+  std::vector<flatbuffers::Offset<Tensor>> tensors = {
+      CreateTensor(fbb, fbb.CreateVector<int32_t>({2}), TensorType_FLOAT32, 0,
+                   fbb.CreateString("in")),
+      CreateTensor(fbb, fbb.CreateVector<int32_t>({2}), TensorType_FLOAT32, 0,
+                   fbb.CreateString("mid")),
+      CreateTensor(fbb, fbb.CreateVector<int32_t>({2}), TensorType_FLOAT32, 0,
+                   fbb.CreateString("out")),
+  };
+  std::vector<flatbuffers::Offset<OperatorCode>> opcodes = {
+      CreateOperatorCodeDirect(fbb, BuiltinOperator_CUSTOM,
+                               "test_intermediates_op"),
+  };
+  std::vector<flatbuffers::Offset<Operator>> operators = {
+      CreateOperator(fbb, /*opcode_index=*/0, fbb.CreateVector<int32_t>({0}),
+                     fbb.CreateVector<int32_t>({2}), BuiltinOptions_NONE, 0, 0,
+                     CustomOptionsFormat_FLEXBUFFERS, 0,
+                     fbb.CreateVector<int32_t>({intermediate_tensor_index})),
+  };
+  std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {
+      CreateSubGraph(fbb, fbb.CreateVector(tensors),
+                     fbb.CreateVector<int32_t>({0}),
+                     fbb.CreateVector<int32_t>({2}),
+                     fbb.CreateVector(operators), fbb.CreateString("main")),
+  };
+  FinishModelBuffer(
+      fbb, CreateModel(fbb, 3, fbb.CreateVector(opcodes),
+                       fbb.CreateVector(subgraphs),
+                       fbb.CreateString("custom_intermediates_test"),
+                       fbb.CreateVector(buffers)));
+  return std::vector<uint8_t>(fbb.GetBufferPointer(),
+                              fbb.GetBufferPointer() + fbb.GetSize());
+}
+
+std::vector<uint8_t> BuildQuantizedBuiltinLstmModelBuffer(
+    int32_t first_intermediate_index) {
+  flatbuffers::FlatBufferBuilder fbb;
+  std::vector<flatbuffers::Offset<Buffer>> buffers = {CreateBuffer(fbb)};
+  std::vector<flatbuffers::Offset<Tensor>> tensors;
+
+  auto add_tensor = [&](const std::vector<int32_t>& shape, TensorType type,
+                        float scale, int64_t zp,
+                        const std::vector<uint8_t>& raw_bytes,
+                        bool is_variable) -> int32_t {
+    uint32_t buffer_idx = 0;
+    if (!raw_bytes.empty()) {
+      buffer_idx = static_cast<uint32_t>(buffers.size());
+      buffers.push_back(CreateBuffer(fbb, fbb.CreateVector(raw_bytes)));
+    }
+    auto quant = CreateQuantizationParameters(
+        fbb, 0, 0, fbb.CreateVector<float>({scale}),
+        fbb.CreateVector<int64_t>({zp}));
+    int32_t idx = static_cast<int32_t>(tensors.size());
+    std::string name = "t" + std::to_string(idx);
+    tensors.push_back(CreateTensor(fbb, fbb.CreateVector(shape), type,
+                                   buffer_idx, fbb.CreateString(name), quant,
+                                   is_variable));
+    return idx;
+  };
+
+  const std::vector<uint8_t> w4 = {4, 252, 4, 252};
+  const int32_t bias_vals[2] = {10, -10};
+  std::vector<uint8_t> b8(sizeof(bias_vals));
+  memcpy(b8.data(), bias_vals, sizeof(bias_vals));
+  const int16_t ln_vals[2] = {256, 256};
+  std::vector<uint8_t> ln4(sizeof(ln_vals));
+  memcpy(ln4.data(), ln_vals, sizeof(ln_vals));
+
+  const int32_t t_in = add_tensor({1, 2}, TensorType_INT8, 0.01f, 0, {}, false);
+  const int32_t t_i2f =
+      add_tensor({2, 2}, TensorType_INT8, 0.01f, 0, w4, false);
+  const int32_t t_i2c =
+      add_tensor({2, 2}, TensorType_INT8, 0.01f, 0, w4, false);
+  const int32_t t_i2o =
+      add_tensor({2, 2}, TensorType_INT8, 0.01f, 0, w4, false);
+  const int32_t t_r2f =
+      add_tensor({2, 2}, TensorType_INT8, 0.01f, 0, w4, false);
+  const int32_t t_r2c =
+      add_tensor({2, 2}, TensorType_INT8, 0.01f, 0, w4, false);
+  const int32_t t_r2o =
+      add_tensor({2, 2}, TensorType_INT8, 0.01f, 0, w4, false);
+  const int32_t t_fb =
+      add_tensor({2}, TensorType_INT32, 0.0001f, 0, b8, false);
+  const int32_t t_cb =
+      add_tensor({2}, TensorType_INT32, 0.0001f, 0, b8, false);
+  const int32_t t_ob =
+      add_tensor({2}, TensorType_INT32, 0.0001f, 0, b8, false);
+  const int32_t t_out_state =
+      add_tensor({1, 2}, TensorType_INT8, 0.01f, 0, {}, true);
+  const int32_t t_cell_state =
+      add_tensor({1, 2}, TensorType_INT16, 1.0f / 32768.0f, 0, {}, true);
+  const int32_t t_ln_f =
+      add_tensor({2}, TensorType_INT16, 0.01f, 0, ln4, false);
+  const int32_t t_ln_c =
+      add_tensor({2}, TensorType_INT16, 0.01f, 0, ln4, false);
+  const int32_t t_ln_o =
+      add_tensor({2}, TensorType_INT16, 0.01f, 0, ln4, false);
+  const int32_t t_out =
+      add_tensor({1, 2}, TensorType_INT8, 0.01f, 0, {}, false);
+  const int32_t t_mid0 =
+      add_tensor({1, 2}, TensorType_INT16, 0.007f, 0, {}, false);
+  const int32_t t_mid1 =
+      add_tensor({1, 2}, TensorType_INT16, 0.007f, 0, {}, false);
+  const int32_t t_mid2 =
+      add_tensor({1, 2}, TensorType_INT16, 0.007f, 0, {}, false);
+  const int32_t t_mid3 =
+      add_tensor({1, 2}, TensorType_INT16, 0.007f, 0, {}, false);
+  const int32_t t_mid4 =
+      add_tensor({1, 2}, TensorType_INT16, 0.007f, 0, {}, false);
+
+  const std::vector<int32_t> op_inputs = {
+      t_in, -1, t_i2f, t_i2c, t_i2o, -1, t_r2f,       t_r2c,
+      t_r2o, -1, -1,   -1,    -1,    t_fb, t_cb,      t_ob,
+      -1,   -1, t_out_state,  t_cell_state, -1, t_ln_f, t_ln_c,
+      t_ln_o};
+  const std::vector<int32_t> op_outputs = {t_out};
+  const std::vector<int32_t> op_intermediates = {
+      first_intermediate_index == -999 ? t_mid0 : first_intermediate_index,
+      t_mid1, t_mid2, t_mid3, t_mid4};
+
+  std::vector<flatbuffers::Offset<OperatorCode>> opcodes = {
+      CreateOperatorCode(fbb, static_cast<int8_t>(BuiltinOperator_LSTM), 0,
+                         /*version=*/4, BuiltinOperator_LSTM),
+  };
+  auto lstm_opts = CreateLSTMOptions(
+      fbb, ActivationFunctionType_TANH, /*cell_clip=*/0.0f,
+      /*proj_clip=*/0.0f, LSTMKernelType_FULL,
+      /*asymmetric_quantize_inputs=*/false);
+  std::vector<flatbuffers::Offset<Operator>> operators = {
+      CreateOperator(fbb, /*opcode_index=*/0, fbb.CreateVector(op_inputs),
+                     fbb.CreateVector(op_outputs), BuiltinOptions_LSTMOptions,
+                     lstm_opts.Union(), /*custom_options=*/0,
+                     CustomOptionsFormat_FLEXBUFFERS, 0,
+                     fbb.CreateVector(op_intermediates)),
+  };
+  std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {
+      CreateSubGraph(fbb, fbb.CreateVector(tensors),
+                     fbb.CreateVector<int32_t>({t_in}),
+                     fbb.CreateVector<int32_t>({t_out}),
+                     fbb.CreateVector(operators), fbb.CreateString("main")),
+  };
+  FinishModelBuffer(fbb, CreateModel(fbb, 3, fbb.CreateVector(opcodes),
+                                     fbb.CreateVector(subgraphs),
+                                     fbb.CreateString("lstm_intermediates"),
+                                     fbb.CreateVector(buffers)));
+  return std::vector<uint8_t>(fbb.GetBufferPointer(),
+                              fbb.GetBufferPointer() + fbb.GetSize());
+}
+
+class TensorIndexingBoundsTest : public ::testing::Test {
+ protected:
+  TensorIndexingBoundsTest() {
+    memset(static_cast<TfLiteContext*>(&context_), 0, sizeof(TfLiteContext));
+    context_.ReportError = ReportError;
+    memset(&tensors_[0], 0, sizeof(tensors_));
+    tensors_[0].bytes = 16;
+    tensors_[0].is_variable = false;
+    tensors_[1].bytes = 32;
+    tensors_[1].is_variable = true;
+    context_.tensors = tensors_;
+    context_.tensors_size = 2;
+    memset(&node_, 0, sizeof(node_));
+  }
+
+  TestContext context_;
+  TfLiteTensor tensors_[2];
+  TfLiteNode node_;
+};
+
+TEST_F(TensorIndexingBoundsTest, ValidTensorLookupsSucceed) {
+  IntArrayUniquePtr inputs = BuildTfLiteArray({0, 1, kTfLiteOptionalTensor});
+  IntArrayUniquePtr outputs = BuildTfLiteArray({1, kTfLiteOptionalTensor});
+  IntArrayUniquePtr temporaries = BuildTfLiteArray({0, kTfLiteOptionalTensor});
+  IntArrayUniquePtr intermediates =
+      BuildTfLiteArray({1, kTfLiteOptionalTensor});
+  node_.inputs = inputs.get();
+  node_.outputs = outputs.get();
+  node_.temporaries = temporaries.get();
+  node_.intermediates = intermediates.get();
+
+  EXPECT_EQ(GetInput(&context_, &node_, 0), &tensors_[0]);
+  EXPECT_EQ(GetInput(&context_, &node_, 1), &tensors_[1]);
+  EXPECT_EQ(GetInput(&context_, &node_, 2), nullptr);
+  EXPECT_EQ(GetInput(&context_, &node_, -1), nullptr);
+  EXPECT_EQ(GetInput(&context_, &node_, 3), nullptr);
+  EXPECT_EQ(GetOptionalInputTensor(&context_, &node_, 0), &tensors_[0]);
+  EXPECT_EQ(GetOptionalInputTensor(&context_, &node_, 2), nullptr);
+  EXPECT_EQ(GetVariableInput(&context_, &node_, 0), nullptr);
+  EXPECT_EQ(GetVariableInput(&context_, &node_, 1), &tensors_[1]);
+  EXPECT_EQ(GetVariableInput(&context_, &node_, 2), nullptr);
+
+  const TfLiteTensor* in_safe = nullptr;
+  ASSERT_EQ(GetInputSafe(&context_, &node_, 0, &in_safe), kTfLiteOk);
+  EXPECT_EQ(in_safe, &tensors_[0]);
+  EXPECT_EQ(GetInputSafe(&context_, &node_, 2, &in_safe), kTfLiteError);
+
+  EXPECT_EQ(GetOutput(&context_, &node_, 0), &tensors_[1]);
+  EXPECT_EQ(GetOutput(&context_, &node_, 1), nullptr);
+  TfLiteTensor* out_safe = nullptr;
+  ASSERT_EQ(GetOutputSafe(&context_, &node_, 0, &out_safe), kTfLiteOk);
+  EXPECT_EQ(out_safe, &tensors_[1]);
+  EXPECT_EQ(GetOutputSafe(&context_, &node_, 1, &out_safe), kTfLiteError);
+
+  EXPECT_EQ(GetTemporary(&context_, &node_, 0), &tensors_[0]);
+  EXPECT_EQ(GetTemporary(&context_, &node_, 1), nullptr);
+  TfLiteTensor* tmp_safe = nullptr;
+  ASSERT_EQ(GetTemporarySafe(&context_, &node_, 0, &tmp_safe), kTfLiteOk);
+  EXPECT_EQ(tmp_safe, &tensors_[0]);
+  EXPECT_EQ(GetTemporarySafe(&context_, &node_, 1, &tmp_safe), kTfLiteError);
+
+  EXPECT_EQ(GetIntermediates(&context_, &node_, 0), &tensors_[1]);
+  EXPECT_EQ(GetIntermediates(&context_, &node_, 1), nullptr);
+  TfLiteTensor* mid_safe = nullptr;
+  ASSERT_EQ(GetIntermediatesSafe(&context_, &node_, 0, &mid_safe), kTfLiteOk);
+  EXPECT_EQ(mid_safe, &tensors_[1]);
+  EXPECT_EQ(GetIntermediatesSafe(&context_, &node_, 1, &mid_safe),
+            kTfLiteError);
+
+  // Also verify custom GetTensor callback mode when context.tensors == nullptr.
+  context_.tensors = nullptr;
+  context_.impl_ = tensors_;
+  context_.GetTensor = [](const TfLiteContext* ctx,
+                          int idx) -> TfLiteTensor* {
+    return &(static_cast<TfLiteTensor*>(ctx->impl_)[idx]);
+  };
+  ASSERT_EQ(GetInputSafe(&context_, &node_, 1, &in_safe), kTfLiteOk);
+  EXPECT_EQ(in_safe, &tensors_[1]);
+  EXPECT_EQ(GetInput(&context_, &node_, 0), &tensors_[0]);
+}
+
+TEST_F(TensorIndexingBoundsTest, ValidFlatBufferIntermediatesModelsSucceed) {
+  const std::vector<uint8_t> custom_buf =
+      BuildCustomIntermediatesModelBuffer(/*intermediate_tensor_index=*/1);
+  auto custom_model = FlatBufferModel::VerifyAndBuildFromBuffer(
+      reinterpret_cast<const char*>(custom_buf.data()), custom_buf.size());
+  ASSERT_NE(custom_model, nullptr);
+  ops::builtin::BuiltinOpResolverWithoutDefaultDelegates custom_resolver;
+  TfLiteRegistration reg = {};
+  reg.prepare = CheckIntermediatesCustomOpPrepare;
+  reg.invoke = [](TfLiteContext*, TfLiteNode*) { return kTfLiteOk; };
+  custom_resolver.AddCustom("test_intermediates_op", &reg);
+  std::unique_ptr<Interpreter> custom_interpreter;
+  ASSERT_EQ(
+      InterpreterBuilder(*custom_model, custom_resolver)(&custom_interpreter),
+      kTfLiteOk);
+  ASSERT_NE(custom_interpreter, nullptr);
+  ASSERT_EQ(custom_interpreter->AllocateTensors(), kTfLiteOk);
+  EXPECT_EQ(custom_interpreter->Invoke(), kTfLiteOk);
+
+  const std::vector<uint8_t> lstm_buf =
+      BuildQuantizedBuiltinLstmModelBuffer(/*first_intermediate_index=*/-999);
+  auto lstm_model = FlatBufferModel::VerifyAndBuildFromBuffer(
+      reinterpret_cast<const char*>(lstm_buf.data()), lstm_buf.size());
+  ASSERT_NE(lstm_model, nullptr);
+  ops::builtin::BuiltinOpResolverWithoutDefaultDelegates lstm_resolver;
+  std::unique_ptr<Interpreter> lstm_interpreter;
+  ASSERT_EQ(InterpreterBuilder(*lstm_model, lstm_resolver)(&lstm_interpreter),
+            kTfLiteOk);
+  ASSERT_NE(lstm_interpreter, nullptr);
+  ASSERT_EQ(lstm_interpreter->AllocateTensors(), kTfLiteOk);
+  EXPECT_EQ(lstm_interpreter->Invoke(), kTfLiteOk);
+}
+
+TEST_F(TensorIndexingBoundsTest,
+       SafeHelpersRejectNegativeNonOptionalTensorIndices) {
+  for (int bad_index : {-2, std::numeric_limits<int>::min()}) {
+    IntArrayUniquePtr arr = BuildTfLiteArray({bad_index});
+    node_.inputs = arr.get();
+    node_.outputs = arr.get();
+    node_.temporaries = arr.get();
+    node_.intermediates = arr.get();
+
+    const TfLiteTensor* in_tensor = &tensors_[0];
+    TfLiteStatus status = GetInputSafe(&context_, &node_, 0, &in_tensor);
+    if (status == kTfLiteOk && in_tensor != nullptr) {
+      volatile size_t observed = in_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(status, kTfLiteError);
+    EXPECT_EQ(in_tensor, nullptr);
+
+    TfLiteTensor* out_tensor = &tensors_[0];
+    status = GetOutputSafe(&context_, &node_, 0, &out_tensor);
+    if (status == kTfLiteOk && out_tensor != nullptr) {
+      volatile size_t observed = out_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(status, kTfLiteError);
+    EXPECT_EQ(out_tensor, nullptr);
+
+    TfLiteTensor* tmp_tensor = &tensors_[0];
+    status = GetTemporarySafe(&context_, &node_, 0, &tmp_tensor);
+    if (status == kTfLiteOk && tmp_tensor != nullptr) {
+      volatile size_t observed = tmp_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(status, kTfLiteError);
+    EXPECT_EQ(tmp_tensor, nullptr);
+
+    TfLiteTensor* mid_tensor = &tensors_[0];
+    status = GetIntermediatesSafe(&context_, &node_, 0, &mid_tensor);
+    if (status == kTfLiteOk && mid_tensor != nullptr) {
+      volatile size_t observed = mid_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(status, kTfLiteError);
+    EXPECT_EQ(mid_tensor, nullptr);
+  }
+}
+
+TEST_F(TensorIndexingBoundsTest,
+       SafeHelpersRejectTensorIndicesAtOrAboveTensorsSize) {
+  for (int bad_index : {2, 99, std::numeric_limits<int>::max()}) {
+    IntArrayUniquePtr arr = BuildTfLiteArray({bad_index});
+    node_.inputs = arr.get();
+    node_.outputs = arr.get();
+    node_.temporaries = arr.get();
+    node_.intermediates = arr.get();
+
+    const TfLiteTensor* in_tensor = &tensors_[0];
+    TfLiteStatus status = GetInputSafe(&context_, &node_, 0, &in_tensor);
+    if (status == kTfLiteOk && in_tensor != nullptr) {
+      volatile size_t observed = in_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(status, kTfLiteError);
+    EXPECT_EQ(in_tensor, nullptr);
+
+    TfLiteTensor* out_tensor = &tensors_[0];
+    status = GetOutputSafe(&context_, &node_, 0, &out_tensor);
+    if (status == kTfLiteOk && out_tensor != nullptr) {
+      volatile size_t observed = out_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(status, kTfLiteError);
+    EXPECT_EQ(out_tensor, nullptr);
+
+    TfLiteTensor* tmp_tensor = &tensors_[0];
+    status = GetTemporarySafe(&context_, &node_, 0, &tmp_tensor);
+    if (status == kTfLiteOk && tmp_tensor != nullptr) {
+      volatile size_t observed = tmp_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(status, kTfLiteError);
+    EXPECT_EQ(tmp_tensor, nullptr);
+
+    TfLiteTensor* mid_tensor = &tensors_[0];
+    status = GetIntermediatesSafe(&context_, &node_, 0, &mid_tensor);
+    if (status == kTfLiteOk && mid_tensor != nullptr) {
+      volatile size_t observed = mid_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(status, kTfLiteError);
+    EXPECT_EQ(mid_tensor, nullptr);
+  }
+
+  // Zero-tensor context must reject subgraph tensor index 0.
+  context_.tensors_size = 0;
+  IntArrayUniquePtr zero_arr = BuildTfLiteArray({0});
+  node_.intermediates = zero_arr.get();
+  TfLiteTensor* mid_tensor = &tensors_[0];
+  EXPECT_EQ(GetIntermediatesSafe(&context_, &node_, 0, &mid_tensor),
+            kTfLiteError);
+  EXPECT_EQ(mid_tensor, nullptr);
+}
+
+TEST_F(TensorIndexingBoundsTest,
+       NonSafeHelpersRejectOutOfBoundsTensorIndices) {
+  for (int bad_index :
+       {-2, std::numeric_limits<int>::min(), 2, 99,
+        std::numeric_limits<int>::max()}) {
+    IntArrayUniquePtr arr = BuildTfLiteArray({bad_index});
+    node_.inputs = arr.get();
+    node_.outputs = arr.get();
+    node_.temporaries = arr.get();
+    node_.intermediates = arr.get();
+
+    const TfLiteTensor* in_tensor = GetInput(&context_, &node_, 0);
+    if (in_tensor != nullptr) {
+      volatile size_t observed = in_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(in_tensor, nullptr);
+
+    const TfLiteTensor* opt_in = GetOptionalInputTensor(&context_, &node_, 0);
+    if (opt_in != nullptr) {
+      volatile size_t observed = opt_in->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(opt_in, nullptr);
+
+    TfLiteTensor* var_in = GetVariableInput(&context_, &node_, 0);
+    if (var_in != nullptr) {
+      volatile size_t observed = var_in->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(var_in, nullptr);
+
+    TfLiteTensor* out_tensor = GetOutput(&context_, &node_, 0);
+    if (out_tensor != nullptr) {
+      volatile size_t observed = out_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(out_tensor, nullptr);
+
+    TfLiteTensor* tmp_tensor = GetTemporary(&context_, &node_, 0);
+    if (tmp_tensor != nullptr) {
+      volatile size_t observed = tmp_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(tmp_tensor, nullptr);
+
+    const TfLiteTensor* mid_tensor = GetIntermediates(&context_, &node_, 0);
+    if (mid_tensor != nullptr) {
+      volatile size_t observed = mid_tensor->bytes;
+      (void)observed;
+    }
+    EXPECT_EQ(mid_tensor, nullptr);
+  }
+}
+
+TEST_F(TensorIndexingBoundsTest,
+       HelpersRejectNullNodeArraysContextAndOutputPointers) {
+  // node.{inputs,outputs,temporaries,intermediates} are all nullptr initially.
+  EXPECT_EQ(GetInput(&context_, &node_, 0), nullptr);
+  EXPECT_EQ(GetOptionalInputTensor(&context_, &node_, 0), nullptr);
+  EXPECT_EQ(GetVariableInput(&context_, &node_, 0), nullptr);
+  EXPECT_EQ(GetOutput(&context_, &node_, 0), nullptr);
+  EXPECT_EQ(GetTemporary(&context_, &node_, 0), nullptr);
+  EXPECT_EQ(GetIntermediates(&context_, &node_, 0), nullptr);
+
+  const TfLiteTensor* in_safe = &tensors_[0];
+  EXPECT_EQ(GetInputSafe(&context_, &node_, 0, &in_safe), kTfLiteError);
+  EXPECT_EQ(in_safe, nullptr);
+  TfLiteTensor* out_safe = &tensors_[0];
+  EXPECT_EQ(GetOutputSafe(&context_, &node_, 0, &out_safe), kTfLiteError);
+  EXPECT_EQ(out_safe, nullptr);
+  TfLiteTensor* tmp_safe = &tensors_[0];
+  EXPECT_EQ(GetTemporarySafe(&context_, &node_, 0, &tmp_safe), kTfLiteError);
+  EXPECT_EQ(tmp_safe, nullptr);
+  TfLiteTensor* mid_safe = &tensors_[0];
+  EXPECT_EQ(GetIntermediatesSafe(&context_, &node_, 0, &mid_safe),
+            kTfLiteError);
+  EXPECT_EQ(mid_safe, nullptr);
+
+  IntArrayUniquePtr valid_arr = BuildTfLiteArray({0});
+  node_.inputs = valid_arr.get();
+  node_.outputs = valid_arr.get();
+  node_.temporaries = valid_arr.get();
+  node_.intermediates = valid_arr.get();
+
+  // Null context, null node, null output pointer, and null ReportError.
+  EXPECT_EQ(GetInput(nullptr, &node_, 0), nullptr);
+  EXPECT_EQ(GetInput(&context_, nullptr, 0), nullptr);
+  EXPECT_EQ(GetInputSafe(nullptr, &node_, 0, &in_safe), kTfLiteError);
+  EXPECT_EQ(GetInputSafe(&context_, nullptr, 0, &in_safe), kTfLiteError);
+  EXPECT_EQ(GetInputSafe(&context_, &node_, 0, nullptr), kTfLiteError);
+
+  context_.ReportError = nullptr;
+  context_.tensors = nullptr;
+  context_.GetTensor = nullptr;
+  out_safe = &tensors_[0];
+  EXPECT_EQ(GetOutputSafe(&context_, &node_, 0, &out_safe), kTfLiteError);
+  EXPECT_EQ(out_safe, nullptr);
+  EXPECT_EQ(GetOutput(&context_, &node_, 0), nullptr);
+}
+
+TEST_F(TensorIndexingBoundsTest,
+       FlatBufferCustomOpRejectsOutOfBoundsIntermediates) {
+  for (int32_t bad_intermediate : {-2, 3, 99}) {
+    const std::vector<uint8_t> buf =
+        BuildCustomIntermediatesModelBuffer(bad_intermediate);
+    auto model = FlatBufferModel::VerifyAndBuildFromBuffer(
+        reinterpret_cast<const char*>(buf.data()), buf.size());
+    ASSERT_NE(model, nullptr);
+    ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+    TfLiteRegistration reg = {};
+    reg.prepare = CheckIntermediatesCustomOpPrepare;
+    reg.invoke = [](TfLiteContext*, TfLiteNode*) { return kTfLiteOk; };
+    resolver.AddCustom("test_intermediates_op", &reg);
+    std::unique_ptr<Interpreter> interpreter;
+    ASSERT_EQ(InterpreterBuilder(*model, resolver)(&interpreter), kTfLiteOk);
+    ASSERT_NE(interpreter, nullptr);
+    EXPECT_EQ(interpreter->AllocateTensors(), kTfLiteError);
+  }
+}
+
+TEST_F(TensorIndexingBoundsTest,
+       FlatBufferBuiltinLstmSurvivesOutOfBoundsLayerNormIntermediates) {
+  for (int32_t bad_intermediate : {-2, 999}) {
+    const std::vector<uint8_t> buf =
+        BuildQuantizedBuiltinLstmModelBuffer(bad_intermediate);
+    auto model = FlatBufferModel::VerifyAndBuildFromBuffer(
+        reinterpret_cast<const char*>(buf.data()), buf.size());
+    ASSERT_NE(model, nullptr);
+    ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+    std::unique_ptr<Interpreter> interpreter;
+    ASSERT_EQ(InterpreterBuilder(*model, resolver)(&interpreter), kTfLiteOk);
+    ASSERT_NE(interpreter, nullptr);
+    // On unpatched builds, BuiltinOperator_LSTM Prepare() calls
+    // GetIntermediatesSafe() on slot 0 and dereferences &context->tensors[idx]
+    // out of bounds under ASan.
+    (void)interpreter->AllocateTensors();
+  }
+}
 
 class HaveSameShapeTest : public TestWithTfLiteContext {};
 
