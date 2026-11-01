@@ -808,8 +808,7 @@ def list_directory_v2(path):
   entries = []
   for filename in _pywrap_file_io.GetChildren(compat.path_to_bytes(path)):
     name = compat.as_str_any(filename)
-    stripped = name.rstrip('/\\')
-    entries.append(stripped if stripped else name)
+    entries.append(name.rstrip('/\\') or name)
   return entries
 
 
