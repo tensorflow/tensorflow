@@ -4556,6 +4556,76 @@ ENTRY entry {
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
 
+TEST_P(SpmdPartitioningTest, NoPartitionSortInTopKWithLargeSliceStartOrStride) {
+  // 4294967296 == 2^32 (truncates to 0 in 32-bit int) and
+  // 4294967297 == 2^32 + 1 (truncates to 1 in 32-bit int). Neither non-zero
+  // start nor non-unit stride should be matched as a TopK slice.
+  for (absl::string_view slice_spec :
+       {"[4294967296:4294967298], [0:2]", "[0:4294967298:4294967297], [0:2]"}) {
+    std::string hlo_string = absl::StrCat(
+        R"hlo(
+HloModule module
+
+%compare-greater-than.8 (p.0.lhs.9: bf16[], p.0.rhs.10: bf16[],
+                         p.1.lhs.11: s32[], p.1.rhs.12: s32[]) -> pred[] {
+  %p.1.lhs.11 = s32[] parameter(2)
+  %p.1.rhs.12 = s32[] parameter(3)
+  %p.0.lhs.9 = bf16[] parameter(0)
+  %convert.13 = f32[] convert(bf16[] %p.0.lhs.9)
+  %bitcast-convert.16 = s32[] bitcast-convert(f32[] %convert.13)
+  %constant.20 = s32[] constant(0)
+  %compare.21 = pred[] compare(s32[] %bitcast-convert.16, s32[] %constant.20),
+    direction=LT
+  %constant.15 = u32[] constant(2147483647)
+  %bitcast-convert.17 = u32[] bitcast-convert(f32[] %convert.13)
+  %subtract.18 = u32[] subtract(u32[] %constant.15, u32[] %bitcast-convert.17)
+  %bitcast-convert.19 = s32[] bitcast-convert(u32[] %subtract.18)
+  %select.22 = s32[] select(pred[] %compare.21, s32[] %bitcast-convert.19,
+    s32[] %bitcast-convert.16)
+  %p.0.rhs.10 = bf16[] parameter(1)
+  %convert.14 = f32[] convert(bf16[] %p.0.rhs.10)
+  %bitcast-convert.24 = s32[] bitcast-convert(f32[] %convert.14)
+  %constant.28 = s32[] constant(0)
+  %compare.29 = pred[] compare(s32[] %bitcast-convert.24, s32[] %constant.28),
+    direction=LT
+  %constant.23 = u32[] constant(2147483647)
+  %bitcast-convert.25 = u32[] bitcast-convert(f32[] %convert.14)
+  %subtract.26 = u32[] subtract(u32[] %constant.23, u32[] %bitcast-convert.25)
+  %bitcast-convert.27 = s32[] bitcast-convert(u32[] %subtract.26)
+  %select.30 = s32[] select(pred[] %compare.29, s32[] %bitcast-convert.27,
+    s32[] %bitcast-convert.24)
+  ROOT %compare.31 = pred[] compare(s32[] %select.22, s32[] %select.30),
+    direction=GT
+}
+
+ENTRY entry {
+  %arg = bf16[4294967298,8] parameter(0)
+  %copy = bf16[4294967298,8] copy(%arg), sharding={devices=[1,2]<=[2]}
+  %iota = s32[4294967298,8] iota(), iota_dimension=1
+  %sort = (bf16[4294967298,8], s32[4294967298,8]) sort(%copy, %iota),
+    dimensions={1}, is_stable=true, to_apply=%compare-greater-than.8
+  %gte.0 = bf16[4294967298,8] get-tuple-element(%sort), index=0
+  %slice.0 = bf16[2,2] slice(%gte.0), slice={)hlo",
+        slice_spec, R"hlo(}
+  %gte.1 = s32[4294967298,8] get-tuple-element(%sort), index=1
+  %slice.1 = s32[2,2] slice(%gte.1), slice={)hlo",
+        slice_spec, R"hlo(}
+  ROOT %tuple = (bf16[2,2], s32[2,2]) tuple(%slice.0, %slice.1),
+    sharding={{replicated}, {replicated}}
+}
+)hlo");
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(hlo_string, /*num_devices=*/2));
+    EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kSort), 1);
+    const HloInstruction* sort =
+        FindInstruction(module.get(), HloOpcode::kSort);
+    ASSERT_NE(sort, nullptr);
+    EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 8);
+    EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 8);
+  }
+}
+
 TEST_P(SpmdPartitioningTest, SortShardedOnSortDim_SlowSortBug) {
   // Test with the sort in b/258523376 (same comparator, shapes, and sharding)
   absl::string_view hlo_string = R"(
