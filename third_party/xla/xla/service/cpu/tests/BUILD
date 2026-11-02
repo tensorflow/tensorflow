@@ -348,6 +348,34 @@ xla_test(
 )
 
 onednn_cc_test(
+    name = "onednn_aot_test",
+    srcs = ["onednn_aot_test.cc"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:test_utils",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+onednn_cc_test(
     name = "onednn_memory_util_test",
     srcs = ["onednn_memory_util_test.cc"],
     copts = tsl_copts(),
