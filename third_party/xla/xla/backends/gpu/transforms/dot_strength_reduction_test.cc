@@ -641,6 +641,42 @@ INSTANTIATE_TEST_SUITE_P(
               // CHECK: [[GATHER:%[^ ]+]] = bf16[128,512]{1,0} gather(%rhs, {{.*}})
               // CHECK: ROOT {{.*}} = bf16[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
             )"},
+        OneHotDotTestCase{"Fp8x3Bf16OneHotToGather",
+                          R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[128] parameter(0)
+                bcast_indices = s32[128,256] broadcast(indices), dimensions={0}
+                iota = s32[128,256] iota(), iota_dimension=1
+                cmp = pred[128,256] compare(bcast_indices, iota), direction=EQ
+                lhs = bf16[128,256] convert(cmp)
+                rhs = bf16[256,512] parameter(1)
+                ROOT dot = bf16[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_fp8x3
+              }
+            )",
+                          /*expected_changed=*/true,
+                          R"(
+              // CHECK: [[GATHER:%[^ ]+]] = bf16[128,512]{1,0} gather(%rhs, {{.*}})
+              // CHECK: ROOT {{.*}} = bf16[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
+            )"},
+        OneHotDotTestCase{"Fp8x4Bf16OneHotToGather",
+                          R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[128] parameter(0)
+                bcast_indices = s32[128,256] broadcast(indices), dimensions={0}
+                iota = s32[128,256] iota(), iota_dimension=1
+                cmp = pred[128,256] compare(bcast_indices, iota), direction=EQ
+                lhs = bf16[128,256] convert(cmp)
+                rhs = bf16[256,512] parameter(1)
+                ROOT dot = bf16[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_fp8x4
+              }
+            )",
+                          /*expected_changed=*/true,
+                          R"(
+              // CHECK: [[GATHER:%[^ ]+]] = bf16[128,512]{1,0} gather(%rhs, {{.*}})
+              // CHECK: ROOT {{.*}} = bf16[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
+            )"},
         OneHotDotTestCase{"Negative_S8With256Classes",
                           R"(
               HloModule m
@@ -791,6 +827,10 @@ INSTANTIATE_TEST_SUITE_P(
                                    ", operand_precision={highest,highest}, "
                                    "algorithm=dot_bf16_bf16_f32",
                                    7},
+        OneHotF32PrecisionTestCase{"ExplicitFp8x3Alg",
+                                   ", algorithm=dot_bf16_bf16_fp8x3", 7},
+        OneHotF32PrecisionTestCase{"ExplicitFp8x4Alg",
+                                   ", algorithm=dot_bf16_bf16_fp8x4", 7},
         OneHotF32PrecisionTestCase{
             "UnsupportedAlgSkipped", ", algorithm=dot_bf16_bf16_f32_x3",
             std::nullopt, /*default_to_bf16=*/false,

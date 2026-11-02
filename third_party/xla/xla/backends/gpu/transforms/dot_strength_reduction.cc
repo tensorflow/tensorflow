@@ -181,6 +181,8 @@ std::optional<int> GetF32MantissaBits(
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       return kTf32MantissaBits;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4:
       return kBf16MantissaBits;
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
     case PrecisionConfig::ALG_UNSET: {
@@ -720,15 +722,15 @@ bool DotStrengthReduction::InstructionMatchesPattern(
     return false;
   }
   HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
+  if (enable_one_hot_dot_to_gather_ &&
+      MatchOneHotDot(dot, compute_capability_).has_value()) {
+    return true;
+  }
   // FP8xN dots are decomposed by DotAlgorithmRewriter after layout assignment.
   const auto algorithm = dot->precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4) {
     return false;
-  }
-  if (enable_one_hot_dot_to_gather_ &&
-      MatchOneHotDot(dot, compute_capability_).has_value()) {
-    return true;
   }
   const HloInstruction* lhs = dot->operand(0);
   const HloInstruction* rhs = dot->operand(1);
