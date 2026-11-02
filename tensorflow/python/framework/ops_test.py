@@ -1709,6 +1709,53 @@ class NameTest(test_util.TensorFlowTestCase):
       self.assertEqual("bar/FloatOutput_2",
                        g.create_op("FloatOutput", [], [dtypes.float32]).name)
 
+  def testNameScopeInvalidTypeRaisesTypeError(self):
+    g = ops.Graph()
+    invalid_type_regex = r"Argument `name` must be a string\."
+
+    # Invalid non-string types must raise TypeError
+    for invalid_name in [0.2, 123, [1, 2], {"name": "scope"}, (1, 2)]:
+      with self.assertRaisesRegex(TypeError, invalid_type_regex):
+        with g.name_scope(invalid_name):
+          pass
+
+      with self.assertRaisesRegex(TypeError, invalid_type_regex):
+        with ops.name_scope(invalid_name):
+          pass
+
+      with self.assertRaisesRegex(TypeError, invalid_type_regex):
+        with ops.name_scope_v1(invalid_name):
+          pass
+
+  def testNameScopeWhitespaceRaisesValueError(self):
+    g = ops.Graph()
+    invalid_scope_regex = r"is not a valid (root )?scope name"
+
+    # String names with whitespace (leading, trailing, internal) must raise ValueError
+    for whitespace_name in [" leading_space", "trailing_space ", "internal space", "   ", "\tspace"]:
+      with self.assertRaisesRegex(ValueError, invalid_scope_regex):
+        with g.name_scope(whitespace_name):
+          pass
+
+  def testNameScopeValidFormats(self):
+    g = ops.Graph()
+
+    # Valid standard names, numbers at start, dots, hyphens, and bytes
+    with g.name_scope("valid_scope") as s1:
+      self.assertEqual("valid_scope/", s1)
+
+    with g.name_scope("123_number_start") as s2:
+      self.assertEqual("123_number_start/", s2)
+
+    with g.name_scope("scope.with.dots") as s3:
+      self.assertEqual("scope.with.dots/", s3)
+
+    with g.name_scope("scope-with-hyphens") as s4:
+      self.assertEqual("scope-with-hyphens/", s4)
+
+    with g.name_scope(b"bytes_scope") as s5:
+      self.assertEqual("bytes_scope/", s5)
+
 
 class DeviceTest(test_util.TensorFlowTestCase):
 
