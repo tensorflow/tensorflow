@@ -1879,8 +1879,7 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
       continue;
     }
 
-    // LHS for the compare is an iota (scaled by the tile stride) broadcasted to
-    // the output shape.
+    // LHS for the compare is a 1D iota (scaled by the tile stride).
     TensorValue range = Iota(b, tile_size);
     if (tile_stride != 1) {
       range = mlir::cast<TensorValue>(
@@ -1888,16 +1887,18 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
               b, range, CreateConst(b, i32_type, tile_stride, {tile_size}))
               .getResult());
     }
-    TensorValue bcast = xtile::BroadcastInDims(
-        b, range, tile_sizes, {static_cast<int64_t>(dim_index)});
 
-    // RHS for the compare is splat(pad_input_dim_size - tile_offset).
+    // Compare in 1D against splat(pad_input_dim_size - tile_offset), then
+    // broadcast the i1 mask to the output tile shape.
     Value tile_offset_i32 = Cast(b, tile_offset, i32_type);
     Value threshold = arith::SubIOp::create(
         b, CreateConst(b, i32_type, pad_input_dim_size), tile_offset_i32);
-    TensorValue threshold_splat = xtile::Splat(b, threshold, tile_sizes);
-    Value cmp = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, bcast,
-                                      threshold_splat);
+    TensorValue threshold_splat = xtile::Splat(b, threshold, {tile_size});
+    Value cmp_1d = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, range,
+                                         threshold_splat);
+    TensorValue cmp =
+        xtile::BroadcastInDims(b, mlir::cast<TensorValue>(cmp_1d), tile_sizes,
+                               {static_cast<int64_t>(dim_index)});
     mask = mask ? stablehlo::AndOp::create(b, mask, cmp) : cmp;
   }
   if (!mask) {
