@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/tile.h"
-#include "xla/codegen/tiling/tiling_space_utils.h"
 #include "xla/codegen/tiling/tiling_util.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
@@ -853,21 +853,35 @@ TilingSpace::SimplificationResult TilingSpace::SimplifyExpressions(
   return result;
 }
 
+absl::StatusOr<std::vector<int64_t>> PossibleTileSizesForOneDimension(
+    int64_t dim_size) {
+  if (dim_size < 0) {
+    return absl::InvalidArgumentError("Dimension size must be non-negative.");
+  }
+  if (dim_size == 0) {
+    return std::vector<int64_t>{0};
+  }
+
+  std::vector<int64_t> result;
+  result.reserve(absl::bit_width(static_cast<uint64_t>(dim_size)));
+  for (int64_t tile_size = 1; tile_size < dim_size; tile_size *= 2) {
+    result.push_back(tile_size);
+  }
+  result.push_back(dim_size);
+  return result;
+}
+
 absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>
 TilingSpace::GetValidTilings(bool tile_reduction_dimensions) {
   // TODO: b/511080616 - returned tilings should be valid. Right now we return
   // all possible tilings and rely on the downstream to check the validity.
-  llvm::SmallVector<int64_t, 4> input_space;
-
   // TODO(b/534676634): Lift this condition once multi-reduction and
   // multi-dimension reduction fusions are supported.
   // Reduction dimensions are only tiled when requested and the fusion has a
   // single reduce that reduces a single dimension. Otherwise, sequential reduce
   // dimensions are not tiled. Row-local scan dimensions
   // (`<= kMaxRowLocalScanDimSize`) are likewise kept in a single tile, matching
-  // the producer fusion invariant in PriorityFusion. To work around the
-  // limitation of `GetFlatTilingsForInputSpace`, we set the tile size to 1 here
-  // and later replace with the actual dimension size.
+  // the producer fusion invariant in PriorityFusion.
   const int64_t num_reduction_dims =
       absl::c_count_if(dimensions_, [](const DimensionInfo& dim) {
         return dim.type == DimensionSemantics::kSequential &&
@@ -887,32 +901,29 @@ TilingSpace::GetValidTilings(bool tile_reduction_dimensions) {
     }
     return false;
   };
-  for (const auto& dim : dimensions_) {
+
+  std::vector<llvm::SmallVector<int64_t, 4>> valid_tilings = {{}};
+  for (const DimensionInfo& dim : dimensions_) {
     if (dim.type == DimensionSemantics::kReplica) {
       continue;
     }
-    input_space.push_back(is_untiled_dim(dim) ? 1 : dim.dimension_size);
-  }
-
-  ABSL_ASSIGN_OR_RETURN(auto flat_tilings, GetFlatTilingsForInputSpace(input_space));
-
-  for (auto& flat_tiling : flat_tilings) {
-    int64_t idx = 0;
-    for (const auto& dim : dimensions_) {
-      if (dim.type == DimensionSemantics::kReplica) {
-        continue;
-      }
-      if (is_untiled_dim(dim)) {
-        flat_tiling[idx] = dim.dimension_size;
-      }
-      ++idx;
+    std::vector<int64_t> possible_tile_sizes;
+    if (is_untiled_dim(dim)) {
+      possible_tile_sizes = {dim.dimension_size};
+    } else {
+      ABSL_ASSIGN_OR_RETURN(possible_tile_sizes,
+                       PossibleTileSizesForOneDimension(dim.dimension_size));
     }
-  }
-
-  std::vector<llvm::SmallVector<int64_t, 4>> valid_tilings;
-  valid_tilings.reserve(flat_tilings.size());
-  for (const auto& flat_tiling : flat_tilings) {
-    valid_tilings.push_back({flat_tiling.begin(), flat_tiling.end()});
+    std::vector<llvm::SmallVector<int64_t, 4>> extended_tilings;
+    extended_tilings.reserve(valid_tilings.size() * possible_tile_sizes.size());
+    for (const auto& tiling : valid_tilings) {
+      for (int64_t tile_size : possible_tile_sizes) {
+        llvm::SmallVector<int64_t, 4> extended_tiling = tiling;
+        extended_tiling.push_back(tile_size);
+        extended_tilings.push_back(std::move(extended_tiling));
+      }
+    }
+    valid_tilings = std::move(extended_tilings);
   }
   return valid_tilings;
 }

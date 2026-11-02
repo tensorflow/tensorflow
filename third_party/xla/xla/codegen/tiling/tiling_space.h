@@ -348,6 +348,11 @@ int64_t GetResultDimensionOffset(const HloInstruction& hlo,
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
     const TilingSpace& tiling_space);
 
+// Returns the possible power-of-two tile sizes for one dimension, plus
+// `dim_size` itself.
+absl::StatusOr<std::vector<int64_t>> PossibleTileSizesForOneDimension(
+    int64_t dim_size);
+
 }  // namespace xla::gpu
 
 namespace xla::gpu::experimental {
@@ -355,6 +360,7 @@ using ::xla::gpu::GetFirstShape;
 using ::xla::gpu::GetResultDimensionOffset;
 using ::xla::gpu::GetTileSizeReplacementMap;
 using ::xla::gpu::IsIndexWiseVariadic;
+using ::xla::gpu::PossibleTileSizesForOneDimension;
 using ::xla::gpu::TilingSpace;
 }  // namespace xla::gpu::experimental
 
@@ -363,6 +369,7 @@ using ::xla::gpu::GetFirstShape;
 using ::xla::gpu::GetResultDimensionOffset;
 using ::xla::gpu::GetTileSizeReplacementMap;
 using ::xla::gpu::IsIndexWiseVariadic;
+using ::xla::gpu::PossibleTileSizesForOneDimension;
 using ::xla::gpu::TilingSpace;
 }  // namespace xla
 
@@ -371,6 +378,7 @@ using ::xla::gpu::GetFirstShape;
 using ::xla::gpu::GetResultDimensionOffset;
 using ::xla::gpu::GetTileSizeReplacementMap;
 using ::xla::gpu::IsIndexWiseVariadic;
+using ::xla::gpu::PossibleTileSizesForOneDimension;
 using ::xla::gpu::TilingSpace;
 }  // namespace xla::experimental
 

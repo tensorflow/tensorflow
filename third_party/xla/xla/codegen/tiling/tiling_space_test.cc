@@ -1115,6 +1115,22 @@ TEST_F(TilingSpaceTest,
   }
 }
 
+TEST_F(TilingSpaceTest, PossibleTileSizesForOneDimension) {
+  EXPECT_THAT(PossibleTileSizesForOneDimension(0),
+              IsOkAndHolds(ElementsAre(0)));
+  EXPECT_THAT(PossibleTileSizesForOneDimension(1),
+              IsOkAndHolds(ElementsAre(1)));
+  EXPECT_THAT(PossibleTileSizesForOneDimension(4),
+              IsOkAndHolds(ElementsAre(1, 2, 4)));
+  EXPECT_THAT(PossibleTileSizesForOneDimension(5),
+              IsOkAndHolds(ElementsAre(1, 2, 4, 5)));
+  EXPECT_THAT(PossibleTileSizesForOneDimension(11),
+              IsOkAndHolds(ElementsAre(1, 2, 4, 8, 11)));
+  EXPECT_THAT(PossibleTileSizesForOneDimension(-5),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       "Dimension size must be non-negative."));
+}
+
 TEST_F(TilingSpaceTest, GetValidTilingsTilesReductionDimOfSingleDimReduce) {
   HloInstruction* root = ParseAndGetRoot(R"(
       HloModule m

@@ -83,7 +83,6 @@ cc_library(
     ],
     deps = [
         ":constraint_expression",
-        ":tiling_space_utils",
         ":tiling_util",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -98,6 +97,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -434,30 +434,5 @@ cc_binary(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:platform_port",
-    ],
-)
-
-cc_library(
-    name = "tiling_space_utils",
-    srcs = ["tiling_space_utils.cc"],
-    hdrs = ["tiling_space_utils.h"],
-    deps = [
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/numeric:bits",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "tiling_space_utils_test",
-    srcs = ["tiling_space_utils_test.cc"],
-    deps = [
-        ":tiling_space_utils",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_googletest//:gtest_main",
     ],
 )
