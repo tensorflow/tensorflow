@@ -5671,7 +5671,7 @@ class internal_name_scope_v1(contextlib.AbstractContextManager[str]):  # pylint:
       values: The list of `Tensor` arguments that are passed to the op function.
 
     Raises:
-      TypeError: If `name` or `default_name` is passed in but not a string or bytes.
+      TypeError: If `name` is not a string or bytes, or `default_name` is not a string.
     """
     if not (default_name is None or isinstance(default_name, str)):
       raise TypeError(
@@ -5773,7 +5773,7 @@ class name_scope_v1(contextlib.AbstractContextManager[Optional[str]]):  # pylint
       values: The list of `Tensor` arguments that are passed to the op function.
 
     Raises:
-      TypeError: If `name` or `default_name` is passed in but not a string or bytes.
+      TypeError: If `name` is not a string or bytes, or `default_name` is not a string.
     """
     if name is not None and not isinstance(name, compat.bytes_or_text_types):
       raise TypeError(
@@ -5862,8 +5862,7 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       name: The prefix to use on all names created within the name scope.
 
     Raises:
-      TypeError: If name is not a string.
-      ValueError: If name is not a string (for backwards compatibility).
+      TypeError: If name is not a string or bytes.
     """
     if not isinstance(name, compat.bytes_or_text_types):
       raise TypeError(
