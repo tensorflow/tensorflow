@@ -497,6 +497,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/testing:temporary_directory",

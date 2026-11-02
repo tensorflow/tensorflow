@@ -1238,8 +1238,15 @@ void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
 
 void DumpHloSnapshotIfEnabled(const HloModule& module,
                               const HloSnapshot& snapshot) {
-  DumpOptions opts = GetDumpOptions(module);
-  if (!opts.should_dump_module(module.name()) || !opts.dump_snapshots) {
+  DumpHloSnapshotIfEnabled(module.unique_id(), module.name(),
+                           module.config().debug_options(), snapshot);
+}
+
+void DumpHloSnapshotIfEnabled(int64_t unique_id, absl::string_view module_name,
+                              const DebugOptions& debug_options,
+                              const HloSnapshot& snapshot) {
+  DumpOptions opts = GetDumpOptions(module_name, debug_options);
+  if (!opts.should_dump_module(module_name) || !opts.dump_snapshots) {
     return;
   }
   int64_t execution_count;
@@ -1248,13 +1255,13 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
     static auto& module_id_to_execution_count ABSL_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64_t, int64_t>();
     absl::MutexLock lock(mu);
-    execution_count = module_id_to_execution_count[module.unique_id()]++;
+    execution_count = module_id_to_execution_count[unique_id]++;
     auto timestamp_emplace = module_id_to_timestamp.try_emplace(
-        module.unique_id(), tsl::Env::Default()->NowMicros());
+        unique_id, tsl::Env::Default()->NowMicros());
     timestamp = timestamp_emplace.first->second;
   }
   std::string filename =
-      StrCat(FilenameFor(module, std::to_string(timestamp),
+      StrCat(FilenameFor(unique_id, module_name, std::to_string(timestamp),
                          StrFormat("execution_%04d", execution_count)),
              ".hlo_snapshot.pb");
   if (opts.dumping_to_stdout()) {
