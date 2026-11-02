@@ -372,7 +372,7 @@ def sparse_concat(axis,
   Args:
     axis: Dimension to concatenate along. Must be in range [-rank, rank),
       where rank is the number of dimensions in each input `SparseTensor`.
-    sp_inputs: List of `SparseTensor` to concatenate.
+    sp_inputs: Non-empty list or tuple of `SparseTensor` to concatenate.
     name: A name prefix for the returned tensors (optional).
     expand_nonconcat_dim: Whether to allow the expansion in the non-concat
       dimensions. Defaulted to False.

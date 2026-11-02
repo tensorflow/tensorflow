@@ -572,7 +572,6 @@ class SparseConcatTest(test.TestCase):
     ):
       self.evaluate(sparse_ops.sparse_concat(axis=1, sp_inputs=[sp1, sp2]))
 
-
   @test_util.run_in_graph_and_eager_modes
   def testConcatTupleInputs(self):
     sp1 = sparse_tensor.SparseTensor(
@@ -653,6 +652,7 @@ class SparseConcatTest(test.TestCase):
       sparse_ops.sparse_concat(axis=0, sp_inputs=sp1)
     with self.assertRaisesRegex(TypeError, "Input must be a SparseTensor"):
       sparse_ops.sparse_concat(axis=0, sp_inputs=[sp1, "invalid"])
+
 
 if __name__ == "__main__":
   test.main()
