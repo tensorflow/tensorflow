@@ -792,6 +792,16 @@ TEST(OpVersionTest, VersioningDequantizeTest) {
       .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  // N-D blockwise quantization takes precedence over the input type.
+  for (TfLiteType type : {kTfLiteInt8, kTfLiteInt4, kTfLiteInt2}) {
+    fake_op_sig = {
+        .op = BuiltinOperator_DEQUANTIZE,
+        .inputs = CreateOpSignatureTensorSpecs(type),
+    };
+    fake_op_sig.ext_options.dequantize.is_blockwise_quantized = true;
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 10);
+  }
 }
 
 TEST(OpVersionTest, VersioningQuantizeTest) {
