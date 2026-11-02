@@ -3459,13 +3459,14 @@ class Graph(pywrap_tf_session.PyGraph):
       ValueError: If `name` is not a valid scope name, according to the rules
         above.
     """
-    if name:
+    if name is not None:
       if not isinstance(name, compat.bytes_or_text_types):
         raise TypeError(
             f"Argument `name` must be a string. "
             f"Received '{name}' of type {type(name).__name__}."
         )
-      name = compat.as_str(name)
+      if name:
+        name = compat.as_str(name)
 
       if self._name_stack:
         # Scopes created in a nested scope may have initial characters
