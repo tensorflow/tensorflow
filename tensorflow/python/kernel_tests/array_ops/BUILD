@@ -809,6 +809,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops_stack",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],

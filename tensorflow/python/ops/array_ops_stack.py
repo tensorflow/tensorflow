@@ -78,60 +78,47 @@ def stack(values, axis=0, name="stack"):
       is empty and `axis != 0`.
   """
   # Fast-path for list and tuple (covers >99% of calls).
-  if isinstance(values, (list, tuple)):
-    if len(values) == 0 and axis != 0:
-      raise ValueError(
-          "Argument `values` cannot be empty when axis != 0 "
-          f"(got axis = {axis})."
-      )
-  elif ops.is_dense_tensor_like(values) or isinstance(
-      values, composite_tensor.CompositeTensor
-  ):
-    if axis == 0 and ops.is_dense_tensor_like(values):
-      warnings.warn(
-          "Passing a single Tensor to tf.stack is deprecated and will be"
-          " removed in a future release. Argument `values` must be a sequence"
-          " of Tensor objects.",
-          DeprecationWarning,
-          stacklevel=2,
-      )
-      return ops.convert_to_tensor(values, name=name)
-    raise TypeError(
-        "Argument `values` must be a sequence of Tensor objects, but got a "
-        f"single {type(values).__name__}."
-    )
-  elif isinstance(values, Mapping):
-    raise TypeError(
-        "Argument `values` must be a sequence of Tensor objects, but got a "
-        f"mapping of type {type(values).__name__}."
-    )
-  elif isinstance(values, Iterator) or (
-      not isinstance(values, (Sequence, np.ndarray))
-      and hasattr(values, "__iter__")
-  ):
-    values = list(values)
-    if len(values) == 0 and axis != 0:
-      raise ValueError(
-          "Argument `values` cannot be empty when axis != 0 "
-          f"(got axis = {axis})."
-      )
-  elif isinstance(values, np.ndarray):
-    if values.ndim == 0:
+  if not isinstance(values, (list, tuple)):
+    if ops.is_dense_tensor_like(values) or isinstance(
+        values, composite_tensor.CompositeTensor
+    ):
+      if axis == 0 and ops.is_dense_tensor_like(values):
+        warnings.warn(
+            "Passing a single Tensor to tf.stack is deprecated and will be"
+            " removed in a future release. Argument `values` must be a"
+            " sequence of Tensor objects.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return ops.convert_to_tensor(values, name=name)
       raise TypeError(
           "Argument `values` must be a sequence of Tensor objects, but got a "
-          "0-dimensional numpy ndarray."
+          f"single {type(values).__name__}."
       )
-    if len(values) == 0 and axis != 0:
-      raise ValueError(
-          "Argument `values` cannot be empty when axis != 0 "
-          f"(got axis = {axis})."
+    if isinstance(values, Mapping):
+      raise TypeError(
+          "Argument `values` must be a sequence of Tensor objects, but got a "
+          f"mapping of type {type(values).__name__}."
       )
-  elif not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
-    raise TypeError(
-        "Argument `values` must be a sequence of Tensor objects, but got an "
-        f"instance of {type(values).__name__}."
-    )
-  elif len(values) == 0 and axis != 0:
+    if isinstance(values, np.ndarray):
+      if values.ndim == 0:
+        raise TypeError(
+            "Argument `values` must be a sequence of Tensor objects, but got "
+            "a 0-dimensional numpy ndarray."
+        )
+    elif isinstance(values, Iterator):
+      values = list(values)
+    elif isinstance(values, Sequence) and not isinstance(
+        values, (str, bytes, bytearray, memoryview)
+    ):
+      values = list(values)
+    else:
+      raise TypeError(
+          "Argument `values` must be a sequence of Tensor objects, but got "
+          f"an instance of {type(values).__name__}."
+      )
+
+  if axis != 0 and len(values) == 0:
     raise ValueError(
         "Argument `values` cannot be empty when axis != 0 "
         f"(got axis = {axis})."
@@ -143,6 +130,9 @@ def stack(values, axis=0, name="stack"):
       return ops.convert_to_tensor(values, name=name)
     except (TypeError, ValueError, NotImplementedError):
       pass  # Input list contains non-constant tensors
+
+  if not isinstance(values, (list, tuple)):
+    values = list(values)
 
   value_shape = ops.convert_to_tensor(values[0], name=name)._shape_tuple()  # pylint: disable=protected-access
   if value_shape is not None:

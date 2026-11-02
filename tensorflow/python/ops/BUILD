@@ -833,9 +833,11 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":array_ops_gen",
+        "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 

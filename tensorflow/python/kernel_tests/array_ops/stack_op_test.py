@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -460,6 +461,16 @@ class AutomaticStackingTest(test.TestCase):
     ):
       array_ops_stack.stack(b"abc", axis=1)
 
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack(bytearray(b"abc"), axis=1)
+
+    with self.assertRaisesRegex(
+        TypeError, r"Argument `values` must be a sequence of Tensor objects"
+    ):
+      array_ops_stack.stack({1, 2}, axis=0)
+
   def testMappingTypeRaisesTypeError(self):
     t = constant_op.constant([1, 2, 3])
     with self.assertRaisesRegex(
@@ -470,7 +481,6 @@ class AutomaticStackingTest(test.TestCase):
       array_ops_stack.stack({"a": t}, axis=1)
 
   def testCompositeTensorRaisesTypeError(self):
-    from tensorflow.python.ops.ragged import ragged_factory_ops
     ragged = ragged_factory_ops.constant([[1, 2], [3]])
     with self.assertRaisesRegex(
         TypeError, r"Argument `values` must be a sequence of Tensor objects"
@@ -503,6 +513,14 @@ class AutomaticStackingTest(test.TestCase):
     # 1-D numpy array should be stacked properly
     res = array_ops_stack.stack(np.array([1, 2, 3]), axis=0)
     self.assertAllEqual(res, [1, 2, 3])
+
+    # 2-D numpy array with non-zero axis should be stacked properly
+    res_axis1 = array_ops_stack.stack(np.array([[1, 2], [3, 4]]), axis=1)
+    self.assertAllEqual(res_axis1, [[1, 3], [2, 4]])
+
+    # Non-list Sequence (range) should be stacked properly
+    res_range = array_ops_stack.stack(range(3), axis=0)
+    self.assertAllEqual(res_range, [0, 1, 2])
 
   def testGeneratorValuesSupported(self):
     gen = (constant_op.constant(i) for i in range(3))
