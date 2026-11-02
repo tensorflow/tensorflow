@@ -147,22 +147,35 @@ std::vector<uint8_t> BuildBlockwiseDequantizeModel(
 
 class BlockwiseDequantizeModel {
  public:
-  explicit BlockwiseDequantizeModel(std::vector<uint8_t> buffer)
+  explicit BlockwiseDequantizeModel(std::vector<uint8_t> buffer,
+                                    bool use_default_delegates = false)
       : buffer_(std::move(buffer)) {
     model_ = FlatBufferModel::BuildFromBuffer(
         reinterpret_cast<const char*>(buffer_.data()), buffer_.size());
-    ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
-    InterpreterBuilder(*model_, resolver)(&interpreter_);
+    if (use_default_delegates) {
+      ops::builtin::BuiltinOpResolver resolver;
+      InterpreterBuilder(*model_, resolver)(&interpreter_);
+    } else {
+      ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+      InterpreterBuilder(*model_, resolver)(&interpreter_);
+    }
+  }
+
+  void SetInput(const std::vector<float>& values) {
+    TfLiteTensor* input = interpreter_->tensor(interpreter_->inputs()[0]);
+    std::memcpy(input->data.f, values.data(), values.size() * sizeof(float));
   }
 
   bool Built() const { return interpreter_ != nullptr; }
 
+  TfLiteStatus Allocate() { return interpreter_->AllocateTensors(); }
+  TfLiteStatus Invoke() { return interpreter_->Invoke(); }
+
   TfLiteStatus AllocateAndInvoke() {
-    if (TfLiteStatus status = interpreter_->AllocateTensors();
-        status != kTfLiteOk) {
+    if (TfLiteStatus status = Allocate(); status != kTfLiteOk) {
       return status;
     }
-    return interpreter_->Invoke();
+    return Invoke();
   }
 
   std::vector<float> GetOutput() const {
@@ -177,6 +190,75 @@ class BlockwiseDequantizeModel {
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;
 };
+
+// Builds a model computing FULLY_CONNECTED(input, DEQUANTIZE(weights)), with
+// float `input` of shape [1, K] and int8 `weights` of shape [N, K] holding
+// `weights_data`, blockwise quantized with `block_shape` and `scales`.
+std::vector<uint8_t> BuildBlockwiseFullyConnectedModel(
+    int32_t n, int32_t k, const std::vector<int8_t>& weights_data,
+    const std::vector<int32_t>& block_shape, const ParamsTensor& scales) {
+  flatbuffers::FlatBufferBuilder builder;
+  std::vector<flatbuffers::Offset<Buffer>> buffers = {
+      CreateBuffer(builder, builder.CreateVector(std::vector<uint8_t>{}))};
+  auto add_buffer = [&](const std::vector<uint8_t>& data) {
+    buffers.push_back(CreateBuffer(builder, builder.CreateVector(data)));
+    return static_cast<uint32_t>(buffers.size() - 1);
+  };
+
+  // Tensors: 0 = input, 1 = quantized weights, 2 = scales, 3 = dequantized
+  // weights, 4 = output.
+  auto details = CreateBlockwiseQuantization(
+      builder, /*scales=*/2, /*zero_points=*/-1, /*block_size=*/0,
+      builder.CreateVector(block_shape));
+  auto quantization = CreateQuantizationParameters(
+      builder, /*min=*/0, /*max=*/0, /*scale=*/0, /*zero_point=*/0,
+      QuantizationDetails_BlockwiseQuantization, details.Union());
+  std::vector<flatbuffers::Offset<Tensor>> tensors = {
+      CreateTensor(builder, builder.CreateVector(std::vector<int32_t>{1, k}),
+                   TensorType_FLOAT32, /*buffer=*/0,
+                   builder.CreateString("input")),
+      CreateTensor(builder, builder.CreateVector(std::vector<int32_t>{n, k}),
+                   TensorType_INT8,
+                   add_buffer(std::vector<uint8_t>(weights_data.begin(),
+                                                   weights_data.end())),
+                   builder.CreateString("weights"), quantization),
+      CreateTensor(builder, builder.CreateVector(scales.shape), scales.type,
+                   add_buffer(scales.data), builder.CreateString("scales")),
+      CreateTensor(builder, builder.CreateVector(std::vector<int32_t>{n, k}),
+                   TensorType_FLOAT32, /*buffer=*/0,
+                   builder.CreateString("dequantized_weights")),
+      CreateTensor(builder, builder.CreateVector(std::vector<int32_t>{1, n}),
+                   TensorType_FLOAT32, /*buffer=*/0,
+                   builder.CreateString("output")),
+  };
+  std::vector<flatbuffers::Offset<Operator>> ops = {
+      CreateOperator(builder, /*opcode_index=*/0,
+                     builder.CreateVector(std::vector<int32_t>{1}),
+                     builder.CreateVector(std::vector<int32_t>{3})),
+      CreateOperator(builder, /*opcode_index=*/1,
+                     builder.CreateVector(std::vector<int32_t>{0, 3, -1}),
+                     builder.CreateVector(std::vector<int32_t>{4}),
+                     BuiltinOptions_FullyConnectedOptions,
+                     CreateFullyConnectedOptions(builder).Union()),
+  };
+  auto subgraph = CreateSubGraph(builder, builder.CreateVector(tensors),
+                                 builder.CreateVector(std::vector<int32_t>{0}),
+                                 builder.CreateVector(std::vector<int32_t>{4}),
+                                 builder.CreateVector(ops));
+  std::vector<flatbuffers::Offset<OperatorCode>> op_codes = {
+      CreateOperatorCode(builder, BuiltinOperator_DEQUANTIZE, 0,
+                         /*version=*/10, BuiltinOperator_DEQUANTIZE),
+      CreateOperatorCode(builder, BuiltinOperator_FULLY_CONNECTED, 0,
+                         /*version=*/1, BuiltinOperator_FULLY_CONNECTED),
+  };
+  auto model =
+      CreateModel(builder, /*version=*/3, builder.CreateVector(op_codes),
+                  builder.CreateVector({subgraph}),
+                  builder.CreateString("test"), builder.CreateVector(buffers));
+  FinishModelBuffer(builder, model);
+  return std::vector<uint8_t>(builder.GetBufferPointer(),
+                              builder.GetBufferPointer() + builder.GetSize());
+}
 
 std::vector<uint8_t> AsBytes(const std::vector<int8_t>& values) {
   return std::vector<uint8_t>(values.begin(), values.end());
@@ -263,6 +345,23 @@ TEST(BlockwiseDequantizeTest, F16ScalesAndFloatZeroPoint) {
   ASSERT_EQ(m.AllocateAndInvoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({-1.5, 1.5, -1, 1})));
+}
+
+TEST(BlockwiseDequantizeTest, FeedsFullyConnectedWithDefaultDelegates) {
+  // The default delegates (XNNPack) must leave the blockwise DEQUANTIZE to the
+  // builtin kernel rather than unpacking the weights as affine quantized.
+  BlockwiseDequantizeModel m(
+      BuildBlockwiseFullyConnectedModel(
+          /*n=*/2, /*k=*/4, {1, 2, 3, 4, -1, -2, -3, -4},
+          /*block_shape=*/{1, 2},
+          MakeParams<float>(TensorType_FLOAT32, {2, 2}, {1, 2, 3, 4})),
+      /*use_default_delegates=*/true);
+  ASSERT_TRUE(m.Built());
+  ASSERT_EQ(m.Allocate(), kTfLiteOk);
+  m.SetInput({1, 1, 1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // Dequantized weights: [[1, 2, 6, 8], [-3, -6, -12, -16]].
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({17, -37})));
 }
 
 TEST(BlockwiseDequantizeTest, RejectsScalesNotShapedLikeTheBlockGrid) {

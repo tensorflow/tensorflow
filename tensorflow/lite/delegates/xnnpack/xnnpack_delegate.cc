@@ -7362,9 +7362,12 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(
 
       bool is_supported_int8_tensor = input_tensor.type == kTfLiteInt8;
       if (is_supported_int8_tensor) {
+        // Only affine quantization is unpacked below; other quantization
+        // types (e.g. blockwise) have differently laid out parameters.
         const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
             input_tensor.quantization.params);
-        if (quant_params == nullptr) {
+        if (input_tensor.quantization.type != kTfLiteAffineQuantization ||
+            quant_params == nullptr) {
           is_supported_int8_tensor = false;
         }
       }
