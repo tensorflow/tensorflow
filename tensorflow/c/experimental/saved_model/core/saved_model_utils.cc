@@ -525,18 +525,38 @@ absl::Status PartiallyReviveSavedModelObjects(
       // Note(bmzhao): The expected functions saved by a resource object are:
       // "_create_resource", "_initialize", and "_destroy_resource".
       // https://github.com/tensorflow/tensorflow/blob/ad66f588c1666ade8051feb42811fa27b285271c/tensorflow/python/training/tracking/tracking.py#L277-L281
-      if (child.local_name() == "_create_resource" &&
-          obj_graph.nodes(child_node_id).kind_case() ==
-              SavedObject::kFunction) {
-        resource.create_resource = &objects->concrete_functions[child_node_id];
-      } else if (child.local_name() == "_initialize" &&
-                 obj_graph.nodes(child_node_id).kind_case() ==
-                     SavedObject::kFunction) {
-        resource.initialize = &objects->concrete_functions[child_node_id];
-      } else if (child.local_name() == "_destroy_resource" &&
-                 obj_graph.nodes(child_node_id).kind_case() ==
-                     SavedObject::kFunction) {
-        resource.destroy_resource = &objects->concrete_functions[child_node_id];
+      if (child.local_name() != "_create_resource" &&
+          child.local_name() != "_initialize" &&
+          child.local_name() != "_destroy_resource") {
+        continue;
+      }
+      if (obj_graph.nodes(child_node_id).kind_case() !=
+          SavedObject::kFunction) {
+        continue;
+      }
+      // Using operator[] here would silently insert a default-constructed
+      // (and therefore null fdef/saved_concrete_func) entry if child_node_id
+      // isn't actually a revived concrete function -- e.g. if it was
+      // classified as a SignatureDefFunction instead, or skipped for having
+      // no concrete functions. Look it up explicitly instead so a malformed
+      // reference is rejected rather than silently producing a
+      // TFConcreteFunctionRevivalState with null fields that get dereferenced
+      // later.
+      auto concrete_function_iter =
+          objects->concrete_functions.find(child_node_id);
+      if (concrete_function_iter == objects->concrete_functions.end()) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Resource object's ", child.local_name(), " child node id ",
+            child_node_id, " was not found in revived concrete functions"));
+      }
+      TFConcreteFunctionRevivalState* concrete_function =
+          &concrete_function_iter->second;
+      if (child.local_name() == "_create_resource") {
+        resource.create_resource = concrete_function;
+      } else if (child.local_name() == "_initialize") {
+        resource.initialize = concrete_function;
+      } else if (child.local_name() == "_destroy_resource") {
+        resource.destroy_resource = concrete_function;
       }
     }
   }

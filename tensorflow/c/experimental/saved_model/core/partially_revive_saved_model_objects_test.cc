@@ -50,9 +50,12 @@ class PartiallyReviveSavedModelObjectsTest : public ::testing::Test {
 };
 
 // A minimal, valid object graph: root (node 0) with a "signatures" child
-// (node 1, the required empty signature_map), plus one more node slot
-// reserved for the resource under test. `%RESOURCE_CHILD%` is substituted by
-// each test with a malformed ObjectReference.
+// (node 1, the required empty signature_map), a resource node (node 2,
+// where `%RESOURCE_CHILD%` is substituted by each test with a malformed or
+// dangling ObjectReference), and a function node (node 3) that has no
+// concrete functions, so it is skipped by the main revival loop and never
+// added to `concrete_functions` -- used to exercise a resource child that
+// is in range and really is kind()==kFunction, but was never revived.
 constexpr absl::string_view kMetaGraphTemplate = R"(
 object_graph_def {
   nodes {
@@ -85,6 +88,10 @@ object_graph_def {
     %RESOURCE_CHILD%
     resource {
       device: ""
+    }
+  }
+  nodes {
+    function {
     }
   }
 }
@@ -135,6 +142,27 @@ TEST_F(PartiallyReviveSavedModelObjectsTest,
     children {
       node_id: -1
       local_name: "_destroy_resource"
+    }
+  )"));
+
+  PartiallyRevivedObjects objects;
+  absl::Status status = internal::PartiallyReviveSavedModelObjects(
+      metagraph, context(), /*directory=*/"", &objects);
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+}
+
+// A resource's "_create_resource" child can be in range and genuinely point
+// at a SavedObject::kFunction node, yet that node was never added to
+// `concrete_functions` (e.g. because it declared no concrete functions and
+// was skipped). Using operator[] here would previously default-construct a
+// bogus TFConcreteFunctionRevivalState with null fdef/saved_concrete_func;
+// this should instead be rejected.
+TEST_F(PartiallyReviveSavedModelObjectsTest,
+      CreateResourceChildPointingAtUnrevivedFunctionIsRejected) {
+  MetaGraphDef metagraph = ParseMetaGraphDef(MetaGraphWithResourceChild(R"(
+    children {
+      node_id: 3
+      local_name: "_create_resource"
     }
   )"));
 
