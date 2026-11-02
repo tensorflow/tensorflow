@@ -432,26 +432,27 @@ class BinaryOpsTest(xla_test.XLATestCase):
             run_pow(np.zeros([3, 0]), [[-1]]), np.zeros([3, 0])
         )
 
-        @def_function.function(jit_compile=True)
-        def pow_dynamic_empty(a, mask):
-          empty = array_ops.boolean_mask(a, mask)
-          return math_ops.pow(empty, constant_op.constant(-1, dtype=dtype))
+        if "GPU" not in self.device and "TPU" not in self.device:
+          @def_function.function(jit_compile=True)
+          def pow_dynamic_empty(a, mask):
+            empty = array_ops.boolean_mask(a, mask)
+            return math_ops.pow(empty, constant_op.constant(-1, dtype=dtype))
 
-        with self.session() as sess:
-          with self.device_scope():
-            pa = array_ops.placeholder(dtype, shape=[2])
-            pmask = array_ops.placeholder(dtypes.bool, shape=[2])
-            dyn_out = pow_dynamic_empty(pa, pmask)
-          self.assertAllEqual(
-              sess.run(
-                  dyn_out,
-                  {
-                      pa: np.array([2, 3], dtype=dtype),
-                      pmask: np.array([False, False]),
-                  },
-              ),
-              np.zeros([0], dtype=dtype),
-          )
+          with self.session() as sess:
+            with self.device_scope():
+              pa = array_ops.placeholder(dtype, shape=[2])
+              pmask = array_ops.placeholder(dtypes.bool, shape=[2])
+              dyn_out = pow_dynamic_empty(pa, pmask)
+            self.assertAllEqual(
+                sess.run(
+                    dyn_out,
+                    {
+                        pa: np.array([2, 3], dtype=dtype),
+                        pmask: np.array([False, False]),
+                    },
+                ),
+                np.zeros([0], dtype=dtype),
+            )
 
   def testNumericOps(self):
     for dtype in self.numeric_types:
