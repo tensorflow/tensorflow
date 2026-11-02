@@ -133,7 +133,13 @@ TEST_F(CudaCommandBufferTelemetryTest,
   ASSERT_FALSE(pred.is_null());
   absl::Cleanup free_pred = [&] { executor_->Deallocate(&pred); };
 
+  const DeviceDescription& desc = executor_->GetDeviceDescription();
+  const TelemetryStrategy strategy =
+      CudaGraphAnnotationRegistry::SelectTelemetryStrategy(
+          desc.compile_time_toolkit_version(), desc.driver_version(),
+          desc.runtime_version());
   uint32_t exec_id = 0;
+  std::optional<command_buffer_telemetry::TrackedGraph> test_owned_exec_entry;
   {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> primary, NewPrimary());
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> inner_clone,
@@ -221,10 +227,15 @@ TEST_F(CudaCommandBufferTelemetryTest,
     }
 
     // Invoke the pre-13.4 projection directly so it is exercised even when
-    // the test runs on a CUDA 13.4+ driver.
-    command_buffer_telemetry::RegisterPre134ExecGraphNodes(
-        CudaCommandBufferTestPeer::graph(cuda_cmd),
-        CudaCommandBufferTestPeer::graph_exec(cuda_cmd));
+    // the test runs on a CUDA 13.4+ driver. On CUDA 13.2-13.3, `Finalize`
+    // already projected the executable graph, and the command buffer owns the
+    // entry. Otherwise this call creates it, and the test owns it.
+    test_owned_exec_entry =
+        command_buffer_telemetry::RegisterPre134ExecGraphNodes(
+            CudaCommandBufferTestPeer::graph(cuda_cmd),
+            CudaCommandBufferTestPeer::graph_exec(cuda_cmd));
+    EXPECT_EQ(test_owned_exec_entry.has_value(),
+              strategy != TelemetryStrategy::kPre134ExecGraph);
 
     // The colliding template entry must remain live and untouched.
     if (force_collision) {
@@ -272,11 +283,14 @@ TEST_F(CudaCommandBufferTelemetryTest,
         Optional(Eq("XlaModule:#module=test#::while_op:#tf_op=while#")));
   }
 
-  // `~CudaCommandBuffer()` destroys `CUgraphExec` before `CUgraph`, releasing
-  // the last reference to the user object attached to `root_graph` and removing
+  // The entry's owner unregisters it once the executable graph is destroyed:
+  // `~CudaCommandBuffer()` on CUDA 13.2-13.3, the test otherwise. That removes
   // the `exec_id` entry from `KeySpace::kPre134ExecGraph` while leaving the
   // colliding `KeySpace::kTemplateGraph` entry intact.
-  EXPECT_TRUE(PollUntil([&] { return !LookupExec(exec_id, 0).has_value(); }));
+  if (test_owned_exec_entry.has_value()) {
+    command_buffer_telemetry::UnregisterTrackedGraphs({*test_owned_exec_entry});
+  }
+  EXPECT_EQ(LookupExec(exec_id, 0), std::nullopt);
   EXPECT_THAT(Lookup(NodeKey{exec_id, 42}, KeySpace::kTemplateGraph),
               Optional(Eq("colliding_template_op")));
 }
