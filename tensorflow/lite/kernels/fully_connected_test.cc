@@ -2212,6 +2212,203 @@ TEST_P(QuantizedFullyConnectedOpTest,
               ElementsAre(175, 177, 179, 243, 245, 247));
 }
 
+// A hybrid fully connected op (float input and output) whose quantized weights
+// are defined directly, so that tests control their scales and zero points.
+class HybridRawWeightsFullyConnectedOpModel : public SingleOpModel {
+ public:
+  HybridRawWeightsFullyConnectedOpModel(TfLiteRegistration* registration,
+                                        int units, int batches, int input_size,
+                                        const TensorData& weights) {
+    AddInput({TensorType_FLOAT32, {batches, input_size}});
+    AddInput(weights);
+    AddInput({TensorType_FLOAT32, {units}});
+    AddOutput({TensorType_FLOAT32});
+    SetBuiltinOp(
+        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE)
+            .Union());
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_FULLY_CONNECTED, registration);
+    BuildInterpreter({{batches, input_size}, weights.shape, {units}},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+  using SingleOpModel::AllocateTensors;
+};
+
+TEST_P(QuantizedFullyConnectedOpTest, RejectsHybridInt8WeightsWithZeroPoint) {
+  // The hybrid kernels don't apply filter zero points.
+  HybridRawWeightsFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches=*/1, /*input_size=*/4,
+      /*weights=*/
+      {TensorType_INT8, {3, 4}, 0, 0, /*scale=*/0.1f, /*zero_point=*/-7});
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST_P(QuantizedFullyConnectedOpTest,
+       RejectsHybridInt8WeightsWithPerChannelZeroPoints) {
+  // The hybrid kernels don't apply filter zero points.
+  TensorData weights(TensorType_INT8, {3, 4});
+  weights.per_channel_quantization = true;
+  weights.per_channel_quantization_scales = {0.1f, 0.2f, 0.05f};
+  weights.per_channel_quantization_offsets = {5, 0, -12};
+  weights.channel_index = 0;
+  HybridRawWeightsFullyConnectedOpModel m(GetRegistration(), /*units=*/3,
+                                          /*batches=*/1, /*input_size=*/4,
+                                          weights);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST_P(QuantizedFullyConnectedOpTest, RejectsHybridUint8WeightsWithZeroPoint) {
+  // The hybrid kernels don't apply filter zero points, and read uint8 weights
+  // as int8 values.
+  HybridRawWeightsFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches=*/1, /*input_size=*/4,
+      /*weights=*/
+      {TensorType_UINT8, {3, 4}, 0, 0, /*scale=*/0.1f, /*zero_point=*/3});
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+// A hybrid fully connected op (float input and output) with blockwise quantized
+// weights. The weights are constant if `packed_weights` isn't empty.
+class BlockwiseFullyConnectedOpModel : public SingleOpModel {
+ public:
+  BlockwiseFullyConnectedOpModel(TfLiteRegistration* registration, int units,
+                                 int batches, int input_size, int block_size,
+                                 TensorType weights_type,
+                                 const std::vector<float>& scales,
+                                 const std::vector<int64_t>& zero_points,
+                                 const std::vector<uint8_t>& packed_weights) {
+    input_ = AddInput({TensorType_FLOAT32, {batches, input_size}});
+    TensorData weights(weights_type, {units, input_size});
+    weights.per_channel_quantization_scales = scales;
+    weights.per_channel_quantization_offsets = zero_points;
+    weights.per_block_quantization = block_size;
+    if (packed_weights.empty()) {
+      weights_ = AddInput(weights);
+    } else {
+      weights_ =
+          AddConstInput(weights, packed_weights.data(), packed_weights.size());
+    }
+    bias_ = AddInput({TensorType_FLOAT32, {units}});
+    output_ = AddOutput({TensorType_FLOAT32});
+    SetBuiltinOp(
+        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE)
+            .Union());
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_FULLY_CONNECTED, registration);
+    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+  using SingleOpModel::AllocateTensors;
+
+  void SetInput(const std::vector<float>& data) {
+    PopulateTensor(input_, data);
+  }
+  void SetBias(const std::vector<float>& data) { PopulateTensor(bias_, data); }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+ private:
+  int input_;
+  int weights_;
+  int bias_;
+  int output_;
+};
+
+// Packs int4 values two per byte, the first in the low nibble.
+std::vector<uint8_t> PackInt4(const std::vector<int8_t>& values) {
+  std::vector<uint8_t> packed((values.size() + 1) / 2, 0);
+  for (size_t i = 0; i < values.size(); ++i) {
+    const uint8_t nibble = static_cast<uint8_t>(values[i]) & 0x0F;
+    packed[i / 2] |= (i % 2 == 0) ? nibble : static_cast<uint8_t>(nibble << 4);
+  }
+  return packed;
+}
+
+constexpr int kBlockwiseTestUnits = 4;
+constexpr int kBlockwiseTestInputSize = 64;
+constexpr int kBlockwiseTestBlockSize = 32;
+
+// Int4 weights in [-8, 7], one row per output channel.
+std::vector<int8_t> BlockwiseTestWeights() {
+  std::vector<int8_t> weights(kBlockwiseTestUnits * kBlockwiseTestInputSize);
+  for (size_t i = 0; i < weights.size(); ++i) {
+    weights[i] = static_cast<int8_t>((i * 7 + i / 5) % 16) - 8;
+  }
+  return weights;
+}
+
+// One scale per block of 32 weights, exactly representable in fp16.
+const std::vector<float>& BlockwiseTestScales() {
+  static const auto* const scales = new std::vector<float>(
+      {0.5f, 0.25f, 0.125f, 1.0f, 0.75f, 0.5f, 0.25f, 0.375f});
+  return *scales;
+}
+
+TEST(BlockwiseFullyConnectedOpTest, MatchesFloatWithZeroZeroPoints) {
+  const std::vector<int8_t> weights = BlockwiseTestWeights();
+  const std::vector<float>& scales = BlockwiseTestScales();
+  BlockwiseFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(), kBlockwiseTestUnits,
+      /*batches=*/1, kBlockwiseTestInputSize, kBlockwiseTestBlockSize,
+      TensorType_INT4, scales,
+      /*zero_points=*/std::vector<int64_t>(scales.size(), 0),
+      PackInt4(weights));
+  ASSERT_EQ(m.AllocateTensors(), kTfLiteOk);
+
+  std::vector<float> input(kBlockwiseTestInputSize);
+  for (int k = 0; k < kBlockwiseTestInputSize; ++k) {
+    input[k] = 0.1f * (k % 9) - 0.3f;
+  }
+  const std::vector<float> bias = {1.0f, -2.0f, 0.5f, 0.0f};
+  m.SetInput(input);
+  m.SetBias(bias);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  // The kernel quantizes the input to int8 with a step of at most
+  // max(|x|) / 127.
+  float max_abs_input = 0.0f;
+  for (float x : input) {
+    max_abs_input = std::max(max_abs_input, std::abs(x));
+  }
+  const int blocks_per_row = kBlockwiseTestInputSize / kBlockwiseTestBlockSize;
+  const std::vector<float> output = m.GetOutput();
+  ASSERT_EQ(output.size(), static_cast<size_t>(kBlockwiseTestUnits));
+  for (int n = 0; n < kBlockwiseTestUnits; ++n) {
+    float expected = bias[n];
+    float sum_abs_weights = 0.0f;
+    for (int k = 0; k < kBlockwiseTestInputSize; ++k) {
+      const float scale =
+          scales[n * blocks_per_row + k / kBlockwiseTestBlockSize];
+      const float w = scale * weights[n * kBlockwiseTestInputSize + k];
+      expected += w * input[k];
+      sum_abs_weights += std::abs(w);
+    }
+    EXPECT_NEAR(output[n], expected,
+                sum_abs_weights * max_abs_input / 127.0f + 1e-4f)
+        << "output " << n;
+  }
+}
+
+TEST(BlockwiseFullyConnectedOpTest, RejectsNonZeroZeroPoints) {
+  // The blockwise kernel doesn't apply zero points, so it would silently
+  // ignore them.
+  const std::vector<float>& scales = BlockwiseTestScales();
+  std::vector<int64_t> zero_points(scales.size(), 0);
+  zero_points[1] = 3;
+  BlockwiseFullyConnectedOpModel m(
+      ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT(), kBlockwiseTestUnits,
+      /*batches=*/1, kBlockwiseTestInputSize, kBlockwiseTestBlockSize,
+      TensorType_INT4, scales, zero_points, PackInt4(BlockwiseTestWeights()));
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     FloatFullyConnectedOpTest, FloatFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
@@ -2286,7 +2483,8 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
                               bool bias_tensor_optional = false,
                               int num_threads = 1,
                               bool symmetric_quantize_weights = false,
-                              bool asymmetric_quantize_inputs = false)
+                              bool asymmetric_quantize_inputs = false,
+                              bool allocate_and_delegate = true)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
     for (size_t i = 0; i < input.shape.size(); ++i) {
@@ -2332,8 +2530,11 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
     inputs.push_back((bias_ == kTfLiteOptionalTensor) ? std::vector<int>()
                                                       : GetShape(bias_));
     BuildInterpreter(inputs, num_threads, /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/false);
+                     /*apply_delegate=*/false, allocate_and_delegate);
   }
+
+  using SingleOpModel::AllocateTensors;
+
   void SetBias(const std::vector<T>& data) { PopulateTensor(bias_, data); }
   void SetInput(const std::vector<T>& data) { PopulateTensor(input_, data); }
   std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
@@ -2850,6 +3051,35 @@ TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16PerChannelTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {10.9061, 2, 25.0938, 0, 2, 20.9691}, 1e-3)));
 }
+
+TEST_P(SparseHybridFullyConnectedOpTest, RejectsWeightsWithZeroPoints) {
+  // The hybrid kernels don't apply filter zero points.
+  TensorData weight = {TensorType_INT8,
+                       {3, 16},
+                       0.0,
+                       0.0,
+                       0.0,
+                       0,
+                       true,
+                       {4.0 / 127.0, 1.0 / 127.0, 4.0 / 127.0},
+                       {0, 1, 0}};
+  weight.traversal_order = {0, 1, 2};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  weight.block_map = {1};
+  weight.block_size = {16};
+  SparseFullyConnectedOpModel<float> m(
+      GetRegistration(),
+      /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 16}, 0, 0, 1}, weight,
+      /*weights_data=*/std::vector<float>(3 * 16, 1.0f),
+      /*output=*/{TensorType_FLOAT32, {}, 0, 0, 1},
+      /*bias_tensor_optional=*/false, /*num_threads=*/1,
+      /*symmetric_quantize_weights=*/false,
+      /*asymmetric_quantize_inputs=*/GetParam().asymmetric_quantize_input,
+      /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 // TODO(b/148391360): Add tests for unsupported sparsity format.
 // TEST_P(SparseFullyConnectedOpTest, TestUnsupportedSparsityFormat)
 
