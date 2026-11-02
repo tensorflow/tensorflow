@@ -145,7 +145,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
 
     GpuExecutable::Params params;
     if (embed_hlo_module) {
-      params.debug_module = std::move(hlo_module);
+      params.hlo_module = std::move(hlo_module);
     }
     params.binary = {1, 2, 3};
     params.dnn_compiled_graphs = {{"test_dnn_compiled_graph", "test_json"}};

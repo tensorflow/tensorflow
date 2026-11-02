@@ -40,7 +40,10 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/translate/portable_api.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
@@ -82,8 +85,8 @@ static absl::StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
   build_options.mutable_debug_options()->set_xla_detailed_logging(
       options.detailed_logging);
-  // If the embed_ir_in_executable is set, hlo_proto will be dumped in
-  // executable. The hlo_proto contains HLO modules and buffer assignment.
+  // If embed_ir_in_executable is set, the executable exposes its buffer
+  // assignment (see `xla::Executable::buffer_assignment_proto()`).
   build_options.mutable_debug_options()->set_xla_embed_ir_in_executable(
       xla_embed_ir_in_executable);
   TF_ASSIGN_OR_RETURN(
@@ -149,7 +152,19 @@ static absl::StatusOr<std::string> BuildHLOString(
       TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
                           BuildExecutable(local_client, result, options,
                                           /*xla_embed_ir_in_executable=*/true));
-      return executable->executable()->hlo_proto()->SerializeAsString();
+      const xla::Executable& new_executable = *executable->executable();
+      xla::HloProto hlo_proto = xla::MakeHloProto(new_executable.module());
+      if (const xla::BufferAssignmentProto* buffer_assignment =
+              new_executable.buffer_assignment_proto();
+          buffer_assignment != nullptr) {
+        *hlo_proto.mutable_buffer_assignment() = *buffer_assignment;
+      }
+      // Constants can be large on CPU, so drop their payloads like the CPU
+      // compiler did when it embedded the HloProto in the executable.
+      if (local_client->platform()->id() == se::host::kHostPlatformId) {
+        xla::StripPayloadFromLiteralProto(hlo_proto);
+      }
+      return hlo_proto.SerializeAsString();
     }
     case IrExportStage::OPTIMIZED_HLO_DOT: {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,

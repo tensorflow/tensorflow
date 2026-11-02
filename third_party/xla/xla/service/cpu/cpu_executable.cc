@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_execution_profile.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_address.h"
@@ -125,7 +126,7 @@ CpuExecutable::CpuExecutable(std::unique_ptr<HloModule> hlo_module,
                              std::unique_ptr<BufferAssignment> assignment,
                              TargetMachineOptions target_machine_options,
                              std::string data_layout)
-    : Executable(std::move(hlo_module)),
+    : HloModuleExecutable(std::move(hlo_module)),
       assignment_(std::move(assignment)),
       target_machine_options_(std::move(target_machine_options)),
       data_layout_(std::move(data_layout)) {
