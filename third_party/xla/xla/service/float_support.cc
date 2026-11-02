@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -37,6 +38,13 @@ bool IsPrecisionPreservingTypeTransition(PrimitiveType in_type,
   return in_type == out_type ||
          (in_type == high_precision_type && out_type == low_precision_type) ||
          (in_type == low_precision_type && out_type == high_precision_type);
+}
+
+bool IsIdentityLowPrecisionReducePrecision(const HloInstruction& hlo,
+                                           PrimitiveType low_precision_type) {
+  return hlo.shape().element_type() == low_precision_type &&
+         primitive_util::HasFloatingPointPrecision(
+             low_precision_type, hlo.exponent_bits(), hlo.mantissa_bits());
 }
 
 }  // namespace
@@ -62,6 +70,8 @@ bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
       // not be demoted.
       return hlo.operand(operand_index)->shape().element_type() ==
              low_precision_type_;
+    case HloOpcode::kReducePrecision:
+      return IsIdentityLowPrecisionReducePrecision(hlo, low_precision_type_);
     case HloOpcode::kClz:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kShiftRightArithmetic:
@@ -96,6 +106,8 @@ bool FloatSupport::SupportsLowPrecisionOutput(const HloInstruction& hlo) const {
     case HloOpcode::kConvert:
     case HloOpcode::kFma:
       return hlo.shape().element_type() == low_precision_type_;
+    case HloOpcode::kReducePrecision:
+      return IsIdentityLowPrecisionReducePrecision(hlo, low_precision_type_);
     case HloOpcode::kClz:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kShiftRightArithmetic:

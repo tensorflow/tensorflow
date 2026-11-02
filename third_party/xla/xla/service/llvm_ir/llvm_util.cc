@@ -829,6 +829,14 @@ absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
         PrimitiveType_Name(src_ty));
   }
 
+  // SignificandWidth includes the implicit extra bit.
+  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
+  int src_exponent_bits = primitive_util::ExponentWidth(src_ty);
+  if (dest_mantissa_bits == src_mantissa_bits &&
+      dest_exponent_bits == src_exponent_bits) {
+    return x;
+  }
+
   // Integer and float types for casting and constant generation.
   llvm::Type* const value_type = x->getType();
   llvm::Type* const float_scalar_type = value_type->getScalarType();
@@ -846,10 +854,6 @@ absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
   auto int_const = [&](const APInt& val) -> llvm::Constant* {
     return llvm::ConstantInt::get(int_work_type, val);
   };
-
-  // SignificandWidth includes the implicit extra bit.
-  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
-  int src_exponent_bits = nbits - 1 - src_mantissa_bits;
 
   // Cast the input value to an integer for bitwise manipulation.
   llvm::Value* x_as_int = b->CreateBitCast(x, int_work_type);

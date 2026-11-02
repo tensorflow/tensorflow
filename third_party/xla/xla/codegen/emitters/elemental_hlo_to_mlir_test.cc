@@ -1775,7 +1775,46 @@ TEST_F(ElementalHloToMlirTest, ReducePrecision) {
                         exponent_bits=8, mantissa_bits=23
                      }
                    )",
-                "// CHECK: @main"));
+                R"(
+                // CHECK: @main
+                // CHECK-NEXT: %[[EXTRACTED:.*]] = tensor.extract
+                // CHECK-NEXT: return %[[EXTRACTED]]
+                )"));
+  EXPECT_OK(Run(R"(
+                     ENTRY main {
+                       %p0 = f8e4m3fn[5,7] parameter(0)
+                       ROOT r = f8e4m3fn[5,7] reduce-precision(%p0),
+                        exponent_bits=4, mantissa_bits=3
+                     }
+                   )",
+                R"(
+                // CHECK: @main
+                // CHECK-NEXT: %[[EXTRACTED:.*]] = tensor.extract
+                // CHECK-NEXT: return %[[EXTRACTED]]
+                )"));
+  EXPECT_OK(Run(R"(
+                     ENTRY main {
+                       %p0 = f8e8m0fnu[5,7] parameter(0)
+                       ROOT r = f8e8m0fnu[5,7] reduce-precision(%p0),
+                        exponent_bits=8, mantissa_bits=0
+                     }
+                   )",
+                R"(
+                // CHECK: @main
+                // CHECK-NEXT: %[[EXTRACTED:.*]] = tensor.extract
+                // CHECK-NEXT: return %[[EXTRACTED]]
+                )"));
+  EXPECT_OK(Run(R"(
+                     ENTRY main {
+                       %p0 = f32[5,7] parameter(0)
+                       ROOT r = f32[5,7] reduce-precision(%p0),
+                        exponent_bits=5, mantissa_bits=10
+                     }
+                   )",
+                R"(
+                // CHECK: @main
+                // CHECK: arith.bitcast
+                )"));
 }
 
 TEST_F(ElementalHloToMlirTest, Map) {
