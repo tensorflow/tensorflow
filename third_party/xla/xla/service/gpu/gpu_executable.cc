@@ -1637,7 +1637,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   params.binary.assign(binary.begin(), binary.end());
   if (debug_module != nullptr) {
     params.debug_module = std::move(debug_module);
-  } else if (proto.has_hlo_module_with_config()) {
+  } else if (proto.has_hlo_module_with_config() &&
+             proto.hlo_module_with_config().has_hlo_module()) {
     ABSL_ASSIGN_OR_RETURN(params.debug_module, HloModule::CreateFromProtoWithConfig(
                                               proto.hlo_module_with_config()));
   }
