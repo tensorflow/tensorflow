@@ -123,7 +123,12 @@ class FileIO(object):
     return stat(self.__name).length
 
   def write(self, file_content):
-    """Writes file_content to the file. Appends to the end of the file."""
+    """Writes file_content to the file.
+
+    In "w" mode, data is written at the current write position, which
+    seek() can move. In "a" and "a+" modes, data is always appended to
+    the end of the file.
+    """
     self._prewrite_check()
     self._writable_file.append(
         compat.as_bytes(file_content, encoding=self.__encoding))
@@ -163,7 +168,10 @@ class FileIO(object):
         2: relative to the end of file. `offset` is usually negative.
     """
     # pylint: enable=g-doc-args
-    self._preread_check()
+    if self._read_check_passed:
+      self._preread_check()
+    else:
+      self._prewrite_check()
     # We needed to make offset a keyword argument for backwards-compatibility.
     # This check exists so that we can convert back to having offset be a
     # positional argument.
@@ -183,13 +191,18 @@ class FileIO(object):
     elif whence == 1:
       offset += self.tell()
     elif whence == 2:
+      if self._writable_file:
+        self._writable_file.flush()
       offset += self.size()
     else:
       raise errors.InvalidArgumentError(
           None, None,
           "Invalid whence argument: {}. Valid values are 0, 1, or 2.".format(
               whence))
-    self._read_buf.seek(offset)
+    if self._read_check_passed:
+      self._read_buf.seek(offset)
+    else:
+      self._writable_file.seek(offset)
 
   def readline(self):
     r"""Reads the next line, keeping \n. At EOF, returns ''."""
