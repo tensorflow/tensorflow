@@ -146,6 +146,102 @@ TEST(UniformQuantizedConvolutionParamsTest,
           .ok());
 }
 
+TEST(UniformQuantizedConvolutionParamsTest,
+     ValidateOrFillParamsAndValidateShapeRepeatedInputDimension) {
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            input_batch_dimension: 0
+                                            input_feature_dimension: 0
+                                            input_spatial_dimensions: 2
+                                            input_spatial_dimensions: 3
+                                            kernel_output_feature_dimension: 0
+                                            kernel_input_feature_dimension: 1
+                                            kernel_spatial_dimensions: 2
+                                            kernel_spatial_dimensions: 3
+                                            output_batch_dimension: 0
+                                            output_feature_dimension: 1
+                                            output_spatial_dimensions: 2
+                                            output_spatial_dimensions: 3
+                                          )pb",
+                                          &dimension_numbers));
+  UniformQuantizedConvolutionParams params(/*window_strides=*/{},
+                                           /*lhs_dilation=*/{},
+                                           /*rhs_dilation=*/{},
+                                           dimension_numbers,
+                                           /*feature_group_count=*/1,
+                                           /*batch_group_count=*/1,
+                                           /*padding=*/"VALID");
+  // input_batch_dimension and input_feature_dimension both name dim 0, so the
+  // lhs dimension numbers are not a permutation. They are used as a transpose
+  // permutation, so this must be rejected rather than reach the kernel.
+  EXPECT_FALSE(params
+                   .ValidateOrFillParamsAndValidateShape(
+                       /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3})
+                   .ok());
+}
+
+TEST(UniformQuantizedConvolutionParamsTest,
+     ValidateOrFillParamsAndValidateShapeRepeatedKernelDimension) {
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            input_batch_dimension: 0
+                                            input_feature_dimension: 1
+                                            input_spatial_dimensions: 2
+                                            input_spatial_dimensions: 3
+                                            kernel_output_feature_dimension: 1
+                                            kernel_input_feature_dimension: 1
+                                            kernel_spatial_dimensions: 2
+                                            kernel_spatial_dimensions: 3
+                                            output_batch_dimension: 0
+                                            output_feature_dimension: 1
+                                            output_spatial_dimensions: 2
+                                            output_spatial_dimensions: 3
+                                          )pb",
+                                          &dimension_numbers));
+  UniformQuantizedConvolutionParams params(/*window_strides=*/{},
+                                           /*lhs_dilation=*/{},
+                                           /*rhs_dilation=*/{},
+                                           dimension_numbers,
+                                           /*feature_group_count=*/1,
+                                           /*batch_group_count=*/1,
+                                           /*padding=*/"VALID");
+  EXPECT_FALSE(params
+                   .ValidateOrFillParamsAndValidateShape(
+                       /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3})
+                   .ok());
+}
+
+TEST(UniformQuantizedConvolutionParamsTest,
+     ValidateOrFillParamsAndValidateShapeRepeatedOutputDimension) {
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            input_batch_dimension: 0
+                                            input_feature_dimension: 1
+                                            input_spatial_dimensions: 2
+                                            input_spatial_dimensions: 3
+                                            kernel_output_feature_dimension: 0
+                                            kernel_input_feature_dimension: 1
+                                            kernel_spatial_dimensions: 2
+                                            kernel_spatial_dimensions: 3
+                                            output_batch_dimension: 1
+                                            output_feature_dimension: 1
+                                            output_spatial_dimensions: 2
+                                            output_spatial_dimensions: 3
+                                          )pb",
+                                          &dimension_numbers));
+  UniformQuantizedConvolutionParams params(/*window_strides=*/{},
+                                           /*lhs_dilation=*/{},
+                                           /*rhs_dilation=*/{},
+                                           dimension_numbers,
+                                           /*feature_group_count=*/1,
+                                           /*batch_group_count=*/1,
+                                           /*padding=*/"VALID");
+  EXPECT_FALSE(params
+                   .ValidateOrFillParamsAndValidateShape(
+                       /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3})
+                   .ok());
+}
+
 TEST(UniformQuantizedConvolutionParamsTest, CalculateOutputShapeDefaultAttr) {
   UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
   UniformQuantizedConvolutionParams params(/*window_strides=*/{},

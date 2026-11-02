@@ -49,6 +49,34 @@ absl::Status ValidSpatialDimensions(
   return absl::OkStatus();
 }
 
+// Checks that the batch, feature and spatial dimension numbers for one tensor
+// together form a permutation of [0, dims), i.e. every dimension index appears
+// exactly once. The individual range checks above guarantee each index is in
+// [0, dims) and that there are exactly `dims` of them, so here we only need to
+// reject repeated indices.
+absl::Status ValidDimensionNumbersPermutation(
+    int64_t dims, int64_t batch_dimension, int64_t feature_dimension,
+    const protobuf::RepeatedField<int64_t>& spatial_dimensions,
+    absl::string_view tensor_name) {
+  std::vector<bool> seen(dims, false);
+  const auto mark = [&](int64_t dim) -> absl::Status {
+    if (dim < 0 || dim >= dims || seen[dim]) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          tensor_name,
+          " dimension numbers must be a permutation of [0, rank). Given rank ",
+          dims, " with a repeated or out-of-range dimension number ", dim));
+    }
+    seen[dim] = true;
+    return absl::OkStatus();
+  };
+  TF_RETURN_IF_ERROR(mark(batch_dimension));
+  TF_RETURN_IF_ERROR(mark(feature_dimension));
+  for (int i = 0; i < spatial_dimensions.size(); ++i) {
+    TF_RETURN_IF_ERROR(mark(spatial_dimensions.Get(i)));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::Status UniformQuantizedConvolutionParams::LoadFromAttrs(
@@ -155,6 +183,24 @@ UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
         ValidDim(dims, dimension_numbers_.output_feature_dimension()));
     TF_RETURN_IF_ERROR(ValidSpatialDimensions(
         dims, dimension_numbers_.output_spatial_dimensions()));
+
+    // The dimension numbers are used as transpose permutations and to index
+    // the output buffer, so each set must be a full permutation of [0, dims).
+    // The checks above only bound each index individually; a repeated index
+    // (e.g. input_batch_dimension == input_feature_dimension) would otherwise
+    // pass and cause out-of-bounds access downstream in the transpose.
+    TF_RETURN_IF_ERROR(ValidDimensionNumbersPermutation(
+        dims, dimension_numbers_.input_batch_dimension(),
+        dimension_numbers_.input_feature_dimension(),
+        dimension_numbers_.input_spatial_dimensions(), "lhs"));
+    TF_RETURN_IF_ERROR(ValidDimensionNumbersPermutation(
+        dims, dimension_numbers_.kernel_output_feature_dimension(),
+        dimension_numbers_.kernel_input_feature_dimension(),
+        dimension_numbers_.kernel_spatial_dimensions(), "rhs"));
+    TF_RETURN_IF_ERROR(ValidDimensionNumbersPermutation(
+        dims, dimension_numbers_.output_batch_dimension(),
+        dimension_numbers_.output_feature_dimension(),
+        dimension_numbers_.output_spatial_dimensions(), "output"));
   }
 
   // Validate lhs_shape, rhs_shape, feature_group_count, and batch_group_count.
