@@ -2806,7 +2806,8 @@ absl::StatusOr<std::shared_ptr<HloModule>> PjRtCApiExecutable::GetHloModule()
   if (!proto.ParseFromString(code)) {
     return InvalidArgument("Failed to deserialize HloModuleProtoWithConfig");
   }
-  return HloModule::CreateFromProtoWithConfig(proto);
+  return HloModule::CreateFromProtoWithConfig(proto,
+                                              /*prohibit_empty_literal=*/false);
 }
 
 absl::StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {

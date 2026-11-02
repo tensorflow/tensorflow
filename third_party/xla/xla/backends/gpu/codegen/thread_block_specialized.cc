@@ -95,8 +95,8 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
-
 constexpr unsigned kSharedMemoryAddrSpace = 3;
+}  // namespace
 
 std::string GetNestedKernelFunctionName(absl::string_view entry_function_name,
                                         size_t index) {
@@ -212,8 +212,6 @@ absl::Status SpliceNestedKernelModuleIntoLauncher(
 
   return absl::OkStatus();
 }
-
-}  // namespace
 
 ThreadBlockSpecializedFusion::NestedKernelSpec
 ThreadBlockSpecializedFusion::NestedKernelSpec::Create(

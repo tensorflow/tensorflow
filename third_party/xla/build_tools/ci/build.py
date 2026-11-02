@@ -823,7 +823,7 @@ Build(
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}\\openxla\\xla",
     ),
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options={**_DEFAULT_BAZEL_OPTIONS, "remote_download_minimal": True},
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
     subcommand="build",
     startup_options={

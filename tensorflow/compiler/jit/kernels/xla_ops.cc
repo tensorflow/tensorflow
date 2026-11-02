@@ -627,7 +627,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           GetLaunchContext(platform_info, ctx, client, allocator.get());
 
       const xla::HloInputOutputAliasConfig& input_output_alias =
-          executable->executable()->module().input_output_alias_config();
+          executable->executable()->input_output_alias_config();
       absl::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
           launch_context.PopulateInputs(
               ctx, compilation_result, resource_var_ptrs,
@@ -938,7 +938,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   // about this.  We don't actually need these inputs because they've
   // already been baked into the compiled kernel.
   const xla::HloInputOutputAliasConfig& input_output_alias =
-      closure.executable()->executable()->module().input_output_alias_config();
+      closure.executable()->executable()->input_output_alias_config();
   absl::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs;
   absl::flat_hash_map<int, const Tensor*> snapshot_ptrs;
   {

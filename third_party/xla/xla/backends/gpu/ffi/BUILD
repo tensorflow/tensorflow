@@ -102,7 +102,7 @@ xla_cc_binary(
 
 [
     genrule(
-        name = "xla_ffi_aot_custom_call_executable_" + target,
+        name = "compile_xla_ffi_aot_custom_call_executable_" + target,
         testonly = True,
         outs = ["xla_ffi_aot_custom_call_executable_" + target],
         cmd = "$(execpath :xla_ffi_aot_custom_call_compile_main) $@ " + target,
@@ -125,7 +125,7 @@ xla_cc_binary(
         name = "xla_ffi_aot_custom_call_" + target + "_test",
         srcs = ["xla_ffi_aot_custom_call_test.cc"],
         backends = [target],
-        data = [":xla_ffi_aot_custom_call_executable_" + target],
+        data = [":compile_xla_ffi_aot_custom_call_executable_" + target],
         tags = [
             "cuda-only",
             "depends-on-libcuda-in-compilation",

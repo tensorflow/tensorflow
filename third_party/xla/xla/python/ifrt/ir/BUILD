@@ -128,6 +128,20 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "ifrt_interfaces_test",
+    srcs = ["ifrt_interfaces_test.cc"],
+    deps = [
+        ":ifrt_ir_test_base",
+        ":ir",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 cc_library(
     name = "sharding_param",
     srcs = ["sharding_param.cc"],
@@ -414,12 +428,31 @@ cc_library(
 )
 
 cc_library(
+    name = "ifrt_ir_test_base",
+    testonly = True,
+    srcs = ["ifrt_ir_test_base.cc"],
+    hdrs = ["ifrt_ir_test_base.h"],
+    deps = [
+        "//xla/mlir/utils:error_util",
+        "//xla/python/ifrt/ir/support:module_parsing",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)
+
+cc_library(
     name = "ifrt_ir_loaded_executable_test_base",
     testonly = True,
     srcs = ["ifrt_ir_loaded_executable_test_base.cc"],
     hdrs = ["ifrt_ir_loaded_executable_test_base.h"],
     deps = [
         ":ifrt_ir_program",
+        ":ifrt_ir_test_base",
         ":version",
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
@@ -428,18 +461,15 @@ cc_library(
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt/ir/import:passes",
         "//xla/python/ifrt/ir/support:module_parsing",
-        "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",

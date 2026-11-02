@@ -1579,7 +1579,13 @@ absl::Status CommonPjRtClient::Delinearize(absl::Span<const uint8_t> input_data,
       literal_layout =
           LayoutUtil::MakeDescendingLayout(shape.dimensions().size());
     }
-    need_transpose = literal_layout != shape.layout();
+    // Literals always strip `element_size_in_bits` to 0 (storing sub-byte
+    // elements unpacked, 1 byte per element) and use default `memory_space`,
+    // whereas PJRT buffer shapes carry packed `element_size_in_bits` and the
+    // buffer's memory space. Ignore both when checking whether the layout
+    // requires a transpose.
+    need_transpose = !Layout::Equal().IgnoreElementSize().IgnoreMemorySpace()(
+        literal_layout, shape.layout());
   }
 
   absl::Span<const char> input_span{
@@ -1616,7 +1622,7 @@ absl::Status CommonPjRtClient::Delinearize(absl::Span<const uint8_t> input_data,
   } else {
     if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
       primitive_util::UnpackIntN(shape.element_type(), input_span, output_span);
-    } else {
+    } else if (output_size > 0) {
       std::memcpy(output_span.data(), input_span.data(), output_size);
     }
   }

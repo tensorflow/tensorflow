@@ -138,7 +138,7 @@ absl::Status XlaCompileOnDemandOp::Run(
   }
 
   const xla::HloInputOutputAliasConfig& input_output_alias =
-      executable->executable()->module().input_output_alias_config();
+      executable->executable()->input_output_alias_config();
   absl::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
       launch_context.PopulateInputs(ctx, result, snapshot_ptrs,
                                     /*missing_ctx_input_prefix=*/0,

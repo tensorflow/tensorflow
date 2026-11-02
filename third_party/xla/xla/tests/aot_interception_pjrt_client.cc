@@ -281,6 +281,12 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
           // module `config` are still compared.
           FieldByPath(gpu::GpuExecutableProto::descriptor(),
                       {"hlo_module_with_config", "hlo_module"}),
+          // Both fields are derived from the HLO module above, so they are
+          // ignored for the same reason. Goldens recorded before these fields
+          // existed don't have them.
+          gpu::GpuExecutableProto::descriptor()->FindFieldByName("fingerprint"),
+          gpu::GpuExecutableProto::descriptor()->FindFieldByName(
+              "collective_use_minimal_resource"),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName("binary"),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName("asm_text"),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName(

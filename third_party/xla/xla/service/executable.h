@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_EXECUTABLE_H_
 #define XLA_SERVICE_EXECUTABLE_H_
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -25,6 +28,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,9 +36,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/device_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/maybe_owning_device_address.h"
@@ -262,10 +268,27 @@ class ExecutionOutput {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
+  // Builds the HloModule of an executable on demand. `reason` is a short tag
+  // that says why the module is needed (e.g. for logging and metrics). It's
+  // called with a lock held, so it must not call GetOrCreateHloModule.
+  using HloModuleFactory =
+      absl::AnyInvocable<absl::StatusOr<std::shared_ptr<HloModule>>(
+          absl::string_view reason)>;
+
   // The hlo_module parameter may be nullptr, if the given executable type
   // doesn't need it for execution.
   explicit Executable(std::shared_ptr<HloModule> hlo_module)
       : hlo_module_(std::move(hlo_module)) {}
+
+  // Creates an executable without an HloModule. Without this overload
+  // `Executable(nullptr)` would be ambiguous.
+  explicit Executable(std::nullptr_t)
+      : Executable(std::shared_ptr<HloModule>()) {}
+
+  // Creates an executable that doesn't have its HloModule yet, but can build it
+  // with `hlo_module_factory` when it's needed (see GetOrCreateHloModule).
+  explicit Executable(HloModuleFactory hlo_module_factory);
+
   virtual ~Executable() = default;
 
   // Enqueues the compilation result on the provided stream, passing the given
@@ -331,29 +354,50 @@ class Executable {
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments);
 
+  // The module accessors below are safe to call concurrently with
+  // GetOrCreateHloModule: they either see no module or the fully built one.
   HloModule& module() const {
-    CHECK(hlo_module_ != nullptr);
-    return *hlo_module_;
+    HloModule* hlo_module = module_ptr();
+    CHECK(hlo_module != nullptr);
+    return *hlo_module;
   }
-  std::shared_ptr<HloModule> shared_module() const { return hlo_module_; }
-
-  bool has_module() const { return hlo_module_ != nullptr; }
-
-  const HloModuleConfig& module_config() const {
-    CHECK(hlo_module_ != nullptr);
-    return hlo_module_->config();
+  std::shared_ptr<HloModule> shared_module() const {
+    if (lazy_hlo_module_ == nullptr) {
+      return hlo_module_;
+    }
+    if (lazy_hlo_module_->module_ptr.load(std::memory_order_acquire) ==
+        nullptr) {
+      return nullptr;
+    }
+    // `module` never changes after `module_ptr` was set.
+    return lazy_hlo_module_->module;
   }
+
+  bool has_module() const { return module_ptr() != nullptr; }
+
+  // Returns the HloModule of the executable. If the executable was created with
+  // an HloModuleFactory and doesn't have its module yet, this builds the module
+  // with the factory, passing `reason` along.
+  //
+  // The factory is called at most once, even if there are concurrent callers.
+  // After a successful build `has_module()` returns true and the module stays
+  // alive as long as the executable. After a failure every call returns the
+  // same error.
+  //
+  // Returns NotFound if there's neither a module nor a factory.
+  absl::StatusOr<std::shared_ptr<HloModule>> GetOrCreateHloModule(
+      absl::string_view reason) const;
+
+  const HloModuleConfig& module_config() const { return module().config(); }
 
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceAddressBase result value in ExecuteOnStream above.
   virtual Shape result_shape() const {
-    CHECK(hlo_module_ != nullptr);
-    return hlo_module_->config().entry_computation_layout().result_shape();
+    return module().config().entry_computation_layout().result_shape();
   }
 
   virtual ComputationLayout compute_computation_layout() const {
-    CHECK(hlo_module_ != nullptr);
-    return hlo_module_->compute_computation_layout();
+    return module().compute_computation_layout();
   }
 
   virtual absl::string_view name() const {
@@ -361,6 +405,36 @@ class Executable {
       return module().name();
     }
     return "<unknown executable>";
+  }
+
+  // The input/output aliasing of the entry computation.
+  //
+  // The default implementation reads it from the HloModule. Executables that
+  // can run without an HloModule override this (and the accessors below), so
+  // that callers don't need the module to execute them.
+  virtual const HloInputOutputAliasConfig& input_output_alias_config() const {
+    return module().input_output_alias_config();
+  }
+
+  // The parameters of the entry computation that may be donated.
+  virtual const HloBufferDonorConfig& buffer_donor_config() const {
+    return module().buffer_donor_config();
+  }
+
+  // The static device assignment the executable was compiled with, or nullptr
+  // if it doesn't have one.
+  virtual const DeviceAssignment* static_device_assignment() const {
+    const HloModuleConfig& config = module_config();
+    return config.has_static_device_assignment()
+               ? &config.static_device_assignment()
+               : nullptr;
+  }
+
+  // The entry computation layout from the config of the module the executable
+  // was compiled from. Note that this can differ from
+  // `compute_computation_layout()`, e.g. in tiling or memory space.
+  virtual const ComputationLayout& entry_computation_layout() const {
+    return module_config().entry_computation_layout();
   }
 
   // Returns the size of the executable in bytes. Returns -1 if this query is
@@ -441,13 +515,47 @@ class Executable {
   }
 
  private:
+  // The state of an executable that builds its module on demand.
+  struct LazyHloModuleState {
+    explicit LazyHloModuleState(HloModuleFactory factory)
+        : factory(std::move(factory)) {}
+
+    absl::Mutex mutex;
+    // Reset once the module is built, so that it can free what it holds.
+    HloModuleFactory factory ABSL_GUARDED_BY(mutex);
+    // The error of the factory, if it failed.
+    std::optional<absl::Status> error ABSL_GUARDED_BY(mutex);
+    // The built module. It's set (under `mutex`) before `module_ptr` and never
+    // changes afterwards, so it can be read without a lock once `module_ptr`
+    // is non-null.
+    std::shared_ptr<HloModule> module;
+    // Raw pointer to `module`, or nullptr while there's no module. Readers do
+    // an acquire load and GetOrCreateHloModule does a release store, so the
+    // read path doesn't need a lock.
+    std::atomic<HloModule*> module_ptr = nullptr;
+  };
+
+  // Returns the module, or nullptr if there's none (yet).
+  HloModule* module_ptr() const {
+    if (lazy_hlo_module_ == nullptr) {
+      return hlo_module_.get();
+    }
+    return lazy_hlo_module_->module_ptr.load(std::memory_order_acquire);
+  }
+
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around if we keep the BufferAssignment around.
   //
   // This member may be nullptr, if the given executable type doesn't need it
-  // for execution.
+  // for execution. It's always nullptr if the executable builds its module on
+  // demand.
   std::shared_ptr<HloModule> hlo_module_;
+
+  // Only set if the executable builds its module on demand. It's heap
+  // allocated, so that executables that get their module in the constructor
+  // don't pay for it.
+  std::unique_ptr<LazyHloModuleState> lazy_hlo_module_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.

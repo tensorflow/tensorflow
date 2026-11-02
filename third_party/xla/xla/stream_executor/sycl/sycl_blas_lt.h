@@ -24,8 +24,6 @@ limitations under the License.
 namespace stream_executor {
 namespace sycl {
 
-constexpr int64_t kOneDnnGemm = 1;
-
 class BlasLt : public gpu::BlasLt {
  public:
   explicit BlasLt(StreamExecutor* parent) : parent_(parent) {}

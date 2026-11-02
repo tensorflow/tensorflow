@@ -467,6 +467,7 @@ xla_test(
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
         "//xla/service:platform_util",
+        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:gpu_memory_space_assignment",
         "//xla/stream_executor:device_address_allocator",
