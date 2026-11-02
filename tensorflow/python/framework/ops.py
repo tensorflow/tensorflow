@@ -3462,8 +3462,8 @@ class Graph(pywrap_tf_session.PyGraph):
     if name is not None:
       if not isinstance(name, compat.bytes_or_text_types):
         raise TypeError(
-            f"Argument `name` must be a string. "
-            f"Received '{name}' of type {type(name).__name__}."
+            f"Argument 'name' must be a string. "
+            f"Received {name!r} of type {type(name).__name__}."
         )
       if name:
         name = compat.as_str(name)
@@ -5631,8 +5631,8 @@ def name_scope(
   """
   if name is not None and not isinstance(name, compat.bytes_or_text_types):
     raise TypeError(
-        f"Argument `name` must be a string. "
-        f"Received '{name}' of type {type(name).__name__}."
+        f"Argument 'name' must be a string. "
+        f"Received {name!r} of type {type(name).__name__}."
     )
 
   if not context.executing_eagerly():
@@ -5679,8 +5679,8 @@ class internal_name_scope_v1(contextlib.AbstractContextManager[str]):  # pylint:
           "pass this into the `values` kwarg." % type(default_name))
     if name is not None and not isinstance(name, compat.bytes_or_text_types):
       raise TypeError(
-          f"Argument `name` must be a string. "
-          f"Received '{name}' of type {type(name).__name__}."
+          f"Argument 'name' must be a string. "
+          f"Received {name!r} of type {type(name).__name__}."
       )
     self._name = default_name if name is None else name
     self._default_name = default_name
@@ -5775,11 +5775,6 @@ class name_scope_v1(contextlib.AbstractContextManager[Optional[str]]):  # pylint
     Raises:
       TypeError: If `name` is not a string or bytes, or `default_name` is not a string.
     """
-    if name is not None and not isinstance(name, compat.bytes_or_text_types):
-      raise TypeError(
-          f"Argument `name` must be a string. "
-          f"Received '{name}' of type {type(name).__name__}."
-      )
     self._name_scope = name_scope(
         name, default_name, values, skip_on_eager=False)
     self._name = default_name if name is None else name
@@ -5866,8 +5861,8 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
     """
     if not isinstance(name, compat.bytes_or_text_types):
       raise TypeError(
-          f"Argument `name` must be a string. "
-          f"Received '{name}' of type {type(name).__name__}."
+          f"Argument 'name' must be a string. "
+          f"Received {name!r} of type {type(name).__name__}."
       )
     self._name = compat.as_str(name)
     self._exit_fns = []
