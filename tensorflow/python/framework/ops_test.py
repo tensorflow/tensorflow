@@ -1713,8 +1713,8 @@ class NameTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
     invalid_type_regex = r"Argument `name` must be a string\."
 
-    # Invalid non-string types must raise TypeError
-    for invalid_name in [0.2, 123, [1, 2], {"name": "scope"}, (1, 2)]:
+    # Invalid non-string types must raise TypeError (including falsy non-string types)
+    for invalid_name in [0.2, 123, 0, False, [1, 2], [], {"name": "scope"}, {}, (1, 2), ()]:
       with self.assertRaisesRegex(TypeError, invalid_type_regex):
         with g.name_scope(invalid_name):
           pass
