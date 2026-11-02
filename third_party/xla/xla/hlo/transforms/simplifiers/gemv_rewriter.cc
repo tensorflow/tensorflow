@@ -143,7 +143,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
     if (!lhs_has_non_contracting_dim) {
       // Insert the trivial dimension before the non-contracting dimension from
       // rhs.
-      int non_contracting_dim_size = new_out_dimensions.back();
+      int64_t non_contracting_dim_size = new_out_dimensions.back();
       new_out_dimensions[new_out_dimensions.size() - 1] = 1;
       new_out_dimensions.push_back(non_contracting_dim_size);
     } else {
