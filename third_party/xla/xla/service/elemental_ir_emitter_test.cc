@@ -685,5 +685,21 @@ ENTRY main {
   RunTest(hlo_text, {&base, &exponent});
 }
 
+TEST_F(ElementalIrEmitterExecutionTest, IntegerPowOddBaseExponentGeBitWidth) {
+  const std::string hlo_text = R"(
+HloModule IntegerPowOddBaseExponentGeBitWidth
+
+ENTRY main {
+  base = s64[4]{0} parameter(0)
+  exponent = s64[4]{0} parameter(1)
+  ROOT power = s64[4]{0} power(base, exponent)
+}
+)";
+
+  Literal base = LiteralUtil::CreateR1<int64_t>({-47, -47, 3, -3});
+  Literal exponent = LiteralUtil::CreateR1<int64_t>({64, 66, 66, 67});
+  RunTest(hlo_text, {&base, &exponent});
+}
+
 }  // namespace
 }  // namespace xla

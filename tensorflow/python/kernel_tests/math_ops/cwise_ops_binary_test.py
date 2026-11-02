@@ -1046,6 +1046,21 @@ class BinaryOpTest(test.TestCase):
             np.empty((0, 2), dtype=dtype),
         )
 
+  def testPowLargeExponentOverflow(self):
+    for dtype in [np.int8, np.int16, np.int32, np.int64]:
+      x = np.array([-47, -3, -1, 0, 1, 2, 3], dtype=dtype)
+      y = np.array([66, 65, 65, 66, 66, 64, 66], dtype=dtype)
+      expected = np.power(x, y)
+      with test_util.force_cpu():
+        self.assertAllEqual(self.evaluate(math_ops.pow(x, y)), expected)
+      if test_util.is_gpu_available() and dtype in (
+          np.int8,
+          np.int16,
+          np.int64,
+      ):
+        with test_util.force_gpu():
+          self.assertAllEqual(self.evaluate(math_ops.pow(x, y)), expected)
+
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails"
   )

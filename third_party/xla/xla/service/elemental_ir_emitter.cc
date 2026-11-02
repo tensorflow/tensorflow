@@ -2489,11 +2489,9 @@ llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* lhs,
                                                 bool is_signed) {
   // Exponentiation by squaring:
   // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;
-  int bits = 6;  // Everything else would overflow for any exponent > 1, as 2^64
-                 // is the larget possible exponent for a 64-bit integer, and
-                 // that's 1 << 6.
   llvm::Value* base = lhs;
   llvm::Value* exponent = rhs;
+  int bits = exponent->getType()->getIntegerBitWidth();
   llvm::Value* exp_one = llvm::ConstantInt::get(exponent->getType(), 1);
   llvm::Value* exp_zero = llvm::ConstantInt::get(exponent->getType(), 0);
   llvm::Value* base_one = llvm::ConstantInt::get(base->getType(), 1);
@@ -2511,11 +2509,6 @@ llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* lhs,
     base = b_->CreateMul(base, base);
     exponent = b_->CreateLShr(exponent, 1);
   }
-  accumulator = b_->CreateSelect(
-      b_->CreateAnd(
-          b_->CreateICmpNE(exponent, exp_zero),
-          b_->CreateICmpEQ(b_->CreateAnd(original_base, base_one), base_zero)),
-      base_zero, accumulator);
   if (!is_signed) {
     return accumulator;
   }
