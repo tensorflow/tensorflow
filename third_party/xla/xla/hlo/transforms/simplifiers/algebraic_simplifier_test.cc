@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -10578,6 +10579,108 @@ std::vector<DotOfGatherTestSpec> DotOfGatherPositiveNegativeTests() {
 INSTANTIATE_TEST_SUITE_P(
     DotOfGatherSimplificationTestInstantiation, DotOfGatherSimplificationTest,
     ::testing::ValuesIn(DotOfGatherPositiveNegativeTests()));
+
+class SymbolicConstantSimplifierVisitor : public AlgebraicSimplifierVisitor {
+ public:
+  using AlgebraicSimplifierVisitor::AlgebraicSimplifierVisitor;
+
+  absl::Status HandleConstant(HloInstruction* constant) override {
+    if (!Cast<HloConstantInstruction>(constant)->HasLiteral()) {
+      return absl::OkStatus();
+    }
+    return AlgebraicSimplifierVisitor::HandleConstant(constant);
+  }
+};
+
+TEST_F(AlgebraicSimplifierTest, DotOfGatherLargeDimensionsConstantRHS) {
+  constexpr int64_t kOverInt32Max = (int64_t{1} << 31) + 3;
+  constexpr int64_t kOverUint32Max = (int64_t{1} << 32) + 5;
+  for (const auto [m_dim, n_dim] : {std::pair{int64_t{3}, kOverUint32Max},
+                                    std::pair{kOverInt32Max, int64_t{3}}}) {
+    HloModule module(TestName(), GetModuleConfigForTest());
+    HloComputation::Builder builder(TestName());
+
+    constexpr int64_t kContractingDim = 2;
+    auto* lhs = builder.AddInstruction(std::make_unique<HloConstantInstruction>(
+        ShapeUtil::MakeShape(F32, {m_dim, kContractingDim})));
+    auto* start = builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(S64, {}), "start"));
+    auto* zero = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64_t>(0)));
+    auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+        ShapeUtil::MakeShape(F32, {1, kContractingDim}), lhs, {start, zero},
+        {1, kContractingDim}));
+    auto* rhs = builder.AddInstruction(std::make_unique<HloConstantInstruction>(
+        ShapeUtil::MakeShape(F32, {kContractingDim, n_dim})));
+
+    DotDimensionNumbers dot_dnums;
+    dot_dnums.add_lhs_contracting_dimensions(1);
+    dot_dnums.add_rhs_contracting_dimensions(0);
+    Shape dot_shape = ShapeUtil::MakeShape(F32, {1, n_dim});
+    builder.AddInstruction(HloInstruction::CreateDot(
+        dot_shape, ds, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+
+    HloComputation* computation =
+        module.AddEntryComputationWithLayouts(builder.Build());
+    AlgebraicSimplifier simplifier(default_options_);
+    SymbolicConstantSimplifierVisitor visitor(default_options_, &simplifier);
+    ASSERT_TRUE(visitor.Run(computation, default_options_, &simplifier));
+
+    const HloInstruction* root = computation->root_instruction();
+    ASSERT_THAT(root,
+                GmockMatch(m::DynamicSlice(m::Dot(m::Constant(), m::Constant()),
+                                           m::Parameter(0), m::Constant())));
+    EXPECT_THAT(root->shape().dimensions(), ElementsAre(1, n_dim));
+    EXPECT_THAT(root->operand(0)->shape().dimensions(),
+                ElementsAre(m_dim, n_dim));
+    EXPECT_THAT(root->dynamic_slice_sizes(), ElementsAre(1, n_dim));
+  }
+}
+
+TEST_F(AlgebraicSimplifierTest, DotOfGatherLargeDimensionsConstantLHS) {
+  constexpr int64_t kOverInt32Max = (int64_t{1} << 31) + 3;
+  constexpr int64_t kOverUint32Max = (int64_t{1} << 32) + 5;
+  for (const auto [m_dim, n_dim] : {std::pair{kOverUint32Max, int64_t{3}},
+                                    std::pair{int64_t{3}, kOverInt32Max}}) {
+    HloModule module(TestName(), GetModuleConfigForTest());
+    HloComputation::Builder builder(TestName());
+
+    constexpr int64_t kContractingDim = 2;
+    auto* lhs = builder.AddInstruction(std::make_unique<HloConstantInstruction>(
+        ShapeUtil::MakeShape(F32, {m_dim, kContractingDim})));
+    auto* rhs = builder.AddInstruction(std::make_unique<HloConstantInstruction>(
+        ShapeUtil::MakeShape(F32, {kContractingDim, n_dim})));
+    auto* zero = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64_t>(0)));
+    auto* start = builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(S64, {}), "start"));
+    auto* ds = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+        ShapeUtil::MakeShape(F32, {kContractingDim, 1}), rhs, {zero, start},
+        {kContractingDim, 1}));
+
+    DotDimensionNumbers dot_dnums;
+    dot_dnums.add_lhs_contracting_dimensions(1);
+    dot_dnums.add_rhs_contracting_dimensions(0);
+    Shape dot_shape = ShapeUtil::MakeShape(F32, {m_dim, 1});
+    builder.AddInstruction(HloInstruction::CreateDot(
+        dot_shape, lhs, ds, dot_dnums, DefaultPrecisionConfig(2)));
+
+    HloComputation* computation =
+        module.AddEntryComputationWithLayouts(builder.Build());
+    AlgebraicSimplifier simplifier(default_options_);
+    SymbolicConstantSimplifierVisitor visitor(default_options_, &simplifier);
+    ASSERT_TRUE(visitor.Run(computation, default_options_, &simplifier));
+
+    const HloInstruction* root = computation->root_instruction();
+    ASSERT_THAT(root,
+                GmockMatch(m::DynamicSlice(m::Dot(m::Constant(), m::Constant()),
+                                           m::Constant(), m::Parameter(0))));
+    EXPECT_THAT(root->shape().dimensions(), ElementsAre(m_dim, 1));
+    EXPECT_THAT(root->operand(0)->shape().dimensions(),
+                ElementsAre(m_dim, n_dim));
+    EXPECT_THAT(root->dynamic_slice_sizes(), ElementsAre(m_dim, 1));
+  }
+}
 
 TEST_F(AlgebraicSimplifierTest, GatherOfScalarToBroadcast) {
   constexpr absl::string_view hlo_string = R"(
