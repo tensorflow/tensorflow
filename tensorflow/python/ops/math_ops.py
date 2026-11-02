@@ -301,23 +301,31 @@ def argmax_v2(input, axis=None, output_type=dtypes.int64, name=None):
   """
   if axis is None:
     axis = 0
-
-  if hasattr(axis, "dtype"):
-    allowed_dtypes = {
-        dtypes.int8,
-        dtypes.uint8,
-        dtypes.int16,
-        dtypes.uint16,
-        dtypes.int32,
-        dtypes.int64,
-    }
-    if axis.dtype not in allowed_dtypes:
-      raise TypeError(f"axis tensor dtypes {axis.dtype} is not supported")
-    castable_types = {dtypes.int8, dtypes.int16, dtypes.uint8, dtypes.uint16}
-    if axis.dtype in castable_types:
-      axis = cast(axis, dtypes.int32)
   elif not isinstance(axis, int):
-    raise TypeError("axis must be int or Tensor with integer datatype")
+    # NumPy integer scalars and 0-D integer arrays carry a `np.dtype`, not a
+    # `tf.DType`; normalize them to Python `int`.
+    if isinstance(axis, np.integer) or (
+        isinstance(axis, np.ndarray)
+        and axis.ndim == 0
+        and np.issubdtype(axis.dtype, np.integer)
+    ):
+      axis = int(axis)
+    elif hasattr(axis, "dtype") and isinstance(axis.dtype, dtypes.DType):
+      allowed_dtypes = {
+          dtypes.int8,
+          dtypes.uint8,
+          dtypes.int16,
+          dtypes.uint16,
+          dtypes.int32,
+          dtypes.int64,
+      }
+      if axis.dtype not in allowed_dtypes:
+        raise TypeError(f"axis tensor dtypes {axis.dtype} is not supported")
+      castable_types = {dtypes.int8, dtypes.int16, dtypes.uint8, dtypes.uint16}
+      if axis.dtype in castable_types:
+        axis = cast(axis, dtypes.int32)
+    else:
+      raise TypeError("axis must be int or Tensor with integer datatype")
 
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
