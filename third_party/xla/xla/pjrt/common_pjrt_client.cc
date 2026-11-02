@@ -3557,6 +3557,91 @@ CommonPjRtClient::LookupDeviceAndAssignment(
   return result;
 }
 
+namespace {
+
+class MajorToMinorCopyToDeviceStream : public CopyToDeviceStream {
+ public:
+  MajorToMinorCopyToDeviceStream(
+      PjRtHostMemoryForDeviceManager* host_memory_for_device_manager,
+      Shape host_shape, Shape device_shape,
+      std::unique_ptr<CopyToDeviceStream> raw_stream)
+      : CopyToDeviceStream(raw_stream->total_bytes(),
+                           raw_stream->granule_size_in_bytes()),
+        host_memory_for_device_manager_(host_memory_for_device_manager),
+        host_shape_(std::move(host_shape)),
+        device_shape_(std::move(device_shape)),
+        raw_stream_(std::move(raw_stream)) {}
+
+  tsl::Future<void> AddChunk(PjRtChunk chunk) override {
+    absl::MutexLock lock(mu_);
+    CHECK_EQ(current_bytes_, 0);
+    auto statusor_linearized = host_memory_for_device_manager_->ToDeviceLayout(
+        chunk.data(), chunk.size(), host_shape_, device_shape_);
+    chunk = std::move(statusor_linearized.value());
+    CHECK_EQ(current_bytes_ + chunk.size(), total_bytes_)
+        << "CopyToDeviceStream does not support "
+           "use_major_to_minor_data_layout_for_callbacks=true with chunked "
+           "receives";
+    auto future = raw_stream_->AddChunk(std::move(chunk));
+    current_bytes_ = raw_stream_->current_bytes();
+    return future;
+  }
+
+ private:
+  PjRtHostMemoryForDeviceManager* host_memory_for_device_manager_;
+  Shape host_shape_;
+  Shape device_shape_;
+  std::unique_ptr<CopyToDeviceStream> raw_stream_;
+};
+
+SendCallback WrapSendCallbackForMajorToMinorLayout(
+    const SendCallback& send_callback,
+    PjRtHostMemoryForDeviceManager* host_memory_for_device_manager) {
+  return SendCallback{
+      .channel_id = send_callback.channel_id,
+      .callback =
+          [callback = send_callback.callback, host_memory_for_device_manager](
+              const PjRtTransferMetadata& transfer_metadata, PjRtChunk chunk,
+              size_t total_size_in_bytes, bool done) -> absl::Status {
+        CHECK(done)
+            << "use_major_to_minor_data_layout_for_callbacks=true doesn't "
+               "support chunked sends.";
+        Shape host_shape =
+            ShapeUtil::MakeShape(transfer_metadata.device_shape.element_type(),
+                                 transfer_metadata.device_shape.dimensions());
+        auto delinearized =
+            PjRtChunk::AllocateDefault(ShapeUtil::ByteSizeOf(host_shape));
+        CHECK_OK(host_memory_for_device_manager->ToHostLayout(
+            chunk.data(), chunk.size(), transfer_metadata.device_shape,
+            delinearized.data(), delinearized.size(), host_shape));
+        chunk = std::move(delinearized);
+        total_size_in_bytes = chunk.size();
+        return callback(transfer_metadata, std::move(chunk),
+                        total_size_in_bytes, done);
+      }};
+}
+
+RecvCallback WrapRecvCallbackForMajorToMinorLayout(
+    const RecvCallback& recv_callback,
+    PjRtHostMemoryForDeviceManager* host_memory_for_device_manager) {
+  return RecvCallback{
+      .channel_id = recv_callback.channel_id,
+      .callback = [callback = recv_callback.callback,
+                   host_memory_for_device_manager](
+                      const PjRtTransferMetadata& transfer_metadata,
+                      std::unique_ptr<CopyToDeviceStream> stream) {
+        Shape host_shape =
+            ShapeUtil::MakeShape(transfer_metadata.device_shape.element_type(),
+                                 transfer_metadata.device_shape.dimensions());
+        stream = std::make_unique<MajorToMinorCopyToDeviceStream>(
+            host_memory_for_device_manager, std::move(host_shape),
+            transfer_metadata.device_shape, std::move(stream));
+        callback(transfer_metadata, std::move(stream));
+      }};
+}
+
+}  // namespace
+
 absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
     ExecuteLaunchArgs& launch_args,
     absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
@@ -3609,10 +3694,50 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
         options, launch_args.input_buffers, argument_handles));
   }
 
-  ABSL_ASSIGN_OR_RETURN(launch_args.executable,
-                   LoadRawExecutable(options, host_callback_idx, run_id,
-                                     std::move(device_and_assign), attempt));
-  launch_args.options = &options;
+  const ExecuteOptions* effective_options = &options;
+  if (IsTpuId(client()->platform_id()) &&
+      options.use_major_to_minor_data_layout_for_callbacks &&
+      (!options.send_callbacks.empty() || !options.recv_callbacks.empty())) {
+    PjRtHostMemoryForDeviceManager* host_memory_for_device_manager =
+        client()->GetPjRtHostMemoryForDeviceManager();
+    launch_args.options_override = std::make_unique<ExecuteOptionsOverride>();
+    launch_args.options_override->send_callbacks.resize(
+        options.send_callbacks.size());
+    for (size_t i = 0; i < options.send_callbacks.size(); ++i) {
+      launch_args.options_override->send_callbacks[i].reserve(
+          options.send_callbacks[i].size());
+      for (const SendCallback& send_callback : options.send_callbacks[i]) {
+        launch_args.options_override->send_callbacks[i].push_back(
+            WrapSendCallbackForMajorToMinorLayout(
+                send_callback, host_memory_for_device_manager));
+      }
+    }
+    launch_args.options_override->recv_callbacks.resize(
+        options.recv_callbacks.size());
+    for (size_t i = 0; i < options.recv_callbacks.size(); ++i) {
+      launch_args.options_override->recv_callbacks[i].reserve(
+          options.recv_callbacks[i].size());
+      for (const RecvCallback& recv_callback : options.recv_callbacks[i]) {
+        launch_args.options_override->recv_callbacks[i].push_back(
+            WrapRecvCallbackForMajorToMinorLayout(
+                recv_callback, host_memory_for_device_manager));
+      }
+    }
+    launch_args.options_override->options = options;
+    launch_args.options_override->options.send_callbacks =
+        launch_args.options_override->send_callbacks;
+    launch_args.options_override->options.recv_callbacks =
+        launch_args.options_override->recv_callbacks;
+    launch_args.options_override->options
+        .use_major_to_minor_data_layout_for_callbacks = false;
+    effective_options = &launch_args.options_override->options;
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      launch_args.executable,
+      LoadRawExecutable(*effective_options, host_callback_idx, run_id,
+                        std::move(device_and_assign), attempt));
+  launch_args.options = effective_options;
   launch_args.is_predetermined_error = is_error;
   launch_args.output_leaf_buffers = std::move(output_leaf_buffers);
   return absl::OkStatus();
@@ -3773,6 +3898,11 @@ CommonPjRtLoadedExecutable::ExecuteLaunch(
                               std::move(launch_args.extra_deps),
                               std::move(launch_args.control_deps),
                               launch_args.is_predetermined_error, fill_future);
+  if (launch_args.options_override != nullptr &&
+      results.primary_execute_event) {
+    results.primary_execute_event.AndThen(
+        [options_override = std::move(launch_args.options_override)]() {});
+  }
   {
     tsl::profiler::TraceMe t3("Handle input event recording");
     // Handle input event recording.

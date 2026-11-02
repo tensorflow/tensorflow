@@ -1031,6 +1031,12 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  protected:
   // Execute is split into Prepare and Launch.
   // Prepare can fail and be retried, while Launch is guaranteed to succeed.
+  struct ExecuteOptionsOverride {
+    ExecuteOptions options;
+    std::vector<std::vector<SendCallback>> send_callbacks;
+    std::vector<std::vector<RecvCallback>> recv_callbacks;
+  };
+
   struct ExecuteLaunchArgs {
     PjRtDevice* device;
     std::unique_ptr<PjRtRawLoadedExecutable> executable;
@@ -1042,6 +1048,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     std::optional<Shape> output_device_shape_override;
     bool is_predetermined_error;
     const ExecuteOptions* options;
+    std::unique_ptr<ExecuteOptionsOverride> options_override;
   };
 
   using DeviceAndAssignment = PjRtExecutableLoadState::DeviceAndAssignment;
