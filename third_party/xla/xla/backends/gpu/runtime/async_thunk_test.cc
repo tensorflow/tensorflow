@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -236,6 +237,32 @@ TEST(AsyncThunkTest, MemcpyStreamNullReturnsError) {
 
   EXPECT_FALSE(d2h_start.ExecuteOnStream(params).ok());
   EXPECT_FALSE(h2d_start.ExecuteOnStream(params).ok());
+}
+
+TEST(AsyncThunkTest, LocalityDomainStreamIsUnimplemented) {
+  ASSERT_OK_AND_ASSIGN(auto executor, CreateExecutor());
+  ASSERT_OK_AND_ASSIGN(auto main_stream, executor->CreateStream());
+
+  AsyncStartThunk start(Thunk::ThunkInfo(), LocalityDomainStreamId(0),
+                        ThunkSequence{}, /*devices_per_host=*/1);
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations allocations({}, 0, &allocator);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecutionScopedState state;
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, main_stream.get(), main_stream.get(),
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{}, &state);
+
+  Thunk::InitializeParams init_params;
+  init_params.executor = executor;
+  init_params.execution_scoped_state = &state;
+  ASSERT_OK(start.Initialize(init_params));
+
+  EXPECT_EQ(start.ExecuteOnStream(params).code(),
+            absl::StatusCode::kUnimplemented);
 }
 
 TEST(AsyncThunkTest, GpuExecutableFallsBackToMainStreamForMemcpyStreams) {

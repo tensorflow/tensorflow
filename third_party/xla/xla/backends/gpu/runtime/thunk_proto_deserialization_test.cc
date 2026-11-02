@@ -1444,6 +1444,49 @@ TEST(ThunkProtoDeserializationTest, AsyncStartThunkMemcpyStreamRoundTrip) {
   }
 }
 
+TEST(ThunkProtoDeserializationTest,
+     AsyncStartThunkLocalityDomainStreamRoundTrip) {
+  // Verify that AsyncStartThunk with a LocalityDomainStreamId round-trips
+  // correctly through proto serialization.
+  constexpr LocalityDomainStreamId kStreamId(7);
+  Thunk::ThunkInfo start_info;
+  start_info.profile_annotation = "locality_domain_async_start";
+
+  AsyncStartThunk start_thunk(start_info, kStreamId, ThunkSequence{},
+                              /*devices_per_host=*/1);
+  AsyncDoneThunk done_thunk(Thunk::ThunkInfo(), start_thunk.async_execution());
+
+  ASSERT_OK_AND_ASSIGN(ThunkProto start_proto, start_thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto done_proto, done_thunk.ToProto());
+
+  // The proto must have used the locality_domain_stream_id field.
+  EXPECT_EQ(start_proto.async_start_thunk().execution_stream_id_case(),
+            AsyncStartThunkProto::kLocalityDomainStreamId);
+  EXPECT_EQ(start_proto.async_start_thunk().locality_domain_stream_id(),
+            kStreamId.value());
+
+  ThunkSequenceProto thunk_protos;
+  *thunk_protos.add_thunks() = start_proto;
+  *thunk_protos.add_thunks() = done_proto;
+  ASSERT_OK_AND_ASSIGN(
+      ThunkSequence sequence,
+      DeserializeThunkSequenceProto(thunk_protos, /*buffer_allocations=*/{},
+                                    /*hlo_module=*/nullptr, kTestPlatformName,
+                                    se::GpuComputeCapability(),
+                                    SingleDeviceGpuTopology()));
+
+  ASSERT_EQ(sequence.size(), 2);
+  auto* deserialized_start = dynamic_cast<AsyncStartThunk*>(sequence[0].get());
+  ASSERT_NE(deserialized_start, nullptr);
+  EXPECT_TRUE(deserialized_start->execution_stream_id().is_locality_domain());
+  EXPECT_EQ(deserialized_start->execution_stream_id().locality_domain_id(),
+            kStreamId);
+
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_start,
+                       deserialized_start->ToProto());
+  EXPECT_THAT(round_trip_start, EqualsProto(start_proto));
+}
+
 TEST(ThunkProtoDeserializationTest, SendThunk) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
