@@ -1868,21 +1868,21 @@ def _resize_image_with_pad_common(image, target_height, target_width,
     i_target_height = math_ops.cast(target_height, dtype=dtypes.int64)
     i_target_width = math_ops.cast(target_width, dtype=dtypes.int64)
 
+    scaled_height = i_height * i_target_width
+    scaled_width = i_width * i_target_height
+
     resized_height = math_ops.minimum(
-        i_target_height, i_height * i_target_width // i_width)
+        i_target_height, scaled_height // i_width)
     resized_width = math_ops.minimum(
-        i_target_width, i_width * i_target_height // i_height)
+        i_target_width, scaled_width // i_height)
 
     # floor((target - scaled size) / 2), where the scaled size need not be a
     # whole number.
+    zero = constant_op.constant(0, dtype=dtypes.int64)
     p_height = math_ops.maximum(
-        math_ops.cast(0, dtypes.int64),
-        (i_target_height * i_width - i_height * i_target_width) //
-        (2 * i_width))
+        zero, (scaled_width - scaled_height) // (2 * i_width))
     p_width = math_ops.maximum(
-        math_ops.cast(0, dtypes.int64),
-        (i_target_width * i_height - i_width * i_target_height) //
-        (2 * i_height))
+        zero, (scaled_height - scaled_width) // (2 * i_height))
     p_height = math_ops.cast(p_height, dtype=dtypes.int32)
     p_width = math_ops.cast(p_width, dtype=dtypes.int32)
 
