@@ -849,14 +849,7 @@ Build(
     test_env=dict(
         JAX_SKIP_SLOW_TESTS=1,
         TF_CPP_MIN_LOG_LEVEL=0,
-        # Exclude NNFunctionsTest.testDotProductAttentionJitGrad (added in
-        # jax-ml/jax@282298d408ba), whose bfloat16 case fails with
-        # ALG_DOT_BF16_BF16_F32 UNIMPLEMENTED on CC < 8.0 (T4 is CC 7.5).
-        # Remove once the upstream JAX fix lands.
-        JAX_EXCLUDE_TEST_TARGETS=(
-            "PmapTest.testSizeOverflow|"
-            "NNFunctionsTest.testDotProductAttentionJitGrad"
-        ),
+        JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
     ),
     override_repository=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
