@@ -319,7 +319,7 @@ cuda_py_strict_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.py"],
-    shard_count = 4,
+    shard_count = 12,
     tags = [
         "no_mac_arm64",
         "optonly",  # times out
