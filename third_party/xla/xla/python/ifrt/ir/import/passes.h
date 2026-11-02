@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_H_
-#define XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_H_
+#ifndef XLA_PYTHON_IFRT_IR_IMPORT_PASSES_H_
+#define XLA_PYTHON_IFRT_IR_IMPORT_PASSES_H_
 
 #include <memory>  // IWYU pragma: keep
 #include <string>  // IWYU pragma: keep
@@ -27,7 +27,7 @@ namespace ifrt {
 
 #define GEN_PASS_DECL
 #define GEN_PASS_REGISTRATION
-#include "xla/python/ifrt/ir/transforms/passes.h.inc"  // IWYU pragma: export
+#include "xla/python/ifrt/ir/import/passes.h.inc"  // IWYU pragma: export
 
 // Creates pipeline of all the IFRT IR passes that do not require
 // compilation-time information (e.g., device assignments).
@@ -42,4 +42,4 @@ void registerIfrtPassesAndPipelines();
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_H_
+#endif  // XLA_PYTHON_IFRT_IR_IMPORT_PASSES_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/ir/import/passes.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
@@ -56,7 +56,7 @@ void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm) {
 }
 
 void registerIfrtPassesAndPipelines() {
-  registerIfrtIrPasses();
+  registerIfrtIrImportPasses();
   mlir::PassPipelineRegistration<>(
       "ifrt-to-outlined-atom-programs-pipeline",
       "Runs passes that do not require compilation-time information",

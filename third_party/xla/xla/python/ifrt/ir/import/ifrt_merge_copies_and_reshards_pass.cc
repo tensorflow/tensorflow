@@ -34,13 +34,13 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/ir/import/passes.h"
 
 namespace xla {
 namespace ifrt {
 
 #define GEN_PASS_DEF_IFRTMERGECOPIESANDRESHARDSPASS
-#include "xla/python/ifrt/ir/transforms/passes.h.inc"
+#include "xla/python/ifrt/ir/import/passes.h.inc"
 
 namespace {
 

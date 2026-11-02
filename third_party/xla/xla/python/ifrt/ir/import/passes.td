@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 
-#ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_
-#define XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_
+#ifndef XLA_PYTHON_IFRT_IR_IMPORT_PASSES_TD_
+#define XLA_PYTHON_IFRT_IR_IMPORT_PASSES_TD_
 
 include "mlir/Pass/PassBase.td"
 
@@ -270,4 +270,4 @@ The pass dumps:
   ];
 }
 
-#endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_
+#endif  // XLA_PYTHON_IFRT_IR_IMPORT_PASSES_TD_

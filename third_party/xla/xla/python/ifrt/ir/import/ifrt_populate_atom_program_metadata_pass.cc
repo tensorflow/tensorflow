@@ -35,14 +35,14 @@ limitations under the License.
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/ir/import/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
 namespace xla {
 namespace ifrt {
 
 #define GEN_PASS_DEF_IFRTPOPULATEATOMPROGRAMMETADATAPASS
-#include "xla/python/ifrt/ir/transforms/passes.h.inc"
+#include "xla/python/ifrt/ir/import/passes.h.inc"
 
 namespace {
 
@@ -200,71 +200,72 @@ void IfrtPopulateAtomProgramMetadataPass::runOnOperation() {
   // Walk the CallOps in reverse order to ensure that the first CallOp using a
   // callee uses the original callee. Otherwise, the walk would modify the name
   // of the default callee.
-  mlir::WalkResult result = main_func.walk<mlir::WalkOrder::PreOrder,
-                                           mlir::ReverseIterator>(
-      [&](CallOp call_op) -> mlir::WalkResult {
-        mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-        if (callee == nullptr) {
-          call_op->emitOpError()
-              << "can't find callee `" << call_op.getCalleeAttr() << "`";
-          return mlir::WalkResult::interrupt();
-        }
-        mlir::ModuleOp callee_module =
-            llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
-        if (callee.getSymName() != kCalleeMainFuncName ||
-            callee_module == nullptr) {
-          call_op.emitOpError()
-              << "requires callee outlined as `" << kCalleeMainFuncName
-              << "` function in a ModuleOp. Actual callee name: "
-              << callee.getSymName()
-              << ". Actual callee parent: " << callee->getParentOp()->getName();
-          return mlir::WalkResult::interrupt();
-        }
+  mlir::WalkResult result =
+      main_func.walk<mlir::WalkOrder::PreOrder, mlir::ReverseIterator>(
+          [&](CallOp call_op) -> mlir::WalkResult {
+            mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+            if (callee == nullptr) {
+              call_op->emitOpError()
+                  << "can't find callee `" << call_op.getCalleeAttr() << "`";
+              return mlir::WalkResult::interrupt();
+            }
+            mlir::ModuleOp callee_module =
+                llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
+            if (callee.getSymName() != kCalleeMainFuncName ||
+                callee_module == nullptr) {
+              call_op.emitOpError()
+                  << "requires callee outlined as `" << kCalleeMainFuncName
+                  << "` function in a ModuleOp. Actual callee name: "
+                  << callee.getSymName() << ". Actual callee parent: "
+                  << callee->getParentOp()->getName();
+              return mlir::WalkResult::interrupt();
+            }
 
-        if (auto call_op_it = visited_call_ops.find(call_op);
-            call_op_it != visited_call_ops.end()) {
-          // Set the callee attribute to the existing callee for this
-          // CallOp.
-          call_op.setCalleeAttr(call_op_it->second);
-          return mlir::WalkResult::advance();
-        }
+            if (auto call_op_it = visited_call_ops.find(call_op);
+                call_op_it != visited_call_ops.end()) {
+              // Set the callee attribute to the existing callee for this
+              // CallOp.
+              call_op.setCalleeAttr(call_op_it->second);
+              return mlir::WalkResult::advance();
+            }
 
-        callee_to_callops[call_op.getCallee()].erase(call_op);
-        if (callee_to_callops[call_op.getCallee()].empty()) {
-          // There's only one CallOp for this callee, so we can populate the
-          // metadata in place.
-          if (mlir::failed(PopulateMetadata(
-                  call_op, callee_module, callee, builder,
-                  device_permutation_caches[call_op.getDevicesAttr()]))) {
-            return mlir::WalkResult::interrupt();
-          }
-          visited_call_ops[call_op.clone()] = call_op.getCalleeAttr();
-          return mlir::WalkResult::advance();
-        }
+            callee_to_callops[call_op.getCallee()].erase(call_op);
+            if (callee_to_callops[call_op.getCallee()].empty()) {
+              // There's only one CallOp for this callee, so we can populate the
+              // metadata in place.
+              if (mlir::failed(PopulateMetadata(
+                      call_op, callee_module, callee, builder,
+                      device_permutation_caches[call_op.getDevicesAttr()]))) {
+                return mlir::WalkResult::interrupt();
+              }
+              visited_call_ops[call_op.clone()] = call_op.getCalleeAttr();
+              return mlir::WalkResult::advance();
+            }
 
-        // Clone the callee module because there are multiple CallOps
-        // calling it.
-        mlir::ModuleOp cloned_module = callee_module.clone();
-        mlir::func::FuncOp cloned_callee = GetMainFunction(cloned_module);
-        // Insert new cloned atom program module in the SymbolTable.
-        symbol_table
-            .getSymbolTable(
-                callee_module->getParentWithTrait<mlir::OpTrait::SymbolTable>())
-            .insert(cloned_module);
-        if (mlir::failed(PopulateMetadata(
-                call_op, cloned_module, cloned_callee, builder,
-                device_permutation_caches[call_op.getDevicesAttr()]))) {
-          return mlir::WalkResult::interrupt();
-        }
-        mlir::SymbolRefAttr callee_attr = mlir::SymbolRefAttr::get(
-            cloned_module.getSymNameAttr(),
-            mlir::SymbolRefAttr::get(cloned_callee.getSymNameAttr()));
-        // Clone the CallOp because it will be modified next.
-        visited_call_ops[call_op.clone()] = callee_attr;
-        call_op.setCalleeAttr(callee_attr);
+            // Clone the callee module because there are multiple CallOps
+            // calling it.
+            mlir::ModuleOp cloned_module = callee_module.clone();
+            mlir::func::FuncOp cloned_callee = GetMainFunction(cloned_module);
+            // Insert new cloned atom program module in the SymbolTable.
+            symbol_table
+                .getSymbolTable(
+                    callee_module
+                        ->getParentWithTrait<mlir::OpTrait::SymbolTable>())
+                .insert(cloned_module);
+            if (mlir::failed(PopulateMetadata(
+                    call_op, cloned_module, cloned_callee, builder,
+                    device_permutation_caches[call_op.getDevicesAttr()]))) {
+              return mlir::WalkResult::interrupt();
+            }
+            mlir::SymbolRefAttr callee_attr = mlir::SymbolRefAttr::get(
+                cloned_module.getSymNameAttr(),
+                mlir::SymbolRefAttr::get(cloned_callee.getSymNameAttr()));
+            // Clone the CallOp because it will be modified next.
+            visited_call_ops[call_op.clone()] = callee_attr;
+            call_op.setCalleeAttr(callee_attr);
 
-        return mlir::WalkResult::advance();
-      });
+            return mlir::WalkResult::advance();
+          });
 
   if (result.wasInterrupted()) {
     signalPassFailure();
