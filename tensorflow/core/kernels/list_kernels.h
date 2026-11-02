@@ -654,6 +654,11 @@ class TensorListSplit : public OpKernel {
               "Attempting to slice [", start, ", ", end,
               "] from tensor with length ", input_tensor.shape().dim_size(0))));
       Tensor tmp = input_tensor.Slice(start, end);
+      OP_REQUIRES(c, element_shape.IsCompatibleWith(tmp.shape()),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Length ", length, " at index ", i,
+                                   " is not compatible with element_shape ",
+                                   element_shape.DebugString())));
       start = end;
       // TODO(apassos) maybe not always align; but weird compiler bugs seem to
       // prevent this.
@@ -881,6 +886,14 @@ class TensorListScatterIntoExistingList : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Tensor must be at least a vector, but saw shape: ",
                     input_tensor.shape().DebugString())));
+    TensorShape element_shape(input_tensor.shape());
+    element_shape.RemoveDim(0);
+    OP_REQUIRES(c, l->element_shape.IsCompatibleWith(element_shape),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Tried to scatter tensors with incompatible shape into a "
+                    "list. Item element shape: ",
+                    element_shape.DebugString(),
+                    " list shape: ", l->element_shape.DebugString())));
     OP_REQUIRES(c, TensorShapeUtils::IsVector(indices.shape()),
                 absl::InvalidArgumentError(absl::StrCat(
                     "Expected indices to be a vector, but received shape: ",
