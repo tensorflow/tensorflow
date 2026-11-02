@@ -1602,6 +1602,7 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   switch (analysis.emitter_fusion_kind()) {
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
+    case HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized:
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
