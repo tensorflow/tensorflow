@@ -48,6 +48,7 @@ package_group(
         "//third_party/odml/infra/...",
         "//third_party/odml/litert/...",
         "//third_party/py/ai_edge_jax/...",
+        "//third_party/py/clover/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
     ],
