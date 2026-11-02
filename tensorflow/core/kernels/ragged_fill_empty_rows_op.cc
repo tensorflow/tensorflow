@@ -150,64 +150,6 @@ TF_CALL_POD_TYPES(REGISTER_KERNELS_TINDEX)
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-namespace {
-
-template <typename Device, typename T, typename Tindex>
-void RaggedFillEmptyRowsGradOpImpl(OpKernelContext* context,
-                                   AsyncOpKernel::DoneCallback done = nullptr) {
-  // Note that setting this empty lambda as the default parameter value directly
-  // can cause strange compiler/linker errors, so we do it like this instead.
-  if (!done) {
-    done = [] {};
-  }
-
-  const Tensor* reverse_index_map_t;
-  const Tensor* grad_values_t;
-  OP_REQUIRES_OK_ASYNC(
-      context, context->input("reverse_index_map", &reverse_index_map_t), done);
-  OP_REQUIRES_OK_ASYNC(context, context->input("grad_values", &grad_values_t),
-                       done);
-
-  OP_REQUIRES_ASYNC(context,
-                    TensorShapeUtils::IsVector(reverse_index_map_t->shape()),
-                    absl::InvalidArgumentError(absl::StrCat(
-                        "reverse_index_map must be a vector, saw: ",
-                        reverse_index_map_t->shape().DebugString())),
-                    done);
-  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(grad_values_t->shape()),
-                    absl::InvalidArgumentError(
-                        absl::StrCat("grad_values must be a vector, saw: ",
-                                     grad_values_t->shape().DebugString())),
-                    done);
-
-  const auto reverse_index_map = reverse_index_map_t->vec<Tindex>();
-  const auto grad_values = grad_values_t->vec<T>();
-
-  const Tindex N = reverse_index_map_t->shape().dim_size(0);
-
-  Tensor* d_values_t;
-  OP_REQUIRES_OK_ASYNC(
-      context,
-      context->allocate_output("d_values", TensorShape({N}), &d_values_t),
-      done);
-  auto d_values = d_values_t->vec<T>();
-  Tensor* d_default_value_t;
-  OP_REQUIRES_OK_ASYNC(
-      context,
-      context->allocate_output("d_default_value", TensorShape({}),
-                               &d_default_value_t),
-      done);
-  auto d_default_value = d_default_value_t->scalar<T>();
-
-  using FunctorType = functor::FillEmptyRowsGrad<Device, T, Tindex>;
-  OP_REQUIRES_OK_ASYNC(context,
-                       FunctorType()(context, reverse_index_map, grad_values,
-                                     d_values, d_default_value, done),
-                       done);
-}
-
-}  // namespace
-
 template <typename Device, typename T, typename Tindex>
 class RaggedFillEmptyRowsGradOp : public OpKernel {
  public:
@@ -215,7 +157,7 @@ class RaggedFillEmptyRowsGradOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    RaggedFillEmptyRowsGradOpImpl<Device, T, Tindex>(context);
+    FillEmptyRowsGradOpImpl<Device, T, Tindex>(context);
   }
 };
 
@@ -240,7 +182,7 @@ class RaggedFillEmptyRowsGradGPUOp : public AsyncOpKernel {
       : AsyncOpKernel(context) {}
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
-    RaggedFillEmptyRowsGradOpImpl<GPUDevice, T, Tindex>(context, done);
+    FillEmptyRowsGradOpImpl<GPUDevice, T, Tindex>(context, done);
   }
 };
 

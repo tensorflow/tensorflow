@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -331,6 +332,39 @@ TEST_F(SparseFillEmptyRowsGradGpuTest, NegativeReverseIndexMap) {
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   EXPECT_EQ(status.message(),
             "Elements in reverse index must be in [0, 4) but got -1");
+}
+
+TEST_F(SparseFillEmptyRowsGradGpuTest, MultipleInvalidReverseIndexMap) {
+  MakeOp(DT_INT64, DT_FLOAT);
+
+  // reverse_index_map: the first invalid position holds 7, not the smallest
+  // invalid value.
+  AddInputFromArray<int64_t>(TensorShape({4}), {1, 7, -3, 9});
+  // grad_values
+  AddInputFromArray<float>(TensorShape({4}), {0, 1, 2, 3});
+
+  const auto status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.message(),
+            "Elements in reverse index must be in [0, 4) but got 7");
+}
+
+TEST_F(SparseFillEmptyRowsGradGpuTest, EmptyInputs) {
+  MakeOp(DT_INT64, DT_FLOAT);
+
+  // reverse_index_map
+  AddInputFromArray<int64_t>(TensorShape({0}), {});
+  // grad_values
+  AddInputFromArray<float>(TensorShape({0}), {});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_d_values(DT_FLOAT, TensorShape({0}));
+  test::ExpectTensorEqual<float>(expected_d_values, *GetOutput(0));
+
+  Tensor expected_d_default_value(DT_FLOAT, TensorShape({}));
+  test::FillValues<float>(&expected_d_default_value, {0});
+  test::ExpectTensorEqual<float>(expected_d_default_value, *GetOutput(1));
 }
 
 TEST_F(SparseFillEmptyRowsGradGpuTest, EmptyReverseIndexMap) {

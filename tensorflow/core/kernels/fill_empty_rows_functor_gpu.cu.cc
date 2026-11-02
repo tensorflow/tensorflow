@@ -17,9 +17,14 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <cstdint>
+#include <limits>
+#include <memory>
+
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/fill_empty_rows_functor.h"
@@ -555,14 +560,14 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
     visited.device(device) = visited.constant(false);
 
     Tensor first_invalid_index_t;
-    TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT64, TensorShape({1}),
-                                              &first_invalid_index_t));
-    auto first_invalid_index_gpu = first_invalid_index_t.flat<int64_t>();
     constexpr int64_t kAllIndicesValid = std::numeric_limits<int64_t>::max();
-    first_invalid_index_gpu.device(device) =
-        first_invalid_index_gpu.constant(kAllIndicesValid);
-
     if (N > 0) {
+      TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT64, TensorShape({1}),
+                                                &first_invalid_index_t));
+      auto first_invalid_index_gpu = first_invalid_index_t.flat<int64_t>();
+      first_invalid_index_gpu.device(device) =
+          first_invalid_index_gpu.constant(kAllIndicesValid);
+
       TF_RETURN_IF_ERROR(wrap_kernel_call(
           GatherOriginalGradValuesKernel<T, Tindex>, /*device=*/device,
           /*size=*/N, reverse_index_map, grad_values, d_values, visited, N_full,
@@ -616,46 +621,56 @@ struct FillEmptyRowsGrad<GPUDevice, T, Tindex> {
           temp_storage_bytes, ", status: ", GpuGetErrorString(gpuprim_status));
     }
 
+    if (N == 0) {
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(
+              stream, [visited_t, temp_storage, done]() -> void { done(); });
+      return absl::OkStatus();
+    }
+
     // The reverse index map is checked on the device, so wait for the result
     // to be copied to the host before raising the error that the CPU kernel
     // raises. Nothing below this copy may return early: the copy writes into
     // the pinned host buffer.
     ScratchSpace<int64_t> first_invalid_index_host(context, 1,
                                                    /*on_host=*/true);
-    TF_RETURN_IF_ERROR(
-        stream->Memcpy(first_invalid_index_host.mutable_data(),
-                       stream_executor::DeviceAddressBase(
-                           first_invalid_index_gpu.data(), sizeof(int64_t)),
-                       sizeof(int64_t)));
+    TF_RETURN_IF_ERROR(stream->Memcpy(
+        first_invalid_index_host.mutable_data(),
+        stream_executor::DeviceAddressBase(
+            first_invalid_index_t.flat<int64_t>().data(), sizeof(int64_t)),
+        sizeof(int64_t)));
 
     const Tindex* reverse_index_map_ptr = reverse_index_map.data();
     auto async_check_reverse_index_map =
-        [context, kAllIndicesValid, N_full, reverse_index_map_ptr,
-         first_invalid_index_host, done]() -> void {
+        [context, kAllIndicesValid, N_full, reverse_index_map_ptr, visited_t,
+         first_invalid_index_t, temp_storage, first_invalid_index_host,
+         done]() -> void {
       DCHECK(done);  // Crash OK
       const int64_t first_invalid_index = *first_invalid_index_host.data();
       if (first_invalid_index == kAllIndicesValid) {
         done();
         return;
       }
-      // Ensure that within the callback, the proper GPU settings are
-      // configured.
       auto stream = context->op_device_context()->stream();
-      std::unique_ptr<se::ActivateContext> scoped_activation =
-          stream->parent()->Activate();
-
       // Copy the invalid element to the host so that the error message
       // matches the CPU kernel.
       ScratchSpace<Tindex> bad_value_host(context, 1, /*on_host=*/true);
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          stream->Memcpy(bad_value_host.mutable_data(),
-                         stream_executor::DeviceAddressBase(
-                             const_cast<Tindex*>(reverse_index_map_ptr) +
-                                 first_invalid_index,
-                             sizeof(Tindex)),
-                         sizeof(Tindex)),
-          done);
+      absl::Status copy_status;
+      {
+        // Ensure that within the callback, the proper GPU settings are
+        // configured, and release ActivateContext before done() can run.
+        std::unique_ptr<se::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
+        copy_status =
+            stream->Memcpy(bad_value_host.mutable_data(),
+                           stream_executor::DeviceAddressBase(
+                               const_cast<Tindex*>(reverse_index_map_ptr) +
+                                   first_invalid_index,
+                               sizeof(Tindex)),
+                           sizeof(Tindex));
+      }
+      OP_REQUIRES_OK_ASYNC(context, copy_status, done);
       context->device()
           ->tensorflow_accelerator_device_info()
           ->event_mgr->ThenExecute(
