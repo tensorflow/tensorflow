@@ -16,21 +16,25 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/utils/saved_model_converter_utils.h"
 
 #include <stdlib.h>
+
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/mlir_roundtrip_flags.h"
-
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 
 namespace tensorflow {
 namespace utils {
