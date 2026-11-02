@@ -1760,6 +1760,13 @@ class NameTest(test_util.TensorFlowTestCase):
     with g.name_scope(b"bytes_scope") as s5:
       self.assertEqual("bytes_scope/", s5)
 
+    with ops.name_scope_v2(b"bytes_scope_v2") as s6:
+      self.assertEqual("bytes_scope_v2/", s6)
+
+    with g.as_default():
+      with ops.name_scope_v1(b"bytes_scope_v1") as s7:
+        self.assertEqual("bytes_scope_v1/", s7)
+
   def testNameScopeEmptyAndNone(self):
     g = ops.Graph()
 
