@@ -394,7 +394,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
   def testIntegerPowWithConstantExponent(self):
     for dtype in self.signed_int_types:
 
-      def run_pow(x, exponent, dtype=dtype):
+      def run_pow(x, exponent, shape=None, dtype=dtype):
 
         @def_function.function(jit_compile=True)
         def pow_with_exponent(x):
@@ -402,18 +402,27 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
         with self.session() as sess:
           with self.device_scope():
-            px = array_ops.placeholder(dtype, shape=np.shape(x))
+            px = array_ops.placeholder(
+                dtype, shape=np.shape(x) if shape is None else shape
+            )
             output = pow_with_exponent(px)
           return sess.run(output, {px: np.array(x, dtype=dtype)})
 
       with self.subTest(dtype=dtype):
         x = [-2, 3, 1, -1]
-        for exponent in (-1, -3, [2, -1, 2, 2]):
-          with self.assertRaisesRegex(
-              errors.InvalidArgumentError,
-              "Integers to negative integer powers are not allowed",
-          ):
-            run_pow(x, exponent)
+        for base in (x, 2):
+          for exponent in (-1, -3, [2, -1, 2, 2]):
+            with self.assertRaisesRegex(
+                errors.InvalidArgumentError,
+                "Integers to negative integer powers are not allowed",
+            ):
+              run_pow(base, exponent)
+
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"Incompatible shapes: \[2\] vs\. \[3\]",
+        ):
+          run_pow([2, 3], [-1, -1, -1], shape=[None])
 
         self.assertAllEqual(run_pow(x, [0, 1, 2, 3]), [1, 3, 1, -1])
         self.assertAllEqual(run_pow(x, 2), [4, 9, 1, 1])
@@ -422,6 +431,27 @@ class BinaryOpsTest(xla_test.XLATestCase):
         self.assertAllEqual(
             run_pow(np.zeros([3, 0]), [[-1]]), np.zeros([3, 0])
         )
+
+        @def_function.function(jit_compile=True)
+        def pow_dynamic_empty(a, mask):
+          empty = array_ops.boolean_mask(a, mask)
+          return math_ops.pow(empty, constant_op.constant(-1, dtype=dtype))
+
+        with self.session() as sess:
+          with self.device_scope():
+            pa = array_ops.placeholder(dtype, shape=[2])
+            pmask = array_ops.placeholder(dtypes.bool, shape=[2])
+            dyn_out = pow_dynamic_empty(pa, pmask)
+          self.assertAllEqual(
+              sess.run(
+                  dyn_out,
+                  {
+                      pa: np.array([2, 3], dtype=dtype),
+                      pmask: np.array([False, False]),
+                  },
+              ),
+              np.zeros([0], dtype=dtype),
+          )
 
   def testNumericOps(self):
     for dtype in self.numeric_types:

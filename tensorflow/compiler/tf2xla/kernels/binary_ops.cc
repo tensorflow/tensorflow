@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -274,24 +276,36 @@ XLA_MAKE_BINARY(TanhGrad,
 XLA_DEFINE_BINARY_OP(Pow, xla::Pow(lhs, rhs, extend_dimensions));
 
 // Like the TF kernels, rejects an integer power with a negative exponent
-// unless the result is empty. XLA can't report errors at run time, so only an
-// exponent that is a compile-time constant is checked.
+// unless the result is empty. XLA can't report errors at run time, so only a
+// statically non-empty base with a compile-time constant exponent is checked.
 class IntegerCheckedPowOp : public PowOp {
  public:
   explicit IntegerCheckedPowOp(OpKernelConstruction* ctx) : PowOp(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::Literal exponent;
-    if (DataTypeIsInteger(input_type(1)) &&
-        ctx->InputShape(0).num_elements() > 0 &&
-        ctx->ConstantInput(1, &exponent).ok()) {
-      OP_REQUIRES_VALUE(xla::Literal exponent_s64, ctx,
-                        exponent.Convert(xla::S64));
-      OP_REQUIRES(ctx,
-                  absl::c_none_of(exponent_s64.data<int64_t>(),
-                                  [](int64_t y) { return y < 0; }),
-                  absl::InvalidArgumentError(
-                      "Integers to negative integer powers are not allowed"));
+    if (DataTypeIsSigned(input_type(1))) {
+      OP_REQUIRES_VALUE(const xla::Shape lhs_shape, ctx,
+                        ctx->InputXlaShape(0));
+      OP_REQUIRES_VALUE(const xla::Shape rhs_shape, ctx,
+                        ctx->InputXlaShape(1));
+      xla::Literal exponent;
+      if (lhs_shape.is_static() && rhs_shape.is_static() &&
+          !xla::ShapeUtil::IsZeroElementArray(lhs_shape) &&
+          BCast(BCast::Vec(lhs_shape.dimensions().begin(),
+                           lhs_shape.dimensions().end()),
+                BCast::Vec(rhs_shape.dimensions().begin(),
+                           rhs_shape.dimensions().end()),
+                /*fewer_dims_optimization=*/false)
+              .IsValid() &&
+          ctx->ConstantInput(1, &exponent).ok()) {
+        OP_REQUIRES_VALUE(xla::Literal exponent_s64, ctx,
+                          exponent.Convert(xla::S64));
+        OP_REQUIRES(ctx,
+                    absl::c_none_of(exponent_s64.data<int64_t>(),
+                                    [](int64_t y) { return y < 0; }),
+                    absl::InvalidArgumentError(
+                        "Integers to negative integer powers are not allowed"));
+      }
     }
     PowOp::Compile(ctx);
   }
