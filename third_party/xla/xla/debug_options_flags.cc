@@ -1584,7 +1584,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "When generating calls to Eigen in the CPU backend, use multi-threaded "
       "Eigen mode."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_data_dir", debug_options->mutable_xla_gpu_cuda_data_dir(),
+      "xla_gpu_cuda_data_dir",
+      string_setter_for(&DebugOptions::set_xla_gpu_cuda_data_dir),
+      debug_options->xla_gpu_cuda_data_dir(),
       "If non-empty, specifies a local directory containing ptxas and nvvm "
       "libdevice files; otherwise we use those from runfile directories."));
   flag_list->push_back(tsl::Flag(
