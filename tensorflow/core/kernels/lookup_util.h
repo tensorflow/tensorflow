@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/initializable_lookup_table.h"

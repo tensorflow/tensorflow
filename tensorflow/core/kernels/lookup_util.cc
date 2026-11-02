@@ -214,6 +214,13 @@ class TextFileLineIterator
                         const std::vector<std::string>& tokens, int64_t index,
                         Tensor* tensor) {
     if (index == kLineNumber) {
+      if (offset_ > 0 &&
+          next_id_ > std::numeric_limits<int64_t>::max() - offset_) {
+        valid_ = false;
+        return absl::InvalidArgumentError(absl::StrCat("Line number ", next_id_,
+                                                       " with offset ", offset_,
+                                                       " overflows int64."));
+      }
       tensor->flat<int64_t>()(0) = next_id_ + offset_;
       return absl::OkStatus();
     }
@@ -249,16 +256,7 @@ class TextFileLineIterator
               absl::StrCat("Field ", token, " in line ", next_id_,
                            " is not a valid int64."));
         }
-        if ((offset_ > 0 &&
-             value > std::numeric_limits<int64_t>::max() - offset_) ||
-            (offset_ < 0 &&
-             value < std::numeric_limits<int64_t>::min() - offset_)) {
-          valid_ = false;
-          return absl::InvalidArgumentError(
-              absl::StrCat("Field ", token, " in line ", next_id_,
-                           " with offset ", offset_, " overflows int64."));
-        }
-        tensor->flat<int64_t>()(0) = value + offset_;
+        tensor->flat<int64_t>()(0) = value;
       } break;
       case DT_FLOAT: {
         float value;
