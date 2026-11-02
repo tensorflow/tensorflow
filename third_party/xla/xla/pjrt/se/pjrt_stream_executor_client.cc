@@ -1360,7 +1360,11 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
         compute_semaphore->ScopedAcquire(1));
   }
-  auto* gpu_run_options = raw_client_->gpu_run_options();
+  // The devices of a process launch concurrently, sharing these options.
+  // Writing to the shared options' incarnations would need synchronisation.
+  const gpu::GpuExecutableRunOptions* gpu_run_options =
+      raw_client_->gpu_run_options();
+  std::shared_ptr<gpu::GpuExecutableRunOptions> launch_gpu_run_options;
   if (gpu_run_options && !options.incarnations.empty()) {
     absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
     for (const PjRtDevice* device : device_->client()->devices()) {
@@ -1375,7 +1379,10 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
       }
       device_incarnations[device_id] = it->second;
     }
-    gpu_run_options->set_incarnations(std::move(device_incarnations));
+    launch_gpu_run_options =
+        std::make_shared<gpu::GpuExecutableRunOptions>(*gpu_run_options);
+    launch_gpu_run_options->set_incarnations(std::move(device_incarnations));
+    gpu_run_options = launch_gpu_run_options.get();
   }
 
   // Keep these vectors empty when all outputs use the primary execute event.
@@ -1400,6 +1407,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
 
   auto launch_on_device =
       [device_state, gpu_run_options = gpu_run_options,
+       launch_gpu_run_options = std::move(launch_gpu_run_options),
        launch_id = options.launch_id, run_id = run_id_, seed = options.seed,
        context = options.context, custom_options = options.custom_options,
        raw_client = raw_client_, device = device_,
