@@ -1727,6 +1727,10 @@ class NameTest(test_util.TensorFlowTestCase):
         with ops.name_scope_v1(invalid_name):
           pass
 
+      with self.assertRaisesRegex(TypeError, invalid_type_regex):
+        with ops.name_scope_v2(invalid_name):
+          pass
+
   def testNameScopeWhitespaceRaisesValueError(self):
     g = ops.Graph()
     invalid_scope_regex = r"is not a valid (root )?scope name"
