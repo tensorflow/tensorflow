@@ -346,7 +346,6 @@ cc_library(
         "//xla/runtime:process_id",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_interconnect_resource",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base",
