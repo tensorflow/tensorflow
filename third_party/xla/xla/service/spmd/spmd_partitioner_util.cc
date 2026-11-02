@@ -3495,11 +3495,9 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
   bool has_partitioned_slice_dim_with_dynamic_index = false;
   for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
     if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      // The start of a full-size slice is always clamped to 0.
       if (is_enzyme_opt_enabled && hlo->sharding().dimension(i) != 1) {
         update_on_a_single_partition = false;
-        if (!hlo->operand(i + 2)->IsConstant()) {
-          has_partitioned_slice_dim_with_dynamic_index = true;
-        }
       }
       continue;
     }
@@ -3512,6 +3510,11 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
 
     int64_t slice_size = hlo->operand(1)->shape().dimensions(i);
     if (slice_size == 1) {
+      // A size-1 update is always within one partition, but which one is only
+      // known at runtime if its start is.
+      if (is_enzyme_opt_enabled && !hlo->operand(i + 2)->IsConstant()) {
+        has_partitioned_slice_dim_with_dynamic_index = true;
+      }
       continue;
     }
 
@@ -3560,7 +3563,14 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
       DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices) {
     for (int64_t dim = 0; dim < hlo->shape().dimensions().size(); ++dim) {
       const HloInstruction* dus_index = hlo->operand(dim + 2);
-      CHECK(dus_index->IsConstant());
+      if (update_tensor->shape().dimensions(dim) ==
+              hlo->shape().dimensions(dim) ||
+          !dus_index->IsConstant()) {
+        // Full-size slices start at 0; runtime starts (only on
+        // non-partitioned dimensions) are clamped by the dynamic-slice and
+        // dynamic-update-slice the handler applies them with.
+        continue;
+      }
 
       int64_t start_index = dus_index->literal().GetIntegralAsS64({}).value();
       int64_t end_index = start_index + update_tensor->shape().dimensions(dim);

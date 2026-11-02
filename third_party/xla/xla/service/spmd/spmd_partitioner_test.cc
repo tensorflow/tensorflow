@@ -10129,6 +10129,100 @@ TEST_P(SpmdPartitioningTest, DynamicUpdateSliceOfConstantOutOfRange) {
                     op::Shape("s32[128,32]")));
 }
 
+TEST_P(SpmdPartitioningTest,
+       DynamicUpdateSliceSizeOneDynamicIndexOnPartitionedDimWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      %input = f64[8,8] parameter(0), sharding={devices=[4,1]<=[4]}
+      %update = f64[1,1] constant({ {1} })
+      %index = s32[] parameter(1)
+      %c1 = s32[] constant(1)
+      ROOT %dynamic-update-slice = f64[8,8]
+        dynamic-update-slice(%input, %update, %index, %c1),
+        sharding={devices=[4,1]<=[4]}
+    })";
+
+  // Which partition the update lands in is only known at runtime, so this
+  // takes the single-partition path rather than the constant-index one.
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Shape("f64[2,8]"));
+}
+
+TEST_P(SpmdPartitioningTest,
+       DynamicUpdateSliceDynamicIndexOnNonPartitionedDimWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      %input = f64[8,8] parameter(0), sharding={devices=[4,1]<=[4]}
+      %update = f64[1,1] constant({ {1} })
+      %c1 = s32[] constant(1)
+      %index = s32[] parameter(1)
+      ROOT %dynamic-update-slice = f64[8,8]
+        dynamic-update-slice(%input, %update, %c1, %index),
+        sharding={devices=[4,1]<=[4]}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  // The runtime start is on a dimension every shard holds in full, so the
+  // update is applied to the region there, cut out and put back with a local
+  // dynamic-slice and dynamic-update-slice; the input is never gathered.
+  auto input = AllOf(op::Parameter(0), op::Shape("f64[2,8]"));
+  auto region = AllOf(op::DynamicSlice(input, op::Constant(), op::Parameter(1)),
+                      op::Shape("f64[2,1]"));
+  EXPECT_THAT(root,
+              AllOf(op::DynamicUpdateSlice(input, op::Select(_, region, _),
+                                           op::Constant(), op::Parameter(1)),
+                    op::Shape("f64[2,8]")));
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    EXPECT_NE(instruction->opcode(), HloOpcode::kAllGather)
+        << instruction->ToString();
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       DynamicUpdateSliceSpanningPartitionsWithDynamicIndexWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      %input = f64[16,8] parameter(0), sharding={devices=[4,1]<=[4]}
+      %update = f64[6,2] parameter(1), sharding={devices=[4,1]<=[4]}
+      %c3 = s32[] constant(3)
+      %index = s32[] parameter(2)
+      ROOT %dynamic-update-slice = f64[16,8]
+        dynamic-update-slice(%input, %update, %c3, %index),
+        sharding={devices=[4,1]<=[4]}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::Parameter(0), op::Shape("f64[4,8]"));
+  auto region = AllOf(op::DynamicSlice(input, op::Constant(), op::Parameter(2)),
+                      op::Shape("f64[4,2]"));
+  EXPECT_THAT(root,
+              AllOf(op::DynamicUpdateSlice(input, op::Select(_, region, _),
+                                           op::Constant(), op::Parameter(2)),
+                    op::Shape("f64[4,8]")));
+}
+
 TEST_P(SpmdPartitioningTest, DynamicUpdateSliceSingleDimensionWithEnzymeOpt) {
   absl::string_view hlo_string = R"(
     HloModule module

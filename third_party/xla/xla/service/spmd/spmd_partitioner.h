@@ -980,10 +980,15 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);
 
+  // Writes `piece_update_tensor` into `current_input` at `piece_dus_starts`.
+  // `current_input` is the partitioned `hlo->shape()`, or, if `region_shape`
+  // is given, a region of it with that (unpartitioned) shape, which the
+  // starts are then relative to.
   absl::StatusOr<HloInstruction*> ProcessUpdatePiece(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* piece_update_tensor,
-      std::vector<int64_t> piece_dus_starts, HloInstruction* current_input);
+      std::vector<int64_t> piece_dus_starts, HloInstruction* current_input,
+      const Shape* region_shape = nullptr);
 
   absl::StatusOr<HloInstruction*> ProcessUpdatePieceExtractOperand(
       HloInstruction* hlo, const HloInstruction* input_tensor,
