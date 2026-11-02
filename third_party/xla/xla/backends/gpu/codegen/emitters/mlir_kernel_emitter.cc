@@ -760,11 +760,10 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }
 
-absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
+absl::StatusOr<MlirKernelSource> CompileMlirToLlvmDialect(
     const se::DeviceDescription& device, const HloModule& hlo_module,
-    const std::string& entry_function_name, int unroll_factor,
+    absl::string_view entry_function_name, int unroll_factor,
     mlir::MLIRContext& mlir_context, MlirKernelSource source) {
-  auto llvm_context = std::make_unique<llvm::LLVMContext>();
   mlir::OwningOpRef<mlir::ModuleOp> module = std::move(source).TakeModule();
 
   mlir::PassManager pm(module->getContext());
@@ -787,6 +786,21 @@ absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
 
   ABSL_RETURN_IF_ERROR(
       RunPassPipeline(module.get(), hlo_module, pm, entry_function_name));
+
+  return MlirKernelSource(nullptr, std::move(module));
+}
+
+absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
+    const se::DeviceDescription& device, const HloModule& hlo_module,
+    const std::string& entry_function_name, int unroll_factor,
+    mlir::MLIRContext& mlir_context, MlirKernelSource source) {
+  ABSL_ASSIGN_OR_RETURN(
+      MlirKernelSource lowered_source,
+      CompileMlirToLlvmDialect(device, hlo_module, entry_function_name,
+                               unroll_factor, mlir_context, std::move(source)));
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      std::move(lowered_source).TakeModule();
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), *llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)

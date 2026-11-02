@@ -1068,7 +1068,7 @@ TEST(StreamExecutorGpuClientTest, ExecutionTimeoutHandlers) {
   gpu::GpuExecutableRunOptions* run_options =
       absl::down_cast<PjRtStreamExecutorRawClient*>(
           absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
-          ->gpu_run_options();
+          ->mutable_gpu_run_options();
   ASSERT_NE(run_options, nullptr);
 
   run_options->set_execution_timeout_handlers([state] {

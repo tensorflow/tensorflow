@@ -223,6 +223,14 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
 // Adds passes that lower transformed loops to LLVM.
 void AddLoweringPasses(mlir::OpPassManager& pm,
                        const se::DeviceDescription& device);
+
+// Lowers an MLIR kernel module through loop transformation and LLVM-GPU
+// lowering passes, stopping at the MLIR LLVM/NVVM/ROCDL dialect level.
+absl::StatusOr<MlirKernelSource> CompileMlirToLlvmDialect(
+    const se::DeviceDescription& device, const HloModule& hlo_module,
+    absl::string_view entry_function_name, int unroll_factor,
+    mlir::MLIRContext& mlir_context, MlirKernelSource source);
+
 absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
     const se::DeviceDescription& device, const HloModule& hlo_module,
     const std::string& entry_function_name, int unroll_factor,

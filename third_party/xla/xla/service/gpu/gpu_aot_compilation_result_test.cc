@@ -105,7 +105,10 @@ class GpuAotCompilationResultTest : public ::testing::Test {
   void* const kCudaSymbol = reinterpret_cast<void*>(0x1234567890);
 
   // Creates a dummy GpuExecutableProto, the actual values don't matter much.
-  absl::StatusOr<GpuExecutableProto> CreateGpuExecutableProto() {
+  // If `embed_hlo_module` is false, the executable is created without an HLO
+  // module, so the proto won't contain `hlo_module_with_config`.
+  absl::StatusOr<GpuExecutableProto> CreateGpuExecutableProto(
+      bool embed_hlo_module = true) {
     Thunk::ThunkInfo thunk_info;
     thunk_info.thunk_id = 123;
 
@@ -141,7 +144,9 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     hlo_module->AddEntryComputation(builder.Build(constant));
 
     GpuExecutable::Params params;
-    params.debug_module = std::move(hlo_module);
+    if (embed_hlo_module) {
+      params.debug_module = std::move(hlo_module);
+    }
     params.binary = {1, 2, 3};
     params.dnn_compiled_graphs = {{"test_dnn_compiled_graph", "test_json"}};
 
@@ -292,6 +297,119 @@ TEST_F(GpuAotCompilationResultTest, GetCompiledMemoryStats) {
   EXPECT_EQ(memory_stats.peak_memory_in_bytes, 1024);
   EXPECT_EQ(memory_stats.serialized_buffer_assignment,
             reference_executable.buffer_assignment().SerializeAsString());
+}
+
+TEST_F(GpuAotCompilationResultTest, GetCompiledMemoryStatsWithoutHloModule) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto(/*embed_hlo_module=*/false));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuAotCompilationResult> result,
+      GpuAotCompilationResult::FromProto(reference_executable));
+
+  ASSERT_OK_AND_ASSIGN(CompiledMemoryStats memory_stats,
+                       result->GetCompiledMemoryStats());
+  EXPECT_EQ(memory_stats.peak_memory_in_bytes, 1024);
+  // The unpadded peak can't be computed without the HLO module.
+  EXPECT_EQ(memory_stats.peak_unpadded_heap_bytes, 0);
+  EXPECT_EQ(memory_stats.serialized_buffer_assignment,
+            reference_executable.buffer_assignment().SerializeAsString());
+}
+
+TEST_F(GpuAotCompilationResultTest, GetCompiledMemoryStatsWithConfigOnly) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto(/*embed_hlo_module=*/false));
+  reference_executable.mutable_hlo_module_with_config()
+      ->mutable_config()
+      ->set_replica_count(1);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuAotCompilationResult> result,
+      GpuAotCompilationResult::FromProto(reference_executable));
+
+  ASSERT_OK_AND_ASSIGN(CompiledMemoryStats memory_stats,
+                       result->GetCompiledMemoryStats());
+  EXPECT_EQ(memory_stats.peak_memory_in_bytes, 1024);
+  // The unpadded peak can't be computed without the HLO module.
+  EXPECT_EQ(memory_stats.peak_unpadded_heap_bytes, 0);
+}
+
+TEST_F(GpuAotCompilationResultTest, FromProtoWithoutHloModule) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto(/*embed_hlo_module=*/false));
+  ASSERT_FALSE(reference_executable.has_hlo_module_with_config());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuAotCompilationResult> result,
+      GpuAotCompilationResult::FromProto(reference_executable));
+  EXPECT_EQ(result->optimized_module(), nullptr);
+}
+
+TEST_F(GpuAotCompilationResultTest, SerializeAndLoadWithoutHloModule) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto(/*embed_hlo_module=*/false));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuAotCompilationResult> result,
+      GpuAotCompilationResult::FromProto(reference_executable));
+  ASSERT_OK_AND_ASSIGN(std::string serialized_result,
+                       result->SerializeAsString());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuAotCompilationResult> deserialized_result,
+      GpuAotCompilationResult::FromSerialized(
+          std::make_unique<riegeli::StringReader<>>(serialized_result)));
+  EXPECT_EQ(deserialized_result->optimized_module(), nullptr);
+
+  EnsureCudaSymbolIsRegistered();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*deserialized_result)
+          .LoadExecutable(platform_.id(), GetDeviceDescription(),
+                          DebugOptions()));
+  EXPECT_FALSE(executable->has_module());
+
+  auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
+  ASSERT_NE(gpu_executable, nullptr) << "Executable is not a GpuExecutable.";
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto executable_proto,
+                       gpu_executable->ToProto());
+  EXPECT_THAT(executable_proto, EqualsProto(reference_executable));
+}
+
+TEST_F(GpuAotCompilationResultTest, SerializeAndLoadWithConfigOnly) {
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto(/*embed_hlo_module=*/false));
+  // Only the module config is present, but not the module itself.
+  HloModuleConfigProto* config =
+      reference_executable.mutable_hlo_module_with_config()->mutable_config();
+  config->set_replica_count(1);
+  config->set_num_partitions(1);
+
+  // Non-split path.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuAotCompilationResult> result,
+      GpuAotCompilationResult::FromProto(reference_executable));
+  EXPECT_EQ(result->optimized_module(), nullptr);
+
+  // Split path.
+  ASSERT_OK_AND_ASSIGN(std::string serialized_result,
+                       result->SerializeAsString());
+  GpuExecutableProto deserialized_executable;
+  ASSERT_OK(ReadSplitProto(
+      std::make_unique<riegeli::StringReader<>>(serialized_result),
+      deserialized_executable));
+  EXPECT_THAT(deserialized_executable, EqualsProto(reference_executable));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuAotCompilationResult> deserialized_result,
+      GpuAotCompilationResult::FromSerialized(
+          std::make_unique<riegeli::StringReader<>>(serialized_result)));
+  EXPECT_EQ(deserialized_result->optimized_module(), nullptr);
+
+  EnsureCudaSymbolIsRegistered();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      std::move(*deserialized_result)
+          .LoadExecutable(platform_.id(), GetDeviceDescription(),
+                          DebugOptions()));
+  EXPECT_FALSE(executable->has_module());
 }
 
 }  // namespace

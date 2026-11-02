@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <limits>
 #include <map>
 #include <optional>
@@ -27,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -323,21 +321,6 @@ PrimitiveType PrimitiveTypeFromIrType(llvm::Type* type,
   return PRIMITIVE_TYPE_INVALID;
 }
 
-int GetSizeInBits(llvm::Type* type) {
-  const llvm::StructType* struct_ty = llvm::dyn_cast<llvm::StructType>(type);
-  if (struct_ty) {
-    CHECK(struct_ty->isPacked());
-    int bits = 0;
-    for (auto element_type : struct_ty->elements()) {
-      bits += GetSizeInBits(element_type);
-    }
-    return bits;
-  }
-  int bits = type->getPrimitiveSizeInBits();
-  CHECK_GT(bits, 0) << "type is not sized";
-  return bits;
-}
-
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
   llvm::Type* result_type =
       PrimitiveTypeToIrType(shape.element_type(), context);
@@ -382,61 +365,6 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
   return llvm::ConstantDataArray::getString(module->getContext(),
                                             llvm::StringRef(data, size_bytes),
                                             /*AddNull=*/false);
-}
-
-llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
-                                               llvm::Type* tile_type,
-                                               absl::string_view name) {
-  // Both AMDGPU and NVPTX use the same address space for shared memory.
-  const int kGPUSharedMemoryAddrSpace = 3;
-  return new llvm::GlobalVariable(
-      *module, tile_type,
-      /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
-      llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
-      llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
-}
-
-SharedMemoryTile AllocateSharedMemoryTile(
-    llvm::Module* module, llvm::Type* element_type,
-    absl::Span<int64_t const> dimensions_major_to_minor,
-    absl::string_view buffer_name) {
-  llvm::Type* ty = element_type;
-  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
-    ty = llvm::ArrayType::get(ty, dim);
-  }
-  return SharedMemoryTile{
-      llvm_ir::AllocateSharedMemoryTile(module, ty, buffer_name), element_type};
-}
-
-static std::vector<llvm::Value*> IndexWith0(
-    absl::Span<llvm::Value* const> index, llvm::IRBuilderBase* b) {
-  std::vector<llvm::Value*> index_with_0{
-      llvm::ConstantInt::get(index.front()->getType(), 0)};
-  absl::c_copy(index, std::back_inserter(index_with_0));
-  return index_with_0;
-}
-
-llvm::Value* SharedMemoryTile::Address(absl::Span<llvm::Value* const> index,
-                                       llvm::IRBuilderBase* b) const {
-  llvm::Value* gep = b->CreateInBoundsGEP(base_ptr_->getValueType(), base_ptr_,
-                                          IndexWith0(index, b));
-  // __shared__ memory uses a different address space, so we cast it
-  // to global address space before writing or reading.
-  return b->CreateAddrSpaceCast(gep,
-                                llvm::PointerType::get(b->getContext(), 0));
-};
-
-llvm::Value* SharedMemoryTile::Load(absl::Span<llvm::Value* const> index,
-                                    llvm::IRBuilderBase* b) const {
-  auto* load_type = llvm::GetElementPtrInst::getIndexedType(
-      base_ptr_->getValueType(), IndexWith0(index, b));
-  return b->CreateLoad(load_type, Address(index, b));
-}
-
-llvm::StoreInst* SharedMemoryTile::Store(llvm::Value* value,
-                                         absl::Span<llvm::Value* const> index,
-                                         llvm::IRBuilderBase* b) const {
-  return b->CreateStore(value, Address(index, b));
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
@@ -535,21 +463,6 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
   // arrays. So we extend it to i8 so that it's addressable.
   return b->CreateZExt(comparison_result,
                        llvm_ir::PrimitiveTypeToIrType(PRED, b->getContext()));
-}
-
-// Internal helper that is called from emitted code to log an int64_t value with
-// a tag.
-static void LogS64(const char* tag, int64_t value) {
-  LOG(INFO) << tag << " (int64_t): " << value;
-}
-
-void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilderBase* b) {
-  llvm::FunctionType* log_function_type = llvm::FunctionType::get(
-      b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
-  b->CreateCall(log_function_type,
-                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64_t>(&LogS64)),
-                                  b->getPtrTy()),
-                {b->getInt64(absl::bit_cast<int64_t>(tag)), value});
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
@@ -828,6 +741,8 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   return function;
 }
 
+namespace {
+
 unsigned GetGlobalMemoryAddressSpace() { return 1; }
 
 llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
@@ -863,6 +778,8 @@ llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
   return state_ptr;
 }
 
+}  // namespace
+
 llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
                                   llvm::IRBuilderBase* builder) {
   llvm::GlobalVariable* state_ptr =
@@ -876,25 +793,8 @@ llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
   return state_value_old;
 }
 
-llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilderBase* b) {
-  llvm::Function* function = b->GetInsertBlock()->getParent();
-  llvm::Module* module = b->GetInsertBlock()->getModule();
-  llvm::IRBuilderBase::InsertPointGuard guard(*b);
-  llvm::BasicBlock* early_return =
-      llvm::BasicBlock::Create(/*Context=*/module->getContext(),
-                               /*Name=*/"early_return",
-                               /*Parent=*/function);
-  b->SetInsertPoint(early_return);
-  b->CreateRetVoid();
-  return early_return;
-}
-
 void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
                      llvm::BasicBlock* return_block) {
-  if (!return_block) {
-    return_block = EmitReturnBlock(b);
-  }
-
   llvm::BasicBlock* continued;
 
   // Implicitly check whtether we are already at the end of unterminated block.

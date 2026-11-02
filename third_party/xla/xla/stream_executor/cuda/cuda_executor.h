@@ -181,9 +181,10 @@ class CudaExecutor : public GpuExecutor {
 
   // Creates a stream whose work is launched onto the SM partition of locality
   // domain `locality_domain_id`.
+  using StreamExecutor::CreateStreamInLocalityDomain;
   absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInLocalityDomain(
       int locality_domain_id,
-      std::optional<std::variant<StreamPriority, int>> priority = std::nullopt);
+      std::optional<std::variant<StreamPriority, int>> priority) override;
 
   static absl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);

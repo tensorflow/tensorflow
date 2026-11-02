@@ -477,6 +477,9 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
                     execution_threads)) {
               return false;
             };
+            if (node.computation()->IsAsyncComputation()) {
+              return false;
+            }
             if (module->has_schedule()) {
               HloInstructionSequence& sequence =
                   module->schedule().GetOrCreateSequence(node.computation());

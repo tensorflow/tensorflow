@@ -365,8 +365,8 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or)) {
-    return FusionDecision::Forbid(absl::StrCat("SymbolicTileAnalysis failed: ",
-                                               fusion_decision->Explain()));
+    return FusionDecision::Forbid(
+        absl::StrCat("Failed to find a tiling: ", fusion_decision->Explain()));
   }
 
   TiledRunTimeData tiled_runtime_data =

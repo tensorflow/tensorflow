@@ -71,6 +71,7 @@ message AsyncStartThunkProto {
     uint64 communication_stream_id = 5;
     // 0 = D2H (device_to_host_stream), 1 = H2D (host_to_device_stream).
     uint64 memcpy_stream_id = 6;
+    uint64 locality_domain_stream_id = 7;
   }
 
   reserved 2;

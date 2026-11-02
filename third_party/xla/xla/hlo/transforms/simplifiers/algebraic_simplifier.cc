@@ -3242,8 +3242,9 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   HloInstruction* right_operand =
       lhs_is_dynamic_slice ? rhs : rhs->mutable_operand(0);
   // Build ctA x ctB.
-  const int m = left_operand->shape().dimensions(1 - lhs_contracting_dimension);
-  const int n =
+  const int64_t m =
+      left_operand->shape().dimensions(1 - lhs_contracting_dimension);
+  const int64_t n =
       right_operand->shape().dimensions(1 - rhs_contracting_dimension);
   auto memoized_shape =
       ShapeUtil::MakeShape(dot->shape().element_type(), {m, n});
@@ -3278,8 +3279,8 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   }
 
   // Build DynamicSlice(ctA x ctB).
-  const int new_slice_m = lhs_is_dynamic_slice ? 1 : m;
-  const int new_slice_n = lhs_is_dynamic_slice ? n : 1;
+  const int64_t new_slice_m = lhs_is_dynamic_slice ? 1 : m;
+  const int64_t new_slice_n = lhs_is_dynamic_slice ? n : 1;
   auto* memoized_lookup =
       dot->AddInstruction(HloInstruction::CreateDynamicSlice(
           dot->shape(), memoized_inst, new_start_indices,

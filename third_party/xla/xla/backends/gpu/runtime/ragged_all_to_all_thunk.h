@@ -99,11 +99,31 @@ struct RaggedAllToAllRendezvousValue {
   }
 };
 
+// Ragged-all-to-all kernel strategy selected for a device in
+// RaggedAllToAllThunk::Initialize. The same selection drives resource
+// allocation in Initialize and kernel dispatch in Record and RunCollective.
+enum class RaggedAllToAllKernelStrategy {
+  // No strategy selected in Initialize. Use the device kernel, GXL, or the
+  // NCCL fallback.
+  kNone,
+  // Kernel on symmetric memory, synchronized with the NCCL multi-GPU barrier.
+  // Requires all ranks to be in the same fast-interconnect domain.
+  kSymmetricMemory,
+  // Kernel using peer access, synchronized with barrier signal buffers that
+  // are exchanged via rendezvous. Requires all ranks to be local and peer
+  // access to be enabled for the clique.
+  kPeerAccess,
+};
+
 struct RaggedAllToAllStreamState {
   int device_ordinal = 0;
   RankId rank = RankId(0);
   std::optional<int64_t> lsa_size;
   GpuCliqueKey clique_key{{}, 0};
+
+  // Kernel strategy selected during Initialize.
+  RaggedAllToAllKernelStrategy kernel_strategy =
+      RaggedAllToAllKernelStrategy::kNone;
 
   // Host memory allocations for ragged metadata.
   absl::InlinedVector<std::unique_ptr<se::MemoryAllocation>, 8>
@@ -273,6 +293,12 @@ class RaggedAllToAllThunk : public CollectiveThunk {
 
  private:
   bool is_local(int device_count) const;
+
+  // Selects the kernel strategy for the given device state. Must be called
+  // after `state.lsa_size` is set.
+  RaggedAllToAllKernelStrategy SelectKernelStrategy(
+      const RaggedAllToAllStreamState& state, int local_device_count,
+      bool peer_access_enabled) const;
 
   const RaggedAllToAllConfig config_;
 

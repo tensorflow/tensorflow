@@ -4557,3 +4557,45 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "horizontal_fusion",
+    srcs = ["horizontal_fusion.cc"],
+    hdrs = ["horizontal_fusion.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/backends/gpu/codegen:fusion_emitter",
+        "//xla/backends/gpu/codegen:fusions",
+        "//xla/codegen:ir_emission_utils",
+        "//xla/hlo/analysis:hlo_reachability",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "horizontal_fusion_test",
+    srcs = ["horizontal_fusion_test.cc"],
+    deps = [
+        ":horizontal_fusion",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

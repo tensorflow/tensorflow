@@ -238,6 +238,11 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
   }
 
   if (fusion_roots.size() > 1) {
+    if (llvm::all_of(fusion_roots, [](const HloInstructionAdaptor& root) {
+          return root.opcode() == HloOpcode::kFusion;
+        })) {
+      return HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized;
+    }
     return HloFusionAnalysis::EmitterFusionKind::kLoop;
   }
 

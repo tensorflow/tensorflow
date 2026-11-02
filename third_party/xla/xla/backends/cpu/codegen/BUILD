@@ -18,6 +18,7 @@ load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
+    "if_llvm_aarch32_available",
     "if_llvm_aarch64_available",
     "if_llvm_powerpc_available",
     "if_llvm_riscv_available",
@@ -148,7 +149,6 @@ cc_library(
         "//xla/service/cpu:cpu_options",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/tools:llvm_targets",  # fixdeps: keep
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -174,7 +174,17 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-    ],
+    ] + if_llvm_aarch32_available([
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+    ]) + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+    ]) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ]),
 )
 
 xla_cc_test(
@@ -201,9 +211,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:AArch64AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:ARMAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:Core",
@@ -211,7 +219,6 @@ xla_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:X86AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@tsl//tsl/platform:platform_port",
     ],
