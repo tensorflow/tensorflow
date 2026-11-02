@@ -510,6 +510,26 @@ TEST_F(CuptiTracerTest, GraphNodeApiExitWithoutNodeCreatedCallback) {
   cbdata.functionName = "cuGraphAddKernelNode";
   cbdata.correlationData = &api_enter_timestamp;
   cbdata.correlationId = 1;
+
+  // A preceding cuGraphLaunch on the same thread must not leak its executable
+  // graph_id into the subsequent cuGraphAddKernelNode exit.
+  cuGraphLaunch_params launch_params{
+      reinterpret_cast<CUgraphExec>(uintptr_t{101}), nullptr};
+  CUpti_CallbackData launch_cbdata = cbdata;
+  launch_cbdata.functionName = "cuGraphLaunch";
+  launch_cbdata.functionParams = &launch_params;
+  EXPECT_CALL(*mock_, GetDeviceId(cbdata.context, _))
+      .WillOnce(DoAll(SetArgPointee<1>(0), Return(CUPTI_SUCCESS)));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(start_ns + 15));
+  EXPECT_CALL(*mock_, GetGraphExecId(launch_params.hGraph, _))
+      .WillOnce(DoAll(SetArgPointee<1>(8), Return(CUPTI_SUCCESS)));
+  EXPECT_CALL(*mock_, GetStreamIdEx(cbdata.context, nullptr, 0, _))
+      .WillOnce(DoAll(SetArgPointee<3>(42), Return(CUPTI_SUCCESS)));
+  EXPECT_OK(cupti_tracer_->HandleCallback(CUPTI_CB_DOMAIN_DRIVER_API,
+                                          CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch,
+                                          &launch_cbdata));
+
   EXPECT_CALL(*mock_, GetDeviceId(cbdata.context, _))
       .WillOnce(DoAll(SetArgPointee<1>(0), Return(CUPTI_SUCCESS)));
   EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
@@ -543,16 +563,22 @@ TEST_F(CuptiTracerTest, GraphNodeApiExitWithoutNodeCreatedCallback) {
                                        tsl::profiler::kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
   int num_graph_node_events = 0;
+  int num_graph_launch_events = 0;
   for (const tensorflow::profiler::XLine& line : host_plane->lines()) {
     for (const tensorflow::profiler::XEvent& event : line.events()) {
       auto metadata_it = host_plane->event_metadata().find(event.metadata_id());
-      if (metadata_it != host_plane->event_metadata().end() &&
-          metadata_it->second.name() == "cuGraphAddKernelNode") {
+      if (metadata_it == host_plane->event_metadata().end()) {
+        continue;
+      }
+      if (metadata_it->second.name() == "cuGraphAddKernelNode") {
         ++num_graph_node_events;
+      } else if (metadata_it->second.name() == "cuGraphLaunch (CudaGraph:8)") {
+        ++num_graph_launch_events;
       }
     }
   }
   EXPECT_EQ(num_graph_node_events, 1);
+  EXPECT_EQ(num_graph_launch_events, 1);
 }
 
 // Makes `mock` accept a CUPTI V2 session. The other calls it gets succeed by

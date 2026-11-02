@@ -35,7 +35,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"  // IWYU pragma: export
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -352,7 +352,7 @@ class HloAsyncStartInstruction : public HloAsyncInstruction,
 
   absl::string_view async_execution_thread() const override {
     return async_execution_thread_;
-  };
+  }
   void set_async_execution_thread(
       absl::string_view async_execution_thread) override;
   void ToProto(HloInstructionProto* proto) const override;
@@ -1566,12 +1566,12 @@ class HloConstantInstruction : public HloInstruction {
   // Clone the literal if necessary (do not modify the shared instance).
   Literal* mutable_literal() {
     if (literal_.use_count() > 1) {
-      literal_.reset(new Literal(literal_->Clone()));
+      literal_ = std::make_shared<Literal>(literal_->Clone());
     }
     return literal_.get();
   }
   // Returns whether there is literal associated with this instruction.
-  bool HasLiteral() const { return static_cast<bool>(literal_); }
+  bool HasLiteral() const { return literal_ != nullptr; }
   void DropLiteral() { literal_ = nullptr; }
   void ToProto(HloInstructionProto* proto) const override;
 
@@ -1587,8 +1587,9 @@ class HloConstantInstruction : public HloInstruction {
 
   // Canonicalize constant literal using the given literal pool.
   bool Canonicalize(LiteralPool* literal_pool) {
-    if (literal_pool && literal_) {
-      auto canonical = literal_pool->GetCanonicalLiteral(literal_);
+    if (literal_pool != nullptr && literal_ != nullptr) {
+      std::shared_ptr<Literal> canonical =
+          literal_pool->GetCanonicalLiteral(literal_);
       if (canonical != literal_) {
         literal_ = std::move(canonical);
         return true;
@@ -2261,7 +2262,8 @@ class HloReduceWindowInstruction : public HloInstruction {
   // Returns the shapes of input tensors to be reduced.
   absl::InlinedVector<const Shape*, 2> input_shapes() const {
     absl::InlinedVector<const Shape*, 2> shapes;
-    for (const auto* op : inputs()) {
+    shapes.reserve(inputs().size());
+    for (const HloInstruction* op : inputs()) {
       shapes.push_back(&op->shape());
     }
     return shapes;
@@ -2269,7 +2271,8 @@ class HloReduceWindowInstruction : public HloInstruction {
   // Returns the init values of the reduction.
   absl::InlinedVector<const Shape*, 2> init_value_shapes() const {
     absl::InlinedVector<const Shape*, 2> shapes;
-    for (const auto* op : init_values()) {
+    shapes.reserve(init_values().size());
+    for (const HloInstruction* op : init_values()) {
       shapes.push_back(&op->shape());
     }
     return shapes;
@@ -2280,6 +2283,7 @@ class HloReduceWindowInstruction : public HloInstruction {
     if (shape().IsArray()) {
       shapes.push_back(&shape());
     } else {
+      shapes.reserve(shape().tuple_shapes().size());
       for (const Shape& tuple_element_shape : shape().tuple_shapes()) {
         shapes.push_back(&tuple_element_shape);
       }
@@ -2631,7 +2635,8 @@ class HloDynamicIndexInstruction : public HloInstruction {
   // Returns the shapes of the index operands.
   std::vector<Shape> index_shapes() const {
     std::vector<Shape> shapes;
-    auto indices = index_operands();
+    absl::Span<HloInstruction* const> indices = index_operands();
+    shapes.reserve(indices.size());
     for (const HloInstruction* index : indices) {
       shapes.push_back(index->shape());
     }

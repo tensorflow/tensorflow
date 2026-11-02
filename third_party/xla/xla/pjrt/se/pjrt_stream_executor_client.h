@@ -169,7 +169,10 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   bool IsHostMemoryPinned(const void* ptr, uint64_t size) const;
 
-  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+  const gpu::GpuExecutableRunOptions* gpu_run_options() const {
+    return gpu_run_options_.get();
+  }
+  gpu::GpuExecutableRunOptions* mutable_gpu_run_options() {
     return gpu_run_options_.get();
   }
 

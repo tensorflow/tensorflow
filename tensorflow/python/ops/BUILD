@@ -536,6 +536,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "stateless_random_ops_gen",
     visibility = [
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/data/experimental/ops:__pkg__",

@@ -1041,7 +1041,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "broadcast_to_op",
     prefix = "broadcast_to_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -1404,6 +1407,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1640,6 +1647,24 @@ tf_kernel_library(
         ":ragged_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_cross_op_test",
+    size = "small",
+    srcs = ["ragged_cross_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_cross_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/ops:ragged_array_ops_op_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

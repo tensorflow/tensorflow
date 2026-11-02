@@ -731,12 +731,19 @@ void SetCudaGraphEventUponApiExit(
     GuardedCallbackAnnotationsAndEvents& guarded_annotations_and_events,
     CuptiTracer* tracer) {
   GraphResourceCreationInfo& graph_id_info = GetGraphResourceCreationInfo();
+  uint32_t graph_id = graph_id_info.graph_id;
+  uint32_t orig_graph_id = graph_id_info.orig_graph_id;
   if (cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch ||
       cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz) {
+    graph_id = 0;
+    orig_graph_id = 0;
     const auto* params =
         static_cast<const cuGraphLaunch_params*>(cbdata->functionParams);
-    cupti_interface->GetGraphExecId(params->hGraph, &graph_id_info.graph_id);
-    graph_id_info.orig_graph_id = 0;
+    if (params->hGraph != nullptr &&
+        cupti_interface->GetGraphExecId(params->hGraph, &graph_id) !=
+            CUPTI_SUCCESS) {
+      graph_id = 0;
+    }
     uint32_t stream_id = 0;
     const uint8_t per_thread_stream =
         (cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz) ? 1 : 0;
@@ -791,8 +798,8 @@ void SetCudaGraphEventUponApiExit(
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.cuda_graph_info.cbid = cbid;
-  event.graph_id = graph_id_info.graph_id;
-  event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
+  event.graph_id = graph_id;
+  event.cuda_graph_info.orig_graph_id = orig_graph_id;
   VLOG(3) << "Observed CudaGraph API exit."
           << " name=" << cbdata->functionName;
 }

@@ -1115,7 +1115,28 @@ TEST_F(TilingSpaceTest,
   }
 }
 
-TEST_F(TilingSpaceTest, GetValidTilingsTilesReductionDimOfSingleDimReduce) {
+TEST_F(TilingSpaceTest, GetPowerOf2TileSizesInRange) {
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(0), IsOkAndHolds(ElementsAre(0)));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(1), IsOkAndHolds(ElementsAre(1)));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(4),
+              IsOkAndHolds(ElementsAre(1, 2, 4)));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(5),
+              IsOkAndHolds(ElementsAre(1, 2, 4, 5)));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(11),
+              IsOkAndHolds(ElementsAre(1, 2, 4, 8, 11)));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(192, /*min_tile_size=*/16),
+              IsOkAndHolds(ElementsAre(16, 32, 64, 128, 192)));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(192, /*min_tile_size=*/192),
+              IsOkAndHolds(ElementsAre(192)));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(-5),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       "Dimension size must be non-negative."));
+  EXPECT_THAT(GetPowerOf2TileSizesInRange(8, /*min_tile_size=*/0),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       "Minimum tile size must be positive."));
+}
+
+TEST_F(TilingSpaceTest, GetValidTilings) {
   HloInstruction* root = ParseAndGetRoot(R"(
       HloModule m
       add {
@@ -1132,132 +1153,23 @@ TEST_F(TilingSpaceTest, GetValidTilingsTilesReductionDimOfSingleDimReduce) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
   ASSERT_OK_AND_ASSIGN(auto tiling_space,
                        TilingSpace::Create(*fusion_adaptor, &mlir_context_));
-  ASSERT_OK_AND_ASSIGN(
-      auto valid_tilings,
-      tiling_space->GetValidTilings(/*tile_reduction_dimensions=*/true));
+  ASSERT_OK_AND_ASSIGN(auto valid_tilings, tiling_space->GetValidTilings());
   EXPECT_THAT(valid_tilings, ElementsAre(ElementsAre(1, 1), ElementsAre(1, 2),
                                          ElementsAre(1, 4), ElementsAre(2, 1),
                                          ElementsAre(2, 2), ElementsAre(2, 4)));
 
-  // By default, the reduction dimension is covered by a single tile.
-  ASSERT_OK_AND_ASSIGN(auto untiled_valid_tilings,
-                       tiling_space->GetValidTilings());
-  EXPECT_THAT(untiled_valid_tilings,
-              ElementsAre(ElementsAre(1, 4), ElementsAre(2, 4)));
-}
-
-// TODO(b/534676634): Remove this test once tiling reduction dimensions of
-// multi-reduction fusions is supported.
-TEST_F(TilingSpaceTest,
-       GetValidTilingsDoesNotTileReductionDimsOfMultipleReduces) {
-  HloInstruction* root = ParseAndGetRoot(R"(
-      HloModule m
-      add {
-        p0 = f32[] parameter(0)
-        p1 = f32[] parameter(1)
-        ROOT res = f32[] add(p0, p1)
-      }
-      fused_computation {
-        p0 = f32[2,4,8] parameter(0)
-        c0 = f32[] constant(0)
-        r0 = f32[2,4] reduce(p0, c0), dimensions={2}, to_apply=add
-        ROOT r1 = f32[2] reduce(r0, c0), dimensions={1}, to_apply=add
-      }
-      ENTRY e {
-        p0 = f32[2,4,8] parameter(0)
-        ROOT fusion = f32[2] fusion(p0), kind=kLoop, calls=fused_computation
-      }
-  )");
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  ASSERT_OK_AND_ASSIGN(auto tiling_space,
-                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  // Custom callback can restrict the candidate tile sizes for the reduction
+  // dimension.
   ASSERT_OK_AND_ASSIGN(
-      auto valid_tilings,
-      tiling_space->GetValidTilings(/*tile_reduction_dimensions=*/true));
-  // Dimensions are ordered use-before-def: r1's reduction dimension (4) comes
-  // before r0's (8). Both are kept at their full size.
-  EXPECT_THAT(valid_tilings,
-              ElementsAre(ElementsAre(1, 4, 8), ElementsAre(2, 4, 8)));
-}
-
-// TODO(b/534676634): Remove this test once tiling reduction dimensions of
-// multi-dimension reductions is supported.
-TEST_F(TilingSpaceTest,
-       GetValidTilingsDoesNotTileReductionDimsOfMultiDimReduce) {
-  HloInstruction* root = ParseAndGetRoot(R"(
-      HloModule m
-      add {
-        p0 = f32[] parameter(0)
-        p1 = f32[] parameter(1)
-        ROOT res = f32[] add(p0, p1)
-      }
-      ENTRY e {
-        p0 = f32[2,4,8] parameter(0)
-        c0 = f32[] constant(0)
-        ROOT r = f32[2] reduce(p0, c0), dimensions={1,2}, to_apply=add
-      }
-  )");
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  ASSERT_OK_AND_ASSIGN(auto tiling_space,
-                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
-  ASSERT_OK_AND_ASSIGN(
-      auto valid_tilings,
-      tiling_space->GetValidTilings(/*tile_reduction_dimensions=*/true));
-  // Multi-dimension reductions keep both reduction dimensions at their full
-  // size.
-  EXPECT_THAT(valid_tilings,
-              ElementsAre(ElementsAre(1, 4, 8), ElementsAre(2, 4, 8)));
-}
-
-TEST_F(TilingSpaceTest, GetValidTilingsDoesNotTileRowLocalScanDim) {
-  HloInstruction* root = ParseAndGetRoot(R"(
-      HloModule m
-      add {
-        p0 = f32[2] parameter(0)
-        p1 = f32[2] parameter(1)
-        sum = f32[2] add(p0, p1)
-        ROOT t = (f32[2], f32[2]) tuple(sum, sum)
-      }
-      ENTRY e {
-        p0 = f32[2,3] parameter(0)
-        init = f32[2] parameter(1)
-        ROOT s = (f32[2,3], f32[2]) scan(p0, init), dimensions={1},
-          num_carries=1, is_associative=true, to_apply=add
-      }
-  )");
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  ASSERT_OK_AND_ASSIGN(auto tiling_space,
-                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
-  ASSERT_OK_AND_ASSIGN(auto valid_tilings, tiling_space->GetValidTilings());
-  EXPECT_THAT(valid_tilings, ElementsAre(ElementsAre(1, 3), ElementsAre(2, 3)));
-}
-
-TEST_F(TilingSpaceTest, GetValidTilingsTilesScanDimAboveRowLocalLimit) {
-  HloInstruction* root = ParseAndGetRoot(R"(
-      HloModule m
-      add {
-        p0 = f32[1] parameter(0)
-        p1 = f32[1] parameter(1)
-        sum = f32[1] add(p0, p1)
-        ROOT t = (f32[1], f32[1]) tuple(sum, sum)
-      }
-      ENTRY e {
-        p0 = f32[1,256] parameter(0)
-        init = f32[1] parameter(1)
-        ROOT s = (f32[1,256], f32[1]) scan(p0, init), dimensions={1},
-          num_carries=1, is_associative=true, to_apply=add
-      }
-  )");
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
-  ASSERT_OK_AND_ASSIGN(auto tiling_space,
-                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
-  ASSERT_OK_AND_ASSIGN(auto valid_tilings, tiling_space->GetValidTilings());
-  EXPECT_THAT(
-      valid_tilings,
-      ElementsAre(ElementsAre(1, 1), ElementsAre(1, 2), ElementsAre(1, 4),
-                  ElementsAre(1, 8), ElementsAre(1, 16), ElementsAre(1, 32),
-                  ElementsAre(1, 64), ElementsAre(1, 128),
-                  ElementsAre(1, 256)));
+      auto filtered_valid_tilings,
+      tiling_space->GetValidTilings([](const TilingSpace::DimensionInfo& dim) {
+        int64_t min_tile_size =
+            dim.type == TilingSpace::DimensionSemantics::kSequential ? 2 : 1;
+        return GetPowerOf2TileSizesInRange(dim.dimension_size, min_tile_size);
+      }));
+  EXPECT_THAT(filtered_valid_tilings,
+              ElementsAre(ElementsAre(1, 2), ElementsAre(1, 4),
+                          ElementsAre(2, 2), ElementsAre(2, 4)));
 }
 
 TEST_F(TilingSpaceTest, ScanWithElementwiseEpiloguePropagatesDimensions) {

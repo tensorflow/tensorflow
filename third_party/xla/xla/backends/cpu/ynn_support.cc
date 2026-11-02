@@ -549,6 +549,12 @@ bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo) {
 
   const HloComputation* to_apply = hlo->to_apply();
   CHECK_NE(to_apply, nullptr);
+  // DefineReduceOp and DefineReduceWindowOp in ynn_emitter.cc only map the
+  // reducer root, so the reducer must be exactly the two parameters and the
+  // root (no side effects).
+  if (to_apply->instruction_count() != 3) {
+    return false;
+  }
   if (Match(to_apply->root_instruction(),
             match::AnyOf<HloInstruction>(match::Add())
                 .WithBinaryOperandsAnyOrder(match::Parameter(0),

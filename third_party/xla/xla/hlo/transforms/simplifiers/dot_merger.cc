@@ -559,6 +559,7 @@ absl::StatusOr<HloInstruction*> CreateNewDot(
   HloInstruction* new_dot = dot_lhs->AddInstruction(
       HloInstruction::CreateDot(new_dot_shape, dot_lhs, dot_rhs, dnums,
                                 dots_to_merge[0].dot->precision_config()));
+  new_dot->CopyBackendConfigFrom(dots_to_merge[0].dot);
 
   auto it = absl::c_find_if(dots_to_merge, [](const DotOperandUsage& usage) {
     return !usage.dot->metadata().op_name().empty();

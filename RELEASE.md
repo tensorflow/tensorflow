@@ -31,6 +31,12 @@
     exactly instead of in float32. For some sizes the image used to be scaled
     one pixel short of the target and padded with a row or column of zeros
     (e.g. 512x512 to 224x224), or placed one pixel off center.
+*   `tf.signal.hann_window` and `tf.signal.hamming_window`: `periodic=True`
+    (the default) now also produces a periodic window for odd
+    `window_length`. Previously odd lengths always got the symmetric window,
+    so `tf.signal.stft` and `tf.signal.inverse_stft` with the default window
+    and an odd `frame_length` now return different values. The new values
+    match `scipy.signal.get_window` and `tf.raw_ops.AudioSpectrogram`.
 
 ## Thanks to our Contributors
 

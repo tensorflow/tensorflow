@@ -153,6 +153,9 @@ class CollectiveKernelThunk : public TracedCommand {
 
     // Pointer to the collective kernel metadata on device.
     se::DeviceAddressBase metadata;
+    // Host copy of the device peer pointer table. Filled once by rendezvous,
+    // or rewritten whenever the kLoadStoreAccessible symmetric memory changes.
+    std::vector<void*> param_to_peers_ptrs;
 
     // Kernel entry for the stream executor.
     std::unique_ptr<se::Kernel> kernel;
@@ -164,6 +167,10 @@ class CollectiveKernelThunk : public TracedCommand {
     // `kernel_spec_.scratch_buffers` entry.
     std::vector<se::DeviceAddressBase> scratch_slices;
     tsl::TiedRef<SymmetricMemory> scratch_symmetric_memory;
+    // Symmetric memory of the kLoadStoreAccessible IO parameters from the last
+    // initialization, by row. Used to skip rebuilding the peer pointer table
+    // when the IO buffers did not move.
+    std::vector<std::weak_ptr<SymmetricMemory>> io_symmetric_memories;
 
     // Constructor to make OSS builds happy.
     StreamState() = default;

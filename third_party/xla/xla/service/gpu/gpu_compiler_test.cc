@@ -267,15 +267,36 @@ ENTRY main {
   ROOT neg = f32[10]{0} negate(p)
 }
 )";
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_text));
-  int module_id = module->unique_id();
-  Compiler::CompileOptions compile_options;
-  compile_options.embed_hlo_module = false;
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<OpaqueExecutable> executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/false));
-  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(module_id));
+  // Compiles a fresh module with the given `embed_hlo_module` option and
+  // returns whether the module is tracked by the XlaDebugInfoManager while the
+  // executable is alive. We call RunBackend directly because the test runner
+  // doesn't take compile options. It also compiles a copy of the module that
+  // it recreates from `ToProto()`, so the compiled module has a different
+  // unique_id than the one we would check.
+  auto is_tracked_after_compilation =
+      [&](bool embed_hlo_module) -> absl::StatusOr<bool> {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_text));
+    int module_id = module->unique_id();
+    Compiler::CompileOptions compile_options;
+    compile_options.gpu_topology = GetSingleDeviceGpuTopology(
+        /*platform_version=*/"", gpu_target_config());
+    compile_options.embed_hlo_module = embed_hlo_module;
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        compiler()->RunBackend(std::move(module),
+                               /*executor=*/nullptr, compile_options));
+    EXPECT_EQ(executable->has_module(), embed_hlo_module);
+    return XlaDebugInfoManager::Get()->TracksModule(module_id);
+  };
+
+  // Regular compilations embed the module and register it, which makes sure
+  // that the check below is meaningful.
+  EXPECT_THAT(is_tracked_after_compilation(/*embed_hlo_module=*/true),
+              absl_testing::IsOkAndHolds(true));
+  // Autotuning compilations don't embed the module and don't register it.
+  EXPECT_THAT(is_tracked_after_compilation(/*embed_hlo_module=*/false),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(GpuCompilerTest, CopyInsertionFusion) {
