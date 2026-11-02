@@ -659,6 +659,30 @@ func.func @extract_with_transposing_layout(
 
 // -----
 
+// A strided tile whose last element lies past the end of the dimension
+// (indices 0, 4, 8, 12 into a dimension of size 12) must be masked, even
+// though the offset is divisible by and in bounds for the tile size.
+func.func @strided_tile_past_end_has_mask(%arg0: !tt.ptr<f32>,
+                                          %arg1: !tt.ptr<f32>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<12xf32, #xtile.layout<[0]>>
+      [0] [4] [4] : tensor<4xf32>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<16xf32, #xtile.layout<[0]>>
+      [0] [4] [1] : tensor<4xf32>
+  func.return
+}
+
+// CHECK-LABEL: tt.func @strided_tile_past_end_has_mask
+// CHECK:         %[[RIGHT_MASK:.*]] = arith.cmpi slt
+// CHECK:         %[[LEFT_MASK:.*]] = arith.cmpi sge
+// CHECK:         %[[MASK:.*]] = arith.andi %[[LEFT_MASK]], %[[RIGHT_MASK]]
+// CHECK:         tt.load {{.*}}, %[[MASK]], {{.*}}
+// CHECK-NOT:     arith.cmpi
+// CHECK:         tt.store {{.*}} : tensor<4x!tt.ptr<f32>>
+
+// -----
+
 // Tiles of a high-padded operand: the singleton dim 0 offset (pid mod 16)
 // ranges over [0, 15] for a dimension of size 4. TDM would fold that offset into
 // the base pointer without a bounds check, so it must be declined in favor of
