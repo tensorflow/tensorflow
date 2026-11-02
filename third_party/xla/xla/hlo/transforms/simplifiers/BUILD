@@ -818,6 +818,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service:pattern_matcher",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/strings:string_view",
