@@ -367,7 +367,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:macros",
-        "@xla//xla/tsl/platform:types",
         "@xla//xla/tsl/profiler/utils:no_init",
     ] + if_not_android([
         "@xla//xla/tsl/profiler/backends/cpu:traceme_recorder",
