@@ -28,8 +28,6 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
-#include "absl/flags/commandlineflag.h"
-#include "absl/flags/reflection.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -969,22 +967,14 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
       PjRtMemorySpace * memory_space,
       client->addressable_devices()[0]->default_memory_space());
 
-  constexpr absl::string_view kTargetChunkBytes = "2097152";  // 2 MiB
-  absl::CommandLineFlag* chunk_flag = nullptr;
-  std::string prev_chunk_bytes;
+  constexpr int64_t kTargetChunkBytes = 2LL << 20;  // 2 MiB
+  const int64_t prev_chunk_bytes =
+      common_client->chunked_transfer_target_bytes();
   if (IsTpuId(common_client->platform_id())) {
-    chunk_flag =
-        absl::FindCommandLineFlag("pjrt_tpu_chunked_transfer_target_bytes");
-    ASSERT_NE(chunk_flag, nullptr);
-    prev_chunk_bytes = chunk_flag->CurrentValue();
-    std::string err;
-    ASSERT_TRUE(chunk_flag->ParseFrom(kTargetChunkBytes, &err)) << err;
+    common_client->set_chunked_transfer_target_bytes(kTargetChunkBytes);
   }
-  absl::Cleanup restore_chunk_flag = [&] {
-    if (chunk_flag != nullptr) {
-      std::string err;
-      CHECK(chunk_flag->ParseFrom(prev_chunk_bytes, &err)) << err;
-    }
+  absl::Cleanup restore_chunk_bytes = [&] {
+    common_client->set_chunked_transfer_target_bytes(prev_chunk_bytes);
   };
 
   Shape probe_host = ShapeUtil::MakeShape(F32, {4, 512, 512});
@@ -1005,8 +995,8 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
 
   // 1. 2D shapes exceeding 8 MiB (4 * 2 MiB target chunk size) with partial
   // trailing chunks across F32, BF16, and S8 (plus sub-byte S4 falling back to
-  // unchunked), including odd (1-byte aligned) host addresses and mixed
-  // chunked/unchunked H2D and D2H.
+  // unchunked), including non-DMA-aligned (element-aligned) host addresses and
+  // mixed chunked/unchunked H2D and D2H.
   for (const Shape& shape : {
            ShapeUtil::MakeShape(F32, {2048, 1025}),
            ShapeUtil::MakeShape(BF16, {2048, 2050}),
@@ -1027,17 +1017,22 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
     }
 
     if (shape.element_type() != S4) {
+      const size_t elem_bytes =
+          ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
       const size_t byte_size = src_literal.size_bytes();
-      std::vector<uint8_t> src_storage(byte_size + 8, 0);
-      std::vector<uint8_t> dst_storage(byte_size + 8, 0xCD);
-      uint8_t* odd_src =
-          src_storage.data() +
-          ((reinterpret_cast<uintptr_t>(src_storage.data()) & 1) == 0 ? 1 : 0);
-      uint8_t* odd_dst =
-          dst_storage.data() +
-          ((reinterpret_cast<uintptr_t>(dst_storage.data()) & 1) == 0 ? 1 : 0);
-      ASSERT_EQ(reinterpret_cast<uintptr_t>(odd_src) & 1, 1u);
-      ASSERT_EQ(reinterpret_cast<uintptr_t>(odd_dst) & 1, 1u);
+      std::vector<uint8_t> src_storage(byte_size + 64, 0);
+      std::vector<uint8_t> dst_storage(byte_size + 64, 0xCD);
+      auto unaligned_ptr = [&](std::vector<uint8_t>& storage) {
+        uintptr_t base = reinterpret_cast<uintptr_t>(storage.data());
+        uintptr_t aligned8 = (base + 7) & ~uintptr_t{7};
+        return reinterpret_cast<uint8_t*>(aligned8 + elem_bytes);
+      };
+      uint8_t* odd_src = unaligned_ptr(src_storage);
+      uint8_t* odd_dst = unaligned_ptr(dst_storage);
+      ASSERT_EQ(reinterpret_cast<uintptr_t>(odd_src) % elem_bytes, 0u);
+      ASSERT_EQ(reinterpret_cast<uintptr_t>(odd_dst) % elem_bytes, 0u);
+      ASSERT_NE(reinterpret_cast<uintptr_t>(odd_src) % 8, 0u);
+      ASSERT_NE(reinterpret_cast<uintptr_t>(odd_dst) % 8, 0u);
       std::memcpy(odd_src, src_literal.untyped_data(), byte_size);
 
       ASSERT_OK_AND_ASSIGN(
@@ -1061,11 +1056,10 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
   }
 
   if (IsTpuId(common_client->platform_id())) {
-    std::string err;
     Shape mix_shape = ShapeUtil::MakeShape(F32, {2048, 1025});
     ASSERT_OK_AND_ASSIGN(Literal mix_src, MakeFakeLiteral(mix_shape));
 
-    // (a) Chunked H2D (2 MiB chunks) -> unchunked D2H (flag = 0).
+    // (a) Chunked H2D (2 MiB chunks) -> unchunked D2H (target = 0).
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<PjRtBuffer> chunked_h2d_buf,
         client->BufferFromHostBuffer(
@@ -1078,7 +1072,7 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
 
     // Verify a tiny positive target chunk size clamps the chunk count to
     // <= 1024 instead of overflowing int or creating millions of chunks.
-    ASSERT_TRUE(chunk_flag->ParseFrom("1", &err)) << err;
+    common_client->set_chunked_transfer_target_bytes(1);
     std::shared_ptr<TransposePlan> clamped_plan =
         common_client->CreateChunkedTransposePlan(
             /*is_h2d=*/true, mix_shape,
@@ -1088,7 +1082,7 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
     EXPECT_GT(clamped_plan->Parallelism(), 1);
     EXPECT_LE(clamped_plan->Parallelism(), 1024);
 
-    ASSERT_TRUE(chunk_flag->ParseFrom("0", &err)) << err;
+    common_client->set_chunked_transfer_target_bytes(0);
     EXPECT_EQ(common_client->CreateChunkedTransposePlan(
                   /*is_h2d=*/false, probe_host,
                   /*host_byte_strides=*/std::nullopt, probe_dev),
@@ -1097,7 +1091,7 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
                          chunked_h2d_buf->ToLiteral().Await());
     EXPECT_TRUE(LiteralTestUtil::Equal(mix_src, *unchunked_d2h_lit));
 
-    // (b) Unchunked H2D (flag = 0) -> chunked D2H (2 MiB chunks).
+    // (b) Unchunked H2D (target = 0) -> chunked D2H (2 MiB chunks).
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<PjRtBuffer> unchunked_h2d_buf,
         client->BufferFromHostBuffer(
@@ -1107,7 +1101,7 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
             /*on_done_with_host_buffer=*/nullptr, memory_space,
             /*device_layout=*/nullptr));
     ASSERT_OK(unchunked_h2d_buf->GetReadyFuture().Await());
-    ASSERT_TRUE(chunk_flag->ParseFrom(kTargetChunkBytes, &err)) << err;
+    common_client->set_chunked_transfer_target_bytes(kTargetChunkBytes);
     EXPECT_NE(common_client->CreateChunkedTransposePlan(
                   /*is_h2d=*/false, probe_host,
                   /*host_byte_strides=*/std::nullopt, probe_dev),
@@ -1158,7 +1152,7 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
 
     // Also verify `CreateChunkedTransposePlan` -> `ExecuteChunk` directly on a
     // packed tiled device layout (`T(8,128)` for F32, `T(8,128)(2,1)` for BF16,
-    // `T(32,128)(4,1)` for S8) when supported by the backend's packing factor.
+    // `T(32,128)(4,1)` for S8).
     Shape strided_device_shape = expected_literal.shape();
     const int64_t pf = 4 / elem_bytes;
     TileVector* strided_tiles =
@@ -1166,13 +1160,6 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
     strided_tiles->assign({Tile({8 * pf, 128})});
     if (pf > 1) {
       strided_tiles->push_back(Tile({pf, 1}));
-    }
-    if (common_client->CreateChunkedTransposePlan(
-            /*is_h2d=*/true, expected_literal.shape(),
-            /*host_byte_strides=*/std::nullopt,
-            strided_device_shape) == nullptr) {
-      EXPECT_EQ(elem_type, S8);
-      continue;
     }
     const size_t strided_dev_bytes = ShapeUtil::ArraySize(strided_device_shape);
     auto run_h2d_chunks =
@@ -1241,10 +1228,6 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
     ASSERT_OK_AND_ASSIGN(Shape device_shape,
                          common_client->MakeDefaultShapeForMemorySpace(
                              memory_space, host_shape, device_layout));
-    const int64_t canonical_packing =
-        device_shape.layout().tiles().size() >= 2
-            ? device_shape.layout().tiles(1).dimension(0)
-            : 1;
     device_shape.mutable_layout()->mutable_tiles()->assign(tc.tiles.begin(),
                                                            tc.tiles.end());
     device_shape.mutable_layout()->set_element_size_in_bits(0);
@@ -1256,14 +1239,6 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
         common_client->CreateChunkedTransposePlan(
             /*is_h2d=*/true, host_shape, /*host_byte_strides=*/std::nullopt,
             device_shape);
-    if (test_packing != canonical_packing) {
-      EXPECT_EQ(lin_plan, nullptr);
-      EXPECT_EQ(common_client->CreateChunkedTransposePlan(
-                    /*is_h2d=*/false, host_shape,
-                    /*host_byte_strides=*/std::nullopt, device_shape),
-                nullptr);
-      continue;
-    }
     ASSERT_NE(lin_plan, nullptr);
     ASSERT_OK_AND_ASSIGN(Literal src_literal, MakeFakeLiteral(host_shape));
     const int num_chunks = lin_plan->Parallelism();
@@ -1401,7 +1376,7 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
               s.mutable_layout()->add_split_configs(SplitConfig(0, {1}));
             }),
             nullptr);
-  EXPECT_EQ(plan_for_device_shape([](Shape& s) {
+  EXPECT_NE(plan_for_device_shape([](Shape& s) {
               s.mutable_layout()->mutable_tiles()->assign(
                   {Tile({8, 32}), Tile({2, 1})});
             }),
@@ -1419,6 +1394,15 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
   EXPECT_EQ(plan_for_device_shape([](Shape& s) {
               s.mutable_layout()->mutable_tiles()->assign(
                   {Tile({Tile::kMatchDimension, 128})});
+            }),
+            nullptr);
+  EXPECT_EQ(plan_for_device_shape([](Shape& s) {
+              s.mutable_layout()->mutable_tiles()->assign({Tile({8, 128})});
+            }),
+            nullptr);
+  EXPECT_EQ(plan_for_device_shape([](Shape& s) {
+              s.mutable_layout()->mutable_tiles()->assign(
+                  {Tile({8, 128}), Tile({4, 1})});
             }),
             nullptr);
   EXPECT_EQ(plan_for_device_shape([](Shape& s) {

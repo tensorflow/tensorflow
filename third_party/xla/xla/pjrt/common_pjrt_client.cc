@@ -681,6 +681,34 @@ CommonPjRtClient::AllocateLinearizeDest(bool sync,
   return AllocateLinearizeDest(sync, size, std::move(dest_buffer));
 }
 
+std::shared_ptr<TransposePlan> CommonPjRtClient::CreateChunkedTransposePlan(
+    bool is_h2d, const Shape& host_shape,
+    std::optional<absl::Span<int64_t const>> host_byte_strides,
+    const Shape& device_shape) {
+  if (!tiled_linearizer_options_.has_value() || !IsTpuId(platform_id())) {
+    return nullptr;
+  }
+  int64_t offset_alignment = 1;
+  int64_t size_alignment = 1;
+  if (raw_client() != nullptr) {
+    offset_alignment = std::max<int64_t>(offset_alignment,
+                                         raw_client()->GetDmaHostAlignment());
+    if (absl::StatusOr<size_t> dev_align =
+            raw_client()->GetDeviceAddressAlignment();
+        dev_align.ok()) {
+      offset_alignment = std::max<int64_t>(offset_alignment, *dev_align);
+    }
+    size_alignment = offset_alignment;
+    if (std::optional<size_t> size_align =
+            raw_client()->GetDmaSizeAlignment()) {
+      size_alignment = std::max<int64_t>(size_alignment, *size_align);
+    }
+  }
+  return TiledLinearizer::CreateChunkedTransposePlan(
+      is_h2d, host_shape, host_byte_strides, device_shape,
+      chunked_transfer_target_bytes_, offset_alignment, size_alignment);
+}
+
 absl::Status CommonPjRtClient::Linearize(
     absl::Span<uint8_t> dest, const void* data,
     absl::Span<const int64_t> byte_strides, const Shape& device_shape,
@@ -5780,6 +5808,15 @@ CommonPjRtClient::CommonPjRtClient(
               << "Ignoring plugin attribute compiler_metadata_on_load: "
               << error;
         }
+      }
+    }
+  }
+  if (plugin_attributes_) {
+    auto it =
+        plugin_attributes_->attributes.find("chunked_transfer_target_bytes");
+    if (it != plugin_attributes_->attributes.end()) {
+      if (const int64_t* v = std::get_if<int64_t>(&it->second)) {
+        chunked_transfer_target_bytes_ = *v;
       }
     }
   }
