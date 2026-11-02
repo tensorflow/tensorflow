@@ -5682,7 +5682,7 @@ class internal_name_scope_v1(contextlib.AbstractContextManager[str]):  # pylint:
           f"Argument 'name' must be a string. "
           f"Received {name!r} of type {type(name).__name__}."
       )
-    self._name = default_name if name is None else name
+    self._name = default_name if name is None else compat.as_str(name)
     self._default_name = default_name
     self._values = values
 
