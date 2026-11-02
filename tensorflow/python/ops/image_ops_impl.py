@@ -1681,17 +1681,10 @@ def resize_images_v2(images,
   [3, 5, 1]
 
   When shrinking an image (downsampling), fine details or high-contrast patterns
-  can create jagged or distorted artifacts (called aliasing). Setting
-  `antialias=True` smooths the image by blending neighboring pixels together:
+  can create jagged or distorted artifacts (called aliasing). Compare the first
+  example above (`antialias=False` by default) with `antialias=True`, which
+  smooths the image by blending neighboring pixels together:
 
-  >>> # Downsampling without antialiasing:
-  >>> tf.image.resize(image, [3, 5], antialias=False)[0, ..., 0].numpy()
-  array([[0.6666667, 0.3333333, 0.       , 0.       , 0.       ],
-         [0.       , 0.       , 1.       , 0.       , 0.       ],
-         [0.       , 0.       , 0.       , 0.3333335, 0.6666665]],
-        dtype=float32)
-
-  >>> # Downsampling with antialiasing blends adjacent pixels smoothly:
   >>> tf.image.resize(image, [3, 5], antialias=True)[0, ..., 0].numpy()
   array([[0.5714286, 0.4285714, 0.       , 0.       , 0.       ],
          [0.       , 0.2222222, 0.5555556, 0.2222222, 0.       ],
@@ -1700,16 +1693,16 @@ def resize_images_v2(images,
 
   How it works:
   * When shrinking, the filter stretches out to cover more neighboring
-    pixels. The more you shrink the image, the wider the area it blends.
+        pixels. The more you shrink the image, the wider the area it blends.
   * For `bilinear`, it uses a smooth triangular blending filter. For `bicubic`,
-    it uses a Keys cubic filter.
+        it uses a Keys cubic filter.
   * For `nearest`, `antialias` has no effect, since no filtering is applied.
   * For `area`, `antialias` is ignored because area resampling already averages
-    over the whole output footprint, so it always anti-aliases.
+        over the whole output footprint, so it always anti-aliases.
   * For `lanczos3`, `lanczos5`, `gaussian` and `mitchellcubic`, `antialias`
-    behaves the same way it does for `bilinear` and `bicubic`.
+        behaves the same way it does for `bilinear` and `bicubic`.
   * When enlarging an image (upsampling), `antialias` has no effect because no
-    pixels are skipped:
+        pixels are skipped:
 
   >>> a = tf.image.resize(image, [5, 10])
   >>> b = tf.image.resize(image, [5, 10], antialias=True)
@@ -1799,13 +1792,13 @@ def resize_images_v2(images,
       preserving the aspect ratio of the original image. Scales up the image if
       `size` is bigger than the current size of the `image`. Defaults to False.
     antialias: bool. Whether to use an anti-aliasing filter when shrinking an
-      image. When True, neighboring pixels are blended together before
-      downsampling to prevent jagged patterns. Honoured by `bilinear`,
-      `bicubic`, `lanczos3`, `lanczos5`, `gaussian` and `mitchellcubic`;
-      ignored by `nearest` (no filtering) and by `area` (which always
-      anti-aliases). Results differ from OpenCV's `INTER_LINEAR`, which does
-      not prefilter when shrinking; Pillow prefilters the same way this does.
-      Defaults to False.
+      image. When True, the resampling filter is widened when shrinking so
+      neighboring pixels are blended to prevent jagged patterns. Honored by
+      `bilinear`, `bicubic`, `lanczos3`, `lanczos5`, `gaussian`, and
+      `mitchellcubic`; ignored by `nearest` (no filtering) and by `area` (which
+      always anti-aliases). Results differ from OpenCV's `INTER_LINEAR`, which
+      does not prefilter when shrinking; Pillow also scales its filter support
+      when shrinking. Defaults to False.
     name: A name for this operation (optional).
 
   Raises:
