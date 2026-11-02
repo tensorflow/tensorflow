@@ -1898,8 +1898,15 @@ PjRtStreamExecutorRawClient::UpdateCompileOptions(
         }
         if (!this_process_index.has_value()) {
           this_process_index = all_process_indices.size() - 1;
-          if (local_device_id >= 0 &&
-              local_device_id < client()->backend().stream_executors().size()) {
+          if (LocalDeviceState* local_device =
+                  device_state(LocalDeviceId(local_device_id));
+              local_device != nullptr) {
+            int device_ordinal = local_device->executor()->device_ordinal();
+            has_device_oridinal = true;
+            build_options.set_device_ordinal(device_ordinal);
+          } else if (local_device_id >= 0 &&
+                     local_device_id <
+                         client()->backend().stream_executors().size()) {
             int device_ordinal = client()
                                      ->backend()
                                      .stream_executors()[local_device_id]
