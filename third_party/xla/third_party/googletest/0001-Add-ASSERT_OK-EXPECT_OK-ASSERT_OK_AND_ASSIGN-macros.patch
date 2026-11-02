@@ -27,10 +27,11 @@ mismatches with googletest.patch.
  create mode 100644 googlemock/include/gmock/internal/xla-gmock-macros.h
 
 diff --git a/BUILD.bazel b/BUILD.bazel
-index 008af6a1..32d2a22c 100644
+index cc254457..5e903df9 100644
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
-@@ -163,5 +163,12 @@ cc_library(
+@@ -165,7 +165,13 @@ cc_library(
+             "@fuchsia_sdk//pkg/zx",
          ],
          "//conditions:default": [],
 -    }),
@@ -39,11 +40,11 @@ index 008af6a1..32d2a22c 100644
 +        "@abseil-cpp//absl/status:status_builder",
 +        "@abseil-cpp//absl/status:status_macros",
 +        "@abseil-cpp//absl/status:statusor",
-+        "@abseil-cpp//absl/strings",
 +        "@abseil-cpp//absl/strings:string_view",
 +    ],
  )
  
+ # `gtest`, but testonly. See guidance on `gtest` for when to use this.
 diff --git a/googlemock/include/gmock/gmock.h b/googlemock/include/gmock/gmock.h
 index c78fb8ee..69b33572 100644
 --- a/googlemock/include/gmock/gmock.h
