@@ -391,6 +391,38 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[16], [81]], dtype=dtype),
           rtol=rtol)
 
+  def testIntegerPowWithConstantExponent(self):
+    for dtype in self.signed_int_types:
+
+      def run_pow(x, exponent, dtype=dtype):
+
+        @def_function.function(jit_compile=True)
+        def pow_with_exponent(x):
+          return math_ops.pow(x, constant_op.constant(exponent, dtype=dtype))
+
+        with self.session() as sess:
+          with self.device_scope():
+            px = array_ops.placeholder(dtype, shape=np.shape(x))
+            output = pow_with_exponent(px)
+          return sess.run(output, {px: np.array(x, dtype=dtype)})
+
+      with self.subTest(dtype=dtype):
+        x = [-2, 3, 1, -1]
+        for exponent in (-1, -3, [2, -1, 2, 2]):
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              "Integers to negative integer powers are not allowed",
+          ):
+            run_pow(x, exponent)
+
+        self.assertAllEqual(run_pow(x, [0, 1, 2, 3]), [1, 3, 1, -1])
+        self.assertAllEqual(run_pow(x, 2), [4, 9, 1, 1])
+        # Like the TF kernels, an empty result doesn't check the exponent.
+        self.assertAllEqual(run_pow(np.zeros([0]), -1), np.zeros([0]))
+        self.assertAllEqual(
+            run_pow(np.zeros([3, 0]), [[-1]]), np.zeros([3, 0])
+        )
+
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._testBinary(
