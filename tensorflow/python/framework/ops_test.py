@@ -1756,6 +1756,22 @@ class NameTest(test_util.TensorFlowTestCase):
     with g.name_scope(b"bytes_scope") as s5:
       self.assertEqual("bytes_scope/", s5)
 
+  def testNameScopeEmptyAndNone(self):
+    g = ops.Graph()
+
+    # None and empty string "" should reset the name scope without raising errors
+    with g.name_scope(None) as s1:
+      self.assertEqual("", s1)
+
+    with g.name_scope("") as s2:
+      self.assertEqual("", s2)
+
+    with g.name_scope("nested"):
+      with g.name_scope(None) as s3:
+        self.assertEqual("", s3)
+      with g.name_scope("") as s4:
+        self.assertEqual("", s4)
+
 
 class DeviceTest(test_util.TensorFlowTestCase):
 

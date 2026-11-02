@@ -3468,21 +3468,21 @@ class Graph(pywrap_tf_session.PyGraph):
       if name:
         name = compat.as_str(name)
 
-      if self._name_stack:
-        # Scopes created in a nested scope may have initial characters
-        # that are illegal as the initial character of an op name
-        # (viz. '-', '\', '/', and '_').
-        if not _VALID_SCOPE_NAME_REGEX.match(name):
-          raise ValueError(
-              f"'{name}' is not a valid scope name. A scope name has to match "
-              f"the following pattern: {_VALID_SCOPE_NAME_REGEX.pattern}")
-      else:
-        # Scopes created in the root must match the more restrictive
-        # op name regex, which constrains the initial character.
-        if not _VALID_OP_NAME_REGEX.match(name):
-          raise ValueError(
-              f"'{name}' is not a valid root scope name. A root scope name has "
-              f"to match the following pattern: {_VALID_OP_NAME_REGEX.pattern}")
+        if self._name_stack:
+          # Scopes created in a nested scope may have initial characters
+          # that are illegal as the initial character of an op name
+          # (viz. '-', '\', '/', and '_').
+          if not _VALID_SCOPE_NAME_REGEX.match(name):
+            raise ValueError(
+                f"'{name}' is not a valid scope name. A scope name has to match "
+                f"the following pattern: {_VALID_SCOPE_NAME_REGEX.pattern}")
+        else:
+          # Scopes created in the root must match the more restrictive
+          # op name regex, which constrains the initial character.
+          if not _VALID_OP_NAME_REGEX.match(name):
+            raise ValueError(
+                f"'{name}' is not a valid root scope name. A root scope name has "
+                f"to match the following pattern: {_VALID_OP_NAME_REGEX.pattern}")
     old_stack = self._name_stack
     if not name:  # Both for name=None and name="" we re-set to empty scope.
       new_stack = ""
