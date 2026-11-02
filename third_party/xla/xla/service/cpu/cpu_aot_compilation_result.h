@@ -98,8 +98,6 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const RelocationModel relocation_model_;
 };
 
-void StripPayloadFromLiteralProto(HloProto& proto);
-
 // This class represents the result of a CPU AOT compilation.
 class CpuAotCompilationResult : public CompiledModule {
  public:

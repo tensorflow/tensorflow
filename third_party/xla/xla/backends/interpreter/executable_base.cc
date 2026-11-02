@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo_module_executable.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -57,7 +58,7 @@ namespace interpreter {
 
 InterpreterExecutableBase::InterpreterExecutableBase(
     std::unique_ptr<HloModule> hlo_module)
-    : Executable(std::move(hlo_module)) {}
+    : HloModuleExecutable(std::move(hlo_module)) {}
 
 absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
