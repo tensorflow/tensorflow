@@ -13,14 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <memory>
+#include <string>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/partially_revived_objects.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
 #include "tensorflow/c/experimental/saved_model/core/test_utils.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -119,6 +125,7 @@ TEST_F(PartiallyReviveSavedModelObjectsTest,
   absl::Status status = internal::PartiallyReviveSavedModelObjects(
       metagraph, context(), /*directory=*/"", &objects);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("out of range"));
 }
 
 TEST_F(PartiallyReviveSavedModelObjectsTest,
@@ -134,6 +141,7 @@ TEST_F(PartiallyReviveSavedModelObjectsTest,
   absl::Status status = internal::PartiallyReviveSavedModelObjects(
       metagraph, context(), /*directory=*/"", &objects);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("out of range"));
 }
 
 TEST_F(PartiallyReviveSavedModelObjectsTest,
@@ -149,6 +157,7 @@ TEST_F(PartiallyReviveSavedModelObjectsTest,
   absl::Status status = internal::PartiallyReviveSavedModelObjects(
       metagraph, context(), /*directory=*/"", &objects);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("out of range"));
 }
 
 // A resource's "_create_resource" child can be in range and genuinely point
@@ -170,6 +179,8 @@ TEST_F(PartiallyReviveSavedModelObjectsTest,
   absl::Status status = internal::PartiallyReviveSavedModelObjects(
       metagraph, context(), /*directory=*/"", &objects);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr("not found in revived concrete functions"));
 }
 
 }  // namespace

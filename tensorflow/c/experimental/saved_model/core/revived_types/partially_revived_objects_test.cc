@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/partially_revived_objects.h"
 
 #include <memory>
-#include <optional>
+#include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/revived_objects.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function_revival_state.h"
@@ -62,7 +64,6 @@ TEST_F(PartiallyRevivedObjectsTest,
   state.node_id = 0;
   state.fdef = &fdef;
   state.saved_concrete_func = &saved_concrete_func;
-  state.function_spec = std::nullopt;
 
   PartiallyRevivedObjects objects;
   objects.concrete_functions[0] = std::move(state);
@@ -70,6 +71,7 @@ TEST_F(PartiallyRevivedObjectsTest,
   RevivedObjects revived;
   absl::Status status = objects.Build(context(), obj_graph, &revived);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("out of range"));
 }
 
 // A concrete function whose SavedConcreteFunction declares a bound_inputs
@@ -89,7 +91,6 @@ TEST_F(PartiallyRevivedObjectsTest,
   state.node_id = 0;
   state.fdef = &fdef;
   state.saved_concrete_func = &saved_concrete_func;
-  state.function_spec = std::nullopt;
 
   PartiallyRevivedObjects objects;
   objects.concrete_functions[0] = std::move(state);
@@ -97,6 +98,7 @@ TEST_F(PartiallyRevivedObjectsTest,
   RevivedObjects revived;
   absl::Status status = objects.Build(context(), obj_graph, &revived);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("out of range"));
 }
 
 }  // namespace

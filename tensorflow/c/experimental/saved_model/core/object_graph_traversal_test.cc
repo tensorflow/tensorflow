@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
@@ -429,6 +433,7 @@ nodes {
   absl::Status status =
       internal::GetSignaturesMap(object_graph, &signatures_map);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("out of range"));
 }
 
 TEST(GetSignaturesMapTest, OutOfRangeSignaturesChildNodeIdIsRejected) {
@@ -451,6 +456,7 @@ nodes {
   absl::Status status =
       internal::GetSignaturesMap(object_graph, &signatures_map);
   EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(status.message(), ::testing::HasSubstr("out of range"));
 }
 
 }  // namespace

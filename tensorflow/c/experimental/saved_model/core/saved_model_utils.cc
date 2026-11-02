@@ -140,6 +140,36 @@ absl::Status ValidateSavedFunctionCompatibleWithFunctionDef(
   return absl::Status();
 }
 
+// Looks up `function_name` in both `function_def_map` and `obj_graph`'s
+// concrete_functions map. Both maps are keyed by function name, which comes
+// from the untrusted SavedModel, so a malformed or crafted model can
+// reference a function_name that is missing from either map --
+// gtl::FlatMap::at() and protobuf::Map::at() both crash on a missing key,
+// so this uses find() and returns an error instead.
+absl::Status LookupFunctionAndSavedConcreteFunction(
+    const FunctionDefMap& function_def_map,
+    const SavedObjectGraph& obj_graph, const std::string& function_name,
+    const FunctionDef** function_def,
+    const SavedConcreteFunction** saved_concrete_func) {
+  auto function_def_iter = function_def_map.find(function_name);
+  if (function_def_iter == function_def_map.end()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unable to find FunctionDef with name '", function_name,
+                     "' in SavedModel graphdef"));
+  }
+  *function_def = function_def_iter->second;
+
+  const auto& concrete_functions = obj_graph.concrete_functions();
+  auto concrete_func_iter = concrete_functions.find(function_name);
+  if (concrete_func_iter == concrete_functions.end()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unable to find SavedConcreteFunction with name '",
+                     function_name, "' in SavedObjectGraph"));
+  }
+  *saved_concrete_func = &concrete_func_iter->second;
+  return absl::Status();
+}
+
 }  // namespace
 
 absl::Status GetSignaturesMap(const SavedObjectGraph& saved_objects,
@@ -454,9 +484,11 @@ absl::Status PartiallyReviveSavedModelObjects(
 
       // Retrieve related function information.
       const std::string& function_name = saved_function.concrete_functions(0);
-      const FunctionDef* function_def = function_def_map.at(function_name);
-      const SavedConcreteFunction& saved_concrete_func =
-          metagraph.object_graph_def().concrete_functions().at(function_name);
+      const FunctionDef* function_def = nullptr;
+      const SavedConcreteFunction* saved_concrete_func = nullptr;
+      TF_RETURN_IF_ERROR(LookupFunctionAndSavedConcreteFunction(
+          function_def_map, metagraph.object_graph_def(), function_name,
+          &function_def, &saved_concrete_func));
       const FunctionSpec& function_spec = saved_function.function_spec();
 
       // Construct either a SignatureDefFunctionBuilder or a
@@ -467,14 +499,14 @@ absl::Status PartiallyReviveSavedModelObjects(
         TFSignatureDefFunctionRevivalState func_revival_state;
         func_revival_state.node_id = i;
         func_revival_state.fdef = function_def;
-        func_revival_state.saved_concrete_func = &saved_concrete_func;
+        func_revival_state.saved_concrete_func = saved_concrete_func;
         func_revival_state.signature_key = reverse_signature_iter->second;
         objects->signature_def_functions[i] = std::move(func_revival_state);
       } else {
         TFConcreteFunctionRevivalState func_revival_state;
         func_revival_state.node_id = i;
         func_revival_state.fdef = function_def;
-        func_revival_state.saved_concrete_func = &saved_concrete_func;
+        func_revival_state.saved_concrete_func = saved_concrete_func;
         func_revival_state.function_spec = &function_spec;
         objects->concrete_functions[i] = std::move(func_revival_state);
       }
@@ -483,9 +515,11 @@ absl::Status PartiallyReviveSavedModelObjects(
 
       // Retrieve related function information.
       const std::string& function_name = bare_cf.concrete_function_name();
-      const FunctionDef* function_def = function_def_map.at(function_name);
-      const SavedConcreteFunction& saved_concrete_func =
-          metagraph.object_graph_def().concrete_functions().at(function_name);
+      const FunctionDef* function_def = nullptr;
+      const SavedConcreteFunction* saved_concrete_func = nullptr;
+      TF_RETURN_IF_ERROR(LookupFunctionAndSavedConcreteFunction(
+          function_def_map, metagraph.object_graph_def(), function_name,
+          &function_def, &saved_concrete_func));
 
       // Check whether this is a SignatureDefFunction, or not.
       auto reverse_signature_iter = reversed_signatures_map.find(i);
@@ -493,14 +527,14 @@ absl::Status PartiallyReviveSavedModelObjects(
         TFSignatureDefFunctionRevivalState func_revival_state;
         func_revival_state.node_id = i;
         func_revival_state.fdef = function_def;
-        func_revival_state.saved_concrete_func = &saved_concrete_func;
+        func_revival_state.saved_concrete_func = saved_concrete_func;
         func_revival_state.signature_key = reverse_signature_iter->second;
         objects->signature_def_functions[i] = std::move(func_revival_state);
       } else {
         TFConcreteFunctionRevivalState func_revival_state;
         func_revival_state.node_id = i;
         func_revival_state.fdef = function_def;
-        func_revival_state.saved_concrete_func = &saved_concrete_func;
+        func_revival_state.saved_concrete_func = saved_concrete_func;
         objects->concrete_functions[i] = std::move(func_revival_state);
       }
     }
@@ -508,20 +542,14 @@ absl::Status PartiallyReviveSavedModelObjects(
 
   // Now that we've partially restored all functions, we can have resources
   // point to them
+  const SavedObjectGraph& obj_graph = metagraph.object_graph_def();
   for (auto& node_and_resource_revival_state : objects->restored_resources) {
     int node_id = node_and_resource_revival_state.first;
-    const SavedObjectGraph& obj_graph = metagraph.object_graph_def();
     const SavedObject& node = obj_graph.nodes(node_id);
     RestoredResourceRevivalState& resource =
         node_and_resource_revival_state.second;
     for (const TrackableObjectGraph::TrackableObject::ObjectReference& child :
          node.children()) {
-      int child_node_id = child.node_id();
-      if (child_node_id < 0 || child_node_id >= obj_graph.nodes().size()) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Resource object had child node id ", child_node_id,
-            " which is out of range of the set of nodes"));
-      }
       // Note(bmzhao): The expected functions saved by a resource object are:
       // "_create_resource", "_initialize", and "_destroy_resource".
       // https://github.com/tensorflow/tensorflow/blob/ad66f588c1666ade8051feb42811fa27b285271c/tensorflow/python/training/tracking/tracking.py#L277-L281
@@ -529,6 +557,12 @@ absl::Status PartiallyReviveSavedModelObjects(
           child.local_name() != "_initialize" &&
           child.local_name() != "_destroy_resource") {
         continue;
+      }
+      int child_node_id = child.node_id();
+      if (child_node_id < 0 || child_node_id >= obj_graph.nodes().size()) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Resource object had child node id ", child_node_id,
+            " which is out of range of the set of nodes"));
       }
       if (obj_graph.nodes(child_node_id).kind_case() !=
           SavedObject::kFunction) {
