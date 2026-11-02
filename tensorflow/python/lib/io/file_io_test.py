@@ -375,14 +375,32 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
   def testListDirectoryStripsTrailingSlash(self):
     dir_path = file_io.join(self._base_dir, "test_dir_trailing")
     file_io.create_dir(dir_path)
+    raw_entries = [
+        b"eval/",
+        b"train/",
+        b"file.txt",
+        b"nested/",
+        b"sub",
+        b"sub/",
+        b"/",
+        b"",
+        b"trailing_backslash\\",
+    ]
+    expected = [
+        "eval",
+        "train",
+        "file.txt",
+        "nested",
+        "sub",
+        "/",
+        "",
+        "trailing_backslash\\",
+    ]
     with mock.patch.object(
-        file_io._pywrap_file_io,
-        "GetChildren",
-        return_value=[b"eval/", b"train/", b"file.txt", b"nested/"]):
-      dir_list = file_io.list_directory(dir_path)
-      self.assertEqual(dir_list, ["eval", "train", "file.txt", "nested"])
-      dir_list_v2 = file_io.list_directory_v2(dir_path)
-      self.assertEqual(dir_list_v2, ["eval", "train", "file.txt", "nested"])
+        file_io._pywrap_file_io, "GetChildren", return_value=raw_entries
+    ):
+      self.assertEqual(file_io.list_directory(dir_path), expected)
+      self.assertEqual(file_io.list_directory_v2(dir_path), expected)
 
   def _setupWalkDirectories(self, dir_path):
     # Creating a file structure as follows

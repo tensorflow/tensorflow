@@ -802,13 +802,17 @@ def list_directory_v2(path):
 
   # Convert each element to string, since the return values of the
   # vector of string should be interpreted as strings, not bytes.
-  # Strip trailing path separators so directory entries returned by cloud/remote
+  # Strip trailing '/' so directory entries returned by cloud/remote
   # filesystems (e.g. GCS delimiter prefixes) are consistent with local
   # filesystems and Python's os.listdir.
   entries = []
+  seen = set()
   for filename in _pywrap_file_io.GetChildren(compat.path_to_bytes(path)):
     name = compat.as_str_any(filename)
-    entries.append(name.rstrip('/\\') or name)
+    normalized = name.rstrip("/") or name
+    if normalized not in seen:
+      seen.add(normalized)
+      entries.append(normalized)
   return entries
 
 
