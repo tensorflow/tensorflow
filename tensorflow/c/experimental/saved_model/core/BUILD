@@ -240,6 +240,29 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "partially_revive_saved_model_objects_test",
+    srcs = [
+        "partially_revive_saved_model_objects_test.cc",
+    ],
+    deps = [
+        ":saved_model_utils",
+        ":test_utils",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:partially_revived_objects",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
     name = "saved_variable_loading_test",
     srcs = [
         "saved_variable_loading_test.cc",

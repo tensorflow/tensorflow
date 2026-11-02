@@ -151,10 +151,11 @@ absl::Status GetSignaturesMap(const SavedObjectGraph& saved_objects,
   const SavedObject* signatures = nullptr;
   for (const auto& child : root.children()) {
     if (child.local_name() == "signatures") {
-      if (child.node_id() >= saved_objects.nodes().size()) {
+      if (child.node_id() < 0 ||
+          child.node_id() >= saved_objects.nodes().size()) {
         return absl::FailedPreconditionError(
             absl::StrCat("Signature object had child node id ", child.node_id(),
-                         " which exceeds the size of the set of nodes"));
+                         " which is out of range of the set of nodes"));
       }
       signatures = &saved_objects.nodes(child.node_id());
     }
@@ -516,19 +517,24 @@ absl::Status PartiallyReviveSavedModelObjects(
     for (const TrackableObjectGraph::TrackableObject::ObjectReference& child :
          node.children()) {
       int child_node_id = child.node_id();
+      if (child_node_id < 0 || child_node_id >= obj_graph.nodes().size()) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Resource object had child node id ", child_node_id,
+            " which is out of range of the set of nodes"));
+      }
       // Note(bmzhao): The expected functions saved by a resource object are:
       // "_create_resource", "_initialize", and "_destroy_resource".
       // https://github.com/tensorflow/tensorflow/blob/ad66f588c1666ade8051feb42811fa27b285271c/tensorflow/python/training/tracking/tracking.py#L277-L281
       if (child.local_name() == "_create_resource" &&
-          obj_graph.nodes(child.node_id()).kind_case() ==
+          obj_graph.nodes(child_node_id).kind_case() ==
               SavedObject::kFunction) {
         resource.create_resource = &objects->concrete_functions[child_node_id];
       } else if (child.local_name() == "_initialize" &&
-                 obj_graph.nodes(child.node_id()).kind_case() ==
+                 obj_graph.nodes(child_node_id).kind_case() ==
                      SavedObject::kFunction) {
         resource.initialize = &objects->concrete_functions[child_node_id];
       } else if (child.local_name() == "_destroy_resource" &&
-                 obj_graph.nodes(child.node_id()).kind_case() ==
+                 obj_graph.nodes(child_node_id).kind_case() ==
                      SavedObject::kFunction) {
         resource.destroy_resource = &objects->concrete_functions[child_node_id];
       }
