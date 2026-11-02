@@ -33,6 +33,10 @@
     so `tf.signal.stft` and `tf.signal.inverse_stft` with the default window
     and an odd `frame_length` now return different values. The new values
     match `scipy.signal.get_window` and `tf.raw_ops.AudioSpectrogram`.
+*   `tf.dtypes.saturate_cast`: `int64` inputs no longer get a wrong upper limit
+    on x86 when the output dtype can hold the `int64` maximum, which clamped
+    every value to the `int64` minimum. `uint32` and `uint64` inputs no longer
+    raise `NotFoundError`.
 
 ## Thanks to our Contributors
 
