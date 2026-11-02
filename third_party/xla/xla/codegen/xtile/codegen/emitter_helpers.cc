@@ -1177,7 +1177,7 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
   SmallVector<int64_t> padded_output_tile_sizes =
       GetPaddedTileSizes(output_tile_sizes);
   SmallVector<int64_t> dim_positions =
-      gpu::experimental::PositionsOfNonTrivialDims(output_shape.dimensions());
+      gpu::PositionsOfNonTrivialDims(output_shape.dimensions());
   // If all output dimensions are non-trivial, no broadcast expansion is needed.
   if (dim_positions.size() == padded_output_tile_sizes.size()) {
     return EmitTiledReshape(b, padded_output_tile_sizes, input);
@@ -1186,17 +1186,6 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
   reshape_tile_sizes.reserve(dim_positions.size());
   for (int64_t dim : dim_positions) {
     reshape_tile_sizes.push_back(padded_output_tile_sizes[dim]);
-  }
-  // In legacy tiling, backward propagation does not clamp trivial dimensions
-  // (size == 1). If a trivial dimension is tiled > 1 downstream (e.g. for a
-  // Dot), the input tile already contains elements along that dimension (e.g.
-  // 256 elements vs. 16 in reshape_tile_sizes). In this case, no broadcast
-  // expansion is needed; reshape directly to the full output tile.
-  //
-  // In experimental tiling, trivial dimensions are clamped to tile size 1, so
-  // Product(reshape_tile_sizes) == input.getNumElements() always holds.
-  if (Product(reshape_tile_sizes) != input.getType().getNumElements()) {
-    return EmitTiledReshape(b, padded_output_tile_sizes, input);
   }
   ABSL_ASSIGN_OR_RETURN(TensorValue re,
                    EmitTiledReshape(b, reshape_tile_sizes, input));
