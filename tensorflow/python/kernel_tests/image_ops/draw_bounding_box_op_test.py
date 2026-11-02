@@ -139,13 +139,20 @@ class DrawBoundingBoxOpTest(test.TestCase):
     image = np.zeros([10, 10, 3], "float32")
     image_tensor = ops.convert_to_tensor(image)
     image_tensor = array_ops.expand_dims(image_tensor, 0)
-    bboxes = constant_op.constant([[[0.0, 0.0, 1.0, 1.0]]], dtype=dtypes.float32)
+    bboxes = constant_op.constant(
+        [[[0.0, 0.0, 1.0, 1.0]]], dtype=dtypes.float32
+    )
 
-    # Calling with colors omitted should succeed and match calling with colors=None
+    # Calling with colors omitted should succeed and match calling with
+    # colors=None.
     result_omitted = image_ops.draw_bounding_boxes(image_tensor, bboxes)
-    result_none = image_ops.draw_bounding_boxes(image_tensor, bboxes, colors=None)
+    result_none = image_ops.draw_bounding_boxes(
+        image_tensor, bboxes, colors=None
+    )
     with self.cached_session(use_gpu=False):
-      self.assertAllEqual(self.evaluate(result_omitted), self.evaluate(result_none))
+      self.assertAllEqual(
+          self.evaluate(result_omitted), self.evaluate(result_none)
+      )
 
   # generate_bound_box_proposals is only available on GPU.
   @test_util.run_gpu_only
