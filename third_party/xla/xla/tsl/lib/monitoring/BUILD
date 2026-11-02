@@ -43,6 +43,7 @@ package(
         "//tensorflow/core/tfrt:__subpackages__",
         # tensorflow/compiler/xla/pjrt:metrics depends on this package
         "//xla/pjrt:__subpackages__",
+        "//xla/backends/gpu/runtime:__subpackages__",
         "//xla/service/gpu:__subpackages__",
         # tensorflow/compiler/mlir/tfrt:tf_jitrt depends on this package
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",

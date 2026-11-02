@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gpu_executable.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -122,6 +124,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/tsl/lib/monitoring/counter.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/util/sorted_range.h"
@@ -130,11 +133,66 @@ limitations under the License.
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/stacktrace.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
 namespace {
+
+auto* hlo_module_materialization_counter = tsl::monitoring::Counter<1>::New(
+    "/xla/gpu/hlo_module_materializations",
+    "Number of times a GpuExecutable built its HloModule from the serialized "
+    "module, by the reason why the module was needed.",
+    "reason");
+
+// Returns a factory that builds the HloModule of the GpuExecutable
+// `module_name` from `hlo_module_proto`, with `debug_options` as the runtime
+// debug options.
+absl::AnyInvocable<
+    absl::StatusOr<std::shared_ptr<HloModule>>(absl::string_view reason)>
+MakeHloModuleFactory(
+    std::shared_ptr<const HloModuleProtoWithConfig> hlo_module_proto,
+    std::string module_name, DebugOptions debug_options,
+    bool fail_on_hlo_module_materialization) {
+  return [hlo_module_proto = std::move(hlo_module_proto),
+          module_name = std::move(module_name),
+          debug_options = std::move(debug_options),
+          fail_on_hlo_module_materialization](absl::string_view reason)
+             -> absl::StatusOr<std::shared_ptr<HloModule>> {
+    const int64_t expected_unique_id = hlo_module_proto->hlo_module().pjrt_id();
+    LOG(INFO) << "Building the HloModule of GpuExecutable " << module_name
+              << " (unique_id " << expected_unique_id
+              << ") from the serialized module, reason: " << reason;
+    VLOG(1) << "Stack trace of the HloModule materialization:\n"
+            << tsl::CurrentStackTrace();
+    hlo_module_materialization_counter->GetCell(std::string(reason))
+        ->IncrementBy(1);
+
+    if (fail_on_hlo_module_materialization) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Building the HloModule of GpuExecutable ", module_name,
+          " (reason: ", reason,
+          ") is not allowed because "
+          "--xla_gpu_experimental_fail_on_lazy_hlo_module_materialization is "
+          "set."));
+    }
+
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     HloModule::CreateFromProtoWithConfig(*hlo_module_proto));
+    // Same options as `FromProto` gives a deserialized module.
+    module->mutable_config().set_debug_options(debug_options);
+    // Profiler annotations, debug info and PGLE refer to the module by its
+    // unique id, so it must be the one we expect.
+    if (module->unique_id() != expected_unique_id) {
+      return absl::InternalError(
+          absl::StrCat("The HloModule built for GpuExecutable ", module_name,
+                       " has unique_id ", module->unique_id(), " but ",
+                       expected_unique_id, " was expected."));
+    }
+    return std::shared_ptr<HloModule>(std::move(module));
+  };
+}
 
 std::optional<absl::flat_hash_map<std::string, const HloInstruction*>>
 MakeConstantsMap(HloModule* absl_nullable debug_module) {
@@ -481,21 +539,70 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::CreateImpl(
         "Must set buffer_allocations_debug_summary.");
   }
 
+  std::shared_ptr<HloModule> hlo_module;
+  std::optional<HloModuleProtoWithConfig> hlo_module_proto;
+  if (auto* module =
+          std::get_if<std::shared_ptr<HloModule>>(&params.hlo_module)) {
+    hlo_module = std::move(*module);
+  } else if (auto* proto =
+                 std::get_if<HloModuleProtoWithConfig>(&params.hlo_module)) {
+    const HloModuleProto& module_proto = proto->hlo_module();
+    // A negative pjrt_id would make `HloModule::CreateFromProto` pick a fresh
+    // unique id.
+    if (!module_proto.has_pjrt_id() || module_proto.pjrt_id() < 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "The serialized HloModule must have a non-negative pjrt_id, so that "
+          "the module built from it gets a known unique id. Got: ",
+          module_proto.has_pjrt_id() ? absl::StrCat(module_proto.pjrt_id())
+                                     : "none"));
+    }
+    hlo_module_proto = std::move(*proto);
+  }
+
   if (!module_config_metadata.has_value()) {
     module_config_metadata.emplace();
-    if (params.debug_module != nullptr) {
-      const HloModuleConfig& config = params.debug_module->config();
+    if (hlo_module != nullptr) {
+      const HloModuleConfig& config = hlo_module->config();
       module_config_metadata->debug_options = config.debug_options();
       module_config_metadata->slice_size = config.partition_size();
       if (config.has_static_device_assignment()) {
         module_config_metadata->static_device_assignment =
             config.static_device_assignment();
       }
+    } else if (hlo_module_proto.has_value()) {
+      ABSL_ASSIGN_OR_RETURN(*module_config_metadata,
+                       ModuleConfigMetadataFromProto(*hlo_module_proto,
+                                                     params.debug_options));
     } else {
       // Without a module config the compile-time options are unknown, so we
       // use the options that were passed in. For JIT-compiled executables
       // these are the compile-time options.
       module_config_metadata->debug_options = params.debug_options;
+    }
+  }
+
+  // Without the module, the executable keeps the module metadata itself.
+  std::optional<HloModuleConfig> module_config;
+  HloInputOutputAliasConfig input_output_alias_config;
+  HloBufferDonorConfig buffer_donor_config;
+  if (hlo_module == nullptr) {
+    ABSL_ASSIGN_OR_RETURN(input_output_alias_config,
+                     InputOutputAliasConfigFromOutputInfo(
+                         params.program_shape.result(), params.output_info));
+    if (hlo_module_proto.has_value()) {
+      // Same config and buffer donors as the module built from the serialized
+      // module will have.
+      ABSL_ASSIGN_OR_RETURN(
+          std::unique_ptr<HloModuleConfig> config,
+          HloModuleConfig::CreateFromProto(hlo_module_proto->config()));
+      config->set_debug_options(module_config_metadata->debug_options);
+      module_config = *std::move(config);
+      ABSL_ASSIGN_OR_RETURN(buffer_donor_config,
+                       HloBufferDonorConfig::CreateFromProto(
+                           hlo_module_proto->hlo_module().buffer_donor()));
+    } else {
+      module_config = std::move(params.module_config);
+      buffer_donor_config = std::move(params.buffer_donor_config);
     }
   }
 
@@ -534,10 +641,10 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::CreateImpl(
       params.gpu_topology.has_value()
           ? std::max<int64_t>(params.gpu_topology->slice_size(), 0)
           : module_config_metadata->slice_size;
-  ABSL_RETURN_IF_ERROR(RunThunkPasses(
-      params.debug_options, params.device_description, seq_thunk.get(),
-      params.debug_module.get(), module_output_slices, allocator,
-      devices_per_host, slice_size));
+  ABSL_RETURN_IF_ERROR(RunThunkPasses(params.debug_options,
+                                 params.device_description, seq_thunk.get(),
+                                 hlo_module.get(), module_output_slices,
+                                 allocator, devices_per_host, slice_size));
   // Extract modified thunks back into a ThunkExecutor.
   auto executor =
       std::make_unique<ThunkExecutor>(std::move(seq_thunk->thunks()));
@@ -545,13 +652,36 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::CreateImpl(
   // Precompute if collectives should use minimal resource once, as it can be
   // expensive because it requires whole HLO module traversal.
   bool collective_use_minimal_resource = false;
-  if (params.debug_module != nullptr) {
+  if (hlo_module != nullptr) {
     ABSL_ASSIGN_OR_RETURN(collective_use_minimal_resource,
-                     ShouldCollectiveUseMinimalResource(*params.debug_module));
+                     ShouldCollectiveUseMinimalResource(*hlo_module));
+  }
+
+  // With a serialized module the executable builds the module when it's
+  // needed. This has to happen before the constructor call moves the module
+  // name and the debug options.
+  std::unique_ptr<LazyHloModuleState> lazy_hlo_module;
+  std::shared_ptr<const HloModuleProtoWithConfig> serialized_hlo_module;
+  if (hlo_module_proto.has_value()) {
+    // The executable and the factory share the serialized module, so that
+    // `ToProto` can write it as long as the module hasn't been built.
+    serialized_hlo_module = std::make_shared<const HloModuleProtoWithConfig>(
+        *std::move(hlo_module_proto));
+    // The flag can be set at compile time or at load time.
+    const bool fail_on_hlo_module_materialization =
+        params.debug_options
+            .xla_gpu_experimental_fail_on_lazy_hlo_module_materialization() ||
+        module_config_metadata->debug_options
+            .xla_gpu_experimental_fail_on_lazy_hlo_module_materialization();
+    lazy_hlo_module = std::make_unique<LazyHloModuleState>(
+        MakeHloModuleFactory(serialized_hlo_module, params.module_name,
+                             module_config_metadata->debug_options,
+                             fail_on_hlo_module_materialization));
   }
 
   return std::unique_ptr<GpuExecutable>(new GpuExecutable(
-      std::move(params.debug_module), std::move(params.binary),
+      std::move(hlo_module), std::move(lazy_hlo_module),
+      std::move(serialized_hlo_module), std::move(params.binary),
       std::move(params.dnn_compiled_graphs),
       std::move(params.device_description), std::move(executor),
       std::move(params.module_name), std::move(params.program_shape),
@@ -562,16 +692,21 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::CreateImpl(
       std::move(thunk_sequence_proto), std::move(params.executable_abi_version),
       std::move(params.cpu_target_machine_options),
       std::move(params.buffer_assignment_proto),
+      params.expose_buffer_assignment_proto,
       std::move(params.buffer_allocations_debug_summary),
       collective_use_minimal_resource, std::move(params.gpu_topology),
-      *std::move(module_config_metadata)));
+      *std::move(module_config_metadata), std::move(module_config),
+      std::move(input_output_alias_config), std::move(buffer_donor_config)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    std::shared_ptr<HloModule> debug_module, std::vector<uint8_t> binary,
-    BinaryMap dnn_compiled_graphs, se::DeviceDescription device_description,
+    std::shared_ptr<HloModule> debug_module,
+    std::unique_ptr<LazyHloModuleState> lazy_hlo_module,
+    std::shared_ptr<const HloModuleProtoWithConfig> serialized_hlo_module,
+    std::vector<uint8_t> binary, BinaryMap dnn_compiled_graphs,
+    se::DeviceDescription device_description,
     std::unique_ptr<ThunkExecutor> executable, std::string module_name,
     ProgramShape program_shape, std::vector<BufferAllocation> allocations,
     std::deque<BufferAllocation> thunk_pass_allocations,
@@ -583,11 +718,20 @@ GpuExecutable::GpuExecutable(
     se::ExecutableAbiVersion executable_abi_version,
     std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options,
     BufferAssignmentProto buffer_assignment_proto,
+    bool expose_buffer_assignment_proto,
     std::string buffer_allocations_debug_summary,
     bool collective_use_minimal_resource,
     std::optional<GpuTopology> gpu_topology,
-    ModuleConfigMetadata module_config_metadata)
-    : Executable(std::move(debug_module)),
+    ModuleConfigMetadata module_config_metadata,
+    std::optional<HloModuleConfig> module_config,
+    HloInputOutputAliasConfig input_output_alias_config,
+    HloBufferDonorConfig buffer_donor_config)
+    : debug_module_(std::move(debug_module)),
+      lazy_hlo_module_(std::move(lazy_hlo_module)),
+      serialized_hlo_module_(std::move(serialized_hlo_module)),
+      module_config_(std::move(module_config)),
+      input_output_alias_config_(std::move(input_output_alias_config)),
+      buffer_donor_config_(std::move(buffer_donor_config)),
       binary_(std::move(binary)),
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
       gpu_version_(device_description.gpu_compute_capability()),
@@ -604,6 +748,8 @@ GpuExecutable::GpuExecutable(
           GatherAllocationPtrs(allocations, thunk_pass_allocations)),
       allocations_(std::move(allocations)),
       buffer_assignment_proto_(std::move(buffer_assignment_proto)),
+      expose_buffer_assignment_proto_(expose_buffer_assignment_proto),
+      module_stats_(std::move(module_stats)),
       thunk_pass_allocations_(std::move(thunk_pass_allocations)),
       alias_info_(std::move(alias_info)),
       runtime_debug_options_(std::move(module_config_metadata.debug_options)),
@@ -638,8 +784,8 @@ GpuExecutable::GpuExecutable(
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_proto_);
+    registered_with_debug_info_manager_ = true;
   }
-  set_module_stats(std::move(module_stats));
 
   buffer_allocator_ = GpuExecutableBufferAllocator::Create(
       module_name_, allocation_ptrs_, program_shape_.result(),
@@ -649,9 +795,84 @@ GpuExecutable::GpuExecutable(
 
 GpuExecutable::~GpuExecutable() {
   buffer_allocator_.reset();
-  if (has_module() && enable_debug_info_manager_) {
+  if (registered_with_debug_info_manager_) {
     XlaDebugInfoManager::Get()->UnregisterModule(module().unique_id());
   }
+}
+
+std::shared_ptr<HloModule> GpuExecutable::shared_module() const {
+  if (lazy_hlo_module_ == nullptr) {
+    return debug_module_;
+  }
+  if (lazy_hlo_module_->module_ptr.load(std::memory_order_acquire) == nullptr) {
+    return nullptr;
+  }
+  // `module` never changes after `module_ptr` was set.
+  return lazy_hlo_module_->module;
+}
+
+HloModule* GpuExecutable::module_ptr() const {
+  if (lazy_hlo_module_ == nullptr) {
+    return debug_module_.get();
+  }
+  return lazy_hlo_module_->module_ptr.load(std::memory_order_acquire);
+}
+
+absl::StatusOr<std::shared_ptr<HloModule>> GpuExecutable::GetOrCreateHloModule(
+    absl::string_view reason) const {
+  if (std::shared_ptr<HloModule> hlo_module = shared_module()) {
+    return hlo_module;
+  }
+  if (lazy_hlo_module_ == nullptr) {
+    return absl::NotFoundError(
+        absl::StrCat("GpuExecutable ", name(), " has no HloModule."));
+  }
+
+  LazyHloModuleState& state = *lazy_hlo_module_;
+  absl::MutexLock lock(state.mutex);
+  // Another thread might have built the module while we were waiting.
+  if (state.module_ptr.load(std::memory_order_relaxed) != nullptr) {
+    return state.module;
+  }
+  if (state.error.has_value()) {
+    return *state.error;
+  }
+  absl::StatusOr<std::shared_ptr<HloModule>> hlo_module = state.factory(reason);
+  if (hlo_module.ok() && *hlo_module == nullptr) {
+    hlo_module = absl::InternalError("The HloModuleFactory returned null.");
+  }
+  if (!hlo_module.ok()) {
+    state.error = hlo_module.status();
+    return hlo_module.status();
+  }
+  state.module = *std::move(hlo_module);
+  state.module_ptr.store(state.module.get(), std::memory_order_release);
+  state.factory = nullptr;
+  return state.module;
+}
+
+const HloModuleConfig& GpuExecutable::module_config() const {
+  if (const HloModule* hlo_module = module_ptr()) {
+    return hlo_module->config();
+  }
+  CHECK(module_config_.has_value())
+      << "GpuExecutable " << module_name_ << " has no module config";
+  return *module_config_;
+}
+
+const HloInputOutputAliasConfig& GpuExecutable::input_output_alias_config()
+    const {
+  if (const HloModule* hlo_module = module_ptr()) {
+    return hlo_module->input_output_alias_config();
+  }
+  return input_output_alias_config_;
+}
+
+const HloBufferDonorConfig& GpuExecutable::buffer_donor_config() const {
+  if (const HloModule* hlo_module = module_ptr()) {
+    return hlo_module->buffer_donor_config();
+  }
+  return buffer_donor_config_;
 }
 
 absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
@@ -1618,9 +1839,15 @@ void GpuExecutable::LogChangedAllocationsInBetweenExecutions(
   }
 }
 
-const BufferAssignmentProto& GpuExecutable::buffer_assignment_proto() const {
+const BufferAssignmentProto& GpuExecutable::owned_buffer_assignment_proto()
+    const {
   return buffer_assignment_proto_;
 }
+
+const BufferAssignmentProto* GpuExecutable::buffer_assignment_proto() const {
+  return expose_buffer_assignment_proto_ ? &buffer_assignment_proto_ : nullptr;
+}
+
 absl::Status GpuExecutable::ExecuteThunks(
     const BufferAllocations& buffer_allocations,
     const ServiceExecutableRunOptions* run_options,
@@ -1799,9 +2026,16 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
   *proto.mutable_buffer_assignment() = buffer_assignment_proto_;
   proto.set_buffer_allocations_debug_summary(buffer_allocations_debug_summary_);
 
-  if (has_module()) {
-    *proto.mutable_hlo_module_with_config() = module().ToProtoWithConfig(
+  // `GetOrCreateHloModule` can set the module concurrently, so we look at it
+  // only once to keep the module and the constants consistent.
+  const std::shared_ptr<HloModule> hlo_module = shared_module();
+  if (hlo_module != nullptr) {
+    *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig(
         HloProtoOptions{/*deduplicate_backend_config=*/true});
+  } else if (serialized_hlo_module_ != nullptr) {
+    // The module hasn't been built yet, so we write the serialized module that
+    // it would be built from.
+    *proto.mutable_hlo_module_with_config() = *serialized_hlo_module_;
   }
 
   proto.mutable_output_info_map()->Reserve(output_info_.size());
@@ -1814,7 +2048,8 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 
   proto.mutable_constants()->Reserve(constants_.size());
   for (const auto& constant : constants_) {
-    *proto.add_constants() = constant.ToProto(has_module());
+    *proto.add_constants() = constant.ToProto(
+        /*skip_content_serialization=*/hlo_module != nullptr);
   }
 
   *proto.mutable_executable_abi_version() = executable_abi_version_.proto();
@@ -1872,6 +2107,22 @@ GpuExecutable::ModuleConfigMetadataFromProto(
   return metadata;
 }
 
+absl::StatusOr<HloInputOutputAliasConfig>
+GpuExecutable::InputOutputAliasConfigFromOutputInfo(
+    const Shape& result_shape,
+    const absl::flat_hash_map<ShapeIndex, OutputInfo>& output_info) {
+  HloInputOutputAliasConfig config(result_shape);
+  for (const auto& [output_index, info] : output_info) {
+    if (!info.alias_config.has_value()) {
+      continue;
+    }
+    ABSL_RETURN_IF_ERROR(config.SetUpAlias(
+        output_index, info.alias_config->parameter_number,
+        info.alias_config->parameter_index, info.alias_config->kind));
+  }
+  return config;
+}
+
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     const GpuExecutableProto& proto,
     const se::DeviceDescription& device_description,
@@ -1894,24 +2145,27 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
         << "debug_module " << debug_module->name()
         << " doesn't match the serialized module "
         << proto.hlo_module_with_config().hlo_module().name();
-    params.debug_module = std::move(debug_module);
   } else if (proto.has_hlo_module_with_config() &&
              proto.hlo_module_with_config().has_hlo_module()) {
-    ABSL_ASSIGN_OR_RETURN(params.debug_module, HloModule::CreateFromProtoWithConfig(
-                                              proto.hlo_module_with_config()));
+    // TODO(b/579761374): Pass the serialized module in `params.hlo_module`
+    // instead, so that the module only gets built when it's needed.
+    // Serialized executables don't carry a `pjrt_id`, so the copy of the
+    // module has to get a fresh one first (e.g.
+    // `HloModule::GetNextUniqueModuleId()`), otherwise `Create` rejects it.
+    ABSL_ASSIGN_OR_RETURN(debug_module, HloModule::CreateFromProtoWithConfig(
+                                       proto.hlo_module_with_config()));
   }
-  if (params.debug_module != nullptr) {
+  if (debug_module != nullptr) {
     // The HLO module deserialized from the proto carries xla_dump_to from the
     // process that originally compiled it. Override with the current process's
     // dump path so that runtime dumps (checksum logs, etc.) land in the correct
     // per-process directory.
     if (params.debug_options.has_xla_dump_to()) {
-      params.debug_module->mutable_config()
-          .mutable_debug_options()
-          .set_xla_dump_to(params.debug_options.xla_dump_to());
+      debug_module->mutable_config().mutable_debug_options().set_xla_dump_to(
+          params.debug_options.xla_dump_to());
     }
     if (params.debug_options.xla_gpu_experimental_nccl_window_symmetric()) {
-      params.debug_module->mutable_config()
+      debug_module->mutable_config()
           .mutable_debug_options()
           .set_xla_gpu_experimental_nccl_window_symmetric(true);
     }
@@ -1979,7 +2233,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   ABSL_ASSIGN_OR_RETURN(
       ThunkSequence thunk_sequence,
       DeserializeThunkSequenceProto(thunk_sequence_proto, params.allocations,
-                                    params.debug_module.get(), platform_name,
+                                    debug_module.get(), platform_name,
                                     gpu_compute_capability, params.gpu_topology,
                                     params.debug_options, symbol_resolver,
                                     params.cpu_target_machine_options));
@@ -1988,7 +2242,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));
 
   std::optional<absl::flat_hash_map<std::string, const HloInstruction*>>
-      name_to_const = MakeConstantsMap(params.debug_module.get());
+      name_to_const = MakeConstantsMap(debug_module.get());
 
   params.constants.reserve(proto.constants().size());
   for (const auto& constant_proto : proto.constants()) {
@@ -2016,6 +2270,9 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
       params.executable_abi_version,
       se::ExecutableAbiVersion::FromProto(proto.executable_abi_version()));
 
+  if (debug_module != nullptr) {
+    params.hlo_module = std::move(debug_module);
+  }
   return CreateImpl(std::move(params), std::move(module_config_metadata));
 }
 
