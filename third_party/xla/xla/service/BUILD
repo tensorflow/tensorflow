@@ -4714,6 +4714,7 @@ xla_cc_test(
     srcs = ["while_util_test.cc"],
     deps = [
         ":while_util",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -6279,6 +6280,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
+        "//xla/hlo/testlib:verified_hlo_module",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
