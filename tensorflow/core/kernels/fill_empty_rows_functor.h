@@ -58,15 +58,15 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
 
     const Tindex N = indices_t.shape().dim_size(0);
     const Tindex dense_rows = dense_shape(0);
+    TensorShape dense_rows_shape;
+    TF_RETURN_IF_ERROR(
+        TensorShape::BuildTensorShape({dense_rows}, &dense_rows_shape));
 
     bool* empty_row_indicator = nullptr;
     if (context->output_required(kEmptyRowIndicatorOutput)) {
       Tensor* empty_row_indicator_t = nullptr;
-      TensorShape output_shape;
-      TF_RETURN_IF_ERROR(
-          TensorShape::BuildTensorShape({dense_rows}, &output_shape));
       TF_RETURN_IF_ERROR(context->allocate_output(
-          kEmptyRowIndicatorOutput, output_shape, &empty_row_indicator_t));
+          kEmptyRowIndicatorOutput, dense_rows_shape, &empty_row_indicator_t));
       empty_row_indicator = empty_row_indicator_t->vec<bool>().data();
     }
     Tindex* reverse_index_map = nullptr;
@@ -212,11 +212,13 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
 
 template <typename Device, typename T, typename Tindex>
 struct FillEmptyRowsGrad {
+  // Note that the done callback is only used by the GPU implementation.
   absl::Status operator()(OpKernelContext* context,
                           typename TTypes<Tindex>::ConstVec reverse_index_map,
                           typename TTypes<T>::ConstVec grad_values,
                           typename TTypes<T>::Vec d_values,
-                          typename TTypes<T>::Scalar d_default_value);
+                          typename TTypes<T>::Scalar d_default_value,
+                          typename AsyncOpKernel::DoneCallback done = nullptr);
 };
 
 template <typename T, typename Tindex>
@@ -225,7 +227,9 @@ struct FillEmptyRowsGrad<CPUDevice, T, Tindex> {
                           typename TTypes<Tindex>::ConstVec reverse_index_map,
                           typename TTypes<T>::ConstVec grad_values,
                           typename TTypes<T>::Vec d_values,
-                          typename TTypes<T>::Scalar d_default_value) {
+                          typename TTypes<T>::Scalar d_default_value,
+                          typename AsyncOpKernel::DoneCallback done) {
+    (void)done;  // Unused (only used in GPU implementation)
     const CPUDevice& device = context->eigen_device<CPUDevice>();
     const Tindex N = reverse_index_map.dimension(0);
     const Tindex N_full = grad_values.dimension(0);
