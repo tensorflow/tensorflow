@@ -3455,12 +3455,17 @@ class Graph(pywrap_tf_session.PyGraph):
       A context manager that installs `name` as a new name scope.
 
     Raises:
+      TypeError: If `name` is not a string or bytes.
       ValueError: If `name` is not a valid scope name, according to the rules
         above.
     """
     if name:
-      if isinstance(name, compat.bytes_or_text_types):
-        name = compat.as_str(name)
+      if not isinstance(name, compat.bytes_or_text_types):
+        raise TypeError(
+            f"Argument `name` must be a string. "
+            f"Received '{name}' of type {type(name).__name__}."
+        )
+      name = compat.as_str(name)
 
       if self._name_stack:
         # Scopes created in a nested scope may have initial characters
@@ -5619,7 +5624,16 @@ def name_scope(
 
   Returns:
     `name_scope*` context manager.
+
+  Raises:
+    TypeError: If `name` is not a string or bytes.
   """
+  if name is not None and not isinstance(name, compat.bytes_or_text_types):
+    raise TypeError(
+        f"Argument `name` must be a string. "
+        f"Received '{name}' of type {type(name).__name__}."
+    )
+
   if not context.executing_eagerly():
     return internal_name_scope_v1(name, default_name, values)
 
@@ -5656,12 +5670,17 @@ class internal_name_scope_v1(contextlib.AbstractContextManager[str]):  # pylint:
       values: The list of `Tensor` arguments that are passed to the op function.
 
     Raises:
-      TypeError: if `default_name` is passed in but not a string.
+      TypeError: If `name` or `default_name` is passed in but not a string or bytes.
     """
     if not (default_name is None or isinstance(default_name, str)):
       raise TypeError(
           "`default_name` type (%s) is not a string type. You likely meant to "
           "pass this into the `values` kwarg." % type(default_name))
+    if name is not None and not isinstance(name, compat.bytes_or_text_types):
+      raise TypeError(
+          f"Argument `name` must be a string. "
+          f"Received '{name}' of type {type(name).__name__}."
+      )
     self._name = default_name if name is None else name
     self._default_name = default_name
     self._values = values
@@ -5753,8 +5772,13 @@ class name_scope_v1(contextlib.AbstractContextManager[Optional[str]]):  # pylint
       values: The list of `Tensor` arguments that are passed to the op function.
 
     Raises:
-      TypeError: if `default_name` is passed in but not a string.
+      TypeError: If `name` or `default_name` is passed in but not a string or bytes.
     """
+    if name is not None and not isinstance(name, compat.bytes_or_text_types):
+      raise TypeError(
+          f"Argument `name` must be a string. "
+          f"Received '{name}' of type {type(name).__name__}."
+      )
     self._name_scope = name_scope(
         name, default_name, values, skip_on_eager=False)
     self._name = default_name if name is None else name
@@ -5837,11 +5861,15 @@ class name_scope_v2(contextlib.AbstractContextManager[str]):
       name: The prefix to use on all names created within the name scope.
 
     Raises:
-      ValueError: If name is not a string.
+      TypeError: If name is not a string.
+      ValueError: If name is not a string (for backwards compatibility).
     """
-    if not isinstance(name, str):
-      raise ValueError("name for name_scope must be a string.")
-    self._name = name
+    if not isinstance(name, compat.bytes_or_text_types):
+      raise TypeError(
+          f"Argument `name` must be a string. "
+          f"Received '{name}' of type {type(name).__name__}."
+      )
+    self._name = compat.as_str(name)
     self._exit_fns = []
 
   @property
