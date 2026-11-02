@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
@@ -853,10 +854,13 @@ TilingSpace::SimplificationResult TilingSpace::SimplifyExpressions(
   return result;
 }
 
-absl::StatusOr<std::vector<int64_t>> PossibleTileSizesForOneDimension(
-    int64_t dim_size) {
+absl::StatusOr<std::vector<int64_t>> GetPowerOf2TileSizesInRange(
+    int64_t dim_size, int64_t min_tile_size) {
   if (dim_size < 0) {
     return absl::InvalidArgumentError("Dimension size must be non-negative.");
+  }
+  if (min_tile_size < 1) {
+    return absl::InvalidArgumentError("Minimum tile size must be positive.");
   }
   if (dim_size == 0) {
     return std::vector<int64_t>{0};
@@ -864,7 +868,8 @@ absl::StatusOr<std::vector<int64_t>> PossibleTileSizesForOneDimension(
 
   std::vector<int64_t> result;
   result.reserve(absl::bit_width(static_cast<uint64_t>(dim_size)));
-  for (int64_t tile_size = 1; tile_size < dim_size; tile_size *= 2) {
+  for (int64_t tile_size = llvm::PowerOf2Ceil(min_tile_size);
+       tile_size < dim_size; tile_size *= 2) {
     result.push_back(tile_size);
   }
   result.push_back(dim_size);
@@ -872,48 +877,16 @@ absl::StatusOr<std::vector<int64_t>> PossibleTileSizesForOneDimension(
 }
 
 absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>
-TilingSpace::GetValidTilings(bool tile_reduction_dimensions) {
+TilingSpace::GetValidTilings(TileSizesForDimFn get_valid_tile_sizes_for_dim) {
   // TODO: b/511080616 - returned tilings should be valid. Right now we return
   // all possible tilings and rely on the downstream to check the validity.
-  // TODO(b/534676634): Lift this condition once multi-reduction and
-  // multi-dimension reduction fusions are supported.
-  // Reduction dimensions are only tiled when requested and the fusion has a
-  // single reduce that reduces a single dimension. Otherwise, sequential reduce
-  // dimensions are not tiled. Row-local scan dimensions
-  // (`<= kMaxRowLocalScanDimSize`) are likewise kept in a single tile, matching
-  // the producer fusion invariant in PriorityFusion.
-  const int64_t num_reduction_dims =
-      absl::c_count_if(dimensions_, [](const DimensionInfo& dim) {
-        return dim.type == DimensionSemantics::kSequential &&
-               dim.hlo->opcode() == HloOpcode::kReduce;
-      });
-  const bool tile_reduction_dims =
-      tile_reduction_dimensions && num_reduction_dims == 1;
-  auto is_untiled_dim = [&](const DimensionInfo& dim) {
-    if (dim.type != DimensionSemantics::kSequential) {
-      return false;
-    }
-    if (dim.hlo->opcode() == HloOpcode::kReduce) {
-      return !tile_reduction_dims;
-    }
-    if (dim.hlo->opcode() == HloOpcode::kScan) {
-      return dim.dimension_size <= kMaxRowLocalScanDimSize;
-    }
-    return false;
-  };
-
   std::vector<llvm::SmallVector<int64_t, 4>> valid_tilings = {{}};
   for (const DimensionInfo& dim : dimensions_) {
     if (dim.type == DimensionSemantics::kReplica) {
       continue;
     }
-    std::vector<int64_t> possible_tile_sizes;
-    if (is_untiled_dim(dim)) {
-      possible_tile_sizes = {dim.dimension_size};
-    } else {
-      ABSL_ASSIGN_OR_RETURN(possible_tile_sizes,
-                       PossibleTileSizesForOneDimension(dim.dimension_size));
-    }
+    ABSL_ASSIGN_OR_RETURN(std::vector<int64_t> possible_tile_sizes,
+                     get_valid_tile_sizes_for_dim(dim));
     std::vector<llvm::SmallVector<int64_t, 4>> extended_tilings;
     extended_tilings.reserve(valid_tilings.size() * possible_tile_sizes.size());
     for (const auto& tiling : valid_tilings) {
@@ -926,5 +899,12 @@ TilingSpace::GetValidTilings(bool tile_reduction_dimensions) {
     valid_tilings = std::move(extended_tilings);
   }
   return valid_tilings;
+}
+
+absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>>
+TilingSpace::GetValidTilings() {
+  return GetValidTilings([](const DimensionInfo& dim) {
+    return GetPowerOf2TileSizesInRange(dim.dimension_size);
+  });
 }
 }  // namespace xla::gpu

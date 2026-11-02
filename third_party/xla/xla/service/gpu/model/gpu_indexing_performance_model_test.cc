@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -72,8 +73,13 @@ namespace {
 
 namespace dot_model = ::xla::gpu::gpu_dot_fusion_cost_model::detail;
 
+using ::testing::Contains;
+using ::testing::Each;
 using ::testing::ElementsAre;
+using ::testing::Field;
+using ::testing::Ge;
 using ::testing::IsEmpty;
+using ::testing::Not;
 using ::testing::SizeIs;
 using ::xla::xtile::BlockLevelParameters;
 
@@ -1748,8 +1754,7 @@ TEST_P(RegisterFitConsistencyTest, PreFilterMatchesExactFitCheck) {
                                                    device_info_);
   };
 
-  ASSERT_OK_AND_ASSIGN(auto tilings, tiling_space->GetValidTilings(
-                                         /*tile_reduction_dimensions=*/true));
+  ASSERT_OK_AND_ASSIGN(auto tilings, tiling_space->GetValidTilings());
   const int64_t rank = tilings.front().size();
   const llvm::SmallVector<int64_t, 4> fitting_tile_sizes(rank, 1);
   EXPECT_TRUE(passes_precheck(fitting_tile_sizes));
@@ -1965,6 +1970,115 @@ ENTRY entry {
     [](const ::testing::TestParamInfo<RegisterFitTestCase>& info) {
       return info.param.name;
     });
+TEST_F(GpuIndexingPerformanceModelTest,
+       TryFindTopKBestTilings_PrunesReductionDimensionTilings) {
+  auto get_top_k_for_hlo = [&](absl::string_view hlo) {
+    auto module = ParseAndReturnVerifiedModule(hlo);
+    CHECK_OK(module);
+    module.value()
+        ->mutable_config()
+        .mutable_debug_options()
+        .set_xla_gpu_experimental_enable_reduction_dimension_tiling(true);
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+        module.value()->entry_computation()->root_instruction());
+    auto result = indexing_cost_model_
+                      .TryFindTopKBestTilingsForFusionAsync(*fusion_adaptor,
+                                                            /*top_k=*/1000)
+                      .Await();
+    CHECK_OK(result);
+    return std::get<absl::InlinedVector<TiledRunTimeData, 4>>(*result);
+  };
+  auto get_top_k = [&](int64_t d0, int64_t d1, int64_t reduce_dim) {
+    return get_top_k_for_hlo(absl::Substitute(
+        R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[$0,$1]{1,0} parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[$2]{0} reduce(p0, c0), dimensions={$3}, to_apply=add
+}
+ENTRY main {
+  p0 = f32[$0,$1]{1,0} parameter(0)
+  ROOT fusion = f32[$2]{0} fusion(p0), kind=kCustom, calls=fused
+})",
+        d0, d1, reduce_dim == 0 ? d1 : d0, reduce_dim));
+  };
+  auto seq_tiles_are = [](auto matcher) {
+    return Field(&TiledRunTimeData::block_level_parameters,
+                 Field(&BlockLevelParameters::sequential_tile_sizes, matcher));
+  };
+
+  // Power-of-two contiguous reduction <= 256 is kept untiled.
+  EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/1),
+              Each(seq_tiles_are(IsEmpty())));
+
+  // Non-power-of-two contiguous reduction in (128, 256) is tiled, with
+  // sequential tile sizes < 16 pruned.
+  auto non_pow2 = get_top_k(128, 192, /*reduce_dim=*/1);
+  EXPECT_THAT(non_pow2, Contains(seq_tiles_are(Not(IsEmpty()))));
+  EXPECT_THAT(non_pow2, Each(seq_tiles_are(Each(Ge(16)))));
+
+  // Strided reduction with reduction_size >= 64 and minor_dim_size >= 128
+  // is tiled and retains small sequential tile sizes (< 16).
+  EXPECT_THAT(get_top_k(128, 256, /*reduce_dim=*/0),
+              Contains(seq_tiles_are(ElementsAre(2))));
+
+  // Strided reductions with reduction_size < 64 or (reduction_size <= 256 and
+  // minor_dim_size < 128) are kept untiled.
+  EXPECT_THAT(get_top_k(32, 256, /*reduce_dim=*/0),
+              Each(seq_tiles_are(IsEmpty())));
+  EXPECT_THAT(get_top_k(128, 64, /*reduce_dim=*/0),
+              Each(seq_tiles_are(IsEmpty())));
+
+  // Zero-sized reduction dimension is kept untiled without error.
+  EXPECT_THAT(get_top_k(128, 0, /*reduce_dim=*/1),
+              Each(seq_tiles_are(IsEmpty())));
+
+  // Multi-dimension reductions and fusions with multiple reductions keep all
+  // reduction dimensions untiled.
+  EXPECT_THAT(get_top_k_for_hlo(R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[8,16,512]{2,1,0} parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[8]{0} reduce(p0, c0), dimensions={1,2}, to_apply=add
+}
+ENTRY main {
+  p0 = f32[8,16,512]{2,1,0} parameter(0)
+  ROOT fusion = f32[8]{0} fusion(p0), kind=kCustom, calls=fused
+})"),
+              Each(seq_tiles_are(IsEmpty())));
+
+  EXPECT_THAT(get_top_k_for_hlo(R"(
+HloModule m
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+fused {
+  p0 = f32[8,16,512]{2,1,0} parameter(0)
+  c0 = f32[] constant(0)
+  r0 = f32[8,16]{1,0} reduce(p0, c0), dimensions={2}, to_apply=add
+  ROOT r1 = f32[8]{0} reduce(r0, c0), dimensions={1}, to_apply=add
+}
+ENTRY main {
+  p0 = f32[8,16,512]{2,1,0} parameter(0)
+  ROOT fusion = f32[8]{0} fusion(p0), kind=kCustom, calls=fused
+})"),
+              Each(seq_tiles_are(IsEmpty())));
+}
+
 TEST_F(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_ReduceWithReductionLoop) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
