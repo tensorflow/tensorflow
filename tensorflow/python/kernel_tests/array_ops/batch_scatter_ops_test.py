@@ -20,6 +20,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -54,13 +55,16 @@ class ScatterTest(test.TestCase):
       for indices_shape in (2,), (3, 7), (3, 4, 7):
         for extra_shape in (), (5,), (5, 9):
           # Generate random indices with no duplicates for easy numpy comparison
-          # (a random permutation of the last dimension in each batch row).
+          # while leaving untouched slots along the scatter dimension.
+          num_slots = indices_shape[-1] + 2
           indices = np.argsort(
-              np.random.rand(*indices_shape), axis=-1).astype(itype)
+              np.random.rand(*(indices_shape[:-1] + (num_slots,))), axis=-1
+          )[..., :indices_shape[-1]].astype(itype)
           updates = _AsType(
               np.random.randn(*(indices_shape + extra_shape)), vtype)
 
-          old = _AsType(np.random.randn(*(indices_shape + extra_shape)), vtype)
+          old_shape = indices_shape[:-1] + (num_slots,) + extra_shape
+          old = _AsType(np.random.randn(*old_shape), vtype)
 
           # Scatter via numpy
           new = old.copy()
@@ -84,6 +88,7 @@ class ScatterTest(test.TestCase):
         self._VariableRankTest(
             state_ops.batch_scatter_update, vtype, itype)
 
+  @test_util.disable_xla('Cannot force cpu placement for xla_gpu test')
   def testBooleanScatterUpdate(self):
     # There is no GPU kernel for ResourceScatterNdUpdate with bool values.
     with ops.device('/cpu:0'):
@@ -98,6 +103,7 @@ class ScatterTest(test.TestCase):
 
       self.assertAllEqual([False, True], self.evaluate(var))
 
+  @test_util.disable_xla('Cannot force cpu placement for xla_gpu test')
   def testScatterOutOfRange(self):
     # Only the CPU kernel reports out-of-range indices as an error.
     with ops.device('/cpu:0'):

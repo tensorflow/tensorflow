@@ -90,6 +90,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
