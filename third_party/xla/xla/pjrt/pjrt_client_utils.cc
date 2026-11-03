@@ -16,13 +16,19 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client_utils.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
@@ -48,6 +54,54 @@ absl::StatusOr<std::vector<Shape>> ConvertShapeSpecsToShapes(
     }
   }
   return device_shapes;
+}
+
+std::string GetPluginStablehloVersionOrDefault(const PjRtClient* client) {
+  // If the plugin is not set, use the default.
+  if (!client) {
+    return xla::GetDefaultStablehloVersion();
+  }
+
+  // If the plugin doesn't have attributes, use the default.
+  std::optional<PjRtPluginAttributes> attributes = client->plugin_attributes();
+  if (!attributes.has_value()) {
+    return xla::GetDefaultStablehloVersion();
+  }
+
+  // If plugin doesn't report its StableHLO version, use the default.
+  const auto& attr_map = attributes->attributes;
+  auto version = attr_map.find("stablehlo_current_version");
+  if (version == attr_map.end()) {
+    return xla::GetDefaultStablehloVersion();
+  }
+
+  const std::vector<int64_t>& v =
+      std::get<std::vector<int64_t>>(version->second);
+  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
+}
+
+std::string GetPluginSdyVersionOrDefault(const PjRtClient* client) {
+  // If the plugin is not set, use the default.
+  if (!client) {
+    return xla::GetDefaultSdyVersion();
+  }
+
+  // If the plugin doesn't have attributes, use the default.
+  std::optional<PjRtPluginAttributes> attributes = client->plugin_attributes();
+  if (!attributes.has_value()) {
+    return xla::GetDefaultSdyVersion();
+  }
+
+  // If plugin doesn't report its Shardy version, use the default.
+  const auto& attr_map = attributes->attributes;
+  auto version = attr_map.find("sdy_current_version");
+  if (version == attr_map.end()) {
+    return xla::GetDefaultSdyVersion();
+  }
+
+  const std::vector<int64_t>& v =
+      std::get<std::vector<int64_t>>(version->second);
+  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
 }
 
 }  // namespace xla

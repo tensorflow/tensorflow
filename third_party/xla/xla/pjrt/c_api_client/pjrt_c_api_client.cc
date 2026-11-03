@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client_utils.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -555,51 +556,6 @@ absl::Span<PjRtMemorySpace* const> PjRtCApiClient::memory_spaces() const {
 }
 
 namespace {
-std::string GetPluginStablehloVersionOrDefault(PjRtClient* client) {
-  // If the plugin is not set, use the default.
-  if (!client) {
-    return xla::GetDefaultStablehloVersion();
-  }
-
-  // If the plugin doesn't have attributes, use the default.
-  auto attributes = client->plugin_attributes();
-  if (!attributes.has_value()) {
-    return xla::GetDefaultStablehloVersion();
-  }
-
-  // If plugin doesn't report its StableHLO version, use the default.
-  auto attr_map = attributes->attributes;
-  auto version = attr_map.find("stablehlo_current_version");
-  if (version == attr_map.end()) {
-    return xla::GetDefaultStablehloVersion();
-  }
-
-  std::vector<int64_t> v = std::get<std::vector<int64_t>>(version->second);
-  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
-}
-
-std::string GetPluginSdyVersionOrDefault(PjRtClient* client) {
-  // If the plugin is not set, use the default.
-  if (!client) {
-    return xla::GetDefaultSdyVersion();
-  }
-
-  // If the plugin doesn't have attributes, use the default.
-  auto attributes = client->plugin_attributes();
-  if (!attributes.has_value()) {
-    return xla::GetDefaultSdyVersion();
-  }
-
-  // If plugin doesn't report its Shardy version, use the default.
-  auto attr_map = attributes->attributes;
-  auto version = attr_map.find("sdy_current_version");
-  if (version == attr_map.end()) {
-    return xla::GetDefaultSdyVersion();
-  }
-
-  std::vector<int64_t> v = std::get<std::vector<int64_t>>(version->second);
-  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
-}
 
 // Either MLIR module or HLO program.
 // MLIR inputs have compatibility guarantees, and may be mutated in place for
