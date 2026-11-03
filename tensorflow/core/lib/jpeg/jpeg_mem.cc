@@ -86,8 +86,8 @@ bool IsCropWindowValid(const UncompressFlags& flags, int input_image_width,
   // within the original image.
   return flags.crop_width > 0 && flags.crop_height > 0 && flags.crop_x >= 0 &&
          flags.crop_y >= 0 &&
-         flags.crop_y + flags.crop_height <= input_image_height &&
-         flags.crop_x + flags.crop_width <= input_image_width;
+         flags.crop_height <= input_image_height - flags.crop_y &&
+         flags.crop_width <= input_image_width - flags.crop_x;
 }
 
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
