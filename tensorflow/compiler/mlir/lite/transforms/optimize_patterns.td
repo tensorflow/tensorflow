@@ -21,7 +21,6 @@ include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
-include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 include "mlir/IR/CommonAttrConstraints.td"
 
@@ -987,11 +986,6 @@ def MatchPRelu : Pat<
    (HasOneUse $mul_out),
    (HasOneUse $input_neg_out)]>;
 
-// The constant folding in this pass might produce constant in the tf dialect.
-// This rule is to legalize these constant to the tfl dialect.
-def LegalizeConstOp : Pat<
-  (TF_ConstOp ElementsAttr:$value), (TFL_ConstOp $value)>;
-
 // Reorders adds to allow constant folding.
 // Add --> Add $input, $constantA
 //    \--> $constantB
@@ -1716,41 +1710,11 @@ def MatchGeluApproximate1_Mul3 : Pat<
    (HasOneUse $mul_out4),
   ]>;
 
-// For Gelu, replaces
-//   0.5 * x * ( 1 + erf( x * sqrt_1_2 ) )
-def MatchGelu : Pat<
-  (TFL_MulOp
-   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
-   (TFL_AddOp:$add_out
-    (TF_ErfOp:$erf_out
-     (TFL_MulOp:$mul_out1 $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_1_2), TFL_AF_None)),
-    (Arith_ConstantOp  F32ElementsAttr:$Cst_1), TFL_AF_None), TFL_AF_None),
-  (TFL_GeluOp $arg0, ConstBoolAttrFalse),
-  [(FloatValueEquals<"0.5"> $Cst_1_2),
-   (FloatValueEquals<"1"> $Cst_1),
-   (FloatValueEquals<"0.707106769"> $Cst_sqrt_1_2),
-   (HasOneUse $mul_out),
-   (HasOneUse $add_out),
-   (HasOneUse $erf_out),
-   (HasOneUse $mul_out1),
-  ]>;
-
-// For Gelu, replaces
-//   0.5 * x * ( erfc( -x * sqrt_1_2 ) )
-def MatchGeluWithErfc : Pat<
-  (TFL_MulOp
-   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
-   (TF_ErfcOp:$erfc_out
-    (TFL_MulOp:$mul_out1
-     (TFL_NegOp $arg0),
-     (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_1_2), TFL_AF_None)), TFL_AF_None),
-  (TFL_GeluOp $arg0, ConstBoolAttrFalse),
-  [(FloatValueEquals<"0.5"> $Cst_1_2),
-   (FloatValueEquals<"0.707106769"> $Cst_sqrt_1_2),
-   (HasOneUse $mul_out),
-   (HasOneUse $erfc_out),
-   (HasOneUse $mul_out1),
-  ]>;
+// The patterns that match TF ops left by the TensorFlow lowering
+// (`MatchGeluWithTFErf` / `MatchGeluWithTFErfc` for GELU with `tf.Erf` /
+// `tf.Erfc`, and `LegalizeTFConstOp` for `tf.Const`) are written in C++ in
+// optimize_pass.cc and match the TF ops by name, so that this pass does not
+// depend on the TF dialect.
 
 // Fetches the output of FC op, from the provided arguments.
 def GetFcOutput : NativeCodeCall<

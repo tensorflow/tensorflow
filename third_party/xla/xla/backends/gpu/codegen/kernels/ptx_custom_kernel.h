@@ -16,10 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_KERNELS_PTX_CUSTOM_KERNEL_H_
 #define XLA_BACKENDS_GPU_CODEGEN_KERNELS_PTX_CUSTOM_KERNEL_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,31 +25,17 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu::kernel {
 
-absl::StatusOr<CustomKernel> GetPtxCustomKernel(std::string kernel_name,
-                                                absl::string_view ptx,
-                                                int num_args,
-                                                se::BlockDim block_dim,
-                                                se::ThreadDim thread_dim,
-                                                size_t shared_memory_bytes = 0);
+absl::StatusOr<CustomKernel> GetPtxCustomKernel(const GpuKernelSpec& spec,
+                                                absl::string_view ptx);
 
-absl::StatusOr<CustomKernel> GetPtxCustomKernel(
-    std::string kernel_name, absl::string_view ptx, int num_args,
-    se::BlockDim block_dim, se::ThreadDim thread_dim,
-    se::ClusterDim cluster_dim, size_t shared_memory_bytes = 0);
-
-absl::StatusOr<CustomKernel> GetOwnedPtxCustomKernel(
-    std::string kernel_name, std::string ptx, int num_args,
-    se::BlockDim block_dim, se::ThreadDim thread_dim,
-    size_t shared_memory_bytes = 0);
+absl::StatusOr<CustomKernel> GetOwnedPtxCustomKernel(const GpuKernelSpec& spec,
+                                                     std::string ptx);
 
 absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
-    std::string kernel_name, std::vector<uint8_t> cubin, int num_args,
-    se::BlockDim block_dim, se::ThreadDim thread_dim,
-    size_t shared_memory_bytes);
+    const GpuKernelSpec& spec, std::vector<uint8_t> cubin);
 
 // Like CreateOwnedCubinCustomKernel, but the CUBIN buffer is shared instead of
 // copied. Prefer this whenever the CUBIN is already held in a reference counted

@@ -24,7 +24,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
@@ -86,10 +90,16 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernel) {
   se::gpu::CudaPlatform platform;
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
                        platform.ExecutorForDevice(0));
-  ASSERT_OK_AND_ASSIGN(
-      CustomKernel custom_kernel,
-      GetPtxCustomKernel("AddI32", kAddI32KernelPtx, 3, se::BlockDim(4),
-                         se::ThreadDim(1), byte_length));
+
+  GpuKernelSpec spec{
+      "AddI32", LaunchDimensions{se::BlockDim(4), se::ThreadDim(1)},
+      emitters::KernelArguments{std::vector<emitters::KernelArgument>{
+          emitters::KernelArgument{Shape{S32, {}}},
+          emitters::KernelArgument{Shape{S32, {}}},
+          emitters::KernelArgument{Shape{S32, {}}}}},
+      byte_length};
+  ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
+                       GetPtxCustomKernel(spec, kAddI32KernelPtx));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Kernel> kernel,
                        executor->LoadKernel(custom_kernel.kernel_spec()));
 
@@ -126,10 +136,19 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernelWithClusterDim) {
   se::gpu::CudaPlatform platform;
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
                        platform.ExecutorForDevice(0));
-  ASSERT_OK_AND_ASSIGN(
-      CustomKernel custom_kernel,
-      GetPtxCustomKernel("AddI32", kAddI32KernelPtx, 3, se::BlockDim(4),
-                         se::ThreadDim(1), se::ClusterDim(2), byte_length));
+  GpuKernelSpec spec{
+      "AddI32",
+      LaunchDimensions{se::BlockDim(4), se::ThreadDim(1)},
+      emitters::KernelArguments{std::vector<emitters::KernelArgument>{
+          emitters::KernelArgument{Shape{S32, {}}},
+          emitters::KernelArgument{Shape{S32, {}}},
+          emitters::KernelArgument{Shape{S32, {}}}}},
+      byte_length,
+      false,
+      {},
+      se::ClusterDim(2)};
+  ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
+                       GetPtxCustomKernel(spec, kAddI32KernelPtx));
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Kernel> kernel,
                        executor->LoadKernel(custom_kernel.kernel_spec()));
 
@@ -204,10 +223,15 @@ TEST(PtxCustomKernelTest, GetOwnedPtxCustomKernel) {
   se::gpu::CudaPlatform platform;
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
                        platform.ExecutorForDevice(0));
-  ASSERT_OK_AND_ASSIGN(
-      CustomKernel custom_kernel,
-      GetOwnedPtxCustomKernel("AddI32", kAddI32KernelPtx, 3, se::BlockDim(4),
-                              se::ThreadDim(1), byte_length));
+  GpuKernelSpec spec{
+      "AddI32", LaunchDimensions{se::BlockDim(4), se::ThreadDim(1)},
+      emitters::KernelArguments{std::vector<emitters::KernelArgument>{
+          emitters::KernelArgument{Shape{S32, {}}},
+          emitters::KernelArgument{Shape{S32, {}}},
+          emitters::KernelArgument{Shape{S32, {}}}}},
+      byte_length};
+  ASSERT_OK_AND_ASSIGN(CustomKernel custom_kernel,
+                       GetOwnedPtxCustomKernel(spec, kAddI32KernelPtx));
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Kernel> kernel,
                        executor->LoadKernel(custom_kernel.kernel_spec()));

@@ -69,6 +69,17 @@ using CuptiBuffersCallbackCompleteFuncV2 =
     void(CUPTIAPI*)(uint8_t* buffer, size_t size, size_t valid_size,
                     void* buffer_complete_info);
 
+// Keep optional V2 paths buildable with older CUPTI headers; weak symbol checks
+// still decide runtime availability.
+// CUPTI_ACTIVITY_ATTR_ENABLE_MULTI_SUBSCRIBER_GRAPH_TRACE = 20 (CUDA 13.3+).
+inline constexpr CUpti_ActivityAttribute
+    kCuptiActivityAttrEnableMultiSubscriberGraphTrace =
+        static_cast<CUpti_ActivityAttribute>(20);
+#if CUDA_VERSION >= 13030
+static_assert(kCuptiActivityAttrEnableMultiSubscriberGraphTrace ==
+              CUPTI_ACTIVITY_ATTR_ENABLE_MULTI_SUBSCRIBER_GRAPH_TRACE);
+#endif
+
 // Provides a wrapper interface to every CUPTI API function. This class provides
 // a seam for mocking individual CUPTI calls. CuptiTracer selects V1 or weakly
 // linked V2 APIs per session at runtime; the two activity API families must not

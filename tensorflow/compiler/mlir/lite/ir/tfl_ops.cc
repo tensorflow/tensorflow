@@ -84,13 +84,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 // TODO(b/493282789): Enable DenseResourceElementsAttr constant folding with
@@ -105,14 +105,14 @@ namespace mlir {
 namespace TFL {
 
 // go/keep-sorted start
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
+TFL_INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
 // go/keep-sorted end
 
 namespace {
@@ -2077,9 +2077,150 @@ struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
   }
 };
 
+// Returns true if `user` can take a BROADCAST_TO operand's input directly and
+// broadcast it implicitly. For these users optimize_broadcast_like drops the
+// BROADCAST_TO, which is better than materializing it: the constant stays
+// small, and patterns that look at the unbroadcast operand still match (e.g.
+// EQUAL against a 0..N-1 sequence becomes ONE_HOT). Mirrors the rank limits in
+// optimize_broadcast_like_pass.cc.
+static bool CanBroadcastImplicitly(Operation* user) {
+  if (llvm::isa<BatchMatMulOp>(user)) return true;
+  if (!user->hasTrait<OpTrait::ResultsBroadcastableShape>() ||
+      user->getNumOperands() != 2 || user->getNumResults() != 1 ||
+      llvm::isa<PReluOp>(user)) {
+    return false;
+  }
+  auto result_type =
+      mlir::dyn_cast<RankedTensorType>(user->getResult(0).getType());
+  if (!result_type) return false;
+  int64_t max_rank = 4;
+  if (llvm::isa<AddOp, SubOp, MulOp>(user)) {
+    max_rank = 6;
+  } else if (llvm::isa<DivOp>(user)) {
+    max_rank = 5;
+  }
+  return result_type.getRank() <= max_rank;
+}
+
+// Materializes `input` broadcast to `out_type` (right-aligned, each input dim
+// 1 or equal to the output dim). Returns null if the shapes do not broadcast.
+static DenseElementsAttr BroadcastElements(DenseElementsAttr input,
+                                           RankedTensorType out_type) {
+  if (input.isSplat()) {
+    return DenseElementsAttr::get(out_type, input.getSplatValue<Attribute>());
+  }
+  auto in_type = mlir::cast<ShapedType>(input.getType());
+  const ArrayRef<int64_t> in_shape = in_type.getShape();
+  const ArrayRef<int64_t> out_shape = out_type.getShape();
+  const int64_t out_rank = out_shape.size();
+  const int64_t in_rank = in_shape.size();
+  if (in_rank > out_rank) return {};
+  for (int64_t i = 0; i < in_rank; ++i) {
+    const int64_t in_d = in_shape[in_rank - 1 - i];
+    const int64_t out_d = out_shape[out_rank - 1 - i];
+    if (in_d != 1 && in_d != out_d) return {};
+  }
+
+  // Input strides, laid over the output rank (0 for broadcast dims).
+  llvm::SmallVector<int64_t> in_strides(out_rank, 0);
+  int64_t stride = 1;
+  for (int64_t i = in_rank - 1; i >= 0; --i) {
+    const int64_t o = i + (out_rank - in_rank);
+    in_strides[o] = in_shape[i] == 1 ? 0 : stride;
+    stride *= in_shape[i];
+  }
+
+  const auto in_values = llvm::to_vector(input.getValues<Attribute>());
+  const int64_t num_out = out_type.getNumElements();
+  std::vector<Attribute> result(num_out);
+  llvm::SmallVector<int64_t> idx(out_rank, 0);
+  for (int64_t flat = 0; flat < num_out; ++flat) {
+    int64_t src = 0;
+    for (int64_t d = 0; d < out_rank; ++d) src += idx[d] * in_strides[d];
+    result[flat] = in_values[src];
+    for (int64_t d = out_rank - 1; d >= 0; --d) {
+      if (++idx[d] < out_shape[d]) break;
+      idx[d] = 0;
+    }
+  }
+  return DenseElementsAttr::get(out_type, result);
+}
+
+// Replaces a BROADCAST_TO of a constant with the broadcast constant. Left
+// alone, a constant-input BROADCAST_TO survives into the flatbuffer as a
+// runtime op, and GPU delegates that require a runtime input reject it (ML
+// Drift: "inputs[0] should not be a constant tensor"). Detection heads build
+// their anchor grids this way (`meshgrid` of constant aranges lowers to
+// BROADCAST_TO); those grids are a few KB each.
+//
+// This is a pattern rather than a folder so it can look at the users: if all
+// of them broadcast implicitly, the BROADCAST_TO is left for
+// optimize_broadcast_like to drop instead.
+//
+// Materializing a broadcast grows the model, and a backend that handles
+// BROADCAST_TO natively gains nothing from it (b/579227729: 36 folds, each
+// under 1 MiB, added 55 MB of parameters to a DarwiNN model). The fold is
+// therefore bounded twice: a result must be at most
+// `kMaxBroadcastToFoldBytes`, and the fold only runs when all qualifying
+// candidates in the function together are at most
+// `kMaxBroadcastToFoldBytesPerFunction`; otherwise none of them are folded.
+// Both bounds count splats too, since the flatbuffer exporter writes them out
+// in full.
+static constexpr int64_t kMaxBroadcastToFoldBytes = 64 * 1024;  // 64 KiB
+static constexpr int64_t kMaxBroadcastToFoldBytesPerFunction =
+    256 * 1024;  // 256 KiB
+
+// Bytes a constant-input BROADCAST_TO would materialize if folded, or 0 if it
+// does not qualify for folding (non-static, non-numeric, too large, no users,
+// or only implicitly-broadcasting users).
+static int64_t BroadcastToFoldBytes(BroadcastToOp op) {
+  auto out_type = mlir::dyn_cast<RankedTensorType>(op.getType());
+  if (!out_type || !out_type.hasStaticShape() ||
+      !out_type.getElementType().isIntOrFloat()) {
+    return 0;
+  }
+  if (!matchPattern(op.getInput(), m_Constant())) return 0;
+  const int64_t bytes = out_type.getNumElements() *
+                        out_type.getElementType().getIntOrFloatBitWidth() / 8;
+  if (bytes > kMaxBroadcastToFoldBytes) return 0;
+  if (op->use_empty() || llvm::all_of(op->getUsers(), CanBroadcastImplicitly)) {
+    return 0;
+  }
+  return bytes;
+}
+
+struct FoldConstantBroadcastTo : public OpRewritePattern<BroadcastToOp> {
+  using OpRewritePattern<BroadcastToOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(BroadcastToOp op,
+                                PatternRewriter& rewriter) const override {
+    if (BroadcastToFoldBytes(op) == 0) return failure();
+    auto out_type = mlir::cast<RankedTensorType>(op.getType());
+    DenseElementsAttr input;
+    if (!matchPattern(op.getInput(), m_Constant(&input))) return failure();
+    if (!ShouldFoldOperation(op.getOperation())) return failure();
+
+    // Per-function budget over every candidate still in the function. Folded
+    // candidates are no longer BROADCAST_TO ops, so this only ever shrinks as
+    // the pattern runs; a function whose candidates exceed the budget keeps
+    // all of them.
+    if (auto* parent = op->getParentOp()) {
+      int64_t total = 0;
+      parent->walk(
+          [&](BroadcastToOp other) { total += BroadcastToFoldBytes(other); });
+      if (total > kMaxBroadcastToFoldBytesPerFunction) return failure();
+    }
+
+    DenseElementsAttr result = BroadcastElements(input, out_type);
+    if (!result) return failure();
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, out_type, result);
+    return success();
+  }
+};
+
 void BroadcastToOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.add<ConvertBroadcastToReshape>(context);
+  results.add<ConvertBroadcastToReshape, FoldConstantBroadcastTo>(context);
 }
 
 //===----------------------------------------------------------------------===//

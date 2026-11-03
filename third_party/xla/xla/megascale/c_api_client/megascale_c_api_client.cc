@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/service/collective_rendezvous.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
@@ -516,7 +517,7 @@ absl::StatusOr<PJRT_MultiSlice_Extension*> GetMultiSliceExtension(
 
 }  // namespace
 
-absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
+absl::StatusOr<xla::MultiSliceConfigRef> CreateAoTMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices) {
   ABSL_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
   ABSL_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
@@ -534,7 +535,7 @@ absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
 
   RETURN_STATUS_IF_PJRT_ERROR(extension->create_aot_config(&args), c_api);
 
-  return std::make_unique<pjrt::PjRtCApiMultiSliceConfig>(
+  return tsl::MakeRef<pjrt::PjRtCApiMultiSliceConfig>(
       args.multi_slice_config, c_api, multi_slice_extension);
 }
 
@@ -553,8 +554,7 @@ CreateMegascaleErrorAggregator(absl::string_view app_type) {
                                                         extension, c_api);
 }
 
-absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>>
-CreateMultiSliceMegascaleConfig(
+absl::StatusOr<xla::MultiSliceConfigRef> CreateMultiSliceMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices,
     int32_t local_slice_id, int32_t local_host_id,
     const xla::megascale::runtime::EndpointAddresses& endpoint_addresses,
@@ -587,7 +587,7 @@ CreateMultiSliceMegascaleConfig(
                               c_api);
 
   CHECK(args.multi_slice_config != nullptr);
-  return std::make_unique<pjrt::PjRtCApiMultiSliceConfig>(
+  return tsl::MakeRef<pjrt::PjRtCApiMultiSliceConfig>(
       args.multi_slice_config, c_api, multi_slice_extension);
 }
 

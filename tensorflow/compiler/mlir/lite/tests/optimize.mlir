@@ -4014,6 +4014,16 @@ func.func @gelu_erfc(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 // CHECK: "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<3xf32>) -> tensor<3xf32>
 }
 
+func.func @legalize_tf_const() -> tensor<2xf32> {
+  %0 = "tf.Const"() <{value = dense<[1.0, 2.0]> : tensor<2xf32>}> : () -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+
+// CHECK-LABEL: func @legalize_tf_const
+// CHECK-NOT: tf.Const
+// CHECK: %[[CST:.*]] = "tfl.pseudo_const"() <{value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>}>
+// CHECK-NEXT: return %[[CST]]
+}
+
 func.func @gelu_no_match(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst = arith.constant dense<0.707106769> : tensor<f32>
   %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
@@ -4044,6 +4054,38 @@ func.func @gelu_no_match_not_oneuse(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // CHECK-LABEL:gelu_no_match_not_oneuse
 // CHECK: "tf.Erf"
+}
+
+func.func @gelu_erfc_no_match_not_oneuse(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst = arith.constant dense<0.707106769> : tensor<f32>
+  %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
+  %0 = "tfl.neg"(%arg0) : (tensor<3xf32>) -> tensor<3xf32>
+  %1 = "tfl.mul"(%0, %cst) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %2 = "tf.Erfc"(%1) : (tensor<3xf32>) -> tensor<3xf32>
+  %3 = "tfl.mul"(%arg0, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %4 = "tfl.mul"(%3, %2) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %5 = "tfl.add"(%4, %2) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %5 : tensor<3xf32>
+
+// CHECK-LABEL: func @gelu_erfc_no_match_not_oneuse
+// CHECK: "tf.Erfc"
+// CHECK-NOT: "tfl.gelu"
+}
+
+func.func @gelu_no_match_fused_relu(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst = arith.constant dense<0.707106769> : tensor<f32>
+  %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
+  %cst_1 = arith.constant dense<1.000000e+00> : tensor<f32>
+  %0 = "tfl.mul"(%arg0, %cst_0) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %1 = "tfl.mul"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %2 = "tf.Erf"(%1) : (tensor<3xf32>) -> tensor<3xf32>
+  %3 = "tfl.add"(%2, %cst_1) {fused_activation_function = "RELU"} : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %4 = "tfl.mul"(%0, %3) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %4 : tensor<3xf32>
+
+// CHECK-LABEL: func @gelu_no_match_fused_relu
+// CHECK: "tf.Erf"
+// CHECK-NOT: "tfl.gelu"
 }
 
 func.func @gelu_approximate(%arg0: tensor<3xf32>) -> tensor<3xf32> {

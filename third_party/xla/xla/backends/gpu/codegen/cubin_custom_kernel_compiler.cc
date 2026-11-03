@@ -178,13 +178,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
                        spec, std::move(kernel_def).TakeSource(),
                        std::move(borrowed_context), hlo_module, unroll_factor));
 
-  ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
-                   kernel::CreateOwnedCubinCustomKernel(
-                       std::string(spec.name()), std::move(cubin),
-                       spec.kernel_arguments().args().size(),
-                       spec.launch_dimensions().block_counts(),
-                       spec.launch_dimensions().thread_counts_per_block(),
-                       spec.scratch_bytes().value_or(0)));
+  ABSL_ASSIGN_OR_RETURN(
+      CustomKernel custom_kernel,
+      kernel::CreateOwnedCubinCustomKernel(spec, std::move(cubin)));
 
   return std::make_unique<CustomKernelThunk>(
       std::move(thunk_info), std::move(custom_kernel), spec.kernel_arguments(),

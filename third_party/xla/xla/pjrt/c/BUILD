@@ -278,7 +278,10 @@ cc_library(
     name = "pjrt_c_api_multi_slice_internal_types",
     hdrs = ["pjrt_c_api_multi_slice_internal_types.h"],
     visibility = ["//visibility:public"],
-    deps = ["//xla/pjrt:pjrt_executable"],
+    deps = [
+        "//xla/pjrt:pjrt_executable",
+        "//xla/tsl/concurrency:ref_count",
+    ],
 )
 
 cc_library(

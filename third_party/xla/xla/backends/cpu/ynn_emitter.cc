@@ -1007,8 +1007,7 @@ absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
       } break;
 
       case HloOpcode::kDot: {
-        if (!IsDotSupportedByYnn(instr, /*allow_non_canonical_lhs=*/true)
-                 .value_or(false)) {
+        if (!IsDotSupportedByYnn(instr).value_or(false)) {
           return InvalidArgument(
               "Unsupported dot instruction in YNN fusion: %s",
               instr->ToString());

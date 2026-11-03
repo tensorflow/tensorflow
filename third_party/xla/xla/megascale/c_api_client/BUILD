@@ -60,6 +60,7 @@ cc_library(
         "//xla/pjrt/plugin:plugin_names",
         "//xla/service:collective_rendezvous",
         "//xla/stream_executor:device_address",
+        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:statusor",
