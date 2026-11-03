@@ -91,6 +91,33 @@ class BuildTest(parameterized.TestCase):
           "bazel_remote_grpc.log",
       )
 
+  def test_xla_github_actions_ci_builds_enable_bazel_diff(self) -> None:
+    builds = build.Build.all_builds()
+    for build_type in (
+        build.BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS,
+        build.BuildType.XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_CPU_WORKSPACE_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS,
+    ):
+      self.assertTrue(builds[build_type].use_bazel_diff)
+      self.assertTrue(builds[build_type].bazel_diff_use_cquery)
+    for build_type in (
+        build.BuildType.XLA_LINUX_X86_GPU_HERMETIC_ROCM_GITHUB_ACTIONS,
+        build.BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
+        build.BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
+        build.BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+    ):
+      self.assertFalse(builds[build_type].use_bazel_diff)
+    self.assertIn(
+        "-//xla/stream_executor/sycl/...",
+        builds[
+            build.BuildType.XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS
+        ].target_patterns,
+    )
+
   def test_benchmark_presubmit_builds_enable_runfile_links_and_toplevel_downloads(
       self,
   ) -> None:

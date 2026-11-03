@@ -31,6 +31,7 @@ from build_tools.ci import change_detector
 @dataclasses.dataclass(frozen=True)
 class _FakeBuildConfig:
   target_patterns: tuple[str, ...] = ("//xla/...",)
+  build_tag_filters: tuple[str, ...] = ()
   configs: tuple[str, ...] = ()
   repo_env: dict[str, str] = dataclasses.field(default_factory=dict)
   options: dict[str, object] = dataclasses.field(default_factory=dict)
@@ -44,8 +45,9 @@ def _write_impacted_targets(
     base_hashes: str,
     head_hashes: str,
     output_path: str,
+    startup_options: object = None,
 ) -> None:
-  del jar_path, workspace_dir, base_hashes, head_hashes
+  del jar_path, workspace_dir, base_hashes, head_hashes, startup_options
   with open(output_path, "w", encoding="utf-8") as f:
     f.write("//xla/service/cpu:cpu_compiler_test\n")
 
@@ -312,6 +314,13 @@ class BazelDiffTest(parameterized.TestCase):
         "rbe_linux_cuda_nvcc",
         "hermetic_cuda_umd",
     )
+    build_mock.build_tag_filters = ("-no_oss", "requires-gpu-nvidia", "gpu")
+    build_mock.target_patterns = (
+        "//xla/...",
+        "//build_tools/...",
+        "@tsl//tsl/...",
+        "-//xla/stream_executor/sycl/...",
+    )
     build_mock.repo_env = {"TF_CUDA_COMPUTE_CAPABILITIES": "7.5"}
     build_mock.options = {
         "//xla/tsl:ci_build": True,
@@ -325,11 +334,57 @@ class BazelDiffTest(parameterized.TestCase):
             "--config=warnings",
             "--config=rbe_linux_cuda_nvcc",
             "--config=hermetic_cuda_umd",
+            "--build_tag_filters=-no_oss,requires-gpu-nvidia,gpu",
+            "--universe_scope=//xla/...,//build_tools/...,@tsl//tsl/...,-//xla/stream_executor/sycl/...",
             "--repo_env=TF_CUDA_COMPUTE_CAPABILITIES=7.5",
             "--//xla/tsl:ci_build",
             "--@local_config_cuda//cuda:override_include_cuda_libs=False",
         ],
     )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="default",
+          patterns=bazel_diff.DEFAULT_CQUERY_TARGET_PATTERNS,
+          expected=(
+              "deps(//xla/...:all-targets + //build_tools/...:all-targets +"
+              " @tsl//tsl/...:all-targets)"
+          ),
+      ),
+      dict(
+          testcase_name="with_exclusions_and_colon_star",
+          patterns=(
+              "//xla/...",
+              "//build_tools/...",
+              "@tsl//tsl/...",
+              "//xla/tsl:*",
+              "-//xla/tpu/...",
+              "-//xla/backends/cpu/collectives:gloo_collectives_test",
+              "-//xla/backends/gpu/...",
+              "-//xla/service/gpu/...",
+              "-//xla/stream_executor/sycl/...",
+          ),
+          expected=(
+              "deps(//xla/...:all-targets + //build_tools/...:all-targets +"
+              " @tsl//tsl/...:all-targets + //xla/tsl:all-targets -"
+              " //xla/tpu/...:all-targets -"
+              " //xla/backends/cpu/collectives:gloo_collectives_test -"
+              " //xla/backends/gpu/...:all-targets -"
+              " //xla/service/gpu/...:all-targets -"
+              " //xla/stream_executor/sycl/...:all-targets)"
+          ),
+      ),
+      dict(
+          testcase_name="negative_only_falls_back_to_default_positives",
+          patterns=("-//xla/service/gpu/...",),
+          expected=(
+              "deps(//xla/...:all-targets + //build_tools/...:all-targets +"
+              " @tsl//tsl/...:all-targets - //xla/service/gpu/...:all-targets)"
+          ),
+      ),
+  )
+  def test_build_cquery_expression(self, patterns, expected):
+    self.assertEqual(bazel_diff.build_cquery_expression(patterns), expected)
 
   @mock.patch.object(bazel_diff.subprocess, "run")
   def test_run_generate_hashes_cquery_options(self, mock_run):
@@ -343,10 +398,23 @@ class BazelDiffTest(parameterized.TestCase):
             "--repo_env=TF_CUDA_COMPUTE_CAPABILITIES=7.5",
             "--//xla/tsl:ci_build",
         ],
+        target_patterns=(
+            "//xla/...",
+            "//build_tools/...",
+            "@tsl//tsl/...",
+            "-//xla/stream_executor/sycl/...",
+        ),
     )
     args = mock_run.call_args[0][0]
+    self.assertIn("--excludeExternalTargets", args)
     self.assertIn(
         "--fineGrainedHashExternalRepos=@tsl,@@+tsl_extension+tsl",
+        args,
+    )
+    self.assertIn(
+        "--cqueryExpression=deps(//xla/...:all-targets +"
+        " //build_tools/...:all-targets + @tsl//tsl/...:all-targets -"
+        " //xla/stream_executor/sycl/...:all-targets)",
         args,
     )
     self.assertIn(
@@ -354,6 +422,30 @@ class BazelDiffTest(parameterized.TestCase):
         " --repo_env=TF_CUDA_COMPUTE_CAPABILITIES=7.5 --//xla/tsl:ci_build",
         args,
     )
+
+  @mock.patch.object(bazel_diff.subprocess, "run", autospec=True, spec_set=True)
+  def test_run_get_impacted_targets_options(self, mock_run):
+    with mock.patch.object(
+        bazel_diff,
+        "resolve_java_bin",
+        autospec=True,
+        spec_set=True,
+        return_value="/fake/java",
+    ) as mock_resolve_java:
+      bazel_diff.run_get_impacted_targets(
+          "/tmp/bazel-diff.jar",
+          "/workspace",
+          "/tmp/base.json",
+          "/tmp/head.json",
+          "/tmp/impacted.txt",
+          startup_options=["--output_user_root=C:/x"],
+      )
+    mock_resolve_java.assert_called_once_with(
+        "/workspace", startup_options=["--output_user_root=C:/x"]
+    )
+    args = mock_run.call_args[0][0]
+    self.assertIn("--excludeExternalTargets", args)
+    self.assertIn("--bazelStartupOptions=--output_user_root=C:/x", args)
 
   @mock.patch.object(
       bazel_diff, "_touches_build_keywords", autospec=True, spec_set=True
@@ -555,7 +647,13 @@ class ComputeImpactedTargetsCheckoutTest(parameterized.TestCase):
     self.mock_get_impacted.side_effect = _write_impacted_targets
 
     decision = bazel_diff.compute_impacted_targets(
-        _FakeBuildConfig(), "base_sha", "HEAD", workspace_dir="/workspace"
+        _FakeBuildConfig(
+            target_patterns=("//xla/...", "-//xla/backends/gpu/..."),
+            startup_options={"output_user_root": "C:/x"},
+        ),
+        "base_sha",
+        "HEAD",
+        workspace_dir="/workspace",
     )
 
     self.assertEqual(
@@ -563,6 +661,18 @@ class ComputeImpactedTargetsCheckoutTest(parameterized.TestCase):
     )
     self.assertEqual(
         decision.impacted_targets, ("//xla/service/cpu:cpu_compiler_test",)
+    )
+    with open(decision.impacted_targets_file, "r", encoding="utf-8") as f:
+      self.assertEqual(f.read(), "//xla/service/cpu:cpu_compiler_test\n")
+    self.assertLen(self.mock_generate_hashes.call_args_list, 2)
+    for call in self.mock_generate_hashes.call_args_list:
+      self.assertEqual(
+          call.kwargs["target_patterns"],
+          ("//xla/...", "-//xla/backends/gpu/..."),
+      )
+    self.assertEqual(
+        self.mock_get_impacted.call_args.kwargs["startup_options"],
+        ["--output_user_root=C:/x"],
     )
     self.assertEqual(
         self.mock_subprocess_run.call_args_list,
