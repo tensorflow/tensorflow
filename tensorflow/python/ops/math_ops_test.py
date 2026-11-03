@@ -1835,6 +1835,15 @@ class ScalarCoercionTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(self.evaluate(pow_list_fn(x)), [2.0, 4.0, 8.0])
 
+    # Positive test: NumPy scalar and array coercion
+    self.assertAllClose(
+        self.evaluate(math_ops.pow(np.int32(2), x)), [2.0, 4.0, 8.0]
+    )
+    self.assertAllClose(
+        self.evaluate(math_ops.pow(np.array([2, 2, 2], dtype=np.int32), x)),
+        [2.0, 4.0, 8.0],
+    )
+
     # Negative test: Mismatched tensor dtypes must still raise TypeError / InvalidArgumentError
     y_int = constant_op.constant(2, dtype=dtypes.int32)
     with self.assertRaises((errors.InvalidArgumentError, TypeError)):
