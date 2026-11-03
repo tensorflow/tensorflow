@@ -135,10 +135,10 @@ bool CanEmitTiledLlvmIrGemm(
     return false;
   }
 
-  int m = dot_info.result_shape.dimensions(0);
-  int k = dot_info.lhs_shape.dimensions(
+  int64_t m = dot_info.result_shape.dimensions(0);
+  int64_t k = dot_info.lhs_shape.dimensions(
       dot_info.dim_nums.lhs_contracting_dimensions(0));
-  int n = dot_info.result_shape.dimensions(1);
+  int64_t n = dot_info.result_shape.dimensions(1);
 
   if (!options::ForceEnableExperimentalLlvmIrGemm(config)) {
     // TODO(sanjoy):  We should make these numbers micro-arch specific.
