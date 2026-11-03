@@ -996,6 +996,30 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       std::vector<int64_t> piece_dus_starts, HloInstruction* current_input,
       HloInstruction* zeroElemOp);
 
+  // For an update that is a chain of single-use elementwise ops over slices
+  // (and scalar broadcasts), builds the chain at the shard shape of the
+  // target directly from the slices' operands, as
+  // ProcessUpdatePieceExtractOperand does for a single slice: a slice at the
+  // update's own window then costs no communication at all, and the rows
+  // outside the window are computed and masked away. Returns nullptr when a
+  // leaf cannot be expanded; `any_comm_free` reports whether some slice was
+  // expanded without communication.
+  absl::StatusOr<HloInstruction*> ExpandElementwiseUpdate(
+      HloInstruction* hlo, const HloInstruction* input_tensor,
+      const HloInstruction* update,
+      const std::vector<int64_t>& piece_dus_starts,
+      HloInstruction* current_input, HloInstruction* zeroElemOp,
+      const absl::flat_hash_set<const HloInstruction*>& chain,
+      absl::flat_hash_map<const HloInstruction*, HloInstruction*>& memo,
+      bool* any_comm_free);
+
+  // Whether expanding `slice` to the target of `hlo` at `piece_dus_starts`
+  // moves no data between shards (it is aligned with the window on every
+  // partitioned dimension).
+  bool IsSliceExpansionCommunicationFree(
+      const HloInstruction* hlo, const HloInstruction* leaf,
+      const std::vector<int64_t>& piece_dus_starts) const;
+
   // Handler for operations with no conflicts.
   // go/keep-sorted start
   absl::Status HandleDotWithoutConflicts(HloInstruction* hlo);

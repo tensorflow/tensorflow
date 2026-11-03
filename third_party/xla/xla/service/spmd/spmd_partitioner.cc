@@ -40,9 +40,13 @@ limitations under the License.
 #include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
@@ -5199,6 +5203,296 @@ absl::StatusOr<HloInstruction*> SpmdPartitioningVisitor::ProcessUpdatePiece(
   return result;
 }
 
+namespace {
+
+// A slice of `source`, as an instruction or as one result of an
+// _SPMDInternalOp_MultiSlice custom call (result i is the slice shifted by i
+// along the multislice dimension).
+struct SliceDesc {
+  const HloInstruction* source;
+  std::vector<int64_t> starts;
+  std::vector<int64_t> limits;
+  std::vector<int64_t> strides;
+  Shape shape;
+  HloSharding sharding;
+};
+
+std::optional<int64_t> ParseMultiSliceInt(absl::string_view config,
+                                          absl::string_view key) {
+  for (absl::string_view item : absl::StrSplit(config, ',')) {
+    item = absl::StripAsciiWhitespace(item);
+    if (absl::ConsumePrefix(&item, key) && absl::ConsumePrefix(&item, "=")) {
+      int64_t v;
+      if (absl::SimpleAtoi(item, &v)) {
+        return v;
+      }
+      return std::nullopt;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<int64_t>> ParseMultiSliceList(
+    absl::string_view config, absl::string_view key) {
+  size_t pos = config.find(absl::StrCat(key, "=["));
+  if (pos == absl::string_view::npos) {
+    return std::nullopt;
+  }
+  pos += key.size() + 2;
+  size_t end = config.find(']', pos);
+  if (end == absl::string_view::npos) {
+    return std::nullopt;
+  }
+  std::vector<int64_t> out;
+  for (absl::string_view item :
+       absl::StrSplit(config.substr(pos, end - pos), ',', absl::SkipEmpty())) {
+    int64_t v;
+    if (!absl::SimpleAtoi(absl::StripAsciiWhitespace(item), &v)) {
+      return std::nullopt;
+    }
+    out.push_back(v);
+  }
+  return out;
+}
+
+std::optional<SliceDesc> DescribeSliceLeaf(const HloInstruction* leaf) {
+  if (leaf->opcode() == HloOpcode::kSlice) {
+    if (!leaf->has_sharding() || !leaf->operand(0)->has_sharding()) {
+      return std::nullopt;
+    }
+    return SliceDesc{leaf->operand(0),
+                     std::vector<int64_t>(leaf->slice_starts().begin(),
+                                          leaf->slice_starts().end()),
+                     std::vector<int64_t>(leaf->slice_limits().begin(),
+                                          leaf->slice_limits().end()),
+                     std::vector<int64_t>(leaf->slice_strides().begin(),
+                                          leaf->slice_strides().end()),
+                     leaf->shape(),
+                     leaf->sharding()};
+  }
+  if (leaf->opcode() != HloOpcode::kGetTupleElement) {
+    return std::nullopt;
+  }
+  const HloInstruction* call = leaf->operand(0);
+  if (call->opcode() != HloOpcode::kCustomCall ||
+      call->custom_call_target() != "_SPMDInternalOp_MultiSlice" ||
+      !leaf->has_sharding() || call->operand_count() == 0 ||
+      !call->operand(0)->has_sharding()) {
+    return std::nullopt;
+  }
+  absl::string_view config = call->raw_backend_config_string();
+  std::optional<int64_t> dim = ParseMultiSliceInt(config, "dimension");
+  std::optional<std::vector<int64_t>> starts =
+      ParseMultiSliceList(config, "start_indices");
+  std::optional<std::vector<int64_t>> limits =
+      ParseMultiSliceList(config, "limit_indices");
+  std::optional<std::vector<int64_t>> strides =
+      ParseMultiSliceList(config, "strides");
+  const int64_t rank = leaf->shape().dimensions().size();
+  if (!dim.has_value() || !starts.has_value() || !limits.has_value() ||
+      !strides.has_value() || *dim < 0 || *dim >= rank ||
+      starts->size() != rank || limits->size() != rank ||
+      strides->size() != rank) {
+    return std::nullopt;
+  }
+  const int64_t shift = leaf->tuple_index();
+  (*starts)[*dim] += shift;
+  (*limits)[*dim] += shift;
+  return SliceDesc{call->operand(0), *starts,       *limits,
+                   *strides,         leaf->shape(), leaf->sharding()};
+}
+
+}  // namespace
+
+bool SpmdPartitioningVisitor::IsSliceExpansionCommunicationFree(
+    const HloInstruction* hlo, const HloInstruction* leaf,
+    const std::vector<int64_t>& piece_dus_starts) const {
+  while (leaf->opcode() == HloOpcode::kCopy) {
+    leaf = leaf->operand(0);
+  }
+  std::optional<SliceDesc> sd = DescribeSliceLeaf(leaf);
+  if (!sd.has_value()) {
+    return false;
+  }
+  const HloInstruction* source = sd->source;
+  if (!source->has_sharding() || source->sharding() != hlo->sharding()) {
+    return false;
+  }
+  for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
+    if (sd->strides[i] != 1) {
+      return false;
+    }
+    if (ShardCountAtDim(hlo->sharding(), i) <= 1) {
+      continue;
+    }
+    const int64_t dus_start = piece_dus_starts[i];
+    const int64_t slice_start = sd->starts[i];
+    const int64_t slice_size = sd->shape.dimensions(i);
+    if (slice_start == dus_start &&
+        source->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      continue;
+    }
+    // The window may also sit within one shard of both tensors.
+    const int64_t source_shard =
+        MakePartitionedShape(source->shape(), hlo->sharding()).dimensions(i);
+    const int64_t target_shard =
+        MakePartitionedShape(hlo->shape(), hlo->sharding()).dimensions(i);
+    if (source_shard <= 0 || target_shard <= 0) {
+      return false;
+    }
+    const int64_t s0 = slice_start / source_shard;
+    const int64_t s1 = (slice_start + slice_size - 1) / source_shard;
+    const int64_t t0 = dus_start / target_shard;
+    const int64_t t1 = (dus_start + slice_size - 1) / target_shard;
+    if (!(s0 == s1 && t0 == t1 && s0 == t0)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+namespace {
+
+bool IsExpandableElementwise(const HloInstruction* node) {
+  return node->IsElementwise() && node->operand_count() > 0 &&
+         node->opcode() != HloOpcode::kCopy &&
+         node->opcode() != HloOpcode::kRng &&
+         node->opcode() != HloOpcode::kRngBitGenerator &&
+         !node->HasSideEffect();
+}
+
+// The ops reachable from `node` through elementwise ops and copies; what
+// they read from (slices, broadcasts, constants) is left out as leaves.
+void CollectElementwiseChain(
+    const HloInstruction* node,
+    absl::flat_hash_set<const HloInstruction*>& chain) {
+  if (chain.contains(node) ||
+      !(IsExpandableElementwise(node) || node->opcode() == HloOpcode::kCopy)) {
+    return;
+  }
+  chain.insert(node);
+  for (const HloInstruction* operand : node->operands()) {
+    CollectElementwiseChain(operand, chain);
+  }
+}
+
+}  // namespace
+
+absl::StatusOr<HloInstruction*>
+SpmdPartitioningVisitor::ExpandElementwiseUpdate(
+    HloInstruction* hlo, const HloInstruction* input_tensor,
+    const HloInstruction* update, const std::vector<int64_t>& piece_dus_starts,
+    HloInstruction* current_input, HloInstruction* zeroElemOp,
+    const absl::flat_hash_set<const HloInstruction*>& chain,
+    absl::flat_hash_map<const HloInstruction*, HloInstruction*>& memo,
+    bool* any_comm_free) {
+  if (auto it = memo.find(update); it != memo.end()) {
+    return it->second;
+  }
+  HloInstruction* expanded = nullptr;
+  if (!chain.contains(update)) {
+    const Shape leaf_shard_shape = ShapeUtil::ChangeElementType(
+        MakePartitionedShape(hlo->shape(), hlo->sharding()),
+        update->shape().element_type());
+    if (update->opcode() == HloOpcode::kConstant &&
+        update->literal().IsAllFirst()) {
+      // A splat constant is the same everywhere: broadcast its value.
+      HloInstruction* scalar = b_.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::GetFirstScalarLiteral(update->literal())));
+      expanded = b_.AddInstruction(
+          HloInstruction::CreateBroadcast(leaf_shard_shape, scalar, {}));
+      expanded->set_sharding(hlo->sharding());
+    } else if (update->opcode() == HloOpcode::kBroadcast &&
+               update->operand(0)->shape().dimensions().empty()) {
+      // A scalar broadcast, of whatever element type the chain uses here.
+      expanded = b_.AddInstruction(HloInstruction::CreateBroadcast(
+          leaf_shard_shape, GetPartitionedHlo(update->operand(0)).hlo(), {}));
+      expanded->set_sharding(hlo->sharding());
+    } else if (update->shape().element_type() != hlo->shape().element_type()) {
+      // The single-piece paths below build at the target's element type.
+      return nullptr;
+    } else {
+      // A leaf: a slice or multislice result (possibly reversed or copied)
+      // or a scalar broadcast, handled as a single-piece update would be.
+      if (IsSliceExpansionCommunicationFree(hlo, update, piece_dus_starts)) {
+        *any_comm_free = true;
+      }
+      ABSL_ASSIGN_OR_RETURN(expanded,
+                       ProcessUpdatePieceExtractOperand(
+                           hlo, input_tensor, update, piece_dus_starts,
+                           current_input, zeroElemOp));
+    }
+  } else if (update->opcode() == HloOpcode::kCopy) {
+    ABSL_ASSIGN_OR_RETURN(
+        expanded, ExpandElementwiseUpdate(
+                      hlo, input_tensor, update->operand(0), piece_dus_starts,
+                      current_input, zeroElemOp, chain, memo, any_comm_free));
+  } else {
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(update->operand_count());
+    for (const HloInstruction* operand : update->operands()) {
+      if (!ShapeUtil::SameDimensions(operand->shape(), update->shape())) {
+        return nullptr;
+      }
+      ABSL_ASSIGN_OR_RETURN(
+          HloInstruction * new_operand,
+          ExpandElementwiseUpdate(hlo, input_tensor, operand, piece_dus_starts,
+                                  current_input, zeroElemOp, chain, memo,
+                                  any_comm_free));
+      if (new_operand == nullptr) {
+        return nullptr;
+      }
+      new_operands.push_back(new_operand);
+    }
+    Shape shard_shape = ShapeUtil::ChangeElementType(
+        MakePartitionedShape(hlo->shape(), hlo->sharding()),
+        update->shape().element_type());
+    expanded = b_.AddInstruction(
+        update->CloneWithNewOperands(shard_shape, new_operands));
+    expanded->set_sharding(hlo->sharding());
+  }
+  if (expanded != nullptr) {
+    memo[update] = expanded;
+  }
+  return expanded;
+}
+
+namespace {
+
+// Takes the window [slice_starts, slice_limits) with slice_strides of a source
+// of shape `source_shape` and sharding `operand_sharding` out of `replacement`,
+// its partitioned form, producing it in `result_sharding`. Slicing in the
+// source's own sharding is tried first when it has more tiles than the
+// result's, falling back to resharding to the result's sharding.
+absl::StatusOr<PartitionedHlo> SliceUpdatePieceSource(
+    const Shape& source_shape, const HloSharding& operand_sharding,
+    const HloSharding& result_sharding, const PartitionedHlo& replacement,
+    absl::Span<const int64_t> slice_starts,
+    absl::Span<const int64_t> slice_limits,
+    absl::Span<const int64_t> slice_strides, SpmdBuilder* b) {
+  ABSL_ASSIGN_OR_RETURN(Shape new_shape, ShapeInference::InferSliceShape(
+                                        source_shape, slice_starts,
+                                        slice_limits, slice_strides));
+  std::pair<HloInstruction*, PartitionedHlo> final_operand{nullptr,
+                                                           replacement};
+  if (operand_sharding.NumTiles() > result_sharding.NumTiles()) {
+    ABSL_ASSIGN_OR_RETURN(
+        final_operand,
+        HandleSliceHelper(new_shape, slice_starts, slice_limits, slice_strides,
+                          result_sharding, replacement, operand_sharding, b));
+  }
+  if (final_operand.first == nullptr) {
+    ABSL_ASSIGN_OR_RETURN(
+        final_operand,
+        HandleSliceHelper(new_shape, slice_starts, slice_limits, slice_strides,
+                          result_sharding, replacement, result_sharding, b));
+  }
+  CHECK_NE(final_operand.first, nullptr);
+  return final_operand.second;
+}
+
+}  // namespace
+
 absl::StatusOr<HloInstruction*>
 SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
     HloInstruction* hlo, const HloInstruction* input_tensor,
@@ -5208,6 +5502,44 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
   auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
     return b_.AddInstruction(std::move(to_add));
   };
+
+  // An update computed by elementwise ops from slices: build it from the
+  // slices' operands at the shard shape instead of padding the narrow result,
+  // when that lets at least one slice skip its communication.
+  if (IsExpandableElementwise(piece_update_tensor) &&
+      piece_update_tensor->user_count() == 1) {
+    // Every op of the chain must be used only within it, so that the narrow
+    // chain and the partitioned slices feeding it die afterwards.
+    absl::flat_hash_set<const HloInstruction*> chain;
+    CollectElementwiseChain(piece_update_tensor, chain);
+    bool closed = true;
+    for (const HloInstruction* node : chain) {
+      if (node == piece_update_tensor) {
+        continue;
+      }
+      for (const HloInstruction* user : node->users()) {
+        if (!chain.contains(user)) {
+          closed = false;
+          break;
+        }
+      }
+      if (!closed) {
+        break;
+      }
+    }
+    if (closed) {
+      bool any_comm_free = false;
+      absl::flat_hash_map<const HloInstruction*, HloInstruction*> memo;
+      ABSL_ASSIGN_OR_RETURN(
+          HloInstruction * expanded,
+          ExpandElementwiseUpdate(hlo, input_tensor, piece_update_tensor,
+                                  piece_dus_starts, current_input, zeroElemOp,
+                                  chain, memo, &any_comm_free));
+      if (expanded != nullptr && any_comm_free) {
+        return expanded;
+      }
+    }
+  }
 
   const HloInstruction* actual_update = piece_update_tensor;
   std::optional<ShapeUtil::ShapeEqualityDescriptor> reshape_desc;
@@ -5298,10 +5630,9 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
       leaf = leaf->operand(0);
     }
 
-    if (leaf->opcode() == HloOpcode::kSlice) {
+    std::optional<SliceDesc> sd = DescribeSliceLeaf(leaf);
+    if (sd.has_value()) {
       bool slice_expand_eligible = true;
-      const xla::HloSliceInstruction* slice =
-          DynCast<HloSliceInstruction>(leaf);
       const xla::HloDynamicUpdateSliceInstruction* dus =
           DynCast<HloDynamicUpdateSliceInstruction>(hlo);
 
@@ -5350,39 +5681,37 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
         }
       }
 
-      std::vector<int64_t> pre_to_post(slice->shape().dimensions().size(), -1);
+      std::vector<int64_t> pre_to_post(sd->shape.dimensions().size(), -1);
       for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
         if (post_to_pre[i] != -1) {
           pre_to_post[post_to_pre[i]] = i;
         }
       }
 
-      size_t num_dims = slice->shape().dimensions().size();
+      size_t num_dims = sd->shape.dimensions().size();
       std::vector<int64_t> new_slice_starts(num_dims, 0);
       std::vector<int64_t> new_slice_limits(num_dims, 0);
       std::vector<int64_t> new_slice_strides(num_dims, 1);
 
       PaddingConfig padding_config2;
-      for (int64_t i = 0; i < slice->shape().dimensions().size(); ++i) {
-        int64_t orig_slice_start = slice->slice_starts(i);
-        int64_t orig_slice_limit = slice->slice_limits(i);
+      for (int64_t i = 0; i < sd->shape.dimensions().size(); ++i) {
+        int64_t orig_slice_start = sd->starts[i];
+        int64_t orig_slice_limit = sd->limits[i];
 
         if (absl::c_linear_search(reverse_dims, i)) {
-          orig_slice_start =
-              slice->operand(0)->shape().dimensions(i) - slice->slice_limits(i);
-          orig_slice_limit =
-              slice->operand(0)->shape().dimensions(i) - slice->slice_starts(i);
+          orig_slice_start = sd->source->shape().dimensions(i) - sd->limits[i];
+          orig_slice_limit = sd->source->shape().dimensions(i) - sd->starts[i];
         }
 
         int64_t slice_start = orig_slice_start;
-        int64_t slice_stride = slice->slice_strides(i);
+        int64_t slice_stride = sd->strides[i];
 
         if (slice_stride != 1) {
           slice_expand_eligible = false;
           break;
         }
 
-        new_slice_limits[i] = slice->operand(0)->shape().dimensions(i);
+        new_slice_limits[i] = sd->source->shape().dimensions(i);
 
         auto* padding_dim = padding_config2.add_dimensions();
         padding_dim->set_interior_padding(0);
@@ -5392,8 +5721,7 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
           int64_t dus_start = piece_dus_starts[dus_dim];
           int64_t dus_limit = hlo->shape().dimensions(dus_dim);
 
-          int64_t length_of_operand_to_pad =
-              slice->operand(0)->shape().dimensions(i);
+          int64_t length_of_operand_to_pad = sd->source->shape().dimensions(i);
           if (slice_start > dus_start) {
             needs_slice = true;
             new_slice_starts[i] = slice_start - dus_start;
@@ -5424,13 +5752,13 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
           padding_dim->set_edge_padding_low(0);
           padding_dim->set_edge_padding_high(0);
           if (new_slice_limits[i] - new_slice_starts[i] <
-              slice->operand(0)->shape().dimensions(i)) {
+              sd->source->shape().dimensions(i)) {
             needs_slice = true;
           }
         }
       }
       if (slice_expand_eligible) {
-        PartitionedHlo replacement = GetPartitionedHlo(slice->operand(0));
+        PartitionedHlo replacement = GetPartitionedHlo(sd->source);
         // None of the reverse dimensions are sharded so we can reverse them
         // locally on each partition.
         if (!reverse_dims.empty()) {
@@ -5480,8 +5808,8 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
               int64_t pre_dim = post_to_pre[i];
               if (pre_dim != -1 && ShardCountAtDim(hlo_sharding, i) > 1) {
                 int64_t dus_start = piece_dus_starts[i];
-                int64_t slice_start = slice->slice_starts(pre_dim);
-                int64_t slice_size = slice->shape().dimensions(pre_dim);
+                int64_t slice_start = sd->starts[pre_dim];
+                int64_t slice_size = sd->shape.dimensions(pre_dim);
                 if (dus_start != slice_start) {
                   is_communication_free = false;
                   break;
@@ -5508,39 +5836,16 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
           }
 
           if (needs_slice) {
-            ABSL_ASSIGN_OR_RETURN(Shape new_shape,
-                             ShapeInference::InferSliceShape(
-                                 slice->operand(0)->shape(), new_slice_starts,
-                                 new_slice_limits, new_slice_strides));
-
-            const HloSharding& operand_sharding = slice->operand(0)->sharding();
-            const HloSharding& result_sharding = slice->sharding();
-            std::pair<HloInstruction*, PartitionedHlo> final_operand{
-                nullptr, replacement};
-            if (operand_sharding.NumTiles() > result_sharding.NumTiles()) {
-              ABSL_ASSIGN_OR_RETURN(
-                  final_operand,
-                  HandleSliceHelper(new_shape, new_slice_starts,
-                                    new_slice_limits, new_slice_strides,
-                                    result_sharding, replacement,
-                                    operand_sharding, &b_));
-            }
-            if (final_operand.first == nullptr) {
-              ABSL_ASSIGN_OR_RETURN(
-                  final_operand,
-                  HandleSliceHelper(new_shape, new_slice_starts,
-                                    new_slice_limits, new_slice_strides,
-                                    result_sharding, replacement,
-                                    result_sharding, &b_));
-            }
-
-            CHECK_NE(final_operand.first, nullptr);
-            replacement = final_operand.second;
+            ABSL_ASSIGN_OR_RETURN(replacement,
+                             SliceUpdatePieceSource(
+                                 sd->source->shape(), sd->source->sharding(),
+                                 sd->sharding, replacement, new_slice_starts,
+                                 new_slice_limits, new_slice_strides, &b_));
           }
 
           if (needs_pad) {
             Shape base_padded_shape = replacement.base_shape();
-            for (int i = 0; i < slice->shape().dimensions().size(); ++i) {
+            for (int i = 0; i < sd->shape.dimensions().size(); ++i) {
               base_padded_shape.set_dimensions(
                   i, padding_config2.dimensions(i).edge_padding_low() +
                          base_padded_shape.dimensions(i) +
@@ -5590,20 +5895,18 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
                                                        .GetIntegralAsS64({})
                                                        .value()
                                                  : piece_dus_starts[i];
-              int64_t slice_start = slice->slice_starts(i);
+              int64_t slice_start = sd->starts[i];
               if (absl::c_linear_search(reverse_dims, i)) {
-                slice_start = slice->operand(0)->shape().dimensions(i) -
-                              slice->slice_limits(i);
+                slice_start = sd->source->shape().dimensions(i) - sd->limits[i];
               }
               int64_t slice_size = piece_update_tensor->shape().dimensions(i);
 
               bool perfectly_aligned = (slice_start == dus_start) &&
-                                       (slice->operand(0)->shape().dimensions(
-                                            i) == hlo->shape().dimensions(i));
+                                       (sd->source->shape().dimensions(i) ==
+                                        hlo->shape().dimensions(i));
 
               int64_t operand_shard_size =
-                  MakePartitionedShape(slice->operand(0)->shape(),
-                                       hlo->sharding())
+                  MakePartitionedShape(sd->source->shape(), hlo->sharding())
                       .dimensions(i);
               int64_t input_shard_size =
                   MakePartitionedShape(hlo->shape(), hlo->sharding())
@@ -5695,35 +5998,11 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
             }
           } else {
             if (needs_slice) {
-              ABSL_ASSIGN_OR_RETURN(Shape new_shape,
-                               ShapeInference::InferSliceShape(
-                                   slice->operand(0)->shape(), new_slice_starts,
-                                   new_slice_limits, new_slice_strides));
-
-              const HloSharding& operand_sharding =
-                  slice->operand(0)->sharding();
-              const HloSharding& result_sharding = slice->sharding();
-              std::pair<HloInstruction*, PartitionedHlo> final_operand{
-                  nullptr, replacement};
-              if (operand_sharding.NumTiles() > result_sharding.NumTiles()) {
-                ABSL_ASSIGN_OR_RETURN(
-                    final_operand,
-                    HandleSliceHelper(new_shape, new_slice_starts,
-                                      new_slice_limits, new_slice_strides,
-                                      result_sharding, replacement,
-                                      operand_sharding, &b_));
-              }
-              if (final_operand.first == nullptr) {
-                ABSL_ASSIGN_OR_RETURN(
-                    final_operand,
-                    HandleSliceHelper(new_shape, new_slice_starts,
-                                      new_slice_limits, new_slice_strides,
-                                      result_sharding, replacement,
-                                      result_sharding, &b_));
-              }
-
-              CHECK_NE(final_operand.first, nullptr);
-              replacement = final_operand.second;
+              ABSL_ASSIGN_OR_RETURN(replacement,
+                               SliceUpdatePieceSource(
+                                   sd->source->shape(), sd->source->sharding(),
+                                   sd->sharding, replacement, new_slice_starts,
+                                   new_slice_limits, new_slice_strides, &b_));
             }
 
             if (needs_pad) {
