@@ -1709,12 +1709,16 @@ class NameTest(test_util.TensorFlowTestCase):
       self.assertEqual("bar/FloatOutput_2",
                        g.create_op("FloatOutput", [], [dtypes.float32]).name)
 
+  @test_util.run_in_graph_and_eager_modes
   def testNameScopeInvalidTypeRaisesTypeError(self):
     g = ops.Graph()
     invalid_type_regex = r"Argument ['`]name['`] must be a string\."
+    default_name_regex = r"`default_name` type .* is not a string type\."
 
-    # Invalid non-string types must raise TypeError (including falsy non-string types)
-    for invalid_name in [0.2, 123, 0, False, [1, 2], [], {"name": "scope"}, {}, (1, 2), ()]:
+    # Invalid non-string types must raise TypeError
+    for invalid_name in [
+        0.2, 123, 0, False, [1, 2], [], {"name": "scope"}, {}, (1, 2), ()
+    ]:
       with self.assertRaisesRegex(TypeError, invalid_type_regex):
         with g.name_scope(invalid_name):
           pass
@@ -1731,16 +1735,29 @@ class NameTest(test_util.TensorFlowTestCase):
         with ops.name_scope_v2(invalid_name):
           pass
 
+      with self.assertRaisesRegex(TypeError, default_name_regex):
+        with ops.name_scope(None, default_name=invalid_name):
+          pass
+
+      with self.assertRaisesRegex(TypeError, default_name_regex):
+        with ops.name_scope_v1(None, default_name=invalid_name):
+          pass
+
+  @test_util.run_in_graph_and_eager_modes
   def testNameScopeWhitespaceRaisesValueError(self):
     g = ops.Graph()
     invalid_scope_regex = r"is not a valid (root )?scope name"
 
-    # String names with whitespace (leading, trailing, internal) must raise ValueError
-    for whitespace_name in [" leading_space", "trailing_space ", "internal space", "   ", "\tspace"]:
+    # String names with whitespace (leading, trailing, internal) must raise
+    # ValueError
+    for whitespace_name in [
+        " leading_space", "trailing_space ", "internal space", "   ", "\tspace"
+    ]:
       with self.assertRaisesRegex(ValueError, invalid_scope_regex):
         with g.name_scope(whitespace_name):
           pass
 
+  @test_util.run_in_graph_and_eager_modes
   def testNameScopeValidFormats(self):
     g = ops.Graph()
 
@@ -1762,15 +1779,20 @@ class NameTest(test_util.TensorFlowTestCase):
 
     with ops.name_scope_v2(b"bytes_scope_v2") as s6:
       self.assertEqual("bytes_scope_v2/", s6)
+    scope_v2 = ops.name_scope_v2(b"bytes_scope_v2")
+    self.assertEqual("bytes_scope_v2", scope_v2.name)
 
     with g.as_default():
       with ops.name_scope_v1(b"bytes_scope_v1") as s7:
         self.assertEqual("bytes_scope_v1/", s7)
+    scope_v1 = ops.name_scope_v1(b"bytes_scope_v1")
+    self.assertEqual("bytes_scope_v1", scope_v1.name)
 
+  @test_util.run_in_graph_and_eager_modes
   def testNameScopeEmptyAndNone(self):
     g = ops.Graph()
 
-    # None and empty string "" should reset the name scope without raising errors
+    # None and empty string "" should reset the name scope without errors
     with g.name_scope(None) as s1:
       self.assertEqual("", s1)
 
