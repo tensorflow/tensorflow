@@ -28,6 +28,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "grpcpp/create_channel.h"
+#include "grpcpp/security/credentials.h"
+#include "grpcpp/security/server_credentials.h"
+#include "grpcpp/server.h"
+#include "grpcpp/server_builder.h"
+#include "grpcpp/server_context.h"
+#include "grpcpp/support/status.h"
 #include "xla/backends/profiler/subprocess/subprocess_registry.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -39,6 +46,8 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
+#include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
+#include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -47,6 +56,7 @@ namespace subprocess {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::testing::IsEmpty;
 using ::testing::Not;
 
@@ -143,6 +153,57 @@ TEST_F(SubprocessProfilingSessionTest, SubprocessCollectionTest) {
   ASSERT_TRUE(pid_stat.has_value());
   EXPECT_THAT(visitor.Name(), ::testing::HasSubstr(absl::StrCat(
                                   "[", pid_stat->IntOrUintValue(), "]")));
+}
+
+// In-process ProfilerService whose Terminate RPC fails. Its Profile RPC only
+// ends when the client cancels it.
+class TerminateFailsProfilerService
+    : public tensorflow::grpc::ProfilerService::Service {
+ public:
+  ::grpc::Status Profile(::grpc::ServerContext* context,
+                         const tensorflow::ProfileRequest* request,
+                         tensorflow::ProfileResponse* response) override {
+    while (!context->IsCancelled()) {
+      absl::SleepFor(absl::Milliseconds(10));
+    }
+    return ::grpc::Status::CANCELLED;
+  }
+
+  ::grpc::Status Terminate(::grpc::ServerContext* context,
+                           const tensorflow::TerminateRequest* request,
+                           tensorflow::TerminateResponse* response) override {
+    return ::grpc::Status(::grpc::StatusCode::UNAVAILABLE, "terminate failed");
+  }
+};
+
+TEST(SubprocessProfilingSessionTerminateTest, TerminateFailureDoesNotHang) {
+  TerminateFailsProfilerService service;
+  ::grpc::ServerBuilder builder;
+  int port = 0;
+  builder.AddListeningPort("localhost:0", ::grpc::InsecureServerCredentials(),
+                           &port);
+  builder.RegisterService(&service);
+  std::unique_ptr<::grpc::Server> server = builder.BuildAndStart();
+  ASSERT_NE(server, nullptr);
+  SubprocessInfo subprocess_info;
+  subprocess_info.pid = 4242;
+  subprocess_info.address = absl::StrCat("localhost:", port);
+  subprocess_info.profiler_stub =
+      tensorflow::grpc::ProfilerService::NewStub(::grpc::CreateChannel(
+          subprocess_info.address, ::grpc::InsecureChannelCredentials()));
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto session,
+        SubprocessProfilingSession::Create(
+            subprocess_info, tsl::ProfilerSession::DefaultOptions()));
+    ASSERT_THAT(session->Start(), IsOk());
+    EXPECT_THAT(session->Stop(), StatusIs(absl::StatusCode::kUnavailable));
+    tensorflow::profiler::XSpace space;
+    EXPECT_THAT(session->CollectData(&space), IsOk());
+    EXPECT_THAT(space.planes(), IsEmpty());
+  }
+  server->Shutdown(absl::ToChronoTime(absl::Now() + absl::Seconds(5)));
 }
 
 }  // namespace
