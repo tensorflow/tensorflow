@@ -1334,6 +1334,30 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
     * the (possibly shifted) sum of squares of the elements in the array.
     * the shift by which the mean must be corrected or None if `shift` is None.
   """
+  if isinstance(axes, (tensor.Tensor, variables.Variable)):
+    # A `Tensor` built inside an explicit `ops.Graph()` stays symbolic even when
+    # eager execution is active, and symbolic tensors have no `numpy()`.
+    if context.executing_eagerly() and hasattr(axes, "numpy"):
+      axes = axes.numpy().tolist()
+    else:
+      axes_const = tensor_util.constant_value(axes)
+      if axes_const is None:
+        raise ValueError(
+            "`axes` must be statically known when passed as a tensor in "
+            f"graph mode, got {axes}."
+        )
+      axes = axes_const.tolist()
+  elif hasattr(axes, "tolist"):
+    # NumPy arrays are a documented `axes` type ("array of ints"). Convert
+    # them to Python ints so that the `set()` below works on hashable values.
+    axes = axes.tolist()
+  # `tf.nn.moments` accepts a scalar `axes`, and a single axis is naturally
+  # spelled that way. After the conversions above a scalar is a Python int,
+  # which `set()` cannot iterate, so wrap it into a list of one element.
+  # `hasattr(axes, "__iter__")` is used instead of a list/tuple/set whitelist
+  # because `range` and generators are accepted today and must keep working.
+  if not hasattr(axes, "__iter__"):
+    axes = [axes]
   axes = list(set(axes))
   keep_dims = deprecated_argument_lookup(
       "keepdims", keepdims, "keep_dims", keep_dims)
