@@ -30,9 +30,16 @@ def repo():
     tf_http_archive(
         name = "onednn_async",
         build_file = "//third_party/mkl_dnn:mkldnn_v1_async.BUILD",
-        sha256 = "3f2bc020ecc3d3ffcee48075d6bd0bf6894007b95a04bdf3531ebb0fd2ef00ac",
-        strip_prefix = "oneDNN-3.14.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.14.1.tar.gz"),
+        # Rename the gtest module in oneDNN's third_party to avoid
+        # conflict with Google's gtest module
+        patch_file = [
+            "//third_party/mkl_dnn:setting_tsan_race_v3_12_3.patch",
+            "//third_party/mkl_dnn:rename_gtest.patch",
+            "//third_party/mkl_dnn:eltwise_injector_lower_bound.patch",
+        ],
+        sha256 = "12d8551668515c64adae2b26e5ebeeefa48b1ad1035717fe8718fd702c5e066b",
+        strip_prefix = "oneDNN-3.12.3",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.12.3.tar.gz"),
     )
 
     tf_http_archive(
