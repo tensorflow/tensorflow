@@ -792,6 +792,24 @@ class TestSparseCountFailureModes(test_util.TensorFlowTestCase):
     self.assertAllEqual([1, 1, 1], self.evaluate(res_binary.values))
     self.assertAllEqual([2, 3], self.evaluate(res_binary.dense_shape))
 
+    # Mixed: SparseTensor values with SparseTensorValue weights
+    sp_tensor = sparse_tensor.SparseTensor(indices, values, dense_shape)
+    res_mixed1 = sparse_ops.sparse_bincount(sp_tensor, weights=w_val, axis=-1)
+    self.assertAllEqual(
+        [[0, 1], [0, 2], [1, 1]], self.evaluate(res_mixed1.indices)
+    )
+    self.assertAllEqual([0.5, 1.5, 2.0], self.evaluate(res_mixed1.values))
+    self.assertAllEqual([2, 3], self.evaluate(res_mixed1.dense_shape))
+
+    # Mixed: SparseTensorValue values with SparseTensor weights
+    w_tensor = sparse_tensor.SparseTensor(indices, weights_vals, dense_shape)
+    res_mixed2 = sparse_ops.sparse_bincount(sp_val, weights=w_tensor, axis=-1)
+    self.assertAllEqual(
+        [[0, 1], [0, 2], [1, 1]], self.evaluate(res_mixed2.indices)
+    )
+    self.assertAllEqual([0.5, 1.5, 2.0], self.evaluate(res_mixed2.values))
+    self.assertAllEqual([2, 3], self.evaluate(res_mixed2.dense_shape))
+
   def test_validate_sparse_weights_sparse_tensor_value(self):
     indices = np.array([[0, 0], [0, 1]], dtype=np.int64)
     values = np.array([1, 2], dtype=np.int32)
@@ -804,8 +822,23 @@ class TestSparseCountFailureModes(test_util.TensorFlowTestCase):
     validated = sparse_ops.validate_sparse_weights(sp_val, w_val)
     self.assertAllEqual([0.5, 1.5], self.evaluate(validated))
 
+    # Mixed: SparseTensor values with SparseTensorValue weights
+    sp_tensor = sparse_tensor.SparseTensor(indices, values, dense_shape)
+    validated_mixed1 = sparse_ops.validate_sparse_weights(sp_tensor, w_val)
+    self.assertAllEqual([0.5, 1.5], self.evaluate(validated_mixed1))
+
+    # Mixed: SparseTensorValue values with SparseTensor weights
+    w_tensor = sparse_tensor.SparseTensor(indices, weights_vals, dense_shape)
+    validated_mixed2 = sparse_ops.validate_sparse_weights(sp_val, w_tensor)
+    self.assertAllEqual([0.5, 1.5], self.evaluate(validated_mixed2))
+
     empty_weights = sparse_ops.validate_sparse_weights(sp_val, None)
     self.assertAllEqual([], self.evaluate(empty_weights))
+
+    with self.assertRaisesRegex(
+        ValueError, "Argument `values` must be a SparseTensor"
+    ):
+      sparse_ops.validate_sparse_weights("invalid", None)
 
 
 if __name__ == "__main__":

@@ -3484,6 +3484,10 @@ def validate_sparse_weights(values, weights, dtype=None):
   """Validates the passed weight tensor or creates an empty one."""
   if isinstance(values, sparse_tensor.SparseTensorValue):
     values = sparse_tensor.SparseTensor.from_value(values)
+  elif not isinstance(values, sparse_tensor.SparseTensor):
+    raise ValueError(
+        "Argument `values` must be a SparseTensor or SparseTensorValue. "
+        f"Received values={values} of type: {type(values).__name__}")
 
   if weights is None:
     if dtype:
