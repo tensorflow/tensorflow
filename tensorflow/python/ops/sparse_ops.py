@@ -209,15 +209,15 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
     additional dimension of size 1 added.
 
   Raises:
-    TypeError: If `sp_input` is not a `SparseTensor`.
+    TypeError: If `sp_input` is not a `SparseTensor` or `SparseTensorValue`.
   """
-  sp_input = _convert_to_sparse_tensor(sp_input)
-  rank = sp_input.dense_shape.get_shape()[0]
-  if rank is None:
-    rank = array_ops.shape(sp_input.dense_shape)[0]
-  axis = -1 if axis is None else axis
-
   with ops.name_scope(name, default_name="expand_dims", values=[sp_input]):
+    sp_input = _convert_to_sparse_tensor(sp_input)
+    rank = sp_input.dense_shape.get_shape()[0]
+    if rank is None:
+      rank = array_ops.shape(sp_input.dense_shape)[0]
+    axis = -1 if axis is None else axis
+
     if isinstance(axis, compat.integral_types):
       axis = ops.convert_to_tensor(axis, name="axis", dtype=dtypes.int32)
     elif not isinstance(axis, tensor_lib.Tensor):

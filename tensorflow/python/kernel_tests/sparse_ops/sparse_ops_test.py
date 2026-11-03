@@ -1337,7 +1337,9 @@ class SparseExpandDimsTest(test.TestCase):
 
     # axis=-1 (default): shape becomes [4, 5, 1]
     sp_default = sparse_ops.sparse_expand_dims(sp)
-    self.assertAllEqual([[0, 1, 0], [2, 3, 0]], self.evaluate(sp_default.indices))
+    self.assertAllEqual(
+        [[0, 1, 0], [2, 3, 0]], self.evaluate(sp_default.indices)
+    )
     self.assertAllEqual([1.0, 2.0], self.evaluate(sp_default.values))
     self.assertAllEqual([4, 5, 1], self.evaluate(sp_default.dense_shape))
 
