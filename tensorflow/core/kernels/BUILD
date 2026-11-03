@@ -288,6 +288,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 0,
@@ -302,6 +303,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -1051,7 +1053,10 @@ tf_kernel_library(
     name = "concat_op",
     features = ["-layering_check"],
     prefix = "concat_op",
-    deps = ARRAY_DEPS + ["//tensorflow/core/framework:types_proto_cc"],
+    deps = ARRAY_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
 )
 
 tf_kernel_library(
@@ -1164,6 +1169,7 @@ tf_kernel_library(
     name = "pack_op",
     prefix = "pack_op",
     deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1858,6 +1864,7 @@ tf_cc_test(
         ":concat_op",
         ":ops_testutil",
         ":ops_util",
+        ":pack_op",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:math_ops",
@@ -1874,6 +1881,10 @@ tf_cc_test(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/base:prefetch",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )

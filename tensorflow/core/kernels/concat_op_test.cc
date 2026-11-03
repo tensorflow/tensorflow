@@ -19,6 +19,10 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/base/prefetch.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -26,6 +30,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -34,8 +40,10 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/concat_lib.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/tstring.h"
 
@@ -587,6 +595,491 @@ TEST(ConcatOpTest, SingleThreadedDim0ZeroSizedInputs) {
   EXPECT_EQ(output.flat<float>()(0), 42.0f);
   EXPECT_EQ(output.flat<float>()(9), 42.0f);
 }
+
+class ConcatAndPackCpuTest : public OpsTestBase {
+ protected:
+  ConcatAndPackCpuTest() {
+    SetDevice(DEVICE_CPU, std::unique_ptr<Device>(DeviceFactory::NewDevice(
+                              "CPU", {}, "/job:localhost/replica:0/task:0")));
+  }
+
+  template <typename T>
+  absl::Status VerifyPack(const TensorShape& in_shape, int num, int axis) {
+    DataType dt = DataTypeToEnum<T>::v();
+    TF_RETURN_IF_ERROR(NodeDefBuilder("pack_op", "Pack")
+                           .Input(FakeInput(num, dt))
+                           .Attr("N", num)
+                           .Attr("T", dt)
+                           .Attr("axis", axis)
+                           .Finalize(node_def()));
+    TF_RETURN_IF_ERROR(InitOp());
+    inputs_.clear();
+    managed_.clear();
+
+    for (int i = 0; i < num; ++i) {
+      Tensor t(dt, in_shape);
+      for (int64_t k = 0; k < t.NumElements(); ++k) {
+        if constexpr (std::is_same_v<T, bool>) {
+          t.flat<bool>()(k) = ((i + k) % 2) == 0;
+        } else {
+          t.flat<T>()(k) = static_cast<T>((i * 17 + k) % 97);
+        }
+      }
+      managed_.push_back(std::make_unique<Tensor>(t));
+      inputs_.emplace_back(managed_.back().get());
+    }
+    TF_RETURN_IF_ERROR(RunOpKernel());
+
+    const Tensor& out = *GetOutput(0);
+    int eff_axis = axis < 0 ? axis + in_shape.dims() + 1 : axis;
+    TensorShape exp_shape(in_shape);
+    TF_RETURN_IF_ERROR(exp_shape.InsertDimWithStatus(eff_axis, num));
+    if (out.shape() != exp_shape) {
+      return absl::InternalError(
+          absl::StrCat("shape mismatch: ", out.shape().DebugString(), " vs ",
+                       exp_shape.DebugString()));
+    }
+
+    int64_t before = 1, after = 1;
+    for (int d = 0; d < eff_axis; ++d) before *= exp_shape.dim_size(d);
+    for (int d = eff_axis + 1; d < exp_shape.dims(); ++d) {
+      after *= exp_shape.dim_size(d);
+    }
+    const auto out_flat = out.flat<T>();
+    for (int64_t b = 0; b < before; ++b) {
+      for (int j = 0; j < num; ++j) {
+        const auto in_flat = managed_[j]->flat<T>();
+        for (int64_t a = 0; a < after; ++a) {
+          const T actual = out_flat((b * num + j) * after + a);
+          const T expected = in_flat(b * after + a);
+          if (actual != expected) {
+            return absl::InternalError("element mismatch in Pack output");
+          }
+        }
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  template <typename T, typename AxisT = int32_t>
+  absl::Status VerifyConcatV2(int64_t before,
+                              const std::vector<int64_t>& cols_per_in,
+                              int64_t inner, AxisT axis,
+                              bool vector_axis = false) {
+    DataType dt = DataTypeToEnum<T>::v();
+    DataType axis_dt = DataTypeToEnum<AxisT>::v();
+    const int num = static_cast<int>(cols_per_in.size());
+    TF_RETURN_IF_ERROR(NodeDefBuilder("concat_v2", "ConcatV2")
+                           .Input(FakeInput(num, dt))
+                           .Input(FakeInput(axis_dt))
+                           .Attr("N", num)
+                           .Attr("T", dt)
+                           .Attr("Tidx", axis_dt)
+                           .Finalize(node_def()));
+    TF_RETURN_IF_ERROR(InitOp());
+    inputs_.clear();
+    managed_.clear();
+
+    int64_t total_c = 0;
+    for (int i = 0; i < num; ++i) {
+      total_c += cols_per_in[i];
+      TensorShape shape({before, cols_per_in[i], inner});
+      Tensor t(dt, shape);
+      for (int64_t k = 0; k < t.NumElements(); ++k) {
+        if constexpr (std::is_same_v<T, tstring>) {
+          t.flat<tstring>()(k) =
+              ((i + k) % 3 == 0)
+                  ? ""
+                  : (((i + k) % 3 == 1)
+                         ? absl::StrCat("s_", i, "_", k)
+                         : absl::StrCat(
+                               "long_heap_backed_string_payload_value_", i, "_",
+                               k));
+        } else {
+          t.flat<T>()(k) = static_cast<T>((i * 13 + k) % 113);
+        }
+      }
+      managed_.push_back(std::make_unique<Tensor>(t));
+      inputs_.emplace_back(managed_.back().get());
+    }
+    Tensor axis_t(axis_dt, vector_axis ? TensorShape({1}) : TensorShape({}));
+    axis_t.flat<AxisT>()(0) = axis;
+    managed_.push_back(std::make_unique<Tensor>(axis_t));
+    inputs_.emplace_back(managed_.back().get());
+
+    TF_RETURN_IF_ERROR(RunOpKernel());
+    const Tensor& out = *GetOutput(0);
+    const TensorShape exp_shape({before, total_c, inner});
+    if (out.shape() != exp_shape) {
+      return absl::InternalError(
+          absl::StrCat("shape mismatch: ", out.shape().DebugString(), " vs ",
+                       exp_shape.DebugString()));
+    }
+
+    const auto out_flat = out.flat<T>();
+    int64_t out_idx = 0;
+    for (int64_t b = 0; b < before; ++b) {
+      for (int i = 0; i < num; ++i) {
+        const int64_t span = cols_per_in[i] * inner;
+        const auto in_flat = managed_[i]->flat<T>();
+        for (int64_t a = 0; a < span; ++a) {
+          const T actual = out_flat(out_idx++);
+          const T expected = in_flat(b * span + a);
+          if (actual != expected) {
+            return absl::InternalError("element mismatch in ConcatV2 output");
+          }
+        }
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  std::vector<std::unique_ptr<Tensor>> managed_;
+};
+
+TEST_F(ConcatAndPackCpuTest, PackAllAxesTypesAndSizes) {
+  for (int num : {1, 2, 4, 7, 16, 33}) {
+    TF_EXPECT_OK(VerifyPack<float>(TensorShape({}), num, 0));
+    TF_EXPECT_OK(VerifyPack<int64_t>(TensorShape({}), num, 0));
+    TF_EXPECT_OK(VerifyPack<bool>(TensorShape({19}), num, 0));
+    TF_EXPECT_OK(VerifyPack<bool>(TensorShape({19}), num, -1));
+    for (int axis : {0, 1, 2, -1}) {
+      TF_EXPECT_OK(VerifyPack<float>(TensorShape({13, 17}), num, axis));
+      TF_EXPECT_OK(VerifyPack<bfloat16>(TensorShape({13, 17}), num, axis));
+      TF_EXPECT_OK(VerifyPack<int32_t>(TensorShape({11, 8}), num, axis));
+      TF_EXPECT_OK(VerifyPack<int64_t>(TensorShape({9, 5}), num, axis));
+    }
+  }
+  // Zero-element inputs/outputs.
+  TF_EXPECT_OK(VerifyPack<float>(TensorShape({0, 5}), 4, 0));
+  TF_EXPECT_OK(VerifyPack<float>(TensorShape({3, 0}), 4, 1));
+  // Medium (2-3 MB, L3-inline) and Large (> 16 MB, multi-threaded) Pack.
+  TF_EXPECT_OK(VerifyPack<float>(TensorShape({256, 256}), 12, 0));
+  TF_EXPECT_OK(VerifyPack<float>(TensorShape({256, 256}), 12, 1));
+  TF_EXPECT_OK(VerifyPack<float>(TensorShape({1024, 16}), 35, -1));
+  TF_EXPECT_OK(VerifyPack<float>(TensorShape({512, 1024}), 9, 0));
+  TF_EXPECT_OK(VerifyPack<float>(TensorShape({512, 1024}), 9, 1));
+}
+
+TEST_F(ConcatAndPackCpuTest, ConcatV2ShapesTypesAndLargeShards) {
+  TF_EXPECT_OK(VerifyConcatV2<float>(1, {0, 17}, 4, 1));
+  TF_EXPECT_OK(VerifyConcatV2<float>(1, {0, 19, 0}, 8, 1));
+  TF_EXPECT_OK(VerifyConcatV2<float>(0, {3, 5}, 4, 1));
+  TF_EXPECT_OK(VerifyConcatV2<float>(4, {0, 0}, 4, 1));
+  TF_EXPECT_OK(VerifyConcatV2<float>(17, {3, 0, 5, 1, 8, 4, 7}, 3, 1));
+  TF_EXPECT_OK(VerifyConcatV2<bfloat16>(19, {4, 4, 4, 4, 4, 4, 4, 4, 4}, 8, 1));
+  TF_EXPECT_OK(VerifyConcatV2<int64_t>(11, {2, 5, 3, 7}, 4, -2));
+  // DT_INT64 axis and legacy 1-D length-1 vector axis tensors.
+  TF_EXPECT_OK((VerifyConcatV2<float, int64_t>(5, {3, 7}, 4, 1)));
+  TF_EXPECT_OK((VerifyConcatV2<float, int32_t>(5, {3, 7}, 4, 1, true)));
+  TF_EXPECT_OK((VerifyConcatV2<float, int64_t>(5, {3, 7}, 4, -2, true)));
+  TF_EXPECT_OK(VerifyConcatV2<tstring>(1, {0, 5, 0, 7}, 3, 1));
+  TF_EXPECT_OK(VerifyConcatV2<tstring>(32, {8, 0, 12, 16}, 4, 1));
+  // Medium (2-3 MB, L3-inline) and Large (> 16 MB, multi-threaded) ConcatV2.
+  TF_EXPECT_OK(VerifyConcatV2<float>(1, {200, 350, 0, 450}, 768, 1));
+  TF_EXPECT_OK(VerifyConcatV2<float>(256, {128, 64, 192, 0, 256}, 4, 1));
+  TF_EXPECT_OK(VerifyConcatV2<float>(1, {1200, 1500, 0, 1800}, 1024, 1));
+  TF_EXPECT_OK(VerifyConcatV2<float>(128, {1024, 512, 0, 1536, 1280}, 8, 1));
+  TF_EXPECT_OK(VerifyConcatV2<tstring>(16, {64, 0, 96, 128}, 4, 1));
+}
+
+TEST_F(ConcatAndPackCpuTest, ValidationErrors) {
+  auto run_concat_v2 = [&](const std::vector<TensorShape>& shapes, int axis,
+                           const TensorShape& axis_shape = TensorShape({})) {
+    const int num = static_cast<int>(shapes.size());
+    TF_EXPECT_OK(NodeDefBuilder("concat_v2_err", "ConcatV2")
+                     .Input(FakeInput(num, DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Attr("N", num)
+                     .Attr("T", DT_FLOAT)
+                     .Attr("Tidx", DT_INT32)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+    inputs_.clear();
+    managed_.clear();
+    for (const TensorShape& s : shapes) {
+      managed_.push_back(std::make_unique<Tensor>(DT_FLOAT, s));
+      inputs_.emplace_back(managed_.back().get());
+    }
+    Tensor axis_t(DT_INT32, axis_shape);
+    if (axis_t.NumElements() > 0) {
+      axis_t.flat<int32_t>()(0) = axis;
+    }
+    managed_.push_back(std::make_unique<Tensor>(axis_t));
+    inputs_.emplace_back(managed_.back().get());
+    return RunOpKernel();
+  };
+
+  EXPECT_THAT(run_concat_v2({TensorShape({}), TensorShape({})}, 0),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(run_concat_v2({TensorShape({2}), TensorShape({})}, 0),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(run_concat_v2({TensorShape({2, 3}), TensorShape({2})}, 0),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(run_concat_v2({TensorShape({2, 3}), TensorShape({4, 3})}, 1),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(run_concat_v2({TensorShape({2, 3}), TensorShape({2, 3})}, 0,
+                            TensorShape({2})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(run_concat_v2({TensorShape({2, 3}), TensorShape({2, 3})}, 0,
+                            TensorShape({1, 1})),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  auto run_pack = [&](const std::vector<TensorShape>& shapes, int axis) {
+    const int num = static_cast<int>(shapes.size());
+    TF_EXPECT_OK(NodeDefBuilder("pack_err", "Pack")
+                     .Input(FakeInput(num, DT_FLOAT))
+                     .Attr("N", num)
+                     .Attr("T", DT_FLOAT)
+                     .Attr("axis", axis)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+    inputs_.clear();
+    managed_.clear();
+    for (const TensorShape& s : shapes) {
+      managed_.push_back(std::make_unique<Tensor>(DT_FLOAT, s));
+      inputs_.emplace_back(managed_.back().get());
+    }
+    return RunOpKernel();
+  };
+
+  EXPECT_THAT(run_pack({TensorShape({3}), TensorShape({4})}, 0),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(run_pack({TensorShape({2, 6}), TensorShape({3, 4})}, 0),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+struct DirectConcatPackBenchRunner {
+  std::unique_ptr<Device> device;
+  std::unique_ptr<OpKernel> kernel;
+  std::vector<Tensor> tensors;
+  absl::InlinedVector<TensorValue, 4UL> input_values;
+  std::vector<AllocatorAttributes> out_attrs;
+  OpKernelContext::Params params;
+
+  DirectConcatPackBenchRunner(const NodeDef& ndef,
+                              std::vector<Tensor> in_tensors,
+                              int num_threads = 4)
+      : tensors(std::move(in_tensors)) {
+    SessionOptions opts;
+    opts.config.set_intra_op_parallelism_threads(num_threads);
+    opts.config.set_inter_op_parallelism_threads(1);
+    opts.config.set_use_per_session_threads(true);
+    device = DeviceFactory::NewDevice("CPU", opts,
+                                      "/job:localhost/replica:0/task:0");
+    absl::Status s;
+    kernel = CreateOpKernel(DEVICE_CPU, device.get(),
+                            device->GetAllocator(AllocatorAttributes()), ndef,
+                            TF_GRAPH_DEF_VERSION, &s);
+    TF_CHECK_OK(s);
+    input_values.reserve(tensors.size());
+    for (Tensor& t : tensors) {
+      input_values.emplace_back(&t);
+    }
+    out_attrs.resize(kernel->num_outputs());
+    params.device = device.get();
+    params.op_kernel = kernel.get();
+    params.inputs = input_values;
+    params.output_attr_array = out_attrs.data();
+  }
+
+  void Run(::testing::benchmark::State& state) {
+    for (int w = 0; w < 3; ++w) {
+      OpKernelContext ctx(&params, kernel->num_outputs());
+      device->Compute(kernel.get(), &ctx);
+      TF_CHECK_OK(ctx.status());
+    }
+    for (auto _ : state) {
+      OpKernelContext ctx(&params, kernel->num_outputs());
+      device->Compute(kernel.get(), &ctx);
+    }
+  }
+};
+
+template <typename T>
+Tensor MakePackConcatTensor(const TensorShape& shape, int seed) {
+  DataType dt = DataTypeToEnum<T>::v();
+  Tensor t(dt, shape);
+  for (int64_t i = 0; i < t.NumElements(); ++i) {
+    t.flat<T>()(i) = static_cast<T>(((i + seed) % 61) - 30);
+  }
+  return t;
+}
+
+template <typename T>
+void RunPackBench(::testing::benchmark::State& state,
+                  const TensorShape& in_shape, int num, int axis) {
+  DataType dt = DataTypeToEnum<T>::v();
+  NodeDef ndef;
+  TF_CHECK_OK(NodeDefBuilder("pack_bm", "Pack")
+                  .Input(FakeInput(num, dt))
+                  .Attr("N", num)
+                  .Attr("T", dt)
+                  .Attr("axis", axis)
+                  .Finalize(&ndef));
+  std::vector<Tensor> ins;
+  ins.reserve(num);
+  for (int i = 0; i < num; ++i) {
+    ins.push_back(MakePackConcatTensor<T>(in_shape, i));
+  }
+  DirectConcatPackBenchRunner runner(ndef, std::move(ins), 4);
+  runner.Run(state);
+}
+
+template <typename T>
+void RunConcatV2Bench(::testing::benchmark::State& state,
+                      const std::vector<TensorShape>& shapes, int axis) {
+  DataType dt = DataTypeToEnum<T>::v();
+  const int num = static_cast<int>(shapes.size());
+  NodeDef ndef;
+  TF_CHECK_OK(NodeDefBuilder("concat_bm", "ConcatV2")
+                  .Input(FakeInput(num, dt))
+                  .Input(FakeInput(DT_INT32))
+                  .Attr("N", num)
+                  .Attr("T", dt)
+                  .Attr("Tidx", DT_INT32)
+                  .Finalize(&ndef));
+  std::vector<Tensor> ins;
+  ins.reserve(num + 1);
+  for (int i = 0; i < num; ++i) {
+    ins.push_back(MakePackConcatTensor<T>(shapes[i], i));
+  }
+  Tensor axis_t(DT_INT32, TensorShape({}));
+  axis_t.scalar<int32_t>()() = axis;
+  ins.push_back(axis_t);
+  DirectConcatPackBenchRunner runner(ndef, std::move(ins), 4);
+  runner.Run(state);
+}
+
+void BM_Fleet_Pack_Scalars_Float_N32(::testing::benchmark::State& state) {
+  RunPackBench<float>(state, TensorShape({}), 32, 0);
+}
+BENCHMARK(BM_Fleet_Pack_Scalars_Float_N32)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Fleet_Pack_LastAxis_Float_256x1_N32(
+    ::testing::benchmark::State& state) {
+  RunPackBench<float>(state, TensorShape({256}), 32, 1);
+}
+BENCHMARK(BM_Fleet_Pack_LastAxis_Float_256x1_N32)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Fleet_Pack_Axis0_Float_N16_64x128(::testing::benchmark::State& state) {
+  RunPackBench<float>(state, TensorShape({64, 128}), 16, 0);
+}
+BENCHMARK(BM_Fleet_Pack_Axis0_Float_N16_64x128)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Fleet_Pack_InnerAxis_Float_N8_128x32(
+    ::testing::benchmark::State& state) {
+  RunPackBench<float>(state, TensorShape({128, 32}), 8, 1);
+}
+BENCHMARK(BM_Fleet_Pack_InnerAxis_Float_N8_128x32)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Fleet_ConcatV2_Small_Float_N16_1x32_Axis1(
+    ::testing::benchmark::State& state) {
+  std::vector<TensorShape> shapes(16, TensorShape({1, 32}));
+  RunConcatV2Bench<float>(state, shapes, 1);
+}
+BENCHMARK(BM_Fleet_ConcatV2_Small_Float_N16_1x32_Axis1)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Fleet_ConcatV2_MultiRow_Float_N16_128x16_Axis1(
+    ::testing::benchmark::State& state) {
+  std::vector<TensorShape> shapes(16, TensorShape({128, 16}));
+  RunConcatV2Bench<float>(state, shapes, 1);
+}
+BENCHMARK(BM_Fleet_ConcatV2_MultiRow_Float_N16_128x16_Axis1)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Fleet_ConcatV2_Axis0_Float_N8_64x256(
+    ::testing::benchmark::State& state) {
+  std::vector<TensorShape> shapes(8, TensorShape({64, 256}));
+  RunConcatV2Bench<float>(state, shapes, 0);
+}
+BENCHMARK(BM_Fleet_ConcatV2_Axis0_Float_N8_64x256)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Fleet_ConcatV2_Uneven_BF16_N12_256xVar_Axis1(
+    ::testing::benchmark::State& state) {
+  const int cols[12] = {8, 16, 64, 12, 32, 48, 16, 24, 64, 8, 32, 60};
+  std::vector<TensorShape> shapes;
+  shapes.reserve(12);
+  for (int c : cols) shapes.push_back(TensorShape({256, c}));
+  RunConcatV2Bench<bfloat16>(state, shapes, 1);
+}
+BENCHMARK(BM_Fleet_ConcatV2_Uneven_BF16_N12_256xVar_Axis1)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Fleet_ConcatV2_Large_Float_N4_1024x512_Axis1(
+    ::testing::benchmark::State& state) {
+  std::vector<TensorShape> shapes(4, TensorShape({1024, 512}));
+  RunConcatV2Bench<float>(state, shapes, 1);
+}
+BENCHMARK(BM_Fleet_ConcatV2_Large_Float_N4_1024x512_Axis1)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Guard_ConcatOffset_Int32_N8(::testing::benchmark::State& state) {
+  NodeDef ndef;
+  TF_CHECK_OK(NodeDefBuilder("co", "ConcatOffset")
+                  .Input(FakeInput(DT_INT32))
+                  .Input(FakeInput(8, DT_INT32))
+                  .Attr("N", 8)
+                  .Finalize(&ndef));
+  std::vector<Tensor> ins;
+  Tensor cdim(DT_INT32, TensorShape({}));
+  cdim.scalar<int32_t>()() = 1;
+  ins.push_back(cdim);
+  for (int i = 0; i < 8; ++i) {
+    Tensor s(DT_INT32, TensorShape({3}));
+    s.vec<int32_t>()(0) = 16;
+    s.vec<int32_t>()(1) = 8 + i;
+    s.vec<int32_t>()(2) = 32;
+    ins.push_back(s);
+  }
+  DirectConcatPackBenchRunner runner(ndef, std::move(ins), 4);
+  runner.Run(state);
+}
+BENCHMARK(BM_Guard_ConcatOffset_Int32_N8)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
+
+void BM_Guard_ConcatV2_TString_N4_64x8(::testing::benchmark::State& state) {
+  NodeDef ndef;
+  TF_CHECK_OK(NodeDefBuilder("cs", "ConcatV2")
+                  .Input(FakeInput(4, DT_STRING))
+                  .Input(FakeInput(DT_INT32))
+                  .Attr("N", 4)
+                  .Attr("T", DT_STRING)
+                  .Attr("Tidx", DT_INT32)
+                  .Finalize(&ndef));
+  std::vector<Tensor> ins;
+  for (int i = 0; i < 4; ++i) {
+    Tensor t(DT_STRING, TensorShape({64, 8}));
+    for (int k = 0; k < 512; ++k) {
+      t.flat<tstring>()(k) = "feature_token_val";
+    }
+    ins.push_back(t);
+  }
+  Tensor axis_t(DT_INT32, TensorShape({}));
+  axis_t.scalar<int32_t>()() = 1;
+  ins.push_back(axis_t);
+  DirectConcatPackBenchRunner runner(ndef, std::move(ins), 4);
+  runner.Run(state);
+}
+BENCHMARK(BM_Guard_ConcatV2_TString_N4_64x8)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
 
 }  // namespace
 }  // namespace tensorflow
