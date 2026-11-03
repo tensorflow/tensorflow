@@ -41,12 +41,28 @@ limitations under the License.
 
 namespace xla::gpu {
 
+struct CommandBufferThunkOptions {
+  // When true, allows command buffers to be used while profiling is active.
+  // When false, the thunk runs its thunk sequence op-by-op while a profiler
+  // session is active, to work around b/290773547 (CUPTI tracing of CUDA
+  // graphs has corrupted memory).
+  // TODO(b/355487968): Remove this option when validation complete.
+  bool enable_command_buffers_during_profiling = false;
+
+  // When true, requests that the HLO annotation of each command buffer graph
+  // node be recorded into the backend's annotation registry whenever the
+  // command buffer is recorded or updated. Recording happens only if the
+  // command buffer `SupportsNodeAnnotations()` (CUDA 13.2+); otherwise the
+  // request is ignored with a one-time warning.
+  bool enable_command_buffer_telemetry = false;
+};
+
 class CommandBufferThunk : public Thunk {
  public:
   CommandBufferThunk(CommandExecutor commands, ThunkInfo thunk_info,
                      int devices_in_process,
                      std::unique_ptr<SequentialThunk> thunks = nullptr,
-                     bool enable_command_buffers_during_profiling = false);
+                     CommandBufferThunkOptions options = {});
 
   const std::unique_ptr<SequentialThunk>& thunks() const { return thunks_; }
 
@@ -84,6 +100,13 @@ class CommandBufferThunk : public Thunk {
   // be evaluated as a regular thunk sequence.
   bool IsEnabledDuringProfiling() const {
     return enable_command_buffers_during_profiling_;
+  }
+
+  // Returns whether command buffer telemetry was requested for this thunk.
+  // Annotations are recorded only if the command buffer also
+  // `SupportsNodeAnnotations()`.
+  bool IsCommandBufferTelemetryEnabled() const {
+    return enable_command_buffer_telemetry_;
   }
 
  private:
@@ -178,6 +201,10 @@ class CommandBufferThunk : public Thunk {
   // Evicts all previously instantiated command buffers.
   static void EvictCommandBuffers();
 
+  // Returns true if telemetry is requested and `cmd_buffer` supports node
+  // annotations; logs a warning once otherwise.
+  bool ShouldRecordTelemetry(const se::CommandBuffer& cmd_buffer) const;
+
   // Commands executor that initializes command buffers on each stream executor.
   CommandExecutor commands_;
 
@@ -192,6 +219,9 @@ class CommandBufferThunk : public Thunk {
   // When true, allows command buffers to be used while profiling active.
   // TODO(b/355487968): Remove this option when validation complete.
   bool enable_command_buffers_during_profiling_;
+
+  // See `CommandBufferThunkOptions::enable_command_buffer_telemetry`.
+  bool enable_command_buffer_telemetry_;
 
   // Command buffer thunk state allocated in heap to allow global (per-process)
   // management of instantiated command buffers.

@@ -542,9 +542,11 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
     auto sequential_thunk = std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo(), std::move(thunk_sequence));
 
+    CommandBufferThunkOptions options;
+    options.enable_command_buffers_during_profiling = true;
     auto cmd_buffer_thunk = std::make_unique<CommandBufferThunk>(
         std::move(cmds), Thunk::ThunkInfo(), /*devices_in_process=*/1,
-        std::move(sequential_thunk), true);
+        std::move(sequential_thunk), options);
 
     ASSERT_OK(cmd_buffer_thunk->Initialize(initialize_params));
     ASSERT_OK(cmd_buffer_thunk->ExecuteOnStream(execute_params));

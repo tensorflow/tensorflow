@@ -830,6 +830,10 @@ message DebugOptions {
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
 
+  // Records the HLO annotation of each CUDA graph node so profiles can
+  // attribute command buffer work to HLO ops. Requires CUDA 13.2+.
+  optional bool xla_gpu_enable_command_buffer_telemetry = 564;
+
   // Enable radix sort using CUB.
   optional bool xla_gpu_enable_cub_radix_sort = 259;
 
@@ -1988,7 +1992,7 @@ message DebugOptions {
   // (ScanRewriterTriton).
   optional bool xla_gpu_experimental_enable_triton_scan = 562;
 
-  // Next id: 564
+  // Next id: 565
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -558,6 +558,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
+  opts.set_xla_gpu_enable_command_buffer_telemetry(false);
   // TODO(b/449025971): Set to true once the issue is fixed.
   opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
@@ -2510,6 +2511,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "command "
       "buffer update to ensure correctness when running in multi thread "
       "mode."));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_command_buffer_telemetry",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_command_buffer_telemetry),
+      debug_options->xla_gpu_enable_command_buffer_telemetry(),
+      "Records the HLO annotation of each CUDA graph node so "
+      "profiles can attribute command buffer kernels, memcpys and memsets to "
+      "HLO ops. Requires CUDA 13.2+; otherwise it does nothing. Graph nodes "
+      "appear in a profile only with "
+      "--xla_enable_command_buffers_during_profiling=true."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_nccl_comm_splitting",

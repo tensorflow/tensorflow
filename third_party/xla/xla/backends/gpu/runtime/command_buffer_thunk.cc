@@ -29,8 +29,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/scoped_command_buffer_annotation.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -53,6 +56,19 @@ namespace xla::gpu {
 
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
+
+namespace {
+
+// Returns the current module's top-level annotation, or an empty view when the
+// thunk runs outside `GpuExecutable::ExecuteThunksImpl` (e.g. in tests), which
+// installs the module annotations.
+absl::string_view ModuleTopLevelAnnotation() {
+  const ModuleAnnotations* mod = GetCurrentModuleAnnotations();
+  return mod != nullptr ? static_cast<absl::string_view>(mod->top_level)
+                        : absl::string_view();
+}
+
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // CommandBufferThunk
@@ -69,15 +85,32 @@ bool CommandBufferThunk::ExecutorCommandBuffer::HasDynamicAllocations(
   return !absl::c_includes(persistent_alloc_indices, commands.allocs_indices());
 }
 
-CommandBufferThunk::CommandBufferThunk(
-    CommandExecutor commands, ThunkInfo thunk_info, int devices_in_process,
-    std::unique_ptr<SequentialThunk> thunks,
-    bool enable_command_buffers_during_profiling)
+bool CommandBufferThunk::ShouldRecordTelemetry(
+    const se::CommandBuffer& cmd_buffer) const {
+  if (!enable_command_buffer_telemetry_) {
+    return false;
+  }
+  if (cmd_buffer.SupportsNodeAnnotations()) {
+    return true;
+  }
+  LOG_FIRST_N(WARNING, 1)
+      << "Ignoring --xla_gpu_enable_command_buffer_telemetry: the command "
+         "buffer backend does not support node annotations (requires CUDA "
+         "13.2+).";
+  return false;
+}
+
+CommandBufferThunk::CommandBufferThunk(CommandExecutor commands,
+                                       ThunkInfo thunk_info,
+                                       int devices_in_process,
+                                       std::unique_ptr<SequentialThunk> thunks,
+                                       CommandBufferThunkOptions options)
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
       commands_(std::move(commands)),
       thunks_(std::move(thunks)),
       enable_command_buffers_during_profiling_(
-          enable_command_buffers_during_profiling),
+          options.enable_command_buffers_during_profiling),
+      enable_command_buffer_telemetry_(options.enable_command_buffer_telemetry),
       state_(std::make_shared<State>(devices_in_process)) {
   if (VLOG_IS_ON(5)) {
     absl::StatusOr<std::string> graph = commands_.RenderExecutionGraph();
@@ -254,6 +287,11 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     Command::RecordParams record_params = {cmd_buffer->state,
                                            std::move(updated_allocs),
                                            /*is_initialization=*/true};
+    // The root spans `Record`, including `Finalize`, so stream_executor sees
+    // recording on for the whole recording when telemetry is enabled.
+    auto telemetry_root = se::ScopedCommandBufferAnnotation::Root(
+        ShouldRecordTelemetry(*cmd_buffer->command_buffer),
+        ModuleTopLevelAnnotation());
     ABSL_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
                                      cmd_buffer->command_buffer.get()));
 
@@ -351,6 +389,11 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     Command::RecordParams record_params = {
         cmd_buffer->state, std::move(updated_allocs),
         /*is_initialization=*/is_first_record && !has_dynamic_allocations};
+    // The root spans `Record`, including `Finalize`, so stream_executor sees
+    // recording on for the whole recording when telemetry is enabled.
+    auto telemetry_root = se::ScopedCommandBufferAnnotation::Root(
+        ShouldRecordTelemetry(*cmd_buffer->command_buffer),
+        ModuleTopLevelAnnotation());
     ABSL_RETURN_IF_ERROR(commands_.Record(params, record_params,
                                      cmd_buffer->command_buffer.get()));
 
