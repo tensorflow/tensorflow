@@ -1249,6 +1249,39 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError("Operands' shapes do not match"):
         self.evaluate(sparse_ops.sparse_maximum(sp_zero, sp_one))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseTensorValue(self):
+    sp_val_a = sparse_tensor.SparseTensorValue(
+        indices=np.array([[0]], dtype=np.int64),
+        values=np.array([1], dtype=np.int32),
+        dense_shape=np.array([7], dtype=np.int64),
+    )
+    sp_val_b = sparse_tensor.SparseTensorValue(
+        indices=np.array([[0]], dtype=np.int64),
+        values=np.array([5], dtype=np.int32),
+        dense_shape=np.array([7], dtype=np.int64),
+    )
+    max_tf = sparse_ops.sparse_maximum(sp_val_a, sp_val_b)
+    min_tf = sparse_ops.sparse_minimum(sp_val_a, sp_val_b)
+    self.assertAllEqual([[0]], self.evaluate(max_tf.indices))
+    self.assertAllEqual([5], self.evaluate(max_tf.values))
+    self.assertAllEqual([7], self.evaluate(max_tf.dense_shape))
+    self.assertAllEqual([[0]], self.evaluate(min_tf.indices))
+    self.assertAllEqual([1], self.evaluate(min_tf.values))
+    self.assertAllEqual([7], self.evaluate(min_tf.dense_shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidInput(self):
+    sp = sparse_tensor.SparseTensor([[0]], [1], [2])
+    with self.assertRaisesRegex(TypeError, "Input must be a SparseTensor"):
+      sparse_ops.sparse_maximum([[1]], sp)
+    with self.assertRaisesRegex(TypeError, "Input must be a SparseTensor"):
+      sparse_ops.sparse_maximum(sp, [[1]])
+    with self.assertRaisesRegex(TypeError, "Input must be a SparseTensor"):
+      sparse_ops.sparse_minimum([[1]], sp)
+    with self.assertRaisesRegex(TypeError, "Input must be a SparseTensor"):
+      sparse_ops.sparse_minimum(sp, [[1]])
+
 
 class SparseTransposeTest(test.TestCase):
 
