@@ -3609,6 +3609,8 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
+  let hasFolder = 1;
+
   let hasCustomAssemblyFormat = 1;
 
   let extraClassDefinition = [{
