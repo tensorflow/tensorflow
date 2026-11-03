@@ -213,7 +213,7 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
   """
   with ops.name_scope(name, default_name="expand_dims", values=[sp_input]):
     sp_input = _convert_to_sparse_tensor(sp_input)
-    rank = sp_input.dense_shape.get_shape()[0]
+    rank = tensor_shape.dimension_value(sp_input.dense_shape.get_shape()[0])
     if rank is None:
       rank = array_ops.shape(sp_input.dense_shape)[0]
     axis = -1 if axis is None else axis
