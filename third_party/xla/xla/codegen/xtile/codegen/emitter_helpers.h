@@ -155,7 +155,7 @@ class EmitterContext {
   }
 
   std::pair<mlir::Value, Interval> GetSequentialDimValue(
-      gpu::experimental::TiledDimId sequential_dim_id) const {
+      gpu::TiledDimId sequential_dim_id) const {
     auto it = sequential_dim_id_to_value_.find(sequential_dim_id);
     QCHECK(it != sequential_dim_id_to_value_.end())
         << "Sequential dim id " << sequential_dim_id
@@ -166,9 +166,8 @@ class EmitterContext {
   // Maps `sequential_dim_id` to `value` until the returned object is destroyed.
   // Returns an error if the dimension is already mapped.
   absl::StatusOr<ScopedSequentialDimBinding>
-  MapSymbolIdToSequentialDimValueScoped(
-      gpu::experimental::TiledDimId sequential_dim_id, mlir::Value value,
-      Interval interval) {
+  MapSymbolIdToSequentialDimValueScoped(gpu::TiledDimId sequential_dim_id,
+                                        mlir::Value value, Interval interval) {
     if (!sequential_dim_id_to_value_
              .try_emplace(sequential_dim_id, value, interval)
              .second) {

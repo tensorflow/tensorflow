@@ -293,9 +293,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     const BlockLevelParameters& block_level_parameters,
     absl::Span<mlir::Type> opaque_args_types, mlir::MLIRContext& mlir_context,
     bool enable_same_shape_multi_output_fusion) {
-  using experimental::TiledHloComputation;
-  using experimental::TilingSpace;
-
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(&fusion);
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
                    TilingSpace::Create(*fusion_adaptor, &mlir_context));
@@ -321,7 +318,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
   tiled_computation.Simplify();
   tiled_computation.SortInstructionsPostOrder();
   if (Decision constraints =
-          experimental::VerifyTritonConstraints(tiled_computation, device_info);
+          VerifyTritonConstraints(tiled_computation, device_info);
       !constraints) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Triton constraints violated during codegen: ", constraints.Explain()));

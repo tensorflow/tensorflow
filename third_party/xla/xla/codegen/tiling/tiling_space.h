@@ -361,15 +361,6 @@ absl::StatusOr<std::vector<int64_t>> GetPowerOf2TileSizesInRange(
 
 }  // namespace xla::gpu
 
-namespace xla::gpu::experimental {
-using ::xla::gpu::GetFirstShape;
-using ::xla::gpu::GetPowerOf2TileSizesInRange;
-using ::xla::gpu::GetResultDimensionOffset;
-using ::xla::gpu::GetTileSizeReplacementMap;
-using ::xla::gpu::IsIndexWiseVariadic;
-using ::xla::gpu::TilingSpace;
-}  // namespace xla::gpu::experimental
-
 namespace xla {
 using ::xla::gpu::GetFirstShape;
 using ::xla::gpu::GetPowerOf2TileSizesInRange;
@@ -378,14 +369,5 @@ using ::xla::gpu::GetTileSizeReplacementMap;
 using ::xla::gpu::IsIndexWiseVariadic;
 using ::xla::gpu::TilingSpace;
 }  // namespace xla
-
-namespace xla::experimental {
-using ::xla::gpu::GetFirstShape;
-using ::xla::gpu::GetPowerOf2TileSizesInRange;
-using ::xla::gpu::GetResultDimensionOffset;
-using ::xla::gpu::GetTileSizeReplacementMap;
-using ::xla::gpu::IsIndexWiseVariadic;
-using ::xla::gpu::TilingSpace;
-}  // namespace xla::experimental
 
 #endif  // XLA_CODEGEN_TILING_TILING_SPACE_H_

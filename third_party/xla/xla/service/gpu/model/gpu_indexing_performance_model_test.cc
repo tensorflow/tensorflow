@@ -1298,16 +1298,15 @@ ENTRY main {
 
   absl::InlinedVector<int64_t, 4> output_tile_sizes = {9, 9, 9};
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<experimental::TilingSpace> tiling_space,
-      experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
   EXPECT_OK(tiling_space->AssignTileSizes(
       xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
 
-  ASSERT_OK_AND_ASSIGN(experimental::TiledHloComputation tiled_hlo_computation,
-                       experimental::TiledHloComputation::Tile(
-                           *fusion_adaptor, std::move(tiling_space)));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
 
   int64_t num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
       tiled_hlo_computation);
@@ -1347,9 +1346,8 @@ ENTRY main {
 
   absl::InlinedVector<int64_t, 4> output_tile_sizes = {1};
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<experimental::TilingSpace> tiling_space,
-      experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
   absl::InlinedVector<int64_t, 4> tile_sizes = output_tile_sizes;
   tile_sizes.push_back(4096);
@@ -1357,9 +1355,9 @@ ENTRY main {
   EXPECT_OK(tiling_space->AssignTileSizes(
       xla::xtile::GetPaddedTileSizes(tile_sizes)));
 
-  ASSERT_OK_AND_ASSIGN(experimental::TiledHloComputation tiled_hlo_computation,
-                       experimental::TiledHloComputation::Tile(
-                           *fusion_adaptor, std::move(tiling_space)));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
 
   int64_t num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
       tiled_hlo_computation);
@@ -1726,29 +1724,26 @@ TEST_P(RegisterFitConsistencyTest, PreFilterMatchesExactFitCheck) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->root_instruction());
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<experimental::TilingSpace> tiling_space,
-      experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
-  ASSERT_OK_AND_ASSIGN(experimental::TiledHloComputation symbolic,
-                       experimental::TiledHloComputation::Tile(
-                           *fusion_adaptor, tiling_space->Clone()));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation symbolic,
+      TiledHloComputation::Tile(*fusion_adaptor, tiling_space->Clone()));
 
   auto tile = [&](absl::Span<const int64_t> tile_sizes)
-      -> absl::StatusOr<experimental::TiledHloComputation> {
-    std::unique_ptr<experimental::TilingSpace> concrete_space =
-        tiling_space->Clone();
+      -> absl::StatusOr<TiledHloComputation> {
+    std::unique_ptr<TilingSpace> concrete_space = tiling_space->Clone();
     ABSL_RETURN_IF_ERROR(concrete_space->AssignTileSizes(tile_sizes));
-    return experimental::TiledHloComputation::Tile(*fusion_adaptor,
-                                                   std::move(concrete_space));
+    return TiledHloComputation::Tile(*fusion_adaptor,
+                                     std::move(concrete_space));
   };
   auto passes_precheck = [&](absl::Span<const int64_t> tile_sizes) {
     return internal::DoesTilingFitInRegisters(*fusion_adaptor, symbolic,
                                               tile_sizes, device_info_);
   };
   auto passes_check = [&](absl::Span<const int64_t> tile_sizes) {
-    absl::StatusOr<experimental::TiledHloComputation> concrete =
-        tile(tile_sizes);
+    absl::StatusOr<TiledHloComputation> concrete = tile(tile_sizes);
     CHECK_OK(concrete);
     return internal::DoesComputationFitInRegisters(*fusion_adaptor, *concrete,
                                                    device_info_);

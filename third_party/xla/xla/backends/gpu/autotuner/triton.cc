@@ -381,14 +381,13 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
       VLOG(1) << "Failed to borrow MLIRContext: " << mlir_context.status();
       return false;
     }
-    auto ts = experimental::TilingSpace::Create(*fusion_adaptor,
-                                                (*mlir_context)->get());
+    auto ts = TilingSpace::Create(*fusion_adaptor, (*mlir_context)->get());
     if (!ts.ok()) {
       VLOG(1) << "Failed to create tiling space: " << ts.status().message();
       return false;
     }
-    auto tiled_computation_or = experimental::TiledHloComputation::Tile(
-        *fusion_adaptor, std::move(ts.value()));
+    auto tiled_computation_or =
+        TiledHloComputation::Tile(*fusion_adaptor, std::move(ts.value()));
     if (!tiled_computation_or.ok()) {
       VLOG(1) << "Fusion is not tileable with experimental tiling: "
               << tiled_computation_or.status().message();

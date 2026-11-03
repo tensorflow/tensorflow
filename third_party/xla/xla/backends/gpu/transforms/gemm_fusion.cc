@@ -1199,12 +1199,11 @@ absl::Status RemoveEdgeBitcasts(HloInstruction* fusion,
 // that we know they will be divisiable by 2. Specifically, extract the
 // variables for block_m, block_n, block_k.
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> BuildEvenBlockSizeReplacements(
-    const experimental::TiledHloInstruction& tiled_dot,
-    mlir::MLIRContext& mlir_context) {
+    const TiledHloInstruction& tiled_dot, mlir::MLIRContext& mlir_context) {
   const DotDimensionNumbers& dim_numbers =
       tiled_dot.hlo()->dot_dimension_numbers();
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> even_variable_replacements;
-  auto add_var_from_tile = [&](const experimental::DimTile& dim_tile) {
+  auto add_var_from_tile = [&](const DimTile& dim_tile) {
     llvm::DenseSet<VariableID> vars;
     dim_tile.size.GetUsedVariables(vars);
     CHECK_EQ(vars.size(), 1)
@@ -1232,7 +1231,7 @@ llvm::DenseMap<SymbolicExpr, SymbolicExpr> BuildEvenBlockSizeReplacements(
 // Returns true if `inst` is an S4 instruction whose minor-most non-unit
 // physical dimension has a tile size not divisible by 2.
 bool InstructionHasUntileableS4MinorDimension(
-    const experimental::TiledHloInstruction& inst,
+    const TiledHloInstruction& inst,
     const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacement_map) {
   const Shape& shape = inst.hlo()->shape();
   if (shape.element_type() != PrimitiveType::S4 || !shape.has_layout()) {
@@ -1240,7 +1239,7 @@ bool InstructionHasUntileableS4MinorDimension(
   }
 
   // Find the minor-most non-unit dimension according to the physical layout.
-  llvm::ArrayRef<experimental::DimTile> dim_tiles = inst.tile().dim_tiles();
+  llvm::ArrayRef<DimTile> dim_tiles = inst.tile().dim_tiles();
   auto minor_to_major = shape.layout().minor_to_major();
   auto minor_dim = absl::c_find_if(
       minor_to_major, [&](int64_t dim) { return shape.dimensions(dim) != 1; });
@@ -1257,19 +1256,16 @@ bool InstructionHasUntileableS4MinorDimension(
 // Returns true if any instruction in `instructions`, or in any of their
 // (transitively) nested regions, has an untileable S4 minor dimension.
 bool AnyInstructionHasUntileableS4MinorDimension(
-    absl::Span<const experimental::TiledHloInstruction* const> instructions,
+    absl::Span<const TiledHloInstruction* const> instructions,
     const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacement_map) {
-  return absl::c_any_of(
-      instructions, [&](const experimental::TiledHloInstruction* inst) {
-        return InstructionHasUntileableS4MinorDimension(*inst,
-                                                        replacement_map) ||
-               absl::c_any_of(
-                   inst->hlo_regions(),
-                   [&](const experimental::TiledHloRegion& region) {
-                     return AnyInstructionHasUntileableS4MinorDimension(
-                         region.instructions(), replacement_map);
-                   });
-      });
+  return absl::c_any_of(instructions, [&](const TiledHloInstruction* inst) {
+    return InstructionHasUntileableS4MinorDimension(*inst, replacement_map) ||
+           absl::c_any_of(inst->hlo_regions(),
+                          [&](const TiledHloRegion& region) {
+                            return AnyInstructionHasUntileableS4MinorDimension(
+                                region.instructions(), replacement_map);
+                          });
+  });
 }
 
 // Most S4 parameters are okay, but there are cases where the tile size along
@@ -1281,13 +1277,12 @@ bool AnyInstructionHasUntileableS4MinorDimension(
 // TODO(b/514309966): Fix tiling to handle this case and remove this check.
 FusionDecision CanUnpackS4ParametersInFusion(
     const HloFusionAdaptor& fusion_adaptor, mlir::MLIRContext& mlir_context) {
-  auto tiling_space =
-      experimental::TilingSpace::Create(fusion_adaptor, &mlir_context);
+  auto tiling_space = TilingSpace::Create(fusion_adaptor, &mlir_context);
   if (!tiling_space.ok()) {
     return FusionDecision::Forbid(tiling_space.status().message());
   }
-  auto tiled_computation = experimental::TiledHloComputation::Tile(
-      fusion_adaptor, std::move(*tiling_space));
+  auto tiled_computation =
+      TiledHloComputation::Tile(fusion_adaptor, std::move(*tiling_space));
   if (!tiled_computation.ok()) {
     return FusionDecision::Forbid(tiled_computation.status().message());
   }
@@ -1298,8 +1293,7 @@ FusionDecision CanUnpackS4ParametersInFusion(
     return FusionDecision::Forbid(
         "Expected tiled computation root to be a single dot instruction.");
   }
-  const experimental::TiledHloInstruction* tiled_dot =
-      tiled_computation->roots()[0];
+  const TiledHloInstruction* tiled_dot = tiled_computation->roots()[0];
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
       BuildEvenBlockSizeReplacements(*tiled_dot, mlir_context);
@@ -1318,14 +1312,13 @@ FusionDecision CanUnpackS4ParametersInFusion(
 FusionDecision CanTile(mlir::MLIRContext& mlir_context,
                        const HloFusionAdaptor& fusion,
                        const se::DeviceDescription& device_description) {
-  namespace ge = ::xla::gpu;
-  auto ts = ge::TilingSpace::Create(fusion, &mlir_context);
+  auto ts = TilingSpace::Create(fusion, &mlir_context);
   if (!ts.ok()) {
     return FusionDecision::Forbid(
         absl::StrCat("Failed to create tiling space: ", ts.status().message()));
   }
   auto tiled_computation =
-      ge::TiledHloComputation::Tile(fusion, std::move(ts.value()));
+      TiledHloComputation::Tile(fusion, std::move(ts.value()));
   if (!tiled_computation.ok()) {
     return FusionDecision::Forbid(
         absl::StrCat("Fusion is not tileable with experimental tiling: ",
