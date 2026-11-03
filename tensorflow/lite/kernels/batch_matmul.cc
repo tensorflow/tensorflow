@@ -21,7 +21,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
 #include <limits>
+#include <utility>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -342,6 +344,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, rhs_data->type == kTfLiteFloat32 ||
                               rhs_data->type == kTfLiteInt8 ||
                               rhs_data->type == kTfLiteInt16);
+  for (const TfLiteTensor* tensor : {lhs_data, rhs_data}) {
+    if (tensor->quantization.type != kTfLiteNoQuantization &&
+        tensor->quantization.type != kTfLiteAffineQuantization) {
+      TF_LITE_KERNEL_LOG(context,
+                         "BATCH_MATMUL does not support quantization type %d "
+                         "of its inputs.",
+                         tensor->quantization.type);
+      return kTfLiteError;
+    }
+  }
   // Either we have a hybrid quantization with a float32 and an int8 input,
   // otherwise both inputs should be of the same type.
   TF_LITE_ENSURE(
@@ -441,15 +453,24 @@ RuntimeShape SwapRowColumnDims(const RuntimeShape& shape) {
   return swapped_shape;
 }
 
-TfLiteStatus VerifyPerChannelQuantization(TfLiteContext* context,
-                                          const TfLiteTensor* tensor) {
+enum class QuantizationGranularity { kPerTensor, kPerChannel };
+
+// Gets the quantization `granularity` of an affine quantized `tensor`.
+//
+// Fails if `tensor`'s quantization isn't affine.
+TfLiteStatus GetQuantizationGranularity(TfLiteContext* context,
+                                        const TfLiteTensor* tensor,
+                                        QuantizationGranularity& granularity) {
   TF_LITE_ENSURE_EQ(context, tensor->quantization.type,
                     kTfLiteAffineQuantization);
   const auto* affine_quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(tensor->quantization.params);
   TF_LITE_ENSURE(context, affine_quantization);
   TF_LITE_ENSURE(context, affine_quantization->scale);
-  return affine_quantization->scale->size > 1 ? kTfLiteOk : kTfLiteError;
+  granularity = affine_quantization->scale->size > 1
+                    ? QuantizationGranularity::kPerChannel
+                    : QuantizationGranularity::kPerTensor;
+  return kTfLiteOk;
 }
 
 TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
@@ -494,22 +515,29 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
                                     input_offset_ptr,
                                     params->asymmetric_quantize_inputs);
   float* per_channel_scale_ptr = nullptr;
-  if (VerifyPerChannelQuantization(context, filter) == kTfLiteOk) {
-    //  Per channel quantization.
-    const auto* affine_quantization =
-        reinterpret_cast<TfLiteAffineQuantization*>(
-            filter->quantization.params);
-    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension,
-                      filter->dims->size - 2);
-    TF_LITE_ENSURE_EQ(
-        context, affine_quantization->scale->size,
-        filter->dims->data[affine_quantization->quantized_dimension]);
-    per_channel_scale_ptr = affine_quantization->scale->data;
-  } else {
-    // Per tensor quantization.
-    for (int b = 0; b < num_batches_to_quantize; ++b) {
-      // Incorporate scaling of the filter
-      scaling_factors_ptr[b] *= filter->params.scale;
+  QuantizationGranularity granularity = QuantizationGranularity::kPerTensor;
+  TF_LITE_ENSURE_OK(context,
+                    GetQuantizationGranularity(context, filter, granularity));
+  switch (granularity) {
+    case QuantizationGranularity::kPerChannel: {
+      const auto* affine_quantization =
+          reinterpret_cast<TfLiteAffineQuantization*>(
+              filter->quantization.params);
+      TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension,
+                        filter->dims->size - 2);
+      TF_LITE_ENSURE_EQ(
+          context, affine_quantization->scale->size,
+          filter->dims->data[affine_quantization->quantized_dimension]);
+      per_channel_scale_ptr = affine_quantization->scale->data;
+      break;
+    }
+    case QuantizationGranularity::kPerTensor: {
+      // Per tensor quantization.
+      for (int b = 0; b < num_batches_to_quantize; ++b) {
+        // Incorporate scaling of the filter
+        scaling_factors_ptr[b] *= filter->params.scale;
+      }
+      break;
     }
   }
 
