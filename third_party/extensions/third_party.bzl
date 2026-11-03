@@ -15,7 +15,7 @@
 
 """bzlmod extensions for third-party dependencies."""
 
-load("//third_party:java_repos.bzl", java_external_repositories = "repo")
+load("//third_party:java_repos.bzl", java_bzlmod_repositories = "bzlmod_repo", java_external_repositories = "repo")
 load("//third_party:models_repos.bzl", "models_repositories")
 load("//third_party/arm_neon_2_x86_sse:workspace.bzl", arm_neon_2_x86_sse = "repo")
 load("//third_party/coremltools:workspace.bzl", coremltools = "repo")
@@ -31,12 +31,8 @@ load("//third_party/jpegxl:workspace.bzl", jpegxl = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/libwebp:workspace.bzl", libwebp = "repo")
 load("//third_party/linenoise:workspace.bzl", linenoise = "repo")
-load("//third_party/nccl:workspace.bzl", nccl = "repo")
-load("//third_party/nvtx:workspace.bzl", nvtx = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
-load("//third_party/png:workspace.bzl", png = "repo")
 load("//third_party/pprof:workspace.bzl", pprof = "repo")
-load("//third_party/py/absl_py:workspace.bzl", absl_py = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/six:workspace.bzl", six = "repo")
 load("//third_party/skcms:workspace.bzl", skcms = "repo")
@@ -50,9 +46,8 @@ load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("//third_party/xctestrunner:workspace.bzl", xctestrunner = "repo")
 load("//third_party/xprof:workspace.bzl", xprof = "repo")
 
-def _third_party_ext_impl(mctx):  # @unused
+def _third_party_ext_impl(mctx):
     # go/keep-sorted start
-    absl_py()
     arm_neon_2_x86_sse()
     coremltools()
     cython()
@@ -62,6 +57,7 @@ def _third_party_ext_impl(mctx):  # @unused
     googleapis()
     hexagon_nn()
     icu()
+    java_bzlmod_repositories()
     java_external_repositories()
     jpeg()
     jpegxl()
@@ -69,10 +65,7 @@ def _third_party_ext_impl(mctx):  # @unused
     libwebp()
     linenoise()
     models_repositories()
-    nccl()
-    nvtx()
     opencl_headers()
-    png()
     pprof()
     ruy()
     six()
@@ -86,7 +79,9 @@ def _third_party_ext_impl(mctx):  # @unused
     vulkan_headers()
     xctestrunner()
     xprof()
+
     # go/keep-sorted end
+    return mctx.extension_metadata(reproducible = True)
 
 third_party_ext = module_extension(
     implementation = _third_party_ext_impl,

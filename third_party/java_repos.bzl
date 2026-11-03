@@ -21,6 +21,7 @@ def repo():
     """Imports Java repositories for TensorFlow."""
     java_import_external(
         name = "junit",
+        generated_rule_name = "junit",
         jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
         jar_urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
@@ -34,6 +35,7 @@ def repo():
 
     java_import_external(
         name = "org_hamcrest_core",
+        generated_rule_name = "org_hamcrest_core",
         jar_sha256 = "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
         jar_urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
@@ -46,6 +48,7 @@ def repo():
 
     java_import_external(
         name = "com_google_testing_compile",
+        generated_rule_name = "com_google_testing_compile",
         jar_sha256 = "edc180fdcd9f740240da1a7a45673f46f59c5578d8cd3fbc912161f74b5aebb8",
         jar_urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
@@ -58,6 +61,7 @@ def repo():
 
     java_import_external(
         name = "com_google_truth",
+        generated_rule_name = "com_google_truth",
         jar_sha256 = "032eddc69652b0a1f8d458f999b4a9534965c646b8b5de0eba48ee69407051df",
         jar_urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/google/truth/truth/0.32/truth-0.32.jar",
@@ -70,6 +74,7 @@ def repo():
 
     java_import_external(
         name = "org_checkerframework_qual",
+        generated_rule_name = "org_checkerframework_qual",
         jar_sha256 = "d261fde25d590f6b69db7721d469ac1b0a19a17ccaaaa751c31f0d8b8260b894",
         jar_urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/org/checkerframework/checker-qual/2.10.0/checker-qual-2.10.0.jar",
@@ -80,10 +85,50 @@ def repo():
 
     java_import_external(
         name = "com_squareup_javapoet",
+        generated_rule_name = "com_squareup_javapoet",
         jar_sha256 = "5bb5abdfe4366c15c0da3332c57d484e238bd48260d6f9d6acf2b08fdde1efea",
         jar_urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
             "https://repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
         ],
         licenses = ["notice"],  # Apache 2.0
+    )
+
+def bzlmod_repo():
+    """Imports Java repositories for Bzlmod that were provided by closure_repositories in WORKSPACE."""
+    java_import_external(
+        name = "com_google_guava",
+        generated_rule_name = "com_google_guava",
+        jar_sha256 = "6db0c3a244c397429c2e362ea2837c3622d5b68bb95105d37c21c36e5bc70abf",
+        jar_urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/google/guava/guava/25.1-jre/guava-25.1-jre.jar",
+            "https://repo1.maven.org/maven2/com/google/guava/guava/25.1-jre/guava-25.1-jre.jar",
+        ],
+        exports = [
+            "@com_google_code_findbugs_jsr305",
+            "@com_google_errorprone_error_prone_annotations",
+        ],
+        licenses = ["notice"],
+    )
+
+    java_import_external(
+        name = "com_google_code_findbugs_jsr305",
+        generated_rule_name = "com_google_code_findbugs_jsr305",
+        jar_sha256 = "bec0b24dcb23f9670172724826584802b80ae6cbdaba03bdebdef9327b962f6a",
+        jar_urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/google/code/findbugs/jsr305/2.0.3/jsr305-2.0.3.jar",
+            "https://repo1.maven.org/maven2/com/google/code/findbugs/jsr305/2.0.3/jsr305-2.0.3.jar",
+        ],
+        licenses = ["notice"],
+    )
+
+    java_import_external(
+        name = "com_google_errorprone_error_prone_annotations",
+        generated_rule_name = "com_google_errorprone_error_prone_annotations",
+        jar_sha256 = "03d0329547c13da9e17c634d1049ea2ead093925e290567e1a364fd6b1fc7ff8",
+        jar_urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/google/errorprone/error_prone_annotations/2.1.3/error_prone_annotations-2.1.3.jar",
+            "https://repo1.maven.org/maven2/com/google/errorprone/error_prone_annotations/2.1.3/error_prone_annotations-2.1.3.jar",
+        ],
+        licenses = ["notice"],
     )
