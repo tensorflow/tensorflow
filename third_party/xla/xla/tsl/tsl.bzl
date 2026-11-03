@@ -571,6 +571,10 @@ def custom_op_cc_header_only_library(name, deps = [], includes = [], extra_deps 
         name = name + "_gather",
         deps = deps,
         compatible_with = compatible_with,
+        tags = [
+            "alt_dep=:" + name,
+            "avoid_dep",
+        ],
     )
     _transitive_parameters_library(
         name = name + "_gathered_parameters",
@@ -651,6 +655,23 @@ def tsl_pybind_extension_opensource(
         visibility = ["//visibility:private"],
         testonly = testonly,
     )
+
+    # Standalone tsl_pybind_extension shared libraries hide all symbols except
+    # PyInit_<sname> via the version script above and link their own private
+    # static copy of libc++ / libc++abi when static libc++ linking is used.
+    # Because libc++abi matches std::exception RTTI by pointer identity rather
+    # than strcmp, sharing pybind11::detail::internals with _pywrap_tensorflow
+    # causes exceptions thrown in this module to miss std::exception handlers in
+    # _pywrap_tensorflow's translate_exception ("Caught an unknown exception!").
+    # Setting a per-module PYBIND11_STDLIB gives this extension its own
+    # PYBIND11_INTERNALS_ID and exception translator bound to its local libc++abi.
+    local_defines = local_defines + select({
+        clean_dep("//xla/tsl:macos"): [],
+        clean_dep("//xla/tsl:windows"): [],
+        "//conditions:default": [
+            'PYBIND11_STDLIB=\\"_libcpp_%s\\"' % sname,
+        ],
+    })
 
     if static_deps:
         cc_library_name = so_file + "_cclib"
