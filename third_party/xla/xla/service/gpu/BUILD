@@ -2189,6 +2189,7 @@ xla_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/service:buffer_assignment",
         "//xla/service:compiled_module",
         "//xla/service:compiler",

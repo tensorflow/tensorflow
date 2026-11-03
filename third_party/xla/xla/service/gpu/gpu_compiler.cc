@@ -1843,10 +1843,8 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
       break;
   }
 
-  if (mode != AlgebraicSimplifierMode::kGpuConvoluationCanonicalization) {
-    // "slow" minmax means we propagate nan.
-    opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
-  }
+  // "slow" minmax means we propagate nan.
+  opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
 
   if (mode == AlgebraicSimplifierMode::kAfterSimplifyFPConversions) {
     opts.set_enable_remove_no_op_reduce_precision(true);
