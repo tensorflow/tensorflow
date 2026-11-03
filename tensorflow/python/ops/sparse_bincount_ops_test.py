@@ -21,6 +21,7 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
@@ -750,6 +751,61 @@ class TestSparseCountFailureModes(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "must have the same dense shape"):
       self.evaluate(sparse_ops.sparse_bincount(x, weights=weights, axis=-1))
+
+  def test_sparse_bincount_sparse_tensor_value(self):
+    indices = np.array([[0, 0], [0, 1], [1, 2]], dtype=np.int64)
+    values = np.array([1, 2, 1], dtype=np.int32)
+    dense_shape = np.array([2, 3], dtype=np.int64)
+    sp_val = sparse_tensor.SparseTensorValue(indices, values, dense_shape)
+
+    # Axis 0
+    res_axis0 = sparse_ops.sparse_bincount(sp_val, axis=0)
+    self.assertAllEqual([[1], [2]], self.evaluate(res_axis0.indices))
+    self.assertAllEqual([2, 1], self.evaluate(res_axis0.values))
+    self.assertAllEqual([3], self.evaluate(res_axis0.dense_shape))
+
+    # Axis -1
+    res_axis_neg1 = sparse_ops.sparse_bincount(sp_val, axis=-1)
+    self.assertAllEqual(
+        [[0, 1], [0, 2], [1, 1]], self.evaluate(res_axis_neg1.indices)
+    )
+    self.assertAllEqual([1, 1, 1], self.evaluate(res_axis_neg1.values))
+    self.assertAllEqual([2, 3], self.evaluate(res_axis_neg1.dense_shape))
+
+    # Weighted with SparseTensorValue weights
+    weights_vals = np.array([0.5, 1.5, 2.0], dtype=np.float32)
+    w_val = sparse_tensor.SparseTensorValue(indices, weights_vals, dense_shape)
+    res_weighted = sparse_ops.sparse_bincount(sp_val, weights=w_val, axis=-1)
+    self.assertAllEqual(
+        [[0, 1], [0, 2], [1, 1]], self.evaluate(res_weighted.indices)
+    )
+    self.assertAllEqual([0.5, 1.5, 2.0], self.evaluate(res_weighted.values))
+    self.assertAllEqual([2, 3], self.evaluate(res_weighted.dense_shape))
+
+    # Binary output
+    res_binary = sparse_ops.sparse_bincount(
+        sp_val, binary_output=True, axis=-1
+    )
+    self.assertAllEqual(
+        [[0, 1], [0, 2], [1, 1]], self.evaluate(res_binary.indices)
+    )
+    self.assertAllEqual([1, 1, 1], self.evaluate(res_binary.values))
+    self.assertAllEqual([2, 3], self.evaluate(res_binary.dense_shape))
+
+  def test_validate_sparse_weights_sparse_tensor_value(self):
+    indices = np.array([[0, 0], [0, 1]], dtype=np.int64)
+    values = np.array([1, 2], dtype=np.int32)
+    dense_shape = np.array([1, 2], dtype=np.int64)
+    sp_val = sparse_tensor.SparseTensorValue(indices, values, dense_shape)
+
+    weights_vals = np.array([0.5, 1.5], dtype=np.float32)
+    w_val = sparse_tensor.SparseTensorValue(indices, weights_vals, dense_shape)
+
+    validated = sparse_ops.validate_sparse_weights(sp_val, w_val)
+    self.assertAllEqual([0.5, 1.5], self.evaluate(validated))
+
+    empty_weights = sparse_ops.validate_sparse_weights(sp_val, None)
+    self.assertAllEqual([], self.evaluate(empty_weights))
 
 
 if __name__ == "__main__":
