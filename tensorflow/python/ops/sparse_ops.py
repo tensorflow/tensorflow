@@ -2761,7 +2761,11 @@ def sparse_softmax(sp_input, name=None):
     name: optional name of the operation.
   Returns:
     output: N-D `SparseTensor` representing the results.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor` or `SparseTensorValue`.
   """
+  sp_input = _convert_to_sparse_tensor(sp_input)
   with ops.name_scope(name, "SparseSoftmax",
                       [sp_input.indices, sp_input.values]) as name:
     out_vals = gen_sparse_ops.sparse_softmax(sp_input.indices, sp_input.values,
