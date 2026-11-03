@@ -1267,7 +1267,7 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
       )
       self.evaluate(op)
 
-<<<<<<< HEAD
+
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_dtype_dense_cross_hashed(self):
     inp_float = constant_op.constant([[1.0], [2.0]], dtypes.float64)
@@ -1355,7 +1355,7 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
       )
       self.evaluate(op)
 
-=======
+
   def test_sparse_cross_hashed_with_dense_inputs_and_strong_hash(self):
     dense = constant_op.constant([[1], [2]], dtype=dtypes.int64)
     idx = constant_op.constant([[0, 0], [1, 0]], dtype=dtypes.int64)
