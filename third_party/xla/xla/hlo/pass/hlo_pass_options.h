@@ -47,7 +47,8 @@ namespace xla {
 //
 // Example (building options in code):
 //
-//   HloPassOptions options = {{"is_layout_sensitive", true}, {"limit", 2}};
+//   HloPassOptions options = {
+//       {"is_layout_sensitive", true}, {"limit", 2}, {"mode", "simple"}};
 class HloPassOptions {
  public:
   using ProtoMap = google::protobuf::Map<std::string, HloPassOptionValue>;
@@ -59,6 +60,8 @@ class HloPassOptions {
         value.set_bool_val(val);
       } else if constexpr (std::is_integral_v<T>) {
         value.set_int_val(val);
+      } else if constexpr (std::is_convertible_v<T, absl::string_view>) {
+        value.set_string_val(absl::string_view(val));
       } else {
         static_assert(sizeof(T) == 0, "Unsupported HloPassOptions type");
       }
@@ -96,10 +99,8 @@ class HloPassOptions {
   // Returns all options. Does not mark any option as consumed.
   ProtoMap ToProto() const;
 
-  // Inverse of `HloPassOptions(const tsl::protobuf::Message&)`: sets the bool
-  // and int64 fields of `message` that have a same-named, same-typed option,
-  // and marks those options as consumed. Leaves other options unconsumed for
-  // `CheckAllConsumed()`.
+  // Inverse of `HloPassOptions(const tsl::protobuf::Message&)`: consumes each
+  // option that matches a field of `message` by name and type, and sets it.
   void MergeInto(tsl::protobuf::Message& message) const;
 
  private:
@@ -122,6 +123,10 @@ std::optional<T> HloPassOptions::Get(absl::string_view key) const {
   } else if constexpr (std::is_same_v<T, int64_t>) {
     if (value.has_int_val()) {
       result = value.int_val();
+    }
+  } else if constexpr (std::is_same_v<T, std::string>) {
+    if (value.has_string_val()) {
+      result = value.string_val();
     }
   } else {
     static_assert(sizeof(T) == 0, "Unsupported HloPassOptions type");

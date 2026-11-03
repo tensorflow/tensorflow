@@ -21,6 +21,7 @@ message HloPassOptionValue {
   oneof value {
     bool bool_val = 1;
     int64 int_val = 2;
+    string string_val = 3;
   }
 }
 
