@@ -187,8 +187,8 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
       right_operator: linear_operator.LinearOperator,
   ) -> linear_operator.LinearOperator:
     """Solve inverse of generic `LinearOperator`s."""
-    # With `adjoint=True`, `left_operator` is `self.adjoint()`, which is not a
-    # `LinearOperatorInversion`.
+    # With `adjoint=True`, `left_operator` is `self.adjoint()`, which is a
+    # `LinearOperatorAdjoint` unless `self.is_self_adjoint` is True.
     if isinstance(left_operator, LinearOperatorInversion):
       return left_operator.operator.matmul(right_operator)
     return super()._linop_solve(left_operator, right_operator)
