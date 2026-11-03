@@ -23,7 +23,6 @@ namespace xla {
 
 ABSL_ATTRIBUTE_WEAK std::string CompilerVariantToString(
     PjRtCompilerVariant variant) {
-  std::string variant_str;
   if (variant == LinkedCompilerVariantId()) {
     return std::string(kLinkedVariant);
   }

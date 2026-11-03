@@ -38,7 +38,10 @@ package_group(
 #     srcs = ["saved_model_load_and_run_test.py"],
 #     exec_properties = {"cpp_link.mem": "16g"},
 #     main = "saved_model_load_and_run_test.py",
-#     tags = ["requires-gpu-nvidia"],
+#     tags = [
+#         "requires-accel-or-fail-optout",
+#         "requires-gpu-sm90",
+#     ],
 #     deps = [
 #         ":_pywrap_saved_model",
 #         "//tensorflow/python/eager:context",

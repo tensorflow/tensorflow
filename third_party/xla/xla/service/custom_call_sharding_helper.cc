@@ -21,8 +21,11 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -49,6 +52,12 @@ bool CustomCallShardingHelper::CanPropagateShardingToOperands(
 absl::Status CustomCallPartitioner::Partition(
     spmd::SpmdPartitioningVisitor* partitioner, HloInstruction* hlo) const {
   return xla::Unimplemented("Implement sharding for %s", hlo->ToString());
+}
+
+absl::Status CustomCallPartitioner::InspectSharding(
+    const HloSharding& sharding, absl::string_view backend_config) const {
+  return xla::Unimplemented(
+      "InspectSharding is not implemented for this custom call partitioner.");
 }
 
 namespace {

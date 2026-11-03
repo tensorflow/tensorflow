@@ -49,6 +49,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Bitcode/BitcodeReader.h"
@@ -304,45 +305,6 @@ static cpu::JitCompiler::TaskRunner GetCompilationTaskRunner() {
   };
 }
 
-// For each computation in the module, determines whether that computation
-// calls a custom-call function, either directly or indirectly (e.g. because it
-// calls another computation that does).
-absl::flat_hash_map<const HloComputation*, bool>
-ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
-  absl::flat_hash_map<const HloComputation*, bool> custom_call_map;
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(&module);
-
-  // Can never fail because we always return an OK status from the visitor.
-  CHECK_OK(call_graph->VisitNodes([&custom_call_map](
-                                      const CallGraphNode& node) {
-    const HloComputation* computation = node.computation();
-
-    for (const HloInstruction* instruction : computation->instructions()) {
-      // The computation contains a custom-call instruction directly.
-      if (DynCast<HloCustomCallInstruction>(instruction)) {
-        custom_call_map[computation] = true;
-        return absl::OkStatus();
-      }
-      // The computation calls something that contains a custom-call
-      // instruction (directly or indirectly). This lookup relies on the call
-      // graph traversing callees before callers, so that the map is always
-      // populated for all callees at this point.
-      for (const HloComputation* callee : instruction->called_computations()) {
-        bool callee_contains_custom_call = FindOrDie(custom_call_map, callee);
-        if (callee_contains_custom_call) {
-          custom_call_map[computation] = true;
-          return absl::OkStatus();
-        }
-      }
-    }
-
-    custom_call_map[computation] = false;
-    return absl::OkStatus();
-  }));
-
-  return custom_call_map;
-}
-
 }  // namespace
 
 namespace cpu {
@@ -386,85 +348,6 @@ absl::StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
 }
 
 namespace {
-
-// This visitor records which HLO instructions should have profiling information
-// recorded.
-class CollectProfileCandidates : public DfsHloVisitorWithDefault {
- public:
-  static absl::StatusOr<absl::flat_hash_map<const HloInstruction*, int64_t>>
-  GetCandidatesForComputation(
-      const HloComputation& computation,
-      const absl::flat_hash_map<const HloInstruction*, int64_t>&
-          assigned_indices) {
-    absl::flat_hash_map<const HloInstruction*, int64_t> hlo_to_profile_idx;
-    CollectProfileCandidates profile_candidates_for_computation(
-        &hlo_to_profile_idx, assigned_indices);
-    ABSL_RETURN_IF_ERROR(computation.Accept(&profile_candidates_for_computation));
-    return hlo_to_profile_idx;
-  }
-
- private:
-  CollectProfileCandidates(
-      absl::flat_hash_map<const HloInstruction*, int64_t>* hlo_to_profile_idx,
-      const absl::flat_hash_map<const HloInstruction*, int64_t>&
-          assigned_indices)
-      : hlo_to_profile_idx_(hlo_to_profile_idx),
-        assigned_indices_(assigned_indices) {}
-
-  absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
-    hlo_to_profile_idx_->insert(
-        {hlo_instruction, FindOrDie(assigned_indices_, hlo_instruction)});
-    return absl::OkStatus();
-  }
-
-  absl::Status HandleCall(HloInstruction* call) override {
-    ABSL_RETURN_IF_ERROR(DefaultAction(call));
-    CollectProfileCandidates candidates_for_call(hlo_to_profile_idx_,
-                                                 assigned_indices_);
-    ABSL_RETURN_IF_ERROR(call->to_apply()->Accept(&candidates_for_call));
-    return absl::OkStatus();
-  }
-  // Recurse into "conditional" so we can profile inside of it.
-  absl::Status HandleConditional(HloInstruction* conditional) override {
-    ABSL_RETURN_IF_ERROR(DefaultAction(conditional));
-
-    for (HloComputation* branch : conditional->branch_computations()) {
-      CollectProfileCandidates candidates_for_branch(hlo_to_profile_idx_,
-                                                     assigned_indices_);
-      ABSL_RETURN_IF_ERROR(branch->Accept(&candidates_for_branch));
-    }
-
-    return absl::OkStatus();
-  }
-
-  // Skip constants, there is nothing to profile.
-  absl::Status HandleConstant(HloInstruction*) override {
-    return absl::OkStatus();
-  }
-  // Skip parameters, they are a simple load.
-  absl::Status HandleParameter(HloInstruction*) override {
-    return absl::OkStatus();
-  }
-  // It is important to recurse for "while" or else we risk overly coarse
-  // profiling information.
-  absl::Status HandleWhile(HloInstruction* xla_while) override {
-    ABSL_RETURN_IF_ERROR(DefaultAction(xla_while));
-
-    CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_,
-                                                      assigned_indices_);
-    ABSL_RETURN_IF_ERROR(
-        xla_while->while_condition()->Accept(&candidates_for_condition));
-
-    CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_,
-                                                 assigned_indices_);
-    ABSL_RETURN_IF_ERROR(xla_while->while_body()->Accept(&candidates_for_body));
-
-    return absl::OkStatus();
-  }
-
-  absl::flat_hash_map<const HloInstruction*, int64_t>* hlo_to_profile_idx_;
-  const absl::flat_hash_map<const HloInstruction*, int64_t>& assigned_indices_;
-};
 
 // Adds the HloVerifier for CPU to the given pipeline.
 void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
@@ -654,7 +537,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     }
     spmd_pipeline.AddPass<xla::CallInliner>(
         /*single_call_site=*/false,
-        /*update_domain=*/false,
         /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
         /*override_policy=*/
         [](const xla::CallGraph& call_graph,
@@ -1326,40 +1208,6 @@ absl::Status VerifyLlvmModule(const llvm::Module& llvm_module) {
   return absl::OkStatus();
 }
 
-absl::Status CreateHloProfilingArtifacts(
-    const HloModule& module,
-    absl::flat_hash_map<const HloInstruction*, int64_t>*
-        instruction_to_profile_idx,
-    absl::flat_hash_map<const HloComputation*, int64_t>*
-        computation_to_profile_idx,
-    std::unique_ptr<HloProfileIndexMap>* hlo_profile_index_map,
-    std::unique_ptr<HloProfilePrinterData>* hlo_profile_printer_data) {
-  *hlo_profile_index_map = std::make_unique<HloProfileIndexMap>(module);
-  const HloComputation& entry_computation = *module.entry_computation();
-
-  ABSL_ASSIGN_OR_RETURN(*instruction_to_profile_idx,
-                   CollectProfileCandidates::GetCandidatesForComputation(
-                       entry_computation,
-                       (*hlo_profile_index_map)->instruction_to_profile_idx()));
-
-  auto shape_size_bytes = [](const Shape& shape) {
-    // On the cpu, opaques are pointers.
-    if (shape.IsOpaque()) {
-      return static_cast<int64_t>(sizeof(void*));
-    }
-    return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-  };
-
-  HloCostAnalysis cost_analysis(shape_size_bytes);
-  ABSL_RETURN_IF_ERROR(entry_computation.Accept(&cost_analysis));
-  *hlo_profile_printer_data = CreateHloProfilePrinterData(
-      **hlo_profile_index_map, cost_analysis, entry_computation.name());
-  *computation_to_profile_idx =
-      (*hlo_profile_index_map)->computation_to_profile_idx();
-
-  return absl::OkStatus();
-}
-
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
@@ -1520,10 +1368,9 @@ static llvm::orc::ThreadSafeModule CloneAsThreadSafeModule(
 }
 
 namespace {
-// Compiled symbols (kernels and comparators) from a single LLVM module part.
+// Compiled symbols (kernels) from a single LLVM module part.
 struct CompiledSymbolsPart {
   std::vector<IrEmitter2::KernelInfo> kernels;
-  std::vector<IrEmitter2::ComparatorInfo> comparators;
 };
 }  // namespace
 
@@ -1544,22 +1391,9 @@ static CompiledSymbolsPart CollectCompiledSymbolsPart(
     return std::nullopt;
   };
 
-  auto find_comparator =
-      [&](llvm::StringRef name) -> std::optional<IrEmitter2::ComparatorInfo> {
-    for (auto& c : ir_emitter.comparators()) {
-      if (c.name == name) {
-        return c;
-      }
-    }
-    return std::nullopt;
-  };
-
   for (auto& f : module.functions()) {
     if (auto kernel = find_kernel(f.getName())) {
       syms.kernels.push_back(*kernel);
-    }
-    if (auto comparator = find_comparator(f.getName())) {
-      syms.comparators.push_back(*comparator);
     }
   }
 
@@ -1599,23 +1433,6 @@ inline void VlogMaxIsa(absl::string_view max_cpu_isa) {
     } else {
       VLOG(1) << "`xla_cpu_max_isa` is set to `" << max_cpu_isa
               << "`. This flag is not supported on non-x86 CPUs yet.";
-    }
-  }
-}
-
-// We keep HloProto in the CpuExecutable, but we don't need to keep literals
-// payload in it as we use it only for debugging and memory analysis.
-static void StripPayloadFromLiteralProto(HloProto& proto) {
-  auto* module = proto.mutable_hlo_module();
-  for (auto& computation : *module->mutable_computations()) {
-    for (auto& instruction : *computation.mutable_instructions()) {
-      // We only keep literal shape to correctly estimate memory usage of the
-      // HLO module, but we don't need the actual literal data.
-      if (instruction.has_literal()) {
-        LiteralProto literal;
-        *literal.mutable_shape() = instruction.literal().shape();
-        *instruction.mutable_literal() = std::move(literal);
-      }
     }
   }
 }
@@ -1785,7 +1602,6 @@ CpuCompiler::CompileCpuExecutable(
           });
 
   // Compile must be thread-safe so create a new LLVM context for the module.
-  mlir::MLIRContext mlir_context;
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   auto llvm_module =
       std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
@@ -1856,18 +1672,6 @@ CpuCompiler::CompileCpuExecutable(
   FusionWrapper fusion_wrapper(&target_machine_features);
   ABSL_RETURN_IF_ERROR(fusion_wrapper.Run(module.get()).status());
 
-  absl::flat_hash_map<const HloInstruction*, int64_t>
-      instruction_to_profile_idx;
-  absl::flat_hash_map<const HloComputation*, int64_t>
-      computation_to_profile_idx;
-  std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
-  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
-  if (module->config().hlo_profiling_enabled()) {
-    ABSL_RETURN_IF_ERROR(CreateHloProfilingArtifacts(
-        *module, &instruction_to_profile_idx, &computation_to_profile_idx,
-        &hlo_profile_index_map, &hlo_profile_printer_data));
-  }
-
   // Cache these flags here since we'll want to access them after the module's
   // ownership is std::moved.
   const bool embed_ir_in_executable =
@@ -1913,16 +1717,8 @@ CpuCompiler::CompileCpuExecutable(
   // functions for embedded computations (e.g. reduction computations) and all
   // high-level operations (fusions, elementwise, etc.) are lowered to kernel
   // functions (which are also LLVM functions, but use a HostKernel ABI).
-  IrEmitter nested_ir_emitter(
-      &mlir_context, *module, *assignment, llvm_module.get(),
-      std::move(instruction_to_profile_idx),
-      std::move(computation_to_profile_idx),
-      ModuleComputationsTransitivelyContainCustomCall(*module),
-      &target_machine_features, options::IsMsanEnabled(module->config()));
-
-  // The thunk runtime manages large constants, therefore we only emit
-  // small ones.
-  ABSL_RETURN_IF_ERROR(nested_ir_emitter.EmitSmallConstantGlobals());
+  IrEmitter nested_ir_emitter(*module, *assignment, llvm_module.get(),
+                              &target_machine_features);
 
   // IR emitter is responsible for building LLVM module with host kernels for
   // corresponding HLO instructions (fusions, elemental instructions, etc.).
@@ -1939,6 +1735,8 @@ CpuCompiler::CompileCpuExecutable(
 
   ABSL_ASSIGN_OR_RETURN(std::vector<ThunkEmitter::EmittedKernel> kernels,
                    thunk_emitter.ConsumeKernels());
+  std::vector<ThunkEmitter::EmittedKernel> comparators =
+      thunk_emitter.ConsumeComparators();
 
   std::string ir_module_string;
   if (embed_ir_in_executable) {
@@ -1950,12 +1748,18 @@ CpuCompiler::CompileCpuExecutable(
                       llvm_ir::DumpToString(kernel.module.getModuleUnlocked()));
     };
     std::string thunks_ir = absl::StrJoin(kernels, "\n", thunk_kernel_fmt);
+    std::string comparators_ir =
+        absl::StrJoin(comparators, "\n", thunk_kernel_fmt);
 
     ir_module_string = absl::StrCat(emitter2_ir, "\n", thunks_ir);
+    if (!comparators_ir.empty()) {
+      absl::StrAppend(&ir_module_string, "\n", comparators_ir);
+    }
   }
 
   ABSL_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
-  for (const auto& [name, module] : kernels) {
+  for (const auto& [name, module] :
+       llvm::concat<const ThunkEmitter::EmittedKernel>(kernels, comparators)) {
     ABSL_RETURN_IF_ERROR(VerifyLlvmModule(*module.getModuleUnlocked()));
   }
 
@@ -1992,9 +1796,8 @@ CpuCompiler::CompileCpuExecutable(
   // We define the number of module parts based on the total number of
   // compiled functions (kernels and comparators) that are called from thunks,
   // and the maximum number of parts that we want to split the module into.
-  size_t num_compiled_functions = ir_emitter2.kernels().size() +
-                                  ir_emitter2.comparators().size() +
-                                  kernels.size();
+  size_t num_compiled_functions =
+      ir_emitter2.kernels().size() + kernels.size() + comparators.size();
   size_t num_default_parts =
       std::min(num_compiled_functions - num_extra_functions,
                parallel_codegen_split_count - num_extra_parts);
@@ -2011,8 +1814,7 @@ CpuCompiler::CompileCpuExecutable(
   std::vector<CompiledSymbolsPart> compiled_parts;
 
   VLOG(2) << "Compile LLVM module with " << ir_emitter2.kernels().size()
-          << " kernels and " << ir_emitter2.comparators().size()
-          << " comparators";
+          << " kernels";
 
   int dylib_index = 0;
   auto add_module_for_compilation =
@@ -2112,6 +1914,16 @@ CpuCompiler::CompileCpuExecutable(
     // Simply roundrobin the default kernel dylibs
     kernel_dylib_index = (kernel_dylib_index + 1) % num_default_parts;
   }
+  for (auto& [name, module] : comparators) {
+    compiled_symbols.push_back(
+        FunctionLibrary::Sym<FunctionLibrary::Comparator>(name));
+    symbol_type_id_to_function_type_id.emplace(compiled_symbols.back().type_id,
+                                               SymbolProto::COMPARATOR);
+    ABSL_RETURN_IF_ERROR(llvm_module_compiler->AddModule(
+        std::move(module), num_extra_parts + kernel_dylib_index));
+    // Simply roundrobin the default kernel dylibs
+    kernel_dylib_index = (kernel_dylib_index + 1) % num_default_parts;
+  }
 
   for (const CompiledSymbolsPart& part : compiled_parts) {
     for (const IrEmitter2::KernelInfo& kernel : part.kernels) {
@@ -2119,12 +1931,6 @@ CpuCompiler::CompileCpuExecutable(
           FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel.name));
       symbol_type_id_to_function_type_id.emplace(
           compiled_symbols.back().type_id, SymbolProto::KERNEL);
-    }
-    for (const IrEmitter2::ComparatorInfo& comparator : part.comparators) {
-      compiled_symbols.push_back(
-          FunctionLibrary::Sym<FunctionLibrary::Comparator>(comparator.name));
-      symbol_type_id_to_function_type_id.emplace(
-          compiled_symbols.back().type_id, SymbolProto::COMPARATOR);
     }
   }
 

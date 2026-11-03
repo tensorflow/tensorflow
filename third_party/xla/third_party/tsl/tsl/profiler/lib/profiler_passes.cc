@@ -64,12 +64,12 @@ std::unique_ptr<ProfilerPasses> ProfilerPasses::Create(
 }
 
 absl::Status ProfilerPasses::Status() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   return status_;
 }
 
 absl::StatusOr<bool> ProfilerPasses::NeedMorePasses() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   if (!status_.ok()) return status_;
 #if !defined(IS_MOBILE_PLATFORM)
   if (multi_pass_profiler_ == nullptr) {
@@ -86,7 +86,7 @@ absl::StatusOr<bool> ProfilerPasses::NeedMorePasses() {
 }
 
 absl::Status ProfilerPasses::StartPass() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 #if !defined(IS_MOBILE_PLATFORM)
   if (!status_.ok()) {
     return absl::InternalError("Previous operations failed");
@@ -124,7 +124,7 @@ absl::Status ProfilerPasses::StartPass() {
 }
 
 absl::Status ProfilerPasses::PushRange(absl::string_view name) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   if (!status_.ok()) {
     return status_;
   }
@@ -137,7 +137,7 @@ absl::Status ProfilerPasses::PushRange(absl::string_view name) {
 }
 
 absl::Status ProfilerPasses::PopRange() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   if (!status_.ok()) {
     return status_;
   }
@@ -150,7 +150,7 @@ absl::Status ProfilerPasses::PopRange() {
 }
 
 absl::Status ProfilerPasses::StopPass() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 #if !defined(IS_MOBILE_PLATFORM)
   if (pass_count_ == 1) {
     first_pass_stop_time_ns_ = profiler::GetCurrentTimeNanos();
@@ -164,7 +164,7 @@ absl::Status ProfilerPasses::StopPass() {
 
 #if !defined(IS_MOBILE_PLATFORM)
 absl::Status ProfilerPasses::CollectDataInternal(XSpace* space) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   VLOG(3) << "Profiler passes collecting data.";
   if (multi_pass_profiler_ != nullptr) {
     multi_pass_profiler_->Stop().IgnoreError();

@@ -117,6 +117,7 @@ std::unique_ptr<const DiffEval> ComputeDiffEval(
       diff_result.right_module_unmatched_instructions.size();
   eval->len_changed = diff_result.changed_instructions.size();
   eval->len_unchanged = diff_result.unchanged_instructions.size();
+  eval->len_moved = diff_result.moved_instructions.size();
 
   eval->left_node_count = left.GetNodeCount();
   eval->right_node_count = right.GetNodeCount();

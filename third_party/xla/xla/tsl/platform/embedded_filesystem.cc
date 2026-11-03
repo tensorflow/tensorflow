@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -114,6 +115,8 @@ absl::Status EmbedFileSystem::GetMatchingPaths(
       results->push_back(std::string(file));
     }
   }
+  // `fs_` is unordered, so sort the matches.
+  absl::c_sort(*results);
 
   return absl::OkStatus();
 }

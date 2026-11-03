@@ -35,7 +35,7 @@ HloSharding convertToHloSharding(
     mlir::sdy::TensorShardingAttr sdySharding,
     std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
         getMeshAttr,
-    mlir::ArrayRef<mlir::StringAttr> manualAxes = {},
+    mlir::ArrayRef<mlir::sdy::AxisRefAttr> manualAxes = {},
     bool enableHloShardingV3 = false, bool simplifyReplicatedShardings = false);
 
 // Convert the `shardings` into a `kXlaShardingAttr` representing
@@ -45,7 +45,7 @@ void setHloShardingAttr(
     mlir::ArrayRef<mlir::sdy::TensorShardingAttr> shardings,
     std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
         getMeshAttr,
-    mlir::ArrayRef<mlir::StringAttr> manualAxes = {},
+    mlir::ArrayRef<mlir::sdy::AxisRefAttr> manualAxes = {},
     bool enableHloShardingV3 = false, bool simplifyReplicatedShardings = false);
 
 // Creates a pass that converts the shardings from `kShardingAttr` to

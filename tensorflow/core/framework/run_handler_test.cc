@@ -586,6 +586,7 @@ TEST(RunHandlerThreadPool, MultipleSubThreadPool) {
 SessionOptions DefaultSessionOptions() {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
+  options.config.set_intra_op_parallelism_threads(2);
   return options;
 }
 
@@ -636,6 +637,7 @@ class RunHandlerTest : public ::testing::Test {
                      "0.4,1", true),
               0);
     ASSERT_EQ(setenv("TF_NUM_INTEROP_THREADS", "16", true), 0);
+    ASSERT_EQ(setenv("TF_NUM_INTRAOP_THREADS", "2", true), 0);
   }
 
   std::string a_;

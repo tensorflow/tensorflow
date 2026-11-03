@@ -17,12 +17,13 @@ limitations under the License.
 
 #include "cuda_tile/Dialect/CudaTile/IR/Dialect.h"
 #include "tensor_ir/Compiler/CudaTile/Pipelines.h"
-#include "tensor_ir/Conversion/TensorToCudaTile/Options.h"
 #include "tensor_ir/Dialect/TensorIR.h"
+#include "tensor_ir/Options/Options.h"
+#include "tensor_ir/Options/OptionsEnums.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/LogicalResult.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithDialect.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -115,15 +116,19 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToTensorIRTranslate(
 
   if (compile_flag) {
     mlir::PassManager pass_manager(context);
-    mlir::nv_tensor_ir::TensorToCudaTilePipelineOptions options;
+    mlir::nv_tensor_ir::CompilerInvocation options;
+    // Emit only the CudaTile kernel module without a native host LLVM wrapper.
+    options.codegen.hostTarget = mlir::nv_tensor_ir::HostTarget::Interpreter;
     if (!tile_shape_flag.empty()) {
-      options.tileSize.assign(tile_shape_flag.begin(), tile_shape_flag.end());
-      options.reductionTileSize = options.tileSize.back();
-      options.tileSize.pop_back();
+      options.codegen.tileSize.assign(tile_shape_flag.begin(),
+                                      tile_shape_flag.end());
+      options.cudaTile.reductionTileSize = options.codegen.tileSize.back();
+      options.codegen.tileSize.pop_back();
     }
-    mlir::nv_tensor_ir::buildTensorToCudaTileConversionPipeline(pass_manager,
-                                                                options);
-    if (llvm::failed(pass_manager.run(*module))) {
+    if (!mlir::nv_tensor_ir::buildTensorToCudaTileConversionPipeline(
+             pass_manager, options)
+             .ok() ||
+        llvm::failed(pass_manager.run(*module))) {
       return nullptr;
     }
   }

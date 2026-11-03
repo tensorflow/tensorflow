@@ -1,3 +1,15 @@
+--- a/python/triton/experimental/gsan/src/GSan.h
++++ b/python/triton/experimental/gsan/src/GSan.h
+@@ -35,7 +35,7 @@ struct LaunchState {
+ // A normal/write-once pair for each power-of-two granularity from 1 to 16.
+ // The low pool-index bit selects the mode; the remaining bits encode log2
+ // granularity. Six unused slots keep the reservation a power of two.
+-static constexpr size_t kPoolReserveSize = 1ull << 40;
++static constexpr size_t kPoolReserveSize = 1ull << 36;
+ static constexpr int kNumPools = 10;
+ static constexpr size_t kReserveSize = 16 * kPoolReserveSize;
+ // Default normal granularity. Write-once allocations default to one byte.
+
 --- a/python/triton/experimental/gsan/src/GSanAllocator.cc
 +++ b/python/triton/experimental/gsan/src/GSanAllocator.cc
 @@ -393,8 +393,14 @@ CUresult ensureContext(int device) {
@@ -17,16 +29,4 @@
  
    res = cuDevicePrimaryCtxRetain(&ctx, device);
    if (res != CUDA_SUCCESS)
-
---- a/python/triton/experimental/gsan/src/GSan.h
-+++ b/python/triton/experimental/gsan/src/GSan.h
-@@ -35,7 +35,7 @@ struct LaunchState {
- // A normal/write-once pair for each power-of-two granularity from 1 to 16.
- // The low pool-index bit selects the mode; the remaining bits encode log2
- // granularity. Six unused slots keep the reservation a power of two.
--static constexpr size_t kPoolReserveSize = 1ull << 40;
-+static constexpr size_t kPoolReserveSize = 1ull << 36;
- static constexpr int kNumPools = 10;
- static constexpr size_t kReserveSize = 16 * kPoolReserveSize;
- // Default normal granularity. Write-once allocations default to one byte.
 

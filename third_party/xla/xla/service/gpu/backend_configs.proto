@@ -19,6 +19,7 @@ package xla.gpu;
 
 import "xla/autotuning.proto";
 import "xla/codegen/xtile/xtile_config.proto";
+import "xla/stream_executor/gpu/blas_lt_matmul_algorithm.proto";
 import "xla/tsl/protobuf/dnn.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
@@ -93,6 +94,14 @@ message GemmBackendConfig {
     int64 selected_algorithm = 1;
   }
 
+  // Serialized blasLt algorithm configuration replacing `selected_algorithm`
+  // for blasLt GEMMs. Kept outside `oneof algorithm` because submessages
+  // already track presence in proto3 (the `oneof` was only needed for scalar
+  // `int64` presence) and so both fields can be populated together during the
+  // migration while fallback paths and legacy callers still read
+  // `selected_algorithm`.
+  stream_executor.gpu.BlasLtMatmulAlgorithmProto algorithm_proto = 23;
+
   double alpha_real = 2;
   double alpha_imag = 9;
 
@@ -136,6 +145,8 @@ message GemmBackendConfig {
   // Whether the last operand of an FP8-output `__cublas$lt$matmul$f8` is the
   // multiplicative F32 D scale. Set by GemmRewriter on ROCm only.
   optional bool has_d_scale = 22;
+
+  // Next id: 24
 }
 
 // Backend config for the grouped (ragged-dot) GEMM operation running through

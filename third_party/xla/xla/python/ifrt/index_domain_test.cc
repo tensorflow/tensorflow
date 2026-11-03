@@ -125,6 +125,69 @@ TEST(IndexDomainTest, Intersect) {
   }
 }
 
+TEST(IndexDomainTest, Contains) {
+  // Scalar domains.
+  {
+    IndexDomain a(Index({}), Shape({}));
+    IndexDomain b(Index({}), Shape({}));
+    EXPECT_THAT(a.Contains(b), IsOkAndHolds(true));
+  }
+
+  // Identical domains.
+  {
+    IndexDomain a(Index({1, 2}), Shape({3, 4}));
+    EXPECT_THAT(a.Contains(a), IsOkAndHolds(true));
+  }
+
+  // Contained domain.
+  {
+    IndexDomain a(Index({0, 0}), Shape({6, 8}));
+    IndexDomain b(Index({2, 3}), Shape({2, 4}));
+    EXPECT_THAT(a.Contains(b), IsOkAndHolds(true));
+    EXPECT_THAT(b.Contains(a), IsOkAndHolds(false));
+  }
+
+  // Partially overlapping domains.
+  {
+    IndexDomain a(Index({1, 2}), Shape({3, 4}));
+    IndexDomain b(Index({2, 0}), Shape({4, 5}));
+    EXPECT_THAT(a.Contains(b), IsOkAndHolds(false));
+    EXPECT_THAT(b.Contains(a), IsOkAndHolds(false));
+  }
+
+  // Disjoint / negative-origin domains.
+  {
+    IndexDomain a(Index({0, 0}), Shape({4, 4}));
+    IndexDomain b(Index({-2, 0}), Shape({2, 2}));
+    EXPECT_THAT(a.Contains(b), IsOkAndHolds(false));
+
+    IndexDomain c(Index({5, 5}), Shape({2, 2}));
+    EXPECT_THAT(a.Contains(c), IsOkAndHolds(false));
+  }
+
+  // Zero-sized domain.
+  {
+    IndexDomain a(Shape({4, 4}));
+    IndexDomain zero(Shape({0, 0}));
+    EXPECT_THAT(a.Contains(zero), IsOkAndHolds(true));
+  }
+
+  // Negative shape dimensions.
+  {
+    IndexDomain a(Index({0, 0}), Shape({-1, 4}));
+    IndexDomain b(Index({0, 0}), Shape({2, 4}));
+    EXPECT_THAT(a.Contains(b), StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_THAT(b.Contains(a), StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Mismatched rank.
+  {
+    IndexDomain a(Index({1, 2}), Shape({3, 4}));
+    IndexDomain b(Index({1}), Shape({3}));
+    EXPECT_THAT(a.Contains(b), StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+}
+
 TEST(IndexDomainTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly(
       {IndexDomain(Index({1, 2}), Shape({3, 4})),

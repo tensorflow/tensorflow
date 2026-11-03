@@ -294,7 +294,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
-  TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
 
   bool adj_x = op_context.params->adj_x;
   bool adj_y = op_context.params->adj_y;
@@ -355,6 +354,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumDimensions(lhs_data) <= 5);
   TF_LITE_ENSURE(context, NumDimensions(rhs_data) >= 2);
   TF_LITE_ENSURE(context, NumDimensions(rhs_data) <= 5);
+
+  TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
 
   const int lhs_rank = NumDimensions(lhs_data);
   const int rhs_rank = NumDimensions(rhs_data);
@@ -498,6 +499,8 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             filter->quantization.params);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension,
+                      filter->dims->size - 2);
     TF_LITE_ENSURE_EQ(
         context, affine_quantization->scale->size,
         filter->dims->data[affine_quantization->quantized_dimension]);
@@ -814,9 +817,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt8:
     case kTfLiteInt16:
-      EvalQuantized(context, node, op_data, lhs_shape, lhs_tensor, rhs_shape,
-                    rhs_tensor, output);
-      break;
+      return EvalQuantized(context, node, op_data, lhs_shape, lhs_tensor,
+                           rhs_shape, rhs_tensor, output);
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Currently BatchMatMul doesn't support type: %s",

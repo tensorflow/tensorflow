@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/tf_saved_model_api.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -24,40 +25,31 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/ops/restore_ops.h"
-#include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/flat_tensor_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/partially_revived_objects.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/restored_resource.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/revived_objects.h"
-#include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
 #include "tensorflow/c/experimental/saved_model/core/signature_def_function.h"
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/constants.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
@@ -196,11 +188,13 @@ absl::Status TFSavedModelAPI::GetFunction(const std::string& function_path,
 absl::Status TFSavedModelAPI::GetFunctions(
     int node_id,
     absl::flat_hash_map<std::string, ConcreteFunction*>* functions) {
+  if (functions == nullptr) {
+    return absl::InvalidArgumentError("functions must not be null.");
+  }
   const auto& nodes = bundle_.saved_object_graph().nodes();
-  if (node_id >= nodes.size()) {
-    return absl::OutOfRangeError(
-        absl::StrCat("node_id ", node_id,
-                     " not found.  Maximum node ID: ", nodes.size() - 1));
+  if (node_id < 0 || node_id >= nodes.size()) {
+    return absl::OutOfRangeError(absl::StrCat(
+        "node_id ", node_id, " is out of range [0, ", nodes.size(), ")."));
   }
   const SavedObject* current_node = &nodes.Get(node_id);
   for (const auto& child : current_node->children()) {

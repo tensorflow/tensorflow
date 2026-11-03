@@ -93,7 +93,7 @@ void LaunchAsyncOpKernel(
   };
 
   DCHECK_EQ(results.size(), kernel_runner.op_kernel()->num_outputs());
-  auto async_state = std::make_shared<AsyncState>(
+  auto async_state = std::make_unique<AsyncState>(
       run_state, params, results.size(), std::move(custom_device));
 
   async_state->results.reserve(results.size());
@@ -106,17 +106,20 @@ void LaunchAsyncOpKernel(
   }
 
   auto* op_kernel_context_ptr = &async_state->context;
+  auto holder =
+      std::make_shared<std::unique_ptr<AsyncState>>(std::move(async_state));
 
-  auto done_callback = [async_state = std::move(async_state)]() {
-    if (async_state->done_called) {
+  auto done_callback = [holder = std::move(holder)]() {
+    std::unique_ptr<AsyncState> state = std::move(*holder);
+    if (state == nullptr) {
       return;
     }
-    async_state->done_called = true;
+    state->done_called = true;
 
-    auto& op_kernel_context = async_state->context;
+    auto& op_kernel_context = state->context;
 
     if (!op_kernel_context.status().ok()) {
-      for (auto& result : async_state->results) {
+      for (auto& result : state->results) {
         std::move(result).SetError(op_kernel_context.status());
       }
       return;
@@ -124,7 +127,7 @@ void LaunchAsyncOpKernel(
 
     for (int i = 0; i < op_kernel_context.num_outputs(); ++i) {
       DCHECK(op_kernel_context.mutable_output(i));
-      std::move(async_state->results[i])
+      std::move(state->results[i])
           .Set<tensorflow::tfrt_stub::FallbackTensor>(
               std::move(*op_kernel_context.mutable_output(i)));
     }

@@ -93,7 +93,8 @@ class XlaCallModuleLoader {
 
   // Runs some passes on the StableHLO module to prepare it for lowering to
   // HLO and TF call lowering.
-  absl::Status PrepareStablehloForLowering();
+  absl::Status PrepareStablehloForLowering(
+      bool compiler_use_shardy_partitioner = true);
 
   // Lowers the StableHLO module to XlaComputation and returns it.
   absl::StatusOr<xla::XlaComputation> ToXlaComputation();

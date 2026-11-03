@@ -69,7 +69,7 @@ class GrpcRemoteWorker : public WorkerInterface {
         logger_(logger),
         target_(target) {}
 
-  ~GrpcRemoteWorker() override {}
+  ~GrpcRemoteWorker() override = default;
 
   void GetStatusAsync(CallOptions* call_opts, const GetStatusRequest* request,
                       GetStatusResponse* response, bool fail_fast,

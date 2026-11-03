@@ -90,11 +90,11 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@tensor_ir//:NVTensorIRConversionOptions",
-        "@tensor_ir//:NVTensorIRCudaTilePipelines",
+        "@tensor_ir//:NVTensorIRCompilerOptions",
+        "@tensor_ir//:NVTensorIRDialect",
         "@tensor_ir//:NVTensorIRTileIRAssembly",
+        "@tensor_ir//:NVTensorIRUtils",
         "@tsl//tsl/platform:path",
     ],
 )
@@ -147,7 +147,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@tensor_ir//:NVTensorIRCompiler",
         "@tensor_ir//:NVTensorIRCompilerOptions",
-        "@tensor_ir//:NVTensorIRConversionOptions",
         "@tensor_ir//:NVTensorIRDialect",
         "@tensor_ir//:NVTensorIRUtils",
     ],
@@ -189,7 +188,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
-        "@tensor_ir//:NVTensorIRRuntime",
+        "@tensor_ir//:NVTensorIRArtifact",
     ],
 )
 

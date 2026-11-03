@@ -47,7 +47,6 @@ $SCRIPT_DIR/run_xla_ci_build.sh \
     --config=ci_single_gpu \
     --local_test_jobs=${N_TEST_JOBS} \
     --test_env=TF_TESTS_PER_GPU=$TF_TESTS_PER_GPU \
-    --keep_going \
     --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
     --action_env=TF_ROCM_AMDGPU_TARGETS=${AMD_GPU_GFX_ID} \
     --repo_env="ROCM_PATH=$ROCM_PATH" \

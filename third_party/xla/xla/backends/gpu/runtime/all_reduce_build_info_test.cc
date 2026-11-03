@@ -188,6 +188,13 @@ TEST_F(BuildAllReduceInfoTest, ReturnsMultimemStrategy) {
                       AllReduceStrategy::kMultimem))));
 }
 
+TEST_F(BuildAllReduceInfoTest, FailsForSingleDevicePerReplicaGroup) {
+  EXPECT_THAT(
+      BuildInfo(MultimemEnabled(false), F32, {1024}, HloOpcode::kAdd, {0}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("Degenerate collectives with a single device")));
+}
+
 TEST_F(BuildAllReduceInfoTest, FailsForNonPowerOfTwoDevices) {
   EXPECT_THAT(BuildInfo(MultimemEnabled(false), F32, {1024}, HloOpcode::kAdd,
                         {0, 1, 2}),

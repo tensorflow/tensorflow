@@ -227,10 +227,8 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   builder.setInsertionPointToStart(fusion_module.getBody());
   auto entry_func = FuncOp::create(
       builder, loc, entry_function_name,
-      mlir::FunctionType::get(context, param_types, result_types),
-      /*sym_visibility=*/mlir::StringAttr{},
-      mlir::ArrayAttr::get(context, arg_attrs),
-      /*res_attrs=*/mlir::ArrayAttr{});
+      mlir::FunctionType::get(context, param_types, result_types));
+  entry_func.setArgAttrsAttr(mlir::ArrayAttr::get(context, arg_attrs));
   entry_func->setAttr("xla.entry", mlir::UnitAttr::get(context));
   // TODO(willfroom): Remove backend kind.
   SetBackendKind(context, entry_func, xla::BackendKind::kCpu);

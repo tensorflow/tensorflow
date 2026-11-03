@@ -275,7 +275,7 @@ ENTRY main {
 })",
       /*opcode_to_find=*/HloOpcode::kAsyncStart,
       /*cost_type=*/CostType::kEdgeCost,
-      /*expected_latency=*/absl::Microseconds(5716),
+      /*expected_latency=*/absl::Microseconds(5587),
   };
 
   EstimatorTestCase matmul_bf16_1024_4096_512 = {
@@ -698,6 +698,44 @@ ENTRY main {
                   *ib_instr, gpu_info, shape_size_fn, sol_flags,
                   /*collective_interpolator=*/nullptr)
                   .ok());
+}
+
+TEST_F(HloHardwareIndependentTestBase, CreatesForGB200) {
+  se::DeviceDescription gpu_info =
+      TestGpuDeviceInfo::B200SXMDeviceInfo(se::CudaComputeCapability(10, 0));
+  gpu_info.set_name("NVIDIA GB200");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m, num_partitions=72
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT _ = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  d = f32[1024,1024] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT ar = f32[1024,1024] all-reduce(d), to_apply=add, channel_id=1,
+    use_global_device_ids=true, replica_groups=[4,18]<=[72]
+})"));
+  module->mutable_config().set_partition_size(72);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SolLatencyEstimator> estimator,
+      SolLatencyEstimator::Create(SchedulerConfig(),
+                                  std::make_unique<DummyLatencyEstimator>(),
+                                  gpu_info, HloCostAnalysis::DefaultShapeSize,
+                                  module->entry_computation()));
+  HloInstruction* dot =
+      hlo_query::FindInstruction(module->entry_computation(), HloOpcode::kDot);
+  EXPECT_GE(estimator->NodeCost(dot), 0);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveInterpolator> interpolator,
+                       CollectiveInterpolator::Create(
+                           /*num_devices_per_partition=*/72, gpu_info));
+  HloInstruction* ar = hlo_query::FindInstruction(module->entry_computation(),
+                                                  HloOpcode::kAllReduce);
+  EXPECT_TRUE(interpolator->EstimatedRuntime(*ar).ok());
 }
 
 class IsSolLatencyEstimatorEnabledTest : public HloTestBaseLegacy {

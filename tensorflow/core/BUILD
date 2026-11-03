@@ -192,7 +192,6 @@ tf_proto_library(
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core/common_runtime:request_cost_proto",
         "//tensorflow/core/example:protos_all",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/grappler/costs:op_performance_data",
@@ -1828,7 +1827,6 @@ tf_cuda_library(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
     ),
-    alwayslink = 1,
 )
 
 custom_op_cc_header_only_library(

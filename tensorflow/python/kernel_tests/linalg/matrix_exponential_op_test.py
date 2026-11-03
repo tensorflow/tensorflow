@@ -20,8 +20,10 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -47,27 +49,40 @@ def np_expm(x):  # pylint: disable=invalid-name
   return y
 
 
+# Half precision dtypes are accumulated in float32 by `matrix_exponential`.
+_HALF_TYPES = (np.float16, dtypes.bfloat16.as_numpy_dtype)
+
+
 @test_util.run_all_without_tensor_float_32("Avoid TF32-based matmuls.")
 class ExponentialOpTest(test.TestCase):
 
   def _verifyExponential(self, x, np_type):
     inp = x.astype(np_type)
+    # Accumulating the Taylor series in 16-bit would itself be inaccurate, so
+    # half precision inputs are compared against a float64 reference.
+    ref_type = np.float64 if np_type in _HALF_TYPES else np_type
     with test_util.use_gpu():
       tf_ans = linalg_impl.matrix_exponential(inp)
       if x.size == 0:
-        np_ans = np.empty(x.shape, dtype=np_type)
+        np_ans = np.empty(x.shape, dtype=ref_type)
       else:
         if x.ndim > 2:
-          np_ans = np.zeros(inp.shape, dtype=np_type)
+          np_ans = np.zeros(inp.shape, dtype=ref_type)
           for i in itertools.product(*[range(x) for x in inp.shape[:-2]]):
-            np_ans[i] = np_expm(inp[i])
+            np_ans[i] = np_expm(inp[i].astype(ref_type))
         else:
-          np_ans = np_expm(inp)
+          np_ans = np_expm(inp.astype(ref_type))
       out = self.evaluate(tf_ans)
-      self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
+      tol = 1e-2 if np_type in _HALF_TYPES else 1e-3
+      self.assertAllClose(np_ans, out, rtol=tol, atol=tol)
 
   def _verifyExponentialReal(self, x):
-    for np_type in [np.float32, np.float64]:
+    for np_type in [
+        np.float16,
+        dtypes.bfloat16.as_numpy_dtype,
+        np.float32,
+        np.float64,
+    ]:
       self._verifyExponential(x, np_type)
 
   def _verifyExponentialComplex(self, x):
@@ -233,6 +248,73 @@ class ExponentialOpTest(test.TestCase):
       g2 = t2.gradient(g1, x)
       self.assertAllClose(
           expected, self.evaluate(g2), rtol=rtol_hess, atol=atol_hess
+      )
+
+  @test_util.run_v2_only
+  def testGradientJitCompile(self):
+    # Regression test for Issue #77693.
+    if not test.is_built_with_xla():
+      self.skipTest("Test only applicable when running with XLA support")
+
+    def compute_grad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_impl.matrix_exponential(x)
+      return y, tape.gradient(y, x)
+
+    jit_grad_fn = def_function.function(compute_grad, jit_compile=True)
+
+    @def_function.function(jit_compile=True)
+    def jit_dynamic_grad_fn():
+      x = random_ops.random_normal([2, 2], seed=42, dtype=dtypes.float32)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_impl.matrix_exponential(x)
+      return y, tape.gradient(y, x)
+
+    dyn_y, dyn_g = jit_dynamic_grad_fn()
+    self.assertEqual(dyn_y.shape, (2, 2))
+    self.assertEqual(dyn_g.shape, (2, 2))
+
+    for dtype in [dtypes.float32, dtypes.float64]:
+      # Inputs triggering squarings == 0 and squarings > 0
+      test_matrices = [
+          constant_op.constant([[0.4, 1.5], [0.6, 0.1]], dtype=dtype),
+          constant_op.constant([[10.0, 2.0], [3.0, 8.0]], dtype=dtype),
+          constant_op.constant([[-0.0, 0.0], [0.0, -0.0]], dtype=dtype),
+      ]
+      for x in test_matrices:
+        eager_y, eager_g = compute_grad(x)
+        jit_y, jit_g = jit_grad_fn(x)
+        self.assertAllClose(eager_y, jit_y, rtol=1e-4, atol=1e-4)
+        self.assertAllClose(eager_g, jit_g, rtol=1e-4, atol=1e-4)
+
+      # Empty tensors (N=0)
+      for empty_shape in [(0, 0), (0, 2, 2)]:
+        x_empty = constant_op.constant([], shape=empty_shape, dtype=dtype)
+        jit_y, jit_g = jit_grad_fn(x_empty)
+        self.assertAllEqual(jit_y.shape, empty_shape)
+        self.assertAllEqual(jit_g.shape, empty_shape)
+        self.assertAllEqual(jit_y, array_ops.zeros(empty_shape, dtype=dtype))
+        self.assertAllEqual(jit_g, array_ops.zeros(empty_shape, dtype=dtype))
+
+      # Non-finite inputs: NaN, +inf, -inf
+      for non_finite_val in [float("nan"), float("inf"), float("-inf")]:
+        x_nf = constant_op.constant(
+            [[non_finite_val, 0.0], [0.0, 1.0]], dtype=dtype
+        )
+        eager_y, eager_g = compute_grad(x_nf)
+        jit_y, jit_g = jit_grad_fn(x_nf)
+        self.assertAllEqual(math_ops.is_nan(jit_y), math_ops.is_nan(eager_y))
+        self.assertIsNone(eager_g)
+        # The If gradient feeds zeros into Pade matmuls on non-finite
+        # intermediates (0 * inf = NaN), so only the shape is stable.
+        self.assertEqual(jit_g.shape, (2, 2))
+
+    # Unsupported dtypes
+    with self.assertRaisesRegex(ValueError, "does not support matrices"):
+      linalg_impl.matrix_exponential(
+          constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.int32)
       )
 
 

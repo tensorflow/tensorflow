@@ -17,8 +17,9 @@ import itertools
 
 from absl.testing import absltest
 from absl.testing import parameterized
-
 import numpy as np
+
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops.numpy_ops.tests.config import config
 import tensorflow.python.ops.numpy_ops.tests.np_wrapper as tnp
 import tensorflow.python.ops.numpy_ops.tests.test_util as tntu
@@ -27,6 +28,9 @@ import tensorflow.python.ops.numpy_ops.tests.test_util as tntu
 config.parse_flags_with_absl()
 
 
+@test_util.run_all_without_tensor_float_32(
+    'Tests einsum, which sometimes does a matmul with cuBLAS'
+)
 class EinsumTest(tntu.TestCase):
 
   def _check(self, s, *ops):

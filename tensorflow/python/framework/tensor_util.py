@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -659,7 +660,15 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
     if dtype and dtype.is_numpy_compatible:
-      nparray = values.astype(dtype.as_numpy_dtype)
+      if dtype.is_integer:
+        # `ndarray.astype` silently maps NaN and Inf onto the smallest
+        # representable integer, whereas the equivalent Python list raises a
+        # `TypeError`. Both checks and the cast live in one C++ entry point,
+        # exactly as in the eager conversion (`PySeqToTFE_TensorHandle`); the
+        # array is neither traversed nor cast from Python.
+        nparray = pywrap_tfe.ArrayToIntegerArray(values, dtype.as_numpy_dtype)
+      else:
+        nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
   else:

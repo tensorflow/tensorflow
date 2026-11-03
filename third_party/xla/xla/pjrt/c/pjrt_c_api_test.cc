@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
@@ -55,6 +56,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -778,6 +781,56 @@ TEST_F(PjrtCApiBufferTest, IncreaseAndDecreaseReferenceCount) {
       api_->PJRT_Buffer_DecreaseExternalReferenceCount(
           &decrease_reference_count_args);
   EXPECT_EQ(decrease_reference_error, nullptr);
+}
+
+TEST_F(PjrtCApiBufferTest, ConcurrentIncreaseAndDecreaseReferenceCount) {
+  constexpr int kNumThreads = 8;
+  constexpr int kNumIterations = 1000;
+  tsl::thread::ThreadPool thread_pool(
+      tsl::Env::Default(), "ConcurrentIncreaseAndDecreaseReferenceCount",
+      kNumThreads);
+
+  absl::BlockingCounter blocking_counter(kNumThreads);
+  for (int i = 0; i < kNumThreads; ++i) {
+    thread_pool.Schedule([&]() {
+      for (int j = 0; j < kNumIterations; ++j) {
+        PJRT_Buffer_IncreaseExternalReferenceCount_Args
+            increase_reference_count_args;
+        increase_reference_count_args.struct_size =
+            PJRT_Buffer_IncreaseExternalReferenceCount_Args_STRUCT_SIZE;
+        increase_reference_count_args.extension_start = nullptr;
+        increase_reference_count_args.buffer = buffer_.get();
+        auto increase_error =
+            ToUniquePtr(api_->PJRT_Buffer_IncreaseExternalReferenceCount(
+                &increase_reference_count_args));
+        EXPECT_EQ(increase_error, nullptr);
+
+        PJRT_Buffer_DecreaseExternalReferenceCount_Args
+            decrease_reference_count_args;
+        decrease_reference_count_args.struct_size =
+            PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE;
+        decrease_reference_count_args.extension_start = nullptr;
+        decrease_reference_count_args.buffer = buffer_.get();
+        auto decrease_error =
+            ToUniquePtr(api_->PJRT_Buffer_DecreaseExternalReferenceCount(
+                &decrease_reference_count_args));
+        EXPECT_EQ(decrease_error, nullptr);
+      }
+      blocking_counter.DecrementCount();
+    });
+  }
+  blocking_counter.Wait();
+
+  PJRT_Buffer_DecreaseExternalReferenceCount_Args args;
+  args.struct_size =
+      PJRT_Buffer_DecreaseExternalReferenceCount_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.buffer = buffer_.get();
+  auto error =
+      ToUniquePtr(api_->PJRT_Buffer_DecreaseExternalReferenceCount(&args));
+  ASSERT_NE(error, nullptr);
+  absl::Status status = ::pjrt::PjrtErrorToStatus(error.get(), api_);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(PjrtCApiBufferTest, DecreaseReferenceCountReturnsError) {

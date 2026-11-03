@@ -146,7 +146,8 @@ bool HasCodeGeneratingInstructions(const HloInstruction* instruction) {
 // 1. If one side performs computation and the other doesn't, we want the
 // "computing" side to be the lhs. wgmma supports lhs in registers, and
 // computation would happen in registers too, so putting it to lhs avoids an
-// extra roundtrip to a shared memory.
+// extra roundtrip to a shared memory. If both sides perform computation, we
+// prefer the side with the larger non-contracting dimension on the lhs.
 // 2. wgmma instruction only supports 64 for the M (lhs non-contracting)
 // dimension, so if it's smaller, move it to the rhs that supports smaller
 // powers of two.
@@ -168,7 +169,8 @@ absl::StatusOr<bool> ShouldSwapOperands(const HloInstruction* instr) {
   if (lhs_size < 64 && rhs_size >= 64) {
     return true;
   }
-  if (!lhs_has_code && rhs_has_code && rhs_size >= 64) {
+  if (rhs_has_code && rhs_size >= 64 &&
+      (!lhs_has_code || lhs_size < rhs_size)) {
     return true;
   }
   return false;

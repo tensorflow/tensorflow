@@ -18,7 +18,6 @@ import uuid
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
@@ -26,9 +25,9 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
@@ -618,11 +617,14 @@ def _state_to_olabel(labels, num_labels, states):
   num_label_states = _get_dim(labels, 1) + 1
   label_states = states[:, :, 1:num_label_states]
   blank_states = states[:, :, num_label_states:]
+  # Clamp before subtracting so labels - 1 cannot overflow for INT32_MIN.
+  # Any label <= 0 maps to -1, which one_hot turns into an all-off row.
   one_hot = array_ops.one_hot(
-      labels - 1,
+      math_ops.maximum(labels, 0) - 1,
       depth=(num_labels - 1),
       on_value=0.0,
-      off_value=math_ops.log(0.0))
+      off_value=math_ops.log(0.0),
+  )
   one_hot = array_ops.expand_dims(one_hot, axis=0)
   label_states = array_ops.expand_dims(label_states, axis=3)
   label_olabels = math_ops.reduce_logsumexp(label_states + one_hot, axis=2)
@@ -749,10 +751,18 @@ def _ctc_loss_op_standard(labels, logits, logit_length, logits_time_major,
   part_after = logits[:, :, blank_index + 1:]
   part_blank = logits[:, :, blank_index:blank_index + 1]
   logits = array_ops.concat([part_before, part_after, part_blank], axis=2)
+  # Keep out-of-range ids unchanged so the kernel rejects them instead of
+  # aliasing num_classes onto the blank index num_classes - 1.
+  # Masked subtract: where() would also compute values - 1 on INT32_MIN.
+  values = labels.values
+  shift = math_ops.logical_and(
+      values >= blank_index, values < _get_dim(logits, 2)
+  )
   labels = sparse_tensor.SparseTensor(
       labels.indices,
-      array_ops.where(labels.values < blank_index, labels.values,
-                      labels.values - 1), labels.dense_shape)
+      values - math_ops.cast(shift, values.dtype),
+      labels.dense_shape,
+  )
   return _ctc_loss_impl(
       labels=labels,
       inputs=logits,
@@ -767,10 +777,16 @@ def _ctc_loss_op_cudnn(labels, logits, logit_length, logits_time_major,
   part_after = logits[:, :, blank_index + 1:]
   part_blank = logits[:, :, blank_index:blank_index + 1]
   logits = array_ops.concat([part_blank, part_before, part_after], axis=2)
+  # Keep out-of-range ids unchanged so the kernel rejects them instead of
+  # shifting -1 to 0 (the blank index in cuDNN layout).
+  # Masked add: where() would also compute values + 1 on INT32_MAX.
+  values = labels.values
+  shift = math_ops.logical_and(values >= 0, values < blank_index)
   labels = sparse_tensor.SparseTensor(
       labels.indices,
-      array_ops.where(labels.values < blank_index, labels.values + 1,
-                      labels.values), labels.dense_shape)
+      values + math_ops.cast(shift, values.dtype),
+      labels.dense_shape,
+  )
   return _ctc_loss_impl(
       labels=labels,
       inputs=logits,
@@ -781,6 +797,20 @@ def _ctc_loss_op_cudnn(labels, logits, logit_length, logits_time_major,
 
 def _ctc_loss_shape(op):
   return [op.inputs[2].get_shape(), op.inputs[0].get_shape()]
+
+
+def _assert_label_ids_in_range(labels, num_classes, valid_mask):
+  """Returns an Assert that unmasked labels are in [0, num_classes)."""
+  num_classes = math_ops.cast(num_classes, labels.dtype)
+  in_range = math_ops.logical_and(labels >= 0, labels < num_classes)
+  in_range = math_ops.logical_or(in_range, math_ops.logical_not(valid_mask))
+  return control_flow_assert.Assert(
+      math_ops.reduce_all(in_range),
+      [
+          "All labels must be in the range [0, num_classes), got num_classes =",
+          num_classes,
+      ],
+  )
 
 
 def _validate_ctc_loss_logits(logits, blank_index):
@@ -885,10 +915,18 @@ def ctc_loss_v2(labels,
           logits[:, :, blank_index:blank_index + 1],
       ],
                                 axis=2)
+      # Keep out-of-range ids unchanged so the kernel rejects them instead of
+      # aliasing num_classes onto the blank index num_classes - 1.
+      # Masked subtract: where() would also compute values - 1 on INT32_MIN.
+      values = labels.values
+      shift = math_ops.logical_and(
+          values >= blank_index, values < _get_dim(logits, 2)
+      )
       labels = sparse_tensor.SparseTensor(
           labels.indices,
-          array_ops.where(labels.values < blank_index, labels.values,
-                          labels.values - 1), labels.dense_shape)
+          values - math_ops.cast(shift, values.dtype),
+          labels.dense_shape,
+      )
 
     return ctc_loss(
         labels=labels,
@@ -1146,24 +1184,45 @@ def ctc_loss_dense(labels,
     if not logits_time_major:
       logits = array_ops.transpose(logits, perm=[1, 0, 2])
 
+    # Only the first label_length entries per row are real labels; padding may
+    # hold arbitrary values.  Validate before the blank_index remap so that -1
+    # is checked before it could be mapped to 0.
+    label_mask = array_ops.sequence_mask(
+        label_length, maxlen=_get_dim(labels, 1)
+    )
+    assert_op = _assert_label_ids_in_range(
+        labels, _get_dim(logits, 2), valid_mask=label_mask
+    )
+    if assert_op is not None:
+      with ops.control_dependencies([assert_op]):
+        labels = array_ops.identity(labels)
+
     if blank_index != 0:
-      if blank_index < 0:
-        blank_index += _get_dim(logits, 2)
-      logits = array_ops.concat([
-          logits[:, :, blank_index:blank_index + 1],
-          logits[:, :, :blank_index],
-          logits[:, :, blank_index + 1:],
-      ],
-                                axis=2)
-      labels = array_ops.where(labels < blank_index, labels + 1, labels)
+      blank_index_val = (
+          blank_index + _get_dim(logits, 2) if blank_index < 0 else blank_index
+      )
+      logits = array_ops.concat(
+          [
+              logits[:, :, blank_index_val : blank_index_val + 1],
+              logits[:, :, :blank_index_val],
+              logits[:, :, blank_index_val + 1 :],
+          ],
+          axis=2,
+      )
+      # labels + 1 would be computed for every element, including padding,
+      # and overflow at the dtype max, so only add 1 where the mask is set.
+      shift_labels = labels < blank_index_val
+      labels = labels + math_ops.cast(shift_labels, labels.dtype)
+    else:
+      blank_index_val = blank_index
 
     args = [logits, labels, label_length, logit_length]
 
     if unique:
       unique_y, unique_idx = unique
       if blank_index != 0:
-        unique_y = array_ops.where(unique_y < blank_index, unique_y + 1,
-                                   unique_y)
+        shift_unique_y = unique_y < blank_index_val
+        unique_y = unique_y + math_ops.cast(shift_unique_y, unique_y.dtype)
         label_mask_len = math_ops.reduce_max(unique_idx, axis=1) + 1
         max_label_length = _get_dim(unique_y, 1)
         label_mask = array_ops.sequence_mask(label_mask_len, max_label_length)
@@ -1568,5 +1627,7 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
 
 def _get_dim(tensor, i):
   """Get value of tensor shape[i] preferring static value if available."""
+  if tensor.shape.rank is None or tensor.shape.rank <= i:
+    return array_ops.shape(tensor)[i]
   return tensor_shape.dimension_value(
       tensor.shape[i]) or array_ops.shape(tensor)[i]

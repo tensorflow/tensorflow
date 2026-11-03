@@ -1384,11 +1384,10 @@ def FuseOneHotAndCastToFloat : Pat<
                 $axis),
   [(F32ElementsVal $output)]>;
 
-def Get1DShapeValue: NativeCodeCall<"Get1DShapeValue($_builder, $0)">;
-
 class GetIthValue<int index> : NativeCodeCall<"$0[" # index # "]">;
 
-def GetEmbeddingLookupShape: NativeCodeCall<"GetEmbeddingLookupShape($0, $1)">;
+def BuildOneHotLookup : NativeCodeCall<
+  "BuildOneHotLookup($_builder, $0[0], $1, $2)">;
 
 // Replace
 //   OneHot(index, depth, on=1.0f, off=0.0f, axis=-1) * filter
@@ -1410,6 +1409,11 @@ def GetEmbeddingLookupShape: NativeCodeCall<"GetEmbeddingLookupShape($0, $1)">;
 //             [11, 23]]   # == 2nd column in filter
 // This is exactly what the EmbeddedLookup operator is doing, on the transposed
 // matrix, without doing any arithmetic but only memcpy.
+//
+// OneHot produces an all-zero row for an index outside `[0, depth)` (e.g. -1
+// padding), while EmbeddingLookup rejects it. The replacement therefore clamps
+// the indices for the lookup and zeroes the rows of out-of-range indices; see
+// BuildOneHotLookup.
 def ReplaceOneHotFullyConnectedWithLookup : Pat<
   (TFL_FullyConnectedOp:$outputs
     (TFL_OneHotOp
@@ -1424,15 +1428,7 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
     TFL_FCWO_Default,
     $keep_num_dims,
     $asymmetric_quantize_inputs),
-  (TFL_ReshapeOp
-  (TFL_EmbeddingLookupOp
-      (TFL_ReshapeOp $indices, (Get1DShapeValue $indices)),
-    (TFL_TransposeOp
-      $filter,
-        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">)),
-      (returnType (GetEmbeddingLookupShape $indices, $filter))
-    ),
-    (Arith_ConstantOp (GetShapeAttr (GetIthValue<0> $outputs)))),
+  (BuildOneHotLookup $outputs, $indices, $filter),
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
 
@@ -1451,10 +1447,7 @@ def ReplaceOneHotDynamicShapeFullyConnectedWithLookup : Pat<
     TFL_FCWO_Default,
     $keep_num_dims,
     $asymmetric_quantize_inputs),
-  (TFL_EmbeddingLookupOp $indices,
-    (TFL_TransposeOp
-      $filter,
-        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">))),
+  (BuildOneHotLookup $outputs, $indices, $filter),
   [(I32ElementsVal $indices),
    (IsNoneType $bias)]>;
 

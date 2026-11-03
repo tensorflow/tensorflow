@@ -1,0 +1,9 @@
+HloModule xla_aot_compile_test_fmha
+
+ENTRY main {
+  q = bf16[1,2,128,64] parameter(0)
+  k = bf16[1,2,128,64] parameter(1)
+  v = bf16[1,2,128,64] parameter(2)
+  fmha = (bf16[1,2,128,64], u8[0]) custom-call(q, k, v), custom_call_target="__cudnn$fmhaSoftmax", operand_layout_constraints={bf16[1,2,128,64]{3,2,1,0}, bf16[1,2,128,64]{3,2,1,0}, bf16[1,2,128,64]{3,2,1,0}}, backend_config={"cudnn_fmha_backend_config":{"fmha_scale":1.0,"mask_type":"CAUSAL","bmm1_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["3"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]},"bmm2_dot_dimension_numbers":{"lhs_contracting_dimensions":["3"],"rhs_contracting_dimensions":["2"],"lhs_batch_dimensions":["0","1"],"rhs_batch_dimensions":["0","1"]}}}
+  ROOT out = bf16[1,2,128,64] get-tuple-element(fmha), index=0
+}

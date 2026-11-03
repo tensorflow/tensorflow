@@ -32,13 +32,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
-#include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -59,7 +56,6 @@ namespace xla::gpu {
 
 using ::xla::xtile::BlockLevelParameters;
 using ::xla::xtile::GetTilingSpaceConcreteSizes;
-using ::xla::xtile::TilingFromAnnotatedFusion;
 
 absl::StatusOr<
     std::pair<mlir::OwningOpRef<mlir::ModuleOp>, std::unique_ptr<HloModule>>>
@@ -82,49 +78,16 @@ XTileTestBase::CreateXTileIrAndFileCheck(std::unique_ptr<HloModule> hlo_module,
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-CreateXTileIrAndFileCheckLegacy(
-    mlir::MLIRContext* mlir_context, const HloComputation& computation,
-    const BlockLevelParameters& block_level_parameters,
-    absl::string_view filecheck_pattern) {
-  auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
-  SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
-      SymbolicTileAnalysis::AnalyzeComputation(
-          computation, mlir_context,
-          TritonEmitterConstraints::GetBuilder(
-              TestGpuDeviceInfo::RTXA6000DeviceInfo()));
-
-  if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
-    return Internal(
-        "Unsupported fusion in EmitGeneric: %s",
-        std::get<FusionDecision>(symbolic_tile_analysis_or).Explain());
-  }
-
-  const auto& symbolic_tile_analysis =
-      std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
-
-  ABSL_ASSIGN_OR_RETURN(Tiling tiling,
-                   TilingFromAnnotatedFusion(symbolic_tile_analysis,
-                                             block_level_parameters));
-
-  ABSL_ASSIGN_OR_RETURN(
-      mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
-      xtile::EmitXTileModule("xtile_dialect_fn", *fusion,
-                             symbolic_tile_analysis, tiling, *mlir_context));
-  return xtile_dialect_module;
-}
-
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 XTileTestBase::CreateXTileIrAndFileCheck(
     const HloComputation& computation,
     const BlockLevelParameters& block_level_parameters,
     absl::string_view filecheck_pattern) {
   mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module;
   LoadMlirDialectsForTriton(*mlir_context());
-  namespace ge = ::xla::gpu::experimental;
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
-                   ge::TilingSpace::Create(*fusion_adaptor, mlir_context()));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                   TilingSpace::Create(*fusion_adaptor, mlir_context()));
   ABSL_ASSIGN_OR_RETURN(
       llvm::SmallVector<int64_t> concrete_sizes,
       GetTilingSpaceConcreteSizes(
@@ -136,11 +99,11 @@ XTileTestBase::CreateXTileIrAndFileCheck(
   ABSL_RETURN_IF_ERROR(
       tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(concrete_sizes)));
   ABSL_ASSIGN_OR_RETURN(
-      ge::TiledHloComputation tiled_computation,
-      ge::TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+      TiledHloComputation tiled_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
   tiled_computation.Simplify();
   tiled_computation.SortInstructionsPostOrder();
-  if (Decision constraints = ge::VerifyTritonConstraints(
+  if (Decision constraints = VerifyTritonConstraints(
           tiled_computation, TestGpuDeviceInfo::RTXA6000DeviceInfo());
       !constraints) {
     return absl::InternalError(

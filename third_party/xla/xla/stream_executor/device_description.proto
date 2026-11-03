@@ -48,7 +48,7 @@ message DeviceInterconnectInfoProto {
   string clique_id = 3;
 }
 
-// Next ID: 49
+// Next ID: 50
 message GpuDeviceInfoProto {
   string device_vendor = 30;
   string platform_version = 31;
@@ -100,6 +100,9 @@ message GpuDeviceInfoProto {
   int64 collective_memory_granularity = 46;
   int64 oversized_shared_memory_per_block = 47;
   bool confidential_computing_enabled = 48;
+  // Number of physical locality domains exposed by the device. Values less
+  // than two do not provide non-default locality-domain memory placement.
+  int32 locality_domain_count = 49;
 }
 
 message RuntimeVersionProto {

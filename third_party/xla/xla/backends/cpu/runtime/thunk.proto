@@ -20,6 +20,7 @@ package xla.cpu;
 import "xla/backends/cpu/xnn_fusion_options.proto";
 import "xla/backends/cpu/ynn_fusion_options.proto";
 import "xla/service/buffer_assignment.proto";
+import "xla/service/cpu/onednn_config.proto";
 import "xla/service/hlo.proto";
 import "xla/service/shaped_slice.proto";
 import "xla/xla_data.proto";
@@ -196,6 +197,42 @@ message DotThunkProto {
   ShapeBufferAllocationSliceProto out_buffer_shape = 4;
 }
 
+// Mirrors OneDnnOpThunk::OpBuffers. Shared by all oneDNN custom call thunks.
+message OneDnnOpBuffersProto {
+  repeated ShapeBufferAllocationSliceProto arguments_shapes = 1;
+  repeated ShapeBufferAllocationSliceProto results_shapes = 2;
+  bool is_tuple_result = 3;
+}
+
+message OneDnnMatmulThunkProto {
+  OneDnnMatMulConfig config = 1;
+  OneDnnOpBuffersProto op_buffers = 2;
+}
+
+message OneDnnConvolutionThunkProto {
+  OneDnnConvolutionConfig config = 1;
+  OneDnnOpBuffersProto op_buffers = 2;
+}
+
+message OneDnnLayerNormThunkProto {
+  OneDnnNormConfig config = 1;
+  OneDnnOpBuffersProto op_buffers = 2;
+}
+
+message OneDnnSoftmaxThunkProto {
+  OneDnnSoftmaxConfig config = 1;
+  OneDnnOpBuffersProto op_buffers = 2;
+}
+
+message OneDnnCustomCallProto {
+  oneof impl {
+    OneDnnMatmulThunkProto onednn_matmul_thunk = 1;
+    OneDnnConvolutionThunkProto onednn_convolution_thunk = 2;
+    OneDnnSoftmaxThunkProto onednn_softmax_thunk = 3;
+    OneDnnLayerNormThunkProto onednn_layernorm_thunk = 4;
+  }
+}
+
 message RngGetAndUpdateStateThunkProto {
   int64 delta = 1;
   xla.buffer_assignment.BufferAllocationSliceProto state_buffer = 2;
@@ -319,6 +356,7 @@ message ThunkProto {
     ReplicaIdThunkProto replica_id_thunk = 20;
     YnnFusionThunkProto ynn_fusion_thunk = 21;
     RngSeedThunkProto rng_seed_thunk = 22;
+    OneDnnCustomCallProto onednn_custom_call_thunk = 23;
   }
 }
 

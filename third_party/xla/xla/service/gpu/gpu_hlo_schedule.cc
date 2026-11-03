@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/transforms/collectives/async_collective_annotator.h"
@@ -51,7 +50,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
@@ -71,6 +69,7 @@ limitations under the License.
 #include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_profiling_utils.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/p2p_schedule_preparation.h"
@@ -285,20 +284,27 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
   return result;
 }
 
+// Returns the costs in `profile` that apply to the module whose fingerprint
+// before scheduling is `fingerprint`, named by instruction name alone.
+//
+// A profile can hold the costs of several modules, so the profiler prefixes
+// each instruction name with the fingerprint of its module
+// (FingerprintedCostName). Such a cost applies only to the module with that
+// fingerprint. A cost without a fingerprint, for example from a hand-written
+// profile or from a module that the profiler could not find a fingerprint for,
+// applies to any module.
 ProfiledInstructionsProto FilterWithFingerprint(
     const ProfiledInstructionsProto& profile, absl::string_view fingerprint) {
   ProfiledInstructionsProto result;
   bool merge_remat_clones = false;
   for (const auto& cost : profile.costs()) {
     std::string new_cost_name = cost.name();
-    absl::string_view cost_sep = "::";
-    if (absl::StrContains(cost.name(), cost_sep)) {
-      std::vector<absl::string_view> split_names =
-          absl::StrSplit(cost.name(), cost_sep);
-      if (split_names.size() != 2 || split_names[0] != fingerprint) {
+    if (auto split = SplitFingerprintedCostName(cost.name())) {
+      if (split->fingerprint != fingerprint) {
+        // The cost of an instruction of another module.
         continue;
       }
-      new_cost_name = split_names[1];
+      new_cost_name = split->op_name;
     }
 
     // Check if we see instructions that have ".rematX" suffix. These are clones
@@ -462,25 +468,6 @@ absl::Status RunP2PSchedulePreparation(HloModule* module) {
   HloPassPipeline prepare_pipeline("p2p-schedule-preparation");
   prepare_pipeline.AddPass<P2PSchedulePreparation>();
   return prepare_pipeline.Run(module).status();
-}
-
-// Adds fingerprint to the module before.
-//
-// Returns said fingerprint.
-std::string TagWithFingerprint(HloModule* module) {
-  std::string fingerprint =
-      module->GetFingerprint128(HloPrintOptions::Canonical()
-                                    .set_print_backend_config(true)
-                                    // The backend config can be a json string,
-                                    // and the order of keys in json is not
-                                    // guaranteed. So we need to sort the keys
-                                    // to make the fingerprint deterministic.
-                                    .set_sort_backend_config(true));
-  module->add_frontend_attribute(std::string(kFingerprintBeforeLHS),
-                                 fingerprint);
-  VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
-          << module->unique_id() << ") = " << fingerprint;
-  return fingerprint;
 }
 
 // Returns latency estimator, key abstraction used by LHS which returns how much
@@ -816,11 +803,7 @@ absl::Status RunLatencyHidingSchedulerPasses(
       std::move(overlap_limit_rule));
 
   const int64_t configured_fencing_threshold_bytes =
-      // NOLINTNEXTLINE
-      options.has_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes()
-          ? options
-                .xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes()
-          : -1;
+      options.xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes();
   if (std::optional<int64_t> fencing_threshold_bytes =
           GetSchedulerMemoryFencingThresholdBytes(
               configured_fencing_threshold_bytes, memory_limit)) {
@@ -985,7 +968,8 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
 
   // Tag the module with its 128 bit fingerprint. The fingerprint should include
   // instruction name with ids.
-  std::string fingerprint = TagWithFingerprint(module);
+  std::string fingerprint =
+      TagWithFingerprint(module, HloModuleFingerprintStage::kBeforeScheduling);
   uint64_t memory_limit =
       GetSchedulerMemoryLimit(*module, gpu_device_info, pointer_size);
 

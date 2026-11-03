@@ -217,7 +217,6 @@ Shape GetShape(Value value) {
   llvm::SmallVector<SymbolicExpr, 4> replacement_dims(spatial_rank);
   int64_t current_num_dims = spatial_rank;
   int64_t new_num_dims = rank;
-  int64_t num_symbols = input_spatial_indexing.GetRangeVars().size();
   for (int i = 0; i < spatial_rank; ++i) {
     replacement_dims[i] =
         CreateDimExpr(dnums.getOutputSpatialDimensions()[i], context);
@@ -227,14 +226,16 @@ Shape GetShape(Value value) {
   llvm::SmallVector<SymbolicExpr> input_exprs(rank);
   for (int i = 0; i < spatial_rank; ++i) {
     input_exprs[dnums.getInputSpatialDimensions()[i]] =
-        input_spatial_indexing.GetSymbolicMap().GetResult(i).ReplaceDims(
-            replacement_dims, current_num_dims, new_num_dims, num_symbols);
+        input_spatial_indexing.GetSymbolicMap()
+            .GetResult(i)
+            .ReplaceDimsAndSymbols(replacement_dims, {}, current_num_dims,
+                                   new_num_dims);
   }
   llvm::MapVector<SymbolicExpr, Interval> input_constraints;
   for (const auto& [key, val] :
        input_spatial_indexing.GetSymbolicConstraints()) {
-    input_constraints[key.ReplaceDims(replacement_dims, current_num_dims,
-                                      new_num_dims, num_symbols)] = val;
+    input_constraints[key.ReplaceDimsAndSymbols(
+        replacement_dims, {}, current_num_dims, new_num_dims)] = val;
   }
   std::vector<Interval> bounds = input_spatial_indexing.GetDimensionBounds();
   for (int i = 0; i < spatial_rank; ++i) {
@@ -1011,8 +1012,8 @@ HloInstructionIndexing ComputeOutputToInputIndexing(Operation* op,
           // Elementwise identity operations, all operands use identity mapping.
           .Case<AddOp, SubtractOp, MulOp, DivOp, RemOp, MaxOp, MinOp, AndOp,
                 OrOp, XorOp, AbsOp, NegOp, SignOp, CosineOp, SineOp, TanhOp,
-                SqrtOp, RsqrtOp, ExpOp, Expm1Op, LogOp, Log1pOp, FloorOp,
-                CeilOp, ConvertOp, SelectOp, ClampOp, CompareOp,
+                SqrtOp, RsqrtOp, ExpOp, Exp2Op, Expm1Op, LogOp, Log1pOp, Log2Op,
+                FloorOp, CeilOp, ConvertOp, SelectOp, ClampOp, CompareOp,
                 PopulationCountOp, NotOp, IsFiniteOp, RoundNearestEvenOp,
                 OptimizationBarrierOp, MapOp, SortOp>([&](Operation* op) {
             if (!dyn_cast<RankedTensorType>(op->getResult(0).getType())) {

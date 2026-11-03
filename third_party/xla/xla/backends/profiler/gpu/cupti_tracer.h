@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
+#include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -162,6 +163,11 @@ class CuptiTracer {
   // Once enabled, it stays enabled for the process lifetime.
   static absl::Status EnableHES();
 
+  // Whether profile stop can disable concurrent-kernel activity. When false
+  // (CUDA runtime or driver < 13.0, b/422262733), only cuptiFinalize() stops
+  // it, so callers must not skip cuptiFinalize().
+  static bool CanDisableConcurrentKernelActivity();
+
   // Returns true if the number of annotation strings is too large. The input
   // count is the per-thread count.
   bool TooManyAnnotationStrings(size_t count) const;
@@ -213,6 +219,7 @@ class CuptiTracer {
   absl::Status Finalize();
   // Clears local bookkeeping without unsubscribing from CUPTI.
   void ClearSubscriberState();
+  void ResetSessionState();
   absl::Status UnsubscribeAndClearSubscriber();
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
   absl::Status HandleNVTXCallback(CUpti_CallbackId cbid,
@@ -226,6 +233,12 @@ class CuptiTracer {
   std::unique_ptr<xla::profiler::CuptiPmSampler> cupti_pm_sampler_;
   CuptiInterface* cupti_interface_ = nullptr;
   CuptiTraceCollector* collector_ = nullptr;
+  // Held from Enable() until Disable() has handed the session's records to
+  // `collector_`, which resolves command buffer node annotations only then.
+  // Meanwhile CudaGraphAnnotationRegistry keeps the annotations of CUDA
+  // graphs destroyed during the session instead of erasing them.
+  std::optional<stream_executor::gpu::CudaGraphAnnotationRegistry::HarvestHold>
+      annotation_harvest_hold_;
 
   // CUPTI 10.1 and higher need root access to profile.
   bool need_root_access_ = false;

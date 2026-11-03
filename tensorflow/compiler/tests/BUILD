@@ -1027,6 +1027,8 @@ tf_xla_py_strict_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
@@ -1762,6 +1764,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops_util",
         "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:stateless_random_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops_v2_gen",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",

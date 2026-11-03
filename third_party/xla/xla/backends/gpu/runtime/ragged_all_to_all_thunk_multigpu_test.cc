@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -31,6 +32,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
+#include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -52,6 +56,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
@@ -68,7 +73,7 @@ static constexpr int64_t kNumRowElements = 1;
 static constexpr int64_t kNumElements = kNumInputRows * kNumRowElements;
 static constexpr int64_t kNumBuffers = 6;
 
-static RaggedAllToAllConfig MakeConfig() {
+static RaggedAllToAllConfig MakeConfig(bool use_symmetric_memory = false) {
   ReplicaGroup replica_group;
   for (int i = 0; i < kNumDevices; ++i) {
     replica_group.add_replica_ids(i);
@@ -82,6 +87,8 @@ static RaggedAllToAllConfig MakeConfig() {
   config.num_input_rows = kNumInputRows;
   config.num_row_elements = kNumRowElements;
   config.one_shot_kernel_enabled = true;
+  config.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel =
+      use_symmetric_memory;
   config.allow_fallback_to_nccl = false;
   return config;
 }
@@ -114,7 +121,8 @@ static std::vector<BufferAllocation> MakeThunkBufferAllocations() {
 }
 
 static RaggedAllToAllThunk MakeThunk(
-    const std::vector<BufferAllocation>& allocations) {
+    const std::vector<BufferAllocation>& allocations,
+    bool use_symmetric_memory = false) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(kNumBuffers);
   buffers.push_back(MakeBuffer(allocations[0], F32, kNumElements));
@@ -122,11 +130,18 @@ static RaggedAllToAllThunk MakeThunk(
   for (int i = 2; i < kNumBuffers; ++i) {
     buffers.push_back(MakeBuffer(allocations[i], S64, kNumUpdates));
   }
-  return RaggedAllToAllThunk(Thunk::ThunkInfo(), MakeConfig(),
+  return RaggedAllToAllThunk(Thunk::ThunkInfo(),
+                             MakeConfig(use_symmetric_memory),
                              std::move(buffers), kNumDevices);
 }
 
-using DeviceTestSlot = CollectiveThunkMultiGpuTestState;
+struct DeviceTestSlot : CollectiveThunkMultiGpuTestState {
+  std::unique_ptr<BufferAllocations> create_allocs;
+  std::unique_ptr<BufferAllocations> update_allocs;
+  CollectiveMemoryCache memory_cache{kNumDevices};
+  std::optional<CollectiveMemory> create_collective_memory;
+  std::optional<CollectiveMemory> update_collective_memory;
+};
 
 static std::vector<int64_t> DeviceBufferSizes() {
   std::vector<int64_t> buffer_sizes;
@@ -216,8 +231,107 @@ static absl::Status SetupDeviceSlot(int device_ordinal, DeviceTestSlot& slot,
                                     RaggedAllToAllThunk& thunk,
                                     const DeviceAssignment& device_assignment) {
   std::vector<int64_t> buffer_sizes = DeviceBufferSizes();
-  return SetupCollectiveThunkDevice(device_ordinal, kNumDevices, buffer_sizes,
-                                    thunk, device_assignment, slot);
+  slot.device_ordinal = device_ordinal;
+  slot.executor = GetGpuExecutor(device_ordinal);
+  ABSL_ASSIGN_OR_RETURN(slot.stream, slot.executor->CreateStream());
+  slot.allocator =
+      std::make_unique<se::StreamExecutorAddressAllocator>(slot.executor);
+
+  slot.create_buffers.clear();
+  slot.update_buffers.clear();
+  slot.create_buffers.reserve(buffer_sizes.size());
+  slot.update_buffers.reserve(buffer_sizes.size());
+  for (int64_t size : buffer_sizes) {
+    se::DeviceAddressBase create_buffer = slot.executor->Allocate(
+        size, static_cast<int64_t>(se::MemorySpace::kCollective));
+    if (create_buffer.is_null()) {
+      return absl::InternalError(
+          absl::StrFormat("failed to allocate %d collective bytes on device %d",
+                          size, device_ordinal));
+    }
+    slot.create_buffers.push_back(create_buffer);
+
+    se::DeviceAddressBase update_buffer = slot.executor->Allocate(
+        size, static_cast<int64_t>(se::MemorySpace::kCollective));
+    if (update_buffer.is_null()) {
+      return absl::InternalError(
+          absl::StrFormat("failed to allocate %d collective bytes on device %d",
+                          size, device_ordinal));
+    }
+    slot.update_buffers.push_back(update_buffer);
+  }
+
+  GpuExecutableRunOptions::DeviceIdMap id_map;
+  for (int i = 0; i < kNumDevices; ++i) {
+    id_map[LocalDeviceId(i)] = GlobalDeviceId(i);
+  }
+  slot.gpu_run_options.set_gpu_global_device_ids(std::move(id_map));
+  slot.run_options.mutable_run_options()->set_stream(slot.stream.get());
+  slot.run_options.mutable_run_options()->set_device_assignment(
+      &device_assignment);
+  slot.run_options.mutable_run_options()->set_gpu_executable_run_options(
+      &slot.gpu_run_options);
+  slot.run_options.mutable_run_options()->set_local_device_count(kNumDevices);
+
+  ABSL_ASSIGN_OR_RETURN(
+      CollectiveParams params,
+      CollectiveParams::Create(slot.run_options, /*async_streams=*/{},
+                               LocalDeviceId(device_ordinal)));
+
+  slot.create_allocs = std::make_unique<BufferAllocations>(
+      MakeBufferAllocations(slot, slot.create_buffers));
+  slot.update_allocs = std::make_unique<BufferAllocations>(
+      MakeBufferAllocations(slot, slot.update_buffers));
+
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMemoryRequests create_memory_requests(*slot.create_allocs);
+  Thunk::PrepareParams create_prepare_params{
+      &params, &clique_requests, &create_memory_requests, slot.executor,
+      slot.create_allocs.get()};
+  ABSL_RETURN_IF_ERROR(thunk.Prepare(create_prepare_params));
+
+  CollectiveCliqueRequests unused_clique_requests;
+  CollectiveMemoryRequests update_memory_requests(*slot.update_allocs);
+  Thunk::PrepareParams update_prepare_params{
+      &params, &unused_clique_requests, &update_memory_requests, slot.executor,
+      slot.update_allocs.get()};
+  ABSL_RETURN_IF_ERROR(thunk.Prepare(update_prepare_params));
+
+  ABSL_ASSIGN_OR_RETURN(slot.collective_cliques,
+                   AcquireCollectiveCliques(params, clique_requests));
+
+  Thunk::InitializeParams init_params;
+  init_params.executor = slot.executor;
+  init_params.stream = slot.stream.get();
+  init_params.command_buffer_trace_stream = slot.stream.get();
+  init_params.buffer_allocations = slot.create_allocs.get();
+  init_params.collective_params = &params;
+  init_params.collective_cliques = &slot.collective_cliques;
+  init_params.local_device_count = kNumDevices;
+  ABSL_RETURN_IF_ERROR(thunk.Initialize(init_params));
+
+  ABSL_ASSIGN_OR_RETURN(
+      CollectiveMemory create_collective_memory,
+      AcquireCollectiveMemory(params, slot.collective_cliques,
+                              create_memory_requests, slot.memory_cache));
+  slot.create_collective_memory.emplace(std::move(create_collective_memory));
+  ABSL_ASSIGN_OR_RETURN(
+      CollectiveMemory update_collective_memory,
+      AcquireCollectiveMemory(params, slot.collective_cliques,
+                              update_memory_requests, slot.memory_cache));
+  slot.update_collective_memory.emplace(std::move(update_collective_memory));
+
+  slot.collective_params = std::move(params);
+  return absl::OkStatus();
+}
+
+static Thunk::ExecuteParams MakeRaggedExecuteParams(
+    DeviceTestSlot& slot, const BufferAllocations& allocations,
+    CollectiveMemory* collective_memory) {
+  return Thunk::ExecuteParams::Create(
+      slot.run_options, allocations, slot.stream.get(),
+      /*command_buffer_trace_stream=*/slot.stream.get(),
+      &*slot.collective_params, &slot.collective_cliques, collective_memory);
 }
 
 static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
@@ -227,7 +341,8 @@ static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
   ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
-  Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
+  Thunk::ExecuteParams execute_params = MakeRaggedExecuteParams(
+      slot, allocations, &*slot.create_collective_memory);
 
   ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
   return VerifyOutput(*slot.stream, slot.create_buffers[1], device_ordinal,
@@ -236,16 +351,19 @@ static absl::Status RunExecuteOnStreamPhase(DeviceTestSlot& slot,
 
 static absl::Status RunCreatePhase(DeviceTestSlot& slot,
                                    RaggedAllToAllThunk& thunk,
-                                   BufferAllocations& allocations,
-                                   int device_ordinal, int phase) {
+                                   int device_ordinal, int phase,
+                                   bool warmup_before_record = false) {
   ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
 
-  Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
+  Thunk::ExecuteParams execute_params = MakeRaggedExecuteParams(
+      slot, *slot.create_allocs, &*slot.create_collective_memory);
 
-  ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
-  ABSL_RETURN_IF_ERROR(
-      PrepareInputs(*slot.stream, slot.create_buffers, device_ordinal, phase));
+  if (warmup_before_record) {
+    ABSL_RETURN_IF_ERROR(ExecuteOnStreamAndBlock(thunk, execute_params));
+    ABSL_RETURN_IF_ERROR(PrepareInputs(*slot.stream, slot.create_buffers,
+                                  device_ordinal, phase));
+  }
 
   ABSL_RETURN_IF_ERROR(RecordCommandBufferCreate(slot, thunk, execute_params));
   ABSL_RETURN_IF_ERROR(SubmitCommandBuffer(slot));
@@ -255,12 +373,12 @@ static absl::Status RunCreatePhase(DeviceTestSlot& slot,
 
 static absl::Status RunUpdatePhase(DeviceTestSlot& slot,
                                    RaggedAllToAllThunk& thunk,
-                                   BufferAllocations& allocations,
                                    int device_ordinal, int phase) {
   ABSL_RETURN_IF_ERROR(
       PrepareInputs(*slot.stream, slot.update_buffers, device_ordinal, phase));
 
-  Thunk::ExecuteParams execute_params = MakeExecuteParams(slot, allocations);
+  Thunk::ExecuteParams execute_params = MakeRaggedExecuteParams(
+      slot, *slot.update_allocs, &*slot.update_collective_memory);
 
   ABSL_RETURN_IF_ERROR(RecordCommandBufferUpdate(slot, thunk, execute_params,
                                             AllAllocationIndices()));
@@ -278,17 +396,14 @@ TEST(RaggedAllToAllThunkMultiGpuTest, ExecuteOnStream) {
   std::vector<BufferAllocation> buffer_allocations =
       MakeThunkBufferAllocations();
   std::vector<DeviceTestSlot> slots(kNumDevices);
-  // Make sure allocations outlive the thunk.
-  std::vector<std::unique_ptr<BufferAllocations>> allocs(kNumDevices);
-  RaggedAllToAllThunk thunk = MakeThunk(buffer_allocations);
+  RaggedAllToAllThunk thunk =
+      MakeThunk(buffer_allocations, /*use_symmetric_memory=*/false);
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "ragged_execute", [&](int d) -> absl::Status {
         ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
-        allocs[d] = std::make_unique<BufferAllocations>(
-            MakeBufferAllocations(slots[d], slots[d].create_buffers));
-        return RunExecuteOnStreamPhase(slots[d], thunk, *allocs[d], d,
-                                       /*phase=*/1);
+        return RunExecuteOnStreamPhase(slots[d], thunk, *slots[d].create_allocs,
+                                       d, /*phase=*/1);
       }));
 }
 
@@ -304,16 +419,14 @@ TEST(RaggedAllToAllThunkMultiGpuTest, RecordCommandBufferCreate) {
   std::vector<BufferAllocation> buffer_allocations =
       MakeThunkBufferAllocations();
   std::vector<DeviceTestSlot> slots(kNumDevices);
-  // Make sure allocations outlive the thunk.
-  std::vector<std::unique_ptr<BufferAllocations>> allocs(kNumDevices);
-  RaggedAllToAllThunk thunk = MakeThunk(buffer_allocations);
+  RaggedAllToAllThunk thunk =
+      MakeThunk(buffer_allocations, /*use_symmetric_memory=*/false);
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "ragged_create", [&](int d) -> absl::Status {
         ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
-        allocs[d] = std::make_unique<BufferAllocations>(
-            MakeBufferAllocations(slots[d], slots[d].create_buffers));
-        return RunCreatePhase(slots[d], thunk, *allocs[d], d, /*phase=*/1);
+        return RunCreatePhase(slots[d], thunk, d, /*phase=*/1,
+                              /*warmup_before_record=*/true);
       }));
 }
 
@@ -329,24 +442,82 @@ TEST(RaggedAllToAllThunkMultiGpuTest, RecordCommandBufferUpdate) {
   std::vector<BufferAllocation> buffer_allocations =
       MakeThunkBufferAllocations();
   std::vector<DeviceTestSlot> slots(kNumDevices);
-  // Make sure allocations outlive the thunk.
-  std::vector<std::unique_ptr<BufferAllocations>> create_allocs(kNumDevices);
-  std::vector<std::unique_ptr<BufferAllocations>> update_allocs(kNumDevices);
-  RaggedAllToAllThunk thunk = MakeThunk(buffer_allocations);
+  RaggedAllToAllThunk thunk =
+      MakeThunk(buffer_allocations, /*use_symmetric_memory=*/false);
 
   ASSERT_OK(
       RunOnDevices(kNumDevices, "ragged_create", [&](int d) -> absl::Status {
         ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
-        create_allocs[d] = std::make_unique<BufferAllocations>(
-            MakeBufferAllocations(slots[d], slots[d].create_buffers));
-        return RunCreatePhase(slots[d], thunk, *create_allocs[d], d,
-                              /*phase=*/1);
+        return RunCreatePhase(slots[d], thunk, d, /*phase=*/1,
+                              /*warmup_before_record=*/true);
       }));
 
   ASSERT_OK(RunOnDevices(kNumDevices, "ragged_update", [&](int d) {
-    update_allocs[d] = std::make_unique<BufferAllocations>(
-        MakeBufferAllocations(slots[d], slots[d].update_buffers));
-    return RunUpdatePhase(slots[d], thunk, *update_allocs[d], d, /*phase=*/2);
+    return RunUpdatePhase(slots[d], thunk, d, /*phase=*/2);
+  }));
+}
+
+TEST(RaggedAllToAllThunkMultiGpuTest, ExecuteOnStreamWithSymmetricMemory) {
+  if (!HasEnoughGpus(kNumDevices)) {
+    GTEST_SKIP() << "Test requires at least " << kNumDevices << " GPUs";
+  }
+
+  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
+  std::vector<BufferAllocation> buffer_allocations =
+      MakeThunkBufferAllocations();
+  std::vector<DeviceTestSlot> slots(kNumDevices);
+  RaggedAllToAllThunk thunk =
+      MakeThunk(buffer_allocations, /*use_symmetric_memory=*/true);
+
+  ASSERT_OK(
+      RunOnDevices(kNumDevices, "ragged_execute", [&](int d) -> absl::Status {
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        return RunExecuteOnStreamPhase(slots[d], thunk, *slots[d].create_allocs,
+                                       d, /*phase=*/1);
+      }));
+}
+
+TEST(RaggedAllToAllThunkMultiGpuTest,
+     RecordCommandBufferCreateWithSymmetricMemory) {
+  if (!HasEnoughGpus(kNumDevices)) {
+    GTEST_SKIP() << "Test requires at least " << kNumDevices << " GPUs";
+  }
+
+  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
+  std::vector<BufferAllocation> buffer_allocations =
+      MakeThunkBufferAllocations();
+  std::vector<DeviceTestSlot> slots(kNumDevices);
+  RaggedAllToAllThunk thunk =
+      MakeThunk(buffer_allocations, /*use_symmetric_memory=*/true);
+
+  ASSERT_OK(
+      RunOnDevices(kNumDevices, "ragged_create", [&](int d) -> absl::Status {
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        return RunCreatePhase(slots[d], thunk, d, /*phase=*/1);
+      }));
+}
+
+TEST(RaggedAllToAllThunkMultiGpuTest,
+     RecordCommandBufferUpdateWithSymmetricMemory) {
+  if (!HasEnoughGpus(kNumDevices)) {
+    GTEST_SKIP() << "Test requires at least " << kNumDevices << " GPUs";
+  }
+
+  DeviceAssignment device_assignment = MakeDeviceAssignment(kNumDevices);
+  std::vector<BufferAllocation> buffer_allocations =
+      MakeThunkBufferAllocations();
+  std::vector<DeviceTestSlot> slots(kNumDevices);
+  RaggedAllToAllThunk thunk =
+      MakeThunk(buffer_allocations, /*use_symmetric_memory=*/true);
+
+  ASSERT_OK(
+      RunOnDevices(kNumDevices, "ragged_create", [&](int d) -> absl::Status {
+        ABSL_RETURN_IF_ERROR(SetupDeviceSlot(d, slots[d], thunk, device_assignment));
+        return RunCreatePhase(slots[d], thunk, d, /*phase=*/1);
+      }));
+
+  ASSERT_OK(RunOnDevices(kNumDevices, "ragged_update", [&](int d) {
+    return RunUpdatePhase(slots[d], thunk, d, /*phase=*/2);
   }));
 }
 

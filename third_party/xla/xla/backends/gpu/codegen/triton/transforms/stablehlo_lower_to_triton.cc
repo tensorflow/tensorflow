@@ -559,6 +559,10 @@ struct TritonPrecisionSpec {
   ::xla::PrecisionConfig::Algorithm algorithm;
   // Encodes `tt.dot`'s `inputPrecision` attribute.
   ttir::InputPrecision ttir_input_precision;
+  mlir::stablehlo::Precision lhs_operand_precision =
+      mlir::stablehlo::Precision::DEFAULT;
+  mlir::stablehlo::Precision rhs_operand_precision =
+      mlir::stablehlo::Precision::DEFAULT;
 };
 
 mlir::Type ElementType(mlir::Value v) { return mlir::getElementTypeOrSelf(v); }
@@ -581,10 +585,13 @@ absl::StatusOr<Value> EmitDotAlgUnset(
   Value acc = dot_operands.accumulator;
 
   int max_num_imprecise_acc = 0;
-  if (ElementType(lhs).isFloat(8) || ElementType(rhs).isFloat(8)) {
-    // For fp8 dots, disable accumulator promotion to mimick cuBLAS. It may make
-    // sense to enable frequent accumulator promotion at higher matmul
-    // precisions set in the config.
+  if ((ElementType(lhs).isFloat(8) || ElementType(rhs).isFloat(8)) &&
+      precision_spec.lhs_operand_precision !=
+          mlir::stablehlo::Precision::HIGHEST &&
+      precision_spec.rhs_operand_precision !=
+          mlir::stablehlo::Precision::HIGHEST) {
+    // For fp8 dots with default precision, disable accumulator promotion to
+    // mimic cuBLAS fast accumulation; HIGHEST keeps max_num_imprecise_acc = 0.
     max_num_imprecise_acc = std::numeric_limits<int>::max();
   }
 
@@ -602,10 +609,13 @@ absl::StatusOr<Value> EmitRegularDot(
   Value rhs = dot_operands.rhs;
 
   int max_num_imprecise_acc = 0;
-  if (ElementType(lhs).isFloat(8) || ElementType(rhs).isFloat(8)) {
-    // For fp8 dots, disable accumulator promotion to mimick cuBLAS. It may make
-    // sense to enable frequent accumulator promotion at higher matmul
-    // precisions set in the config.
+  if ((ElementType(lhs).isFloat(8) || ElementType(rhs).isFloat(8)) &&
+      precision_spec.lhs_operand_precision !=
+          mlir::stablehlo::Precision::HIGHEST &&
+      precision_spec.rhs_operand_precision !=
+          mlir::stablehlo::Precision::HIGHEST) {
+    // For fp8 dots with default precision, disable accumulator promotion to
+    // mimic cuBLAS fast accumulation; HIGHEST keeps max_num_imprecise_acc = 0.
     max_num_imprecise_acc = std::numeric_limits<int>::max();
   }
 
@@ -959,8 +969,8 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
     ttir_input_precision = InferFpDotPrecision(precision_spec);
   }
 
-  TritonPrecisionSpec triton_precision_spec{*hlo_algorithm,
-                                            ttir_input_precision};
+  TritonPrecisionSpec triton_precision_spec{
+      *hlo_algorithm, ttir_input_precision, lhs_precision, rhs_precision};
   absl::StatusOr<Value> triton_dot_op =
       (*algorithm_emitter)(builder, dot_operands, triton_precision_spec);
   if (!triton_dot_op.ok()) {

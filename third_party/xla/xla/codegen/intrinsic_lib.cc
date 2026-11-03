@@ -43,7 +43,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 #include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
-#include "xla/codegen/intrinsic/cpp/trig_ll.h"
 #include "xla/codegen/intrinsic/erf.h"
 #include "xla/codegen/intrinsic/exp.h"
 #include "xla/codegen/intrinsic/fptrunc.h"
@@ -126,13 +125,6 @@ class IntrinsicAdapter : public IntrinsicFunction {
 
 IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
     : options_(options), ir_libraries_(GetCppGenLibraries(options)) {
-  if (options.device_type == intrinsics::DeviceType::kIntelCpu ||
-      options.device_type == intrinsics::DeviceType::kAmdCpu ||
-      options.device_type == intrinsics::DeviceType::kArmCpu) {
-    if (!::llvm_ir::kTrigLlIr.empty()) {
-      ir_libraries_.emplace_back(::llvm_ir::kTrigLlIr, "trig");
-    }
-  }
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Ldexp>>());
   intrinsic_functions_.push_back(
@@ -157,6 +149,12 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
       std::make_unique<IntrinsicAdapter<intrinsics::Cos>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Sinh>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Cosh>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Asin>>());
+  intrinsic_functions_.push_back(
+      std::make_unique<IntrinsicAdapter<intrinsics::Acos>>());
 }
 
 namespace {

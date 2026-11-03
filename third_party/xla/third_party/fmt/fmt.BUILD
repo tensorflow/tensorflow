@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
 # fmt is an open-source formatting library providing a fast and safe alternative to C stdio and C++ iostreams.
 licenses(["notice"])  # MIT
 

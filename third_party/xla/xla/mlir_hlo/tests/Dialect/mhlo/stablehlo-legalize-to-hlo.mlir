@@ -1424,6 +1424,15 @@ func.func @quantized_op_floor(%arg0: tensor<!quant.uniform<i8:f32, 0.00391329082
 
 // -----
 
+// CHECK-LABEL: "op_fma"
+func.func @op_fma(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK: "mhlo.fma"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[ARG2:%arg[0-9]+]]) : (tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %0 = "stablehlo.fma"(%arg0, %arg1, %arg2) : (tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+
+// -----
+
 // CHECK-LABEL: "op_gather"
 func.func @op_gather(%arg0: tensor<2x3x4x2xi32>, %arg1: tensor<2x2x3x2xi64>) -> tensor<2x2x3x2x2xi32> {
   //      CHECK: "mhlo.gather"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{

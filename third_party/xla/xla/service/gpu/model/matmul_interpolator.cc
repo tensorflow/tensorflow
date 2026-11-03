@@ -78,11 +78,11 @@ static const GemmPerfTable& Profile() {
 }
 
 struct InterpolationSpecification {
-  int b;
+  int64_t b;
   // Matmul dimensions are normalized to a number of bytes of output type.
-  int m;
-  int k;
-  int n;
+  int64_t m;
+  int64_t k;
+  int64_t n;
   // Data types.
   PrimitiveType lhs_type;
   PrimitiveType rhs_type;
@@ -97,24 +97,24 @@ struct InterpolationSpecificationFlops {
 InterpolationSpecification ExtractDotSpec(const DotDimensionNumbers& dot_dims,
                                           const Shape& lhs, const Shape& rhs,
                                           const Shape& out) {
-  int b = 1, m = 1, n = 1, k = 1;
-  for (int dim : dot_dims.lhs_batch_dimensions()) {
+  int64_t b = 1, m = 1, n = 1, k = 1;
+  for (int64_t dim : dot_dims.lhs_batch_dimensions()) {
     b *= ShapeUtil::GetDimension(lhs, dim);
   }
   k *= ShapeUtil::ByteSizeOfPrimitiveType(out.element_type());
-  for (int dim : dot_dims.lhs_contracting_dimensions()) {
+  for (int64_t dim : dot_dims.lhs_contracting_dimensions()) {
     k *= ShapeUtil::GetDimension(lhs, dim);
   }
   m *= ShapeUtil::ByteSizeOfPrimitiveType(out.element_type());
-  for (int dim : GetNonContractingDims(lhs.dimensions().size(),
-                                       dot_dims.lhs_contracting_dimensions(),
-                                       dot_dims.lhs_batch_dimensions())) {
+  for (int64_t dim : GetNonContractingDims(
+           lhs.dimensions().size(), dot_dims.lhs_contracting_dimensions(),
+           dot_dims.lhs_batch_dimensions())) {
     m *= ShapeUtil::GetDimension(lhs, dim);
   }
   n *= ShapeUtil::ByteSizeOfPrimitiveType(out.element_type());
-  for (int dim : GetNonContractingDims(rhs.dimensions().size(),
-                                       dot_dims.rhs_contracting_dimensions(),
-                                       dot_dims.rhs_batch_dimensions())) {
+  for (int64_t dim : GetNonContractingDims(
+           rhs.dimensions().size(), dot_dims.rhs_contracting_dimensions(),
+           dot_dims.rhs_batch_dimensions())) {
     n *= ShapeUtil::GetDimension(rhs, dim);
   }
   return InterpolationSpecification{
@@ -187,6 +187,12 @@ InterpolationSpecification Spec(const HloFusionInstruction& dot_fusion,
 absl::StatusOr<GemmPerfTableEntryValues> ReadDefaultProfile(
     const se::DeviceDescription& device_info) {
   std::string key = HloOpProfiles::GetDeviceSpecificProfileName(device_info);
+  // B200 numbers should be close enough to GB200 for scheduling.
+  // TODO(https://github.com/openxla/xla/issues/48627): remove when the GB200
+  // matmul perf table is ready.
+  if (key == "sm_100_GB200") {
+    key = "sm_100_B200";
+  }
 
   if (!Profile().entries().contains(key)) {
     return absl::NotFoundError(absl::StrCat("Cannot find key: ", key));

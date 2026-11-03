@@ -102,6 +102,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kFloor:
+    case HloOpcode::kFma:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kImag:
     case HloOpcode::kInfeed:
@@ -195,7 +196,6 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
@@ -1002,7 +1002,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       };
 
       auto get_constant_operand =
-          [](const HloInstruction* operand) -> std::optional<int> {
+          [](const HloInstruction* operand) -> std::optional<int64_t> {
         if (operand->IsConstant()) {
           return operand->literal().GetFirstInteger();
         }

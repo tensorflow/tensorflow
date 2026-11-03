@@ -150,6 +150,8 @@ class CustomCallThunk : public TracedCommand {
 
   bool use_pdl() const { return use_pdl_; }
 
+  std::string ToString(int indent) const override;
+
   std::optional<XLA_FFI_Handler_Bundle> bundle() const {
     const XLA_FFI_Handler_Bundle* c_bundle =
         std::get_if<XLA_FFI_Handler_Bundle>(&bundle_);

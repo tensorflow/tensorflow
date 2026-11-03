@@ -288,7 +288,9 @@ class XlaCallModuleOp : public XlaOpKernel {
     if (!function_list_.empty()) {
       OP_REQUIRES_OK(ctx, LowerTfFunctionCalls(ctx));
     }
-    OP_REQUIRES_OK(ctx, loader_->PrepareStablehloForLowering());
+    OP_REQUIRES_OK(ctx, loader_->PrepareStablehloForLowering(
+                            compiler != nullptr &&
+                            compiler->options().use_shardy_partitioner));
 
     xla::XlaOp token_input;
     if (!op_token_input_nodes_.empty()) {

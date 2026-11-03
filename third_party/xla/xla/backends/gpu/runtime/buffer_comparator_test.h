@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -145,6 +146,47 @@ class BufferComparatorTest : public testing::Test {
         CompareEqualScalarInternal(current, expected, tolerance);
     EXPECT_OK(res_or.status());
     return res_or.ok() && res_or.value();
+  }
+
+  // Result of a host-side compare that also produces an error report.
+  struct HostCompareResult {
+    bool equal = true;
+    std::string error_report;
+  };
+
+  // Runs CompareEqual on two equal-length F32 host buffers with a non-null
+  // error_report and returns {equal, error_report}. Used to exercise the
+  // host-compare path (including the parallel branch for large buffers).
+  HostCompareResult CompareEqualF32WithReport(
+      const std::vector<float>& current, const std::vector<float>& expected,
+      double tolerance) {
+    CHECK_EQ(current.size(), expected.size());
+    absl::StatusOr<std::unique_ptr<se::Stream>> stream_or =
+        stream_exec_->CreateStream();
+    CHECK_OK(stream_or.status());
+    std::unique_ptr<se::Stream> stream = std::move(stream_or).value();
+
+    se::DeviceAddressHandle current_buffer(
+        stream_exec_, stream_exec_->AllocateArray<float>(current.size()));
+    se::DeviceAddressHandle expected_buffer(
+        stream_exec_, stream_exec_->AllocateArray<float>(expected.size()));
+
+    CHECK_OK(stream->Memcpy(current_buffer.address_ptr(), current.data(),
+                            current_buffer.address().size()));
+    CHECK_OK(stream->Memcpy(expected_buffer.address_ptr(), expected.data(),
+                            expected_buffer.address().size()));
+    CHECK_OK(stream->BlockHostUntilDone());
+
+    BufferComparator comparator(
+        ShapeUtil::MakeShape(F32, {static_cast<int64_t>(current.size())}),
+        tolerance);
+    HostCompareResult result;
+    absl::StatusOr<bool> equal_or = comparator.CompareEqual(
+        stream.get(), current_buffer.address(), expected_buffer.address(),
+        &result.error_report);
+    CHECK_OK(equal_or.status());
+    result.equal = equal_or.value();
+    return result;
   }
 
   se::Platform* platform_;

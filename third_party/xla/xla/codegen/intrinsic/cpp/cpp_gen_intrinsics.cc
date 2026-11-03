@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/cpp/eigen_unary_64_ll.h"
 #include "xla/codegen/intrinsic/cpp/expm1_32_ll.h"
 #include "xla/codegen/intrinsic/cpp/expm1_64_ll.h"
+#include "xla/codegen/intrinsic/cpp/trig_ll.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
@@ -89,9 +90,7 @@ bool AreEigenIntrinsicsAvailable(absl::string_view features) {
   return !GetCppGenIrString(options).empty();
 }
 
-bool AreCppGenIntrinsicsAvailable() {
-  return !GetCppGenIrString(intrinsics::IntrinsicOptions()).empty();
-}
+bool AreCppGenIntrinsicsAvailable() { return !::llvm_ir::kExpm132LlIr.empty(); }
 
 std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
     const intrinsics::IntrinsicOptions& options) {
@@ -114,6 +113,9 @@ std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
   if (!::llvm_ir::kCustomCppIntrinsicsLlIr.empty()) {
     libraries.emplace_back(::llvm_ir::kCustomCppIntrinsicsLlIr,
                            "custom_cpp_intrinsics");
+  }
+  if (!::llvm_ir::kTrigLlIr.empty()) {
+    libraries.emplace_back(::llvm_ir::kTrigLlIr, "trig");
   }
   return libraries;
 }

@@ -48,6 +48,7 @@ config_setting(
 cc_library(
     name = "cpp_context_provider",
     srcs = [],
+    tags = ["keep_dep"],
 )
 
 cc_binary(
@@ -126,7 +127,6 @@ cc_ir_header(
     deps = [
         ":cpp_context_provider",
         ":tanh",
-        ":vector_ops",
     ],
 )
 
@@ -221,6 +221,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
         "@tsl//tsl/platform:denormal",
     ],
@@ -400,6 +401,7 @@ xla_cc_test(
         ":trig_ll",
         ":vector_ops",
         "//xla/codegen/intrinsic:test_matchers",
+        "@com_google_absl//absl/base",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
@@ -417,6 +419,7 @@ cc_library(
         ":eigen_unary_64_ll",
         ":expm1_32_ll",
         ":expm1_64_ll",
+        ":trig_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",

@@ -29,7 +29,7 @@ gpu_device_info {
   memory_bandwidth: 1555200000000
   l2_cache_size: 41943040
   clock_rate_ghz: 1.41
-  device_memory_size: 42331013120
+  device_memory_size: 42298834944
   shared_memory_per_block_optin: 166912
   cuda_compute_capability {
     major: 8
@@ -147,6 +147,9 @@ gpu_device_info {
   pcie_bandwidth: 34359738368
   ecc_enabled: true
   name: "NVIDIA A100-SXM4-40GB"
+  mem_clock_ghz: 1.215
+  reserved_shared_memory_per_block: 1024
+  max_blocks_per_multiprocessor: 32
   driver_version: "13.0.0"
   runtime_version: "12.8.0"
   compile_time_toolkit_version: "12.8.0"

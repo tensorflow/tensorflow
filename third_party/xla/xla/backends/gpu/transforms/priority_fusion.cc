@@ -45,13 +45,16 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -90,6 +93,52 @@ namespace gpu {
 namespace {
 
 using ::xla::xtile::BlockLevelParameters;
+
+bool AllScansHaveDimSizeAtMost(const HloInstruction& instr, int64_t max_size) {
+  if (instr.opcode() == HloOpcode::kScan) {
+    const auto* scan = Cast<HloScanInstruction>(&instr);
+    absl::StatusOr<int64_t> scan_dim_size = scan->GetScanDimSize();
+    return scan_dim_size.ok() && *scan_dim_size <= max_size;
+  }
+  if (instr.opcode() == HloOpcode::kFusion) {
+    for (const HloInstruction* fused :
+         instr.fused_instructions_computation()->instructions()) {
+      if (!AllScansHaveDimSizeAtMost(*fused, max_size)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool IsCheapProducerOp(const HloInstruction& instr) {
+  switch (instr.opcode()) {
+    case HloOpcode::kConstant:
+    case HloOpcode::kParameter:
+      return ShapeUtil::IsEffectiveScalar(instr.shape());
+    case HloOpcode::kIota:
+      return true;
+    case HloOpcode::kBroadcast:
+      return ShapeUtil::IsEffectiveScalar(instr.operand(0)->shape());
+    case HloOpcode::kFusion:
+      return absl::c_all_of(
+          instr.fused_instructions_computation()->instructions(),
+          [](const HloInstruction* fused) {
+            return IsCheapProducerOp(*fused);
+          });
+    default:
+      return instr.IsElementwise();
+  }
+}
+
+// Returns true if `producer` computes its output from only scalar operands,
+// scalar constants, iotas, broadcasts of scalars, and elementwise ops.
+bool IsCheapNoMemoryProducer(const HloInstruction& producer) {
+  return IsCheapProducerOp(producer) &&
+         absl::c_all_of(producer.operands(), [](const HloInstruction* operand) {
+           return ShapeUtil::IsEffectiveScalar(operand->shape());
+         });
+}
 
 // Bitcasts are fusible if they don't change the bit width.
 bool IsFusibleBitcast(const HloInstruction& instr) {
@@ -206,7 +255,7 @@ class PriorityFusionQueue {
       HloFusionAnalysisCache& fusion_analysis_cache,
       FusionDeduplicationCache& fusion_deduplication_cache,
       bool triton_heroless_fusion_enabled, const AliasInfo* alias_info,
-      bool use_experimental_tiling, MlirContextPool* mlir_context_pool) {
+      MlirContextPool* mlir_context_pool) {
     auto cost_analysis = std::make_unique<GpuHloCostAnalysis>(
         cost_analysis_options, *device_info);
     VLOG(2) << "Running full HLO cost analysis for " << computation->name();
@@ -216,8 +265,7 @@ class PriorityFusionQueue {
         computation, std::move(cost_analysis), cost_analysis_options,
         device_info, fusion_process_dump, thread_pool, mlir_context,
         fusion_analysis_cache, fusion_deduplication_cache,
-        triton_heroless_fusion_enabled, alias_info, use_experimental_tiling,
-        mlir_context_pool);
+        triton_heroless_fusion_enabled, alias_info, mlir_context_pool);
 
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
@@ -246,14 +294,14 @@ class PriorityFusionQueue {
                       HloFusionAnalysisCache& fusion_analysis_cache,
                       FusionDeduplicationCache& fusion_deduplication_cache,
                       bool triton_heroless_fusion_enabled,
-                      const AliasInfo* alias_info, bool use_experimental_tiling,
+                      const AliasInfo* alias_info,
                       MlirContextPool* mlir_context_pool)
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(std::move(cost_analysis)),
         combined_gpu_performance_model_(
             *device_info, fusion_analysis_cache, *mlir_context,
-            cost_analysis_options.shape_size, use_experimental_tiling,
+            cost_analysis_options.shape_size,
             computation->parent()
                 ->config()
                 .debug_options()
@@ -317,19 +365,31 @@ class PriorityFusionQueue {
 
   absl::StatusOr<std::vector<Priority>> ComputePriorities(
       const std::vector<HloInstruction*>& instructions) {
-    auto schedule_or_run = [this](std::function<void()> fn) {
-      if (thread_pool_) {
-        thread_pool_->Schedule(std::move(fn));
-      } else {
-        fn();
+    if (instructions.empty()) {
+      return std::vector<Priority>{};
+    }
+    // Fast-path single-instruction updates (the common case during incremental
+    // `UpdatePriorities()` after fusing a producer into a single consumer) and
+    // single-threaded runs inline on the calling thread. This avoids
+    // constructing an `absl::BlockingCounter`, scheduling a thread-pool task,
+    // and paying cross-thread wakeup latency for a single instruction.
+    if (instructions.size() == 1 || thread_pool_ == nullptr) {
+      std::vector<Priority> priorities;
+      priorities.reserve(instructions.size());
+      for (HloInstruction* instruction : instructions) {
+        ABSL_ASSIGN_OR_RETURN(Priority priority,
+                         CalculateProducerPriorityAsync(instruction).Await());
+        priorities.push_back(priority);
       }
-    };
+      return priorities;
+    }
+
     absl::BlockingCounter counter(instructions.size());
     std::vector<absl::StatusOr<Priority>> priorities_or_status(
         instructions.size());
 
     for (size_t i = 0; i < instructions.size(); ++i) {
-      schedule_or_run([&, i] {
+      thread_pool_->Schedule([&, i] {
         CalculateProducerPriorityAsync(instructions[i])
             .OnReady([&priorities_or_status, &counter,
                       i](const absl::StatusOr<Priority>& priority) {
@@ -412,8 +472,10 @@ class PriorityFusionQueue {
       ABSL_RETURN_IF_ERROR(UpdatePerformanceModelCache(instruction));
     }
 
-    ABSL_RETURN_IF_ERROR(ComputeAndSetPriorities(std::vector<HloInstruction*>{
-        to_update_priority_.begin(), to_update_priority_.end()}));
+    if (!to_update_priority_.empty()) {
+      ABSL_RETURN_IF_ERROR(ComputeAndSetPriorities(std::vector<HloInstruction*>{
+          to_update_priority_.begin(), to_update_priority_.end()}));
+    }
 
     to_update_priority_.clear();
     updated_fusions_.clear();
@@ -758,17 +820,28 @@ class PriorityFusionQueue {
       return FusionDecision::Allow();
     }
 
-    if (instruction.opcode() != HloOpcode::kFusion) {
+    auto is_supported = [&](const HloInstruction& instr) -> CodegenDecision {
+      // In PriorityFusion, concatenate operands must be aligned to a minimum
+      // tile size (64) to avoid an expensive tiling search that cannot tile
+      // across unaligned boundaries.
+      if (const auto* concat = DynCast<HloConcatenateInstruction>(&instr);
+          concat != nullptr &&
+          !IsConcatenateAligned(*concat, /*min_fragment_size=*/64)) {
+        return CodegenDecision::Forbid(
+            "Concatenate operand is not aligned for tiling in PriorityFusion.");
+      }
       return IsTritonSupportedInstruction(
-          instruction, device_info_->gpu_compute_capability());
+          instr, device_info_->gpu_compute_capability());
+    };
+
+    if (instruction.opcode() != HloOpcode::kFusion) {
+      return is_supported(instruction);
     }
 
-    for (const HloInstruction* instruction :
+    for (const HloInstruction* instr :
          instruction.fused_instructions_computation()->instructions()) {
-      if (auto codegen_decision = IsTritonSupportedInstruction(
-              *instruction, device_info_->gpu_compute_capability());
-          !codegen_decision) {
-        return codegen_decision;
+      if (CodegenDecision decision = is_supported(*instr); !decision) {
+        return decision;
       }
     }
 
@@ -830,8 +903,7 @@ class PriorityFusionQueue {
           if (const auto* fusion_decision =
                   std::get_if<FusionDecision>(&tiled_run_time_data_or_error)) {
             tiled_run_time_data_or_error = FusionDecision::Forbid(absl::StrCat(
-                "Fusion can not be tiled with SymbolicTileAnalysis: ",
-                fusion_decision->Explain()));
+                "Failed to tile the fusion: ", fusion_decision->Explain()));
           }
 
           {
@@ -856,15 +928,32 @@ class PriorityFusionQueue {
       return FusionDecision::Forbid("the consumer is not fusible");
     }
 
-    if (ContainsScan(*producer, &fusion_info_cache_)) {
-      return FusionDecision::Forbid(
-          "epilogue fusion for scan is not supported");
-    }
-
+    // Check O(1) Triton eligibility flags before querying `ContainsScan` (which
+    // may lock and lookup in `fusion_info_cache_`).
     if (!(IsGenericTritonFusion(*producer) ||
           IsGenericTritonFusion(*consumer) ||
           triton_heroless_fusion_enabled_)) {
       return FusionDecision::Forbid("triton heroless fusion is not enabled");
+    }
+
+    if (ContainsScan(*producer, &fusion_info_cache_) &&
+        !IsGenericTritonFusion(*producer)) {
+      return FusionDecision::Forbid(
+          "epilogue fusion for a non-Triton scan is not supported");
+    }
+
+    if (ContainsScan(*consumer, &fusion_info_cache_)) {
+      if (!IsGenericTritonFusion(*consumer)) {
+        return FusionDecision::Forbid(
+            "producer fusion into a non-Triton scan fusion is not supported");
+      }
+      if (!AllScansHaveDimSizeAtMost(*consumer, kMaxRowLocalScanDimSize) &&
+          !IsCheapNoMemoryProducer(*producer)) {
+        return FusionDecision::Forbid(
+            absl::StrCat("producer fusion into scan fusions with a scan "
+                         "dimension > ",
+                         kMaxRowLocalScanDimSize, " is not supported"));
+      }
     }
 
     if (auto fusion_decision = IsTritonSupported(*producer); !fusion_decision) {
@@ -978,25 +1067,12 @@ class PriorityFusionQueue {
     }
 
     // Avoid fusing reduce into reduce. Our cost model doesn't currently
-    // understand this case due to a lack of tiling analysis.
+    // understand this case due to a lack of tiling analysis. Query
+    // `fusion_info_cache_` to avoid repeatedly traversing the producer and
+    // consumer fusion computations on every candidate pair.
     // TODO(b/312200883): Remove this.
-    auto contains_significant_reduce = [&](const HloInstruction* instr) {
-      auto fusion = HloFusionAdaptor::ForInstruction(instr);
-      return HloAnyOf(*fusion, [](auto node) {
-        if (!(node.opcode() == HloOpcode::kReduce && node.shape().IsArray())) {
-          return false;
-        }
-
-        int64_t reduction_size =
-            ShapeUtil::ElementsIn(node.instruction().operand(0)->shape()) /
-            ShapeUtil::ElementsIn(node.shape());
-
-        // Small reductions are emitted using the elemental emitter anyway.
-        return reduction_size >= 16;
-      });
-    };
-    if (contains_significant_reduce(producer) &&
-        contains_significant_reduce(consumer)) {
+    if (ContainsSignificantReduce(*producer, &fusion_info_cache_) &&
+        ContainsSignificantReduce(*consumer, &fusion_info_cache_)) {
       return FusionDecision::Forbid(
           "both the producer and the consumer contain a reduce");
     }
@@ -1043,11 +1119,14 @@ class PriorityFusionQueue {
       HloInstruction* producer, HloInstruction* consumer) {
     {
       absl::MutexLock lock(can_fuse_cache_mutex_);
-      auto& producer_cache = can_fuse_cache_[producer];
-
-      auto it = producer_cache.find(consumer);
-      if (it != producer_cache.end()) {
-        return it->second;
+      // Use `find(producer)` rather than `operator[]` on cache lookup so a
+      // cache miss does not default-construct an empty inner `flat_hash_map`.
+      auto producer_it = can_fuse_cache_.find(producer);
+      if (producer_it != can_fuse_cache_.end()) {
+        auto it = producer_it->second.find(consumer);
+        if (it != producer_it->second.end()) {
+          return it->second;
+        }
       }
     }
     return CanFuseAsync(producer, consumer)
@@ -1390,8 +1469,6 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
           .debug_options()
           .xla_gpu_experimental_enable_triton_heroless_priority_fusion();
 
-  bool use_experimental_tiling = true;
-
   FusionDeduplicationCache fusion_deduplication_cache =
       FusionDeduplicationCache::Create(*module, IsFusible);
 
@@ -1405,8 +1482,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
             computation, cost_analysis_options_, &device_info_,
             fusion_process_dump_.get(), thread_pool_, mlir_context_,
             fusion_analysis_cache_, fusion_deduplication_cache,
-            triton_heroless_fusion_enabled, alias_info_,
-            use_experimental_tiling, mlir_context_pool_));
+            triton_heroless_fusion_enabled, alias_info_, mlir_context_pool_));
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
@@ -1526,6 +1602,7 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   switch (analysis.emitter_fusion_kind()) {
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
+    case HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized:
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:

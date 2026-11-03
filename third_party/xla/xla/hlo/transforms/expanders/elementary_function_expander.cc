@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math_impl.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -104,11 +105,98 @@ XlaOp ExpandSinh(XlaOp x, PrimitiveType type) {
   return Sign(x) * result;
 }
 
+// For real floating-point types:
+//   Cosh(x) = 1 + t^2 / (2 * (1 + t))                               if |x| < 1
+//           = e^(|x| - c) + (e^(|x| - c) * s_lo + e^(-c - |x|) * s) if |x| >= 1
+// where t = expm1(|x|), c = 0x1.63p-1 (~0.693359375), s = e^c / 2, and
+// s_lo = s - 1 = 0x1.bd0d1c3050e04p-13. Sub-32-bit floats are upcast to f32.
+XlaOp ExpandCosh(XlaOp x, PrimitiveType type) {
+  if (primitive_util::IsFloatingPointType(type) &&
+      primitive_util::BitWidth(type) < 32) {
+    return ConvertElementType(ExpandCosh(ConvertElementType(x, F32), F32),
+                              type);
+  }
+  ResultAccuracy highest_accuracy;
+  highest_accuracy.set_mode(ResultAccuracy::HIGHEST);
+
+  // For |x| >= 1 (and complex types), shift by the exact 10-bit binary
+  // constant c = 0x1.63p-1 (0.693359375) and apply a split scale factor
+  // e^c / 2 = 1 + scale_lo.
+  auto c = ScalarLike(x, 0x1.63p-1);
+  auto scale = ScalarLike(x, 0x1.000de868e1828p+0);
+  auto scale_lo = ScalarLike(x, 0x1.bd0d1c3050e04p-13);
+  XlaOp y = primitive_util::IsComplexType(type) ? x : Abs(x);
+  auto exp_add = Exp(y - c, highest_accuracy);
+  auto exp_sub = Exp(-c - y, highest_accuracy);
+  auto large_cosh_result = exp_add + (exp_add * scale_lo + exp_sub * scale);
+  if (primitive_util::IsComplexType(type)) {
+    return large_cosh_result;
+  }
+
+  // For real types and |x| < 1, compute cosh(|x|) = 1 + 0.5 * t^2 / (1 + t)
+  // where t = expm1(|x|).
+  auto one_half = ScalarLike(x, 0.5);
+  auto one = ScalarLike(y, 1.0);
+  auto t = Expm1(y, highest_accuracy);
+  auto small_cosh_result = one + one_half * (t * t) / (one + t);
+  return Select(Lt(y, one), small_cosh_result, large_cosh_result);
+}
+
+// For real floating-point types:
+//   acos(x) = atan2(sqrt(select(x^2 <= 0.5, 1 - x^2, (1 - x) * (1 + x))), x)
+// For complex types:
+//   acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
+// Sub-32-bit floats are upcast to f32.
+XlaOp ExpandAcos(XlaOp x, PrimitiveType type) {
+  if (primitive_util::IsFloatingPointType(type) &&
+      primitive_util::BitWidth(type) < 32) {
+    return ConvertElementType(ExpandAcos(ConvertElementType(x, F32), F32),
+                              type);
+  }
+  if (primitive_util::IsComplexType(type)) {
+    PrimitiveType component_type = primitive_util::ComplexComponentType(type);
+    auto one = ScalarLike(x, 1);
+    auto imag_one = Complex(Zero(x.builder(), component_type),
+                            One(x.builder(), component_type));
+    return Neg(imag_one * Log(x + imag_one * Sqrt((one + x) * (one - x))));
+  }
+  auto x2 = x * x;
+  auto half = ScalarLike(x, 0.5);
+  auto one = ScalarLike(x, 1.0);
+  auto radicand = Select(Le(x2, half), one - x2, (one - x) * (one + x));
+  return Atan2(Sqrt(radicand), x);
+}
+
+// For real floating-point types:
+//   asin(x) = atan2(x, sqrt((1 - x) * (1 + x)))
+// For complex types (c64, c128), uses the Hull et al. algorithm in math_impl.h.
+// Sub-32-bit floats are upcast to f32.
+XlaOp ExpandAsin(XlaOp x, PrimitiveType type) {
+  if (primitive_util::IsFloatingPointType(type) &&
+      primitive_util::BitWidth(type) < 32) {
+    return ConvertElementType(ExpandAsin(ConvertElementType(x, F32), F32),
+                              type);
+  }
+  switch (type) {
+    case C128:
+      return math_impl::AsinComplex<double>(x);
+    case C64:
+      return math_impl::AsinComplex<float>(x);
+    default: {
+      auto one = ScalarLike(x, 1.0);
+      return Atan2(x, Sqrt((one - x) * (one + x)));
+    }
+  }
+}
+
 }  // namespace
 
 bool ElementaryFunctionExpander::DefaultFilter(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
+    case HloOpcode::kCosh:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAsin:
     case HloOpcode::kSinh: {
       PrimitiveType type = instruction->shape().element_type();
       return type == F64 || type == C64 || type == C128;
@@ -121,6 +209,9 @@ bool ElementaryFunctionExpander::DefaultFilter(
 bool ElementaryFunctionExpander::InstructionMatchesPattern(
     HloInstruction* instruction) {
   switch (instruction->opcode()) {
+    case HloOpcode::kCosh:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAsin:
     case HloOpcode::kSinh:
       return true;
     default:
@@ -133,6 +224,15 @@ absl::StatusOr<HloInstruction*> ElementaryFunctionExpander::ExpandInstruction(
   XlaBuilder b(std::string(instruction->name()));
   XlaOp x = Parameter(&b, 0, instruction->operand(0)->shape(), "x");
   switch (instruction->opcode()) {
+    case HloOpcode::kCosh:
+      ExpandCosh(x, instruction->shape().element_type());
+      break;
+    case HloOpcode::kAcos:
+      ExpandAcos(x, instruction->shape().element_type());
+      break;
+    case HloOpcode::kAsin:
+      ExpandAsin(x, instruction->shape().element_type());
+      break;
     case HloOpcode::kSinh:
       ExpandSinh(x, instruction->shape().element_type());
       break;

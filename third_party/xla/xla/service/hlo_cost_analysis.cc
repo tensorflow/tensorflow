@@ -187,6 +187,8 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
       // clang-format on
   ) {
     current_properties_[kTranscendentalsKey] = computation_count;
+  } else if (opcode == HloOpcode::kFma) {
+    current_properties_[kFlopsKey] = kFmaFlops * computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
     // FLOPs.
@@ -338,6 +340,10 @@ absl::Status HloCostAnalysis::HandleClamp(const HloInstruction* clamp) {
   return HandleElementwiseOp(clamp);
 }
 
+absl::Status HloCostAnalysis::HandleFma(const HloInstruction* fma) {
+  return HandleElementwiseOp(fma);
+}
+
 absl::Status HloCostAnalysis::HandleReducePrecision(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
@@ -471,18 +477,6 @@ absl::Status HloCostAnalysis::HandleConvert(const HloInstruction* convert) {
 }
 
 absl::Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
-  return absl::OkStatus();
-}
-
-absl::Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
-  // Domain does not have any computation or data transfer.
-  current_should_compute_bottleneck_time_ = false;
-  current_properties_[kBytesAccessedKey] = 0;
-  current_properties_.set_output_bytes_accessed(0);
-  for (int i = 0; i < domain->operand_count(); ++i) {
-    current_properties_.set_operand_bytes_accessed(i, 0);
-  }
-  current_properties_[kOptimalSecondsKey] = 0;
   return absl::OkStatus();
 }
 

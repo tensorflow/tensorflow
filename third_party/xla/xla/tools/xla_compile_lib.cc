@@ -171,6 +171,19 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
                        GetStreamExecutor(platform, 0));
 
       aot_options.set_executor(stream_executor);
+    } else {
+      // Needed to make existing paths that compile CuDNN FMHA custom calls
+      // pass.
+      // TODO(b/505264161): Remove this when the flag is enabled by default.
+      DebugOptions& debug_options =
+          hlo_module->mutable_config().mutable_debug_options();
+      const DebugOptions::CudnnDevicelessCompilationMode mode =
+          debug_options.xla_gpu_cudnn_deviceless_compilation_mode();
+      if (mode == DebugOptions::CUDNN_DEVICELESS_COMPILATION_UNSET ||
+          mode == DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED) {
+        debug_options.set_xla_gpu_cudnn_deviceless_compilation_mode(
+            DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO);
+      }
     }
 
     // We need the optimized module, so we call RunHloPasses ourselves above.

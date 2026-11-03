@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -587,6 +588,29 @@ TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintsWithManyDims) {
                   {true, false, true, false, true, false, true, false}));
 }
 
+TEST_F(IndexingMapTest,
+       RemoveUnusedVars_OnlyDimsRemovedShiftsSymbolsInConstraints) {
+  auto indexing_map = Parse(R"(
+    (d0, d1)[s0] -> (d1 + s0),
+    domain:
+    d0 in [0, 10],
+    d1 in [0, 20],
+    s0 in [0, 30],
+    d1 + s0 in [0, 25]
+  )");
+  auto unused_vars = indexing_map.RemoveUnusedVars();
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0)[s0] -> (d0 + s0),
+                              domain:
+                              d0 in [0, 20],
+                              s0 in [0, 30],
+                              d0 + s0 in [0, 25]
+                            )"));
+  EXPECT_THAT(ConvertToSTL(unused_vars),
+              ::testing::ElementsAreArray({true, false, false}));
+  EXPECT_TRUE(indexing_map.RemoveUnusedVars().empty());
+}
+
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintUsesSymbol) {
   auto indexing_map = Parse(R"(
     (d0, d1)[s0, s1] -> (d1, d0, s1),
@@ -735,6 +759,71 @@ TEST_F(IndexingMapTest,
 }
 
 TEST_F(IndexingMapTest,
+       ConstraintIntervalSimplification_Sum_NonZeroLowerBoundRemainder) {
+  auto indexing_map = Parse(R"(
+    (d0)[s0] -> (d0 * 4 + s0),
+    domain:
+    d0 in [0, 10],
+    s0 in [1, 2],
+    d0 * 4 + s0 in [0, 4]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                          (d0)[s0] -> (s0),
+                          domain:
+                          d0 in [0, 0],
+                          s0 in [1, 2]
+                        )"));
+}
+
+TEST_F(IndexingMapTest,
+       ConstraintIntervalSimplification_Sum_NegativeMultiplierOrShiftedRange) {
+  auto neg_multiplier_map = Parse(R"(
+    (d0)[s0] -> (d0, s0),
+    domain:
+    d0 in [0, 10],
+    s0 in [0, 1],
+    d0 * -4 + s0 in [0, 0]
+  )");
+  EXPECT_TRUE(neg_multiplier_map.Simplify());
+  EXPECT_THAT(ToString(neg_multiplier_map), MatchIndexingString(R"(
+                          (d0)[s0] -> (0, 0),
+                          domain:
+                          d0 in [0, 0],
+                          s0 in [0, 0]
+                        )"));
+
+  auto shifted_remainder_map = Parse(R"(
+    (d0)[s0] -> (d0 * 4 + s0),
+    domain:
+    d0 in [0, 10],
+    s0 in [-4, -3],
+    d0 * 4 + s0 in [0, 3]
+  )");
+  EXPECT_TRUE(shifted_remainder_map.Simplify());
+  EXPECT_THAT(ToString(shifted_remainder_map), MatchIndexingString(R"(
+                          (d0)[s0] -> (s0 + 4),
+                          domain:
+                          d0 in [1, 1],
+                          s0 in [-4, -3]
+                        )"));
+
+  // Here `d0` could be partially narrowed to `[0, 1]`, which
+  // `SimplifyAddConstraint` currently leaves unsimplified when multiple
+  // multiples of `|gcd|` (`q in [-1, 0]`) are feasible.
+  auto multiple_candidates_map = Parse(R"(
+    (d0)[s0] -> (d0, s0),
+    domain:
+    d0 in [0, 10],
+    s0 in [0, 2],
+    d0 * -4 + s0 in [-4, 0]
+  )");
+  std::string multiple_before = ToString(multiple_candidates_map);
+  EXPECT_FALSE(multiple_candidates_map.Simplify());
+  EXPECT_EQ(ToString(multiple_candidates_map), multiple_before);
+}
+
+TEST_F(IndexingMapTest,
        ConstraintIntervalSimplification_FloorDivPositiveDivisorPositiveBounds) {
   auto indexing_map = Parse(R"(
     (d0) -> (d0),
@@ -861,6 +950,36 @@ TEST_F(IndexingMapTest, ConstraintMerge_Mod) {
                           s0 mod 6 in [0, 0],
                           s1 mod 5 in [1, 1]
                         )"));
+}
+
+TEST_F(IndexingMapTest, ConstraintMerge_ModNegativeBoundsNonZeroRemainder) {
+  auto indexing_map = Parse(R"(
+    (d0)[s0] -> (d0, s0),
+    domain:
+    d0 in [0, 3],
+    s0 in [-14, -2],
+    s0 mod 3 in [2, 2]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                          (d0)[s0] -> (d0, s0),
+                          domain:
+                          d0 in [0, 3],
+                          s0 in [-13, -4],
+                          s0 mod 3 in [2, 2]
+                        )"));
+}
+
+TEST_F(IndexingMapTest, ConstraintMerge_ModEmptyInterval) {
+  auto empty_map = Parse(R"(
+    (d0)[s0] -> (d0, s0),
+    domain:
+    d0 in [0, 3],
+    s0 in [-13, -12],
+    s0 mod 3 in [1, 1]
+  )");
+  EXPECT_TRUE(empty_map.Simplify());
+  EXPECT_THAT(ToString(empty_map), MatchIndexingString("KNOWN EMPTY"));
 }
 
 TEST_F(IndexingMapTest, SymbolicMapSimplification_ConstantDims) {

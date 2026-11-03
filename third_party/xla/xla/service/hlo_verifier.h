@@ -216,6 +216,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleElementwiseUnary(HloInstruction* hlo) override;
   absl::Status HandleElementwiseBinary(HloInstruction* hlo) override;
   absl::Status HandleClamp(HloInstruction* clamp) override;
+  absl::Status HandleFma(HloInstruction* fma) override;
   absl::Status HandleSelect(HloInstruction* select) override;
   absl::Status HandleConcatenate(HloInstruction* concatenate) override;
   absl::Status HandleIota(HloInstruction* hlo) override;

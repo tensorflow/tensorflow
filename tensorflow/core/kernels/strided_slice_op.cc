@@ -157,7 +157,7 @@ class StridedSliceOp : public OpKernel {
       // final_shape being 2D. This isn't strictly necessary, but I don't
       // want to blow up code gen size, because to shape<> you need static
       // NDIM and T
-      if (is_simple_slice && std::is_same<Device, CPUDevice>::value &&
+      if (is_simple_slice && std::is_same_v<Device, CPUDevice> &&
           input_dims == 2 && processing_shape.dims() == 2 &&
           final_shape.dims() == 2 && new_axis_mask == 0) {
         MemCpyFunctor<T> functor;

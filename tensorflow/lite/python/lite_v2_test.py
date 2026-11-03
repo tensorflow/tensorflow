@@ -195,6 +195,40 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertIsNotNone(tflite_model)
 
   @test_util.run_v2_only
+  def testUnsafeSingleBatchRankReductionConcatReshapeInterleave(self):
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=[1, 2, 2, 4, 1], dtype=tf.float32),
+            tf.TensorSpec(shape=[1, 2, 2, 4, 1], dtype=tf.float32),
+        ]
+    )
+    def interleave(a, b):
+      return tf.reshape(tf.concat([a, b], axis=4), [1, 2, 2, 8])
+
+    root = autotrackable.AutoTrackable()
+    root.f = interleave
+    concrete_func = root.f.get_concrete_function()
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], root
+    )
+    converter._experimental_unsafe_single_batch_rank_reduction = True
+    tflite_model = converter.convert()
+
+    a = tf.constant(
+        np.arange(16, dtype=np.float32).reshape(1, 2, 2, 4, 1)
+    )
+    b = tf.constant(
+        np.arange(100, 116, dtype=np.float32).reshape(1, 2, 2, 4, 1)
+    )
+    expected_value = root.f(a, b)
+    interp = interpreter.Interpreter(model_content=tflite_model)
+    interp.allocate_tensors()
+    my_signature = interp.get_signature_runner()
+    actual_value = list(my_signature(a=a, b=b).values())[0]
+    self.assertAllClose(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
   def testMultiFunctionModel(self):
     """Convert a single model in a multi-functional model."""
     root = self._getMultiFunctionModel()
@@ -1634,6 +1668,22 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Check the debug metadata.
     metadata_names = [m.name for m in tflite_model.metadata]
     self.assertIn(b'debug_metadata', metadata_names)
+
+
+class MlirBytecodeConverterFlagsTest(test_util.TensorFlowTestCase):
+
+  def testFoldFp16CastsIntoFullyConnected(self):
+    converter = lite.TFLiteMlirBytecodeConverterV2(self.get_temp_dir())
+    flags = convert.build_conversion_flags(
+        **converter._get_base_converter_args()
+    )
+    self.assertFalse(flags.fold_fp16_casts_into_fully_connected)
+
+    converter._experimental_fold_fp16_casts_into_fully_connected = True
+    flags = convert.build_conversion_flags(
+        **converter._get_base_converter_args()
+    )
+    self.assertTrue(flags.fold_fp16_casts_into_fully_connected)
 
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):

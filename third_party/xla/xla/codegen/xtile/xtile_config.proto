@@ -73,4 +73,8 @@ message BlockLevelFusionConfig {
   // and each sequential dimension uses the `Tile` backend config of its
   // instruction or its full size.
   repeated int64 sequential_tile_sizes = 11;
+
+  // AMD MFMA MN instruction size, 0 = auto or 16. Ignored on WMMA and on
+  // non-ROCm targets.
+  int32 mfma_size = 12;
 }

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/tsl/platform/threadpool.h"
 
-#include <cfenv>  // NOLINT
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -24,17 +23,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/nullability.h"
-#include "absl/base/optimization.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/threadpool_interface.h"
 #include "tsl/platform/blocking_counter.h"
-#include "tsl/platform/context.h"
-#include "tsl/platform/denormal.h"
-#include "tsl/platform/numa.h"
-#include "tsl/platform/setround.h"
-#include "tsl/platform/tracing.h"
 
 #ifdef DNNL_AARCH64_USE_ACL
 #include "tsl/platform/cpu_info.h"
@@ -52,65 +44,6 @@ ABSL_FLAG(float, tensorflow_num_threads_scale_factor, 1.0,
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
 namespace tsl::thread {
-
-struct EigenEnvironment {
-  using EnvThread = Thread;
-
-  struct TaskImpl {
-    std::function<void()> fn;
-    Context context;
-    uint64_t trace_id;
-  };
-
-  struct Task {
-    Task() = default;
-
-    Task(std::function<void()> fn, Context context, uint64_t trace_id)
-        : f(TaskImpl{std::move(fn), std::move(context), trace_id}) {}
-
-    Task(Task&&) = default;
-    Task& operator=(Task&&) = default;
-
-    std::optional<TaskImpl> f;
-  };
-
-  Env* const env;
-  const ThreadOptions thread_options;
-  const std::string name;
-
-  EigenEnvironment(Env* env, const ThreadOptions& thread_options,
-                   std::string name)
-      : env(env), thread_options(thread_options), name(std::move(name)) {}
-
-  EnvThread* CreateThread(std::function<void()> f) {
-    return env->StartThread(thread_options, name, [this, f = std::move(f)]() {
-      // Set the processor flag to flush denormals to zero.
-      port::ScopedFlushDenormal flush;
-      // Set the processor rounding mode to ROUND TO NEAREST.
-      tsl::port::ScopedSetRound round(FE_TONEAREST);
-      if (thread_options.numa_node != port::kNUMANoAffinity) {
-        port::NUMASetThreadNodeAffinity(thread_options.numa_node);
-      }
-      f();
-    });
-  }
-
-  Task CreateTask(std::function<void()> f) {
-    uint64_t id = 0;
-    if (ABSL_PREDICT_FALSE(tracing::EventCollector::IsEnabled())) {
-      id = tracing::GetUniqueArg();
-      tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
-    }
-    return Task(std::move(f), Context(ContextKind::kThread), id);
-  }
-
-  void ExecuteTask(const Task& t) {
-    WithContext wc(t.f->context);
-    tracing::ScopedRegion region(tracing::EventCategory::kRunClosure,
-                                 t.f->trace_id);
-    t.f->fn();
-  }
-};
 
 ThreadPool::ThreadPool(Env* env, const std::string& name, int num_threads)
     : ThreadPool(env, ThreadOptions(), name, num_threads, true, nullptr) {}
@@ -139,17 +72,15 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
   if (num_threads < 1) num_threads = 1;
 #endif  // TENSORFLOW_THREADSCALING_EXPERIMENTAL
 
-  eigen_threadpool_ =
-      std::make_unique<Eigen::ThreadPoolTempl<EigenEnvironment>>(
-          num_threads, low_latency_hint,
-          EigenEnvironment(env, thread_options, "tf_" + name));
-  underlying_threadpool_ = eigen_threadpool_.get();
+  owned_threadpool_ =
+      std::unique_ptr<ThreadPoolInterface>(env->CreateThreadPoolInterface(
+          thread_options, name, num_threads, low_latency_hint));
+  underlying_threadpool_ = owned_threadpool_.get();
   threadpool_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
       underlying_threadpool_, num_threads, allocator);
 }
 
-ThreadPool::ThreadPool(thread::ThreadPoolInterface* user_threadpool)
-    : executor_(this) {
+ThreadPool::ThreadPool(ThreadPoolInterface* user_threadpool) : executor_(this) {
   underlying_threadpool_ = user_threadpool;
   threadpool_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
       underlying_threadpool_, underlying_threadpool_->NumThreads(), nullptr);

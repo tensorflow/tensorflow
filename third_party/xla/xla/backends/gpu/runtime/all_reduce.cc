@@ -168,6 +168,11 @@ absl::Status IsAllReduceKernelSupported(
     return absl::UnimplementedError(
         "Cross-host symmetric memory collectives are not supported.");
   }
+  if (num_devices == 1) {
+    return absl::UnimplementedError(
+        "Degenerate collectives with a single device per replica group are not "
+        "supported by collective kernels.");
+  }
   if (!llvm::has_single_bit(static_cast<uint64_t>(num_devices))) {
     return absl::UnimplementedError(
         absl::StrCat("Collective kernels are only supported for power of 2 "
@@ -249,18 +254,19 @@ absl::StatusOr<AllReduceInfo> BuildAllReduceInfo(
 }
 
 absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
-    const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
-    SymmetricMemoryType scratch_memory_type) {
-  int64_t group_size = instr->GetModule()->config().replica_count();
-  if (!instr->replica_groups().empty() &&
-      instr->replica_groups()[0].replica_ids_size() > 0) {
-    group_size = instr->replica_groups()[0].replica_ids_size();
-  }
+    const GpuTopology& gpu_topology, const HloAllReduceInstruction* all_reduce,
+    const LaunchDimensions& launch_dimensions,
+    SymmetricMemoryType scratch_memory_type,
+    const DeviceAssignment* device_assignment) {
+  ABSL_ASSIGN_OR_RETURN(
+      const AllReduceInfo all_reduce_info,
+      BuildAllReduceInfo(/*is_multimem_enabled=*/false, gpu_topology,
+                         all_reduce, device_assignment));
   const int64_t input_size_bytes =
-      ShapeUtil::ByteSizeOf(instr->operand(0)->shape());
-  const se::gpu::AllReduceStrategy strategy = GetAllReduceStrategy(
-      input_size_bytes, group_size, /*is_multimem_enabled=*/false);
-  const int64_t num_signal_flags = group_size * launch_dimensions.num_blocks();
+      all_reduce_info.num_elements *
+      primitive_util::ByteWidth(all_reduce_info.element_type);
+  const int64_t num_signal_flags =
+      all_reduce_info.num_devices * launch_dimensions.num_blocks();
   const int64_t signal_size = xla::RoundUpTo<uint64_t>(
       num_signal_flags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
   const int64_t remote_size =
@@ -282,7 +288,8 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllReduceKernelSpec(
            {KernelArgType::kInvocationCount},
            {KernelArgType::kScratchBuffer, /*index=*/0},   // signal buffers
            {KernelArgType::kScratchBuffer, /*index=*/1}},  // scratch buffers
-          /* .sync_count_increment = */ 1 + static_cast<uint32_t>(strategy)},
+          /* .sync_count_increment = */ 1 +
+              static_cast<uint32_t>(all_reduce_info.all_reduce_strategy)},
       /* .scratch_buffers= */
       {{signal_size, /*requires_multimem=*/false,  // Signal buffers
         scratch_memory_type,

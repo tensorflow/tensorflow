@@ -14,7 +14,7 @@ floating-point inference.
 ### Enable XNNPACK via Java API on Android (recommended on Android)
 
 Pre-built
-[nightly TensorFlow Lite binaries for Android](https://www.tensorflow.org/lite/guide/android#use_the_tensorflow_lite_aar_from_mavencentral)
+[nightly TensorFlow Lite binaries for Android](https://developers.google.com/edge/litert/android/lite_build#use_nightly_snapshots)
 include XNNPACK, albeit it is disabled by default. Use the `setUseXNNPACK`
 method in `Interpreter.Options` class to enable it:
 
@@ -27,7 +27,7 @@ Interpreter interpreter = new Interpreter(model, interpreterOptions);
 ### Enable XNNPACK via Swift/Objective-C API on iOS (recommended on iOS)
 
 Pre-built
-[nightly TensorFlow Lite CocoaPods](https://www.tensorflow.org/lite/guide/ios#specifying_versions)
+[nightly TensorFlow Lite CocoaPods](https://developers.google.com/edge/litert/ios/quickstart#specifying_versions)
 include XNNPACK, but do not enable it by default. Swift developers can use
 `InterpreterOptions` object to enable XNNPACK:
 

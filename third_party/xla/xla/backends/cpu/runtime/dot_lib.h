@@ -81,13 +81,11 @@ void MatMul(const Eigen::ThreadPoolDevice* device, OutType* out, LhsType* lhs,
 
   std::array<DimPair, 1> dims({DimPair(lhs_contract_dim, rhs_contract_dim)});
 
+  Eigen::ThreadPoolDevice single_thread_device(/*pool=*/nullptr,
+                                               /*num_cores=*/1);
   auto compute_and_done = [&](const auto& expression) {
-    if (device != nullptr) {
-      c.device(*device, std::move(done)) = expression;
-    } else {
-      c = expression;
-      done();
-    }
+    c.device(device != nullptr ? *device : single_thread_device,
+             std::move(done)) = expression;
   };
 
   if constexpr (std::is_same_v<LhsType, OutType> &&

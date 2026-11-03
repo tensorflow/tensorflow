@@ -34,8 +34,12 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/testing/temporary_directory.h"
@@ -814,9 +818,22 @@ TEST_P(AllGatherTypesTest, Large2Gpu) {
   }
 }
 
+se::GpuComputeCapability GetGpuComputeCapability() {
+  auto platform = PlatformUtil::GetPlatform("gpu");
+  if (!platform.ok()) {
+    return se::GpuComputeCapability{};
+  }
+  auto executor = (*platform)->ExecutorForDevice(0);
+  if (!executor.ok()) {
+    return se::GpuComputeCapability{};
+  }
+  return (*executor)->GetDeviceDescription().gpu_compute_capability();
+}
+
 INSTANTIATE_TEST_SUITE_P(
     AllGatherTypes, AllGatherTypesTest,
-    ::testing::ValuesIn(gpu::kSupportedAllGatherTypes),
+    ::testing::ValuesIn(
+        gpu::SupportedAllGatherTypes(GetGpuComputeCapability())),
     [](const ::testing::TestParamInfo<PrimitiveType>& info) {
       return std::string(
           primitive_util::LowercasePrimitiveTypeName(info.param));

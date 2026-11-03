@@ -1872,15 +1872,6 @@ absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
       continue;
     }
 
-    // TODO(b/119281462): Cowardly refuse to perform any of the following
-    // optimizations in the presence of kDomain instructions.  It seems that
-    // modifying a while loop's tuple doesn't work when kDomain is present.
-    if (ContainsInstrWithOpcode(while_op->while_body(), {HloOpcode::kDomain}) ||
-        ContainsInstrWithOpcode(while_op->while_condition(),
-                                {HloOpcode::kDomain})) {
-      continue;
-    }
-
     bool merged_induction_vars = false;
     // Notably missing from this list are S16 and U16.  These don't currently
     // work because S/U16 literals are not implemented.

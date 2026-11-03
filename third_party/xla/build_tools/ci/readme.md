@@ -17,13 +17,11 @@ The build here is a set of shell script commands executing the test targets or
 doing compile only testing. Each GitHub action call translates into compile only
 test:
 
-1.  dryrun `bazel build --nobuild ... test_targets`
 1.  actual compile `bazel build ... test_targets`
 1.  analyse results `bazel analyze-profile ...`
 
 or compile and run test commands:
 
-1.  dry run `bazel build --nobuild ... test_targets`
 1.  actual test `bazel test ... test_targets`
 1.  analyse results `bazel analyze-profile profile.json.gz`
 

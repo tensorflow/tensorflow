@@ -45,9 +45,8 @@ def _verify_spec_compatible(input_name, spec_name, input_, spec):
     ValueError if the two types have been determined not to be compatible.
   """
   assert isinstance(spec, tensor_spec.TensorSpec)
-  if input is None:
-    # TODO(mdan): raise from None when switching to Py3.
-    raise ValueError("{} cannot be None".format(input_name))
+  if input_ is None:
+    raise ValueError("{} cannot be None".format(input_name)) from None
 
   # TODO(mdan): Use TensorCompatible when ready.
   if isinstance(input_, (bool, int, float, str, np.ndarray)):

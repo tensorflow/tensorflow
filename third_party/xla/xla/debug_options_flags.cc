@@ -364,7 +364,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
   opts.set_xla_gpu_enable_nccl_user_buffers_in_default_space(false);
   opts.set_xla_gpu_enable_allocator_spatial_partitioning(true);
+  opts.set_xla_gpu_memory_fraction_policy("");
   opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
+  opts.set_xla_gpu_experimental_nccl_window_symmetric(false);
   opts.set_xla_gpu_experimental_vmm_disabled(false);
   opts.set_xla_gpu_experimental_emit_collective_reduce(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
@@ -539,7 +541,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_collective_start_as_early_as_possible(false);
   opts.set_xla_gpu_experimental_enable_selective_memcpy_overlap(false);
   opts.set_xla_gpu_experimental_parallel_async_compute_limit(2);
-  opts.set_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(-1);
+  opts.set_xla_gpu_experimental_scheduler_memory_fencing_threshold_bytes(0);
   opts.set_xla_gpu_experimental_scheduler_memory_fencing_slack_windows(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(false);
@@ -556,6 +558,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
+  opts.set_xla_gpu_enable_command_buffer_telemetry(false);
   // TODO(b/449025971): Set to true once the issue is fixed.
   opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
@@ -609,8 +612,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_gxl_ragged_all_to_all(false);
   opts.set_xla_gpu_gxl_scratch_size_bytes(64 * 1024 * 1024);
   opts.set_xla_gpu_enable_persistent_symmetric_memory(false);
-  opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(false);
+  opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
   opts.set_xla_gpu_experimental_enable_tensor_ir(false);
+  opts.set_xla_gpu_experimental_enable_triton_scan(true);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -1581,7 +1585,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "When generating calls to Eigen in the CPU backend, use multi-threaded "
       "Eigen mode."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_data_dir", debug_options->mutable_xla_gpu_cuda_data_dir(),
+      "xla_gpu_cuda_data_dir",
+      string_setter_for(&DebugOptions::set_xla_gpu_cuda_data_dir),
+      debug_options->xla_gpu_cuda_data_dir(),
       "If non-empty, specifies a local directory containing ptxas and nvvm "
       "libdevice files; otherwise we use those from runfile directories."));
   flag_list->push_back(tsl::Flag(
@@ -2434,12 +2440,28 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "collective allocations share one fixed address range. Requires BFC "
       "preallocation."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_memory_fraction_policy",
+      string_setter_for(&DebugOptions::set_xla_gpu_memory_fraction_policy),
+      debug_options->xla_gpu_memory_fraction_policy(),
+      "Overrides the client's memory fraction for the GPU BFC allocator, as "
+      "START, START+, or START-CAP fractions of total device memory: \"0.75\" "
+      "is fixed at 75%, \"0.75+\" preallocates 75% and lets the shared spatial "
+      "pool grow to all device memory, and \"0.75-0.85\" caps growth at 85%. "
+      "Empty keeps the client's setting."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_nccl_symmetric_buffers",
       bool_setter_for(
           &DebugOptions::
               set_xla_gpu_experimental_enable_nccl_symmetric_buffers),
       debug_options->xla_gpu_experimental_enable_nccl_symmetric_buffers(),
       "Enables NCCL symmetric buffer registration."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_nccl_window_symmetric",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_nccl_window_symmetric),
+      debug_options->xla_gpu_experimental_nccl_window_symmetric(),
+      "Registers NCCL windows with NCCL_WIN_COLL_SYMMETRIC instead of "
+      "NCCL_WIN_DEFAULT."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_emit_collective_reduce",
       bool_setter_for(
@@ -2489,6 +2511,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "command "
       "buffer update to ensure correctness when running in multi thread "
       "mode."));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_command_buffer_telemetry",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_command_buffer_telemetry),
+      debug_options->xla_gpu_enable_command_buffer_telemetry(),
+      "Records the HLO annotation of each CUDA graph node so "
+      "profiles can attribute command buffer kernels, memcpys and memsets to "
+      "HLO ops. Requires CUDA 13.2+; otherwise it does nothing. Graph nodes "
+      "appear in a profile only with "
+      "--xla_enable_command_buffers_during_profiling=true."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_nccl_comm_splitting",
@@ -2735,11 +2768,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_enable_cudnn_int8x32_convolution_reordering),
       debug_options->xla_gpu_enable_cudnn_int8x32_convolution_reordering(),
       "Enable cuDNN frontend for int8x32 convolutions with reordered filter."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_gemm_fusion_v2",
-      bool_setter_for(&DebugOptions::set_xla_gpu_experimental_gemm_fusion_v2),
-      debug_options->xla_gpu_experimental_gemm_fusion_v2(),
-      "Enable experimental rewrite of GEMM fusion pass for Triton."));
+  flag_list->push_back(tsl::Flag("xla_gpu_experimental_gemm_fusion_v2",
+                                 noop_flag_setter<bool>, true,
+                                 "Deprecated, do not use."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_triton_gemm_any",
                 bool_setter_for(&DebugOptions::set_xla_gpu_triton_gemm_any),
@@ -3757,6 +3788,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "TensorIR (CUDA Tile) emitter. Requires sm_90+ and CUDA 13.3+ "
       "(tileiras)."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_triton_scan",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_triton_scan),
+      debug_options->xla_gpu_experimental_enable_triton_scan(),
+      "If true, lowers eligible associative kScan instructions to Triton "
+      "fusions (ScanRewriterTriton)."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_ragged_all_to_all_use_device_kernel",
       bool_setter_for(
           &DebugOptions::
@@ -4046,6 +4084,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "--xla_gpu_exclude_nondeterministic_ops). "
       "Supported modes: 'off' (default) and 'unchecked' (enables Triton and "
       "skips correctness checks)."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_require_exact_blas_lt_algorithm",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_require_exact_blas_lt_algorithm),
+      debug_options->xla_gpu_require_exact_blas_lt_algorithm(),
+      "If true, require that BlasLt matmuls execute the exact algorithm "
+      "described by BlasLtMatmulAlgorithmProto rather than falling back to the "
+      "heuristic algorithm index."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

@@ -138,14 +138,14 @@ TEST_F(ValidateFunctionDevicesTest, EmptyFunctionIsOk) {
   FunctionDef fdef;
   EXPECT_THAT(
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_),
-      ::tensorflow::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, NoDeviceConstraintIsOk) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "");
   EXPECT_THAT(
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_),
-      ::tensorflow::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, FullySpecifiedDeviceIsOk) {
@@ -153,7 +153,7 @@ TEST_F(ValidateFunctionDevicesTest, FullySpecifiedDeviceIsOk) {
       "add", "AddV2", "/job:localhost/replica:0/task:0/device:CPU:0");
   EXPECT_THAT(
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_),
-      ::tensorflow::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, PartialJobConstraintIsOk) {
@@ -162,21 +162,21 @@ TEST_F(ValidateFunctionDevicesTest, PartialJobConstraintIsOk) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "/job:localhost");
   EXPECT_THAT(
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_),
-      ::tensorflow::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, PartialTaskConstraintIsOk) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "/task:0");
   EXPECT_THAT(
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_),
-      ::tensorflow::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, LocalDeviceNameIsOk) {
   FunctionDef fdef = MakeFunctionWithDevice("add", "AddV2", "CPU:0");
   EXPECT_THAT(
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_),
-      ::tensorflow::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, UnsatisfiedJobFails) {
@@ -185,7 +185,7 @@ TEST_F(ValidateFunctionDevicesTest, UnsatisfiedJobFails) {
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::AllOf(
               ::testing::HasSubstr("Could not satisfy device specification"),
@@ -202,7 +202,7 @@ TEST_F(ValidateFunctionDevicesTest, InvalidDeviceIdFails) {
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Could not satisfy device specification")));
 }
@@ -214,7 +214,7 @@ TEST_F(ValidateFunctionDevicesTest, InvalidDeviceTypeFails) {
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Could not satisfy device specification")));
 }
@@ -225,7 +225,7 @@ TEST_F(ValidateFunctionDevicesTest, LocalDeviceNameInvalidIdFails) {
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Could not satisfy device specification")));
 }
@@ -235,7 +235,7 @@ TEST_F(ValidateFunctionDevicesTest, MalformedDeviceSpecFails) {
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_);
   EXPECT_THAT(status,
-              ::tensorflow::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   ::testing::AllOf(
                       ::testing::HasSubstr("Malformed device specification"),
@@ -246,7 +246,7 @@ TEST_F(ValidateFunctionDevicesTest, ErrorMentionsOperation) {
   FunctionDef fdef = MakeFunctionWithDevice("my_add", "AddV2", "/job:worker");
   absl::Status status =
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices_);
-  EXPECT_THAT(status, ::tensorflow::testing::StatusIs(
+  EXPECT_THAT(status, absl_testing::StatusIs(
                           absl::StatusCode::kInvalidArgument,
                           ::testing::AllOf(::testing::HasSubstr("my_add"),
                                            ::testing::HasSubstr("AddV2"))));
@@ -259,7 +259,7 @@ TEST_F(ValidateFunctionDevicesTest, EmptyAvailableDevicesRejectsConstraint) {
       ValidateFunctionDeviceConstraints(fdef, /*flib_def=*/nullptr, no_devices);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Could not satisfy device specification")));
 }
@@ -271,7 +271,7 @@ TEST_F(ValidateFunctionDevicesTest, NullFunctionLibraryOnlyChecksTopLevel) {
       MakeFunctionWithFuncAttr("call", "PartitionedCall", "f", "inner_func");
   EXPECT_THAT(ValidateFunctionDeviceConstraints(fdef, /*flib_def=*/nullptr,
                                                 available_devices_),
-              ::tensorflow::testing::IsOk());
+              absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, NestedFunctionInvalidDeviceFails) {
@@ -285,7 +285,7 @@ TEST_F(ValidateFunctionDevicesTest, NestedFunctionInvalidDeviceFails) {
       ValidateFunctionDeviceConstraints(fdef, &flib_def, available_devices_);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Could not satisfy device specification")));
 }
@@ -297,7 +297,7 @@ TEST_F(ValidateFunctionDevicesTest, NestedFunctionValidDeviceIsOk) {
       OpRegistry::Global(), "inner_func", "/job:localhost");
   EXPECT_THAT(
       ValidateFunctionDeviceConstraints(fdef, &flib_def, available_devices_),
-      ::tensorflow::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, NestedFunctionCycleTerminates) {
@@ -322,7 +322,7 @@ TEST_F(ValidateFunctionDevicesTest, NestedFunctionCycleTerminates) {
   // Find() keeps returning the original definition).
   EXPECT_THAT(
       ValidateFunctionDeviceConstraints(cyclic, &flib_def, available_devices_),
-      ::tensorflow::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, NestedIfBranchInvalidDeviceFails) {
@@ -336,7 +336,7 @@ TEST_F(ValidateFunctionDevicesTest, NestedIfBranchInvalidDeviceFails) {
       ValidateFunctionDeviceConstraints(fdef, &flib_def, available_devices_);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Could not satisfy device specification")));
 }
@@ -352,7 +352,7 @@ TEST_F(ValidateFunctionDevicesTest, NestedWhileBodyInvalidDeviceFails) {
       ValidateFunctionDeviceConstraints(fdef, &flib_def, available_devices_);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Could not satisfy device specification")));
 }
@@ -364,7 +364,7 @@ TEST_F(ValidateFunctionDevicesTest, NestedIfBranchValidDeviceIsOk) {
       OpRegistry::Global(), "else_func", "/job:localhost");
   EXPECT_THAT(
       ValidateFunctionDeviceConstraints(fdef, &flib_def, available_devices_),
-      ::tensorflow::testing::IsOk());
+      absl_testing::IsOk());
 }
 
 TEST_F(ValidateFunctionDevicesTest, NestedFuncListInvalidDeviceFails) {
@@ -386,7 +386,7 @@ TEST_F(ValidateFunctionDevicesTest, NestedFuncListInvalidDeviceFails) {
       ValidateFunctionDeviceConstraints(fdef, &flib_def, available_devices_);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Could not satisfy device specification")));
 }
@@ -404,7 +404,7 @@ TEST_F(ValidateFunctionDevicesTest, DeviceAttributesOverloadMatchesDevice) {
       ValidateFunctionDeviceConstraints(fdef, nullptr, available_devices);
   EXPECT_THAT(
       status,
-      ::tensorflow::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::HasSubstr("Could not satisfy device specification")));
 }

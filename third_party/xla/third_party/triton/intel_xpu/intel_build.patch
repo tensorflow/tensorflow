@@ -75,7 +75,7 @@ diff --git b/third_party/intel/BUILD b/third_party/intel/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/intel/BUILD
-@@ -0,0 +1,554 @@
+@@ -0,0 +1,555 @@
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
 +package(
@@ -342,6 +342,7 @@ new file mode 100644
 +        "include/Dialect/TritonGEN/IR/*.h",
 +        "include/Dialect/TritonIntelGPU/IR/*.h",
 +        "include/Dialect/TritonIntelGPU/Transforms/*.h",
++        "include/Utils/*.h",
 +    ])
 +)
 +

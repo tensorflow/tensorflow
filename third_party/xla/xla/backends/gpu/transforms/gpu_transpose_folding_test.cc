@@ -34,19 +34,23 @@ using ::absl_testing::IsOkAndHolds;
 
 class GpuTransposeFoldingTest : public HloHardwareIndependentTestBase {
  protected:
-  void ExpectFolded(absl::string_view hlo, absl::string_view expected) {
+  void ExpectFolded(absl::string_view hlo, absl::string_view expected,
+                    bool fold_into_convolutions = true) {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                          ParseAndReturnVerifiedModule(hlo));
-    EXPECT_THAT(GpuTransposeFolding(kHopper).Run(module.get()),
-                IsOkAndHolds(true));
+    EXPECT_THAT(
+        GpuTransposeFolding(kHopper, fold_into_convolutions).Run(module.get()),
+        IsOkAndHolds(true));
     EXPECT_THAT(RunFileCheck(module->ToString(), expected), IsOkAndHolds(true));
   }
 
-  void ExpectNotFolded(absl::string_view hlo) {
+  void ExpectNotFolded(absl::string_view hlo,
+                       bool fold_into_convolutions = true) {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                          ParseAndReturnVerifiedModule(hlo));
-    EXPECT_THAT(GpuTransposeFolding(kHopper).Run(module.get()),
-                IsOkAndHolds(false));
+    EXPECT_THAT(
+        GpuTransposeFolding(kHopper, fold_into_convolutions).Run(module.get()),
+        IsOkAndHolds(false));
   }
 
   const se::GpuComputeCapability kHopper{se::CudaComputeCapability::Hopper()};
@@ -125,6 +129,40 @@ TEST_F(GpuTransposeFoldingTest, FoldsTransposeKeepingAdjacentDimsTogether) {
     // CHECK: %[[Y:.*]] = {{.*}} parameter(1)
     // CHECK: dot(%[[P]], %[[Y]]), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
     )");
+}
+
+TEST_F(GpuTransposeFoldingTest, FoldsTransposeBelowRankChangingBitcast) {
+  // The chain cannot be folded up to p, but t can still be folded into b.
+  ExpectFolded(R"(
+    HloModule m
+    ENTRY e {
+      p = f32[8,64,1,32]{3,2,1,0} parameter(0)
+      y = f32[8,64,6]{2,1,0} parameter(1)
+      b = f32[8,64,32]{2,1,0} bitcast(p)
+      t = f32[8,32,64]{2,1,0} transpose(b), dimensions={0,2,1}
+      ROOT dot = f32[8,32,6]{2,1,0} dot(t, y), lhs_batch_dims={0},
+        lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    })",
+               R"(
+    // CHECK: %[[B:.*]] = {{.*}} bitcast
+    // CHECK-NOT: transpose
+    // CHECK: dot(%[[B]], {{.*}}), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    )");
+}
+
+TEST_F(GpuTransposeFoldingTest, DoesNotStopBetweenBitcasts) {
+  // b1 is a reshape so the chain cannot fold up to p, and stopping at b1 (only
+  // folding the layout-changing bitcast b2) gains nothing.
+  ExpectNotFolded(R"(
+    HloModule m
+    ENTRY e {
+      p = f32[8,64,32]{2,1,0} parameter(0)
+      y = f32[8,64,6]{2,1,0} parameter(1)
+      b1 = f32[8,32,64]{2,1,0} bitcast(p)
+      b2 = f32[8,64,32]{1,2,0} bitcast(b1)
+      ROOT dot = f32[8,32,6]{2,1,0} dot(b2, y), lhs_batch_dims={0},
+        lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    })");
 }
 
 TEST_F(GpuTransposeFoldingTest, DoesNotFoldBitcastThatIsReshape) {
@@ -227,6 +265,20 @@ TEST_F(GpuTransposeFoldingTest, FoldsConvolutionOperands) {
     // CHECK: %[[Y:.*]] = {{.*}} parameter(1)
     // CHECK: convolution(%[[X]], %[[Y]]), window={size=1x2}, dim_labels=fb10_01io->bf01
     )");
+}
+
+TEST_F(GpuTransposeFoldingTest, DoesNotFoldConvolutionOperandsIfDisabled) {
+  ExpectNotFolded(R"(
+    HloModule m
+    ENTRY e {
+      x = f32[3,2,4,5]{3,2,1,0} parameter(0)
+      y = f32[1,2,3,6]{3,2,1,0} parameter(1)
+      tx = f32[2,3,5,4]{3,2,1,0} transpose(x), dimensions={1,0,3,2}
+      ty = f32[3,6,1,2]{3,2,1,0} transpose(y), dimensions={2,3,0,1}
+      ROOT conv = f32[2,6,5,3]{3,2,1,0} convolution(tx, ty),
+        window={size=1x2}, dim_labels=bf01_io01->bf01
+    })",
+                  /*fold_into_convolutions=*/false);
 }
 
 }  // namespace

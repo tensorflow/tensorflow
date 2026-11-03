@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -27,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -186,11 +189,71 @@ class PyRecordRandomReader {
   void operator=(const PyRecordRandomReader&) = delete;
 };
 
+// A WritableFile that discards everything written to it.
+class NullWritableFile : public tensorflow::WritableFile {
+ public:
+  absl::Status Append(absl::string_view data) override {
+    return absl::OkStatus();
+  }
+  absl::Status Close() override { return absl::OkStatus(); }
+  absl::Status Flush() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
+};
+
+// Formats `message` with every zlib option, so the error names the bad value.
+absl::Status ZlibOptionsError(
+    absl::string_view message,
+    const tensorflow::io::ZlibCompressionOptions& zlib) {
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Invalid TFRecordWriter options for ZLIB/GZIP compression: ", message,
+      " (window_bits=", static_cast<int>(zlib.window_bits),
+      ", compression_level=", static_cast<int>(zlib.compression_level),
+      ", compression_method=", static_cast<int>(zlib.compression_method),
+      ", mem_level=", static_cast<int>(zlib.mem_level),
+      ", compression_strategy=", static_cast<int>(zlib.compression_strategy),
+      ", input_buffer_size=", zlib.input_buffer_size,
+      ", output_buffer_size=", zlib.output_buffer_size, ")"));
+}
+
+// RecordWriter aborts the process when its zlib stream fails to initialize.
+// Run the same ZlibOutputBuffer::Init() on a NullWritableFile first, so that
+// invalid options are returned as an error instead.
+absl::Status CheckZlibOptions(
+    const tensorflow::io::RecordWriterOptions& options) {
+  if (options.compression_type !=
+      tensorflow::io::RecordWriterOptions::ZLIB_COMPRESSION) {
+    return absl::OkStatus();
+  }
+  const tensorflow::io::ZlibCompressionOptions& zlib = options.zlib_options;
+  // ZlibOutputBuffer takes int32_t sizes. Reject sizes that do not fit
+  // instead of letting them wrap.
+  constexpr int64_t kMaxSize = std::numeric_limits<int32_t>::max();
+  if (zlib.input_buffer_size < 0 || zlib.input_buffer_size > kMaxSize ||
+      zlib.output_buffer_size < 0 || zlib.output_buffer_size > kMaxSize) {
+    return ZlibOptionsError(
+        absl::StrCat("buffer sizes must be between 0 and ", kMaxSize), zlib);
+  }
+  // Init() reads the output size only to reject values <= 1 and does not
+  // touch the buffers, so small probe buffers give the same result.
+  // Do not call Close() when Init() fails: for output_buffer_size <= 1 the
+  // zlib stream was never set up, and the destructor's data-loss warning is
+  // expected there.
+  NullWritableFile null_file;
+  tensorflow::io::ZlibOutputBuffer buffer(
+      &null_file, /*input_buffer_bytes=*/0,
+      static_cast<int32_t>(std::min<int64_t>(zlib.output_buffer_size, 64)),
+      zlib);
+  absl::Status status = buffer.Init();
+  if (!status.ok()) return ZlibOptionsError(status.message(), zlib);
+  return buffer.Close();
+}
+
 class PyRecordWriter {
  public:
   static absl::Status New(const std::string& filename,
                           const tensorflow::io::RecordWriterOptions& options,
                           PyRecordWriter** out) {
+    TF_RETURN_IF_ERROR(CheckZlibOptions(options));
     std::unique_ptr<tensorflow::WritableFile> file;
     TF_RETURN_IF_ERROR(
         tensorflow::Env::Default()->NewWritableFile(filename, &file));

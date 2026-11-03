@@ -231,6 +231,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

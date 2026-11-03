@@ -194,6 +194,11 @@ LocalExecutable::RunHelper(const absl::Span<const Shape* const> argument_shapes,
     }
   }
 
+  return PrepareRunOptions(std::move(run_options));
+}
+
+absl::StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>
+LocalExecutable::PrepareRunOptions(ExecutableRunOptions run_options) {
   ABSL_RETURN_IF_ERROR(ValidateExecutionOptions(run_options, *backend_));
 
   StreamPool::Ptr stream;

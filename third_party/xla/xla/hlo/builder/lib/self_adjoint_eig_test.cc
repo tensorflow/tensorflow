@@ -202,6 +202,28 @@ TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Upper_2x4x4) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
+TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_And_Upper_Same_Module_2x4x4) {
+  XlaBuilder builder(TestName());
+
+  XlaOp a_lower;
+  XlaOp a_upper;
+  auto a_lower_data =
+      CreateR3Parameter<float>(ExtractTriangularMatrix(batch_3d_4x4_, true), 0,
+                               "a_lower", &builder, &a_lower);
+  auto a_upper_data =
+      CreateR3Parameter<float>(ExtractTriangularMatrix(batch_3d_4x4_, false), 1,
+                               "a_upper", &builder, &a_upper);
+  auto result_lower = SelfAdjointEig(a_lower, /*lower=*/true);
+  auto result_upper = SelfAdjointEig(a_upper, /*lower=*/false);
+  Add(ComputeMatmulVWVt(result_lower, &builder),
+      ComputeMatmulVWVt(result_upper, &builder));
+
+  Array3D<float> expected = batch_3d_4x4_;
+  expected.Each([](absl::Span<const int64_t>, float* v) { *v *= 2.0f; });
+  ComputeAndCompareR3<float>(&builder, expected, {&a_lower_data, &a_upper_data},
+                             ErrorSpec(1e-3, 1e-3));
+}
+
 TEST_F(SelfAdjointEigTest, Test_Orthogonality_2x4x4) {
   XlaBuilder builder(TestName());
 

@@ -468,15 +468,15 @@ message DebugOptions {
   //     use fixed VMM reservation addresses; other dynamic allocations still
   //     trigger command updates when their addresses change.
   //
-  //   SKIP_PROFILED: For the first few executions, buffers use regular
-  //     dynamically allocated addresses. Preallocated temp buffers are
-  //     automatically selected for remapping while the runtime records which
-  //     other non-constant, non-thread-local command-buffer-referenced
+  //   SKIP_PROFILED: Preallocated temp buffers are automatically selected
+  //     and, as in SKIP_TEMP, allocated through the VMM reservation from the
+  //     first execution. For the first few executions the other buffers use
+  //     regular dynamically allocated addresses while the runtime records
+  //     which non-constant, non-thread-local command-buffer-referenced
   //     allocations keep a stable address. Afterwards, the temp buffers and
   //     stable profile candidates use fixed VMM reservation addresses during
-  //     execution. Temp buffers are allocated through the reservation;
-  //     finalized input and output addresses are aliased into it immediately
-  //     before execution.
+  //     execution; finalized input and output addresses are aliased into the
+  //     reservation immediately before execution.
   //     Remapping enforces address stability, so a mispredicted profile costs
   //     an extra VMM remap instead of correctness. Requires the VMM allocator
   //     and assumes symmetric behavior across ranks.
@@ -807,6 +807,13 @@ message DebugOptions {
   // preallocation.
   optional bool xla_gpu_enable_allocator_spatial_partitioning = 494;
 
+  // Overrides the client's memory fraction for the GPU BFC allocator. Uses the
+  // START, START+, or START-CAP grammar: "0.75" is fixed at 75% of device
+  // memory, "0.75+" preallocates 75% and lets the shared spatial pool grow to
+  // all of it, and "0.75-0.85" caps growth at 85%.
+  // Empty (the default) keeps the client's setting.
+  optional string xla_gpu_memory_fraction_policy = 560;
+
   optional bool xla_gpu_enable_analytical_latency_estimator = 255;
 
   // Enables NCCL Speed-of-Light (SoL) analytical cost model
@@ -822,6 +829,10 @@ message DebugOptions {
 
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
+
+  // Records the HLO annotation of each CUDA graph node so profiles can
+  // attribute command buffer work to HLO ops. Requires CUDA 13.2+.
+  optional bool xla_gpu_enable_command_buffer_telemetry = 564;
 
   // Enable radix sort using CUB.
   optional bool xla_gpu_enable_cub_radix_sort = 259;
@@ -1122,13 +1133,18 @@ message DebugOptions {
   optional int32 xla_gpu_experimental_force_split_k = 472;
 
   // Enable GEMM fusion v2 pass for building Triton fusions.
-  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475;
+  // TODO(b/487920266): Remove this flag entirely.
+  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475 [deprecated = true];
 
   // Controls max unroll factor on Blackwell architectures. This is also
   // guarded with a heuristic, but the heuristic is not perfect, so changing
   // this flag can cause both performance improvements and performance
   // regressions.
   optional int32 xla_gpu_experimental_max_unroll_factor = 459;
+
+  // Register NCCL windows with NCCL_WIN_COLL_SYMMETRIC instead of
+  // NCCL_WIN_DEFAULT.
+  optional bool xla_gpu_experimental_nccl_window_symmetric = 561;
 
   // For sub-byte dot operands, layout them along contracting dimensions.
   optional bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
@@ -1374,6 +1390,11 @@ message DebugOptions {
   // missing AOT result, the model will not be compiled or executed, a
   // `NotFound` error will be returned.
   optional bool xla_gpu_require_complete_aot_autotune_results = 284;
+
+  // If true, require that BlasLt matmuls execute the exact algorithm described
+  // by `BlasLtMatmulAlgorithmProto` rather than falling back to the heuristic
+  // algorithm index.
+  optional bool xla_gpu_require_exact_blas_lt_algorithm = 563;
 
   // If true, XLA runtime will retain exclusive ownership of the GPU when
   // running a module, so there are no multi-thread conflicts on the GPU. This
@@ -1967,7 +1988,11 @@ message DebugOptions {
   // when the cuDNN version changes).
   optional bool xla_autotune_cache_require_strict_codegen_match = 559;
 
-  // Next id: 560
+  // Lowers eligible associative kScan instructions to Triton fusions
+  // (ScanRewriterTriton).
+  optional bool xla_gpu_experimental_enable_triton_scan = 562;
+
+  // Next id: 565
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

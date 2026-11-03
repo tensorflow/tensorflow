@@ -65,7 +65,7 @@ On Blackwell architectures with PTX 8.8+, upstream Triton generates 256-bit glob
  static constexpr const char *FP4ToFP16Ptx =
      "{\n"
      ".reg .b32           a<11>;\n"
-@@ -100,23 +110,10 @@ class Fp4ToFpOpPattern : public Fp4ToFpOpConversionBase {
+@@ -100,23 +110,10 @@ protected:
      bool toFp16 = elemType == f16_ty;
      auto b = TritonLLVMOpBuilder(loc, rewriter);
      std::array<Value, 8> results;

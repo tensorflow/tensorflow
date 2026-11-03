@@ -563,6 +563,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
+      if (op_sig.ext_options.dequantize.is_blockwise_quantized) {
+        return 10;
+      }
       if (IsFloat8Type(op_sig.inputs.at(0).type)) {
         return 9;
       }

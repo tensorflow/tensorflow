@@ -188,7 +188,6 @@ FailureOr<stablehlo::UniformQuantizeOp> buildUniformQuantizeOp(
   int32_t quantizedDimension;
   int64_t storageTypeMin;
   int64_t storageTypeMax;
-  std::string dtypeStr;
   Type storageType;
 
   if (failed(getQuantCompositeAttributes(op, scales, zeroPoints,
@@ -229,7 +228,6 @@ class RewriteDequantizeCompositeOp
     int32_t quantizedDimension;
     int64_t storageTypeMin;
     int64_t storageTypeMax;
-    std::string dtypeStr;
     Type storageType;
 
     if (failed(getQuantCompositeAttributes(op, scales, zeroPoints,
@@ -294,7 +292,6 @@ class RewriteFakeQuantCompositeOp
     int32_t quantizedDimension;
     int64_t storageTypeMin;
     int64_t storageTypeMax;
-    std::string dtypeStr;
     Type storageType;
 
     if (failed(getQuantCompositeAttributes(op, scales, zeroPoints,

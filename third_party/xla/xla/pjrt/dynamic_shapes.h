@@ -55,6 +55,7 @@ struct PjRtShapeAndMetadataTransferRequirements {
   }
 
   size_t size = 0;
+  size_t unpadded_size = 0;
   size_t metadata_alignment = 0;
   size_t metadata_offset = 0;
   size_t metadata_size = 0;
@@ -62,7 +63,9 @@ struct PjRtShapeAndMetadataTransferRequirements {
   size_t array_size = 0;
 };
 
-// Reads dynamic shape metadata into a static Shape.
+// Reads dynamic shape metadata into a static Shape. `metadata` holds one int32
+// slot per dimension of `shape`; slot i is only read if dimension i is dynamic.
+// Static dimensions keep their static extent.
 absl::StatusOr<xla::Shape> ReadDynamicShapeMetadata(
     absl::Span<const uint8_t> metadata, const xla::Shape& shape,
     PjRtDynamicShapeKind kind);

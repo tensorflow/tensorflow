@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -35,13 +34,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
-#include "xla/codegen/tiling/symbolic_tile.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
-#include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
-#include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -59,13 +53,11 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/instruction_fusion.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -199,43 +191,52 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
   // M and N block sizes are defined at the fusion root output. However, because
   // the output shape may be transposed, elementwise fused, or broadcasted, M
   // and N can correspond to arbitrary dimensions at the root. This function
-  // loops through all pairs of output dimensions (i, j) to place `block_m` and
-  // `block_n` respectively, and maps these candidate outputs along with
-  // `block_k` to the fusion's tiling space. It verifies that all constraints
-  // are satisfied and that backward-propagating the root tile results in the
-  // expected tile sizes [1, ..., 1, block_m, block_n] at the core `dot`
-  // instruction.
+  // loops through all placements of `block_m` and `block_n` among the output
+  // dimensions, and maps these candidate outputs along with `block_k` to the
+  // fusion's tiling space. It verifies that all constraints are satisfied and
+  // that backward-propagating the root tile results in the expected tile sizes
+  // [1, ..., 1, block_m, block_n] at the core `dot` instruction. `block_m`
+  // (`block_n`) is omitted if the LHS (RHS) has no non-contracting dimension.
   // TODO(b/515334583): when supported, we can propagate tile from the dot
   // directly, avoiding the need to play with the output tiles.
-  using TilingSpace = experimental::TilingSpace;
   using DimensionSemantics = TilingSpace::DimensionSemantics;
   using DimensionInfo = TilingSpace::DimensionInfo;
 
-  int64_t dot_rank = dot->shape().dimensions().size();
-  if (dot_rank < 2) {
-    return absl::InternalError(absl::StrCat(
-        "Expected dot instruction shape to have rank >= 2, got ", dot_rank));
+  // An operand without non-contracting dimensions (vector-matrix product) has
+  // no M (or N) tile.
+  ABSL_ASSIGN_OR_RETURN(auto operands_dims, DotOperandDims::FromDot(dot));
+  llvm::SmallVector<int64_t, 2> mn_tile_sizes;
+  if (operands_dims[0].Rank(DotOperandDims::kNonContracting) > 0) {
+    mn_tile_sizes.push_back(config.block_m);
   }
-  llvm::SmallVector<int64_t> expected_dot_tile_sizes(dot_rank - 2, 1);
-  expected_dot_tile_sizes.append({config.block_m, config.block_n});
+  if (operands_dims[1].Rank(DotOperandDims::kNonContracting) > 0) {
+    mn_tile_sizes.push_back(config.block_n);
+  }
+  auto with_leading_ones = [&](int64_t rank) {
+    llvm::SmallVector<int64_t> tile_sizes(rank - mn_tile_sizes.size(), 1);
+    tile_sizes.append(mn_tile_sizes);
+    return tile_sizes;
+  };
+
+  llvm::SmallVector<int64_t> expected_dot_tile_sizes =
+      with_leading_ones(dot->shape().dimensions().size());
   if (fusion_adaptor.GetRoots().size() != 1) {
     return absl::InternalError(
         absl::StrCat("Expected fusion to have a single root, got ",
                      fusion_adaptor.GetRoots().size()));
   }
   int64_t root_rank = fusion_adaptor.GetRoots()[0].shape().dimensions().size();
-  if (root_rank < 2) {
-    return absl::InternalError(absl::StrCat(
-        "Expected computation root shape to have rank >= 2, got ", root_rank));
+  if (root_rank < mn_tile_sizes.size()) {
+    return absl::InternalError(
+        absl::StrCat("Expected computation root shape to have rank >= ",
+                     mn_tile_sizes.size(), ", got ", root_rank));
   }
-  llvm::SmallVector<int64_t> parallel_tile_sizes(root_rank - 2, 1);
-  parallel_tile_sizes.append({config.block_m, config.block_n});
+  llvm::SmallVector<int64_t> parallel_tile_sizes = with_leading_ones(root_rank);
   absl::c_sort(parallel_tile_sizes);
 
   do {
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<experimental::TilingSpace> ts,
-        experimental::TilingSpace::Create(fusion_adaptor, mlir_context));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> ts,
+                     TilingSpace::Create(fusion_adaptor, mlir_context));
     llvm::SmallVector<int64_t> tile_sizes(ts->num_dimensions(), 1);
     for (const DimensionInfo& dim : ts->dimensions()) {
       if (dim.type == DimensionSemantics::kParallel) {
@@ -256,8 +257,8 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
               << " as tiling assignment failed: " << assign_status.message();
       continue;
     }
-    absl::StatusOr<experimental::TiledHloComputation> tiled_computation =
-        experimental::TiledHloComputation::Tile(fusion_adaptor, std::move(ts));
+    absl::StatusOr<TiledHloComputation> tiled_computation =
+        TiledHloComputation::Tile(fusion_adaptor, std::move(ts));
     if (!tiled_computation.ok()) {
       VLOG(8) << "Failed to tile the computation with output tile sizes "
               << absl::StrJoin(parallel_tile_sizes, ",")
@@ -265,8 +266,8 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
       continue;
     }
 
-    Decision verification_status = experimental::VerifyTritonConstraints(
-        *tiled_computation, device_description);
+    Decision verification_status =
+        VerifyTritonConstraints(*tiled_computation, device_description);
     if (!verification_status) {
       VLOG(8) << "Candidate tiling violates Triton constraints: "
               << verification_status.Explain();
@@ -274,7 +275,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     }
     // Finds the corresponding tiled instruction for its original HLO
     // instruction.
-    absl::Span<const experimental::TiledHloInstruction* const> instructions =
+    absl::Span<const TiledHloInstruction* const> instructions =
         tiled_computation->instructions();
     auto tiled_dot = absl::c_find_if(
         instructions, [&](const auto* tiled) { return tiled->hlo() == dot; });
@@ -308,6 +309,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     params.is_warp_specialization_allowed =
         config.is_warp_specialization_allowed;
     params.waves_per_eu = config.waves_per_eu;
+    params.mfma_size = config.mfma_size;
     return params;
   } while (absl::c_next_permutation(parallel_tile_sizes));
 

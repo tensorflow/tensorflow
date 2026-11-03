@@ -318,8 +318,13 @@ TEST_F(RaggedAllToAllKernelTest, KernelWithSymmetricMemory) {
           output_buffers_symmetric_memory,
       CreateSymmetricMemory(exec, comms, output_buffers, executors));
 
+  ASSERT_OK_AND_ASSIGN(
+      RaggedAllToAllWithSymmetricMemoryKernelType kernel,
+      LoadRaggedAllToAllWithSymmetricMemoryKernel(
+          executors[0], primitive_util::NativeToPrimitiveType<T>(),
+          num_row_elements));
   ASSERT_OK(RunRaggedAllToAllWithSymmetricMemoryKernel(
-      streams[0].get(), primitive_util::NativeToPrimitiveType<T>(),
+      streams[0].get(), kernel, primitive_util::NativeToPrimitiveType<T>(),
       input_buffer.address(), output_buffers_symmetric_memory[0].get(),
       output_sym_offset, input_offsets_buffer.address(),
       send_sizes_buffer.address(), output_offsets_buffer.address(), num_outputs,

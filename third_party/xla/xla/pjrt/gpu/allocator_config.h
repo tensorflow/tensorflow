@@ -135,6 +135,9 @@ struct GpuAllocatorConfig {
   //
   // PJRT C API create options: "memory_fraction" (float, a fixed fraction) and
   // "memory_fraction_policy" (string, the full grammar; takes precedence).
+  // --xla_gpu_memory_fraction_policy overrides both for the BFC allocator, and
+  // --xla_gpu_enable_nccl_user_buffers_in_default_space pins a growable policy
+  // to a fixed pool because automatic registration needs a fixed arena.
   std::optional<MemFraction> memory_fraction_policy = std::nullopt;
 
   // Resolves the optional policy, falling back to the legacy fixed fraction.

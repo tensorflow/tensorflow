@@ -35,12 +35,16 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
@@ -65,6 +69,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
 using ::testing::AllOf;
 using ::testing::Contains;
+using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::Gt;
@@ -171,7 +176,9 @@ class RecomputeAndCompressHloRematerializationTest
       int block_size_limit = 1,
       absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
           on_rematerialized = nullptr,
-      HloRematerialization::RematerializationSizes* sizes = nullptr) {
+      HloRematerialization::RematerializationSizes* sizes = nullptr,
+      const AliasInfo* alias_info = nullptr,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
@@ -200,12 +207,13 @@ class RecomputeAndCompressHloRematerializationTest
         /*host_memory_offload_config=*/std::nullopt,
         /*async_computation_parallelism=*/{},
         /*remat_algorithm=*/remat_algorithm);
+    options.alias_info = alias_info;
     HloRematerialization::RematerializationSizes sizes_local;
     HloRematerialization::RematerializationSizes& sizes_ref =
         sizes != nullptr ? *sizes : sizes_local;
     HloRematerialization remat(options, sizes_ref,
                                std::move(on_rematerialized));
-    absl::StatusOr<bool> result = remat.Run(module);
+    absl::StatusOr<bool> result = remat.Run(module, execution_threads);
 
     // Finally, get a set of instruction names after running remat.
     for (const HloComputation* computation : module->computations()) {
@@ -2666,6 +2674,793 @@ ENTRY %entry {
   CheckForRematInInstructionNames(
       ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       UnusedTupleElementAcrossCallAndWhile) {
+  const std::string& hlo_string = R"hlo(
+HloModule UnusedTupleElementAcrossCallAndWhile, is_scheduled=true
+
+%peak_callee (p: f32[1024]) -> f32[1024] {
+  %p = f32[1024]{0} parameter(0)
+  %concat = f32[2048]{0} concatenate(%p, %p), dimensions={0}
+  ROOT %slice = f32[1024]{0} slice(%concat), slice={[0:1024]}
+}
+
+%while_cond (state: (f32[1024], f32[1024])) -> pred[] {
+  %state = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %gte1 = f32[1024]{0} get-tuple-element(%state), index=1
+  ROOT %c = pred[] constant(false)
+}
+
+%while_body (state: (f32[1024], f32[1024])) -> (f32[1024], f32[1024]) {
+  %state = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %gte0 = f32[1024]{0} get-tuple-element(%state), index=0
+  %gte1 = f32[1024]{0} get-tuple-element(%state), index=1
+  %neg1 = f32[1024]{0} negate(%gte1)
+  ROOT %next = (f32[1024]{0}, f32[1024]{0}) tuple(%gte0, %neg1)
+}
+
+%tuple_callee (state: (f32[1024], f32[1024])) -> f32[1024] {
+  %state = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %gte1 = f32[1024]{0} get-tuple-element(%state), index=1
+  ROOT %neg = f32[1024]{0} negate(%gte1)
+}
+
+ENTRY %entry {
+  %param = f32[] parameter(0)
+  %bcast = f32[1024]{0} broadcast(%param), dimensions={}
+  %add1 = f32[1024]{0} add(%bcast, %bcast)
+  %peak_call = f32[1024]{0} call(%add1), to_apply=%peak_callee
+  %add2 = f32[1024]{0} add(%bcast, %peak_call)
+  %state = (f32[1024]{0}, f32[1024]{0}) tuple(%bcast, %add2)
+  %while_inst = (f32[1024]{0}, f32[1024]{0}) while(%state), condition=%while_cond, body=%while_body
+  ROOT %out = f32[1024]{0} call(%while_inst), to_apply=%tuple_callee
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/22 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_NE(module->entry_computation()->GetInstructionWithName("bcast.remat"),
+            nullptr);
+  CheckForRematInInstructionNames(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+}
+
+TEST_F(RecomputeAndCompressHloRematerializationTest,
+       PassthroughCallOutputReusesOperandBuffer) {
+  const std::string& hlo_string = R"hlo(
+HloModule PassthroughCallOutputReusesOperandBuffer, is_scheduled=true
+
+%passthrough_callee (p0: f32[16384], p1: f32[16384]) -> (f32[16384], f32[16384]) {
+  %p0 = f32[16384]{0} parameter(0)
+  %p1 = f32[16384]{0} parameter(1)
+  %neg = f32[16384]{0} negate(%p1)
+  ROOT %out = (f32[16384]{0}, f32[16384]{0}) tuple(%p0, %neg)
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %a = f32[16384]{0} broadcast(%p0), dimensions={}
+  %b = f32[16384]{0} broadcast(%p1), dimensions={}
+  %call = (f32[16384]{0}, f32[16384]{0}) call(%a, %b), to_apply=%passthrough_callee
+  %gte0 = f32[16384]{0} get-tuple-element(%call), index=0
+  %gte1 = f32[16384]{0} get-tuple-element(%call), index=1
+  ROOT %sum = f32[16384]{0} add(%gte0, %gte1)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloRematerialization::RematerializationSizes sizes;
+  // At %call, %a (64KB), %b (64KB), and the non passthrough output element 1 of
+  // %call (64KB) are live alongside the 64KB module output reservation,
+  // totaling 256KB (plus small scalar/tuple overhead). Without passthrough
+  // buffer reuse, element 0 of %call would be double counted for an extra 64KB
+  // (320KB total).
+  constexpr int64_t kMemoryLimitBytes = 260 * 1024;
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           kMemoryLimitBytes, module.get(),
+                           /*min_remat_size=*/0,
+                           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                           /*block_size_limit=*/1,
+                           /*on_rematerialized=*/nullptr, &sizes));
+  EXPECT_FALSE(changed);
+  EXPECT_LE(sizes.before_bytes, kMemoryLimitBytes);
+}
+
+// Rematerialization with Options::alias_info set, under both algorithms.
+class RematWithAliasInfoTest
+    : public RecomputeAndCompressHloRematerializationTest,
+      public ::testing::WithParamInterface<
+          HloRematerialization::RematAlgorithm> {
+ protected:
+  absl::StatusOr<bool> Run(
+      HloModule* module, int64_t memory_limit_bytes, int block_size_limit = 1,
+      HloRematerialization::RematerializationSizes* sizes = nullptr,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {}) {
+    ABSL_ASSIGN_OR_RETURN(
+        bool changed,
+        RunHloRematerialization(memory_limit_bytes, module,
+                                /*min_remat_size=*/0, GetParam(),
+                                block_size_limit, /*on_rematerialized=*/nullptr,
+                                sizes, &alias_info_, execution_threads));
+    TF_EXPECT_OK(verifier().Run(module).status());
+    return changed;
+  }
+
+  // Expects that no reader of `value_name` (at `value_index`) runs after
+  // `writer_name`, which overwrites its storage.
+  void ExpectNoReadAfterOverwrite(HloComputation* computation,
+                                  absl::string_view value_name,
+                                  absl::string_view writer_name,
+                                  const ShapeIndex& value_index = {}) {
+    const HloInstruction* value =
+        computation->GetInstructionWithName(value_name);
+    const HloInstruction* writer =
+        computation->GetInstructionWithName(writer_name);
+    ASSERT_NE(value, nullptr);
+    ASSERT_NE(writer, nullptr);
+    const HloModule& module = *computation->parent();
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                         HloAliasAnalysis::Run(&module, &alias_info_));
+    ASSERT_EQ(&alias_analysis->GetUniqueBufferAt(value, value_index),
+              &alias_analysis->GetUniqueBufferAt(writer));
+    absl::flat_hash_map<const HloInstruction*, int64_t> position;
+    const HloInstructionSequence& sequence =
+        module.schedule().sequence(computation);
+    for (int64_t i = 0; i < sequence.size(); ++i) {
+      position[sequence.instructions()[i]] = i;
+    }
+    for (const HloInstruction* reader : value->users()) {
+      if (reader != computation->root_instruction()) {
+        EXPECT_LE(position.at(reader), position.at(writer))
+            << reader->name() << " reads %" << value_name << " after %"
+            << writer_name << " overwrote it:\n"
+            << computation->ToString();
+      }
+    }
+  }
+};
+
+// Returns a scheduled module with `entry` as the entry computation body.
+std::string EntryModule(absl::string_view entry,
+                        absl::string_view computations = "") {
+  return absl::Substitute(R"hlo(
+HloModule m, is_scheduled=true
+
+%add_f32 (a: f32[], b: f32[]) -> f32[] {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+$1
+ENTRY %entry {
+$0
+}
+)hlo",
+                          entry, computations);
+}
+
+// Returns a scheduled module with a while loop carrying (%h, %acc), where %h
+// has shape `carry`. `body` defines %h_next and %acc_next from them. The
+// entry copies the initial values, so %h and %h_next share storage.
+std::string WhileModule(absl::string_view carry, absl::string_view body,
+                        absl::string_view computations = "") {
+  return absl::Substitute(R"hlo(
+HloModule m, is_scheduled=true
+
+%add_f32 (a: f32[], b: f32[]) -> f32[] {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+$2
+%body (p: ($0, f32[])) -> ($0, f32[]) {
+  %p = ($0, f32[]) parameter(0)
+  %h = $0 get-tuple-element(%p), index=0
+  %acc = f32[] get-tuple-element(%p), index=1
+$1
+  ROOT %root = ($0, f32[]) tuple(%h_next, %acc_next)
+}
+
+%cond (p: ($0, f32[])) -> pred[] {
+  %p = ($0, f32[]) parameter(0)
+  ROOT %c = pred[] constant(true)
+}
+
+ENTRY %entry {
+  %x = $0 parameter(0)
+  %cx = $0 copy(%x)
+  %z = f32[] constant(0)
+  %cz = f32[] copy(%z)
+  %init = ($0, f32[]) tuple(%cx, %cz)
+  %w = ($0, f32[]) while(%init), condition=%cond, body=%body
+  ROOT %out = f32[] get-tuple-element(%w), index=1
+}
+)hlo",
+                          carry, body, computations);
+}
+
+// %r is recomputed after %h_next overwrote %h, so it reads a copy of %h saved
+// before %h_next.
+TEST_P(RematWithAliasInfoTest, RecomputationReadsSavedCopyOfOverwrittenCarry) {
+  const std::string hlo_string = WhileModule("f32[1024]{0}", R"(
+  %r = f32[4096]{0} concatenate(%h, %h, %h, %h), dimensions={0}
+  %r_slice = f32[1024]{0} slice(%r), slice={[0:1024]}
+  %two = f32[] constant(2)
+  %two_b = f32[1024]{0} broadcast(%two), dimensions={}
+  %h_next = f32[1024]{0} multiply(%r_slice, %two_b)
+  %peak = f32[9216]{0} custom-call(%h_next), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %red = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%acc, %red))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  // The body peaks at ~52KB. Recomputing %r (16KB) from a 4KB copy fits.
+  constexpr int64_t kMemoryLimitBytes = 46 * 1024;
+  HloRematerialization::RematerializationSizes sizes;
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), kMemoryLimitBytes,
+                                         /*block_size_limit=*/1, &sizes));
+  EXPECT_TRUE(changed);
+  EXPECT_LE(sizes.after_bytes, kMemoryLimitBytes);
+  const HloInstruction* r_remat =
+      body->GetInstructionWithName("red")->operand(0);
+  EXPECT_EQ(r_remat->name(), "r.remat");
+  const HloInstruction* saved = r_remat->operand(0);
+  EXPECT_THAT(saved, op::Copy(op::GetTupleElement(op::Parameter(0), 0)));
+  EXPECT_THAT(r_remat->operands(), Each(saved));
+  EXPECT_THAT(saved->control_successors(),
+              Contains(body->GetInstructionWithName("h_next")));
+  ExpectNoReadAfterOverwrite(body, "h", "h_next");
+}
+
+// %h_next overwrites %h after the peak, so the recomputation of %r is placed
+// before %h_next.
+TEST_P(RematWithAliasInfoTest, RecomputationIsPlacedBeforeOverwrite) {
+  const std::string hlo_string = WhileModule("f32[1024]{0}", R"(
+  %zero = f32[] constant(0)
+  %r = f32[4096]{0} concatenate(%h, %h, %h, %h), dimensions={0}
+  %r_sum = f32[] reduce(%r, %zero), dimensions={0}, to_apply=%add_f32
+  %peak = f32[9216]{0} custom-call(%r_sum), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %h_next = f32[1024]{0} broadcast(%sum), dimensions={}
+  %red = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%acc, %red))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 44 * 1024));
+  EXPECT_TRUE(changed);
+  const HloInstruction* r_remat =
+      body->GetInstructionWithName("red")->operand(0);
+  EXPECT_EQ(r_remat->name(), "r.remat");
+  EXPECT_THAT(r_remat->control_successors(),
+              Contains(body->GetInstructionWithName("h_next")));
+  ExpectNoReadAfterOverwrite(body, "h", "h_next");
+}
+
+// Recomputing %r needs a copy of %h as large as %r, so it saves nothing.
+TEST_P(RematWithAliasInfoTest, SavedCopyAsLargeAsCandidateIsRejected) {
+  const std::string hlo_string = WhileModule("f32[1024]{0}", R"(
+  %r = f32[1024]{0} negate(%h)
+  %two = f32[] constant(2)
+  %two_b = f32[1024]{0} broadcast(%two), dimensions={}
+  %h_next = f32[1024]{0} multiply(%r, %two_b)
+  %peak = f32[8192]{0} custom-call(%h_next), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %r_sum = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%acc, %r_sum))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 20 * 1024));
+  EXPECT_FALSE(changed);
+}
+
+// The copy of %h counts toward memory usage, so %r2 must be recomputed too.
+TEST_P(RematWithAliasInfoTest, SavedCopyCountsTowardMemoryUsage) {
+  const std::string hlo_string = WhileModule("f32[1024]{0}", R"(
+  %r = f32[4096]{0} concatenate(%h, %h, %h, %h), dimensions={0}
+  %r_slice = f32[1024]{0} slice(%r), slice={[0:1024]}
+  %two = f32[] constant(2)
+  %r2 = f32[2048]{0} broadcast(%two), dimensions={}
+  %r2_slice = f32[1024]{0} slice(%r2), slice={[0:1024]}
+  %h_next = f32[1024]{0} multiply(%r_slice, %r2_slice)
+  %peak = f32[9216]{0} custom-call(%h_next), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %u_r = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  %u_r2 = f32[] reduce(%r2, %u_r), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%acc, %u_r2))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 50 * 1024));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(body->GetInstructionWithName("u_r2")->operand(0)->name(),
+            "r2.remat");
+}
+
+// %r1 has no placed users, but needs a copy of %h, so it is no free move.
+TEST_P(RematWithAliasInfoTest, CandidateNeedingSavedCopyIsNotZeroCostMove) {
+  const std::string hlo_string = WhileModule("f32[1024]{0}", R"(
+  %r1 = f32[2048]{0} concatenate(%h, %h), dimensions={0}
+  %two = f32[] constant(2)
+  %r2 = f32[4096]{0} broadcast(%two), dimensions={}
+  %h_next = f32[1024]{0} slice(%r2), slice={[0:1024]}
+  %peak = f32[8192]{0} custom-call(%h_next), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %u_r1 = f32[] reduce(%r1, %sum), dimensions={0}, to_apply=%add_f32
+  %u_r2 = f32[] reduce(%r2, %u_r1), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%acc, %u_r2))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 48 * 1024));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(body->GetInstructionWithName("u_r2")->operand(0)->name(),
+            "r2.remat");
+  EXPECT_EQ(body->GetInstructionWithName("u_r1")->operand(0)->name(), "r1");
+}
+
+// %r reads %h directly and through a bitcast, which one copy can't replace.
+TEST_P(RematWithAliasInfoTest, OperandReadThroughBitcastIsNotSaved) {
+  const std::string hlo_string = WhileModule("f32[1024]{0}", R"(
+  %hb = f32[32,32]{1,0} bitcast(%h)
+  %r = f32[4096]{0} fusion(%h, %hb), kind=kLoop, calls=%fused
+  %r_slice = f32[1024]{0} slice(%r), slice={[0:1024]}
+  %two = f32[] constant(2)
+  %two_b = f32[1024]{0} broadcast(%two), dimensions={}
+  %h_next = f32[1024]{0} multiply(%r_slice, %two_b)
+  %peak = f32[9216]{0} custom-call(%h_next), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %red = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%acc, %red))",
+                                             R"(
+%fused (p0: f32[1024], p1: f32[32,32]) -> f32[4096] {
+  %p0 = f32[1024]{0} parameter(0)
+  %p1 = f32[32,32]{1,0} parameter(1)
+  %p1_flat = f32[1024]{0} reshape(%p1)
+  ROOT %c = f32[4096]{0} concatenate(%p0, %p1_flat, %p0, %p1_flat), dimensions={0}
+})");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_OK(Run(module.get(), 44 * 1024).status());
+  ExpectNoReadAfterOverwrite(body, "h", "h_next");
+  ExpectNoReadAfterOverwrite(body, "hb", "h_next");
+}
+
+// Each item of a block that reads %h pays for its own copy of %h.
+TEST_P(RematWithAliasInfoTest, BlockReadingOverwrittenOperandDoesNotRaisePeak) {
+  const std::string hlo_string = WhileModule("f32[1536]{0}", R"(
+  %r1 = f32[1024]{0} slice(%h), slice={[0:1024]}
+  %r2 = f32[1024]{0} slice(%h), slice={[512:1536]}
+  %r1_s = f32[1536]{0} pad(%r1, %acc), padding=0_512
+  %h_next = f32[1536]{0} negate(%r1_s)
+  %peak = f32[8192]{0} custom-call(%acc), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %use_1 = f32[] reduce(%r1, %sum), dimensions={0}, to_apply=%add_f32
+  %use_2 = f32[] reduce(%r2, %sum), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%use_1, %use_2))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  HloRematerialization::RematerializationSizes sizes;
+  ASSERT_OK(
+      Run(module.get(), 38 * 1024, /*block_size_limit=*/2, &sizes).status());
+  EXPECT_LE(sizes.after_bytes, sizes.before_bytes);
+  ExpectNoReadAfterOverwrite(body, "h", "h_next");
+}
+
+// %dus overwrites %h, so it is not moved past the readers of %h.
+TEST_P(RematWithAliasInfoTest, OverwritingInstructionIsNotRematerialized) {
+  const std::string hlo_string = WhileModule("f32[4096]{0}", R"(
+  %zero_idx = s32[] constant(0)
+  %zero = f32[] constant(0)
+  %r = f32[2048]{0} slice(%h), slice={[0:2048]}
+  %r_early = f32[] reduce(%r, %zero), dimensions={0}, to_apply=%add_f32
+  %upd = f32[16]{0} broadcast(%acc), dimensions={}
+  %dus = f32[4096]{0} dynamic-update-slice(%h, %upd, %zero_idx)
+  %peak = f32[8192]{0} custom-call(%r_early), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %u_dus = f32[] reduce(%dus, %sum), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] reduce(%r, %u_dus), dimensions={0}, to_apply=%add_f32
+  %h_next = f32[4096]{0} broadcast(%acc_next), dimensions={})");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_OK(Run(module.get(), 50 * 1024).status());
+  EXPECT_EQ(body->GetInstructionWithName("u_dus")->operand(0)->name(), "dus");
+  ExpectNoReadAfterOverwrite(body, "h", "dus");
+}
+
+// %dus overwrites %x at the peak. %r is recomputed from a copy of %x made
+// before %dus.
+TEST_P(RematWithAliasInfoTest, SavedCopyGoesBeforeOverwriterAtPeak) {
+  const std::string hlo_string = EntryModule(R"(
+  %param = f32[4096]{0} parameter(0)
+  %zero_idx = s32[] constant(0)
+  %zero = f32[] constant(0)
+  %x = f32[4096]{0} copy(%param)
+  %r = f32[8192]{0} concatenate(%x, %x), dimensions={0}
+  %r_early = f32[] reduce(%r, %zero), dimensions={0}, to_apply=%add_f32
+  %upd = f32[4096]{0} broadcast(%r_early), dimensions={}
+  %dus = f32[4096]{0} dynamic-update-slice(%x, %upd, %zero_idx)
+  %dus_sum = f32[] reduce(%dus, %zero), dimensions={0}, to_apply=%add_f32
+  %r_late = f32[] reduce(%r, %dus_sum), dimensions={0}, to_apply=%add_f32
+  ROOT %out = f32[] negate(%r_late))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 68 * 1024));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(entry->GetInstructionWithName("r_late")->operand(0),
+              op::Concatenate(op::Copy(op::Copy(op::Parameter(0))),
+                              op::Copy(op::Copy(op::Parameter(0)))));
+  ExpectNoReadAfterOverwrite(entry, "x", "dus");
+}
+
+// The copy of %x is charged once, not again as an extended live range.
+TEST_P(RematWithAliasInfoTest, SavedCopyIsChargedOnce) {
+  const std::string hlo_string = EntryModule(R"(
+  %param = f32[2048]{0} parameter(0)
+  %upd = f32[16]{0} parameter(1)
+  %zero_idx = s32[] constant(0)
+  %zero = f32[] constant(0)
+  %x = f32[2048]{0} copy(%param)
+  %r = f32[4096]{0} concatenate(%x, %x), dimensions={0}
+  %dus = f32[2048]{0} dynamic-update-slice(%x, %upd, %zero_idx)
+  %dus_sum = f32[] reduce(%dus, %zero), dimensions={0}, to_apply=%add_f32
+  %peak = f32[8192]{0} custom-call(%dus_sum), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %r_sum = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  ROOT %out = f32[] negate(%r_sum))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 42 * 1024));
+  EXPECT_TRUE(changed);
+  ExpectNoReadAfterOverwrite(module->entry_computation(), "x", "dus");
+}
+
+// %dus overwrites %x, so %x is not recomputed.
+TEST_P(RematWithAliasInfoTest, OverwrittenValueIsNotRematerialized) {
+  const std::string hlo_string = EntryModule(R"(
+  %s = f32[] parameter(0)
+  %upd = f32[16]{0} parameter(1)
+  %zero_idx = s32[] constant(0)
+  %zero = f32[] constant(0)
+  %x = f32[1024]{0} broadcast(%s), dimensions={}
+  %p1 = f32[16384]{0} custom-call(%s), custom_call_target="Peak1"
+  %p1_sum = f32[] custom-call(%p1), custom_call_target="Sink1"
+  %r = f32[4096]{0} concatenate(%x, %x, %x, %x), dimensions={0}
+  %r_early = f32[] reduce(%r, %zero), dimensions={0}, to_apply=%add_f32
+  %dus = f32[1024]{0} dynamic-update-slice(%x, %upd, %zero_idx)
+  %dus_sum = f32[] reduce(%dus, %zero), dimensions={0}, to_apply=%add_f32
+  %p2 = f32[13312]{0} custom-call(%p1_sum, %r_early), custom_call_target="Peak2"
+  %sum = f32[] custom-call(%p2), custom_call_target="Sink2"
+  %red = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  ROOT %out = f32[] add(%red, %dus_sum))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  ASSERT_OK(Run(module.get(), 65 * 1024).status());
+  EXPECT_EQ(entry->GetInstructionWithName("dus")->operand(0)->name(), "x");
+  ExpectNoReadAfterOverwrite(entry, "x", "dus");
+}
+
+// %x is an unused fusion operand, so no copy of it is made; %w0 is overwritten
+// after %w by %dus, so %r saves %w0 before %dus.
+TEST_P(RematWithAliasInfoTest, UnusedOperandIsNotSavedAndWhileOutputIsSaved) {
+  const std::string hlo_string = EntryModule(R"(
+  %arg = f32[1024]{0} parameter(0)
+  %upd = f32[16]{0} parameter(1)
+  %zero_idx = s32[] constant(0)
+  %zero = f32[] constant(0)
+  %x = f32[1024]{0} copy(%arg)
+  %z = f32[] copy(%zero)
+  %init = (f32[1024]{0}, f32[]) tuple(%x, %z)
+  %w = (f32[1024]{0}, f32[]) while(%init), condition=%w_cond, body=%w_body
+  %w0 = f32[1024]{0} get-tuple-element(%w), index=0
+  %r = f32[4096]{0} fusion(%w0, %x), kind=kLoop, calls=%fused
+  %dus = f32[1024]{0} dynamic-update-slice(%w0, %upd, %zero_idx)
+  %dus_sum = f32[] reduce(%dus, %zero), dimensions={0}, to_apply=%add_f32
+  %peak = f32[8192]{0} custom-call(%dus_sum), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %r_late = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  ROOT %out = f32[] negate(%r_late))",
+                                             R"(
+%fused (fp0: f32[1024], fp1: f32[1024]) -> f32[4096] {
+  %fp0 = f32[1024]{0} parameter(0)
+  %fp1 = f32[1024]{0} parameter(1)
+  %pair = (f32[1024]{0}, f32[1024]{0}) tuple(%fp0, %fp1)
+  %used = f32[1024]{0} get-tuple-element(%pair), index=0
+  ROOT %fc = f32[4096]{0} concatenate(%used, %used, %used, %used), dimensions={0}
+}
+
+%w_body (wp: (f32[1024], f32[])) -> (f32[1024], f32[]) {
+  %wp = (f32[1024]{0}, f32[]) parameter(0)
+  %wh = f32[1024]{0} get-tuple-element(%wp), index=0
+  %wacc = f32[] get-tuple-element(%wp), index=1
+  %wh_next = f32[1024]{0} negate(%wh)
+  ROOT %wroot = (f32[1024]{0}, f32[]) tuple(%wh_next, %wacc)
+}
+
+%w_cond (wp: (f32[1024], f32[])) -> pred[] {
+  %wp = (f32[1024]{0}, f32[]) parameter(0)
+  ROOT %wc = pred[] constant(false)
+})");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 44 * 1024));
+  EXPECT_TRUE(changed);
+  const HloInstruction* r_remat =
+      entry->GetInstructionWithName("r_late")->operand(0);
+  EXPECT_THAT(r_remat->operand(0),
+              op::Copy(op::GetTupleElement(op::While(), 0)));
+  EXPECT_EQ(r_remat->operand(1), entry->GetInstructionWithName("x"));
+  ExpectNoReadAfterOverwrite(entry, "w0", "dus");
+}
+
+// Recomputing an in place update would apply it twice, even inside a block.
+TEST_P(RematWithAliasInfoTest, InPlaceUpdateIsNotRematerialized) {
+  const std::string hlo_string = EntryModule(R"(
+  %param = f32[4096]{0} parameter(0)
+  %idx = s32[1]{0} constant({0})
+  %one = f32[] constant(1)
+  %zero = f32[] constant(0)
+  %pre = f32[4096]{0} broadcast(%one), dimensions={}
+  %scat = f32[4096]{0} scatter(%param, %idx, %one), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=0, to_apply=%add_f32
+  %pre_1 = f32[] reduce(%pre, %zero), dimensions={0}, to_apply=%add_f32
+  %use_1 = f32[] reduce(%scat, %pre_1), dimensions={0}, to_apply=%add_f32
+  %peak = f32[8192]{0} custom-call(%use_1), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %pre_2 = f32[] reduce(%pre, %sum), dimensions={0}, to_apply=%add_f32
+  %use_2 = f32[] reduce(%scat, %pre_2), dimensions={0}, to_apply=%add_f32
+  ROOT %out = f32[] negate(%use_2))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK(Run(module.get(), 40 * 1024, /*block_size_limit=*/2).status());
+  EXPECT_EQ(module->entry_computation()
+                ->GetInstructionWithName("use_2")
+                ->operand(0)
+                ->name(),
+            "scat");
+}
+
+// %bcast only feeds in place %scat, so %bcast can be rematerialized across the
+// first peak while %scat stays pinned across the second peak.
+TEST_P(RematWithAliasInfoTest,
+       SoleOperandOfInPlaceUpdateRematsWhileWriterStaysPinned) {
+  const std::string hlo_string = EntryModule(R"(
+  %idx = s32[1]{0} constant({0})
+  %one = f32[] constant(1)
+  %zero = f32[] constant(0)
+  %bcast = f32[4096]{0} broadcast(%zero), dimensions={}
+  %p1 = f32[12288]{0} custom-call(%one), custom_call_target="Peak1"
+  %sink1 = f32[] custom-call(%p1), custom_call_target="Sink1"
+  %scat = f32[4096]{0} scatter(%bcast, %idx, %sink1), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=0, to_apply=%add_f32
+  %use_1 = f32[] reduce(%scat, %zero), dimensions={0}, to_apply=%add_f32
+  %p2 = f32[10240]{0} custom-call(%use_1), custom_call_target="Peak2"
+  %sink2 = f32[] custom-call(%p2), custom_call_target="Sink2"
+  %use_2 = f32[] reduce(%scat, %sink2), dimensions={0}, to_apply=%add_f32
+  ROOT %out = f32[] negate(%use_2))");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 52 * 1024));
+  EXPECT_TRUE(changed);
+  const HloInstruction* scat = entry->GetInstructionWithName("scat");
+  EXPECT_EQ(scat->operand(0)->name(), "bcast.remat");
+  EXPECT_EQ(entry->GetInstructionWithName("use_2")->operand(0), scat);
+}
+
+// %h_next is a call whose callee defines the new carry value; %r still reads a
+// copy of %h saved before %h_next.
+TEST_P(RematWithAliasInfoTest, OverwriterDefinedInCalleeTriggersSavedCopy) {
+  const std::string hlo_string = WhileModule("f32[1024]{0}", R"(
+  %r = f32[4096]{0} concatenate(%h, %h, %h, %h), dimensions={0}
+  %h_next = f32[1024]{0} call(%h), to_apply=%callee
+  %peak = f32[9216]{0} custom-call(%h_next), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %red = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%acc, %red))",
+                                             R"(
+%callee (cp: f32[1024]) -> f32[1024] {
+  %cp = f32[1024]{0} parameter(0)
+  %two = f32[] constant(2)
+  %two_b = f32[1024]{0} broadcast(%two), dimensions={}
+  ROOT %cm = f32[1024]{0} multiply(%cp, %two_b)
+})");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  constexpr int64_t kMemoryLimitBytes = 46 * 1024;
+  HloRematerialization::RematerializationSizes sizes;
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), kMemoryLimitBytes,
+                                         /*block_size_limit=*/1, &sizes));
+  EXPECT_TRUE(changed);
+  EXPECT_LE(sizes.after_bytes, kMemoryLimitBytes);
+  const HloInstruction* r_remat =
+      body->GetInstructionWithName("red")->operand(0);
+  EXPECT_EQ(r_remat->name(), "r.remat");
+  const HloInstruction* saved = r_remat->operand(0);
+  EXPECT_THAT(saved, op::Copy(op::GetTupleElement(op::Parameter(0), 0)));
+  EXPECT_THAT(r_remat->operands(), Each(saved));
+  EXPECT_THAT(saved->control_successors(),
+              Contains(body->GetInstructionWithName("h_next")));
+  ExpectNoReadAfterOverwrite(body, "h", "h_next");
+}
+
+// %c_sum calls %callee, which updates %x in place without returning it; %r in
+// %entry saves %x before %c_sum, and %cr in %callee saves %cp before %dus.
+TEST_P(RematWithAliasInfoTest,
+       InPlaceOverwriteInsideCalleeTriggersSavedCopies) {
+  const std::string hlo_string = EntryModule(R"(
+  %param = f32[1024]{0} parameter(0)
+  %x = f32[1024]{0} copy(%param)
+  %r = f32[4096]{0} concatenate(%x, %x, %x, %x), dimensions={0}
+  %c_sum = f32[] call(%x), to_apply=%callee
+  %peak = f32[8192]{0} custom-call(%c_sum), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %r_late = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  ROOT %out = f32[] negate(%r_late))",
+                                             R"(
+%callee (cp: f32[1024]) -> f32[] {
+  %cp = f32[1024]{0} parameter(0)
+  %zero_idx = s32[] constant(0)
+  %cr = f32[4096]{0} concatenate(%cp, %cp, %cp, %cp), dimensions={0}
+  %cr_slice = f32[16]{0} slice(%cr), slice={[0:16]}
+  %dus = f32[1024]{0} dynamic-update-slice(%cp, %cr_slice, %zero_idx)
+  %cpeak = f32[8192]{0} custom-call(%dus), custom_call_target="Peak"
+  %csum = f32[] custom-call(%cpeak), custom_call_target="Sink"
+  ROOT %cr_late = f32[] reduce(%cr, %csum), dimensions={0}, to_apply=%add_f32
+})");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  HloComputation* callee = module->GetComputationWithName("callee");
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 42 * 1024));
+  EXPECT_TRUE(changed);
+  const HloInstruction* entry_saved =
+      entry->GetInstructionWithName("r_late")->operand(0)->operand(0);
+  EXPECT_THAT(entry_saved, op::Copy(op::Copy(op::Parameter(0))));
+  EXPECT_THAT(entry_saved->control_successors(),
+              Contains(entry->GetInstructionWithName("c_sum")));
+  const HloInstruction* callee_saved =
+      callee->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(callee_saved, op::Copy(op::Parameter(0)));
+  ExpectNoReadAfterOverwrite(callee, "cp", "dus");
+}
+
+// %r reads %h through tuple %th and is not recomputed after %h_next overwrites
+// %h.
+TEST_P(RematWithAliasInfoTest, TupleOperandWithPlacedOverwriteIsNotRecomputed) {
+  const std::string hlo_string = WhileModule("f32[1024]{0}", R"(
+  %th = (f32[1024]{0}, f32[]) tuple(%h, %acc)
+  %r = f32[4096]{0} fusion(%th), kind=kLoop, calls=%fused
+  %r_slice = f32[1024]{0} slice(%r), slice={[0:1024]}
+  %two = f32[] constant(2)
+  %two_b = f32[1024]{0} broadcast(%two), dimensions={}
+  %h_next = f32[1024]{0} multiply(%r_slice, %two_b)
+  %peak = f32[9216]{0} custom-call(%h_next), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %red = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%acc, %red))",
+                                             R"(
+%fused (fp: (f32[1024], f32[])) -> f32[4096] {
+  %fp = (f32[1024]{0}, f32[]) parameter(0)
+  %fh = f32[1024]{0} get-tuple-element(%fp), index=0
+  ROOT %fc = f32[4096]{0} concatenate(%fh, %fh, %fh, %fh), dimensions={0}
+})");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_OK(Run(module.get(), 46 * 1024).status());
+  EXPECT_EQ(body->GetInstructionWithName("red")->operand(0)->name(), "r");
+  ExpectNoReadAfterOverwrite(body, "th", "h_next", {0});
+}
+
+// %r reads %h through tuple %th when %h_next has not run yet, so %r.remat is
+// placed before %h_next.
+TEST_P(RematWithAliasInfoTest,
+       TupleOperandWithUnplacedOverwriteIsPlacedBeforeWriter) {
+  const std::string hlo_string = WhileModule("f32[1024]{0}", R"(
+  %zero = f32[] constant(0)
+  %th = (f32[1024]{0}, f32[]) tuple(%h, %acc)
+  %r = f32[4096]{0} fusion(%th), kind=kLoop, calls=%fused
+  %r_sum = f32[] reduce(%r, %zero), dimensions={0}, to_apply=%add_f32
+  %peak = f32[9216]{0} custom-call(%r_sum), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %h_next = f32[1024]{0} broadcast(%sum), dimensions={}
+  %red = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+  %acc_next = f32[] add(%acc, %red))",
+                                             R"(
+%fused (fp: (f32[1024], f32[])) -> f32[4096] {
+  %fp = (f32[1024]{0}, f32[]) parameter(0)
+  %fh = f32[1024]{0} get-tuple-element(%fp), index=0
+  ROOT %fc = f32[4096]{0} concatenate(%fh, %fh, %fh, %fh), dimensions={0}
+})");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 44 * 1024));
+  EXPECT_TRUE(changed);
+  const HloInstruction* r_remat =
+      body->GetInstructionWithName("red")->operand(0);
+  EXPECT_EQ(r_remat->name(), "r.remat");
+  EXPECT_THAT(r_remat->control_successors(),
+              Contains(body->GetInstructionWithName("h_next")));
+  ExpectNoReadAfterOverwrite(body, "th", "h_next", {0});
+}
+
+// %as starts an async in place update of %x; %r saves %x before %as, while
+// %ad_r reading %ad after %as needs no copy of %ad before %as.
+TEST_P(RematWithAliasInfoTest, AsyncInPlaceOverwriteTriggersSavedCopy) {
+  const std::string hlo_string = EntryModule(R"(
+  %param = f32[1024]{0} parameter(0)
+  %x = f32[1024]{0} copy(%param)
+  %r = f32[4096]{0} concatenate(%x, %x, %x, %x), dimensions={0}
+  %r_slice = f32[16]{0} slice(%r), slice={[0:16]}
+  %as = ((f32[1024]{0}, f32[16]{0}), f32[1024]{0}, s32[]) async-start(%x, %r_slice), async_execution_thread="async", calls=%dus_comp
+  %ad = f32[1024]{0} async-done(%as)
+  %ad_r = f32[4096]{0} concatenate(%ad, %ad, %ad, %ad), dimensions={0}
+  %peak = f32[8192]{0} custom-call(%ad), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  %ad_sum = f32[] reduce(%ad_r, %sum), dimensions={0}, to_apply=%add_f32
+  %r_late = f32[] reduce(%r, %ad_sum), dimensions={0}, to_apply=%add_f32
+  ROOT %out = f32[] negate(%r_late))",
+                                             R"(
+%dus_comp (ap: f32[1024], aupd: f32[16]) -> f32[1024] {
+  %ap = f32[1024]{0} parameter(0)
+  %aupd = f32[16]{0} parameter(1)
+  %azero = s32[] constant(0)
+  ROOT %adus = f32[1024]{0} dynamic-update-slice(%ap, %aupd, %azero)
+}, execution_thread="async")");
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* entry = module->entry_computation();
+  ASSERT_OK_AND_ASSIGN(bool changed, Run(module.get(), 42 * 1024));
+  EXPECT_TRUE(changed);
+  const HloInstruction* saved =
+      entry->GetInstructionWithName("r_late")->operand(0)->operand(0);
+  EXPECT_THAT(saved, op::Copy(op::Copy(op::Parameter(0))));
+  EXPECT_THAT(saved->control_successors(),
+              Contains(entry->GetInstructionWithName("as")));
+  EXPECT_EQ(entry->GetInstructionWithName("ad_sum")->operand(0)->operand(0),
+            entry->GetInstructionWithName("ad"));
+}
+
+// Overwrites are still tracked in %device_comp when %entry is on an excluded
+// execution thread.
+TEST_P(RematWithAliasInfoTest, ExcludedEntryThreadStillTracksOverwrites) {
+  const std::string hlo_string = R"hlo(
+HloModule m, is_scheduled=true
+
+%add_f32 (a: f32[], b: f32[]) -> f32[] {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+
+%device_comp (dp: f32[1024]) -> f32[] {
+  %dp = f32[1024]{0} parameter(0)
+  %zero_idx = s32[] constant(0)
+  %x = f32[1024]{0} copy(%dp)
+  %r = f32[4096]{0} concatenate(%x, %x, %x, %x), dimensions={0}
+  %r_slice = f32[16]{0} slice(%r), slice={[0:16]}
+  %dus = f32[1024]{0} dynamic-update-slice(%x, %r_slice, %zero_idx)
+  %peak = f32[8192]{0} custom-call(%dus), custom_call_target="Peak"
+  %sum = f32[] custom-call(%peak), custom_call_target="Sink"
+  ROOT %red = f32[] reduce(%r, %sum), dimensions={0}, to_apply=%add_f32
+}, execution_thread="device"
+
+ENTRY %entry {
+  %p = f32[1024]{0} parameter(0)
+  %as = ((f32[1024]{0}), f32[], s32[]) async-start(%p), async_execution_thread="device", calls=%device_comp
+  ROOT %ad = f32[] async-done(%as)
+}, execution_thread="host"
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* device = module->GetComputationWithName("device_comp");
+  ASSERT_OK_AND_ASSIGN(
+      bool changed, Run(module.get(), 42 * 1024, /*block_size_limit=*/1,
+                        /*sizes=*/nullptr, /*execution_threads=*/{"device"}));
+  if (GetParam() == HloRematerialization::RematAlgorithm::kPeakPriority) {
+    EXPECT_TRUE(changed);
+  }
+  ExpectNoReadAfterOverwrite(device, "x", "dus");
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Algorithms, RematWithAliasInfoTest,
+    ::testing::Values(HloRematerialization::RematAlgorithm::kAlwaysRemat,
+                      HloRematerialization::RematAlgorithm::kPeakPriority));
 
 }  // namespace
 }  // namespace xla

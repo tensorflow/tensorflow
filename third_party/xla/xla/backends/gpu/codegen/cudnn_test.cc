@@ -144,8 +144,8 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
     const std::string root_name(
         module->entry_computation()->root_instruction()->name());
     BinaryMap dnn_compiled_graphs;
-    CuDnnFusionCompiler cudnn_compiler(
-        stream_executor()->AsDnn(), device_description(), dnn_compiled_graphs);
+    CuDnnFusionCompiler cudnn_compiler(stream_executor(), device_description(),
+                                       dnn_compiled_graphs);
     // Run filecheck even if CuDnnFusionCompiler failed.
     cudnn_compiler.Run(module.get()).IgnoreError();
     std::string dump;
@@ -289,8 +289,8 @@ ENTRY e {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(stream_executor()->AsDnn(),
-                                     device_description(), dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(stream_executor(), device_description(),
+                                     dnn_compiled_graphs);
   ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -323,8 +323,8 @@ e {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(stream_executor()->AsDnn(),
-                                     device_description(), dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(stream_executor(), device_description(),
+                                     dnn_compiled_graphs);
   EXPECT_THAT(cudnn_compiler.Run(module.get()),
               absl_testing::IsOkAndHolds(false));
   // Single dot is not supported by cuDNN, so Triton should be used.
@@ -372,8 +372,8 @@ ENTRY e {
   ROOT r = tuple(f0, f1)
 })"));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(stream_executor()->AsDnn(),
-                                     device_description(), dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(stream_executor(), device_description(),
+                                     dnn_compiled_graphs);
   ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -595,10 +595,14 @@ ENTRY e {
   {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                          ParseAndReturnVerifiedModule(kHlo));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_gpu_cudnn_deviceless_compilation_mode(
+            DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO);
     const se::DeviceDescription& device_description =
         this->device_description();
     BinaryMap dnn_compiled_graphs;
-    CuDnnFusionCompiler cudnn_compiler(/*dnn_support=*/nullptr,
+    CuDnnFusionCompiler cudnn_compiler(/*stream_exec=*/nullptr,
                                        device_description, dnn_compiled_graphs);
     ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
     EXPECT_TRUE(changed);
@@ -703,21 +707,25 @@ ENTRY e {
   const se::DeviceDescription& device_description =
       executor->GetDeviceDescription();
 
-  // Compile with live dnn_support.
+  // Compile with live StreamExecutor.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_live,
                        ParseAndReturnVerifiedModule(kHlo));
   BinaryMap binary_map_live;
-  CuDnnFusionCompiler live_compiler(executor->AsDnn(), device_description,
+  CuDnnFusionCompiler live_compiler(executor, device_description,
                                     binary_map_live);
   ASSERT_OK_AND_ASSIGN(bool changed_live, live_compiler.Run(module_live.get()));
   ASSERT_TRUE(changed_live);
 
-  // Compile deviceless (null dnn_support, same DeviceDescription).
+  // Compile deviceless (null stream_exec, same DeviceDescription).
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_deviceless,
                        ParseAndReturnVerifiedModule(kHlo));
+  module_deviceless->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_cudnn_deviceless_compilation_mode(
+          DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO);
   BinaryMap binary_map_deviceless;
   CuDnnFusionCompiler deviceless_compiler(
-      /*dnn_support=*/nullptr, device_description, binary_map_deviceless);
+      /*stream_exec=*/nullptr, device_description, binary_map_deviceless);
   ASSERT_OK_AND_ASSIGN(bool changed_deviceless,
                        deviceless_compiler.Run(module_deviceless.get()));
   ASSERT_TRUE(changed_deviceless);

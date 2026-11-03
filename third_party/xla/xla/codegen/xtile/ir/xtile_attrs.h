@@ -16,9 +16,20 @@ limitations under the License.
 #ifndef XLA_CODEGEN_XTILE_IR_XTILE_ATTRS_H_
 #define XLA_CODEGEN_XTILE_IR_XTILE_ATTRS_H_
 
+#include <optional>
+
 #include "mlir/IR/Attributes.h"  // IWYU pragma: keep
+#include "mlir/IR/Operation.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"  // IWYU pragma: keep
+#include "xla/codegen/xtile/ir/xtile_enums.h.inc"  // IWYU pragma: export
 #define GET_ATTRDEF_CLASSES
 #include "xla/codegen/xtile/ir/xtile_attrs.h.inc"  // IWYU pragma: export
+
+namespace xla::xtile {
+
+std::optional<CollectiveStrategy> GetCollectiveStrategy(mlir::Operation* op);
+void SetCollectiveStrategy(mlir::Operation* op, CollectiveStrategy strategy);
+
+}  // namespace xla::xtile
 
 #endif  // XLA_CODEGEN_XTILE_IR_XTILE_ATTRS_H_

@@ -33,7 +33,7 @@
  #include "mlir/Pass/Pass.h"
  #include "third_party/amd/include/Analysis/AxisInfoExt.h"
  #include "third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h"
-@@ -203,16 +203,16 @@ struct ConvertTritonAMDGPUToLLVM
+@@ -205,16 +205,16 @@ struct ConvertTritonAMDGPUToLLVM
      mlir::triton::AMD::populateWarpIdOpToLLVMPattern(typeConverter, targetInfo,
                                                       patterns, commonBenefit);
  

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
@@ -42,8 +43,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
@@ -236,29 +239,33 @@ absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
 
 absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
                                          const BackendConfig& config) {
+  if (!IsSupported(instr)) {
+    return absl::InvalidArgumentError(
+        "FissionBackend does not support this instruction.");
+  }
   HloModule* module = instr.GetModule();
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    GetFissionedAndRewrittenModule(instr));
   ABSL_ASSIGN_OR_RETURN(std::vector<HloInstruction*> supported_instrs,
                    FindSupportedInstructions(hlo_module.get()));
 
-  for (size_t i = 0; i < supported_instrs.size(); ++i) {
-    HloInstruction* supported_instr = supported_instrs[i];
-    if (i > 0) {
-      if (supported_instr->opcode() != supported_instrs[0]->opcode()) {
-        return absl::InternalError(absl::StrCat(
-            "FissionBackend expected isomorphic supported instructions, but "
-            "found different opcodes: ",
-            HloOpcodeString(supported_instrs[0]->opcode()), " vs ",
-            HloOpcodeString(supported_instr->opcode())));
-      }
-      if (!ShapeUtil::Compatible(supported_instr->shape(),
-                                 supported_instrs[0]->shape())) {
-        return absl::InternalError(
-            "FissionBackend expected isomorphic supported instructions with "
-            "compatible shapes, but found incompatible shapes.");
-      }
+  for (size_t i = 1; i < supported_instrs.size(); ++i) {
+    const HloInstruction* supported_instr = supported_instrs[i];
+    if (supported_instr->opcode() != supported_instrs[0]->opcode()) {
+      return absl::InternalError(absl::StrCat(
+          "FissionBackend expected isomorphic supported instructions, but "
+          "found different opcodes: ",
+          HloOpcodeString(supported_instrs[0]->opcode()), " vs ",
+          HloOpcodeString(supported_instr->opcode())));
     }
+    if (!ShapeUtil::Compatible(supported_instr->shape(),
+                               supported_instrs[0]->shape())) {
+      return absl::InternalError(
+          "FissionBackend expected isomorphic supported instructions with "
+          "compatible shapes, but found incompatible shapes.");
+    }
+  }
+  for (HloInstruction* supported_instr : supported_instrs) {
     ABSL_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
   }
 
@@ -288,7 +295,6 @@ absl::StatusOr<absl::Duration> FissionBackend::EstimateFissionPrologueEpilogue(
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model{
       &device_info, &fusion_analysis_cache, HloCostAnalysis::DefaultShapeSize,
       mlir_context->get(),
-      /*use_experimental_tiling=*/true,
       /*enable_same_shape_multi_output_fusion=*/
       debug_options()
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion(),
@@ -331,7 +337,17 @@ absl::StatusOr<absl::Duration> FissionBackend::EstimateFissionPrologueEpilogue(
 }
 
 bool FissionBackend::IsSupported(const HloInstruction& instr) {
-  return instr.opcode() == HloOpcode::kFusion;
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  if (hlo_query::ContainsInstrWithOpcode(instr.fused_instructions_computation(),
+                                         {HloOpcode::kScaledDot})) {
+    // The scale operands of a cuDNN scaled dot fusion are already padded and
+    // swizzled, so its computation is not a plain kScaledDot to rewrite.
+    return !IsCudnnFusion(instr);
+  }
+  // cuDNN fission only rewrites scaled dots.
+  return codegen_backend_->backend() != autotuner::Backend::CUDNN;
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>

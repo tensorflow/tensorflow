@@ -784,15 +784,36 @@ std::optional<int64_t> SafeEvaluateSymbolicExpr(
 
 SymbolicExpr SymbolicExpr::ReplaceVariables(
     absl::Span<const SymbolicExpr> substitutions) const {
+  return ReplaceDimsAndSymbols(substitutions);
+}
+
+SymbolicExpr SymbolicExpr::ReplaceDimsAndSymbols(
+    absl::Span<const SymbolicExpr> dim_replacements,
+    absl::Span<const SymbolicExpr> sym_replacements,
+    std::optional<int64_t> num_old_dims,
+    std::optional<int64_t> num_new_dims) const {
+  int64_t old_dims = num_old_dims.value_or(dim_replacements.size());
+  int64_t new_dims = num_new_dims.value_or(old_dims);
+  CHECK_LE(dim_replacements.size(), old_dims);
+
   mlir::MLIRContext* ctx = GetContext();
   switch (GetType()) {
     case SymbolicExprType::kConstant:
       return *this;
     case SymbolicExprType::kVariable: {
       const VariableID var_id = GetValue();
-      if (var_id >= 0 && var_id < substitutions.size() &&
-          substitutions[var_id]) {
-        return substitutions[var_id];
+      if (var_id < old_dims) {
+        return (var_id >= 0 && var_id < dim_replacements.size() &&
+                dim_replacements[var_id])
+                   ? dim_replacements[var_id]
+                   : *this;
+      }
+      const int64_t sym_id = var_id - old_dims;
+      if (sym_id < sym_replacements.size() && sym_replacements[sym_id]) {
+        return sym_replacements[sym_id];
+      }
+      if (sym_replacements.empty() && new_dims != old_dims) {
+        return CreateSymbolicVariable(new_dims + sym_id, ctx);
       }
       return *this;
     }
@@ -803,8 +824,10 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
     case SymbolicExprType::kMod:
     case SymbolicExprType::kMax:
     case SymbolicExprType::kMin: {
-      SymbolicExpr new_lhs = GetLHS().ReplaceVariables(substitutions);
-      SymbolicExpr new_rhs = GetRHS().ReplaceVariables(substitutions);
+      SymbolicExpr new_lhs = GetLHS().ReplaceDimsAndSymbols(
+          dim_replacements, sym_replacements, old_dims, new_dims);
+      SymbolicExpr new_rhs = GetRHS().ReplaceDimsAndSymbols(
+          dim_replacements, sym_replacements, old_dims, new_dims);
       if (new_lhs == GetLHS() && new_rhs == GetRHS()) {
         return *this;
       }
@@ -813,53 +836,6 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
     default:
       LOG(FATAL) << "Substitute not implemented for this type.";
   }
-}
-
-SymbolicExpr SymbolicExpr::ReplaceDims(
-    absl::Span<const SymbolicExpr> dim_replacements) const {
-  return ReplaceVariables(dim_replacements);
-}
-
-SymbolicExpr SymbolicExpr::ReplaceDims(
-    absl::Span<const SymbolicExpr> dim_replacements, int64_t current_num_dims,
-    int64_t new_num_dims, int64_t num_symbols) const {
-  CHECK_LE(dim_replacements.size(), current_num_dims);
-  if (current_num_dims == new_num_dims) {
-    return ReplaceDims(dim_replacements);
-  }
-
-  llvm::SmallVector<SymbolicExpr> all_replacements;
-  int64_t num_dims_to_replace = dim_replacements.size();
-  all_replacements.reserve(current_num_dims + num_symbols);
-  all_replacements.append(dim_replacements.begin(), dim_replacements.end());
-  for (int64_t i = 0; i < current_num_dims - num_dims_to_replace; ++i) {
-    all_replacements.push_back(
-        CreateSymbolicVariable(i + num_dims_to_replace, GetContext()));
-  }
-  for (int64_t i = 0; i < num_symbols; ++i) {
-    all_replacements.push_back(
-        CreateSymbolicVariable(new_num_dims + i, GetContext()));
-  }
-  return ReplaceVariables(all_replacements);
-}
-
-SymbolicExpr SymbolicExpr::ReplaceSymbols(
-    absl::Span<const SymbolicExpr> sym_replacements, int64_t num_dims) const {
-  llvm::SmallVector<SymbolicExpr> dim_replacements;
-  dim_replacements.reserve(num_dims);
-  for (int64_t i = 0; i < num_dims; ++i) {
-    dim_replacements.push_back(CreateSymbolicVariable(i, GetContext()));
-  }
-  return ReplaceDimsAndSymbols(dim_replacements, sym_replacements);
-}
-
-SymbolicExpr SymbolicExpr::ReplaceDimsAndSymbols(
-    absl::Span<const SymbolicExpr> dim_replacements,
-    absl::Span<const SymbolicExpr> symbol_replacements) const {
-  llvm::SmallVector<SymbolicExpr> replacements;
-  replacements.append(dim_replacements.begin(), dim_replacements.end());
-  replacements.append(symbol_replacements.begin(), symbol_replacements.end());
-  return ReplaceVariables(replacements);
 }
 
 SymbolicExpr SymbolicExpr::Replace(SymbolicExpr expr,

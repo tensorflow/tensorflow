@@ -35,11 +35,13 @@ namespace xla::gpu {
 // DotRequiresMinorContractingDims).
 //
 // For convolutions, folds transpose operands into the input and kernel
-// dimension numbers.
+// dimension numbers if `fold_into_convolutions` is set.
 class GpuTransposeFolding : public HloModulePass {
  public:
-  explicit GpuTransposeFolding(const se::GpuComputeCapability& gpu_version)
-      : gpu_version_(gpu_version) {}
+  GpuTransposeFolding(const se::GpuComputeCapability& gpu_version,
+                      bool fold_into_convolutions)
+      : gpu_version_(gpu_version),
+        fold_into_convolutions_(fold_into_convolutions) {}
 
   absl::string_view name() const override { return "gpu-transpose-folding"; }
 
@@ -50,6 +52,7 @@ class GpuTransposeFolding : public HloModulePass {
 
  private:
   se::GpuComputeCapability gpu_version_;
+  bool fold_into_convolutions_;
 };
 
 }  // namespace xla::gpu

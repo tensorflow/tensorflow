@@ -60,12 +60,11 @@ class GpuLayoutAssignment : public LayoutAssignment {
       std::initializer_list<absl::Span<const int64_t>> dim_groups,
       bool mandatory = true);
 
-  absl::Status SetDotOperandLayout(const HloInstruction* instruction,
-                                   int64_t operand,
-                                   absl::Span<const int64_t> batch_dims,
-                                   absl::Span<const int64_t> row_dims,
-                                   absl::Span<const int64_t> col_dims,
-                                   bool mandatory = true);
+  absl::Status SetDotOperandLayout(
+      const HloInstruction* instruction, int64_t operand,
+      absl::Span<const int64_t> batch_dims,
+      absl::Span<const int64_t> contracting_dims,
+      absl::Span<const int64_t> non_contracting_dims, bool mandatory = true);
 
   absl::Status SetDotOperandLayoutToMinorContracting(
       const HloInstruction* instruction, int64_t operand,
@@ -88,6 +87,9 @@ class GpuLayoutAssignment : public LayoutAssignment {
 
   absl::Status AddDotBackendConstraints(LayoutConstraints* constraints,
                                         HloDotInstruction* instruction);
+
+  absl::Status AddScaledDotBackendConstraints(
+      LayoutConstraints* constraints, HloScaledDotInstruction* instruction);
 
   const se::GpuComputeCapability gpu_version_;
   const se::DeviceDescription& device_description_;

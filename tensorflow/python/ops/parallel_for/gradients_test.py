@@ -510,14 +510,23 @@ class GradientsTest(test.TestCase):
     pfor_hessian, while_hessian = create_lstm_batch_hessian(2, 2, 2)
     self.run_and_assert_equal(pfor_hessian, while_hessian)
 
+  @test_util.run_without_tensor_float_32(
+      "Fails on sm90 where TF32 is the default"
+  )
   def test_fc_per_eg_grad(self):
     pfor_outputs, while_outputs = create_fc_per_eg_grad(8, 4, 2)
     self.run_and_assert_equal(pfor_outputs, while_outputs)
 
+  @test_util.run_without_tensor_float_32(
+      "Fails on sm90 where TF32 is the default"
+  )
   def test_lstm_per_eg_grad(self):
     pfor_outputs, while_outputs = create_lstm_per_eg_grad(8, 4, 2)
     self.run_and_assert_equal(pfor_outputs, while_outputs)
 
+  @test_util.run_without_tensor_float_32(
+      "Fails on sm90 where TF32 is the default"
+  )
   def test_mnist_per_eg_grad(self):
     # It looks like CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED
     # configuration of Winograd can cause low precision output resulting in
@@ -532,6 +541,9 @@ class GradientsTest(test.TestCase):
     self.run_and_assert_equal(pfor_outputs, while_outputs, rtol=1e-3)
     os.environ.pop("TF_ENABLE_WINOGRAD_NONFUSED", None)
 
+  @test_util.run_without_tensor_float_32(
+      "Fails on sm90 where TF32 is the default"
+  )
   def test_mnist_per_eg_jacobian(self):
     # It looks like CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED
     # configuration of Winograd can cause low precision output resulting in

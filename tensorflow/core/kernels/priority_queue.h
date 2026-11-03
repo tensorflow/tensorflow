@@ -75,7 +75,7 @@ class PriorityQueue
   }
 
  private:
-  ~PriorityQueue() override {}
+  ~PriorityQueue() override = default;
 
   // Helper for dequeuing a single element from queues_.
   void DequeueLocked(OpKernelContext* ctx, Tuple* tuple)

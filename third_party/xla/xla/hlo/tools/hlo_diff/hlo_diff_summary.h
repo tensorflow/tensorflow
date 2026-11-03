@@ -68,6 +68,8 @@ struct DiffMetrics {
   int64_t changed_instruction_count = 0;
   int64_t left_unmatched_instruction_count = 0;
   int64_t right_unmatched_instruction_count = 0;
+  // Moved instructions on the left side; each moved pair is counted once.
+  int64_t moved_instruction_count = 0;
 };
 
 // A computation diff pattern is multiple groups of computations that have the

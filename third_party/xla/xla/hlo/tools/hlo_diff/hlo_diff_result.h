@@ -33,6 +33,9 @@
 namespace xla {
 namespace hlo_diff {
 
+// Diff type of an instruction. A matched instruction is kChanged if its own
+// properties differ, kMoved if they don't but it is connected to its users
+// differently, and kUnchanged otherwise. kChanged takes precedence over kMoved.
 enum DiffType : uint8_t { kUnchanged, kChanged, kUnmatched, kMoved };
 
 // Result of diff'ng the left and right HLO modules. Contains the matched and

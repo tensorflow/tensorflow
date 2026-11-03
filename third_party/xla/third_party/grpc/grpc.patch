@@ -12,6 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+diff --git a/third_party/xxhash/BUILD b/third_party/xxhash/BUILD
+--- a/third_party/xxhash/BUILD
++++ b/third_party/xxhash/BUILD
+@@ -2,1 +2,3 @@
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
+ cc_library(
+diff --git a/third_party/address_sorting/address_sorting.bzl b/third_party/address_sorting/address_sorting.bzl
+--- a/third_party/address_sorting/address_sorting.bzl
++++ b/third_party/address_sorting/address_sorting.bzl
+@@ -30,1 +30,3 @@
++load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
+ def address_sorting_cc_library(name, srcs, hdrs, copts, includes, linkopts=[]):
+@@ -32,1 +34,1 @@
+-    native.cc_library(
++    cc_library(
 diff --git a/bazel/cc_grpc_library.bzl b/bazel/cc_grpc_library.bzl
 --- a/bazel/cc_grpc_library.bzl
 +++ b/bazel/cc_grpc_library.bzl
@@ -166,3 +183,17 @@ diff --git a/src/python/grpcio/grpc/_cython/_cygrpc/private_key_signing/BUILD.ba
          "@rules_python//python/cc:current_py_cc_headers",
 -        "@rules_python//python/cc:current_py_cc_libs",
      ],
+
+diff --git a/bazel/grpc_build_system.bzl b/bazel/grpc_build_system.bzl
+--- a/bazel/grpc_build_system.bzl
++++ b/bazel/grpc_build_system.bzl
+@@ -187,9 +187,7 @@
+         testonly = testonly,
+         linkopts = linkopts,
+         includes = [
+             include_prefix + "include",
+-            include_prefix + "src/core/ext/upb-gen",  # Once upb code-gen issue is resolved, remove this.
+-            include_prefix + "src/core/ext/upbdefs-gen",  # Once upb code-gen issue is resolved, remove this.
+         ],
+         alwayslink = alwayslink,
+         data = data,

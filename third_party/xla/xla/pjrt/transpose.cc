@@ -1920,6 +1920,8 @@ void TransposePlan::ComputeChunkSizes() {
   output_chunk_size_bytes_.resize(chunk_loops_.size(), 0);
   input_chunk_offset_bytes_.resize(chunk_loops_.size(), 0);
   output_chunk_offset_bytes_.resize(chunk_loops_.size(), 0);
+  max_input_chunk_size_bytes_ = 0;
+  max_output_chunk_size_bytes_ = 0;
   // Compute chunk sizes from the pre-computed chunk loop bounds.
   // For each loop, accumulate the offset range based on the iteration bounds
   // and strides. Strides can be negative, so track both min and max.
@@ -1991,6 +1993,11 @@ void TransposePlan::ComputeChunkSizes() {
       output_chunk_iteration_offsets_[chunk_id] /= elements_per_byte;
       output_chunk_size_bytes_[chunk_id] /= elements_per_byte;
     }
+
+    max_input_chunk_size_bytes_ = std::max(max_input_chunk_size_bytes_,
+                                           input_chunk_size_bytes_[chunk_id]);
+    max_output_chunk_size_bytes_ = std::max(max_output_chunk_size_bytes_,
+                                            output_chunk_size_bytes_[chunk_id]);
   }
 }
 

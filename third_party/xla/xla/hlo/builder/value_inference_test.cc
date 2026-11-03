@@ -624,6 +624,18 @@ class UpperBoundInferenceTest : public ValueInferenceTest {
   }
 };
 
+class LowerBoundInferenceTest : public ValueInferenceTest {
+ public:
+  absl::StatusOr<OptionalLiteral> ComputeLowerBoundLiteral(
+      XlaOp operand, XlaBuilder* builder, Layout* output_layout = nullptr) {
+    ValueInference value_inference(builder);
+    ABSL_ASSIGN_OR_RETURN(auto literal,
+                     value_inference.AnalyzeConstant(
+                         operand, ValueInferenceMode::kLowerBound));
+    return literal;
+  }
+};
+
 TEST_F(UpperBoundInferenceTest, GetDimensionSize) {
   XlaBuilder b(TestName());
   auto p =
@@ -736,6 +748,213 @@ TEST_F(UpperBoundInferenceTest, ParamCantInferBound) {
   auto sub = Div(gds, p1);
   EXPECT_FALSE(
       ComputeUpperBoundLiteral(sub, &b).value().Get<int32_t>({}).has_value());
+}
+
+TEST_F(UpperBoundInferenceTest, MinimumWithDynamicOperandKeepsUpperBound) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+
+  auto min = Min(GetDimensionSize(p0, 0), p1);
+  auto result = ComputeUpperBoundLiteral(min, &b).value().Get<int32_t>({});
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), 2);
+}
+
+TEST_F(UpperBoundInferenceTest, MaximumWithDynamicOperandCantInferUpperBound) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+
+  auto max = Max(GetDimensionSize(p0, 0), p1);
+  auto result = ComputeUpperBoundLiteral(max, &b).value().Get<int32_t>({});
+
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(LowerBoundInferenceTest, MaximumWithDynamicOperandKeepsLowerBound) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+
+  auto max = Max(GetDimensionSize(p0, 0), p1);
+  auto result = ComputeLowerBoundLiteral(max, &b).value().Get<int32_t>({});
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), 0);
+}
+
+TEST_F(LowerBoundInferenceTest, MinimumWithDynamicOperandCantInferLowerBound) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+
+  auto min = Min(GetDimensionSize(p0, 0), p1);
+  auto result = ComputeLowerBoundLiteral(min, &b).value().Get<int32_t>({});
+
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(ValueInferenceTest, NegateFlipsOneSidedBounds) {
+  for (bool use_min : {true, false}) {
+    for (ValueInferenceMode mode :
+         {ValueInferenceMode::kUpperBound, ValueInferenceMode::kLowerBound}) {
+      SCOPED_TRACE(use_min ? "minimum" : "maximum");
+      SCOPED_TRACE(mode == ValueInferenceMode::kUpperBound ? "upper" : "lower");
+      XlaBuilder b(TestName());
+      auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+      auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+      auto size = GetDimensionSize(p0, 0);
+      auto bound = use_min ? Min(size, p1) : Max(size, p1);
+      auto operand = Neg(bound);
+      ValueInference inference(&b);
+      auto result = inference.AnalyzeConstant(operand, mode);
+      ASSERT_TRUE(result.ok()) << result.status();
+      auto value = result->Get<int32_t>({});
+      bool upper = mode == ValueInferenceMode::kUpperBound;
+      if (use_min == upper) {
+        EXPECT_FALSE(value.has_value());
+      } else {
+        ASSERT_TRUE(value.has_value());
+        EXPECT_EQ(*value, use_min ? -2 : 0);
+      }
+      auto dynamic = inference.AnalyzeIsDynamic(operand);
+      ASSERT_TRUE(dynamic.ok()) << dynamic.status();
+      EXPECT_TRUE(dynamic->Get<bool>({}));
+    }
+  }
+}
+
+TEST_F(ValueInferenceTest, SubtractFlipsRhsOneSidedBounds) {
+  for (bool use_min : {true, false}) {
+    for (ValueInferenceMode mode :
+         {ValueInferenceMode::kUpperBound, ValueInferenceMode::kLowerBound}) {
+      SCOPED_TRACE(use_min ? "minimum" : "maximum");
+      SCOPED_TRACE(mode == ValueInferenceMode::kUpperBound ? "upper" : "lower");
+      XlaBuilder b(TestName());
+      auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+      auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+      auto size = GetDimensionSize(p0, 0);
+      auto bound = use_min ? Min(size, p1) : Max(size, p1);
+      auto operand = Sub(ConstantR0<int32_t>(&b, 8), bound);
+      ValueInference inference(&b);
+      auto result = inference.AnalyzeConstant(operand, mode);
+      ASSERT_TRUE(result.ok()) << result.status();
+      auto value = result->Get<int32_t>({});
+      bool upper = mode == ValueInferenceMode::kUpperBound;
+      if (use_min == upper) {
+        EXPECT_FALSE(value.has_value());
+      } else {
+        ASSERT_TRUE(value.has_value());
+        EXPECT_EQ(*value, use_min ? 6 : 8);
+      }
+      auto dynamic = inference.AnalyzeIsDynamic(operand);
+      ASSERT_TRUE(dynamic.ok()) << dynamic.status();
+      EXPECT_TRUE(dynamic->Get<bool>({}));
+    }
+  }
+}
+
+TEST_F(ValueInferenceTest, DivideFlipsRhsOneSidedBounds) {
+  for (bool use_min : {true, false}) {
+    for (ValueInferenceMode mode :
+         {ValueInferenceMode::kUpperBound, ValueInferenceMode::kLowerBound}) {
+      SCOPED_TRACE(use_min ? "minimum" : "maximum");
+      SCOPED_TRACE(mode == ValueInferenceMode::kUpperBound ? "upper" : "lower");
+      XlaBuilder b(TestName());
+      auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+      auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+      auto size = GetDimensionSize(p0, 0);
+      auto bound = use_min ? Min(size, p1) : Max(size, p1);
+      auto operand = Div(ConstantR0<int32_t>(&b, 8), bound);
+      ValueInference inference(&b);
+      auto result = inference.AnalyzeConstant(operand, mode);
+      ASSERT_TRUE(result.ok()) << result.status();
+      auto value = result->Get<int32_t>({});
+      bool upper = mode == ValueInferenceMode::kUpperBound;
+      if (use_min == upper) {
+        EXPECT_FALSE(value.has_value());
+      } else {
+        ASSERT_TRUE(value.has_value());
+        EXPECT_EQ(*value, use_min ? 4 : 8);
+      }
+      auto dynamic = inference.AnalyzeIsDynamic(operand);
+      ASSERT_TRUE(dynamic.ok()) << dynamic.status();
+      EXPECT_TRUE(dynamic->Get<bool>({}));
+    }
+  }
+}
+
+TEST_F(ValueInferenceTest, AbsRequiresBothOperandBounds) {
+  for (bool use_min : {true, false}) {
+    for (ValueInferenceMode mode :
+         {ValueInferenceMode::kUpperBound, ValueInferenceMode::kLowerBound}) {
+      SCOPED_TRACE(use_min ? "minimum" : "maximum");
+      SCOPED_TRACE(mode == ValueInferenceMode::kUpperBound ? "upper" : "lower");
+      XlaBuilder b(TestName());
+      auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
+      auto p1 = Parameter(&b, 1, ShapeUtil::MakeScalarShape(S32), "p1");
+      auto size = GetDimensionSize(p0, 0);
+      auto bound = use_min ? Min(size, p1) : Max(size, p1);
+      auto operand = Abs(bound);
+      ValueInference inference(&b);
+      auto result = inference.AnalyzeConstant(operand, mode);
+      ASSERT_TRUE(result.ok()) << result.status();
+      auto value = result->Get<int32_t>({});
+      EXPECT_FALSE(value.has_value());
+      auto dynamic = inference.AnalyzeIsDynamic(operand);
+      ASSERT_TRUE(dynamic.ok()) << dynamic.status();
+      EXPECT_TRUE(dynamic->Get<bool>({}));
+    }
+  }
+}
+
+TEST_F(ValueInferenceTest, AbsWithTwoStaticBoundsKeepsBounds) {
+  XlaBuilder b(TestName());
+  auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p");
+  auto bounded =
+      Min(Max(p, ConstantR0<int32_t>(&b, 1)), ConstantR0<int32_t>(&b, 2));
+  ValueInference inference(&b);
+  auto upper =
+      inference.AnalyzeConstant(Abs(bounded), ValueInferenceMode::kUpperBound);
+  ASSERT_TRUE(upper.ok()) << upper.status();
+  auto lower =
+      inference.AnalyzeConstant(Abs(bounded), ValueInferenceMode::kLowerBound);
+  ASSERT_TRUE(lower.ok()) << lower.status();
+  ASSERT_TRUE(upper->Get<int32_t>({}).has_value());
+  ASSERT_TRUE(lower->Get<int32_t>({}).has_value());
+  EXPECT_EQ(*upper->Get<int32_t>({}), 2);
+  EXPECT_EQ(*lower->Get<int32_t>({}), 1);
+}
+
+TEST_F(ValueInferenceTest, OneSidedBoundDynamismIsElementwise) {
+  XlaBuilder b(TestName());
+  auto p = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {1}), "p");
+  auto mixed = ConcatInDim(&b, {ConstantR1<int32_t>(&b, {1}), p}, 0);
+  auto bounded = Min(mixed, ConstantR1<int32_t>(&b, {2, 2}));
+  ValueInference inference(&b);
+  auto neg_upper =
+      inference.AnalyzeConstant(Neg(bounded), ValueInferenceMode::kUpperBound);
+  ASSERT_TRUE(neg_upper.ok()) << neg_upper.status();
+  auto neg_lower =
+      inference.AnalyzeConstant(Neg(bounded), ValueInferenceMode::kLowerBound);
+  ASSERT_TRUE(neg_lower.ok()) << neg_lower.status();
+  ASSERT_TRUE(neg_upper->Get<int32_t>({0}).has_value());
+  EXPECT_EQ(*neg_upper->Get<int32_t>({0}), -1);
+  EXPECT_FALSE(neg_upper->Get<int32_t>({1}).has_value());
+  ASSERT_TRUE(neg_lower->Get<int32_t>({0}).has_value());
+  ASSERT_TRUE(neg_lower->Get<int32_t>({1}).has_value());
+  EXPECT_EQ(*neg_lower->Get<int32_t>({0}), -1);
+  EXPECT_EQ(*neg_lower->Get<int32_t>({1}), -2);
+  for (ValueInferenceMode mode :
+       {ValueInferenceMode::kUpperBound, ValueInferenceMode::kLowerBound}) {
+    auto abs_bound = inference.AnalyzeConstant(Abs(bounded), mode);
+    ASSERT_TRUE(abs_bound.ok()) << abs_bound.status();
+    ASSERT_TRUE(abs_bound->Get<int32_t>({0}).has_value());
+    EXPECT_EQ(*abs_bound->Get<int32_t>({0}), 1);
+    EXPECT_FALSE(abs_bound->Get<int32_t>({1}).has_value());
+  }
 }
 
 TEST_F(UpperBoundInferenceTest, KeyValueSort) {

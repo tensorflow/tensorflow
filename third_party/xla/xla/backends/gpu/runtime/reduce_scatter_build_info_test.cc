@@ -180,6 +180,14 @@ TEST_F(BuildReduceScatterInfoTest, SucceedsForFourDevices) {
                          Field(&ReduceScatterInfo::num_output_elements, 512))));
 }
 
+TEST_F(BuildReduceScatterInfoTest, FailsForSingleDevicePerReplicaGroup) {
+  EXPECT_THAT(
+      BuildInfo(F32, /*num_output_elements=*/512, HloOpcode::kAdd,
+                /*replica_groups=*/{0}),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("Degenerate collectives with a single device")));
+}
+
 TEST_F(BuildReduceScatterInfoTest, FailsForNonPowerOfTwoDevices) {
   EXPECT_THAT(BuildInfo(F32, /*num_output_elements=*/512, HloOpcode::kAdd,
                         /*replica_groups=*/{0, 1, 2}),
@@ -288,22 +296,23 @@ TEST_F(BuildReduceScatterInfoTest, FailsWhenInputAndOutputLayoutsDoNotMatch) {
   EXPECT_FALSE(IsReduceScatterFlattenable(rs));
 }
 
-TEST_F(BuildReduceScatterInfoTest, FailsForVariadicReduceScatter) {
+TEST_F(BuildReduceScatterInfoTest,
+       VariadicChecksSizePerOperandAndUsesMaxElements) {
+  // 8 MB + 16 MB = 24 MB total input across operands, but each operand is <=
+  // the 16 MB per-operand limit, and `num_output_elements` is the maximum
+  // across operands (2M elements from the second operand).
   constexpr absl::string_view kModuleStr = R"(
   HloModule test
   apply_op {
-    x0 = f32[] parameter(0)
-    x1 = f32[] parameter(1)
-    y0 = f32[] parameter(2)
-    y1 = f32[] parameter(3)
-    add0 = f32[] add(x0, y0)
-    add1 = f32[] add(x1, y1)
-    ROOT t = (f32[], f32[]) tuple(add0, add1)
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
   }
   ENTRY test_computation {
-    param_0 = f32[1024] parameter(0)
-    param_1 = f32[1024] parameter(1)
-    ROOT reduce-scatter = (f32[512], f32[512]) reduce-scatter(param_0, param_1),
+    param_0 = f32[2097152] parameter(0)
+    param_1 = f32[4194304] parameter(1)
+    ROOT reduce-scatter = (f32[1048576], f32[2097152])
+        reduce-scatter(param_0, param_1),
         dimensions={0}, replica_groups={{0,1}}, to_apply=apply_op
   }
   )";
@@ -324,11 +333,126 @@ TEST_F(BuildReduceScatterInfoTest, FailsForVariadicReduceScatter) {
   const auto* rs = Cast<HloReduceScatterInstruction>(
       HloHardwareIndependentTestBase::FindInstruction(
           module.get(), HloOpcode::kReduceScatter));
+  EXPECT_TRUE(IsReduceScatterFlattenable(rs));
+  EXPECT_THAT(
+      BuildReduceScatterInfo(gpu_topology, rs, /*device_assignment=*/nullptr),
+      IsOkAndHolds(AllOf(
+          Field(&ReduceScatterInfo::num_devices, 2),
+          Field(&ReduceScatterInfo::num_output_elements, 2 * 1024 * 1024))));
+}
+
+TEST_F(BuildReduceScatterInfoTest, FailsForVariadicWhenSecondOperandInvalid) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+  ENTRY test_computation {
+    param_0 = f32[1,4,8] parameter(0)
+    param_1 = f32[2,4,8] parameter(1)
+    ROOT reduce-scatter = (f32[1,2,8], f32[2,2,8])
+        reduce-scatter(param_0, param_1),
+        dimensions={1}, replica_groups={{0,1}}, to_apply=apply_op
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, 2));
+  const auto* rs = Cast<HloReduceScatterInstruction>(
+      HloHardwareIndependentTestBase::FindInstruction(
+          module.get(), HloOpcode::kReduceScatter));
   EXPECT_FALSE(IsReduceScatterFlattenable(rs));
+}
+
+TEST_F(BuildReduceScatterInfoTest, FailsForVariadicWithMixedElementTypes) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x0 = f32[] parameter(0)
+    x1 = s32[] parameter(1)
+    y0 = f32[] parameter(2)
+    y1 = s32[] parameter(3)
+    add0 = f32[] add(x0, y0)
+    add1 = s32[] add(x1, y1)
+    ROOT t = (f32[], s32[]) tuple(add0, add1)
+  }
+  ENTRY test_computation {
+    param_0 = f32[1024] parameter(0)
+    param_1 = s32[1024] parameter(1)
+    ROOT reduce-scatter = (f32[512], s32[512]) reduce-scatter(param_0, param_1),
+        dimensions={0}, replica_groups={{0,1}}, to_apply=apply_op
+  }
+  )";
+  se::DeviceDescription device_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+  target_config_proto.mutable_gpu_device_info()
+      ->mutable_device_interconnect_info()
+      ->set_active_links(18);
+  target_config_proto.set_platform_name("CUDA");
+  ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
+                       gpu::GpuTargetConfig::FromProto(target_config_proto));
+  GpuTopology gpu_topology("platform_version", /*num_partitions=*/1,
+                           /*num_hosts_per_partition=*/1,
+                           /*num_devices_per_host=*/2, target_config);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, 2));
+  const auto* rs = Cast<HloReduceScatterInstruction>(
+      HloHardwareIndependentTestBase::FindInstruction(
+          module.get(), HloOpcode::kReduceScatter));
   EXPECT_THAT(BuildReduceScatterInfo(gpu_topology, rs,
                                      /*device_assignment=*/nullptr),
               StatusIs(absl::StatusCode::kUnimplemented,
-                       HasSubstr("only supports a single operand")));
+                       HasSubstr("same element type")));
+}
+
+TEST_F(BuildReduceScatterInfoTest, FailsForMoreThanMaxOperands) {
+  std::vector<std::string> params;
+  std::vector<std::string> param_names;
+  std::vector<std::string> output_shapes;
+  for (int i = 0; i <= kReduceScatterMaxNumOperands; ++i) {
+    params.push_back(absl::StrFormat("param_%d = f32[16] parameter(%d)", i, i));
+    param_names.push_back(absl::StrFormat("param_%d", i));
+    output_shapes.push_back("f32[8]");
+  }
+  const std::string module_str = absl::StrFormat(
+      R"(
+  HloModule test
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+  ENTRY test_computation {
+    %s
+    ROOT reduce-scatter = (%s) reduce-scatter(%s),
+        dimensions={0}, replica_groups={{0,1}}, to_apply=apply_op
+  }
+  )",
+      absl::StrJoin(params, "\n"), absl::StrJoin(output_shapes, ", "),
+      absl::StrJoin(param_names, ", "));
+  se::DeviceDescription device_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+  target_config_proto.mutable_gpu_device_info()
+      ->mutable_device_interconnect_info()
+      ->set_active_links(18);
+  target_config_proto.set_platform_name("CUDA");
+  ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
+                       gpu::GpuTargetConfig::FromProto(target_config_proto));
+  GpuTopology gpu_topology("platform_version", /*num_partitions=*/1,
+                           /*num_hosts_per_partition=*/1,
+                           /*num_devices_per_host=*/2, target_config);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str, 2));
+  const auto* rs = Cast<HloReduceScatterInstruction>(
+      HloHardwareIndependentTestBase::FindInstruction(
+          module.get(), HloOpcode::kReduceScatter));
+  EXPECT_THAT(BuildReduceScatterInfo(gpu_topology, rs,
+                                     /*device_assignment=*/nullptr),
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("supports at most 16 operands")));
 }
 
 TEST_F(BuildReduceScatterInfoTest, FailsForLargeInputs) {
@@ -400,6 +524,61 @@ TEST_F(BuildReduceScatterInfoTest, CreateReduceScatterKernelSpec) {
             SymmetricMemoryType::kXlaRendezvous);
   EXPECT_FALSE(spec.scratch_buffers[1].should_memzero);
   EXPECT_TRUE(spec.scratch_buffers[1].should_double_buffer);
+}
+
+TEST_F(BuildReduceScatterInfoTest, CreateReduceScatterKernelSpecVariadic) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+  ENTRY test_computation {
+    param_0 = f32[1024] parameter(0)
+    param_1 = f32[8192] parameter(1)
+    ROOT reduce-scatter = (f32[512], f32[4096])
+        reduce-scatter(param_0, param_1),
+        dimensions={0}, replica_groups={{0,1}}, to_apply=apply_op
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr, 2));
+  const HloInstruction* instr = HloHardwareIndependentTestBase::FindInstruction(
+      module.get(), HloOpcode::kReduceScatter);
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveKernelSpec spec,
+      CreateReduceScatterKernelSpec(instr, LaunchDimensions(4, 128),
+                                    SymmetricMemoryType::kXlaRendezvous));
+  ASSERT_EQ(spec.codegen_config.input_buffer_specs.size(), 2);
+  ASSERT_EQ(spec.codegen_config.output_buffer_specs.size(), 2);
+  ASSERT_EQ(spec.codegen_config.argument_descriptors.size(), 8);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[0].type,
+            KernelArgType::kInputBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[0].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[1].type,
+            KernelArgType::kInputBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[1].index, 1);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[2].type,
+            KernelArgType::kOutputBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[2].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[3].type,
+            KernelArgType::kOutputBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[3].index, 1);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[4].type,
+            KernelArgType::kRuntimeRank);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].type,
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[5].index, 0);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[6].type,
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[6].index, 1);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[7].type,
+            KernelArgType::kScratchBuffer);
+  EXPECT_EQ(spec.codegen_config.argument_descriptors[7].index, 2);
+  ASSERT_EQ(spec.scratch_buffers.size(), 3);
+  EXPECT_EQ(spec.scratch_buffers[1].size_bytes, 1024 * sizeof(float));
+  EXPECT_EQ(spec.scratch_buffers[2].size_bytes, 8192 * sizeof(float));
 }
 
 }  // namespace

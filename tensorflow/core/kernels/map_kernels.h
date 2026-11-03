@@ -98,7 +98,7 @@ class EmptyTensorMap : public OpKernel {
 class TensorMapSize : public OpKernel {
  public:
   explicit TensorMapSize(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-  ~TensorMapSize() override {}
+  ~TensorMapSize() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const TensorMap* map = nullptr;
@@ -112,7 +112,7 @@ class TensorMapSize : public OpKernel {
 class TensorMapLookup : public OpKernel {
  public:
   explicit TensorMapLookup(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-  ~TensorMapLookup() override {}
+  ~TensorMapLookup() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const TensorKey& key = ctx->input(1);
@@ -140,7 +140,7 @@ class TensorMapLookup : public OpKernel {
 class TensorMapInsert : public OpKernel {
  public:
   explicit TensorMapInsert(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-  ~TensorMapInsert() override {}
+  ~TensorMapInsert() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const TensorKey& key = ctx->input(1);
@@ -180,7 +180,7 @@ class TensorMapErase : public OpKernel {
 class TensorMapHasKey : public OpKernel {
  public:
   explicit TensorMapHasKey(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-  ~TensorMapHasKey() override {}
+  ~TensorMapHasKey() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const TensorKey& key = ctx->input(1);
@@ -197,7 +197,7 @@ class TensorMapStackKeys : public OpKernel {
   explicit TensorMapStackKeys(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key_dtype", &key_dtype_));
   }
-  ~TensorMapStackKeys() override {}
+  ~TensorMapStackKeys() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const TensorMap* map = nullptr;

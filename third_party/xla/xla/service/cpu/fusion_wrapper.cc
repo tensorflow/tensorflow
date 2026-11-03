@@ -60,6 +60,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kExp2:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
+    case HloOpcode::kFma:
     case HloOpcode::kGather:
     case HloOpcode::kImag:
     case HloOpcode::kIota:

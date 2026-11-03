@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -201,8 +202,40 @@ void RecordTFDataPrefetchBufferSize(const std::string& node_name,
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
-// Records tf.data service cross-trainer cache memory usage in bytes.
+// Records the current byte size of the single tf.data service cross-trainer
+// cache instance that just served a `Get` request. For the aggregate byte size
+// across all active cache instances on the worker, see `...TotalSizeBytes`.
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
+
+// Records tf.data service cross-trainer cache queries per trainer.
+void RecordTFDataServiceCrossTrainerCacheTrainerQuery(
+    absl::string_view trainer_id, bool cache_hit, absl::string_view source);
+
+// Records time (in microseconds) a tf.data service cross-trainer cache query
+// spent blocked waiting for another thread to extend the cache.
+void RecordTFDataServiceCrossTrainerCacheBlockedWaitUsecs(
+    absl::string_view trainer_id, uint64_t wait_usecs);
+
+// Records elements skipped (due to cache eviction) in the tf.data service
+// cross-trainer cache per trainer.
+void RecordTFDataServiceCrossTrainerCacheElementsSkipped(
+    absl::string_view trainer_id, size_t num_elements);
+
+// Records a trainer's current element offset from the eviction edge in the
+// tf.data service cross-trainer cache.
+void RecordTFDataServiceCrossTrainerCacheCursorOffset(
+    absl::string_view trainer_id, size_t cursor_offset);
+
+// Updates the total cached byte size across active tf.data service
+// cross-trainer caches on the worker by `delta_bytes`. Unlike
+// `RecordTFDataServiceCrossTrainerCacheSizeBytes`, which overwrites the gauge
+// with a single instance's size on each `ExtendCache()`, this tracks the sum
+// across overlapping instances and decrements on cache destruction.
+void UpdateTFDataServiceCrossTrainerCacheTotalSizeBytes(int64_t delta_bytes);
+
+// Records the configured maximum size (in bytes) of a single tf.data service
+// cross-trainer cache instance.
+void RecordTFDataServiceCrossTrainerCacheMaxSizeBytes(size_t max_size_bytes);
 
 // Records tf.data distributed snapshot bytes committed.
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);

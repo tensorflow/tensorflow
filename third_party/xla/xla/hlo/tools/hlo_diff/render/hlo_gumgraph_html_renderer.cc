@@ -229,6 +229,9 @@ std::string PrintCss() {
     span.yellow {
       color: #fbbc04;
     }
+    span.blue {
+      color: #1a73e8;
+    }
     span.green {
       color: #34a853;
     }
@@ -316,6 +319,9 @@ std::string PrintCss() {
     }
     .yellow-highlight {
       background-color: #feefc3;
+    }
+    .blue-highlight {
+      background-color: #d2e3fc;
     }
     .darker-yellow-highlight {
       background-color: #FAD67F;
@@ -690,12 +696,14 @@ std::string PrintOverviewSection(const DiffResult& diff_result) {
           <b>Diff Statistics:</b>
           <span>%d unchanged</span>,
           <span class="yellow">%d changed</span>,
+          <span class="blue">%d moved</span>,
           <span class="red">%d left unmatched</span>,
           <span class="green">%d right unmatched</span> instruction(s).
         </p>
       )html",
       diff_result.unchanged_instructions.size(),
       diff_result.changed_instructions.size(),
+      diff_result.moved_instructions.size(),
       diff_result.left_module_unmatched_instructions.size(),
       diff_result.right_module_unmatched_instructions.size());
   return PrintSectionWithHeader("Overview", content);
@@ -710,6 +718,7 @@ std::string PrintHowToUseSection() {
             <li><span class="red-highlight">&nbsp;Red&nbsp;</span>: Instruction only present in the left module.</li>
             <li><span class="green-highlight">&nbsp;Green&nbsp;</span>: Instruction only present in the right module.</li>
             <li><span class="yellow-highlight">&nbsp;Yellow&nbsp;</span>: Instruction present in both modules but with differences. Character-level differences are highlighted in <span class="darker-yellow-highlight">&nbsp;darker yellow&nbsp;</span> (this is skipped for instructions with >10k characters due to performance concern).</li>
+            <li><span class="blue-highlight">&nbsp;Blue&nbsp;</span>: Instruction present in both modules without differences, but connected to its users differently, e.g. swapped operands.</li>
             <li>Instructions without highlights are identical in both modules.</li>
           </ul>
         </p>
@@ -727,7 +736,7 @@ std::string PrintHowToUseSection() {
           <ul>
             <li><b>XProf Op Metrics Diff</b>: Shows instructions with the largest execution time differences based on XProf data (if available).</li>
             <li><b>Diffs grouped by computation</b>: Groups computations with similar diff patterns to help identify repetitive changes.</li>
-            <li><b>Full Diff Results</b>: A flat list of all instructions that are unmatched or have changed.</li>
+            <li><b>Full Diff Results</b>: A flat list of all instructions that are unmatched, changed or moved.</li>
           </ul>
         </p>
       )html";
@@ -815,50 +824,67 @@ struct Attributes {
   const HloInstruction* mapped_instruction;
 };
 
+// Returns the attributes of the span of `instruction` on `side`, highlighted
+// with `highlight` (no highlight if empty) and mapped to `mapped_instruction`
+// on the other side (no mapping if null).
+Attributes SpanAttributes(absl::string_view highlight, DiffSide side,
+                          const HloInstruction* instruction,
+                          const HloInstruction* mapped_instruction) {
+  const absl::string_view side_name =
+      side == DiffSide::kLeft ? "left" : "right";
+  const absl::string_view other_side_name =
+      side == DiffSide::kLeft ? "right" : "left";
+  Attributes attributes;
+  attributes.highlight = highlight;
+  attributes.diffid = absl::StrCat(side_name, ":", instruction->name());
+  attributes.mapped_instruction = mapped_instruction;
+  if (mapped_instruction != nullptr) {
+    attributes.mapped_diffid =
+        absl::StrCat(other_side_name, ":", mapped_instruction->name());
+  }
+  return attributes;
+}
+
+// Sets the span attributes of the matched instructions `left` and `right`.
+void SetMatchedSpanAttributes(
+    absl::string_view highlight, const HloInstruction* left,
+    const HloInstruction* right,
+    absl::flat_hash_map<const HloInstruction*, Attributes>& span_attributes) {
+  span_attributes[left] =
+      SpanAttributes(highlight, DiffSide::kLeft, left, right);
+  span_attributes[right] =
+      SpanAttributes(highlight, DiffSide::kRight, right, left);
+}
+
 // Generate span attributes for all instructions given diff result.
 absl::flat_hash_map<const HloInstruction*, Attributes> GenerateSpanAttributes(
     const DiffResult& diff_result) {
   absl::flat_hash_map<const HloInstruction*, Attributes> span_attributes;
-  for (auto& instruction : diff_result.left_module_unmatched_instructions) {
+  // Every instruction gets its own entry, so the iteration order doesn't
+  // matter.
+  // NOLINTBEGIN(*-custom-deterministic-iteration-order)
+  for (const HloInstruction* instruction :
+       diff_result.left_module_unmatched_instructions) {
     span_attributes[instruction] =
-        Attributes{.highlight = "red-highlight",
-                   .diffid = absl::StrCat("left:", instruction->name()),
-                   .mapped_diffid = "",
-                   .mapped_instruction = nullptr};
+        SpanAttributes("red-highlight", DiffSide::kLeft, instruction,
+                       /*mapped_instruction=*/nullptr);
   }
-  for (auto& instruction : diff_result.right_module_unmatched_instructions) {
+  for (const HloInstruction* instruction :
+       diff_result.right_module_unmatched_instructions) {
     span_attributes[instruction] =
-        Attributes{.highlight = "green-highlight",
-                   .diffid = absl::StrCat("right:", instruction->name()),
-                   .mapped_diffid = "",
-                   .mapped_instruction = nullptr};
+        SpanAttributes("green-highlight", DiffSide::kRight, instruction,
+                       /*mapped_instruction=*/nullptr);
   }
-  for (const auto& [l_instruction, r_instruction] :
-       diff_result.changed_instructions) {
-    span_attributes[l_instruction] = Attributes{
-        .highlight = "yellow-highlight",
-        .diffid = absl::StrCat("left:", l_instruction->name()),
-        .mapped_diffid = absl::StrCat("right:", r_instruction->name()),
-        .mapped_instruction = r_instruction};
-    span_attributes[r_instruction] = Attributes{
-        .highlight = "yellow-highlight",
-        .diffid = absl::StrCat("right:", r_instruction->name()),
-        .mapped_diffid = absl::StrCat("left:", l_instruction->name()),
-        .mapped_instruction = l_instruction};
+  for (const auto& [left, right] : diff_result.changed_instructions) {
+    SetMatchedSpanAttributes("yellow-highlight", left, right, span_attributes);
   }
-  for (const auto& [l_instruction, r_instruction] :
-       diff_result.unchanged_instructions) {
-    span_attributes[l_instruction] = Attributes{
-        .highlight = "",
-        .diffid = absl::StrCat("left:", l_instruction->name()),
-        .mapped_diffid = absl::StrCat("right:", r_instruction->name()),
-        .mapped_instruction = r_instruction};
-    span_attributes[r_instruction] = Attributes{
-        .highlight = "",
-        .diffid = absl::StrCat("right:", r_instruction->name()),
-        .mapped_diffid = absl::StrCat("left:", l_instruction->name()),
-        .mapped_instruction = l_instruction};
+  for (const auto& [left, right] : diff_result.moved_instructions) {
+    SetMatchedSpanAttributes("blue-highlight", left, right, span_attributes);
   }
+  for (const auto& [left, right] : diff_result.unchanged_instructions) {
+    SetMatchedSpanAttributes(/*highlight=*/"", left, right, span_attributes);
+  }
+  // NOLINTEND(*-custom-deterministic-iteration-order)
   return span_attributes;
 };
 
@@ -1566,6 +1592,11 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                              filtered_diff_result.changed_instructions,
                              *left_op_metric_getter, *right_op_metric_getter,
                              url_generator)),
+            PrintDetails("Moved Instructions",
+                         PrintMatchedMetricsDiff(
+                             filtered_diff_result.moved_instructions,
+                             *left_op_metric_getter, *right_op_metric_getter,
+                             url_generator)),
             PrintDetails("Unchanged Instructions",
                          PrintMatchedMetricsDiff(
                              filtered_diff_result.unchanged_instructions,
@@ -1608,7 +1639,14 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
               absl::StrFormat("Changed Instructions (%d)",
                               filtered_diff_result.changed_instructions.size()),
               PrintChangedInstructions(
-                  filtered_diff_result.changed_instructions, url_generator))));
+                  filtered_diff_result.changed_instructions, url_generator)),
+          PrintDetails(
+              absl::StrFormat("Moved Instructions (%d)",
+                              filtered_diff_result.moved_instructions.size()),
+              // TODO(b/369851244): Add PrintMovedInstructions to show how users
+              // differ.
+              PrintChangedInstructions(filtered_diff_result.moved_instructions,
+                                       url_generator))));
   LOG(INFO) << "Finished printing full diff results.";
 
   out << PrintSystemMessagePlaceholder();

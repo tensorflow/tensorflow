@@ -45,7 +45,8 @@ struct TestPack {
         packed_data_buffer(
             [=]() -> uint8_t* {
               void* ptr;
-              if (posix_memalign(&ptr, 64, rows * cols + padding)) {
+              if (posix_memalign(&ptr, 64,
+                                 static_cast<size_t>(rows) * cols + padding)) {
                 abort();
               }
               return static_cast<uint8_t*>(ptr);
@@ -59,9 +60,9 @@ struct TestPack {
   }
 
   std::vector<uint8_t> AsVector() {
-    int size = rows * cols / 2;
+    size_t size = static_cast<size_t>(rows) * cols / 2;
     std::vector<uint8_t> values(size);
-    for (int i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++) {
       values[i] = packed_data[i];
     }
     packed_data = nullptr;
@@ -165,7 +166,7 @@ struct TestQuantize {
     cols = (src_cols + (depth - 1)) & ~(depth - 1);
     scaling_factors.assign(rows, 1.0);
     input_offsets.assign(rows, 0);
-    output_data.assign(rows * cols, 0);
+    output_data.assign(static_cast<size_t>(rows) * cols, 0);
   }
 
   void BatchQuantizeFloats4Bit() {

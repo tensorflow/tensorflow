@@ -96,6 +96,8 @@ class CollectiveKernelThunk : public TracedCommand {
   LaunchDimensions launch_dimensions() const { return launch_dimensions_; }
 
   bool use_pdl() const { return use_pdl_; }
+  std::string ToString(int indent) const override;
+
   const std::optional<std::vector<uint8_t>>& cubin() const { return cubin_; }
 
   // Returns the reason why the collective kernel is not supported.
@@ -144,10 +146,6 @@ class CollectiveKernelThunk : public TracedCommand {
   absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
-  // We use a double buffering strategy for the buffers.
-  // See docs on struct StreamState for more details.
-  static constexpr int64_t kNumBuffers = 2;
-
   // Per-executor state that needs to be synchronized for access.
   struct StreamState {
     int device_ordinal = 0;
@@ -155,23 +153,36 @@ class CollectiveKernelThunk : public TracedCommand {
 
     // Pointer to the collective kernel metadata on device.
     se::DeviceAddressBase metadata;
+    // Host copy of the device peer pointer table. Filled once by rendezvous,
+    // or rewritten whenever the kLoadStoreAccessible symmetric memory changes.
+    std::vector<void*> param_to_peers_ptrs;
 
     // Kernel entry for the stream executor.
     std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
 
-    std::vector<se::DeviceAddressHandle> scratch_allocations;
-    std::vector<tsl::TiedRef<SymmetricMemory>> scratch_symmetric_memories;
+    // Single combined allocation backing all scratch buffer slices.
+    se::DeviceAddressHandle scratch_allocation;
+    // Aligned sub-slices within `scratch_allocation`, one per
+    // `kernel_spec_.scratch_buffers` entry.
+    std::vector<se::DeviceAddressBase> scratch_slices;
+    tsl::TiedRef<SymmetricMemory> scratch_symmetric_memory;
+    // Symmetric memory of the kLoadStoreAccessible IO parameters from the last
+    // initialization, by row. Used to skip rebuilding the peer pointer table
+    // when the IO buffers did not move.
+    std::vector<std::weak_ptr<SymmetricMemory>> io_symmetric_memories;
 
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
                 std::unique_ptr<se::Kernel> kernel_arg,
-                std::vector<se::DeviceAddressHandle> scratch_allocations_arg)
+                se::DeviceAddressHandle scratch_allocation_arg,
+                std::vector<se::DeviceAddressBase> scratch_slices_arg)
         : device_ordinal(device_ordinal_arg),
           rank(rank_arg),
           kernel(std::move(kernel_arg)),
-          scratch_allocations(std::move(scratch_allocations_arg)) {}
+          scratch_allocation(std::move(scratch_allocation_arg)),
+          scratch_slices(std::move(scratch_slices_arg)) {}
   };
 
   // Returns the input size in bytes for the collective.

@@ -58,14 +58,7 @@ class OneDnnThreadPool final
 
   int get_num_threads() const final { return thread_pool_->NumThreads(); }
 
-  bool get_in_parallel() const final {
-    if (is_async_) {
-      // TODO(intel-tf): this is a temporary fix without which oneDNN runs
-      // single-threaded.
-      return false;
-    }
-    return thread_pool_->CurrentThreadId() >= 0;
-  }
+  bool get_in_parallel() const final { return in_parallel_depth_ > 0; }
 
   uint64_t get_flags() const final { return is_async_ ? ASYNCHRONOUS : 0; }
 
@@ -83,6 +76,23 @@ class OneDnnThreadPool final
         // (DNNL_VERSION_MAJOR == 3 && DNNL_VERSION_MINOR >= 11)
 
   void parallel_for(int n, const std::function<void(int, int)>& fn) final {
+    if (n <= 0) {
+      return;
+    }
+
+    // OneDNN does not support nested parallelism. If we are already inside a
+    // parallel_for region, execute inline on the current worker thread so that:
+    //  1. We never concurrently mutate `done_event_` from multiple workers.
+    //  2. All nested work finishes before the enclosing Worker::Parallelize
+    //     task signals completion on `done_event_`.
+    if (get_in_parallel()) {
+      InParallelScope scope;
+      for (int i = 0; i < n; ++i) {
+        fn(i, n);
+      }
+      return;
+    }
+
     // Cap num_workers at n to avoid Worker::Parallelize's partition-clamping
     // logic that reduces parallelism when num_workers > num_work_items.
     const size_t num_workers =
@@ -93,9 +103,11 @@ class OneDnnThreadPool final
       // parallel loop using the done_event_. This allows us to return
       // immediately and not block the caller thread.
       auto parallelize = [this, n, num_workers, fn](tsl::Chain) {
-        return Worker::Parallelize(
-            thread_pool_, num_workers, n,
-            [fn, n](size_t i) { fn(static_cast<int>(i), n); });
+        return Worker::Parallelize(thread_pool_, num_workers, n,
+                                   [fn, n](size_t i) {
+                                     InParallelScope scope;
+                                     fn(static_cast<int>(i), n);
+                                   });
       };
 
       done_event_ = done_event_.FlatMap(parallelize);
@@ -106,8 +118,11 @@ class OneDnnThreadPool final
     // block here as Worker implements work stealing that guarantees forward
     // progress and deadlock freedom, even if we are running in the same thread
     // pool as the Eigen thread_pool.
-    tsl::BlockUntilReady(Worker::Parallelize(thread_pool_, num_workers, n,
-                                             [fn, n](size_t i) { fn(i, n); }));
+    tsl::BlockUntilReady(
+        Worker::Parallelize(thread_pool_, num_workers, n, [fn, n](size_t i) {
+          InParallelScope scope;
+          fn(static_cast<int>(i), n);
+        }));
   }
 
   const void set_thread_pool(Eigen::ThreadPoolInterface* thread_pool) {
@@ -121,6 +136,15 @@ class OneDnnThreadPool final
   }
 
  private:
+  struct InParallelScope {
+    InParallelScope() { ++in_parallel_depth_; }
+    ~InParallelScope() { --in_parallel_depth_; }
+    InParallelScope(const InParallelScope&) = delete;
+    InParallelScope& operator=(const InParallelScope&) = delete;
+  };
+
+  inline static thread_local int in_parallel_depth_ = 0;
+
   Eigen::ThreadPoolInterface* thread_pool_;
 
   // Indicates if we are using oneDNN with async support. TODO(intel-tf): Remove

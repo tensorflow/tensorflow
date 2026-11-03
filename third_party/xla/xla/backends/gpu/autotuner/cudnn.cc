@@ -40,10 +40,12 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -154,13 +156,10 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
   }
 
   if (hero->opcode() == HloOpcode::kScaledDot) {
-    return target_config.device_description.cuda_compute_capability()
-               .IsAtLeastBlackwell() &&
-           se::dnn::VersionInfo(
-               target_config.device_description.dnn_version()) >=
-               kCudnnSupportsBlockScaledDot &&
-           CudnnScaledDotHelper::IsSupported(
-               Cast<HloScaledDotInstruction>(hero));
+    // Only fusions built by CudnnScaledDotRewriter are supported: their scale
+    // operands are already padded and swizzled in the parent computation.
+    return IsCudnnFusion(instr) &&
+           CudnnScaledDotHelper::IsAvailable(target_config.device_description);
   }
 
   if (hero->shape().element_type() == PrimitiveType::F64) {
@@ -263,32 +262,16 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
                       se::StreamExecutor* stream_executor,
                       const GpuTargetConfig& target_config,
                       const DebugOptions& debug_options) {
-  std::vector<std::unique_ptr<BackendConfig>> configs;
-  bool use_deviceless = false;
-  switch (debug_options.xla_gpu_cudnn_deviceless_compilation_mode()) {
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_UNSET:
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED:
-      use_deviceless = false;
-      break;
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS:
-      use_deviceless = true;
-      break;
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO:
-    default:
-      use_deviceless = (stream_executor == nullptr);
-      break;
-  }
-  if (use_deviceless) {
-    stream_executor = nullptr;
-  } else if (stream_executor == nullptr) {
-    return absl::InvalidArgumentError(
-        "Null stream executor is not supported when cuDNN deviceless "
-        "compilation is disabled.");
-  }
+  ABSL_ASSIGN_OR_RETURN(
+      se::dnn::DnnSupport * dnn_support,
+      ResolveCudnnSupport(debug_options, stream_executor,
+                          target_config.device_description.dnn_version()));
   ABSL_ASSIGN_OR_RETURN(int plan_count,
                    CuDnnFusionCompiler::GetAvailablePlanCount(
-                       stream_executor, target_config.device_description,
+                       dnn_support, target_config.device_description,
                        *DynCast<HloFusionInstruction>(&instr)));
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
 
   VLOG(2) << "Found " << plan_count << " plans for cudnn fusion.";
   configs.reserve(plan_count);
@@ -354,22 +337,21 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
 
 absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
                                       const CudnnBackendConfig& config) {
-  HloInstruction* fusion_instr = &instr;
-  auto* fusion = Cast<HloFusionInstruction>(&instr);
-  if (hlo_query::GetFirstInstructionWithOpcode(
-          *fusion->fused_instructions_computation(), HloOpcode::kScaledDot) !=
-      nullptr) {
-    ABSL_ASSIGN_OR_RETURN(fusion_instr,
-                     CudnnScaledDotHelper::AddScaleSwizzle(fusion));
-  }
+  // Only CudnnScaledDotRewriter emits the scale swizzle that cuDNN needs.
+  TF_RET_CHECK(
+      IsCudnnFusion(instr) ||
+      !hlo_query::ContainsInstrWithOpcode(
+          instr.fused_instructions_computation(), {HloOpcode::kScaledDot}))
+      << "kScaledDot requires a fusion built by CudnnScaledDotRewriter: "
+      << instr.name();
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                   fusion_instr->backend_config<GpuBackendConfig>());
+                   instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig* backend_config =
       gpu_config.mutable_fusion_backend_config();
   backend_config->set_kind(kCuDnnFusionKind);
   backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
-  ABSL_RETURN_IF_ERROR(fusion_instr->set_backend_config(std::move(gpu_config)));
-  fusion_instr->set_fusion_kind(HloInstruction::FusionKind::kCustom);
+  ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  instr.set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return absl::OkStatus();
 }
 

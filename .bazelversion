@@ -1,2 +1,2 @@
-7.7.0
+8.8.2
 # NOTE: Update Bazel version in tensorflow/tools/ci_build/release/common.sh.oss

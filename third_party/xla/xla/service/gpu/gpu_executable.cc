@@ -115,6 +115,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/logging.h"
@@ -564,7 +565,10 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "Compute capability mismatch; expected {" << gpu_version_.ToString()
         << "}, but was {" << cc.ToString() << "}";
   } else if (platform_id == se::sycl::kSyclPlatformId) {
-    // TODO: Add check.
+    se::OneAPIComputeCapability cc = main_stream->GetOneAPIComputeCapability();
+    TF_RET_CHECK(cc == *gpu_version_.oneapi_compute_capability())
+        << "Compute capability mismatch; expected {" << gpu_version_.ToString()
+        << "}, but was {" << cc.ToString() << "}";
   } else {
     return Internal("Unknown platform");
   }
@@ -577,6 +581,10 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
                                  se::Stream* stream_to_sync);
 
 absl::Status RendezvousAfterInitialization(
+    const ServiceExecutableRunOptions& run_options,
+    const DebugOptions* absl_nullable debug_options);
+
+absl::Status RendezvousAfterExecution(
     const ServiceExecutableRunOptions& run_options,
     const DebugOptions* absl_nullable debug_options);
 
@@ -628,6 +636,10 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   bool use_highest_priority_for_async_stream =
       debug_options
           ? debug_options->xla_gpu_enable_highest_priority_async_stream()
+          : false;
+  bool nccl_window_symmetric =
+      debug_options
+          ? debug_options->xla_gpu_experimental_nccl_window_symmetric()
           : false;
 
   se::Stream* main_stream = run_options->stream();
@@ -790,12 +802,15 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   // A state container for this execution.
   Thunk::ExecutionScopedState execution_scoped_state;
 
+  const int device_ordinal = run_options->device_ordinal() != -1
+                                 ? run_options->device_ordinal()
+                                 : main_stream->parent()->device_ordinal();
   ABSL_ASSIGN_OR_RETURN(CollectiveParams collective_params,
                    CollectiveParams::Create(
                        *run_options, communication_streams.streams,
-                       LocalDeviceId(main_stream->parent()->device_ordinal()),
-                       collective_max_nchannels, p2p_max_nchannels,
-                       collective_use_minimal_resource));
+                       LocalDeviceId(device_ordinal), collective_max_nchannels,
+                       p2p_max_nchannels, collective_use_minimal_resource,
+                       nccl_window_symmetric));
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
@@ -913,6 +928,16 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "End GpuExecutable::ExecuteOnStream module: " << module_name;
 
+  // Join a round of rendezvous after thunk execution when the executable has
+  // collective operations. This ensures all participating local devices have
+  // enqueued their collective operations onto their streams before any device
+  // starts a subsequent execution that may acquire the CUDA driver lock (e.g.
+  // cuModuleLoadData or cuGraphInstantiate) while waiting for in-flight device
+  // work.
+  if (!collective_cliques.empty()) {
+    ABSL_RETURN_IF_ERROR(RendezvousAfterExecution(*run_options, debug_options));
+  }
+
   // Device monitoring is independent of host monitoring. The stream owns these
   // guards until the empty callback runs after the enqueued device work.
   std::string device_watchdog_name =
@@ -928,26 +953,9 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         HangWatchdog::Abort(device_watchdog_name, device_timeout)));
   }
 
-  // TODO(b/573818657): Re-enable device_error_callback once the host callback
-  // performance regression is fixed.
-  std::shared_ptr<const GpuExecutableRunOptions::DeviceErrorCallback> error_cb =
-      nullptr;
-
-  if (!device_guards.empty() || error_cb != nullptr) {
-    ABSL_RETURN_IF_ERROR(main_stream->DoHostCallback(
-        [guards = std::move(device_guards)] {},
-        [device_ordinal = executor->device_ordinal(), module_name, run_id,
-         error_cb = std::move(error_cb)](absl::Status status) {
-          if (absl::IsCancelled(status)) {
-            return;
-          }
-          LOG(ERROR) << absl::StreamFormat(
-              "[%d] Async device error in `%s` (run_id=%v): %v", device_ordinal,
-              module_name, run_id, status);
-          if (error_cb != nullptr && *error_cb) {
-            (*error_cb)(device_ordinal, status);
-          }
-        }));
+  if (!device_guards.empty()) {
+    ABSL_RETURN_IF_ERROR(
+        main_stream->DoHostCallback([guards = std::move(device_guards)] {}));
   }
 
   return MaybeSyncAndProfile(run_options, execution_timer.get(),
@@ -969,24 +977,30 @@ struct InitializationKey {
 bool operator==(const InitializationKey& a, const InitializationKey& b) {
   return a.run_id == b.run_id;
 }
-}  // namespace
 
-absl::Status RendezvousAfterInitialization(
-    const ServiceExecutableRunOptions& run_options,
-    const DebugOptions* absl_nullable debug_options) {
-  // Thunk initialization can allocate new control data structures on device
-  // that can lead to deadlocks if other replicas are executing concurrently
-  // (i.e. this happens if we try to instantiate CUDA graph when other replica
-  // is executing NCCL kernels). If we detect that we are running in multi-gpu
-  // setup we synchronize after first initialization to make sure that all
-  // replicas completed initialization process before we start execution.
+struct ExecutionCompletionKey {
+  RunId run_id;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ExecutionCompletionKey& key) {
+    return H::combine(std::move(h), key.run_id);
+  }
+
+  friend bool operator==(const ExecutionCompletionKey& a,
+                         const ExecutionCompletionKey& b) {
+    return a.run_id == b.run_id;
+  }
+};
+
+absl::StatusOr<int64_t> GetNumLocalParticipants(
+    const ServiceExecutableRunOptions& run_options) {
   auto* gpu_opts = run_options.run_options().gpu_executable_run_options();
   auto* device_assn = run_options.run_options().device_assignment();
 
   // If we don't have Gpu executable options or device assignment it means we
   // are running in a single Gpu config and don't need a rendezvous.
   if (!gpu_opts || !device_assn) {
-    return absl::OkStatus();
+    return 1;
   }
 
   // Assume that all participants execute locally first, if we have a local
@@ -1009,6 +1023,24 @@ absl::Status RendezvousAfterInitialization(
           "Cound't find the number of local participants");
     }
   }
+  return num_local_participants;
+}
+}  // namespace
+
+absl::Status RendezvousAfterInitialization(
+    const ServiceExecutableRunOptions& run_options,
+    const DebugOptions* absl_nullable debug_options) {
+  // Thunk initialization can allocate new control data structures on device
+  // that can lead to deadlocks if other replicas are executing concurrently
+  // (i.e. this happens if we try to instantiate CUDA graph when other replica
+  // is executing NCCL kernels). If we detect that we are running in multi-gpu
+  // setup we synchronize after first initialization to make sure that all
+  // replicas completed initialization process before we start execution.
+  ABSL_ASSIGN_OR_RETURN(int64_t num_local_participants,
+                   GetNumLocalParticipants(run_options));
+  if (num_local_participants <= 1) {
+    return absl::OkStatus();
+  }
 
   XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
       "Join thunks initialization rendezvous with %d local participants",
@@ -1024,6 +1056,44 @@ absl::Status RendezvousAfterInitialization(
   auto rendezvous_key = InitializationKey{run_options.run_options().run_id()};
   auto rendezvous_name = absl::StrFormat(
       "thunk initialization completion for device ordinal %d; run_id=%d",
+      run_options.device_ordinal(), run_options.run_options().run_id().ToInt());
+
+  return Rendezvous(
+      rendezvous_name, rendezvous_key, num_local_participants,
+      absl::Seconds(
+          debug_options
+              ? debug_options->xla_gpu_executable_warn_stuck_timeout_seconds()
+              : 10),
+      absl::Seconds(
+          debug_options
+              ? debug_options->xla_gpu_executable_terminate_timeout_seconds()
+              : 30));
+}
+
+absl::Status RendezvousAfterExecution(
+    const ServiceExecutableRunOptions& run_options,
+    const DebugOptions* absl_nullable debug_options) {
+  ABSL_ASSIGN_OR_RETURN(int64_t num_local_participants,
+                   GetNumLocalParticipants(run_options));
+  if (num_local_participants <= 1) {
+    return absl::OkStatus();
+  }
+
+  XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
+      "Join thunks execution completion rendezvous with %d local participants",
+      num_local_participants);
+
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode(
+        "RendezvousAfterExecution",
+        {{"run_id", run_options.run_options().run_id().ToInt()},
+         {"num_local_participants", num_local_participants}});
+  });
+
+  auto rendezvous_key =
+      ExecutionCompletionKey{run_options.run_options().run_id()};
+  auto rendezvous_name = absl::StrFormat(
+      "thunk execution completion for device ordinal %d; run_id=%d",
       run_options.device_ordinal(), run_options.run_options().run_id().ToInt());
 
   return Rendezvous(
@@ -1173,10 +1243,10 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                    buffer_allocator_->CreateExecutionScope(
                        run_options, memory_allocator, device_ordinal));
 
-  ABSL_ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
-                   allocation_scope->GenerateBufferAllocations(
-                       run_options, get_parameter_buffer, globals,
-                       memory_allocator, device_ordinal));
+  ABSL_ASSIGN_OR_RETURN(
+      BufferAllocations buffer_allocations,
+      allocation_scope->GenerateBufferAllocations(
+          run_options, get_parameter_buffer, globals, memory_allocator));
   XLA_VLOG_DEVICE(3, device_ordinal) << buffer_allocations.ToString();
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
 
@@ -1256,7 +1326,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             result_buffer,
             allocation_scope->AllocateCopyProtectedOutputBuffer(
                 run_options, buffer_allocations, index, *allocation,
-                device_ordinal, memory_allocator, [&](absl::Status status) {
+                memory_allocator, [&](absl::Status status) {
                   return ResourceExhausted("%s\n%s\n", status.message(),
                                            buffer_allocations_debug_summary());
                 }));
@@ -1279,7 +1349,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   }
 
   absl::Status execute_status = allocation_scope->ExecuteWithBufferAllocations(
-      buffer_allocations, device_ordinal,
+      buffer_allocations,
       [&](const BufferAllocations& execution_buffers,
           std::optional<absl::Span<const BufferAllocation::Index>>
               persistent_alloc_indices) {
@@ -1287,7 +1357,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                              persistent_alloc_indices);
       });
   absl::Status teardown_status =
-      buffer_allocations.TearDown(buffers_in_result, GetAllocations());
+      allocation_scope->TearDown(buffers_in_result, buffer_allocations);
 
   ABSL_RETURN_IF_ERROR(execute_status);
   ABSL_RETURN_IF_ERROR(teardown_status);
@@ -1570,7 +1640,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   params.binary.assign(binary.begin(), binary.end());
   if (debug_module != nullptr) {
     params.debug_module = std::move(debug_module);
-  } else if (proto.has_hlo_module_with_config()) {
+  } else if (proto.has_hlo_module_with_config() &&
+             proto.hlo_module_with_config().has_hlo_module()) {
     ABSL_ASSIGN_OR_RETURN(params.debug_module, HloModule::CreateFromProtoWithConfig(
                                               proto.hlo_module_with_config()));
   }
@@ -1583,6 +1654,11 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
       params.debug_module->mutable_config()
           .mutable_debug_options()
           .set_xla_dump_to(params.debug_options.xla_dump_to());
+    }
+    if (params.debug_options.xla_gpu_experimental_nccl_window_symmetric()) {
+      params.debug_module->mutable_config()
+          .mutable_debug_options()
+          .set_xla_gpu_experimental_nccl_window_symmetric(true);
     }
   }
   if (!proto.has_buffer_assignment()) {
@@ -1638,10 +1714,11 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   *thunk_sequence_proto.mutable_thunks() = proto.thunks();
   ABSL_ASSIGN_OR_RETURN(
       ThunkSequence thunk_sequence,
-      DeserializeThunkSequenceProto(
-          thunk_sequence_proto, params.allocations, params.debug_module.get(),
-          platform_name, gpu_compute_capability, params.gpu_topology,
-          symbol_resolver, params.cpu_target_machine_options));
+      DeserializeThunkSequenceProto(thunk_sequence_proto, params.allocations,
+                                    params.debug_module.get(), platform_name,
+                                    gpu_compute_capability, params.gpu_topology,
+                                    params.debug_options, symbol_resolver,
+                                    params.cpu_target_machine_options));
 
   params.executable =
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));

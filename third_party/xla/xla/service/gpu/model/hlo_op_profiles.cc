@@ -46,7 +46,7 @@ namespace gpu {
 }
 
 /*static*/ std::string HloOpProfiles::GetProfileName(
-    const se::DeviceDescription& device_info) {
+    const stream_executor::DeviceDescription& device_info) {
   if (auto* ptr =
           device_info.gpu_compute_capability().cuda_compute_capability()) {
     return absl::StrCat("sm_", ptr->major, ptr->minor);
@@ -59,10 +59,11 @@ namespace gpu {
 }
 
 /*static*/ std::string HloOpProfiles::GetDeviceSpecificProfileName(
-    const se::DeviceDescription& device_info) {
+    const stream_executor::DeviceDescription& device_info) {
   std::string profile_name = GetProfileName(device_info);
   if (profile_name == "sm_100") {
-    CHECK(device_info.name() != se::DeviceDescription::kUndefinedString)
+    CHECK(device_info.name() !=
+          stream_executor::DeviceDescription::kUndefinedString)
         << "Device name must be set for sm_100 device-specific profiles.";
     std::vector<std::string> full_name =
         absl::StrSplit(device_info.name(), ' ');
@@ -92,7 +93,7 @@ namespace gpu {
 }
 
 const HloOpProfiles::HloOpProfile& HloOpProfiles::GetProfile(
-    const se::DeviceDescription& device_info) const {
+    const stream_executor::DeviceDescription& device_info) const {
   auto it = profiles_.find(GetProfileName(device_info));
   if (it != profiles_.end()) {
     return it->second;

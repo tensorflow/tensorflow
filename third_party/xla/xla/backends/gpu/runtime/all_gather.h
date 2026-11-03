@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_H_
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_H_
 
-#include <array>
 #include <cstdint>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,33 +27,36 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
-// Element types supported by the Triton all-gather kernel.
-// Complex types, tokens, tuples, and exotic types (e.g. 4-bit integers, 8-bit
-// floats) are not supported.
-inline constexpr auto kSupportedAllGatherTypes =
-    std::array{PRED, F16, BF16, F32, F64, S8, S16, S32, S64, U8, U16, U32, U64};
+// Returns the element types supported by the Triton all-gather kernel: all
+// Triton-supported data types that are not sub-byte types (except PRED).
+std::vector<PrimitiveType> SupportedAllGatherTypes(
+    const se::GpuComputeCapability& gpu_cc);
 
 // Maximum number of GPU thread-blocks launched per all-gather kernel.
 // This number is set by picking the max number of blocks for all reduce and
 // scaling it because the outputs are bigger for all-gather.
 // The number is somewhat arbitrary and should be revisited.
-inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 64;
+inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 128;
 
 // Optimal threshold for one-shot all-gather in bytes for the collective kernel,
 // applied to the gathered output buffer size.
 // Base on the experimental results.
-inline constexpr int64_t kMaxAllGatherSizeBytes = 16 * 1024 * 1024;  // 16 MB
+inline constexpr int64_t kMaxAllGatherSizeBytes = 32 * 1024 * 1024;  // 32 MB
+
+// Maximum number of operands supported by the variadic Triton all-gather
+// kernel.
+inline constexpr int64_t kAllGatherMaxNumOperands = 16;
 
 // Encapsulates the information needed to perform an all-gather via the Triton
 // collective kernel backend.
 struct AllGatherInfo {
   int64_t num_devices;
-  int64_t num_elements;
-  PrimitiveType element_type;
+  int64_t max_output_elements;
 };
 
 // Constructs an AllGatherInfo object for the given all-gather instruction.

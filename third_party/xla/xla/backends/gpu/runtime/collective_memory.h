@@ -17,13 +17,16 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_MEMORY_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory_cache.h"
@@ -34,7 +37,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/multicast_memory.h"
 
 namespace xla::gpu {
 
@@ -46,13 +48,6 @@ class CollectiveMemory {
   // supported collective memory types.
   using Key = std::pair<GpuCliqueKey, BufferAllocation::Index>;
 
-  // A multicast memory (shared ownership by all clique members) and a multimem
-  // pointer for the current rank.
-  struct MulticastMemory {
-    std::shared_ptr<se::gpu::MulticastMemory> multicast_memory;
-    void* multimem_ptr;
-  };
-
   // Peer memory addresses for all participating ranks.
   struct PeerMemory {
     absl::btree_map<RankId, se::DeviceAddressBase> addrs;
@@ -61,7 +56,6 @@ class CollectiveMemory {
   CollectiveMemory(
       const BufferAllocations& buffers,
       absl::flat_hash_map<Key, std::shared_ptr<SymmetricMemory>> sym_memories,
-      absl::flat_hash_map<Key, MulticastMemory> mcast_memories,
       absl::flat_hash_map<Key, PeerMemory> peer_memories);
 
   // Returns a symmetric memory and offset in that symmetric memory that
@@ -79,19 +73,19 @@ class CollectiveMemory {
   std::pair<SymmetricMemory*, size_t> FindSymmetricMemory(
       const GpuCliqueKey& clique, se::DeviceAddressBase addr) const;
 
-  // Returns a multimem address and offset from that multimem address that
-  // corresponds to the given buffer allocation index.
-  std::pair<void*, size_t> FindMultimemAddress(
+  // Returns a weak pointer to the symmetric memory and offset in that
+  // symmetric memory that corresponds to the given buffer allocation index.
+  std::pair<std::weak_ptr<SymmetricMemory>, size_t> FindWeakSymmetricMemory(
       const GpuCliqueKey& clique, BufferAllocation::Index allocation) const;
 
-  // Returns a multimem address and offset from that multimem address that
-  // corresponds to the given buffer allocation slice.
-  std::pair<void*, size_t> FindMultimemAddress(
+  // Returns a weak pointer to the symmetric memory and offset in that
+  // symmetric memory that corresponds to the given buffer allocation slice.
+  std::pair<std::weak_ptr<SymmetricMemory>, size_t> FindWeakSymmetricMemory(
       const GpuCliqueKey& clique, BufferAllocation::Slice slice) const;
 
-  // Returns a multimem address and offset from that multimem address that
-  // corresponds to the given device address.
-  std::pair<void*, size_t> FindMultimemAddress(
+  // Returns a weak pointer to the symmetric memory and offset in that
+  // symmetric memory that corresponds to the given device address.
+  std::pair<std::weak_ptr<SymmetricMemory>, size_t> FindWeakSymmetricMemory(
       const GpuCliqueKey& clique, se::DeviceAddressBase addr) const;
 
   // Returns a peer address that corresponds to the given buffer allocation.
@@ -115,11 +109,22 @@ class CollectiveMemory {
   std::optional<se::DeviceAddress<T>> FindPeerAddress(
       const GpuCliqueKey& clique, RankId rank, se::DeviceAddress<T> addr) const;
 
+  // A key and the unique id (`SymmetricMemory::id`) of the symmetric memory
+  // that serves it. Several keys can share one symmetric memory, so the key is
+  // part of the identity.
+  using SymmetricMemoryId = std::pair<Key, uint64_t>;
+
+  // Returns the keys of all symmetric memories with the ids of the symmetric
+  // memories serving them, sorted by key.
+  absl::Span<const SymmetricMemoryId> symmetric_memory_ids() const {
+    return symmetric_memory_ids_;
+  }
+
  private:
   const BufferAllocations& buffers_;
   absl::flat_hash_map<Key, std::shared_ptr<SymmetricMemory>> sym_memories_;
-  absl::flat_hash_map<Key, MulticastMemory> mcast_memories_;
   absl::flat_hash_map<Key, PeerMemory> peer_memories_;
+  std::vector<SymmetricMemoryId> symmetric_memory_ids_;
 };
 
 // Acquires collective memory using the given collective parameters for all

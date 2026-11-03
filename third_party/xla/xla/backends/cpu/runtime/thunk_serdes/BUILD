@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
+load("//xla/tsl/mkl:build_defs.bzl", "if_onednn_async")
+load("//xla/tsl/mkl:graph.bzl", "onednn_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -175,6 +177,7 @@ cc_library(
     name = "custom_call_thunk_serdes",
     srcs = ["custom_call_thunk_serdes.cc"],
     hdrs = ["custom_call_thunk_serdes.h"],
+    copts = tsl_copts(),
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime:custom_call_thunk",
@@ -193,8 +196,70 @@ cc_library(
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:casts",
-    ],
+    ] + if_onednn_async(
+        [":onednn_custom_call_thunk_serdes_impl"],
+        [":onednn_custom_call_thunk_serdes_stub"],
+    ),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "onednn_custom_call_thunk_serdes_impl",
+    srcs = ["onednn_custom_call_thunk_serdes.cc"],
+    hdrs = ["onednn_custom_call_thunk_serdes.h"],
+    tags = ["manual"],
+    deps = [
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/backends/cpu/runtime:thunk_proto_cc",
+        "//xla/backends/cpu/runtime:thunk_proto_serdes_utils",
+        "//xla/backends/cpu/runtime/onednn:onednn_op_thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu:onednn_config_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "onednn_custom_call_thunk_serdes_stub",
+    srcs = ["onednn_custom_call_thunk_serdes_stub.cc"],
+    hdrs = ["onednn_custom_call_thunk_serdes.h"],
+    tags = ["manual"],
+    deps = [
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/backends/cpu/runtime:thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+onednn_cc_test(
+    name = "onednn_custom_call_thunk_serdes_test",
+    srcs = ["onednn_custom_call_thunk_serdes_test.cc"],
+    deps = [
+        ":custom_call_thunk_serdes",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/backends/cpu/runtime:thunk_proto_cc",
+        "//xla/backends/cpu/runtime:thunk_proto_serdes",
+        "//xla/backends/cpu/runtime:thunk_testlib",
+        "//xla/backends/cpu/runtime/onednn:onednn_op_thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu:onednn_config_proto_cc",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:casts",
+    ],
 )
 
 cc_library(

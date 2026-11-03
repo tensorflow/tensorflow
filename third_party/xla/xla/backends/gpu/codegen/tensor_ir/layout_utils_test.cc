@@ -141,8 +141,9 @@ mlir::nv_tensor_ir::GraphOp MakeGraph(mlir::OpBuilder& b,
                                       llvm::ArrayRef<mlir::Type> result_types) {
   auto graph = mlir::nv_tensor_ir::GraphOp::create(
       b, mlir::UnknownLoc::get(b.getContext()), "test_graph",
-      /*sym_visibility=*/nullptr, b.getFunctionType(arg_types, result_types),
-      /*arg_attrs=*/nullptr, /*res_attrs=*/nullptr);
+      b.getFunctionType(arg_types, result_types),
+      /*arg_attrs=*/nullptr, /*res_attrs=*/nullptr,
+      /*sym_visibility=*/nullptr);
   graph.addEntryBlock();
   return graph;
 }

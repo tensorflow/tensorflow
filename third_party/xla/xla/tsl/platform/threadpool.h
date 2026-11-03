@@ -143,7 +143,7 @@ class ThreadPool {
   // instance provided by the caller. Caller retains ownership of
   // `user_threadpool` and must ensure its lifetime is longer than the
   // ThreadPool instance.
-  explicit ThreadPool(thread::ThreadPoolInterface* user_threadpool);
+  explicit ThreadPool(ThreadPoolInterface* user_threadpool);
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
@@ -264,9 +264,9 @@ class ThreadPool {
   // provided in the constructor. Otherwise it is the eigen_threadpool_.
   Eigen::ThreadPoolInterface* underlying_threadpool_;
 
-  // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
+  // owned_threadpool_ is instantiated and owned by thread::ThreadPool if
   // user_threadpool is not in the constructor.
-  std::unique_ptr<Eigen::ThreadPoolTempl<EigenEnvironment>> eigen_threadpool_;
+  std::unique_ptr<ThreadPoolInterface> owned_threadpool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
 
   ThreadPool(const ThreadPool&) = delete;

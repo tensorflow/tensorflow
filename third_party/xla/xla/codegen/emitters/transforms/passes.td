@@ -75,7 +75,6 @@ def FlattenTensorsPass : Pass<"xla-flatten-tensors", "mlir::ModuleOp"> {
   let dependentDialects = [
     "mlir::func::FuncDialect",
     "mlir::tensor::TensorDialect",
-    "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
   ];
 }
@@ -112,10 +111,8 @@ def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
     "mlir::func::FuncDialect",
-    "mlir::gpu::GPUDialect",
     "mlir::scf::SCFDialect",
     "mlir::tensor::TensorDialect",
-    "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
     "mlir::vector::VectorDialect",
   ];
@@ -132,8 +129,8 @@ def LowerXlaToScfPass :
   let summary = "Lowers xla to SCF.";
 
   let dependentDialects = [
-    "mlir::gpu::GPUDialect", "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
-    "mlir::tensor::TensorDialect", "xla::gpu::XlaGpuDialect",
+    "mlir::LLVM::LLVMDialect", "mlir::scf::SCFDialect",
+    "mlir::tensor::TensorDialect",
     "xla::XlaDialect", "mlir::vector::VectorDialect",
   ];
 
@@ -155,7 +152,6 @@ def LowerXlaLoopsToScfPass : Pass<
   let dependentDialects = [
     "mlir::scf::SCFDialect",
     "mlir::tensor::TensorDialect",
-    "xla::gpu::XlaGpuDialect",
     "xla::XlaDialect",
   ];
 }

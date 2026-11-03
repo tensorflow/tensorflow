@@ -17,6 +17,8 @@
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],

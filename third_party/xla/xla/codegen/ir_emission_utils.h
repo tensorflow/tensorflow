@@ -40,6 +40,9 @@ namespace xla {
 // Checks if the instruction is elementwise.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 
+// Checks if the node is not a tuple, parameter or intermediate op.
+bool IsNonTrivialHeroUser(const HloInstructionAdaptor& node);
+
 // Find the first hero that satisfies the given predicate.
 std::optional<HloInstructionAdaptor> FindHero(
     const HloInstructionAdaptor& root,

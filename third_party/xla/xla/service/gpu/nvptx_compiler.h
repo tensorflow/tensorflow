@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/assemble_compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/device_description.h"
@@ -58,17 +60,19 @@ void WarnIfBadDriverJITVersion();
 // NVPTXCompiler generates efficient GPU executables for NVPTX target.
 class NVPTXCompiler : public GpuCompiler {
  public:
-  explicit NVPTXCompiler();
+  using CompilationProviderFactory = absl::AnyInvocable<
+      absl::StatusOr<std::unique_ptr<se::cuda::CompilationProvider>>(
+          const se::cuda::CompilationProviderOptions&)>;
+
+  explicit NVPTXCompiler(
+      CompilationProviderFactory compilation_provider_factory =
+          se::cuda::AssembleCompilationProvider);
 
   absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
       se::dnn::VersionInfo dnn_version,
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) override;
-
-  void AddPaddingForGpublasGemms(
-      HloPassPipeline& pipeline, const DebugOptions& debug_options,
-      const se::GpuComputeCapability& gpu_version) override;
 
   bool IsScaledDotSupportedByBackend(
       const HloInstruction* instr,
@@ -110,13 +114,14 @@ class NVPTXCompiler : public GpuCompiler {
       const stream_executor::DeviceDescription& device_description,
       se::StreamExecutor* absl_nullable stream_exec) override;
 
- private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
       const stream_executor::DeviceDescription& device_description,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options,
       se::StreamExecutor* absl_nullable stream_exec) override;
 
+ private:
+  CompilationProviderFactory compilation_provider_factory_;
   absl::Mutex compilation_providers_mutex_;
   absl::flat_hash_map<se::cuda::CompilationProviderOptions,
                       std::unique_ptr<se::cuda::CompilationProvider>>

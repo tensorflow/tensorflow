@@ -128,6 +128,110 @@ ENTRY test_main {
       cp1->backend_config<GpuBackendConfig>()->force_earliest_schedule());
 }
 
+TEST_F(WindowedEinsumHandlerTest,
+       UnrolledLoopsSharingConditionHaveUniqueNames) {
+  // Two windowed einsum loops share one condition computation. Each unrolled
+  // loop gets its own condition, and both are named after the original.
+  constexpr absl::string_view kHloString = R"(
+HloModule two_ag_loops, num_partitions=4
+
+windowed_dot_general_body_ag.1 {
+  param = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) parameter(0)
+  gte = bf16[512,24576]{1,0} get-tuple-element(param), index=0
+  cp = bf16[512,24576]{1,0} collective-permute(gte), channel_id=2, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  lhs = bf16[24576,24576]{1,0} get-tuple-element(param), index=1
+  out = bf16[2048,24576]{1,0} get-tuple-element(param), index=2
+  dot.0 = bf16[512,24576]{1,0} dot(gte, lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  offsets = s32[4]{0} constant({0, 512, 1024, 1536})
+  i = u32[] get-tuple-element(param), index=4
+  pid = u32[] partition-id()
+  add.0 = u32[] add(i, pid)
+  c4 = u32[] constant(4)
+  rem.0 = u32[] remainder(add.0, c4)
+  ds.0 = s32[1]{0} dynamic-slice(offsets, rem.0), dynamic_slice_sizes={1}
+  off.0 = s32[] reshape(ds.0)
+  c0 = s32[] constant(0)
+  dus.0 = bf16[2048,24576]{1,0} dynamic-update-slice(out, dot.0, off.0, c0)
+  dot.1 = bf16[512,24576]{1,0} dot(cp, lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c1 = u32[] constant(1)
+  i1 = u32[] add(i, c1)
+  add.1 = u32[] add(i1, pid)
+  rem.1 = u32[] remainder(add.1, c4)
+  ds.1 = s32[1]{0} dynamic-slice(offsets, rem.1), dynamic_slice_sizes={1}
+  off.1 = s32[] reshape(ds.1)
+  dus.1 = bf16[2048,24576]{1,0} dynamic-update-slice(dus.0, dot.1, off.1, c0)
+  pass = bf16[2048,24576]{1,0} get-tuple-element(param), index=3
+  i2 = u32[] add(i1, c1)
+  ROOT tuple = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(cp, lhs, dus.1, pass, i2)
+}
+
+windowed_dot_general_body_ag.2 {
+  param = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) parameter(0)
+  gte = bf16[512,24576]{1,0} get-tuple-element(param), index=0
+  cp = bf16[512,24576]{1,0} collective-permute(gte), channel_id=3, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  lhs = bf16[24576,24576]{1,0} get-tuple-element(param), index=1
+  out = bf16[2048,24576]{1,0} get-tuple-element(param), index=2
+  dot.0 = bf16[512,24576]{1,0} dot(gte, lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  offsets = s32[4]{0} constant({0, 512, 1024, 1536})
+  i = u32[] get-tuple-element(param), index=4
+  pid = u32[] partition-id()
+  add.0 = u32[] add(i, pid)
+  c4 = u32[] constant(4)
+  rem.0 = u32[] remainder(add.0, c4)
+  ds.0 = s32[1]{0} dynamic-slice(offsets, rem.0), dynamic_slice_sizes={1}
+  off.0 = s32[] reshape(ds.0)
+  c0 = s32[] constant(0)
+  dus.0 = bf16[2048,24576]{1,0} dynamic-update-slice(out, dot.0, off.0, c0)
+  dot.1 = bf16[512,24576]{1,0} dot(cp, lhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c1 = u32[] constant(1)
+  i1 = u32[] add(i, c1)
+  add.1 = u32[] add(i1, pid)
+  rem.1 = u32[] remainder(add.1, c4)
+  ds.1 = s32[1]{0} dynamic-slice(offsets, rem.1), dynamic_slice_sizes={1}
+  off.1 = s32[] reshape(ds.1)
+  dus.1 = bf16[2048,24576]{1,0} dynamic-update-slice(dus.0, dot.1, off.1, c0)
+  pass = bf16[2048,24576]{1,0} get-tuple-element(param), index=3
+  i2 = u32[] add(i1, c1)
+  ROOT tuple = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(cp, lhs, dus.1, pass, i2)
+}
+
+windowed_dot_general_cond_ag {
+  param = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) parameter(0)
+  i = u32[] get-tuple-element(param), index=4
+  limit = u32[] constant(4)
+  ROOT lt = pred[] compare(i, limit), direction=LT
+}
+
+ENTRY main {
+  lhs0 = bf16[512,24576]{1,0} parameter(0)
+  rhs0 = bf16[24576,24576]{1,0} parameter(1)
+  lhs1 = bf16[512,24576]{1,0} parameter(2)
+  rhs1 = bf16[24576,24576]{1,0} parameter(3)
+  zero = bf16[] constant(0)
+  zeros = bf16[2048,24576]{1,0} broadcast(zero), dimensions={}
+  c0 = u32[] constant(0)
+  init0 = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(lhs0, rhs0, zeros, zeros, c0)
+  loop0 = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) while(init0), condition=windowed_dot_general_cond_ag, body=windowed_dot_general_body_ag.1
+  init1 = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) tuple(lhs1, rhs1, zeros, zeros, c0)
+  loop1 = (bf16[512,24576]{1,0}, bf16[24576,24576]{1,0}, bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}, u32[]) while(init1), condition=windowed_dot_general_cond_ag, body=windowed_dot_general_body_ag.2
+  out0 = bf16[2048,24576]{1,0} get-tuple-element(loop0), index=2
+  out1 = bf16[2048,24576]{1,0} get-tuple-element(loop1), index=2
+  ROOT result = (bf16[2048,24576]{1,0}, bf16[2048,24576]{1,0}) tuple(out0, out1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+
+  WindowedEinsumHandler gpu_handler;
+  ASSERT_OK_AND_ASSIGN(bool changed, gpu_handler.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+  EXPECT_NE(
+      module->GetComputationWithName("unrolled_windowed_dot_general_cond_ag"),
+      nullptr);
+}
+
 TEST_F(WindowedEinsumHandlerTest, RsLoopsHaveStreamIds) {
   constexpr absl::string_view kHloString = R"(
 HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(bf16[24576,24576]{1,0}, bf16[512,24576]{1,0}, bf16[2048,24576]{1,0})->bf16[512,24576]{1,0}}, num_partitions=4

@@ -194,6 +194,11 @@ class MockClient : public RTTIExtends<MockClient, Client> {
                std::optional<MemoryKind> memory_kind,
                ArrayCopySemantics semantics),
               (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, CopyArraysWithDonatedDst,
+              (absl::Span<ArrayRef> arrays,
+               absl::Span<ArrayRef> donated_dst_arrays,
+               ArrayCopySemantics semantics),
+              (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, RemapArrays,
               (const RemapPlan& plan, absl::Span<ArrayRef> arrays,
                ArrayCopySemantics semantics),
@@ -207,6 +212,14 @@ class MockClient : public RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, ReshardArrays,
               (absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
                ArrayCopySemantics semantics),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, CopyArraySlices,
+              (absl::Span<const ArrayRef> arrays,
+               absl::Span<const IndexDomain> index_domains),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, UpdateArraySlices,
+              (absl::Span<ArrayRef> arrays, absl::Span<const ArrayRef> slices,
+               absl::Span<const Index> origins),
               (final));
   MOCK_METHOD(tsl::Future<>, GetReadyFuture,
               (absl::Span<const ValueRef> values), (final));

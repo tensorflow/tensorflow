@@ -213,6 +213,13 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::FUSION;
     case Thunk::kCollectiveKernel:
       return DebugOptions::COLLECTIVES_KERNEL;
+    case Thunk::kRaggedAllToAll: {
+      const auto& ra2a_thunk = static_cast<const RaggedAllToAllThunk&>(thunk);
+      if (ra2a_thunk.IsSymmetricMemoryKernelSupported()) {
+        return DebugOptions::COLLECTIVES_KERNEL;
+      }
+      return DebugOptions::COLLECTIVES;
+    }
     case Thunk::kWhile:
       return DebugOptions::WHILE;
     case Thunk::kConditional:
@@ -226,7 +233,6 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kCollectivePermute:
     case Thunk::kCollectiveReduce:
     case Thunk::kGroup:
-    case Thunk::kRaggedAllToAll:
     case Thunk::kReduceScatter:
     case Thunk::kRecv:
     case Thunk::kSend:
@@ -337,7 +343,12 @@ bool IsConvertible(const RaggedAllToAllThunk& ra2a_thunk,
   }
 
   // 2. Check kernel support (types, limits)
-  if (!ra2a_thunk.IsOneShotKernelSupported()) {
+  int64_t slice_size = config.num_local_devices;
+  if (ra2a_thunk.IsSymmetricMemoryKernelSupported()) {
+    slice_size = ra2a_thunk.ragged_all_to_all_config()
+                     .fast_interconnect_slice_size_override.value_or(
+                         config.num_local_devices);
+  } else if (!ra2a_thunk.IsOneShotKernelSupported()) {
     return false;
   }
 
@@ -345,15 +356,14 @@ bool IsConvertible(const RaggedAllToAllThunk& ra2a_thunk,
   // If we know the slice size (devices per node), we MUST verify that
   // the collective is local. If it spans across nodes, the one-shot
   // kernel (and P2P) cannot be used.
-  if (config.num_local_devices > 0) {
+  if (slice_size > 0) {
     bool is_local = IsAllReplicasLocal(
-        config.num_local_devices,
-        ra2a_thunk.ragged_all_to_all_config().config.replica_groups,
+        slice_size, ra2a_thunk.ragged_all_to_all_config().config.replica_groups,
         ra2a_thunk.ragged_all_to_all_config().config.group_mode);
     if (!is_local) {
       VLOG(2) << "Skipping RaggedAllToAll Command Buffer conversion: "
                  "Operation requires multi-host communication "
-              << "(num_local_devices=" << config.num_local_devices
+              << "(num_local_devices=" << slice_size
               << "), but one-shot kernel only supports "
                  "local (intra-node) cliques.";
       return false;
@@ -626,6 +636,19 @@ absl::StatusOr<CommandExecutor::SynchronizationMode> GetSynchronizationMode(
   }
 }
 
+// The two options are independent: telemetry only records annotations while
+// command buffers are recorded or updated, and graph nodes appear in a profile
+// only if command buffers also stay enabled during profiling.
+CommandBufferThunkOptions CommandBufferThunkOptionsFrom(
+    const DebugOptions& debug_options) {
+  CommandBufferThunkOptions options;
+  options.enable_command_buffers_during_profiling =
+      debug_options.xla_enable_command_buffers_during_profiling();
+  options.enable_command_buffer_telemetry =
+      debug_options.xla_gpu_enable_command_buffer_telemetry();
+  return options;
+}
+
 absl::StatusOr<std::unique_ptr<CommandBufferThunk>>
 ConvertThunksToCommandBuffer(
     ThunkSequence thunks_to_convert,
@@ -668,7 +691,7 @@ ConvertThunksToCommandBuffer(
       std::move(cmd_executor), std::move(thunk_info), devices_in_process,
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
-      debug_options.xla_enable_command_buffers_during_profiling());
+      CommandBufferThunkOptionsFrom(debug_options));
 }
 
 int64_t CountCommandBufferSize(ThunkSequence& thunks) {

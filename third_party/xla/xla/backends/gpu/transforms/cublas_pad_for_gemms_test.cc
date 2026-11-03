@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,11 +35,12 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+
 class CublasGemmPadForTensorCoresTest : public HloHardwareIndependentTestBase {
  protected:
   bool PadForF16Gemms(HloModule* module) {
-    return CublasPadForGemms(se::CudaComputeCapability(7, 0),
-                             PrimitiveType::F16, 8)
+    return CublasPadForGemms(se::CudaComputeCapability(7, 0))
         .Run(module)
         .value();
   }
@@ -72,9 +75,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, OneDotRootComputation) {
   EXPECT_THAT(
       root,
       GmockMatch(
-          m::Slice(m::Dot(m::Pad(m::Parameter().WithShape(F16, {2048, 1024}),
-                                 m::Constant().WithShape(F16, {}))
-                              .WithShape(F16, {2048, 1024}),
+          m::Slice(m::Dot(m::Parameter().WithShape(F16, {2048, 1024}),
                           m::Pad(m::Parameter().WithShape(F16, {1024, 33708}),
                                  m::Constant().WithShape(F16, {}))
                               .WithShape(F16, {1024, 33712}))
@@ -97,10 +98,9 @@ TEST_F(CublasGemmPadForTensorCoresTest, OneDotS8RootComputation) {
                 })")
                     .value();
 
-  EXPECT_TRUE(
-      CublasPadForGemms(se::CudaComputeCapability(7, 0), PrimitiveType::S8, 4)
-          .Run(module.get())
-          .value());
+  EXPECT_THAT(
+      CublasPadForGemms(se::CudaComputeCapability(7, 0)).Run(module.get()),
+      IsOkAndHolds(true));
   SCOPED_TRACE(module->ToString());
 
   auto* root = module->entry_computation()->root_instruction();
@@ -144,32 +144,30 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
   ASSERT_THAT(
       root,
       GmockMatch(
-          m::Slice(
-              m::Dot(
-                  m::Pad(m::Slice(m::Dot(&dot2,
-                                         m::Pad().WithShape(F16, {2048, 1024}),
-                                         m::Pad().WithShape(F16, {1024, 33712}))
-                                      .WithContractingDims(
-                                          /*lhs_contracting_dims=*/{1},
-                                          /*rhs_contracting_dims=*/{0})
-                                      .WithShape(F16, {2048, 33712}))
-                             .WithShape(F16, {2048, 33708}),
-                         m::Constant().WithShape(F16, {}))
-                      .WithShape(F16, {2048, 33712}),
+          m::Slice(m::Dot(m::Pad(m::Slice(m::Dot(&dot2,
+                                                 m::Parameter().WithShape(
+                                                     F16, {2048, 1024}),
+                                                 m::Pad().WithShape(
+                                                     F16, {1024, 33712}))
+                                              .WithContractingDims(
+                                                  /*lhs_contracting_dims=*/{1},
+                                                  /*rhs_contracting_dims=*/{0})
+                                              .WithShape(F16, {2048, 33712}))
+                                     .WithShape(F16, {2048, 33708}),
+                                 m::Constant().WithShape(F16, {}))
+                              .WithShape(F16, {2048, 33712}),
 
-                  m::Pad(m::Parameter().WithShape(F16, {33708, 2}),
-                         m::Constant().WithShape(F16, {}))
-                      .WithShape(F16, {33712, 8}))
-                  .WithShape(F16, {2048, 8})
-                  .WithContractingDims(/*lhs_contracting_dims=*/{1},
-                                       /*rhs_contracting_dims=*/{0}))
+                          m::Pad(m::Parameter().WithShape(F16, {33708, 2}),
+                                 m::Constant().WithShape(F16, {}))
+                              .WithShape(F16, {33712, 8}))
+                       .WithShape(F16, {2048, 8})
+                       .WithContractingDims(/*lhs_contracting_dims=*/{1},
+                                            /*rhs_contracting_dims=*/{0}))
               .WithShape(F16, {2048, 2})));
 
   EXPECT_THAT(
       dot2,
-      GmockMatch(m::Dot(m::Pad(m::Parameter().WithShape(F16, {2048, 1024}),
-                               m::Constant().WithShape(F16, {}))
-                            .WithShape(F16, {2048, 1024}),
+      GmockMatch(m::Dot(m::Parameter().WithShape(F16, {2048, 1024}),
                         m::Pad(m::Parameter().WithShape(F16, {1024, 33708}),
                                m::Constant().WithShape(F16, {}))
                             .WithShape(F16, {1024, 33712}))
@@ -196,9 +194,7 @@ TEST_F(CublasGemmPadForTensorCoresTest, DotWithBatchDimensions) {
       root,
       GmockMatch(
           m::Slice(
-              m::Dot(m::Pad(m::Parameter().WithShape(F16, {3, 5, 2048, 1024}),
-                            m::Constant().WithShape(F16, {}))
-                         .WithShape(F16, {3, 5, 2048, 1024}),
+              m::Dot(m::Parameter().WithShape(F16, {3, 5, 2048, 1024}),
                      m::Pad(m::Parameter().WithShape(F16, {3, 5, 1024, 33708}),
                             m::Constant().WithShape(F16, {}))
                          .WithShape(F16, {3, 5, 1024, 33712}))
@@ -303,6 +299,43 @@ TEST_F(CublasGemmPadForTensorCoresTest, NotCanonicalizedDot) {
                     .value();
 
   EXPECT_FALSE(PadForF16Gemms(module.get()));
+}
+
+TEST_F(CublasGemmPadForTensorCoresTest, PadsBf16OnlyFromAmpere) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    ENTRY e {
+      p0 = bf16[16,15] parameter(0)
+      p1 = bf16[15,16] parameter(1)
+      ROOT dot = bf16[16,16] dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })"));
+
+  EXPECT_THAT(
+      CublasPadForGemms(se::CudaComputeCapability::Volta()).Run(module.get()),
+      IsOkAndHolds(false));
+  EXPECT_THAT(
+      CublasPadForGemms(se::CudaComputeCapability::Ampere()).Run(module.get()),
+      IsOkAndHolds(true));
+  // Only the contracting dimension is padded, so the result needs no slice.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Pad().WithShape(BF16, {16, 16}),
+                                m::Pad().WithShape(BF16, {16, 16}))
+                             .WithShape(BF16, {16, 16})));
+}
+
+TEST_F(CublasGemmPadForTensorCoresTest, DoesNothingOnRocm) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    ENTRY e {
+      p0 = f16[15,15] parameter(0)
+      p1 = f16[15,15] parameter(1)
+      ROOT dot = f16[15,15] dot(p0, p1),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })"));
+
+  EXPECT_THAT(CublasPadForGemms(
+                  se::GpuComputeCapability(se::RocmComputeCapability("gfx942")))
+                  .Run(module.get()),
+              IsOkAndHolds(false));
 }
 
 }  // anonymous namespace

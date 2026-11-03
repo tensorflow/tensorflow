@@ -125,7 +125,7 @@ struct ResizeTaskParameters {
 
 template <class T1>
 struct PerCacheLineParameters {
-  PerCacheLineParameters() {}
+  PerCacheLineParameters() = default;
   PerCacheLineParameters(const PerCacheLineParameters<T1>& other)
       : cache_line_start(other.cache_line_start),
         input_top_row_start(other.input_top_row_start),
@@ -208,7 +208,7 @@ EIGEN_ALWAYS_INLINE PerCacheLineParameters<T1> CalculatePerCacheLineParameters(
 
 template <class T1>
 struct PerCachePixelParameters {
-  PerCachePixelParameters() {}
+  PerCachePixelParameters() = default;
   PerCachePixelParameters(const PerCachePixelParameters<T1>& other)
       : cache_line_pixel(other.cache_line_pixel),
         left_x_index(other.left_x_index),

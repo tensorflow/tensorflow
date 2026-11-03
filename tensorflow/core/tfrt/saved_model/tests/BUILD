@@ -743,7 +743,7 @@ tf_cuda_cc_test(
     srcs = ["saved_model_aot_test.cc"],
     tags = [
         "no_oss",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         "//tensorflow/cc:function_ops",

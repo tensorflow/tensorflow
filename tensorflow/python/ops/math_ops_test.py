@@ -201,6 +201,49 @@ class ReduceTest(test_util.TensorFlowTestCase):
       self.assertEqual(self.evaluate(y_result), 1.0)
       self.assertEqual(y_result.dtype, dtype)
 
+  def testReduceVarAndStdIdenticalLargeValues(self):
+
+    def var_and_std(x, keepdims):
+      return (
+          math_ops.reduce_variance(x, axis=1, keepdims=keepdims),
+          math_ops.reduce_std(x, axis=1, keepdims=keepdims),
+      )
+
+    graph_fn = def_function.function(var_and_std)
+    jit_fn = def_function.function(var_and_std, jit_compile=True)
+    for dtype in [
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
+    ]:
+      for sign in [1.0, -1.0]:
+        val = sign * (
+            100.0 if dtype in (dtypes.float16, dtypes.bfloat16) else 7.5e10
+        )
+        if dtype.is_complex:
+          val = complex(val, val)
+        x = constant_op.constant([[val, val, val]], dtype=dtype)
+        # The expected variance is 0. The mean of the squared deviations can
+        # come out a few units high here (2 for float32 and 4 for complex64 on
+        # some CPUs), far below the 8192**2 that a one-ulp error in the
+        # float32 mean of 7.5e10 adds.
+        atol = {dtypes.float32: 2.5, dtypes.complex64: 5.0}.get(dtype, 1e-5)
+        for keepdims in [False, True]:
+          expected = [[0.0]] if keepdims else [0.0]
+          for fn in (var_and_std, graph_fn):
+            variance, std = self.evaluate(fn(x, keepdims))
+            self.assertAllClose(variance, expected, atol=atol)
+            self.assertAllClose(std, expected, atol=atol)
+          try:
+            variance, std = self.evaluate(jit_fn(x, keepdims))
+          except (errors.UnimplementedError, errors.InvalidArgumentError):
+            continue  # XLA is not linked into this build.
+          self.assertAllClose(variance, expected, atol=atol)
+          self.assertAllClose(std, expected, atol=atol)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class LogSumExpTest(test_util.TensorFlowTestCase):
@@ -703,6 +746,38 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
 
     with test_util.device(use_gpu=True):
       self.assertAllEqual(self.evaluate(expected), self.evaluate(result))
+
+  def testAcceptsPythonSequences(self):
+    # Inputs without a `dtype` attribute are converted to tensors first.
+    with test_util.device(use_gpu=True):
+      for scalar_mul_fn in (math_ops.scalar_mul, math_ops.scalar_mul_v2):
+        result = scalar_mul_fn(3, [1, 2, 3])
+        self.assertEqual(dtypes.int32, result.dtype)
+        self.assertAllEqual([3, 6, 9], self.evaluate(result))
+
+        result = scalar_mul_fn(2.0, ((1.0, 2.0), (3.0, 4.0)))
+        self.assertEqual(dtypes.float32, result.dtype)
+        self.assertAllClose([[2.0, 4.0], [6.0, 8.0]], self.evaluate(result))
+
+        result = scalar_mul_fn(3, 5)
+        self.assertAllEqual(15, self.evaluate(result))
+
+        result = scalar_mul_fn(3.0, [])
+        self.assertEqual(dtypes.float32, result.dtype)
+        self.assertAllEqual([], self.evaluate(result))
+
+        result = scalar_mul_fn(2, np.array([1, 2], dtype=np.int64))
+        self.assertEqual(dtypes.int64, result.dtype)
+        self.assertAllEqual([2, 4], self.evaluate(result))
+
+  def testPythonSequenceInheritsTypedScalarDtype(self):
+    with test_util.device(use_gpu=True):
+      for scalar_mul_fn in (math_ops.scalar_mul, math_ops.scalar_mul_v2):
+        for dtype in (dtypes.float16, dtypes.float64):
+          scalar = constant_op.constant(2.0, dtype=dtype)
+          result = scalar_mul_fn(scalar, [1.0, 2.0])
+          self.assertEqual(dtype, result.dtype)
+          self.assertAllClose([2.0, 4.0], self.evaluate(result))
 
   def testAcceptsIndexedSlices(self):
     values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <ostream>
 #include <tuple>
 #include <utility>
@@ -769,6 +770,78 @@ TEST(ValidateStridedSliceOpTest, PartialInputShape) {
       begin_mask_spec, end_mask_spec, ellipsis_mask, new_axis_mask,
       shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
       &is_simple_slice, &slice_dim0, &begin, &end, &strides, &shape_spec));
+}
+
+// Positive control: valid matching int64 begin, end, and strides succeed.
+TEST(ValidateStridedSliceOpTest, MatchingInt64BeginEndStridesSucceeds) {
+  Tensor begin_tensor = test::AsTensor<int64_t>({1, 2});
+  Tensor end_tensor = test::AsTensor<int64_t>({8, 9});
+  Tensor strides_tensor = test::AsTensor<int64_t>({1, 1});
+  TensorShape input_shape = AsTensorShape({10, 10});
+
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  TF_EXPECT_OK(ValidateStridedSliceOp(
+      &begin_tensor, &end_tensor, strides_tensor, input_shape,
+      /*begin_mask_spec=*/0, /*end_mask_spec=*/0, /*ellipsis_mask=*/0,
+      /*new_axis_mask=*/0, /*shrink_axis_mask=*/0, &processing_shape,
+      &final_shape, &is_identity, &is_simple_slice, &slice_dim0, &begin, &end,
+      &strides, &shape_spec));
+  EXPECT_EQ(final_shape, AsTensorShape({7, 7}));
+}
+
+// Negative regression: reject mismatched or invalid begin, end, and strides
+// dtypes.
+TEST(ValidateStridedSliceOpTest, RejectsMismatchedOrInvalidDtypes) {
+  Tensor begin_int64 = test::AsTensor<int64_t>({0, 0});
+  Tensor end_int32 = test::AsTensor<int32_t>({5, 5});
+  Tensor end_int64 = test::AsTensor<int64_t>({5, 5});
+  Tensor strides_int32 = test::AsTensor<int32_t>({1, 1});
+  Tensor strides_float = test::AsTensor<float>({1.0f, 1.0f});
+  TensorShape input_shape = AsTensorShape({10, 10});
+
+  TensorShape processing_shape, final_shape;
+  bool is_identity, is_simple_slice, slice_dim0;
+  IntVector begin, end, strides;
+  StridedSliceShapeSpec shape_spec;
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          &begin_int64, &end_int32, strides_int32, input_shape,
+          /*begin_mask_spec=*/0, /*end_mask_spec=*/0, /*ellipsis_mask=*/0,
+          /*new_axis_mask=*/0, /*shrink_axis_mask=*/0, &processing_shape,
+          &final_shape, &is_identity, &is_simple_slice, &slice_dim0, &begin,
+          &end, &strides, &shape_spec),
+      absl_testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex(
+              "Expected begin and strides to have the same dtype")));
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          /*begin_tensor=*/nullptr, &end_int64, strides_int32, input_shape,
+          /*begin_mask_spec=*/0, /*end_mask_spec=*/0, /*ellipsis_mask=*/0,
+          /*new_axis_mask=*/0, /*shrink_axis_mask=*/0, &processing_shape,
+          &final_shape, &is_identity, &is_simple_slice, &slice_dim0, &begin,
+          &end, &strides, &shape_spec),
+      absl_testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex(
+              "Expected end and strides to have the same dtype")));
+
+  EXPECT_THAT(
+      ValidateStridedSliceOp(
+          /*begin_tensor=*/nullptr, /*end_tensor=*/nullptr, strides_float,
+          input_shape, /*begin_mask_spec=*/0, /*end_mask_spec=*/0,
+          /*ellipsis_mask=*/0, /*new_axis_mask=*/0, /*shrink_axis_mask=*/0,
+          &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+          &slice_dim0, &begin, &end, &strides, &shape_spec),
+      absl_testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("Expected strides to have dtype")));
 }
 
 }  // namespace

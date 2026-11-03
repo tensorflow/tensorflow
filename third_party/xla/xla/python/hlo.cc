@@ -880,6 +880,12 @@ NB_MODULE(_hlo, m) {
   nb::class_<ComputationWrapper> hlo_computation_class(m, "HloComputation");
   hlo_computation_class.def_prop_ro("name", &ComputationWrapper::name)
       .def("render_html", &ComputationWrapper::render_html)
+      .def("root_instruction",
+           [](const std::shared_ptr<ComputationWrapper> c)
+               -> std::shared_ptr<InstructionWrapper> {
+             return std::make_shared<InstructionWrapper>(
+                 c->comp()->root_instruction(), c->module());
+           })
       .def("instructions",
            [](const std::shared_ptr<ComputationWrapper> c)
                -> std::vector<std::shared_ptr<InstructionWrapper>> {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -266,6 +267,55 @@ TEST_F(ConvertMoverTest, NoMoveDownPadBecauseConstantIsOutOfRange) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   SCOPED_TRACE(module->ToString());
   EXPECT_FALSE(changed);
+}
+
+// Frontend attributes travel with the instruction they describe: moving a
+// convert through a reshape must not copy the reshape's attributes onto the
+// convert, and vice versa.
+TEST_F(ConvertMoverTest, MoveDownKeepsFrontendAttributesOnTheirOwners) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f16[100] parameter(0)
+    c = f32[100] convert(p0), frontend_attributes={CONVERT_ATTR="c"}
+    ROOT r = f32[10,10] reshape(c), frontend_attributes={RESHAPE_ATTR="r"}
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ConvertMover pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  SCOPED_TRACE(module->ToString());
+  EXPECT_TRUE(changed);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(MatchConvertToF32(m::Reshape(m::Parameter(0)))));
+  EXPECT_THAT(root->frontend_attributes().map(),
+              ::testing::ElementsAre(::testing::Pair("CONVERT_ATTR", "c")));
+  EXPECT_THAT(root->operand(0)->frontend_attributes().map(),
+              ::testing::ElementsAre(::testing::Pair("RESHAPE_ATTR", "r")));
+}
+
+TEST_F(ConvertMoverTest, MoveUpKeepsFrontendAttributesOnTheirOwners) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[100] parameter(0)
+    r = f32[10,10] reshape(p0), frontend_attributes={RESHAPE_ATTR="r"}
+    ROOT c = f16[10,10] convert(r), frontend_attributes={CONVERT_ATTR="c"}
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  ConvertMover pass;
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  SCOPED_TRACE(module->ToString());
+  EXPECT_TRUE(changed);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::Reshape(MatchConvertToF16(m::Parameter(0)))));
+  EXPECT_THAT(root->frontend_attributes().map(),
+              ::testing::ElementsAre(::testing::Pair("RESHAPE_ATTR", "r")));
+  EXPECT_THAT(root->operand(0)->frontend_attributes().map(),
+              ::testing::ElementsAre(::testing::Pair("CONVERT_ATTR", "c")));
 }
 
 }  // anonymous namespace

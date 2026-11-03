@@ -285,8 +285,10 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
   containing the exponential for all input submatrices `[..., :, :]`.
 
   Args:
-    input: A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`, or
-      `complex128` with shape `[..., M, M]`.
+    input: A `Tensor`. Must be `float16`, `bfloat16`, `float32`, `float64`,
+      `complex64`, or `complex128` with shape `[..., M, M]`. Half precision
+      inputs (`float16` and `bfloat16`) are accumulated in `float32` and cast
+      back to the input dtype.
     name:  A name to give this `Op` (optional).
 
   Returns:
@@ -303,6 +305,13 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     matrix = ops.convert_to_tensor(input, name='input')
     if matrix.shape[-2:] == [0, 0]:
       return matrix
+    # There is no `MatrixSolve` kernel registered for `float16`/`bfloat16` on
+    # CPU or GPU (only XLA kernels exist), and the Pade coefficients selected
+    # below assume at least `float32` precision. Accumulate in `float32` and
+    # cast the result back, which is how other half-precision ops behave.
+    original_dtype = matrix.dtype
+    if original_dtype in (dtypes.float16, dtypes.bfloat16):
+      matrix = math_ops.cast(matrix, dtypes.float32)
     batch_shape = matrix.shape[:-2]
     if not batch_shape.is_fully_defined():
       batch_shape = array_ops.shape(matrix)[:-2]
@@ -330,6 +339,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
 
     if matrix.dtype in [dtypes.float16, dtypes.float32, dtypes.complex64]:
       maxnorm = const(3.925724783138660)
+      max_iters = 126  # floor(log2(FLT_MAX / maxnorm))
       squarings = math_ops.maximum(
           math_ops.floor(
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
@@ -343,6 +353,7 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       v = _nest_where(conds, (v3, v5, v7))
     elif matrix.dtype in [dtypes.float64, dtypes.complex128]:
       maxnorm = const(5.371920351148152)
+      max_iters = 1021  # floor(log2(DBL_MAX / maxnorm))
       squarings = math_ops.maximum(
           math_ops.floor(
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
@@ -378,12 +389,24 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       return i + 1, array_ops.where_v2(
           math_ops.less(i, squarings), math_ops.matmul(r, r), r)
 
-    _, result = while_loop.while_loop(c, b, [i, result])
+    _, result = while_loop.while_loop(
+        c,
+        b,
+        [i, result],
+        maximum_iterations=max_iters if ops.inside_function() else None,
+    )
     if not matrix.shape.is_fully_defined():
-      return array_ops.reshape(
+      result = array_ops.reshape(
           result,
-          array_ops.concat((batch_shape, array_ops.shape(result)[-2:]), axis=0))
-    return array_ops.reshape(result, batch_shape.concatenate(result.shape[-2:]))
+          array_ops.concat((batch_shape, array_ops.shape(result)[-2:]), axis=0),
+      )
+    else:
+      result = array_ops.reshape(
+          result, batch_shape.concatenate(result.shape[-2:])
+      )
+    if original_dtype in (dtypes.float16, dtypes.bfloat16):
+      result = math_ops.cast(result, original_dtype)
+    return result
 
 
 @tf_export('linalg.banded_triangular_solve', v1=[])
@@ -465,9 +488,9 @@ def banded_triangular_solve(
       'LEFT_RIGHT' alignment, where the superdiagonals are padded on the right
       and subdiagonals are padded on the left. This is the alignment cuSPARSE
       uses.  See  `tf.linalg.set_diag` for more details.
-    rhs: A `Tensor` of shape [..., M] or [..., M, N] and with the same dtype as
-      `diagonals`. Note that if the shape of `rhs` and/or `diags` isn't known
-      statically, `rhs` will be treated as a matrix rather than a vector.
+    rhs: A `Tensor` of shape `[..., M, N]` and with the same dtype as `bands`.
+      Must have rank at least 2. For a single right-hand side, use shape `[...,
+      M, 1]`.
     lower: An optional `bool`. Defaults to `True`. Boolean indicating whether
       `bands` represents a lower or upper triangular matrix.
     adjoint: An optional `bool`. Defaults to `False`. Boolean indicating whether
@@ -475,7 +498,7 @@ def banded_triangular_solve(
     name:  A name to give this `Op` (optional).
 
   Returns:
-    A `Tensor` of shape [..., M] or [..., M, N] containing the solutions.
+    A `Tensor` of shape `[..., M, N]` containing the solutions.
   """
   with ops.name_scope(name, 'banded_triangular_solve', [bands, rhs]):
     return gen_linalg_ops.banded_triangular_solve(
@@ -787,6 +810,17 @@ def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
   return linalg_ops.tridiagonal_mat_mul(superdiag, maindiag, subdiag, rhs, name)
 
 
+def _convert_with_float32_hint(value, name):
+  """Converts to tensor with a float32 hint, keeping float64 and complex.
+
+  The hint alone also casts float64 and complex NumPy inputs to float32,
+  silently dropping precision and imaginary parts.
+  """
+  if getattr(value, 'dtype', None) in (np.float64, np.complex64, np.complex128):
+    return ops.convert_to_tensor(value, name=name)
+  return ops.convert_to_tensor(value, dtype_hint=dtypes.float32, name=name)
+
+
 def _maybe_validate_matrix(a, validate_args):
   """Checks that input is a `float` matrix."""
   assertions = []
@@ -825,7 +859,7 @@ def matrix_rank(a, tol=None, validate_args=False, name=None):
       singular values.
   """
   with ops.name_scope(name or 'matrix_rank'):
-    a = ops.convert_to_tensor(a, dtype_hint=dtypes.float32, name='a')
+    a = _convert_with_float32_hint(a, name='a')
     assertions = _maybe_validate_matrix(a, validate_args)
     if assertions:
       with ops.control_dependencies(assertions):
@@ -1018,8 +1052,7 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
   """
 
   with ops.name_scope(name or 'lu_solve'):
-    lower_upper = ops.convert_to_tensor(
-        lower_upper, dtype_hint=dtypes.float32, name='lower_upper')
+    lower_upper = _convert_with_float32_hint(lower_upper, name='lower_upper')
     perm = ops.convert_to_tensor(perm, dtype_hint=dtypes.int32, name='perm')
     rhs = ops.convert_to_tensor(rhs, dtype_hint=lower_upper.dtype, name='rhs')
 
@@ -1120,8 +1153,7 @@ def lu_matrix_inverse(lower_upper, perm, validate_args=False, name=None):
   """
 
   with ops.name_scope(name or 'lu_matrix_inverse'):
-    lower_upper = ops.convert_to_tensor(
-        lower_upper, dtype_hint=dtypes.float32, name='lower_upper')
+    lower_upper = _convert_with_float32_hint(lower_upper, name='lower_upper')
     perm = ops.convert_to_tensor(perm, dtype_hint=dtypes.int32, name='perm')
     assertions = lu_reconstruct_assertions(lower_upper, perm, validate_args)
     if assertions:
@@ -1172,8 +1204,7 @@ def lu_reconstruct(lower_upper, perm, validate_args=False, name=None):
 
   """
   with ops.name_scope(name or 'lu_reconstruct'):
-    lower_upper = ops.convert_to_tensor(
-        lower_upper, dtype_hint=dtypes.float32, name='lower_upper')
+    lower_upper = _convert_with_float32_hint(lower_upper, name='lower_upper')
     perm = ops.convert_to_tensor(perm, dtype_hint=dtypes.int32, name='perm')
 
     assertions = lu_reconstruct_assertions(lower_upper, perm, validate_args)

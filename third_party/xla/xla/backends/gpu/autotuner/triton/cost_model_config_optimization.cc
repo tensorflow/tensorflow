@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tools/hlo_decomposer.h"
@@ -105,12 +104,12 @@ absl::StatusOr<absl::Duration> EstimateRunTimeWithConfig(
 absl::StatusOr<OrderedEstimatesAndConfigs> EstimateConfigs(
     const EstimationContext& context,
     absl::Span<const TritonGemmConfig> configs, mlir::MLIRContext* mlir_context,
-    bool use_experimental_tiling, bool enable_same_shape_multi_output_fusion) {
+    bool enable_same_shape_multi_output_fusion) {
   HloFusionAnalysisCache fusion_analysis_cache{context.device_description};
   GpuPerformanceModelWithIndexingAnalysis cost_model{
-      &context.device_description,       &fusion_analysis_cache,
+      &context.device_description, &fusion_analysis_cache,
       HloCostAnalysis::DefaultShapeSize, mlir_context,
-      use_experimental_tiling,           enable_same_shape_multi_output_fusion};
+      enable_same_shape_multi_output_fusion};
 
   OrderedEstimatesAndConfigs estimates_and_confs;
   for (const TritonGemmConfig& config : configs) {
@@ -347,7 +346,6 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   namespace detail = cost_model_config_optimization_detail;
 
-  const bool use_experimental_tiling = true;
   const bool enable_same_shape_multi_output_fusion =
       debug_options
           .xla_gpu_experimental_enable_same_shape_multi_output_fusion();
@@ -370,9 +368,9 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
   auto get_estimated_all_configs =
       [&]() -> const absl::StatusOr<detail::OrderedEstimatesAndConfigs>& {
     if (!estimated_all_configs.has_value()) {
-      estimated_all_configs = detail::EstimateConfigs(
-          context, all_configs, mlir_context, use_experimental_tiling,
-          enable_same_shape_multi_output_fusion);
+      estimated_all_configs =
+          detail::EstimateConfigs(context, all_configs, mlir_context,
+                                  enable_same_shape_multi_output_fusion);
     }
     return *estimated_all_configs;
   };
@@ -391,7 +389,6 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
         detail::OrderedEstimatesAndConfigs base_config_set,
         options.top_from_default
             ? EstimateConfigs(context, optimized_configs, mlir_context,
-                              use_experimental_tiling,
                               enable_same_shape_multi_output_fusion)
             : get_estimated_all_configs());
 
@@ -407,7 +404,6 @@ absl::StatusOr<std::vector<TritonGemmConfig>> OptimizeConfigsWithCostModel(
     VLOG(1) << "Cost Model: Using default set";
     ABSL_ASSIGN_OR_RETURN(detail::OrderedEstimatesAndConfigs base_config_set,
                      EstimateConfigs(context, optimized_configs, mlir_context,
-                                     use_experimental_tiling,
                                      enable_same_shape_multi_output_fusion));
     current_set = std::move(base_config_set);
   }
@@ -467,7 +463,6 @@ EstimateConfigsWithCostModel(const HloDotInstruction* dot,
       detail::OrderedEstimatesAndConfigs estimated_configs,
       detail::EstimateConfigs(
           extracted.context, configs, mlir_context,
-          /*use_experimental_tiling=*/true,
           debug_options
               .xla_gpu_experimental_enable_same_shape_multi_output_fusion()));
 

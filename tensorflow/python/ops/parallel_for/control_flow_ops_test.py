@@ -590,6 +590,18 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_roll_negative_axis(self):
+    x = random_ops.random_uniform([3, 5, 6, 7])
+
+    for axis in (-1, -2, -3, [-1, -2], [-1, 1], [0, -1, -1]):
+      shift = [2] * len(axis) if isinstance(axis, list) else 2
+
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        return manip_ops.roll(x_i, shift, axis=axis)  # pylint: disable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 3)
+
   def test_ensure_shape(self):
     x = random_ops.random_uniform([3, 6, 7])
 
@@ -616,6 +628,26 @@ class NNTest(PForTestCase):
       return manip_ops.roll(x_i, i, axis=0)
 
     self._test_loop_fn(loop_fn, 5)
+
+  def test_loop_variant_roll_shift_negative_axis(self):
+    x = random_ops.random_uniform([3, 5, 6, 7])
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return manip_ops.roll(x_i, [i - 2, -1, i], axis=[-3, -1, 2])
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_roll_negative_axis_jacobian(self):
+    # The gradient of Roll is a Roll along the same axis, which pfor converts.
+    x = constant_op.constant([1.0, 2.0, 3.0])
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = manip_ops.roll(x, 1, axis=-1) * [1.0, 10.0, 100.0]
+    self.assertAllClose(
+        [[0.0, 0.0, 1.0], [10.0, 0.0, 0.0], [0.0, 100.0, 0.0]],
+        self.evaluate(tape.jacobian(y, x)),
+    )
 
   def test_avg_pool(self):
     with backprop.GradientTape(persistent=True) as g:
@@ -1754,6 +1786,9 @@ class WhileV1Test(PForTestCase):
     self._test_loop_fn(loop_fn, 3)
 
   @test_util.run_v1_only("b/122612051")
+  @test_util.run_without_tensor_float_32(
+      "Fails on sm90 where TF32 is the default"
+  )
   def test_while_jacobian(self):
     x = random_ops.random_uniform([1, 3])
     y = random_ops.random_uniform([3, 3])

@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import shape_util
 from tensorflow.python.ops import tensor_getitem_override  # pylint: disable=unused-import
@@ -1503,7 +1504,8 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     name:  A name for this operation (optional).
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
-      axis <= N.
+      axis <= N, where a negative axis counts from the end of `tensor`, i.e. it
+      is treated as `axis + N`.
 
   Returns:
     (N-K+1)-dimensional tensor populated by entries in `tensor` corresponding
@@ -1533,6 +1535,40 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
     axis = 0 if axis is None else axis
     axis_value = tensor_util.constant_value(axis)
+    # Count a negative axis from the end of `tensor`. Used as is, it slices the
+    # wrong dimensions of the shapes, e.g. [-1:0] for axis=-1 and a 1-D mask.
+    if (
+        axis_value is not None
+        and axis_value < 0
+        and shape_tensor.ndims is not None
+    ):
+      axis_value = get_positive_axis(int(axis_value), shape_tensor.ndims)
+    elif axis_value is None or axis_value < 0:
+      # The axis or the rank is only known at runtime.
+      # Check both bounds here: an out-of-range axis can still give a valid
+      # reshape below and silently return the wrong elements.
+      axis = ops.convert_to_tensor(axis, name="axis")
+      ndims = (
+          shape_tensor.ndims
+          if shape_tensor.ndims is not None
+          else gen_math_ops.cast(rank(tensor), axis.dtype)
+      )
+      given_axis = axis
+      axis = where_v2(axis < 0, axis + ndims, axis)
+      in_range = gen_logging_ops._assert(  # pylint: disable=protected-access
+          gen_math_ops.logical_and(axis >= 0, axis + ndims_mask <= ndims),
+          [
+              "axis is out of range for the rank of tensor and mask. axis =",
+              given_axis,
+              "rank of tensor =",
+              ndims,
+              "rank of mask =",
+              ndims_mask,
+          ],
+      )
+      with ops.control_dependencies([in_range]):
+        axis = identity(axis)
+      axis_value = None
     flattened_shape = None
     if axis_value is not None:
       axis = axis_value
@@ -1611,7 +1647,8 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
       in a future release.
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
-      axis <= N.
+      axis <= N, where a negative axis counts from the end of `tensor`, i.e. it
+      is treated as `axis + N`.
     name:  A name for this operation (optional).
 
   Returns:
@@ -4005,11 +4042,11 @@ def one_hot(indices,
   `on_value` and `off_value` must have matching data types. If `dtype` is also
   provided, they must be the same data type as specified by `dtype`.
 
-  If `on_value` is not provided, it will default to the value `1` with type
-  `dtype`
+  If `on_value` is not provided, it will default to the value `1` (`True` for
+  boolean) with type `dtype`
 
-  If `off_value` is not provided, it will default to the value `0` with type
-  `dtype`
+  If `off_value` is not provided, it will default to the value `0` (`False` for
+  boolean) with type `dtype`
 
   If the input `indices` is rank `N`, the output will have rank `N+1`. The
   new axis is created at dimension `axis` (default: the new axis is appended
@@ -4043,8 +4080,9 @@ def one_hot(indices,
   `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
   value `tf.float32`.
 
-  Note: If a non-numeric data type output is desired (`tf.string`, `tf.bool`,
-  etc.), both `on_value` and `off_value` _must_ be provided to `one_hot`.
+  Note: If a non-numeric data type output other than `tf.bool` is desired
+  (e.g. `tf.string`), both `on_value` and `off_value` _must_ be provided to
+  `one_hot`.
 
   For example:
 
@@ -4087,10 +4125,10 @@ def one_hot(indices,
   Args:
     indices: A `Tensor` of indices.
     depth: A scalar defining the depth of the one hot dimension.
-    on_value: A scalar defining the value to fill in output when `indices[j]
-      = i`. (default: 1)
-    off_value: A scalar defining the value to fill in output when `indices[j]
-      != i`. (default: 0)
+    on_value: A scalar defining the value to fill in output when `indices[j] =
+      i`. (default: 1)
+    off_value: A scalar defining the value to fill in output when `indices[j] !=
+      i`. (default: 0)
     axis: The axis to fill (default: -1, a new inner-most axis).
     dtype: The data type of the output tensor.
     name: A name for the operation (optional).
@@ -4133,12 +4171,16 @@ def one_hot(indices,
       dtype = dtypes.float32
 
     if not on_exists:
-      # on_value not provided: assign to value 1 of type dtype
-      on_value = ops.convert_to_tensor(1, dtype, name="on_value")
+      # on_value not provided: assign to value 1 (True for bool) of type dtype
+      on_value = ops.convert_to_tensor(
+          True if dtype == dtypes.bool else 1, dtype, name="on_value"
+      )
       on_dtype = dtype
     if not off_exists:
-      # off_value not provided: assign to value 0 of type dtype
-      off_value = ops.convert_to_tensor(0, dtype, name="off_value")
+      # off_value not provided: assign to value 0 (False for bool) of type dtype
+      off_value = ops.convert_to_tensor(
+          False if dtype == dtypes.bool else 0, dtype, name="off_value"
+      )
       off_dtype = dtype
 
     if on_dtype != off_dtype:

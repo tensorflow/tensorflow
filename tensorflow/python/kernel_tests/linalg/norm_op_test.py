@@ -17,11 +17,14 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.platform import test as test_lib
 
 
@@ -70,6 +73,113 @@ class NormOpTest(test_lib.TestCase):
     # In-bounds negative axes still work.
     self.evaluate(linalg_ops.norm(matrix, axis=-1))
     self.evaluate(linalg_ops.norm(matrix, axis=(-2, -1)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyInputIsZero(self):
+    # reduce_max over an empty axis is -inf. A norm of an empty input should be
+    # 0, like the Euclidean, Frobenius and p-norms of an empty input. (numpy
+    # raises a ValueError for the max-based norms here.) Each case gives the
+    # expected result shape too.
+    cases = [
+        (np.zeros([0]), np.inf, None, []),
+        (np.zeros([0, 3]), 2, (0, 1), []),
+        (np.zeros([3, 0]), 2, (0, 1), []),
+        (np.zeros([0, 0]), 2, (0, 1), []),
+        (np.zeros([0, 3]), 1, (0, 1), []),
+        (np.zeros([3, 0]), 1, (0, 1), []),
+        (np.zeros([0, 0]), 1, (0, 1), []),
+        (np.zeros([0, 3]), np.inf, (0, 1), []),
+        (np.zeros([3, 0]), np.inf, (0, 1), []),
+        (np.zeros([0, 0]), np.inf, (0, 1), []),
+        (np.zeros([2, 3, 0]), 1, (1, 2), [2]),
+        (np.zeros([2, 0, 3]), np.inf, (1, 2), [2]),
+    ]
+    # The norm of a complex input is real.
+    result_dtypes = {
+        np.float32: np.float32,
+        np.float64: np.float64,
+        np.complex64: np.float32,
+        np.complex128: np.float64,
+    }
+    for dtype_, result_dtype in result_dtypes.items():
+      for value, ord_, axis_, shape in cases:
+        with self.subTest(dtype=dtype_, shape=value.shape, ord=ord_):
+          result = self.evaluate(
+              linalg_ops.norm(
+                  constant_op.constant(value, dtype=dtype_),
+                  ord=ord_,
+                  axis=axis_,
+              )
+          )
+          self.assertEqual(result.dtype, result_dtype)
+          self.assertAllEqual(result, np.zeros(shape))
+
+      result = self.evaluate(
+          linalg_ops.norm(
+              constant_op.constant(np.zeros([0, 3]), dtype=dtype_),
+              ord=np.inf,
+              axis=(0, 1),
+              keepdims=True,
+          )
+      )
+      self.assertAllEqual(result, np.zeros([1, 1]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16LargeValuesDoNotOverflow(self):
+    vec = np.array([300.0, 400.0, 100.0], dtype=np.float16)
+    for ord_, np_ord in ("euclidean", None), (1, 1), (3, 3), (np.inf, np.inf):
+      with self.subTest(ord=ord_):
+        result = self.evaluate(
+            linalg_ops.norm(constant_op.constant(vec), ord=ord_)
+        )
+        self.assertEqual(result.dtype, np.float16)
+        expected = np.linalg.norm(vec.astype(np.float32), ord=np_ord)
+        self.assertAllClose(result, expected, rtol=1e-3)
+
+    mat = np.array([[300.0, 400.0], [100.0, 200.0]], dtype=np.float16)
+    for ord_ in "fro", 1, 2, np.inf:
+      with self.subTest(ord=ord_, matrix=True):
+        result = self.evaluate(
+            linalg_ops.norm(constant_op.constant(mat), ord=ord_, axis=(0, 1))
+        )
+        self.assertEqual(result.dtype, np.float16)
+        expected = np.linalg.norm(mat.astype(np.float32), ord=ord_)
+        self.assertAllClose(result, expected, rtol=1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16LargeValuesKeepdims(self):
+    mat = np.array([[300.0, 400.0], [100.0, 200.0]], dtype=np.float16)
+    result = self.evaluate(
+        linalg_ops.norm(constant_op.constant(mat), axis=1, keepdims=True)
+    )
+    self.assertEqual(result.dtype, np.float16)
+    self.assertEqual(result.shape, (2, 1))
+    expected = np.linalg.norm(mat.astype(np.float32), axis=1, keepdims=True)
+    self.assertAllClose(result, expected, rtol=1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16LargeValuesGradient(self):
+    vec = np.array([300.0, 400.0, 100.0], dtype=np.float16)
+    t = constant_op.constant(vec, dtype=dtypes.float16)
+    with backprop.GradientTape() as tape:
+      tape.watch(t)
+      norm = linalg_ops.norm(t)
+    grad = self.evaluate(tape.gradient(norm, t))
+    self.assertEqual(grad.dtype, np.float16)
+    v32 = vec.astype(np.float32)
+    self.assertAllClose(grad, v32 / np.linalg.norm(v32), rtol=1e-2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFloat16LargeValuesNormalize(self):
+    vec = np.array([300.0, 400.0, 100.0], dtype=np.float16)
+    normalized, norm = nn_impl.normalize(constant_op.constant(vec))
+    normalized, norm = self.evaluate([normalized, norm])
+    self.assertEqual(normalized.dtype, np.float16)
+    expected_norm = np.linalg.norm(vec.astype(np.float32), keepdims=True)
+    self.assertAllClose(norm, expected_norm, rtol=1e-3)
+    self.assertAllClose(
+        normalized, vec.astype(np.float32) / expected_norm, rtol=2e-3
+    )
 
 
 class MatrixNormXlaTest(test_lib.TestCase, parameterized.TestCase):

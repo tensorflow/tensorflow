@@ -288,15 +288,19 @@ xla_test(
     ],
     deps = [
         ":cuda_test",
+        ":cupti_buffer_events",
         ":cupti_collector",
         ":cupti_error_manager",
         ":cupti_interface",
         ":cupti_tracer",
         ":cupti_wrapper",
         ":mock_cupti",
+        "//xla/stream_executor/cuda:cuda_graph_annotation_registry",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
@@ -347,6 +351,7 @@ cc_library(
         ":cupti_marker_data_parser",
         ":cupti_pm_sampler_factory",
         ":cupti_utils",
+        "//xla/stream_executor/cuda:cuda_graph_annotation_registry",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -539,6 +544,16 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "rocm_tracer_utils_test",
+    size = "small",
+    srcs = ["rocm_tracer_utils_test.cc"],
+    deps = [
+        ":rocm_tracer_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "rocm_collector",
     srcs = ["rocm_collector.cc"],
@@ -599,7 +614,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocprofiler_sdk",  # buildcleaner: keep
@@ -617,12 +631,15 @@ xla_test(
         ":rocm_collector",
         ":rocm_tracer",
         ":rocm_tracer_utils",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env_time",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_config_rocm//rocm:hip",  # buildcleaner: keep
@@ -724,6 +741,7 @@ cc_library(
         ":cupti_interface",
         ":cupti_pm_sampler_utils",
         ":cupti_utils",
+        "//xla/stream_executor/cuda:cuda_graph_annotation_registry",
         "//xla/tsl/cuda",
         "//xla/tsl/cuda:cupti",
         "//xla/tsl/platform:env",
@@ -735,6 +753,7 @@ cc_library(
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -889,7 +908,10 @@ cc_library(
 
 xla_cc_test(
     name = "cupti_buffer_events_test",
-    srcs = ["cupti_buffer_events_test.cc"],
+    srcs = ["cupti_buffer_events_test.cc"] + if_cuda_newer_than(
+        "13_4",
+        ["cupti_buffer_events_cuda_13040_test.cc"],
+    ),
     tags = [
         "cuda-only",
         "gpu",
@@ -900,6 +922,7 @@ xla_cc_test(
         ":cupti_buffer_events",
         ":cupti_collector",  # buildcleaner: keep
         ":cupti_utils",
+        ":mock_cupti",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cupti_headers",
@@ -919,6 +942,7 @@ xla_cc_test(
         ":cupti_buffer_events",
         ":cupti_collector",
         ":cupti_utils",
+        "//xla/stream_executor/cuda:cuda_graph_annotation_registry",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",

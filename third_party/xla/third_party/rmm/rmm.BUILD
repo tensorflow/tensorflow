@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 licenses(["notice"])  # Apache 2.0
 

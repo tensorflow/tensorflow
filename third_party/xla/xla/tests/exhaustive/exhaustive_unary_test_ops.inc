@@ -228,9 +228,21 @@ DEFINE_UNARY_TEST_OP(
     AtanhOp, { return [](XlaOp x) { return Atanh(x); }; },
     { return std::atanh; });
 DEFINE_UNARY_TEST_OP(
-    AcosOp, { return [](XlaOp x) { return Acos(x); }; }, { return std::acos; });
+    AcosOp, { return [](XlaOp x) { return Acos(x); }; },
+    {
+      return +[](typename Traits::NativeRefT x) {
+        return static_cast<typename Traits::NativeRefT>(
+            std::acos(static_cast<double>(x)));
+      };
+    });
 DEFINE_UNARY_TEST_OP(
-    AsinOp, { return [](XlaOp x) { return Asin(x); }; }, { return std::asin; });
+    AsinOp, { return [](XlaOp x) { return Asin(x); }; },
+    {
+      return +[](typename Traits::NativeRefT x) {
+        return static_cast<typename Traits::NativeRefT>(
+            std::asin(static_cast<double>(x)));
+      };
+    });
 DEFINE_UNARY_TEST_OP(AtanOp, { return Atan; }, { return std::atan; });
 DEFINE_UNARY_TEST_OP(
     CoshOp, { return [](XlaOp x) { return Cosh(x); }; }, { return std::cosh; });

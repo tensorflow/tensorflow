@@ -78,7 +78,11 @@ class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
  public:
   EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */,
                                           Update update, Output output) {
-    output.device(device) -= update;
+    if constexpr (std::is_same_v<typename Output::Scalar, bool>) {
+      output.device(device) = output != update;
+    } else {
+      output.device(device) -= update;
+    }
   }
 };
 
@@ -132,6 +136,7 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
     // flat index that fits in int64, so the inner loop does not repeat those
     // overflow checks. An out-of-range coordinate is not multiplied: it can be
     // large enough that ix_d * stride overflows signed int64.
+    const bool is_scalar_update = Tupdates.size() == 1;
     if (slice_size == 1) {
       T* out_data = Toutput.data();
       const T* update_data = Tupdates.data();
@@ -151,29 +156,30 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
           error_loc = loc;
           continue;
         }
+        const T& update_val = update_data[is_scalar_update ? 0 : loc];
         if constexpr (OP == scatter_nd_op::UpdateOp::ASSIGN) {
-          out_data[i] = update_data[loc];
+          out_data[i] = update_val;
         } else if constexpr (OP == scatter_nd_op::UpdateOp::ADD) {
           if constexpr (std::is_same_v<T, tstring>) {
-            out_data[i].append(update_data[loc]);
+            out_data[i].append(update_val);
           } else if constexpr (std::is_same_v<T, bool>) {
-            out_data[i] |= update_data[loc];
+            out_data[i] |= update_val;
           } else {
-            out_data[i] += update_data[loc];
+            out_data[i] += update_val;
           }
         } else if constexpr (OP == scatter_nd_op::UpdateOp::SUB) {
           if constexpr (std::is_same_v<T, bool>) {
-            out_data[i] ^= update_data[loc];
+            out_data[i] ^= update_val;
           } else if constexpr (!std::is_same_v<T, tstring>) {
-            out_data[i] -= update_data[loc];
+            out_data[i] -= update_val;
           }
         } else if constexpr (OP == scatter_nd_op::UpdateOp::MIN) {
           if constexpr (!std::is_same_v<T, tstring>) {
-            out_data[i] = std::min(out_data[i], update_data[loc]);
+            out_data[i] = std::min(out_data[i], update_val);
           }
         } else if constexpr (OP == scatter_nd_op::UpdateOp::MAX) {
           if constexpr (!std::is_same_v<T, tstring>) {
-            out_data[i] = std::max(out_data[i], update_data[loc]);
+            out_data[i] = std::max(out_data[i], update_val);
           }
         }
       }
@@ -199,11 +205,19 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
         auto input_chip =
             Toutput.template chip<0>(static_cast<Eigen::DenseIndex>(i));
         auto output_chip = input_chip;
-        auto update_chip = Tupdates.template chip<0>(loc);
-        update_executor::UpdateExecutor<
-            CPUDevice, decltype(input_chip), decltype(update_chip),
-            decltype(output_chip), OP>::Execute(d, input_chip, update_chip,
-                                                output_chip);
+        if (is_scalar_update) {
+          auto update_chip = input_chip.constant(Tupdates(0, 0));
+          update_executor::UpdateExecutor<
+              CPUDevice, decltype(input_chip), decltype(update_chip),
+              decltype(output_chip), OP>::Execute(d, input_chip, update_chip,
+                                                  output_chip);
+        } else {
+          auto update_chip = Tupdates.template chip<0>(loc);
+          update_executor::UpdateExecutor<
+              CPUDevice, decltype(input_chip), decltype(update_chip),
+              decltype(output_chip), OP>::Execute(d, input_chip, update_chip,
+                                                  output_chip);
+        }
       }
     }
 

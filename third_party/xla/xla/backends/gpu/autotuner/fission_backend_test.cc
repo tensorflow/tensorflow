@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
@@ -333,6 +334,7 @@ TEST_P(FissionTest, CanCreateFissionBackend) {
     expected_name = "HIPBLASLT_FISSION";
   }
   EXPECT_EQ(fission_backend_->name(), expected_name);
+  EXPECT_FALSE(fission_backend_->CanProduceWrongResults());
 }
 
 TEST_P(FissionTest, GetSupportedConfigs) {
@@ -578,6 +580,38 @@ TEST_F(CublasFissionBackendTest, ApplyConfigReplacesFusionWithControlDeps) {
   EXPECT_THAT(module->ToString(), testing::Not(HasSubstr("__triton_gemm")));
 }
 
+// The scales of a cuDNN scaled dot fusion are pre-swizzled, so decomposing it
+// would be wrong.
+TEST_F(CublasFissionBackendTest, ScaledDotCudnnFusionIsNotSupported) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+  c {
+    lhs = f8e4m3fn[256,128] parameter(0)
+    rhs = f8e4m3fn[384,128] parameter(1)
+    lhs_scale = f8e8m0fnu[256,4] parameter(2)
+    rhs_scale = f8e8m0fnu[384,4] parameter(3)
+    ROOT dot = f32[256,384] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  }
+
+  main {
+    lhs = f8e4m3fn[256,128] parameter(0)
+    rhs = f8e4m3fn[384,128] parameter(1)
+    lhs_scale = f8e8m0fnu[256,4] parameter(2)
+    rhs_scale = f8e8m0fnu[384,4] parameter(3)
+    ROOT f = f32[256,384] fusion(lhs, rhs, lhs_scale, rhs_scale),
+      kind=kCustom, calls=c,
+      backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
+  })"));
+  HloInstruction& fusion = *module->entry_computation()->root_instruction();
+  EXPECT_FALSE(fission_backend_->IsSupported(fusion));
+  EXPECT_THAT(fission_backend_->GetSupportedConfigs(fusion),
+              IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(fission_backend_->ApplyConfig(fusion, BackendConfig{}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("does not support")));
+}
+
 TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kTritonFusionHlo));
@@ -588,6 +622,76 @@ TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {
   ASSERT_THAT(configs, Not(IsEmpty()));
   EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *configs[0]), IsOk());
   EXPECT_EQ(module->computation_count(), 1);
+}
+
+// A Triton GEMM fusion whose FP8 dequantization was normalized to f32 (as
+// FloatNormalization does for a bf16 multiply on platforms without bf16
+// arithmetic) must still be rewritten into an FP8 GEMM by the fission backend.
+TEST_F(CublasFissionBackendTest, ApplyConfigRewritesNormalizedBf16DequantToF8) {
+  const auto& comp = device_description_.gpu_compute_capability();
+  absl::string_view fp8_type;
+  if (comp.IsRocm()) {
+    const auto& rocm = *comp.rocm_compute_capability();
+    if (rocm.has_nanoo_fp8_support()) {
+      fp8_type = "f8e4m3fnuz";
+    } else if (rocm.has_ocp_fp8_support()) {
+      fp8_type = "f8e4m3fn";
+    }
+  } else if (comp.cuda_compute_capability()->IsAtLeastAda()) {
+    fp8_type = "f8e4m3fn";
+  }
+  if (fp8_type.empty()) {
+    GTEST_SKIP() << "Requires FP8 support.";
+  }
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::Substitute(R"(
+  gemm_fusion {
+    x = $0[256,256] parameter(0)
+    y = $0[256,256] parameter(1)
+    x_scale = bf16[] parameter(2)
+    y_scale = bf16[] parameter(3)
+    x_f32 = f32[256,256] convert(x)
+    y_f32 = f32[256,256] convert(y)
+    x_scale_bcast = bf16[256,256] broadcast(x_scale), dimensions={}
+    y_scale_bcast = bf16[256,256] broadcast(y_scale), dimensions={}
+    x_scale_f32 = f32[256,256] convert(x_scale_bcast)
+    y_scale_f32 = f32[256,256] convert(y_scale_bcast)
+    x_dq = f32[256,256] multiply(x_f32, x_scale_f32)
+    y_dq = f32[256,256] multiply(y_f32, y_scale_f32)
+    x_bf16 = bf16[256,256] convert(x_dq)
+    y_bf16 = bf16[256,256] convert(y_dq)
+    ROOT dot = bf16[256,256] dot(x_bf16, y_bf16),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    x = $0[256,256] parameter(0)
+    y = $0[256,256] parameter(1)
+    x_scale = bf16[] parameter(2)
+    y_scale = bf16[] parameter(3)
+    ROOT fusion = bf16[256,256] fusion(x, y, x_scale, y_scale),
+      kind=kCustom, calls=gemm_fusion,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })",
+                                                    fp8_type)));
+  HloInstruction& fusion = *module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       fission_backend_->GetSupportedConfigs(fusion));
+  ASSERT_THAT(configs, Not(IsEmpty()));
+  EXPECT_OK(fission_backend_->ApplyConfig(fusion, *configs[0]));
+  // The rewritten call takes the fusion's scales, not unit scales.
+  const HloInstruction* f8_gemm = nullptr;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->IsCustomCall("__cublas$lt$matmul$f8")) {
+      f8_gemm = instr;
+    }
+  }
+  ASSERT_NE(f8_gemm, nullptr) << module->ToString();
+  ASSERT_GE(f8_gemm->operand_count(), 4);
+  EXPECT_NE(f8_gemm->operand(2)->opcode(), HloOpcode::kConstant);
+  EXPECT_NE(f8_gemm->operand(3)->opcode(), HloOpcode::kConstant);
 }
 
 TEST_F(CublasFissionBackendTest, CublasFallbackForTf32Tf32F32X3Algorithm) {

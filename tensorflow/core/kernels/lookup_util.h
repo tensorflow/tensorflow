@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_LOOKUP_UTIL_H_
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
@@ -58,7 +62,7 @@ absl::Status CheckTableDataTypes(const LookupInterface& table,
 // Initializes `table` from `filename`.
 absl::Status InitializeTableFromTextFile(const std::string& filename,
                                          int64_t vocab_size, char delimiter,
-                                         int32_t key_index, int32_t value_index,
+                                         int64_t key_index, int64_t value_index,
                                          int64_t offset, Env* env,
                                          InitializableLookupTable* table);
 
@@ -66,7 +70,7 @@ absl::Status InitializeTableFromTextFile(const std::string& filename,
 // initializer as a graphdef, so that the table can be serialized as metadata.
 absl::Status InitializeTableFromTextFile(
     const std::string& filename, int64_t vocab_size, char delimiter,
-    int32_t key_index, int32_t value_index, int64_t offset, Env* env,
+    int64_t key_index, int64_t value_index, int64_t offset, Env* env,
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table);
 

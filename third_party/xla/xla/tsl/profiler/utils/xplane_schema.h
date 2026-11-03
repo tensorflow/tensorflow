@@ -83,6 +83,7 @@ TF_CONST_INIT extern const absl::string_view kSparseCoreModuleLineName;
 TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
+TF_CONST_INIT extern const absl::string_view kCommandBufferLineName;
 TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
 TF_CONST_INIT extern const absl::string_view kHostOffloadOpLineName;
 TF_CONST_INIT extern const absl::string_view kTensorCoreSyncFlagLineName;
@@ -94,11 +95,6 @@ TF_CONST_INIT extern const absl::string_view kDeviceVendorAMD;
 
 // Name of Xplane that contains environment information
 TF_CONST_INIT extern const absl::string_view kTaskEnvPlaneName;
-
-// Max collectives to display per TPU.
-// Since in most cases there will be more than 9 collectives, the last line
-// contains all collectives that did not qualify to get their own line.
-static constexpr uint32_t kMaxCollectivesToDisplay = 9;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -414,11 +410,15 @@ enum StatType {
   kDevCapPeakSpmemWrBwGigabytesPerSecond,
   kDevCapPeakScTeraflopsPerSecond,
   kDevCapNumSparseCoreTiles,
+  // Estimated cost of a custom call (e.g. a Pallas kernel), derived from
+  // low-level (LLO) instruction tracing
+  kEstimatedFlops,
+  kEstimatedBytesAccessed,
   // LINT.ThenChange(:last_stat_type)
 
   // LINT.IfChange(last_stat_type)
   // Change this to point to the last stat type when adding a new one.
-  kLastStatType = kDevCapNumSparseCoreTiles,
+  kLastStatType = kEstimatedBytesAccessed,
   // LINT.ThenChange(:stat_type_enum)
 };
 
@@ -459,20 +459,6 @@ enum TaskEnvStatType {
   kEnvProfileStopTime,
   kEnvProfileOptions,
   kLastTaskEnvStatType = kEnvProfileOptions,
-};
-
-static constexpr uint32_t kLineIdOffset = 10000;
-
-enum LineIdType {
-  kFirstLineIdType = kLineIdOffset,
-  kUnknownLineIdType = kFirstLineIdType,
-  // DCN Traffic
-  kDcnHostTraffic,
-  kDcnCollectiveTraffic,
-  // kDcnCollectiveTrafficMax reserves id's from kDcnCollectiveTraffic to
-  // (kDcnCollectiveTraffic + kMaxCollectivesToDisplay) for DcnCollective lines.
-  kDcnCollectiveTrafficMax = kDcnCollectiveTraffic + kMaxCollectivesToDisplay,
-  kLastLineIdType = kDcnCollectiveTrafficMax,
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {

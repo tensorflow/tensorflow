@@ -1,5 +1,10 @@
 # PJRT C API changelog
 
+## 0.117
+
+*   Added `device_layout` to `PJRT_Client_CreateErrorBuffer_Args` and deprecated
+    `shape_layout`.
+
 ## 0.116
 
 *   Added `custom_options` and `num_custom_options` fields to

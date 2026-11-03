@@ -1012,6 +1012,7 @@ cc_library(
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -1285,7 +1286,10 @@ tf_cc_test(
     name = "framework_run_handler_test",
     size = "medium",
     srcs = ["run_handler_test.cc"],
-    shard_count = 4,
+    # One test per shard: the tests setenv() TF_RUN_HANDLER_* flags that
+    # run_handler.cc latches in process-wide statics, so tests sharing a
+    # process interfere. Keep this equal to the number of test cases.
+    shard_count = 11,
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session_internal",

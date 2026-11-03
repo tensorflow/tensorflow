@@ -189,27 +189,27 @@ class HloOpcode(enum.Enum):
 
   kDivide = 51
 
-  kDomain = 52
+  kDot = 52
 
-  kDot = 53
+  kDynamicReshape = 53
 
-  kDynamicReshape = 54
+  kDynamicSlice = 54
 
-  kDynamicSlice = 55
+  kDynamicUpdateSlice = 55
 
-  kDynamicUpdateSlice = 56
+  kErf = 56
 
-  kErf = 57
+  kExp = 57
 
-  kExp = 58
+  kExp2 = 58
 
-  kExp2 = 59
+  kExpm1 = 59
 
-  kExpm1 = 60
+  kFft = 60
 
-  kFft = 61
+  kFloor = 61
 
-  kFloor = 62
+  kFma = 62
 
   kFusion = 63
 
@@ -581,6 +581,7 @@ class HloComputation:
   @property
   def name(self) -> str: ...
   def render_html(self, arg: str, /) -> None: ...
+  def root_instruction(self) -> HloInstruction: ...
   def instructions(self) -> list[HloInstruction]: ...
   def replace_instruction(
       self, arg0: HloInstruction, arg1: HloInstruction, /

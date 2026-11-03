@@ -100,6 +100,12 @@ mlir::Value ExpandAndBroadcastValue(mlir::ImplicitLocOpBuilder& builder,
 // This assumes that 'value' is a constant or an apply indexing op.
 bool IsGuaranteedDivisible(mlir::Value value, int64_t divisor);
 
+// Returns true if every element `offset + i * tile_stride`, i in
+// [0, tile_size), is guaranteed to lie in [0, original_shape). Returns false if
+// `offset` is not a constant or an apply indexing op.
+bool IsGuaranteedInBounds(mlir::Value offset, int64_t tile_size,
+                          int64_t tile_stride, int64_t original_shape);
+
 // Creates a tensor of pointers and a tensor of masks for loading and
 // storing tiles. Reduced dimensions are the dimensions that are reduced by
 // the tile.

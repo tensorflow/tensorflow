@@ -80,7 +80,9 @@ const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(
                 {TritonConfigsPlatform::kMI300,
                  ParseConfig(GetDefaultConfigStr("mi300.txtpb"))},
                 {TritonConfigsPlatform::kMI350,
-                 ParseConfig(GetDefaultConfigStr("mi350.txtpb"))}});
+                 ParseConfig(GetDefaultConfigStr("mi350.txtpb"))},
+                {TritonConfigsPlatform::kRubin,
+                 ParseConfig(GetDefaultConfigStr("vr200.txtpb"))}});
   return kConfigs->at(platform);
 }
 
@@ -102,6 +104,11 @@ const std::vector<TritonGemmConfig>& GetDefaultTritonConfigs(
   const stream_executor::CudaComputeCapability* cuda_compute_capability =
       compute_capability.cuda_compute_capability();
 
+  if (cuda_compute_capability->IsBlackwell() &&
+      cuda_compute_capability->minor >= 7) {
+    // SM 10.7 (datacenter: VR200 / Vera Rubin)
+    return GetTritonConfigsForPlatform(TritonConfigsPlatform::kRubin);
+  }
   if (cuda_compute_capability->IsBlackwell()) {
     // SM 10.0 (datacenter: B200, B100)
     return GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell);

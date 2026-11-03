@@ -850,6 +850,74 @@ TEST_F(OriginalTensorSummaryComparatorWithHloTest, CreateComparator) {
   EXPECT_EQ(processing_metrics.compared_pairs_count, 1);
 }
 
+TEST_F(OriginalTensorSummaryComparatorWithHloTest,
+       InstructionsWithSwappedUsesAreCompared) {
+  // sine and cosine are swapped in the subtract, so HLO diff may report them
+  // as moved rather than unchanged. They must still be compared.
+  static constexpr absl::string_view kBaselineHlo = R"(
+HloModule ModuleA
+ENTRY main {
+  param0 = f32[2,2] parameter(0)
+  sine = f32[2,2] sine(param0)
+  cosine = f32[2,2] cosine(param0)
+  ROOT subtract = f32[2,2] subtract(sine, cosine)
+}
+)";
+  static constexpr absl::string_view kTargetHlo = R"(
+HloModule ModuleA
+ENTRY main {
+  param0 = f32[2,2] parameter(0)
+  sine = f32[2,2] sine(param0)
+  cosine = f32[2,2] cosine(param0)
+  ROOT subtract = f32[2,2] subtract(cosine, sine)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_baseline,
+                       ParseAndReturnVerifiedModule(kBaselineHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_target,
+                       ParseAndReturnVerifiedModule(kTargetHlo));
+  AbsoluteScopedTensorKey sine =
+      AbsoluteScopedTensorKey::Create(TensorKey::Create("sine"));
+  ASSERT_OK(WriteSummaries(baseline_file_, {CreateSummaryProto(sine, {2, 2})}));
+  ASSERT_OK(WriteSummaries(target_file_, {CreateSummaryProto(sine, {2, 2})}));
+
+  MockFunction<absl::Status(
+      std::shared_ptr<const TensorTransformation> pending_transformation,
+      AbsoluteScopedTensorKey baseline_tensor_key,
+      OriginalTensorSummary const* baseline_tensor_summary,
+      AbsoluteScopedTensorKey target_tensor_key,
+      OriginalTensorSummary const* target_tensor_summary)>
+      mock_callback;
+  ASSERT_OK_AND_ASSIGN(
+      auto comparator_and_metrics,
+      OriginalTensorSummaryComparator::Create(
+          module_baseline.get(), module_target.get(), baseline_file_,
+          target_file_, mock_callback.AsStdFunction()));
+  auto& [comparator, creation_metrics, diff_results] = comparator_and_metrics;
+  EXPECT_EQ(creation_metrics.unchanged_tensor_pair_count, 4);
+  EXPECT_EQ(creation_metrics.changed_tensor_pair_count, 0);
+
+  OriginalTensorSummary summary{
+      /*dimensions=*/{2, 2},
+      /*summaries=*/{FloatSummary{/*block_summaries=*/{{/*block_indices=*/{},
+                                                        /*min=*/0,
+                                                        /*max=*/1,
+                                                        /*mean=*/0.5,
+                                                        /*stddev=*/0.5,
+                                                        /*count=*/4}},
+                                  /*split_spec=*/{}}}};
+  EXPECT_OK(comparator->ProcessOriginalTensorSummary(
+      ComparisonVariant::kBaseline, sine,
+      /*pending_transformation=*/nullptr, summary));
+  EXPECT_CALL(mock_callback, Call(_, Eq(sine), _, Eq(sine), _)).WillOnce([] {
+    return absl::OkStatus();
+  });
+  EXPECT_OK(comparator->ProcessOriginalTensorSummary(
+      ComparisonVariant::kTarget, sine,
+      /*pending_transformation=*/nullptr, summary));
+  EXPECT_EQ(comparator->GetProcessingMetrics().compared_pairs_count, 1);
+}
+
 TEST_F(OriginalTensorSummaryComparatorWithHloTest, IgnoreDifferentShapes) {
   const std::string hlo_baseline = R"(
 HloModule m1

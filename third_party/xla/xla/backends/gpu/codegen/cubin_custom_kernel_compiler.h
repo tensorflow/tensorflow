@@ -74,9 +74,7 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
 
   xla::Future<std::unique_ptr<Thunk>> Compile(
       Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-      const std::string& sanitized_kernel_name,
-      const emitters::KernelArguments& kernel_arguments,
-      const LaunchDimensions& launch_dimensions) override;
+      const GpuKernelSpec& kernel_spec) override;
 
   xla::Future<LlvmKernelSource> CompileMlirToLlvm(
       const se::DeviceDescription& device, const HloModule& hlo_module,
@@ -100,7 +98,7 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
 
   absl::StatusOr<std::unique_ptr<Thunk>> CompileImpl(
       Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-      const std::string& sanitized_kernel_name,
+      absl::string_view sanitized_kernel_name,
       const emitters::KernelArguments& kernel_arguments,
       const LaunchDimensions& launch_dimensions);
 

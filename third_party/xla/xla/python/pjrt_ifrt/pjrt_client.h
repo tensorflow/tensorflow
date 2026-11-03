@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -72,6 +71,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+class CoordinationServiceAgent;
+class DistributedRuntimeClient;
+
 namespace ifrt {
 
 class PjRtCompatibleArray;
@@ -250,6 +253,10 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ArrayRef> arrays, absl::Span<ArrayRef> donated_dst_arrays,
+      ArrayCopySemantics semantics) override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
@@ -265,6 +272,14 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> CopyArraySlices(
+      absl::Span<const ArrayRef> arrays,
+      absl::Span<const IndexDomain> index_domains) override;
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> UpdateArraySlices(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArrayRef> slices,
+      absl::Span<const Index> origins) override;
 
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
@@ -426,6 +441,13 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       std::tuple<DType, std::vector<int64_t>, MemoryKind>,
       absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>>
       default_layout_cache_ ABSL_GUARDED_BY(default_layout_cache_mu_);
+
+  // Copies arrays from source to destination devices, optionally reusing
+  // donated destination arrays for host-local transfers.
+  absl::StatusOr<std::vector<ArrayRef>> CopyArraysImpl(
+      absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
+      std::optional<MemoryKind> memory_kind,
+      absl::Span<ArrayRef> donated_dst_arrays, ArrayCopySemantics semantics);
 
   // Copies arrays from source to destination devices when at least one of the
   // (source, destination) pairs is cross-host.

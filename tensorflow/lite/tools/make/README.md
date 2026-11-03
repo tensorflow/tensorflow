@@ -4,6 +4,6 @@
 Aug 2021.**
 
 Please use CMake or Bazel instead. Please refer to the
-[Build TensorFlow Lite with CMake](https://www.tensorflow.org/lite/guide/build_cmake)
-and [Build TensorFlow Lite for ARM boards](https://www.tensorflow.org/lite/guide/build_arm)
+[Build TensorFlow Lite with CMake](https://developers.google.com/edge/litert/build/cmake)
+and [Build TensorFlow Lite for ARM boards](https://developers.google.com/edge/litert/build/arm)
 for the details.

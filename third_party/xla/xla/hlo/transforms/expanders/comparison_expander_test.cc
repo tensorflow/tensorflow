@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"

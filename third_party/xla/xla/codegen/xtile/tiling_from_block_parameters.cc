@@ -21,19 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
-#include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -46,11 +42,10 @@ namespace xla::xtile {
 namespace {
 
 using ::xla::xtile::BlockLevelParameters;
-using DimensionSemantics =
-    ::xla::gpu::experimental::TilingSpace::DimensionSemantics;
+using DimensionSemantics = ::xla::gpu::TilingSpace::DimensionSemantics;
 
 absl::StatusOr<llvm::SmallVector<int64_t>> GetParallelTileSizes(
-    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const ::xla::gpu::TilingSpace& tiling_space,
     const BlockLevelParameters& block_level_parameters,
     bool enable_same_shape_multi_output_fusion) {
   TF_RET_CHECK(!block_level_parameters.output_tile_sizes.empty())
@@ -105,64 +100,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetParallelTileSizes(
 
 }  // namespace
 
-absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
-    const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters,
-    const Tile* dot_tiling_config_override) {
-  Tiling::TileMapping tile_mapping;
-  int64_t real_root_index = symbolic_tile_analysis.real_root_index();
-  const HloInstruction* real_root =
-      symbolic_tile_analysis.GetRoots()[real_root_index];
-
-  for (const auto& [hlo, num_tiling_parameters] :
-       symbolic_tile_analysis.GetTilingSpecification().parameter_mapping()) {
-    // TODO(b/419026602): handle reductions.
-    if (hlo->opcode() == HloOpcode::kDot ||
-        hlo->opcode() == HloOpcode::kScaledDot) {
-      if (dot_tiling_config_override) {
-        tile_mapping[hlo] =
-            FlatTiling(dot_tiling_config_override->sizes().begin(),
-                       dot_tiling_config_override->sizes().end());
-      } else {
-        if (!hlo->has_backend_config()) {
-          return absl::FailedPreconditionError(absl::StrCat(
-              "Dot instruction ", hlo->name(),
-              " does not have a backend config for tile sizes set."));
-        }
-        ABSL_ASSIGN_OR_RETURN(xla::xtile::Tile tile_config,
-                         hlo->backend_config<xla::xtile::Tile>());
-        if (tile_config.sizes().empty()) {
-          return absl::FailedPreconditionError(
-              absl::StrCat("Dot instruction ", hlo->name(),
-                           " has an empty tile config in the backend config."));
-        }
-        tile_mapping[hlo] =
-            FlatTiling(tile_config.sizes().begin(), tile_config.sizes().end());
-      }
-    }
-
-    // TODO(b/390559452): this should change for generalized multi-output
-    // fusions.
-    if (hlo == real_root) {
-      if (real_root_index >= block_level_parameters.output_tile_sizes.size()) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Output tile sizes index ", real_root_index,
-            " is out of bounds for block level fusion config: ",
-            block_level_parameters.ToBlockLevelFusionConfig().DebugString()));
-      }
-      absl::Span<const int64_t> output_tile_sizes =
-          block_level_parameters.output_tile_sizes[real_root_index];
-      tile_mapping[hlo].insert(tile_mapping[hlo].end(),
-                               output_tile_sizes.begin(),
-                               output_tile_sizes.end());
-    }
-  }
-
-  return Tiling(std::move(tile_mapping));
-}
-
 absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
-    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const ::xla::gpu::TilingSpace& tiling_space,
     const BlockLevelParameters& block_level_parameters,
     bool enable_same_shape_multi_output_fusion) {
   ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> parallel_tile_sizes,
@@ -191,7 +130,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
   tile_sizes.reserve(tiling_space.dimensions().size());
   int parallel_dim_count = 0;
   int sequential_dim_count = 0;
-  for (const xla::gpu::experimental::TilingSpace::DimensionInfo& dim :
+  for (const xla::gpu::TilingSpace::DimensionInfo& dim :
        tiling_space.dimensions()) {
     switch (dim.type) {
       case DimensionSemantics::kParallel:

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/pjrt_relocatable.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>

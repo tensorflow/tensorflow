@@ -55,6 +55,7 @@ struct TritonPipelineOptions
   Option<int> num_ctas{*this, "num-ctas", llvm::cl::init(1)};
   Option<int> num_stages{*this, "num-stages", llvm::cl::init(3)};
   Option<bool> enable_pdl{*this, "enable-pdl", llvm::cl::init(false)};
+  Option<int> mfma_size{*this, "mfma-size", llvm::cl::init(0)};
 };
 
 mlir::PassPipelineRegistration<TritonPipelineOptions>
@@ -81,7 +82,8 @@ mlir::PassPipelineRegistration<TritonPipelineOptions>
               options.enable_pdl);
 
           xla::gpu::CreateTritonPipeline(&pm, gpu_cc, options.num_warps,
-                                         options.num_ctas, options.num_stages);
+                                         options.num_ctas, options.num_stages,
+                                         options.mfma_size);
         });
 
 }  // namespace

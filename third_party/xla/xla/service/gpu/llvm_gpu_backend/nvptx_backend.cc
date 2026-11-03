@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -149,22 +150,13 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options, std::optional<int> max_ptx_isa_version) {
-  ABSL_ASSIGN_OR_RETURN(int llvm_max_ptx_version,
-                   GetMaxPtxVersionSupportedByLlvm(target_triple));
+  ABSL_ASSIGN_OR_RETURN(
+      se::SemanticVersion ptx_version,
+      GetPtxVersionForCompilation(target_triple, max_ptx_isa_version));
 
-  int highest_supported_ptx_version = llvm_max_ptx_version;
-  if (max_ptx_isa_version.has_value()) {
-    highest_supported_ptx_version =
-        std::min(*max_ptx_isa_version, llvm_max_ptx_version);
-  }
-
-  VLOG(1) << "Targeting PTX version: " << highest_supported_ptx_version;
-  std::string feature_str =
-      absl::StrFormat("+ptx%d", highest_supported_ptx_version);
-
-  const se::SemanticVersion ptx_version{
-      static_cast<unsigned>(highest_supported_ptx_version / 10),
-      static_cast<unsigned>(highest_supported_ptx_version % 10), 0};
+  VLOG(1) << "Targeting PTX version: " << ptx_version;
+  std::string feature_str = absl::StrFormat(
+      "+ptx%d%d", ptx_version.major_version(), ptx_version.minor_version());
 
   return GetTargetMachine(target_triple,
                           nvptx::GetSmName(compute_capability, ptx_version),
@@ -186,10 +178,16 @@ void NVPTXBackendInit() {
   InitializePasses(registry);
 }
 
+void InitializeNVPTXBackend() {
+  static absl::once_flag backend_init_flag;
+  absl::call_once(backend_init_flag, NVPTXBackendInit);
+}
+
 }  // namespace
 
 absl::StatusOr<int> GetMaxPtxVersionSupportedByLlvm(
     const llvm::Triple& target_triple) {
+  InitializeNVPTXBackend();
   std::string error;
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(target_triple, error);
@@ -225,6 +223,17 @@ absl::StatusOr<int> GetMaxPtxVersionSupportedByLlvm(
                     target_triple.str());
   }
   return max_ptx_version;
+}
+
+absl::StatusOr<se::SemanticVersion> GetPtxVersionForCompilation(
+    const llvm::Triple& target_triple, std::optional<int> max_ptx_isa_version) {
+  ABSL_ASSIGN_OR_RETURN(int llvm_max_ptx_version,
+                   GetMaxPtxVersionSupportedByLlvm(target_triple));
+  int ptx_version = max_ptx_isa_version.has_value()
+                        ? std::min(*max_ptx_isa_version, llvm_max_ptx_version)
+                        : llvm_max_ptx_version;
+  return se::SemanticVersion{static_cast<unsigned>(ptx_version / 10),
+                             static_cast<unsigned>(ptx_version % 10), 0};
 }
 
 std::vector<std::string> GetNVPTXBackendOptions(
@@ -425,8 +434,7 @@ absl::StatusOr<std::string> CompileToPtx(
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target,
     std::optional<int> max_ptx_isa_version) {
-  static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, NVPTXBackendInit);
+  InitializeNVPTXBackend();
   auto llvm_opts = GetNVPTXBackendOptions(debug_options);
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
 

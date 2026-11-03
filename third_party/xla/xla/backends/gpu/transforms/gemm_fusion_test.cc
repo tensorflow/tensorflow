@@ -25,12 +25,15 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/pattern_matcher.h"
@@ -48,6 +51,7 @@ using ::testing::Contains;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::FieldsAre;
+using ::testing::Not;
 using ::testing::UnorderedElementsAre;
 
 namespace m = ::xla::match;
@@ -181,6 +185,33 @@ ENTRY e {
                                    m::Bitcast(m::Parameter()))));
 }
 
+TEST_F(GemmFusionTestV2, BitcastIsNotHoistedAboveLayoutChangingCopy) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[2,3]{0,1} parameter(0)
+  p1 = f32[2,2]{1,0} parameter(1)
+  copy = f32[2,3]{1,0} copy(p0)
+  bitcast = f32[3,2]{1,0} bitcast(copy)
+  ROOT dot = f32[3,2]{1,0} dot(bitcast, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  Literal lhs = LiteralUtil::CreateR2<float>({{0, 1, 2}, {3, 4, 5}});
+  lhs = lhs.Relayout(
+      module->entry_computation()->parameter_instruction(0)->shape());
+  Literal rhs = LiteralUtil::CreateR2<float>({{1, 0}, {0, 1}});
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       HloEvaluator().Evaluate(*module, {&lhs, &rhs}));
+
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  ASSERT_OK(module->Verify());
+
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       HloEvaluator().Evaluate(*module, {&lhs, &rhs}));
+  EXPECT_EQ(expected, actual);
+}
+
 TEST_F(GemmFusionTestV2, BitcastIsHoistedAboveBroadcast) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -233,6 +264,31 @@ ENTRY e {
   ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Bitcast(m::Fusion())));
+}
+
+TEST_F(GemmFusionTestV2, BitcastDoesNotSinkPastLayoutChangingCopy) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[3,2]{1,0} parameter(0)
+  p1 = f32[2,2]{1,0} parameter(1)
+  dot = f32[3,2]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcast = f32[2,3]{1,0} bitcast(dot)
+  ROOT copy = f32[2,3]{0,1} copy(bitcast)
+})"));
+  Literal lhs = LiteralUtil::CreateR2<float>({{0, 1}, {2, 3}, {4, 5}});
+  Literal rhs = LiteralUtil::CreateR2<float>({{1, 0}, {0, 1}});
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       HloEvaluator().Evaluate(*module, {&lhs, &rhs}));
+
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  ASSERT_OK(module->Verify());
+
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       HloEvaluator().Evaluate(*module, {&lhs, &rhs}));
+  EXPECT_EQ(expected, actual);
 }
 
 TEST_F(GemmFusionTestV2, MultipleBitcastsSink) {
@@ -428,6 +484,29 @@ ENTRY e {
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Bitcast(m::Fusion(m::Bitcast(m::Parameter()),
                                       m::Parameter(), m::Parameter()))));
+}
+
+// The epilogue of `d0` absorbs `b1`, the only user of `d1`. `d1` must still be
+// fused even though the instruction through which it was reachable is removed.
+TEST_F(GemmFusionTestV2, DotWhoseUserIsFusedIntoAnotherDotEpilogueIsFused) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[32,6] parameter(0)
+  p1 = f32[32,14] parameter(1)
+  d0 = f32[6,14] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  p2 = f32[32,42] parameter(2)
+  p3 = f32[32,2] parameter(3)
+  d1 = f32[42,2] dot(p2, p3),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  b1 = f32[6,14] bitcast(d1)
+  ROOT m = f32[6,14] multiply(d0, b1)
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->instructions(),
+              Each(Not(GmockMatch(m::Dot()))));
 }
 
 TEST_F(GemmFusionTestV2, BitcastIsHoistedAboveConstants) {
@@ -709,8 +788,7 @@ ENTRY e {
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
 }
 
-// TODO(b/417172838): support dynamic slice op.
-TEST_F(GemmFusionTest, DISABLED_DynamicSliceIsFused) {
+TEST_F(GemmFusionTestV2, DynamicSliceIsFused) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -726,13 +804,34 @@ ENTRY e {
 })"));
 
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
-                                    m::Parameter(), m::Constant()))));
+  // The scalar constant offset is fused into the computation.
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter()))));
 }
 
-// TODO(b/417172838): support dynamic slice op.
-TEST_F(GemmFusionTest, DISABLED_DynamicSlicesAreFusedEvenIfTheyShareIndices) {
+TEST_F(GemmFusionTestV2, DynamicSliceOfLargeOperandIsFused) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  dot_lhs = bf16[1024,4096] parameter(0)
+  weights = bf16[32,4096,4096] parameter(1)
+  layer = s32[] parameter(2)
+  c0 = s32[] constant(0)
+  dynamic_slice = bf16[1,4096,4096] dynamic-slice(weights, layer, c0, c0),
+                  dynamic_slice_sizes={1,4096,4096}
+  reshape = bf16[4096,4096] reshape(dynamic_slice)
+  ROOT dot = bf16[1024,4096] dot(dot_lhs, reshape),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter()))));
+}
+
+TEST_F(GemmFusionTestV2, DynamicSlicesAreFusedEvenIfTheyShareIndices) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -749,19 +848,15 @@ ENTRY e {
 })"));
 
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
-  // TODO(b/339810582): Don't duplicate scalar parameters to dot fusions,
-  // because they are never tiled differently.
+  // Shared operands, including the scalar offsets, are not duplicated.
   // TODO(b/339814210): Don't count scalar parameters towards dot fusion
   // parameter limit.
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter(),
-                            m::Parameter(), m::Parameter(), m::Parameter(),
-                            m::Parameter(), m::Parameter()))));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Parameter(), m::Parameter()))));
 }
 
-// TODO(b/417172838): support dynamic slice op.
-TEST_F(GemmFusionTest, DISABLED_DoNotFuseDynamicSliceOfNonMajorFragments) {
+TEST_F(GemmFusionTestV2, DynamicSliceOfNonMajorFragmentsIsFused) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -775,13 +870,12 @@ ENTRY e {
   ROOT dot = f32[4,4]{1,0} dot(dot_lhs, reshape),
              lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })"));
-  // FusionDecision "Unsupported dynamic slice on non-major-most dimension."
-  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter()))));
 }
 
-// TODO(b/417172838): support dynamic slice op.
-TEST_F(GemmFusionTest,
-       DISABLED_CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
+TEST_F(GemmFusionTestV2, CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -795,9 +889,9 @@ ENTRY e {
            lhs_contracting_dims={0}, rhs_contracting_dims={0}
 })"));
   EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  // The scalar constant offsets are fused into the computation.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
-                                    m::Constant(), m::Constant()))));
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter()))));
 }
 
 TEST_F(GemmFusionTest, SliceToDegenerateIsSkipped) {
@@ -2073,9 +2167,9 @@ TEST_P(GemmFusionTestVersioned, ScaledDotScaleBroadcastsAreFusedOnRocm) {
   )";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  EXPECT_THAT(GemmFusion(TestGpuDeviceInfo::AMDMI350DeviceInfo())
-                  .Run(module.get()),
-              IsOkAndHolds(true));
+  EXPECT_THAT(
+      GemmFusion(TestGpuDeviceInfo::AMDMI350DeviceInfo()).Run(module.get()),
+      IsOkAndHolds(true));
   MatchHloModule(*module, R"(
     CHECK: f8e8m0fnu[3,128,4]{2,1,0} broadcast(
     CHECK: f8e8m0fnu[3,128,4]{2,1,0} broadcast(
@@ -3078,6 +3172,26 @@ ENTRY e {
               GmockMatch(m::Bitcast(m::Concatenate(
                   m::Parameter(),
                   m::Bitcast(m::Fusion(m::Parameter(), m::Parameter()))))));
+}
+
+TEST_F(GemmFusionTestV2, DoNotFuseCollective) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[8,64,128] parameter(0)
+  a2a = bf16[8,64,128] all-to-all(p0),
+    replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={0}
+  p1 = bf16[8,128,256] parameter(1)
+  ROOT dot = bf16[8,64,256] dot(a2a, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})"));
+  ASSERT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::AllToAll(m::Parameter()), m::Parameter())));
 }
 
 }  // namespace

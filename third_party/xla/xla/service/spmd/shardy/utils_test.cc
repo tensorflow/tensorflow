@@ -21,9 +21,18 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "llvm/ADT/BitVector.h"
+#include "mlir/Dialect/Func/IR/FuncDialect.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 
 namespace xla {
 namespace sdy {
+namespace {
 
 using ::absl_testing::IsOkAndHolds;
 
@@ -64,5 +73,69 @@ TEST(UtilsTest, DuplicateShardingsAtIndices) {
                            "<@mesh, [{}, {}]>, <@mesh, [{\"x\"}, {\"y\"}]>]>"));
 }
 
+TEST(UtilsTest, SetAndRemoveFrontendAttributeOnOp) {
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::sdy::SdyDialect>();
+  mlir::OpBuilder builder(&context);
+  mlir::OperationState state(builder.getUnknownLoc(), "sdy.constant");
+  state.addAttribute("value", builder.getI32IntegerAttr(42));
+  mlir::Operation* op = mlir::Operation::create(state);
+
+  EXPECT_FALSE(hasFrontendAttr(op, "foo"));
+  setFrontendAttribute(op, "foo", builder.getStringAttr("bar"));
+  EXPECT_TRUE(hasFrontendAttr(op, "foo"));
+  EXPECT_EQ(getFrontendAttrs(op).getAs<mlir::StringAttr>("foo").getValue(),
+            "bar");
+
+  // Overwrite existing attribute.
+  setFrontendAttribute(op, "foo", builder.getStringAttr("baz"));
+  EXPECT_EQ(getFrontendAttrs(op).getAs<mlir::StringAttr>("foo").getValue(),
+            "baz");
+
+  // Add another attribute.
+  setFrontendAttribute(op, "key2", builder.getStringAttr("val2"));
+  EXPECT_TRUE(hasFrontendAttr(op, "key2"));
+
+  // Remove one attribute.
+  removeFrontendAttribute(op, "foo");
+  EXPECT_FALSE(hasFrontendAttr(op, "foo"));
+  EXPECT_TRUE(hasFrontendAttr(op, "key2"));
+
+  // Remove remaining attribute; dictionary should be removed.
+  removeFrontendAttribute(op, "key2");
+  EXPECT_FALSE(hasFrontendAttr(op, "key2"));
+  EXPECT_EQ(getFrontendAttrs(op), nullptr);
+
+  // Removing a non-existent attribute is a no-op.
+  removeFrontendAttribute(op, "non_existent");
+  EXPECT_EQ(getFrontendAttrs(op), nullptr);
+
+  op->destroy();
+}
+
+TEST(UtilsTest, SetAndRemoveFrontendAttributeOnFuncArg) {
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect>();
+  mlir::OpBuilder builder(&context);
+  mlir::FunctionType funcType =
+      builder.getFunctionType({builder.getI32Type()}, {builder.getI32Type()});
+  mlir::func::FuncOp funcOp = mlir::func::FuncOp::create(
+      builder.getUnknownLoc(), "test_func", funcType);
+
+  EXPECT_EQ(getFuncArgFrontendAttrs(funcOp, 0), nullptr);
+  setFrontendAttribute(funcOp, "arg_key", builder.getStringAttr("arg_val"), 0);
+  EXPECT_NE(getFuncArgFrontendAttrs(funcOp, 0), nullptr);
+  EXPECT_EQ(getFuncArgFrontendAttrs(funcOp, 0)
+                .getAs<mlir::StringAttr>("arg_key")
+                .getValue(),
+            "arg_val");
+
+  removeFrontendAttribute(funcOp, "arg_key", 0);
+  EXPECT_EQ(getFuncArgFrontendAttrs(funcOp, 0), nullptr);
+
+  funcOp->destroy();
+}
+
+}  // namespace
 }  // namespace sdy
 }  // namespace xla

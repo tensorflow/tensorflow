@@ -1655,6 +1655,24 @@ cc_test(
 )
 
 cc_test(
+    name = "dequantize_blockwise_test",
+    size = "small",
+    srcs = ["dequantize_blockwise_test.cc"],
+    deps = [
+        ":kernel_util",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
     name = "dequantize_test",
     size = "small",
     srcs = ["dequantize_test.cc"],
@@ -3560,3 +3578,14 @@ tflite_combine_cc_tests(
 )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_tests")
+
+cc_test(
+    name = "register_ref_test",
+    srcs = ["register_ref_test.cc"],
+    deps = [
+        ":reference_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

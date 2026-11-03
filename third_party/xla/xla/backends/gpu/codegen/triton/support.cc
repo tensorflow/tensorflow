@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,8 +47,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-namespace {
 
 CodegenDecision IsTritonSupportedDataType(
     PrimitiveType type, const se::GpuComputeCapability& gpu_version) {
@@ -101,6 +101,8 @@ CodegenDecision IsTritonSupportedDataType(
   }
 }
 
+namespace {
+
 // Like `IsTritonSupportedDataType`, but also allows types that are only
 // supported by some opcodes.
 CodegenDecision IsTritonSupportedDataTypeForOpcode(
@@ -114,6 +116,7 @@ CodegenDecision IsTritonSupportedDataTypeForOpcode(
       case HloOpcode::kConcatenate:
       case HloOpcode::kConstant:
       case HloOpcode::kCopy:
+      case HloOpcode::kDynamicSlice:
       case HloOpcode::kPad:
       case HloOpcode::kParameter:
       case HloOpcode::kReshape:
@@ -340,7 +343,20 @@ absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
     return {HloOpcode::kSelect};
   }
 
-  return {HloOpcode::kSelect, HloOpcode::kClamp};
+  absl::flat_hash_set<HloOpcode> ret{HloOpcode::kSelect, HloOpcode::kClamp};
+  const auto* cuda_cc = gpu_version.cuda_compute_capability();
+  const auto* rocm_cc = gpu_version.rocm_compute_capability();
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::F64 ||
+      (element_type == PrimitiveType::F16 &&
+       (gpu_version.IsRocm() ||
+        (cuda_cc != nullptr && cuda_cc->IsAtLeast(5, 3)))) ||
+      (element_type == PrimitiveType::BF16 &&
+       ((cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) ||
+        (rocm_cc != nullptr && rocm_cc->gfx1250())))) {
+    ret.insert(HloOpcode::kFma);
+  }
+  return ret;
 }
 
 // Returns `true` if the given opcode and element type correspond to a n-ary
@@ -373,6 +389,14 @@ CodegenDecision CanTritonHandleScan(
   if (scan.inputs().size() != 1 || scan.num_carries() != 1) {
     return CodegenDecision::Forbid(
         "Only single-input, single-carry scans are supported in Triton.");
+  }
+
+  int64_t rank = scan.inputs().front()->shape().dimensions().size();
+  if (scan.scan_dimension() != rank - 1) {
+    // TODO(b/469020791): Support scans over other dimensions. The tiled Triton
+    // scan computes wrong results for them.
+    return CodegenDecision::Forbid(
+        "Only scans over the last dimension are supported in Triton.");
   }
 
   if (!IsTritonSupportedComputation(*scan.to_apply(), gpu_version)) {
@@ -420,7 +444,6 @@ CodegenDecision CanTritonHandleReduce(
         "Unsupported reduction computation by Triton.");
   }
 
-
   if (reduce.operand_count() != 2) {
     return CodegenDecision::Forbid(
         "Reduction is not a reduction of a single operand.");
@@ -430,7 +453,6 @@ CodegenDecision CanTritonHandleReduce(
     return CodegenDecision::Forbid(
         "Reduction must have at least one dimension.");
   }
-
 
   return CodegenDecision::Allow();
 }
@@ -810,25 +832,20 @@ CodegenDecision IsTritonSupportedScaledDot(
   return CodegenDecision::Allow();
 }
 
-CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
-  CHECK(hlo.opcode() == HloOpcode::kConcatenate);
-  if (hlo.shape().element_type() == S4) {
+CodegenDecision IsTritonSupportedConcatenate(
+    const HloConcatenateInstruction& concat) {
+  if (concat.shape().element_type() == S4) {
     return CodegenDecision::Forbid("S4 is not supported.");
   }
   // Triton emitter requires concatenate operands to be aligned to the tile size
   // to avoid tiles straddling operand boundaries. Since we don't know the
   // concrete tile size yet, we enforce divisibility by a minimum reasonable
-  // tile size (64).
-  // The last operand does not need to satisfy this constraint.
-  int concatenate_dimension = hlo.concatenate_dimension();
-  constexpr int kMinConcatFragmentSize = 64;
-  for (int i = 0; i < hlo.operand_count() - 1; ++i) {
-    if (hlo.operand(i)->shape().dimensions(concatenate_dimension) %
-            kMinConcatFragmentSize !=
-        0) {
-      return CodegenDecision::Forbid(
-          "Concatenate operand is not aligned for tiling.");
-    }
+  // tile size (8 for block-level fusions; GemmFusion and PriorityFusion enforce
+  // 64).
+  constexpr int64_t kMinConcatFragmentSize = 8;
+  if (!IsConcatenateAligned(concat, kMinConcatFragmentSize)) {
+    return CodegenDecision::Forbid(
+        "Concatenate operand is not aligned for tiling.");
   }
   return CodegenDecision::Allow();
 }
@@ -844,6 +861,25 @@ bool IsWithinGemmFusion(const HloInstruction& instr) {
   }
   return IsGpuFusionKind(*fusion, kTritonGemmFusionKind) ||
          IsGpuFusionKind(*fusion, kTritonNestedGemmFusionKind);
+}
+
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr) {
+  for (const HloInstruction* index_operand : instr.index_operands()) {
+    switch (index_operand->shape().element_type()) {
+      case S8:
+      case S16:
+      case S32:
+      case S64:
+        break;  // supported
+      default:
+        return CodegenDecision::Forbid(
+            "Dynamic slice is only supported with S8, S16, S32, or S64 "
+            "offsets.");
+    }
+  }
+  return CodegenDecision(instr.shape().element_type() != S4,
+                         "S4 is not supported.");
 }
 
 CodegenDecision IsTritonSupportedInstructionImpl(
@@ -898,8 +934,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         "Unsupported input data type: ", input_types_are_supported.Explain()));
   }
 
-  if (instr.opcode() == HloOpcode::kConcatenate) {
-    return IsTritonSupportedConcatenate(instr);
+  if (const auto* concat = DynCast<HloConcatenateInstruction>(&instr)) {
+    return IsTritonSupportedConcatenate(*concat);
   }
 
   // Special handling for the kPad instruction. Right now we only support "high"
@@ -960,10 +996,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kParameter:
       return CodegenDecision::Allow();
     case HloOpcode::kDynamicSlice:
-      // TODO(b/417172838): enable this once we confirm that no benchmarks were
-      // regressed.
-      return CodegenDecision::Forbid(
-          "dynamic slice is supported but not enabled yet");
+      return IsTritonSupportedDynamicSlice(
+          *Cast<HloDynamicSliceInstruction>(&instr));
     case HloOpcode::kBitcast:
       if (ShapeUtil::ElementsIn(instr.operand(0)->shape()) !=
           ShapeUtil::ElementsIn(instr.shape())) {
@@ -1001,8 +1035,9 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
                                         gpu_version);
     case HloOpcode::kAllGather:
-      return CodegenDecision(instr.shape().element_type() != S4,
-                             "S4 is not supported.");
+      return CodegenDecision(
+          !primitive_util::IsSubByteNonPredType(instr.shape().element_type()),
+          "Sub-byte types are not supported for AllGather.");
     case HloOpcode::kAllToAll:
       return IsTritonSupportedAllToAll(*Cast<HloAllToAllInstruction>(&instr));
     case HloOpcode::kReduceScatter:
@@ -1035,7 +1070,6 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kDynamicReshape:
-    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kExp2:
     case HloOpcode::kGather:
@@ -1135,6 +1169,18 @@ bool IsTritonGemm(const HloInstruction& instr) {
   }
   return absl::c_count_if(instr.fused_instructions(),
                           HloPredicateIsOp<HloOpcode::kDot>) == 1;
+}
+
+bool IsConcatenateAligned(const HloConcatenateInstruction& concat,
+                          int64_t min_fragment_size) {
+  int64_t concat_dim = concat.concatenate_dimension();
+  // The last operand does not need to satisfy the alignment constraint.
+  for (const HloInstruction* operand : llvm::drop_end(concat.operands())) {
+    if (operand->shape().dimensions(concat_dim) % min_fragment_size != 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace gpu

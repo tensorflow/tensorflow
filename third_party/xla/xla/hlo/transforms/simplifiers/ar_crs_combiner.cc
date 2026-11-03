@@ -182,8 +182,13 @@ std::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
       case HloOpcode::kAdd:
       case HloOpcode::kSubtract:
       case HloOpcode::kMultiply:
-        // Only supported for floating point operands.
-        return ShapeUtil::ElementIsFloating(instruction->shape());
+        // Only supported for floating point operands with distinct inputs.
+        // Moving the reduction past identical operands would pass the unreduced
+        // shard to both inputs: rewriting (a + b)^2 into a^2 + b^2 for
+        // multiply, or dividing both operands by the partition count for add
+        // and subtract.
+        return instruction->operand(0) != instruction->operand(1) &&
+               ShapeUtil::ElementIsFloating(instruction->shape());
       default:
         return false;
     }
@@ -266,9 +271,6 @@ std::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
   switch (instruction->opcode()) {
     case HloOpcode::kTuple: {
       return std::vector<HloInstruction*>({instruction});
-    }
-    case HloOpcode::kDomain: {
-      return GetAllTuples(instruction->operands()[0], visited);
     }
     case HloOpcode::kParameter: {
       auto maybe_while = WhileFromBodyParameter(instruction);
@@ -537,6 +539,9 @@ absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
 
 absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
     HloModule* module) {
+  if (all_reduce_map_.empty()) {
+    return absl::OkStatus();
+  }
   // For SPMD mode, use HloReplicationAnalysis to figure out HLO value
   // equivalence across partitions.
   ABSL_ASSIGN_OR_RETURN(
@@ -642,7 +647,9 @@ absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
 absl::StatusOr<bool> ArCrsCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  call_graph_ = CallGraph::Build(module);
+  if (!spmd_partition_) {
+    call_graph_ = CallGraph::Build(module);
+  }
 
   GroupAllReducesById(module);
 

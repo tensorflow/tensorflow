@@ -264,6 +264,9 @@ class AtrousConvolutionTest(test.TestCase):
     self.assertLess(err, err_tolerance)
 
   @test_util.run_v1_only("b/120545219")
+  @test_util.run_without_tensor_float_32(
+      "Fails on sm90 where TF32 is the default"
+  )
   def testGradient(self):
     with self.cached_session():
       for padding in ["SAME", "VALID"]:

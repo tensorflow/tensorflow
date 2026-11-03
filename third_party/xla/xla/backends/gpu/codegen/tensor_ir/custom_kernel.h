@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_TENSOR_IR_CUSTOM_KERNEL_H_
 #define XLA_BACKENDS_GPU_CODEGEN_TENSOR_IR_CUSTOM_KERNEL_H_
 
-#include "tensor_ir/Runtime/IRuntimeKernel.h"
+#include "tensor_ir/Artifact/TensorIRArtifact.h"
 #include "absl/status/statusor.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 
@@ -27,12 +27,8 @@ namespace xla::gpu::tensor_ir {
 // grid. Going through the generic thunk rather than a bespoke one is what lets
 // XLA serialize the kernel and record it into a command buffer, and returning a
 // `KernelReuseCache::Entry` lets identical fusions share one compiled kernel.
-//
-// `kernel` must have come from a compiler created with
-// `CompilerBackend::CudaTile`, which only ever returns a
-// `CudaTileRuntimeKernel`.
 absl::StatusOr<KernelReuseCache::Entry> MakeKernelCacheEntry(
-    const ::tensor_ir::rt::IRuntimeKernel& kernel);
+    const ::tensor_ir::rt::TensorIRArtifact& artifact);
 
 }  // namespace xla::gpu::tensor_ir
 

@@ -52,10 +52,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
-#include "xla/codegen/tiling/experimental/reshape_analysis.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/reshape_analysis.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
@@ -94,7 +94,7 @@ using ::stream_executor::GpuComputeCapability;
 
 namespace ma = ::mlir::arith;
 namespace mh = ::mlir::mhlo;
-namespace ge = ::xla::gpu::experimental;
+namespace gpu = ::xla::gpu;
 namespace mm = ::mlir::math;
 
 namespace {
@@ -114,36 +114,6 @@ Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
   clamped_index = ma::MinSIOp::create(b, clamped_index,
                                       CreateConst(b, value.getType(), upper));
   return ma::IndexCastOp::create(b, b.getIndexType(), clamped_index);
-}
-
-absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
-    mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
-    const TiledHloInstruction& tiled_hlo) {
-  ABSL_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
-                   tiled_hlo.tile_offsets_indexing());
-  const std::vector<IndexingMap::Variable>& rt_vars =
-      tile_offsets_indexing.GetRTVars();
-  CHECK_EQ(rt_vars.size(), runtime_values.size())
-      << absl::StrCat(tiled_hlo.ToString(), " has ", rt_vars.size(),
-                      " runtime variables in tile_offsets_indexing but only ",
-                      runtime_values.size(), " runtime values were provided");
-  CHECK_EQ(tile_offsets_indexing.GetRangeVars().size(), 0)
-      << "Range variables must be converted to dimensions. Instruction: "
-      << tiled_hlo.ToString();
-  // emitters::ApplyIndexing does not support symbols at the moment. As a
-  // workaround we convert them to dimensions.
-  IndexingMap dim_only_tiling =
-      tile_offsets_indexing.ConvertSymbolsToDimensions();
-  SmallVector<Value> dims;
-  dims.reserve(1 /* pid */ + runtime_values.size());
-  dims.push_back(pid);
-  for (const auto& [rt_var, value] : llvm::zip(rt_vars, runtime_values)) {
-    Value clamped_index =
-        EmitClampedIndex(b, value, rt_var.bounds.lower, rt_var.bounds.upper);
-    dims.push_back(Cast(b, clamped_index, pid.getType()));
-  }
-  return emitters::ApplyIndexing(dim_only_tiling, /*dims=*/dims,
-                                 /*symbols=*/{}, b);
 }
 
 // Emit code corresponding to a fusion instruction somehow nested within the
@@ -423,7 +393,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   // Then plug in pid, sequential and runtime values.
 
   MLIRContext* mlir_context = tiled_computation_.GetMLIRContext();
-  const ge::TilingSpace& tiling_space = tiled_computation_.tiling_space();
+  const gpu::TilingSpace& tiling_space = tiled_computation_.tiling_space();
   int64_t num_dimensions = tiling_space.num_dimensions();
   int64_t num_parallel_dimensions = tiling_space.num_parallel_dimensions();
   // Get all dimension and symbol IDs from all of the expressions.
@@ -462,14 +432,14 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
                                              default_replacement);
   for (const int64_t dim : dim_ids) {
     switch (tiling_space.dimensions()[dim].type) {
-      case ge::TilingSpace::DimensionSemantics::kParallel:
-      case ge::TilingSpace::DimensionSemantics::kReplica:
+      case gpu::TilingSpace::DimensionSemantics::kParallel:
+      case gpu::TilingSpace::DimensionSemantics::kReplica:
         dim_replacements[dim] = schedule_.GetPidExpr(dim);
         break;
-      case ge::TilingSpace::DimensionSemantics::kSequential: {
+      case gpu::TilingSpace::DimensionSemantics::kSequential: {
         dim_replacements[dim] =
             CreateSymbolExpr(symbol_count++, dim_values.size(), mlir_context);
-        auto [value, range] = GetSequentialDimValue(ge::TiledDimId(dim));
+        auto [value, range] = GetSequentialDimValue(gpu::TiledDimId(dim));
         symbol_values.push_back(value);
         symbol_variables.push_back(IndexingMap::Variable{
             range, absl::StrCat("k_", dim - num_parallel_dimensions)});
@@ -744,6 +714,21 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
           MaybeBroadcastScalarToShape(b, inputs[2], inputs[1].getType());
       return Minimum(b, {Maximum(b, {min_val, inputs[1]}), max_val});
     }
+    case HloOpcode::kFma: {
+      PrimitiveType element_type = hlo.shape().element_type();
+      if (element_type != F16 && element_type != BF16 && element_type != F32 &&
+          element_type != F64) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Unsupported element type for fma: ",
+            primitive_util::LowercasePrimitiveTypeName(element_type)));
+      }
+      Value lhs =
+          MaybeBroadcastScalarToShape(b, inputs[0], inputs[1].getType());
+      lhs = MaybeBroadcastScalarToShape(b, lhs, inputs[2].getType());
+      Value rhs = MaybeBroadcastScalarToShape(b, inputs[1], lhs.getType());
+      Value addend = MaybeBroadcastScalarToShape(b, inputs[2], lhs.getType());
+      return mlir::stablehlo::FmaOp::create(b, lhs, rhs, addend);
+    }
     case HloOpcode::kAnd:
       return mlir::stablehlo::AndOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kOr:
@@ -863,47 +848,7 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 }
 
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
-    mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
-    const TiledHloInstruction& tiled_hlo) {
-  const Shape& logical_shape = tiled_hlo.hlo()->shape();
-  auto logical_tile_strides = tiled_hlo.tile_strides();
-  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_tile_strides,
-                   GetStorageTileStrides(logical_tile_strides, logical_shape));
-  ABSL_ASSIGN_OR_RETURN(IndexingMap logical_tile_offsets_indexing,
-                   tiled_hlo.tile_offsets_indexing());
-  auto logical_tile_offsets =
-      logical_tile_offsets_indexing.GetSymbolicMap().GetResults();
-  ABSL_ASSIGN_OR_RETURN(SmallVector<Value> logical_offsets,
-                   ComputeOffsetsForTile(b, pid, runtime_values, tiled_hlo));
-  ABSL_ASSIGN_OR_RETURN(SmallVector<Value> storage_offsets,
-                   GetStorageOffsets(b, logical_shape, logical_tile_offsets,
-                                     std::move(logical_offsets)));
-
-  // Triton requires that all block dimensions are a power of 2.
-  SmallVector<int64_t> padded_logical_tile_sizes =
-      GetPaddedTileSizes(tiled_hlo.tile_sizes());
-  SmallVector<int64_t> logical_shape_dims(logical_shape.dimensions().begin(),
-                                          logical_shape.dimensions().end());
-  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> storage_shape,
-                   GetStorageShape(logical_shape_dims, logical_shape));
-  ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> padded_storage_tile_sizes,
-                   GetStorageShape(padded_logical_tile_sizes, logical_shape));
-
-  ABSL_ASSIGN_OR_RETURN(Type expected_element_type,
-                   PrimitiveTypeToMlirType(b, logical_shape.element_type()));
-  auto storage_type = StorageType(expected_element_type);
-
-  auto minor_to_major_layout =
-      llvm::to_vector(LayoutUtil::MinorToMajor(logical_shape));
-  // Replica id is only supported for ge::TiledHloInstruction.
-  return TileInfo(storage_offsets, storage_tile_strides, storage_shape,
-                  padded_storage_tile_sizes, minor_to_major_layout,
-                  storage_type,
-                  /*replica_id_offsets=*/{}, /*replica_id_bounds=*/{});
-}
-
-/*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_hlo) {
   const Shape& logical_shape = tiled_hlo.hlo()->shape();
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> logical_tile_strides,
                    tiled_hlo.tile().GetStaticTileStrides());
@@ -1232,7 +1177,7 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
   SmallVector<int64_t> padded_output_tile_sizes =
       GetPaddedTileSizes(output_tile_sizes);
   SmallVector<int64_t> dim_positions =
-      gpu::experimental::PositionsOfNonTrivialDims(output_shape.dimensions());
+      gpu::PositionsOfNonTrivialDims(output_shape.dimensions());
   // If all output dimensions are non-trivial, no broadcast expansion is needed.
   if (dim_positions.size() == padded_output_tile_sizes.size()) {
     return EmitTiledReshape(b, padded_output_tile_sizes, input);
@@ -1241,17 +1186,6 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
   reshape_tile_sizes.reserve(dim_positions.size());
   for (int64_t dim : dim_positions) {
     reshape_tile_sizes.push_back(padded_output_tile_sizes[dim]);
-  }
-  // In legacy tiling, backward propagation does not clamp trivial dimensions
-  // (size == 1). If a trivial dimension is tiled > 1 downstream (e.g. for a
-  // Dot), the input tile already contains elements along that dimension (e.g.
-  // 256 elements vs. 16 in reshape_tile_sizes). In this case, no broadcast
-  // expansion is needed; reshape directly to the full output tile.
-  //
-  // In experimental tiling, trivial dimensions are clamped to tile size 1, so
-  // Product(reshape_tile_sizes) == input.getNumElements() always holds.
-  if (Product(reshape_tile_sizes) != input.getType().getNumElements()) {
-    return EmitTiledReshape(b, padded_output_tile_sizes, input);
   }
   ABSL_ASSIGN_OR_RETURN(TensorValue re,
                    EmitTiledReshape(b, reshape_tile_sizes, input));

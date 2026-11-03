@@ -27,6 +27,8 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "grpcpp/support/sync_stream.h"
@@ -37,6 +39,7 @@
 #include "xla/python/ifrt_proxy/common/proto_util.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/version.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -146,7 +149,28 @@ namespace proxy {
 
   LOG(INFO) << "stream->Read() returned false for session " << session_id
             << "; waiting until all response callbacks are called.";
-  backend->reset();  // Blocks until all response callbacks are called.
+  {
+    // Pending requests have no deadline, so the teardown can hang forever.
+    absl::Notification teardown_done;
+    std::unique_ptr<tsl::Thread> watchdog;
+    const absl::Duration timeout = options_.session_teardown_timeout;
+    if (timeout == absl::ZeroDuration()) {
+      LOG(QFATAL) << "Exiting since IFRT session ended";
+    }
+    if (timeout != absl::InfiniteDuration()) {
+      watchdog.reset(tsl::Env::Default()->StartThread(
+          tsl::ThreadOptions(), "ifrt_session_teardown_watchdog",
+          [&teardown_done, timeout, session_id] {
+            if (!teardown_done.WaitForNotificationWithTimeout(timeout)) {
+              LOG(FATAL) << "Teardown of IFRT session " << session_id
+                         << " did not finish within " << timeout
+                         << "; crashing so that the server can be restarted.";
+            }
+          }));
+    }
+    backend->reset();  // Blocks until all response callbacks are called.
+    teardown_done.Notify();
+  }
   LOG(INFO) << "Cleaning up host buffer store for session " << session_id;
   std::move(cleanup).Invoke();
   LOG(INFO) << "Done with IFRT session " << session_id;

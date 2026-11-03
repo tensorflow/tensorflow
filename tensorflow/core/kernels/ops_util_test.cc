@@ -25,8 +25,8 @@ namespace {
 
 class OpsUtilTest : public ::testing::Test {
  protected:
-  OpsUtilTest() {}
-  ~OpsUtilTest() override {}
+  OpsUtilTest() = default;
+  ~OpsUtilTest() override = default;
 
   // Padding structure.
   struct padding_struct {

@@ -1575,6 +1575,15 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::CopyArrays(
   return result;
 }
 
+absl::StatusOr<std::vector<ifrt::ArrayRef>>
+NanoIfrtClient::CopyArraysWithDonatedDst(
+    absl::Span<ifrt::ArrayRef> arrays,
+    absl::Span<ifrt::ArrayRef> donated_dst_arrays,
+    ifrt::ArrayCopySemantics semantics) {
+  return absl::UnimplementedError(
+      "CopyArraysWithDonatedDst is not implemented.");
+}
+
 absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
     const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics semantics) {
@@ -1598,6 +1607,20 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::ReshardArrays(
     absl::Span<const xla::ifrt::ArraySpec> specs,
     xla::ifrt::ArrayCopySemantics semantics) {
   return absl::UnimplementedError("ReshardArrays is not implemented.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+NanoIfrtClient::CopyArraySlices(
+    absl::Span<const xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::IndexDomain> index_domains) {
+  return absl::UnimplementedError("CopyArraySlices is not implemented.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+NanoIfrtClient::UpdateArraySlices(absl::Span<xla::ifrt::ArrayRef> arrays,
+                                  absl::Span<const xla::ifrt::ArrayRef> slices,
+                                  absl::Span<const xla::ifrt::Index> origins) {
+  return absl::UnimplementedError("UpdateArraySlices is not implemented.");
 }
 
 tsl::Future<> NanoIfrtClient::GetReadyFuture(

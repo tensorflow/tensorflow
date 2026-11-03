@@ -138,12 +138,9 @@ cc_library(
         ],
     }),
     deps = [
-        "//xla/tsl/framework:fixedpoint_types",
         "//xla/tsl/framework/fixedpoint",
         "//xla/tsl/platform:dynamic_annotations",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
     ] + select({
         ":disable_onednn_contraction_kernel_config": [],

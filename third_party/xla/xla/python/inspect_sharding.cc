@@ -24,9 +24,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/spmd_partitioner.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace jax {
@@ -66,6 +68,30 @@ std::optional<xla::HloSharding> InspectShardingReadArgs(
 
 class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {
  public:
+  absl::Status InspectSharding(
+      const HloSharding& sharding,
+      absl::string_view backend_config) const override {
+    std::string sharding_spec = sharding.ToProto().SerializeAsString();
+    JAX_InspectSharding_Callback_Args args = {};
+    args.sharding_spec = sharding_spec.data();
+    args.sharding_spec_size = sharding_spec.size();
+    if (backend_config.size() != sizeof(JAX_InspectSharding_Callback)) {
+      return xla::Internal("Invalid config string for inspect sharding.");
+    }
+    JAX_InspectSharding_Callback cb;
+    memcpy(&cb, backend_config.data(), sizeof(JAX_InspectSharding_Callback));
+    cb.call(cb.data, &args);
+    if (args.error_txt) {
+      absl::Status result =
+          xla::Internal("Error calling inspect_sharding: %s", args.error_txt);
+      if (args.free_error != nullptr) {
+        args.free_error(&args);
+      }
+      return result;
+    }
+    return absl::OkStatus();
+  }
+
   absl::Status Partition(xla::spmd::SpmdPartitioningVisitor* partitioner,
                          HloInstruction* instruction) const override {
     const HloInstruction* operand = instruction->operand(0);
@@ -73,24 +99,10 @@ class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {
       return xla::Internal(
           "Inspect sharding called but no sharding is available.");
     }
-    std::string sharding_spec =
-        operand->sharding().ToProto().SerializeAsString();
-    JAX_InspectSharding_Callback_Args args;
-    args.sharding_spec = sharding_spec.data();
-    args.sharding_spec_size = sharding_spec.size();
-    args.error_txt = nullptr;
-    const auto& str = instruction->raw_backend_config_string();
-    if (str.size() != sizeof(JAX_InspectSharding_Callback)) {
-      return xla::Internal("Invalid config string for inspect sharding.");
-    }
-    JAX_InspectSharding_Callback cb;
-    memcpy(&cb, str.data(), sizeof(JAX_InspectSharding_Callback));
-    cb.call(cb.data, &args);
-    if (args.error_txt) {
-      auto result =
-          xla::Internal("Error calling inspect_sharding: %s", args.error_txt);
-      args.free_error(&args);
-      return result;
+    if (absl::Status status = InspectSharding(
+            operand->sharding(), instruction->raw_backend_config_string());
+        !status.ok()) {
+      return status;
     }
     // InspectSharding is a custom call that is inserted by the SPMD partitioner
     // to inspect the sharding of the operand. It's an identity op, so we can
