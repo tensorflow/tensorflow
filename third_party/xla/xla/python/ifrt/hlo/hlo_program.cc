@@ -67,6 +67,7 @@ absl::StatusOr<std::unique_ptr<HloProgram>> HloProgram::FromBytes(
   if (context == nullptr) {
     context = std::make_shared<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
+    context->enableThreadSafeLocking();
     mlir::DialectRegistry registry;
     xla::RegisterAllHloDialects(registry);
     context->appendDialectRegistry(registry);

@@ -1,51 +1,538 @@
-diff --git a/docs/sdy_export_passes.md b/docs/sdy_export_passes.md
-index c2866d88..bf2a682e 100755
---- a/docs/sdy_export_passes.md
-+++ b/docs/sdy_export_passes.md
-@@ -50,6 +50,18 @@ _Removes the mesh op and sharding notation from the program._
+diff --git a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
+index 0b2cfd8c..1ee18077 100644
+--- a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
++++ b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
+@@ -55,7 +55,6 @@ limitations under the License.
+ #include "shardy/dialect/sdy/transforms/common/util.h"
+ #include "shardy/dialect/sdy/transforms/export/passes.h"  // IWYU pragma: keep
+ #include "shardy/dialect/sdy/transforms/export/utils.h"
+-#include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.h"
+ #include "stablehlo/dialect/StablehloOps.h"
  
- _Drops `OpShardingRuleAttr` from all registered ops._
+ namespace mlir {
+@@ -1805,51 +1804,12 @@ class StablehloConvolutionOpPattern
+       }
+     };
  
-+### `-sdy-export-named-computations`
-+
-+_Outline calls from `NamedComputationOp`._
-+
-+Creates a pass that converts a `NamedComputationOp` to a `CallOp` with a new
-+private function called the `NamedComputationOp`'s `name`. The new `FuncOp`
-+and `CallOp` have the same shardings as the original `NamedComputationOp`s
-+operands/results.
-+
-+If there is a function with the same name as the `NamedComputationOp` in the
-+module, the MLIR symbol table will change it to `{name}_#`.
-+
- ### `-sdy-insert-explicit-reshards`
+-    auto getAxes = [&](TensorShardingAttr sharding, int64_t dim) {
+-      return (sharding && dim < sharding.getRank())
+-                 ? sharding.getDimShardings()[dim].getAxes()
+-                 : ArrayRef<AxisRefAttr>();
+-    };
+-
+     stablehlo::ConvDimensionNumbersAttr dimNums = op.getDimensionNumbers();
+     // Check Kernel Input Feature dimension (Contracting).
+     addRhsReductionAxes(dimNums.getKernelInputFeatureDimension());
+-    // Check Kernel Spatial dimensions (Contracting, unless it is an
+-    // embarrassingly parallel batch-as-spatial dimension sharded identically on
+-    // LHS, RHS, and output).
+-    auto localLhsType = cast<RankedTensorType>(adaptor.getLhs().getType());
+-    auto localRhsType = cast<RankedTensorType>(adaptor.getRhs().getType());
+-    SmallVector<int64_t> newWindowStrides(
+-        op.getWindowStrides().value_or(ArrayRef<int64_t>()));
+-    SmallVector<int64_t> newLhsDilation(
+-        op.getLhsDilation().value_or(ArrayRef<int64_t>()));
+-    bool updatedWindowAttrs = false;
+-    for (auto [i, dims] : llvm::enumerate(
+-             llvm::zip_equal(dimNums.getInputSpatialDimensions(),
+-                             dimNums.getKernelSpatialDimensions(),
+-                             dimNums.getOutputSpatialDimensions()))) {
+-      auto [lhsDim, rhsDim, outDim] = dims;
+-      if (isBatchAsSpatialDim(op, i) &&
+-          getAxes(lhsSharding, lhsDim) == getAxes(rhsSharding, rhsDim) &&
+-          getAxes(resultSharding, outDim) == getAxes(rhsSharding, rhsDim)) {
+-        int64_t localB = localLhsType.getDimSize(lhsDim);
+-        if (localB > 0 && localB != op.getLhs().getType().getDimSize(lhsDim) &&
+-            localB == localRhsType.getDimSize(rhsDim)) {
+-          if (newWindowStrides.empty()) {
+-            newWindowStrides.assign(dimNums.getInputSpatialDimensions().size(),
+-                                    1);
+-          }
+-          if (newLhsDilation.empty()) {
+-            newLhsDilation.assign(dimNums.getInputSpatialDimensions().size(),
+-                                  1);
+-          }
+-          newWindowStrides[i] = std::max<int64_t>(1, localB - 1);
+-          newLhsDilation[i] = localB;
+-          updatedWindowAttrs = true;
+-        }
+-        continue;
+-      }
+-      addRhsReductionAxes(rhsDim);
++    // Check Kernel Spatial dimensions (Contracting).
++    for (int64_t spatialDim : dimNums.getKernelSpatialDimensions()) {
++      addRhsReductionAxes(spatialDim);
+     }
  
- _Inserts explicit reshards to make all operations have compatible shardings._
-diff --git a/docs/sdy_import_passes.md b/docs/sdy_import_passes.md
-index 541053bd..511ad51e 100755
---- a/docs/sdy_import_passes.md
-+++ b/docs/sdy_import_passes.md
-@@ -119,6 +119,23 @@ _Flattens the call graph._
+     bool introducesPartialResult = true;
+@@ -1859,6 +1819,12 @@ class StablehloConvolutionOpPattern
+           op, reductionAxes, "convolution", converter);
+     }
  
- Flattens the call graph.
++    auto getAxes = [&](TensorShardingAttr sharding, int64_t dim) {
++      return (sharding && dim < sharding.getRank())
++                 ? sharding.getDimShardings()[dim].getAxes()
++                 : ArrayRef<AxisRefAttr>();
++    };
++
+     // feature_group_count constrains the input feature dimension (LHS) and the
+     // kernel output feature dimension (RHS). We only look at the kernel
+     // sharding here, as sdy-insert-explicit-reshards guarantees they are
+@@ -1873,16 +1839,10 @@ class StablehloConvolutionOpPattern
+         op.getBatchGroupCount(),
+         getAxes(lhsSharding, dimNums.getInputBatchDimension()), mesh);
  
-+### `-sdy-import-func-calls`
-+
-+_Inline calls into `NamedComputationOp`._
-+
-+Creates a pass to convert a CallOp to a NamedComputationOp with the
-+function body inlined and the name of the callee. Note that the func bodies
-+are cloned if the func is used by multiple calls.
-+
-+In case there are multiple call ops for the same callee, we will clone the
-+function body for each call op and emit a warning.
-+
-+#### Options
-+
-+```
-+-add-data-flow-edges-on-named-computations : Whether to add data flow edges on named computations.
-+```
-+
- ### `-sdy-lift-inlined-meshes`
+-    DenseI64ArrayAttr windowStridesAttr =
+-        updatedWindowAttrs ? rewriter.getDenseI64ArrayAttr(newWindowStrides)
+-                           : op.getWindowStridesAttr();
+-    DenseI64ArrayAttr lhsDilationAttr =
+-        updatedWindowAttrs ? rewriter.getDenseI64ArrayAttr(newLhsDilation)
+-                           : op.getLhsDilationAttr();
+     auto localConv = stablehlo::ConvolutionOp::create(
+         rewriter, op.getLoc(), converter->convertType(op.getResult()),
+-        adaptor.getLhs(), adaptor.getRhs(), windowStridesAttr,
+-        op.getPaddingAttr(), lhsDilationAttr, op.getRhsDilationAttr(),
++        adaptor.getLhs(), adaptor.getRhs(), op.getWindowStridesAttr(),
++        op.getPaddingAttr(), op.getLhsDilationAttr(), op.getRhsDilationAttr(),
+         op.getWindowReversalAttr(), dimNums, localFeatureGroupCount,
+         localBatchGroupCount, op.getPrecisionConfigAttr());
  
- _Lifts inlined `MeshAttr`s in shardings as symbol `MeshOp`s._
+diff --git a/shardy/dialect/sdy/transforms/export/pad_for_divisibility.cc b/shardy/dialect/sdy/transforms/export/pad_for_divisibility.cc
+index 970d2874..80a95509 100644
+--- a/shardy/dialect/sdy/transforms/export/pad_for_divisibility.cc
++++ b/shardy/dialect/sdy/transforms/export/pad_for_divisibility.cc
+@@ -374,13 +374,6 @@ Value ensurePaddingWithKind(
+   if (currentKind && *currentKind == requiredKind) {
+     return inputVal;
+   }
+-  // No need to ensure requiredKind if none of the enforced dimensions
+-  // are padded.
+-  if (dimsToEnforce && !llvm::any_of(*dimsToEnforce, [&](int64_t dim) {
+-        return origType.getDimSize(dim) != paddedType.getDimSize(dim);
+-      })) {
+-    return inputVal;
+-  }
+   Value newPaddingScalar =
+       createConstant(loc, paddedType.getElementType(), requiredKind, b);
+   Value select = ensurePaddingWithValue(loc, inputVal, origType,
+@@ -388,10 +381,6 @@ Value ensurePaddingWithKind(
+   if (select != inputVal && !dimsToEnforce) {
+     cache.setPadding(select, requiredKind);
+   }
+-  if (select == inputVal) {
+-    // Erase the unused constant value.
+-    newPaddingScalar.getDefiningOp()->erase();
+-  }
+ 
+   return select;
+ }
+@@ -1133,8 +1122,6 @@ class StablehloConvolutionOpPattern
+       return failure();
+     }
+ 
+-    auto paddedLhsType = cast<RankedTensorType>(lhs.getType());
+-    auto paddedRhsType = cast<RankedTensorType>(rhs.getType());
+     SmallVector<int64_t> kernelSpatialDims = llvm::map_to_vector(
+         dimNums.getKernelSpatialDimensions(),
+         [&](int64_t rhsDim) { return rhsOrigType.getDimSize(rhsDim); });
+@@ -1144,9 +1131,6 @@ class StablehloConvolutionOpPattern
+         op.getLhsDilation().value_or(ArrayRef<int64_t>());
+     ArrayRef<int64_t> rhsDilation =
+         op.getRhsDilation().value_or(ArrayRef<int64_t>());
+-    SmallVector<int64_t> newWindowStrides(windowStrides);
+-    SmallVector<int64_t> newLhsDilation(lhsDilation);
+-    bool updatedWindowAttrs = false;
+     SmallVector<int64_t> lhsEnforceDims;
+     lhsEnforceDims.push_back(dimNums.getInputFeatureDimension());
+     SmallVector<int64_t> rhsEnforceDims;
+@@ -1155,26 +1139,6 @@ class StablehloConvolutionOpPattern
+              llvm::zip_equal(dimNums.getInputSpatialDimensions(),
+                              dimNums.getKernelSpatialDimensions()))) {
+       auto [lhsDim, rhsDim] = dims;
+-      if (isBatchAsSpatialDim(op, i)) {
+-        int64_t paddedLhsB = paddedLhsType.getDimSize(lhsDim);
+-        int64_t paddedRhsB = paddedRhsType.getDimSize(rhsDim);
+-        if (paddedLhsB == paddedRhsB) {
+-          if (paddedLhsB != lhsOrigType.getDimSize(lhsDim)) {
+-            if (newWindowStrides.empty()) {
+-              newWindowStrides.assign(
+-                  dimNums.getInputSpatialDimensions().size(), 1);
+-            }
+-            if (newLhsDilation.empty()) {
+-              newLhsDilation.assign(dimNums.getInputSpatialDimensions().size(),
+-                                    1);
+-            }
+-            newWindowStrides[i] = std::max<int64_t>(1, paddedLhsB - 1);
+-            newLhsDilation[i] = paddedLhsB;
+-            updatedWindowAttrs = true;
+-          }
+-          continue;
+-        }
+-      }
+       if (isWindowPassthroughDim(op.getPadding(), kernelSpatialDims,
+                                  windowStrides, i, lhsDilation, rhsDilation)) {
+         continue;
+@@ -1197,11 +1161,13 @@ class StablehloConvolutionOpPattern
+     int64_t origInputFeatureSize =
+         lhsOrigType.getDimSize(dimNums.getInputFeatureDimension());
+     int64_t paddedInputFeatureSize =
+-        paddedLhsType.getDimSize(dimNums.getInputFeatureDimension());
++        cast<RankedTensorType>(paddedLhs.getType())
++            .getDimSize(dimNums.getInputFeatureDimension());
+     int64_t origKernelOutputFeatureSize =
+         rhsOrigType.getDimSize(dimNums.getKernelOutputFeatureDimension());
+     int64_t paddedKernelOutputFeatureSize =
+-        paddedRhsType.getDimSize(dimNums.getKernelOutputFeatureDimension());
++        cast<RankedTensorType>(paddedRhs.getType())
++            .getDimSize(dimNums.getKernelOutputFeatureDimension());
+     bool isFeatureGroupPadded =
+         paddedInputFeatureSize > origInputFeatureSize ||
+         paddedKernelOutputFeatureSize > origKernelOutputFeatureSize;
+@@ -1221,7 +1187,8 @@ class StablehloConvolutionOpPattern
+     int64_t origInputBatchSize =
+         lhsOrigType.getDimSize(dimNums.getInputBatchDimension());
+     int64_t paddedInputBatchSize =
+-        paddedLhsType.getDimSize(dimNums.getInputBatchDimension());
++        cast<RankedTensorType>(paddedLhs.getType())
++            .getDimSize(dimNums.getInputBatchDimension());
+     bool isBatchGroupPadded =
+         paddedInputBatchSize > origInputBatchSize ||
+         paddedKernelOutputFeatureSize > origKernelOutputFeatureSize;
+@@ -1240,13 +1207,7 @@ class StablehloConvolutionOpPattern
+     SmallVector<ShapedTypeComponents> inferredReturnShapes;
+     if (failed(mlir::hlo::inferConvolutionOp(
+             op->getLoc(), paddedLhs.getType(), paddedRhs.getType(),
+-            updatedWindowAttrs
+-                ? std::optional<ArrayRef<int64_t>>(newWindowStrides)
+-                : op.getWindowStrides(),
+-            op.getPadding(),
+-            updatedWindowAttrs
+-                ? std::optional<ArrayRef<int64_t>>(newLhsDilation)
+-                : op.getLhsDilation(),
++            op.getWindowStrides(), op.getPaddingAttr(), op.getLhsDilation(),
+             op.getRhsDilation(), op.getWindowReversal(),
+             dimNums.getInputBatchDimension(),
+             dimNums.getInputFeatureDimension(),
+@@ -1294,12 +1255,6 @@ class StablehloConvolutionOpPattern
+                          rewriter.getI64IntegerAttr(newFeatureGroupCount));
+     state.attributes.set(op.getBatchGroupCountAttrName(),
+                          rewriter.getI64IntegerAttr(newBatchGroupCount));
+-    if (updatedWindowAttrs) {
+-      state.attributes.set(op.getWindowStridesAttrName(),
+-                           rewriter.getDenseI64ArrayAttr(newWindowStrides));
+-      state.attributes.set(op.getLhsDilationAttrName(),
+-                           rewriter.getDenseI64ArrayAttr(newLhsDilation));
+-    }
+     Operation* newOp = rewriter.create(state);
+ 
+     TensorShardingAttr outSharding = getSharding(result);
+diff --git a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/stablehlo_convolution.mlir b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/stablehlo_convolution.mlir
+index e74cacaa..7438f3b2 100644
+--- a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/stablehlo_convolution.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/stablehlo_convolution.mlir
+@@ -189,29 +189,3 @@ func.func @shard_reduction_factors_unreduced_result(
+   // CHECK: return %[[CONV]] : tensor<1x112x112x64xf32>
+   return %0 : tensor<1x112x112x64xf32>
+ }
+-
+-// CHECK-LABEL: func @shard_batch_as_spatial_dim
+-// CHECK-SAME: (%[[ARG0:.*]]: tensor<8x12x12x24x32xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{"x"}, {}, {}, {}, {}]>},
+-// CHECK-SAME:  %[[ARG1:.*]]: tensor<8x6x6x64x32xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{"x"}, {}, {}, {}, {}]>})
+-// CHECK-SAME: -> (tensor<8x7x7x24x64xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{"x"}, {}, {}, {}, {}]>}) {
+-func.func @shard_batch_as_spatial_dim(
+-  %arg0: tensor<16x12x12x24x32xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{"x"}, {}, {}, {}, {}]>},
+-  %arg1: tensor<16x6x6x64x32xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{"x"}, {}, {}, {}, {}]>})
+-    -> (tensor<16x7x7x24x64xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{"x"}, {}, {}, {}, {}]>}) {
+-  // CHECK-NEXT:   %[[CONV:.*]] = stablehlo.convolution(%[[ARG0]], %[[ARG1]])
+-  // CHECK-SAME:   dim_numbers = [0, 1, 2, b, f]x[0, 1, 2, o, i]->[0, 1, 2, b, f]
+-  // CHECK-SAME{LITERAL}: window = {stride = [7, 1, 1], lhs_dilate = [8, 1, 1]}
+-  // CHECK-SAME:   {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+-  // CHECK-SAME:   : (tensor<8x12x12x24x32xf32>, tensor<8x6x6x64x32xf32>) -> tensor<8x7x7x24x64xf32>
+-  // CHECK-NOT:    stablehlo.all_reduce
+-  // CHECK-NEXT:   return %[[CONV]] : tensor<8x7x7x24x64xf32>
+-  %0 = stablehlo.convolution(%arg0, %arg1)
+-    dim_numbers = [0, 1, 2, b, f]x[0, 1, 2, o, i]->[0, 1, 2, b, f],
+-    window = {stride = [15, 1, 1], lhs_dilate = [16, 1, 1]}
+-    {
+-      batch_group_count = 1 : i64,
+-      feature_group_count = 1 : i64,
+-      sdy.sharding = #sdy.sharding_per_value<[<@mesh_2_4, [{"x"}, {}, {}, {}, {}]>]>
+-    } : (tensor<16x12x12x24x32xf32>, tensor<16x6x6x64x32xf32>) -> tensor<16x7x7x24x64xf32>
+-  return %0 : tensor<16x7x7x24x64xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_convolution.mlir b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_convolution.mlir
+index 3eb6c937..fa40bb10 100644
+--- a/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_convolution.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/executable_partitioner_pipeline/stablehlo_convolution.mlir
+@@ -56,23 +56,6 @@ func.func @parallel_convolution_stride_padding(
+   return %0 : tensor<1x1x8x14xf32>
+ }
+ 
+-// Convolution with a parallel batch-as-spatial dimension (spatial dim 0,
+-// sharded on "x").
+-func.func @parallel_convolution_batch_as_spatial(
+-  %arg0: tensor<1x4x8x1xf32> {sdy.sharding = #sdy.sharding<@mesh_x2, [{}, {"x"}, {}, {}]>},
+-  %arg1: tensor<4x3x1x1xf32> {sdy.sharding = #sdy.sharding<@mesh_x2, [{"x"}, {}, {}, {}]>})
+-  -> (tensor<1x4x8x1xf32> {sdy.sharding = #sdy.sharding<@mesh_x2, [{}, {"x"}, {}, {}]>}) {
+-  %0 = stablehlo.convolution(%arg0, %arg1)
+-    dim_numbers = [b, 0, 1, f] x [0, 1, i, o] -> [b, 0, 1, f],
+-    window = {stride = [3, 1], pad = [[0, 0], [1, 1]], lhs_dilate = [4, 1]} {
+-      batch_group_count = 1 : i64,
+-      feature_group_count = 1 : i64,
+-      sdy.sharding = #sdy.sharding_per_value<[<@mesh_x2, [{}, {"x"}, {}, {}]>]>
+-    }
+-    : (tensor<1x4x8x1xf32>, tensor<4x3x1x1xf32>) -> tensor<1x4x8x1xf32>
+-  return %0 : tensor<1x4x8x1xf32>
+-}
+-
+ //--- part2.mlir
+ 
+ func.func @main() {
+@@ -145,26 +128,5 @@ func.func @main() {
+   "check.expect_eq"(%res_sp#0, %seq_sp) : (tensor<1x1x8x14xf32>, tensor<1x1x8x14xf32>) -> ()
+   "check.expect_eq"(%res_sp#1, %seq_sp) : (tensor<1x1x8x14xf32>, tensor<1x1x8x14xf32>) -> ()
+ 
+-  // 4. Parallel batch-as-spatial dim ("x") on 2-device mesh.
+-  %iota_32 = stablehlo.iota dim = 0 : tensor<32xf32>
+-  %one_32 = stablehlo.constant dense<1.000000e+00> : tensor<32xf32>
+-  %seq_32 = stablehlo.add %iota_32, %one_32 : tensor<32xf32>
+-  %input_1x4x8x1 = stablehlo.reshape %seq_32 : (tensor<32xf32>) -> tensor<1x4x8x1xf32>
+-  %filter_4x3x1x1 = stablehlo.reshape %seq_12 : (tensor<12xf32>) -> tensor<4x3x1x1xf32>
+-
+-  %seq_pb = func.call @sequential_convolution_batch_as_spatial(%input_1x4x8x1, %filter_4x3x1x1)
+-    : (tensor<1x4x8x1xf32>, tensor<4x3x1x1xf32>) -> tensor<1x4x8x1xf32>
+-  %pb_in_0 = "stablehlo.slice"(%input_1x4x8x1) {start_indices = array<i64: 0, 0, 0, 0>, limit_indices = array<i64: 1, 2, 8, 1>, strides = array<i64: 1, 1, 1, 1>} : (tensor<1x4x8x1xf32>) -> tensor<1x2x8x1xf32>
+-  %pb_in_1 = "stablehlo.slice"(%input_1x4x8x1) {start_indices = array<i64: 0, 2, 0, 0>, limit_indices = array<i64: 1, 4, 8, 1>, strides = array<i64: 1, 1, 1, 1>} : (tensor<1x4x8x1xf32>) -> tensor<1x2x8x1xf32>
+-  %pb_rhs_0 = "stablehlo.slice"(%filter_4x3x1x1) {start_indices = array<i64: 0, 0, 0, 0>, limit_indices = array<i64: 2, 3, 1, 1>, strides = array<i64: 1, 1, 1, 1>} : (tensor<4x3x1x1xf32>) -> tensor<2x3x1x1xf32>
+-  %pb_rhs_1 = "stablehlo.slice"(%filter_4x3x1x1) {start_indices = array<i64: 2, 0, 0, 0>, limit_indices = array<i64: 4, 3, 1, 1>, strides = array<i64: 1, 1, 1, 1>} : (tensor<4x3x1x1xf32>) -> tensor<2x3x1x1xf32>
+-  %res_pb:2 = "interpreter.run_parallel"(%pb_in_0, %pb_rhs_0, %pb_in_1, %pb_rhs_1) {
+-    programs = [[@parallel_convolution_batch_as_spatial, @parallel_convolution_batch_as_spatial]]
+-  } : (tensor<1x2x8x1xf32>, tensor<2x3x1x1xf32>, tensor<1x2x8x1xf32>, tensor<2x3x1x1xf32>)
+-    -> (tensor<1x2x8x1xf32>, tensor<1x2x8x1xf32>)
+-  %par_pb = stablehlo.concatenate %res_pb#0, %res_pb#1, dim = 1
+-    : (tensor<1x2x8x1xf32>, tensor<1x2x8x1xf32>) -> tensor<1x4x8x1xf32>
+-  "check.expect_eq"(%par_pb, %seq_pb) : (tensor<1x4x8x1xf32>, tensor<1x4x8x1xf32>) -> ()
+-
+   return
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/stablehlo_convolution.mlir b/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/stablehlo_convolution.mlir
+index f6d7d26b..37b3b6bc 100644
+--- a/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/stablehlo_convolution.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/pad_for_divisibility/stablehlo_convolution.mlir
+@@ -395,51 +395,6 @@ func.func @padded_conv_passthrough_spatial_dims_any(%arg0: tensor<1x7x16xf32>, %
+   return %conv_out : tensor<1x7x32xf32>
+ }
+ 
+-// CHECK-LABEL: func @padded_conv_batch_as_spatial_dim
+-// CHECK-SAME: (%[[ARG0:.*]]: tensor<1x7x16xf32>, %[[ARG1:.*]]: tensor<7x16x32xf32>) -> tensor<1x7x32xf32>
+-func.func @padded_conv_batch_as_spatial_dim(%arg0: tensor<1x7x16xf32>, %arg1: tensor<7x16x32xf32>) -> tensor<1x7x32xf32> {
+-  // Pad LHS spatial0 (dim 1) from 7 to 8.
+-  // CHECK-NEXT: %[[CST0:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+-  // CHECK-NEXT: %[[PAD0:.*]] = stablehlo.pad %[[ARG0]], %[[CST0]], low = [0, 0, 0], high = [0, 1, 0], interior = [0, 0, 0] : (tensor<1x7x16xf32>, tensor<f32>) -> tensor<1x8x16xf32>
+-  // CHECK-NEXT: %[[LHS_SLICE:.*]] = sdy.all_slice [{}, {"y"}, {}] %[[PAD0]] out_sharding=<@mesh_4_2, [{}, {"y"}, {}]> : tensor<1x8x16xf32>
+-  // CHECK-NEXT: %[[LHS_ABS:.*]] = stablehlo.abs %[[LHS_SLICE]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4_2, [{}, {"y"}, {}]>]>} : tensor<1x8x16xf32>
+-
+-  // Pad RHS spatial0 (dim 0) from 7 to 8.
+-  // CHECK-NEXT: %[[CST1:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+-  // CHECK-NEXT: %[[PAD1:.*]] = stablehlo.pad %[[ARG1]], %[[CST1]], low = [0, 0, 0], high = [1, 0, 0], interior = [0, 0, 0] : (tensor<7x16x32xf32>, tensor<f32>) -> tensor<8x16x32xf32>
+-  // CHECK-NEXT: %[[RHS_SLICE:.*]] = sdy.all_slice [{"y"}, {}, {}] %[[PAD1]] out_sharding=<@mesh_4_2, [{"y"}, {}, {}]> : tensor<8x16x32xf32>
+-  // CHECK-NEXT: %[[RHS_ABS:.*]] = stablehlo.abs %[[RHS_SLICE]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4_2, [{"y"}, {}, {}]>]>} : tensor<8x16x32xf32>
+-
+-  // Verify no select/compare zero-masking is generated for the parallel batch dimension.
+-  // CHECK-NOT: stablehlo.select
+-  // CHECK-NOT: stablehlo.compare
+-
+-  // Verify convolution window strides and lhs dilation are updated:
+-  // stride = [7], lhs_dilate = [8].
+-  // CHECK-NEXT: %[[CONV:.*]] = stablehlo.convolution(%[[LHS_ABS]], %[[RHS_ABS]])
+-  // CHECK-SAME: dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f]
+-  // CHECK-SAME{LITERAL}: window = {stride = [7], lhs_dilate = [8]}
+-  // CHECK-SAME: {batch_group_count = 1 : i64, feature_group_count = 1 : i64, sdy.sharding = #sdy.sharding_per_value<[<@mesh_4_2, [{}, {}, {}]>]>}
+-  // CHECK-SAME: : (tensor<1x8x16xf32>, tensor<8x16x32xf32>) -> tensor<1x8x32xf32>
+-
+-  // Trim result back to original size 7.
+-  // CHECK-NEXT: %[[TRIM:.*]] = stablehlo.slice %[[CONV]] [0:1, 0:7, 0:32] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4_2, [{}, {}, {}]>]>} : (tensor<1x8x32xf32>) -> tensor<1x7x32xf32>
+-  // CHECK-NEXT: return %[[TRIM]] : tensor<1x7x32xf32>
+-
+-  %0 = sdy.all_slice [{}, {"y"}, {}] %arg0 out_sharding=<@mesh_4_2, [{}, {"y"}, {}]> : tensor<1x7x16xf32>
+-  %1 = stablehlo.abs %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4_2, [{}, {"y"}, {}]>]>} : tensor<1x7x16xf32>
+-  %2 = sdy.all_slice [{"y"}, {}, {}] %arg1 out_sharding=<@mesh_4_2, [{"y"}, {}, {}]> : tensor<7x16x32xf32>
+-  %3 = stablehlo.abs %2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4_2, [{"y"}, {}, {}]>]>} : tensor<7x16x32xf32>
+-  %conv_out = stablehlo.convolution(%1, %3)
+-    dim_numbers = [b, 0, f]x[0, i, o]->[b, 0, f],
+-    window = {
+-      stride = [6],
+-      lhs_dilate = [7]
+-    } {batch_group_count = 1 : i64, feature_group_count = 1 : i64, sdy.sharding = #sdy.sharding_per_value<[<@mesh_4_2, [{}, {}, {}]>]>}
+-    : (tensor<1x7x16xf32>, tensor<7x16x32xf32>) -> tensor<1x7x32xf32>
+-  return %conv_out : tensor<1x7x32xf32>
+-}
+-
+ // -----
+ 
+ sdy.mesh @mesh_4_2 = <["x"=4, "y"=2]>
+diff --git a/shardy/dialect/sdy/transforms/propagation/BUILD b/shardy/dialect/sdy/transforms/propagation/BUILD
+index 093d2a7e..d05c297a 100644
+--- a/shardy/dialect/sdy/transforms/propagation/BUILD
++++ b/shardy/dialect/sdy/transforms/propagation/BUILD
+@@ -115,7 +115,6 @@ cc_library(
+     hdrs = ["op_sharding_rule_registry.h"],
+     deps = [
+         ":op_sharding_rule_builder",
+-        "//shardy/common:logging",
+         "//shardy/dialect/sdy/ir:dialect",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:FuncDialect",
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
+index fa729a1f..5ffe02fb 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
++++ b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
+@@ -38,7 +38,6 @@ limitations under the License.
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/Value.h"
+ #include "mlir/Support/LLVM.h"
+-#include "shardy/common/logging.h"
+ #include "shardy/dialect/sdy/ir/constants.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/enums.h"
+@@ -233,52 +232,6 @@ bool isWindowPassthroughDim(std::optional<DenseIntElementsAttr> operandPadding,
+          (rhsDilations.empty() || rhsDilations[dim] == 1);
+ }
+ 
+-bool isBatchAsSpatialDim(stablehlo::ConvolutionOp conv, int64_t spatialDimIdx) {
+-  stablehlo::ConvDimensionNumbersAttr dimNums = conv.getDimensionNumbers();
+-  SDY_CHECK(spatialDimIdx >= 0 &&
+-            spatialDimIdx < dimNums.getInputSpatialDimensions().size() &&
+-            spatialDimIdx < dimNums.getKernelSpatialDimensions().size() &&
+-            spatialDimIdx < dimNums.getOutputSpatialDimensions().size());
+-  int64_t lhsDim = dimNums.getInputSpatialDimensions()[spatialDimIdx];
+-  int64_t rhsDim = dimNums.getKernelSpatialDimensions()[spatialDimIdx];
+-  int64_t outDim = dimNums.getOutputSpatialDimensions()[spatialDimIdx];
+-  int64_t lhsDimSize = conv.getLhs().getType().getDimSize(lhsDim);
+-  int64_t rhsDimSize = conv.getRhs().getType().getDimSize(rhsDim);
+-  int64_t outDimSize = conv.getType().getDimSize(outDim);
+-  if (lhsDimSize <= 1 || lhsDimSize != rhsDimSize || lhsDimSize != outDimSize) {
+-    return false;
+-  }
+-  if (std::optional<DenseIntElementsAttr> padding = conv.getPadding();
+-      padding.has_value()) {
+-    auto paddingStart =
+-        padding->getValues<int64_t>().begin() + 2 * spatialDimIdx;
+-    if (*paddingStart != 0 || *std::next(paddingStart) != 0) {
+-      return false;
+-    }
+-  }
+-  ArrayRef<int64_t> windowStrides =
+-      conv.getWindowStrides().value_or(ArrayRef<int64_t>());
+-  int64_t stride = windowStrides.empty() ? 1 : windowStrides[spatialDimIdx];
+-  if (stride != lhsDimSize - 1) {
+-    return false;
+-  }
+-  ArrayRef<int64_t> lhsDilation =
+-      conv.getLhsDilation().value_or(ArrayRef<int64_t>());
+-  int64_t lhsDil = lhsDilation.empty() ? 1 : lhsDilation[spatialDimIdx];
+-  if (lhsDil != lhsDimSize) {
+-    return false;
+-  }
+-  ArrayRef<int64_t> rhsDilation =
+-      conv.getRhsDilation().value_or(ArrayRef<int64_t>());
+-  int64_t rhsDil = rhsDilation.empty() ? 1 : rhsDilation[spatialDimIdx];
+-  if (rhsDil != 1) {
+-    return false;
+-  }
+-  ArrayRef<bool> windowReversal =
+-      conv.getWindowReversal().value_or(ArrayRef<bool>());
+-  return windowReversal.empty() || !windowReversal[spatialDimIdx];
+-}
+-
+ OpShardingRuleAttr getOrCreateShardingRule(Operation* op,
+                                            bool conservativePropagation,
+                                            bool setShardingRuleOnOp,
+@@ -298,6 +251,7 @@ OpShardingRuleAttr getOrCreateShardingRule(Operation* op,
+ OpShardingRuleAttr createOpShardingRule(Operation* op,
+                                         const bool conservativePropagation,
+                                         const bool shardyGeneratesDeviceCode) {
++  (void)shardyGeneratesDeviceCode;
+   return TypeSwitch<Operation*, OpShardingRuleAttr>(op)
+       .Case<ShardingConstraintOp, stablehlo::AbsOp, stablehlo::AddOp,
+             stablehlo::AllReduceOp, stablehlo::AndOp, stablehlo::Atan2Op,
+@@ -497,8 +451,7 @@ OpShardingRuleAttr createOpShardingRule(Operation* op,
+                             getFactorType)
+             .build();
+       })
+-      .Case([conservativePropagation,
+-             shardyGeneratesDeviceCode](stablehlo::ConvolutionOp conv) {
++      .Case([conservativePropagation](stablehlo::ConvolutionOp conv) {
+         stablehlo::ConvDimensionNumbersAttr dimNums =
+             conv.getDimensionNumbers();
+ 
+@@ -543,13 +496,6 @@ OpShardingRuleAttr createOpShardingRule(Operation* op,
+                                    dimNums.getKernelSpatialDimensions(),
+                                    dimNums.getOutputSpatialDimensions()))) {
+             auto [lhsDim, rhsDim, outDim] = dims;
+-            if (shardyGeneratesDeviceCode &&
+-                isBatchAsSpatialDim(conv, spatialDimIdx)) {
+-              builder.addFactor({lhsDim, rhsDim}, outDim,
+-                                outType.getDimSize(outDim),
+-                                FactorType::kPassThrough);
+-              continue;
+-            }
+             // The input spatial dimension can be sharded along either the
+             // number of windows (corresponds to the output spatial dimension)
+             // or the window size (corresponds to the kernel spatial dimension),
+diff --git a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.h b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.h
+index 8c90ed8a..47e5308e 100644
+--- a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.h
++++ b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.h
+@@ -18,7 +18,6 @@ limitations under the License.
+ 
+ #include "mlir/IR/Operation.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+-#include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir {
+ namespace sdy {
+@@ -54,12 +53,6 @@ bool isWindowPassthroughDim(std::optional<DenseIntElementsAttr> operandPadding,
+                             ArrayRef<int64_t> lhsDilations = {},
+                             ArrayRef<int64_t> rhsDilations = {});
+ 
+-// Helper to check if a convolution spatial dimension encodes a batch dimension
+-// represented as a spatial dimension: lhs_dim == rhs_dim == out_dim == B > 1,
+-// pad == 0, window_stride == B - 1, lhs_dilation == B, rhs_dilation == 1, and
+-// no window reversal.
+-bool isBatchAsSpatialDim(stablehlo::ConvolutionOp conv, int64_t spatialDimIdx);
+-
+ }  // namespace sdy
+ }  // namespace mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir b/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
+index fb4a3dbd..15a39960 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
+@@ -1,5 +1,4 @@
+-// RUN: sdy_opt %s -sdy-populate-op-sharding-rules -verify-diagnostics 2>&1 | FileCheck %s --check-prefixes=CHECK,NO-CG2L
+-// RUN: sdy_opt %s -sdy-populate-op-sharding-rules="shardy-generates-device-code=true" -verify-diagnostics 2>&1 | FileCheck %s --check-prefixes=CHECK,CG2L
++// RUN: sdy_opt %s -sdy-populate-op-sharding-rules -verify-diagnostics 2>&1 | FileCheck %s
+ 
+ // CHECK-LABEL: func @pointwise_op
+ func.func @pointwise_op(%arg0: tensor<2x1x4xf32>) -> tensor<2x1x4xf32> {
+@@ -374,19 +373,6 @@ func.func @conv_passthrough_spatial_dim(%arg0: tensor<2x16x192xf32>, %arg1: tens
+   return %0 : tensor<2x16x64xf32>
+ }
+ 
+-// CHECK-LABEL: func @conv_batch_as_spatial_dim
+-func.func @conv_batch_as_spatial_dim(%arg0: tensor<8x24x64x4xf32>, %arg1: tensor<8x38x64x1xf32>) -> tensor<8x24x38x4xf32> {
+-  // NO-CG2L: sdy.sharding_rule = #sdy.op_sharding_rule<([j, i, m, l], [k, n, m, o])->([j, i, n, l]) {i=24, j=8, k=8, l=4, m=64, n=38, o=1} reduction={m} permutation={j, k}>
+-  // CG2L: sdy.sharding_rule = #sdy.op_sharding_rule<([j, i, l, k], [j, m, l, n])->([j, i, m, k]) {i=24, j=8, k=4, l=64, m=38, n=1} reduction={l}>
+-  %0 = stablehlo.convolution(%arg0, %arg1)
+-    dim_numbers = [0, b, f, 1]x[0, o, i, 1]->[0, b, f, 1],
+-    window = {stride = [7, 1], pad = [[0, 0], [0, 0]], lhs_dilate = [8, 1]} {
+-      batch_group_count = 1 : i64,
+-      feature_group_count = 1 : i64
+-    } : (tensor<8x24x64x4xf32>, tensor<8x38x64x1xf32>) -> tensor<8x24x38x4xf32>
+-  return %0 : tensor<8x24x38x4xf32>
+-}
+-
+ // CHECK-LABEL: func @custom_call_compact_wy_helper
+ func.func @custom_call_compact_wy_helper(%arg0: tensor<128x128xf32>) -> tensor<128x128xf32> {
+   // CHECK: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j]) {i=128, j=128}>

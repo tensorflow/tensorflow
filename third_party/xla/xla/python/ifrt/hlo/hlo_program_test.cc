@@ -37,6 +37,7 @@ using ::testing::ContainsRegex;
 std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
   auto context = std::make_unique<mlir::MLIRContext>(
       mlir::MLIRContext::Threading::DISABLED);
+  context->enableThreadSafeLocking();
 
   mlir::DialectRegistry registry;
   xla::RegisterAllHloDialects(registry);

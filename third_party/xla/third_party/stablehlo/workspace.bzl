@@ -18,8 +18,8 @@
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def repo():
-    STABLEHLO_COMMIT = "285a2eb8b0a50e5ab3d7e9f3315171e640d73734"
-    STABLEHLO_SHA256 = "65451085972b7e762df5f9c2f6127ce1a0079f844e2d9b17c3484f907b62d844"
+    STABLEHLO_COMMIT = "5fc0af4c6bef88fc84bdbd07a45ad99be18ae323"
+    STABLEHLO_SHA256 = "18dc434e4fc6651a6c59195ca6d430abadfc5c7ed60b6d13e1d7ffb785ac78df"
 
     tf_http_archive(
         name = "stablehlo",

@@ -117,6 +117,7 @@ class HloProgramSerDes : public RTTIExtends<HloProgramSerDes, SerDes> {
     // many programs may end up creating too many threads.
     auto context = std::make_unique<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
+    context->enableThreadSafeLocking();
     mlir::BaseScopedDiagnosticHandler diagnostic_handler(context.get());
 
     mlir::DialectRegistry registry;
