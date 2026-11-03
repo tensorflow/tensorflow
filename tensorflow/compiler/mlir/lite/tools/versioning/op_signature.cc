@@ -266,6 +266,28 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       }
     } break;
 
+    case BuiltinOperator_BATCH_MATMUL: {
+      if (op->inputs() == nullptr || op->inputs()->size() < 2 ||
+          subgraph->tensors() == nullptr) {
+        break;
+      }
+      const int32_t rhs_index = op->inputs()->Get(1);
+      if (rhs_index < 0 ||
+          static_cast<size_t>(rhs_index) >= subgraph->tensors()->size()) {
+        break;
+      }
+      const Tensor* rhs_tensor = subgraph->tensors()->Get(rhs_index);
+      const QuantizationParameters* rhs_quant =
+          rhs_tensor != nullptr ? rhs_tensor->quantization() : nullptr;
+      if (rhs_quant != nullptr) {
+        const BlockwiseQuantization* blockwise =
+            rhs_quant->details_as_BlockwiseQuantization();
+        op_sig.ext_options.batch_matmul.is_rhs_blockwise_quantized =
+            blockwise != nullptr && blockwise->block_shape() != nullptr &&
+            !blockwise->block_shape()->empty();
+      }
+    } break;
+
     default:
       break;
   }

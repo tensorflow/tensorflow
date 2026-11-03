@@ -1375,6 +1375,34 @@ TEST(OpVersionTest, VersioningBatchMatMulTest) {
   };
   batch_mat_mul_params.asymmetric_quantize_inputs = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  // Sub-byte RHS without N-D block_shape is version 5.
+  for (TfLiteType rhs_type : {kTfLiteInt4, kTfLiteUInt4, kTfLiteInt2}) {
+    batch_mat_mul_params = {};
+    fake_op_sig = {
+        .op = BuiltinOperator_BATCH_MATMUL,
+        .inputs = CreateOpSignatureTensorSpecs(
+            std::vector<TfLiteType>{kTfLiteInt8, rhs_type}),
+        .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+        .builtin_data = reinterpret_cast<void*>(&batch_mat_mul_params),
+    };
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+  }
+
+  // N-D blockwise quantized RHS is version 5 regardless of RHS integer type.
+  for (TfLiteType rhs_type : {kTfLiteInt8, kTfLiteUInt8, kTfLiteInt16,
+                              kTfLiteInt4, kTfLiteUInt4, kTfLiteInt2}) {
+    batch_mat_mul_params = {};
+    fake_op_sig = {
+        .op = BuiltinOperator_BATCH_MATMUL,
+        .inputs = CreateOpSignatureTensorSpecs(
+            std::vector<TfLiteType>{kTfLiteInt8, rhs_type}),
+        .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+        .builtin_data = reinterpret_cast<void*>(&batch_mat_mul_params),
+    };
+    fake_op_sig.ext_options.batch_matmul.is_rhs_blockwise_quantized = true;
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+  }
 }
 TEST(OpVersionTest, VersioningSquaredDifferenceTest) {
   // Default.
