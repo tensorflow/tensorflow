@@ -368,6 +368,18 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
   }
   const FusionBackendConfig& backend_config =
       gpu_config->fusion_backend_config();
+  if (backend_config.kind() != kTritonGemmFusionKind &&
+      backend_config.kind() != kCuDnnFusionKind &&
+      backend_config.kind() != kCustomFusionKind) {
+    return false;
+  }
+
+  // cuDNN scaled dot fusions take pre-swizzled scales and must not be retuned.
+  if (backend_config.kind() != kTritonGemmFusionKind &&
+      hlo_query::ContainsInstrWithOpcode(instr.fused_instructions_computation(),
+                                         {HloOpcode::kScaledDot})) {
+    return false;
+  }
 
   // TODO: b/487920266 - sometimes we create fusions that can't be tiled.
   // Bail out here if that's the case.
@@ -397,8 +409,7 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
     // constraints here.
     return true;
   }
-  return backend_config.kind() == kCuDnnFusionKind ||
-         backend_config.kind() == kCustomFusionKind;
+  return true;
 }
 
 std::string TritonBackend::version() const { return TRITON_VERSION; }

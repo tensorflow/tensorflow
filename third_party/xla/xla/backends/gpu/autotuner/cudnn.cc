@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -155,13 +156,10 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
   }
 
   if (hero->opcode() == HloOpcode::kScaledDot) {
-    return target_config.device_description.cuda_compute_capability()
-               .IsAtLeastBlackwell() &&
-           se::dnn::VersionInfo(
-               target_config.device_description.dnn_version()) >=
-               kCudnnSupportsBlockScaledDot &&
-           CudnnScaledDotHelper::IsSupported(
-               Cast<HloScaledDotInstruction>(hero));
+    // Only fusions built by CudnnScaledDotRewriter are supported: their scale
+    // operands are already padded and swizzled in the parent computation.
+    return IsCudnnFusion(instr) &&
+           CudnnScaledDotHelper::IsAvailable(target_config.device_description);
   }
 
   if (hero->shape().element_type() == PrimitiveType::F64) {
@@ -339,22 +337,21 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
 
 absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
                                       const CudnnBackendConfig& config) {
-  HloInstruction* fusion_instr = &instr;
-  auto* fusion = Cast<HloFusionInstruction>(&instr);
-  if (hlo_query::GetFirstInstructionWithOpcode(
-          *fusion->fused_instructions_computation(), HloOpcode::kScaledDot) !=
-      nullptr) {
-    ABSL_ASSIGN_OR_RETURN(fusion_instr,
-                     CudnnScaledDotHelper::AddScaleSwizzle(fusion));
-  }
+  // Only CudnnScaledDotRewriter emits the scale swizzle that cuDNN needs.
+  TF_RET_CHECK(
+      IsCudnnFusion(instr) ||
+      !hlo_query::ContainsInstrWithOpcode(
+          instr.fused_instructions_computation(), {HloOpcode::kScaledDot}))
+      << "kScaledDot requires a fusion built by CudnnScaledDotRewriter: "
+      << instr.name();
   ABSL_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                   fusion_instr->backend_config<GpuBackendConfig>());
+                   instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig* backend_config =
       gpu_config.mutable_fusion_backend_config();
   backend_config->set_kind(kCuDnnFusionKind);
   backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
-  ABSL_RETURN_IF_ERROR(fusion_instr->set_backend_config(std::move(gpu_config)));
-  fusion_instr->set_fusion_kind(HloInstruction::FusionKind::kCustom);
+  ABSL_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  instr.set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return absl::OkStatus();
 }
 
