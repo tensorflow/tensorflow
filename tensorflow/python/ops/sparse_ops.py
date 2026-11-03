@@ -2942,6 +2942,7 @@ def sparse_transpose(sp_input, perm=None, name=None):
       of the dimensions of `sp_input`. If the rank of `sp_input` is unknown,
       `perm` is only checked to be a permutation of `range(len(perm))`.
   """
+  sp_input = _convert_to_sparse_tensor(sp_input)
   with ops.name_scope(name, "SparseTranspose", [sp_input]) as name:
     if perm is None:
       # The default permutation is valid by construction: skip validation.
