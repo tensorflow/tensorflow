@@ -207,7 +207,11 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
   Returns:
     A `SparseTensor` with the same data as `sp_input`, but its shape has an
     additional dimension of size 1 added.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
   """
+  sp_input = _convert_to_sparse_tensor(sp_input)
   rank = sp_input.dense_shape.get_shape()[0]
   if rank is None:
     rank = array_ops.shape(sp_input.dense_shape)[0]
