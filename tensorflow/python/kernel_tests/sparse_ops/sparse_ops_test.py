@@ -1001,6 +1001,8 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
     self.assertEqual(self.evaluate(max_res), 3)
     self.assertIsInstance(sum_sparse_res, sparse_tensor.SparseTensor)
     self.assertIsInstance(max_sparse_res, sparse_tensor.SparseTensor)
+    self.assertAllEqual(self.evaluate(sum_sparse_res.values), [6])
+    self.assertAllEqual(self.evaluate(max_sparse_res.values), [3])
 
     # Test v2 functions
     sum_v2_res = sparse_ops.sparse_reduce_sum_v2(st_val)
@@ -1013,6 +1015,8 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
     self.assertEqual(self.evaluate(max_v2_res), 3)
     self.assertIsInstance(sum_v2_sparse, sparse_tensor.SparseTensor)
     self.assertIsInstance(max_v2_sparse, sparse_tensor.SparseTensor)
+    self.assertAllEqual(self.evaluate(sum_v2_sparse.values), [6])
+    self.assertAllEqual(self.evaluate(max_v2_sparse.values), [3])
 
   def testSparseReduceInvalidInputs(self):
     for bad_input in [[1, 2], np.array([1, 2]), 42, None]:
