@@ -415,6 +415,9 @@ xla_test(
         # TODO(b/552357098): Fix flakiness and re-enable threadmanager_use_executor_impl
         "--threadmanager_use_executor_impl=false",
     ],
+    backend_tags = {
+        "amdgpu_any": ["flaky"],
+    },
     backends = ["gpu"],
     shard_count = 4,
     tags = ["nofixdeps"],
