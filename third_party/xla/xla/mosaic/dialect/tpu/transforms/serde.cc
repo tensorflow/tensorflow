@@ -238,6 +238,85 @@ LogicalResult reduce_downgrade(Operation* op, int version) {
   return success();
 }
 
+// Changes the type of the result of `op` to `new_type` and routes its uses
+// through a reshape back to the original type. RunSerde does not visit ops that
+// rules insert, and it runs upgrade rules only when deserializing and downgrade
+// rules only when serializing. So the reshape gets its final name here: plain
+// after an upgrade, mangled after a downgrade.
+void retype_result_through_reshape(Operation* op, VectorType new_type,
+                                   bool mangle_reshape) {
+  Value result = op->getResult(0);
+  OpBuilder builder(op->getContext());
+  builder.setInsertionPointAfter(op);
+  OperationState state(op->getLoc(),
+                       ((mangle_reshape ? kMangledDialect : StringRef()) +
+                        ReshapeOp::getOperationName())
+                           .str());
+  state.addTypes(result.getType());
+  state.addOperands(result);
+  Operation* reshape = builder.create(state);
+  result.setType(new_type);
+  result.replaceAllUsesExcept(reshape->getResult(0), reshape);
+}
+
+// Before version 20, tpu.reduce_index dropped the reduced dimension instead of
+// keeping it with size 1.
+LogicalResult reduce_index_upgrade(Operation* op, int version, bool&) {
+  if (version < 20) {
+    if (op->getNumOperands() != 1 || op->getNumResults() != 1) {
+      return op->emitError(
+          "Unexpected operand/result count in tpu.reduce_index");
+    }
+    const auto input_type = dyn_cast<VectorType>(op->getOperand(0).getType());
+    const auto result_type = dyn_cast<VectorType>(op->getResult(0).getType());
+    if (input_type == nullptr || result_type == nullptr) {
+      return op->emitError("Invalid operand/result type in tpu.reduce_index");
+    }
+    auto axis_attr = op->getAttrOfType<IntegerAttr>("axis");
+    if (axis_attr == nullptr) {
+      return op->emitError("Missing or invalid axis attribute");
+    }
+    const int64_t axis = axis_attr.getInt();
+    if (axis < 0 || axis >= input_type.getRank()) {
+      return op->emitError("Invalid axis in tpu.reduce_index");
+    }
+    SmallVector<int64_t> shape(input_type.getShape());
+    shape[axis] = 1;
+    retype_result_through_reshape(
+        op, VectorType::get(shape, result_type.getElementType()),
+        /*mangle_reshape=*/false);
+  }
+  return success();
+}
+
+LogicalResult reduce_index_downgrade(Operation* op, int version) {
+  if (version < 20) {
+    if (op->getNumOperands() != 1 || op->getNumResults() != 1) {
+      return op->emitError(
+          "Unexpected operand/result count in tpu.reduce_index");
+    }
+    const auto input_type = dyn_cast<VectorType>(op->getOperand(0).getType());
+    const auto result_type = dyn_cast<VectorType>(op->getResult(0).getType());
+    if (input_type == nullptr || result_type == nullptr) {
+      return op->emitError("Invalid operand/result type in tpu.reduce_index");
+    }
+    auto axis_attr = op->getAttrOfType<IntegerAttr>("axis");
+    if (axis_attr == nullptr) {
+      return op->emitError("Missing or invalid axis attribute");
+    }
+    const int64_t axis = axis_attr.getInt();
+    if (axis < 0 || axis >= input_type.getRank()) {
+      return op->emitError("Invalid axis in tpu.reduce_index");
+    }
+    SmallVector<int64_t> shape(input_type.getShape());
+    shape.erase(shape.begin() + axis);
+    retype_result_through_reshape(
+        op, VectorType::get(shape, result_type.getElementType()),
+        /*mangle_reshape=*/true);
+  }
+  return success();
+}
+
 // Upgrades an operation from a version without subcore_id (v13) to HEAD (v14+)
 // by delinearizing a single core_id into separate core_id and subcore_id.
 // This runs during deserialization (`serialize = false`), where operations have
@@ -845,6 +924,7 @@ const llvm::StringMap<UpgradeRuleType>& upgrade_rules() {
       {DynamicGatherOp::getOperationName(), dynamic_gather_upgrade},
       {ScanOp::getOperationName(), scan_upgrade},
       {ReduceOp::getOperationName(), reduce_upgrade},
+      {ReduceIndexOp::getOperationName(), reduce_index_upgrade},
       {IotaOp::getOperationName(), iota_upgrade},
       {SemaphoreSignalOp::getOperationName(), semaphore_signal_upgrade},
       {vector::MultiDimReductionOp::getOperationName(),
@@ -866,6 +946,7 @@ const llvm::StringMap<DowngradeRuleType>& downgrade_rules() {
       {DynamicGatherOp::getOperationName(), dynamic_gather_downgrade},
       {ScanOp::getOperationName(), scan_downgrade},
       {ReduceOp::getOperationName(), reduce_downgrade},
+      {ReduceIndexOp::getOperationName(), reduce_index_downgrade},
       {IotaOp::getOperationName(), iota_downgrade},
       {SemaphoreSignalOp::getOperationName(), semaphore_signal_downgrade},
       {StoreOp::getOperationName(), store_downgrade},

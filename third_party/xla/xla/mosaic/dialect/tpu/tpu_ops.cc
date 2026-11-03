@@ -3305,6 +3305,9 @@ LogicalResult ReduceIndexOp::verify() {
         absl::StrFormat("Arg_max and arg_min must have i%d output", bitwidth));
   }
 
+  // SameOperandsAndResultRank checks the following:
+  CHECK_EQ(in_ty.getRank(), out_ty.getRank());
+
   auto in_shape = in_ty.getShape();
   auto out_shape = out_ty.getShape();
   if (axis < 0 || axis >= in_shape.size()) {
@@ -3321,23 +3324,13 @@ LogicalResult ReduceIndexOp::verify() {
   if (in_shape.size() < 2) {
     return emitOpError("Not Implemented: Only input rank > 1 is supported.");
   }
-  if (out_shape.size() != in_shape.size() - 1) {
-    return emitOpError("Output rank must be one less than input rank");
-  }
-  int out_dim = 0;
-  for (int i = 0; i < in_shape.size(); ++i) {
-    if (i == axis) {
-      continue;
+  for (int64_t i = 0; i < in_ty.getRank(); ++i) {
+    const int64_t expected_output_size = (i == axis) ? 1 : in_shape[i];
+    if (out_shape[i] != expected_output_size) {
+      return emitOpError("Expected output dimension ")
+             << i << " to have size " << expected_output_size << ", but got "
+             << out_shape[i];
     }
-    if (in_shape[i] != out_shape[out_dim]) {
-      return emitOpError(
-                 "Output shape must match input shape on non-reduction "
-                 "dimensions. ")
-             << "Output shape (" << out_shape
-             << ") does not match input shape (" << in_shape
-             << ") at input dimension " << i;
-    }
-    out_dim++;
   }
   return success();
 }

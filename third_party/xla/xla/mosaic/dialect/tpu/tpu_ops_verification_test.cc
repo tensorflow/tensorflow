@@ -2136,6 +2136,43 @@ TEST_F(TpuOpsVerificationTest, ReduceOpVerificationWorks) {
   ASSERT_OK(VerifyOp(reduce));
 }
 
+TEST_F(TpuOpsVerificationTest, ReduceIndexOpVerificationWorks) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce_index = Create<ReduceIndexOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getI32Type()),
+      /*input=*/input,
+      /*axis=*/builder().getI32IntegerAttr(0),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax));
+  ASSERT_OK(VerifyOp(reduce_index));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceIndexOpReducedDimNotOne) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce_index = Create<ReduceIndexOp>(
+      /*output=*/VectorType::get({10, 200}, builder().getI32Type()),
+      /*input=*/input,
+      /*axis=*/builder().getI32IntegerAttr(0),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax));
+  ASSERT_THAT(VerifyOp(reduce_index),
+              StatusIs(_, HasSubstr("Expected output dimension 0 to have size "
+                                    "1, but got 10")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceIndexOpNonReducedDimMismatch) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce_index = Create<ReduceIndexOp>(
+      /*output=*/VectorType::get({1, 300}, builder().getI32Type()),
+      /*input=*/input,
+      /*axis=*/builder().getI32IntegerAttr(0),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax));
+  ASSERT_THAT(VerifyOp(reduce_index),
+              StatusIs(_, HasSubstr("Expected output dimension 1 to have "
+                                    "size 200, but got 300")));
+}
+
 TEST_F(TpuOpsVerificationTest, ReduceOpInvalidDim) {
   Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
   auto reduce = Create<ReduceOp>(

@@ -144,7 +144,7 @@ def TPU_AllReduceOp : TPU_Op<"all_reduce", [Pure]> {
   let hasVerifier = 1;
 }
 
-def TPU_ReduceIndexOp : TPU_Op<"reduce_index", [Pure]> {
+def TPU_ReduceIndexOp : TPU_Op<"reduce_index", [Pure, SameOperandsAndResultRank]> {
   let arguments = (ins
     AnyVectorOfNonZeroRank:$input,
     I32Attr:$axis,
