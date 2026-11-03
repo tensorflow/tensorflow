@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 
-#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -416,10 +415,10 @@ HloInstructionSequence ReferenceListSchedule(
     int64_t freed = 0;
     if (instruction->opcode() == HloOpcode::kOutfeed &&
         !instruction->outfeed_config().empty()) {
-      freed = INT_MAX;
+      freed = std::numeric_limits<int64_t>::max();
     } else if (instruction->opcode() == HloOpcode::kInfeed &&
                !instruction->infeed_config().empty()) {
-      freed = INT_MIN;
+      freed = std::numeric_limits<int64_t>::min();
     } else {
       for (const HloValue* value : uses.at(instruction)) {
         if (!ignored(*value->instruction()) &&
@@ -875,6 +874,90 @@ TEST_F(HloSchedulingTest, BFSScheduler) {
       index("out1"),   index("out2"),   index("out3")};
 
   EXPECT_TRUE(absl::c_is_sorted(indices));
+}
+
+TEST_F(HloSchedulingTest,
+       OutfeedScheduledBeforeFreeingBufferLargerThanInt32Max) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule outfeed_priority
+
+ENTRY entry {
+  p0 = f32[1073741824] parameter(0)
+  p1 = f32[16] parameter(1)
+  tok0 = token[] after-all()
+  big = f32[1073741824] copy(p0)
+  free_big = f32[16] slice(big), slice={[0:16]}
+  outfeed = token[] outfeed(p1, tok0), outfeed_config="abc",
+    control-predecessors={big}
+  ROOT root = (f32[16], token[]) tuple(free_big, outfeed)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+  ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(),
+                     ListMemoryScheduler(&alias_info_, &size_fn)));
+  HloComputation* computation = module->entry_computation();
+  const HloInstruction* outfeed =
+      computation->GetInstructionWithName("outfeed");
+  const HloInstruction* free_big =
+      computation->GetInstructionWithName("free_big");
+  ASSERT_NE(outfeed, nullptr);
+  ASSERT_NE(free_big, nullptr);
+
+  SequentialHloOrdering ordering(schedule);
+  EXPECT_TRUE(ordering.ExecutesBefore(outfeed, free_big));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  EXPECT_EQ(InstructionNames(schedule.sequence(computation)),
+            InstructionNames(
+                ReferenceListSchedule(computation, *alias_analysis, size_fn)));
+}
+
+TEST_F(HloSchedulingTest,
+       InfeedScheduledAfterDefiningBufferLargerThanInt32Max) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule infeed_priority
+
+ENTRY entry {
+  p0 = f32[16] parameter(0)
+  tok0 = token[] after-all()
+  alloc_big = f32[16,67108864] broadcast(p0), dimensions={0}
+  infeed = (f32[16], token[]) infeed(tok0), infeed_config="abc"
+  ROOT root = (f32[16,67108864], (f32[16], token[])) tuple(alloc_big, infeed)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+  ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(),
+                     ListMemoryScheduler(&alias_info_, &size_fn)));
+  HloComputation* computation = module->entry_computation();
+  const HloInstruction* alloc_big =
+      computation->GetInstructionWithName("alloc_big");
+  const HloInstruction* infeed = computation->GetInstructionWithName("infeed");
+  ASSERT_NE(alloc_big, nullptr);
+  ASSERT_NE(infeed, nullptr);
+
+  SequentialHloOrdering ordering(schedule);
+  EXPECT_TRUE(ordering.ExecutesBefore(alloc_big, infeed));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                       HloAliasAnalysis::Run(module.get(), &alias_info_));
+  EXPECT_EQ(InstructionNames(schedule.sequence(computation)),
+            InstructionNames(
+                ReferenceListSchedule(computation, *alias_analysis, size_fn)));
 }
 
 }  // namespace
