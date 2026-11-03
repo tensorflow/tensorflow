@@ -175,7 +175,7 @@ cc_library(
     name = "derived_timeline",
     hdrs = ["derived_timeline.h"],
     copts = tf_profiler_copts(),
-    visibility = internal_visibility([]),
+    visibility = internal_visibility([]) + ["//waymo/accelerator/alpine/tools/xprof_trace:__pkg__"],
     deps = [
         "@org_xprof//xprof/utils:derived_timeline",
     ],

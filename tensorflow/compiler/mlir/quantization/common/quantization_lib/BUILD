@@ -24,6 +24,7 @@ package(
     default_visibility = [
         "//learning/brain/mlir/quantization:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//waymo/accelerator/alpine/compiler:__subpackages__",
     ],
     licenses = ["notice"],
 )

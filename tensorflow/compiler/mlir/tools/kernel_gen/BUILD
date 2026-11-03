@@ -55,6 +55,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/core/kernels/mlir_generated/...",
+        "//waymo/accelerator/alpine/compiler/...",
     ],
 )
 
