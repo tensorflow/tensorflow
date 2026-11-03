@@ -920,6 +920,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_BATCH_MATMUL: {
+      if (op_sig.ext_options.batch_matmul.is_rhs_blockwise_quantized ||
+          (op_sig.inputs.size() >= 2 &&
+           (op_sig.inputs.at(1).type == kTfLiteInt4 ||
+            op_sig.inputs.at(1).type == kTfLiteUInt4 ||
+            op_sig.inputs.at(1).type == kTfLiteInt2))) {
+        return 5;
+      }
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;

@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_dump/hlo_dump_utils.h"
+#include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
 #include "xla/tools/hlo_isolation/hlo_isolation_api.h"
 #include "xla/tsl/platform/env.h"
@@ -1065,6 +1066,8 @@ ENTRY main {
 
     EXPECT_FALSE(expected_literals->contains("add"));
     EXPECT_EQ(test_result.numeric_checks_size(), 0);
+    ASSERT_EQ(test_result.verified_instructions_size(), 1);
+    EXPECT_EQ(test_result.verified_instructions(0), "add");
   }
 
   // 2. Mismatch: differing literal records numeric check failure and evicts
@@ -1099,6 +1102,7 @@ ENTRY main {
     ASSERT_EQ(test_result.numeric_checks_size(), 1);
     EXPECT_EQ(test_result.numeric_checks(0).name(), "FusionDebugger:add");
     EXPECT_TRUE(test_result.numeric_checks(0).has_top_mismatch());
+    EXPECT_EQ(test_result.verified_instructions_size(), 0);
   }
 
   // 3. Incompatible Shape: logs warning and returns early without recording
@@ -1124,6 +1128,7 @@ ENTRY main {
     }
 
     EXPECT_EQ(test_result.numeric_checks_size(), 0);
+    EXPECT_EQ(test_result.verified_instructions_size(), 0);
   }
 
   // 4. Edge cases: missing key, null map, empty/null literals

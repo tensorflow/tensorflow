@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gtest/gtest-spi.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -644,6 +645,74 @@ ENTRY main {
     EXPECT_EQ(mismatch.mismatch_box_max(1), 1);
   }
   EXPECT_TRUE(found_interp_check);
+}
+
+TEST(HloIsolationApiTest,
+     ExtractMismatchDetailsPropagatesVerifiedAndNestedOps) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(R"hlo(
+HloModule m
+nested_good_comp {
+  np0 = f32[4] parameter(0)
+  ROOT nested_good_op = f32[4] abs(np0)
+}
+nested_bad_comp {
+  np1 = f32[4] parameter(0)
+  ROOT nested_bad_op = f32[4] sine(np1)
+}
+nested_unverified_comp {
+  np2 = f32[4] parameter(0)
+  ROOT nested_unverified_op = f32[4] negate(np2)
+}
+fused_comp {
+  fp = f32[4] parameter(0)
+  nested_good_fus = f32[4] fusion(fp), kind=kLoop, calls=nested_good_comp
+  nested_bad_fus = f32[4] fusion(nested_good_fus), kind=kLoop, calls=nested_bad_comp
+  nested_unverified_fus = f32[4] fusion(fp), kind=kLoop, calls=nested_unverified_comp
+  ROOT fused_mul = f32[4] multiply(nested_bad_fus, nested_unverified_fus)
+}
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  good_entry = f32[4] abs(p0)
+  ROOT fus = f32[4] fusion(good_entry), kind=kLoop, calls=fused_comp
+}
+)hlo"));
+
+  HloIsolationTestResult result;
+  NumericCheck* parent = result.add_numeric_checks();
+  parent->set_name("TPU_VS_INTERPRETER");
+  parent->add_top_mismatches()->set_rel_error(1.0);
+  NumericCheck* sub = result.add_numeric_checks();
+  sub->set_name("FusionDebugger:nested_bad_op");
+  sub->add_top_mismatches()->set_rel_error(1.0);
+
+  for (absl::string_view op : {"good_entry", "nested_good_op", "nested_good_op",
+                               "fused_mul", "nested_bad_op", "unknown"}) {
+    result.add_verified_instructions(op);
+  }
+
+  numerics::debug_info::GraphData graph =
+      numerics::debug_info::PopulateMismatchGraphData(
+          *module, ExtractMismatchDetails(*module, result),
+          numerics::debug_info::kUnverifiedDiffScore);
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+
+  const double kGray = numerics::debug_info::kUnverifiedDiffScore;
+  EXPECT_DOUBLE_EQ(scores["p0"], kGray);
+  EXPECT_DOUBLE_EQ(scores["fus/fp"], kGray);
+  EXPECT_DOUBLE_EQ(scores["fus/nested_unverified_fus/nested_unverified_op"],
+                   kGray);
+  EXPECT_DOUBLE_EQ(scores["fus/nested_unverified_fus"], kGray);
+  EXPECT_DOUBLE_EQ(scores["good_entry"], 0.0);
+  EXPECT_DOUBLE_EQ(scores["fus/nested_good_fus/nested_good_op"], 0.0);
+  EXPECT_DOUBLE_EQ(scores["fus/nested_good_fus"], 0.0);
+  EXPECT_DOUBLE_EQ(scores["fus/fused_mul"], 0.0);
+  EXPECT_DOUBLE_EQ(scores["fus/nested_bad_fus/nested_bad_op"], 100.0);
+  EXPECT_DOUBLE_EQ(scores["fus/nested_bad_fus"], 100.0);
+  EXPECT_DOUBLE_EQ(scores["fus"], 100.0);
 }
 
 }  // namespace

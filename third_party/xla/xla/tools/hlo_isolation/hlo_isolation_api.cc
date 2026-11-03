@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/defuser.h"
 #include "xla/hlo/transforms/despecializer.h"
@@ -719,12 +720,39 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
     }
   }
 
+  const HloInstruction* entry_root =
+      test_module_clone->entry_computation()->root_instruction();
+  xla::FrontendAttributes frontend_attributes;
   for (auto* computation : test_module_clone->computations()) {
     for (auto* instruction : computation->instructions()) {
       int64_t hlo_id = next_hlo_id++;
-      xla::FrontendAttributes frontend_attributes;
+      frontend_attributes.Clear();
       (*frontend_attributes.mutable_map())["_xla_tag"] = std::to_string(hlo_id);
       instruction->add_frontend_attributes(frontend_attributes);
+
+      // Inputs and pass through ops carry no computation of their own, so a
+      // match on them is not reported as verified.
+      const bool record_verified =
+          instruction->opcode() != HloOpcode::kParameter &&
+          instruction->opcode() != HloOpcode::kConstant &&
+          instruction->opcode() != HloOpcode::kTuple &&
+          instruction->opcode() != HloOpcode::kGetTupleElement;
+
+      // The fusion debugger only instruments fused instructions. Top level
+      // ops are logged on TPU through debug attributes keyed by callback id.
+      if (record_verified && !instruction->IsFused() &&
+          instruction->opcode() != HloOpcode::kFusion &&
+          instruction != entry_root && instruction->shape().IsArray()) {
+        if (instruction->original_value() == nullptr) {
+          instruction->set_original_value(
+              OriginalValue::CreateFromInstruction(instruction));
+        }
+        if (auto array = instruction->original_value()->original_array({})) {
+          test_module_clone->AddDebugAttributes(
+              *array, {HloModule::DebugAttributes::DebugLogMode::kDefault,
+                       hlo_id, /*partitioned=*/false, /*op_id=*/0});
+        }
+      }
 
       std::string op_name(instruction->name());
       std::string ref_op_name = op_name;
@@ -740,7 +768,7 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
       dynamic_cb.callback_id = hlo_id;
       dynamic_cb.num_operands = 1;
       dynamic_cb.callback =
-          [op_name, ref_op_name, expected_literals,
+          [op_name, ref_op_name, expected_literals, record_verified,
            module_name = original_module.name(), abs_error, rel_error,
            result_mutex, test_result](
               int64_t replica_id, int64_t partition_id,
@@ -819,6 +847,9 @@ std::vector<HloOutputCallback> CreateComparisonHloOutputCallbacks(
                 }
               }
               PopulateNumericCheckMismatches(numeric_check, top_mismatches);
+            } else if (record_verified) {
+              absl::MutexLock lock(*result_mutex);
+              test_result->add_verified_instructions(op_name);
             }
           };
 
@@ -982,7 +1013,7 @@ absl::StatusOr<HloIsolationTestResult> RunIsolationTestOnModule(
                          const absl::Status& status,
                          absl::string_view module_name) {
     result.set_state(State::FAILURE);
-    result.set_reason(std::string(reason));
+    result.set_reason(reason);
     log_failure(prefix, status, module_name);
     report_mismatches();
     return result;
@@ -1686,6 +1717,62 @@ std::vector<numerics::debug_info::MismatchDetails> ExtractMismatchDetails(
       for (const auto& m : check.top_mismatches()) {
         all_details.push_back(
             ConvertToMismatchDetails(op_name, m, is_op_tuple));
+      }
+    }
+  }
+
+  // 3. Verified matches, for ops with a passing comparison and no failure.
+  absl::flat_hash_set<std::string> reported;
+  for (const auto& details : all_details) {
+    reported.insert(details.target_instruction_name);
+  }
+  for (const std::string& op_name : result.verified_instructions()) {
+    if (name_to_instr.contains(op_name) && reported.insert(op_name).second) {
+      numerics::debug_info::MismatchDetails details;
+      details.target_instruction_name = op_name;
+      details.diff_score = 0.0;
+      details.verified_match = true;
+      all_details.push_back(std::move(details));
+    }
+  }
+
+  // 4. A fusion without a result of its own takes the results of the root it
+  // unwraps to, per output for tuple roots.
+  const size_t num_direct = all_details.size();
+  auto unwrap = [](const HloInstruction* instr) {
+    while (instr->opcode() == HloOpcode::kFusion) {
+      instr = instr->fused_expression_root();
+    }
+    return instr;
+  };
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      absl::string_view name = instr->name();
+      if (instr->opcode() != HloOpcode::kFusion || reported.contains(name)) {
+        continue;
+      }
+      std::vector<std::pair<const HloInstruction*, std::optional<int64_t>>>
+          leaves;
+      const HloInstruction* root = unwrap(instr);
+      if (root->opcode() == HloOpcode::kTuple) {
+        leaves.reserve(root->operand_count());
+        for (int64_t i = 0; i < root->operand_count(); ++i) {
+          leaves.push_back({unwrap(root->operand(i)), i});
+        }
+      } else {
+        leaves.push_back({root, std::nullopt});
+      }
+      for (size_t j = 0; j < num_direct; ++j) {
+        for (const auto& [leaf, index] : leaves) {
+          if (all_details[j].target_instruction_name == leaf->name()) {
+            numerics::debug_info::MismatchDetails copy = all_details[j];
+            copy.target_instruction_name = std::string(name);
+            if (index.has_value()) {
+              copy.output_shape_index = index;
+            }
+            all_details.push_back(std::move(copy));
+          }
+        }
       }
     }
   }

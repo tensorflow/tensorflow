@@ -1903,11 +1903,6 @@ message DebugOptions {
   // overhead. Set to -1 to disable async device-to-device copies.
   optional int64 xla_gpu_async_copy_min_bytes = 522;
 
-  // If true, enable experimental tiling propagation.
-  // TODO(b/514293537): drop the flag.
-  optional bool xla_gpu_experimental_enable_tiling_propagation = 456
-      [deprecated = true];
-
   // Enables and controls expetimental cost model-driven tiling choices for GEMM
   // fusions.
   map<string, string> xla_gpu_experimental_cost_model_gemm_tiling_options = 474;
@@ -2078,6 +2073,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_dynamic_dot_search_space";
   reserved "xla_gpu_experimental_enable_nan_counter_on_thunks";
   reserved "xla_gpu_experimental_enable_split_k_rewrite";
+  reserved "xla_gpu_experimental_enable_tiling_propagation";
   reserved "xla_gpu_experimental_enable_triton_i4_rewrites";
   reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_experimental_enable_triton_tma";
@@ -2132,8 +2128,8 @@ message DebugOptions {
       234, 235, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276,
       278, 279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320,
       325, 326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388,
-      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464,
-      477, 480;
+      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 456, 458,
+      464, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.
