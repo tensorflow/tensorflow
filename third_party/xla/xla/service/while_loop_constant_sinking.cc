@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/while_util.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -79,6 +80,10 @@ HloInstruction* CloneHelper(const HloInstruction* instruction,
   }
   LOG(FATAL) << "Unexpected instruction.";
 }
+
+const HloPassFactory* const kWhileLoopConstantSinkingRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<WhileLoopConstantSinking>>(
+        "while-loop-constant-sinking");
 
 }  // namespace
 

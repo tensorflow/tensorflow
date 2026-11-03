@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -524,6 +525,10 @@ absl::StatusOr<bool> SpecializeCalls(
   }
   return changed;
 }
+
+const HloPassFactory* const kHloConstantFoldingRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<HloConstantFolding>>(
+        "constant_folding");
 
 }  // namespace
 
