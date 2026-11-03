@@ -163,6 +163,7 @@ class IfrtIRProgramSerDes : public RTTIExtends<IfrtIRProgramSerDes, SerDes> {
         deserialize_options->context == nullptr) {
       owned_context = std::make_unique<mlir::MLIRContext>(
           mlir::MLIRContext::Threading::DISABLED);
+      owned_context->enableThreadSafeLocking();
       context = owned_context.get();
     } else {
       context = deserialize_options->context;

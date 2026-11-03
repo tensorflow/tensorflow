@@ -97,7 +97,9 @@ class IfrtCompileAtomProgramPass
             mlir::MLIRContext::Threading::DISABLED)),
         compile_options_overrides_(std::move(compile_options_overrides)),
         atom_executable_future_map_(std::move(atom_executable_future_map)),
-        user_context_(UserContextScope::current()) {}
+        user_context_(UserContextScope::current()) {
+    hlo_program_context_->enableThreadSafeLocking();
+  }
 
   llvm::StringRef getArgument() const override {
     return "ifrt-compile-atom-program";
