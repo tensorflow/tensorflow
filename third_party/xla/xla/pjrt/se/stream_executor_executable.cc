@@ -230,7 +230,7 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
         ComputeIndefiniteAllocationsInBytes(*proto, /*memory_color=*/0);
   }
   memory_stats.PopulateBufferStatsFromAllocations(
-      local_exec->executable()->GetAllocations());
+      local_exec->executable()->GetAllocations(), /*assignment=*/nullptr);
   memory_stats.generated_code_size_in_bytes =
       SizeOfGeneratedCodeInBytesLocked();
   return memory_stats;

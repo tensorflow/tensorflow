@@ -1636,6 +1636,7 @@ cc_library(
         "//xla/pjrt/proto:executable_metadata_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_value",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],

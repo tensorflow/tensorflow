@@ -336,12 +336,13 @@ absl::Status IrEmitter::EmitConstantGlobals(
     // need to emit them as globals.
     if (!allocation.is_constant() ||
         (max_size_bytes &&
-         llvm_ir::LiteralForConstantAllocation(allocation).size_bytes() >
-             *max_size_bytes)) {
+         llvm_ir::LiteralForConstantAllocation(assignment_, allocation)
+                 .size_bytes() > *max_size_bytes)) {
       continue;
     }
 
-    const Literal& literal = llvm_ir::LiteralForConstantAllocation(allocation);
+    const Literal& literal =
+        llvm_ir::LiteralForConstantAllocation(assignment_, allocation);
     llvm::Constant* global_for_const;
     auto it = emitted_literals_.find(LayoutSensitiveLiteralWrapper{literal});
     if (it != emitted_literals_.end()) {

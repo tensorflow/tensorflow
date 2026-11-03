@@ -185,7 +185,8 @@ GpuAotCompilationResult::GetCompiledMemoryStats() const {
   for (const BufferAllocation& alloc : allocations) {
     alloc_ptrs.push_back(&alloc);
   }
-  memory_stats.PopulateBufferStatsFromAllocations(alloc_ptrs);
+  memory_stats.PopulateBufferStatsFromAllocations(alloc_ptrs,
+                                                  /*assignment=*/nullptr);
   if (HasHloModule(GetExecutableProto())) {
     ABSL_ASSIGN_OR_RETURN(
         auto peak_memories,
