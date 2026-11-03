@@ -520,6 +520,7 @@ cc_library(
     srcs = ["collective_permute_cse.cc"],
     hdrs = ["collective_permute_cse.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
