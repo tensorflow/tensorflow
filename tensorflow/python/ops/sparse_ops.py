@@ -1333,7 +1333,8 @@ def sparse_reduce_max_v2(
     <tf.Tensor: shape=(3,), dtype=int32, numpy=array([-7,  4,  0], dtype=int32)>
 
   Args:
-    sp_input: The SparseTensor to reduce. Should have numeric type.
+    sp_input: The `SparseTensor` or `SparseTensorValue` to reduce. Should have
+      numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
@@ -1344,7 +1345,11 @@ def sparse_reduce_max_v2(
   Returns:
     The reduced Tensor or the reduced SparseTensor if `output_is_sparse` is
     True.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor` or `SparseTensorValue`.
   """
+  sp_input = _convert_to_sparse_tensor(sp_input)
   if keepdims is None:
     keepdims = False
 
@@ -1433,7 +1438,8 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
     <tf.Tensor: shape=(3,), dtype=int32, numpy=array([-7,  4,  0], dtype=int32)>
 
   Args:
-    sp_input: The SparseTensor to reduce. Should have numeric type.
+    sp_input: The `SparseTensor` or `SparseTensorValue` to reduce. Should have
+      numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
@@ -1442,7 +1448,11 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
 
   Returns:
     The reduced Tensor.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor` or `SparseTensorValue`.
   """
+  sp_input = _convert_to_sparse_tensor(sp_input)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
   axis = deprecation.deprecated_argument_lookup("axis", axis, "reduction_axes",
@@ -1483,7 +1493,8 @@ def sparse_reduce_max_sparse(sp_input,
   which are interpreted according to the indexing rules in Python.
 
   Args:
-    sp_input: The SparseTensor to reduce. Should have numeric type.
+    sp_input: The `SparseTensor` or `SparseTensorValue` to reduce. Should have
+      numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
@@ -1492,7 +1503,11 @@ def sparse_reduce_max_sparse(sp_input,
 
   Returns:
     The reduced SparseTensor.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor` or `SparseTensorValue`.
   """
+  sp_input = _convert_to_sparse_tensor(sp_input)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
   axis = deprecation.deprecated_argument_lookup("axis", axis, "reduction_axes",
@@ -1552,7 +1567,8 @@ def sparse_reduce_sum_v2(
     <tf.Tensor: shape=(), dtype=int32, numpy=3>
 
   Args:
-    sp_input: The SparseTensor to reduce. Should have numeric type.
+    sp_input: The `SparseTensor` or `SparseTensorValue` to reduce. Should have
+      numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
@@ -1563,7 +1579,11 @@ def sparse_reduce_sum_v2(
   Returns:
     The reduced Tensor or the reduced SparseTensor if `output_is_sparse` is
     True.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor` or `SparseTensorValue`.
   """
+  sp_input = _convert_to_sparse_tensor(sp_input)
   if keepdims is None:
     keepdims = False
 
@@ -1634,7 +1654,8 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
     <tf.Tensor: shape=(), dtype=int32, numpy=3>
 
   Args:
-    sp_input: The SparseTensor to reduce. Should have numeric type.
+    sp_input: The `SparseTensor` or `SparseTensorValue` to reduce. Should have
+      numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
@@ -1643,7 +1664,11 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
 
   Returns:
     The reduced Tensor.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor` or `SparseTensorValue`.
   """
+  sp_input = _convert_to_sparse_tensor(sp_input)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
   axis = deprecation.deprecated_argument_lookup("axis", axis, "reduction_axes",
@@ -1684,7 +1709,8 @@ def sparse_reduce_sum_sparse(sp_input,
   which are interpreted according to the indexing rules in Python.
 
   Args:
-    sp_input: The SparseTensor to reduce. Should have numeric type.
+    sp_input: The `SparseTensor` or `SparseTensorValue` to reduce. Should have
+      numeric type.
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
@@ -1693,7 +1719,11 @@ def sparse_reduce_sum_sparse(sp_input,
 
   Returns:
     The reduced SparseTensor.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor` or `SparseTensorValue`.
   """
+  sp_input = _convert_to_sparse_tensor(sp_input)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
   axis = deprecation.deprecated_argument_lookup("axis", axis, "reduction_axes",
