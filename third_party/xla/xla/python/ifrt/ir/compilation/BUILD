@@ -154,7 +154,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-    ] + if_google(["//xla/python/ifrt/ir/google:compilation_utils"]),
+    ] + if_google(["//xla/python/ifrt/ir/compilation/google:utils"]),
 )
 
 cc_library(
