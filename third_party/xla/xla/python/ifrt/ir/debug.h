@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_DEBUG_H_
-#define XLA_PYTHON_IFRT_IR_TRANSFORMS_DEBUG_H_
+#ifndef XLA_PYTHON_IFRT_IR_DEBUG_H_
+#define XLA_PYTHON_IFRT_IR_DEBUG_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -106,4 +106,4 @@ class AppendOnlyFileRawStream : public llvm::raw_ostream {
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_DEBUG_H_
+#endif  // XLA_PYTHON_IFRT_IR_DEBUG_H_

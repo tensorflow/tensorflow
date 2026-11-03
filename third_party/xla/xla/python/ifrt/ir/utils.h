@@ -16,33 +16,86 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_UTILS_H_
 #define XLA_PYTHON_IFRT_IR_UTILS_H_
 
-#include <cstdint>
-#include <memory>
+#include <string>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/hlo/builder/xla_computation.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Types.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/hlo/hlo_program.h"
-#include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/sharding.h"
 
 namespace xla {
 namespace ifrt {
 
+// Used for comparing CallOps without including control dependencies.
+struct IfrtCallOpInfo : llvm::DenseMapInfo<CallOp> {
+  static unsigned getHashValue(CallOp call_op);
+  static bool isEqual(CallOp lhs, CallOp rhs);
+};
+
+// Retrieves the function named "main" from the given module, if it exists, and
+// fails otherwise.
+mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module);
+
+// Returns true if transferring between from and to array requires a reshard.
+bool IsReshard(IfrtArrayType from, IfrtArrayType to);
+
+// Converts a mlir::Type to a ifrt DType.
+absl::StatusOr<DType> ToIfrtDType(mlir::Type type);
+
+// Prints the MLIR operation as a string.
+std::string OperationToString(mlir::Operation* op,
+                              const mlir::OpPrintingFlags& flags);
+
+// Clones a given mlir::ModuleOp into the given MLIR context.
+// Note: This function is loading dialects into the context, and thus it is
+// not thread-safe w.r.t. calling it with the same context from multiple
+// threads.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CloneModuleIntoContext(
+    mlir::ModuleOp module, mlir::MLIRContext& context);
+
+// Returns a pretty string representation of the location.
+std::string GetPrettyLocation(mlir::Location loc);
+
+// Returns a pretty string representation of the location of the given argument
+// in the given module.
+//
+// REQUIRES: 0 <= index < module.getNumArgOperands().
+std::string GetArgPrettyLocation(int index, mlir::ModuleOp module);
+
+// Creates a `ShardingRef` from an `IfrtArrayType`.
+//
+// The logical devices from the `IfrtArrayType` represent indices into the
+// device_list.
+absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
+    IfrtArrayType array_type, Client* client, const DeviceListRef& device_list);
+
+// Creates an `ArraySpec` from a `mlir::Type`.
+//
+// Returns an error if the `array_type` cannot be converted to an `ArraySpec`.
+//
+// The logical devices from the `IfrtArrayType` represent indices into the
+// device_list.
+absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
+    mlir::Type array_type, Client* client, const DeviceListRef& device_list);
+
 // Returns a DeviceList for the given device ids.
 absl::StatusOr<DeviceListRef> LookUpDevices(Client* client,
                                             absl::Span<const DeviceId> ids);
-
-// Converts an XLA computation to an `xla::ifrt::HloProgram`, and applies input
-// donation and memory kind attributes to the input and output. The generated
-// MLIR module will have flattened (non XLA tuple) parameters and results.
-absl::StatusOr<std::unique_ptr<HloProgram>> XlaComputationToHloProgram(
-    const xla::XlaComputation& xla_computation,
-    absl::Span<const int64_t> donated_input_indices,
-    absl::Span<const MemoryKind> arg_memory_kinds,
-    absl::Span<const MemoryKind> result_memory_kinds);
 
 }  // namespace ifrt
 }  // namespace xla

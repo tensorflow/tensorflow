@@ -47,7 +47,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//xla/python/ifrt/ir",
-        "//xla/python/ifrt/ir/transforms:utils",
+        "//xla/python/ifrt/ir:utils",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_set",

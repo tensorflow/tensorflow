@@ -60,6 +60,7 @@ cc_library(
     deps = [
         ":atom_program_compiler",
         ":passes_inc_gen",
+        ":utils",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
@@ -71,10 +72,10 @@ cc_library(
         "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:debug",
         "//xla/python/ifrt/ir:ifrt_ir_program",
+        "//xla/python/ifrt/ir:utils",
         "//xla/python/ifrt/ir/support:sharding_conversions",
-        "//xla/python/ifrt/ir/transforms:debug",
-        "//xla/python/ifrt/ir/transforms:utils",
         "//xla/python/ifrt/mlir:fingerprint_utils",
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:xla_ifrt",
@@ -153,42 +154,34 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-exports_files(
-    ["utils.h"],
-    visibility = if_google(
-        ["//xla/python/ifrt/ir/google:__pkg__"],
-        ["//visibility:private"],
-    ),
+    ] + if_google(["//xla/python/ifrt/ir/google:compilation_utils"]),
 )
 
 cc_library(
     name = "utils",
+    srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    compatible_with = get_compatible_with_libtpu_portable(),
-    deps = [
-        if_google("//xla/python/ifrt/ir/google:compilation_utils", ":utils_oss"),
-        "//xla/pjrt:pjrt_executable",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-cc_library(
-    name = "utils_oss",
-    srcs = [
-        "utils.cc",
-        "utils.h",
-    ],
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla/pjrt:pjrt_executable",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:rtti",
+        "//xla/python/ifrt/ir",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/service:device_assignment",
+        "//xla/service/spmd/shardy:utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -205,12 +198,11 @@ cc_library(
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:debug",
         "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir:program_interpreter",
         "//xla/python/ifrt/ir:utils",
         "//xla/python/ifrt/ir/import:passes",
-        "//xla/python/ifrt/ir/transforms:debug",
-        "//xla/python/ifrt/ir/transforms:utils",
         "//xla/tsl/concurrency:executor",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",

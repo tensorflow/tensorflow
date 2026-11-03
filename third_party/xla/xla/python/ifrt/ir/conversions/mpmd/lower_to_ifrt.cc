@@ -57,13 +57,14 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/ir/compilation/utils.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/conversions/mpmd/utils.h"
+#include "xla/python/ifrt/ir/debug.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"
-#include "xla/python/ifrt/ir/transforms/debug.h"
-#include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/ir/utils.h"
 
 namespace xla::ifrt::mpmd {
 namespace {

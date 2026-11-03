@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/ir/transforms/debug.h"
+#include "xla/python/ifrt/ir/debug.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -25,13 +25,13 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/str_replace.h"
+#include "absl/strings/str_replace.h"  // IWYU pragma: keep
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
