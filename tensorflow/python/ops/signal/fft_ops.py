@@ -190,6 +190,7 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
   if fft_fn.__doc__ is not None:
     _rfft.__doc__ = re.sub("    Tcomplex.*?\n", "", fft_fn.__doc__)
+    _rfft.__doc__ = _rfft.__doc__.replace("    input:", "    input_tensor:")
   return _rfft
 
 
@@ -229,6 +230,7 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
         "`input_tensor`",
         re.sub("    Treal.*?\n", "", ifft_fn.__doc__),
     )
+    _irfft.__doc__ = _irfft.__doc__.replace("    input:", "    input_tensor:")
   return _irfft
 
 
@@ -271,6 +273,7 @@ def _fftn_wrapper(fft_n, default_name):
 
   if fft_n.__doc__ is not None:
     _fftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", fft_n.__doc__)
+    _fftn.__doc__ = _fftn.__doc__.replace("    input:", "    input_tensor:")
   return _fftn
 
 
@@ -313,6 +316,7 @@ def _ifftn_wrapper(ifft_n, default_name):
 
   if ifft_n.__doc__ is not None:
     _ifftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", ifft_n.__doc__)
+    _ifftn.__doc__ = _ifftn.__doc__.replace("    input:", "    input_tensor:")
   return _ifftn
 
 
@@ -372,6 +376,7 @@ def _rfftn_wrapper(rfft_n, default_name):
 
   if rfft_n.__doc__ is not None:
     _rfftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", rfft_n.__doc__)
+    _rfftn.__doc__ = _rfftn.__doc__.replace("    input:", "    input_tensor:")
   return _rfftn
 
 
@@ -431,6 +436,7 @@ def _irfftn_wrapper(irfft_n, default_name):
         "`input_tensor`",
         re.sub(r"    Treal.*?\n", "", irfft_n.__doc__),
     )
+    _irfftn.__doc__ = _irfftn.__doc__.replace("    input:", "    input_tensor:")
   return _irfftn
 
 
