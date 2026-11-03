@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/mock_command_buffer.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -275,6 +277,94 @@ TEST_F(CommandExecutorUpdateTest,
                     /*requires_update_on_initialize=*/true,
                     /*requires_update_on_execute=*/false,
                     /*expected_update_count=*/0);
+}
+
+class AnnotationCapturingCmd : public Command {
+ public:
+  AnnotationCapturingCmd(Thunk::ThunkInfo thunk_info, Command::BufferUses uses,
+                         std::string* create_annotation,
+                         std::string* update_annotation)
+      : Command(Thunk::Kind::kCommand, std::move(thunk_info)),
+        uses_(std::move(uses)),
+        create_annotation_(create_annotation),
+        update_annotation_(update_annotation) {}
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams&, const RecordParams&, RecordAction action,
+      se::CommandBuffer*) override {
+    if (std::holds_alternative<RecordCreate>(action)) {
+      *create_annotation_ = tsl::profiler::AnnotationStack::Get();
+    } else {
+      *update_annotation_ = tsl::profiler::AnnotationStack::Get();
+    }
+    return nullptr;
+  }
+
+  BufferUses buffer_uses() const override { return uses_; }
+
+ private:
+  BufferUses uses_;
+  std::string* create_annotation_;
+  std::string* update_annotation_;
+};
+
+TEST_F(CommandExecutorUpdateTest,
+       RecordCreatePushesAnnotationAndRecordUpdateSkipsIt) {
+  tsl::profiler::AnnotationStack::Enable(true);
+  absl::Cleanup disable_annotation_stack = [] {
+    tsl::profiler::AnnotationStack::Enable(false);
+  };
+
+  BufferAllocation allocation(/*index=*/0, /*size=*/1024, /*color=*/0);
+  Shape shape = ShapeUtil::MakeShape(U8, {100});
+  BufferAllocation::Slice slice(&allocation, /*offset=*/0, /*size=*/100);
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "fusion.42";
+  std::string create_annotation = "unset";
+  std::string update_annotation = "unset";
+
+  CommandSequence commands;
+  commands.Emplace<AnnotationCapturingCmd>(
+      std::move(thunk_info), Command::BufferUses{BufferUse::Read(slice, shape)},
+      &create_annotation, &update_annotation);
+  ASSERT_OK_AND_ASSIGN(
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), kSerialize));
+
+  std::vector<se::DeviceAddressBase> buffers(1);
+  BufferAllocations allocations(buffers, /*device_ordinal=*/0,
+                                /*memory_allocator=*/nullptr);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      run_options, allocations, /*stream=*/nullptr,
+      /*command_buffer_trace_stream=*/nullptr,
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
+
+  CommandStateManager state_manager;
+  Command::RecordParams create_params{state_manager};
+  ::testing::NiceMock<se::MockCommandBuffer> command_buffer;
+  se::CommandBuffer::State command_buffer_state =
+      se::CommandBuffer::State::kCreate;
+  ON_CALL(command_buffer, state()).WillByDefault([&] {
+    return command_buffer_state;
+  });
+  ON_CALL(command_buffer, mode())
+      .WillByDefault(::testing::Return(se::CommandBuffer::Mode::kPrimary));
+
+  ASSERT_OK(executor
+                .RecordCreate(execute_params, create_params, &command_buffer,
+                              /*dependencies=*/{})
+                .status());
+  EXPECT_EQ(create_annotation, "Thunk:#hlo_op=fusion.42#");
+
+  command_buffer_state = se::CommandBuffer::State::kUpdate;
+  Command::RecordParams update_params{state_manager,
+                                      /*updated_allocs=*/std::nullopt};
+  ASSERT_OK(
+      executor.RecordUpdate(execute_params, update_params, &command_buffer));
+  EXPECT_EQ(update_annotation, "");
 }
 
 //===----------------------------------------------------------------------===//

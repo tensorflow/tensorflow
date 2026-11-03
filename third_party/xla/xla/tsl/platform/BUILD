@@ -460,6 +460,23 @@ tsl_cc_test(
     ],
 )
 
+tsl_cc_test(
+    name = "writable_file_seek_test",
+    size = "small",
+    srcs = ["writable_file_seek_test.cc"],
+    # WindowsFileSystem does not implement Seek().
+    tags = ["no_windows"],
+    deps = [
+        ":env",
+        ":ram_file_system",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform",
+    ],
+)
+
 cc_library(
     name = "env_time",
     compatible_with = get_compatible_with_portable(),

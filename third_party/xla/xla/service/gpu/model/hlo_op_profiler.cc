@@ -170,7 +170,6 @@ static const absl::flat_hash_set<HloOpcode>& UnsupportedOps() {
       HloOpcode::kGetTupleElement,
       HloOpcode::kOutfeed,
       HloOpcode::kPad,
-      HloOpcode::kPower,
       HloOpcode::kReducePrecision,
       HloOpcode::kRemainder,
       HloOpcode::kReshape,

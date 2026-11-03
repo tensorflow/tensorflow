@@ -332,6 +332,65 @@ ENTRY main {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, ExecuteWithIncarnations) {
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions(2)));
+  ASSERT_GE(client->addressable_devices().size(), 2);
+  const gpu::GpuExecutableRunOptions* run_options =
+      absl::down_cast<PjRtStreamExecutorRawClient*>(
+          absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
+          ->gpu_run_options();
+  ASSERT_NE(run_options, nullptr);
+
+  static constexpr absl::string_view kAllReduceProgram = R"(
+HloModule AllReduce
+
+sum {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  p0 = f32[4]{0} parameter(0)
+  ROOT ar = f32[4]{0} all-reduce(p0), replica_groups={{0,1}}, to_apply=sum
+}
+)";
+  CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(2);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      CompileExecutable(kAllReduceProgram, *client, compile_options));
+
+  Literal input = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  for (int i = 0; i < 2; ++i) {
+    ASSERT_OK_AND_ASSIGN(
+        PjRtMemorySpace * memory_space,
+        client->addressable_devices()[i]->default_memory_space());
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> buffer,
+                         client->BufferFromHostLiteral(input, memory_space));
+    buffers.push_back(std::move(buffer));
+  }
+
+  // All local devices belong to task 0.
+  ExecuteOptions options;
+  options.incarnations[0] = IncarnationId(1);
+  for (int i = 0; i < 2; ++i) {
+    ASSERT_OK_AND_ASSIGN(
+        auto results,
+        executable->Execute({{buffers[0].get()}, {buffers[1].get()}}, options));
+    ASSERT_EQ(results.size(), 2);
+    for (auto& result : results) {
+      ASSERT_OK_AND_ASSIGN(auto literal, result[0]->ToLiteral().Await());
+      EXPECT_THAT(literal->data<float>(),
+                  ElementsAreArray({2.0f, 4.0f, 6.0f, 8.0f}));
+    }
+  }
+  // With the old/racy behaviour, the 2 launcher threads raced to modify this.
+  EXPECT_FALSE(run_options->incarnations().has_value());
+}
+
 TEST(StreamExecutorGpuClientTest, DistributedInit) {
   auto kv_store = std::make_shared<InMemoryKeyValueStore>();
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "DistributeInit", 4);

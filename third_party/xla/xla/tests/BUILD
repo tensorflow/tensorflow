@@ -126,15 +126,23 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_value",
         "//xla/service:hlo_verifier",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
     ],
 )
@@ -1104,8 +1112,6 @@ xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
     aot_compile_test = False,
-    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     backend_tags = {
         # TODO(b/445172709): Re-enable once fixed.
         "b200": ["broken"],
@@ -1207,11 +1213,9 @@ xla_test(
     timeout = "long",
     srcs = ["dot_operation_test.cc"],
     aot_compile_test = False,
-    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
     args = [
         "--xla_tpu_order_dot_after_layout=true",
     ],
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     # placeholder for extra args for dot_operation_test_canonicalization_after_layout
     disabled_backends = [
         "cpu",
@@ -1455,8 +1459,6 @@ xla_test(
 xla_test(
     name = "convolution_test",
     srcs = ["convolution_test.cc"],
-    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     shard_count = 50,
     tags = [
         "optonly",
@@ -1773,8 +1775,6 @@ xla_test(
 xla_test(
     name = "float8_test",
     srcs = ["float8_test.cc"],
-    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -2183,10 +2183,16 @@ xla_test(
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:status_macros",
         "//xla:types",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -2395,8 +2401,6 @@ xla_test(
 xla_test(
     name = "pad_test",
     srcs = ["pad_test.cc"],
-    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -2455,8 +2459,6 @@ xla_test(
 xla_test(
     name = "matrix_ops_simple_test",
     srcs = ["matrix_ops_simple_test.cc"],
-    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -2542,8 +2544,6 @@ xla_test(
 xla_test(
     name = "reshape_test",
     srcs = ["reshape_test.cc"],
-    # TODO(b/577274669): The SparseCore mismatch detector does not support F16/F8 outputs.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_mismatch_detector = False),
     shard_count = 30,
     deps = [
         ":client_library_test_runner_mixin",
@@ -3297,14 +3297,23 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_runner_interface",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -3582,6 +3591,30 @@ xla_test(
         "//xla:literal_util",
         "//xla/hlo/builder:xla_builder",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "fma_test",
+    srcs = ["fma_test.cc"],
+    deps = [
+        ":hlo_interpreter_reference_mixin",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:xla_test_backend_predicates",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
     ],
 )
 

@@ -1591,6 +1591,216 @@ ENTRY main {
   EXPECT_EQ(x_inter_buffer.index(), x_final_buffer.index());
 }
 
+TEST_F(BufferAssignmentTest, ValueAlsoReadThroughBitcastIsNotReusedForOutput) {
+  // The fusion reads the value defined by `x` twice: elementwise through `x`,
+  // and in reversed order through `view`, a bitcast of `x`. The fusion's result
+  // must not be placed in the buffer of `x`: the fusion would overwrite
+  // elements that it still has to read.
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true
+
+fused_computation {
+  p0 = s32[8]{0} parameter(0)
+  p1 = s32[1,8]{1,0} parameter(1)
+  reverse = s32[1,8]{1,0} reverse(p1), dimensions={1}
+  bitcast = s32[8]{0} bitcast(reverse)
+  ROOT add = s32[8]{0} add(p0, bitcast)
+}
+
+ENTRY main {
+  a = s32[8]{0} parameter(0)
+  x = s32[8]{0} negate(a)
+  view = s32[1,8]{1,0} bitcast(x)
+  ROOT out = s32[8]{0} fusion(x, view), kind=kLoop, calls=fused_computation
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice x_slice,
+                       buffers->GetUniqueSlice(x, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice out_slice,
+                       buffers->GetUniqueSlice(out, {}));
+  EXPECT_FALSE(x_slice.OverlapsWith(out_slice));
+}
+
+TEST_F(BufferAssignmentTest,
+       ValueReadElementwiseOnlyThroughBitcastIsNotReusedForOutput) {
+  // Like ValueAlsoReadThroughBitcastIsNotReusedForOutput, but mirrored: `view`
+  // is read elementwise and has the shape of the result, and `x` itself is read
+  // in reversed order.
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true
+
+fused_computation {
+  p0 = s32[1,8]{1,0} parameter(0)
+  p1 = s32[8]{0} parameter(1)
+  reverse = s32[8]{0} reverse(p1), dimensions={0}
+  bitcast = s32[1,8]{1,0} bitcast(reverse)
+  ROOT add = s32[1,8]{1,0} add(p0, bitcast)
+}
+
+ENTRY main {
+  a = s32[8]{0} parameter(0)
+  x = s32[8]{0} negate(a)
+  view = s32[1,8]{1,0} bitcast(x)
+  ROOT out = s32[1,8]{1,0} fusion(view, x), kind=kLoop, calls=fused_computation
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice x_slice,
+                       buffers->GetUniqueSlice(x, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice out_slice,
+                       buffers->GetUniqueSlice(out, {}));
+  EXPECT_FALSE(x_slice.OverlapsWith(out_slice));
+}
+
+TEST_F(BufferAssignmentTest, ValueReadTwiceThroughTupleIsNotReusedForOutput) {
+  // The fusion reads the value defined by `x` through two get-tuple-elements of
+  // the same shape, so it is not a user of `x` itself. It reads `gte0`
+  // elementwise and `gte1` in reversed order.
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true
+
+fused_computation {
+  p0 = s32[8]{0} parameter(0)
+  p1 = s32[8]{0} parameter(1)
+  reverse = s32[8]{0} reverse(p1), dimensions={0}
+  ROOT add = s32[8]{0} add(p0, reverse)
+}
+
+ENTRY main {
+  a = s32[8]{0} parameter(0)
+  x = s32[8]{0} negate(a)
+  tuple = (s32[8]{0}, s32[8]{0}) tuple(x, x)
+  gte0 = s32[8]{0} get-tuple-element(tuple), index=0
+  gte1 = s32[8]{0} get-tuple-element(tuple), index=1
+  ROOT out = s32[8]{0} fusion(gte0, gte1), kind=kLoop, calls=fused_computation
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice x_slice,
+                       buffers->GetUniqueSlice(x, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice out_slice,
+                       buffers->GetUniqueSlice(out, {}));
+  EXPECT_FALSE(x_slice.OverlapsWith(out_slice));
+}
+
+TEST_F(BufferAssignmentTest, ValueReadElementwiseTwiceThroughTupleIsReused) {
+  // Like ValueReadTwiceThroughTupleIsNotReusedForOutput, but the fusion reads
+  // both get-tuple-elements elementwise, so its result can be placed in the
+  // buffer of `x`.
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true
+
+fused_computation {
+  p0 = s32[8]{0} parameter(0)
+  p1 = s32[8]{0} parameter(1)
+  ROOT add = s32[8]{0} add(p0, p1)
+}
+
+ENTRY main {
+  a = s32[8]{0} parameter(0)
+  x = s32[8]{0} negate(a)
+  tuple = (s32[8]{0}, s32[8]{0}) tuple(x, x)
+  gte0 = s32[8]{0} get-tuple-element(tuple), index=0
+  gte1 = s32[8]{0} get-tuple-element(tuple), index=1
+  ROOT out = s32[8]{0} fusion(gte0, gte1), kind=kLoop, calls=fused_computation
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice x_slice,
+                       buffers->GetUniqueSlice(x, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice out_slice,
+                       buffers->GetUniqueSlice(out, {}));
+  EXPECT_EQ(x_slice, out_slice);
+}
+
+TEST_F(BufferAssignmentTest, ValueAlsoReadThroughBitcastIsNotReusedForTemp) {
+  // Like ValueAlsoReadThroughBitcastIsNotReusedForOutput, but the fusion's
+  // result is a temporary, so both buffers are placed by the heap simulator.
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true
+
+fused_computation {
+  p0 = s32[8]{0} parameter(0)
+  p1 = s32[1,8]{1,0} parameter(1)
+  reverse = s32[1,8]{1,0} reverse(p1), dimensions={1}
+  bitcast = s32[8]{0} bitcast(reverse)
+  ROOT add = s32[8]{0} add(p0, bitcast)
+}
+
+ENTRY main {
+  a = s32[8]{0} parameter(0)
+  x = s32[8]{0} negate(a)
+  view = s32[1,8]{1,0} bitcast(x)
+  temp = s32[8]{0} fusion(x, view), kind=kLoop, calls=fused_computation
+  ROOT out = s32[4]{0} slice(temp), slice={[0:8:2]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* temp = FindInstruction(module.get(), "temp");
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice x_slice,
+                       buffers->GetUniqueSlice(x, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice temp_slice,
+                       buffers->GetUniqueSlice(temp, {}));
+  EXPECT_FALSE(x_slice.OverlapsWith(temp_slice));
+}
+
+TEST_F(BufferAssignmentTest, ValuePassedTwiceAsOperandIsNotReusedForOutput) {
+  // The fusion reads `x` through two distinct operand slots of the same shape:
+  // `p0` is read elementwise, while `p1` is read in reversed order.
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true
+
+fused_computation {
+  p0 = s32[8]{0} parameter(0)
+  p1 = s32[8]{0} parameter(1)
+  reverse = s32[8]{0} reverse(p1), dimensions={0}
+  ROOT add = s32[8]{0} add(p0, reverse)
+}
+
+ENTRY main {
+  a = s32[8]{0} parameter(0)
+  x = s32[8]{0} negate(a)
+  ROOT out = s32[8]{0} fusion(x, x), kind=kLoop, calls=fused_computation
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* x = FindInstruction(module.get(), "x");
+  HloInstruction* out = FindInstruction(module.get(), "out");
+
+  auto buffers = RunBufferAssignmentWithSequentialOrdering(module.get());
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice x_slice,
+                       buffers->GetUniqueSlice(x, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice out_slice,
+                       buffers->GetUniqueSlice(out, {}));
+  EXPECT_FALSE(x_slice.OverlapsWith(out_slice));
+}
+
 TEST_F(BufferAssignmentTest, CanUseAllocationDoesNotMixInputOutputColors) {
   // Even when a backend allows S(0) temps to be assigned to S(1) temp
   // allocations, input/output allocations must match raw colors. They are
@@ -5698,6 +5908,96 @@ TEST(ComputeLogicalBufferUnpaddedSizesTest, Basic) {
   EXPECT_EQ(sizes.size(), 2);
   EXPECT_EQ(sizes[0], 100);
   EXPECT_EQ(sizes[1], 400);
+}
+
+TEST(ComputeLogicalBufferUnpaddedSizesTest, NestedTuple) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
+  BufferAssignmentProto proto;
+
+  // Instruction 10: flat tuple (f32[10], s32[20]) to verify depth <= 1 is
+  // unchanged.
+  HloInstructionProto* flat_inst = computation->add_instructions();
+  flat_inst->set_id(10);
+  *flat_inst->mutable_shape() =
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {10}), ShapeUtil::MakeShape(S32, {20})})
+          .ToProto();
+
+  LogicalBufferProto* flat_buf0 = proto.add_logical_buffers();
+  flat_buf0->set_id(0);
+  flat_buf0->mutable_defined_at()->set_instruction_id(10);
+  flat_buf0->mutable_defined_at()->add_shape_index(0);
+  flat_buf0->set_size(64);
+
+  LogicalBufferProto* flat_buf1 = proto.add_logical_buffers();
+  flat_buf1->set_id(1);
+  flat_buf1->mutable_defined_at()->set_instruction_id(10);
+  flat_buf1->mutable_defined_at()->add_shape_index(1);
+  flat_buf1->set_size(128);
+
+  // Instruction 20: nested 2-element top-level tuple:
+  //   ((s32[10]), (f32[8,8], f32[16], f32[100]))
+  // Top-level tuple has arity 2 (pointer table size = 2 * 8 = 16 bytes).
+  // Subtuple 0 has arity 1 (pointer table size = 1 * 8 = 8 bytes).
+  HloInstructionProto* nested_inst = computation->add_instructions();
+  nested_inst->set_id(20);
+  *nested_inst->mutable_shape() =
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {10})}),
+           ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {8, 8}),
+                                      ShapeUtil::MakeShape(F32, {16}),
+                                      ShapeUtil::MakeShape(F32, {100})})})
+          .ToProto();
+
+  // Buffer at {0, 0}: leaf s32[10] -> 40 bytes.
+  LogicalBufferProto* nested_buf0 = proto.add_logical_buffers();
+  nested_buf0->set_id(2);
+  nested_buf0->mutable_defined_at()->set_instruction_id(20);
+  nested_buf0->mutable_defined_at()->add_shape_index(0);
+  nested_buf0->mutable_defined_at()->add_shape_index(0);
+  nested_buf0->set_size(64);
+
+  // Buffer at {1, 0} (Branch B regression: last component 0 is < top-level
+  // arity 2, so old code resolved top-level element 0 and returned 8 bytes).
+  // Leaf f32[8,8] -> 256 bytes.
+  LogicalBufferProto* nested_buf1 = proto.add_logical_buffers();
+  nested_buf1->set_id(3);
+  nested_buf1->mutable_defined_at()->set_instruction_id(20);
+  nested_buf1->mutable_defined_at()->add_shape_index(1);
+  nested_buf1->mutable_defined_at()->add_shape_index(0);
+  nested_buf1->set_size(512);
+
+  // Buffer at {1, 2} (Branch A regression: last component 2 is >= top-level
+  // arity 2, so old code kept the top-level 2-tuple and returned 16 bytes).
+  // Leaf f32[100] -> 400 bytes.
+  LogicalBufferProto* nested_buf2 = proto.add_logical_buffers();
+  nested_buf2->set_id(4);
+  nested_buf2->mutable_defined_at()->set_instruction_id(20);
+  nested_buf2->mutable_defined_at()->add_shape_index(1);
+  nested_buf2->mutable_defined_at()->add_shape_index(2);
+  nested_buf2->set_size(512);
+
+  // Buffer at {0, 99}: out-of-range component 99 degrades gracefully to
+  // historical behavior (last component 99 >= top-level arity 2 -> top-level
+  // 2-tuple pointer table size = 16 bytes) without crashing.
+  LogicalBufferProto* oob_buf = proto.add_logical_buffers();
+  oob_buf->set_id(5);
+  oob_buf->mutable_defined_at()->set_instruction_id(20);
+  oob_buf->mutable_defined_at()->add_shape_index(0);
+  oob_buf->mutable_defined_at()->add_shape_index(99);
+  oob_buf->set_size(64);
+
+  ASSERT_OK_AND_ASSIGN(auto sizes,
+                       ComputeLogicalBufferUnpaddedSizes(hlo, proto));
+
+  EXPECT_EQ(sizes.size(), 6);
+  EXPECT_EQ(sizes[0], 40);   // flat {0}: 10 * 4 bytes
+  EXPECT_EQ(sizes[1], 80);   // flat {1}: 20 * 4 bytes
+  EXPECT_EQ(sizes[2], 40);   // nested {0, 0}: 10 * 4 bytes (not 8)
+  EXPECT_EQ(sizes[3], 256);  // nested {1, 0}: 8 * 8 * 4 bytes (not 8)
+  EXPECT_EQ(sizes[4], 400);  // nested {1, 2}: 100 * 4 bytes (not 16)
+  EXPECT_EQ(sizes[5], 16);   // out-of-range {0, 99}: fallback -> 16 bytes
 }
 
 TEST(ComputeTotalAllocationBytesTest, EmptyProto) {

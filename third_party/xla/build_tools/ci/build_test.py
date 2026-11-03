@@ -81,6 +81,16 @@ class BuildTest(parameterized.TestCase):
           builds[build_type].options.get("remote_download_minimal"), True
       )
 
+  def test_default_bazel_options_configure_diagnostic_logging(self) -> None:
+    builds = build.Build.all_builds()
+    for target_build in builds.values():
+      self.assertIs(target_build.options.get("show_timestamps"), True)
+      self.assertEqual(target_build.options.get("show_progress_rate_limit"), 5)
+      self.assertEqual(
+          target_build.options.get("experimental_remote_grpc_log"),
+          "bazel_remote_grpc.log",
+      )
+
   def test_benchmark_presubmit_builds_enable_runfile_links_and_toplevel_downloads(
       self,
   ) -> None:

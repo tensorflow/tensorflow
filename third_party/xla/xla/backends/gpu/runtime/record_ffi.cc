@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <deque>
-#include <memory>
 #include <new>
 #include <optional>
 #include <string>
@@ -30,14 +29,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/debugging/symbolize.h"
 #include "absl/functional/overload.h"
-#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/record_c_api.h"
@@ -48,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -195,19 +190,6 @@ const XLA_FFI_Command* AsXlaFfiCommand(
       const_cast<se::CommandBuffer::Command*>(command));
 }
 
-absl::string_view AsStringView(const void* kernel_data, int64_t kernel_size) {
-  // NOLINTNEXTLINE
-  return absl::string_view(reinterpret_cast<const char*>(kernel_data),
-                           kernel_size);
-}
-
-absl::Span<const uint8_t> AsByteSpan(const void* kernel_data,
-                                     int64_t kernel_size) {
-  return absl::Span<const uint8_t>(
-      // NOLINTNEXTLINE
-      reinterpret_cast<const uint8_t*>(kernel_data), kernel_size);
-}
-
 struct FfiLaunchParams {
   LaunchDimensions launch_dimensions;
   std::optional<stream_executor::ClusterDim> cluster_dims;
@@ -233,86 +215,10 @@ void AbslStringify(Sink& sink, const FfiLaunchParams& params) {
 }
 
 class FfiKernelCache : public se::CommandBuffer::Resource {
- private:
-  // Lightweight comparator that allows using string_view for lookup.
-  struct KernelKey {
-    std::string name;
-    const void* data;
-    struct Hash {
-      // https://abseil.io/tips/144
-      using is_transparent = void;
-      size_t operator()(const KernelKey& k) const {
-        return absl::HashOf(k.name, k.data);
-      }
-      // Lookups can happen using cheap types.
-      using Key = std::pair<absl::string_view, const void*>;
-      size_t operator()(const Key& k) const {
-        return absl::HashOf(k.first, k.second);
-      }
-    };
-    struct Eq {
-      using is_transparent = void;
-      bool operator()(const KernelKey& a, const KernelKey& b) const {
-        return a.name == b.name && a.data == b.data;
-      }
-      bool operator()(
-          const KernelKey& a,
-          const std::pair<absl::string_view, const void*>& b) const {
-        return a.name == b.first && a.data == b.second;
-      }
-    };
-  };
-
  public:
-  absl::StatusOr<se::Kernel*> GetOrCreateKernel(
-      se::StreamExecutor* executor, absl::string_view kernel_name_view,
-      const void* kernel_data, int64_t kernel_size, XLA_FFI_SourceFormat format,
-      int64_t num_args) {
-    auto key = std::make_pair(kernel_name_view, kernel_data);
-    auto it = kernels_.find(key);
-    const int32_t device_ordinal = executor->device_ordinal();
-    if (it != kernels_.end()) {
-      XLA_VLOG_DEVICE(3, device_ordinal)
-          << "FfiKernelCache: found kernel: " << kernel_name_view
-          << ", ptr: " << it->second.get();
-      return it->second.get();
-    }
-    std::string kernel_name(kernel_name_view);
-    std::optional<se::KernelLoaderSpec> spec;
-    switch (format) {
-      case XLA_FFI_SourceFormat_FUNCTION_PTR: {
-        return absl::InvalidArgumentError(
-            "XLA_FFI_SourceFormat_FUNCTION_PTR does not use FfiKernelCache");
-      }
-      case XLA_FFI_SourceFormat_PTX: {
-        spec = se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-            AsStringView(kernel_data, kernel_size), kernel_name, num_args);
-        break;
-      }
-      case XLA_FFI_SourceFormat_CUBIN: {
-        spec = se::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
-            AsByteSpan(kernel_data, kernel_size), kernel_name, num_args);
-        break;
-      }
-    }
-    if (!spec.has_value()) {
-      return absl::InvalidArgumentError(
-          absl::StrFormat("Unsupported XLA_FFI_SourceFormat: %d", format));
-    }
-    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
-                     executor->LoadKernel(*spec));
-    auto [inserted_it, unused] = kernels_.try_emplace(
-        KernelKey{std::move(kernel_name), kernel_data}, std::move(kernel));
-    se::Kernel* kernel_ptr = inserted_it->second.get();
-    XLA_VLOG_DEVICE(3, device_ordinal)
-        << "FfiKernelCache: created kernel: " << kernel_name_view
-        << ", ptr: " << kernel_ptr;
-    return kernel_ptr;
-  }
-
   void SaveLaunchParams(const se::CommandBuffer::Command* cmd,
                         FfiLaunchParams params) {
-    launch_params_[cmd] = params;
+    launch_params_[cmd] = std::move(params);
   }
 
   const FfiLaunchParams* GetLaunchParams(
@@ -334,9 +240,6 @@ class FfiKernelCache : public se::CommandBuffer::Resource {
   }
 
  private:
-  absl::flat_hash_map<KernelKey, std::unique_ptr<se::Kernel>, KernelKey::Hash,
-                      KernelKey::Eq>
-      kernels_;
   absl::flat_hash_map<const se::CommandBuffer::Command*, FfiLaunchParams>
       launch_params_;
 };
@@ -350,29 +253,22 @@ XLA_FFI_Error* FfiCreateLaunch(
   se::CommandBuffer* cmd_buffer = ctx->command_buffer;
   const bool pdl = ctx->pdl_enabled && (use_pdl != 0);
 
-  auto* cache = cmd_buffer->GetOrConstructResource<FfiKernelCache>();
-  std::variant<se::Kernel*, se::NativeKernel> kernel_target;
-  if (format == XLA_FFI_SourceFormat_FUNCTION_PTR) {
-    if (kernel_data == nullptr) {
-      return xla::ffi::CreateError(absl::InvalidArgumentError(
-          "kernel_data cannot be null for XLA_FFI_SourceFormat_FUNCTION_PTR"));
-    }
-    // FFI C API passes kernel_data as const void*, whereas driver function
-    // handles (e.g. CUfunction / hipFunction_t) are non-const opaque pointers.
-    // NOLINTNEXTLINE
-    kernel_target = se::NativeKernel{const_cast<void*>(kernel_data),
-                                     std::string(kernel_name), pdl};
-  } else {
-    auto kernel_or =
-        cache->GetOrCreateKernel(ctx->executor, kernel_name, kernel_data,
-                                 kernel_size, format, args->num_args);
-    if (!kernel_or.ok()) {
-      return xla::ffi::CreateError(kernel_or.status());
-    }
-    se::Kernel* kernel = *kernel_or;
-    kernel->set_use_pdl(pdl);
-    kernel_target = kernel;
+  if (format != XLA_FFI_SourceFormat_FUNCTION_PTR) {
+    return xla::ffi::CreateError(absl::InvalidArgumentError(
+        absl::StrFormat("Unsupported XLA_FFI_SourceFormat: %d", format)));
   }
+  if (kernel_data == nullptr) {
+    return xla::ffi::CreateError(absl::InvalidArgumentError(
+        "kernel_data cannot be null for XLA_FFI_SourceFormat_FUNCTION_PTR"));
+  }
+
+  auto* cache = cmd_buffer->GetOrConstructResource<FfiKernelCache>();
+  std::variant<se::Kernel*, se::NativeKernel> kernel_target = se::NativeKernel{
+      // FFI C API passes kernel_data as const void*, whereas driver function
+      // handles (e.g. CUfunction / hipFunction_t) are non-const opaque
+      // pointers.
+      // NOLINTNEXTLINE(*-readability-const-cast)
+      const_cast<void*>(kernel_data), std::string(kernel_name), pdl};
 
   FfiKernelArgsPacked packed_args(args->num_args);
   packed_args.add_shared_bytes(shared_mem_bytes);
@@ -403,7 +299,7 @@ XLA_FFI_Error* FfiCreateLaunch(
   FfiLaunchParams params{
       /*.launch_dimensions = */ LaunchDimensions(blocks, threads),
       /*.cluster_dims =*/cluster_dims,
-      /*.kernel =*/kernel_target,
+      /*.kernel =*/std::move(kernel_target),
       /*.shared_mem_bytes = */ shared_mem_bytes,
   };
   const int32_t device_ordinal = ctx->executor->device_ordinal();

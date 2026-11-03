@@ -219,6 +219,7 @@ class CuptiTracer {
   absl::Status Finalize();
   // Clears local bookkeeping without unsubscribing from CUPTI.
   void ClearSubscriberState();
+  void ResetSessionState();
   absl::Status UnsubscribeAndClearSubscriber();
   void ConfigureActivityUnifiedMemoryCounter(bool enable);
   absl::Status HandleNVTXCallback(CUpti_CallbackId cbid,

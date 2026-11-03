@@ -329,8 +329,8 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   //  %tuple.1 = Tuple(%copy) layout=({0,1})
   //  %tuple.2 = Tuple(%tuple.0, %tuple.1) layout=(({1,0}), ({0,1}))
   //
-  AlgebraicSimplifierOptions options(
-      [](const Shape&, const Shape&) { return false; });
+  AlgebraicSimplifierOptions options;
+  options.set_enable_reshape_is_bitcast(false);
   options.set_is_layout_sensitive(true);
   EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
   HloInstruction* root = m->entry_computation()->root_instruction();

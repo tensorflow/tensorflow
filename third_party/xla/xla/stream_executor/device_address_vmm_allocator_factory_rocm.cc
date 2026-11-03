@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -36,12 +37,14 @@ DeviceAddressVmmAllocator::Create(
     std::optional<int64_t> gpu_system_memory_size,
     absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
     std::optional<int64_t> reclaim_exempt_memory_space,
-    std::unique_ptr<DeviceAddressAllocator> host_allocator) {
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors) {
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<gpu::RocmDeviceAddressVmmAllocator> allocator,
       gpu::RocmDeviceAddressVmmAllocator::Create(
           platform, memory_fraction, gpu_system_memory_size, devices,
-          reclaim_exempt_memory_space, std::move(host_allocator)));
+          reclaim_exempt_memory_space, std::move(host_allocator),
+          std::move(free_visitors)));
   return std::unique_ptr<DeviceAddressVmmAllocator>(std::move(allocator));
 }
 

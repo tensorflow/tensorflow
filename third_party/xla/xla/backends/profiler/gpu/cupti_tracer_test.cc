@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
@@ -49,6 +50,8 @@ namespace profiler {
 namespace test {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 using ::stream_executor::gpu::CudaGraphAnnotationRegistry;
 using ::testing::_;
 using ::testing::DoAll;
@@ -507,6 +510,26 @@ TEST_F(CuptiTracerTest, GraphNodeApiExitWithoutNodeCreatedCallback) {
   cbdata.functionName = "cuGraphAddKernelNode";
   cbdata.correlationData = &api_enter_timestamp;
   cbdata.correlationId = 1;
+
+  // A preceding cuGraphLaunch on the same thread must not leak its executable
+  // graph_id into the subsequent cuGraphAddKernelNode exit.
+  cuGraphLaunch_params launch_params{
+      reinterpret_cast<CUgraphExec>(uintptr_t{101}), nullptr};
+  CUpti_CallbackData launch_cbdata = cbdata;
+  launch_cbdata.functionName = "cuGraphLaunch";
+  launch_cbdata.functionParams = &launch_params;
+  EXPECT_CALL(*mock_, GetDeviceId(cbdata.context, _))
+      .WillOnce(DoAll(SetArgPointee<1>(0), Return(CUPTI_SUCCESS)));
+  EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
+      .WillOnce(SetTimestampAndReturnSuccess(start_ns + 15));
+  EXPECT_CALL(*mock_, GetGraphExecId(launch_params.hGraph, _))
+      .WillOnce(DoAll(SetArgPointee<1>(8), Return(CUPTI_SUCCESS)));
+  EXPECT_CALL(*mock_, GetStreamIdEx(cbdata.context, nullptr, 0, _))
+      .WillOnce(DoAll(SetArgPointee<3>(42), Return(CUPTI_SUCCESS)));
+  EXPECT_OK(cupti_tracer_->HandleCallback(CUPTI_CB_DOMAIN_DRIVER_API,
+                                          CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch,
+                                          &launch_cbdata));
+
   EXPECT_CALL(*mock_, GetDeviceId(cbdata.context, _))
       .WillOnce(DoAll(SetArgPointee<1>(0), Return(CUPTI_SUCCESS)));
   EXPECT_CALL(*mock_, GetTimestampV2(subscriber, _))
@@ -540,16 +563,22 @@ TEST_F(CuptiTracerTest, GraphNodeApiExitWithoutNodeCreatedCallback) {
                                        tsl::profiler::kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
   int num_graph_node_events = 0;
+  int num_graph_launch_events = 0;
   for (const tensorflow::profiler::XLine& line : host_plane->lines()) {
     for (const tensorflow::profiler::XEvent& event : line.events()) {
       auto metadata_it = host_plane->event_metadata().find(event.metadata_id());
-      if (metadata_it != host_plane->event_metadata().end() &&
-          metadata_it->second.name() == "cuGraphAddKernelNode") {
+      if (metadata_it == host_plane->event_metadata().end()) {
+        continue;
+      }
+      if (metadata_it->second.name() == "cuGraphAddKernelNode") {
         ++num_graph_node_events;
+      } else if (metadata_it->second.name() == "cuGraphLaunch (CudaGraph:8)") {
+        ++num_graph_launch_events;
       }
     }
   }
   EXPECT_EQ(num_graph_node_events, 1);
+  EXPECT_EQ(num_graph_launch_events, 1);
 }
 
 // Makes `mock` accept a CUPTI V2 session. The other calls it gets succeed by
@@ -630,13 +659,9 @@ TEST_F(CuptiTracerTest, WarnsWhenGraphTraceHidesNodeAnnotations) {
   // Recorded annotations, but node-level tracing.
   constexpr uint32_t kGraphId = 1;
   constexpr uint64_t kNodeId = 1001;
-  const CudaGraphAnnotationRegistry::Token token =
-      registry
-          .TrackGraph(kGraphId,
-                      CudaGraphAnnotationRegistry::TrackMode::kNewGraph)
-          .token;
+  ASSERT_TRUE(registry.TrackGraph(kGraphId));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kGraphId, token, kNodeId,
+      kGraphId, kNodeId,
       "XlaModule:#hlo_module=test_mod#::fusion.1:#hlo_op=fusion.1#"));
   ASSERT_OK(tracer.Enable(KernelTraceOptions(), cupti_collector_.get()));
   tracer.Disable();
@@ -654,6 +679,7 @@ TEST_F(CuptiTracerTest, WarnsWhenGraphTraceHidesNodeAnnotations) {
 
   registry.ClearForTesting();
 }
+
 TEST_F(CuptiTracerTest, CuGraphLaunchRecordsLaunchStreamId) {
   auto* const subscriber =
       reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
@@ -762,6 +788,109 @@ TEST_F(CuptiTracerTest, CuGraphLaunchRecordsLaunchStreamId) {
   ASSERT_EQ(gpu_plane->lines_size(), 1);
   EXPECT_EQ(gpu_plane->lines(0).id(), 99);
   EXPECT_EQ(gpu_plane->lines(0).events_size(), 2);
+}
+
+TEST_F(CuptiTracerTest,
+       MultipleSubscribersNotSupportedBacksOffAndAllowsSubsequentSession) {
+  EXPECT_FALSE(CuptiDisabled());
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+
+  CuptiTracerOptions options = KernelTraceOptions();
+  auto* const v1_subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+
+  ::testing::InSequence in_sequence;
+
+  // First session: an external subscriber (such as Nsight Systems or Nsight
+  // Compute) holds CUPTI, so Subscribe returns
+  // CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED.
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_NOT_SUPPORTED));
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED));
+  EXPECT_CALL(*mock_, GetResultString(
+                          CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED, _))
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
+
+  EXPECT_THAT(cupti_tracer_->Enable(options, cupti_collector_.get()),
+              StatusIs(absl::StatusCode::kUnavailable));
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+
+  // Calling Disable() after a backed-off Enable() must be a safe no-op.
+  DisableProfiling();
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+
+  // Second session: external subscriber detached, so Subscribe succeeds.
+  EXPECT_CALL(*mock_, SubscribeV2(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_NOT_SUPPORTED));
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(DoAll(SetArgPointee<0>(v1_subscriber), Return(CUPTI_SUCCESS)));
+  ExpectSuccessfulV1KernelTrace(v1_subscriber);
+
+  EXPECT_THAT(cupti_tracer_->Enable(options, cupti_collector_.get()), IsOk());
+  EXPECT_FALSE(cupti_tracer_->IsAvailable());
+  DisableProfiling();
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+}
+
+TEST_F(CuptiTracerTest,
+       PrepareForProfilerStartBacksOffOnMultipleSubscribersNotSupported) {
+  EXPECT_FALSE(CuptiDisabled());
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+
+  CuptiTracerOptions options = KernelTraceOptions();
+  options.prefer_cupti_v2 = false;
+  auto* const v1_subscriber =
+      reinterpret_cast<CUpti_SubscriberHandle>(uintptr_t{1});
+
+  ::testing::InSequence in_sequence;
+
+  // First session fails in PrepareForProfilerStart with error 39.
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED));
+  EXPECT_CALL(*mock_, GetResultString(
+                          CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED, _))
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
+
+  EXPECT_THAT(cupti_tracer_->PrepareForProfilerStart(options),
+              StatusIs(absl::StatusCode::kUnavailable));
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+
+  // Second session succeeds.
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(DoAll(SetArgPointee<0>(v1_subscriber), Return(CUPTI_SUCCESS)));
+  ExpectSuccessfulV1KernelTrace(v1_subscriber);
+
+  EXPECT_THAT(cupti_tracer_->PrepareForProfilerStart(options), IsOk());
+  EXPECT_THAT(cupti_tracer_->Enable(options, cupti_collector_.get()), IsOk());
+  DisableProfiling();
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_FALSE(CuptiDisabled());
+}
+
+TEST_F(CuptiTracerTest,
+       InsufficientPrivilegesInPrepareForProfilerStartSetsNeedRootAccess) {
+  EXPECT_FALSE(CuptiDisabled());
+  EXPECT_FALSE(cupti_tracer_->NeedRootAccess());
+
+  CuptiTracerOptions options = KernelTraceOptions();
+  options.prefer_cupti_v2 = false;
+
+  ::testing::InSequence in_sequence;
+  EXPECT_CALL(*mock_, Subscribe(_, _, _))
+      .WillOnce(Return(CUPTI_ERROR_INSUFFICIENT_PRIVILEGES));
+  EXPECT_CALL(*mock_, GetResultString(CUPTI_ERROR_INSUFFICIENT_PRIVILEGES, _))
+      .WillOnce(Invoke(cupti_wrapper_.get(), &CuptiWrapper::GetResultString));
+
+  EXPECT_THAT(cupti_tracer_->PrepareForProfilerStart(options),
+              StatusIs(absl::StatusCode::kPermissionDenied));
+  EXPECT_TRUE(cupti_tracer_->NeedRootAccess());
+  EXPECT_TRUE(cupti_tracer_->IsAvailable());
+  EXPECT_TRUE(CuptiDisabled());
 }
 
 }  // namespace

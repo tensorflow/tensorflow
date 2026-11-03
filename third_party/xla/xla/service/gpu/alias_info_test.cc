@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/log/check.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -54,6 +55,8 @@ class AliasInfoTest : public HloHardwareIndependentTestBase {
     return alias_info_.MayAlias(operand, {}, fusion, user_index);
   }
 
+  const GpuAliasInfo* alias_info() const { return &alias_info_; }
+
  private:
   const se::DeviceDescription device_description_{
       xla::gpu::TestGpuDeviceInfo::CudaOrRocmDeviceInfo()};
@@ -80,6 +83,53 @@ ENTRY main {
                        ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
+}
+
+TEST_F(AliasInfoTest, BufferCanBeSharedDuplicateOperandElementwise) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = f32[2,3]{1,0} parameter(0)
+  param_1.1 = f32[2,3]{1,0} parameter(1)
+  ROOT add = f32[2,3]{1,0} add(param_0.1, param_1.1)
+}
+
+ENTRY main {
+  param_0 = f32[2,3]{1,0} parameter(0)
+  ROOT fusion = f32[2,3]{1,0} fusion(param_0, param_0), kind=kLoop, calls=fused_computation
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
+}
+
+TEST_F(AliasInfoTest, BufferCannotBeSharedDuplicateOperandNonElementwise) {
+  // The fusion reads its operand through both parameters, elementwise through
+  // the first one and in reversed order through the second one.
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  param_0.1 = f32[2,3]{1,0} parameter(0)
+  param_1.1 = f32[2,3]{1,0} parameter(1)
+  reverse = f32[2,3]{1,0} reverse(param_1.1), dimensions={0,1}
+  ROOT add = f32[2,3]{1,0} add(param_0.1, reverse)
+}
+
+ENTRY main {
+  param_0 = f32[2,3]{1,0} parameter(0)
+  ROOT fusion = f32[2,3]{1,0} fusion(param_0, param_0), kind=kLoop, calls=fused_computation
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(AliasInfoTest, BufferCanBeSharedBitcastedShape) {
@@ -403,6 +453,56 @@ TEST_F(AliasInfoTest, BufferCanBeSharedVariadicScatterFusion) {
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {0}));
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(1), {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {0}));
+}
+
+TEST_F(AliasInfoTest,
+       BufferCannotBeSharedVariadicScatterFusionDuplicateFusionOperand) {
+  const char* const kModuleString = R"(
+    HloModule fusion
+
+    add_mul {
+      lhs_0 = s32[] parameter(0)
+      rhs_0 = s32[] parameter(2)
+      add = s32[] add(lhs_0, rhs_0)
+      lhs_1 = s32[] parameter(1)
+      rhs_1 = s32[] parameter(3)
+      mul = s32[] multiply(lhs_1, rhs_1)
+      ROOT tuple = (s32[], s32[]) tuple(add, mul)
+    }
+
+    fused_computation {
+      p0 = s32[3,3] parameter(0)
+      p1 = s32[3,3] parameter(1)
+      p2 = s32[3] parameter(2)
+      p3 = s32[3,2] parameter(3)
+      p4 = s32[3,2] parameter(4)
+      indices = s32[3] add(p2, p2)
+      ROOT scatter = (s32[3,3], s32[3,3]) scatter(p0, p1, indices, p3, p4),
+          to_apply=add_mul,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+
+    ENTRY main {
+      parameter0 = s32[3,3] parameter(0)
+      parameter2 = s32[3] parameter(1)
+      parameter3 = s32[3,2] parameter(2)
+      parameter4 = s32[3,2] parameter(3)
+      ROOT fusion = (s32[3,3], s32[3,3]) fusion(
+          parameter0, parameter0, parameter2, parameter3, parameter4),
+          kind=kInput, calls=fused_computation
+    }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
 }
 
 TEST_F(AliasInfoTest,
@@ -522,6 +622,33 @@ TEST_F(AliasInfoTest, BufferCanBeSharedSortFusion) {
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {0}));
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {2}));
+}
+
+TEST_F(AliasInfoTest, BufferCanBeSharedSingleOperandSortFusion) {
+  const char* const kModuleString = R"(
+    HloModule module
+
+    sorting_computation {
+      %lhs_key = s32[] parameter(0)
+      %rhs_key = s32[] parameter(1)
+      ROOT %compare = pred[] compare(%lhs_key, %rhs_key), direction=LT
+    }
+
+    sort_fusion {
+      p0 = s32[16384]{0} parameter(0)
+      ROOT sort = s32[16384]{0} sort(p0), dimensions={0}, is_stable=true, to_apply=sorting_computation
+    }
+
+    ENTRY main {
+      p = s32[16384]{0} parameter(0)
+      ROOT fusion = s32[16384]{0} fusion(p), kind=kInput, calls=sort_fusion
+    }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
 }
 
 TEST_F(AliasInfoTest, BufferCannotBeSharedSortFusionDuplicateSortOperand) {
@@ -931,6 +1058,160 @@ ENTRY main {
                        ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {1, 0}));
+}
+
+TEST_F(AliasInfoTest, BufferCannotBeSharedWhenDusUsesSameParamAsBaseAndUpdate) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  p0 = s32[2,3]{1,0} parameter(0)
+  zero = s32[] constant(0)
+  ROOT dus = s32[2,3]{1,0} dynamic-update-slice(p0, p0, zero, zero)
+}
+
+ENTRY main {
+  param_0 = s32[2,3]{1,0} parameter(0)
+  ROOT fusion = s32[2,3]{1,0} fusion(param_0), kind=kInput,
+      calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {}, alias_info()));
+}
+
+TEST_F(AliasInfoTest,
+       BufferCannotBeSharedMultiOutputFusionReachingOtherNonElementwiseRoot) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  p0 = s32[2,3]{1,0} parameter(0)
+  p1 = s32[1,2]{1,0} parameter(1)
+  p2 = s32[] parameter(2)
+  zero = s32[] constant(0)
+  dus = s32[2,3]{1,0} dynamic-update-slice(p0, p1, p2, zero)
+  neg = s32[2,3]{1,0} negate(p0)
+  ROOT output = (s32[2,3]{1,0}, s32[2,3]{1,0}) tuple(dus, neg)
+}
+
+ENTRY main {
+  param_0 = s32[2,3]{1,0} parameter(0)
+  param_1 = s32[1,2]{1,0} parameter(1)
+  param_2 = s32[] parameter(2)
+  ROOT fusion = (s32[2,3]{1,0}, s32[2,3]{1,0}) fusion(
+      param_0, param_1, param_2), kind=kInput, calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {0}, alias_info()));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {1}, alias_info()));
+}
+
+TEST_F(AliasInfoTest,
+       BufferCannotBeSharedWhenNonDsPathAlsoFeedsDusUpdateOperand) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  p0 = s32[2]{0} parameter(0)
+  p1 = s32[] parameter(1)
+  ds = s32[2]{0} dynamic-slice(p0, p1), dynamic_slice_sizes={2}
+  sum = s32[2]{0} add(ds, p0)
+  ROOT dus = s32[2]{0} dynamic-update-slice(p0, sum, p1)
+}
+
+ENTRY main {
+  param_0 = s32[2]{0} parameter(0)
+  param_1 = s32[] parameter(1)
+  ROOT fusion = s32[2]{0} fusion(param_0, param_1), kind=kInput,
+      calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {}, alias_info()));
+}
+
+TEST_F(AliasInfoTest,
+       BufferCannotBeSharedWhenParamFeedsDynamicSliceStartIndex) {
+  const char* const kModuleString = R"(
+HloModule fusion
+
+fused_computation {
+  p0 = s32[1]{0} parameter(0)
+  idx = s32[] bitcast(p0)
+  ds = s32[1]{0} dynamic-slice(p0, idx), dynamic_slice_sizes={1}
+  ROOT dus = s32[1]{0} dynamic-update-slice(p0, ds, idx)
+}
+
+ENTRY main {
+  param_0 = s32[1]{0} parameter(0)
+  ROOT fusion = s32[1]{0} fusion(param_0), kind=kInput,
+      calls=fused_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {}, alias_info()));
+}
+
+TEST_F(AliasInfoTest, BufferCanBeSharedForInPlaceDynamicSliceCustomFusion) {
+  const char* const kModuleString = R"(
+HloModule dynamic_slice_fusion
+
+%dsf_computation {
+  %p0 = f32[4,4]{1,0} parameter(0)
+  %p1 = s32[] parameter(1)
+  %p2 = s32[] parameter(2)
+  %fill = f32[4]{0} custom-call(%p0),
+      custom_call_target="__xla_test$$scaled_memset",
+      api_version=API_VERSION_TYPED_FFI
+  %fill_2d = f32[1,4]{1,0} bitcast(%fill)
+  ROOT %dus = f32[4,4]{1,0} dynamic-update-slice(%p0, %fill_2d, %p1, %p2)
+}
+
+ENTRY main {
+  buf = f32[4,4]{1,0} parameter(0)
+  i = s32[] parameter(1)
+  zero = s32[] constant(0)
+  ROOT %dynamic_slice_fusion = f32[4,4]{1,0} fusion(buf, i, zero),
+      kind=kCustom, calls=%dsf_computation,
+      backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_slice_fusion"}}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module));
+  EXPECT_TRUE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {}, alias_info()));
 }
 
 }  // namespace

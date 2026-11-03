@@ -147,6 +147,7 @@ absl::Status RewriteScaledDot(
           call->shape(), call->mutable_operand(0), call->mutable_operand(1),
           call->mutable_operand(2), call->mutable_operand(3),
           dot_dimension_numbers, precision));
+  scaled_dot->set_metadata(call->metadata());
   ABSL_RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
   ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(call));
   return absl::OkStatus();

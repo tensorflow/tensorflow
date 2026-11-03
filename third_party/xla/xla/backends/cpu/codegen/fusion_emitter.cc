@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -71,6 +72,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -345,10 +347,29 @@ EmitDynamicUpdateSliceFusionKernel(MLIRContext& context,
   return mlir_kernel_definition;
 }
 
+static absl::Status CheckSupportedCpuFmaOps(const HloComputation& computation) {
+  for (const HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() == HloOpcode::kFma) {
+      PrimitiveType type = instr->shape().element_type();
+      if (type != F32 && type != F64) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Fma is not supported for element type ",
+            primitive_util::LowercasePrimitiveTypeName(type), " on CPU"));
+      }
+    }
+    for (const HloComputation* called : instr->called_computations()) {
+      ABSL_RETURN_IF_ERROR(CheckSupportedCpuFmaOps(*called));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name,
     bool enable_tiled_emitter) {
+  ABSL_RETURN_IF_ERROR(
+      CheckSupportedCpuFmaOps(*fusion.fused_instructions_computation()));
   ABSL_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
 
   std::optional<BlockLevelParameters> block_level_parameters;

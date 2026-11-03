@@ -61,8 +61,8 @@ limitations under the License.
 #include "xla/python/ifrt/ir/conversions/mpmd/utils.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/import/passes.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
 namespace xla::ifrt::mpmd {

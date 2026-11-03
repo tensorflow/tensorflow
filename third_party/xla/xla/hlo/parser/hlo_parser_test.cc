@@ -8131,6 +8131,39 @@ ENTRY main {
   EXPECT_EQ(called_computation->root_instruction()->operand_count(), 2);
 }
 
+TEST_F(HloParserTest, DesugarParsingTest_CallStart_InvalidToApply) {
+  // The braces open a nested computation, and `%nope` is not a valid
+  // instruction inside it.
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  call-start = ((), (), s32[]) call-start(), to_apply={%nope}
+  ROOT call-done = s32[] call-done(call-start)
+}
+  )";
+  auto module_or_status = ParseAndReturnUnverifiedModule(hlo);
+  EXPECT_FALSE(module_or_status.ok());
+  EXPECT_THAT(module_or_status.status().message(),
+              HasSubstr("expects '=' in instruction"));
+}
+
+TEST_F(HloParserTest, DesugarParsingTest_CustomCallStart_MissingTarget) {
+  const char* const hlo = R"(
+HloModule test
+
+ENTRY main {
+  cc-start = ((), (), s32[]) custom-call-start()
+  ROOT cc-done = s32[] custom-call-done(cc-start)
+}
+  )";
+  auto module_or_status = ParseAndReturnUnverifiedModule(hlo);
+  EXPECT_FALSE(module_or_status.ok());
+  EXPECT_THAT(
+      module_or_status.status().message(),
+      HasSubstr("attribute custom_call_target is expected but not seen"));
+}
+
 TEST_F(HloParserTest,
        DesugarParsingTest_CallStart_RootShape_CallDone_Mismatch) {
   const char* const hlo = R"(
@@ -9115,6 +9148,50 @@ ENTRY %entry (a: f32[4], b: f32[4], c: f32[4]) -> f32[4] {
   EXPECT_EQ(root->opcode(), HloOpcode::kFma);
   EXPECT_EQ(module->ToString(HloPrintOptions().set_print_operand_shape(false)),
             original);
+}
+
+TEST_F(HloParserTest, GetTupleElementNonTupleOperand) {
+  const std::string original = R"(HloModule m
+
+ENTRY e {
+  p = f32[8] parameter(0)
+  ROOT g = get-tuple-element(p), index=0
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "failed to infer shape for opcode: get-tuple-element, error: "
+                  "Cannot infer shape: attempting to index into non-tuple");
+}
+
+TEST_F(HloParserTest, GetTupleElementIndexOutOfBounds) {
+  const std::string original = R"(HloModule m
+
+ENTRY e {
+  p = (f32[8], s32[]) parameter(0)
+  ROOT g = get-tuple-element(p), index=2
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(
+      result.status().message(),
+      "failed to infer shape for opcode: get-tuple-element, error: "
+      "Cannot infer shape: attempt to index out of tuple bounds: 2 >= 2");
+}
+
+TEST_F(HloParserTest, GetTupleElementNegativeIndex) {
+  const std::string original = R"(HloModule m
+
+ENTRY e {
+  p = (f32[8], s32[]) parameter(0)
+  ROOT g = get-tuple-element(p), index=-1
+})";
+  auto result = ParseAndReturnUnverifiedModule(original);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(
+      result.status().message(),
+      "failed to infer shape for opcode: get-tuple-element, error: "
+      "Cannot infer shape: attempt to index out of tuple bounds: -1");
 }
 
 }  // namespace

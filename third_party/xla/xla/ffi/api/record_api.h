@@ -48,8 +48,6 @@ struct HostValue {
 using KernelArg = std::variant<DevicePointer, HostValue>;
 
 enum class SourceFormat {
-  kPtx = XLA_FFI_SourceFormat_PTX,
-  kCubin = XLA_FFI_SourceFormat_CUBIN,
   kFunctionPtr = XLA_FFI_SourceFormat_FUNCTION_PTR,
 };
 

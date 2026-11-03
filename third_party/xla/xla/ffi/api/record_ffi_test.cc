@@ -33,6 +33,15 @@ namespace {
 static const XLA_FFI_Api* Api() { return GetXlaFfiApi(); }
 
 TEST(FfiTest, RecordStage) {
+  struct CaptureState {
+    const void* kernel_data = nullptr;
+    int64_t kernel_size = -1;
+    XLA_FFI_SourceFormat format = static_cast<XLA_FFI_SourceFormat>(-1);
+    const XLA_FFI_Command* dummy_cmd =
+        reinterpret_cast<const XLA_FFI_Command*>(0x1);
+  } state;
+
+  const void* expected_func_ptr = reinterpret_cast<const void*>(0xDEADBEEF);
   bool called = false;
 
   auto handler = Ffi::BindRecord().Ctx<Extension<RecordExtension>>().To(
@@ -41,64 +50,7 @@ TEST(FfiTest, RecordStage) {
         EXPECT_EQ(ctx.action(), RecordAction::kCreate);
         EXPECT_EQ(ctx.commands().capacity(), 10);
         EXPECT_EQ(ctx.commands().size(), 0);
-        auto cmd = ctx.CreateLaunch(
-            /*kernel_name=*/"test", /*kernel_data=*/"dummy_ptx",
-            /*kernel_size=*/9, /*format=*/SourceFormat::kPtx,
-            /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}}, /*shared_mem_bytes=*/0,
-            /*uses_pdl=*/false, /*args=*/std::vector<KernelArg>{});
-        return Error::Success();
-      });
 
-  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
-  auto call_frame = builder.Build();
-
-  static constexpr auto kMockApi = [](auto... args) -> XLA_FFI_Error* {
-    return nullptr;
-  };
-  XLA_FFI_RecordApi mock_api{
-      /*.create_launch=*/kMockApi,
-      /*.create_memcpy_d2d=*/kMockApi,
-      /*.update_memcpy_d2d=*/kMockApi,
-      /*.request_stream_capture=*/kMockApi,
-      /*.create_empty_command=*/kMockApi,
-  };
-
-  const XLA_FFI_Command* commands_storage[10] = {nullptr};
-  int64_t num_commands = 0;
-
-  XLA_FFI_RecordFrame record_frame = {/*record_ctx=*/nullptr,
-                                      /*api=*/&mock_api,
-                                      /*action=*/XLA_FFI_RecordAction_Create,
-                                      /*commands=*/commands_storage,
-                                      /*num_commands=*/&num_commands,
-                                      /*max_commands=*/10};
-
-  RecordExtension::CExtension record_frame_ext =
-      BuildRecordCExtension(&record_frame);
-
-  InvokeContext context;
-  context.extension_start = &record_frame_ext.extension_base;
-
-  auto status =
-      Invoke(Api(), *handler, call_frame, context, ExecutionStage::kRecord);
-
-  ASSERT_OK(status);
-  EXPECT_TRUE(called);
-}
-
-TEST(FfiTest, CreateLaunchWithFunctionPtr) {
-  struct CaptureState {
-    const void* kernel_data = nullptr;
-    int64_t kernel_size = -1;
-    XLA_FFI_SourceFormat format = XLA_FFI_SourceFormat_PTX;
-    const XLA_FFI_Command* dummy_cmd =
-        reinterpret_cast<const XLA_FFI_Command*>(0x1);
-  } state;
-
-  const void* expected_func_ptr = reinterpret_cast<const void*>(0xDEADBEEF);
-
-  auto handler = Ffi::BindRecord().Ctx<Extension<RecordExtension>>().To(
-      [&](RecordContext ctx) {
         auto null_cmd = ctx.CreateLaunch(
             /*kernel_name=*/"null_func", /*kernel_data=*/nullptr,
             /*kernel_size=*/0, /*format=*/SourceFormat::kFunctionPtr,
@@ -107,7 +59,7 @@ TEST(FfiTest, CreateLaunchWithFunctionPtr) {
         EXPECT_FALSE(null_cmd.has_value());
 
         auto cmd = ctx.CreateLaunch(
-            /*kernel_name=*/"test_func_ptr", /*kernel_data=*/expected_func_ptr,
+            /*kernel_name=*/"test", /*kernel_data=*/expected_func_ptr,
             /*kernel_size=*/0, /*format=*/SourceFormat::kFunctionPtr,
             /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}}, /*shared_mem_bytes=*/0,
             /*uses_pdl=*/false, /*args=*/std::vector<KernelArg>{});
@@ -161,8 +113,11 @@ TEST(FfiTest, CreateLaunchWithFunctionPtr) {
   InvokeContext context;
   context.extension_start = &record_frame_ext.extension_base;
 
-  ASSERT_OK(
-      Invoke(Api(), *handler, call_frame, context, ExecutionStage::kRecord));
+  auto status =
+      Invoke(Api(), *handler, call_frame, context, ExecutionStage::kRecord);
+
+  ASSERT_OK(status);
+  EXPECT_TRUE(called);
   EXPECT_EQ(state.kernel_data, expected_func_ptr);
   EXPECT_EQ(state.kernel_size, 0);
   EXPECT_EQ(state.format, XLA_FFI_SourceFormat_FUNCTION_PTR);

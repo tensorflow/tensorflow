@@ -115,6 +115,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/logging.h"
@@ -564,7 +565,10 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "Compute capability mismatch; expected {" << gpu_version_.ToString()
         << "}, but was {" << cc.ToString() << "}";
   } else if (platform_id == se::sycl::kSyclPlatformId) {
-    // TODO: Add check.
+    se::OneAPIComputeCapability cc = main_stream->GetOneAPIComputeCapability();
+    TF_RET_CHECK(cc == *gpu_version_.oneapi_compute_capability())
+        << "Compute capability mismatch; expected {" << gpu_version_.ToString()
+        << "}, but was {" << cc.ToString() << "}";
   } else {
     return Internal("Unknown platform");
   }
@@ -798,12 +802,15 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   // A state container for this execution.
   Thunk::ExecutionScopedState execution_scoped_state;
 
+  const int device_ordinal = run_options->device_ordinal() != -1
+                                 ? run_options->device_ordinal()
+                                 : main_stream->parent()->device_ordinal();
   ABSL_ASSIGN_OR_RETURN(CollectiveParams collective_params,
                    CollectiveParams::Create(
                        *run_options, communication_streams.streams,
-                       LocalDeviceId(main_stream->parent()->device_ordinal()),
-                       collective_max_nchannels, p2p_max_nchannels,
-                       collective_use_minimal_resource, nccl_window_symmetric));
+                       LocalDeviceId(device_ordinal), collective_max_nchannels,
+                       p2p_max_nchannels, collective_use_minimal_resource,
+                       nccl_window_symmetric));
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
@@ -1633,7 +1640,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   params.binary.assign(binary.begin(), binary.end());
   if (debug_module != nullptr) {
     params.debug_module = std::move(debug_module);
-  } else if (proto.has_hlo_module_with_config()) {
+  } else if (proto.has_hlo_module_with_config() &&
+             proto.hlo_module_with_config().has_hlo_module()) {
     ABSL_ASSIGN_OR_RETURN(params.debug_module, HloModule::CreateFromProtoWithConfig(
                                               proto.hlo_module_with_config()));
   }

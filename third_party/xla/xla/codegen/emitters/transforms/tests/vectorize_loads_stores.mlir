@@ -25,7 +25,7 @@
 // RUN: | FileCheck %s --check-prefix=CHECK-HOPPER
 
 // RUN: emitters_opt %s --allow-unregistered-dialect -split-input-file \
-// RUN: -xla-vectorize-loads-stores="gpu_device_info='oneapi_compute_capability {architecture: \"bmg\"}'" -cse -canonicalize \
+// RUN: -xla-vectorize-loads-stores="gpu_device_info='oneapi_compute_capability {architecture: \"xe2hpg\"}'" -cse -canonicalize \
 // RUN: | FileCheck %s --check-prefix=CHECK-ONEAPI
 
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
@@ -771,6 +771,30 @@ func.func @too_many_bits_for_vectorize(%arg0: tensor<1024xf32>) -> (f32) {
   return %outer : f32
 }
 // CHECK-LABEL: @too_many_bits_for_vectorize
+// CHECK-NOT: vector.transfer_read
+
+// -----
+
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 2 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 1]">
+func.func @too_few_bits_for_vectorize(%arg0: tensor<128xi2>) -> (i2) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c64 = arith.constant 64 : index
+  %cst = arith.constant 0 : i2
+  %outer = scf.for %i = %c0 to %c64 step %c1 iter_args(%iter = %cst) -> i2 {
+    %inner = scf.for %j = %c0 to %c2 step %c1 iter_args(%iter1 = %iter) -> i2 {
+      %idx = xla.apply_indexing #map(%i)[%j]
+      %extracted = tensor.extract %arg0[%idx] : tensor<128xi2>
+      %added = arith.addi %iter1, %extracted : i2
+      scf.yield %added : i2
+    }
+    scf.yield %inner : i2
+  }
+  return %outer : i2
+}
+// CHECK-LABEL: @too_few_bits_for_vectorize
 // CHECK-NOT: vector.transfer_read
 
 // -----

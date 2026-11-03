@@ -272,9 +272,10 @@ class Client : public RTTIExtends<Client, RTTIRoot> {
   // devices without altering their physical layout.
   //
   // This API should be used only with arrays that have the same source device
-  // list and memory kind. Every IFRT implementation must enforce this by
-  // returning an `INVALID_ARGUMENT` error if `arrays` contains different device
-  // lists or memory kinds.
+  // list (when `devices` is specified) and memory kind. Every IFRT
+  // implementation must enforce this by returning an `INVALID_ARGUMENT` error
+  // if `arrays` contains different device lists (when `devices` is specified)
+  // or memory kinds.
   //
   // Implementations may return `UNIMPLEMENTED` if they do not know how to copy
   // the data as instructed.

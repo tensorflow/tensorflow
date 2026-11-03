@@ -689,6 +689,52 @@ ENTRY entry {
   EXPECT_TRUE(IsContiguousSlice(*slice12));
 }
 
+TEST_F(IrEmissionUtilsTest, EmitsNoThunks) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  c0 = f32[] constant(1)
+  bitcast0 = f32[2,2] bitcast(p0)
+  tuple0 = (f32[4], f32[]) tuple(p0, c0)
+  gte0 = f32[4] get-tuple-element(tuple0), index=0
+  token0 = token[] after-all()
+  dep0 = f32[4] add-dependency(gte0, token0)
+  alloc0 = f32[4] custom-call(), custom_call_target="AllocateBuffer"
+  pid0 = u32[] partition-id()
+  rid0 = u32[] replica-id()
+  copy0 = f32[4] copy(dep0)
+  neg0 = f32[4] negate(copy0)
+  other0 = f32[4] custom-call(neg0), custom_call_target="other"
+  ROOT root0 = (f32[2,2], f32[4], u32[], u32[], f32[4]) tuple(bitcast0, alloc0,
+      pid0, rid0, other0)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  auto emits_no_thunks = [&](absl::string_view name) {
+    return EmitsNoThunks(
+        *module->entry_computation()->GetInstructionWithName(name));
+  };
+  EXPECT_TRUE(emits_no_thunks("p0"));
+  EXPECT_TRUE(emits_no_thunks("c0"));
+  EXPECT_TRUE(emits_no_thunks("bitcast0"));
+  EXPECT_TRUE(emits_no_thunks("tuple0"));
+  EXPECT_TRUE(emits_no_thunks("gte0"));
+  EXPECT_TRUE(emits_no_thunks("token0"));
+  EXPECT_TRUE(emits_no_thunks("dep0"));
+  EXPECT_TRUE(emits_no_thunks("alloc0"));
+  EXPECT_TRUE(emits_no_thunks("root0"));
+  // partition-id and replica-id write their result with a memset.
+  EXPECT_FALSE(emits_no_thunks("pid0"));
+  EXPECT_FALSE(emits_no_thunks("rid0"));
+  EXPECT_FALSE(emits_no_thunks("copy0"));
+  EXPECT_FALSE(emits_no_thunks("neg0"));
+  EXPECT_FALSE(emits_no_thunks("other0"));
+}
+
 gpu::GpuBackendConfig CreateTestProto() {
   gpu::GpuBackendConfig proto;
   auto& knobs = *proto.mutable_cudnn_fmha_backend_config()

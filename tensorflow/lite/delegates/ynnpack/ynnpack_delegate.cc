@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
+#include "slinky/base/ref_count.h"  // from @slinky
 #include "slinky/base/thread_pool.h"  // from @slinky
 #include "slinky/base/thread_pool_impl.h"  // from @slinky
 #include "tensorflow/lite/builtin_ops.h"
@@ -45,6 +46,67 @@ limitations under the License.
 
 namespace tflite {
 namespace ynnpack {
+namespace {
+
+void MarkDeadSubgraphTreeSkippable(
+    const std::vector<std::unique_ptr<tflite::Subgraph>>& subgraphs,
+    int root_idx, std::vector<bool>& skippable_subgraphs) {
+  std::vector<bool> visited(skippable_subgraphs.size(), false);
+  std::vector<int> worklist = {root_idx};
+  while (!worklist.empty()) {
+    const int idx = worklist.back();
+    worklist.pop_back();
+    if (idx <= 0 || static_cast<size_t>(idx) >= skippable_subgraphs.size() ||
+        visited[idx]) {
+      continue;
+    }
+    visited[idx] = true;
+    skippable_subgraphs[idx] = true;
+    const tflite::Subgraph* dead_subgraph = subgraphs[idx].get();
+    if (dead_subgraph == nullptr) {
+      continue;
+    }
+    const auto& plan = dead_subgraph->pre_delegation_execution_plan().empty()
+                           ? dead_subgraph->execution_plan()
+                           : dead_subgraph->pre_delegation_execution_plan();
+    for (int node_index : plan) {
+      const auto* node_and_reg =
+          dead_subgraph->node_and_registration(node_index);
+      if (node_and_reg == nullptr ||
+          node_and_reg->first.builtin_data == nullptr) {
+        continue;
+      }
+      const TfLiteNode& node = node_and_reg->first;
+      switch (node_and_reg->second.builtin_code) {
+        case kTfLiteBuiltinStablehloComposite: {
+          const auto* params =
+              static_cast<const TfLiteStablehloCompositeParams*>(
+                  node.builtin_data);
+          worklist.push_back(params->subgraph_index);
+          break;
+        }
+        case kTfLiteBuiltinWhile: {
+          const auto* params =
+              static_cast<const TfLiteWhileParams*>(node.builtin_data);
+          worklist.push_back(params->cond_subgraph_index);
+          worklist.push_back(params->body_subgraph_index);
+          break;
+        }
+        case kTfLiteBuiltinIf: {
+          const auto* params =
+              static_cast<const TfLiteIfParams*>(node.builtin_data);
+          worklist.push_back(params->then_subgraph_index);
+          worklist.push_back(params->else_subgraph_index);
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+}
+
+}  // namespace
 
 class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
  public:
@@ -56,11 +118,18 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         runtime_(nullptr) {}
 
   ~YNNPackDelegateKernel() override {
+    if (init_task_) {
+      thread_pool_->wait_for(&*init_task_);
+    }
     if (runtime_) ynn_delete_runtime(runtime_);
     if (subgraph_) ynn_delete_subgraph(subgraph_);
   }
 
   TfLiteStatus BuildSubgraphAndRuntime(TfLiteContext* context) {
+    if (init_task_) {
+      thread_pool_->wait_for(&*init_task_);
+      init_task_ = nullptr;
+    }
     // The constants folded by the previous runtime (e.g. the packed weights)
     // are only reused by the new subgraph's constant folding while that
     // runtime is alive, so keep it until the new subgraph is optimized.
@@ -283,14 +352,23 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       }
     }
 
-    ynn_threadpool_t ynn_tp = reinterpret_cast<ynn_threadpool_t>(thread_pool_);
-    TF_LITE_ENSURE_YNN_STATUS(ynn_optimize_subgraph(subgraph_, ynn_tp, 0));
-    old_runtime.reset();
-    const ynn_status create_status =
-        ynn_create_runtime(subgraph_, ynn_tp, 0, &runtime_);
-    ynn_delete_subgraph(subgraph_);
-    subgraph_ = nullptr;
-    TF_LITE_ENSURE_YNN_STATUS(create_status);
+    auto init_subgraph = [this, old_runtime = old_runtime.release()]() {
+      ynn_threadpool_t ynn_tp =
+          reinterpret_cast<ynn_threadpool_t>(thread_pool_);
+      init_status_ = ynn_optimize_subgraph(subgraph_, ynn_tp, 0);
+      ynn_delete_runtime(old_runtime);
+      if (init_status_ == ynn_status_success) {
+        init_status_ = ynn_create_runtime(subgraph_, ynn_tp, 0, &runtime_);
+      }
+      ynn_delete_subgraph(subgraph_);
+      subgraph_ = nullptr;
+    };
+    if (thread_pool_) {
+      init_task_ = thread_pool_->enqueue(init_subgraph);
+    } else {
+      init_subgraph();
+      TF_LITE_ENSURE_YNN_STATUS(init_status_);
+    }
 
     return kTfLiteOk;
   }
@@ -331,20 +409,6 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         node_info.composite_op_type = CompositeOpType::kSdpa;
       } else if (IsMoe(reg, node)) {
         node_info.composite_op_type = CompositeOpType::kMoe;
-      }
-      if (node_info.composite_op_type != CompositeOpType::kNone) {
-        auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
-        const auto* composite_params =
-            static_cast<const TfLiteStablehloCompositeParams*>(
-                node->builtin_data);
-        if (subgraph != nullptr && subgraph->GetSubgraphs() != nullptr &&
-            composite_params != nullptr &&
-            composite_params->subgraph_index > 0 &&
-            static_cast<size_t>(composite_params->subgraph_index) <
-                subgraph->GetSubgraphs()->size()) {
-          TF_LITE_ENSURE_STATUS(subgraph->MarkSubgraphAsDelegationSkippable(
-              composite_params->subgraph_index));
-        }
       }
       nodes_info_.push_back(node_info);
     }
@@ -394,6 +458,12 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
 
     if (rebuild_required) {
       TF_LITE_ENSURE_STATUS(BuildSubgraphAndRuntime(context));
+    }
+
+    if (init_task_) {
+      thread_pool_->wait_for(&*init_task_);
+      init_task_ = nullptr;
+      TF_LITE_ENSURE_YNN_STATUS(init_status_);
     }
 
     // Set input shapes in YNNPACK.
@@ -508,6 +578,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
  private:
   const TfLiteYNNPackDelegateOptions options_;
   slinky::thread_pool* thread_pool_ = nullptr;
+  slinky::ref_count<slinky::thread_pool::task> init_task_;
+  ynn_status init_status_ = ynn_status_success;
   ynn_subgraph_t subgraph_;
   ynn_runtime_t runtime_;
 
@@ -625,26 +697,53 @@ class YNNPackDelegate : public SimpleDelegateInterface {
   // supported the composite op without inlining.
   TfLiteStatus Initialize(TfLiteContext* context) override {
     auto* subgraph = reinterpret_cast<tflite::Subgraph*>(context->impl_);
-    if (subgraph != nullptr) {
-      auto filter = [context, this](const TfLiteNode* node,
-                                    const TfLiteRegistration* reg) -> bool {
-        if (IsRuntimeBmm(reg, node) &&
-            IsRuntimeBatchedMatMulSupported(reg, node, context, options_) ==
-                kTfLiteOk) {
-          // Don't inline this supported runtime_bmm.
-          return false;
-        } else if (IsSdpa(reg, node) &&
-                   IsSdpaSupported(reg, node, context) == kTfLiteOk) {
-          // Don't inline this supported sdpa.
-          return false;
-        } else if (IsMoe(reg, node) &&
-                   IsMoeSupported(reg, node, context) == kTfLiteOk) {
-          // Don't inline this supported MoE.
-          return false;
+    if (subgraph == nullptr) {
+      return kTfLiteOk;
+    }
+    const auto* subgraphs = subgraph->GetSubgraphs();
+    const size_t num_subgraphs = subgraphs != nullptr ? subgraphs->size() : 0;
+    // Subgraph::InlineCompositeNodes calls UndoAllDelegates(), which resets
+    // is_delegation_skippable_ across all subgraphs in the interpreter.
+    // Preserve previously marked subgraphs and also mark composite
+    // decomposition subgraphs that are delegated or inlined here.
+    std::vector<bool> skippable_subgraphs(num_subgraphs, false);
+    for (size_t i = 1; i < num_subgraphs; ++i) {
+      if ((*subgraphs)[i] != nullptr &&
+          (*subgraphs)[i]->IsDelegationSkippable()) {
+        skippable_subgraphs[i] = true;
+      }
+    }
+    auto filter = [context, this, subgraphs, &skippable_subgraphs](
+                      const TfLiteNode* node,
+                      const TfLiteRegistration* reg) -> bool {
+      int decomp_idx = -1;
+      if (reg->builtin_code == kTfLiteBuiltinStablehloComposite &&
+          node->builtin_data != nullptr) {
+        decomp_idx = static_cast<const TfLiteStablehloCompositeParams*>(
+                         node->builtin_data)
+                         ->subgraph_index;
+      }
+      if (IsNodeSupportedByDelegate(reg, node, context)) {
+        // Don't inline this supported composite; its decomposition subgraph
+        // (and any nested callee subgraphs inside it) is dead.
+        if (subgraphs != nullptr && decomp_idx > 0) {
+          MarkDeadSubgraphTreeSkippable(*subgraphs, decomp_idx,
+                                        skippable_subgraphs);
         }
-        return true;
-      };
-      TF_LITE_ENSURE_STATUS(subgraph->InlineCompositeNodes(filter));
+        return false;
+      }
+      if (decomp_idx > 0 &&
+          static_cast<size_t>(decomp_idx) < skippable_subgraphs.size()) {
+        skippable_subgraphs[decomp_idx] = true;
+      }
+      return true;
+    };
+    TF_LITE_ENSURE_STATUS(subgraph->InlineCompositeNodes(filter));
+    for (size_t i = 1; i < skippable_subgraphs.size(); ++i) {
+      if (skippable_subgraphs[i] && (*subgraphs)[i] != nullptr &&
+          !(*subgraphs)[i]->IsDelegationSkippable()) {
+        TF_LITE_ENSURE_STATUS(subgraph->MarkSubgraphAsDelegationSkippable(i));
+      }
     }
     return kTfLiteOk;
   }

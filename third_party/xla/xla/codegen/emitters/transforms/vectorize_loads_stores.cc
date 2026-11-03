@@ -160,8 +160,9 @@ mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type,
       !absl::has_single_bit(static_cast<unsigned int>(*vector_size))) {
     return nullptr;  // Unsupported vector size.
   }
-  if (tensor_type.getElementTypeBitWidth() * *vector_size > 256) {
-    return nullptr;  // Vector size is too large.
+  int vector_bit_width = tensor_type.getElementTypeBitWidth() * *vector_size;
+  if (vector_bit_width < 8 || vector_bit_width > 256) {
+    return nullptr;  // Vector size is not byte-aligned or is too large.
   }
   if (tensor_type.getShape().back() % *vector_size) {
     return nullptr;  // Misaligned start indices.

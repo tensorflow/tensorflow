@@ -70,6 +70,21 @@ class CollectiveMemory {
   std::pair<SymmetricMemory*, size_t> FindSymmetricMemory(
       const GpuCliqueKey& clique, se::DeviceAddressBase addr) const;
 
+  // Returns a weak pointer to the symmetric memory and offset in that
+  // symmetric memory that corresponds to the given buffer allocation index.
+  std::pair<std::weak_ptr<SymmetricMemory>, size_t> FindWeakSymmetricMemory(
+      const GpuCliqueKey& clique, BufferAllocation::Index allocation) const;
+
+  // Returns a weak pointer to the symmetric memory and offset in that
+  // symmetric memory that corresponds to the given buffer allocation slice.
+  std::pair<std::weak_ptr<SymmetricMemory>, size_t> FindWeakSymmetricMemory(
+      const GpuCliqueKey& clique, BufferAllocation::Slice slice) const;
+
+  // Returns a weak pointer to the symmetric memory and offset in that
+  // symmetric memory that corresponds to the given device address.
+  std::pair<std::weak_ptr<SymmetricMemory>, size_t> FindWeakSymmetricMemory(
+      const GpuCliqueKey& clique, se::DeviceAddressBase addr) const;
+
   // Returns a peer address that corresponds to the given buffer allocation.
   std::optional<se::DeviceAddressBase> FindPeerAddress(
       const GpuCliqueKey& clique, RankId rank,

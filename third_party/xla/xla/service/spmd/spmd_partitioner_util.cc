@@ -2161,8 +2161,10 @@ std::optional<int64_t> GetKValueInTopKWhenPartitionSortDim(
       supported = false;
       break;
     }
-    if (absl::c_any_of(slice->slice_starts(), [](int x) { return x != 0; }) ||
-        absl::c_any_of(slice->slice_strides(), [](int x) { return x != 1; })) {
+    if (absl::c_any_of(slice->slice_starts(),
+                       [](int64_t x) { return x != 0; }) ||
+        absl::c_any_of(slice->slice_strides(),
+                       [](int64_t x) { return x != 1; })) {
       // Strided slice or slicing at the beginning isn't supported.
       supported = false;
       break;

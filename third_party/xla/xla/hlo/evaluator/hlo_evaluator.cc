@@ -1449,8 +1449,12 @@ absl::Status HloEvaluator::HandleSetDimensionSize(
          operand_literal.total_size_bytes());
   const Literal& size_literal =
       GetEvaluatedLiteralFor(set_dimension_size->operand(1));
-  result.SetDynamicSize(set_dimension_size->dimension(),
-                        size_literal.Get<int32_t>({}));
+  const int64_t dimension = set_dimension_size->dimension();
+  // Nothing validates the size operand against the bound; clamp to [0, bound]
+  // so an out-of-contract runtime size cannot trip internal CHECKs.
+  const int32_t size = static_cast<int32_t>(std::clamp<int64_t>(
+      size_literal.Get<int32_t>({}), 0, result.shape().dimensions(dimension)));
+  result.SetDynamicSize(dimension, size);
   SetEvaluatedLiteralFor(set_dimension_size, std::move(result));
   return absl::OkStatus();
 }
@@ -3385,7 +3389,8 @@ absl::StatusOr<std::vector<Literal>> HloEvaluator::ExtractAsyncInputParameters(
     ABSL_ASSIGN_OR_RETURN(Literal sub_literal,
                      Literal::Make(ShapeUtil::GetSubshape(async_literal.shape(),
                                                           sub_index)));
-    ABSL_RETURN_IF_ERROR(sub_literal.CopyFrom(async_literal, /*dest_shape_index=*/{},
+    ABSL_RETURN_IF_ERROR(sub_literal.CopyFrom(async_literal,
+                                         /*dest_shape_index=*/{},
                                          /*src_shape_index=*/sub_index));
     sub_literals.push_back(std::move(sub_literal));
   }

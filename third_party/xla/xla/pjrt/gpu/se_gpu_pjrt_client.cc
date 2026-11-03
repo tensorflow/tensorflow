@@ -1619,7 +1619,8 @@ GetStreamExecutorGpuDeviceAllocator(
           /*reclaim_exempt_memory_space=*/
           static_cast<int64_t>(gpu::MemorySpaceColor::kCollective),
           std::make_unique<se::MultiDeviceAdapter>(platform,
-                                                   std::move(host_allocators)));
+                                                   std::move(host_allocators)),
+          allocator_config.sub_allocator_free_visitors);
     }
   }
 

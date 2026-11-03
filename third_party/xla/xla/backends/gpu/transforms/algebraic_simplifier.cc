@@ -15,17 +15,26 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -78,6 +87,11 @@ absl::Status GpuAlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   return AlgebraicSimplifierVisitor::HandleAdd(add);
 }
 
+bool GpuAlgebraicSimplifierVisitor::ConvIsLowerable(
+    HloInstruction* conv) const {
+  return ConvRewriter::ConvIsLowerable(conv);
+}
+
 bool GpuAlgebraicSimplifierVisitor::SupportedDotPrecisionConfig(
     const PrecisionConfig& config, bool has_contracting_dim) {
   if (!has_contracting_dim) {
@@ -117,5 +131,28 @@ absl::StatusOr<bool> GpuAlgebraicSimplifier::RunImpl(
       2, "GpuAlgebraicSimplifier::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
+
+namespace {
+
+class GpuAlgebraicSimplifierFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "gpu-algebraic-simplifier"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext& context,
+      const HloPassOptions& options) const override {
+    ABSL_ASSIGN_OR_RETURN(const se::DeviceDescription& device_description,
+                     context.Get<const se::DeviceDescription>());
+    AlgebraicSimplifierOptions simplifier_options;
+    options.MergeInto(simplifier_options);
+    return std::make_unique<GpuAlgebraicSimplifier>(
+        simplifier_options, device_description.gpu_compute_capability());
+  }
+};
+
+const HloPassFactory* const kGpuAlgebraicSimplifierRegistration =
+    RegisterHloPassFactory<GpuAlgebraicSimplifierFactory>();
+
+}  // namespace
 
 }  // namespace xla::gpu

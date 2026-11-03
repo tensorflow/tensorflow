@@ -226,8 +226,21 @@ TEST_F(AsyncComputeOnRewriterTest,
     }
   )";
 
-  // Both modes only wrap computations made up of all-gather and parameter
-  // instructions, so the negate is rejected in either mode.
+  auto expect_rewritten_to_async_call = [](HloModule* module,
+                                           AsyncComputeOnRewriter& rewriter) {
+    ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module));
+    EXPECT_TRUE(changed);
+    ASSERT_OK(HloVerifier(HloVerifierOpts{}).Run(module).status());
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    ASSERT_EQ(root->opcode(), HloOpcode::kAsyncDone);
+    ASSERT_EQ(root->operand(0)->opcode(), HloOpcode::kAsyncStart);
+    EXPECT_EQ(root->operand(0)->async_wrapped_instruction()->opcode(),
+              HloOpcode::kCall);
+  };
+
+  // Only legacy collectives mode restricts the computation to all-gather and
+  // parameter instructions; generic mode wraps arbitrary computations.
   for (bool use_legacy_collectives : {true, false}) {
     SCOPED_TRACE(use_legacy_collectives ? "use_legacy_collectives=true"
                                         : "use_legacy_collectives=false");
@@ -235,13 +248,17 @@ TEST_F(AsyncComputeOnRewriterTest,
         std::unique_ptr<HloModule> module,
         ParseAndReturnUnverifiedModule(unsupported_instruction_hlo));
     AsyncComputeOnRewriter rewriter(use_legacy_collectives);
-    EXPECT_THAT(
-        rewriter.Run(module.get()),
-        StatusIs(absl::StatusCode::kUnimplemented,
-                 ::testing::HasSubstr("contains a negate instruction")));
+    if (use_legacy_collectives) {
+      EXPECT_THAT(
+          rewriter.Run(module.get()),
+          StatusIs(absl::StatusCode::kUnimplemented,
+                   ::testing::HasSubstr("contains a negate instruction")));
+    } else {
+      expect_rewritten_to_async_call(module.get(), rewriter);
+    }
   }
 
-  // Both modes require the all-gather to have exactly one operand.
+  // Only legacy collectives mode requires the all-gather to have one operand.
   for (bool use_legacy_collectives : {true, false}) {
     SCOPED_TRACE(use_legacy_collectives ? "use_legacy_collectives=true"
                                         : "use_legacy_collectives=false");
@@ -249,22 +266,29 @@ TEST_F(AsyncComputeOnRewriterTest,
         std::unique_ptr<HloModule> module,
         ParseAndReturnUnverifiedModule(variadic_all_gather_hlo));
     AsyncComputeOnRewriter rewriter(use_legacy_collectives);
-    EXPECT_THAT(rewriter.Run(module.get()),
-                StatusIs(absl::StatusCode::kUnimplemented,
-                         ::testing::HasSubstr("has 2 operands")));
+    if (use_legacy_collectives) {
+      EXPECT_THAT(rewriter.Run(module.get()),
+                  StatusIs(absl::StatusCode::kUnimplemented,
+                           ::testing::HasSubstr("has 2 operands")));
+    } else {
+      expect_rewritten_to_async_call(module.get(), rewriter);
+    }
   }
 
-  // Both modes require the compute-on computation to contain exactly one
-  // all-gather.
+  // Only legacy collectives mode requires a single all-gather.
   for (bool use_legacy_collectives : {true, false}) {
     SCOPED_TRACE(use_legacy_collectives ? "use_legacy_collectives=true"
                                         : "use_legacy_collectives=false");
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                          ParseAndReturnUnverifiedModule(two_all_gathers_hlo));
     AsyncComputeOnRewriter rewriter(use_legacy_collectives);
-    EXPECT_THAT(rewriter.Run(module.get()),
-                StatusIs(absl::StatusCode::kUnimplemented,
-                         ::testing::HasSubstr("contains at least two")));
+    if (use_legacy_collectives) {
+      EXPECT_THAT(rewriter.Run(module.get()),
+                  StatusIs(absl::StatusCode::kUnimplemented,
+                           ::testing::HasSubstr("contains at least two")));
+    } else {
+      expect_rewritten_to_async_call(module.get(), rewriter);
+    }
   }
 }
 

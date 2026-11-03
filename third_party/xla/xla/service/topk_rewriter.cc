@@ -771,10 +771,10 @@ class TopkDecomposerFactory : public HloPassFactory {
 
   absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
       const HloPassContext&, const HloPassOptions& options) const override {
-    ABSL_ASSIGN_OR_RETURN(bool only_topk_op,
-                     options.Get<bool>("only_topk_op", false));
     return std::make_unique<TopkDecomposer>(
-        only_topk_op ? HloPredicateIsOp<HloOpcode::kTopK> : HloPredicate());
+        options.Get<bool>("only_topk_op").value_or(false)
+            ? HloPredicateIsOp<HloOpcode::kTopK>
+            : HloPredicate());
   }
 };
 

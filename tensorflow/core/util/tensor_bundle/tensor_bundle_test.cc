@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
+#include <cstdint>
+#include <limits>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #if defined(_WIN32)
@@ -42,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
+#include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 
@@ -199,13 +203,10 @@ absl::Status FlipEndiannessBit(const std::string& prefix) {
   return metadata_file->Close();
 }
 
-// Rewrites the bundle's metadata file, replacing the recorded shape of the
-// entry stored under <key> with <new_shape>. Used to simulate a crafted
-// checkpoint whose full-tensor shape disagrees with the shapes of its stored
-// slices.
-absl::Status RewriteEntryShape(const std::string& prefix,
-                               const std::string& key,
-                               const TensorShape& new_shape) {
+// Rewrites one metadata entry while preserving the data file and other entries.
+template <typename Rewrite>
+absl::Status RewriteEntry(const std::string& prefix, const std::string& key,
+                          const Rewrite& rewrite) {
   Env* env = Env::Default();
   const std::string metadata_tmp_path = Prefix("rewrite_tmp_path");
   std::unique_ptr<WritableFile> metadata_file;
@@ -230,7 +231,7 @@ absl::Status RewriteEntryShape(const std::string& prefix,
       if (iter->key() == key) {
         BundleEntryProto entry;
         CHECK(entry.ParseFromArray(iter->value().data(), iter->value().size()));
-        new_shape.AsProto(entry.mutable_shape());
+        rewrite(&entry);
         builder->Add(iter->key(), entry.SerializeAsString());
       } else {
         builder->Add(iter->key(), iter->value());
@@ -241,6 +242,14 @@ absl::Status RewriteEntryShape(const std::string& prefix,
   builder.reset();
   TF_RETURN_IF_ERROR(metadata_file->Close());
   return env->RenameFile(metadata_tmp_path, MetaFilename(prefix));
+}
+
+absl::Status RewriteEntryShape(const std::string& prefix,
+                               const std::string& key,
+                               const TensorShape& new_shape) {
+  return RewriteEntry(prefix, key, [&new_shape](BundleEntryProto* entry) {
+    new_shape.AsProto(entry->mutable_shape());
+  });
 }
 
 template <typename T>
@@ -728,6 +737,164 @@ TEST(TensorBundleTest, PartitionedVariables) {
   }
 }
 
+TEST(TensorBundleTest, ValidatedPartitionedTensorSlices) {
+  const std::string prefix = Prefix("validated_slices");
+  const TensorShape full_shape({4});
+  const TensorSlice first = TensorSlice::ParseOrDie("0,2");
+  const TensorSlice second = TensorSlice::ParseOrDie("2,2");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, first,
+                                 test::AsTensor<float>({1, 2})));
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, second,
+                                 test::AsTensor<float>({3, 4})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  std::vector<TensorSlice> slices;
+  TF_ASSERT_OK(reader.LookupTensorSlices("tensor", &slices));
+  ASSERT_EQ(slices.size(), 2);
+  EXPECT_EQ(slices[0].DebugString(), first.DebugString());
+  EXPECT_EQ(slices[1].DebugString(), second.DebugString());
+  Tensor full(DT_FLOAT, full_shape);
+  TF_ASSERT_OK(reader.Lookup("tensor", &full));
+  test::ExpectTensorEqual<float>(full, test::AsTensor<float>({1, 2, 3, 4}));
+  Tensor part(DT_FLOAT, TensorShape({2}));
+  TF_ASSERT_OK(
+      reader.LookupSlice("tensor", TensorSlice::ParseOrDie("1,2"), &part));
+  test::ExpectTensorEqual<float>(part, test::AsTensor<float>({2, 3}));
+}
+
+TEST(TensorBundleTest, ValidatedEmptyFullTensorSlice) {
+  const std::string prefix = Prefix("validated_empty_full_slice");
+  const TensorShape full_shape({0});
+  const TensorSlice full_extent(1);
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, full_extent,
+                                 Tensor(DT_FLOAT, full_shape)));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  // AddSlice() writes a full slice as a plain entry. Store the full extent in
+  // the entry so that the first read parses and registers it as a slice.
+  TF_ASSERT_OK(
+      RewriteEntry(prefix, "tensor", [&full_extent](BundleEntryProto* entry) {
+        full_extent.AsProto(entry->add_slices());
+      }));
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  Tensor full(DT_FLOAT, full_shape);
+  TF_ASSERT_OK(reader.Lookup("tensor", &full));
+  EXPECT_EQ(full.NumElements(), 0);
+  Tensor sliced(DT_FLOAT, full_shape);
+  TF_ASSERT_OK(reader.LookupSlice("tensor", full_extent, &sliced));
+  EXPECT_EQ(sliced.NumElements(), 0);
+}
+
+TEST(TensorBundleTest, InvalidStoredSliceExtents) {
+  const TensorShape full_shape({4});
+  const TensorSlice first = TensorSlice::ParseOrDie("0,2");
+  const TensorSlice second = TensorSlice::ParseOrDie("2,2");
+  // The first three extents fail when the stored slice is built. The last two
+  // build, but fail to register on the full shape: {2, 5} ends past the end
+  // and {1, 2} overlaps the first slice.
+  struct InvalidExtent {
+    int64_t start;
+    int64_t length;
+    absl::StatusCode code;
+  };
+  for (const InvalidExtent& extent :
+       std::vector<InvalidExtent>{{-1, 2, absl::StatusCode::kInvalidArgument},
+                                  {2, 0, absl::StatusCode::kInvalidArgument},
+                                  {2, -2, absl::StatusCode::kInvalidArgument},
+                                  {2, 5, absl::StatusCode::kInternal},
+                                  {1, 2, absl::StatusCode::kInternal}}) {
+    const std::string prefix = Prefix(
+        absl::StrCat("invalid_extent_", extent.start, "_", extent.length));
+    {
+      BundleWriter writer(Env::Default(), prefix);
+      TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, first,
+                                   test::AsTensor<float>({1, 2})));
+      TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, second,
+                                   test::AsTensor<float>({3, 4})));
+      TF_ASSERT_OK(writer.Finish());
+    }
+    TF_ASSERT_OK(
+        RewriteEntry(prefix, "tensor", [&extent](BundleEntryProto* entry) {
+          auto* stored_extent = entry->mutable_slices(1)->mutable_extent(0);
+          stored_extent->set_start(extent.start);
+          stored_extent->set_length(extent.length);
+        }));
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    const bool fails_build = extent.code == absl::StatusCode::kInvalidArgument;
+    if (fails_build) {
+      std::vector<TensorSlice> slices;
+      EXPECT_TRUE(absl::IsInvalidArgument(
+          reader.LookupTensorSlices("tensor", &slices)));
+      EXPECT_TRUE(slices.empty());
+    }
+    // Retrying must still validate the malformed second slice, even when the
+    // requested data is entirely in the valid first slice.
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      Tensor full(DT_FLOAT, full_shape);
+      const absl::Status full_status = reader.Lookup("tensor", &full);
+      EXPECT_EQ(full_status.code(), extent.code) << full_status;
+      Tensor part(DT_FLOAT, TensorShape({2}));
+      const absl::Status slice_status =
+          reader.LookupSlice("tensor", first, &part);
+      EXPECT_EQ(slice_status.code(), extent.code) << slice_status;
+      if (fails_build) {
+        EXPECT_TRUE(absl::StrContains(full_status.message(),
+                                      "Expected non-negative start"))
+            << full_status;
+        EXPECT_TRUE(absl::StrContains(slice_status.message(),
+                                      "Expected non-negative start"))
+            << slice_status;
+      }
+    }
+  }
+}
+
+TEST(TensorBundleTest, StoredSliceDtypeMismatch) {
+  const std::string prefix = Prefix("slice_dtype_mismatch");
+  const TensorShape full_shape({4});
+  const TensorSlice first = TensorSlice::ParseOrDie("0,2");
+  const TensorSlice second = TensorSlice::ParseOrDie("2,2");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, first,
+                                 test::AsTensor<float>({1, 2})));
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, second,
+                                 test::AsTensor<float>({3, 4})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  TF_ASSERT_OK(RewriteEntry(
+      prefix, checkpoint::EncodeTensorNameSlice("tensor", second),
+      [](BundleEntryProto* entry) { entry->set_dtype(DT_INT32); }));
+  {
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    Tensor full(DT_FLOAT, full_shape);
+    const absl::Status status = reader.Lookup("tensor", &full);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_TRUE(absl::StrContains(status.message(), "Stored slice dtype int32"))
+        << status;
+  }
+  // Cover both the direct-copy path and a proper subset of the stored slice.
+  for (const auto& spec : {"2,2", "2,1"}) {
+    BundleReader reader(Env::Default(), prefix);
+    TF_ASSERT_OK(reader.status());
+    const TensorSlice slice = TensorSlice::ParseOrDie(spec);
+    Tensor part(DT_FLOAT, TensorShape({slice.length(0)}));
+    const absl::Status status = reader.LookupSlice("tensor", slice, &part);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_TRUE(absl::StrContains(status.message(), "Stored slice dtype int32"))
+        << status;
+  }
+}
+
 // A crafted checkpoint can record a full-tensor shape that is inconsistent with
 // the shapes of the tensor's stored slices. Reading such a slice must not walk
 // the stored-slice buffer using the (larger) geometry implied by the full
@@ -757,6 +924,251 @@ TEST(TensorBundleTest, SliceShapeMismatch) {
     EXPECT_TRUE(absl::StrContains(status.ToString(), "Stored slice shape"))
         << status;
   }
+}
+
+TEST(TensorBundleTest, SliceDestinationValidation) {
+  const std::string prefix = Prefix("slice_destination_validation");
+  const TensorShape full_shape({4});
+  const TensorSlice first = TensorSlice::ParseOrDie("0,2");
+  const TensorSlice second = TensorSlice::ParseOrDie("2,2");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, first,
+                                 test::AsTensor<float>({1, 2})));
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, second,
+                                 test::AsTensor<float>({3, 4})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  const TensorSlice middle = TensorSlice::ParseOrDie("1,2");
+
+  Tensor empty;
+  TF_ASSERT_OK(reader.LookupSlice("tensor", middle, &empty));
+  test::ExpectTensorEqual<float>(empty, test::AsTensor<float>({2, 3}));
+
+  Tensor undersized(DT_FLOAT, TensorShape({1}));
+  const absl::Status undersized_status =
+      reader.LookupSlice("tensor", middle, &undersized);
+  EXPECT_EQ(undersized_status.code(), absl::StatusCode::kInvalidArgument)
+      << undersized_status;
+
+  Tensor wrong_dtype(DT_INT32, TensorShape({2}));
+  const absl::Status wrong_dtype_status =
+      reader.LookupSlice("tensor", middle, &wrong_dtype);
+  EXPECT_EQ(wrong_dtype_status.code(), absl::StatusCode::kInvalidArgument)
+      << wrong_dtype_status;
+
+  Tensor wrong_shape(DT_FLOAT, TensorShape({1, 2}));
+  const absl::Status wrong_shape_status =
+      reader.LookupSlice("tensor", middle, &wrong_shape);
+  EXPECT_EQ(wrong_shape_status.code(), absl::StatusCode::kInvalidArgument)
+      << wrong_shape_status;
+
+  Tensor oversized(DT_FLOAT, TensorShape({3}));
+  const absl::Status oversized_status =
+      reader.LookupSlice("tensor", middle, &oversized);
+  EXPECT_EQ(oversized_status.code(), absl::StatusCode::kInvalidArgument)
+      << oversized_status;
+
+  TensorSliceProto negative_extent_proto;
+  TensorSliceProto::Extent* negative_extent =
+      negative_extent_proto.add_extent();
+  negative_extent->set_start(-1);
+  negative_extent->set_length(2);
+  const TensorSlice negative_extent_slice(negative_extent_proto);
+  Tensor negative_extent_destination(DT_FLOAT, TensorShape({2}));
+  const absl::Status negative_extent_status = reader.LookupSlice(
+      "tensor", negative_extent_slice, &negative_extent_destination);
+  EXPECT_EQ(negative_extent_status.code(), absl::StatusCode::kInvalidArgument)
+      << negative_extent_status;
+  EXPECT_TRUE(absl::StrContains(
+      negative_extent_status.message(),
+      "Expected non-negative start and positive length but got start = -1, "
+      "length = 2"))
+      << negative_extent_status;
+
+  const TensorSlice out_of_bounds_slice = TensorSlice::ParseOrDie("3,2");
+  Tensor out_of_bounds_destination(DT_FLOAT, TensorShape({2}));
+  const absl::Status out_of_bounds_status = reader.LookupSlice(
+      "tensor", out_of_bounds_slice, &out_of_bounds_destination);
+  EXPECT_EQ(out_of_bounds_status.code(), absl::StatusCode::kInvalidArgument)
+      << out_of_bounds_status;
+  EXPECT_TRUE(absl::StrContains(
+      out_of_bounds_status.message(),
+      "Extent in dimension 0 out of bounds: shape = [4], slice = 3,2"))
+      << out_of_bounds_status;
+
+  reader.Seek("tensor");
+  ASSERT_TRUE(reader.Valid());
+  Tensor wrong_full_shape(DT_FLOAT, TensorShape({2, 2}));
+  const absl::Status read_current_status =
+      reader.ReadCurrent(&wrong_full_shape);
+  EXPECT_EQ(read_current_status.code(), absl::StatusCode::kInvalidArgument)
+      << read_current_status;
+
+  Tensor read_current_undersized(DT_FLOAT, TensorShape({2}));
+  const absl::Status read_current_undersized_status =
+      reader.ReadCurrent(&read_current_undersized);
+  EXPECT_EQ(read_current_undersized_status.code(),
+            absl::StatusCode::kInvalidArgument)
+      << read_current_undersized_status;
+
+  Tensor read_current_empty;
+  TF_ASSERT_OK(reader.ReadCurrent(&read_current_empty));
+  test::ExpectTensorEqual<float>(read_current_empty,
+                                 test::AsTensor<float>({1, 2, 3, 4}));
+
+  Tensor restored_slice(DT_FLOAT, TensorShape({2}));
+  TF_ASSERT_OK(reader.LookupSlice("tensor", middle, &restored_slice));
+  test::ExpectTensorEqual<float>(restored_slice, test::AsTensor<float>({2, 3}));
+
+  reader.Seek("tensor");
+  ASSERT_TRUE(reader.Valid());
+  Tensor restored_full(DT_FLOAT, full_shape);
+  TF_ASSERT_OK(reader.ReadCurrent(&restored_full));
+  test::ExpectTensorEqual<float>(restored_full,
+                                 test::AsTensor<float>({1, 2, 3, 4}));
+
+  // An exact slice must also match the stored shape, not just its element
+  // count.
+  TF_ASSERT_OK(RewriteEntryShape(
+      prefix, checkpoint::EncodeTensorNameSlice("tensor", first),
+      TensorShape({1, 2})));
+  BundleReader mismatched_reader(Env::Default(), prefix);
+  TF_ASSERT_OK(mismatched_reader.status());
+  Tensor exact_slice_destination(DT_FLOAT, TensorShape({2}));
+  const absl::Status exact_slice_status =
+      mismatched_reader.LookupSlice("tensor", first, &exact_slice_destination);
+  EXPECT_EQ(exact_slice_status.code(), absl::StatusCode::kInvalidArgument)
+      << exact_slice_status;
+
+  mismatched_reader.Seek("tensor");
+  ASSERT_TRUE(mismatched_reader.Valid());
+  Tensor mismatched_full;
+  const absl::Status mismatched_read_current_status =
+      mismatched_reader.ReadCurrent(&mismatched_full);
+  EXPECT_EQ(mismatched_read_current_status.code(), absl::StatusCode::kDataLoss)
+      << mismatched_read_current_status;
+  EXPECT_TRUE(absl::StrContains(mismatched_read_current_status.message(),
+                                "for tensor tensor does not match"))
+      << mismatched_read_current_status;
+}
+
+TEST(TensorBundleTest, SliceNonPositiveLengthRejected) {
+  const std::string prefix = Prefix("slice_non_positive_length");
+  const TensorShape full_shape({4});
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape,
+                                 TensorSlice::ParseOrDie("0,2"),
+                                 test::AsTensor<float>({1, 2})));
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape,
+                                 TensorSlice::ParseOrDie("2,2"),
+                                 test::AsTensor<float>({3, 4})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+
+  TensorSlice zero_length(1);
+  zero_length.set_start(0, 1);
+  zero_length.set_length(0, 0);
+  Tensor zero_length_destination(DT_FLOAT, TensorShape({2}));
+  const absl::Status zero_length_status =
+      reader.LookupSlice("tensor", zero_length, &zero_length_destination);
+  EXPECT_EQ(zero_length_status.code(), absl::StatusCode::kInvalidArgument)
+      << zero_length_status;
+  EXPECT_TRUE(absl::StrContains(
+      zero_length_status.message(),
+      "Expected non-negative start and positive length but got start = 1, "
+      "length = 0"))
+      << zero_length_status;
+
+  TensorSlice negative_length(1);
+  negative_length.set_start(0, 1);
+  negative_length.set_length(0, -3);
+  Tensor negative_length_destination(DT_FLOAT, TensorShape({2}));
+  const absl::Status negative_length_status = reader.LookupSlice(
+      "tensor", negative_length, &negative_length_destination);
+  EXPECT_EQ(negative_length_status.code(), absl::StatusCode::kInvalidArgument)
+      << negative_length_status;
+  EXPECT_TRUE(absl::StrContains(
+      negative_length_status.message(),
+      "Expected non-negative start and positive length but got start = 1, "
+      "length = -3"))
+      << negative_length_status;
+
+  Tensor restored(DT_FLOAT, TensorShape({2}));
+  TF_ASSERT_OK(
+      reader.LookupSlice("tensor", TensorSlice::ParseOrDie("1,2"), &restored));
+  test::ExpectTensorEqual<float>(restored, test::AsTensor<float>({2, 3}));
+}
+
+TEST(TensorBundleTest, SliceExtentEndOverflowRejected) {
+  const std::string prefix = Prefix("slice_extent_end_overflow");
+  const TensorShape full_shape({4});
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape,
+                                 TensorSlice::ParseOrDie("0,2"),
+                                 test::AsTensor<float>({1, 2})));
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape,
+                                 TensorSlice::ParseOrDie("2,2"),
+                                 test::AsTensor<float>({3, 4})));
+    TF_ASSERT_OK(writer.Finish());
+  }
+
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+
+  // start + length does not fit in int64_t.
+  TensorSlice overflowing(1);
+  overflowing.set_start(0, (std::numeric_limits<int64_t>::max)());
+  overflowing.set_length(0, 1);
+  Tensor destination(DT_FLOAT, TensorShape({1}));
+  const absl::Status status =
+      reader.LookupSlice("tensor", overflowing, &destination);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Extent end exceeds the maximum possible size"))
+      << status;
+}
+
+TEST(TensorBundleTest, PartitionedTensorRankExceedsCopyLimit) {
+  // uint32_t supports direct reads but not partial copies. If the rank check is
+  // omitted, the unsupported-copy status lets the diagnostic assertion fail.
+  const std::string prefix = Prefix("partitioned_tensor_rank_limit");
+  const TensorShape full_shape({2, 1, 1, 1, 1, 1, 1, 1, 1});
+  TensorSlice first(full_shape.dims());
+  first.set_length(0, 1);
+  TensorSlice second(full_shape.dims());
+  second.set_start(0, 1);
+  second.set_length(0, 1);
+  const TensorShape stored_shape({1, 1, 1, 1, 1, 1, 1, 1, 1});
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, first,
+                                 Constant<uint32_t>(1, stored_shape)));
+    TF_ASSERT_OK(writer.AddSlice("tensor", full_shape, second,
+                                 Constant<uint32_t>(2, stored_shape)));
+    TF_ASSERT_OK(writer.Finish());
+  }
+
+  BundleReader reader(Env::Default(), prefix);
+  TF_ASSERT_OK(reader.status());
+  Tensor restored(DT_UINT32, full_shape);
+  const absl::Status status = reader.Lookup("tensor", &restored);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(), "supports at most rank"))
+      << status;
+
+  Tensor restored_direct(DT_UINT32, stored_shape);
+  TF_ASSERT_OK(reader.LookupSlice("tensor", first, &restored_direct));
+  test::ExpectTensorEqual<uint32_t>(restored_direct,
+                                    Constant<uint32_t>(1, stored_shape));
 }
 
 TEST(TensorBundleTest, EquivalentSliceTest) {

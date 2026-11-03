@@ -522,6 +522,28 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_GetDefaultPlatformConfig_Args,
 typedef PJRT_Error* PJRT_TpuTopology_GetDefaultPlatformConfig(
     PJRT_TpuTopology_GetDefaultPlatformConfig_Args* args);
 
+struct PJRT_TpuTopology_ComputeSubsliceForDevices_Args {
+  size_t struct_size;
+
+  const PJRT_TopologyDescription* topology;
+  const int32_t* device_ids;
+  size_t num_device_ids;
+  // Maximum number of dimensions that can be written into `origin`,
+  // `chips_per_host_bounds`, and `host_bounds`.
+  size_t max_dims;
+  // Caller-allocated arrays of length `max_dims`.
+  int32_t* origin;                 // out
+  int32_t* chips_per_host_bounds;  // out
+  int32_t* host_bounds;            // out
+  size_t num_dims;                 // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_ComputeSubsliceForDevices_Args,
+                          num_dims);
+
+// Computes the subslice bounds of `topology` formed by `device_ids`.
+typedef PJRT_Error* PJRT_TpuTopology_ComputeSubsliceForDevices(
+    PJRT_TpuTopology_ComputeSubsliceForDevices_Args* args);
+
 typedef struct PJRT_TpuTopology_Extension {
   PJRT_Extension_Base base;
   PJRT_NO_DISCARD PJRT_TpuTopology_Subslice* subslice;
@@ -569,9 +591,11 @@ typedef struct PJRT_TpuTopology_Extension {
   PJRT_NO_DISCARD PJRT_TpuTopology_GetSliceConfigs* get_slice_configs;
   PJRT_NO_DISCARD PJRT_TpuTopology_GetDefaultPlatformConfig*
       get_default_platform_config;
+  PJRT_NO_DISCARD PJRT_TpuTopology_ComputeSubsliceForDevices*
+      compute_subslice_for_devices;
 } PJRT_TpuTopology_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_Extension,
-                          get_default_platform_config);
+                          compute_subslice_for_devices);
 
 #ifdef __cplusplus
 }

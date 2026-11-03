@@ -602,7 +602,9 @@ cc_library(
     hdrs = ["while_loop_all_reduce_code_motion_setup.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:reduction_kind",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/expanders:op_expander_pass",
         "//xla/service:collective_ops_utils",

@@ -448,15 +448,11 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
 
     auto source =
         mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(op.getBase());
-    mlir::Type source_element_type = source.getType().getElementType();
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto linear_index = GetLinearIndex(op.getIndices(), b);
 
     mlir::VectorType vector_type = op.getVectorType();
-    if (vector_type.getElementType().isInteger(1)) {
-      vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
-    }
     mlir::Type gep_element_type = vector_type.getElementType();
     std::optional<int> sub_byte_width = GetSubByteBitWidth(gep_element_type);
     if (sub_byte_width) {
@@ -480,16 +476,9 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
       load.setAlignment(
           data_layout.getTypePreferredAlignment(gep_element_type));
     }
-    auto loaded = load.getResult();
-
-    if (source_element_type.isInteger(1)) {
-      Value zero = mlir::arith::ConstantOp::create(
-          b, mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
-      loaded = arith::CmpIOp::create(b, arith::CmpIPredicate::ne, loaded, zero);
-    }
 
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
-                                                            loaded);
+                                                            load.getResult());
     return success();
   }
 };
@@ -634,11 +623,6 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
 
     mlir::Value vector_value = op.getVector();
     mlir::Type vector_element_type = op.getVectorType().getElementType();
-    if (vector_element_type.isInteger(1)) {
-      vector_value = arith::ExtUIOp::create(
-          b, op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
-          vector_value);
-    }
     std::optional<int> sub_byte_width = GetSubByteBitWidth(vector_element_type);
     if (sub_byte_width) {
       linear_index = arith::ShRUIOp::create(

@@ -83,6 +83,7 @@ cc_library(
     hdrs = ["annotation_stack.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
+        "//xla:__subpackages__",
         "//xla/tsl/profiler:internal",
     ]),
     deps = [

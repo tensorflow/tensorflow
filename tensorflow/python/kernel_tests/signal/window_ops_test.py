@@ -45,7 +45,10 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
   """A simple implementation of a raised cosine window that matches SciPy.
 
   https://en.wikipedia.org/wiki/Window_function#Hann_window
-  https://github.com/scipy/scipy/blob/v0.14.0/scipy/signal/windows.py#L615
+
+  Like `scipy.signal.windows.hann(length, sym=symmetric)`, a periodic window
+  is the symmetric window of length `length + 1` with its last point dropped,
+  for both even and odd `length`.
 
   Args:
     length: The window length.
@@ -58,11 +61,10 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
   """
   if length == 1:
     return np.ones(1)
-  odd = length % 2
-  if not symmetric and not odd:
+  if not symmetric:
     length += 1
   window = a - b * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
-  if not symmetric and not odd:
+  if not symmetric:
     window = window[:-1]
   return window
 
@@ -71,7 +73,10 @@ def _scipy_blackman(length, symmetric=True):
   """A simple implementation of a Blackman window that matches SciPy.
 
   https://en.wikipedia.org/wiki/Window_function#Blackman_window
-  https://github.com/scipy/scipy/blob/v0.14.0/scipy/signal/windows.py#L615
+
+  Like `scipy.signal.windows.blackman(length, sym=symmetric)`, a periodic window
+  is the symmetric window of length `length + 1` with its last point dropped,
+  for both even and odd `length`.
 
   Args:
     length: The window length.
@@ -82,12 +87,11 @@ def _scipy_blackman(length, symmetric=True):
   """
   if length == 1:
     return np.ones(1)
-  odd = length % 2
-  if not symmetric and not odd:
+  if not symmetric:
     length += 1
   window = (0.42 - 0.5 * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
             + 0.08 * np.cos(4.0 * np.pi * np.arange(length) / (length - 1)))
-  if not symmetric and not odd:
+  if not symmetric:
     window = window[:-1]
   return window
 
@@ -309,6 +313,46 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
       actual_per = dynamic_window_periodic(
           constant_op.constant(length, dtype=dtypes.int32))
       self.assertAllClose(expected_per, self.evaluate(actual_per), 1e-6, 1e-6)
+
+  def test_blackman_window_gradient(self):
+    x = constant_op.constant(np.ones(10), dtype=dtypes.float32)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      window = window_ops.blackman_window(10, dtype=dtypes.float32)
+      loss = math_ops.reduce_sum(window * x)
+    grad = tape.gradient(loss, x)
+    self.assertAllClose(self.evaluate(window), self.evaluate(grad))
+
+  @parameterized.parameters(
+      itertools.product(
+          (window_ops.hann_window, window_ops.hamming_window,
+           window_ops.blackman_window),
+          (3, 5, 9, 31),
+          (False, True),
+      )
+  )
+  def test_periodic_window_odd_length(
+      self, window_fn, window_length, dynamic_length
+  ):
+    """A periodic window is a truncated symmetric window, even for odd N."""
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)]
+    )
+    def periodic_window(length):
+      return window_fn(length, periodic=True, dtype=dtypes.float64)
+
+    if dynamic_length:
+      periodic = periodic_window(window_length)
+    else:
+      periodic = window_fn(window_length, periodic=True, dtype=dtypes.float64)
+    symmetric = window_fn(
+        window_length + 1, periodic=False, dtype=dtypes.float64
+    )
+    self.assertAllClose(self.evaluate(symmetric)[:-1], self.evaluate(periodic))
+    # The first point is the only zero of a periodic Hann window.
+    if window_fn is window_ops.hann_window:
+      self.assertAllGreater(self.evaluate(periodic)[1:], 0.0)
 
   @parameterized.parameters(
       itertools.product(

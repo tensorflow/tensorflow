@@ -281,6 +281,19 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
   });
   if (info != comparators_.end()) return *info;
 
+  // Emit computations transitively called from the comparator (e.g. a
+  // reduce's reducer), so that EmitThreadLocalCall can find them later.
+  for (HloInstruction* instr : comparator->instructions()) {
+    bool is_reducer = instr->opcode() == HloOpcode::kReduce ||
+                      instr->opcode() == HloOpcode::kReduceWindow;
+    for (HloComputation* called : instr->called_computations()) {
+      ABSL_RETURN_IF_ERROR(nested_ir_emitter_
+                          ->EmitNestedComputation(
+                              *called, llvm_ir::IrName(instr), is_reducer)
+                          .status());
+    }
+  }
+
   // We use simple post-order schedule as we are not emitting a "real"
   // computation that requires buffer assignment.
   auto schedule = comparator->MakeInstructionPostOrder();

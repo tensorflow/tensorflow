@@ -916,6 +916,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   template <typename NativeT, typename std::enable_if_t<
                                   std::is_floating_point_v<NativeT>>* = nullptr>
   absl::Status HandleReducePrecision(const HloInstruction* reduce_precision) {
+    if (primitive_util::HasFloatingPointPrecision(
+            reduce_precision->shape().element_type(),
+            reduce_precision->exponent_bits(),
+            reduce_precision->mantissa_bits())) {
+      return ElementWiseUnaryOp(reduce_precision,
+                                [](ElementwiseT elem) { return elem; });
+    }
     return ElementWiseUnaryOp(reduce_precision, [&](ElementwiseT elem) {
       const uint32_t src_mantissa_bits =
           std::numeric_limits<NativeT>::digits - 1;

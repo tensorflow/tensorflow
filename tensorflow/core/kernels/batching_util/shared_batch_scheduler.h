@@ -261,9 +261,10 @@ class SharedBatchScheduler
     std::vector<int32_t> allowed_batch_sizes;
 
     // If true, the padding will not be appended.
-    // When `enable_priority_aware_batch_scheduler` is true, this option is
-    // ignored by SharedBatchScheduler -- batches are formed with as many
-    // requests as possible up to `max_execution_batch_size`.
+    //
+    // Setting `disable_padding` to true is not supported when
+    // `enable_priority_aware_batch_scheduler` is true; `AddQueue` logs a
+    // warning and overrides it to false.
     bool disable_padding = false;
 
     // The padding policy to use.

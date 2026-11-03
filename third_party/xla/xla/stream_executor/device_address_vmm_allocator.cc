@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_vmm_allocator.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -213,10 +214,12 @@ static bool AddressRangesOverlap(DeviceAddressBase lhs, DeviceAddressBase rhs) {
 DeviceAddressVmmAllocator::DeviceAddressVmmAllocator(
     const Platform* platform,
     std::optional<int64_t> reclaim_exempt_memory_space,
-    std::unique_ptr<DeviceAddressAllocator> host_allocator)
+    std::unique_ptr<DeviceAddressAllocator> host_allocator,
+    std::vector<FreeVisitor> free_visitors)
     : DeviceAddressAllocator(platform),
       reclaim_exempt_memory_space_(reclaim_exempt_memory_space),
-      host_allocator_(std::move(host_allocator)) {}
+      host_allocator_(std::move(host_allocator)),
+      free_visitors_(std::move(free_visitors)) {}
 
 absl::Status DeviceAddressVmmAllocator::PopulateDevices(
     DeviceAddressVmmAllocator* allocator,
@@ -280,6 +283,19 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
       while (state->pending_head != nullptr) {
         CompletePendingDeallocation(*state, *state->pending_head);
       }
+      for (const auto& [_, record] : state->records_by_allocator_address) {
+        if (record->has_reservation_alias()) {
+          const DeviceAddressBase mapped_addr = record->reservation_address();
+          VisitFree(mapped_addr.opaque(), state->executor->device_ordinal(),
+                    mapped_addr.size());
+        }
+        const DeviceAddressBase mapped_addr =
+            record->mapped_allocator_address();
+        VisitFree(mapped_addr.opaque(), state->executor->device_ordinal(),
+                  mapped_addr.size());
+      }
+      state->reservation_records.clear();
+      state->records_by_allocator_address.clear();
     }
 
     // Free platform-specific per-device resources (e.g. pinned timeline).
@@ -1374,6 +1390,13 @@ void DeviceAddressVmmAllocator::CompletePendingDeallocationByKey(
   }
 }
 
+void DeviceAddressVmmAllocator::VisitFree(void* ptr, int device_ordinal,
+                                          size_t num_bytes) const {
+  for (int i = static_cast<int>(free_visitors_.size()) - 1; i >= 0; --i) {
+    free_visitors_[i](ptr, device_ordinal, num_bytes);
+  }
+}
+
 void DeviceAddressVmmAllocator::CompletePendingDeallocation(
     PerDeviceState& state, PendingDeallocationNode& node) {
   const PendingDeallocation pending = node.pending;
@@ -1386,6 +1409,9 @@ void DeviceAddressVmmAllocator::CompletePendingDeallocation(
     CHECK_EQ(record.reservation_stale_seqno(), pending.seqno);
     CHECK(record.has_reservation_alias());
     CHECK_EQ(record.reservation_key(), pending.addr.opaque());
+    const DeviceAddressBase mapped_addr = record.reservation_address();
+    VisitFree(mapped_addr.opaque(), state.executor->device_ordinal(),
+              mapped_addr.size());
     state.reservation_records.erase(record_it);
     record.CompleteStaleReservation();
     return;
@@ -1417,6 +1443,9 @@ void DeviceAddressVmmAllocator::CompletePendingDeallocation(
                                      record.reservation_deallocation().key());
     CHECK(!record.has_reservation_alias());
   }
+  const DeviceAddressBase mapped_addr = record.mapped_allocator_address();
+  VisitFree(mapped_addr.opaque(), state.executor->device_ordinal(),
+            mapped_addr.size());
   uint64_t physical_size = record.raw_allocation()->address().size();
   CHECK_GT(physical_size, 0);
   CHECK_GE(state.pa_allocated, physical_size);

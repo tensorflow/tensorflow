@@ -268,7 +268,10 @@ cc_library(
 xla_test(
     name = "math_test",
     srcs = ["math_test.cc"],
-    # TODO(b/574644567): SparseCore fusion in a while loop halts on a megacore barrier.
+    # SparseCore fusion offloading is disabled: on some TPUs, the SparseCore and TensorCore f32
+    # divides are not bit-identical, which flips a convergence check (a pred output) in Igamma and
+    # fails the SparseCore mismatch detector, which compares pred outputs exactly. The test itself
+    # still reaches convergence and passes with SparseCore fusion offloading.
     backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     deps = [
         ":constants",
@@ -719,7 +722,7 @@ cc_library(
 xla_test(
     name = "svd_test",
     srcs = ["svd_test.cc"],
-    # TODO(b/577451636): Offloaded SparseCore fusions fail on some TPU hardware.
+    # TODO(b/579933085): Offloaded SparseCore fusions give wrong results on some TPU hardware.
     backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     backends = ALL_HARDWARE_BACKENDS,
     shard_count = 10,
@@ -773,7 +776,7 @@ cc_library(
 xla_test(
     name = "tridiagonal_test",
     srcs = ["tridiagonal_test.cc"],
-    # TODO(b/577451636): Offloaded SparseCore fusions fail to compile on some TPU hardware.
+    # TODO(b/579918825): Offloaded SparseCore fusions fail to compile on unaligned pred windows.
     backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     backends = ALL_HARDWARE_BACKENDS,
     shard_count = 10,

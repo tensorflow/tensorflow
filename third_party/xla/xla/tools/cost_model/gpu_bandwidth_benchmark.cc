@@ -55,9 +55,6 @@ using ::stream_executor::StreamExecutorAddressAllocator;
 // Minimum L2 flush buffer size in case the device does not report L2 size.
 constexpr int64_t kMinL2FlushSizeBytes = int64_t{64} << 20;  // 64 MiB
 
-// ROCm reports per-XCD L2, not the 256 MiB Infinity Cache (MALL) on CDNA3/4.
-constexpr int64_t kMinRocmFlushSizeBytes = int64_t{512} << 20;  // 512 MiB
-
 }  // namespace
 
 absl::StatusOr<double> GetPeakBandwidthBytesPerSec(int ordinal) {
@@ -95,11 +92,9 @@ absl::StatusOr<std::vector<BandwidthEntry>> MeasureBandwidthTable(
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Stream> stream, executor->CreateStream());
 
   const int64_t max_size = int64_t{1} << max_exp;
-  const DeviceDescription& device_desc = executor->GetDeviceDescription();
-  const int64_t flush_size = std::max(
-      2 * device_desc.l2_cache_size(),
-      device_desc.gpu_compute_capability().IsRocm() ? kMinRocmFlushSizeBytes
-                                                    : kMinL2FlushSizeBytes);
+  const int64_t flush_size =
+      std::max(2 * executor->GetDeviceDescription().l2_cache_size(),
+               kMinL2FlushSizeBytes);
   StreamExecutorAddressAllocator allocator(executor);
   ABSL_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> target,
                    allocator.Allocate(ordinal, max_size));

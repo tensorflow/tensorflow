@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/matmul_indexing_utils.h"
@@ -274,6 +275,31 @@ bool IsContiguousSlice(const HloInstruction& instr) {
     return IsContiguousSlice(full_shape, slice_shape, std::nullopt);
   }
   return false;
+}
+
+bool EmitsNoThunks(const HloInstruction& hlo) {
+  switch (hlo.opcode()) {
+    // The module is already scheduled, so instructions that only order other
+    // instructions are no-ops.
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kAfterAll:
+    // Their semantics are encoded by buffer assignment.
+    case HloOpcode::kBitcast:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
+    // Constants are emitted as globals that are initialized when the
+    // executable is loaded.
+    case HloOpcode::kConstant:
+      return true;
+    case HloOpcode::kCustomCall:
+      return hlo.custom_call_target() == kNopCustomCallTarget ||
+             hlo.custom_call_target() == kPinCustomCallTarget ||
+             hlo.custom_call_target() == kUnpinCustomCallTarget ||
+             hlo.custom_call_target() == kCreateBufferCustomCallTarget;
+    default:
+      return false;
+  }
 }
 
 llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {

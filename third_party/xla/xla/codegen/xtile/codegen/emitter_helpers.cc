@@ -714,6 +714,21 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
           MaybeBroadcastScalarToShape(b, inputs[2], inputs[1].getType());
       return Minimum(b, {Maximum(b, {min_val, inputs[1]}), max_val});
     }
+    case HloOpcode::kFma: {
+      PrimitiveType element_type = hlo.shape().element_type();
+      if (element_type != F16 && element_type != BF16 && element_type != F32 &&
+          element_type != F64) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Unsupported element type for fma: ",
+            primitive_util::LowercasePrimitiveTypeName(element_type)));
+      }
+      Value lhs =
+          MaybeBroadcastScalarToShape(b, inputs[0], inputs[1].getType());
+      lhs = MaybeBroadcastScalarToShape(b, lhs, inputs[2].getType());
+      Value rhs = MaybeBroadcastScalarToShape(b, inputs[1], lhs.getType());
+      Value addend = MaybeBroadcastScalarToShape(b, inputs[2], lhs.getType());
+      return mlir::stablehlo::FmaOp::create(b, lhs, rhs, addend);
+    }
     case HloOpcode::kAnd:
       return mlir::stablehlo::AndOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kOr:
@@ -1162,7 +1177,7 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
   SmallVector<int64_t> padded_output_tile_sizes =
       GetPaddedTileSizes(output_tile_sizes);
   SmallVector<int64_t> dim_positions =
-      gpu::experimental::PositionsOfNonTrivialDims(output_shape.dimensions());
+      gpu::PositionsOfNonTrivialDims(output_shape.dimensions());
   // If all output dimensions are non-trivial, no broadcast expansion is needed.
   if (dim_positions.size() == padded_output_tile_sizes.size()) {
     return EmitTiledReshape(b, padded_output_tile_sizes, input);
@@ -1171,17 +1186,6 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
   reshape_tile_sizes.reserve(dim_positions.size());
   for (int64_t dim : dim_positions) {
     reshape_tile_sizes.push_back(padded_output_tile_sizes[dim]);
-  }
-  // In legacy tiling, backward propagation does not clamp trivial dimensions
-  // (size == 1). If a trivial dimension is tiled > 1 downstream (e.g. for a
-  // Dot), the input tile already contains elements along that dimension (e.g.
-  // 256 elements vs. 16 in reshape_tile_sizes). In this case, no broadcast
-  // expansion is needed; reshape directly to the full output tile.
-  //
-  // In experimental tiling, trivial dimensions are clamped to tile size 1, so
-  // Product(reshape_tile_sizes) == input.getNumElements() always holds.
-  if (Product(reshape_tile_sizes) != input.getType().getNumElements()) {
-    return EmitTiledReshape(b, padded_output_tile_sizes, input);
   }
   ABSL_ASSIGN_OR_RETURN(TensorValue re,
                    EmitTiledReshape(b, reshape_tile_sizes, input));

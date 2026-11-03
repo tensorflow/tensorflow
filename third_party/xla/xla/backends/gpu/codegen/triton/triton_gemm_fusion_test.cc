@@ -871,6 +871,40 @@ ENTRY r {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_P(TritonGemmTest, TransposeReductionReshapeBeforeDot) {
+  // Layout assignment inserts a layout-changing copy between the reduction
+  // and the bitcast feeding the dot. Hoisting that bitcast across the copy
+  // must preserve the permutation of the reduction's output.
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY e {
+  p0 = f32[16,16,3]{2,1,0} parameter(0)
+  p1 = f32[16,32]{1,0} parameter(1)
+  transpose = f32[3,16,16]{0,2,1} transpose(p0), dimensions={2,0,1}
+  reshape = f32[3,4,4,4,4]{4,3,2,1,0} reshape(transpose)
+  zero = f32[] constant(0)
+  reduce = f32[3,4,4]{2,1,0} reduce(reshape, zero),
+    dimensions={2,4}, to_apply=add
+  lhs = f32[3,16]{1,0} reshape(reduce)
+  ROOT dot = f32[3,32]{1,0} dot(lhs, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(kHloText));
+  EXPECT_THAT(GetNonBitcastRoot(module->entry_computation()),
+              GmockMatch(m::Fusion().WithFusionKind(
+                  HloInstruction::FusionKind::kCustom)));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 // TODO(b/393299275): this is a pure test of fusion logic. It should be moved to
 // a separate, fusion-specific, deviceless test.
 TEST_P(TritonGemmTest, DoNotFuseSplitRhsContractingTranspose) {
@@ -974,69 +1008,6 @@ ENTRY e {
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "__triton_nested_gemm_fusion"
 )");
-}
-
-// This tests the complexity heuristics in TritonWrapper.
-// TODO(b/393299275): this is not worth keeping as a codegen test. Really, we
-// should not reject tilings that are slow/spill in codegen. If this has use in
-// autotuning, then this should be tested/called in the autotuner.
-// The generic Triton emitter does not want to deal with this.
-TEST_P(TritonGemmTest, DISABLED_FailForTooComplexTiling) {
-  auto cc = se::CudaComputeCapability::Ampere();
-  const se::DeviceDescription device_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  llvm::LLVMContext llvm_ctx;
-  llvm::Triple target_triple(nvptx::TargetTriple());
-  std::string data_layout(nvptx::DataLayout());
-
-  constexpr absl::string_view kHloTextTemplate = R"(
-HloModule module
-
-triton_gemm_dot {
-  p0 = s8[1024,1024] parameter(0)
-  p1 = f32[1024,1024] parameter(1)
-  c0 = f32[1024,1024] convert(p0)
-  ROOT dot.0 = f32[1024,1024] dot(c0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY entry {
-  p0 = s8[1024,1024] parameter(0)
-  p1 = f32[1024,1024] parameter(1)
-  ROOT r = f32[1024,1024] fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-      triton_gemm_config: {"block_m":$0,"block_n":$1,"block_k":$2,
-      "num_stages":1,"num_warps":2,
-      "num_ctas":1}}}
-})";
-
-  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
-                       GetModuleAndNestedFusionMetadata(
-                           absl::Substitute(kHloTextTemplate, 512, 512, 32)));
-
-  const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
-      module1_and_metadata.computation->FusionInstruction());
-  EXPECT_THAT(
-      TritonWrapper("test_fn", *fusion1, se::GpuComputeCapability{cc},
-                    device_info, module1_and_metadata.block_level_parameters,
-                    target_triple, data_layout, mlir_context_),
-      absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                             "Tiling complexity heuristic exceeded"));
-
-  // Succeeds if the tiling is not too complex.
-  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
-                       GetModuleAndNestedFusionMetadata(
-                           absl::Substitute(kHloTextTemplate, 32, 32, 32)));
-
-  const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
-      module1_and_metadata.computation->FusionInstruction());
-
-  EXPECT_OK(TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
-                          device_info,
-                          module2_and_metadata.block_level_parameters,
-                          target_triple, data_layout, mlir_context_)
-                .status());
 }
 
 // TODO(b/393299275): this test may have some value while Triton tiling

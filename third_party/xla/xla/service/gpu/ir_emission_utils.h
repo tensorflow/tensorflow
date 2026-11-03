@@ -173,6 +173,14 @@ bool IsMosaicWithCollectiveMetadata(const HloInstruction& hlo);
 // operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);
 
+// Returns true if no thunks are emitted for `hlo`, i.e. it does no work on any
+// device stream when the executable runs: its semantics are encoded by buffer
+// assignment, by the schedule, or by data that is set up when the executable
+// is loaded. This is stricter than the latency hiding scheduler's notion of a
+// no-op, which also covers instructions whose work is negligible (e.g.
+// partition-id, a memset of 4 bytes).
+bool EmitsNoThunks(const HloInstruction& hlo);
+
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b);

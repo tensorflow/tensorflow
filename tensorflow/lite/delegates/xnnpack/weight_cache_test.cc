@@ -235,6 +235,93 @@ TEST_F(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
   }
 
   EXPECT_FALSE(builder.StartBuildStep());
+  EXPECT_FALSE(builder.IsBuilding());
+}
+
+TEST_F(WeightCacheBuilderTest, EmptyBuildStepEndsTheStep) {
+  const std::string cache_path = testing::TempDir() + "/cache";
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+
+  ASSERT_TRUE(builder.StartBuildStep());
+  // Reserve without Append: the step is empty and takes the early return.
+  EXPECT_NE(builder.Reserve(1024), nullptr);
+  ASSERT_TRUE(builder.StopBuildStep());
+  EXPECT_FALSE(builder.IsBuilding());
+  EXPECT_EQ(builder.capacity(), 0);
+  EXPECT_EQ(builder.data(), nullptr);
+}
+
+TEST_F(WeightCacheBuilderTest, FailedAppendDoesNotCorruptSchema) {
+  const std::string cache_path = testing::TempDir() + "/cache";
+  const std::string bad_payload = "Unwritten payload.";
+  const std::string good_payload = "Valid packed payload.";
+  const PackIdentifier bad_id{9, 9, 9};
+  const PackIdentifier good_id{1, 2, 3};
+
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+
+  // A failed Append (fingerprint_id == 0) on step 0 followed by a restarted
+  // step and another failed Append must not leave unwritten BufferT entries.
+  ASSERT_TRUE(builder.StartBuildStep());
+  EXPECT_TRUE(builder
+                  .Append(bad_id, bad_payload.data(), bad_payload.size(),
+                          /*fingerprint_id=*/0)
+                  .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  ASSERT_TRUE(builder.StartBuildStep());
+  EXPECT_TRUE(builder
+                  .Append(bad_id, bad_payload.data(), bad_payload.size(),
+                          /*fingerprint_id=*/0)
+                  .IsInvalid());
+  const BufferLocation loc =
+      builder.Append(good_id, good_payload.data(), good_payload.size(),
+                     kDefaultFingerprint.id);
+  ASSERT_FALSE(loc.IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  auto verify_single_good_buffer = [&]() {
+    MMapHandle handle;
+    ASSERT_TRUE(handle.Map(cache_path.c_str()));
+    const auto& header =
+        *reinterpret_cast<const XNNPackCacheHeader*>(handle.data());
+    ASSERT_EQ(header.version, XNNPackCacheHeader::kVersion);
+    const cache::schema::BufferList* const packed_weights =
+        cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
+    ASSERT_NE(packed_weights, nullptr);
+    ASSERT_NE(packed_weights->buffers(), nullptr);
+    ASSERT_EQ(packed_weights->buffers()->size(), 1);
+    const auto* entry = packed_weights->buffers()->Get(0);
+    EXPECT_EQ(entry->weights_id(), good_id.weights_id);
+    EXPECT_EQ(entry->size(), good_payload.size());
+    std::tuple<const char*, size_t> cache_data(
+        reinterpret_cast<const char*>(
+            handle.data() + packed_weights->base_offset() + entry->offset()),
+        entry->size());
+    EXPECT_THAT(cache_data, ElementsAreArray(good_payload));
+  };
+  verify_single_good_buffer();
+
+  // Restarting when header.buffer_list_size == 0 also clears stale in-memory
+  // schema entries while preserving base_offset.
+  XNNPackCacheHeader empty_header{XNNPackCacheHeader::kInvalidHeader};
+  empty_header.buffer_list_offset = sizeof(empty_header);
+  ASSERT_EQ(file_descriptor.SetPos(0), 0);
+  ASSERT_TRUE(file_descriptor.Write(&empty_header, sizeof(empty_header)));
+
+  ASSERT_TRUE(builder.StartBuildStep());
+  ASSERT_FALSE(builder
+                   .Append(good_id, good_payload.data(), good_payload.size(),
+                           kDefaultFingerprint.id)
+                   .IsInvalid());
+  ASSERT_TRUE(builder.StopBuildStep());
+  verify_single_good_buffer();
 }
 
 TEST_F(WeightCacheBuilderTest, InvalidFileDescriptorFails) {

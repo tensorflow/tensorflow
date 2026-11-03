@@ -588,21 +588,18 @@ TEST(CuptiCollectorTest,
   constexpr uint64_t kMemcpyToolsId = 1002;
   constexpr uint64_t kMemsetToolsId = 2001;
 
-  constexpr auto kNewGraph = CudaGraphAnnotationRegistry::TrackMode::kNewGraph;
-  const uint64_t root_token =
-      registry.TrackGraph(kRootGraphId, kNewGraph).token;
-  const uint64_t child_token =
-      registry.TrackGraph(kChildGraphId, kNewGraph).token;
+  ASSERT_TRUE(registry.TrackGraph(kRootGraphId));
+  ASSERT_TRUE(registry.TrackGraph(kChildGraphId));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kRootGraphId, root_token, kKernelToolsId,
+      kRootGraphId, kKernelToolsId,
       "XlaModule:#hlo_module=test_mod,program_id=1#::fusion_1:#tf_op=Add,"
       "hlo_op=fusion.1#"));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kRootGraphId, root_token, kMemcpyToolsId,
+      kRootGraphId, kMemcpyToolsId,
       "XlaModule:#hlo_module=test_mod,program_id=1#::copy_1:#tf_op=Identity,"
       "hlo_op=copy.1#"));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kChildGraphId, child_token, kMemsetToolsId,
+      kChildGraphId, kMemsetToolsId,
       "XlaModule:#hlo_module=test_mod,program_id=1#::memset_1:#tf_op=ZerosLike,"
       "hlo_op=broadcast.1#"));
 
@@ -662,13 +659,12 @@ TEST(CuptiCollectorTest,
   constexpr uint64_t kNode1ToolsId = 1001;
   constexpr uint64_t kNode2ToolsId = 1002;
 
-  constexpr auto kNewGraph = CudaGraphAnnotationRegistry::TrackMode::kNewGraph;
-  const uint64_t token = registry.TrackGraph(kGraphId, kNewGraph).token;
+  ASSERT_TRUE(registry.TrackGraph(kGraphId));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kGraphId, token, kNode1ToolsId,
+      kGraphId, kNode1ToolsId,
       "XlaModule:#hlo_module=test_mod#::fusion.1:#hlo_op=fusion.1#"));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kGraphId, token, kNode2ToolsId,
+      kGraphId, kNode2ToolsId,
       "XlaModule:#hlo_module=test_mod#::fusion.2:#hlo_op=fusion.2#"));
 
   std::unique_ptr<CuptiTraceCollector> collector =
@@ -716,16 +712,12 @@ TEST(CuptiCollectorTest, ResolvesParkedEntry) {
   {
     CudaGraphAnnotationRegistry::HarvestHold hold =
         registry.AcquireHarvestHold();
-    const CudaGraphAnnotationRegistry::Token token =
-        registry
-            .TrackGraph(kGraphId,
-                        CudaGraphAnnotationRegistry::TrackMode::kNewGraph)
-            .token;
+    ASSERT_TRUE(registry.TrackGraph(kGraphId));
     ASSERT_TRUE(registry.RegisterNodeAnnotation(
-        kGraphId, token, kNodeId,
+        kGraphId, kNodeId,
         "XlaModule:#hlo_module=test_mod#::fusion.1:#hlo_op=fusion.1#"));
     // CUDA destroys the graph during the session.
-    registry.UnregisterGraph(kGraphId, token);
+    registry.UnregisterGraph(kGraphId);
     ASSERT_EQ(registry.GetStats().parked_graphs, 1);
 
     collector->AddEvent(MakeGraphNodeKernelEvent(kGraphId, kNodeId));
@@ -791,13 +783,9 @@ TEST(CuptiCollectorTest, FallsBackToCallbackMap) {
   constexpr uint32_t kGraphId = 10;
   constexpr uint64_t kRegisteredNodeId = 1001;
   constexpr uint64_t kUnregisteredNodeId = 1002;
-  const CudaGraphAnnotationRegistry::Token token =
-      registry
-          .TrackGraph(kGraphId,
-                      CudaGraphAnnotationRegistry::TrackMode::kNewGraph)
-          .token;
+  ASSERT_TRUE(registry.TrackGraph(kGraphId));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kGraphId, token, kRegisteredNodeId,
+      kGraphId, kRegisteredNodeId,
       "XlaModule:#hlo_module=test_mod#::fusion.1:#hlo_op=fusion.1#"));
 
   std::unique_ptr<CuptiTraceCollector> collector = CreateSingleGpuCollector();
@@ -874,23 +862,15 @@ TEST(CuptiCollectorTest, LooksUpByRecordIds) {
 
   constexpr uint32_t kSourceGraphId = 10;
   constexpr uint64_t kSourceNodeId = 1001;
-  const CudaGraphAnnotationRegistry::Token exec_token =
-      registry
-          .TrackGraph(kExecGraphId,
-                      CudaGraphAnnotationRegistry::TrackMode::kNewGraph,
-                      CudaGraphAnnotationRegistry::KeySpace::kPre134ExecGraph)
-          .token;
-  const CudaGraphAnnotationRegistry::Token source_token =
-      registry
-          .TrackGraph(kSourceGraphId,
-                      CudaGraphAnnotationRegistry::TrackMode::kNewGraph)
-          .token;
+  ASSERT_TRUE(registry.TrackGraph(
+      kExecGraphId, CudaGraphAnnotationRegistry::KeySpace::kPre134ExecGraph));
+  ASSERT_TRUE(registry.TrackGraph(kSourceGraphId));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kExecGraphId, exec_token, kExecGraphNodeId,
+      kExecGraphId, kExecGraphNodeId,
       "XlaModule:#hlo_module=test_mod#::pre134_exec:#hlo_op=pre134_exec#",
       CudaGraphAnnotationRegistry::KeySpace::kPre134ExecGraph));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kSourceGraphId, source_token, kSourceNodeId,
+      kSourceGraphId, kSourceNodeId,
       "XlaModule:#hlo_module=test_mod#::cuda134_src:#hlo_op=cuda134_src#"));
 
   // Source graph IDs only.
@@ -928,13 +908,9 @@ TEST(CuptiCollectorTest, WarnsIfNoGraphNodeRecordResolves) {
   registry.ClearForTesting();
   constexpr uint32_t kGraphId = 10;
   constexpr uint64_t kNodeId = 1001;
-  const CudaGraphAnnotationRegistry::Token token =
-      registry
-          .TrackGraph(kGraphId,
-                      CudaGraphAnnotationRegistry::TrackMode::kNewGraph)
-          .token;
+  ASSERT_TRUE(registry.TrackGraph(kGraphId));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kGraphId, token, kNodeId,
+      kGraphId, kNodeId,
       "XlaModule:#hlo_module=test_mod#::fusion.1:#hlo_op=fusion.1#"));
 
   std::unique_ptr<CuptiTraceCollector> collector = CreateSingleGpuCollector();
@@ -957,13 +933,9 @@ TEST(CuptiCollectorTest, NoResolutionWarningIfARecordResolves) {
   registry.ClearForTesting();
   constexpr uint32_t kGraphId = 10;
   constexpr uint64_t kNodeId = 1001;
-  const CudaGraphAnnotationRegistry::Token token =
-      registry
-          .TrackGraph(kGraphId,
-                      CudaGraphAnnotationRegistry::TrackMode::kNewGraph)
-          .token;
+  ASSERT_TRUE(registry.TrackGraph(kGraphId));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kGraphId, token, kNodeId,
+      kGraphId, kNodeId,
       "XlaModule:#hlo_module=test_mod#::fusion.1:#hlo_op=fusion.1#"));
 
   std::unique_ptr<CuptiTraceCollector> collector = CreateSingleGpuCollector();

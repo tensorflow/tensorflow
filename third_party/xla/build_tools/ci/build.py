@@ -57,6 +57,9 @@ _DEFAULT_BAZEL_OPTIONS = dict(
     jobs=150,
     bes_upload_mode="fully_async",
     build_runfile_links=False,
+    show_timestamps=True,
+    show_progress_rate_limit=5,
+    experimental_remote_grpc_log="bazel_remote_grpc.log",
 )
 
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}

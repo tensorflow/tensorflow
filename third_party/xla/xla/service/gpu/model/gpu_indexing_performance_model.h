@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <variant>
-#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -29,7 +28,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/tiled_hlo.h"
-#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -96,7 +94,6 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
 
   // Returns the number of warps for the given tiled HLO computation.
   static int64_t EstimateNumWarps(
-      const HloFusionAdaptor& fusion_adaptor,
       const experimental::TiledHloComputation& tiled_hlo_computation);
 
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
@@ -166,31 +163,22 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
 
 namespace internal {
 
-// Returns the tiled HLOs whose tiles will likely be materialized fully in
-// registers and can not be reordered with other tiles: roots, fusion operands
-// and iotas.
-std::vector<const experimental::TiledHloInstruction*>
-GetRegisterResidentInstructions(
-    const HloFusionAdaptor& fusion_adaptor,
-    const experimental::TiledHloComputation& tiled_hlo_computation);
-
 // Checks if all tiles in the computation fit in registers.
 //
 // There is no way to know for sure if emitted computation will not spill
-// registers, so we use a heuristic based on the tile sizes of register-resident
-// instructions. The heuristic can give both false positives and false
+// registers, so we use a heuristic based on the tile sizes of instructions in
+// the computation. The heuristic can give both false positives and false
 // negatives.
 bool DoesComputationFitInRegisters(
     const HloFusionAdaptor& fusion_adaptor,
     const experimental::TiledHloComputation& tiled_hlo_computation,
     const se::DeviceDescription& device_info);
 
-// Checks if the tiles of the register-resident instructions of a symbolic tiled
-// computation fit in registers for the given tiling space and tile sizes.
+// Checks if the tiles of a symbolic tiled computation fit in registers for the
+// given tile sizes.
 bool DoesTilingFitInRegisters(
-    const experimental::TilingSpace& tiling_space,
-    absl::Span<const experimental::TiledHloInstruction* const>
-        symbolic_register_resident_instructions,
+    const HloFusionAdaptor& fusion_adaptor,
+    const experimental::TiledHloComputation& symbolic_tiled_computation,
     absl::Span<const int64_t> tile_sizes,
     const se::DeviceDescription& device_info);
 

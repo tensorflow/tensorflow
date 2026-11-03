@@ -343,7 +343,20 @@ absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
     return {HloOpcode::kSelect};
   }
 
-  return {HloOpcode::kSelect, HloOpcode::kClamp};
+  absl::flat_hash_set<HloOpcode> ret{HloOpcode::kSelect, HloOpcode::kClamp};
+  const auto* cuda_cc = gpu_version.cuda_compute_capability();
+  const auto* rocm_cc = gpu_version.rocm_compute_capability();
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::F64 ||
+      (element_type == PrimitiveType::F16 &&
+       (gpu_version.IsRocm() ||
+        (cuda_cc != nullptr && cuda_cc->IsAtLeast(5, 3)))) ||
+      (element_type == PrimitiveType::BF16 &&
+       ((cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) ||
+        (rocm_cc != nullptr && rocm_cc->gfx1250())))) {
+    ret.insert(HloOpcode::kFma);
+  }
+  return ret;
 }
 
 // Returns `true` if the given opcode and element type correspond to a n-ary

@@ -98,7 +98,8 @@ TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
         std::unique_ptr<Thunk> thunk,
         kernel_compiler
             .Compile(thunk_info, std::move(kernel_source),
-                     absl::StrCat("kernel", i), kernel_arguments, dimensions)
+                     GpuKernelSpec(absl::StrCat("kernel", i), dimensions,
+                                   kernel_arguments))
             .Await());
   }
 

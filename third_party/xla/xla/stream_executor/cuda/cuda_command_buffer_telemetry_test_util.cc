@@ -26,14 +26,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/service/platform_util.h"
@@ -117,17 +114,6 @@ std::optional<std::string> Lookup(const NodeKey& key,
   return annotation;
 }
 
-bool PollUntil(absl::FunctionRef<bool()> done) {
-  const absl::Time deadline = absl::Now() + absl::Seconds(10);
-  while (!done()) {
-    if (absl::Now() > deadline) {
-      return false;
-    }
-    absl::SleepFor(absl::Milliseconds(10));
-  }
-  return true;
-}
-
 void CudaCommandBufferTelemetryTest::SetUp() {
   ASSERT_OK_AND_ASSIGN(std::string platform_name,
                        xla::PlatformUtil::CanonicalPlatformName("cuda"));
@@ -143,8 +129,8 @@ void CudaCommandBufferTelemetryTest::SetUp() {
     GTEST_SKIP() << "Command buffer telemetry needs CUDA 13.2+ (toolkit, "
                     "runtime and driver)";
   }
-  // Entries of earlier tests may still be waiting for their cleanups. Their
-  // tokens are never reissued, so late cleanups can't affect this test.
+  // Earlier tests may have left entries behind, e.g. ones they tracked
+  // directly in the registry.
   registry().ClearForTesting();
 
   ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream());

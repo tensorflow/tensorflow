@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -58,7 +59,8 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
       const Platform* platform, absl::Span<const DeviceConfig> devices,
       std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
-      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr);
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr,
+      std::vector<FreeVisitor> free_visitors = {});
 
   // Creates an allocator supporting multiple devices, computing the pa_budget
   // for each device by querying DeviceMemoryUsage and applying memory_fraction.
@@ -72,7 +74,8 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
       std::optional<int64_t> gpu_system_memory_size,
       absl::Span<const std::pair<StreamExecutor*, Stream*>> devices,
       std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
-      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr);
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr,
+      std::vector<FreeVisitor> free_visitors = {});
 
   // Creates an allocator for a single device, with no host allocator:
   // MemorySpace::kHost requests fail.
@@ -90,7 +93,8 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   //              allocated on this device. Defaults to unlimited.
   static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
       StreamExecutor* executor, Stream* stream, uint64_t pa_budget = UINT64_MAX,
-      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt);
+      std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
+      std::vector<FreeVisitor> free_visitors = {});
 
  protected:
   // Verifies compute capability >= 7.0, allocates the pinned timeline counter
@@ -116,7 +120,8 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   explicit CudaDeviceAddressVmmAllocator(
       const Platform* platform,
       std::optional<int64_t> reclaim_exempt_memory_space = std::nullopt,
-      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr);
+      std::unique_ptr<DeviceAddressAllocator> host_allocator = nullptr,
+      std::vector<FreeVisitor> free_visitors = {});
 };
 
 }  // namespace stream_executor::gpu

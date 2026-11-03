@@ -154,6 +154,10 @@ absl::StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
+    // Bit-width-changing bitcast-converts are not elementwise, but padding
+    // data reinterprets to padding data; the minor dimension they add or
+    // remove is static (shape inference rejects a dynamic one).
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kConcatenate:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:

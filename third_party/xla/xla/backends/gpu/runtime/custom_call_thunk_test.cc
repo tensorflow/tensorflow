@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -906,17 +907,26 @@ TEST(CustomCallThunkTest, RecordCommandBufferUpdate) {
   EXPECT_EQ(host_second, host_src);
 }
 
+absl::StatusOr<void*> GetAddI32FunctionPtr() {
+  ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GpuExecutor());
+  static const auto* kernel = [&]() {
+    auto k = executor->LoadKernel(se::gpu::GetAddI32PtxKernelSpec());
+    CHECK_OK(k.status());
+    return k->release();
+  }();
+  return kernel->platform_specific_handle().kernel;
+}
+
 absl::Status AddI32FfiHandler(ffi::RecordContext record_ctx,
                               ffi::AnyBuffer input_0, ffi::AnyBuffer input_1,
                               ffi::Result<ffi::AnyBuffer> result) {
   const std::array<void*, 3> args = {
       input_0.untyped_data(), input_1.untyped_data(), (*result).untyped_data()};
   const auto action = record_ctx.action();
-  se::KernelLoaderSpec add_i32 = se::gpu::GetAddI32PtxKernelSpec();
   if (action == ffi::RecordAction::kCreate) {
-    absl::string_view ptx = add_i32.cuda_ptx_in_memory().value().ptx;
+    ABSL_ASSIGN_OR_RETURN(void* func_ptr, GetAddI32FunctionPtr());
     auto cmd_or = record_ctx.CreateLaunch(
-        "AddI32", ptx.data(), ptx.size(), ffi::SourceFormat::kPtx,
+        "AddI32", func_ptr, /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr,
         /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
         /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args);
     if (!cmd_or.ok()) {
@@ -1103,16 +1113,15 @@ absl::Status AddI32WithBarrierFfiHandler(ffi::RecordExtension::Type record_ctx,
                                          ffi::AnyBuffer input_0,
                                          ffi::AnyBuffer input_1,
                                          ffi::Result<ffi::AnyBuffer> result) {
-  se::KernelLoaderSpec add_i32 = se::gpu::GetAddI32PtxKernelSpec();
   if (record_ctx.action() == ffi::RecordAction::kCreate) {
-    absl::string_view ptx = add_i32.cuda_ptx_in_memory().value().ptx;
+    ABSL_ASSIGN_OR_RETURN(void* func_ptr, GetAddI32FunctionPtr());
     const std::vector<void*> args = {input_0.untyped_data(),
                                      input_1.untyped_data(),
                                      (*result).untyped_data()};
 
     // Launch A
     auto cmd_a_or = record_ctx.CreateLaunch(
-        "AddI32", ptx.data(), ptx.size(), ffi::SourceFormat::kPtx,
+        "AddI32", func_ptr, /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr,
         /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
         /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args);
     if (!cmd_a_or.ok()) {
@@ -1121,7 +1130,7 @@ absl::Status AddI32WithBarrierFfiHandler(ffi::RecordExtension::Type record_ctx,
 
     // Launch B
     auto cmd_b_or = record_ctx.CreateLaunch(
-        "AddI32", ptx.data(), ptx.size(), ffi::SourceFormat::kPtx,
+        "AddI32", func_ptr, /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr,
         /*launch_dims=*/{{1, 1, 1}, {1, 1, 1}},
         /*shared_mem_bytes=*/0, /*uses_pdl=*/false, args);
     if (!cmd_b_or.ok()) {

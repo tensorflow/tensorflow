@@ -613,7 +613,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_persistent_symmetric_memory(false);
   opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
   opts.set_xla_gpu_experimental_enable_tensor_ir(false);
-  opts.set_xla_gpu_experimental_enable_triton_scan(false);
+  opts.set_xla_gpu_experimental_enable_triton_scan(true);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -1584,7 +1584,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "When generating calls to Eigen in the CPU backend, use multi-threaded "
       "Eigen mode."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_cuda_data_dir", debug_options->mutable_xla_gpu_cuda_data_dir(),
+      "xla_gpu_cuda_data_dir",
+      string_setter_for(&DebugOptions::set_xla_gpu_cuda_data_dir),
+      debug_options->xla_gpu_cuda_data_dir(),
       "If non-empty, specifies a local directory containing ptxas and nvvm "
       "libdevice files; otherwise we use those from runfile directories."));
   flag_list->push_back(tsl::Flag(

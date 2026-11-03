@@ -309,11 +309,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
 
   for (int i = 1; i < arrays.size(); ++i) {
     const auto& sharding = arrays[i]->sharding();
-    if (*sharding.devices() != *arrays[0]->sharding().devices() ||
+    if ((devices.has_value() &&
+         *sharding.devices() != *arrays[0]->sharding().devices()) ||
         sharding.memory_kind() != arrays[0]->sharding().memory_kind()) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports arrays with the same device list and "
-          "memory kind");
+          "memory kind when `devices` is specified");
     }
   }
 
@@ -389,8 +390,40 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::BitcastArrays(
 
 tsl::Future<std::vector<uint64_t>> Client::HashValues(
     absl::Span<const ValueRef> values, HashMode mode) {
-  return absl::UnimplementedError(
-      "HashValues is not implemented in IFRT Proxy.");
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_values = values.size()]() {
+    return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointHashValues",
+                                        {{"n_values", n_values}});
+  });
+  if (rpc_helper_->protocol_version() < protocol_version::kClientHashValues) {
+    return absl::UnimplementedError(
+        absl::StrCat("HashValues requires protocol version ",
+                     protocol_version::kClientHashValues,
+                     ", but the server has ", rpc_helper_->protocol_version()));
+  }
+  if (values.empty()) {
+    return std::vector<uint64_t>();
+  }
+
+  auto req = std::make_unique<HashValuesRequest>();
+  req->set_hash_mode(ToHashModeProto(mode));
+  for (const ValueRef& value : values) {
+    // TODO(b/261991179): Support other Value types.
+    auto* proxy_array = dyn_cast<xla::ifrt::proxy::Array>(value.get());
+    if (proxy_array == nullptr) {
+      return absl::InvalidArgumentError(
+          "HashValues only supports values that are instances of "
+          "xla::ifrt::proxy::Array");
+    }
+    ABSL_ASSIGN_OR_RETURN(ArrayHandle handle,
+                     proxy_array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
+    req->add_value_handles(handle.handle);
+  }
+
+  return rpc_helper_->HashValues(std::move(req))
+      .Map([](const std::shared_ptr<HashValuesResponse>& response) {
+        return std::vector<uint64_t>(response->hashes().begin(),
+                                     response->hashes().end());
+      });
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(

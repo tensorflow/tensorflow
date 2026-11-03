@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/debugging/leak_check.h"
@@ -77,7 +78,6 @@ void HostCallbackTrampoline(void* user_data) {
 }
 
 using command_buffer_telemetry::TrackedGraph;
-using TrackMode = CudaGraphAnnotationRegistry::TrackMode;
 
 template <typename... Args>
 void LogAppend(std::string& out, const absl::FormatSpec<Args...>& format,
@@ -285,10 +285,9 @@ void CudaCommandBuffer::MaybeRegisterGraphAnnotations() {
     return;
   }
   if (std::optional<TrackedGraph> tracked = TrackOwnGraphForTelemetry()) {
-    // Child graphs of a graph that was just captured or populated are new too.
     command_buffer_telemetry::RegisterGraphNodes(
-        graph_, *tracked, /*original=*/nullptr, annotation,
-        TrackMode::kNewGraph);
+        graph_, *tracked,
+        /*original=*/nullptr, annotation, Root()->telemetry_graphs_);
   }
 }
 
@@ -316,49 +315,35 @@ void CudaCommandBuffer::MaybeRegisterClonedChildAnnotations(
   if (!embedded_id.has_value()) {
     return;
   }
-  // `cuGraphAddChildGraphNode` just created the embedded clone. Nodes are only
-  // added before the first `Finalize`, so every executable graph containing the
-  // clone is instantiated later and clones the cleanup's reference too.
-  std::optional<TrackedGraph> tracked =
-      command_buffer_telemetry::TrackAndAttach(*embedded_id, embedded,
-                                               TrackMode::kNewGraph);
-  if (!tracked.has_value()) {
-    return;
-  }
+  // `cuGraphAddChildGraphNode` just created the embedded clone, which the root
+  // graph owns, so the root unregisters it.
+  std::vector<TrackedGraph>& owned = Root()->telemetry_graphs_;
+  const TrackedGraph tracked =
+      command_buffer_telemetry::Track(*embedded_id, owned);
   // The only registration that copies from an original: each node in the
   // embedded clone is paired with its counterpart in `original` and copies the
   // precise annotation that the counterpart got when it was created.
-  command_buffer_telemetry::RegisterGraphNodes(
-      embedded, *tracked, original, annotation, TrackMode::kNewGraph);
+  command_buffer_telemetry::RegisterGraphNodes(embedded, tracked, original,
+                                               annotation, owned);
 }
 
-void CudaCommandBuffer::MaybeRegisterUpdatedChildAnnotations(
-    CUgraph child_graph) {
-  if (!ShouldRecordAnnotations()) {
+void CudaCommandBuffer::RetainUpdatedChildTelemetry(
+    CUgraphNode node, const CudaCommandBuffer& nested) {
+  if (!SupportsNodeAnnotations()) {
     return;
   }
-  const absl::string_view annotation =
-      ScopedCommandBufferAnnotation::GetCurrentAnnotation();
-  if (annotation.empty()) {
+  DCHECK(nested.parent_ == nullptr);
+  auto& map = Root()->installed_child_graphs_;
+  if (nested.telemetry_graphs_.empty() && !map.contains(node)) {
     return;
   }
-  const std::optional<uint32_t> graph_id =
-      command_buffer_telemetry::GetGraphId(child_graph);
-  if (!graph_id.has_value() ||
-      CudaGraphAnnotationRegistry::Default().IsGraphTracked(*graph_id)) {
+  std::vector<TrackedGraph>& installed = map[node];
+  if (installed == nested.telemetry_graphs_) {
     return;
   }
-  // The graph may belong to someone else, so reuse its entry if it has one.
-  // Registration is insert-if-absent: the current annotation only fills gaps.
-  std::optional<TrackedGraph> tracked =
-      command_buffer_telemetry::TrackAndAttach(*graph_id, child_graph,
-                                               TrackMode::kGetOrCreate);
-  if (!tracked.has_value()) {
-    return;
-  }
-  command_buffer_telemetry::RegisterGraphNodes(child_graph, *tracked,
-                                               /*original=*/nullptr, annotation,
-                                               TrackMode::kGetOrCreate);
+  CudaGraphAnnotationRegistry::Default().RetainGraphs(nested.telemetry_graphs_);
+  command_buffer_telemetry::UnregisterTrackedGraphs(installed);
+  installed = nested.telemetry_graphs_;
 }
 
 void CudaCommandBuffer::MaybeFinalizeGraphTelemetry() {
@@ -367,7 +352,15 @@ void CudaCommandBuffer::MaybeFinalizeGraphTelemetry() {
   }
   if (telemetry_strategy_ ==
       CudaGraphAnnotationRegistry::TelemetryStrategy::kPre134ExecGraph) {
-    command_buffer_telemetry::RegisterPre134ExecGraphNodes(graph_, graph_exec_);
+    // A re-instantiation would replace the executable graph, and with it the
+    // exec ID that CUPTI reports. Defensive: `InstantiateGraph` runs once per
+    // command buffer today.
+    if (pre134_exec_entry_.has_value()) {
+      command_buffer_telemetry::UnregisterTrackedGraphs({*pre134_exec_entry_});
+      pre134_exec_entry_.reset();
+    }
+    pre134_exec_entry_ = command_buffer_telemetry::RegisterPre134ExecGraphNodes(
+        graph_, graph_exec_);
   }
 }
 
@@ -376,22 +369,21 @@ std::optional<TrackedGraph> CudaCommandBuffer::TrackOwnGraphForTelemetry() {
     return telemetry_graph_;
   }
   // The body graph of a conditional node (`parent_` is set) lives exactly as
-  // long as its node, so as long as the root graph. Anchor its cleanup to the
-  // root graph, whose references every executable graph clones when it is
-  // instantiated. Attaching to the body graph would work as well: executable
-  // graphs also clone the references of body and child graphs, which
-  // `CreateHostNode` and `RegisterGraphNodes` (for cloned children) rely on.
-  // Anchoring here just ties the entry to the root, which bounds every body.
-  const CudaCommandBuffer* root = this;
+  // long as its node, so as long as the root graph: the root owns its entry.
+  if (std::optional<uint32_t> graph_id =
+          command_buffer_telemetry::GetGraphId(graph_)) {
+    telemetry_graph_ =
+        command_buffer_telemetry::Track(*graph_id, Root()->telemetry_graphs_);
+  }
+  return telemetry_graph_;
+}
+
+CudaCommandBuffer* CudaCommandBuffer::Root() {
+  CudaCommandBuffer* root = this;
   while (root->parent_ != nullptr) {
     root = root->parent_;
   }
-  if (std::optional<uint32_t> graph_id =
-          command_buffer_telemetry::GetGraphId(graph_)) {
-    telemetry_graph_ = command_buffer_telemetry::TrackAndAttach(
-        *graph_id, root->graph_, TrackMode::kNewGraph);
-  }
-  return telemetry_graph_;
+  return root;
 }
 
 // Converts a list of platform independent GraphNodeHandles into a list of
@@ -777,10 +769,6 @@ absl::Status CudaCommandBuffer::UpdateDnnGraphNode(
       ToCudaGraphHandle(node_handle), &child_graph)));
   ABSL_RETURN_IF_ERROR(dnn_graph.PopulateOrUpdateRawCommandBuffer(
       stream, operands, child_graph, true));
-  // The embedded graph is updated in place, so it normally still has the entry
-  // it got when the node was created. Otherwise, register it before
-  // `cuGraphExecNodeSetParams` clones its user-object references.
-  MaybeRegisterUpdatedChildAnnotations(child_graph);
   CUgraphNodeParams node_params = ChildGraphNodeParams(child_graph);
   return cuda::ToStatus(
       cuGraphExecNodeSetParams(graph_exec(), ToCudaGraphHandle(node_handle),
@@ -840,21 +828,17 @@ absl::Status CudaCommandBuffer::UpdateClonedChildNode(
 
   CUgraphExec exec_update = graph_exec();
   CHECK(exec_update != nullptr) << "graph executor for update is nullptr";
-  // `cuGraphExecNodeSetParams` replaces the user-object references of
-  // the executable child node with clones of `child_graph`'s references, so the
-  // cleanup must be attached to `child_graph` before the call. That keeps the
-  // entry alive even if `nested` is destroyed right after this update. After
-  // the call, CUPTI reports the node's work with `child_graph`'s graph and node
-  // IDs (on CUDA 13.4+), so the embedded graph needs no registration. On CUDA
-  // 13.2-13.3 (kPre134ExecGraph), the executable graph's flattened keys were
-  // projected at instantiation time and retain those instantiation-time
-  // annotations.
-  MaybeRegisterUpdatedChildAnnotations(child_graph);
   CUgraphNodeParams node_params = ChildGraphNodeParams(child_graph);
-  return cuda::ToStatus(
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(
       cuGraphExecNodeSetParams(exec_update, ToCudaGraphHandle(node_handle),
                                &node_params),
-      "Failed to set CUDA graph child node params");
+      "Failed to set CUDA graph child node params"));
+  // On CUDA 13.4+, CUPTI reports the updated child node's work under
+  // `child_graph`'s IDs, so retain `child_command_buffer`'s entries until the
+  // node is updated again or this command buffer is destroyed.
+  RetainUpdatedChildTelemetry(ToCudaGraphHandle(node_handle),
+                              child_command_buffer);
+  return absl::OkStatus();
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateHostNode(
@@ -1285,9 +1269,6 @@ CudaCommandBuffer::CudaCommandBuffer(Mode mode, StreamExecutor* executor,
 }
 
 CudaCommandBuffer::~CudaCommandBuffer() {
-  // Destroy `graph_exec_` before `graph_`: on CUDA 13.2-13.3 the exec graph's
-  // telemetry entry is attached to `graph_` (see RegisterPre134ExecGraphNodes),
-  // so it must not outlive `graph_`.
   if (graph_exec_ != nullptr) {
     auto exec_num = NotifyExecDestroyed();
     VLOG(5) << "Destroying GPU command buffer executable graph " << graph_exec_
@@ -1310,6 +1291,16 @@ CudaCommandBuffer::~CudaCommandBuffer() {
       LOG(ERROR) << status.message();
     }
   }
+  // Unregister all owned and retained telemetry entries under a single lock.
+  if (pre134_exec_entry_.has_value()) {
+    telemetry_graphs_.push_back(*pre134_exec_entry_);
+  }
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [node, entries] : installed_child_graphs_) {
+    telemetry_graphs_.insert(telemetry_graphs_.end(), entries.begin(),
+                             entries.end());
+  }
+  command_buffer_telemetry::UnregisterTrackedGraphs(telemetry_graphs_);
 }
 
 absl::Status CudaCommandBuffer::CheckCanBeUpdated() {

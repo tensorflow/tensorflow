@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -71,9 +71,7 @@ class KernelCompiler {
   // Compiles the given kernel source asynchronously.
   virtual xla::Future<std::unique_ptr<Thunk>> Compile(
       Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-      const std::string& sanitized_kernel_name,
-      const emitters::KernelArguments& kernel_arguments,
-      const LaunchDimensions& launch_dimensions) = 0;
+      const GpuKernelSpec& kernel_spec) = 0;
 
   virtual xla::Future<LlvmKernelSource> CompileMlirToLlvm(
       const se::DeviceDescription& device, const HloModule& hlo_module,
