@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
@@ -171,6 +173,13 @@ class CommandBufferThunk : public Thunk {
     absl::Mutex mutex;
     std::shared_ptr<ExecutorCommandBuffer> command_buffer
         ABSL_GUARDED_BY(mutex);
+
+    // Symmetric memories (see `CollectiveMemory::symmetric_memory_ids`) that
+    // were passed to the last successful `commands_.Record(...)` into
+    // `command_buffer`. Unset until `command_buffer` is recorded for the first
+    // time.
+    std::optional<std::vector<CollectiveMemory::SymmetricMemoryId>>
+        recorded_symmetric_memory_ids ABSL_GUARDED_BY(mutex);
   };
 
   // Command buffer thunk owns one command buffer for each executor it runs on.
@@ -181,9 +190,30 @@ class CommandBufferThunk : public Thunk {
     PerDeviceState<DeviceState> device_states;
   };
 
-  // Returns a command buffer for `executor` or creates a new one.
+  // Returns a command buffer for `executor` or creates a new one. Replaces the
+  // existing command buffer with a new one if it was recorded with different
+  // symmetric memories than `collective_memory` has (or might have) now.
   absl::StatusOr<std::shared_ptr<ExecutorCommandBuffer>>
-  GetOrCreateCommandBuffer(se::StreamExecutor* executor);
+  GetOrCreateCommandBuffer(se::StreamExecutor* executor,
+                           const CollectiveMemory* collective_memory);
+
+  // Records `commands_` into `cmd_buffer` and remembers the symmetric memory
+  // IDs of `collective_memory` that were captured.
+  absl::Status RecordCommands(se::StreamExecutor* executor,
+                              const Thunk::ExecuteParams& execute_params,
+                              Command::RecordParams record_params,
+                              ExecutorCommandBuffer* cmd_buffer,
+                              const CollectiveMemory* collective_memory)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(cmd_buffer->mutex);
+
+  // Remembers the symmetric memories of `collective_memory` as the ones
+  // recorded into `cmd_buffer`, if it is still the command buffer of
+  // `executor`. Must be called after a successful `commands_.Record(...)`
+  // while holding `cmd_buffer->mutex` (lock order: `ExecutorCommandBuffer`
+  // mutex before `DeviceState` mutex).
+  void SetRecordedSymmetricMemoryIds(se::StreamExecutor* executor,
+                                     const ExecutorCommandBuffer* cmd_buffer,
+                                     const CollectiveMemory* collective_memory);
 
   // Each individual command buffer allocates state on device (CUDA graph) and
   // it adds up pretty quickly. To prevent OOM errors we proactively evict

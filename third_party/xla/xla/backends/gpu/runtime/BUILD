@@ -596,6 +596,7 @@ cc_library(
     hdrs = ["command_buffer_thunk.h"],
     deps = [
         ":annotation",
+        ":collective_memory",
         ":command",
         ":command_executor",
         ":command_state",
