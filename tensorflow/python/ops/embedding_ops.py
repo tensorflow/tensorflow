@@ -333,15 +333,16 @@ def embedding_lookup(
   """
     **Behavior Difference between CPU and GPU**
 
-    Please note that when using `tf.nn.embedding_lookup` on a GPU, if an out-of-bound 
-    index is encountered, a value of 0 will be stored in the corresponding output value. 
-    On the other hand, when using `tf.nn.embedding_lookup` on a CPU, an error will be 
-    returned if an out-of-bound index is found.
+    Please note that when using `tf.nn.embedding_lookup` on a GPU, if an
+    out-of-bound index is encountered, a value of 0 will be stored in the
+    corresponding output value. On the other hand, when using
+    `tf.nn.embedding_lookup` on a CPU, an error will be returned if an
+    out-of-bound index is found.
 
-    This behavior difference can impact the results of your computation, especially when 
-    dealing with indices that may go beyond the bounds of the tensor. 
-    Make sure to be mindful of this distinction when using the `tf.nn.embedding_lookup` 
-    function in your computations.
+    This behavior difference can impact the results of your computation,
+    especially when dealing with indices that may go beyond the bounds of the
+    tensor. Make sure to be mindful of this distinction when using the
+    `tf.nn.embedding_lookup` function in your computations.
 
     **Usage Example**
 
@@ -626,8 +627,8 @@ def embedding_lookup_sparse_v2(
   >>> sp_ids = tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0], [2, 0]],
   ...                          values=[0, 1, 3, 2], dense_shape=(3, 2))
   >>> sp_weights = tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0], [2, 0]],
-  ...                                  values=[0.1, 1.0, 0.5, 2.0],
-  ...                                  dense_shape=(3, 2))
+  ...                              values=[0.1, 1.0, 0.5, 2.0],
+  ...                              dense_shape=(3, 2))
   >>> tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights=sp_weights,
   ...                               combiner='sum').numpy()
   array([[3.1, 4.2], [3.5, 4.], [10., 12.]], dtype=float32)
