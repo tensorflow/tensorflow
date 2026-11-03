@@ -29,14 +29,37 @@ import sys
 import time
 from typing import List, Optional, Tuple
 
-# Global configuration files whose modification invalidates incremental diffs
-# and necessitates a full test suite run.
+# Global configuration and external repository definition files whose
+# modification invalidates incremental bazel-diff target hashes (which run with
+# --excludeExternalTargets and fine-grained hash only @tsl) and necessitates a
+# full test suite run.
 GLOBAL_BAZEL_CONFIG_PATTERNS: Tuple[str, ...] = (
-    r"(^|/)MODULE\.bazel$",
+    r"(^|/)MODULE\.bazel(\.lock)?$",
     r"(^|/)REPO\.bazel$",
     r"(^|/)WORKSPACE(\.bzlmod)?$",
     r"\.bazelrc$",
     r"\.bazelversion$",
+    # Top-level workspace initialization macros and pip lockfiles.
+    r"^workspace[0-9]+\.bzl$",
+    r"^requirements_lock_.*\.txt$",
+    # External repository definitions, Bzlmod module extensions, and repo rules.
+    r"(^|/)workspace\.bzl$",
+    r"^third_party/(repo|quilt_repo)\.bzl$",
+    r"^third_party/extensions/.*\.bzl$",
+    r"^third_party/(?!tsl/tsl/).*extension\.bzl$",
+    (
+        r"^third_party/(?!tsl/tsl/).*"
+        r"(configure|init_repositor|redist|download|repo|setup).*\.bzl$"
+    ),
+    # External repository overlay BUILD files, patches, and templates (excluding
+    # first-party @tsl and pywrap/python rules tracked by bazel-diff).
+    r"(^|/)[^/]+\.BUILD(\.bazel)?$",
+    r"^third_party/(?!tsl/tsl/).*\.(patch|diff|tpl)$",
+    r"^third_party/(?!tsl/tsl/).*(/patches/|/series$)",
+    (
+        r"^third_party/(?!tsl/tsl/|py/(numpy|rules_pywrap)/|rules_python/)"
+        r".*/BUILD(\.bazel|\.system)?$"
+    ),
 )
 
 # Strict allowlist pattern for Git revision arguments (hexadecimal commit SHAs
@@ -99,7 +122,8 @@ def validate_git_ref(ref: str) -> str:
 
 def matches_any_pattern(path: str, patterns: Sequence[str]) -> bool:
   """Returns True if path matches any regex pattern in patterns."""
-  return any(re.search(pattern, path) for pattern in patterns)
+  normalized = path.replace("\\", "/")
+  return any(re.search(pattern, normalized) for pattern in patterns)
 
 
 def is_global_config_changed(changed_files: Sequence[str]) -> bool:

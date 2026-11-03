@@ -295,11 +295,24 @@ class BazelDiffTest(parameterized.TestCase):
     self.assertNotIn("//xla/service/cpu:generated_target_500\n", content)
     self.assertIn("... (24500 more targets omitted)", content)
 
+  @parameterized.parameters(
+      (["MODULE.bazel", "xla/service/cpu_compiler.cc"],),
+      (["workspace2.bzl"],),
+      (
+          [
+              "third_party/mkl_dnn/workspace.bzl",
+              "third_party/mkl_dnn/mkldnn_v1_async.BUILD",
+              "third_party/mkl_dnn/onednn_acl_aarch64_build_fixes.patch",
+          ],
+      ),
+  )
   @mock.patch.object(
       change_detector, "get_changed_files", autospec=True, spec_set=True
   )
-  def test_compute_impacted_targets_global_config_fallback(self, mock_changed):
-    mock_changed.return_value = ["MODULE.bazel", "xla/service/cpu_compiler.cc"]
+  def test_compute_impacted_targets_global_config_fallback(
+      self, changed_files, mock_changed
+  ):
+    mock_changed.return_value = changed_files
     build_mock = mock.MagicMock()
     decision = bazel_diff.compute_impacted_targets(
         build_mock, "base_sha", "head_sha"
