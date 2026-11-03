@@ -294,6 +294,9 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
       const PjRtDeviceDimensions& chip_bounds) const override;
 
+  absl::StatusOr<PjRtSubsliceBounds> ComputeSubsliceForDevices(
+      absl::Span<const int> device_ids) const override;
+
   bool is_subslice_topology() const override;
 
   absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const override;

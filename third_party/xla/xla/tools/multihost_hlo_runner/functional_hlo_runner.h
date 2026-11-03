@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
@@ -168,6 +169,13 @@ struct PreprocessingOptions {
 
   // Set / update known_trip_count in while loop backend config.
   bool annotate_while_loop_trip_count = false;
+
+  // If set, and the compile options contain a key-value store and more than
+  // one process, all processes compare the fingerprints of their compiled
+  // executables and fail if they differ. Processes that run different
+  // executables (e.g. because autotuning picked different configs) can issue
+  // collectives in a different order, which usually leads to a hang.
+  bool verify_executable_fingerprint_across_processes = true;
 
   // Is the module the partitioned result of SPMD?
   bool is_spmd_partitioned_module() const {
@@ -398,6 +406,19 @@ absl::Status DumpOutput(
     const FunctionalHloRunner::PerDeviceLiteralVecType& output,
     absl::string_view dump_output_to, int task_id,
     OutputFormat output_format = OutputFormat::kText);
+
+// Publishes `fingerprint` in `kv_store` and returns an error if any of the
+// other processes published a different fingerprint. All `process_count`
+// processes need to call this with the same `key_prefix` and their own
+// `process_index`. An empty fingerprint means that it's unknown, in which case
+// the check passes.
+//
+// `Compile` calls this when `verify_executable_fingerprint_across_processes`
+// is set. It's only exposed for testing.
+absl::Status VerifyExecutableFingerprintAcrossProcesses(
+    KeyValueStoreInterface& kv_store, absl::string_view key_prefix,
+    int process_index, int process_count, absl::string_view fingerprint,
+    absl::Duration timeout);
 
 }  // namespace FunctionalHloRunner
 

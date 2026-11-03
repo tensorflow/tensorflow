@@ -2568,6 +2568,9 @@ ENTRY entry_computation {
 }
 
 TEST_F(ScanTritonEmitterTest, TopPMaskEndToEnd8x128) {
+  if (GpuComputeCapability().IsRocm()) {
+    GTEST_SKIP() << "ScanRewriterTriton is only enabled on CUDA.";
+  }
   constexpr absl::string_view kHloText = R"(
 HloModule top_p_mask_8x128
 
@@ -2712,6 +2715,9 @@ ENTRY entry_computation {
 }
 
 TEST_F(ScanTritonEmitterTest, ScanOverLastDimensionOfRank3Input) {
+  if (GpuComputeCapability().IsRocm()) {
+    GTEST_SKIP() << "ScanRewriterTriton is only enabled on CUDA.";
+  }
   constexpr absl::string_view kHloText = R"(
 add_computation {
   p0 = f32[4,8] parameter(0)

@@ -520,6 +520,7 @@ cc_library(
     srcs = ["collective_permute_cse.cc"],
     hdrs = ["collective_permute_cse.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -602,7 +603,9 @@ cc_library(
     hdrs = ["while_loop_all_reduce_code_motion_setup.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:reduction_kind",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/expanders:op_expander_pass",
         "//xla/service:collective_ops_utils",

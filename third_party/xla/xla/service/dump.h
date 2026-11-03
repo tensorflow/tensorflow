@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_DUMP_H_
 #define XLA_SERVICE_DUMP_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -167,11 +168,16 @@ void DumpHloModuleDuringPassIfEnabled(absl::string_view pass_name,
 
 // Dumps the given HloSnapshot to the module's xla_dump_dir, if this is enabled.
 //
-// Prefer the first overload below, as this will give filenames that are
-// consistent with the other methods here.  The second overload (which doesn't
-// take an HloModule) is useful in the cases when you're dumping an HloSnapshot
+// Prefer the first two overloads below, as they will give filenames that are
+// consistent with the other methods here. The second overload is equivalent to
+// the first one but only needs the module's unique id, name and debug options
+// instead of the HloModule itself. The third overload (which doesn't take any
+// module information) is useful in the cases when you're dumping an HloSnapshot
 // and simply don't have an HloModule.
 void DumpHloSnapshotIfEnabled(const HloModule& module,
+                              const HloSnapshot& snapshot);
+void DumpHloSnapshotIfEnabled(int64_t unique_id, absl::string_view module_name,
+                              const DebugOptions& debug_options,
                               const HloSnapshot& snapshot);
 void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
                               const DebugOptions& opts);

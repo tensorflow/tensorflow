@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/custom_options.h"
 #include "xla/executable_run_options.h"
+#include "xla/ffi/api/kernel_api.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/attribute_map.h"

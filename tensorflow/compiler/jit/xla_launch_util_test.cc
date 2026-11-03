@@ -109,7 +109,7 @@ class PjRtExecutionUtilTest : public OpsTestBase {
     // Create PjRtClient for XLA_CPU.
     xla::CpuClientOptions options;
     options.asynchronous = true;
-    options.cpu_device_count = 1;
+    options.cpu_device_count = 2;
     CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
         device_type, xla::GetXlaPjrtCpuClient(options).value()));
 
@@ -716,6 +716,69 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
       *execute_outputs[0]->ToLiteral().Await();
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       *literal, xla::LiteralUtil::CreateR2<int32_t>({{4, 6}})));
+}
+
+TEST_F(PjRtExecutionUtilTest,
+       RunPjRtExecutableWithPjRtTensorBufferFromDifferentDevice) {
+  XlaOpRegistry::RegisterCompilationKernels();
+  TF_ASSERT_OK(NodeDefBuilder("AddV2", "AddV2")
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("T", DT_INT32)
+                   .Device("/job:localhost/replica:0/task:0/device:XLA_CPU:0")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  Tensor* a = CreateDeviceTensor<int32_t>(TensorShape({1, 3}), {1, 2, 3});
+  Tensor* b = CreateDeviceTensor<int32_t>(TensorShape({1, 3}), {4, 5, 6});
+  inputs_.push_back({nullptr, a});
+  inputs_.push_back({nullptr, b});
+
+  CreateContext();
+
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({1, 3});
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({1, 3});
+
+  const XlaCompiler::CompilationResult* result;
+  xla::PjRtLoadedExecutable* executable;
+  CompileToExecutable(args, &result, &executable);
+
+  std::vector<const Tensor*> inputs = {a, b};
+  TF_ASSERT_OK_AND_ASSIGN(auto execute_outputs_0,
+                          RunExecutable(inputs, {}, result, executable));
+
+  // Populate output tensor on device 0 backed by a PjRtTensorBuffer.
+  TF_ASSERT_OK(PopulateCtxOutputsFromPjRtExecutableOutputs(
+      /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result,
+      /*use_pjrt_tensor_buffer=*/true, execute_outputs_0, context_.get()));
+  Tensor* output_on_device_0 = context_->mutable_output(0);
+
+  // Now execute on device 1 using the PjRtTensorBuffer tensor produced on
+  // device 0.
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::PjRtDevice * pjrt_device_1,
+      pjrt_client_->LookupAddressableDevice(xla::LocalDeviceId(1)));
+  std::vector<const Tensor*> consumer_inputs = {output_on_device_0,
+                                                output_on_device_0};
+  const DeviceType& device_type = GetDeviceType(context_.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs_1,
+      RunPjRtExecutable(/*num_missing_prefix_ctx_inputs=*/0, consumer_inputs,
+                        /*variable_snapshots=*/{}, /*updated_variables=*/{},
+                        device_type, /*use_pjrt_tensor_buffer=*/true, *result,
+                        pjrt_device_1, pjrt_client_, executable));
+
+  ASSERT_EQ(execute_outputs_1.size(), 1);
+  EXPECT_EQ(execute_outputs_1[0]->device(), pjrt_device_1);
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
+                          execute_outputs_1[0]->ToLiteral().Await());
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(
+      *literal, xla::LiteralUtil::CreateR2<int32_t>({{10, 14, 18}})));
 }
 
 }  // namespace

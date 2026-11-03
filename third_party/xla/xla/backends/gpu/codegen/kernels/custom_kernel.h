@@ -26,10 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
-// WARNING: This header (and a build target) should have minimal dependencies as
-// it's included into all device kernel implementations, and we want to minimize
-// the number of (very expensive!) recompilations.
-
 namespace xla::gpu {
 namespace se = ::stream_executor;  // NOLINT
 
@@ -42,9 +38,7 @@ namespace se = ::stream_executor;  // NOLINT
 // implement generic interfaces, e.g. command buffer implementation for CUDA
 // can automatically add a kernel node to a graph for arbitrary custom kernel.
 //
-// TODO(ezhulenev): Add custom kernel signature to track number and types of
-// buffer arguments, and a way to mark one of an arguments as a workspace and
-// define if it has to be zeroed first.
+// TODO(b/578658607) port to use GpuKernelSpec.
 class CustomKernel {
  public:
   CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,

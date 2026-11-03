@@ -19,7 +19,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <optional>
-#include <queue>
 #include <utility>
 #include <vector>
 
@@ -138,9 +137,11 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kBatchNormInference,
                                    HloOpcode::kBatchNormTraining,
                                    HloOpcode::kCholesky,
+                                   HloOpcode::kCollectiveBroadcast,
                                    HloOpcode::kCollectivePermute,
                                    HloOpcode::kCollectivePermuteDone,
                                    HloOpcode::kCollectivePermuteStart,
+                                   HloOpcode::kCollectiveReduce,
                                    HloOpcode::kCopyDone,
                                    HloOpcode::kCopyStart,
                                    HloOpcode::kCustomCall,
@@ -152,6 +153,8 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kInfeed,
                                    HloOpcode::kOutfeed,
                                    HloOpcode::kPartitionId,
+                                   HloOpcode::kRaggedAllToAll,
+                                   HloOpcode::kRaggedDot,
                                    HloOpcode::kRecv,
                                    HloOpcode::kRecvDone,
                                    HloOpcode::kReduceScatter,
@@ -159,11 +162,14 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kRng,
                                    HloOpcode::kRngBitGenerator,
                                    HloOpcode::kRngGetAndUpdateState,
+                                   HloOpcode::kScaledDot,
+                                   HloOpcode::kScan,
                                    HloOpcode::kScatter,
                                    HloOpcode::kSelectAndScatter,
                                    HloOpcode::kSend,
                                    HloOpcode::kSendDone,
                                    HloOpcode::kSetDimensionSize,
+                                   HloOpcode::kShuffle,
                                    HloOpcode::kSort,
                                    HloOpcode::kTopK,
                                    HloOpcode::kTriangularSolve,
@@ -779,11 +785,42 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConstant(
   return {{mlir::tensor::ExtractOp::create(builder, constant, indices)}};
 }
 
-absl::StatusOr<SmallVector<Value, 2>> GetOperands(
+// Returns true if `HloToMlir` lowers `opcode` with a dedicated emitter (see
+// `EmitWithDedicatedEmitter`). These emitters request their operands from the
+// operand provider themselves, so their operand indices can't be computed
+// upfront.
+bool HasDedicatedEmitter(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kConstant:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kDot:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kGather:
+    case HloOpcode::kIota:
+    case HloOpcode::kPad:
+    case HloOpcode::kParameter:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kTuple:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool CanPrecomputeOperandIndices(const HloInstruction* instr) {
+  return !HasDedicatedEmitter(instr->opcode()) &&
+         !kUnsupportedOps.contains(instr->opcode());
+}
+
+SmallVector<SmallVector<Value, 3>, 2> ComputeOperandIndices(
     const HloInstruction* instr, ValueRange indices,
-    const OperandProvider& operand_provider, ImplicitLocOpBuilder& builder,
-    MLIRContext* mlir_context) {
-  SmallVector<Value, 2> operands;
+    ImplicitLocOpBuilder& builder, MLIRContext* mlir_context) {
+  if (instr->opcode() == HloOpcode::kGetTupleElement) {
+    return {SmallVector<Value, 3>(indices.begin(), indices.end())};
+  }
   bool is_elementwise = HloInstruction::IsOpElementwise(instr->opcode()) ||
                         instr->opcode() == HloOpcode::kMap;
   if (is_elementwise && instr->shape().IsArray()) {
@@ -798,21 +835,25 @@ absl::StatusOr<SmallVector<Value, 2>> GetOperands(
 
   if (is_elementwise) {
     // Avoid materializing the input indices for elementwise ops.
-    for (int64_t operand_number = 0; operand_number < instr->operand_count();
-         ++operand_number) {
-      ABSL_ASSIGN_OR_RETURN(operands.emplace_back(),
-                       GetSingleOperandValue(operand_provider, instr,
-                                             operand_number, indices));
-    }
-  } else {
-    auto input_indices = GetInputIndices(
-        ComputeOutputToInputIndexing(instr, 0, mlir_context), indices, builder);
-    for (auto&& [operand_number, operand_indices] :
-         llvm::enumerate(input_indices)) {
-      ABSL_ASSIGN_OR_RETURN(operands.emplace_back(),
-                       GetSingleOperandValue(operand_provider, instr,
-                                             operand_number, operand_indices));
-    }
+    return SmallVector<SmallVector<Value, 3>, 2>(
+        instr->operand_count(),
+        SmallVector<Value, 3>(indices.begin(), indices.end()));
+  }
+  return GetInputIndices(ComputeOutputToInputIndexing(instr, 0, mlir_context),
+                         indices, builder);
+}
+
+absl::StatusOr<SmallVector<Value, 2>> GetOperands(
+    const HloInstruction* instr,
+    llvm::ArrayRef<SmallVector<Value, 3>> input_indices,
+    const OperandProvider& operand_provider) {
+  SmallVector<Value, 2> operands;
+  operands.reserve(input_indices.size());
+  for (auto&& [operand_number, operand_indices] :
+       llvm::enumerate(input_indices)) {
+    ABSL_ASSIGN_OR_RETURN(operands.emplace_back(),
+                     GetSingleOperandValue(operand_provider, instr,
+                                           operand_number, operand_indices));
   }
   CHECK_NE(operands.size(), 0);
   for (auto [index, operand] : llvm::enumerate(operands)) {
@@ -915,7 +956,6 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReducePrecision(
       /*attributes=*/{}, builder, nullptr, properties);
 }
 
-namespace {
 // Return a named attribute that can be used to annotate an op to be eligible
 // for lowering to an approximation function in GPUToNVVM conversion.
 mlir::NamedAttribute GetFastMathFlagsForApproximationFunctions(
@@ -925,19 +965,14 @@ mlir::NamedAttribute GetFastMathFlagsForApproximationFunctions(
       mlir::arith::FastMathFlagsAttr::get(builder.getContext(),
                                           mlir::arith::FastMathFlags::afn));
 }
-}  // namespace
 
-absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
+// Handles ops that aren't elementwise and aren't just indexing transformations.
+// Must handle exactly the opcodes for which `HasDedicatedEmitter` is true.
+absl::StatusOr<SmallVector<Value, 1>> EmitWithDedicatedEmitter(
     const HloInstruction* instr, mlir::func::FuncOp this_fn, ValueRange indices,
     const OperandProvider& operand_provider,
     const CallTargetProvider& call_target_provider,
     ImplicitLocOpBuilder& builder, MLIRContext* mlir_context) {
-  CHECK(!kUnsupportedOps.contains(instr->opcode())) << instr->ToShortString();
-
-  auto element_type = instr->shape().element_type();
-
-  // Handle ops that aren't elementwise and aren't just indexing
-  // transformations.
   switch (instr->opcode()) {
     case HloOpcode::kConcatenate:
       return EmitConcat(instr, indices, operand_provider, builder);
@@ -968,17 +1003,46 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
                               call_target_provider, builder, mlir_context);
     case HloOpcode::kTuple:
       return EmitTuple(instr, indices, operand_provider, builder, mlir_context);
-    case HloOpcode::kGetTupleElement: {
-      // We have to generate the entire tuple, but since we don't support
-      // internal tuple operations (only root tuples), this will always be
-      // cached and computed together anyway (e.g. it'll be a variadic
-      // reduce).
-      ABSL_ASSIGN_OR_RETURN(auto tuple, operand_provider(instr, 0, indices));
-      return {{tuple[instr->tuple_index()]}};
-    }
     default:
-      break;
+      return absl::InternalError(
+          absl::StrCat("No dedicated emitter for ", instr->ToShortString()));
   }
+}
+
+absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
+    const HloInstruction* instr, mlir::func::FuncOp this_fn, ValueRange indices,
+    llvm::ArrayRef<SmallVector<Value, 3>> operand_indices,
+    const OperandProvider& operand_provider,
+    const CallTargetProvider& call_target_provider,
+    ImplicitLocOpBuilder& builder, MLIRContext* mlir_context) {
+  if (kUnsupportedOps.contains(instr->opcode())) {
+    return absl::UnimplementedError(
+        absl::StrCat("Unsupported: ", instr->ToShortString()));
+  }
+
+  if (HasDedicatedEmitter(instr->opcode())) {
+    return EmitWithDedicatedEmitter(instr, this_fn, indices, operand_provider,
+                                    call_target_provider, builder,
+                                    mlir_context);
+  }
+
+  // For all other ops the caller precomputes the operand indices (see
+  // `ComputeOperandIndices`).
+  TF_RET_CHECK(operand_indices.size() == instr->operand_count())
+      << "Expected indices for all operands of " << instr->ToShortString()
+      << ", got " << operand_indices.size();
+
+  if (instr->opcode() == HloOpcode::kGetTupleElement) {
+    // We have to generate the entire tuple, but since we don't support
+    // internal tuple operations (only root tuples), this will always be
+    // cached and computed together anyway (e.g. it'll be a variadic
+    // reduce).
+    ABSL_ASSIGN_OR_RETURN(auto tuple,
+                     operand_provider(instr, 0, operand_indices.front()));
+    return {{tuple[instr->tuple_index()]}};
+  }
+
+  auto element_type = instr->shape().element_type();
 
   SmallVector<mlir::Type, 2> arg_types;
   arg_types.reserve(instr->operands().size());
@@ -988,8 +1052,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     arg_types.push_back(operand_element_type);
   }
 
-  ABSL_ASSIGN_OR_RETURN(auto operands, GetOperands(instr, indices, operand_provider,
-                                              builder, mlir_context));
+  ABSL_ASSIGN_OR_RETURN(auto operands,
+                   GetOperands(instr, operand_indices, operand_provider));
 
   llvm::SmallVector<mlir::NamedAttribute> attributes;
   switch (instr->opcode()) {
@@ -1321,8 +1385,6 @@ class SubgraphConverter {
                                                     ValueRange operand_indices);
   absl::StatusOr<SmallVector<Value>> EmitInstruction(
       const HloInstruction* instr, ValueRange indices);
-  absl::StatusOr<SmallVector<Value>> EmitElementwiseInstruction(
-      const HloInstruction* root, ValueRange indices);
 
  private:
   // Converts a ValueRange to a vector of opaque pointers.
@@ -1396,53 +1458,69 @@ absl::StatusOr<SmallVector<Value>> SubgraphConverter::EmitInstruction(
     return *entry;
   }
 
-  if (HloInstruction::IsOpElementwise(instr->opcode())) {
-    return EmitElementwiseInstruction(instr, indices);
-  }
+  // To avoid deep recursion on long chains of ops, we emit the operands that
+  // are part of the subgraph with an explicit work stack before lowering an
+  // instruction (i.e. in post-order). Ops with dedicated emitters (see
+  // `HasDedicatedEmitter`) still request their operands from
+  // `provide_operand_fn_` while they are being lowered, which recurses into
+  // `EmitInstruction`.
+  struct WorkItem {
+    const HloInstruction* instr;
+    SmallVector<Value, 3> indices;
+    // The indices at which each operand of `instr` is accessed. Empty if
+    // `instr` requests its operands itself.
+    SmallVector<SmallVector<Value, 3>, 2> operand_indices;
+    // The next operand to visit before `instr` can be lowered.
+    int64_t next_operand_index = 0;
+  };
 
-  ABSL_ASSIGN_OR_RETURN(auto entry,
-                   HloToMlir(instr, this_fn_, indices, provide_operand_fn_,
-                             call_target_provider_, builder_, mlir_context_));
-  CHECK(!absl::c_linear_search(entry, nullptr))
-      << "Failed to lower " << instr->name();
-  return CacheInstruction(instr, indices, std::move(entry));
-}
-
-absl::StatusOr<SmallVector<Value>>
-SubgraphConverter::EmitElementwiseInstruction(const HloInstruction* root,
-                                              ValueRange indices) {
-  // `root` is elementwise, so we can emit its operands first (recursively).
-  // This reduces the size of the call stack.
-  std::queue<const HloInstruction*> worklist;
-  absl::flat_hash_set<const HloInstruction*> visited;
-  worklist.push(root);
-  SmallVector<const HloInstruction*> pre_order;
-  while (!worklist.empty()) {
-    const HloInstruction* instr = worklist.front();
-    worklist.pop();
-    pre_order.push_back(instr);
-    if (HloInstruction::IsOpElementwise(instr->opcode())) {
-      // Start with the last operand so that we will instantiate the operands
-      // in order below. Not needed for correctness, but makes the generated IR
-      // more readable.
-      for (int i = instr->operand_count() - 1; i >= 0; --i) {
-        auto* operand = instr->operand(i);
-        if (subgraph_.instructions.contains(operand) &&
-            !TryGetCachedInstruction(operand, indices, false) &&
-            visited.insert(operand).second) {
-          worklist.push(operand);
-        }
-      }
+  std::vector<WorkItem> workstack;
+  auto push_work_item = [&](const HloInstruction* target,
+                            ValueRange target_indices) {
+    WorkItem item;
+    item.instr = target;
+    item.indices.assign(target_indices.begin(), target_indices.end());
+    if (CanPrecomputeOperandIndices(target)) {
+      item.operand_indices =
+          ComputeOperandIndices(target, item.indices, builder_, mlir_context_);
+    } else {
+      item.next_operand_index = target->operand_count();
     }
+    workstack.push_back(std::move(item));
+  };
+
+  push_work_item(instr, indices);
+
+  while (!workstack.empty()) {
+    WorkItem& item = workstack.back();
+    if (item.next_operand_index < item.instr->operand_count()) {
+      int64_t operand_idx = item.next_operand_index++;
+      const HloInstruction* operand = item.instr->operand(operand_idx);
+      // Note that `push_work_item` copies the indices before `workstack` grows,
+      // so `op_indices` doesn't dangle.
+      const SmallVector<Value, 3>& op_indices =
+          item.operand_indices[operand_idx];
+      if (subgraph_.instructions.contains(operand) &&
+          !TryGetCachedInstruction(operand, op_indices)) {
+        push_work_item(operand, op_indices);
+      }
+      continue;
+    }
+
+    // Items are only pushed if they are not cached yet, and since HLO is a DAG
+    // only their transitive operands get emitted until they are popped again.
+    WorkItem completed = std::move(item);
+    workstack.pop_back();
+    ABSL_ASSIGN_OR_RETURN(auto entry,
+                     HloToMlir(completed.instr, this_fn_, completed.indices,
+                               completed.operand_indices, provide_operand_fn_,
+                               call_target_provider_, builder_, mlir_context_));
+    TF_RET_CHECK(!absl::c_linear_search(entry, nullptr))
+        << "Failed to lower " << completed.instr->name();
+    CacheInstruction(completed.instr, completed.indices, std::move(entry));
   }
 
-  for (auto* instr : llvm::reverse(pre_order)) {
-    ABSL_ASSIGN_OR_RETURN(auto entry,
-                     HloToMlir(instr, this_fn_, indices, provide_operand_fn_,
-                               call_target_provider_, builder_, mlir_context_));
-    CacheInstruction(instr, indices, std::move(entry));
-  }
-  return cached_instructions_[{root, IndicesToPtrs(indices)}];
+  return cached_instructions_[{instr, IndicesToPtrs(indices)}];
 }
 
 std::vector<void*> SubgraphConverter::IndicesToPtrs(ValueRange indices) {

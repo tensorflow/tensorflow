@@ -903,8 +903,7 @@ class PriorityFusionQueue {
           if (const auto* fusion_decision =
                   std::get_if<FusionDecision>(&tiled_run_time_data_or_error)) {
             tiled_run_time_data_or_error = FusionDecision::Forbid(absl::StrCat(
-                "Fusion can not be tiled with SymbolicTileAnalysis: ",
-                fusion_decision->Explain()));
+                "Failed to tile the fusion: ", fusion_decision->Explain()));
           }
 
           {
@@ -1603,6 +1602,7 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   switch (analysis.emitter_fusion_kind()) {
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
+    case HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized:
       return HloInstruction::FusionKind::kLoop;
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:

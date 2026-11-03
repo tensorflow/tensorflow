@@ -179,6 +179,7 @@ tf_proto_library(
         "//xla/service:buffer_assignment_proto",
         "//xla/service:hlo_proto",
         "//xla/service:shaped_slice_proto",
+        "//xla/service/cpu:onednn_config_proto",
     ],
 )
 
@@ -1165,7 +1166,6 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",

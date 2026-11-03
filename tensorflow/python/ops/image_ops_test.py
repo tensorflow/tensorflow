@@ -3983,6 +3983,54 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
     self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
 
 
+def _assertNoExtraPaddingFromRounding(test, resize_image_with_pad):
+  """Checks resized size and centering when float32 rounding used to be off.
+
+  For these sizes float32 used to land slightly below a whole number for the
+  scaled size or padding offset, either dropping an image row/column and
+  replacing it with zeros (e.g. 512x512 -> 224x224) or shifting the image
+  one pixel off center (e.g. 39x65 -> 100x100 or 78x65 -> 300x300).
+
+  Args:
+    test: The test case.
+    resize_image_with_pad: Called as `resize_image_with_pad(image,
+      target_height, target_width, use_tensor_inputs)`.
+  """
+  # (height, width, target_height, target_width, pad_top, pad_bottom,
+  #  pad_left, pad_right)
+  for (
+      height,
+      width,
+      target_height,
+      target_width,
+      pad_top,
+      pad_bottom,
+      pad_left,
+      pad_right,
+  ) in [
+      (512, 512, 224, 224, 0, 0, 0, 0),
+      (480, 640, 300, 300, 37, 38, 0, 0),
+      (640, 480, 300, 300, 0, 0, 37, 38),
+      (720, 1280, 600, 600, 131, 132, 0, 0),
+      (39, 65, 100, 100, 20, 20, 0, 0),
+      (78, 65, 300, 300, 0, 0, 25, 25),
+  ]:
+    x = np.ones([height, width, 1], dtype=np.float32)
+    expected = np.pad(
+        np.ones([
+            target_height - pad_top - pad_bottom,
+            target_width - pad_left - pad_right,
+            1,
+        ]),
+        [[pad_top, pad_bottom], [pad_left, pad_right], [0, 0]],
+    )
+    for use_tensor_inputs in [False, True]:
+      y = resize_image_with_pad(
+          x, target_height, target_width, use_tensor_inputs
+      )
+      test.assertAllClose(expected, y)
+
+
 class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
@@ -4099,6 +4147,9 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
     y_shape = [1, 2, 1]
 
     self._assertReturns(x, x_shape, y, y_shape)
+
+  def testNoExtraPaddingFromRounding(self):
+    _assertNoExtraPaddingFromRounding(self, self._ResizeImageWithPad)
 
   def testImageResizeAntialiasWithInvalidInput(self):
     with self.session():
@@ -4228,6 +4279,9 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     y_shape = [1, 2, 1]
 
     self._assertReturns(x, x_shape, y, y_shape)
+
+  def testNoExtraPaddingFromRounding(self):
+    _assertNoExtraPaddingFromRounding(self, self._ResizeImageWithPad)
 
 
 class ResizeNearestNeighborGrad(test_util.TensorFlowTestCase):
@@ -5357,6 +5411,63 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
                     [0, 1.0 / 255.0, 1])
       self._convert([0, 1.1 / 255.0, 1], dtypes.float32, dtypes.uint8,
                     [0, 1, 255])
+
+  def testConvertHalfAndBfloat16ToInteger(self):
+    # dtype.max + 0.5 rounds up to dtype.max + 1 in half and bfloat16 (e.g. 256
+    # in bfloat16 for uint8), which used to wrap 1.0 around in the cast.
+    for float_dtype in [dtypes.float16, dtypes.bfloat16]:
+      image = constant_op.constant([0.0, 0.5, 1.0], float_dtype)
+      for int_dtype, expected in [
+          (dtypes.uint8, [0, 127, 255]),
+          (dtypes.int16, [0, 16383, 32767]),
+          (dtypes.uint16, [0, 32767, 65535]),
+      ]:
+        for saturate in [False, True]:
+          y = image_ops.convert_image_dtype(image, int_dtype, saturate)
+          self.assertAllEqual(self.evaluate(y), expected)
+
+  def testConvertFloatToWideIntegerStaysInRange(self):
+    # dtype.max + 0.5 rounds up to 2**31 in float32 and to 2**63 in float64, so
+    # 1.0 used to overflow the cast. It now maps to the largest float below.
+    for float_dtype, int_dtype, expected in [
+        (dtypes.float16, dtypes.int32, [0, -2147483520, 2147483520]),
+        (dtypes.bfloat16, dtypes.int32, [0, -2147483520, 2147483520]),
+        (dtypes.float32, dtypes.int32, [0, -2147483520, 2147483520]),
+        (
+            dtypes.float64,
+            dtypes.int64,
+            [0, -9223372036854774784, 9223372036854774784],
+        ),
+    ]:
+      image = constant_op.constant([0.0, -1.0, 1.0], float_dtype)
+      for saturate in [False, True]:
+        y = image_ops.convert_image_dtype(image, int_dtype, saturate)
+        self.assertAllEqual(self.evaluate(y), expected)
+    for float_dtype, int_dtype, expected in [
+        (dtypes.float32, dtypes.uint32, 4294967040),
+        (dtypes.float32, dtypes.uint64, 18446742974197923840),
+        (dtypes.float64, dtypes.uint64, 18446744073709549568),
+    ]:
+      image = constant_op.constant([0.0, 1.0], float_dtype)
+      for saturate in [False, True]:
+        y = image_ops.convert_image_dtype(image, int_dtype, saturate)
+        self.assertAllEqual(self.evaluate(y), [0, expected])
+
+  def testConvertWideIntegerToHalf(self):
+    # uint16 and wider integers used to overflow half in the cast, turning the
+    # max value into inf (or nan once scaled).
+    for int_dtype in [
+        dtypes.uint16,
+        dtypes.int32,
+        dtypes.uint32,
+        dtypes.int64,
+        dtypes.uint64,
+    ]:
+      image = constant_op.constant(
+          [0, int_dtype.max // 2, int_dtype.max], int_dtype
+      )
+      y = image_ops.convert_image_dtype(image, dtypes.float16)
+      self.assertAllClose(self.evaluate(y), [0.0, 0.5, 1.0])
 
   def testConvertBetweenInt16AndInt8(self):
     with self.cached_session():

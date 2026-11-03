@@ -18,7 +18,6 @@ bazel_dep(name = "flatbuffers", version = "25.9.23")
 bazel_dep(name = "google_benchmark", version = "1.9.4", repo_name = "com_google_benchmark")
 bazel_dep(name = "googletest", version = "1.18.0", repo_name = "com_google_googletest")
 bazel_dep(name = "grpc", version = "1.81.0")
-bazel_dep(name = "gutil", version = "20260309.0.bcr.1", repo_name = "com_google_gutil")
 bazel_dep(name = "highway", version = "1.4.0")
 bazel_dep(name = "jsoncpp", version = "1.9.6.bcr.2", repo_name = "jsoncpp_git")
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
@@ -52,9 +51,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-jS+3cXmAQJFifU4JZOQcuH+ZfB9bhnyj7/C+tDSq6QM=",
-    strip_prefix = "rules_ml_toolchain-acf23037903eff6359c5bac21379957725fb9dda",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/acf23037903eff6359c5bac21379957725fb9dda.tar.gz"],
+    integrity = "sha256-7eqXGrr59MzfuhUzAwznbG/NDe51oyNMSlxRQZgSQ64=",
+    strip_prefix = "rules_ml_toolchain-9114bb1c3abf4f1a5889ef8fd7ae5a72b1351db3",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/9114bb1c3abf4f1a5889ef8fd7ae5a72b1351db3.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -326,6 +325,8 @@ register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_sycl")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_rocm")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_aarch64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 

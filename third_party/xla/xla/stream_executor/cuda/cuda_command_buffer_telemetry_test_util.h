@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -63,11 +62,6 @@ std::optional<std::string> Lookup(
     const NodeKey& key,
     CudaGraphAnnotationRegistry::KeySpace space =
         CudaGraphAnnotationRegistry::KeySpace::kTemplateGraph);
-
-// Calls `done` every 10 ms until it returns true, but for at most 10 s, and
-// returns whether it did. Needed to observe cleanups: CUDA runs user-object
-// destructors asynchronously, on an internal thread.
-bool PollUntil(absl::FunctionRef<bool()> done);
 
 // Records the HLO annotation "m::<op>" for the nodes created during its
 // lifetime, as XLA does while it records op `op` of module "m": "m" is an

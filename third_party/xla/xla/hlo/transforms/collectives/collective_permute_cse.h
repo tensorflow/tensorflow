@@ -45,6 +45,19 @@ namespace xla {
 //
 // This pass will replace %cp1 with slice(%cp0).
 //
+// Operands that read windows of one array through chains of unit-stride
+// slices are compared by their windows on that array: a window inside another
+// reuses the larger permute as above, and two windows that differ in a single
+// dimension with touching or overlapping intervals are sent by one permute of
+// their union, which moves no element that neither of them moved:
+//
+//   %s0 = slice(%input), slice={[0:3]}
+//   %s1 = slice(%input), slice={[1:4]}
+//   %cp0 = collective-permute(%s0)
+//   %cp1 = collective-permute(%s1)
+//
+// becomes one collective-permute of %input, with %cp0 and %cp1 slices of it.
+//
 class CollectivePermuteCSE : public HloModulePass {
  public:
   absl::string_view name() const override { return "collective-permute-cse"; }

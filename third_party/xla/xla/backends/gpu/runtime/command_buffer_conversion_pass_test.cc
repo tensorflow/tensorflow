@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
@@ -511,6 +512,39 @@ TEST(CommandBufferConversionPassTest, ChecksKnownCudaVersions) {
     EXPECT_THAT(thunks,
                 ThunkKindsAre(test_case.should_convert ? Thunk::kCommandBuffer
                                                        : Thunk::kCopy));
+  }
+}
+
+TEST(CommandBufferConversionPassTest, ForwardsCommandBufferTelemetryFlag) {
+  // The pass forwards both flags as is; whether the CUDA versions support
+  // telemetry is decided at runtime by
+  // `CommandBuffer::SupportsNodeAnnotations`.
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+
+  for (bool telemetry : {false, true}) {
+    for (bool during_profiling : {false, true}) {
+      SCOPED_TRACE(absl::StrCat("telemetry=", telemetry,
+                                ", during_profiling=", during_profiling));
+      debug_options.set_xla_gpu_enable_command_buffer_telemetry(telemetry);
+      debug_options.set_xla_enable_command_buffers_during_profiling(
+          during_profiling);
+
+      BufferAllocation alloc0(0, 1024, 0);
+      ThunkSequence thunks;
+      thunks.push_back(CreateCopyThunk(alloc0));
+      FakeErrorAllocator allocator;
+      CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
+      ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                           TestGpuDeviceInfo::RTXA6000DeviceInfo(), allocator),
+                  IsOkAndHolds(true));
+      ASSERT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+      const auto& thunk = static_cast<const CommandBufferThunk&>(*thunks[0]);
+      EXPECT_EQ(thunk.IsCommandBufferTelemetryEnabled(), telemetry);
+      EXPECT_EQ(thunk.IsEnabledDuringProfiling(), during_profiling);
+    }
   }
 }
 

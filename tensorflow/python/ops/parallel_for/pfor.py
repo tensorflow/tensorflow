@@ -2792,13 +2792,17 @@ def _convert_roll(pfor_input: _PforInput):
   shift, shift_stacked, _ = pfor_input.input(1)
   axis = pfor_input.unstacked_input(2)
   if not shift_stacked:
-    return wrap(manip_ops.roll(t, shift, axis + 1), True)
+    # Negative axes count from the end, so the added loop dimension at the front
+    # doesn't change them.
+    axis += math_ops.cast(axis >= 0, axis.dtype)
+    return wrap(manip_ops.roll(t, shift, axis), True)
   else:
     # `axis` and `shift` may both be vectors, with repeated axes summing the
     # corresponding `shift`s. We scatter shifts into a dense array of shape
     # [loop_len, num_unstacked_axes] indicating the offset for each axis.
     num_unstacked_axes = math_ops.cast(array_ops.rank(t), dtypes.int64) - 1
     axis = math_ops.cast(array_ops.reshape(axis, [-1]), dtypes.int64)
+    axis = array_ops.where_v2(axis < 0, axis + num_unstacked_axes, axis)
     loop_len = math_ops.cast(pfor_input.pfor.loop_len_vector[0], dtypes.int64)
     shift = math_ops.cast(array_ops.reshape(shift, [loop_len, -1]),
                           dtypes.int64)

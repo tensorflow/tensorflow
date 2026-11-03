@@ -46,10 +46,7 @@ cc_library(
         "builddata_globals.cc",
         google_value = None,
     ),
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-    ] + tf_platform_deps("builddata"),
+    deps = ["@com_google_absl//absl/strings:string_view"] + tf_platform_deps("builddata"),
 )
 
 tsl_cc_test(

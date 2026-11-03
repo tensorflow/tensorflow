@@ -568,19 +568,11 @@ ThunkProtoExecutionDeserializer::GetSortThunkRunImpl(
        };
 
        // Type alias compatible with `FunctionLibrary::Comparator`.
-       using Comparator = void(bool* result, const void* run_options,
-                               const void** params, const void* buffer_table,
-                               const void* status, const void* prof_counters);
+       using Comparator = bool(const void** data);
        Comparator* comparator = reinterpret_cast<Comparator*>(
            {{SORT_FUNCTION_NAME}});
 
-       absl::AnyInvocable<bool(const void** data)> less_than =
-           [comparator](const void** data) {
-             bool result;
-             (*comparator)(&result, nullptr, data, nullptr, nullptr, nullptr);
-             ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
-             return result;
-           };
+       absl::AnyInvocable<bool(const void** data)> less_than = comparator;
 
        xla::cpu::internal::SortInplace(
          {

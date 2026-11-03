@@ -2155,7 +2155,7 @@ bool CudaExecutor::IsVmmMemory(const DeviceAddressBase& address) {
 absl::StatusOr<MemorySpace> CudaExecutor::GetPointerMemorySpace(
     const void* ptr) {
   CUdeviceptr pointer = reinterpret_cast<CUdeviceptr>(const_cast<void*>(ptr));
-  unsigned int is_managed;
+  unsigned int is_managed = 0;
   ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuPointerGetAttribute(
       &is_managed, CU_POINTER_ATTRIBUTE_IS_MANAGED, pointer)));
 
@@ -2163,7 +2163,7 @@ absl::StatusOr<MemorySpace> CudaExecutor::GetPointerMemorySpace(
     return MemorySpace::kUnified;
   }
 
-  unsigned int value;
+  unsigned int value = 0;
   ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuPointerGetAttribute(
       &value, CU_POINTER_ATTRIBUTE_MEMORY_TYPE, pointer)));
   switch (value) {
@@ -2181,9 +2181,11 @@ bool CudaExecutor::IsHostMemoryPinned(const void* ptr, uint64_t size) {
   if (size == 0) return false;
   CUdeviceptr pointer = reinterpret_cast<CUdeviceptr>(const_cast<void*>(ptr));
 
-  uint64_t start_addr;
-  uint64_t range_size;
-  unsigned int memory_type;
+  // For pageable host memory, cuPointerGetAttributes succeeds but doesn't write
+  // RANGE_START_ADDR and RANGE_SIZE. So don't leave the results uninitialized.
+  uint64_t start_addr = 0;
+  uint64_t range_size = 0;
+  unsigned int memory_type = 0;
   CUpointer_attribute attrs[3] = {CU_POINTER_ATTRIBUTE_MEMORY_TYPE,
                                   CU_POINTER_ATTRIBUTE_RANGE_START_ADDR,
                                   CU_POINTER_ATTRIBUTE_RANGE_SIZE};

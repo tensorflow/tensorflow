@@ -1185,6 +1185,10 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
                                      nullptr, nullptr, moe_grouped_matmul_attr);
       }
     } else if (HloPredicateIsOp<HloOpcode::kReduce>(hlo)) {
+      if (!IsCudnnAmaxReduce(*hlo)) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Only AMAX reductions are supported: ", hlo->ToString()));
+      }
       hlo_to_cudnn[hlo] = graph.reduction(
           operand(0), graph::Reduction_attributes()
                           .set_mode(fe::ReductionMode_t::AMAX)

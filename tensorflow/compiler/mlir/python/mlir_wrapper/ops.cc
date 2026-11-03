@@ -29,7 +29,11 @@ void init_ops(py::module& m) {
       .def("getRegion", &mlir::Operation::getRegion,
            py::return_value_policy::reference)
       .def("getResult", &mlir::Operation::getResult)
-      .def("dump", &mlir::Operation::dump)
+      .def("dump",
+           [](mlir::Operation& op) {
+             op.print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
+             llvm::errs() << "\n";
+           })
       .def("getNumResults", &mlir::Operation::getNumResults);
 
   py::class_<mlir::OperationState>(m, "OperationState")
@@ -52,7 +56,11 @@ void init_ops(py::module& m) {
            [](mlir::Location loc) { return mlir::ModuleOp::create(loc); })
       .def("push_back",
            [](mlir::ModuleOp& m, mlir::func::FuncOp f) { m.push_back(f); })
-      .def("dump", &mlir::ModuleOp::dump)
+      .def("dump",
+           [](mlir::ModuleOp& m) {
+             m.print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
+             llvm::errs() << "\n";
+           })
       .def("getAsStr", [](mlir::ModuleOp& m) {
         std::string str;
         llvm::raw_string_ostream os(str);

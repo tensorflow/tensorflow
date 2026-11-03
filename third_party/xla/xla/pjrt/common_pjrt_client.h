@@ -172,13 +172,22 @@ class CommonPjRtClient : public PjRtClient {
     return linearize_throttler_.get();
   }
 
-  // Returns a multi-chunk TransposePlan with contiguous ~2 MiB device chunks,
-  // or nullptr to use the unchunked path.
+  // Returns a multi-chunk TransposePlan with contiguous
+  // `~chunked_transfer_target_bytes()` device chunks, or nullptr to use the
+  // unchunked path.
   virtual std::shared_ptr<TransposePlan> CreateChunkedTransposePlan(
       bool is_h2d, const Shape& host_shape,
       std::optional<absl::Span<int64_t const>> host_byte_strides,
-      const Shape& device_shape) {
-    return nullptr;
+      const Shape& device_shape);
+
+  int64_t chunked_transfer_target_bytes() const {
+    return chunked_transfer_target_bytes_;
+  }
+  // TODO(parkers): Remove this setter and update the test once we have a
+  // standalone function for e2e buffer linearization which takes an options
+  // struct.
+  void set_chunked_transfer_target_bytes(int64_t bytes) {
+    chunked_transfer_target_bytes_ = bytes;
   }
 
   // Some clients do not support recursion eg: calling to_literal in host
@@ -812,6 +821,7 @@ class CommonPjRtClient : public PjRtClient {
       CompilerMetadataOnLoad::kKeep;
   bool enable_async_compilation_ = false;
   bool include_raw_buffer_in_ready_event_ = false;
+  int64_t chunked_transfer_target_bytes_ = 0;
 
   std::vector<std::shared_ptr<void>> stats_reporters_;
 };
@@ -1021,6 +1031,12 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  protected:
   // Execute is split into Prepare and Launch.
   // Prepare can fail and be retried, while Launch is guaranteed to succeed.
+  struct ExecuteOptionsOverride {
+    ExecuteOptions options;
+    std::vector<std::vector<SendCallback>> send_callbacks;
+    std::vector<std::vector<RecvCallback>> recv_callbacks;
+  };
+
   struct ExecuteLaunchArgs {
     PjRtDevice* device;
     std::unique_ptr<PjRtRawLoadedExecutable> executable;
@@ -1032,6 +1048,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     std::optional<Shape> output_device_shape_override;
     bool is_predetermined_error;
     const ExecuteOptions* options;
+    std::unique_ptr<ExecuteOptionsOverride> options_override;
   };
 
   using DeviceAndAssignment = PjRtExecutableLoadState::DeviceAndAssignment;

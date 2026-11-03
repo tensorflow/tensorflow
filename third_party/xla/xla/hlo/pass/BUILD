@@ -292,3 +292,50 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+cc_library(
+    name = "hlo_pipeline_builder",
+    srcs = ["hlo_pipeline_builder.cc"],
+    hdrs = ["hlo_pipeline_builder.h"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_pass_context",
+        ":hlo_pass_options",
+        ":hlo_pass_pipeline",
+        ":hlo_pass_registry",
+        ":hlo_pipeline_proto_cc",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compilation_stats",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_pipeline_builder_test",
+    srcs = ["hlo_pipeline_builder_test.cc"],
+    deps = [
+        ":hlo_pass",
+        ":hlo_pass_context",
+        ":hlo_pass_options",
+        ":hlo_pass_pipeline",
+        ":hlo_pass_registry",
+        ":hlo_pipeline_builder",
+        ":hlo_pipeline_editor",
+        ":hlo_pipeline_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compilation_stats",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

@@ -436,10 +436,10 @@ module {
 
 // CHECK-TDM-LABEL: tt.func @incompatible_tma_dynamic_offset_not_divisible_by_16_bytes
 // CHECK-TDM:         tt.descriptor_load
-// CHECK-TDM:         %[[PTR1:.*]] = tt.addptr %arg1, %{{.*}} : !tt.ptr<bf16>, i64
-// CHECK-TDM:         %[[DESC1:.*]] = tt.make_tensor_descriptor %[[PTR1]]
-// CHECK-TDM-SAME:       <bf16>, <16x16xbf16>
-// CHECK-TDM:         tt.descriptor_store %[[DESC1]]
+// The insert's singleton dim 1 (size 1) has offsets in [0, 63], which are not
+// provably in bounds, so TDM is declined and the masked pointer path is used.
+// CHECK-TDM-NOT:     tt.descriptor_store
+// CHECK-TDM:         tt.store
 
 // =============================================================================
 // Tests for TMA condition: (num_stages > 1 && HasBroadcast && (tile_bytes % 128 != 0))
@@ -655,3 +655,60 @@ func.func @extract_with_transposing_layout(
 // CHECK-TMA:         %[[TRANS:.*]] = tt.trans %[[LOAD]]
 // CHECK-TMA-SAME:        tensor<64x2x128xbf16> -> tensor<2x64x128xbf16>
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}], %[[TRANS]]
+
+
+// -----
+
+// A strided tile whose last element lies past the end of the dimension
+// (indices 0, 4, 8, 12 into a dimension of size 12) must be masked, even
+// though the offset is divisible by and in bounds for the tile size.
+func.func @strided_tile_past_end_has_mask(%arg0: !tt.ptr<f32>,
+                                          %arg1: !tt.ptr<f32>) {
+  %extracted_tensor = triton_xla.extract from %arg0
+      as memref<12xf32, #xtile.layout<[0]>>
+      [0] [4] [4] : tensor<4xf32>
+  triton_xla.insert %extracted_tensor into %arg1
+      as memref<16xf32, #xtile.layout<[0]>>
+      [0] [4] [1] : tensor<4xf32>
+  func.return
+}
+
+// CHECK-LABEL: tt.func @strided_tile_past_end_has_mask
+// CHECK:         %[[RIGHT_MASK:.*]] = arith.cmpi slt
+// CHECK:         %[[LEFT_MASK:.*]] = arith.cmpi sge
+// CHECK:         %[[MASK:.*]] = arith.andi %[[LEFT_MASK]], %[[RIGHT_MASK]]
+// CHECK:         tt.load {{.*}}, %[[MASK]], {{.*}}
+// CHECK-NOT:     arith.cmpi
+// CHECK:         tt.store {{.*}} : tensor<4x!tt.ptr<f32>>
+
+// -----
+
+// Tiles of a high-padded operand: the singleton dim 0 offset (pid mod 16)
+// ranges over [0, 15] for a dimension of size 4. TDM would fold that offset into
+// the base pointer without a bounds check, so it must be declined in favor of
+// the masked pointer lowering.
+#indexing_map_pad_oob = #xla.indexing_map<"(pid) -> (pid mod 16), domain: pid in [0, 63]">
+#indexing_map_pad_in_bounds = #xla.indexing_map<"(pid) -> (pid floordiv 16), domain: pid in [0, 63]">
+module {
+  func.func @tdm_declined_for_out_of_bounds_singleton_offset(
+      %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
+    %0 = tt.get_program_id x : i32
+    %1 = arith.index_cast %0 : i32 to index
+    %2 = xla.apply_indexing #indexing_map_pad_oob(%1)
+    %3 = xla.apply_indexing #indexing_map_pad_in_bounds(%1)
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<4x64xbf16, #xtile.layout<[1, 0]>>
+        [%2, 0] [1, 64] [1, 1] : tensor<64xbf16>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<4x64xbf16, #xtile.layout<[1, 0]>>
+        [%3, 0] [1, 64] [1, 1] : tensor<64xbf16>
+    func.return
+  }
+}
+
+// CHECK-TDM-LABEL: tt.func @tdm_declined_for_out_of_bounds_singleton_offset
+// CHECK-TDM-NOT:     tt.descriptor_load
+// CHECK-TDM:         arith.cmpi slt
+// CHECK-TDM:         tt.load
+// CHECK-TDM:         tt.make_tensor_descriptor
+// CHECK-TDM:         tt.descriptor_store

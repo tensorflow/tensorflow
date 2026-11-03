@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <algorithm>
 #include <memory>
+#include <vector>
 
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
@@ -52,6 +54,202 @@ inline bool IsQuantizedPerChannel(const TfLiteTensor* input) {
     return (quant_params->scale && quant_params->scale->size > 1);
   }
   return false;
+}
+
+// Returns the N-D blockwise quantization parameters of `input`, or nullptr if
+// it is not quantized that way.
+inline const TfLiteBlockwiseQuantizationV2* GetBlockwiseQuantizationV2(
+    const TfLiteTensor* input) {
+  if (input->quantization.type != kTfLiteBlockwiseQuantizationV2) {
+    return nullptr;
+  }
+  return static_cast<const TfLiteBlockwiseQuantizationV2*>(
+      input->quantization.params);
+}
+
+// Checks that `params` describe a valid N-D blockwise quantization of `input`:
+// one `block_shape` entry per dimension, and scale / zero point tensors of the
+// same rank whose extents are either 1 (broadcast) or the number of blocks
+// along that dimension.
+inline TfLiteStatus ValidateBlockwiseQuantizationV2(
+    TfLiteContext* context, const TfLiteTensor* input,
+    const TfLiteBlockwiseQuantizationV2* params) {
+  TF_LITE_ENSURE(context, params != nullptr);
+  TF_LITE_ENSURE(context, params->block_shape != nullptr);
+  const int rank = input->dims->size;
+  TF_LITE_ENSURE_EQ(context, params->block_shape->size, rank);
+  for (int d = 0; d < rank; ++d) {
+    TF_LITE_ENSURE(context, params->block_shape->data[d] > 0);
+  }
+
+  auto validate_params_tensor = [&](int index, bool is_scale) -> TfLiteStatus {
+    TF_LITE_ENSURE(context, index >= 0 && index < context->tensors_size);
+    const TfLiteTensor* params_tensor = &context->tensors[index];
+    if (is_scale) {
+      TF_LITE_ENSURE(context, params_tensor->type == kTfLiteFloat32 ||
+                                  params_tensor->type == kTfLiteFloat16 ||
+                                  params_tensor->type == kTfLiteBFloat16);
+    } else {
+      TF_LITE_ENSURE(context, params_tensor->type == kTfLiteFloat32 ||
+                                  params_tensor->type == kTfLiteInt32 ||
+                                  params_tensor->type == kTfLiteInt16 ||
+                                  params_tensor->type == kTfLiteInt8);
+    }
+    TF_LITE_ENSURE_EQ(context, params_tensor->dims->size, rank);
+    for (int d = 0; d < rank; ++d) {
+      const int block = params->block_shape->data[d];
+      const int num_blocks = (input->dims->data[d] + block - 1) / block;
+      const int extent = params_tensor->dims->data[d];
+      TF_LITE_ENSURE(context, extent == 1 || extent == num_blocks);
+    }
+    return kTfLiteOk;
+  };
+  TF_LITE_ENSURE_OK(context,
+                    validate_params_tensor(params->scale, /*is_scale=*/true));
+  if (params->zero_point != kTfLiteOptionalTensor) {
+    TF_LITE_ENSURE_OK(context, validate_params_tensor(params->zero_point,
+                                                      /*is_scale=*/false));
+  }
+  return kTfLiteOk;
+}
+
+// Reads the elements of a blockwise quantization parameter tensor as floats.
+inline std::vector<float> ReadBlockwiseParamsAsFloat(
+    const TfLiteTensor* tensor) {
+  const int64_t size = GetTensorShape(tensor).FlatSize();
+  std::vector<float> values(size);
+  for (int64_t i = 0; i < size; ++i) {
+    switch (tensor->type) {
+      case kTfLiteFloat32:
+        values[i] = GetTensorData<float>(tensor)[i];
+        break;
+      case kTfLiteFloat16:
+        values[i] = static_cast<float>(Eigen::numext::bit_cast<Eigen::half>(
+            GetTensorData<TfLiteFloat16>(tensor)[i].data));
+        break;
+      case kTfLiteBFloat16:
+        values[i] = static_cast<float>(Eigen::numext::bit_cast<Eigen::bfloat16>(
+            GetTensorData<TfLiteBFloat16>(tensor)[i].data));
+        break;
+      case kTfLiteInt32:
+        values[i] = GetTensorData<int32_t>(tensor)[i];
+        break;
+      case kTfLiteInt16:
+        values[i] = GetTensorData<int16_t>(tensor)[i];
+        break;
+      case kTfLiteInt8:
+        values[i] = GetTensorData<int8_t>(tensor)[i];
+        break;
+      default:
+        values[i] = 0.0f;
+        break;
+    }
+  }
+  return values;
+}
+
+// Dequantizes `input`, which is N-D blockwise quantized, into `output`:
+//
+//   output[i] = scale[b] * (input[i] - zero_point[b]),
+//   b = floor(i / block_shape)
+//
+// where a scale or zero point tensor of extent 1 along a dimension broadcasts
+// along it, and a missing zero point tensor means a zero point of 0.
+inline TfLiteStatus BlockwiseDequantizeImpl(TfLiteContext* context,
+                                            const TfLiteTensor* input,
+                                            TfLiteTensor* output) {
+  const TfLiteBlockwiseQuantizationV2* params =
+      GetBlockwiseQuantizationV2(input);
+  TF_LITE_ENSURE_OK(context,
+                    ValidateBlockwiseQuantizationV2(context, input, params));
+
+  const RuntimeShape shape = GetTensorShape(input);
+  const int rank = shape.DimensionsCount();
+  const int64_t flat_size = shape.FlatSize();
+
+  // Unpack the quantized values.
+  std::vector<int32_t> values(flat_size);
+  switch (input->type) {
+    case kTfLiteInt2:
+    case kTfLiteInt4:
+    case kTfLiteUInt4: {
+      std::vector<int8_t> unpacked(flat_size);
+      tflite::tensor_utils::UnpackPackedIntToInt8(
+          GetTensorData<int8_t>(input), flat_size,
+          /*bit_width=*/input->type == kTfLiteInt2 ? 2 : 4, unpacked.data(),
+          /*unpack_unsigned=*/input->type == kTfLiteUInt4);
+      values.assign(unpacked.begin(), unpacked.end());
+      break;
+    }
+    case kTfLiteInt8:
+      std::copy_n(GetTensorData<int8_t>(input), flat_size, values.begin());
+      break;
+    case kTfLiteUInt8:
+      std::copy_n(GetTensorData<uint8_t>(input), flat_size, values.begin());
+      break;
+    case kTfLiteInt16:
+      std::copy_n(GetTensorData<int16_t>(input), flat_size, values.begin());
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %s not supported for blockwise dequantization.",
+                         TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
+
+  const TfLiteTensor* scale_tensor = &context->tensors[params->scale];
+  const std::vector<float> scales = ReadBlockwiseParamsAsFloat(scale_tensor);
+  std::vector<float> zero_points = {0.0f};
+  const TfLiteTensor* zero_point_tensor = nullptr;
+  if (params->zero_point != kTfLiteOptionalTensor) {
+    zero_point_tensor = &context->tensors[params->zero_point];
+    zero_points = ReadBlockwiseParamsAsFloat(zero_point_tensor);
+  }
+
+  // Strides of the scale / zero point tensors in units of blocks, with 0 for
+  // broadcast dimensions.
+  auto block_strides = [&](const TfLiteTensor* tensor) {
+    std::vector<int64_t> strides(rank, 0);
+    if (tensor == nullptr) return strides;
+    int64_t stride = 1;
+    for (int d = rank - 1; d >= 0; --d) {
+      const int extent = tensor->dims->data[d];
+      strides[d] = extent == 1 ? 0 : stride;
+      stride *= extent;
+    }
+    return strides;
+  };
+  const std::vector<int64_t> scale_strides = block_strides(scale_tensor);
+  const std::vector<int64_t> zero_point_strides =
+      block_strides(zero_point_tensor);
+
+  // Walk the tensor in row-major order, tracking the coordinates of the
+  // current element and of its block, and the parameter indices they map to.
+  std::vector<int> coords(rank, 0);
+  std::vector<int> block_coords(rank, 0);
+  int64_t scale_index = 0;
+  int64_t zero_point_index = 0;
+  float* output_data = GetTensorData<float>(output);
+  for (int64_t i = 0; i < flat_size; ++i) {
+    output_data[i] = scales[scale_index] * (static_cast<float>(values[i]) -
+                                            zero_points[zero_point_index]);
+    for (int d = rank - 1; d >= 0; --d) {
+      const int block = params->block_shape->data[d];
+      if (++coords[d] < shape.Dims(d)) {
+        if (coords[d] % block == 0) {
+          ++block_coords[d];
+          scale_index += scale_strides[d];
+          zero_point_index += zero_point_strides[d];
+        }
+        break;
+      }
+      scale_index -= block_coords[d] * scale_strides[d];
+      zero_point_index -= block_coords[d] * zero_point_strides[d];
+      coords[d] = 0;
+      block_coords[d] = 0;
+    }
+  }
+  return kTfLiteOk;
 }
 
 #if defined(TFLITE_ENABLE_EXTRA_REFERENCE_KERNELS)
@@ -139,6 +337,9 @@ inline TfLiteStatus PerChannelDequantizeImpl(TfLiteContext* context,
 template <KernelType kernel_type>
 TfLiteStatus DequantizeImpl(TfLiteContext* context, TfLiteNode* node,
                             const TfLiteTensor* input, TfLiteTensor* output) {
+  if (GetBlockwiseQuantizationV2(input) != nullptr) {
+    return BlockwiseDequantizeImpl(context, input, output);
+  }
   if (IsQuantizedPerChannel(input)) {
     return PerChannelDequantizeImpl(context, node, input, output);
   }

@@ -57,6 +57,9 @@ _DEFAULT_BAZEL_OPTIONS = dict(
     jobs=150,
     bes_upload_mode="fully_async",
     build_runfile_links=False,
+    show_timestamps=True,
+    show_progress_rate_limit=5,
+    experimental_remote_grpc_log="bazel_remote_grpc.log",
 )
 
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
@@ -444,10 +447,11 @@ Build(
         "-//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
         "-//xla/backends/cpu/runtime/ynnpack:ynn_interop",
         "-//xla/backends/cpu/runtime/ynnpack:ynn_threadpool",
-        # triton is not windows compatible
+        # triton and sycl are not windows compatible
         "-//xla/backends/gpu/...",
         "-//xla/codegen/emitters/tests/...",
         "-//xla/service/gpu/...",
+        "-//xla/stream_executor/sycl/...",
     ),
     build_tag_filters=windows_x86_tag_filter,
     test_tag_filters=windows_x86_tag_filter,
@@ -465,6 +469,8 @@ Build(
     # the Windows CI container image includes the lld/COFF/Driver.cpp
     # LinkerDriver::enqueuePath fix (b/571437556).
     command_retries=2,
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 Build(
@@ -565,6 +571,8 @@ Build(
     test_tag_filters=oneapi_test_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
     subcommand="build",
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 # ROCm builds - hermetic LLVM

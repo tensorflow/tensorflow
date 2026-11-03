@@ -2757,18 +2757,99 @@ TEST_F(ArrayElementwiseOpTest, TanF32s) {
                     ErrorSpec(0, 2 * std::numeric_limits<float>::epsilon()));
 }
 
-// TODO(rmlarsen): Fix Sin/Cos for large F64 arguments.
+TEST_F(ArrayElementwiseOpTest, CosF64s) {
+  XlaBuilder builder(TestName());
+  // 0x1.090fdaa21968cp+1, 0x1.721fb54443518p+1, and 0x1.4d97c7f3121d2p+2 have
+  // reduced arguments just below a power of two (|r| just below 1/2 or 1/4),
+  // where the top bits of the reduction product are all ones and rounding them
+  // up must carry into the exponent instead of wrapping to zero.
+  auto kInf = std::numeric_limits<double>::infinity();
+  auto kQNaN = std::numeric_limits<double>::quiet_NaN();
+  auto a = ConstantR1<double>(&builder, {-1.9938988e-28,
+                                         1.9938988e-28,
+                                         -1e20f,
+                                         1e20f,
+                                         -2.3564024f,
+                                         -3.14159f,
+                                         3.14159f,
+                                         -0.0f,
+                                         0.0f,
+                                         -1.570796f,
+                                         1.570796f,
+                                         -0.78539f,
+                                         0.78539f,
+                                         0x1.090fdaa21968cp+1,
+                                         0x1.721fb54443518p+1,
+                                         0x1.4d97c7f3121d2p+2,
+                                         -2.19993846e+10f,
+                                         -1.70141183e+38f,
+                                         -kInf,
+                                         kInf,
+                                         kQNaN});
+  Cos(a);
+
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, 64 * std::numeric_limits<double>::epsilon()));
+}
+
+TEST_F(ArrayElementwiseOpTest, SinF64s) {
+  XlaBuilder builder(TestName());
+  auto kInf = std::numeric_limits<double>::infinity();
+  auto kQNaN = std::numeric_limits<double>::quiet_NaN();
+  auto a = ConstantR1<double>(&builder, {-1.9938988e-28,
+                                         1.9938988e-28,
+                                         -1e20f,
+                                         1e20f,
+                                         -2.3564024f,
+                                         -3.14159f,
+                                         3.14159f,
+                                         -0.0f,
+                                         0.0f,
+                                         -1.570796f,
+                                         1.570796f,
+                                         -0.78539f,
+                                         0.78539f,
+                                         0x1.090fdaa21968cp+1,
+                                         0x1.721fb54443518p+1,
+                                         0x1.4d97c7f3121d2p+2,
+                                         -2.19993846e+10f,
+                                         -1.70141183e+38f,
+                                         -kInf,
+                                         kInf,
+                                         kQNaN});
+  Sin(a);
+
+  ComputeAndCompare(&builder, {},
+                    ErrorSpec(0, 64 * std::numeric_limits<double>::epsilon()));
+}
+
 TEST_F(ArrayElementwiseOpTest, TanF64s) {
   XlaBuilder builder(TestName());
   auto kInf = std::numeric_limits<double>::infinity();
   auto kQNaN = std::numeric_limits<double>::quiet_NaN();
-  auto a = ConstantR1<double>(
-      &builder,
-      {-1.9938988e-28, 1.9938988e-28, -2.3564024f, -3.14159f, 3.14159f, -0.0f,
-       0.0f, -1.570796f, 1.570796f, -0.78539f, 0.78539f, kInf, kInf, kQNaN});
+  auto a = ConstantR1<double>(&builder, {-1.9938988e-28,
+                                         1.9938988e-28,
+                                         -1e20f,
+                                         1e20f,
+                                         -2.3564024f,
+                                         -3.14159f,
+                                         3.14159f,
+                                         -0.0f,
+                                         0.0f,
+                                         -1.570796f,
+                                         1.570796f,
+                                         -0.78539f,
+                                         0.78539f,
+                                         0x1.090fdaa21968cp+1,
+                                         0x1.721fb54443518p+1,
+                                         0x1.4d97c7f3121d2p+2,
+                                         -2.19993846e+10f,
+                                         -1.70141183e+38f,
+                                         -kInf,
+                                         kInf,
+                                         kQNaN});
   Tan(a);
 
-  // This error spec corresponds to 1 ULP max relative error.
   ComputeAndCompare(&builder, {},
                     ErrorSpec(0, 100 * std::numeric_limits<double>::epsilon()));
 }

@@ -83,7 +83,7 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
 // Note: the assumption is that the tile sizes do not include padding beyond
 // the end of the shape.
 double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-    const experimental::TiledHloInstruction& hbm_access_instr,
+    const TiledHloInstruction& hbm_access_instr,
     const se::DeviceDescription& device_info);
 
 }  // namespace xla::gpu

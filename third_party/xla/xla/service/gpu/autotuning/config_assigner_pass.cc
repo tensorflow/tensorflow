@@ -84,10 +84,11 @@ using AutotuneDecision = Decision;
 // are the only viable configurations to try.
 AutotuneDecision AllowRegSpillsForGpuInstruction(
     const HloInstruction& instruction, autotuner::Backend backend) {
-  // CUBLASLT_FISSION creates loop fusions for the decomposed prologue and
+  // Fission backends create loop fusions for the decomposed prologue and
   // epilogue of the GEMM fusion. These fusions are allowed to spill as they
   // have limited configs and can still be faster.
-  if (backend == autotuner::Backend::CUBLASLT_FISSION) {
+  if (backend == autotuner::Backend::CUBLASLT_FISSION ||
+      backend == autotuner::Backend::CUDNN_FISSION) {
     return AutotuneDecision::Allow();
   }
   if (instruction.opcode() == HloOpcode::kCustomCall) {
@@ -418,6 +419,7 @@ ConfigAssignerPass::GetEnabledBackends(
   if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
     disabled_autotune_backends.push_back(autotuner::Backend::CUBLASLT);
     disabled_autotune_backends.push_back(autotuner::Backend::CUDNN);
+    disabled_autotune_backends.push_back(autotuner::Backend::CUDNN_FISSION);
     disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT);
     disabled_autotune_backends.push_back(autotuner::Backend::MIOPEN);
     disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT_FISSION);

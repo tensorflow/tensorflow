@@ -548,5 +548,21 @@ TEST(DebugOptions, AutotuneCacheRequireStrictCodegenMatchFlagsParsing) {
   EXPECT_TRUE(tsl::Flags::Parse(flag_args, flags));
   EXPECT_TRUE(opts.xla_autotune_cache_require_strict_codegen_match());
 }
+
+TEST(DebugOptions, ResetFlagValuesPreservesCudaDataDirFromEnv) {
+  // Allocates the process-wide flags before the reset under test.
+  (void)GetDebugOptionsFromFlags();
+  tsl::setenv("XLA_FLAGS", "--xla_gpu_cuda_data_dir=/custom/cuda/dir", 1);
+
+  ResetFlagValues();
+  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
+
+  EXPECT_EQ(GetDebugOptionsFromFlags().xla_gpu_cuda_data_dir(),
+            "/custom/cuda/dir");
+
+  tsl::unsetenv("XLA_FLAGS");
+  ResetFlagValues();
+  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
+}
 }  // namespace
 }  // namespace xla

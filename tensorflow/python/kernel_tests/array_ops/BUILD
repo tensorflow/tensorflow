@@ -82,13 +82,15 @@ cuda_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+cuda_py_strict_test(
     name = "batch_scatter_ops_test",
     srcs = ["batch_scatter_ops_test.py"],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -782,6 +784,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",

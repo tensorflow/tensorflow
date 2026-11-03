@@ -47,6 +47,12 @@ enum SingleDeviceShardSemantics {
   SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS = 2;
 }
 
+enum HashMode {
+  HASH_MODE_UNSPECIFIED = 0;
+  HASH_MODE_PHYSICAL = 1;
+  HASH_MODE_LOGICAL = 2;
+}
+
 message ByteStrides {
   repeated int64 strides = 1;
 }

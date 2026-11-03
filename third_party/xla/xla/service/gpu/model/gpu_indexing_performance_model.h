@@ -94,11 +94,11 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
 
   // Returns the number of warps for the given tiled HLO computation.
   static int64_t EstimateNumWarps(
-      const experimental::TiledHloComputation& tiled_hlo_computation);
+      const TiledHloComputation& tiled_hlo_computation);
 
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
       const HloFusionAdaptor& fusion_adaptor,
-      const experimental::TiledHloComputation& tiled_hlo_computation,
+      const TiledHloComputation& tiled_hlo_computation,
       const xla::xtile::BlockLevelParameters& block_level_parameters);
 
   // Estimate the run time of the fusion with the given launch dimensions and
@@ -171,14 +171,14 @@ namespace internal {
 // negatives.
 bool DoesComputationFitInRegisters(
     const HloFusionAdaptor& fusion_adaptor,
-    const experimental::TiledHloComputation& tiled_hlo_computation,
+    const TiledHloComputation& tiled_hlo_computation,
     const se::DeviceDescription& device_info);
 
 // Checks if the tiles of a symbolic tiled computation fit in registers for the
 // given tile sizes.
 bool DoesTilingFitInRegisters(
     const HloFusionAdaptor& fusion_adaptor,
-    const experimental::TiledHloComputation& symbolic_tiled_computation,
+    const TiledHloComputation& symbolic_tiled_computation,
     absl::Span<const int64_t> tile_sizes,
     const se::DeviceDescription& device_info);
 

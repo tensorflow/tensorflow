@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/utils.h"
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>

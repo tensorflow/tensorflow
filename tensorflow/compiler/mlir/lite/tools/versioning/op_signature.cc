@@ -223,6 +223,13 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
               input_tensor->shape()->Get(input_quant->quantized_dimension()))) {
         op_sig.ext_options.dequantize.is_per_channel_quantized = true;
       }
+      if (input_quant != nullptr) {
+        const BlockwiseQuantization* blockwise =
+            input_quant->details_as_BlockwiseQuantization();
+        op_sig.ext_options.dequantize.is_blockwise_quantized =
+            blockwise != nullptr && blockwise->block_shape() != nullptr &&
+            !blockwise->block_shape()->empty();
+      }
     } break;
 
     case BuiltinOperator_QUANTIZE: {

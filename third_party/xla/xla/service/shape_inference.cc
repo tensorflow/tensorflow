@@ -1522,7 +1522,15 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+      return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
+                                           broadcast_dimensions);
+
     case HloOpcode::kMulhi:
+      if (!primitive_util::IsIntegralType(lhs.element_type())) {
+        return InvalidArgument(
+            "Expected integral type in argument to mulhi operation; got %s.",
+            PrimitiveType_Name(lhs.element_type()));
+      }
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 

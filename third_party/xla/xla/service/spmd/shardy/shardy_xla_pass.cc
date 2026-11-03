@@ -371,7 +371,6 @@ absl::Status runShardingPropagation(HloModule* hloModule,
                                     mlir::ModuleOp mlirModule,
                                     bool importMhloShardings,
                                     mlir::sdy::PropagationOptions options,
-                                    bool enableNativeNonFlatSupport,
                                     absl::string_view passName) {
   VLOG(1) << "Using Shardy for XLA SPMD propagation.";
 
@@ -460,8 +459,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
                                   /*liftAndDedupMeshes=*/true,
-                                  enableHloShardingV3,
-                                  enableNativeNonFlatSupport);
+                                  enableHloShardingV3);
   }
 
   // NOTE: if we are using auto-spmd, we will use conservative propagation
@@ -469,7 +467,6 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.dumpDirectory = shardyDir;
   options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
   options.enableAutoPartitioning = hloModule->use_auto_spmd_partitioning();
-  options.enableNativeNonFlatSupport = enableNativeNonFlatSupport;
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
 
   bool shardyGeneratesDeviceCode =
@@ -575,9 +572,9 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
   if (runSdyShardingPropagation) {
     propagationOptions.replicaCount = hloModule->config().replica_count();
     propagationOptions.partitionCount = hloModule->config().num_partitions();
-    ABSL_RETURN_IF_ERROR(runShardingPropagation(
-        hloModule, mlirModule.get(), importMhloShardings, propagationOptions,
-        enableNativeNonFlatSupport, name()));
+    ABSL_RETURN_IF_ERROR(runShardingPropagation(hloModule, mlirModule.get(),
+                                           importMhloShardings,
+                                           propagationOptions, name()));
   }
 
   // TODO(b/431836696): Remove once issue is fixed.

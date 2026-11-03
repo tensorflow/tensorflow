@@ -35,18 +35,32 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/concatenate_kernel_emitter.h"
 #include "xla/codegen/emitters/dynamic_update_slice_kernel_emitter.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/loop_kernel_emitter.h"
+#include "xla/codegen/emitters/type_util.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/codegen/kernel_definition.h"
@@ -67,6 +81,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -421,6 +436,77 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     return EmitLoopFusionKernel(mlir_context, fusion, buffer_assignment, name);
   }
   return absl::UnimplementedError("Fusion kind not supported.");
+}
+
+static absl::Status VerifySortComparator(const HloComputation& computation) {
+  for (const HloInstruction* instr : computation.instructions()) {
+    if (!emitters::IsSupportedElementalOp(instr->opcode())) {
+      return Unimplemented("Unsupported instruction in sort comparator: %s",
+                           instr->ToString());
+    }
+    for (const HloComputation* called : instr->called_computations()) {
+      ABSL_RETURN_IF_ERROR(VerifySortComparator(*called));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<MlirKernelSource> EmitSortComparator(
+    MLIRContext& mlir_context, const HloComputation& comparator,
+    absl::string_view comparator_name) {
+  ABSL_RETURN_IF_ERROR(VerifySortComparator(comparator));
+
+  mlir::OpBuilder builder(&mlir_context);
+  auto loc = mlir::NameLoc::get(builder.getStringAttr(comparator.name()));
+  mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(
+      loc, absl::StrCat(comparator.name(), "_comparator_module"));
+
+  const HloInstruction* root = comparator.root_instruction();
+  emitters::SetIndexDataLayout(*module, *root, /*force_64_bit=*/true);
+
+  llvm::SmallVector<mlir::Type> param_types;
+  param_types.reserve(comparator.num_parameters());
+  for (const HloInstruction* param : comparator.parameter_instructions()) {
+    param_types.push_back(
+        emitters::TensorShapeToMlirType(param->shape(), builder));
+  }
+
+  builder.setInsertionPointToStart(module->getBody());
+  auto entry_func = mlir::func::FuncOp::create(
+      builder, loc, comparator_name,
+      mlir::FunctionType::get(&mlir_context, param_types,
+                              {builder.getI1Type()}));
+  entry_func->setAttr("xla.cpu.is_comparator", builder.getUnitAttr());
+  SetBackendKind(&mlir_context, entry_func, BackendKind::kCpu);
+
+  emitters::PartitionedComputations computations(&comparator, &mlir_context);
+  ABSL_ASSIGN_OR_RETURN(
+      emitters::CallTargetProvider call_targets,
+      emitters::EmitPartitionedComputations(*module, computations));
+
+  mlir::ImplicitLocOpBuilder entry_builder(loc, entry_func);
+  entry_builder.setInsertionPointToStart(entry_func.addEntryBlock());
+
+  llvm::SmallVector<mlir::Value> scalar_args;
+  scalar_args.reserve(comparator.num_parameters());
+  for (mlir::Value arg : entry_func.getArguments()) {
+    scalar_args.push_back(mlir::tensor::ExtractOp::create(entry_builder, arg,
+                                                          mlir::ValueRange{}));
+  }
+
+  mlir::func::FuncOp root_fn = call_targets(root);
+  mlir::Value cmp_result =
+      PureCallOp::create(entry_builder, root_fn, scalar_args).getResult(0);
+  mlir::Value cmp_i1 = mlir::arith::TruncIOp::create(
+      entry_builder, entry_builder.getI1Type(), cmp_result);
+  mlir::func::ReturnOp::create(entry_builder, cmp_i1);
+
+  module->getOperation()->setAttr(
+      xla::CpuMemoryRegionNameAttr::name,
+      builder.getStringAttr(
+          BuildModuleMemoryRegionName("sort_comparator", root)));
+
+  return MlirKernelSource(std::move(module));
 }
 
 }  // namespace xla::cpu

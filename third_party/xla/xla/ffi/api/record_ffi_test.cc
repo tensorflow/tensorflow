@@ -22,6 +22,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/ffi.h"
+#include "xla/ffi/api/kernel_api.h"
+#include "xla/ffi/api/kernel_c_api.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/call_frame.h"
@@ -75,17 +77,16 @@ TEST(FfiTest, RecordStage) {
     return nullptr;
   };
   XLA_FFI_RecordApi mock_api{
-      /*.create_launch=*/+[](XLA_FFI_RecordContext* ctx, const char*,
-                             const void* kernel_data, int64_t kernel_size,
-                             XLA_FFI_SourceFormat format, XLA_FFI_LaunchDims,
-                             uint32_t, int32_t, const XLA_FFI_KernelArgs*,
+      /*.create_launch=*/+[](XLA_FFI_RecordContext* ctx,
+                             const XLA_FFI_KernelSpec* kernel_spec,
+                             const XLA_FFI_KernelLaunchParams*,
                              const XLA_FFI_Command* const*, uint32_t,
                              const XLA_FFI_Command** out_command)
                               -> XLA_FFI_Error* {
         auto* s = reinterpret_cast<CaptureState*>(ctx);
-        s->kernel_data = kernel_data;
-        s->kernel_size = kernel_size;
-        s->format = format;
+        s->kernel_data = kernel_spec->data;
+        s->kernel_size = kernel_spec->size;
+        s->format = kernel_spec->format;
         *out_command = s->dummy_cmd;
         return nullptr;
       },

@@ -311,6 +311,46 @@ TEST(ObjectGraphTraversalTest, ObjectNotFound) {
   EXPECT_FALSE(node.has_value());
 }
 
+TEST(ObjectGraphTraversalTest, NegativeChildNodeIdIsRejected) {
+  SavedObjectGraph object_graph = ParseSavedObjectGraph(R"(
+nodes {
+  children {
+    node_id: -1
+    local_name: "foo"
+  }
+  user_object {
+    identifier: "_generic_user_object"
+    version {
+      producer: 1
+      min_consumer: 1
+    }
+  }
+}
+)");
+  std::optional<int> node = internal::FindNodeAtPath("foo", object_graph);
+  EXPECT_FALSE(node.has_value());
+}
+
+TEST(ObjectGraphTraversalTest, OutOfRangeChildNodeIdIsRejected) {
+  SavedObjectGraph object_graph = ParseSavedObjectGraph(R"(
+nodes {
+  children {
+    node_id: 1
+    local_name: "foo"
+  }
+  user_object {
+    identifier: "_generic_user_object"
+    version {
+      producer: 1
+      min_consumer: 1
+    }
+  }
+}
+)");
+  std::optional<int> node = internal::FindNodeAtPath("foo", object_graph);
+  EXPECT_FALSE(node.has_value());
+}
+
 TEST(ObjectGraphTraversalTest, CaseSensitiveMismatch) {
   SavedObjectGraph object_graph = ParseSavedObjectGraph(kSingleChildFoo);
   std::optional<int> node = internal::FindNodeAtPath("FOO", object_graph);

@@ -20,36 +20,17 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
-#include <type_traits>
-#include <variant>
+#include <string_view>
 #include <vector>
 
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
-#include "xla/ffi/api/record_c_api.h"
+#include "xla/ffi/api/kernel_api.h"
+#include "xla/ffi/api/kernel_c_api.h"
+#include "xla/ffi/api/record_c_api.h"  // IWYU pragma: export
 
 // C++ wrapper for the XLA FFI Record API.
 namespace xla::ffi {
-
-// Device pointers are just passed as is by pointer value.
-struct DevicePointer {
-  void* ptr;
-};
-
-// Host values are passed by value to the kernel.
-// The size must be non-zero.
-// In the end the runtime will copy the value to a temporary buffer.
-struct HostValue {
-  const void* ptr;
-  size_t size;
-};
-
-// A kernel argument is either a pointer to a device buffer or a host value.
-using KernelArg = std::variant<DevicePointer, HostValue>;
-
-enum class SourceFormat {
-  kFunctionPtr = XLA_FFI_SourceFormat_FUNCTION_PTR,
-};
 
 enum class RecordAction {
   kCreate = XLA_FFI_RecordAction_Create,
@@ -103,51 +84,11 @@ class BoundedCommandVector {
 
 namespace internal {
 
-template <class... Ts>
-struct Overload : Ts... {
-  using Ts::operator()...;
-};
-// Deduction guide.
-template <class... Ts>
-Overload(Ts...) -> Overload<Ts...>;
-
 // C++ wrapper for the XLA FFI Record extension API.
 // Unified implementation for statically linked and dynamically linked FFI
 // modules.
 template <typename ErrorPolicy>
 class RecordContextBase {
- private:
-  // Converts a span of `KernelArg` or `void*` to a vector of
-  // `XLA_FFI_KernelArg`.
-  template <typename KernelArgSpan>
-  std::vector<XLA_FFI_KernelArg> ConvertArgs(const KernelArgSpan& args) {
-    std::vector<XLA_FFI_KernelArg> raw_args;
-    const size_t num_args = std::size(args);
-    raw_args.reserve(num_args);
-    for (const auto& arg : args) {
-      // Can't use std/absl::remove_cvref because we don't have absl OR cpp20.
-      // NOLINTNEXTLINE(modernize-type-traits)
-      using ArgT = std::remove_cv_t<std::remove_reference_t<decltype(arg)>>;
-      if constexpr (std::is_same_v<ArgT, KernelArg>) {
-        std::visit(
-            Overload{[&](const DevicePointer& arg) {
-                       raw_args.push_back(
-                           {arg.ptr, 0, XLA_FFI_KernelArgType_DevicePtr});
-                     },
-                     [&](const HostValue& arg) {
-                       raw_args.push_back({arg.ptr,
-                                           static_cast<int64_t>(arg.size),
-                                           XLA_FFI_KernelArgType_HostValue});
-                     }},
-            arg);
-      } else {
-        // Handle void* arguments for convenience.
-        raw_args.push_back({arg, 0, XLA_FFI_KernelArgType_DevicePtr});
-      }
-    }
-    return raw_args;
-  }
-
  public:
   using Status = typename ErrorPolicy::Status;
   template <typename T>
@@ -171,7 +112,7 @@ class RecordContextBase {
   template <typename KernelArgSpan,
             typename DepSpan = std::initializer_list<const XLA_FFI_Command*>>
   StatusOr<const XLA_FFI_Command*> CreateLaunch(
-      const char* kernel_name, const void* kernel_data, size_t kernel_size,
+      std::string_view kernel_name, const void* kernel_data, size_t kernel_size,
       SourceFormat format, XLA_FFI_LaunchDims launch_dims,
       uint32_t shared_mem_bytes, bool uses_pdl, const KernelArgSpan& args,
       const DepSpan& dependencies = {}) {
@@ -180,15 +121,29 @@ class RecordContextBase {
           XLA_FFI_Error_Code_INVALID_ARGUMENT,
           "kernel_data/function_ptr must not be null during create_launch.");
     }
-    std::vector<XLA_FFI_KernelArg> raw_args = ConvertArgs(args);
+    XLA_FFI_KernelSpec kernel_spec = {
+        XLA_FFI_KernelSpec_STRUCT_SIZE,
+        /*extension_start=*/nullptr,
+        XLA_FFI_ByteSpan{kernel_name.data(), kernel_name.size()},
+        kernel_data,
+        kernel_size,
+        static_cast<XLA_FFI_SourceFormat>(format),
+    };
+    std::vector<XLA_FFI_KernelArg> raw_args = ConvertKernelArgs(args);
     XLA_FFI_KernelArgs ffi_args{raw_args.data(),
                                 static_cast<int64_t>(raw_args.size())};
+    XLA_FFI_KernelLaunchParams launch_params = {
+        XLA_FFI_KernelLaunchParams_STRUCT_SIZE,
+        /*extension_start=*/nullptr,
+        launch_dims,
+        shared_mem_bytes,
+        static_cast<int32_t>(uses_pdl),
+        &ffi_args,
+    };
     const XLA_FFI_Command* out_command = nullptr;
 
     XLA_FFI_Error* err = frame_->api->create_launch(
-        frame_->record_ctx, kernel_name, kernel_data, kernel_size,
-        static_cast<XLA_FFI_SourceFormat>(format), launch_dims,
-        shared_mem_bytes, static_cast<int32_t>(uses_pdl), &ffi_args,
+        frame_->record_ctx, &kernel_spec, &launch_params,
         std::data(dependencies), std::size(dependencies), &out_command);
 
     if (err) {
@@ -212,7 +167,7 @@ class RecordContextBase {
   template <typename KernelArgSpan>
   Status UpdateLaunch(const XLA_FFI_Command* command,
                       const KernelArgSpan& args) {
-    std::vector<XLA_FFI_KernelArg> raw_args = ConvertArgs(args);
+    std::vector<XLA_FFI_KernelArg> raw_args = ConvertKernelArgs(args);
     XLA_FFI_KernelArgs ffi_args{raw_args.data(),
                                 static_cast<int64_t>(raw_args.size())};
     XLA_FFI_Error* err =

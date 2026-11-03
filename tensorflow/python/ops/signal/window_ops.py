@@ -277,9 +277,10 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
         ops.convert_to_tensor(periodic, dtype=dtypes.bool, name='periodic'),
         dtypes.int32)
     periodic.shape.assert_has_rank(0)
-    even = 1 - math_ops.mod(window_length, 2)
 
-    n = math_ops.cast(window_length + periodic * even - 1, dtype=dtype)
+    # A periodic window of length N is the first N points of a symmetric
+    # window of length N + 1, whether N is even or odd.
+    n = math_ops.cast(window_length + periodic - 1, dtype=dtype)
     count = math_ops.cast(math_ops.range(window_length), dtype)
     cos_arg = constant_op.constant(2 * np.pi, dtype=dtype) * count / n
 

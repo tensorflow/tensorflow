@@ -45,7 +45,9 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
@@ -297,6 +299,16 @@ TEST_F(TritonBackendTest, GetAndApplyConfigForScaledDot) {
                        backend_.GetSupportedConfigs(*fusion_instr));
   ASSERT_THAT(configs, Not(IsEmpty()));
   EXPECT_THAT(backend_.ApplyConfig(*fusion_instr, *configs[0]), IsOk());
+}
+
+TEST_F(TritonBackendTest, CudnnScaledDotFusionIsUnsupported) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kScaledDotHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  GpuBackendConfig gpu_config;
+  gpu_config.mutable_fusion_backend_config()->set_kind(kCuDnnFusionKind);
+  ASSERT_OK(fusion->set_backend_config(gpu_config));
+  EXPECT_THAT(backend_.GetSupportedConfigs(*fusion), IsOkAndHolds(IsEmpty()));
 }
 
 TEST_F(TritonBackendTest, GetSupportedConfigsRestrictedDefaultSearch) {
