@@ -6529,7 +6529,7 @@ def fractional_avg_pool(value,
 
   Args:
     value: A `Tensor`. 4-D with shape `[batch, height, width, channels]`.
-    pooling_ratio: A list of `floats` that has length >= 4.  Pooling ratio for
+    pooling_ratio: A list of `floats` that has length 4.  Pooling ratio for
       each dimension of `value`, currently only supports row and col dimension
       and should be >= 1.0. For example, a valid pooling ratio looks like [1.0,
       1.44, 1.73, 1.0]. The first and last elements must be 1.0 because we don't
@@ -6589,7 +6589,7 @@ def fractional_avg_pool_v2(value,
 
   Args:
     value: A `Tensor`. 4-D with shape `[batch, height, width, channels]`.
-    pooling_ratio: A list of `floats` that has length >= 4.  Pooling ratio for
+    pooling_ratio: A list of `floats` that has length 4.  Pooling ratio for
       each dimension of `value`, currently only supports row and col dimension
       and should be >= 1.0. For example, a valid pooling ratio looks like [1.0,
       1.44, 1.73, 1.0]. The first and last elements must be 1.0 because we don't
