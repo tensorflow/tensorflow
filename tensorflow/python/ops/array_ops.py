@@ -250,10 +250,12 @@ def fill(dims, value, name=None, layout=None):
     A `tf.Tensor` with shape `dims` and the same dtype as `value`.
 
   Raises:
-    InvalidArgumentError: `dims` contains negative entries, or its converted
-      tensor has a dtype other than `int32` or `int64` in eager mode.
+    InvalidArgumentError: `dims` contains negative entries at runtime, or its
+      converted tensor has a dtype other than `int32` or `int64` in eager mode.
     TypeError: The converted `dims` tensor has a dtype other than `int32` or
       `int64` in graph mode.
+    ValueError: `dims` contains negative entries when evaluated during static
+      shape inference in graph mode.
 
   @compatibility(numpy)
   Similar to `np.full`. In `numpy`, more parameters are supported. Passing a
