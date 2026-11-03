@@ -237,5 +237,143 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
   }
 }
 
+FunctionDef ForBodyAddI() {
+  typedef FunctionDefHelper FDH;
+  return FDH::Define(
+      // Name
+      "ForBodyAddI",
+      // Args
+      {"i: int32", "x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"i_cast"}, "_HostCast", {"i"}, {{"SrcT", DT_INT32}, {"DstT", "$T"}}},
+          {{"y"}, "AddV2", {"x", "i_cast"}, {{"T", "$T"}}},
+      });
+}
+
+TEST_F(WhileOpTest, ForOpCPUBuildWithPluggableDevice) {
+  const std::string platform_name = "MY_TEST_FOR";
+  const std::string platform_type = "FAKE_FOR";
+  platform_.name = platform_name.c_str();
+  platform_.type = platform_type.c_str();
+
+  se_.memcpy_dtoh = [](const SP_Device* device, SP_Stream stream,
+                       void* host_dst, const SP_DeviceMemoryBase* device_src,
+                       uint64_t size, TF_Status* status) {
+    TF_SetStatus(status, TF_OK, "");
+    std::memcpy(host_dst, device_src->opaque, size);
+  };
+  se_.memcpy_htod = [](const SP_Device* const device, SP_Stream stream,
+                       SP_DeviceMemoryBase* const device_dst,
+                       const void* host_src, uint64_t size,
+                       TF_Status* const status) {
+    TF_SetStatus(status, TF_OK, "");
+    std::memcpy(device_dst->opaque, host_src, size);
+  };
+
+  se_.host_memory_allocate = [](const SP_Device* const device, uint64_t size) {
+    const size_t alignment =
+        std::max(size_t{tsl::BFCAllocator::kMinAllocationSize},
+                 size_t{EIGEN_MAX_ALIGN_BYTES});
+    return tsl::port::AlignedMalloc(size,
+                                    static_cast<std::align_val_t>(alignment));
+  };
+  se_.host_memory_deallocate = [](const SP_Device* const device, void* mem) {
+    free(mem);
+  };
+
+  se_.allocate = [](const SP_Device* const device, uint64_t size,
+                    int64_t memory_space, SP_DeviceMemoryBase* const mem) {
+    mem->struct_size = SP_DEVICE_MEMORY_BASE_STRUCT_SIZE;
+    const size_t alignment =
+        std::max(size_t{tsl::BFCAllocator::kMinAllocationSize},
+                 size_t{EIGEN_MAX_ALIGN_BYTES});
+    mem->opaque = tsl::port::AlignedMalloc(
+        size, static_cast<std::align_val_t>(alignment));
+    mem->size = size;
+  };
+  se_.deallocate = [](const SP_Device* const device,
+                      SP_DeviceMemoryBase* const mem) {
+    free(mem->opaque);
+    mem->opaque = nullptr;
+    mem->size = 0;
+  };
+
+  static SE_EventStatus event_status = SE_EVENT_COMPLETE;
+  se_.create_event = [](const SP_Device* const device, SP_Event* event,
+                        TF_Status* const status) -> void {
+    *event = new SP_Event_st(666);
+  };
+  se_.destroy_event = [](const SP_Device* const device,
+                         SP_Event event) -> void { delete event; };
+  se_.get_event_status = [](const SP_Device* const device,
+                            SP_Event event) -> SE_EventStatus {
+    EXPECT_EQ(event->event_id, 666);
+    return event_status;
+  };
+
+  std::unique_ptr<stream_executor::CPlatform> cplatform(
+      new stream_executor::CPlatform(
+          std::move(platform_), stream_executor::test_util::DestroyPlatform,
+          std::move(platform_fns_),
+          stream_executor::test_util::DestroyPlatformFns,
+          std::move(device_fns_), std::move(se_), std::move(timer_fns_)));
+  TF_CHECK_OK(
+      stream_executor::PlatformManager::RegisterPlatform(std::move(cplatform)));
+
+  DeviceFactory::Register(
+      platform_type, new PluggableDeviceFactory(platform_type, platform_name),
+      /*priority=*/220, /*is_pluggable_device=*/true);
+  std::unique_ptr<Device> plug_device(
+      DeviceFactory::NewDevice(platform_type, {}, "/job:a/replica:0"));
+  OpsTestBase::SetDevice(platform_type.c_str(), std::move(plug_device));
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  Scope root = Scope::NewRootScope().ExitOnError();
+  FunctionDef for_body = ForBodyAddI();
+
+  FunctionDefLibrary f_lib_proto;
+  *f_lib_proto.add_function() = for_body;
+
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto start = ops::Const(root.WithOpName("start"), 0);
+  auto limit = ops::Const(root.WithOpName("limit"), 4);
+  auto delta = ops::Const(root.WithOpName("delta"), 1);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_FLOAT);
+
+  AttrValue body_func;
+  body_func.mutable_func()->set_name("ForBodyAddI");
+  (*body_func.mutable_func()->mutable_attr())["T"].set_type(DT_FLOAT);
+
+  std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
+
+  Node* node;
+  TF_EXPECT_OK(NodeBuilder("for_test", "For", &root.graph()->flib_def())
+                   .Input(start.node())
+                   .Input(limit.node())
+                   .Input(delta.node())
+                   .Input(inputs)
+                   .Attr("T", {DT_FLOAT})
+                   .Attr("body", body_func)
+                   .Finalize(root.graph(), &node));
+  auto c = ops::Identity(
+      root.WithOpName("C").WithControlDependencies(Output(node)), Output(node));
+
+  TF_ASSERT_OK(root.DoShapeInference(node));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  ClientSession session(root);
+  {
+    ClientSession::FeedType feeds;
+    feeds.emplace(Output(a.node()), Input::Initializer(0.5f));
+    std::vector<Tensor> out_tensors;
+    TF_ASSERT_OK(session.Run(feeds, {Output(c.node())}, &out_tensors));
+    ASSERT_EQ(out_tensors.size(), 1);
+    EXPECT_EQ(out_tensors[0].scalar<float>()(), 6.5f);
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow

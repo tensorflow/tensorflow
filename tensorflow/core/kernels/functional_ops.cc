@@ -904,6 +904,66 @@ class ForOp : public AsyncOpKernel {
     return absl::OkStatus();
   }
 
+  class ForBodyFuncCallFrame : public CallFrameInterface {
+   public:
+    ForBodyFuncCallFrame(std::vector<Tensor>* args,
+                         std::vector<Tensor>* retvals,
+                         DataTypeSlice ret_types)
+        : args_(args), retvals_(retvals), ret_types_(ret_types) {}
+
+    size_t num_args() const override { return args_->size(); }
+    size_t num_retvals() const override { return retvals_->size(); }
+
+    absl::Status GetArg(int index, const Tensor** val) override {
+      if (index < args_->size()) {
+        *val = &(*args_)[index];
+        return absl::OkStatus();
+      } else {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Argument ", index, " is out of range."));
+      }
+    }
+
+    void ConsumeArg(int index, Tensor* val) override {
+      DCHECK_GE(index, 0);
+      DCHECK_LT(index, args_->size());
+      if (index == 0) {
+        *val = (*args_)[0];
+      } else {
+        *val = std::move((*args_)[index]);
+      }
+    }
+    bool CanConsumeArg(int index) const override {
+      return index > 0 && index < args_->size();
+    }
+
+    absl::Status SetRetval(int index, const Tensor& val) override {
+      if (TF_PREDICT_FALSE(index < 0)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Expected non-negative return value index, but got: ", index, "."));
+      } else if (TF_PREDICT_FALSE(index >= retvals_->size())) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("For loop body returned ", index + 1,
+                         " arguments. Expected: ", num_retvals(), "."));
+      } else if (TF_PREDICT_FALSE(val.dtype() != ret_types_[index])) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Expected type ", DataTypeString(ret_types_[index]),
+                         " for return value ", index, " but got ",
+                         DataTypeString(val.dtype()), "."));
+      }
+      (*retvals_)[index] = val;
+      return absl::OkStatus();
+    }
+
+   private:
+    std::vector<Tensor>* const args_;     // Not owned.
+    std::vector<Tensor>* const retvals_;  // Not owned.
+    DataTypeSlice ret_types_;
+
+    ForBodyFuncCallFrame(const ForBodyFuncCallFrame&) = delete;
+    void operator=(const ForBodyFuncCallFrame&) = delete;
+  };
+
   class State {
    public:
     State(ForOp* kernel, OpKernelContext* ctx, FHandle handle,
@@ -920,9 +980,14 @@ class ForOp : public AsyncOpKernel {
 
       const int32_t num_loop_inputs = ctx_->num_inputs() - 3;
       rets_.reserve(num_loop_inputs);
+      loop_var_types_.resize(num_loop_inputs);
       for (int i = 0; i < num_loop_inputs; ++i) {
-        rets_.push_back(ctx_->input(3 + i));
+        const Tensor& in = ctx_->input(3 + i);
+        loop_var_types_[i] = in.dtype();
+        rets_.push_back(in);
       }
+      body_frame_ = std::make_unique<ForBodyFuncCallFrame>(
+          &args_, &rets_, loop_var_types_);
     }
 
     ~State() = default;
@@ -941,6 +1006,8 @@ class ForOp : public AsyncOpKernel {
     FunctionLibraryRuntime::Options opts_;
     TensorVec args_;
     TensorVec rets_;
+    DataTypeVector loop_var_types_;
+    std::unique_ptr<ForBodyFuncCallFrame> body_frame_;
 
     int32_t* iter_;  // points to args_[0].
     int32_t limit_;
@@ -950,6 +1017,11 @@ class ForOp : public AsyncOpKernel {
     // If OK is returned, the async loop execution has been started.
     absl::Status StartLoop() {
       SetRunOptions(ctx_, &opts_, false /* always_collect_stats */);
+      opts_.args_alloc_attrs.resize(args_.size());
+      opts_.args_alloc_attrs[0].set_on_host(true);
+      for (int i = 0; i < ctx_->num_inputs() - 3; ++i) {
+        opts_.args_alloc_attrs[1 + i] = ctx_->input_alloc_attr(3 + i);
+      }
 
       TF_RETURN_IF_ERROR(GetScalar(ctx_, 0, iter_, "start"));
       TF_RETURN_IF_ERROR(GetScalar(ctx_, 1, &limit_, "limit"));
@@ -978,18 +1050,13 @@ class ForOp : public AsyncOpKernel {
         return;
       }
 
-      if (rets_.size() >= args_.size()) {
-        Finish(absl::InvalidArgumentError(
-            absl::StrCat("For loop body returned ", rets_.size(),
-                         " arguments. Expected: ", args_.size() - 1)));
-        return;
-      }
       for (int i = 0; i < rets_.size(); ++i) {
         args_[1 + i] = std::move(rets_[i]);
       }
       rets_.clear();
+      rets_.resize(args_.size() - 1);
       tsl::profiler::TraceMe trace_me("ForOp");
-      lib_->Run(opts_, body_handle_, args_, &rets_,
+      lib_->Run(opts_, body_handle_, body_frame_.get(),
                 [this](const absl::Status& s) {
                   if (s.ok()) {
                     *iter_ += delta_;
