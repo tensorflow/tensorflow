@@ -4180,7 +4180,6 @@ xla_test(
         "no_windows",  # TODO(b/152037541)
     ],
     deps = [
-        ":elemental_ir_emitter",
         ":hlo_module_config",
         "//xla:error_spec",
         "//xla:literal",

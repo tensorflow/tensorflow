@@ -107,19 +107,10 @@ class IrEmitter2 {
   absl::StatusOr<KernelInfo> EmitSliceToDynamicHostKernel(
       const HloInstruction* instr);
 
-  bool IsSupportedByFusionEmitter(const HloFusionInstruction* fusion) const;
-
  private:
   // Emits a host kernel prototype for the given HLO instruction.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       const HloInstruction* instr);
-
-  // Returns the number of bytes within the shape.
-  int64_t ByteSizeOf(const Shape& shape) const;
-
-  // Given a load instruction, annotate the load's result with the invariant
-  // load metadata.
-  void AttachInvariantLoadMetadataForLoad(llvm::LoadInst* instr) const;
 
   const HloModule& hlo_module_;
   llvm::Module* module_;
