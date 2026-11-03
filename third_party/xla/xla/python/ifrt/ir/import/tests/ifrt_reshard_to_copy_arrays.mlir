@@ -13,6 +13,7 @@
 // limitations under the License.
 // ==============================================================================
 // RUN: ifrt-opt %s -ifrt-reshard-to-copy-arrays -verify-diagnostics -split-input-file | FileCheck %s
+// RUN: ifrt-opt %s -ifrt-reshard-to-copy-arrays='on-remaining-reshards=none' -verify-diagnostics -split-input-file | FileCheck %s
 
 !array0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
                      [0,1]>

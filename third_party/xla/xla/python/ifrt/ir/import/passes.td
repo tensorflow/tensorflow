@@ -251,7 +251,26 @@ func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
   return %0, %1: !array1, !array2
 }
 ```
+
+By default (`on-remaining-reshards=none`), this pass does not check for
+remaining `ifrt.Reshard` ops after conversion. Set
+`on-remaining-reshards=warning` to emit a warning for each remaining
+`ifrt.Reshard` op, or `on-remaining-reshards=error` to emit an error and fail.
   }];
+  let options = [
+    Option<"on_remaining_reshards", "on-remaining-reshards",
+           "xla::ifrt::ReshardOpAction",
+           /*default=*/"xla::ifrt::ReshardOpAction::kNone",
+           "Action to take if `ifrt.Reshard` ops remain after conversion.",
+           [{::llvm::cl::values(
+               clEnumValN(xla::ifrt::ReshardOpAction::kNone, "none",
+                          "Do nothing (do not check for remaining reshards)."),
+               clEnumValN(xla::ifrt::ReshardOpAction::kWarning, "warning",
+                          "Emit a warning if reshards remain."),
+               clEnumValN(xla::ifrt::ReshardOpAction::kError, "error",
+                          "Emit an error and fail if reshards remain.")
+           )}]>,
+  ];
 }
 
 def IfrtDumpAtomProgramsPass

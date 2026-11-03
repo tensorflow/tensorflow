@@ -13,12 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/CommandLine.h"  // IWYU pragma: keep
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
@@ -137,6 +142,9 @@ class IfrtReshardToCopyArraysPass
     : public impl::IfrtReshardToCopyArraysPassBase<
           IfrtReshardToCopyArraysPass> {
  public:
+  using impl::IfrtReshardToCopyArraysPassBase<
+      IfrtReshardToCopyArraysPass>::IfrtReshardToCopyArraysPassBase;
+
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<ReshardToCopyArraysOpPattern>(&getContext());
@@ -144,7 +152,35 @@ class IfrtReshardToCopyArraysPass
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
       signalPassFailure();
+      return;
     }
+
+    if (on_remaining_reshards == ReshardOpAction::kNone) {
+      return;
+    }
+
+    const bool fail_on_reshards =
+        on_remaining_reshards == ReshardOpAction::kError;
+    module_op.walk([&](ReshardOp reshard_op) {
+      std::string msg;
+      llvm::raw_string_ostream os(msg);
+      os << "Detected `ifrt.Reshard` op remaining after converting reshards to "
+            "`ifrt.CopyArrays`; inputs: [";
+      llvm::interleaveComma(reshard_op.getInputs(), os,
+                            [&](mlir::Value v) { os << v.getType(); });
+      os << "], outputs: [";
+      llvm::interleaveComma(reshard_op.getOutputs(), os,
+                            [&](mlir::Value v) { os << v.getType(); });
+      os << "]";
+
+      LOG(WARNING) << msg;
+      mlir::InFlightDiagnostic diag =
+          fail_on_reshards ? reshard_op.emitError() : reshard_op.emitWarning();
+      diag << msg;
+      if (fail_on_reshards) {
+        signalPassFailure();
+      }
+    });
   }
 };
 

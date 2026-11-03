@@ -25,6 +25,17 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
+// Action to take if any `ifrt.Reshard` ops remain after
+// `IfrtReshardToCopyArraysPass`.
+enum class ReshardOpAction {
+  // No action.
+  kNone,
+  // Issue a warning if any `ifrt.Reshard` ops remain.
+  kWarning,
+  // Issue an error if any `ifrt.Reshard` ops remain.
+  kError,
+};
+
 #define GEN_PASS_DECL
 #define GEN_PASS_REGISTRATION
 #include "xla/python/ifrt/ir/import/passes.h.inc"  // IWYU pragma: export

@@ -36,6 +36,7 @@ void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm) {
   // are specified. Moreover, it is necessary to run
   // IfrtMergeCopiesAndReshardsPass after this pass because it introduces
   // non-merged CopyArrays ops.
+  // TODO(icgog): Set the ReshardOpAction based on a IFRT IR option.
   pm.addPass(createIfrtReshardToCopyArraysPass());
   // Insert CopyArrays for arrays that are returned multiple times so that the
   // donation/reuse semantics are correctly handled. This pass must run before
