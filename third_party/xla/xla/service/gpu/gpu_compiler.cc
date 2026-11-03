@@ -2394,11 +2394,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   if (gpu_topology.slice_size() > 0) {
     module->mutable_config().set_partition_size(gpu_topology.slice_size());
   }
-  std::optional<std::string> unoptimized_fingerprint;
-  const bool should_upload_hlo_modules =
-      debug_opts.xla_enable_hlo_modules_upload();
-  if (should_upload_hlo_modules) {
-    unoptimized_fingerprint = MaybeUploadUnoptimizedGpuSymbols(
+  if (debug_opts.xla_enable_hlo_modules_upload()) {
+    MaybeUploadUnoptimizedGpuSymbols(
         module.get(), gpu_topology.gpu_target_config().ToProto());
   }
   DumpHloConfigIfEnabled(*module);
@@ -2434,15 +2431,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   if (stream_exec != nullptr) {
     ABSL_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));
-  }
-  std::optional<std::string> optimized_fingerprint;
-  if (should_upload_hlo_modules) {
-    optimized_fingerprint = MaybeUploadOptimizedGpuSymbols(module.get());
-  }
-  if (unoptimized_fingerprint.has_value() &&
-      optimized_fingerprint.has_value()) {
-    MaybeUploadGpuSymbolMapping(*unoptimized_fingerprint,
-                                *optimized_fingerprint);
   }
 
   if (DumpingEnabledForHloModule(*module)) {
@@ -3007,6 +2995,14 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           std::move(buffer_allocations_debug_summary),
           /*gpu_topology=*/gpu_topology}));
   IncrementCompiledProgramsCount();
+
+  if (gpu_executable->has_module() && gpu_executable->module()
+                                          .config()
+                                          .debug_options()
+                                          .xla_enable_hlo_modules_upload()) {
+    MaybeUploadOptimizedGpuSymbols(gpu_executable->module(),
+                                   gpu_executable->buffer_assignment_proto());
+  }
 
   if (embed_debug_info && gpu_executable->has_module()) {
     // Dump computation proto state and buffer assignment for

@@ -899,6 +899,14 @@ class HloModule {
 
   std::string autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
+  void set_unoptimized_fingerprint(absl::string_view fingerprint) {
+    unoptimized_fingerprint_ = std::string(fingerprint);
+  }
+
+  absl::string_view unoptimized_fingerprint() const {
+    return unoptimized_fingerprint_;
+  }
+
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 
   // Get 128-bit fingerprint of the module by printing it using the given print
@@ -1100,6 +1108,9 @@ class HloModule {
 
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
+
+  // The unoptimized module fingerprint returned by SymbolUploader.
+  std::string unoptimized_fingerprint_;
 
   // The keys used to retrieve the optimization profiles this module is compiled
   // with, per profile type.

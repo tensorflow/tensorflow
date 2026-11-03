@@ -80,11 +80,13 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/export_hlo.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/pattern_matcher.h"
@@ -98,10 +100,12 @@ limitations under the License.
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/gtl/value_or_die.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -115,16 +119,21 @@ namespace m = ::xla::match;
 
 using ::testing::AssertionResult;
 using ::testing::AtLeast;
+using ::testing::Contains;
+using ::testing::ElementsAre;
 using ::testing::EndsWith;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
+using ::testing::Pair;
+using ::testing::SizeIs;
 using ::testing::TempDir;
 using ::testing::TestParamInfo;
 using ::testing::Values;
 using ::tsl::gtl::ValueOrDie;
+using ::tsl::proto_testing::EqualsProto;
 
 class GpuCompilerAlgebraicSimplifierTest
     : public HloHardwareIndependentTestBase {};
@@ -4063,5 +4072,141 @@ ENTRY %main (a: f32[4]) -> f32[4] {
   }
 }
 
+namespace {
+
+std::string FingerprintProto(const tsl::protobuf::MessageLite& proto) {
+  return absl::StrCat(tsl::DeterministicProtoHash64(proto));
+}
+
+class RecordingSymbolUploader : public SymbolUploader {
+ public:
+  std::optional<std::string> MaybeUploadUnoptimizedHloModule(
+      HloModule* module,
+      const se::GpuTargetConfigProto& gpu_target_config) override {
+    std::string fingerprint = FingerprintProto(module->ToProto());
+    unoptimized_fingerprints_.push_back(fingerprint);
+    return fingerprint;
+  }
+
+  std::optional<std::string> MaybeUploadOptimizedHloModule(
+      const HloProto& hlo_proto) override {
+    std::string fingerprint = FingerprintProto(hlo_proto);
+    optimized_protos_.push_back(hlo_proto);
+    optimized_fingerprints_.push_back(fingerprint);
+    return fingerprint;
+  }
+
+  void MaybeUploadSymbolMapping(
+      absl::string_view unoptimized_fingerprint,
+      absl::string_view optimized_fingerprint) override {
+    symbol_mappings_.emplace_back(unoptimized_fingerprint,
+                                  optimized_fingerprint);
+  }
+
+  void WaitForUploads() override {}
+
+  const std::vector<std::string>& unoptimized_fingerprints() const {
+    return unoptimized_fingerprints_;
+  }
+  const std::vector<HloProto>& optimized_protos() const {
+    return optimized_protos_;
+  }
+  const std::vector<std::string>& optimized_fingerprints() const {
+    return optimized_fingerprints_;
+  }
+  const std::vector<std::pair<std::string, std::string>>& symbol_mappings()
+      const {
+    return symbol_mappings_;
+  }
+
+ private:
+  std::vector<std::string> unoptimized_fingerprints_;
+  std::vector<HloProto> optimized_protos_;
+  std::vector<std::string> optimized_fingerprints_;
+  std::vector<std::pair<std::string, std::string>> symbol_mappings_;
+};
+
+class ScopedSymbolUploader {
+ public:
+  explicit ScopedSymbolUploader(std::unique_ptr<SymbolUploader> uploader)
+      : previous_(
+            GetGlobalSymbolUploaderRegistry().Register(std::move(uploader))) {}
+
+  ~ScopedSymbolUploader() {
+    GetGlobalSymbolUploaderRegistry().Register(std::move(previous_));
+  }
+
+ private:
+  std::unique_ptr<SymbolUploader> previous_;
+};
+
+TEST_F(GpuCompilerTest,
+       UploadsOptimizedHloWithBufferAssignmentAfterRunBackend) {
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule test
+
+ENTRY main {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+)hlo";
+
+  auto uploader = std::make_unique<RecordingSymbolUploader>();
+  const RecordingSymbolUploader* uploader_ptr = uploader.get();
+  ScopedSymbolUploader scoped_uploader(std::move(uploader));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+  ASSERT_THAT(uploader_ptr->unoptimized_fingerprints(), SizeIs(1));
+  EXPECT_EQ(optimized_module->unoptimized_fingerprint(),
+            uploader_ptr->unoptimized_fingerprints()[0]);
+  EXPECT_THAT(uploader_ptr->optimized_protos(), IsEmpty());
+  EXPECT_THAT(uploader_ptr->optimized_fingerprints(), IsEmpty());
+  EXPECT_THAT(uploader_ptr->symbol_mappings(), IsEmpty());
+  const std::string post_hlo_passes_fingerprint =
+      FingerprintProto(MakeHloProto(*optimized_module));
+
+  std::unique_ptr<HloModule> cloned_module = optimized_module->Clone();
+  EXPECT_EQ(cloned_module->unoptimized_fingerprint(),
+            uploader_ptr->unoptimized_fingerprints()[0]);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(cloned_module), /*executor=*/nullptr,
+                             compile_options));
+  ASSERT_THAT(uploader_ptr->optimized_protos(), SizeIs(1));
+  ASSERT_THAT(uploader_ptr->optimized_fingerprints(), SizeIs(1));
+  EXPECT_TRUE(uploader_ptr->optimized_protos()[0].hlo_module().has_schedule());
+
+  const auto* gpu_executable =
+      absl::down_cast<const GpuExecutable*>(executable.get());
+  EXPECT_THAT(uploader_ptr->optimized_protos()[0].buffer_assignment(),
+              EqualsProto(gpu_executable->buffer_assignment_proto()));
+  EXPECT_NE(uploader_ptr->optimized_fingerprints()[0],
+            post_hlo_passes_fingerprint);
+  EXPECT_THAT(uploader_ptr->symbol_mappings(),
+              ElementsAre(Pair(uploader_ptr->unoptimized_fingerprints()[0],
+                               uploader_ptr->optimized_fingerprints()[0])));
+
+  XlaDebugInfoManager::Get()->StartTracing();
+  std::vector<std::unique_ptr<HloProto>> traced_hlo_protos;
+  XlaDebugInfoManager::Get()->StopTracing(&traced_hlo_protos);
+  std::vector<std::string> profiled_fingerprints;
+  for (const std::unique_ptr<HloProto>& traced_hlo_proto : traced_hlo_protos) {
+    profiled_fingerprints.push_back(FingerprintProto(*traced_hlo_proto));
+  }
+  EXPECT_THAT(profiled_fingerprints,
+              Contains(uploader_ptr->optimized_fingerprints()[0]));
+}
+
+}  // namespace
 }  // namespace gpu
 }  // namespace xla
