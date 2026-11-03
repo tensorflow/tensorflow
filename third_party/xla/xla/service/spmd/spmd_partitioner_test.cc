@@ -10407,6 +10407,65 @@ TEST_P(SpmdPartitioningTest, DusOfSliceWithEnzymeOpt) {
                           op::Shape("f32[20,768,1528]")));
 }
 
+TEST_P(SpmdPartitioningTest, DusOfSliceOfUnshardedTupleElementWithEnzymeOpt) {
+  // The update is a slice, at the DUS's own window, of a tuple element that
+  // carries no sharding of its own; the tuple does. The element keeps the
+  // tuple's layout rather than being replicated, so nothing is gathered and
+  // the DUS writes its window without moving data.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f64[4,16,8] parameter(0), sharding={devices=[1,2,2]<=[4]}
+    %b = f64[4,16,8] parameter(1), sharding={devices=[1,2,2]<=[4]}
+    %t = (f64[4,16,8], f64[4,16,8]) tuple(%a, %b), sharding={{devices=[1,2,2]<=[4]}, {devices=[1,2,2]<=[4]}}
+    %g = f64[4,16,8] get-tuple-element(%t), index=1
+    %upd = f64[4,15,8] slice(%g), slice={[0:4], [0:15], [0:8]}, sharding={devices=[1,2,2]<=[4]}
+    %zero = f64[] constant(0)
+    %base = f64[4,16,8] broadcast(%zero), dimensions={}, sharding={devices=[1,2,2]<=[4]}
+    c0 = s64[] constant(0)
+    ROOT %dus = f64[4,16,8] dynamic-update-slice(%base, %upd, c0, c0, c0), sharding={devices=[1,2,2]<=[4]}
+  }
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("f64[4,8,4]"));
+  EXPECT_EQ(
+      NumOfInstructions(module->entry_computation(), HloOpcode::kAllGather), 0);
+  EXPECT_EQ(NumOfInstructions(module->entry_computation(),
+                              HloOpcode::kCollectivePermute),
+            0);
+}
+
+TEST_P(SpmdPartitioningTest, DusOfSliceOfReplicatedSourceWithEnzymeOpt) {
+  // The slice's source is laid out differently from the DUS (replicated
+  // here): the update piece is brought into the DUS's layout rather than
+  // used as the whole array.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f64[4,16,8] parameter(0), sharding={replicated}
+    %upd = f64[4,15,8] slice(%a), slice={[0:4], [0:15], [0:8]}, sharding={devices=[1,2,2]<=[4]}
+    %zero = f64[] constant(0)
+    %base = f64[4,16,8] broadcast(%zero), dimensions={}, sharding={devices=[1,2,2]<=[4]}
+    c0 = s64[] constant(0)
+    ROOT %dus = f64[4,16,8] dynamic-update-slice(%base, %upd, c0, c0, c0), sharding={devices=[1,2,2]<=[4]}
+  }
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("f64[4,8,4]"));
+  EXPECT_EQ(
+      NumOfInstructions(module->entry_computation(), HloOpcode::kAllGather), 0);
+}
+
 TEST_P(SpmdPartitioningTest, DusOfElementwiseOfSlicesWithEnzymeOpt) {
   // The update is a stencil's interior: elementwise ops over slices taken at
   // the DUS's own window of the y dimension, which is split over two shards

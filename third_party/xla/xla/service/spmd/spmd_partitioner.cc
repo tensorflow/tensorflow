@@ -6011,6 +6011,12 @@ SpmdPartitioningVisitor::ProcessUpdatePieceExtractOperand(
                             hlo->shape(), hlo->sharding());
               CHECK_NE(newOperand, nullptr);
             } else {
+              // The source may be laid out differently from the DUS (a
+              // get-tuple-element left without a sharding is replicated by
+              // default); the piece has to be in the DUS's layout.
+              if (replacement.sharding() != hlo->sharding()) {
+                replacement = replacement.Reshard(hlo->sharding());
+              }
               newOperand = replacement.hlo();
             }
           }
@@ -7974,6 +7980,15 @@ absl::Status SpmdPartitioner::PreprocessSharding(
           HloSharding reversed_sharding = hlo_sharding_util::ReverseSharding(
               hlo->operand(0)->sharding(), hlo->dimensions());
           hlo->set_sharding(reversed_sharding);
+        } else if (hlo->opcode() == HloOpcode::kGetTupleElement &&
+                   hlo->operand(0)->has_sharding() &&
+                   hlo->operand(0)->sharding().IsTuple()) {
+          // An element of a sharded tuple stays laid out as the tuple says
+          // (the custom calls of the communication optimizer carry per-result
+          // shardings their get-tuple-elements were exported without);
+          // replicating it would gather the whole array.
+          hlo->set_sharding(hlo->operand(0)->sharding().GetSubSharding(
+              hlo->operand(0)->shape(), {hlo->tuple_index()}));
         } else {
           hlo->set_sharding(HloSharding::Single(
               hlo->shape(), enable_hlo_sharding_v3
