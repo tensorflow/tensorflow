@@ -2803,7 +2803,7 @@ def sparse_maximum(sp_a, sp_b, name=None):
     output: the output SparseTensor.
 
   Raises:
-    TypeError: If `sp_a` or `sp_b` is not a `SparseTensor`.
+    TypeError: If `sp_a` or `sp_b` is not a `SparseTensor` or `SparseTensorValue`.
   """
   sp_a = _convert_to_sparse_tensor(sp_a)
   sp_b = _convert_to_sparse_tensor(sp_b)
@@ -2852,7 +2852,7 @@ def sparse_minimum(sp_a, sp_b, name=None):
     output: the output SparseTensor.
 
   Raises:
-    TypeError: If `sp_a` or `sp_b` is not a `SparseTensor`.
+    TypeError: If `sp_a` or `sp_b` is not a `SparseTensor` or `SparseTensorValue`.
   """
   sp_a = _convert_to_sparse_tensor(sp_a)
   sp_b = _convert_to_sparse_tensor(sp_b)
