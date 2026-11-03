@@ -110,11 +110,19 @@ TEST_P(EigenContractionKernelTest, S8S8S32) {
 
 TEST_P(EigenContractionKernelTest, Float) {
   EigenContractionKernelTestParams param = GetParam();
+  // TODO: remove this skip once Eigen commit 406183cc is included in XLA
+  if (param.m == 10 && param.k == 0 && param.n == 10) {
+    GTEST_SKIP() << "Skipping 10x0x10 test case.";
+  }
   RunEigenMatMul<float, float, float>(param.m, param.k, param.n);
 }
 
 TEST_P(EigenContractionKernelTest, FloatTensorMapUnaligned) {
   EigenContractionKernelTestParams param = GetParam();
+  // TODO: remove this skip once Eigen commit 406183cc is included in XLA
+  if (param.m == 10 && param.k == 0 && param.n == 10) {
+    GTEST_SKIP() << "Skipping 10x0x10 test case.";
+  }
   RunEigenTensorMapMatMul<float, float, float, Eigen::Unaligned>(
       param.m, param.k, param.n);
 }
