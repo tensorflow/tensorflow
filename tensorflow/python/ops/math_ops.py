@@ -738,11 +738,11 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   with ops.name_scope(name, "Pow", [x, y]) as name:
     x_is_tensor = tensor_util.is_tf_type(x) or (
         hasattr(x, "dtype")
-        and (getattr(type(x), "__module__", "") or "").startswith(("tensorflow", "keras"))
+        and any(m in (getattr(type(x), "__module__", "") or "") for m in ("tensorflow", "keras"))
     )
     y_is_tensor = tensor_util.is_tf_type(y) or (
         hasattr(y, "dtype")
-        and (getattr(type(y), "__module__", "") or "").startswith(("tensorflow", "keras"))
+        and any(m in (getattr(type(y), "__module__", "") or "") for m in ("tensorflow", "keras"))
     )
     if not x_is_tensor and y_is_tensor:
       target_dtype = dtypes.as_dtype(y.dtype).base_dtype
