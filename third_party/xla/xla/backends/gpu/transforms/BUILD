@@ -86,6 +86,8 @@ cc_library(
     ],
     deps = [
         ":conv_rewriter",
+        ":one_hot_gather_utils",
+        "//xla:comparison_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -95,11 +97,12 @@ cc_library(
         "//xla/hlo/pass:hlo_pass_options",
         "//xla/hlo/pass:hlo_pass_registry",
         "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier_options_proto_cc",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -115,6 +118,9 @@ xla_cc_test(
     srcs = ["algebraic_simplifier_test.cc"],
     deps = [
         ":algebraic_simplifier",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -123,6 +129,8 @@ xla_cc_test(
         "//xla/service:pattern_matcher",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:literal_test_util",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1645,10 +1653,29 @@ xla_test(
 )
 
 cc_library(
+    name = "one_hot_gather_utils",
+    srcs = ["one_hot_gather_utils.cc"],
+    hdrs = ["one_hot_gather_utils.h"],
+    deps = [
+        "//xla:comparison_util",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "dot_strength_reduction",
     srcs = ["dot_strength_reduction.cc"],
     hdrs = ["dot_strength_reduction.h"],
     deps = [
+        ":one_hot_gather_utils",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
