@@ -1588,6 +1588,7 @@ cc_library(
         "transforms/fuse_a4w2_drq_fully_connected_pass.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
+        "transforms/lower_blockwise_dequantize_pass.cc",
         "transforms/lower_quant_annotations_helper.cc",
         "transforms/lower_quant_annotations_pass.cc",
         "transforms/modify_io_nodes.cc",
