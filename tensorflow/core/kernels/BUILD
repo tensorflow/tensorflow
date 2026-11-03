@@ -5747,6 +5747,7 @@ tf_cuda_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/status",
     ],
 )
 
