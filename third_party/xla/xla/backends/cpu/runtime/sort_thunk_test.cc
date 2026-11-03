@@ -72,13 +72,7 @@ class LessThanComparator : public FunctionLibrary {
   absl::StatusOr<void*> ResolveFunction(TypeId type_id,
                                         absl::string_view name) final {
     DCHECK_EQ(name, "less_than");
-    return reinterpret_cast<void*>(LessThanWrapper);
-  }
-
- private:
-  static void LessThanWrapper(bool* result, const void*, const void** data,
-                              const void*, const void*, const void*) {
-    *result = LessThan(data);
+    return reinterpret_cast<void*>(LessThan);
   }
 };
 

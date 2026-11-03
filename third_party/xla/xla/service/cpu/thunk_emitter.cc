@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/custom_fusion_configs.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
@@ -1294,6 +1295,33 @@ std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
   }
 }
 
+absl::StatusOr<std::string> ThunkEmitter::EmitSortComparator(
+    const HloComputation* comparator) {
+  if (auto it = comparator_names_.find(comparator);
+      it != comparator_names_.end()) {
+    return it->second;
+  }
+
+  std::string comparator_name(comparator->name());
+  if (hlo_module_config_.debug_options()
+          .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
+    ABSL_ASSIGN_OR_RETURN(comparator_name,
+                     ConvertToCName(absl::StrCat(comparator->parent()->name(),
+                                                 "_", comparator->name())));
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      MlirKernelSource mlir_source,
+      cpu::EmitSortComparator(*mlir_context_, *comparator, comparator_name));
+  ABSL_ASSIGN_OR_RETURN(LlvmKernelSource llvm_source,
+                   fusion_compiler_.Compile(std::move(mlir_source)));
+
+  comparators_.emplace_back(comparator_name,
+                            std::move(llvm_source).thread_safe_module());
+  comparator_names_.emplace(comparator, comparator_name);
+  return comparator_name;
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
     const HloInstruction* instruction) {
   auto* sort = Cast<HloSortInstruction>(instruction);
@@ -1303,8 +1331,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   const std::optional<SortThunk::SortDirection> direction =
       MatchSortDirection(sort);
 
-  ABSL_ASSIGN_OR_RETURN(auto comparator,
-                   ir_emitter_.EmitSortComparator(hlocomparator));
+  ABSL_ASSIGN_OR_RETURN(std::string comparator_name,
+                   EmitSortComparator(hlocomparator));
   ABSL_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(sort));
 
   if (buffers.arguments.size() != buffers.results.size()) {
@@ -1334,10 +1362,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
     inputs.push_back(SortThunk::Input{result.slice, shape});
   }
 
-  ABSL_ASSIGN_OR_RETURN(
-      thunks.emplace_back(),
-      SortThunk::Create(ThunkInfo(instruction), inputs, sort->sort_dimension(),
-                        sort->is_stable(), comparator.name, direction));
+  ABSL_ASSIGN_OR_RETURN(thunks.emplace_back(),
+                   SortThunk::Create(ThunkInfo(instruction), inputs,
+                                     sort->sort_dimension(), sort->is_stable(),
+                                     std::move(comparator_name), direction));
 
   return thunks;
 }

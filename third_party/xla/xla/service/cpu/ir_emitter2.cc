@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -42,15 +41,12 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Linker/Linker.h"
-#include "llvm/Support/CodeGen.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
-#include "xla/backends/cpu/codegen/symbol_name_util.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -67,7 +63,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -261,57 +256,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
       instr, kernel_prototype.arguments, output_array));
   return kernels_.emplace_back(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
-}
-
-absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
-    HloComputation* comparator) {
-  std::string comparator_name(comparator->name().data(),
-                              comparator->name().size());
-  if (hlo_module_.config()
-          .debug_options()
-          .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
-    ABSL_ASSIGN_OR_RETURN(comparator_name,
-                     ConvertToCName(absl::StrCat(comparator->parent()->name(),
-                                                 "_", comparator->name())));
-  }
-
-  // Find if we already emitted this comparator.
-  auto info = absl::c_find_if(comparators_, [&](const ComparatorInfo& info) {
-    return info.name == comparator_name;
-  });
-  if (info != comparators_.end()) return *info;
-
-  // Emit computations transitively called from the comparator (e.g. a
-  // reduce's reducer), so that EmitThreadLocalCall can find them later.
-  for (HloInstruction* instr : comparator->instructions()) {
-    bool is_reducer = instr->opcode() == HloOpcode::kReduce ||
-                      instr->opcode() == HloOpcode::kReduceWindow;
-    for (HloComputation* called : instr->called_computations()) {
-      ABSL_RETURN_IF_ERROR(nested_ir_emitter_
-                          ->EmitNestedComputation(
-                              *called, llvm_ir::IrName(instr), is_reducer)
-                          .status());
-    }
-  }
-
-  // We use simple post-order schedule as we are not emitting a "real"
-  // computation that requires buffer assignment.
-  auto schedule = comparator->MakeInstructionPostOrder();
-
-  // Emit LLVM IR for comparator function. We emit it as a top-level computation
-  // to set external linkage and to get a pointer to compiled function later.
-  ABSL_ASSIGN_OR_RETURN(llvm::Function * comparator_function,
-                   nested_ir_emitter_->EmitComputation(
-                       comparator, comparator_name,
-                       /*is_top_level_computation=*/true, schedule,
-                       /*allow_reassociation=*/false));
-
-  // Generate unwind information so that GDB can crawl through the stack frames
-  // created by the JIT compiled code.
-  comparator_function->setUWTableKind(llvm::UWTableKind::Default);
-
-  return comparators_.emplace_back(
-      ComparatorInfo{comparator_function->getName().str()});
 }
 
 //===----------------------------------------------------------------------===//

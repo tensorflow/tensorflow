@@ -137,9 +137,11 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kBatchNormInference,
                                    HloOpcode::kBatchNormTraining,
                                    HloOpcode::kCholesky,
+                                   HloOpcode::kCollectiveBroadcast,
                                    HloOpcode::kCollectivePermute,
                                    HloOpcode::kCollectivePermuteDone,
                                    HloOpcode::kCollectivePermuteStart,
+                                   HloOpcode::kCollectiveReduce,
                                    HloOpcode::kCopyDone,
                                    HloOpcode::kCopyStart,
                                    HloOpcode::kCustomCall,
@@ -151,6 +153,8 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kInfeed,
                                    HloOpcode::kOutfeed,
                                    HloOpcode::kPartitionId,
+                                   HloOpcode::kRaggedAllToAll,
+                                   HloOpcode::kRaggedDot,
                                    HloOpcode::kRecv,
                                    HloOpcode::kRecvDone,
                                    HloOpcode::kReduceScatter,
@@ -158,11 +162,14 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kRng,
                                    HloOpcode::kRngBitGenerator,
                                    HloOpcode::kRngGetAndUpdateState,
+                                   HloOpcode::kScaledDot,
+                                   HloOpcode::kScan,
                                    HloOpcode::kScatter,
                                    HloOpcode::kSelectAndScatter,
                                    HloOpcode::kSend,
                                    HloOpcode::kSendDone,
                                    HloOpcode::kSetDimensionSize,
+                                   HloOpcode::kShuffle,
                                    HloOpcode::kSort,
                                    HloOpcode::kTopK,
                                    HloOpcode::kTriangularSolve,
@@ -1008,7 +1015,10 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     const OperandProvider& operand_provider,
     const CallTargetProvider& call_target_provider,
     ImplicitLocOpBuilder& builder, MLIRContext* mlir_context) {
-  CHECK(!kUnsupportedOps.contains(instr->opcode())) << instr->ToShortString();
+  if (kUnsupportedOps.contains(instr->opcode())) {
+    return absl::UnimplementedError(
+        absl::StrCat("Unsupported: ", instr->ToShortString()));
+  }
 
   if (HasDedicatedEmitter(instr->opcode())) {
     return EmitWithDedicatedEmitter(instr, this_fn, indices, operand_provider,

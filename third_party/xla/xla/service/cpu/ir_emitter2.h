@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
@@ -94,15 +93,8 @@ class IrEmitter2 {
     std::string backend_extra_options;
   };
 
-  // Emitted comparator function information (for sort operation).
-  struct ComparatorInfo {
-    std::string name;
-  };
-
   // Returns all the kernels emitted so far via this emitter.
   absl::Span<const KernelInfo> kernels() const { return kernels_; }
-
-  absl::Span<const ComparatorInfo> comparators() const { return comparators_; }
 
   // Emits a host kernel for the pad instruction.
   absl::StatusOr<KernelInfo> EmitPadHostKernel(const HloInstruction* pad);
@@ -115,14 +107,9 @@ class IrEmitter2 {
   absl::StatusOr<KernelInfo> EmitSliceToDynamicHostKernel(
       const HloInstruction* instr);
 
-  // Emits a comparator function for the given sort instruction.
-  absl::StatusOr<ComparatorInfo> EmitSortComparator(HloComputation* comparator);
-
   bool IsSupportedByFusionEmitter(const HloFusionInstruction* fusion) const;
 
  private:
-  class ElementalIrEmitter;
-
   // Emits a host kernel prototype for the given HLO instruction.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       const HloInstruction* instr);
@@ -145,7 +132,6 @@ class IrEmitter2 {
 
   // Keeps track of all the functions emitted so far.
   std::vector<KernelInfo> kernels_;
-  std::vector<ComparatorInfo> comparators_;
 };
 
 }  // namespace xla::cpu

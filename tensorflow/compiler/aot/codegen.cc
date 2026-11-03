@@ -508,11 +508,8 @@ absl::StatusOr<std::string> GenFunctionDeclaration(
 
   switch (symbol.function_type_id()) {
     case xla::cpu::SymbolProto::COMPARATOR:
-      absl::StrAppend(
-          &function_declaration, " void ", symbol.name(),
-          "(bool* result, const void* run_options, const void** params, "
-          "const void* buffer_table, const void* status, "
-          "const void* prof_counters);");
+      absl::StrAppend(&function_declaration, " bool ", symbol.name(),
+                      "(const void** data);");
       break;
     case xla::cpu::SymbolProto::KERNEL:
       absl::StrAppend(&function_declaration, " XLA_CPU_KernelError* ",
