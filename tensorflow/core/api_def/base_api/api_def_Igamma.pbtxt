@@ -15,5 +15,8 @@ is the lower incomplete Gamma function.
 
 Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
 Gamma function.
+
+CPU and GPU kernels support only `float32` and `float64`. There are no kernels
+for `bfloat16` or `half`.
 END
 }
