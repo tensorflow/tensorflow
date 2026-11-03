@@ -232,6 +232,20 @@ class Conv3DBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
+
+    // If shapes are valid but filter or out_backprop is empty, in_backprop
+    // should be set to all zeros.
+    if (filter.NumElements() == 0 || out_backprop.NumElements() == 0) {
+      auto in_backprop_flat = in_backprop->template flat<T>();
+      in_backprop_flat.device(context->eigen_device<Device>()) =
+          in_backprop_flat.constant(T(0));
+      return;
+    }
+
     functor::CuboidConvolutionBackwardInput<Device, T>()(
         context->eigen_device<Device>(),
         in_backprop->tensor<T, 5>(),                     // input_backward
@@ -362,6 +376,20 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     Tensor* in_backprop;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
+
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
+
+    // If shapes are valid but filter or out_backprop is empty, in_backprop
+    // should be set to all zeros.
+    if (filter.NumElements() == 0 || out_backprop.NumElements() == 0) {
+      auto in_backprop_flat = in_backprop->template flat<T>();
+      in_backprop_flat.device(context->eigen_device<Device>()) =
+          in_backprop_flat.constant(T(0));
+      return;
+    }
 
     int64_t top_pad_planes, bottom_pad_planes;
     int64_t top_pad_rows, bottom_pad_rows;
