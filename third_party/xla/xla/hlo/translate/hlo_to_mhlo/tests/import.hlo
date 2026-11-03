@@ -2254,5 +2254,23 @@ add_original_value {
   ROOT %add = f32[] add(%gte.0, %gte.1)
 }
 
+// CHECK-LABEL: func.func private @test_mulhi_s32
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<4xi32>, %[[ARG1:.*]]: tensor<4xi32>) -> tensor<4xi32>
+%test_mulhi_s32 (lhs: s32[4], rhs: s32[4]) -> s32[4] {
+  %lhs = s32[4] parameter(0)
+  %rhs = s32[4] parameter(1)
+  // CHECK-NEXT: mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xi32>
+  ROOT %mulhi = s32[4] mulhi(s32[4] %lhs, s32[4] %rhs)
+}
+
+// CHECK-LABEL: func.func private @test_mulhi_u32
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<4xui32>, %[[ARG1:.*]]: tensor<4xui32>) -> tensor<4xui32>
+%test_mulhi_u32 (lhs: u32[4], rhs: u32[4]) -> u32[4] {
+  %lhs = u32[4] parameter(0)
+  %rhs = u32[4] parameter(1)
+  // CHECK-NEXT: mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xui32>
+  ROOT %mulhi = u32[4] mulhi(u32[4] %lhs, u32[4] %rhs)
+}
+
 
 

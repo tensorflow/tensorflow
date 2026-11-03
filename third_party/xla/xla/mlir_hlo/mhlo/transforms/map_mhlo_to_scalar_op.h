@@ -1026,6 +1026,25 @@ inline Value mapMhloOpToStdScalarOp<mhlo::FmaOp>(
   return ::mlir::math::FmaOp::create(*b, loc, a, bVal, c);
 }
 
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::MulhiOp>(
+    Location loc, ArrayRef<Type> /*resultTypes*/, ArrayRef<Type> argTypes,
+    mhlo::MulhiOp::Adaptor adaptor, ArrayRef<NamedAttribute> /*attributes*/,
+    OpBuilder* b) {
+  Type originalType = getElementTypeOrSelf(argTypes.front());
+  if (!isa<IntegerType>(originalType)) {
+    return nullptr;
+  }
+  if (originalType.isUnsignedInteger()) {
+    return ::mlir::arith::MulUIExtendedOp::create(*b, loc, adaptor.getLhs(),
+                                                  adaptor.getRhs())
+        .getHigh();
+  }
+  return ::mlir::arith::MulSIExtendedOp::create(*b, loc, adaptor.getLhs(),
+                                                adaptor.getRhs())
+      .getHigh();
+}
+
 template <typename U, typename S>
 inline Value makeSafeIntDiv(ImplicitLocOpBuilder& lb, bool isUnsigned,
                             Value lhs, Value rhs, Value returnedOnZero,
