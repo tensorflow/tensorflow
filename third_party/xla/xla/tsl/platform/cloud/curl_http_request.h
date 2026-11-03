@@ -49,8 +49,8 @@ class CurlHttpRequest : public HttpRequest {
  public:
   class Factory : public HttpRequest::Factory {
    public:
-    virtual ~Factory() {}
-    virtual HttpRequest* Create() { return new CurlHttpRequest(); }
+    ~Factory() override {}
+    HttpRequest* Create() override { return new CurlHttpRequest(); }
   };
 
   CurlHttpRequest();
