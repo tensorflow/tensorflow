@@ -3292,17 +3292,28 @@ LogicalResult ReduceIndexOp::verify() {
   auto bitwidth = getElementTypeBitwidth(in_ty);
   auto axis = getAxis();
   auto kind = getKind();
-  if (kind != ReductionKind::kArgMax && kind != ReductionKind::kArgMin) {
-    return emitOpError("Reduction kind must be arg_max or arg_min");
+  const bool is_arg_max_or_min =
+      kind == ReductionKind::kArgMax || kind == ReductionKind::kArgMin;
+  const bool is_find_first_set = kind == ReductionKind::kFindFirstSet;
+  if (!is_arg_max_or_min && !is_find_first_set) {
+    return emitOpError(
+        "Reduction kind must be arg_max, arg_min, or find_first_set");
   }
-  if (!in_ty.getElementType().isF32() && !in_ty.getElementType().isBF16()) {
+  if (is_arg_max_or_min && !in_ty.getElementType().isF32() &&
+      !in_ty.getElementType().isBF16()) {
     return emitOpError(
         "Not Implemented: Only f32 and bf16 input is supported for arg_max and "
         "arg_min");
   }
-  if (!out_ty.getElementType().isSignlessInteger(bitwidth)) {
+  if (is_arg_max_or_min &&
+      !out_ty.getElementType().isSignlessInteger(bitwidth)) {
     return emitOpError(
         absl::StrFormat("Arg_max and arg_min must have i%d output", bitwidth));
+  }
+  if (is_find_first_set && (!in_ty.getElementType().isSignlessInteger(1) ||
+                            !out_ty.getElementType().isSignlessInteger(32))) {
+    return emitOpError(
+        "find_first_set requires i1 input and i32 output element types");
   }
 
   // SameOperandsAndResultRank checks the following:
@@ -3314,14 +3325,22 @@ LogicalResult ReduceIndexOp::verify() {
     return emitOpError("Axis must be in [0, ")
            << in_shape.size() << "), but got " << axis;
   }
-  if (in_shape[axis] > (1LL << bitwidth)) {
-    return emitOpError(absl::StrFormat(
-        "Reduction dimension size (%d) exceeds 2^%d (%d), which overflows "
-        "%d-bit indices for arg_max/arg_min",
-        in_shape[axis], bitwidth, 1LL << bitwidth, bitwidth));
+  // The largest possible result is the last index along the reduced dimension
+  // for arg_max/arg_min, and the dimension size for find_first_set (returned
+  // when no element is set). It must fit in the output element type, treated
+  // as unsigned.
+  const int64_t max_result =
+      is_find_first_set ? in_shape[axis] : in_shape[axis] - 1;
+  const unsigned out_bitwidth = out_ty.getElementTypeBitWidth();
+  if (static_cast<uint64_t>(max_result) > llvm::maxUIntN(out_bitwidth)) {
+    return emitOpError("Reduction dimension size ")
+           << in_shape[axis] << " is too large for "
+           << stringifyReductionKind(kind) << ": the largest result "
+           << max_result << " does not fit in " << out_bitwidth
+           << "-bit unsigned indices";
   }
 
-  if (in_shape.size() < 2) {
+  if (is_arg_max_or_min && in_shape.size() < 2) {
     return emitOpError("Not Implemented: Only input rank > 1 is supported.");
   }
   for (int64_t i = 0; i < in_ty.getRank(); ++i) {
