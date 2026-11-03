@@ -3649,6 +3649,7 @@ cuda_py_strict_test(
     tags = [
         "no_windows_gpu",
     ],
+    xla_enabled = True,
     deps = [
         ":array_ops",
         ":gradients",
