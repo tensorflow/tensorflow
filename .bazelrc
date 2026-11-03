@@ -151,26 +151,22 @@ common --config=short_logs
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 common --config=v2
 
-# Precompiling results in some action conflicts. Disable it for now until
-# the problematic targets are fixed.
-common --@rules_python//python/config_settings:precompile=force_disabled
-
-# TF now has `cc_shared_library` targets, so it needs the experimental flag
-# TODO(rostam): Remove when `cc_shared_library` is enabled by default
-common --experimental_cc_shared_library
-
 # cc_shared_library ensures no library is linked statically more than once.
 common --experimental_link_static_libraries_once=false
 
-# Prevent regressions on those two incompatible changes
-# TODO: remove those flags when they are flipped in the default Bazel version TF uses.
-common --incompatible_enforce_config_setting_visibility
-# TODO: also enable this flag after fixing the visibility violations
+# TODO: enable this flag after fixing the visibility violations
 # common --incompatible_config_setting_private_default_visibility
 
 # TODO: Enable Bzlmod
 common --noenable_bzlmod
 common --enable_workspace
+
+# Turn off empty glob check (flipped in Bazel 8).
+common --incompatible_disallow_empty_glob=false
+
+# Enable legacy external runfiles
+# This is false in Bazel 8, but broke some tests.
+common --legacy_external_runfiles=true
 
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
