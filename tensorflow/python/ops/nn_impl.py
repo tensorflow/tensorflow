@@ -1502,6 +1502,12 @@ def moments(
       axes_const = tensor_util.constant_value(axes)
       if axes_const is not None:
         axes = axes_const.tolist()
+  elif hasattr(axes, "tolist"):
+    # `axes` is documented as an "array of ints", so NumPy arrays (and other
+    # array-likes) are legal inputs, but `tf.squeeze` only accepts a Python
+    # list or tuple in the `keepdims=False` path. Normalize them here, as
+    # `weighted_moments` already does (GitHub issues #129819, #101580).
+    axes = axes.tolist()
   with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations

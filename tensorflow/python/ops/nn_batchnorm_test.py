@@ -783,6 +783,31 @@ class MomentsTest(test.TestCase):
         self.assertEqual(mean_v.shape, (1, 1, 4))
         self.assertEqual(var_v.shape, (1, 1, 4))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNumpyAxes(self):
+    """NumPy arrays are valid `axes`.
+
+    `axes` is documented as an "array of ints", so a NumPy array must behave
+    like a Python list. Before the fix, `keep_dims=False` raised
+    `TypeError: Expected list for 'axis' argument to 'squeeze' Op` because the
+    arrays were forwarded to `tf.squeeze` unchanged. See GitHub issue #129819;
+    #101580 fixed the same problem in `tf.nn.weighted_moments`.
+    """
+    x = np.arange(120, dtype=np.float32).reshape(4, 5, 6)
+    expected_mean, expected_var = self.evaluate(
+        self._unweighted_moments(x, [0, 1], keep_dims=False)
+    )
+    for axes in (
+        np.array([0, 1]),
+        np.array([0, 1], dtype=np.int64),
+        np.int32([0, 1]),
+    ):
+      mean, var = self._unweighted_moments(x, axes, keep_dims=False)
+      mean_v, var_v = self.evaluate([mean, var])
+      self.assertAllEqual(mean_v.shape, expected_mean.shape)
+      self.assertAllClose(expected_mean, mean_v)
+      self.assertAllClose(expected_var, var_v)
+
 
 class WeightedMomentsTest(MomentsTest):
   """Tests for nn.weighted_moments.
@@ -803,7 +828,6 @@ class WeightedMomentsTest(MomentsTest):
      non-constant weights and varying broadcasting situations. (It
      also continues to call MomentsTest.Run(Weighted)?MomentsTest as
      well.)
-
   """
 
   def _unweighted_moments(self, x, axes, keep_dims=False, extra_out_grads=None):
@@ -964,6 +988,7 @@ class WeightedMomentsTest(MomentsTest):
         x, axes, weights, keep_dims=False)
     self.assertAllClose(mean, np.zeros(shape=[4]))
     self.assertAllClose(var, np.zeros(shape=[4]))
+
 
 if __name__ == "__main__":
   test.main()
