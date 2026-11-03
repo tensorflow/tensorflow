@@ -32,7 +32,7 @@ message HloPipelineNodeProto {
   HloPipelineNodeSequenceProto sub_nodes = 2;
   // Pass options. Must be empty for a node sequence.
   map<string, HloPassOptionValue> options = 3;
-  // 0 or 1: no fixed-point behavior, i.e. run once. N > 1: rerun until the
+  // N <= 1: no fixed-point behavior, i.e. run once. N > 1: rerun until the
   // module stops changing, at most N times.
   int32 max_fixed_point_iterations = 4;
 }

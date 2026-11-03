@@ -146,7 +146,6 @@ absl::StatusOr<LlvmKernelSource> LowerToLlvm(
   options.vector_width = 256;
   options.verification_level = 1;
   options.fast_min_max = true;
-  options.use_new_xtile_lowering = true;
   FusionCompiler fusion_compiler(mlir_kernel_source.module().getContext(),
                                  options);
   ABSL_ASSIGN_OR_RETURN(
