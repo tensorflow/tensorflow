@@ -41,7 +41,7 @@ __global__ void SparseToDenseKernel(const Index* __restrict__ indices,
                                     const int ndims, T* __restrict__ dense,
                                     const int64_t dense_size) {
   GPU_1D_KERNEL_LOOP(thread_idx, nnz) {
-    eigen_assert(ndims >= 1);
+    eigen_assert(ndims >= 0);
 
     bool valid = true;
     for (int i = 0; i < ndims; i++) {
@@ -52,11 +52,14 @@ __global__ void SparseToDenseKernel(const Index* __restrict__ indices,
     }
 
     if (valid) {
-      int64_t output_idx = indices[thread_idx * ndims + ndims - 1];
-      Index strides = 1;
-      for (int i = ndims - 2; i >= 0; i--) {
-        strides *= dims[i + 1];
-        output_idx += indices[thread_idx * ndims + i] * strides;
+      int64_t output_idx = 0;
+      if (ndims > 0) {
+        output_idx = indices[thread_idx * ndims + ndims - 1];
+        Index strides = 1;
+        for (int i = ndims - 2; i >= 0; i--) {
+          strides *= dims[i + 1];
+          output_idx += indices[thread_idx * ndims + i] * strides;
+        }
       }
       // If num_vals == 1, broadcast the scalar to the positions for non-zeros.
       dense[output_idx] = vals[(num_vals == 1) ? 0 : thread_idx];
