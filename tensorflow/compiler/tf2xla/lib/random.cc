@@ -76,6 +76,59 @@ xla::XlaOp ParameterizedTruncatedNormal(xla::XlaOp uniform, xla::XlaOp mu,
   // when the region of the truncated normal has a very small probability.
   x = xla::Clamp(a, x, b);
 
+  // When (alpha, beta) lies on one side of zero, the CDF values above can
+  // round to 0 or 1 and the samples collapse onto a bound. Sample those
+  // regions from the upper tail (mirrored for the lower side) using log tail
+  // probabilities, which keep their precision far from the mean. F16 lacks
+  // the range for these probabilities, so the tail is computed in F32.
+  xla::PrimitiveType type =
+      uniform.builder()->GetShape(uniform).value().element_type();
+  xla::PrimitiveType tail_type = type == xla::F16 ? xla::F32 : type;
+  xla::XlaOp u = xla::ConvertElementType(uniform, tail_type);
+  xla::XlaOp tail_alpha = xla::ConvertElementType(alpha, tail_type);
+  xla::XlaOp tail_beta = xla::ConvertElementType(beta, tail_type);
+  one = xla::ScalarLike(u, 1.0);
+  two = xla::ScalarLike(u, 2.0);
+  sqrt_2 = xla::ScalarLike(u, std::sqrt(2.0));
+  xla::XlaOp zero = xla::ScalarLike(u, 0.0);
+  xla::XlaOp half = xla::ScalarLike(u, 0.5);
+  xla::XlaOp log_sqrt_2pi = xla::ScalarLike(u, 0.5 * std::log(2 * M_PI));
+  xla::XlaOp series_start = xla::ScalarLike(u, 8.0);
+  // log(P(Z > t)) for t >= 0. erfc underflows for large t, so switch to the
+  // asymptotic expansion of the Mills ratio there.
+  auto log_upper_tail = [&](xla::XlaOp t) {
+    xla::XlaOp direct = xla::Log(xla::Erfc(t / sqrt_2) / two);
+    xla::XlaOp ts = xla::Max(t, series_start);
+    xla::XlaOp z = one / (ts * ts);
+    xla::XlaOp series = xla::ScalarLike(u, 10395.0);
+    for (double c : {-945.0, 105.0, -15.0, 3.0, -1.0, 1.0}) {
+      series = xla::ScalarLike(u, c) + z * series;
+    }
+    xla::XlaOp asymptotic =
+        -half * ts * ts - log_sqrt_2pi - xla::Log(ts) + xla::Log(series);
+    return xla::Select(xla::Lt(t, series_start), direct, asymptotic);
+  };
+  xla::XlaOp upper = xla::Gt(tail_alpha, zero);
+  xla::XlaOp lo = xla::Select(upper, tail_alpha, -tail_beta);
+  xla::XlaOp hi = xla::Select(upper, tail_beta, -tail_alpha);
+  xla::XlaOp log_q_lo = log_upper_tail(lo);
+  xla::XlaOp log_q_hi = log_upper_tail(hi);
+  xla::XlaOp log_q =
+      log_q_lo +
+      xla::Log(u + (one - u) * xla::Exp(log_q_hi - log_q_lo));
+  xla::XlaOp t = xla::Sqrt(lo * lo - two * (log_q - log_q_lo));
+  for (int i = 0; i < 3; ++i) {
+    // Newton step on log(P(Z > t)) = log_q.
+    xla::XlaOp log_q_t = log_upper_tail(t);
+    xla::XlaOp slope = -xla::Exp(-half * t * t - log_sqrt_2pi - log_q_t);
+    t = t - (log_q_t - log_q) / slope;
+  }
+  t = xla::Clamp(lo, t, hi);
+  xla::XlaOp tail_x = mu + sigma * xla::ConvertElementType(
+                                  xla::Select(upper, t, -t), type);
+  xla::XlaOp one_sided = xla::Or(upper, xla::Lt(tail_beta, zero));
+  x = xla::Select(one_sided, xla::Clamp(a, tail_x, b), x);
+
   return x;
 }
 

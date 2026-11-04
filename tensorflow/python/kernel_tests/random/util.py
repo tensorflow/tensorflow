@@ -115,7 +115,7 @@ def test_truncated_normal(assert_equal,
     return math.exp(-(x**2) / 2.) / math.sqrt(2 * math.pi)
 
   def probit(x):
-    return special_math.ndtri(x)
+    return special_math.ndtri(np.float64(x))
 
   a = -2.
   b = 2.
