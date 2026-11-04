@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -57,9 +58,13 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Target/LLVMIR/Export.h"
+#include "xla/backends/gpu/codegen/emitters/concatenate.h"
 #include "xla/backends/gpu/codegen/emitters/loop.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
+#include "xla/backends/gpu/codegen/emitters/reduction.h"
+#include "xla/backends/gpu/codegen/emitters/scatter.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/backends/gpu/codegen/emitters/transpose.h"
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
@@ -95,8 +100,30 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
 constexpr unsigned kSharedMemoryAddrSpace = 3;
+
 }  // namespace
+
+/*static*/
+std::unique_ptr<MlirKernelEmitter>
+ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(
+    const HloFusionAnalysis& nested_analysis) {
+  switch (nested_analysis.emitter_fusion_kind()) {
+    case HloFusionAnalysis::EmitterFusionKind::kLoop:
+      return std::make_unique<LoopFusion>(nested_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kReduction:
+      return CreateReductionFusion(nested_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
+      return CreateTransposeFusion(nested_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kScatter:
+      return CreateScatterFusion(nested_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
+      return std::make_unique<ConcatenateFusion>(nested_analysis);
+    default:
+      return nullptr;
+  }
+}
 
 std::string GetNestedKernelFunctionName(absl::string_view entry_function_name,
                                         size_t index) {
@@ -193,7 +220,8 @@ absl::Status SpliceNestedKernelModuleIntoLauncher(
   llvm::SmallVector<mlir::Operation*> ops_to_move;
   for (mlir::Operation& op : nested_module.getBody()->getOperations()) {
     if (auto global = mlir::dyn_cast<mlir::LLVM::GlobalOp>(op)) {
-      if (global.getAddrSpace() == kSharedMemoryAddrSpace) {
+      if (global.getAddrSpace() == kSharedMemoryAddrSpace &&
+          launcher_module.lookupSymbol(global.getSymName()) != nullptr) {
         continue;
       }
     }
@@ -218,8 +246,11 @@ ThreadBlockSpecializedFusion::NestedKernelSpec::Create(
     const HloFusionInstruction& fusion,
     const se::DeviceDescription& device_info) {
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(fusion, device_info);
-  LoopFusion emitter(analysis);
-  return NestedKernelSpec{&fusion, emitter.launch_dimensions()};
+  std::unique_ptr<MlirKernelEmitter> emitter =
+      CreateNativeNestedEmitter(analysis);
+  CHECK(emitter != nullptr)
+      << "Failed to create nested kernel emitter for " << fusion.name();
+  return NestedKernelSpec{&fusion, emitter->launch_dimensions()};
 }
 
 ThreadBlockSpecializedFusion::ThreadBlockSpecializedFusion(
@@ -370,6 +401,7 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
     should_verify = true;
   }
 
+  int64_t max_shmem_bytes = 0;
   int64_t warp_size = device_info_.threads_per_warp();
   std::vector<mlir::OwningOpRef<mlir::ModuleOp>> nested_modules;
   nested_modules.reserve(nested_kernels_.size());
@@ -381,16 +413,17 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
 
     HloFusionAnalysis nested_analysis =
         HloFusionAnalysis::Create(*nested_spec.fusion, device_info_);
-    LoopFusion nested_emitter(nested_analysis);
+    std::unique_ptr<MlirKernelEmitter> nested_emitter =
+        CreateNativeNestedEmitter(nested_analysis);
     ABSL_ASSIGN_OR_RETURN(
         MlirKernelSource nested_source,
-        nested_emitter.Emit(&mlir_context, *nested_spec.fusion, nested_fn_name,
-                            /*buffer_assignment=*/nullptr));
-    ABSL_ASSIGN_OR_RETURN(
-        nested_source,
-        CompileMlirToLlvmDialect(device_info_, *fusion.GetModule(),
-                                 nested_fn_name, nested_emitter.unroll_factor(),
-                                 mlir_context, std::move(nested_source)));
+        nested_emitter->Emit(&mlir_context, *nested_spec.fusion, nested_fn_name,
+                             /*buffer_assignment=*/nullptr));
+    ABSL_ASSIGN_OR_RETURN(nested_source,
+                     CompileMlirToLlvmDialect(
+                         device_info_, *fusion.GetModule(), nested_fn_name,
+                         nested_emitter->unroll_factor(), mlir_context,
+                         std::move(nested_source)));
     mlir::OwningOpRef<mlir::ModuleOp> nested_module =
         std::move(nested_source).TakeModule();
 
@@ -415,6 +448,13 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
     virtualize_pm.enableVerifier(should_verify);
     virtualize_pm.addPass(createVirtualizeSubKernelPass(virtualize_options));
     ABSL_RETURN_IF_ERROR(RunPassManager(*nested_module, virtualize_pm));
+
+    if (auto shmem_attr =
+            nested_module->getOperation()->getAttrOfType<mlir::IntegerAttr>(
+                "xla.shared_memory_bytes")) {
+      max_shmem_bytes = std::max(max_shmem_bytes, shmem_attr.getInt());
+    }
+
     nested_modules.push_back(std::move(nested_module));
   }
 
@@ -441,10 +481,15 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
         *launcher_module, *nested_modules[i], nested_fn_name));
   }
 
+  (*launcher_module)
+      ->setAttr("xla.shared_memory_bytes",
+                builder.getI64IntegerAttr(max_shmem_bytes));
+
   return launcher_module;
 }
 
-absl::StatusOr<LlvmKernelSource> ThreadBlockSpecializedFusion::CreateLLVMModule(
+absl::StatusOr<ThreadBlockSpecializedFusion::LlvmKernelSourceWrapper>
+ThreadBlockSpecializedFusion::CreateLLVMModule(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     absl::string_view entry_function_name,
     const BufferAssignment* buffer_assignment,
@@ -453,6 +498,10 @@ absl::StatusOr<LlvmKernelSource> ThreadBlockSpecializedFusion::CreateLLVMModule(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       CreateAndLowerMLIRModule(mlir_context, fusion, entry_function_name,
                                buffer_assignment));
+  int64_t max_shmem_bytes =
+      (*module)
+          ->getAttrOfType<mlir::IntegerAttr>("xla.shared_memory_bytes")
+          .getInt();
 
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   std::unique_ptr<llvm::Module> llvm_module =
@@ -461,7 +510,9 @@ absl::StatusOr<LlvmKernelSource> ThreadBlockSpecializedFusion::CreateLLVMModule(
       << "Failed to translate thread-block-specialized fusion MLIR module to "
          "LLVM IR.";
 
-  return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
+  return LlvmKernelSourceWrapper{
+      LlvmKernelSource(std::move(llvm_context), std::move(llvm_module)),
+      max_shmem_bytes};
 }
 
 AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
@@ -483,13 +534,13 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
         BorrowedMlirContext borrowed_context =
             ir_emitter_context.BorrowMlirContext();
         ABSL_ASSIGN_OR_RETURN(
-            LlvmKernelSource llvm_source,
+            LlvmKernelSourceWrapper llvm_source_wrapper,
             CreateLLVMModule(
                 ir_emitter_context.gpu_device_info(), fusion, kernel_name,
                 &ir_emitter_context.buffer_assignment(), **borrowed_context));
 
         llvm::orc::ThreadSafeModule safe_module =
-            std::move(llvm_source).thread_safe_module();
+            std::move(llvm_source_wrapper.source).thread_safe_module();
         LaunchDimensions launch_dims = launch_dimensions();
         ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
             ir_emitter_context.gpu_device_info(), launch_dims, kernel_name,
@@ -506,11 +557,12 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
         return ir_emitter_context.kernel_compiler()
             ->CompileToTargetBinary(LlvmKernelSource(std::move(safe_module)),
                                     spec)
-            .Map([spec = std::move(spec)](
+            .Map([spec = std::move(spec),
+                  max_shmem_bytes = llvm_source_wrapper.max_shmem_bytes](
                      const std::vector<uint8_t>& cubin) mutable {
               KernelReuseCache::Entry entry{
                   std::string{spec.name()}, spec.launch_dimensions(),
-                  /*cluster_dim=*/std::nullopt, /*shmem_bytes=*/0,
+                  /*cluster_dim=*/std::nullopt, max_shmem_bytes,
                   std::make_shared<const std::vector<uint8_t>>(cubin)};
               entry.use_pdl = spec.use_pdl();
               return entry;

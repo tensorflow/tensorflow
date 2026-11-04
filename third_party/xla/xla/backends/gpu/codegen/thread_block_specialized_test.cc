@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -99,6 +100,10 @@ ENTRY main {
       mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
       fusion_emitter.CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
                                               /*buffer_assignment=*/nullptr));
+  EXPECT_EQ((*mlir_module)
+                ->getAttrOfType<mlir::IntegerAttr>("xla.shared_memory_bytes")
+                .getInt(),
+            0);
 
   std::string mlir_str;
   llvm::raw_string_ostream mlir_os(mlir_str);
@@ -135,14 +140,16 @@ ENTRY main {
   )"));
   EXPECT_TRUE(mlir_check);
 
-  ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
-                       fusion_emitter.CreateLLVMModule(
-                           device_info_, *fusion, "fusion",
-                           /*buffer_assignment=*/nullptr, *mlir_context_));
+  ASSERT_OK_AND_ASSIGN(
+      ThreadBlockSpecializedFusion::LlvmKernelSourceWrapper llvm_source_wrapper,
+      fusion_emitter.CreateLLVMModule(device_info_, *fusion, "fusion",
+                                      /*buffer_assignment=*/nullptr,
+                                      *mlir_context_));
+  EXPECT_EQ(llvm_source_wrapper.max_shmem_bytes, 0);
 
   std::string llvm_str;
   llvm::raw_string_ostream llvm_os(llvm_str);
-  llvm_os << *llvm_source.module();
+  llvm_os << *llvm_source_wrapper.source.module();
 
   ASSERT_OK_AND_ASSIGN(bool llvm_check, RunFileCheck(llvm_str, R"(
     // CHECK-DAG: define void @fusion(
@@ -236,6 +243,179 @@ ENTRY main {
   EXPECT_TRUE(mlir_check);
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       LoopPlusReductionWithThreadGuardAndBarrier) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+nested_tr {
+  p0 = f32[64,64]{1,0} parameter(0)
+  ROOT tr = f32[64,64]{1,0} transpose(p0), dimensions={1,0}
+}
+
+nested_reduce {
+  p0 = f32[64,512]{1,0} parameter(0)
+  c0 = f32[] constant(0)
+  ROOT red = f32[64]{0} reduce(p0, c0), dimensions={1}, to_apply=add_f32
+}
+
+horizontal_comp {
+  p0 = f32[64,64]{1,0} parameter(0)
+  p1 = f32[64,512]{1,0} parameter(1)
+  f0 = f32[64,64]{1,0} fusion(p0), kind=kInput, calls=nested_tr
+  f1 = f32[64]{0} fusion(p1), kind=kInput, calls=nested_reduce
+  ROOT t = (f32[64,64]{1,0}, f32[64]{0}) tuple(f0, f1)
+}
+
+ENTRY main {
+  p0 = f32[64,64]{1,0} parameter(0)
+  p1 = f32[64,512]{1,0} parameter(1)
+  ROOT fusion = (f32[64,64]{1,0}, f32[64]{0}) fusion(p0, p1), kind=kLoop,
+    calls=horizontal_comp
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
+  ThreadBlockSpecializedFusion fusion_emitter(analysis);
+
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_threads_per_block(), 256);
+
+  ASSERT_OK_AND_ASSIGN(
+      ThreadBlockSpecializedFusion::LlvmKernelSourceWrapper llvm_source_wrapper,
+      fusion_emitter.CreateLLVMModule(device_info_, *fusion, "fusion",
+                                      /*buffer_assignment=*/nullptr,
+                                      *mlir_context_));
+  EXPECT_GT(llvm_source_wrapper.max_shmem_bytes, 0);
+
+  std::string llvm_str;
+  llvm::raw_string_ostream llvm_os(llvm_str);
+  llvm_os << *llvm_source_wrapper.source.module();
+
+  ASSERT_OK_AND_ASSIGN(bool llvm_check, RunFileCheck(llvm_str, R"(
+    // CHECK: @global_smem = external addrspace(3) global [0 x i8], align 16
+    // CHECK: define void @fusion(
+    // CHECK: icmp ult i32 %{{.*}}, 128
+    // CHECK: call void @fusion_nested_0(
+    // CHECK: call void @fusion_nested_1(
+    // CHECK: define internal void @fusion_nested_0(
+    // CHECK: call void @llvm.nvvm.barrier{{.*}}(i32 0, i32 128)
+    // CHECK: define internal void @fusion_nested_1(
+  )"));
+  EXPECT_TRUE(llvm_check);
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       TransposePlusTransposeSharedMemoryAliasing) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+nested_tr0 {
+  p0 = f32[64,64]{1,0} parameter(0)
+  ROOT tr = f32[64,64]{1,0} transpose(p0), dimensions={1,0}
+}
+
+nested_tr1 {
+  p0 = f32[128,64]{1,0} parameter(0)
+  ROOT tr = f32[64,128]{1,0} transpose(p0), dimensions={1,0}
+}
+
+horizontal_comp {
+  p0 = f32[64,64]{1,0} parameter(0)
+  p1 = f32[128,64]{1,0} parameter(1)
+  f0 = f32[64,64]{1,0} fusion(p0), kind=kInput, calls=nested_tr0
+  f1 = f32[64,128]{1,0} fusion(p1), kind=kInput, calls=nested_tr1
+  ROOT t = (f32[64,64]{1,0}, f32[64,128]{1,0}) tuple(f0, f1)
+}
+
+ENTRY main {
+  p0 = f32[64,64]{1,0} parameter(0)
+  p1 = f32[128,64]{1,0} parameter(1)
+  ROOT fusion = (f32[64,64]{1,0}, f32[64,128]{1,0}) fusion(p0, p1),
+    kind=kLoop, calls=horizontal_comp
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
+  ThreadBlockSpecializedFusion fusion_emitter(analysis);
+
+  ASSERT_OK_AND_ASSIGN(
+      ThreadBlockSpecializedFusion::LlvmKernelSourceWrapper llvm_source_wrapper,
+      fusion_emitter.CreateLLVMModule(device_info_, *fusion, "fusion",
+                                      /*buffer_assignment=*/nullptr,
+                                      *mlir_context_));
+  EXPECT_GT(llvm_source_wrapper.max_shmem_bytes, 0);
+  // Each 32x33xf32 transpose tile is ~4224 bytes (rounded to 16 = 4224).
+  // Verify that max_shmem_bytes is the max of a single nested kernel, not their
+  // sum (< 6000 bytes).
+  EXPECT_LT(llvm_source_wrapper.max_shmem_bytes, 6000);
+
+  std::string llvm_str;
+  llvm::raw_string_ostream llvm_os(llvm_str);
+  llvm_os << *llvm_source_wrapper.source.module();
+
+  ASSERT_OK_AND_ASSIGN(bool llvm_check, RunFileCheck(llvm_str, R"(
+    // CHECK: @global_smem = external addrspace(3) global [0 x i8], align 16
+    // CHECK-NOT: addrspace(3) global [
+    // CHECK-DAG: define internal void @fusion_nested_0(
+    // CHECK-DAG: define internal void @fusion_nested_1(
+  )"));
+  EXPECT_TRUE(llvm_check);
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       ExternalTupleFusionOperandNotMisclassifiedAsThreadBlockSpecialized) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+producer_comp {
+  p0 = f32[16]{0} parameter(0)
+  n0 = f32[16]{0} negate(p0)
+  e0 = f32[16]{0} exponential(p0)
+  ROOT t = (f32[16]{0}, f32[16]{0}) tuple(n0, e0)
+}
+
+consumer_comp {
+  param = (f32[16]{0}, f32[16]{0}) parameter(0)
+  gte0 = f32[16]{0} get-tuple-element(param), index=0
+  gte1 = f32[16]{0} get-tuple-element(param), index=1
+  ROOT t = (f32[16]{0}, f32[16]{0}) tuple(gte0, gte1)
+}
+
+ENTRY main {
+  p0 = f32[16]{0} parameter(0)
+  prod = (f32[16]{0}, f32[16]{0}) fusion(p0), kind=kLoop, calls=producer_comp
+  ROOT cons = (f32[16]{0}, f32[16]{0}) fusion(prod), kind=kLoop,
+    calls=consumer_comp
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* cons = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*cons, device_info_);
+  EXPECT_EQ(analysis.emitter_fusion_kind(),
+            HloFusionAnalysis::EmitterFusionKind::kLoop);
 }
 
 }  // namespace

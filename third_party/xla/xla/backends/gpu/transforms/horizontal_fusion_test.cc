@@ -273,5 +273,42 @@ ENTRY main {
   EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(HorizontalFusionTest, FusesLoopAndReductionWithWarpAlignedThreads) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+fused_loop {
+  p0 = f32[512]{0} parameter(0)
+  ROOT neg = f32[512]{0} negate(p0)
+}
+
+fused_reduce {
+  p1 = f32[8,512]{1,0} parameter(0)
+  c0 = f32[] constant(0)
+  ROOT red = f32[8]{0} reduce(p1, c0), dimensions={1}, to_apply=add_f32
+}
+
+ENTRY main {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[8,512]{1,0} parameter(1)
+  f0 = f32[512]{0} fusion(p0), kind=kLoop, calls=fused_loop
+  f1 = f32[8]{0} fusion(p1), kind=kInput, calls=fused_reduce
+  ROOT out = (f32[512]{0}, f32[8]{0}) tuple(f0, f1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+}
+
 }  // namespace
 }  // namespace xla::gpu
