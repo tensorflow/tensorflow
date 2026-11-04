@@ -122,7 +122,7 @@ class TestWorkerInterface : public WorkerInterface {
 
 class TestWorkerCache : public WorkerCacheInterface {
  public:
-  ~TestWorkerCache() override {}
+  ~TestWorkerCache() override = default;
 
   void AddWorker(const std::string& target, WorkerInterface* wi) {
     workers_[target] = wi;

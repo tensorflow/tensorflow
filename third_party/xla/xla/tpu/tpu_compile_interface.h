@@ -25,7 +25,7 @@ limitations under the License.
 // change the default behavior.
 class TpuCompileInterface {
  public:
-  virtual ~TpuCompileInterface() {}
+  virtual ~TpuCompileInterface() = default;
   static TpuCompileInterface* Get();
   static bool RegisterImplementation(TpuCompileInterface* impl);
 
