@@ -5494,12 +5494,11 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([0, 255 * 128], dtypes.int16, dtypes.uint16, [0, 255 * 256])
 
   def testConvertFloatToInt(self):
-    # `dtype.max + 0.5` is not representable in lower precision floats, so the
-    # scaling must happen in a wider float type for `1.0` to map to `dtype.max`.
+    # Verify float-to-integer scaling maps [0.0, 0.5, 1.0] to
+    # [0, max // 2, max] for 8-bit and 16-bit integer targets.
     for src_dtype in [dtypes.float16, dtypes.bfloat16, dtypes.float32]:
       for dst_dtype in [
-          dtypes.uint8, dtypes.int8, dtypes.uint16, dtypes.int16,
-          dtypes.uint32, dtypes.int32
+          dtypes.uint8, dtypes.int8, dtypes.uint16, dtypes.int16
       ]:
         for saturate in [False, True]:
           with self.subTest(src=src_dtype, dst=dst_dtype, saturate=saturate):

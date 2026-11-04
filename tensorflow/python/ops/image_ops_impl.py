@@ -2599,14 +2599,21 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
       else:
         # Converting from float: first scale, then cast
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
-        if dtype in (dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64):
-          if image.dtype in (dtypes.float16, dtypes.bfloat16, dtypes.float32):
-            image = math_ops.cast(image, dtypes.float64)
-        elif image.dtype in (dtypes.float16, dtypes.bfloat16):
-          # `scale` is not exactly representable in half precision (and may
-          # overflow), which makes `1.0` wrap around when cast; scale in
-          # `float32` instead.
-          image = math_ops.cast(image, dtypes.float32)
+        if (
+            float(image.dtype.max) < scale
+            or float(image.dtype.as_numpy_dtype(scale)) >= dtype.max + 1
+        ):
+          # The scale rounds up to dtype.max + 1 or more in the image's type
+          # (e.g. 256 in bfloat16 for uint8, 2**31 in float32 for int32), so
+          # 1.0 would overflow the cast. Scale half and bfloat16 in float32
+          # instead, and keep the scale below dtype.max + 1.
+          if image.dtype.size < 4:
+            image = math_ops.cast(image, dtypes.float32)
+          np_dtype = image.dtype.as_numpy_dtype
+          scale = min(
+              np_dtype(scale),
+              np.nextafter(np_dtype(dtype.max + 1), np_dtype(0)),
+          )
         scaled = math_ops.multiply(image, scale)
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
