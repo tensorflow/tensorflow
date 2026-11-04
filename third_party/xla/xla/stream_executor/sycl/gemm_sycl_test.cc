@@ -129,5 +129,57 @@ TEST_F(GemmSyclTest, MatmulWithApproxGELU) {
   TestGemmWithTypeVariations(matmul_module_str);
 }
 
+// Note that oneAPI does not fuse F64 activations,
+// so the f64 variant exercises BIAS only.
+TEST_F(GemmSyclTest, MatmulWithBiasAndRELU) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.bias.relu.test
+
+  ENTRY module {
+    %parameter.1 = <<ABType>>[256,128]{1,0} parameter(0)
+    %parameter.2 = <<ABType>>[128,8]{1,0} parameter(1)
+    %parameter.3 = <<DType>>[8]{0} parameter(2)
+    %dot = <<DType>>[256,8] dot(%parameter.1, %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    bias_bcast = <<DType>>[256,8] broadcast(%parameter.3), dimensions={1}
+    biased = <<DType>>[256,8] add(%dot, bias_bcast)
+    c = <<DType>>[] constant(0)
+    c_bcast = <<DType>>[256,8] broadcast(c), dimensions={}
+    ROOT out = <<DType>>[256,8] maximum(biased, c_bcast)
+  })";
+  TestGemmWithTypeVariations(matmul_module_str);
+}
+
+TEST_F(GemmSyclTest, MatmulWithBiasAndApproxGELU) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.bias.gelu.test
+
+  ENTRY module {
+    %parameter.1 = <<ABType>>[256,128]{1,0} parameter(0)
+    %parameter.2 = <<ABType>>[128,8]{1,0} parameter(1)
+    %parameter.3 = <<DType>>[8]{0} parameter(2)
+    %dot = <<DType>>[256,8] dot(%parameter.1, %parameter.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    bias_bcast = <<DType>>[256,8] broadcast(%parameter.3), dimensions={1}
+    biased = <<DType>>[256,8] add(%dot, bias_bcast)
+    mul.0 = <<DType>>[256,8] multiply(biased, biased)
+    mul.1 = <<DType>>[256,8] multiply(biased, mul.0)
+    const.0 = <<DType>>[] constant(0.044715)
+    bcast.0 = <<DType>>[256,8] broadcast(const.0), dimensions={}
+    mul.2 = <<DType>>[256,8] multiply(mul.1, bcast.0)
+    add.0 = <<DType>>[256,8] add(biased, mul.2)
+    const.1 = <<DType>>[] constant(0.797884583)
+    bcast.1 = <<DType>>[256,8] broadcast(const.1), dimensions={}
+    mul.3 = <<DType>>[256,8] multiply(add.0, bcast.1)
+    tanh = <<DType>>[256,8] tanh(mul.3)
+    const.2 = <<DType>>[] constant(1)
+    bcast.2 = <<DType>>[256,8] broadcast(const.2), dimensions={}
+    add.2 = <<DType>>[256,8] add(tanh, bcast.2)
+    const.3 = <<DType>>[] constant(0.5)
+    bcast.3 = <<DType>>[256,8] broadcast(const.3), dimensions={}
+    mul.4 = <<DType>>[256,8] multiply(add.2, bcast.3)
+    ROOT out = <<DType>>[256,8] multiply(biased, mul.4)
+  })";
+  TestGemmWithTypeVariations(matmul_module_str);
+}
+
 }  // namespace
 }  // namespace xla::gpu

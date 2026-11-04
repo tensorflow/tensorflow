@@ -54,6 +54,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/stack_frames.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/translate/stablehlo.h"
@@ -645,6 +649,24 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
 
   return true;
 }
+
+namespace {
+
+class ShardyXLAFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "shardy-xla"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext&, const HloPassOptions& options) const override {
+    return std::make_unique<ShardyXLA>(
+        options.Get<bool>("run_sharding_propagation").value_or(true));
+  }
+};
+
+const HloPassFactory* const kShardyXLARegistration =
+    RegisterHloPassFactory<ShardyXLAFactory>();
+
+}  // namespace
 
 }  // namespace sdy
 }  // namespace xla

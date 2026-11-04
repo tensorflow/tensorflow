@@ -127,5 +127,17 @@ message GpuExecutableProto {
   // serialized before this field was introduced (cl/989587532).
   optional xla.GpuTopologyProto gpu_topology = 17;
 
+  // The fingerprint of the optimized HLO module as returned by
+  // `HloModule::GetFingerprint128()`. Empty if the executable had no HLO module
+  // or was serialized before this field was introduced. In the latter case the
+  // fingerprint is computed at runtime.
+  string fingerprint = 18;
+
+  // Whether collectives should use the minimal amount of GPU resources (e.g.
+  // the number of CTAs used by NCCL). This is determined at compile time from
+  // the HLO module. Not set for executables serialized before this field was
+  // introduced. In that case the value is computed at runtime.
+  optional bool collective_use_minimal_resource = 19;
+
   reserved 7;
 }

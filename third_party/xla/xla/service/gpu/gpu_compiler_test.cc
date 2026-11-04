@@ -194,7 +194,7 @@ class GpuCompilerTest
   // Must match the fusion-dispatch pipeline check in
   // GpuCompiler::RunPostSchedulingPipelines.
   bool RunsFusionDispatchPipeline() const {
-    return get_cuda_cc().IsAtLeastAmpere() ||
+    return get_cuda_cc().IsAtLeastAmpere() || get_rocm_cc().gfx9_mi200() ||
            get_rocm_cc().gfx9_mi300_series() || get_rocm_cc().gfx1250();
   }
 };
@@ -355,6 +355,62 @@ ENTRY main {
   // Autotuning compilations don't embed the module and don't register it.
   EXPECT_THAT(is_tracked_after_compilation(/*embed_hlo_module=*/false),
               absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(GpuCompilerTest, ExecutableMetadataWithoutEmbeddedModule) {
+  // `p2` doesn't match any output, so it stays a buffer donor during
+  // optimization.
+  constexpr absl::string_view kHloText = R"(
+HloModule test, input_output_alias={ {0}: (0, {}, must-alias) }, buffer_donor={ (2, {}) }
+
+ENTRY main {
+  p0 = f32[16]{0} parameter(0)
+  p1 = f32[16]{0} parameter(1)
+  p2 = s32[4]{0} parameter(2)
+  add = f32[16]{0} add(p0, p1)
+  neg = f32[16]{0} negate(p1)
+  ROOT result = (f32[16]{0}, f32[16]{0}) tuple(add, neg)
+}
+)";
+  HloModuleConfig config = GetModuleConfigForTest();
+  DeviceAssignment device_assignment(/*replica_count=*/1,
+                                     /*computation_count=*/1);
+  device_assignment(0, 0) = 0;
+  config.set_static_device_assignment(device_assignment);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module),
+                               /*executor=*/nullptr, compile_options));
+  ASSERT_TRUE(
+      optimized_module->input_output_alias_config().OutputHasAlias({0}));
+  ASSERT_FALSE(optimized_module->buffer_donor_config().buffer_donor().empty());
+  // Something other than the default, so that we notice if it gets lost.
+  optimized_module->mutable_config().set_partition_size(2);
+
+  compile_options.embed_hlo_module = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(optimized_module->Clone(), /*executor=*/nullptr,
+                             compile_options));
+  ASSERT_FALSE(executable->has_module());
+
+  // The executable knows the module's metadata without having the module.
+  EXPECT_EQ(executable->input_output_alias_config().ToShortString(),
+            optimized_module->input_output_alias_config().ToShortString());
+  EXPECT_EQ(executable->buffer_donor_config().ToShortString(),
+            optimized_module->buffer_donor_config().ToShortString());
+  ASSERT_NE(executable->static_device_assignment(), nullptr);
+  EXPECT_EQ(executable->static_device_assignment()->ToString(),
+            device_assignment.ToString());
+  EXPECT_EQ(executable->entry_computation_layout().ToString(),
+            optimized_module->config().entry_computation_layout().ToString());
+  EXPECT_EQ(static_cast<GpuExecutable*>(executable.get())->partition_size(), 2);
 }
 
 TEST_F(GpuCompilerTest, CopyInsertionFusion) {
@@ -1079,8 +1135,8 @@ TEST_F(
     GpuCompilerTest,
     FusionBlockLevelRewriterRewritesKLoopTransposeWithBitcastIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+, MI300+ or "
-                    "gfx1250 to run.";
+    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+, MI200, "
+                    "MI300/350, or gfx1250 to run.";
   }
 
   // If this test starts failing, then it's likely that this no longer generates
@@ -1227,6 +1283,40 @@ ENTRY main {
   EXPECT_EQ(async_start_thunk->thunks().size(), 1);
   EXPECT_THAT(async_start_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kCublasLtMatmul)));
+}
+
+TEST_F(GpuCompilerTest, SanitizesConstantNamesInParallelExecutionThread) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+f {
+  ROOT c.1 = f32[] constant(41)
+}
+
+ENTRY main {
+  ROOT call = f32[] call(),
+    to_apply=f,
+    frontend_attributes={_xla_stream_annotation="1"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  compile_options.early_exit_with_layouts = false;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(optimized_module),
+                             /*executor=*/nullptr, compile_options));
 }
 
 TEST_F(GpuCompilerTest, StreamAnnotationThunkTestFDO) {
@@ -1450,8 +1540,8 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
 
 TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "fusion-dispatch requires Ampere+, MI300+ or gfx1250 to "
-                    "run.";
+    GTEST_SKIP() << "fusion-dispatch requires Ampere+, MI200, MI300/350, or "
+                    "gfx1250 to run.";
   }
 
   DebugOptions debug_options = GetDebugOptionsForTest();

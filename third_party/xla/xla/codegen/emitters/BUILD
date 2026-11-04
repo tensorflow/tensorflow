@@ -105,6 +105,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/transforms:lowering_utils",
         "//xla/hlo/analysis:indexing_analysis",

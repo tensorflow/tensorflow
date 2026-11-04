@@ -663,5 +663,55 @@ TEST_F(RaggedTensorToVariantGradientKernelTest,
                   "computing number of elements"));
 }
 
+TEST_F(RaggedTensorToVariantGradientKernelTest, DenseValuesShapeTooLargeError) {
+  // The encoded variants carry 3 + 2 = 5 values, but dense_values_shape
+  // implies 10. Concatenating would leave the tail of the output
+  // uninitialized, so the mismatch must be rejected in that direction too.
+  auto encoded_variant_grad_1 =
+      CreateVariantFromRagged<int, int64_t>({}, {3}, {1, 2, 3});
+  auto encoded_variant_grad_2 =
+      CreateVariantFromRagged<int, int64_t>({}, {2}, {4, 5});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>(
+      {encoded_variant_grad_1, encoded_variant_grad_2}, {0, 3, 5}, {10});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Expected the number of encoded ragged values (5) to match "
+                  "the number of values implied by dense_values_shape (10)"));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest, ValuesDtypeMismatchError) {
+  // The variants carry float values while the kernel is registered for int32.
+  // Without the dtype check the values would be reinterpreted as int32.
+  auto encoded_variant_grad_1 =
+      CreateVariantFromRagged<float, int64_t>({}, {3}, {1, 2, 3});
+  auto encoded_variant_grad_2 =
+      CreateVariantFromRagged<float, int64_t>({}, {2}, {4, 5});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>(
+      {encoded_variant_grad_1, encoded_variant_grad_2}, {0, 3, 5}, {5});
+
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Expected ragged gradient values dtype int32, got float"));
+}
+
+TEST_F(RaggedTensorToVariantGradientKernelTest, MissingVariantZeroFill) {
+  // A default-constructed variant takes the missing-value path and is
+  // replaced by a zero piece sized from `row_splits`.
+  auto encoded_variant_grad_2 =
+      CreateVariantFromRagged<int, int64_t>({}, {2}, {4, 5});
+
+  BuildEncodeRaggedTensorGradientGraph<int, int64_t>(
+      {Variant(), encoded_variant_grad_2}, {0, 3, 5}, {5});
+
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int>(*GetOutput(0),
+                               test::AsTensor<int>({0, 0, 0, 4, 5}));
+}
+
 }  // namespace
 }  // namespace tensorflow

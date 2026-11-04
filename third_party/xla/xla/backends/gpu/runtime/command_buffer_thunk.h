@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
 
@@ -112,6 +114,8 @@ class CommandBufferThunk : public Thunk {
   }
 
  private:
+  struct CliqueState;
+
   // Command buffer instantiated on a `se::StreamExecutor` instance, and
   // auxiliary state required for efficient command buffer updates.
   struct ExecutorCommandBuffer {
@@ -167,6 +171,10 @@ class CommandBufferThunk : public Thunk {
     // will do the proper NCCL setup, so later iterations running through
     // command buffer does not need to call NCCL setup APIs.
     bool warmup_done ABSL_GUARDED_BY(mutex) = false;
+
+    // Handles tied to the GPU cliques active when this command buffer was
+    // created.
+    std::vector<tsl::TiedRef<CliqueState>> clique_refs;
   };
 
   struct DeviceState {
@@ -195,7 +203,8 @@ class CommandBufferThunk : public Thunk {
   // symmetric memories than `collective_memory` has (or might have) now.
   absl::StatusOr<std::shared_ptr<ExecutorCommandBuffer>>
   GetOrCreateCommandBuffer(se::StreamExecutor* executor,
-                           const CollectiveMemory* collective_memory);
+                           CollectiveCliques* collective_cliques = nullptr,
+                           const CollectiveMemory* collective_memory = nullptr);
 
   // Records `commands_` into `cmd_buffer` and remembers the symmetric memory
   // IDs of `collective_memory` that were captured.

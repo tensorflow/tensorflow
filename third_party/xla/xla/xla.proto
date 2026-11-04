@@ -1987,7 +1987,16 @@ message DebugOptions {
   // (ScanRewriterTriton).
   optional bool xla_gpu_experimental_enable_triton_scan = 562;
 
-  // Next id: 565
+  // If true, fail instead of lazily materializing the HloModule of an
+  // executable (e.g. one that was loaded from a serialized executable without
+  // deserializing its HloModule). This helps to find code that still needs the
+  // HloModule at runtime. The executable fails if the flag is set either at
+  // compile time or at load time, so a load-time value of false doesn't turn
+  // off a compile-time value of true.
+  optional bool xla_gpu_experimental_fail_on_lazy_hlo_module_materialization =
+      565;
+
+  // Next id: 566
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

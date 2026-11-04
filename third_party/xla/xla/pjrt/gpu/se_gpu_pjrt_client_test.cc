@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/pjrt/se/stream_executor_executable.h"
 #include "xla/pjrt/strided_gather.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu_topology.h"
@@ -2879,6 +2880,175 @@ TEST(StreamExecutorGpuClientTest,
   }
 
   ASSERT_OK(client->DeserializeExecutable(serialized, std::nullopt));
+}
+
+// The fingerprint stored in GpuExecutableProto is computed from the in-memory
+// module when the executable is serialized, while deserialization (before the
+// field existed) computes it from the deserialized module. Both have to agree
+// with the fingerprint of the JIT-compiled executable.
+TEST(StreamExecutorGpuClientTest, FingerprintIsStableAcrossSerialization) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  constexpr absl::string_view kFusionWithMetadata = R"hlo(
+    HloModule FusionWithMetadata
+
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[128,256] parameter(0),
+        metadata={op_name="jit(f)/p0" source_file="model.py" source_line=10}
+      p1 = f32[128,256] parameter(1)
+      mul = f32[128,256] multiply(p0, p1),
+        metadata={op_name="jit(f)/mul" source_file="model.py" source_line=11}
+      exp = f32[128,256] exponential(mul), frontend_attributes={_test_attr="1"}
+      zero = f32[] constant(0)
+      ROOT reduce = f32[128] reduce(exp, zero), dimensions={1}, to_apply=add
+    })hlo";
+  constexpr absl::string_view kSoftmax = R"hlo(
+    HloModule Softmax
+
+    max {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT max = f32[] maximum(a, b)
+    }
+
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[64,512] parameter(0)
+      ninf = f32[] constant(-inf)
+      max_reduce = f32[64] reduce(p0, ninf), dimensions={1}, to_apply=max
+      max_broadcast = f32[64,512] broadcast(max_reduce), dimensions={0}
+      sub = f32[64,512] subtract(p0, max_broadcast)
+      exp = f32[64,512] exponential(sub)
+      zero = f32[] constant(0)
+      sum = f32[64] reduce(exp, zero), dimensions={1}, to_apply=add
+      sum_broadcast = f32[64,512] broadcast(sum), dimensions={0}
+      ROOT div = f32[64,512] divide(exp, sum_broadcast)
+    })hlo";
+  constexpr absl::string_view kWhileLoop = R"hlo(
+    HloModule WhileLoop
+
+    cond {
+      p = (s32[], f32[1024]) parameter(0)
+      i = s32[] get-tuple-element(p), index=0
+      n = s32[] constant(10)
+      ROOT lt = pred[] compare(i, n), direction=LT
+    }
+
+    body {
+      p = (s32[], f32[1024]) parameter(0)
+      i = s32[] get-tuple-element(p), index=0
+      x = f32[1024] get-tuple-element(p), index=1
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      next_x = f32[1024] sine(x)
+      ROOT t = (s32[], f32[1024]) tuple(next_i, next_x)
+    }
+
+    ENTRY main {
+      x = f32[1024] parameter(0)
+      zero = s32[] constant(0)
+      init = (s32[], f32[1024]) tuple(zero, x)
+      while = (s32[], f32[1024]) while(init), condition=cond, body=body
+      ROOT result = f32[1024] get-tuple-element(while), index=1
+    })hlo";
+  constexpr absl::string_view kGemms = R"hlo(
+    HloModule Gemms
+
+    ENTRY main {
+      a = f32[256,512] parameter(0)
+      b = f32[512,128] parameter(1)
+      bias = f32[128] parameter(2)
+      c = bf16[256,512] parameter(3)
+      d = bf16[512,128] parameter(4)
+      dot = f32[256,128] dot(a, b), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+      bias_broadcast = f32[256,128] broadcast(bias), dimensions={1}
+      add = f32[256,128] add(dot, bias_broadcast)
+      zero = f32[] constant(0)
+      zeros = f32[256,128] broadcast(zero), dimensions={}
+      relu = f32[256,128] maximum(add, zeros)
+      bf16_dot = f32[256,128] dot(c, d), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+      ROOT result = (f32[256,128], f32[256,128]) tuple(relu, bf16_dot)
+    })hlo";
+  constexpr absl::string_view kConditionalAndSort = R"hlo(
+    HloModule ConditionalAndSort
+
+    true_computation {
+      p = f32[100] parameter(0)
+      ROOT negate = f32[100] negate(p)
+    }
+
+    false_computation {
+      p = f32[100] parameter(0)
+      ROOT abs = f32[100] abs(p)
+    }
+
+    less {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT lt = pred[] compare(a, b), direction=LT
+    }
+
+    ENTRY main {
+      predicate = pred[] parameter(0)
+      x = f32[100] parameter(1)
+      conditional = f32[100] conditional(predicate, x, x),
+        true_computation=true_computation, false_computation=false_computation
+      ROOT sort = f32[100] sort(conditional), dimensions={0}, to_apply=less
+    })hlo";
+  constexpr absl::string_view kGatherWithConstants = R"hlo(
+    HloModule GatherWithConstants
+
+    ENTRY main {
+      operand = f32[1000,4] parameter(0)
+      indices = s32[16,1] parameter(1)
+      gather = f32[16,4] gather(operand, indices), offset_dims={1},
+        collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
+        slice_sizes={1,4}
+      scale = f32[4] constant({1.5, 2.5, 3.5, 4.5})
+      scale_broadcast = f32[16,4] broadcast(scale), dimensions={1}
+      mul = f32[16,4] multiply(gather, scale_broadcast)
+      ROOT transpose = f32[4,16] transpose(mul), dimensions={1,0}
+    })hlo";
+
+  for (absl::string_view program :
+       {kFusionWithMetadata, kSoftmax, kWhileLoop, kGemms, kConditionalAndSort,
+        kGatherWithConstants}) {
+    SCOPED_TRACE(program);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                         CompileExecutable(program, *client));
+    ASSERT_OK_AND_ASSIGN(std::string jit_fingerprint,
+                         executable->FingerprintExecutable());
+    ASSERT_OK_AND_ASSIGN(std::string serialized,
+                         executable->SerializeExecutable());
+
+    ASSERT_OK_AND_ASSIGN(ExecutableAndOptionsProto executable_and_options,
+                         SerializedGpuExecutableFromString(serialized));
+    gpu::GpuExecutableProto gpu_executable_proto;
+    ASSERT_OK(
+        ReadSplitProto(std::make_unique<riegeli::StringReader<>>(
+                           executable_and_options.serialized_executable()),
+                       gpu_executable_proto));
+    EXPECT_EQ(gpu_executable_proto.fingerprint(), jit_fingerprint);
+
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtExecutable> deserialized,
+        client->DeserializeExecutable(serialized, std::nullopt));
+    EXPECT_THAT(deserialized->FingerprintExecutable(),
+                IsOkAndHolds(jit_fingerprint));
+  }
 }
 
 TEST(StreamExecutorGpuClientTest,

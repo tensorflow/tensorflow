@@ -1020,6 +1020,9 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/pass:hlo_pass_context",
+        "//xla/hlo/pass:hlo_pass_options",
+        "//xla/hlo/pass:hlo_pass_registry",
         "//xla/service:hlo_creation_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1033,6 +1036,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:errors",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/executable.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
@@ -74,6 +76,47 @@ void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
                                       MaybeOwningDeviceAddress buffer) {
   *buffers_.mutable_element(index) = std::move(buffer);
   unowned_indices_.insert(index);
+}
+
+Executable::Executable(HloModuleFactory hlo_module_factory)
+    : lazy_hlo_module_(
+          std::make_unique<LazyHloModuleState>(std::move(hlo_module_factory))) {
+}
+
+absl::StatusOr<std::shared_ptr<HloModule>> Executable::GetOrCreateHloModule(
+    absl::string_view reason) const {
+  if (std::shared_ptr<HloModule> hlo_module = shared_module()) {
+    return hlo_module;
+  }
+  if (lazy_hlo_module_ == nullptr) {
+    return absl::NotFoundError(
+        absl::StrCat("Executable ", name(), " has no HloModule."));
+  }
+
+  LazyHloModuleState& state = *lazy_hlo_module_;
+  absl::MutexLock lock(state.mutex);
+  // Another thread might have built the module while we were waiting.
+  if (state.module_ptr.load(std::memory_order_relaxed) != nullptr) {
+    return state.module;
+  }
+  if (state.error.has_value()) {
+    return *state.error;
+  }
+  absl::StatusOr<std::shared_ptr<HloModule>> hlo_module =
+      state.factory != nullptr
+          ? state.factory(reason)
+          : absl::InternalError("The HloModuleFactory is null.");
+  if (hlo_module.ok() && *hlo_module == nullptr) {
+    hlo_module = absl::InternalError("The HloModuleFactory returned null.");
+  }
+  if (!hlo_module.ok()) {
+    state.error = hlo_module.status();
+    return hlo_module.status();
+  }
+  state.module = *std::move(hlo_module);
+  state.module_ptr.store(state.module.get(), std::memory_order_release);
+  state.factory = nullptr;
+  return state.module;
 }
 
 absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(

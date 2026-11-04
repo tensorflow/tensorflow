@@ -91,6 +91,8 @@ constexpr int kRuntimeFields[] = {
     DebugOptions::kXlaGpuMemoryFractionPolicyFieldNumber,                 // 560
     DebugOptions::kXlaGpuExperimentalNcclWindowSymmetricFieldNumber,      // 561
     DebugOptions::kXlaGpuRequireExactBlasLtAlgorithmFieldNumber,          // 563
+    DebugOptions::                                                        //
+    kXlaGpuExperimentalFailOnLazyHloModuleMaterializationFieldNumber,     // 565
 };
 
 // Hand-written because std::is_sorted and std::adjacent_find are not
