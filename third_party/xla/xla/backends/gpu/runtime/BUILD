@@ -2852,6 +2852,13 @@ xla_test(
 )
 
 cc_library(
+    name = "command_buffer_requests",
+    hdrs = ["command_buffer_requests.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/container:node_hash_map"],
+)
+
+cc_library(
     name = "collective_clique_requests",
     srcs = ["collective_clique_requests.cc"],
     hdrs = ["collective_clique_requests.h"],
