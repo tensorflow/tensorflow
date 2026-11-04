@@ -357,11 +357,11 @@ class OffsetRankMismatchStridedSliceOpModel : public SingleOpModel {
       const std::vector<int32_t>& begin_data,
       const std::vector<int32_t>& end_data,
       const std::vector<int32_t>& strides_data) {
-    input_ = AddConstInput(TensorType_FLOAT32, input_data, input_shape);
-    begin_ = AddConstInput(TensorType_INT32, begin_data, index_shape);
-    end_ = AddConstInput(TensorType_INT32, end_data, index_shape);
-    strides_ = AddConstInput(TensorType_INT32, strides_data, index_shape);
-    output_ = AddOutput(TensorType_FLOAT32);
+    AddConstInput(TensorType_FLOAT32, input_data, input_shape);
+    AddConstInput(TensorType_INT32, begin_data, index_shape);
+    AddConstInput(TensorType_INT32, end_data, index_shape);
+    AddConstInput(TensorType_INT32, strides_data, index_shape);
+    AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(
         BuiltinOperator_STRIDED_SLICE, BuiltinOptions_StridedSliceOptions,
         CreateStridedSliceOptions(builder_, /*begin_mask=*/0, /*end_mask=*/0,
@@ -376,13 +376,6 @@ class OffsetRankMismatchStridedSliceOpModel : public SingleOpModel {
                      /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
                      /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
   }
-
- private:
-  int input_;
-  int begin_;
-  int end_;
-  int strides_;
-  int output_;
 };
 
 TEST(StridedSliceOpTest, OffsetModeRejectsRankMismatchInsteadOfOobRead) {
