@@ -865,6 +865,8 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
       // Sets up reader streams to read from the file at `current_file_index_`.
+      // Opens the file at `current_file_index_` and resets the buffer state
+      // without skipping the header record.
       absl::Status OpenStreamsLocked(Env* env)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (current_file_index_ >= dataset()->filenames_.size()) {
@@ -893,6 +895,8 @@ class CSVDatasetOp : public DatasetOpKernel {
         return absl::OkStatus();
       }
 
+      // Opens the file at `current_file_index_` and skips the header record
+      // when `dataset()->header_` is true.
       absl::Status SetupStreamsLocked(Env* env)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         TF_RETURN_IF_ERROR(OpenStreamsLocked(env));
