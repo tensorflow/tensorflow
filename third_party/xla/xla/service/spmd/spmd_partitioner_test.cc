@@ -11790,6 +11790,92 @@ ENTRY entry {
   }
 }
 
+TEST_P(SpmdPartitioningTest, IndexPassthroughScatterWithIotaIndices) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[2,128] parameter(0),
+    sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  %indices = s32[2,1] constant({ {0}, {1} }),
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+  %updates = f32[2,128] parameter(1),
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+  ROOT %scatter = f32[2,128] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      indices_are_sorted=true,
+      unique_indices=true,
+      sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+})";
+  SpmdPartitionerOptions options;
+  options.need_resolve_conflicts = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PartitionComputation(kHloString, /*num_devices=*/4, options));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto in_group_partition_id =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+  auto masked_operand =
+      op::Select(op::Broadcast(op::Convert(in_group_partition_id)),
+                 op::Broadcast(op::Constant()), op::Parameter(0));
+  auto adjusted_indices = op::Subtract(op::DynamicSlice(), op::Broadcast());
+  EXPECT_THAT(root,
+              AllOf(op::AllReduce(op::Scatter(masked_operand, adjusted_indices,
+                                              op::Parameter(1))),
+                    op::Shape("f32[1,128]")));
+}
+
+TEST_P(SpmdPartitioningTest,
+       IndexPassthroughScatterWithConcatenatedIotaIndices) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[4,16] parameter(0), sharding={replicated}
+  %batch_iota = s32[4,1] iota(), iota_dimension=0, sharding={devices=[2,1]<=[2]}
+  %col_indices = s32[4,1] parameter(1), sharding={devices=[2,1]<=[2]}
+  %indices = s32[4,2] concatenate(%batch_iota, %col_indices), dimensions={1},
+      sharding={devices=[2,1]<=[2]}
+  %updates = f32[4] parameter(2), sharding={devices=[2]<=[2]}
+  ROOT %scatter = f32[4,16] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1,
+      sharding={replicated}
+})";
+  SpmdPartitionerOptions options;
+  options.need_resolve_conflicts = false;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      PartitionComputation(kHloString, /*num_devices=*/2, options));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto masked_operand =
+      op::Select(op::Broadcast(op::Convert(op::PartitionId())),
+                 op::Broadcast(op::Constant()), op::Parameter(0));
+  EXPECT_THAT(
+      root,
+      AllOf(op::AllReduce(op::Scatter(masked_operand, _, op::Parameter(2))),
+            op::Shape("f32[4,16]")));
+}
+
 TEST_P(SpmdPartitioningTest, ScatterExplicitBatchDims) {
   absl::string_view hlo_string = R"(
 HloModule module
