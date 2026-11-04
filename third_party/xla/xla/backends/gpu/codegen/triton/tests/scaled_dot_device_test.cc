@@ -16,7 +16,6 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -83,7 +82,6 @@ namespace {
 
 using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
-using ::testing::HasSubstr;
 using ::xla::xtile::BlockLevelFusionConfig;
 using ::xla::xtile::BlockLevelParameters;
 
@@ -460,29 +458,20 @@ ENTRY e {
          {"$output_shape", absl::StrCat(m, ",", n)},
          {"$lhs_contracting_dim", lhs_k_minor ? "1" : "0"},
          {"$rhs_contracting_dim", rhs_k_minor ? "1" : "0"}});
-    ASSERT_OK_AND_ASSIGN(auto optimized_module, GetOptimizedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         GetOptimizedModule(hlo));
     HloComputation* scaled_dot_computation = GetFirstComputationWithInstruction(
         *optimized_module, HloOpcode::kScaledDot);
-    ASSERT_NE(scaled_dot_computation, nullptr);
-    EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
-                                                 "CHECK: tt.dot_scaled"),
-                IsOk());
+    if (block_size == 16 && GetCudaComputeCapability().IsAtLeastBlackwell()) {
+      EXPECT_EQ(scaled_dot_computation, nullptr);
+    } else {
+      ASSERT_NE(scaled_dot_computation, nullptr);
+      EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
+                                                   "CHECK: tt.dot_scaled"),
+                  IsOk());
+    }
     ASSERT_OK_AND_ASSIGN(std::vector<Literal> arguments,
                          MakeScaledDotArguments(optimized_module.get()));
-    if (block_size == 16 && GetCudaComputeCapability().IsAtLeastBlackwell()) {
-      EXPECT_EXIT(
-          {
-            EXPECT_THAT(RunAndCompareNoHloPasses(
-                            std::move(optimized_module),
-                            LiteralUtil::MakePointers(arguments),
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3})
-                            .message(),
-                        HasSubstr("CUDA_ERROR_INVALID_INSTRUCTION"));
-            std::_Exit(1);
-          },
-          ::testing::ExitedWithCode(1), "");
-      return;
-    }
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(optimized_module), LiteralUtil::MakePointers(arguments),
         ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
