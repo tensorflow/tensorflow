@@ -3453,6 +3453,17 @@ LogicalResult AssumeMultipleOp::verify() {
   return success();
 }
 
+OpFoldResult AssumeMultipleOp::fold(FoldAdaptor adaptor) {
+  if (getMultiple() == 1) {
+    return getValue();
+  }
+  if (auto int_attr = dyn_cast_if_present<IntegerAttr>(adaptor.getValue());
+      int_attr && int_attr.getInt() % getMultiple() == 0) {
+    return getValue();
+  }
+  return nullptr;
+}
+
 LogicalResult SublaneShuffleOp::verify() {
   auto lhs = getLhs();
   auto rhs = getRhs();

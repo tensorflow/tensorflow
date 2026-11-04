@@ -1338,6 +1338,7 @@ def TPU_AssumeMultipleOp : TPU_Op<"assume_multiple", [Pure, SameOperandsAndResul
   let results = (outs AnyTypeOf<[Index, AnyInteger]>:$result);
   let assemblyFormat = [{$value `,` $multiple attr-dict `:` type($result)}];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments, ViewLikeOpInterface]> {
