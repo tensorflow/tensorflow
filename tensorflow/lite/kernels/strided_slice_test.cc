@@ -337,6 +337,67 @@ TYPED_TEST(StridedSliceOpTest, OffsetConstantNegativeStride) {
   EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
 }
 
+// Regression model for offset mode with an effective input rank greater
+// than the number of 'begin'/'end'/'strides' elements (e.g. a 3-D input
+// sliced with 1-element index tensors). Prepare() only checks that
+// 'begin', 'end' and 'strides' agree with each other and are each capped at
+// 31 elements; it does not check them against the input rank. In offset
+// mode, ResizeOutputTensor() indexes 'end' directly by effective axis up to
+// the effective input rank, so without a rank check it reads past the end
+// of the 'end' tensor's buffer for every axis beyond begin_count. All
+// tensors are constant here so this path runs during Prepare() itself (see
+// the "noop" persistent-output branch in strided_slice::Prepare), i.e.
+// during SingleOpModel::AllocateTensors().
+class OffsetRankMismatchStridedSliceOpModel : public SingleOpModel {
+ public:
+  OffsetRankMismatchStridedSliceOpModel(
+      std::initializer_list<int> input_shape,
+      std::initializer_list<int> index_shape,
+      const std::vector<float>& input_data,
+      const std::vector<int32_t>& begin_data,
+      const std::vector<int32_t>& end_data,
+      const std::vector<int32_t>& strides_data) {
+    input_ = AddConstInput(TensorType_FLOAT32, input_data, input_shape);
+    begin_ = AddConstInput(TensorType_INT32, begin_data, index_shape);
+    end_ = AddConstInput(TensorType_INT32, end_data, index_shape);
+    strides_ = AddConstInput(TensorType_INT32, strides_data, index_shape);
+    output_ = AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(
+        BuiltinOperator_STRIDED_SLICE, BuiltinOptions_StridedSliceOptions,
+        CreateStridedSliceOptions(builder_, /*begin_mask=*/0, /*end_mask=*/0,
+                                  /*ellipsis_mask=*/0, /*new_axis_mask=*/0,
+                                  /*shrink_axis_mask=*/0, /*offset=*/true)
+            .Union());
+    // allocate_and_delegate=false: AllocateTensors() is expected to fail
+    // for this malformed model, and the default path (AllocateAndDelegate)
+    // would CHECK-fail (abort) on anything other than kTfLiteOk, which
+    // would defeat the point of this test.
+    BuildInterpreter({input_shape, index_shape, index_shape, index_shape},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  int input_;
+  int begin_;
+  int end_;
+  int strides_;
+  int output_;
+};
+
+TEST(StridedSliceOpTest, OffsetModeRejectsRankMismatchInsteadOfOobRead) {
+  // 3-D input (effective rank 3) but begin/end/strides each have only 1
+  // element (begin_count == 1 < 3). Before the fix this made
+  // ResizeOutputTensor() read end_data[1] and end_data[2], two int32s past
+  // the single-element 'end' tensor buffer. The fixed kernel must reject
+  // this during Prepare (surfaced here via AllocateTensors()) instead.
+  OffsetRankMismatchStridedSliceOpModel m(
+      /*input_shape=*/{3, 3, 3}, /*index_shape=*/{1},
+      /*input_data=*/std::vector<float>(27, 0.0f),
+      /*begin_data=*/{0}, /*end_data=*/{3}, /*strides_data=*/{1});
+  EXPECT_NE(m.AllocateTensors(), kTfLiteOk);
+}
+
 TYPED_TEST(StridedSliceOpTest, In1D) {
   for (bool constant_tensors : {true, false}) {
     if (SingleOpModel::GetForceUseNnapi() && constant_tensors) {

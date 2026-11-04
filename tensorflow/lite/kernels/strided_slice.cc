@@ -194,6 +194,21 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
       BuildStridedSliceParams(op_context, !op_context->params->offset);
   const RuntimeShape effective_input_shape = op_context->effective_input_shape;
 
+  if (op_params.offset) {
+    // In offset mode 'end' is reinterpreted as absolute output dimensions
+    // and is indexed directly below by effective axis, for every axis up to
+    // effective_input_shape.DimensionsCount(). Nothing in Prepare() ties the
+    // number of 'end' elements to the effective input rank (only to
+    // 'begin'/'strides' element counts), so a model whose effective rank
+    // exceeds NumElements(end) would otherwise read past the end tensor's
+    // buffer below.
+    TF_LITE_ENSURE_MSG(
+        context,
+        NumElements(op_context->end) >= effective_input_shape.DimensionsCount(),
+        "StridedSlice: In offset mode, 'end' must have at least as many "
+        "elements as the effective input rank.");
+  }
+
   const int32_t* end_data = GetTensorData<int32_t>(op_context->end);
   for (int idx = effective_input_shape.DimensionsCount() - 1; idx >= 0; --idx) {
     int32_t stride = op_params.strides[idx];
