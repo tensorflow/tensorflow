@@ -38,8 +38,7 @@ TfLiteStatus StripWeightsFromFlatbuffer(
 // string and returns the stripped version in a string.
 // Returns empty string on error.
 // NOTE: This only supports a single Subgraph for now.
-std::string StripWeightsFromFlatbuffer(
-    const absl::string_view input_flatbuffer);
+std::string StripWeightsFromFlatbuffer(absl::string_view input_flatbuffer);
 
 // Generates buffers with random data, for tensors that were mutated using
 // strip_buffers_from_fb.
@@ -54,7 +53,7 @@ TfLiteStatus ReconstituteConstantTensorsIntoFlatbuffer(
 // Returns empty string on error.
 // NOTE: This only supports a single Subgraph for now.
 std::string ReconstituteConstantTensorsIntoFlatbuffer(
-    const absl::string_view input_flatbuffer);
+    absl::string_view input_flatbuffer);
 
 // Return true if the input model has been stripped before.
 bool FlatbufferHasStrippedWeights(const Model* input_model);
