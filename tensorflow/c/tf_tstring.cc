@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tstring.h"
 
+#include <cstddef>
+
 #include "tensorflow/core/platform/ctstring_internal.h"
 
 void TF_StringInit(TF_TString *tstr) { TF_TString_Init(tstr); }
