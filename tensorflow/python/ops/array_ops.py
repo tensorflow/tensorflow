@@ -254,8 +254,8 @@ def fill(dims, value, name=None, layout=None):
       converted tensor has a dtype other than `int32` or `int64` in eager mode.
     TypeError: The converted `dims` tensor has a dtype other than `int32` or
       `int64` in graph mode.
-    ValueError: `dims` contains negative entries when evaluated during static
-      shape inference in graph mode.
+    ValueError: `dims` contains negative entries that are statically known
+      during graph construction.
 
   @compatibility(numpy)
   Similar to `np.full`. In `numpy`, more parameters are supported. Passing a
