@@ -40,6 +40,9 @@
     so `tf.signal.stft` and `tf.signal.inverse_stft` with the default window
     and an odd `frame_length` now return different values. The new values
     match `scipy.signal.get_window` and `tf.raw_ops.AudioSpectrogram`.
+*   `tf.data.experimental.CsvDataset` and `make_csv_dataset`: restoring an
+    iterator from a checkpoint with `header=True` no longer loses rows or fails
+    with a parse error.
 *   `tf.vectorized_map`, `tf.GradientTape.jacobian` and `batch_jacobian`:
     `tf.roll` with a negative axis no longer rolls along the wrong dimension,
     which could mix values between batch elements or return a wrong Jacobian.
