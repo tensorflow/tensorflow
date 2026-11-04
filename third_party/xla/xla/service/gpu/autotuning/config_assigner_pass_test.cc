@@ -783,6 +783,44 @@ TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsTensorIrFlag) {
   }
 }
 
+TEST_F(AutotunerFlagsTest, GetEnabledBackendsTreatsEmptyListLikeDefaultList) {
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
+  GpuAliasInfo alias_info(stream_executor_->GetDeviceDescription());
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
+  MlirContextPool mlir_context_pool(CreateMlirContext);
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_enable_tensor_ir(false);
+  auto get_enabled_backends =
+      [&]() -> absl::StatusOr<std::vector<autotuner::Backend>> {
+    ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                     ConfigAssignerPass::GetEnabledBackends(
+                         stream_executor_, allocator_.get(), &target_config,
+                         &alias_info, debug_options, &mlir_context,
+                         /*shape_size_fn=*/[](const Shape&) { return 0; },
+                         &compiler_, stream_executor_->GetPlatform()->id(),
+                         /*thread_pool=*/nullptr, &mlir_context_pool));
+    std::vector<autotuner::Backend> result;
+    for (const auto& backend : backends) {
+      result.push_back(backend->backend());
+    }
+    return result;
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::vector<autotuner::Backend> default_backends,
+                       get_enabled_backends());
+  // DebugOptions that don't start from DefaultDebugOptionsIgnoringFlags() can
+  // leave the list of autotune backends empty.
+  debug_options.clear_xla_gpu_experimental_autotune_backends();
+  ASSERT_OK_AND_ASSIGN(std::vector<autotuner::Backend> backends,
+                       get_enabled_backends());
+
+  EXPECT_THAT(backends, testing::ElementsAreArray(default_backends));
+  EXPECT_THAT(backends,
+              testing::Not(testing::Contains(autotuner::Backend::TENSOR_IR)));
+}
+
 TEST_F(ConfigAssignerPassTest, CublasLtSelectFirstConfig) {
   absl::SetVLogLevel("config_assigner*", 10);
   AutotunerCache::ClearAutotuneResults();

@@ -414,6 +414,19 @@ ConfigAssignerPass::GetEnabledBackends(
        debug_options.xla_gpu_experimental_autotune_backends()) {
     autotune_backends.push_back(static_cast<autotuner::Backend>(backend));
   }
+  // An empty list means all backends. It happens for DebugOptions that don't
+  // start from DefaultDebugOptionsIgnoringFlags(), e.g. ones serialized before
+  // it populated the list. Populate it like the defaults do, so that the
+  // backends disabled below are removed.
+  if (autotune_backends.empty()) {
+    for (int i = 0; i < autotuner::Backend_descriptor()->value_count(); ++i) {
+      const auto backend = static_cast<autotuner::Backend>(
+          autotuner::Backend_descriptor()->value(i)->number());
+      if (backend != autotuner::Backend::UNSPECIFIED_BACKEND) {
+        autotune_backends.push_back(backend);
+      }
+    }
+  }
 
   std::vector<autotuner::Backend> disabled_autotune_backends;
   if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
