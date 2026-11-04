@@ -235,7 +235,21 @@ absl::Status ConcatInputFeatureFromSameTable(
   for (const auto& [col_offset, feature_id_list] : col_offset_to_feature_id) {
     int32_t total_id_count = 0;
     for (int32_t feature_id : feature_id_list) {
-      total_id_count += (*col_ids_list)[feature_id].NumElements();
+      int32_t col_ids_elements = (*col_ids_list)[feature_id].NumElements();
+      if ((*row_ids_list)[feature_id].NumElements() != col_ids_elements) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Row ids and col ids should have same elements. But got ",
+            (*row_ids_list)[feature_id].NumElements(),
+            " elements for row ids and ", col_ids_elements,
+            " elements for col ids."));
+      }
+      if ((*gains_list)[feature_id].NumElements() != col_ids_elements) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Gains and col ids should have same elements. But got ",
+            (*gains_list)[feature_id].NumElements(), " elements for gains and ",
+            col_ids_elements, " elements for col ids."));
+      }
+      total_id_count += col_ids_elements;
     }
     (*total_id_counts)[feature_group_id] = total_id_count;
     (*updated_row_ids)[feature_group_id] =
