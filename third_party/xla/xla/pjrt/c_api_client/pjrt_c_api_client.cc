@@ -557,17 +557,74 @@ absl::Span<PjRtMemorySpace* const> PjRtCApiClient::memory_spaces() const {
 
 namespace {
 
+std::optional<absl::flat_hash_map<std::string, xla::PjRtValueType>>
+GetPluginAttributesMap(const PJRT_Api* c_api, const PjRtClient* client) {
+  if (client != nullptr) {
+    if (std::optional<PjRtPluginAttributes> attributes =
+            client->plugin_attributes();
+        attributes.has_value()) {
+      return std::move(attributes->attributes);
+    }
+  }
+
+  if (c_api == nullptr || c_api->PJRT_Plugin_Attributes == nullptr) {
+    return std::nullopt;
+  }
+
+  PJRT_Plugin_Attributes_Args args{};
+  args.struct_size = PJRT_Plugin_Attributes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
+      c_api->PJRT_Plugin_Attributes(&args), pjrt::MakeErrorDeleter(c_api));
+
+  if (error != nullptr) {
+    return std::nullopt;
+  }
+
+  return pjrt::ConvertFromPjRtNamedValueList(args.attributes,
+                                             args.num_attributes);
+}
+
+}  // namespace
+
+std::string GetPluginStablehloVersionOrDefault(const PJRT_Api* c_api,
+                                               const PjRtClient* client) {
+  // If the plugin doesn't have attributes, use the default.
+  std::optional<absl::flat_hash_map<std::string, xla::PjRtValueType>> attr_map =
+      GetPluginAttributesMap(c_api, client);
+  if (!attr_map.has_value()) {
+    return xla::GetDefaultStablehloVersion();
+  }
+  return GetPluginStablehloVersionOrDefault(*attr_map);
+}
+
+std::string GetPluginSdyVersionOrDefault(const PJRT_Api* c_api,
+                                         const PjRtClient* client) {
+  // If the plugin doesn't have attributes, use the default.
+  std::optional<absl::flat_hash_map<std::string, xla::PjRtValueType>> attr_map =
+      GetPluginAttributesMap(c_api, client);
+  if (!attr_map.has_value()) {
+    return xla::GetDefaultSdyVersion();
+  }
+  return GetPluginSdyVersionOrDefault(*attr_map);
+}
+
+namespace {
+
 // Either MLIR module or HLO program.
 // MLIR inputs have compatibility guarantees, and may be mutated in place for
 // forward compatibility.
 using ProgramVariant =
     std::variant<xla::MaybeOwningMlirModule, const xla::XlaComputation*>;
 absl::StatusOr<std::pair<std::string, std::string>> SerializeProgram(
-    PjRtClient* client, ProgramVariant program, const CompileOptions& options) {
+    const PJRT_Api* c_api, PjRtClient* client, ProgramVariant program,
+    const CompileOptions& options) {
   tsl::profiler::TraceMe traceme("PjRtCApiClient::SerializeProgram");
 
-  const std::string target_version = GetPluginStablehloVersionOrDefault(client);
-  const std::string sdy_version = GetPluginSdyVersionOrDefault(client);
+  const std::string target_version =
+      GetPluginStablehloVersionOrDefault(c_api, client);
+  const std::string sdy_version = GetPluginSdyVersionOrDefault(c_api, client);
   bool allow_in_place_mlir_modification =
       options.allow_in_place_mlir_modification;
 
@@ -623,8 +680,9 @@ InitializeArgsAndCompile(PjRtCApiClient* api_client, const PJRT_Api* c_api,
   }
 
   // Serialize program.
-  ABSL_ASSIGN_OR_RETURN(const auto code_and_format,
-                   SerializeProgram(api_client, std::move(module), options));
+  ABSL_ASSIGN_OR_RETURN(
+      const auto code_and_format,
+      SerializeProgram(c_api, api_client, std::move(module), options));
   const auto& [code, format] = code_and_format;
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;
@@ -685,7 +743,7 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
   }
 
   ABSL_ASSIGN_OR_RETURN(const auto code_and_format,
-                   SerializeProgram(client, std::move(module), options));
+                   SerializeProgram(c_api, client, std::move(module), options));
   const auto& [code, format] = code_and_format;
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;
@@ -5014,12 +5072,6 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
       },
       tsl::profiler::ContextType::kPjrtLibraryCall, traceme_context_id);
 
-  std::string target_version = GetPluginStablehloVersionOrDefault(client);
-  std::string sdy_version = GetPluginSdyVersionOrDefault(client);
-  ABSL_ASSIGN_OR_RETURN(
-      std::string serialized,
-      xla::Serialize(module.mlir_module(), target_version, sdy_version));
-  std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, std::move(module), options,
                                      topology);
 }

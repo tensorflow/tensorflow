@@ -490,6 +490,7 @@ cc_library(
     deps = [
         ":mlir_to_hlo",
         ":pjrt_client",
+        ":pjrt_common",
         "//xla:shape_util",
         "//xla:util",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1574,12 +1575,15 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:reference_api",
+        "@stablehlo//:version",
     ],
 )
 

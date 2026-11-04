@@ -624,6 +624,37 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
 }
 
+TEST(PjRtClientTest, CompilerCompileWithoutClientUsesStableHloVersion) {
+  const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
+  ASSERT_NE(c_api, nullptr);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       WrapClientAroundCApi(c_api));
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
+  ASSERT_NE(topology, nullptr);
+  PJRT_Api custom_c_api = *c_api;
+  custom_c_api.PJRT_Compile = [](PJRT_Compile_Args* args) -> PJRT_Error* {
+    mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
+    std::string version_string = absl::StrFormat(
+        "%d.%d.%d", version.getMajor(), version.getMinor(), version.getPatch());
+    EXPECT_TRUE(llvm::StringRef(args->program->code, args->program->code_size)
+                    .contains(version_string));
+    return ::pjrt::cpu_plugin::GetCpuPjrtApi()->PJRT_Compile(args);
+  };
+  PjRtCApiCompiler compiler(&custom_c_api);
+  constexpr char kProgram[] = "func.func @main() {return}";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModuleString(kProgram, *context));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      compiler.Compile(
+          CompileOptions(),
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          *topology, /*client=*/nullptr));
+  EXPECT_NE(executable, nullptr);
+}
+
 TEST(PjRtClientTest, CompileWorksInplace) {
   SetUpCpuPjRtApi();
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
