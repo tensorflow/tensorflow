@@ -59,10 +59,8 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -273,18 +271,6 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
           .status());
 
   return absl::OkStatus();
-}
-
-bool NVPTXCompiler::IsScaledDotSupportedByBackend(
-    const HloInstruction* instr,
-    const GpuTargetConfig& gpu_target_config) const {
-  if (GpuCompiler::IsScaledDotSupportedByBackend(instr, gpu_target_config)) {
-    return true;
-  }
-  if (const auto* scaled_dot = DynCast<HloScaledDotInstruction>(instr)) {
-    return CudnnScaledDotHelper::IsSupported(scaled_dot);
-  }
-  return false;
 }
 
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(

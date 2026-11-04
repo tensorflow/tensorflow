@@ -136,6 +136,8 @@ class PjRtExecutableLoadState
   virtual void Delete() = 0;
   virtual bool IsDeleted() const = 0;
 
+  virtual absl::Status ClearExecutionState() { return absl::OkStatus(); }
+
   virtual absl::Status Preload(PjRtExecutable* executable) {
     return absl::OkStatus();
   }

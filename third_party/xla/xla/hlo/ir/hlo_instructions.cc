@@ -30,6 +30,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/die_if_null.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -60,7 +63,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -1252,7 +1254,7 @@ HloSendInstruction::HloSendInstruction(HloInstruction* operand,
                                        bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kSend,
-          ShapeUtil::MakeTupleShape({CHECK_NOTNULL(operand)->shape(),
+          ShapeUtil::MakeTupleShape({ABSL_DIE_IF_NULL(operand)->shape(),
                                      ShapeUtil::MakeShape(U32, {}),
                                      ShapeUtil::MakeTokenShape()}),
           channel_id, is_host_transfer) {
@@ -2651,7 +2653,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     CHECK(!add_output);
     auto builder = HloComputation::Builder(default_called_computation_name());
     builder.AddInstruction(instruction_to_append->Clone(/*suffix=*/""));
-    auto* new_computation = CHECK_NOTNULL(instruction_to_append->GetModule())
+    auto* new_computation = ABSL_DIE_IF_NULL(instruction_to_append->GetModule())
                                 ->AddEmbeddedComputation(builder.Build());
     AppendComputation(new_computation);
     clone = called_computation_root();

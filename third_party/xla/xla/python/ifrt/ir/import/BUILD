@@ -32,7 +32,7 @@ cc_library(
         "ifrt_dump_atom_programs_pass.cc",
         "ifrt_duplicated_callee_elimination_pass.cc",
         "ifrt_insert_copy_arrays_for_returned_many_times_pass.cc",
-        "ifrt_merge_copies_and_reshards_pass.cc",
+        "ifrt_merge_ops_pass.cc",
         "ifrt_outline_atom_program_to_module_pass.cc",
         "ifrt_populate_atom_program_metadata_pass.cc",
         "ifrt_reshard_to_copy_arrays_pass.cc",

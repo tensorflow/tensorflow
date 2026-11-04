@@ -183,6 +183,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(fully_connected_params != nullptr);
 
+      // A weight with N-D blockwise quantization is only understood by
+      // runtimes at version 16 or above, whatever the weight's storage type.
+      if (op_sig.ext_options.fully_connected.is_weight_blockwise_quantized) {
+        return 16;
+      }
+
       // A non-empty `quant_spec` describes numerics that a runtime without
       // explicit support for that spec cannot reproduce. It must be checked
       // before the cases below, because an op carrying a `quant_spec` also

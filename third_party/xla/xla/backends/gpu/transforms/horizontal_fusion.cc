@@ -28,8 +28,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/thread_block_specialized.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -76,8 +78,9 @@ std::optional<LaunchDimensions> GetLaunchDimensions(
     return std::nullopt;
   }
 
-  // Single-output fusions only.
-  if (!fusion->shape().IsArray()) {
+  // Single-output native MLIR fusions only.
+  if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom ||
+      !fusion->shape().IsArray()) {
     return std::nullopt;
   }
 
@@ -89,13 +92,6 @@ std::optional<LaunchDimensions> GetLaunchDimensions(
 
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info);
 
-  // Loop fusions only.
-  // TODO(b/579777515): Support other emitter fusion kinds.
-  if (analysis.emitter_fusion_kind() !=
-      HloFusionAnalysis::EmitterFusionKind::kLoop) {
-    return std::nullopt;
-  }
-
   PreBufferAssignmentFusionInfo fusion_info(analysis);
   // Trivial copy and dynamic update slice fusions are not supported.
   if (fusion_info.GetCopyFusion().has_value() ||
@@ -104,14 +100,26 @@ std::optional<LaunchDimensions> GetLaunchDimensions(
     return std::nullopt;
   }
 
-  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(fusion_info);
-
-  const auto* kernel_emitter =
-      dynamic_cast<const KernelFusionInterface*>(emitter.get());
-  if (kernel_emitter == nullptr) {
+  std::unique_ptr<MlirKernelEmitter> emitter =
+      ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(analysis);
+  if (emitter == nullptr) {
     return std::nullopt;
   }
-  return kernel_emitter->launch_dimensions();
+  LaunchDimensions launch_dims = emitter->launch_dimensions();
+
+  // If a nested kernel has less than max_threads and uses a barrier, we need to
+  // use `bar.sync 0, T_i` in PTX. The instruction has a requirement that T_i
+  // must be a multiple of the warp size.
+  //
+  // Only loop emitter can have a count of threads that is not a multiple of the
+  // warp size, but we also know that loop emitter never uses barriers.
+  if (launch_dims.num_threads_per_block() % WarpSize(device_info) != 0 &&
+      analysis.emitter_fusion_kind() !=
+          HloFusionAnalysis::EmitterFusionKind::kLoop) {
+    return std::nullopt;
+  }
+
+  return launch_dims;
 }
 
 bool TryAddToBatch(FusionBatch& batch, HloInstruction* candidate,

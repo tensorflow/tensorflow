@@ -419,6 +419,7 @@ cc_library(
         "//xla/backends/gpu/autotuner/triton:cost_model_config_optimization",
         "//xla/backends/gpu/autotuner/triton:dot_search_space",
         "//xla/backends/gpu/autotuner/triton:triton_configs",
+        "//xla/backends/gpu/codegen/triton:support",
         "//xla/backends/gpu/transforms:convert_triton_gemm_config",
         "//xla/backends/gpu/transforms:fusion_wrapper",
         "//xla/backends/gpu/transforms:priority_fusion",

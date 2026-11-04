@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/triton/cost_model_config_optimization.h"
 #include "xla/backends/gpu/autotuner/triton/dot_search_space.h"
 #include "xla/backends/gpu/autotuner/triton/triton_configs.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
@@ -374,11 +375,23 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
     return false;
   }
 
-  // cuDNN scaled dot fusions take pre-swizzled scales and must not be retuned.
-  if (backend_config.kind() != kTritonGemmFusionKind &&
-      hlo_query::ContainsInstrWithOpcode(instr.fused_instructions_computation(),
-                                         {HloOpcode::kScaledDot})) {
-    return false;
+  if (const HloInstruction* scaled_dot =
+          hlo_query::GetFirstInstructionWithOpcode(
+              *instr.fused_instructions_computation(), HloOpcode::kScaledDot)) {
+    // cuDNN scaled dot fusions take pre-swizzled scales and must not be
+    // retuned.
+    if (backend_config.kind() != kTritonGemmFusionKind) {
+      return false;
+    }
+    // GemmFusion also wraps scaled dots that only CUDNN_FISSION or
+    // CUBLASLT_FISSION support.
+    if (!debug_options().xla_gpu_experimental_scaled_dot_with_triton() ||
+        !IsTritonSupportedInstruction(
+             *scaled_dot,
+             target_config().device_description.gpu_compute_capability())
+             .IsAllowed()) {
+      return false;
+    }
   }
 
   // TODO: b/487920266 - sometimes we create fusions that can't be tiled.

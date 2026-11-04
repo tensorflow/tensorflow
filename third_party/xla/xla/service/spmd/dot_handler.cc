@@ -1403,12 +1403,12 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
             o->shape(),
             windowed_op_is_lhs ? *lhs_sharding_transposed_to_match_output
                                : *rhs_sharding_transposed_to_match_output,
-            ccw_data_partition_id, &body_b);
+            ccw_data_partition_id, &body_b, S32);
         auto cw_offsets = MakePartitionOffsets(
             o->shape(),
             windowed_op_is_lhs ? *lhs_sharding_transposed_to_match_output
                                : *rhs_sharding_transposed_to_match_output,
-            cw_data_partition_id, &body_b);
+            cw_data_partition_id, &body_b, S32);
         o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
             o->shape(), o, ccw_dot, ccw_offsets));
         o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
@@ -1475,7 +1475,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
           o->shape(),
           windowed_op_is_lhs ? *lhs_sharding_transposed_to_match_output
                              : *rhs_sharding_transposed_to_match_output,
-          data_partition_id, &body_b, einsum_config.windowing_dims);
+          data_partition_id, &body_b, S32, einsum_config.windowing_dims);
       o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
           o->shape(), o, dot, offsets));
     }

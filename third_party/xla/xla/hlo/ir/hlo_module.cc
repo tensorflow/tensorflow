@@ -653,7 +653,10 @@ void HloModule::ToProto(HloModuleProto* proto, HloProtoOptions options) const {
     options.payload_deduplicator = &*payload_deduplicator;
   }
 
-  for (const HloComputation* computation : MakeComputationPostOrder()) {
+  const std::vector<HloComputation*> post_order = MakeComputationPostOrder();
+  proto->mutable_computations()->Reserve(proto->computations_size() +
+                                         post_order.size());
+  for (const HloComputation* computation : post_order) {
     computation->ToProto(proto->add_computations(), options);
   }
 

@@ -103,7 +103,10 @@ def Ifrt_PairwiseArrayOpInterface
       }]
     >,
     InterfaceMethod<
-      /*desc=*/"Clones the op keeping only `(inputs[i], outputs[i])` where `keep[i]` is true.",
+      /*desc=*/[{
+        Clones the op keeping only `(inputs[i], outputs[i])` where `keep[i]` is
+        true. Returns nullptr if `keep.none()`.
+      }],
       /*retTy=*/"::xla::ifrt::IfrtPairwiseArrayOpInterface",
       /*methodName=*/"cloneWithKeptOutputs",
       /*args=*/(ins
@@ -117,7 +120,11 @@ def Ifrt_PairwiseArrayOpInterface
       }]
     >,
     InterfaceMethod<
-      /*desc=*/"Replaces the op keeping only `(inputs[i], outputs[i])` where `keep[i]` is true.",
+      /*desc=*/[{
+        Replaces the op keeping only `(inputs[i], outputs[i])` where `keep[i]`
+        is true. If `keep.none()`, forwards `control_inputs` to users of
+        `control_output`, erases the op, and returns nullptr.
+      }],
       /*retTy=*/"::xla::ifrt::IfrtPairwiseArrayOpInterface",
       /*methodName=*/"replaceWithKeptOutputs",
       /*args=*/(ins

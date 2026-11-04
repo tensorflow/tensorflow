@@ -28,7 +28,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -56,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/transforms/quantization/quant_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -91,72 +91,19 @@ LogicalResult IsDrqTensor(mlir::Value value, mlir::Value& fq_input) {
   return failure();
 }
 
-// Returns true if `op` is a `tfl.batch_matmul` whose LHS comes from a
-// per-tensor signed int8 `tfl.dequantize` and whose result only feeds signed
-// int8 `tfl.quantize` ops, as required by the BATCH_MATMUL kernel for
-// blockwise quantized RHS operands.
-bool IsInt8SrqBatchMatMul(mlir::Operation* op) {
-  if (!llvm::isa<TFL::BatchMatMulOp>(op)) return false;
-  auto is_signed_i8 = [](mlir::Type type) {
-    auto qtype =
-        mlir::dyn_cast<quant::UniformQuantizedType>(getElementTypeOrSelf(type));
-    return qtype && qtype.isSigned() &&
-           qtype.getStorageTypeIntegralWidth() == 8;
-  };
-  auto lhs_dq = op->getOperand(0).getDefiningOp<DequantizeOp>();
-  if (!lhs_dq || !is_signed_i8(lhs_dq.getInput().getType())) return false;
-  mlir::Value result = op->getResult(0);
-  if (result.use_empty()) return false;
-  return llvm::all_of(result.getUsers(), [&](mlir::Operation* user) {
-    auto q = llvm::dyn_cast<QuantizeOp>(user);
-    return q && is_signed_i8(q.getType());
-  });
-}
-
 LogicalResult HasDQParent(mlir::Operation* consumer, unsigned operand_index,
                           mlir::Value value, mlir::Value& dq_input) {
   if (auto dq_op =
           llvm::dyn_cast_or_null<DequantizeOp>(value.getDefiningOp())) {
     mlir::Value input = dq_op.getOperand();
     if (mlir::isa<BlockwiseQuantType>(getElementTypeOrSelf(input.getType())) &&
-        (operand_index != 1 || !IsInt8SrqBatchMatMul(consumer))) {
+        (operand_index != 1 || !IsInt8SrqBlockwiseWeightConsumer(consumer))) {
       return failure();
     }
     dq_input = input;
     return success();
   }
   return failure();
-}
-
-ElementsAttr GetConstantElements(mlir::Value value) {
-  ElementsAttr attr;
-  if (matchPattern(value, m_Constant(&attr))) return attr;
-  if (auto const_op = value.getDefiningOp<TFL::ConstOp>()) {
-    return const_op.getValue();
-  }
-  return nullptr;
-}
-
-// Checks whether `operand` at `operand_index` of `op` is a constant
-// `tfl.blockwise_dequantize` that can be folded directly into a
-// `!tfl.blockwise_quant` constant operand of `op` when `op` is SRQ quantized.
-bool CanFoldBlockwiseWeightOperand(mlir::Operation* op, unsigned operand_index,
-                                   mlir::Value operand) {
-  if (operand_index != 1 || !IsInt8SrqBatchMatMul(op)) {
-    return false;
-  }
-  auto bw_deq = operand.getDefiningOp<TFL::BlockwiseDequantizeOp>();
-  if (!bw_deq) return false;
-  auto output_type = mlir::dyn_cast<RankedTensorType>(bw_deq.getType());
-  if (!output_type || !output_type.getElementType().isF32()) return false;
-  ElementsAttr values = GetConstantElements(bw_deq.getInput());
-  if (!values || !mlir::isa<IntegerType>(values.getElementType())) return false;
-  if (!GetConstantElements(bw_deq.getScales())) return false;
-  if (!mlir::isa<NoneType>(bw_deq.getZeroPoints().getType()) &&
-      !GetConstantElements(bw_deq.getZeroPoints())) {
-    return false;
-  }
-  return true;
 }
 
 mlir::Value FoldBlockwiseWeightToQConst(TFL::BlockwiseDequantizeOp bw_deq,

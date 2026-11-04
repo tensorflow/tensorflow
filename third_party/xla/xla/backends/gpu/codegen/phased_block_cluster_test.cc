@@ -228,7 +228,8 @@ TEST_F(PhasedBlockClusterFusionTest,
   if (!HasHopperClusterSupport()) {
     GTEST_SKIP() << "Requires Hopper (SM90+) thread-block clusters.";
   }
-  // Implicit BufferAssigner output-to-operand slice sharing is not supported.
+  // `GpuAliasInfo` disables implicit output-to-operand slice sharing so phase 0
+  // does not overwrite `p0` before phase 1 reads it.
   constexpr absl::string_view kHlo = R"hlo(
 phase_0 { ROOT neg = f32[256] negate(f32[256] parameter(0)) }
 phase_1 { ROOT add = f32[256] add(f32[256] parameter(0), f32[256] parameter(1)) }
@@ -247,7 +248,7 @@ ENTRY main {
   ROOT sum = f32[256] add(out0, out1)
 }
 )hlo";
-  EXPECT_THAT(CompileHlo(kHlo), StatusIs(absl::StatusCode::kUnimplemented));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(PhasedBlockClusterFusionTest,

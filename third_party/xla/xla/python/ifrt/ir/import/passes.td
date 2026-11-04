@@ -105,12 +105,12 @@ func.func @main(%arg0: !array, %arg1: !array {ifrt.donated}) -> (!array, !array)
 }
 
 
-def IfrtMergeCopiesAndReshardsPass :
-    Pass<"ifrt-merge-copies-and-reshards", "mlir::func::FuncOp"> {
-  let summary = "Merge copies and reshards into a single op.";
+def IfrtMergeOpsPass :
+    Pass<"ifrt-merge-ops", "mlir::func::FuncOp"> {
+  let summary = "Merge compatible CopyArrays, Reshard, and BitcastArrays ops.";
   let description = [{
-Merges copies and reshards from a source op which flow into the same destination
-op, ignoring control dependencies.
+Merges compatible `ifrt.CopyArrays`, `ifrt.Reshard`, and `ifrt.BitcastArrays`
+ops while respecting dominance order, ignoring control dependencies.
 
 E.g.
 

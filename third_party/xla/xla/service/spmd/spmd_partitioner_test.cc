@@ -6342,6 +6342,76 @@ ENTRY entry {
                           op::Shape("u32[16,80,46]")));
 }
 
+TEST_P(SpmdPartitioningTest, LargeIotaAlongTileDimensionShardOverflowsInt32) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+ENTRY entry {
+  ROOT %iota = s64[8589934592] iota(), iota_dimension=0,
+    sharding={devices=[4]<=[4]}
+})hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::Add(op::Iota(),
+                    op::Broadcast(op::Reshape(op::DynamicSlice(
+                        op::Constant(LiteralUtil::CreateR1<int64_t>(
+                            {0, 2147483648LL, 4294967296LL, 6442450944LL})),
+                        op::PartitionId())))),
+            op::Shape("s64[2147483648]")));
+}
+
+TEST_P(SpmdPartitioningTest, LargeIotaAlongTileDimensionOffsetOverflowsInt32) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+ENTRY entry {
+  ROOT %iota = f64[4294967296] iota(), iota_dimension=0,
+    sharding={devices=[4]<=[4]}
+})hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::Add(op::Iota(),
+                    op::Broadcast(op::Reshape(op::DynamicSlice(
+                        op::Constant(LiteralUtil::CreateR1<double>(
+                            {0.0, 1073741824.0, 2147483648.0, 3221225472.0})),
+                        op::PartitionId())))),
+            op::Shape("f64[1073741824]")));
+}
+
+TEST_P(SpmdPartitioningTest, U64LargeIotaAlongTileDimension) {
+  absl::string_view hlo_string = R"hlo(
+HloModule module
+
+ENTRY entry {
+  ROOT %iota = u64[8589934592] iota(), iota_dimension=0,
+    sharding={devices=[4]<=[4]}
+})hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(
+          op::Add(op::Iota(),
+                  op::Broadcast(op::Reshape(op::DynamicSlice(
+                      op::Constant(LiteralUtil::CreateR1<uint64_t>(
+                          {0ULL, 2147483648ULL, 4294967296ULL, 6442450944ULL})),
+                      op::PartitionId())))),
+          op::Shape("u64[2147483648]")));
+}
+
 TEST_P(SpmdPartitioningTest, Conditional) {
   absl::string_view hlo_string = R"(
 HloModule module

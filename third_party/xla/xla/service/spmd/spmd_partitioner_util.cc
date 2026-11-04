@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/spmd/spmd_partitioner.h"
@@ -374,25 +375,33 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
 
 std::vector<HloInstruction*> MakePartitionOffsets(
     const Shape& shape, const HloSharding& sharding,
-    HloInstruction* partition_id, SpmdBuilder* b,
+    HloInstruction* partition_id, SpmdBuilder* b, PrimitiveType offset_type,
     absl::Span<const int64_t> dims) {
   CHECK(!shape.IsTuple());
 
-  auto shard_shape = MakePartitionedShape(shape, sharding);
+  Shape shard_shape = MakePartitionedShape(shape, sharding);
   std::vector<HloInstruction*> offsets;
 
   for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
     if (sharding.dimension(i) == 1 ||
         (!dims.empty() && !absl::c_linear_search(dims, i))) {
       offsets.push_back(b->AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
+          HloInstruction::CreateConstant(LiteralUtil::Zero(offset_type))));
     } else {
-      std::vector<int32_t> offset_array(sharding.num_devices());
-      sharding.EachTile([&](absl::Span<const int64_t> indices, int64_t device) {
-        offset_array[device] = indices[i] * shard_shape.dimensions(i);
-      });
-      offsets.push_back(
-          TableLookup<int32_t>(offset_array, S32, partition_id, b));
+      offsets.push_back(primitive_util::ArrayTypeSwitch(
+          [&](auto type) -> HloInstruction* {
+            using NativeT = primitive_util::NativeTypeOf<type>;
+            absl::InlinedVector<NativeT, 8> offset_array(
+                sharding.num_devices());
+            sharding.EachTile([&](absl::Span<const int64_t> indices,
+                                  int64_t device) {
+              offset_array[device] =
+                  static_cast<NativeT>(indices[i] * shard_shape.dimensions(i));
+            });
+            return TableLookup<NativeT>(offset_array, offset_type, partition_id,
+                                        b);
+          },
+          offset_type));
     }
   }
 
@@ -407,7 +416,7 @@ std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
     dimensions.remove_suffix(1);
   }
   auto table_shape = ShapeUtil::MakeShape(S32, dimensions);
-  return MakePartitionOffsets(table_shape, sharding, partition_id, b);
+  return MakePartitionOffsets(table_shape, sharding, partition_id, b, S32);
 }
 
 Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
@@ -2577,7 +2586,7 @@ HloInstruction* PerGroupSliceFromReplicated(
   return b->AddInstruction(HloInstruction::CreateDynamicSlice(
       shard_shape, padded_hlo,
       MakePartitionOffsets(replicated->shape(), group_level_sharding, group_id,
-                           b),
+                           b, S32),
       shard_shape.dimensions()));
 }
 

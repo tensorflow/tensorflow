@@ -331,6 +331,47 @@ func.func @apply_indexing_overflow_unchanged(%arg0: !tt.ptr<f32>, %pid: index) -
 
 // -----
 
+// CHECK-LABEL: func.func @xla_range_offset
+// CHECK-SAME:  (%[[ARG0:.*]]: !tt.ptr<f32>, %[[PID:.*]]: i32) -> tensor<64x2xf32> {
+// CHECK-DAG:    %[[OFFSET:.*]] = arith.index_cast %[[PID]]
+// CHECK-DAG:    %[[C2:.*]] = arith.constant 2 : index
+// CHECK:        %[[MUL:.*]] = arith.muli %[[OFFSET]], %[[C2]] : index
+// CHECK:        %[[EXTRACT:.*]] = triton_xla.extract from %[[ARG0]]
+// CHECK-SAME:       as memref<2048xf32, #xtile.layout<[0]>>
+// CHECK-SAME:       [%[[MUL]]] [128] [1] : tensor<128xf32>
+// CHECK:        %[[RESHAPE:.*]] = tt.reshape %[[EXTRACT]] : tensor<128xf32> -> tensor<64x2xf32>
+// CHECK:        return %[[RESHAPE]] : tensor<64x2xf32>
+func.func @xla_range_offset(%arg0: !tt.ptr<f32>, %pid: i32) -> tensor<64x2xf32> {
+  %0 = arith.index_cast %pid {xla.range = [0 : index, 960 : index]} : i32 to index
+  %1 = triton_xla.extract from %arg0
+      as memref<1024x2xf32, #xtile.layout<[1, 0]>>
+      [%0, 0] [64, 2] [1, 1] : tensor<64x2xf32>
+  return %1 : tensor<64x2xf32>
+}
+
+// -----
+
+// The `xla.range` upper bound of the offset exceeds INT32_MAX / 2, so the
+// merged offset `offset * 2` could overflow and the dims must not be collapsed.
+// CHECK-LABEL: func.func @xla_range_offset_overflow_unchanged
+// CHECK-SAME:  (%[[ARG0:.*]]: !tt.ptr<f32>, %[[PID:.*]]: i32) -> tensor<64x2xf32> {
+// CHECK:        %[[OFFSET:.*]] = arith.index_cast %[[PID]]
+// CHECK-NOT:    arith.muli
+// CHECK:        %[[EXTRACT:.*]] = triton_xla.extract from %[[ARG0]]
+// CHECK-SAME:       as memref<1000000000x2xf32, #xtile.layout<[1, 0]>>
+// CHECK-SAME:       [%[[OFFSET]], 0] [64, 2] [1, 1] : tensor<64x2xf32>
+// CHECK-NOT:    tt.reshape
+// CHECK:        return %[[EXTRACT]] : tensor<64x2xf32>
+func.func @xla_range_offset_overflow_unchanged(%arg0: !tt.ptr<f32>, %pid: i32) -> tensor<64x2xf32> {
+  %0 = arith.index_cast %pid {xla.range = [0 : index, 1500000000 : index]} : i32 to index
+  %1 = triton_xla.extract from %arg0
+      as memref<1000000000x2xf32, #xtile.layout<[1, 0]>>
+      [%0, 0] [64, 2] [1, 1] : tensor<64x2xf32>
+  return %1 : tensor<64x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func.func @non_power_of_two_tile_unchanged
 // CHECK-SAME:  (%[[ARG0:.*]]: !tt.ptr<f32>) -> tensor<1x3xf32> {
 // CHECK:        %[[EXTRACT:.*]] = triton_xla.extract from %[[ARG0]]

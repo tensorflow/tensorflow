@@ -131,3 +131,18 @@ func.func @select_buffer_test(%src: memref<2xi64>, %replica_id: index) -> memref
   // CHECK: return %[[RES_MEMREF]] : memref<128xf32>
   return %0 : memref<128xf32>
 }
+
+// -----
+
+xtile.entry_func @tile_id_range_preserved(
+    %input: memref<8xf32, #nvvm.memory_space<global>>,
+    %output: memref<8xf32, #nvvm.memory_space<global>>,
+    %tile_id: index {xla.range = [0 : index, 7 : index]}) {
+  %tile = xtile.extract %input[%tile_id][1][1] : memref<8xf32, #nvvm.memory_space<global>> -> tensor<1xf32>
+  xtile.insert %tile into %output[%tile_id][1][1] : tensor<1xf32> -> memref<8xf32, #nvvm.memory_space<global>>
+  xtile.return
+}
+
+// CHECK-LABEL: func.func @tile_id_range_preserved
+// CHECK:         %[[PID:.*]] = tt.get_program_id x : i32
+// CHECK-NEXT:    %[[PID_IDX:.*]] = arith.index_cast %[[PID]] {xla.range = [0 : index, 7 : index]} : i32 to index

@@ -2440,14 +2440,15 @@ class ScanTritonEmitterTest : public TritonEmitterTest {
 
   // Returns arguments for the entry computation of `module` filled with small
   // integers. All intermediate scan results are then exactly representable in
-  // f32, so that the results match the interpreter reference bit-exactly,
-  // independently of the order in which the scan combines the elements.
+  // the parameter type, so that the results match the interpreter reference
+  // bit-exactly, independently of the order in which the scan combines the
+  // elements.
   absl::StatusOr<std::vector<Literal>> MakeSmallIntegerArguments(
       const HloModule& module) {
     std::vector<Literal> arguments;
     for (const HloInstruction* parameter :
          module.entry_computation()->parameter_instructions()) {
-      Literal literal(parameter->shape());
+      Literal literal(ShapeUtil::ChangeElementType(parameter->shape(), F32));
       ABSL_RETURN_IF_ERROR(
           literal.Populate<float>([](absl::Span<const int64_t> indices) {
             int64_t value = 0;
@@ -2456,7 +2457,9 @@ class ScanTritonEmitterTest : public TritonEmitterTest {
             }
             return static_cast<float>(value % 7 - 3);
           }));
-      arguments.push_back(std::move(literal));
+      ABSL_ASSIGN_OR_RETURN(Literal converted,
+                       literal.Convert(parameter->shape().element_type()));
+      arguments.push_back(std::move(converted));
     }
     return arguments;
   }
@@ -2521,6 +2524,39 @@ ENTRY entry_computation {
   p0 = f32[1024] parameter(0)
   p1 = f32[] parameter(1)
   ROOT fusion = f32[1024] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":[]}],
+        "num_warps":4,"num_ctas":1,"num_stages":1}}}
+})";
+  RunAndCompareScan(kHloText);
+}
+
+// On pre-Hopper GPUs, FloatNormalization wraps the bf16 add of the combiner in
+// converts.
+TEST_F(ScanTritonEmitterTest, TiledFloatNormalizedBf16Scan) {
+  constexpr absl::string_view kHloText = R"(
+add_computation {
+  p0 = bf16[] parameter(0)
+  p1 = bf16[] parameter(1)
+  c0 = f32[] convert(p0)
+  c1 = f32[] convert(p1)
+  add = f32[] add(c0, c1)
+  convert = bf16[] convert(add)
+  ROOT tuple = (bf16[], bf16[]) tuple(convert, convert)
+}
+
+scan_fusion {
+  p0 = bf16[1000] parameter(0)
+  p1 = bf16[] parameter(1)
+  scan = (bf16[1000], bf16[]) scan(p0, p1), dimensions={0}, num_carries=1,
+    is_associative=true, to_apply=add_computation, backend_config={sizes:[256]}
+  ROOT get-tuple-element = bf16[1000] get-tuple-element(scan), index=0
+}
+
+ENTRY entry_computation {
+  p0 = bf16[1000] parameter(0)
+  p1 = bf16[] parameter(1)
+  ROOT fusion = bf16[1000] fusion(p0, p1), kind=kCustom, calls=scan_fusion,
     backend_config={"fusion_backend_config":{"kind":"__triton",
       "block_level_fusion_config":{"output_tiles":[{"sizes":[]}],
         "num_warps":4,"num_ctas":1,"num_stages":1}}}

@@ -309,6 +309,243 @@ module {
   EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
 }
 
+TEST_F(IfrtInterfacesTest, CloneWithKeptOutputsReturnsNullWhenKeepNone) {
+  constexpr const char* kModuleStr = R"mlir(
+!a0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!b0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<2x1 to [0] on 2>, [2,3]>
+module {
+  func.func @main(%x0: !a0, %ctrl_in: !ifrt.control) -> !b0
+      attributes {ifrt.function} {
+    %y0, %ctrl = ifrt.Reshard(%x0) after %ctrl_in : (!a0) -> !b0
+    return %y0 : !b0
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main_func);
+
+  ReshardOp reshard_op = *main_func.getOps<ReshardOp>().begin();
+  mlir::IRRewriter rewriter(&mlir_context_);
+  rewriter.setInsertionPointToEnd(&main_func.getBody().front());
+
+  llvm::BitVector keep_none(1, false);
+  IfrtPairwiseArrayOpInterface cloned =
+      reshard_op.cloneWithKeptOutputs(rewriter, keep_none);
+  EXPECT_FALSE(cloned);
+  EXPECT_EQ(rewriter.getInsertionPoint(), main_func.getBody().front().end());
+
+  llvm::SmallVector<ReshardOp> remaining(main_func.getOps<ReshardOp>());
+  EXPECT_EQ(remaining.size(), 1u);
+  EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+}
+
+TEST_F(IfrtInterfacesTest,
+       ReplaceWithKeptOutputsForwardsSingleControlInputToUsers) {
+  constexpr const char* kModuleStr = R"mlir(
+!a0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!b0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<2x1 to [0] on 2>, [2,3]>
+!c0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<1x1 to [0] on 2>, [2,3]>
+module {
+  func.func private @atom(%a: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %a : tensor<2x2xi32>
+  }
+  func.func @main(%x0: !a0, %ctrl_in0: !ifrt.control, %ctrl_in1: !ifrt.control)
+      -> (!a0, !ifrt.control) attributes {ifrt.function} {
+    %y0, %ctrl_r = ifrt.Reshard(%x0) after %ctrl_in0 : (!a0) -> !b0
+    %cp0, %ctrl_c = ifrt.CopyArrays(%x0) after %ctrl_in1 : (!a0) -> !c0
+    %out, %ctrl_call = ifrt.Call @atom(%x0) after %ctrl_in1, %ctrl_c
+        on devices [0,1] : (!a0) -> !a0
+    return %out, %ctrl_r : !a0, !ifrt.control
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main_func);
+
+  ReshardOp reshard_op = *main_func.getOps<ReshardOp>().begin();
+  CopyArraysOp copy_op = *main_func.getOps<CopyArraysOp>().begin();
+  CallOp call_op = *main_func.getOps<CallOp>().begin();
+  mlir::func::ReturnOp return_op =
+      *main_func.getOps<mlir::func::ReturnOp>().begin();
+  mlir::IRRewriter rewriter(&mlir_context_);
+
+  llvm::BitVector keep_none(1, false);
+  EXPECT_FALSE(reshard_op.replaceWithKeptOutputs(rewriter, keep_none));
+  EXPECT_FALSE(copy_op.replaceWithKeptOutputs(rewriter, keep_none));
+
+  EXPECT_TRUE(main_func.getOps<ReshardOp>().empty());
+  EXPECT_TRUE(main_func.getOps<CopyArraysOp>().empty());
+  EXPECT_EQ(return_op.getOperand(1), main_func.getArgument(1));
+  ASSERT_EQ(call_op.getControlInputs().size(), 1u);
+  EXPECT_EQ(call_op.getControlInputs()[0], main_func.getArgument(2));
+  EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+}
+
+TEST_F(IfrtInterfacesTest,
+       ReplaceWithKeptOutputsDeduplicatesControlInputsForNonVariadicUser) {
+  constexpr const char* kModuleStr = R"mlir(
+!a0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!b0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<2x1 to [0] on 2>, [2,3]>
+module {
+  func.func @main(%x0: !a0, %ctrl_in0: !ifrt.control)
+      -> !ifrt.control attributes {ifrt.function} {
+    %y0, %ctrl_r = ifrt.Reshard(%x0) after %ctrl_in0, %ctrl_in0 : (!a0) -> !b0
+    return %ctrl_r : !ifrt.control
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main_func);
+
+  ReshardOp reshard_op = *main_func.getOps<ReshardOp>().begin();
+  mlir::func::ReturnOp return_op =
+      *main_func.getOps<mlir::func::ReturnOp>().begin();
+  mlir::IRRewriter rewriter(&mlir_context_);
+
+  llvm::BitVector keep_none(1, false);
+  EXPECT_FALSE(reshard_op.replaceWithKeptOutputs(rewriter, keep_none));
+
+  EXPECT_TRUE(main_func.getOps<ReshardOp>().empty());
+  EXPECT_EQ(return_op.getOperand(0), main_func.getArgument(1));
+  EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+}
+
+TEST_F(IfrtInterfacesTest, ReplaceWithKeptOutputsDropsZeroControlInputs) {
+  constexpr const char* kModuleStr = R"mlir(
+!a0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!b0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<2x1 to [0] on 2>, [2,3]>
+!c0 = !ifrt.array<tensor<2x2xi32>,
+                  #ifrt.sharding_param<1x1 to [0] on 2>, [2,3]>
+module {
+  func.func private @atom(%a: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    return %a : tensor<2x2xi32>
+  }
+  func.func @main(%x0: !a0, %other_ctrl: !ifrt.control) -> (!a0, !c0)
+      attributes {ifrt.function} {
+    %dead, %ctrl_dead = ifrt.Reshard(%x0) : (!a0) -> !b0
+    %out0, %ctrl_call = ifrt.Call @atom(%x0) after %ctrl_dead
+        on devices [0,1] : (!a0) -> !a0
+    %out1, %ctrl_copy = ifrt.CopyArrays(%x0) after %ctrl_dead, %other_ctrl
+        : (!a0) -> !c0
+    return %out0, %out1 : !a0, !c0
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main_func);
+
+  ReshardOp reshard_op = *main_func.getOps<ReshardOp>().begin();
+  CallOp call_op = *main_func.getOps<CallOp>().begin();
+  CopyArraysOp copy_op = *main_func.getOps<CopyArraysOp>().begin();
+  mlir::IRRewriter rewriter(&mlir_context_);
+
+  llvm::BitVector keep_none(1, false);
+  EXPECT_FALSE(reshard_op.replaceWithKeptOutputs(rewriter, keep_none));
+
+  EXPECT_TRUE(main_func.getOps<ReshardOp>().empty());
+  EXPECT_TRUE(call_op.getControlInputs().empty());
+  ASSERT_EQ(copy_op.getControlInputs().size(), 1u);
+  EXPECT_EQ(copy_op.getControlInputs()[0], main_func.getArgument(1));
+  EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+}
+
+TEST_F(IfrtInterfacesTest,
+       ReplaceWithKeptOutputsForwardsMultipleControlInputsToUsers) {
+  constexpr const char* kModuleStr = R"mlir(
+!a_d01 = !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+!b_d23 = !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [2,3]>
+!a_d0 = !ifrt.array<tensor<2x2xi32>,
+                    #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!a_d1 = !ifrt.array<tensor<2x2xi32>,
+                    #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+module {
+  func.func private @atom(%a: tensor<2x4xi32>) -> tensor<2x4xi32> {
+    return %a : tensor<2x4xi32>
+  }
+  func.func @main(%x0: !a_d01, %s0: !a_d0, %s1: !a_d1,
+                  %c_pre: !ifrt.control, %c0: !ifrt.control,
+                  %c1: !ifrt.control, %c_post: !ifrt.control)
+      -> (!a_d01, !a_d0, !a_d1) attributes {ifrt.function} {
+    %dead, %ctrl_dead = ifrt.CopyArrays(%x0) after %c0, %c1
+        : (!a_d01) -> !b_d23
+    %call_out, %ctrl_call = ifrt.Call @atom(%x0)
+        after %c_pre, %ctrl_dead, %c_post on devices [0,1]
+        : (!a_d01) -> !a_d01
+    %asm_out, %ctrl_asm = ifrt.Assemble(%s0, %s1) after %ctrl_dead, %c1
+        : (!a_d0, !a_d1) -> !a_d01
+    %d0, %d1, %ctrl_dis = ifrt.Disassemble(%asm_out) after %ctrl_dead
+        : (!a_d01) -> (!a_d0, !a_d1)
+    return %call_out, %d0, %d1 : !a_d01, !a_d0, !a_d1
+  }
+}
+)mlir";
+
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       LoadFromSource(kModuleStr));
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main_func);
+
+  CopyArraysOp copy_op = *main_func.getOps<CopyArraysOp>().begin();
+  CallOp call_op = *main_func.getOps<CallOp>().begin();
+  AssembleOp assemble_op = *main_func.getOps<AssembleOp>().begin();
+  DisassembleOp disassemble_op = *main_func.getOps<DisassembleOp>().begin();
+  mlir::IRRewriter rewriter(&mlir_context_);
+
+  llvm::BitVector keep_none(1, false);
+  EXPECT_FALSE(copy_op.replaceWithKeptOutputs(rewriter, keep_none));
+
+  EXPECT_TRUE(main_func.getOps<CopyArraysOp>().empty());
+
+  mlir::Value c_pre = main_func.getArgument(3);
+  mlir::Value c0 = main_func.getArgument(4);
+  mlir::Value c1 = main_func.getArgument(5);
+  mlir::Value c_post = main_func.getArgument(6);
+
+  ASSERT_EQ(call_op.getControlInputs().size(), 4u);
+  EXPECT_EQ(call_op.getControlInputs()[0], c_pre);
+  EXPECT_EQ(call_op.getControlInputs()[1], c0);
+  EXPECT_EQ(call_op.getControlInputs()[2], c1);
+  EXPECT_EQ(call_op.getControlInputs()[3], c_post);
+
+  ASSERT_EQ(assemble_op.getControlInputs().size(), 2u);
+  EXPECT_EQ(assemble_op.getControlInputs()[0], c0);
+  EXPECT_EQ(assemble_op.getControlInputs()[1], c1);
+
+  ASSERT_EQ(disassemble_op.getControlInputs().size(), 2u);
+  EXPECT_EQ(disassemble_op.getControlInputs()[0], c0);
+  EXPECT_EQ(disassemble_op.getControlInputs()[1], c1);
+
+  EXPECT_TRUE(mlir::succeeded(mlir::verify(*module)));
+}
+
 }  // namespace
 }  // namespace ifrt
 }  // namespace xla

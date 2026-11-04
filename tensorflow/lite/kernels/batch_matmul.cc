@@ -729,70 +729,20 @@ TfLiteStatus EvalInt8BlockwiseRhs(
   }
   TF_LITE_ENSURE(context, GetTensorData<int8_t>(lhs) != nullptr);
 
-  auto ensure_valid_buffer =
-      [&](const TfLiteTensor* tensor,
-          bool require_constant_or_persistent) -> TfLiteStatus {
-    if (require_constant_or_persistent) {
-      TF_LITE_ENSURE(context, IsConstantOrPersistentTensor(tensor));
-    }
-    size_t required_bytes = 0;
-    TF_LITE_ENSURE_OK(
-        context, BytesRequired(tensor->type, tensor->dims->data,
-                               tensor->dims->size, &required_bytes, context));
-    TF_LITE_ENSURE(context, tensor->bytes >= required_bytes);
-    if (required_bytes > 0) {
-      TF_LITE_ENSURE(context, tensor->data.raw != nullptr);
-    }
-    return kTfLiteOk;
-  };
-
+  TF_LITE_ENSURE_OK(context, dequantize::ValidateBlockwiseQuantizationV2Buffers(
+                                 context, rhs, rhs_blockwise));
   const TfLiteTensor* scale_tensor = &context->tensors[rhs_blockwise->scale];
-  TF_LITE_ENSURE_OK(
-      context, ensure_valid_buffer(scale_tensor,
-                                   /*require_constant_or_persistent=*/true));
   const TfLiteTensor* zp_tensor = nullptr;
   if (rhs_blockwise->zero_point != kTfLiteOptionalTensor) {
     zp_tensor = &context->tensors[rhs_blockwise->zero_point];
-    TF_LITE_ENSURE_OK(
-        context, ensure_valid_buffer(zp_tensor,
-                                     /*require_constant_or_persistent=*/true));
   }
-  TF_LITE_ENSURE_OK(
-      context,
-      ensure_valid_buffer(rhs, /*require_constant_or_persistent=*/false));
 
-  const int64_t rhs_flat_size = orig_rhs_shape.FlatSize();
-  std::vector<int8_t> unpacked_rhs;
-  const int8_t* rhs_int8_data = nullptr;
-  const uint8_t* rhs_uint8_data = nullptr;
-  const int16_t* rhs_int16_data = nullptr;
-  switch (rhs->type) {
-    case kTfLiteInt2:
-    case kTfLiteInt4:
-    case kTfLiteUInt4:
-      TF_LITE_ENSURE(context, rhs_flat_size <= std::numeric_limits<int>::max());
-      unpacked_rhs.resize(rhs_flat_size);
-      tensor_utils::UnpackPackedIntToInt8(
-          GetTensorData<int8_t>(rhs), static_cast<int>(rhs_flat_size),
-          /*bit_width=*/rhs->type == kTfLiteInt2 ? 2 : 4, unpacked_rhs.data(),
-          /*unpack_unsigned=*/rhs->type == kTfLiteUInt4);
-      rhs_int8_data = unpacked_rhs.data();
-      break;
-    case kTfLiteInt8:
-      rhs_int8_data = GetTensorData<int8_t>(rhs);
-      break;
-    case kTfLiteUInt8:
-      rhs_uint8_data = GetTensorData<uint8_t>(rhs);
-      break;
-    case kTfLiteInt16:
-      rhs_int16_data = GetTensorData<int16_t>(rhs);
-      break;
-    default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Unsupported RHS type %s for blockwise BatchMatMul.",
-                         TfLiteTypeGetName(rhs->type));
-      return kTfLiteError;
-  }
+  dequantize::BlockwiseQuantizedValues rhs_values;
+  TF_LITE_ENSURE_OK(context, dequantize::GetBlockwiseQuantizedValues(
+                                 context, rhs, &rhs_values));
+  const int8_t* rhs_int8_data = rhs_values.int8_data;
+  const uint8_t* rhs_uint8_data = rhs_values.uint8_data;
+  const int16_t* rhs_int16_data = rhs_values.int16_data;
 
   const std::vector<float> scales =
       dequantize::ReadBlockwiseParamsAsFloat(scale_tensor);
@@ -809,22 +759,13 @@ TfLiteStatus EvalInt8BlockwiseRhs(
     }
     return strides;
   };
-  auto make_block_strides = [&](const TfLiteTensor* param_tensor) {
-    std::vector<int64_t> strides(rhs_rank, 0);
-    if (param_tensor == nullptr) return strides;
-    int64_t stride = 1;
-    for (int d = rhs_rank - 1; d >= 0; --d) {
-      const int extent = param_tensor->dims->data[d];
-      strides[d] = (extent == 1) ? 0 : stride;
-      stride *= extent;
-    }
-    return strides;
-  };
 
   const std::vector<int64_t> lhs_strides = make_strides(orig_lhs_shape);
   const std::vector<int64_t> rhs_strides = make_strides(orig_rhs_shape);
-  const std::vector<int64_t> scale_strides = make_block_strides(scale_tensor);
-  const std::vector<int64_t> zp_strides = make_block_strides(zp_tensor);
+  const std::vector<int64_t> scale_strides =
+      dequantize::GetBlockwiseParamsStrides(scale_tensor, rhs_rank);
+  const std::vector<int64_t> zp_strides =
+      dequantize::GetBlockwiseParamsStrides(zp_tensor, rhs_rank);
 
   const int64_t m_stride_lhs =
       adj_x ? lhs_strides[lhs_rank - 1] : lhs_strides[lhs_rank - 2];

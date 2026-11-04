@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -36,7 +37,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -97,6 +98,8 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
     builder.setInsertionPointToStart(module.getBody());
 
     const int64_t num_buffer_args = entry_op.getBufferArgs().size();
+    mlir::Attribute tile_id_range =
+        entry_op.getArgAttr(entry_op.getNumArguments() - 1, "xla.range");
     auto new_arg_types = GetTransformedArgTypes(entry_op);
     auto new_func_op =
         mlir::func::FuncOp::create(builder, entry_op.getName(),
@@ -117,8 +120,11 @@ class XTileEntryToTriton : public mlir::OpRewritePattern<xtile::EntryFuncOp> {
     BlockArgument tile_id_arg = old_args.back();
 
     auto pid = ttir::GetProgramIdOp::create(builder, ttir::ProgramIDDim::X);
-    Value pid_idx =
+    auto pid_idx =
         ma::IndexCastOp::create(builder, builder.getIndexType(), pid);
+    if (tile_id_range) {
+      pid_idx->setAttr("xla.range", tile_id_range);
+    }
     rewriter.replaceAllUsesWith(tile_id_arg, pid_idx);
 
     // Handle memref arguments.

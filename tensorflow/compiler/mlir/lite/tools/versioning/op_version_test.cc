@@ -751,6 +751,22 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
       .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 14);
+
+  // An N-D blockwise quantized weight is version 16 regardless of its type.
+  for (TfLiteType weight_type : {kTfLiteInt2, kTfLiteInt4, kTfLiteUInt4,
+                                 kTfLiteInt8, kTfLiteUInt8, kTfLiteInt16}) {
+    fully_connected_params = {};
+    fake_op_sig = {
+        .op = BuiltinOperator_FULLY_CONNECTED,
+        .inputs = CreateOpSignatureTensorSpecs(
+            std::vector<TfLiteType>{kTfLiteInt8, weight_type, kTfLiteInt32}),
+        .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+        .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+    };
+    fake_op_sig.ext_options.fully_connected.is_weight_blockwise_quantized =
+        true;
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 16);
+  }
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {

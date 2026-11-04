@@ -43,6 +43,12 @@ class IfrtPairwiseArrayOpInterface;
 
 namespace detail {
 
+// Forwards `control_inputs` to all users of `control_output`, removing
+// `control_output` from each user's control dependencies.
+void ForwardControlInputsToUsers(mlir::Value control_output,
+                                 mlir::ValueRange control_inputs,
+                                 mlir::RewriterBase& rewriter);
+
 template <typename OpT>
 IfrtPairwiseArrayOpInterface ClonePairwiseArrayOpWithKeptOutputs(
     OpT op, mlir::RewriterBase& rewriter, const llvm::BitVector& keep);
@@ -136,6 +142,9 @@ IfrtPairwiseArrayOpInterface ClonePairwiseArrayOpWithKeptOutputs(
   const mlir::Operation::operand_range control_inputs = op.getControlInputs();
   assert(inputs.size() == outputs.size());
   assert(keep.size() == outputs.size());
+  if (keep.none()) {
+    return nullptr;
+  }
 
   const unsigned num_kept = keep.count();
   llvm::SmallVector<mlir::Value> operands;
@@ -171,7 +180,9 @@ IfrtPairwiseArrayOpInterface ReplacePairwiseArrayOpWithKeptOutputs(
   if (keep.all()) {
     return llvm::cast<IfrtPairwiseArrayOpInterface>(op.getOperation());
   }
-  if (keep.none() && op.getControlOutput().use_empty()) {
+  if (keep.none()) {
+    ForwardControlInputsToUsers(op.getControlOutput(), op.getControlInputs(),
+                                rewriter);
     rewriter.eraseOp(op);
     return nullptr;
   }

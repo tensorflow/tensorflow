@@ -181,21 +181,21 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
   return {
       // 1. MXFP8 E4M3FN x E4M3FN (scale E8M0FNU, block 32)
       {F8E4M3FN, F8E4M3FN, F8E8M0FNU, 32, false, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E4M3FN, F8E4M3FN, F8E8M0FNU, 32, false, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E4M3FN, F8E4M3FN, F8E8M0FNU, 32, true, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E4M3FN, F8E4M3FN, F8E8M0FNU, 32, true, true,
        CuDnnSupportResult::kSupported},
 
       // 2. MXFP8 E4M3FN x E5M2 (scale E8M0FNU, block 32)
       {F8E4M3FN, F8E5M2, F8E8M0FNU, 32, false, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E4M3FN, F8E5M2, F8E8M0FNU, 32, false, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E4M3FN, F8E5M2, F8E8M0FNU, 32, true, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E4M3FN, F8E5M2, F8E8M0FNU, 32, true, true,
        CuDnnSupportResult::kSupported},
 
@@ -211,21 +211,21 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
 
       // 4. MXFP8 E5M2 x E4M3FN (scale E8M0FNU, block 32)
       {F8E5M2, F8E4M3FN, F8E8M0FNU, 32, false, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E5M2, F8E4M3FN, F8E8M0FNU, 32, false, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E5M2, F8E4M3FN, F8E8M0FNU, 32, true, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E5M2, F8E4M3FN, F8E8M0FNU, 32, true, true,
        CuDnnSupportResult::kSupported},
 
       // 5. MXFP8 E5M2 x E5M2 (scale E8M0FNU, block 32)
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, false, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, false, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, true, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, true, true,
        CuDnnSupportResult::kSupported},
 
@@ -261,11 +261,11 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
 
       // 9. F4E2M1FN x F4E2M1FN (scale E8M0FNU, block 32)
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 32, false, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 32, false, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 32, true, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 32, true, true,
        CuDnnSupportResult::kSupported},
 
@@ -281,11 +281,11 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
 
       // 11. NVFP4 F4E2M1FN x F4E2M1FN (scale E4M3FN, block 16)
       {F4E2M1FN, F4E2M1FN, F8E4M3FN, 16, false, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F4E2M1FN, F4E2M1FN, F8E4M3FN, 16, false, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F4E2M1FN, F4E2M1FN, F8E4M3FN, 16, true, false,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
       {F4E2M1FN, F4E2M1FN, F8E4M3FN, 16, true, true,
        CuDnnSupportResult::kSupported},
   };

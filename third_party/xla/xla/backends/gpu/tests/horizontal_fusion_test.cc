@@ -168,5 +168,215 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{1e-5, 1e-5}));
 }
 
+TEST_F(HorizontalFusionTest, LoopPlusRowReductionMixedThreadCountsAndBarriers) {
+  constexpr absl::string_view kHloText = R"(
+HloModule loop_plus_row_reduction, is_scheduled=true
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+fused_loop {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  mul0 = f32[512]{0} multiply(p0, p1)
+  add0 = f32[512]{0} add(mul0, p0)
+  ROOT out_loop = f32[512]{0} cosine(add0)
+}
+
+fused_reduce {
+  p2 = f32[8,512]{1,0} parameter(0)
+  sq = f32[8,512]{1,0} multiply(p2, p2)
+  zero = f32[] constant(0)
+  ROOT out_red = f32[8]{0} reduce(sq, zero), dimensions={1}, to_apply=add_f32
+}
+
+ENTRY main {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  p2 = f32[8,512]{1,0} parameter(2)
+
+  f_loop = f32[512]{0} fusion(p0, p1), kind=kLoop, calls=fused_loop
+  f_red = f32[8]{0} fusion(p2), kind=kInput, calls=fused_reduce
+
+  ROOT result = (f32[512]{0}, f32[8]{0}) tuple(f_loop, f_red)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  HorizontalFusion horizontal_fusion(device_description());
+  ASSERT_THAT(horizontal_fusion.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: %horizontal_fusion_computation
+// CHECK-DAG: %[[F0:.*]] = f32[512]{0} fusion({{.*}}), kind=kLoop, calls=%fused_loop
+// CHECK-DAG: %[[F1:.*]] = f32[8]{0} fusion({{.*}}), kind=kInput, calls=%fused_reduce
+// CHECK: ROOT {{.*}} = (f32[512]{0}, f32[8]{0}) tuple(%[[F0]], %[[F1]])
+// CHECK: ENTRY %main
+// CHECK: fusion({{.*}}), kind=kLoop, calls=%horizontal_fusion_computation
+)"));
+  EXPECT_TRUE(filecheck_matched);
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(HorizontalFusionTest, TransposePlusReductionSharedMemoryAliasing) {
+  constexpr absl::string_view kHloText = R"(
+HloModule transpose_plus_reduction, is_scheduled=true
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+fused_transpose {
+  p0 = f32[32,64]{1,0} parameter(0)
+  p1 = f32[32,64]{1,0} parameter(1)
+  sum01 = f32[32,64]{1,0} add(p0, p1)
+  ROOT out_transpose = f32[64,32]{1,0} transpose(sum01), dimensions={1,0}
+}
+
+fused_reduce {
+  p2 = f32[8,1024]{1,0} parameter(0)
+  p3 = f32[8,1024]{1,0} parameter(1)
+  prod = f32[8,1024]{1,0} multiply(p2, p3)
+  zero = f32[] constant(0)
+  ROOT out_reduce = f32[8]{0} reduce(prod, zero), dimensions={1}, to_apply=add_f32
+}
+
+ENTRY main {
+  p0 = f32[32,64]{1,0} parameter(0)
+  p1 = f32[32,64]{1,0} parameter(1)
+  p2 = f32[8,1024]{1,0} parameter(2)
+  p3 = f32[8,1024]{1,0} parameter(3)
+
+  f_transpose = f32[64,32]{1,0} fusion(p0, p1), kind=kInput,
+      calls=fused_transpose
+  f_reduce = f32[8]{0} fusion(p2, p3), kind=kInput, calls=fused_reduce
+
+  ROOT result = (f32[64,32]{1,0}, f32[8]{0}) tuple(f_transpose, f_reduce)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  HorizontalFusion horizontal_fusion(device_description());
+  ASSERT_THAT(horizontal_fusion.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: %horizontal_fusion_computation
+// CHECK-DAG: %[[F0:.*]] = f32[64,32]{1,0} fusion({{.*}}), kind=kInput, calls=%fused_transpose
+// CHECK-DAG: %[[F1:.*]] = f32[8]{0} fusion({{.*}}), kind=kInput, calls=%fused_reduce
+// CHECK: ROOT {{.*}} = (f32[64,32]{1,0}, f32[8]{0}) tuple(%[[F0]], %[[F1]])
+// CHECK: ENTRY %main
+// CHECK: fusion({{.*}}), kind=kLoop, calls=%horizontal_fusion_computation
+)"));
+  EXPECT_TRUE(filecheck_matched);
+
+  TF_EXPECT_OK(CompileAndVerifyIr(module->Clone(), R"(
+; CHECK: @global_smem = external {{.*}}addrspace(3) global [0 x i8]
+; CHECK-LABEL: define ptx_kernel void @horizontal_fusion
+; CHECK: ret void
+)",
+                                  /*match_optimized_ir=*/true,
+                                  /*run_optimization_passes=*/false));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(HorizontalFusionTest, ProducerConsumerDiamondWithHorizontalLayer) {
+  constexpr absl::string_view kHloText = R"(
+HloModule diamond_horizontal_layer, is_scheduled=true
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+producer_reduce {
+  p0 = f32[32,128]{1,0} parameter(0)
+  p1 = f32[32,128]{1,0} parameter(1)
+  prod = f32[32,128]{1,0} multiply(p0, p1)
+  zero = f32[] constant(0)
+  ROOT mid = f32[32]{0} reduce(prod, zero), dimensions={1}, to_apply=add_f32
+}
+
+consumer_0_loop {
+  mid = f32[32]{0} parameter(0)
+  p2 = f32[32]{0} parameter(1)
+  c0_add = f32[32]{0} add(mid, p2)
+  ROOT c0 = f32[32]{0} cosine(c0_add)
+}
+
+consumer_1_transpose {
+  mid = f32[32]{0} parameter(0)
+  p3 = f32[32,64]{1,0} parameter(1)
+  mid_bcast = f32[32,64]{1,0} broadcast(mid), dimensions={0}
+  c1_add = f32[32,64]{1,0} add(p3, mid_bcast)
+  ROOT c1 = f32[64,32]{1,0} transpose(c1_add), dimensions={1,0}
+}
+
+consumer_2_reduce {
+  mid = f32[32]{0} parameter(0)
+  p4 = f32[8,128]{1,0} parameter(1)
+  mid_slice = f32[8]{0} slice(mid), slice={[0:8]}
+  mid_slice_bcast = f32[8,128]{1,0} broadcast(mid_slice), dimensions={0}
+  c2_add = f32[8,128]{1,0} add(p4, mid_slice_bcast)
+  zero = f32[] constant(0)
+  ROOT c2 = f32[8]{0} reduce(c2_add, zero), dimensions={1}, to_apply=add_f32
+}
+
+ENTRY main {
+  p0 = f32[32,128]{1,0} parameter(0)
+  p1 = f32[32,128]{1,0} parameter(1)
+  p2 = f32[32]{0} parameter(2)
+  p3 = f32[32,64]{1,0} parameter(3)
+  p4 = f32[8,128]{1,0} parameter(4)
+
+  mid = f32[32]{0} fusion(p0, p1), kind=kInput, calls=producer_reduce
+
+  c0 = f32[32]{0} fusion(mid, p2), kind=kLoop, calls=consumer_0_loop
+  c1 = f32[64,32]{1,0} fusion(mid, p3), kind=kInput,
+      calls=consumer_1_transpose
+  c2 = f32[8]{0} fusion(mid, p4), kind=kInput, calls=consumer_2_reduce
+
+  ROOT result = (f32[32]{0}, f32[64,32]{1,0}, f32[8]{0}) tuple(c0, c1, c2)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  HorizontalFusion horizontal_fusion(device_description());
+  ASSERT_THAT(horizontal_fusion.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: %horizontal_fusion_computation
+// CHECK-DAG: %[[F0:.*]] = f32[32]{0} fusion({{.*}}), kind=kLoop, calls=%consumer_0_loop
+// CHECK-DAG: %[[F1:.*]] = f32[64,32]{1,0} fusion({{.*}}), kind=kInput, calls=%consumer_1_transpose
+// CHECK-DAG: %[[F2:.*]] = f32[8]{0} fusion({{.*}}), kind=kInput, calls=%consumer_2_reduce
+// CHECK: ROOT {{.*}} = (f32[32]{0}, f32[64,32]{1,0}, f32[8]{0}) tuple(%[[F0]], %[[F1]], %[[F2]])
+// CHECK: ENTRY %main
+// CHECK: %[[MID:.*]] = f32[32]{0} fusion({{.*}}), kind=kInput, calls=%producer_reduce
+// CHECK: %[[HF:.*]] = (f32[32]{0}, f32[64,32]{1,0}, f32[8]{0}) fusion(%[[MID]], {{.*}}), kind=kLoop, calls=%horizontal_fusion_computation
+)"));
+  EXPECT_TRUE(filecheck_matched);
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-4, 1e-4}));
+}
+
 }  // namespace
 }  // namespace xla::gpu

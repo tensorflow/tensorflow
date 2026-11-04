@@ -152,6 +152,7 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   // func.call boundaries that cause func.call result type mismatches when
   // quantized types are introduced.
   pass_manager.addPass(mlir::createInlinerPass());
+  pass_manager.addPass(mlir::odml::createLiftCallSiteLocCallerPass());
   pass_manager.addPass(mlir::TFL::CreateFoldStablehloConstantTransformsPass());
   pass_manager.addPass(mlir::TFL::CreateLowerQuantAnnotationsPass());
   pass_manager.addPass(mlir::createSymbolDCEPass());
@@ -193,6 +194,7 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   pass_manager.addPass(mlir::createSymbolDCEPass());
   pass_manager.addPass(mlir::createInlinerPass());
+  pass_manager.addPass(mlir::odml::createLiftCallSiteLocCallerPass());
 
   // Import cleanup (Tuple flattening)
   // Defaulting to "main" for the entry function name for now.
@@ -209,6 +211,7 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   // Build StableHLO composite from PyTorch mark_tensor ops before MHLO bridge
   pass_manager.addPass(mlir::odml::createBuildStableHLOCompositePass());
   pass_manager.addPass(mlir::createInlinerPass());
+  pass_manager.addPass(mlir::odml::createLiftCallSiteLocCallerPass());
 
   // StableHLO -> MHLO bridge
   pass_manager.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());

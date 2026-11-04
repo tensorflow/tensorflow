@@ -13428,6 +13428,50 @@ ENTRY f {
                   m::Clamp(m::Constant(), m::Parameter(0), m::Constant())))));
 }
 
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfLargeIotaS32Index) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule module
+
+ENTRY main {
+  iota = s32[2147483653]{0} iota(), iota_dimension=0
+  index = s32[] parameter(0)
+  ROOT ds = s32[1]{0} dynamic-slice(iota, index), dynamic_slice_sizes={1}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(m::Clamp(
+                  m::ConstantScalar(0), m::Parameter(0),
+                  m::ConstantScalar(std::numeric_limits<int32_t>::max())))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfLargeIotaU32Index) {
+  constexpr absl::string_view kHloString = R"hlo(
+HloModule module
+
+ENTRY main {
+  iota = u32[4294967301]{0} iota(), iota_dimension=0
+  index = u32[] parameter(0)
+  ROOT ds = u32[1]{0} dynamic-slice(iota, index), dynamic_slice_sizes={1}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(m::Clamp(
+                  m::ConstantScalar(0U), m::Parameter(0),
+                  m::ConstantScalar(std::numeric_limits<uint32_t>::max())))));
+}
+
 // Test of converting dynamic-slice indices to zeros on dims with the full size.
 TEST_F(AlgebraicSimplifierTest, DynamicSliceTrivialIndices) {
   constexpr absl::string_view hlo_string = R"(

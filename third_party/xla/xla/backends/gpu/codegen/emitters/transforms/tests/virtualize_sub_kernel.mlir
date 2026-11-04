@@ -78,14 +78,14 @@ module {
   }
 }
 
-// CHECK: module attributes {xla.shared_memory_bytes = 256 : i64}
-// CHECK: llvm.mlir.global external @global_smem() {addr_space = 3 : i32, alignment = 128 : i64} : !llvm.array<0 x i8>
+// CHECK: module attributes {xla.shared_memory_bytes = 144 : i64}
+// CHECK: llvm.mlir.global external @global_smem() {addr_space = 3 : i32, alignment = 16 : i64} : !llvm.array<0 x i8>
 // CHECK-NOT: @smem_a
 // CHECK-NOT: @smem_b
 // CHECK-LABEL: llvm.func @sub_kernel(
 // CHECK: %[[BASE_A:.*]] = llvm.mlir.addressof @global_smem : !llvm.ptr<3>
 // CHECK: %[[BASE_B:.*]] = llvm.mlir.addressof @global_smem : !llvm.ptr<3>
-// CHECK: %[[GEP_B:.*]] = llvm.getelementptr %[[BASE_B]][128] : (!llvm.ptr<3>) -> !llvm.ptr<3>, i8
+// CHECK: %[[GEP_B:.*]] = llvm.getelementptr %[[BASE_B]][16] : (!llvm.ptr<3>) -> !llvm.ptr<3>, i8
 // CHECK: llvm.store %[[BASE_A]], %{{.*}} : !llvm.ptr<3>, !llvm.ptr
 // CHECK: llvm.store %[[GEP_B]], %{{.*}} : !llvm.ptr<3>, !llvm.ptr
 // CHECK: llvm.return

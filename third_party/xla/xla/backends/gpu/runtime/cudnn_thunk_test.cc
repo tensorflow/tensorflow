@@ -38,6 +38,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -674,6 +675,7 @@ TEST(CuDnnThunkTest, CommandBuffer) {
 
   ASSERT_OK_AND_ASSIGN(Thunk::ExecutableSource source,
                        ExecutableSourceWithGraph(graph));
+  CommandBufferRequests command_buffer_requests;
   Thunk::InitializeParams initialize_params;
   initialize_params.executor = stream_executor;
   initialize_params.src = source;
@@ -682,6 +684,7 @@ TEST(CuDnnThunkTest, CommandBuffer) {
   initialize_params.command_buffer_trace_stream = stream.get();
   initialize_params.persistent_alloc_indices =
       absl::Span<const BufferAllocation::Index>();
+  initialize_params.command_buffer_requests = &command_buffer_requests;
   ASSERT_OK(thunk.Initialize(initialize_params));
 
   // Execute command buffer thunk and verify that it executed a GEMM.

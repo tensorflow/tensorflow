@@ -2146,6 +2146,29 @@ TEST_F(GemmFusionTest, ScaledDotIsFused) {
   MatchHloModule(*module, kExpectedHloText);
 }
 
+// The autotuner picks the backend: with Triton disabled for scaled dots, the
+// fusion still competes in CUDNN_FISSION and CUBLASLT_FISSION.
+TEST_F(GemmFusionTest, ScaledDotIsFusedWhenScaledDotWithTritonDisabled) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule m
+
+    ENTRY entry {
+      lhs = f8e4m3fn[4,32] parameter(0)
+      rhs = f8e4m3fn[4,32] parameter(1)
+      lhs_scale = f8e8m0fnu[4,1] parameter(2)
+      rhs_scale = f8e8m0fnu[4,1] parameter(3)
+      ROOT dot = bf16[4,4] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_scaled_dot_with_triton(false);
+  EXPECT_THAT(GemmFusion(device_info_).Run(module.get()), IsOkAndHolds(true));
+}
+
 TEST_P(GemmFusionTestVersioned, ScaledDotScaleBroadcastsAreFusedOnRocm) {
   constexpr absl::string_view kHloText = R"(
     HloModule m

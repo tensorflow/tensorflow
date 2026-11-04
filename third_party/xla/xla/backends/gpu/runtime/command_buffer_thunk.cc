@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/scoped_command_buffer_annotation.h"
@@ -233,8 +234,14 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
   // If there are no thunks, or command buffer does not require warmup,
   // we can mark warm up as done immediately.
-  if (!thunks_ || !commands_.requires_warmup()) {
-    cmd_buffer->warmup_done = true;
+  if (!cmd_buffer->warmup_done) {
+    if (thunks_ == nullptr) {
+      cmd_buffer->warmup_done = true;
+    } else {
+      TF_RET_CHECK(params.command_buffer_requests != nullptr);
+      cmd_buffer->warmup_done =
+          !commands_.requires_warmup(*params.command_buffer_requests);
+    }
   }
 
   if (!cmd_buffer->warmup_done) {

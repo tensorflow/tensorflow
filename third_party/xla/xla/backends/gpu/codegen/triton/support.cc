@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -408,6 +409,13 @@ CodegenDecision CanTritonHandleScan(
         "Triton requires the scan combiner to be associative.");
   }
 
+  // Mirrors EmitScan. Support is re-checked after FloatNormalization (e.g. by
+  // FusionBlockLevelRewriter), which may wrap the bf16 add in converts.
+  if (!xtile::IsAdditiveScanCombiner(*scan.to_apply())) {
+    return CodegenDecision::Forbid(
+        "Only additive scans are supported in Triton.");
+  }
+
   switch (scan.shape().tuple_shapes(0).element_type()) {
     case PrimitiveType::F8E4M3FN:
     case PrimitiveType::F8E5M2:
@@ -766,6 +774,28 @@ CodegenDecision IsTritonSupportedDot(
   return CodegenDecision::Allow();
 }
 
+bool IsBlock16ScaledOperand(const Shape& operand, const Shape& scale,
+                            absl::Span<const int64_t> contracting_dims) {
+  if (!xtile::IsTritonDotScaledOperandType(operand.element_type()) ||
+      scale.dimensions().size() != operand.dimensions().size() ||
+      contracting_dims.size() != 1) {
+    return false;
+  }
+  int64_t k_dim = contracting_dims[0];
+  int64_t scale_k = scale.dimensions(k_dim);
+  return scale_k > 0 && scale_k * 16 == operand.dimensions(k_dim);
+}
+
+bool HasBlock16ScaledOperand(const HloScaledDotInstruction& dot) {
+  const DotDimensionNumbers& dnums = dot.dot_dimension_numbers();
+  return IsBlock16ScaledOperand(dot.operand(0)->shape(),
+                                dot.operand(2)->shape(),
+                                dnums.lhs_contracting_dimensions()) ||
+         IsBlock16ScaledOperand(dot.operand(1)->shape(),
+                                dot.operand(3)->shape(),
+                                dnums.rhs_contracting_dimensions());
+}
+
 CodegenDecision IsTritonSupportedScaledDot(
     const HloScaledDotInstruction& dot,
     const se::GpuComputeCapability& gpu_version) {
@@ -828,6 +858,12 @@ CodegenDecision IsTritonSupportedScaledDot(
     return CodegenDecision::Forbid(
         absl::StrCat("RHS scale is ignored for operand type ",
                      PrimitiveType_Name(rhs_type), " but is not all ones."));
+  }
+  if (const auto* cc = gpu_version.cuda_compute_capability();
+      cc && cc->IsAtLeastBlackwell() && HasBlock16ScaledOperand(dot)) {
+    return CodegenDecision::Forbid(
+        "Triton's Blackwell MMA lowering does not support block-16 scaled "
+        "dots.");
   }
   return CodegenDecision::Allow();
 }

@@ -315,6 +315,7 @@ class StridedSliceAssignOp : public OpKernel {
 
     Tensor* old_lhs = nullptr;
     Tensor tmp;
+    core::RefCountPtr<Var> v;
     if (isTensor) {
       const Tensor& input = context->input(0);
 
@@ -329,7 +330,6 @@ class StridedSliceAssignOp : public OpKernel {
       }
     } else {
       if (context->input_dtype(0) == DT_RESOURCE) {
-        core::RefCountPtr<Var> v;
         ResourceHandle handle;
         OP_REQUIRES_OK(context, HandleFromInput(context, 0, &handle));
         OP_REQUIRES_OK(context, LookupResource(context, handle, &v));

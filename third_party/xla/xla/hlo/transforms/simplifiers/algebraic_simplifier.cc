@@ -8225,8 +8225,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
       if (index_type == S32 || index_type == U32) {
         // Clamp the index to the range of the iota.
         int64_t iota_size = operand->shape().dimensions(0);
+        int64_t max_index = index_type == S32
+                                ? int64_t{std::numeric_limits<int32_t>::max()}
+                                : int64_t{std::numeric_limits<uint32_t>::max()};
         HloInstruction* low = create_constant(0);
-        HloInstruction* high = create_constant(iota_size - 1);
+        HloInstruction* high =
+            create_constant(std::min(iota_size - 1, max_index));
         HloInstruction* clamped =
             dynamic_slice->AddInstruction(HloInstruction::CreateTernary(
                 index->shape(), HloOpcode::kClamp, low, index, high));

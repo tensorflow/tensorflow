@@ -33,20 +33,18 @@ void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm) {
 
   pm.addNestedPass<mlir::func::FuncOp>(createIfrtVerifyShardingSpecifiedPass());
   // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
-  // are specified. Moreover, it is necessary to run
-  // IfrtMergeCopiesAndReshardsPass after this pass because it introduces
-  // non-merged CopyArrays ops.
+  // are specified. Moreover, it is necessary to run IfrtMergeOpsPass after this
+  // pass because it introduces non-merged CopyArrays ops.
   // TODO(icgog): Set the ReshardOpAction based on a IFRT IR option.
   pm.addPass(createIfrtReshardToCopyArraysPass());
   // Insert CopyArrays for arrays that are returned multiple times so that the
   // donation/reuse semantics are correctly handled. This pass must run before
-  // InsertMergeCopiesAndReshardsPass so that the newly inserted CopyArrays ops
-  // can be merged.
+  // IfrtMergeOpsPass so that the newly inserted CopyArrays ops can be merged.
   pm.addNestedPass<mlir::func::FuncOp>(
       createIfrtInsertCopyArraysForReturnedManyTimesPass());
-  // IfrtMergeCopiesAndReshardsPass doesn't handle control dependencies, so we
-  // need to run it before adding the control dependencies.
-  pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeCopiesAndReshardsPass());
+  // IfrtMergeOpsPass doesn't handle control dependencies, so we need to run it
+  // before adding the control dependencies.
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(createIfrtAddCtrlDependenciesPass());
 }
 

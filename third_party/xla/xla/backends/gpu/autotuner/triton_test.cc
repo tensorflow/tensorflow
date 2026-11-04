@@ -140,21 +140,21 @@ const char kSimpleGemmFusionHlo[] = R"(
   })";
 
 const char kScaledDotHlo[] = R"hlo(
-HloModule ScaledDotIsFused, entry_computation_layout={(bf16[4,4]{1,0}, bf16[4,4]{1,0}, bf16[1,1]{1,0}, bf16[1,1]{1,0})->bf16[4,4]{1,0}}
+HloModule ScaledDotIsFused, entry_computation_layout={(f8e5m2[4,32]{1,0}, f8e5m2[4,32]{1,0}, f8e8m0fnu[4,1]{1,0}, f8e8m0fnu[4,1]{1,0})->bf16[4,4]{1,0}}
 
-%fusion_dot (parameter_0: bf16[4,4], parameter_1: bf16[4,4], parameter_2: bf16[1,1], parameter_3: bf16[1,1]) -> bf16[4,4] {
-  %parameter_0 = bf16[4,4]{1,0} parameter(0)
-  %parameter_1 = bf16[4,4]{1,0} parameter(1)
-  %parameter_2 = bf16[1,1]{1,0} parameter(2)
-  %parameter_3 = bf16[1,1]{1,0} parameter(3)
+%fusion_dot (parameter_0: f8e5m2[4,32], parameter_1: f8e5m2[4,32], parameter_2: f8e8m0fnu[4,1], parameter_3: f8e8m0fnu[4,1]) -> bf16[4,4] {
+  %parameter_0 = f8e5m2[4,32]{1,0} parameter(0)
+  %parameter_1 = f8e5m2[4,32]{1,0} parameter(1)
+  %parameter_2 = f8e8m0fnu[4,1]{1,0} parameter(2)
+  %parameter_3 = f8e8m0fnu[4,1]{1,0} parameter(3)
   ROOT %dot.1 = bf16[4,4]{1,0} scaled-dot(%parameter_0, %parameter_1, %parameter_2, %parameter_3), lhs_contracting_dims={1}, rhs_contracting_dims={1}, metadata={op_name="foo"}
 }
 
-ENTRY %entry (lhs: bf16[4,4], rhs: bf16[4,4], lhs_scale: bf16[1,1], rhs_scale: bf16[1,1]) -> bf16[4,4] {
-  %lhs = bf16[4,4]{1,0} parameter(0)
-  %rhs = bf16[4,4]{1,0} parameter(1)
-  %lhs_scale = bf16[1,1]{1,0} parameter(2)
-  %rhs_scale = bf16[1,1]{1,0} parameter(3)
+ENTRY %entry (lhs: f8e5m2[4,32], rhs: f8e5m2[4,32], lhs_scale: f8e8m0fnu[4,1], rhs_scale: f8e8m0fnu[4,1]) -> bf16[4,4] {
+  %lhs = f8e5m2[4,32]{1,0} parameter(0)
+  %rhs = f8e5m2[4,32]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[4,1]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[4,1]{1,0} parameter(3)
   ROOT %fusion = bf16[4,4]{1,0} fusion(%lhs, %rhs, %lhs_scale, %rhs_scale), kind=kCustom, calls=%fusion_dot, metadata={op_name="foo"}, backend_config={"operation_queue_id":"0","fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
 })hlo";
 
@@ -309,6 +309,42 @@ TEST_F(TritonBackendTest, CudnnScaledDotFusionIsUnsupported) {
   gpu_config.mutable_fusion_backend_config()->set_kind(kCuDnnFusionKind);
   ASSERT_OK(fusion->set_backend_config(gpu_config));
   EXPECT_THAT(backend_.GetSupportedConfigs(*fusion), IsOkAndHolds(IsEmpty()));
+}
+
+TEST_F(TritonBackendTest, ScaledDotIsUnsupportedWhenScaledDotWithTritonOff) {
+  debug_options_.set_xla_gpu_experimental_scaled_dot_with_triton(false);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kScaledDotHlo));
+  EXPECT_THAT(backend_.GetSupportedConfigs(
+                  *module->entry_computation()->root_instruction()),
+              IsOkAndHolds(IsEmpty()));
+}
+
+TEST_F(TritonBackendTest, ScaledDotUnsupportedByTritonIsUnsupported) {
+  // Triton drops the scales of BF16 operands, so they must be all ones.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+    c {
+      lhs = bf16[4,32] parameter(0)
+      rhs = bf16[4,32] parameter(1)
+      lhs_scale = bf16[4,1] parameter(2)
+      rhs_scale = bf16[4,1] parameter(3)
+      ROOT dot = bf16[4,4] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+
+    ENTRY e {
+      lhs = bf16[4,32] parameter(0)
+      rhs = bf16[4,32] parameter(1)
+      lhs_scale = bf16[4,1] parameter(2)
+      rhs_scale = bf16[4,1] parameter(3)
+      ROOT fusion = bf16[4,4] fusion(lhs, rhs, lhs_scale, rhs_scale),
+          kind=kCustom, calls=c,
+          backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    })hlo"));
+  EXPECT_THAT(backend_.GetSupportedConfigs(
+                  *module->entry_computation()->root_instruction()),
+              IsOkAndHolds(IsEmpty()));
 }
 
 TEST_F(TritonBackendTest, GetSupportedConfigsRestrictedDefaultSearch) {

@@ -1270,5 +1270,38 @@ ENTRY main {
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(2), {2}));
 }
 
+TEST_F(AliasInfoTest, BufferCannotBeSharedForPhasedBlockClusterFusion) {
+  const char* const kModuleString = R"(
+HloModule phased_block_cluster_fusion
+
+phase_0 { ROOT neg = f32[256] negate(f32[256] parameter(0)) }
+phase_1 { ROOT add = f32[256] add(f32[256] parameter(0), f32[256] parameter(1)) }
+
+phased_comp {
+  p0 = f32[256] parameter(0)
+  f0 = f32[256] fusion(p0), kind=kLoop, calls=phase_0
+  f1 = f32[256] fusion(f0, p0), kind=kLoop, calls=phase_1
+  ROOT t = (f32[256], f32[256]) tuple(f0, f1)
+}
+
+ENTRY main {
+  p0 = f32[256] parameter(0)
+  ROOT fused = (f32[256], f32[256]) fusion(p0), kind=kCustom, calls=phased_comp,
+      backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> dataflow,
+                       HloDataflowAnalysis::Run(*module));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {0}, alias_info()));
+  EXPECT_FALSE(dataflow->CanShareOperandBufferWithUser(
+      fusion->mutable_operand(0), {}, fusion, {1}, alias_info()));
+}
+
 }  // namespace
 }  // namespace xla::gpu

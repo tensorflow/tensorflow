@@ -288,6 +288,12 @@ std::optional<bool> GpuAliasInfo::MayAlias(const HloInstruction* operand,
                                            const ShapeIndex& user_index) const {
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
   if (fusion != nullptr) {
+    if (IsGpuFusionKind(*fusion, kPhasedBlockClusterFusionKind)) {
+      // Phased block-cluster fusions execute sequential phases in one kernel;
+      // sharing an earlier phase's output buffer with an outer operand could
+      // overwrite inputs still read by later phases.
+      return false;
+    }
     if (GetCustomFusionConfigName(fusion) == kDynamicSliceFusionConfigName) {
       // DynamicSliceFusionRewriterV2 creates these fusions before CopyInsertion
       // without setting output_to_operand_aliasing, and

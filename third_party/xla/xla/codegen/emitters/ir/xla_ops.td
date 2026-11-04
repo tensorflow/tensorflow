@@ -185,14 +185,27 @@ def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
     #map = #xla.indexing_map<(d0, d1)[s0] -> (d0 floordiv 8 + d1 floordiv 128, s0)>
     %results:2 = xla_ops.apply_indexing #map (%0 in [0, 10], %1 in [0, 11])[%2 in [11, 32]]
     ```
+
+    A single-result `apply_indexing` op may carry an optional
+    `xla.range = [lower, upper]` attribute. It is a closed interval that is
+    known to contain the result, and `GetRange` intersects it with the range
+    computed from the indexing map. Since folding a result that is a bare
+    dimension or symbol replaces the op with its operand, such a result is only
+    folded if the operand's known range is contained in `xla.range`. Otherwise
+    the op is kept, so that the tighter range is not lost. `xla.range` is not
+    allowed on multi-result ops, because a single interval cannot describe
+    several results.
   }];
   let arguments = (ins Variadic<Index>:$operands,
                    XLA_IndexingMapAttr:$indexing_map_attr);
   let results = (outs Variadic<Index>);
 
   let builders = [
+    // If `result_range` is set, the op is annotated with `xla.range`. This is
+    // only valid for single-result indexing maps.
     OpBuilder<(ins "mlir::ValueRange":$dims, "mlir::ValueRange":$symbols,
-                   "const IndexingMap&":$indexing_map)>,
+                   "const IndexingMap&":$indexing_map,
+                   CArg<"std::optional<Interval>", "std::nullopt">:$result_range)>,
     OpBuilder<(ins "mlir::ValueRange":$operands,
                    "const IndexingMap&":$indexing_map)>,
     OpBuilder<(ins "mlir::ValueRange":$operands, "xla::SymbolicMap":$symbolic_map,
