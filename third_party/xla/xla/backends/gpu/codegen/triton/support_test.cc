@@ -2635,6 +2635,53 @@ ENTRY triton_computation {
       *dot, se::GpuComputeCapability(se::CudaComputeCapability::Volta())));
 }
 
+TEST_F(HloHardwareIndependentTestBase, ScaledDotBlock16IsRejectedOnBlackwell) {
+  struct TestCase {
+    absl::string_view lhs;
+    absl::string_view rhs;
+    absl::string_view lhs_scale;
+    absl::string_view rhs_scale;
+    bool allowed_on_blackwell;
+  };
+  constexpr TestCase kCases[] = {
+      {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e4m3fn[128,16]",
+       "f8e8m0fnu[128,8]", /*allowed_on_blackwell=*/false},
+      {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e8m0fnu[128,8]",
+       "f8e4m3fn[128,16]", /*allowed_on_blackwell=*/false},
+      {"f8e4m3fn[128,256]", "f8e4m3fn[128,256]", "f8e8m0fnu[128,16]",
+       "f8e8m0fnu[128,8]", /*allowed_on_blackwell=*/false},
+      {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e8m0fnu[128,8]",
+       "f8e8m0fnu[128,8]", /*allowed_on_blackwell=*/true},
+  };
+  for (const TestCase& tc : kCases) {
+    std::string hlo =
+        absl::Substitute(R"hlo(
+      ENTRY e {
+        lhs = $0 parameter(0)
+        rhs = $1 parameter(1)
+        lhs_scale = $2 parameter(2)
+        rhs_scale = $3 parameter(3)
+        ROOT dot = bf16[128,128] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+            lhs_contracting_dims={1}, rhs_contracting_dims={1}
+      })hlo",
+                         tc.lhs, tc.rhs, tc.lhs_scale, tc.rhs_scale);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hlo));
+    const HloInstruction* dot = module->entry_computation()->root_instruction();
+    CodegenDecision blackwell = IsTritonSupportedInstruction(
+        *dot, se::GpuComputeCapability(se::CudaComputeCapability::Blackwell()));
+    EXPECT_EQ(blackwell.IsAllowed(), tc.allowed_on_blackwell) << hlo;
+    if (!tc.allowed_on_blackwell) {
+      EXPECT_THAT(blackwell.Explain(), HasSubstr("block-16"));
+    }
+    EXPECT_TRUE(
+        IsTritonSupportedInstruction(
+            *dot, se::GpuComputeCapability(se::CudaComputeCapability::Hopper()))
+            .IsAllowed())
+        << hlo;
+  }
+}
+
 // Triton cannot lower F8E4M3FN conversions before sm89.
 class ScaledDotF8E4M3FNTest
     : public SupportTest,
