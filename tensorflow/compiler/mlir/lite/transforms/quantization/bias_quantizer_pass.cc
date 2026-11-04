@@ -15,14 +15,25 @@ limitations under the License.
 
 // This transformation pass propagates QSV information through the model.
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -36,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
@@ -82,6 +94,120 @@ std::optional<int> GetAdjustedQuantizationDimension(
   return adjusted_quant_dim;
 }
 
+// Reads the elements of a float constant (f32, f16 or bf16), which may be
+// stored as a dense resource, as doubles.
+std::optional<SmallVector<double>> ReadFloatElements(ElementsAttr attr) {
+  auto float_type = dyn_cast<FloatType>(attr.getElementType());
+  if (!float_type) return std::nullopt;
+  SmallVector<double> values;
+  values.reserve(attr.getNumElements());
+  auto append = [&](APFloat value) {
+    bool loses_info;
+    value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
+                  &loses_info);
+    values.push_back(value.convertToDouble());
+  };
+  if (auto dense = dyn_cast<DenseFPElementsAttr>(attr)) {
+    for (APFloat value : dense.getValues<APFloat>()) append(value);
+    return values;
+  }
+  auto resource = dyn_cast<DenseResourceElementsAttr>(attr);
+  if (!resource || !resource.getRawHandle().getBlob()) return std::nullopt;
+  ArrayRef<char> data = resource.getRawHandle().getBlob()->getData();
+  const unsigned bit_width = float_type.getWidth();
+  if (bit_width != 16 && bit_width != 32) return std::nullopt;
+  const size_t bytes_per_element = bit_width / 8;
+  if (data.size() != attr.getNumElements() * bytes_per_element) {
+    return std::nullopt;
+  }
+  for (size_t offset = 0; offset < data.size(); offset += bytes_per_element) {
+    // Read with the element's own width so the value lands in the low bits on
+    // hosts of either byte order.
+    uint64_t bits;
+    if (bit_width == 16) {
+      uint16_t value;
+      std::memcpy(&value, data.data() + offset, sizeof(value));
+      bits = value;
+    } else {
+      uint32_t value;
+      std::memcpy(&value, data.data() + offset, sizeof(value));
+      bits = value;
+    }
+    append(APFloat(float_type.getFloatSemantics(), APInt(bit_width, bits)));
+  }
+  return values;
+}
+
+// Returns a per output channel quantized type standing in for a constant
+// `tfl.blockwise_dequantize` filter of a `tfl.fully_connected`, from which the
+// bias scale is derived. The filter has no single per-channel scale when it
+// has several blocks along its input dimension, so each channel uses the
+// largest of its block scales. Any positive bias scale is valid because the
+// FULLY_CONNECTED kernel dequantizes a bias with its own scale; the largest one
+// keeps the int32 bias from overflowing.
+std::optional<quant::QuantizedType> GetQTypeForBlockwiseFilter(
+    Operation* op, int operand_index) {
+  // Only biases of ops whose filter `FuseQDQPass` folds into a blockwise
+  // quantized filter are quantized. Otherwise the op stays a float op and an
+  // int32 bias would need a DEQUANTIZE that the runtime does not support.
+  // If this returns std::nullopt for an op that `CanFoldBlockwiseWeightOperand`
+  // accepts (e.g. a non-positive block scale or unreadable scales), the bias
+  // stays float and `FuseQDQPass` keeps the float `tfl.blockwise_dequantize`
+  // filter, i.e. the op falls back to weight-only.
+  if (!isa<FullyConnectedOp>(op) || operand_index != 1 ||
+      !CanFoldBlockwiseWeightOperand(op, operand_index,
+                                     op->getOperand(operand_index))) {
+    return std::nullopt;
+  }
+  auto bw_deq =
+      op->getOperand(operand_index).getDefiningOp<BlockwiseDequantizeOp>();
+  auto filter_type = cast<RankedTensorType>(bw_deq.getType());
+  if (!filter_type.hasStaticShape()) return std::nullopt;
+  ElementsAttr scales_attr = GetConstantElements(bw_deq.getScales());
+  auto scales_type = dyn_cast<RankedTensorType>(scales_attr.getType());
+  if (!scales_type || scales_type.getRank() != 2) return std::nullopt;
+
+  const int64_t num_units = filter_type.getDimSize(0);
+  const int64_t num_unit_blocks = scales_type.getDimSize(0);
+  const int64_t num_depth_blocks = scales_type.getDimSize(1);
+  if (num_units <= 0 || num_unit_blocks <= 0 || num_depth_blocks <= 0 ||
+      bw_deq.getBlockShape().size() != 2) {
+    return std::nullopt;
+  }
+  const int64_t unit_block_size =
+      cast<IntegerAttr>(bw_deq.getBlockShape()[0]).getInt();
+  if (unit_block_size <= 0) return std::nullopt;
+
+  std::optional<SmallVector<double>> maybe_block_scales =
+      ReadFloatElements(scales_attr);
+  if (!maybe_block_scales.has_value() ||
+      static_cast<int64_t>(maybe_block_scales->size()) !=
+          num_unit_blocks * num_depth_blocks) {
+    return std::nullopt;
+  }
+  const SmallVector<double>& block_scales = *maybe_block_scales;
+  SmallVector<double> channel_scales(num_units, 0.0);
+  for (int64_t n = 0; n < num_units; ++n) {
+    const int64_t unit_block = num_unit_blocks == 1 ? 0 : n / unit_block_size;
+    if (unit_block >= num_unit_blocks) return std::nullopt;
+    for (int64_t kb = 0; kb < num_depth_blocks; ++kb) {
+      channel_scales[n] = std::max(
+          channel_scales[n], block_scales[unit_block * num_depth_blocks + kb]);
+    }
+    if (!(channel_scales[n] > 0.0) || !std::isfinite(channel_scales[n])) {
+      return std::nullopt;
+    }
+  }
+
+  Builder builder(op->getContext());
+  SmallVector<int64_t> zero_points(num_units, 0);
+  return quant::UniformQuantizedPerAxisType::getChecked(
+      op->getLoc(), quant::QuantizationFlags::Signed, builder.getI8Type(),
+      builder.getF32Type(), channel_scales, zero_points,
+      /*quantizedDimension=*/0, /*storageTypeMin=*/-128,
+      /*storageTypeMax=*/127);
+}
+
 std::optional<quant::QuantizedType> GetBiasQuantizedType(
     RequiresQuantizedBiasInterface op) {
   int bias_index = op.GetBiasOperandIndex();
@@ -98,6 +224,10 @@ std::optional<quant::QuantizedType> GetBiasQuantizedType(
   for (const int non_bias_operand_index : non_bias_operand_indices) {
     auto operand_qtype =
         GetQTypeFromDefiningDequantize(op->getOperand(non_bias_operand_index));
+    if (!operand_qtype.has_value()) {
+      operand_qtype =
+          GetQTypeForBlockwiseFilter(op.getOperation(), non_bias_operand_index);
+    }
     if (operand_qtype.has_value()) {
       op_types.push_back(operand_qtype.value());
     }

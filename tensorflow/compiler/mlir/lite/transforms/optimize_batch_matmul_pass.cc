@@ -135,12 +135,18 @@ struct ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs
           "rhs is neither a rank 2 value foldable into a constant nor a rank 2 "
           "signed int4/int8 quantized value.");
     }
+    // The filter transpose of a shared blockwise-dequantized rhs cannot be
+    // pushed into its constant operands, which would leave a float filter;
+    // such a static-range quantized matmul stays a blockwise quantized
+    // batch_matmul instead.
     if (mlir::isa_and_nonnull<DequantizeOp>(bmm_op.getX().getDefiningOp()) &&
         mlir::isa_and_nonnull<BlockwiseDequantizeOp>(
-            bmm_op.getY().getDefiningOp())) {
+            bmm_op.getY().getDefiningOp()) &&
+        !bmm_op.getY().hasOneUse()) {
       return rewriter.notifyMatchFailure(
           bmm_op,
-          "SRQ batch_matmul with blockwise-dequantized rhs stays batch_matmul");
+          "SRQ batch_matmul with a shared blockwise-dequantized rhs stays "
+          "batch_matmul");
     }
 
     // Create a tfl.transpose op that performs ZX transpose on `input`.
