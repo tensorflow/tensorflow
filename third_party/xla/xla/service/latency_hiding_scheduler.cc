@@ -1723,6 +1723,51 @@ int64_t ReadySetLt::GetNumConflictingSerialResources(
 // return true. Otherwise it returns false. *reason is always update to
 // point to a string describing which heuristic ultimately made the
 // decision.
+namespace {
+
+// Returns the async start of `done`, reached through any async updates, or
+// nullptr if `done` has no separate start that `async_tracker` supports (e.g. a
+// synchronous collective that the backend schedules as async), or if the start
+// is not in the computation of `done` (only ops in the scheduled computation
+// are in its reachability map).
+const HloInstruction* GetAsyncStartFromAsyncDone(
+    const HloInstruction& done, const AsyncTracker& async_tracker) {
+  const HloInstruction* op = &done;
+  while (op->operand_count() > 0) {
+    op = op->operand(0);
+    if (op->parent() != done.parent()) {
+      return nullptr;
+    }
+    if (async_tracker.IsSupportedAsyncStart(*op)) {
+      return op;
+    }
+    if (op->opcode() != HloOpcode::kAsyncUpdate) {
+      return nullptr;
+    }
+  }
+  return nullptr;
+}
+
+// Returns true if a data operand of the async start `x` reaches the async start
+// `y` in `reachability`, i.e. `x` transfers data produced before `y` is issued.
+// The start is the only op of an async chain with data operands (async updates
+// and dones only take the previous op of the chain), and every op of `y`'s
+// chain is reachable through `y`. Operands shared by both starts (e.g. common
+// offsets) do not order the transfers, and neither do parameters and constants,
+// which are available from the start and would otherwise relate every two
+// starts reading them.
+bool TransfersEarlierData(const HloInstruction& x, const HloInstruction& y,
+                          const HloReachabilityMap& reachability) {
+  return absl::c_any_of(x.operands(), [&](const HloInstruction* operand) {
+    return operand->opcode() != HloOpcode::kParameter &&
+           operand->opcode() != HloOpcode::kConstant &&
+           !absl::c_linear_search(y.operands(), operand) &&
+           reachability.IsReachable(operand, &y);
+  });
+}
+
+}  // namespace
+
 bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
                                 DefaultSchedulerCore::ScheduleCandidate& b,
                                 const char** reason) const {
@@ -2044,6 +2089,31 @@ bool ReadySetLt::AIsBetterThanB(DefaultSchedulerCore::ScheduleCandidate& a,
     if (auto res = CmpExplicit(a_increase.first < 0, b_increase.first < 0,
                                "kDecreaseMemory", reason)) {
       return *res;
+    }
+  }
+
+  // Tie-breaker for two ready async-done operations: if a data input of one's
+  // async start is an ancestor of the other's async start (e.g. two dependent
+  // layers each offloading their result), the done transferring the
+  // earlier-produced data completes first in program order. Async ops that
+  // execute in order (e.g. on SparseCore) are then also issued in data order,
+  // right after their data is produced. Unrelated async-dones keep their
+  // original order.
+  if (an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone()) {
+    const HloInstruction* a_start =
+        GetAsyncStartFromAsyncDone(an->GetInstr(), *sched_state.async_tracker);
+    const HloInstruction* b_start =
+        GetAsyncStartFromAsyncDone(bn->GetInstr(), *sched_state.async_tracker);
+    if (a_start != nullptr && b_start != nullptr) {
+      const HloReachabilityMap& reachability =
+          sched_state.sched_graph->reachability();
+      if (auto res = CmpDirectional(
+              core_->top_down_scheduling_,
+              TransfersEarlierData(*a_start, *b_start, reachability),
+              TransfersEarlierData(*b_start, *a_start, reachability),
+              "kAsyncDoneDataDependency", reason)) {
+        return *res;
+      }
     }
   }
 
