@@ -1087,9 +1087,9 @@ def cast(x, dtype, name=None):
       isinstance(x, tensor_lib.Tensor) or _pywrap_utils.IsResourceVariable(x)
   ) and base_type == x.dtype:
     return x
+  if isinstance(x, sparse_tensor.SparseTensorValue):
+    x = sparse_tensor.SparseTensor.from_value(x)
   with ops.name_scope(name, "Cast", [x]) as name:
-    if isinstance(x, sparse_tensor.SparseTensorValue):
-      x = sparse_tensor.SparseTensor.from_value(x)
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
       x = sparse_tensor.SparseTensor(x.indices, values_cast, x.dense_shape)
