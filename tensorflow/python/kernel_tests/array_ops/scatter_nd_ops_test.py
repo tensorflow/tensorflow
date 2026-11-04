@@ -1085,6 +1085,29 @@ class ScatterNdTensorTest(test.TestCase):
           )
       )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRankZeroIndicesInvalid(self):
+    t = array_ops.ones([4], dtype=dtypes.float32)
+    scalar_indices = constant_op.constant(0, dtype=dtypes.int32)
+    updates = constant_op.constant([1.0], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Indices shape must have rank at least one|"
+        r"Shape must be at least rank 1",
+    ):
+      self.evaluate(array_ops.tensor_scatter_update(t, scalar_indices, updates))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNonScalarUpdateEmptyInput(self):
+    t = array_ops.zeros([0], dtype=dtypes.float32)
+    indices = constant_op.constant([[0]], dtype=dtypes.int32)
+    updates = constant_op.constant([1.0], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        r"Indices and updates specified for empty (input|output)",
+    ):
+      self.evaluate(array_ops.tensor_scatter_update(t, indices, updates))
+
   def testUpdateAddSubGradients(self):
     with self.cached_session():
       indices = constant_op.constant([[3], [1]])

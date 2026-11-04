@@ -107,6 +107,44 @@ class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::MAX> {
 
 namespace functor {
 
+template <typename T, scatter_nd_op::UpdateOp OP>
+EIGEN_STRONG_INLINE void ApplyScalarElementUpdate(T& dst, const T& update_val) {
+  if constexpr (OP == scatter_nd_op::UpdateOp::ASSIGN) {
+    dst = update_val;
+  } else if constexpr (OP == scatter_nd_op::UpdateOp::ADD) {
+    if constexpr (std::is_same_v<T, tstring>) {
+      dst.append(update_val);
+    } else if constexpr (std::is_same_v<T, bool>) {
+      dst |= update_val;
+    } else {
+      dst += update_val;
+    }
+  } else if constexpr (OP == scatter_nd_op::UpdateOp::SUB) {
+    if constexpr (std::is_same_v<T, bool>) {
+      dst ^= update_val;
+    } else if constexpr (!std::is_same_v<T, tstring>) {
+      dst -= update_val;
+    }
+  } else if constexpr (OP == scatter_nd_op::UpdateOp::MIN) {
+    if constexpr (!std::is_same_v<T, tstring>) {
+      dst = std::min(dst, update_val);
+    }
+  } else if constexpr (OP == scatter_nd_op::UpdateOp::MAX) {
+    if constexpr (!std::is_same_v<T, tstring>) {
+      dst = std::max(dst, update_val);
+    }
+  }
+}
+
+template <typename T, scatter_nd_op::UpdateOp OP>
+EIGEN_DONT_INLINE void ApplyScalarSliceUpdate(T* out,
+                                              Eigen::DenseIndex slice_size,
+                                              const T& update_val) {
+  for (Eigen::DenseIndex j = 0; j < slice_size; ++j) {
+    ApplyScalarElementUpdate<T, OP>(out[j], update_val);
+  }
+}
+
 // Implementation of update functor for CPU.
 template <typename T, typename Index, scatter_nd_op::UpdateOp OP, int IXDIM>
 struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
@@ -148,32 +186,8 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
           error_loc = loc;
           continue;
         }
-        const T& update_val = update_data[is_scalar_update ? 0 : loc];
-        if constexpr (OP == scatter_nd_op::UpdateOp::ASSIGN) {
-          out_data[i] = update_val;
-        } else if constexpr (OP == scatter_nd_op::UpdateOp::ADD) {
-          if constexpr (std::is_same_v<T, tstring>) {
-            out_data[i].append(update_val);
-          } else if constexpr (std::is_same_v<T, bool>) {
-            out_data[i] |= update_val;
-          } else {
-            out_data[i] += update_val;
-          }
-        } else if constexpr (OP == scatter_nd_op::UpdateOp::SUB) {
-          if constexpr (std::is_same_v<T, bool>) {
-            out_data[i] ^= update_val;
-          } else if constexpr (!std::is_same_v<T, tstring>) {
-            out_data[i] -= update_val;
-          }
-        } else if constexpr (OP == scatter_nd_op::UpdateOp::MIN) {
-          if constexpr (!std::is_same_v<T, tstring>) {
-            out_data[i] = std::min(out_data[i], update_val);
-          }
-        } else if constexpr (OP == scatter_nd_op::UpdateOp::MAX) {
-          if constexpr (!std::is_same_v<T, tstring>) {
-            out_data[i] = std::max(out_data[i], update_val);
-          }
-        }
+        ApplyScalarElementUpdate<T, OP>(
+            out_data[i], update_data[is_scalar_update ? 0 : loc]);
       }
     } else {
       for (Eigen::DenseIndex loc = 0; loc < batch_size; ++loc) {
@@ -190,15 +204,13 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
           // the caller might ignore bad indices.
           continue;
         }
-        auto input_chip = Toutput.template chip<0>(i);
-        auto output_chip = input_chip;
-        if (is_scalar_update) {
-          auto update_chip = input_chip.constant(Tupdates(0, 0));
-          update_executor::UpdateExecutor<
-              CPUDevice, decltype(input_chip), decltype(update_chip),
-              decltype(output_chip), OP>::Execute(d, input_chip, update_chip,
-                                                  output_chip);
+        if (TF_PREDICT_FALSE(is_scalar_update)) {
+          ApplyScalarSliceUpdate<T, OP>(
+              Toutput.data() + static_cast<Eigen::DenseIndex>(i) * slice_size,
+              slice_size, Tupdates(0, 0));
         } else {
+          auto input_chip = Toutput.template chip<0>(i);
+          auto output_chip = input_chip;
           auto update_chip = Tupdates.template chip<0>(loc);
           update_executor::UpdateExecutor<
               CPUDevice, decltype(input_chip), decltype(update_chip),
