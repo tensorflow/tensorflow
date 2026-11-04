@@ -1555,7 +1555,13 @@ def assert_type(tensor, tf_type, message=None, name=None):
   tf_type = dtypes.as_dtype(tf_type)
   with ops.name_scope(name, 'assert_type', [tensor]):
     if isinstance(tensor, sparse_tensor.SparseTensorValue):
-      tensor = sparse_tensor.SparseTensor.from_value(tensor)
+      val_dtype = getattr(tensor.values, 'dtype', None)
+      if val_dtype is None:
+        val_dtype = np.asarray(tensor.values).dtype
+      tensor = type('', (), {
+          'dtype': dtypes.as_dtype(val_dtype),
+          'name': 'SparseTensorValue'
+      })()
     elif not isinstance(tensor, sparse_tensor.SparseTensor):
       tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
@@ -2112,7 +2118,10 @@ def _assert_same_base_type(items, expected_type=None):
   for item in items:
     if item is not None:
       if isinstance(item, sparse_tensor.SparseTensorValue):
-        item = sparse_tensor.SparseTensor.from_value(item)
+        val_dtype = getattr(item.values, 'dtype', None)
+        if val_dtype is None:
+          val_dtype = np.asarray(item.values).dtype
+        item = type('', (), {'dtype': dtypes.as_dtype(val_dtype)})()
       item_type = item.dtype.base_dtype
       if not expected_type:
         expected_type = item_type
@@ -2127,7 +2136,13 @@ def _assert_same_base_type(items, expected_type=None):
     for item in items:
       if item is not None:
         if isinstance(item, sparse_tensor.SparseTensorValue):
-          item = sparse_tensor.SparseTensor.from_value(item)
+          val_dtype = getattr(item.values, 'dtype', None)
+          if val_dtype is None:
+            val_dtype = np.asarray(item.values).dtype
+          item = type('', (), {
+              'dtype': dtypes.as_dtype(val_dtype),
+              'name': 'SparseTensorValue'
+          })()
         item_type = item.dtype.base_dtype
         if not expected_type:
           expected_type = item_type
