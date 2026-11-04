@@ -20,6 +20,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
