@@ -51,6 +51,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "re2/re2.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
@@ -495,23 +496,11 @@ bool LatencyEstimator::IsP2pPair(const HloGraphNode& from,
 std::optional<LatencyEstimator::TimeCost>
 LatencyEstimator::GetLatencyFromMetadata(
     const HloInstruction& instruction) const {
-  const auto& attrs = instruction.frontend_attributes().map();
-  const auto it = attrs.find("latency_metadata");
-  if (it == attrs.end()) {
+  const std::optional<int64_t> latency_ns = GetLatencyMetadataNs(instruction);
+  if (!latency_ns.has_value()) {
     return std::nullopt;
   }
-  int64_t latency_ns;
-  if (!absl::SimpleAtoi(it->second, &latency_ns)) {
-    LOG(WARNING) << "Failed to parse latency from custom call for "
-                 << instruction.name()
-                 << " from latency_metadata:" << it->second;
-    return std::nullopt;
-  }
-  VLOG(10)
-      << "LatencyEstimator::GetLatencyFromMetadata: Returning latency from "
-         "custom call for "
-      << instruction.name() << ": " << latency_ns << " ns";
-  return (TimeCost)latency_ns * CyclesPerMicrosecond() / 1000.0;
+  return static_cast<TimeCost>(*latency_ns) * CyclesPerMicrosecond() / 1000.0;
 }
 
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
