@@ -157,7 +157,8 @@ struct WarpGrid {
 WarpGrid FactorWarpGrid(int64_t num_warps, int64_t tile_m, int64_t tile_n);
 
 // Estimates physical PTX register usage per thread for a GPU dot fusion kernel,
-// accounting for output accumulator registers and base state overhead.
+// accounting for output accumulator registers, staged operand registers, and
+// base state overhead.
 int CalculateRegistersPerThread(const DotProblemInfo& dot_info,
                                 const DotTileSize& dot_tile,
                                 const xtile::BlockLevelParameters& block_params,
