@@ -130,6 +130,59 @@ ENTRY main {
                             ErrorSpec{0, 0}));
 }
 
+TEST_F(RaggedDotTest, ContractingWithMultipleBatchDims) {
+  const char* hlo_text = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[2,3,5,11]{3,2,1,0} parameter(0)
+  p1 = f32[2,3,5,7]{3,2,1,0} parameter(1)
+  p2 = s64[2,3,2]{2,1,0} parameter(2)
+  ROOT ragged-dot = f32[2,2,3,11,7]{4,3,2,1,0} ragged-dot(p0, p1, p2),
+                    lhs_contracting_dims={2}, rhs_contracting_dims={2},
+                    lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+                    lhs_ragged_dims={2}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = 10;
+  ASSERT_OK_AND_ASSIGN(auto fake_arguments,
+                       MakeFakeArguments(module.get(), options));
+  // Set group sizes to reasonable numbers for ragged_dim_size=5.
+  fake_arguments[2] = LiteralUtil::CreateR3<int64_t>(
+      {{{2, 3}, {1, 4}, {3, 2}}, {{4, 1}, {2, 3}, {1, 4}}});
+  EXPECT_TRUE(RunAndCompare(std::move(module),
+                            LiteralUtil::MakePointers(fake_arguments),
+                            ErrorSpec{0, 0}));
+}
+
+TEST_F(RaggedDotTest, ContractingWithMultipleContractingDims) {
+  const char* hlo_text = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[2,11,3,5]{3,2,1,0} parameter(0)
+  p1 = f32[2,7,3,5]{3,2,1,0} parameter(1)
+  p2 = s64[2]{0} parameter(2)
+  ROOT ragged-dot = f32[2,2,11,7]{3,2,1,0} ragged-dot(p0, p1, p2),
+                    lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
+                    lhs_batch_dims={0}, rhs_batch_dims={0},
+                    lhs_ragged_dims={3}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  FakeArgumentsOptions options;
+  options.max_bits_of_precision = 10;
+  ASSERT_OK_AND_ASSIGN(auto fake_arguments,
+                       MakeFakeArguments(module.get(), options));
+  // Set group sizes to reasonable numbers for ragged_dim_size=5.
+  fake_arguments[2] = LiteralUtil::CreateR1<int64_t>({2, 3});
+  EXPECT_TRUE(RunAndCompare(std::move(module),
+                            LiteralUtil::MakePointers(fake_arguments),
+                            ErrorSpec{0, 0}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

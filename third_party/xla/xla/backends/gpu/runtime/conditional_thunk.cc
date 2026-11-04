@@ -146,12 +146,11 @@ absl::Status ConditionalThunk::Prepare(const PrepareParams& params) {
   } else {
     TF_RET_CHECK(!branch_executors_.empty());
   }
-  for (auto& branch_executor : branch_executors_) {
-    ABSL_RETURN_IF_ERROR(branch_executor.Prepare(params));
-  }
-  if (command_branch_executors_.has_value()) {
-    for (CommandExecutor& branch_executor : *command_branch_executors_) {
-      ABSL_RETURN_IF_ERROR(branch_executor.Prepare(params));
+  for (size_t i = 0; i < branch_executors_.size(); ++i) {
+    if (!branch_executors_[i].thunks().empty()) {
+      ABSL_RETURN_IF_ERROR(branch_executors_[i].Prepare(params));
+    } else if (command_branch_executors_.has_value()) {
+      ABSL_RETURN_IF_ERROR((*command_branch_executors_)[i].Prepare(params));
     }
   }
   return absl::OkStatus();
@@ -163,12 +162,11 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
   } else {
     TF_RET_CHECK(!branch_executors_.empty());
   }
-  for (auto& branch_executor : branch_executors_) {
-    ABSL_RETURN_IF_ERROR(branch_executor.Initialize(params));
-  }
-  if (command_branch_executors_.has_value()) {
-    for (CommandExecutor& branch_executor : *command_branch_executors_) {
-      ABSL_RETURN_IF_ERROR(branch_executor.Initialize(params));
+  for (size_t i = 0; i < branch_executors_.size(); ++i) {
+    if (!branch_executors_[i].thunks().empty()) {
+      ABSL_RETURN_IF_ERROR(branch_executors_[i].Initialize(params));
+    } else if (command_branch_executors_.has_value()) {
+      ABSL_RETURN_IF_ERROR((*command_branch_executors_)[i].Initialize(params));
     }
   }
 

@@ -78,6 +78,10 @@ struct ModuleIsolationOptions {
   // the false positive rate matters more than the miss rate.
   bool retry_without_excess_precision = false;
 
+  // If true, re-runs a failing module with FusionDebugger enabled to compare
+  // intermediate instructions inside the fusion against the reference runner.
+  bool enable_fusion_debugger = true;
+
   std::function<absl::StatusOr<Literal>(
       std::unique_ptr<HloModule> module, HloRunnerInterface* runner,
       absl::Span<const Literal> input_data, const RunModuleOptions& options)>

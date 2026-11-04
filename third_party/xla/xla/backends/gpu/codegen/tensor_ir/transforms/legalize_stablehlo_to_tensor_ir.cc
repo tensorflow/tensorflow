@@ -716,6 +716,38 @@ struct BitcastOpConversion
   }
 };
 
+// Legalizes mhlo.copy to its operand.
+//
+// nv_tensor_ir values are logical tensors, and the physical layout only exists
+// on the graph boundary, where `AttachLayoutStrides` records it as
+// `nv_tensor_ir.stride` attributes derived from the HLO shapes. A copy only
+// changes the layout (the `result_layout` attribute HloFunctionImporter
+// attaches), never an element, so as far as the graph is concerned it is the
+// identity: a copy to a different layout is expressed by the strides of the
+// value it feeds.
+//
+// A `cross_program_prefetch_index` on the copy is a hint for the runtime and
+// does not affect the values, so it is ignored.
+struct CopyOpConversion : public mlir::OpConversionPattern<mlir::mhlo::CopyOp> {
+  using mlir::OpConversionPattern<mlir::mhlo::CopyOp>::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::mhlo::CopyOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    auto result_type = mlir::dyn_cast_or_null<mlir::RankedTensorType>(
+        this->getTypeConverter()->convertType(op.getType()));
+    if (!result_type) {
+      return rewriter.notifyMatchFailure(op, "failed to convert result type");
+    }
+    if (adaptor.getOperand().getType() != result_type) {
+      return rewriter.notifyMatchFailure(
+          op, "expected the operand and result types to match");
+    }
+    rewriter.replaceOp(op, adaptor.getOperand());
+    return mlir::success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Reductions.
 //===----------------------------------------------------------------------===//
@@ -1580,8 +1612,8 @@ void populateLegalizeStablehloToTensorIrPatterns(
   patterns.add<ReshapeOpConversion, TransposeOpConversion, SliceOpConversion,
                ConcatenateOpConversion, IotaOpConversion, ConstantOpConversion,
                BroadcastInDimOpConversion, BitcastOpConversion,
-               DotGeneralOpConversion, DotOpConversion>(type_converter,
-                                                        context);
+               CopyOpConversion, DotGeneralOpConversion, DotOpConversion>(
+      type_converter, context);
 
   // Reductions, registered with a higher benefit than the elementwise
   // patterns so that the combiner in the reduction body can be inspected.
@@ -1756,9 +1788,9 @@ class LegalizeStablehloToTensorIrPass
           builder.getFunctionType(new_inputs, new_results);
 
       auto graph_op = mlir::nv_tensor_ir::GraphOp::create(
-          builder, func_op.getLoc(), func_op.getName(),
-          /*sym_visibility=*/nullptr, converted_func_type,
-          func_op.getArgAttrsAttr(), func_op.getResAttrsAttr());
+          builder, func_op.getLoc(), func_op.getName(), converted_func_type,
+          func_op.getArgAttrsAttr(), func_op.getResAttrsAttr(),
+          /*sym_visibility=*/nullptr);
 
       // Move the function's body region into the graph's graphBody region.
       graph_op.getGraphBody().takeBody(func_op.getBody());

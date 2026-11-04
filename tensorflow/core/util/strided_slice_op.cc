@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <iterator>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -225,6 +228,30 @@ absl::Status ValidateStridedSliceOp(
           " for strides."));
     }
   }
+  if (strides_tensor.dtype() != DT_INT16 &&
+      strides_tensor.dtype() != DT_INT32 &&
+      strides_tensor.dtype() != DT_INT64) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected strides to have dtype int16, int32, or int64, "
+                     "but got ",
+                     DataTypeString(strides_tensor.dtype()), "."));
+  }
+  if (begin_tensor != nullptr &&
+      begin_tensor->dtype() != strides_tensor.dtype()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected begin and strides to have the same dtype, "
+                     "but got ",
+                     DataTypeString(begin_tensor->dtype()), " and ",
+                     DataTypeString(strides_tensor.dtype()), "."));
+  }
+  if (end_tensor != nullptr && end_tensor->dtype() != strides_tensor.dtype()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected end and strides to have the same dtype, "
+                     "but got ",
+                     DataTypeString(end_tensor->dtype()), " and ",
+                     DataTypeString(strides_tensor.dtype()), "."));
+  }
+
   // Use bit compares to ensure ellipsis_mask is 0 or a power of 2
   // i.e. there exists only no more than one ellipsis
   if (ellipsis_mask && ((ellipsis_mask & (ellipsis_mask - 1)) != 0)) {
@@ -289,7 +316,8 @@ absl::Status ValidateStridedSliceOp(
   } else if (strides_tensor.dtype() == DT_INT16) {
     TF_RETURN_IF_ERROR(BuildDenseSpec<int16_t>(sparse_spec, &dense_spec));
   } else {
-    LOG(FATAL) << "begin must be either int16, int32 or int64";
+    return absl::InvalidArgumentError(
+        "begin, end, and strides must be int16, int32, or int64");
   }
 
   // Step 3: Make implicit ranges (non-zero begin_masks and end_masks) explicit
@@ -309,7 +337,7 @@ absl::Status ValidateStridedSliceOp(
     }
     bool shrink_i = (dense_spec.shrink_axis_mask & (1 << i));
     if (dim_i == -1) {
-      processing_shape->AddDim(shrink_i ? 1 : -1);
+      TF_RETURN_IF_ERROR(processing_shape->AddDimWithStatus(shrink_i ? 1 : -1));
       continue;
     }
 
@@ -397,9 +425,9 @@ absl::Status ValidateStridedSliceOp(
         size_i = interval_length / stride_i +
                  (interval_length % stride_i != 0 ? 1 : 0);
       }
-      processing_shape->AddDim(size_i);
+      TF_RETURN_IF_ERROR(processing_shape->AddDimWithStatus(size_i));
     } else {
-      processing_shape->AddDim(-1);
+      TF_RETURN_IF_ERROR(processing_shape->AddDimWithStatus(-1));
     }
   }
 
@@ -408,6 +436,7 @@ absl::Status ValidateStridedSliceOp(
   // new_axis will increase dimension by 1 (with a one-size dimension)
   // slices like foo[3,...] will reduce dimension by 1.
   // This cannot be done earlier, because it depends on Step 3.
+  // AddDimWithStatus rejects a result past TensorShape::MaxDimensions().
   final_shape->Clear();
   if (shape_spec != nullptr) {
     shape_spec->output_to_sparse_mapping.clear();
@@ -427,13 +456,14 @@ absl::Status ValidateStridedSliceOp(
     int64_t sparse_index =
         dense_spec.final_shape_gather_indices_sparse[dense_dim];
     if (gather_index >= 0) {
-      final_shape->AddDim(processing_shape->dim_size(gather_index));
+      TF_RETURN_IF_ERROR(final_shape->AddDimWithStatus(
+          processing_shape->dim_size(gather_index)));
       if (shape_spec != nullptr) {
         shape_spec->output_to_sparse_mapping.push_back(sparse_index);
         shape_spec->output_to_processing_mapping.push_back(gather_index);
       }
     } else if (gather_index == kNewAxis) {
-      final_shape->AddDim(1);
+      TF_RETURN_IF_ERROR(final_shape->AddDimWithStatus(1));
       if (shape_spec != nullptr) {
         shape_spec->output_to_sparse_mapping.push_back(-1);
         shape_spec->output_to_processing_mapping.push_back(-1);

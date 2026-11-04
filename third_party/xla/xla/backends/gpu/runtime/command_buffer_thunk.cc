@@ -28,9 +28,13 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
@@ -41,6 +45,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/scoped_command_buffer_annotation.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -53,6 +58,19 @@ namespace xla::gpu {
 
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
+
+namespace {
+
+// Returns the current module's top-level annotation, or an empty view when the
+// thunk runs outside `GpuExecutable::ExecuteThunksImpl` (e.g. in tests), which
+// installs the module annotations.
+absl::string_view ModuleTopLevelAnnotation() {
+  const ModuleAnnotations* mod = GetCurrentModuleAnnotations();
+  return mod != nullptr ? static_cast<absl::string_view>(mod->top_level)
+                        : absl::string_view();
+}
+
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // CommandBufferThunk
@@ -69,15 +87,32 @@ bool CommandBufferThunk::ExecutorCommandBuffer::HasDynamicAllocations(
   return !absl::c_includes(persistent_alloc_indices, commands.allocs_indices());
 }
 
-CommandBufferThunk::CommandBufferThunk(
-    CommandExecutor commands, ThunkInfo thunk_info, int devices_in_process,
-    std::unique_ptr<SequentialThunk> thunks,
-    bool enable_command_buffers_during_profiling)
+bool CommandBufferThunk::ShouldRecordTelemetry(
+    const se::CommandBuffer& cmd_buffer) const {
+  if (!enable_command_buffer_telemetry_) {
+    return false;
+  }
+  if (cmd_buffer.SupportsNodeAnnotations()) {
+    return true;
+  }
+  LOG_FIRST_N(WARNING, 1)
+      << "Ignoring --xla_gpu_enable_command_buffer_telemetry: the command "
+         "buffer backend does not support node annotations (requires CUDA "
+         "13.2+).";
+  return false;
+}
+
+CommandBufferThunk::CommandBufferThunk(CommandExecutor commands,
+                                       ThunkInfo thunk_info,
+                                       int devices_in_process,
+                                       std::unique_ptr<SequentialThunk> thunks,
+                                       CommandBufferThunkOptions options)
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
       commands_(std::move(commands)),
       thunks_(std::move(thunks)),
       enable_command_buffers_during_profiling_(
-          enable_command_buffers_during_profiling),
+          options.enable_command_buffers_during_profiling),
+      enable_command_buffer_telemetry_(options.enable_command_buffer_telemetry),
       state_(std::make_shared<State>(devices_in_process)) {
   if (VLOG_IS_ON(5)) {
     absl::StatusOr<std::string> graph = commands_.RenderExecutionGraph();
@@ -142,25 +177,13 @@ absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
     return absl::OkStatus();
   }
 
-  // Always prepare thunks if they are present so we are ready to fall back
-  // on them if we detect profiling activity.
+  // `commands_` borrows pointers to the same Thunk objects owned by `thunks_`,
+  // so preparing `thunks_` (when present) already prepares all commands.
   if (thunks_) {
-    ABSL_RETURN_IF_ERROR(thunks_->Prepare(params));
+    return thunks_->Prepare(params);
   }
 
-  // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
-  // memory corruption.
-  if (tsl::profiler::ProfilerLock::HasActiveSession() && thunks_ &&
-      !enable_command_buffers_during_profiling_) {
-    VLOG(1) << "Prepare command buffer thunk as a regular thunk sequence "
-               "because we detected active profiling session";
-    TraceMe trace("WARNING: CommandBuffer disabled when profiling");
-    return absl::OkStatus();
-  }
-
-  ABSL_RETURN_IF_ERROR(commands_.Prepare(params));
-
-  return absl::OkStatus();
+  return commands_.Prepare(params);
 }
 
 absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
@@ -170,13 +193,14 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     return absl::OkStatus();
   }
 
-  // Initialize commands.
-  ABSL_RETURN_IF_ERROR(commands_.Initialize(params));
-
-  // Always initialize thunks if they are present so we are ready to fall back
-  // on them if we detect profiling activity.
+  // Always initialize fallback thunks (or commands when there are no fallback
+  // thunks). `commands_` borrows pointers to the same Thunk objects owned by
+  // `thunks_`, so initializing `thunks_` (when present) already initializes all
+  // commands.
   if (thunks_) {
     ABSL_RETURN_IF_ERROR(thunks_->Initialize(params));
+  } else {
+    ABSL_RETURN_IF_ERROR(commands_.Initialize(params));
   }
 
   // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
@@ -199,14 +223,19 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     return absl::OkStatus();
   }
 
-  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
-                   GetOrCreateCommandBuffer(params.executor));
+  ABSL_ASSIGN_OR_RETURN(
+      std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
+      GetOrCreateCommandBuffer(params.executor, params.collective_memory));
   absl::MutexLock lock(cmd_buffer->mutex);
 
   // If there are no thunks, or command buffer does not require warmup,
   // we can mark warm up as done immediately.
   if (!thunks_ || !commands_.requires_warmup()) {
     cmd_buffer->warmup_done = true;
+  }
+
+  if (!cmd_buffer->warmup_done) {
+    return absl::OkStatus();
   }
 
   // Construct ExecuteParams with empty fields for everything that is not needed
@@ -223,10 +252,6 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       /*additional_compute_streams=*/{}, params.execution_scoped_state,
       /*mock_collectives=*/false, /*execution_id=*/0,
       /*rng_seed=*/0, params.persistent_alloc_indices);
-
-  if (!cmd_buffer->warmup_done) {
-    return absl::OkStatus();
-  }
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -265,8 +290,14 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     Command::RecordParams record_params = {cmd_buffer->state,
                                            std::move(updated_allocs),
                                            /*is_initialization=*/true};
-    ABSL_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
-                                     cmd_buffer->command_buffer.get()));
+    // The root spans `Record`, including `Finalize`, so stream_executor sees
+    // recording on for the whole recording when telemetry is enabled.
+    auto telemetry_root = se::ScopedCommandBufferAnnotation::Root(
+        ShouldRecordTelemetry(*cmd_buffer->command_buffer),
+        ModuleTopLevelAnnotation());
+    ABSL_RETURN_IF_ERROR(RecordCommands(params.executor, execute_params,
+                                   std::move(record_params), cmd_buffer.get(),
+                                   params.collective_memory));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Initialized command buffer on device #"
@@ -311,8 +342,9 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   se::StreamExecutor* executor = params.stream->parent();
-  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
-                   GetOrCreateCommandBuffer(executor));
+  ABSL_ASSIGN_OR_RETURN(
+      std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
+      GetOrCreateCommandBuffer(executor, params.collective_memory));
 
   absl::MutexLock lock(cmd_buffer->mutex);
 
@@ -362,8 +394,13 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     Command::RecordParams record_params = {
         cmd_buffer->state, std::move(updated_allocs),
         /*is_initialization=*/is_first_record && !has_dynamic_allocations};
-    ABSL_RETURN_IF_ERROR(commands_.Record(params, record_params,
-                                     cmd_buffer->command_buffer.get()));
+    // The root spans `Record`, including `Finalize`, so stream_executor sees
+    // recording on for the whole recording when telemetry is enabled.
+    auto telemetry_root = se::ScopedCommandBufferAnnotation::Root(
+        ShouldRecordTelemetry(*cmd_buffer->command_buffer),
+        ModuleTopLevelAnnotation());
+    ABSL_RETURN_IF_ERROR(RecordCommands(executor, params, std::move(record_params),
+                                   cmd_buffer.get(), params.collective_memory));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     XLA_VLOG_DEVICE(3, executor->device_ordinal())
@@ -390,20 +427,77 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   return cmd_buffer->command_buffer->Submit(params.stream);
 }
 
+absl::Status CommandBufferThunk::RecordCommands(
+    se::StreamExecutor* executor, const Thunk::ExecuteParams& execute_params,
+    Command::RecordParams record_params, ExecutorCommandBuffer* cmd_buffer,
+    const CollectiveMemory* collective_memory) {
+  ABSL_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
+                                   cmd_buffer->command_buffer.get()));
+  SetRecordedSymmetricMemoryIds(executor, cmd_buffer, collective_memory);
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
-CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
+CommandBufferThunk::GetOrCreateCommandBuffer(
+    se::StreamExecutor* executor, const CollectiveMemory* collective_memory) {
   ABSL_ASSIGN_OR_RETURN(
       DeviceState * device_state,
       state_->device_states.GetOrCreate(executor->device_ordinal()));
+
+  // A replaced command buffer is destroyed after `device_state->mutex` is
+  // released (or later, by an execution that still holds a reference to it).
+  std::shared_ptr<ExecutorCommandBuffer> stale_command_buffer;
   absl::MutexLock lock(device_state->mutex);
+
+  // The command buffer is replaced rather than updated because commands cache
+  // their recordings keyed by buffer addresses (CommandExecutor skips unchanged
+  // or persistent commands, and TracedCommandBuffer reuses earlier captures
+  // when buffer addresses match), so an in-place update would keep the stale
+  // capture. Symmetric memories are created collectively, so all ranks
+  // re-record in the same execution.
+  if (device_state->command_buffer != nullptr && collective_memory != nullptr &&
+      device_state->recorded_symmetric_memory_ids.has_value() &&
+      !absl::c_equal(*device_state->recorded_symmetric_memory_ids,
+                     collective_memory->symmetric_memory_ids())) {
+    XLA_VLOG_DEVICE(3, executor->device_ordinal())
+        << "Symmetric memories changed since the command buffer was recorded; "
+           "replace it with a new command buffer";
+    stale_command_buffer = std::move(device_state->command_buffer);
+  }
+
   if (device_state->command_buffer == nullptr) {
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<se::CommandBuffer> command_buffer,
         executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
     device_state->command_buffer =
         std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer));
+    device_state->recorded_symmetric_memory_ids.reset();
   }
   return device_state->command_buffer;
+}
+
+void CommandBufferThunk::SetRecordedSymmetricMemoryIds(
+    se::StreamExecutor* executor, const ExecutorCommandBuffer* cmd_buffer,
+    const CollectiveMemory* collective_memory) {
+  if (collective_memory == nullptr) {
+    return;
+  }
+  absl::StatusOr<DeviceState*> device_state =
+      state_->device_states.GetOrCreate(executor->device_ordinal());
+  if (!device_state.ok()) {
+    return;
+  }
+  absl::MutexLock lock((*device_state)->mutex);
+  std::optional<std::vector<CollectiveMemory::SymmetricMemoryId>>& recorded =
+      (*device_state)->recorded_symmetric_memory_ids;
+  // Commands are re-recorded whenever buffer addresses change, but symmetric
+  // memories change rarely: copy them only if they differ.
+  if ((*device_state)->command_buffer.get() == cmd_buffer &&
+      !(recorded.has_value() &&
+        absl::c_equal(*recorded, collective_memory->symmetric_memory_ids()))) {
+    recorded.emplace(collective_memory->symmetric_memory_ids().begin(),
+                     collective_memory->symmetric_memory_ids().end());
+  }
 }
 
 //===----------------------------------------------------------------------===//

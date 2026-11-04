@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"

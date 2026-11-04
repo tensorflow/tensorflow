@@ -192,5 +192,41 @@ TEST_F(DynamicDimensionSimplifierTest, IdConvertRemoving) {
               GmockMatch(m::Parameter(0)));
 }
 
+TEST_F(DynamicDimensionSimplifierTest, DoNotForwardConcatSliceDynamicOperand) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[<=2] parameter(0)
+      p1 = s32[1] parameter(1)
+      p2 = s32[1] parameter(2)
+      concat = s32[<=4] concatenate(p0, p1, p2), dimensions={0}
+      ROOT slice = s32[1] slice(concat), slice={[2:3]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  DynamicDimensionSimplifier simplifier;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(DynamicDimensionSimplifierTest,
+       ForwardConcatSliceStaticPrefixBeforeDynamicOperand) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[1] parameter(0)
+      p1 = s32[<=2] parameter(1)
+      concat = s32[<=3] concatenate(p0, p1), dimensions={0}
+      ROOT slice = s32[1] slice(concat), slice={[0:1]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  DynamicDimensionSimplifier simplifier;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(m.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
 }  // namespace
 }  // namespace xla

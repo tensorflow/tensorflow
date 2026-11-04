@@ -30,7 +30,7 @@ namespace sdy {
 // The rest of the XLA pipeline expects host callback custom calls to either be
 // a tuple with a get_tuple_element or no results (which we changed due to
 // shardy shardings expecting at least one result, and needing to attach a
-// maximal sharding to the callbacks).
+// single-device sharding to the callbacks).
 std::unique_ptr<mlir::Pass>
 createStablehloRoundTripExportCallbackCustomCallsPass();
 

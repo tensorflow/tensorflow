@@ -61,6 +61,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -88,5 +89,19 @@ tf_cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:test",
+    ],
+)
+
+# Unit tests for ModularFileSystem that don't need plugin DSOs.
+tf_cc_test(
+    name = "modular_filesystem_unit_test",
+    size = "small",
+    srcs = ["modular_filesystem_unit_test.cc"],
+    deps = [
+        ":filesystem_interface",
+        ":modular_filesystem",
+        "//tensorflow/c:tf_status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )

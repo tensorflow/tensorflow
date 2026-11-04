@@ -80,6 +80,15 @@ func.func @erf_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
 
 // -----
 
+// CHECK-LABEL: func @erfc_preserve
+func.func @erfc_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK: stablehlo.composite "chlo.erfc" %arg0 {decomposition = @chlo.erfc.impl, version = 1 : i32}
+  %0 = chlo.erfc %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
 // CHECK-LABEL: func @acosh_preserve
 func.func @acosh_preserve(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
   // CHECK: stablehlo.composite "chlo.acosh" %arg0 {decomposition = @chlo.acosh.impl, version = 1 : i32}

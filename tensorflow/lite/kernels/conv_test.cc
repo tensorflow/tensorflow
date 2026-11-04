@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -60,7 +61,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
       enum ActivationFunctionType activation = ActivationFunctionType_NONE,
       int dilation_width_factor = 1, int dilation_height_factor = 1,
       int num_threads = -1, std::initializer_list<FilterType> filter_data = {},
-      const TensorType bias_type = TensorType_INT32) {
+      const TensorType bias_type = TensorType_INT32,
+      std::optional<TensorType> quantized_bias_type = std::nullopt) {
     input_ = AddInput(input);
 
     if (filter_data.size()) {
@@ -112,7 +114,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
                  CreateConv2DOptions(
                      builder_, padding, stride_width, stride_height, activation,
-                     dilation_width_factor, dilation_height_factor, bias_type)
+                     dilation_width_factor, dilation_height_factor,
+                     quantized_bias_type.value_or(bias_type))
                      .Union());
 
     resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
@@ -2132,61 +2135,81 @@ TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({61, 127, -115, -93}));
 }
 
+// The int32 bias selects the int32 path whether `quantized_bias_type` says so
+// or keeps its FLOAT32 default, as in models written before the option existed.
 TEST_P(ConvolutionOpTest, SimplePerChannel16x8Bias32) {
-  const float scale = 128.0 / 65536;
-  PerChannelQuantizedConvolutionOpModel m(
-      GetRegistration(), {TensorType_INT16, {1, 2, 3, 2}, 0, 0, scale, 0},
-      {TensorType_INT8,
-       // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
-       {2, 2, 2, 2},
-       0,
-       0,
-       0,
-       0,
-       /*per_channel_quantization=*/true,
-       /*per_channel_quantization_scales=*/{1, 2},
-       /*per_channel_quantization_offsets=*/{0, 0},
-       /*channel_index=*/0},
-      {TensorType_INT16, {}, 0, 0, scale, 0},
-      /*stride_width=*/1, /*stride_height=*/1,
-      /*padding=*/Padding_VALID,
-      /*activation=*/ActivationFunctionType_NONE,
-      /*dilation_width_factor=*/1,
-      /*dilation_height_factor=*/1,
-      /*num_threads=*/-1,
-      /*filter_data=*/{},
-      /*bias_type=*/TensorType_INT32);
+  for (TensorType quantized_bias_type :
+       {TensorType_INT32, TensorType_FLOAT32}) {
+    SCOPED_TRACE(EnumNameTensorType(quantized_bias_type));
+    const float scale = 128.0 / 65536;
+    PerChannelQuantizedConvolutionOpModel m(
+        GetRegistration(), {TensorType_INT16, {1, 2, 3, 2}, 0, 0, scale, 0},
+        {TensorType_INT8,
+         // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+         {2, 2, 2, 2},
+         0,
+         0,
+         0,
+         0,
+         /*per_channel_quantization=*/true,
+         /*per_channel_quantization_scales=*/{1, 2},
+         /*per_channel_quantization_offsets=*/{0, 0},
+         /*channel_index=*/0},
+        {TensorType_INT16, {}, 0, 0, scale, 0},
+        /*stride_width=*/1, /*stride_height=*/1,
+        /*padding=*/Padding_VALID,
+        /*activation=*/ActivationFunctionType_NONE,
+        /*dilation_width_factor=*/1,
+        /*dilation_height_factor=*/1,
+        /*num_threads=*/-1,
+        /*filter_data=*/{},
+        /*bias_type=*/TensorType_INT32, quantized_bias_type);
 
-  m.SetInput<int16_t>({
-      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
-      3, 2,    // batch = 0, y = 0, x = 0
-      1, -1,   // batch = 0, y = 0, x = 1
-      -2, -3,  // batch = 0, y = 0, x = 2
-      4, 3,    // batch = 0, y = 1, x = 0
-      2, -2,   // batch = 0, y = 1, x = 1
-      -3, -4,  // batch = 0, y = 1, x = 2
-  });
-  m.SetFilter(
-      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
-      {
-          1, 2,  // out channel = 0, y = 0, x = 0
-          3, 4,  // out channel = 0, y = 0, x = 1
-          3, 4,  // out channel = 0, y = 1, x = 0
-          5, 6,  // out channel = 0, y = 1, x = 1
-          7, 8,  // out channel = 1, y = 0, x = 0
-          5, 6,  // out channel = 1, y = 0, x = 1
-          3, 4,  // out channel = 1, y = 1, x = 0
-          1, 2,  // out channel = 1, y = 1, x = 1
-      });
-  m.SetBias({3, -2});
+    m.SetInput<int16_t>({
+        // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+        3,
+        2,  // batch = 0, y = 0, x = 0
+        1,
+        -1,  // batch = 0, y = 0, x = 1
+        -2,
+        -3,  // batch = 0, y = 0, x = 2
+        4,
+        3,  // batch = 0, y = 1, x = 0
+        2,
+        -2,  // batch = 0, y = 1, x = 1
+        -3,
+        -4,  // batch = 0, y = 1, x = 2
+    });
+    m.SetFilter(
+        // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+        {
+            1,
+            2,  // out channel = 0, y = 0, x = 0
+            3,
+            4,  // out channel = 0, y = 0, x = 1
+            3,
+            4,  // out channel = 0, y = 1, x = 0
+            5,
+            6,  // out channel = 0, y = 1, x = 1
+            7,
+            8,  // out channel = 1, y = 0, x = 0
+            5,
+            6,  // out channel = 1, y = 0, x = 1
+            3,
+            4,  // out channel = 1, y = 1, x = 0
+            1,
+            2,  // out channel = 1, y = 1, x = 1
+        });
+    m.SetBias({3, -2});
 
-  // Invoke and verify output.
-  // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
-              ElementsAreArray(ArrayFloatNear({31, 63.99804688, -57, -46})));
-  EXPECT_THAT(m.GetOutput<int16_t>(),
-              ElementsAreArray({15872, 32767, -29184, -23552}));
+    // Invoke and verify output.
+    // output has dimension [1 * 1 * 2 * 2] as [batch, y, x, output_channel]
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+                ElementsAreArray(ArrayFloatNear({31, 63.99804688, -57, -46})));
+    EXPECT_THAT(m.GetOutput<int16_t>(),
+                ElementsAreArray({15872, 32767, -29184, -23552}));
+  }
 }
 
 TEST_P(ConvolutionOpTest, SimplePerChannel16x4Bias32) {
@@ -2738,6 +2761,117 @@ TEST(ConvPrepareSecurityTest, RejectsShapeOverflow) {
   params.padding = kTfLitePaddingSame;
   params.stride_width = 1;
   params.stride_height = 1;
+  params.dilation_width_factor = 1;
+  params.dilation_height_factor = 1;
+  params.activation = kTfLiteActNone;
+  params.quantized_bias_type = kTfLiteNoType;
+
+  DirectPrepareTestContextState state;
+  TfLiteContext context = {};
+  context.tensors_size = 4;
+  context.tensors = tensors;
+  context.impl_ = &state;
+  context.ResizeTensor = ResizeTensorShouldNotBeCalled;
+  context.ReportError = SilentReportError;
+  context.AddTensors = AddTensorsShouldNotBeCalled;
+  context.GetExternalContext = GetExternalContext;
+  context.SetExternalContext = SetExternalContext;
+
+  TfLiteNode node = {};
+  node.inputs = inputs.get();
+  node.outputs = outputs.get();
+  node.builtin_data = &params;
+
+  TfLiteRegistration* registration =
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT();
+  node.user_data = registration->init(&context, nullptr, 0);
+  EXPECT_EQ(registration->prepare(&context, &node), kTfLiteError);
+  EXPECT_FALSE(state.resize_tensor_called);
+  EXPECT_FALSE(state.add_tensors_called);
+  registration->free(&context, node.user_data);
+}
+
+TEST(ConvPrepareSecurityTest, RejectsOutputColsOverflowWithoutIm2Col) {
+  // 1x1 stride-1 convolution does not require im2col, and out_height *
+  // out_width (32768 * 1) fits in 32-bit int, but batches * out_height *
+  // out_width (65536 * 32768 = 2^31) overflows 32-bit signed int.
+  IntArrayUniquePtr input_dims = BuildTfLiteArray<int>({65536, 32768, 1, 1});
+  IntArrayUniquePtr filter_dims = BuildTfLiteArray<int>({1, 1, 1, 1});
+  IntArrayUniquePtr bias_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr output_dims = BuildTfLiteArray<int>(0);
+
+  TfLiteTensor tensors[4] = {};
+  tensors[0].type = kTfLiteFloat32;
+  tensors[0].dims = input_dims.get();
+  tensors[1].type = kTfLiteFloat32;
+  tensors[1].dims = filter_dims.get();
+  tensors[2].type = kTfLiteFloat32;
+  tensors[2].dims = bias_dims.get();
+  tensors[3].type = kTfLiteFloat32;
+  tensors[3].dims = output_dims.get();
+
+  IntArrayUniquePtr inputs = BuildTfLiteArray<int>({0, 1, 2});
+  IntArrayUniquePtr outputs = BuildTfLiteArray<int>({3});
+  TfLiteConvParams params = {};
+  params.padding = kTfLitePaddingSame;
+  params.stride_width = 1;
+  params.stride_height = 1;
+  params.dilation_width_factor = 1;
+  params.dilation_height_factor = 1;
+  params.activation = kTfLiteActNone;
+  params.quantized_bias_type = kTfLiteNoType;
+
+  DirectPrepareTestContextState state;
+  TfLiteContext context = {};
+  context.tensors_size = 4;
+  context.tensors = tensors;
+  context.impl_ = &state;
+  context.ResizeTensor = ResizeTensorShouldNotBeCalled;
+  context.ReportError = SilentReportError;
+  context.AddTensors = AddTensorsShouldNotBeCalled;
+  context.GetExternalContext = GetExternalContext;
+  context.SetExternalContext = SetExternalContext;
+
+  TfLiteNode node = {};
+  node.inputs = inputs.get();
+  node.outputs = outputs.get();
+  node.builtin_data = &params;
+
+  TfLiteRegistration* registration =
+      ops::builtin::Register_CONVOLUTION_GENERIC_OPT();
+  node.user_data = registration->init(&context, nullptr, 0);
+  EXPECT_EQ(registration->prepare(&context, &node), kTfLiteError);
+  EXPECT_FALSE(state.resize_tensor_called);
+  EXPECT_FALSE(state.add_tensors_called);
+  registration->free(&context, node.user_data);
+}
+
+TEST(ConvPrepareSecurityTest, RejectsInputElementOverflowWithStridedIm2Col) {
+  // With stride 4, output spatial dimensions (16384 * 8192) and im2col
+  // elements (16384 * 8192 * 2 * 2 = 536,870,912) fit in 32-bit int, but the
+  // input tensor (65536 * 32768 = 2^31) overflows 32-bit signed int offsets in
+  // im2col.
+  IntArrayUniquePtr input_dims = BuildTfLiteArray<int>({1, 65536, 32768, 1});
+  IntArrayUniquePtr filter_dims = BuildTfLiteArray<int>({1, 2, 2, 1});
+  IntArrayUniquePtr bias_dims = BuildTfLiteArray<int>({1});
+  IntArrayUniquePtr output_dims = BuildTfLiteArray<int>(0);
+
+  TfLiteTensor tensors[4] = {};
+  tensors[0].type = kTfLiteFloat32;
+  tensors[0].dims = input_dims.get();
+  tensors[1].type = kTfLiteFloat32;
+  tensors[1].dims = filter_dims.get();
+  tensors[2].type = kTfLiteFloat32;
+  tensors[2].dims = bias_dims.get();
+  tensors[3].type = kTfLiteFloat32;
+  tensors[3].dims = output_dims.get();
+
+  IntArrayUniquePtr inputs = BuildTfLiteArray<int>({0, 1, 2});
+  IntArrayUniquePtr outputs = BuildTfLiteArray<int>({3});
+  TfLiteConvParams params = {};
+  params.padding = kTfLitePaddingSame;
+  params.stride_width = 4;
+  params.stride_height = 4;
   params.dilation_width_factor = 1;
   params.dilation_height_factor = 1;
   params.activation = kTfLiteActNone;

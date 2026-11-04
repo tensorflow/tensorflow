@@ -31,6 +31,20 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "decode_test",
+    srcs = ["decode_test.cc"],
+    deps = [
+        ":decode",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+    ],
+)
+
 cc_library(
     name = "descriptors",
     srcs = ["descriptors.cc"],

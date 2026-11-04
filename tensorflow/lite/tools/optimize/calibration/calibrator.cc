@@ -232,7 +232,7 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   auto error_reporter = calibrator->GetErrorReporter();
 
   for (int i : op_info.loggable_inputs) {
-    auto tensor = context->tensors[i];
+    const TfLiteTensor& tensor = context->tensors[i];
     TF_LITE_ENSURE_STATUS(
         logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,
                                tensor.bytes / sizeof(float), error_reporter));
@@ -254,16 +254,22 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   // Using moving average will also break this.
 
   // Log input again to make sure the state tensors are captured after lstm
-  // cell.
+  // cell. Only variable tensors change state during execution. Non-variable
+  // input tensors are already logged prior to kernel invocation and should not
+  // be logged again, as memory planners may share/reuse input buffers for
+  // output tensors, which would overwrite input calibration statistics with
+  // output values.
   for (int i : op_info.loggable_inputs) {
-    auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(
-        logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,
-                               tensor.bytes / sizeof(float), error_reporter));
+    const TfLiteTensor& tensor = context->tensors[i];
+    if (tensor.is_variable) {
+      TF_LITE_ENSURE_STATUS(
+          logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,
+                                 tensor.bytes / sizeof(float), error_reporter));
+    }
   }
 
   for (int i : op_info.loggable_outputs) {
-    auto tensor = context->tensors[i];
+    const TfLiteTensor& tensor = context->tensors[i];
     TF_LITE_ENSURE_STATUS(
         logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,
                                tensor.bytes / sizeof(float), error_reporter));

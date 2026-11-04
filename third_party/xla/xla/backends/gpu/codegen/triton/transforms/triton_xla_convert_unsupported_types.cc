@@ -38,16 +38,6 @@ namespace mlir::triton::xla {
 
 namespace {
 
-bool FindScaledDotOp(const ModuleOp& module) {
-  auto walk_result = module->walk([&](Operation* op) {
-    if (auto extSI = dyn_cast<triton::DotScaledOp>(op)) {
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
-  return walk_result.wasInterrupted();
-}
-
 template <typename OpType>
 struct GenericOpConversionPattern final : public OpConversionPattern<OpType> {
   using OpConversionPattern<OpType>::OpConversionPattern;
@@ -97,9 +87,8 @@ class TritonXLAConvertUnsupportedTypesPass
 
  private:
   void runOnOperation() override {
-    if (!FindScaledDotOp(getOperation())) {
-      return;
-    }
+    // Triton has no support for f8E8M0FNU outside of tt.dot_scaled, so we
+    // store and move such values around as i8.
     TypeConverter converter;
     converter.addConversion([](Type type) { return type; });
     converter.addConversion([&](Float8E8M0FNUType type) {
@@ -138,15 +127,18 @@ class TritonXLAConvertUnsupportedTypesPass
         ConstantOpConversionPattern,
         GenericOpConversionPattern<::xla::xtile::ExtractTileOp>,
         GenericOpConversionPattern<::xla::xtile::InsertTileOp>,
+        GenericOpConversionPattern<BitcastOp>,
         GenericOpConversionPattern<BroadcastOp>,
         GenericOpConversionPattern<DotScaledOp>,
         GenericOpConversionPattern<ExpandDimsOp>,
         GenericOpConversionPattern<ReshapeOp>,
         GenericOpConversionPattern<SplatOp>,
         GenericOpConversionPattern<TransOp>,
+        GenericOpConversionPattern<UnsplatOp>,
         GenericOpConversionPattern<arith::BitcastOp>,
         GenericOpConversionPattern<arith::SelectOp>,
-        GenericOpConversionPattern<tensor::ExtractOp>
+        GenericOpConversionPattern<tensor::ExtractOp>,
+        GenericOpConversionPattern<tensor::FromElementsOp>
         // go/keep-sorted end
         >(converter, ctx);
     scf::populateSCFStructuralTypeConversions(converter, patterns);

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/future.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -167,6 +168,9 @@ class GpuDeviceCommunicator {
 // `GpuCommunicator::LaunchAllReduce` method which returns an `absl::Status`.
 class GpuCommunicator : public Communicator {
  public:
+  static constexpr int64_t kMaxCliqueSemaphores = 1024;
+  static constexpr int64_t kMaxCollectiveIds = 32;
+
   ~GpuCommunicator() override = default;
 
   // Returns a platform-specific handle to the underlying communicator object.
@@ -219,8 +223,13 @@ class GpuCommunicator : public Communicator {
   // a collective operation, and all ranks in a clique must call this operation
   // in order to make a progress.
   virtual absl::StatusOr<std::unique_ptr<SymmetricMemory>>
-  CreateSymmetricMemory(se::DeviceAddressBase addr) {
+  CreateSymmetricMemory(se::DeviceAddressBase addr, bool symmetric_window) {
     return Unimplemented("Symmetric memory is not implemented");
+  }
+
+  absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
+      se::DeviceAddressBase addr) {
+    return CreateSymmetricMemory(addr, /*symmetric_window=*/false);
   }
 
   //===--------------------------------------------------------------------===//
@@ -238,13 +247,14 @@ class GpuCommunicator : public Communicator {
                                        se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
                                        ReductionKind reduction_kind,
-                                       const Executor& executor) = 0;
+                                       const Executor& executor,
+                                       bool is_rma) = 0;
 
   virtual absl::Status LaunchBroadcast(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
-                                       RankId root,
-                                       const Executor& executor) = 0;
+                                       RankId root, const Executor& executor,
+                                       bool is_rma) = 0;
 
   // Reduces buffers of length `count` in `send_buffer` using `reduction_kind`
   // and writes the result only to `recv_buffer` on the `root` rank (NCCL
@@ -254,7 +264,7 @@ class GpuCommunicator : public Communicator {
                                     se::DeviceAddressBase recv_buffer,
                                     PrimitiveType dtype, size_t count,
                                     ReductionKind reduction_kind, RankId root,
-                                    const Executor& executor) {
+                                    const Executor& executor, bool is_rma) {
     return Unimplemented("LaunchReduce is not implemented");
   }
 
@@ -262,17 +272,20 @@ class GpuCommunicator : public Communicator {
                                            se::DeviceAddressBase recv_buffer,
                                            PrimitiveType dtype, size_t count,
                                            ReductionKind reduction_kind,
-                                           const Executor& executor) = 0;
+                                           const Executor& executor,
+                                           bool is_rma) = 0;
 
   virtual absl::Status LaunchAllGather(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
-                                       const Executor& executor) = 0;
+                                       const Executor& executor,
+                                       bool is_rma) = 0;
 
   virtual absl::Status LaunchAllToAll(
       absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
       absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
-      PrimitiveType dtype, size_t count, const Executor& executor) = 0;
+      PrimitiveType dtype, size_t count, const Executor& executor,
+      bool is_rma) = 0;
 
   virtual absl::Status LaunchCollectivePermute(
       se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
@@ -321,12 +334,35 @@ class GpuCommunicator : public Communicator {
     return Unimplemented("RecordMultiGpuBarrier is not implemented");
   }
 
-  virtual void InitializeCrossDeviceBarrier(
+  virtual absl::StatusOr<const se::CommandBuffer::Command*>
+  RecordMultiGpuBarrier(
+      se::CommandBuffer* command_buffer,
+      const se::CommandBuffer::Command* absl_nullable cmd,
+      absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+    return Unimplemented("RecordMultiGpuBarrier is not implemented");
+  }
+
+  virtual absl::Status InitializeCrossDeviceBarrier(
       tsl::TiedRef<se::MemoryAllocation> tied_signal_value,
       tsl::TiedRef<se::MemoryAllocation> tied_signal,
-      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {
+    return Unimplemented("InitializeCrossDeviceBarrier is not implemented");
+  }
 
   virtual bool IsCrossDeviceBarrierInitiated() const { return false; }
+
+  // Returns the device address of the semaphore for the given rank in the
+  // clique (including the local rank) and collective id.
+  virtual absl::StatusOr<stream_executor::DeviceAddressBase> GetCliqueSemaphore(
+      RankId peer_rank, int64_t collective_id) const {
+    return Unimplemented("GetCliqueSemaphore is not implemented");
+  }
+
+  virtual void InitializeCliqueSemaphore(
+      tsl::TiedRef<se::MemoryAllocation> tied_semaphore,
+      tsl::TiedRef<SymmetricMemory> tied_symmetric_memory) {}
+
+  virtual bool IsCliqueSemaphoreInitialized() const { return false; }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const GpuCommunicator& comm) {

@@ -564,15 +564,21 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
 
 static bool HasDefaultMantissaBits(Type type, uint32_t mantissa_bits) {
   if (auto float_ty = mlir::dyn_cast<FloatType>(type)) {
-    return float_ty.getFPMantissaWidth() == mantissa_bits;
+    // Significand width includes the implicit extra bit.
+    return float_ty.getFPMantissaWidth() - 1 == mantissa_bits;
   }
   return false;
 }
 
 static bool HasDefaultExponentBits(Type type, uint32_t exponent_bits) {
   if (auto float_ty = mlir::dyn_cast<FloatType>(type)) {
-    return float_ty.getWidth() - float_ty.getFPMantissaWidth() - 1 ==
-           exponent_bits;
+    // getFPMantissaWidth() returns the significand width, which includes the
+    // implicit leading bit.
+    uint32_t mantissa_bits = float_ty.getFPMantissaWidth() - 1;
+    uint32_t sign_bits =
+        llvm::APFloat::semanticsHasSignedRepr(float_ty.getFloatSemantics()) ? 1
+                                                                            : 0;
+    return float_ty.getWidth() - mantissa_bits - sign_bits == exponent_bits;
   }
   return false;
 }
@@ -1006,6 +1012,39 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ClampOp>(
                                              attributes, b);
 }
 
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::FmaOp>(
+    Location loc, ArrayRef<Type> /*resultTypes*/, ArrayRef<Type> argTypes,
+    mhlo::FmaOp::Adaptor adaptor, ArrayRef<NamedAttribute> /*attributes*/,
+    OpBuilder* b) {
+  if (!isa<FloatType>(getElementTypeOrSelf(argTypes.front()))) {
+    return nullptr;
+  }
+  Value a = adaptor.getA();
+  Value bVal = adaptor.getB();
+  Value c = adaptor.getC();
+  return ::mlir::math::FmaOp::create(*b, loc, a, bVal, c);
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::MulhiOp>(
+    Location loc, ArrayRef<Type> /*resultTypes*/, ArrayRef<Type> argTypes,
+    mhlo::MulhiOp::Adaptor adaptor, ArrayRef<NamedAttribute> /*attributes*/,
+    OpBuilder* b) {
+  Type originalType = getElementTypeOrSelf(argTypes.front());
+  if (!isa<IntegerType>(originalType)) {
+    return nullptr;
+  }
+  if (originalType.isUnsignedInteger()) {
+    return ::mlir::arith::MulUIExtendedOp::create(*b, loc, adaptor.getLhs(),
+                                                  adaptor.getRhs())
+        .getHigh();
+  }
+  return ::mlir::arith::MulSIExtendedOp::create(*b, loc, adaptor.getLhs(),
+                                                adaptor.getRhs())
+      .getHigh();
+}
+
 template <typename U, typename S>
 inline Value makeSafeIntDiv(ImplicitLocOpBuilder& lb, bool isUnsigned,
                             Value lhs, Value rhs, Value returnedOnZero,
@@ -1198,28 +1237,35 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
   auto originalBase = adaptor.getLhs();
   auto originalExponent = adaptor.getRhs();
 
-  Value accum =
-      scf::ForOp::create(
-          lb, lowerBound, upperBound, step,
-          SmallVector<Value>({one, originalBase, originalExponent}),
-          [&](OpBuilder& b, Location, Value /*v*/, ValueRange iters) {
-            Value accum = iters[0];
-            Value base = iters[1];
-            Value exponent = iters[2];
+  auto forOp = scf::ForOp::create(
+      lb, lowerBound, upperBound, step,
+      SmallVector<Value>({one, originalBase, originalExponent}),
+      [&](OpBuilder& b, Location, Value /*v*/, ValueRange iters) {
+        Value accum = iters[0];
+        Value base = iters[1];
+        Value exponent = iters[2];
 
-            Value condition = arith::CmpIOp::create(
-                b, loc, arith::CmpIPredicate::eq,
-                ::mlir::arith::AndIOp::create(b, loc, exponent, one), one);
-            Value multiplied =
-                ::mlir::arith::MulIOp::create(b, loc, accum, base);
-            accum = ::mlir::arith::SelectOp::create(b, loc, condition,
-                                                    multiplied, accum);
-            base = ::mlir::arith::MulIOp::create(b, loc, base, base);
-            exponent = ::mlir::arith::ShRUIOp::create(b, loc, exponent, one);
-            scf::YieldOp::create(b, loc,
-                                 SmallVector<Value>({accum, base, exponent}));
-          })
-          .getResult(0);
+        Value condition = arith::CmpIOp::create(
+            b, loc, arith::CmpIPredicate::eq,
+            ::mlir::arith::AndIOp::create(b, loc, exponent, one), one);
+        Value multiplied = ::mlir::arith::MulIOp::create(b, loc, accum, base);
+        accum = ::mlir::arith::SelectOp::create(b, loc, condition, multiplied,
+                                                accum);
+        base = ::mlir::arith::MulIOp::create(b, loc, base, base);
+        exponent = ::mlir::arith::ShRUIOp::create(b, loc, exponent, one);
+        scf::YieldOp::create(b, loc,
+                             SmallVector<Value>({accum, base, exponent}));
+      });
+  Value accum = forOp.getResult(0);
+  Value remainingExponent = forOp.getResult(2);
+  Value exponentNonZero = arith::CmpIOp::create(lb, arith::CmpIPredicate::ne,
+                                                remainingExponent, zero);
+  Value baseIsEven = arith::CmpIOp::create(
+      lb, arith::CmpIPredicate::eq,
+      ::mlir::arith::AndIOp::create(lb, originalBase, one), zero);
+  accum = ::mlir::arith::SelectOp::create(
+      lb, ::mlir::arith::AndIOp::create(lb, exponentNonZero, baseIsEven), zero,
+      accum);
 
   if (IsUnsignedIntegerType{}(getElementTypeOrSelf(argTypes.front()))) {
     return accum;

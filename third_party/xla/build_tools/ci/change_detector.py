@@ -18,6 +18,7 @@ Provides generic git diff utilities operating on a caller-supplied directory
 and evaluates whether a CI build can be skipped based on the modified files.
 """
 
+import argparse
 from collections.abc import Sequence
 import dataclasses
 import logging
@@ -28,14 +29,37 @@ import sys
 import time
 from typing import List, Optional, Tuple
 
-# Global configuration files whose modification invalidates incremental diffs
-# and necessitates a full test suite run.
+# Global configuration and external repository definition files whose
+# modification invalidates incremental bazel-diff target hashes (which run with
+# --excludeExternalTargets and fine-grained hash only @tsl) and necessitates a
+# full test suite run.
 GLOBAL_BAZEL_CONFIG_PATTERNS: Tuple[str, ...] = (
-    r"(^|/)MODULE\.bazel$",
+    r"(^|/)MODULE\.bazel(\.lock)?$",
     r"(^|/)REPO\.bazel$",
     r"(^|/)WORKSPACE(\.bzlmod)?$",
     r"\.bazelrc$",
     r"\.bazelversion$",
+    # Top-level workspace initialization macros and pip lockfiles.
+    r"^workspace[0-9]+\.bzl$",
+    r"^requirements_lock_.*\.txt$",
+    # External repository definitions, Bzlmod module extensions, and repo rules.
+    r"(^|/)workspace\.bzl$",
+    r"^third_party/(repo|quilt_repo)\.bzl$",
+    r"^third_party/extensions/.*\.bzl$",
+    r"^third_party/(?!tsl/tsl/).*extension\.bzl$",
+    (
+        r"^third_party/(?!tsl/tsl/).*"
+        r"(configure|init_repositor|redist|download|repo|setup).*\.bzl$"
+    ),
+    # External repository overlay BUILD files, patches, and templates (excluding
+    # first-party @tsl and pywrap/python rules tracked by bazel-diff).
+    r"(^|/)[^/]+\.BUILD(\.bazel)?$",
+    r"^third_party/(?!tsl/tsl/).*\.(patch|diff|tpl)$",
+    r"^third_party/(?!tsl/tsl/).*(/patches/|/series$)",
+    (
+        r"^third_party/(?!tsl/tsl/|py/(numpy|rules_pywrap)/|rules_python/)"
+        r".*/BUILD(\.bazel|\.system)?$"
+    ),
 )
 
 # Strict allowlist pattern for Git revision arguments (hexadecimal commit SHAs
@@ -98,7 +122,8 @@ def validate_git_ref(ref: str) -> str:
 
 def matches_any_pattern(path: str, patterns: Sequence[str]) -> bool:
   """Returns True if path matches any regex pattern in patterns."""
-  return any(re.search(pattern, path) for pattern in patterns)
+  normalized = path.replace("\\", "/")
+  return any(re.search(pattern, normalized) for pattern in patterns)
 
 
 def is_global_config_changed(changed_files: Sequence[str]) -> bool:
@@ -184,14 +209,20 @@ def get_diff_base(base_sha: str, head_sha: str = "HEAD", cwd: str = ".") -> str:
 def ensure_base_fetched(
     base_sha: str, head_sha: str = "HEAD", cwd: str = "."
 ) -> None:
-  """Best-effort fetches base_sha and unshallows if merge-base is missing."""
+  """Best-effort fetches base_sha/head_sha and unshallows if merge-base is missing."""
   try:
     safe_base = validate_git_ref(base_sha)
     safe_head = validate_git_ref(head_sha)
   except ValueError:
     return
+  if get_merge_base(safe_base, safe_head, cwd=cwd):
+    return
+  fetch_refs = [safe_base]
+  if safe_head != "HEAD" and safe_head != safe_base:
+    fetch_refs.append(safe_head)
   run_git_best_effort(
-      ["fetch", "--depth=1", "--", "origin", safe_base], cwd=cwd
+      ["fetch", "--no-tags", "--depth=50", "--", "origin", *fetch_refs],
+      cwd=cwd,
   )
   if not get_merge_base(safe_base, safe_head, cwd=cwd):
     run_git_best_effort(["fetch", "--unshallow", "origin"], cwd=cwd)
@@ -387,3 +418,94 @@ def report_skip(decision: SkipDecision, build_name: str) -> None:
         )
     except OSError as e:
       logging.warning("Failed to write to GITHUB_STEP_SUMMARY: %s", e)
+
+
+def _write_github_output(github_output: str, should_skip: bool) -> None:
+  """Writes should_skip output key to $GITHUB_OUTPUT if configured."""
+  if not github_output:
+    return
+  try:
+    with open(github_output, "a", encoding="utf-8") as f:
+      f.write(f"should_skip={'true' if should_skip else 'false'}\n")
+  except OSError as e:
+    logging.warning(
+        "Failed to write to GITHUB_OUTPUT (%s): %s", github_output, e
+    )
+
+
+def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+  """Parses CLI arguments for evaluating fast-skip decisions in CI."""
+  parser = argparse.ArgumentParser(
+      description="Evaluate whether a CI build can be skipped from git diffs."
+  )
+  parser.add_argument(
+      "--base_sha",
+      default=os.environ.get("XLA_CI_BAZEL_DIFF_BASE_SHA", ""),
+      help="Base git revision to compare against.",
+  )
+  parser.add_argument(
+      "--head_sha",
+      default=os.environ.get("XLA_CI_BAZEL_DIFF_HEAD_SHA", "HEAD") or "HEAD",
+      help="Head git revision to compare.",
+  )
+  parser.add_argument(
+      "--cwd",
+      default=".",
+      help="Path to the git repository root.",
+  )
+  parser.add_argument(
+      "--build_name",
+      default="ci_build",
+      help="Build name used in step summary reports.",
+  )
+  parser.add_argument(
+      "--is_jax_build",
+      action="store_true",
+      help="Whether the build under evaluation is a JAX CI job.",
+  )
+  parser.add_argument(
+      "--github_output",
+      default=os.environ.get("GITHUB_OUTPUT", ""),
+      help="Path to GitHub Actions $GITHUB_OUTPUT file.",
+  )
+  return parser.parse_args(argv)
+
+
+def run_cli(args: argparse.Namespace) -> int:
+  """Executes fast-skip evaluation from parsed CLI flags.
+
+  Args:
+    args: Parsed command-line arguments from `_parse_args`.
+
+  Returns:
+    Process exit status (0 on completion or fail-open fallback).
+  """
+  disabled = os.environ.get("XLA_CI_DISABLE_BAZEL_DIFF", "false").lower() in (
+      "true",
+      "1",
+      "yes",
+  )
+  base_sha = args.base_sha.strip()
+  if disabled or not base_sha:
+    _write_github_output(args.github_output, should_skip=False)
+    return 0
+
+  decision = evaluate_skip(
+      base_sha,
+      args.head_sha.strip() or "HEAD",
+      cwd=args.cwd,
+      is_jax_build=args.is_jax_build,
+  )
+  report_skip(decision, args.build_name)
+  _write_github_output(args.github_output, should_skip=decision.should_skip)
+  return 0
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+  """CLI entry point for evaluating fast-skip decisions in GitHub Actions."""
+  logging.basicConfig(level=logging.INFO)
+  return run_cli(_parse_args(argv))
+
+
+if __name__ == "__main__":
+  sys.exit(main())

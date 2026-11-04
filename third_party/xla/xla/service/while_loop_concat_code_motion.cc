@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <utility>
@@ -38,6 +39,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
@@ -731,17 +734,35 @@ absl::Status RewriteLoopWithConcatGroups(
   auto param = body->parameter_instruction(0);
   auto cond_param = loop->while_condition()->parameter_instruction(0);
 
+  std::shared_ptr<OriginalValue> old_loop_ov = loop->original_value();
+  absl::flat_hash_map<const HloInstruction*, std::shared_ptr<OriginalValue>>
+      old_element_original_values;
+  for (const ConcatGroup& group : groups.Groups()) {
+    for (HloInstruction* element : group.elements) {
+      if (std::shared_ptr<OriginalValue> ov = element->original_value()) {
+        old_element_original_values[element] = std::move(ov);
+      }
+    }
+    group.elements[0]->set_original_value(nullptr);
+  }
+
   // First, modify loop signature and operands/users.
+  HloInstruction* old_while_init = loop->mutable_operand(0);
   std::vector<HloInstruction*> init_elements(
       loop->shape().tuple_shapes().size());
   for (int64_t i = 0; i < param_gtes.size(); ++i) {
     init_elements[i] =
         loop->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
-            loop->shape().tuple_shapes(i), loop->mutable_operand(0), i));
+            loop->shape().tuple_shapes(i), old_while_init, i));
   }
+  std::vector<int64_t> ungrouped_tuple_indices(param_gtes.size(), -1);
   for (int64_t i = 0; i < param_gtes.size(); ++i) {
     const auto& group_and_index = groups.GetGroupIndex(param_gtes[i]);
-    if (!group_and_index.has_value() || group_and_index->second != 0) {
+    if (!group_and_index.has_value()) {
+      ungrouped_tuple_indices[i] = i;
+      continue;
+    }
+    if (group_and_index->second != 0) {
       continue;
     }
     const auto& group = groups.GetGroup(group_and_index->first);
@@ -762,9 +783,15 @@ absl::Status RewriteLoopWithConcatGroups(
     init_elements[i] =
         group.CreateConcat(std::move(input_concat_elements), loop->parent());
   }
-  ABSL_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(
-      0, loop->parent()->AddInstruction(
-             HloInstruction::CreateTuple(init_elements))));
+  HloInstruction* new_init_tuple = loop->parent()->AddInstruction(
+      HloInstruction::CreateTuple(init_elements));
+  CopyOriginalValue(old_while_init, new_init_tuple, ungrouped_tuple_indices);
+  CopyOriginalValue(loop, loop, ungrouped_tuple_indices);
+  CopyOriginalValue(param, param, ungrouped_tuple_indices);
+  CopyOriginalValue(cond_param, cond_param, ungrouped_tuple_indices);
+  CopyOriginalValue(body->root_instruction(), body->root_instruction(),
+                    ungrouped_tuple_indices);
+  ABSL_RETURN_IF_ERROR(loop->ReplaceOperandWithDifferentShape(0, new_init_tuple));
   // Adjust loop users.
   auto original_loop_users = loop->users();
   const bool loop_is_root = loop == loop->parent()->root_instruction();
@@ -790,6 +817,17 @@ absl::Status RewriteLoopWithConcatGroups(
   }
   auto new_output_tuple = loop->parent()->AddInstruction(
       HloInstruction::CreateTuple(output_elements));
+  if (old_loop_ov != nullptr && !old_loop_ov->is_synthetic_call()) {
+    for (int64_t i = 0; i < output_elements.size(); ++i) {
+      ABSL_ASSIGN_OR_RETURN(auto subtree, old_loop_ov->tree().Subtree({i}));
+      auto elem_ov = std::make_shared<OriginalValue>(std::move(subtree));
+      if (!elem_ov->IsEmpty()) {
+        output_elements[i]->set_original_value(std::move(elem_ov));
+      }
+    }
+    new_output_tuple->set_original_value(
+        std::make_shared<OriginalValue>(old_loop_ov->tree()));
+  }
   for (auto user : original_loop_users) {
     ABSL_RETURN_IF_ERROR(loop->ReplaceUseWithDifferentShape(user, new_output_tuple));
   }
@@ -945,6 +983,10 @@ absl::Status RewriteLoopWithConcatGroups(
         const auto& operand_group = groups.GetGroup(operand_group_index->first);
         auto slice = operand_group.CreateSlice(
             operand_group.elements[0], operand_group_index->second, body);
+        if (auto it = old_element_original_values.find(operand);
+            it != old_element_original_values.end()) {
+          slice->set_original_value(it->second);
+        }
         ABSL_RETURN_IF_ERROR(hlo->ReplaceOperandWithDifferentShape(i, slice));
       }
     }

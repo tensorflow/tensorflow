@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -143,6 +144,57 @@ ENTRY entry {
   const HloInstruction* slice =
       module->entry_computation()->root_instruction()->operand(0);
   EXPECT_FALSE(triton_fusion::IsInputWorthFusing(*slice));
+}
+
+TEST_F(TritonTilingPropagationTest,
+       IsInputWorthFusingMultiplyLooksThroughBitcastsOfOperands) {
+  // `dot` reads more data than it produces, so the multiply is not worth fusing
+  // as an input. The bitcasts between `dot` and the multiply don't change that.
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[32,64] parameter(0)
+  p1 = f32[64,128] parameter(1)
+  p2 = f32[32,2,64] parameter(2)
+  negate = f32[32,64] negate(p0)
+  dot = f32[32,128] dot(negate, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcast0 = f32[4096] bitcast(dot)
+  bitcast1 = f32[32,2,64] bitcast(bitcast0)
+  ROOT multiply = f32[32,2,64] multiply(p2, bitcast1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
+  EXPECT_FALSE(triton_fusion::IsInputWorthFusing(
+      *module->entry_computation()->root_instruction()));
+}
+
+TEST_F(TritonTilingPropagationTest,
+       IsInputWorthFusingDequantizationWithBitcastBeforeMultiply) {
+  // Subchannel dequantization with a bitcast between the convert and the
+  // multiply is still worth fusing as an input.
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  w = s8[32,128] parameter(0)
+  s = f32[32,2] parameter(1)
+  w_f32 = f32[32,128] convert(w)
+  w_split = f32[32,2,64] bitcast(w_f32)
+  s_b = f32[32,2,64] broadcast(s), dimensions={0,1}
+  ROOT multiply = f32[32,2,64] multiply(w_split, s_b)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
+  EXPECT_TRUE(triton_fusion::IsInputWorthFusing(
+      *module->entry_computation()->root_instruction()));
 }
 
 }  // namespace

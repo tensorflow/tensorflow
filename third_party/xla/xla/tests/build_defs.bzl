@@ -58,6 +58,26 @@ NVIDIA_GPU_BACKENDS = _NVIDIA_GPU_BACKENDS
 NVIDIA_GPU_DEFAULT_BACKENDS = _NVIDIA_GPU_DEFAULT_BACKENDS
 prepare_gpu_backend_data = _prepare_gpu_backend_data
 
+def get_sc_offload_backend_args(
+        enable_sparse_core_copy_offloading = True,  # @unused
+        enable_sparse_core_fusion_offloading = True,  # @unused
+        enable_sparse_core_mismatch_detector = None,  # @unused
+        args = [],  # @unused
+        backend_args = {}):
+    """Returns `backend_args` unchanged: SparseCore offloading flags only apply to internal TPU tests.
+
+    Args:
+      enable_sparse_core_copy_offloading: Unused.
+      enable_sparse_core_fusion_offloading: Unused.
+      enable_sparse_core_mismatch_detector: Unused.
+      args: Unused.
+      backend_args: The test's `backend_args`.
+
+    Returns:
+      `backend_args`.
+    """
+    return backend_args
+
 def xla_test(
         name,
         srcs,
@@ -186,6 +206,12 @@ def xla_test(
         this_backend_kwargs = dict(kwargs)
         for k, v in backend_kwargs.get(backend, {}).items():
             this_backend_kwargs[k] = v
+
+        # Set flaky attribute if "flaky" tag is present (either globally or per-backend)
+        has_flaky_tag = "flaky" in kwargs.get("tags", []) or "flaky" in this_backend_tags
+        if has_flaky_tag and not this_backend_kwargs.get("flaky", False):
+            this_backend_kwargs["flaky"] = True
+
         this_backend_data = []
         backend_deps = []
         if backend == "cpu":

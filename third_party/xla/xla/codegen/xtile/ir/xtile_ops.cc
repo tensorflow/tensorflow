@@ -334,6 +334,72 @@ mlir::LogicalResult ScanOp::verify() {
   return mlir::success();
 }
 
+mlir::LogicalResult ReduceScatterOp::verify() {
+  mlir::ValueRange inputs = getInputs();
+  if (inputs.empty()) {
+    return emitOpError() << "expects at least one input";
+  }
+  if (getOutputs().size() != inputs.size()) {
+    return emitOpError() << "expects one output per input, but got "
+                         << inputs.size() << " inputs and "
+                         << getOutputs().size() << " outputs";
+  }
+
+  const int64_t scatter_dimension = getScatterDimension();
+  mlir::Type element_type =
+      mlir::cast<mlir::RankedTensorType>(inputs.front().getType())
+          .getElementType();
+  for (auto [index, input] : llvm::enumerate(inputs)) {
+    mlir::RankedTensorType input_type =
+        mlir::cast<mlir::RankedTensorType>(input.getType());
+    mlir::RankedTensorType output_type =
+        mlir::cast<mlir::RankedTensorType>(getOutputs()[index].getType());
+    if (input_type.getElementType() != element_type) {
+      return emitOpError() << "input #" << index << " element type "
+                           << input_type.getElementType()
+                           << " does not match the element type of input #0 "
+                           << element_type;
+    }
+    if (scatter_dimension < 0 || scatter_dimension >= input_type.getRank()) {
+      return emitOpError() << "scatter dimension " << scatter_dimension
+                           << " is out of range for input #" << index
+                           << " of rank " << input_type.getRank();
+    }
+    if (output_type.getRank() != input_type.getRank() ||
+        output_type.getElementType() != input_type.getElementType()) {
+      return emitOpError() << "output #" << index << " type " << output_type
+                           << " does not match the rank and element type of "
+                              "input type "
+                           << input_type;
+    }
+    for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
+      if (dim != scatter_dimension &&
+          output_type.getDimSize(dim) != input_type.getDimSize(dim)) {
+        return emitOpError() << "output #" << index << " type " << output_type
+                             << " differs from input type " << input_type
+                             << " in non-scatter dimension " << dim;
+      }
+    }
+  }
+
+  mlir::Block& body = getComputation().front();
+  if (body.getNumArguments() != 2) {
+    return emitOpError() << "expects a binary reduction computation, but the "
+                            "region has "
+                         << body.getNumArguments() << " arguments";
+  }
+  mlir::RankedTensorType scalar_type =
+      mlir::RankedTensorType::get({}, element_type);
+  for (mlir::BlockArgument argument : body.getArguments()) {
+    if (argument.getType() != scalar_type) {
+      return emitOpError() << "expects reduction computation arguments of "
+                              "type "
+                           << scalar_type << ", but got " << argument.getType();
+    }
+  }
+  return mlir::success();
+}
+
 static bool IsSupportedScaleElementType(mlir::Type type) {
   return mlir::isa<mlir::Float8E8M0FNUType, mlir::Float8E4M3FNType,
                    mlir::Float8E5M2Type>(type) ||

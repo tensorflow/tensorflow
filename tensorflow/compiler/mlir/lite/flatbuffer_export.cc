@@ -55,6 +55,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/SwapByteOrder.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/xxhash.h"
@@ -186,6 +188,11 @@ constexpr size_t kInitialBufferSize = 10240;
 // Flatbuffer fields to be padded to 16 bytes aligned.
 constexpr size_t kFbAlignment = 16;
 
+// Extra trailing bytes to pad after constant tensor buffers to prevent
+// out-of-bounds reads by SIMD kernels (e.g. XNNPACK microkernels require up to
+// 128 bytes on Qualcomm Hexagon DSP).
+constexpr size_t kFbTailPadding = 128;
+
 // Set `isSigned` to false if the `type` is an 8-bit unsigned integer type.
 // Since tflite doesn't support unsigned for other types, returns error if
 // `isSigned` is set to false for other types.
@@ -268,6 +275,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
   } else if (auto q_calibrated_type =
                  mlir::dyn_cast<mlir::quant::CalibratedQuantizedType>(type)) {
     return GetTFLiteType(q_calibrated_type.getExpressedType());
+  } else if (auto blockwise_type =
+                 mlir::dyn_cast<mlir::TFL::BlockwiseQuantType>(type)) {
+    return GetTFLiteType(blockwise_type.getStorageType());
   } else if (mlir::isa<mlir::TF::ResourceType>(type)) {
     return tflite::TensorType_RESOURCE;
   } else if (mlir::isa<mlir::TF::VariantType>(type)) {
@@ -292,6 +302,132 @@ static mlir::AsmResourceBlob* GetBlob(
     blob = resource_attr.getRawHandle().getResource()->getBlob();
   }
   return blob;
+}
+
+// A blockwise quantization parameter tensor (scales or zero points) serialized
+// for the flatbuffer.
+struct SerializedBlockwiseParams {
+  tflite::TensorType type;
+  std::vector<int32_t> shape;
+  std::string data;
+};
+
+// Reads the elements of `attr` as `APInt`s of the element bit width, expanding
+// splats. Like `DenseElementsAttr`, this expects every element to be stored in
+// a whole number of bytes, e.g. one byte per element for sub-byte types.
+static std::optional<std::vector<llvm::APInt>> ReadElementsAsAPInts(
+    ElementsAttr attr) {
+  auto type = attr.getShapedType();
+  const unsigned bit_width = type.getElementTypeBitWidth();
+  const int64_t num_elements = type.getNumElements();
+  const size_t stride = llvm::divideCeil(bit_width, 8);
+
+  llvm::ArrayRef<char> raw;
+  bool is_splat = false;
+  if (auto dense = mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
+    if (bit_width == 1) return std::nullopt;
+    raw = dense.getRawData();
+    is_splat = dense.isSplat();
+  } else if (auto resource =
+                 mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+    mlir::AsmResourceBlob* blob = GetBlob(resource);
+    if (blob == nullptr) return std::nullopt;
+    raw = blob->getData();
+  } else {
+    return std::nullopt;
+  }
+  const size_t expected_size = is_splat ? stride : stride * num_elements;
+  if (raw.size() < expected_size) return std::nullopt;
+
+  std::vector<llvm::APInt> values;
+  values.reserve(num_elements);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    const char* element = raw.data() + (is_splat ? 0 : i * stride);
+    uint64_t bits = 0;
+    std::memcpy(&bits, element, std::min<size_t>(stride, sizeof(bits)));
+    values.emplace_back(bit_width, bits, /*isSigned=*/false,
+                        /*implicitTrunc=*/true);
+  }
+  return values;
+}
+
+// Serializes the scales of a blockwise quantized tensor. f32, f16 and bf16
+// scales are written as is. Other floating point types, which the TFLite
+// schema has no tensor type for (e.g. f8E8M0FNU), are widened to f32; this is
+// exact since f32 represents all of their values.
+static std::optional<SerializedBlockwiseParams> SerializeBlockwiseScales(
+    ElementsAttr scales) {
+  auto float_type = mlir::dyn_cast<mlir::FloatType>(scales.getElementType());
+  if (!float_type) return std::nullopt;
+  std::optional<std::vector<llvm::APInt>> bits = ReadElementsAsAPInts(scales);
+  if (!bits.has_value()) return std::nullopt;
+
+  SerializedBlockwiseParams params;
+  for (int64_t dim : scales.getShapedType().getShape()) {
+    params.shape.push_back(static_cast<int32_t>(dim));
+  }
+  if (float_type.isF16() || float_type.isBF16()) {
+    params.type = float_type.isF16() ? tflite::TensorType_FLOAT16
+                                     : tflite::TensorType_BFLOAT16;
+    for (const llvm::APInt& value : *bits) {
+      const uint16_t half = static_cast<uint16_t>(value.getZExtValue());
+      params.data.append(reinterpret_cast<const char*>(&half), sizeof(half));
+    }
+    return params;
+  }
+  params.type = tflite::TensorType_FLOAT32;
+  for (const llvm::APInt& value : *bits) {
+    llvm::APFloat scale(float_type.getFloatSemantics(), value);
+    bool loses_info = false;
+    scale.convert(llvm::APFloat::IEEEsingle(),
+                  llvm::APFloat::rmNearestTiesToEven, &loses_info);
+    const float f = scale.convertToFloat();
+    params.data.append(reinterpret_cast<const char*>(&f), sizeof(f));
+  }
+  return params;
+}
+
+// Serializes the zero points of a blockwise quantized tensor: integer zero
+// points as int32 and floating point zero points (e.g. the -0.5 of a grid
+// centered between the integers) as f32.
+static std::optional<SerializedBlockwiseParams> SerializeBlockwiseZeroPoints(
+    ElementsAttr zero_points) {
+  Type element_type = zero_points.getElementType();
+  std::optional<std::vector<llvm::APInt>> bits =
+      ReadElementsAsAPInts(zero_points);
+  if (!bits.has_value()) return std::nullopt;
+
+  SerializedBlockwiseParams params;
+  for (int64_t dim : zero_points.getShapedType().getShape()) {
+    params.shape.push_back(static_cast<int32_t>(dim));
+  }
+  if (auto float_type = mlir::dyn_cast<mlir::FloatType>(element_type)) {
+    params.type = tflite::TensorType_FLOAT32;
+    for (const llvm::APInt& value : *bits) {
+      llvm::APFloat zero_point(float_type.getFloatSemantics(), value);
+      bool loses_info = false;
+      zero_point.convert(llvm::APFloat::IEEEsingle(),
+                         llvm::APFloat::rmNearestTiesToEven, &loses_info);
+      const float f = zero_point.convertToFloat();
+      params.data.append(reinterpret_cast<const char*>(&f), sizeof(f));
+    }
+    return params;
+  }
+  auto int_type = mlir::dyn_cast<mlir::IntegerType>(element_type);
+  if (!int_type) return std::nullopt;
+  params.type = tflite::TensorType_INT32;
+  for (const llvm::APInt& value : *bits) {
+    const int64_t wide =
+        int_type.isUnsigned() ? value.getZExtValue() : value.getSExtValue();
+    if (wide < std::numeric_limits<int32_t>::min() ||
+        wide > std::numeric_limits<int32_t>::max()) {
+      return std::nullopt;
+    }
+    const int32_t zero_point = static_cast<int32_t>(wide);
+    params.data.append(reinterpret_cast<const char*>(&zero_point),
+                       sizeof(zero_point));
+  }
+  return params;
 }
 
 static bool IsBf16ToF32CastOnConstant(Operation* op,
@@ -791,6 +927,23 @@ class Translator {
   std::optional<BufferOffset<tflite::Buffer>> BuildBuffer(
       Value value, bool can_be_deduplicated, int& index);
 
+  // Returns a TFLite buffer holding `data`, honoring `use_buffer_offset_`.
+  // `index` is the index the buffer will have in `buffers_`.
+  BufferOffset<tflite::Buffer> BuildBufferFromBytes(std::string data,
+                                                    int index);
+
+  // Builds the tensors holding the scales and zero points of `blockwise_type`
+  // into `side_tensors`, and returns the `QuantizationParameters` referring to
+  // them. The tensor quantized with `blockwise_type` is expected at index
+  // `tensor_index` of the subgraph, and the caller has to append
+  // `side_tensors` right after it. Emits an error at `loc` and returns
+  // std::nullopt if the parameters cannot be serialized.
+  std::optional<BufferOffset<tflite::QuantizationParameters>>
+  BuildBlockwiseQuantizationParameters(
+      mlir::TFL::BlockwiseQuantType blockwise_type, mlir::Location loc,
+      const std::string& tensor_name, int tensor_index,
+      std::vector<BufferOffset<tflite::Tensor>>& side_tensors);
+
   // Builds external buffer and external buffer group from the given value. If
   // the value is not defined by a constant op with external buffer attributes,
   // returns std::nullopt.
@@ -969,8 +1122,10 @@ class Translator {
       mlir::stablehlo::PadOp pad_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
-  std::optional<BufferOffset<tflite::Operator>> BuildVhloGatherV1Op(
-      mlir::vhlo::GatherOpV1 gather_op, const std::vector<int32_t>& operands,
+  // Builds STABLEHLO_GATHER from a VHLO GatherOpV1 or GatherOpV2.
+  template <typename GatherOpT>
+  std::optional<BufferOffset<tflite::Operator>> BuildVhloGatherOp(
+      GatherOpT gather_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results,
       mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
 
@@ -979,8 +1134,10 @@ class Translator {
       const std::vector<int32_t>& operands, const std::vector<int32_t>& results,
       std::string op_name);
 
-  std::optional<BufferOffset<tflite::Operator>> BuildVhloScatterV1Op(
-      mlir::vhlo::ScatterOpV1 scatter_op, const std::vector<int32_t>& operands,
+  // Builds STABLEHLO_SCATTER from a VHLO ScatterOpV1 or ScatterOpV2.
+  template <typename ScatterOpT>
+  std::optional<BufferOffset<tflite::Operator>> BuildVhloScatterOp(
+      ScatterOpT scatter_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results,
       mlir::VhloToStablehloTypeConverter& vhlo_type_converter);
 
@@ -1584,16 +1741,95 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
                             /*hash=*/0);
 
     std::string buffer_data = buffer.GetData();
-    if (custom_option_alignment_.has_value()) {
-      builder_.ForceVectorAlignment(buffer_data.size(), sizeof(uint8_t),
-                                    custom_option_alignment_.value());
-    }
+    builder_.ForceVectorAlignment(
+        buffer_data.size(), sizeof(uint8_t),
+        custom_option_alignment_.value_or(kFbAlignment));
     ReleaseBufferData(buffer);
     return tflite::CreateBuffer(
         builder_, builder_.CreateVector(
                       reinterpret_cast<const uint8_t*>(buffer_data.data()),
                       buffer_data.size()));
   }
+}
+
+BufferOffset<tflite::Buffer> Translator::BuildBufferFromBytes(std::string data,
+                                                              int index) {
+  if (use_buffer_offset_) {
+    auto shared_data = std::make_shared<const std::string>(std::move(data));
+    const uint64_t hash = llvm::hash_value(
+        llvm::StringRef(shared_data->data(), shared_data->size()));
+    const uint64_t size = shared_data->size();
+    const_buffer_storage_.Insert(
+        index, std::make_pair(mlir::Attribute(), nullptr),
+        [shared_data](const std::pair<mlir::Attribute, mlir::Operation*>&,
+                      auto apply) { return apply(*shared_data); },
+        hash, size);
+    return tflite::CreateBuffer(builder_, 0, 1, 1);
+  }
+  builder_.ForceVectorAlignment(
+      data.size(), sizeof(uint8_t),
+      custom_option_alignment_.value_or(kFbAlignment));
+  return tflite::CreateBuffer(
+      builder_,
+      builder_.CreateVector(reinterpret_cast<const uint8_t*>(data.data()),
+                            data.size()));
+}
+
+std::optional<BufferOffset<tflite::QuantizationParameters>>
+Translator::BuildBlockwiseQuantizationParameters(
+    mlir::TFL::BlockwiseQuantType blockwise_type, mlir::Location loc,
+    const std::string& tensor_name, int tensor_index,
+    std::vector<BufferOffset<tflite::Tensor>>& side_tensors) {
+  // Builds a constant tensor (and its buffer) holding `params`, and returns its
+  // index in the subgraph.
+  auto add_params_tensor = [&](const SerializedBlockwiseParams& params,
+                               absl::string_view suffix) -> int32_t {
+    const int32_t index =
+        tensor_index + 1 + static_cast<int32_t>(side_tensors.size());
+    const int buffer_index = buffers_.size();
+    buffers_.push_back(BuildBufferFromBytes(params.data, buffer_index));
+    side_tensors.push_back(tflite::CreateTensor(
+        builder_, builder_.CreateVector(params.shape), params.type,
+        buffer_index, builder_.CreateString(absl::StrCat(tensor_name, suffix)),
+        /*quantization=*/0, /*is_variable=*/false, /*sparsity=*/0,
+        /*shape_signature=*/0, /*has_rank=*/true));
+    return index;
+  };
+
+  std::optional<SerializedBlockwiseParams> scales =
+      SerializeBlockwiseScales(blockwise_type.getScales());
+  if (!scales.has_value()) {
+    mlir::emitError(loc,
+                    "failed to serialize the scales of blockwise quantized "
+                    "type ")
+        << blockwise_type;
+    return std::nullopt;
+  }
+  const int32_t scales_index = add_params_tensor(*scales, "_scales");
+
+  // -1 marks an absent zero point tensor, meaning a zero point of 0.
+  int32_t zero_points_index = -1;
+  if (ElementsAttr zero_points_attr = blockwise_type.getZeroPoints()) {
+    std::optional<SerializedBlockwiseParams> zero_points =
+        SerializeBlockwiseZeroPoints(zero_points_attr);
+    if (!zero_points.has_value()) {
+      mlir::emitError(loc,
+                      "failed to serialize the zero points of blockwise "
+                      "quantized type ")
+          << blockwise_type;
+      return std::nullopt;
+    }
+    zero_points_index = add_params_tensor(*zero_points, "_zero_points");
+  }
+
+  std::vector<int32_t> block_shape(blockwise_type.getBlockShape().begin(),
+                                   blockwise_type.getBlockShape().end());
+  auto details = tflite::CreateBlockwiseQuantization(
+      builder_, scales_index, zero_points_index, /*block_size=*/0,
+      builder_.CreateVector(block_shape));
+  return tflite::CreateQuantizationParameters(
+      builder_, /*min=*/0, /*max=*/0, /*scale=*/0, /*zero_point=*/0,
+      tflite::QuantizationDetails_BlockwiseQuantization, details.Union());
 }
 
 int32_t Translator::UnnamedRegionToSubgraph(
@@ -2586,10 +2822,31 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildStablehloPadOp(
       tflite::BuiltinOptions2_StablehloPadOptions, pad_option.Union());
 }
 
-std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloGatherV1Op(
-    mlir::vhlo::GatherOpV1 gather_op, const std::vector<int32_t>& operands,
+// Returns true if `attr` is a VHLO tensor attribute with no elements, e.g. the
+// unused batching dims of a VHLO GatherOpV2 / ScatterOpV2.
+static bool IsEmptyVhloTensorAttr(
+    mlir::Attribute attr,
+    mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  return mlir::GetVector<int64_t>(mlir::cast<mlir::vhlo::TensorV1Attr>(attr),
+                                  vhlo_type_converter)
+      .empty();
+}
+
+template <typename GatherOpT>
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloGatherOp(
+    GatherOpT gather_op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results,
     mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  if constexpr (std::is_same_v<GatherOpT, mlir::vhlo::GatherOpV2>) {
+    if (!IsEmptyVhloTensorAttr(gather_op.getOperandBatchingDims(),
+                               vhlo_type_converter) ||
+        !IsEmptyVhloTensorAttr(gather_op.getStartIndicesBatchingDims(),
+                               vhlo_type_converter)) {
+      gather_op.emitError(
+          "stablehlo.gather with batching dims is not supported");
+      return std::nullopt;
+    }
+  }
   std::string op_name =
       gather_op.getOperation()->getName().getStringRef().str();
   uint32_t opcode_index =
@@ -2629,10 +2886,21 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloGatherV1Op(
       GetOperatorDebugMetadataIndex(gather_op.getOperation()));
 }
 
-std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloScatterV1Op(
-    mlir::vhlo::ScatterOpV1 scatter_op, const std::vector<int32_t>& operands,
+template <typename ScatterOpT>
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloScatterOp(
+    ScatterOpT scatter_op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results,
     mlir::VhloToStablehloTypeConverter& vhlo_type_converter) {
+  if constexpr (std::is_same_v<ScatterOpT, mlir::vhlo::ScatterOpV2>) {
+    if (!IsEmptyVhloTensorAttr(scatter_op.getInputBatchingDims(),
+                               vhlo_type_converter) ||
+        !IsEmptyVhloTensorAttr(scatter_op.getScatterIndicesBatchingDims(),
+                               vhlo_type_converter)) {
+      scatter_op.emitError(
+          "stablehlo.scatter with batching dims is not supported");
+      return std::nullopt;
+    }
+  }
   std::string op_name =
       scatter_op.getOperation()->getName().getStringRef().str();
   uint32_t opcode_index =
@@ -2940,16 +3208,22 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     }
 
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ScatterOpV1>(inst)) {
-      return BuildVhloScatterV1Op(vhlo_op, operands, results,
-                                  vhlo_type_converter);
+      return BuildVhloScatterOp(vhlo_op, operands, results,
+                                vhlo_type_converter);
+    }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ScatterOpV2>(inst)) {
+      return BuildVhloScatterOp(vhlo_op, operands, results,
+                                vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::RngBitGeneratorOpV1>(inst)) {
       return BuildVhloRngBitGeneratorV1Op(vhlo_op, operands, results,
                                           vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::GatherOpV1>(inst)) {
-      return BuildVhloGatherV1Op(vhlo_op, operands, results,
-                                 vhlo_type_converter);
+      return BuildVhloGatherOp(vhlo_op, operands, results, vhlo_type_converter);
+    }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::GatherOpV2>(inst)) {
+      return BuildVhloGatherOp(vhlo_op, operands, results, vhlo_type_converter);
     }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::AddOpV1>(inst)) {
       return BuildStablehloOperatorwithoutOptions(
@@ -3776,10 +4050,23 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       buffers_.push_back(empty_buffer_);
     }
 
+    // Blockwise quantization parameters live in tensors of their own, placed
+    // right after the tensor they quantize.
+    std::vector<BufferOffset<tflite::Tensor>> blockwise_param_tensors;
+    if (auto blockwise_type = mlir::dyn_cast<mlir::TFL::BlockwiseQuantType>(
+            getElementTypeOrSelf(value.getType()))) {
+      quant_parameters = BuildBlockwiseQuantizationParameters(
+          blockwise_type, value.getLoc(), tensor_name, tensors.size(),
+          blockwise_param_tensors);
+      if (!quant_parameters.has_value()) return false;
+    }
+
     auto tensor_or = BuildTensor(value, tensor_name, buffer_index,
                                  external_buffer_id, quant_parameters);
     if (!tensor_or) return false;
     tensors.push_back(*tensor_or);
+    tensors.insert(tensors.end(), blockwise_param_tensors.begin(),
+                   blockwise_param_tensors.end());
 
     return true;
   };
@@ -3969,6 +4256,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
                                                          StringRef content) {
   auto buffer_index = buffers_.size();
+  builder_.ForceVectorAlignment(content.size(), sizeof(uint8_t), kFbAlignment);
   auto buffer_data = builder_.CreateVector(
       reinterpret_cast<const uint8_t*>(content.data()), content.size());
   buffers_.push_back(tflite::CreateBuffer(builder_, buffer_data));
@@ -4715,9 +5003,18 @@ absl::Status Translator::TranslateInternal() {
         reinterpret_cast<const char*>(builder_.GetBufferPointer()),
         builder_.GetSize(), /*offset=*/0);
   } else {
+    // When use_buffer_offset_ is false (the default for models under 2GB,
+    // whereas large models like LLMs enable `--use_buffer_offset` to append
+    // buffers at the end), all tensor buffers are stored inline inside the
+    // FlatBuffer builder. In this mode, buffers near the end of the FlatBuffer
+    // may lack trailing bytes before the file boundary. We write the
+    // FlatBuffer directly to the stream and append trailing zeros to ensure
+    // that the last tensor buffer has sufficient trailing padding for SIMD
+    // kernels (e.g. XNNPACK) when memory-mapped.
     export_stream_.get().write(
         reinterpret_cast<const char*>(builder_.GetBufferPointer()),
         builder_.GetSize());
+    export_stream_.get().write_zeros(kFbTailPadding);
   }
   return absl::OkStatus();
 }
@@ -4788,8 +5085,6 @@ absl::Status Translator::AppendBufferData() {
       ReleaseBufferData(*buffer);
     }
   }
-  // pad 16 bytes for the last buffer for XNNPack
-  export_stream_.get().write_zeros(16);
 
   // pad to be 16 bytes aligned
   export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);
@@ -4814,6 +5109,9 @@ absl::Status Translator::AppendBufferData() {
     }
     custom_op_idx_map_[key] = std::make_pair(buffer_offset, size);
   }
+
+  // Pad trailing bytes for the last tensor buffer for SIMD/XNNPack kernels
+  export_stream_.get().write_zeros(kFbTailPadding);
 
   // pad to be 16 bytes aligned
   export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);

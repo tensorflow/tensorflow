@@ -1292,6 +1292,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform",
+        "//tensorflow/python/lib/core:py_seq_tensor",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",

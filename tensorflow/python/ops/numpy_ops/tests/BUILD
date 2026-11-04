@@ -224,7 +224,7 @@ py_test(
     tags = [
         "gpu",
         "no_pip",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":config",
@@ -288,7 +288,7 @@ py_test(
     tags = [
         "gpu",
         "no_pip",
-        "requires-gpu-nvidia",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":config",
@@ -296,8 +296,7 @@ py_test(
         ":test_util",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//third_party/py/numpy",
-        "//tensorflow/python/ops/numpy_ops:np_config",
-        "//tensorflow/python/ops/numpy_ops:numpy",
+        "//tensorflow/python/framework:test_lib",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -487,7 +487,8 @@ HloInstruction* PerGroupSliceFromReplicated(
     HloInstruction* replicated, HloInstruction* partition_id,
     const hlo_sharding_util::DeviceGroupTileAssignment& device_groups,
     absl::Span<const int64_t> group_dims,
-    absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b);
+    absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b,
+    std::optional<Literal> pad_value = std::nullopt);
 
 // Pad the shape from partial replicate shape for `dst_sharding`.
 // If dst_sharding needs more padding and per_shard_size increased in

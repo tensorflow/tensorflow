@@ -649,6 +649,8 @@ class ParametricDotTestWithoutLayoutAssignment : public ParametricDotTest {
     // Disable algebraic simplification because the pass may replace a dot
     // instruction with a layout-changing multiplication instruction.
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
+    mutable_debug_options()->add_xla_disable_hlo_passes(
+        "gpu-algebraic-simplifier");
   }
 };
 
@@ -2378,6 +2380,25 @@ ENTRY main {
   p1 = f32[5,1]{0,1} parameter(1)
   ROOT dot = f16[5,1]{1,0} dot(p0, p1), lhs_contracting_dims={1},
                                         rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+TEST_F(DotOperationTextTest, BatchDotTransposedOperandsPermutedBatchDims) {
+  absl::string_view hlo_string =
+      R"(
+HloModule BatchDotTransposedOperandsPermutedBatchDims
+
+ENTRY main {
+  p0 = f32[2,2,2,4,4] parameter(0)
+  p1 = f32[2,2,2,4,4] parameter(1)
+  lhs = f32[2,2,2,4,4] transpose(p0), dimensions={0,2,1,3,4}
+  rhs = f32[2,2,2,4,4] transpose(p1), dimensions={0,2,1,3,4}
+  ROOT dot = f32[2,2,2,4,4] dot(lhs, rhs),
+    lhs_batch_dims={1,0,2}, rhs_batch_dims={1,0,2},
+    lhs_contracting_dims={4}, rhs_contracting_dims={3}
 }
 )";
 

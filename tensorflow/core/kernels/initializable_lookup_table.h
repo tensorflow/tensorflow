@@ -193,7 +193,8 @@ class InitializableLookupTable : public LookupInterface {
   }
 
   // Populates the table in batches given keys and values as tensors into the
-  // underlying data structure.
+  // underlying data structure. Initialize() checks every batch with
+  // CheckKeyAndValueTensorsForInsert() before passing it here.
   virtual absl::Status DoInsert(const Tensor& keys, const Tensor& values) = 0;
 
   // Performs the batch find operation on the underlying data structure.

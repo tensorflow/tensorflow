@@ -1,5 +1,5 @@
 // RUN: fusion_to_triton --xla_gpu_unsupported_enable_triton_multi_output_fusion %s 2>&1 | FileCheck %s --check-prefixes=CHECK-ERROR
-// CHECK-ERROR: Only single-result fusions are supported for now. Received 2 roots.
+// CHECK-ERROR: TilingSpace does not support fusions with multiple roots.
 // TODO: b/502910372 - support multi-output fusion.
 // RUN-NOT: triton_test_correctness --xla_gpu_unsupported_enable_triton_multi_output_fusion %s
 

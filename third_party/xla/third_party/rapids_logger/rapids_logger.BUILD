@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
 # The rapids-logger project defines an easy way to produce a project-specific logger using the excellent spdlog package
 licenses(["notice"])  # Apache 2.0
 

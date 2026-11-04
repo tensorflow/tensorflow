@@ -32,6 +32,21 @@ func.func private @chlo.erf.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20x
 
 // -----
 
+// CHECK-LABEL: func @erfc_recompose_composite
+func.func @erfc_recompose_composite(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-NEXT: chlo.erfc
+  // CHECK-NOT: stablehlo.composite
+  %0 = stablehlo.composite "chlo.erfc" %arg0 {decomposition = @chlo.erfc.impl, version = 1 : i32} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+// CHECK-NOT: @chlo.erfc.impl
+func.func private @chlo.erfc.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  %0 = chlo.erfc %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
 // CHECK-LABEL: func @acosh_recompose_composite
 func.func @acosh_recompose_composite(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
   // CHECK-NEXT: chlo.acosh

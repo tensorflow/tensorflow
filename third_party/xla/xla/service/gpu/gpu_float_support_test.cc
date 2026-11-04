@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -656,7 +657,6 @@ ENTRY main {
 TEST_F(FloatSupportTest, BF16TranscendentalsOnGfx1250AreNotNormalized) {
   // gfx1250 has native bf16 transcendental instructions, so these bf16 ops
   // should be kept as bf16 instead of being upcast to f32.
-  auto cc = se::RocmComputeCapability("gfx1250");
   constexpr absl::string_view kHloModule = R"(
 HloModule module
 
@@ -665,21 +665,25 @@ ENTRY main {
       ROOT r = bf16[4] $0(p0)
 })";
 
-  for (absl::string_view op : {"exponential", "log", "sqrt", "rsqrt", "tanh"}) {
-    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
-                                          absl::Substitute(kHloModule, op)));
-    EXPECT_FALSE(
-        Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32))
-        << "bf16 " << op << " should not be normalized on gfx1250";
-  }
+  for (const char* gfx : {"gfx1250", "gfx1250-strict"}) {
+    auto cc = se::RocmComputeCapability(gfx);
+    for (absl::string_view op :
+         {"exponential", "log", "sqrt", "rsqrt", "tanh"}) {
+      ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                            absl::Substitute(kHloModule, op)));
+      EXPECT_FALSE(
+          Normalize(module.get(), se::GpuComputeCapability{cc}, BF16, F32))
+          << "bf16 " << op << " should not be normalized on " << gfx;
+    }
 
-  // sine has a native bf16 hardware instruction (v_sin_bf16) but is not yet
-  // wired up in XLA (no lowering / gate), so it is still normalized to f32.
-  ASSERT_OK_AND_ASSIGN(
-      auto module_sin,
-      ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "sine")));
-  EXPECT_TRUE(
-      Normalize(module_sin.get(), se::GpuComputeCapability{cc}, BF16, F32));
+    // sine has a native bf16 hardware instruction (v_sin_bf16) but is not yet
+    // wired up in XLA (no lowering / gate), so it is still normalized to f32.
+    ASSERT_OK_AND_ASSIGN(
+        auto module_sin,
+        ParseAndReturnVerifiedModule(absl::Substitute(kHloModule, "sine")));
+    EXPECT_TRUE(
+        Normalize(module_sin.get(), se::GpuComputeCapability{cc}, BF16, F32));
+  }
 }
 
 TEST_F(FloatSupportTest, BF16TranscendentalsWithoutNativeSupportAreNormalized) {
@@ -751,6 +755,69 @@ TEST_F(FloatSupportTest, AllToAllTupleShapeS4IsNormalized) {
   EXPECT_TRUE(Normalize(
       module.get(),
       se::GpuComputeCapability{se::CudaComputeCapability::Hopper()}, S4, S8));
+}
+
+TEST_F(FloatSupportTest, BF16FmaIsNotNormalizedOutsideTriton) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule module
+
+ENTRY main {
+  p0 = bf16[4] parameter(0)
+  p1 = bf16[4] parameter(1)
+  p2 = bf16[4] parameter(2)
+  ROOT r = bf16[4] fma(p0, p1, p2)
+})";
+
+  for (se::GpuComputeCapability cc :
+       {se::GpuComputeCapability{se::CudaComputeCapability::Volta()},
+        se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+        se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+        se::GpuComputeCapability{se::RocmComputeCapability("gfx942")},
+        se::GpuComputeCapability{se::RocmComputeCapability("gfx1250")}}) {
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloModule));
+    EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32))
+        << "bf16 fma should not be normalized outside Triton";
+  }
+}
+
+TEST_F(FloatSupportTest, F8FmaIsNotNormalized) {
+  for (auto [type_name, low_precision_type] :
+       {std::pair<absl::string_view, PrimitiveType>{"f8e4m3fn", F8E4M3FN},
+        std::pair<absl::string_view, PrimitiveType>{"f8e5m2", F8E5M2}}) {
+    const std::string hlo_text = absl::Substitute(R"(
+HloModule module
+
+ENTRY main {
+  p0 = $0[4] parameter(0)
+  p1 = $0[4] parameter(1)
+  p2 = $0[4] parameter(2)
+  ROOT r = $0[4] fma(p0, p1, p2)
+})",
+                                                  type_name);
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+    EXPECT_FALSE(
+        Normalize(module.get(),
+                  se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+                  low_precision_type, F16))
+        << type_name << " fma should not be normalized to f16";
+  }
+}
+
+TEST_F(FloatSupportTest, F32FmaIsNotSupportedAsLowPrecisionBf16) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  p2 = f32[4] parameter(2)
+  ROOT r = f32[4] fma(p0, p1, p2)
+})"));
+  const HloInstruction* fma = module->entry_computation()->root_instruction();
+  GpuFloatSupport float_support(
+      se::GpuComputeCapability{se::CudaComputeCapability::Ampere()}, BF16, F32);
+  EXPECT_FALSE(float_support.SupportsLowPrecisionOperand(*fma, 0));
+  EXPECT_FALSE(float_support.SupportsLowPrecisionOutput(*fma));
 }
 
 }  // namespace

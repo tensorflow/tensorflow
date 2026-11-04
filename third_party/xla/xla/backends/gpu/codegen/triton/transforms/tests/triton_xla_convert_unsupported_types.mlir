@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: xla-opt --convert-unsupported-types %s | FileCheck %s
+// RUN: xla-opt --convert-unsupported-types --split-input-file %s | FileCheck %s
 
 module {
   // CHECK:   xtile.entry_func @triton_fn(
@@ -55,6 +55,34 @@ module {
     // CHECK: %[[MASK:.*]] = arith.cmpi sge, {{.*}} : tensor<16x1xi8>
     %selected = arith.select %mask, %extracted_tile_0, %cst_scale : tensor<16x1xi1>, tensor<16x1xf8E8M0FNU>
     // CHECK: %[[SELECTED:.*]] = arith.select %[[MASK]], %[[arg_1]], %[[CST_SCALE]] : tensor<16x1xi1>, tensor<16x1xi8>
+    xtile.return
+  }
+}
+
+
+// -----
+
+// f8E8M0FNU values are converted to i8 even if the module has no tt.dot_scaled.
+module {
+  // CHECK:   xtile.entry_func @move_e8m0(
+  // CHECK-SAME:   %arg0: memref<4x16xi8, #xtile.layout<[1, 0]>>,
+  // CHECK-SAME:   %arg1: memref<4x16xi8, #xtile.layout<[1, 0]>>,
+  xtile.entry_func @move_e8m0(
+      %arg0: memref<4x16xf8E8M0FNU, #xtile.layout<[1, 0]>>,
+      %arg1: memref<4x16xf8E8M0FNU, #xtile.layout<[1, 0]>>,
+      %tile_id: index) {
+    %c_0 = arith.constant 0 : index
+    // CHECK: %[[EXTRACTED:.*]] = xtile.extract %arg0{{.*}} -> tensor<4x16xi8>
+    %extracted = xtile.extract %arg0[%c_0, %c_0] [4, 16] [1, 1] : memref<4x16xf8E8M0FNU, #xtile.layout<[1, 0]>> -> tensor<4x16xf8E8M0FNU>
+    // CHECK: %[[CST:.*]] = arith.constant dense<0> : tensor<4x16xi8>
+    %cst = arith.constant dense<5.877470e-39> : tensor<4x16xf8E8M0FNU>
+    %as_int = arith.bitcast %extracted : tensor<4x16xf8E8M0FNU> to tensor<4x16xi8>
+    %zero = arith.constant dense<0> : tensor<4x16xi8>
+    %mask = arith.cmpi sge, %as_int, %zero : tensor<4x16xi8>
+    // CHECK: %[[SELECTED:.*]] = arith.select %{{.*}}, %[[EXTRACTED]], %[[CST]] : tensor<4x16xi1>, tensor<4x16xi8>
+    %selected = arith.select %mask, %extracted, %cst : tensor<4x16xi1>, tensor<4x16xf8E8M0FNU>
+    // CHECK: xtile.insert %[[SELECTED]] into %arg1{{.*}} : tensor<4x16xi8> -> memref<4x16xi8, #xtile.layout<[1, 0]>>
+    xtile.insert %selected into %arg1[%c_0, %c_0] [4, 16] [1, 1] : tensor<4x16xf8E8M0FNU> -> memref<4x16xf8E8M0FNU, #xtile.layout<[1, 0]>>
     xtile.return
   }
 }

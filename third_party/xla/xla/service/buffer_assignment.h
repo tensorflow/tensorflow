@@ -28,6 +28,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
@@ -196,6 +198,7 @@ class BufferAllocation {
 
   // Access to the logical buffers assigned to this allocation, and their
   // associated logical offsets and sizes.
+  ABSL_DEPRECATED("Use BufferAssignment::assigned_buffers instead.")
   const absl::flat_hash_map<const HloValue*, OffsetSize>& assigned_buffers()
       const {
     return assigned_buffers_;
@@ -292,6 +295,7 @@ class BufferAllocation {
   // GetSlice returns the Slice of contiguous memory that holds the value
   // described by the given 'buffer'.
   // REQUIRES: 'buffer' must be assigned to this allocation.
+  ABSL_DEPRECATED("Use BufferAssignment::GetAssignedSlice instead.")
   Slice GetSlice(const HloValue& buffer) const;
 
   std::string ToString() const;
@@ -303,6 +307,7 @@ class BufferAllocation {
   // allocation. The groups are sorted by the max size(Z-A) of the values in the
   // group. Percentile and more_than_k are used to control the number of groups
   // being reported.
+  ABSL_DEPRECATED("Use BufferAssignment::MemoryUsageReport instead.")
   std::string MemoryUsageReport(const std::string& prefix,
                                 float percentile = 0.05,
                                 int64_t more_than_k = 50,
@@ -349,6 +354,7 @@ class BufferAllocation {
   // reached at multiple points, the set of logical buffers live at the earliest
   // maximal point is returned. The vector is stably sorted by
   // BufferValue::Index.
+  ABSL_DEPRECATED("Use BufferAssignment::PeakMemoryLogicalBuffers instead.")
   const std::vector<const HloValue*>& PeakMemoryLogicalBuffers() const {
     return peak_buffers_;
   }
@@ -363,6 +369,7 @@ class BufferAllocation {
   // allocation. They are carved into pre-existing holes and never grew the
   // allocation, so they are not part of its sizing attribution (this says
   // nothing about whether they happen to be live at the allocation's peak).
+  ABSL_DEPRECATED("Use BufferAssignment::CrossColorBuffers instead.")
   const std::vector<const HloValue*>& CrossColorBuffers() const {
     return cross_color_buffers_;
   }
@@ -393,6 +400,14 @@ class BufferAllocation {
 
   void set_constant(bool is_constant) { is_constant_ = is_constant; }
 
+  struct ValueLiveRange {
+    int64_t start;
+    int64_t end;
+    constexpr ValueLiveRange() : start(-1), end(-1) {}
+    constexpr ValueLiveRange(int64_t start, int64_t end)
+        : start(start), end(end) {}
+  };
+
  private:
   // Only BufferAssigner and BufferAssignment can modify BufferAllocation.
   friend class BufferAssigner;
@@ -400,9 +415,14 @@ class BufferAllocation {
 
   // Adds a LogicalBuffer to the set assigned to this buffer.
   absl::Status AddAssignment(const HloValue& buffer, int64_t offset,
-                             int64_t size);
+                             int64_t size, ValueLiveRange live_range = {});
 
-  void set_index(Index index) { index_ = index; }
+  void set_index(Index index) {
+    index_ = index;
+    for (HeapSimulatorTrace& trace : heap_traces_) {
+      trace.set_buffer_allocation_index(index);
+    }
+  }
   void set_size(int64_t size) { size_ = size; }
 
   // The index of the allocation in the BufferAssignment.
@@ -447,24 +467,37 @@ class BufferAllocation {
   // See comment on the is_constant() accessor.
   bool is_constant_ : 1;
 
+  bool has_must_not_live_out_value_ = false;
+  size_t must_not_live_out_checked_count_ = 0;
+
   // If this buffer is for an entry computation parameter, which subshape of the
   // parameter is it for?
   ShapeIndex param_shape_index_;
 
   // Mapping from the set of buffers assigned to this allocation to their
   // logical offsets and sizes.
+  // Deprecated: moving to BufferAssignment (b/530831203).
   absl::flat_hash_map<const HloValue*, OffsetSize> assigned_buffers_;
 
+  // Parallel contiguous arrays of assigned HloValue* and their live range
+  // bounds for fast sequential scanning in BufferAssigner::MaybeAssignBuffer.
+  // Deprecated: moving to BufferAssignment (b/530831203).
+  std::vector<const HloValue*> assigned_values_;
+  std::vector<ValueLiveRange> assigned_live_ranges_;
+
   int64_t fragmentation_bytes_ = 0;
+  // Deprecated: moving to BufferAssignment (b/530831203).
   std::vector<HeapSimulatorTrace> heap_traces_;
 
   // Set of buffers live at the point of peak memory usage for this allocation;
   // i.e. the buffers that drove the allocation's size.
+  // Deprecated: moving to BufferAssignment (b/530831203).
   std::vector<const HloValue*> peak_buffers_;
 
   // Buffers placed in this allocation whose own color differs from the
   // allocation color (placed into pre-existing holes by cross-color reuse,
   // without growing the allocation).
+  // Deprecated: moving to BufferAssignment (b/530831203).
   std::vector<const HloValue*> cross_color_buffers_;
 };
 
@@ -524,6 +557,8 @@ class BufferAssignment {
   std::vector<BufferAllocation> TakeAllocations() && {
     for (auto& allocation : allocations_) {
       allocation.assigned_buffers_.clear();
+      allocation.assigned_values_.clear();
+      allocation.assigned_live_ranges_.clear();
       allocation.peak_buffers_.clear();
       allocation.cross_color_buffers_.clear();
     }
@@ -555,9 +590,38 @@ class BufferAssignment {
   const BufferAllocation& GetAssignedAllocation(
       const HloBuffer& hlo_buffer) const;
 
+  // Access to the logical buffers assigned to `allocation`, and their
+  // associated logical offsets and sizes.
+  const absl::flat_hash_map<const HloValue*, BufferAllocation::OffsetSize>&
+  assigned_buffers(const BufferAllocation& allocation) const {
+    return allocation.assigned_buffers_;
+  }
+
+  // Returns the Slice of contiguous memory assigned to `value`.
+  // REQUIRES: `value` must be assigned an allocation.
+  BufferAllocation::Slice GetAssignedSlice(const HloValue& value) const {
+    // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
+    return GetAssignedAllocation(value).GetSlice(value);
+  }
+
+  // Returns the LogicalBuffers which are live at the point of peak memory usage
+  // for `allocation`.
+  const std::vector<const HloValue*>& PeakMemoryLogicalBuffers(
+      const BufferAllocation& allocation) const {
+    return allocation.peak_buffers_;
+  }
+
+  // Returns the buffers placed in `allocation` whose own color differs from the
+  // allocation color.
+  const std::vector<const HloValue*>& CrossColorBuffers(
+      const BufferAllocation& allocation) const {
+    return allocation.cross_color_buffers_;
+  }
+
   // Returns the allocation with the given index. CHECKs if no allocation exists
   // with the given index.
   const BufferAllocation& GetAllocation(BufferAllocation::Index index) const;
+  BufferAllocation* GetMutableAllocation(BufferAllocation::Index index);
 
   // Returns the allocation with the given instruction and shape index. nullptr
   // if no allocation exists.
@@ -655,6 +719,15 @@ class BufferAssignment {
   std::string MemoryUsageReport(float percentile = 0.05,
                                 int64_t more_than_k = 50,
                                 bool print_shape_layout = false) const;
+  std::string MemoryUsageReport(const BufferAllocation& allocation,
+                                const std::string& prefix,
+                                float percentile = 0.05,
+                                int64_t more_than_k = 50,
+                                bool print_shape_layout = false) const {
+    // NOLINTNEXTLINE(clang-diagnostic-deprecated-declarations)
+    return allocation.MemoryUsageReport(prefix, percentile, more_than_k,
+                                        print_shape_layout);
+  }
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
   std::string ToVerboseString(const AliasInfo* alias_info,
@@ -717,9 +790,54 @@ class BufferAssignment {
   void ClearAllocations() {
     allocations_.clear();
     temp_allocation_total_size_ = 0;
-    allocation_index_for_value_.clear();
+    std::fill(allocation_index_for_value_id_.begin(),
+              allocation_index_for_value_id_.end(), -1);
+    num_assigned_values_ = 0;
+    fragmentation_bytes_by_color_.clear();
     stats_ = Stats();
   }
+
+  // Encapsulates the state of the buffer assignment.
+  struct State {
+    std::vector<BufferAllocation> allocations;
+    int64_t temp_allocation_total_size = 0;
+    std::vector<BufferAllocation::Index> allocation_index_for_value_id;
+    size_t num_assigned_values = 0;
+    absl::btree_map<LogicalBuffer::Color, int64_t> fragmentation_bytes_by_color;
+    Stats stats;
+  };
+
+  // Takes a snapshot of the current state.
+  State GetState() const {
+    return {allocations_,
+            temp_allocation_total_size_,
+            allocation_index_for_value_id_,
+            num_assigned_values_,
+            fragmentation_bytes_by_color_,
+            stats_};
+  }
+
+  // Restores the state from a snapshot.
+  void RestoreState(State state) {
+    allocations_ = std::move(state.allocations);
+    temp_allocation_total_size_ = state.temp_allocation_total_size;
+    allocation_index_for_value_id_ =
+        std::move(state.allocation_index_for_value_id);
+    num_assigned_values_ = state.num_assigned_values;
+    fragmentation_bytes_by_color_ =
+        std::move(state.fragmentation_bytes_by_color);
+    stats_ = state.stats;
+  }
+
+  // Replaces allocations and fragmentation stats for `colors` with those from
+  // `state`, leaving all other colors untouched.
+  void RestoreStateForColors(
+      const State& state,
+      const absl::flat_hash_set<LogicalBuffer::Color>& colors);
+
+  // Clears only the buffer allocations belonging to `colors`.
+  void ClearAllocationsForColors(
+      const absl::flat_hash_set<LogicalBuffer::Color>& colors);
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
@@ -727,14 +845,44 @@ class BufferAssignment {
                                        LogicalBuffer::Color color);
 
   int64_t HloBufferSize(const HloBuffer& buffer) {
-    auto [it, inserted] = cached_buffer_sizes_.try_emplace(buffer.id());
-    if (inserted) {
-      it->second = buffer.ComputeSize(buffer_size_);
+    DCHECK_GE(buffer.id(), 0);
+    DCHECK_LT(static_cast<size_t>(buffer.id()), cached_buffer_sizes_.size());
+    int64_t& cached_size = cached_buffer_sizes_[buffer.id()];
+    if (cached_size == kUncomputedBufferSize) {
+      cached_size = buffer.ComputeSize(buffer_size_);
     }
-    return it->second;
+    return cached_size;
   }
 
+  BufferAllocation::ValueLiveRange GetValueLiveRange(
+      HloValue::Id value_id) const {
+    if (value_id >= 0 &&
+        static_cast<size_t>(value_id) < live_ranges_by_value_id_.size()) {
+      return live_ranges_by_value_id_[value_id];
+    }
+    return {};
+  }
+
+  bool BufferLivesOut(const HloBuffer& buffer) const {
+    DCHECK_GE(buffer.id(), 0);
+    DCHECK_LT(static_cast<size_t>(buffer.id()), buffer_lives_out_.size());
+    return buffer_lives_out_[buffer.id()] != 0;
+  }
+
+  bool ValueLivesOut(const HloValue& value) const {
+    DCHECK_GE(value.id(), 0);
+    DCHECK_LT(static_cast<size_t>(value.id()), value_lives_out_.size());
+    return value_lives_out_[value.id()] != 0;
+  }
+
+  size_t num_buffer_ids() const { return cached_buffer_sizes_.size(); }
+
  private:
+  static constexpr int64_t kUncomputedBufferSize = -2;
+  static constexpr int8_t kMustNotLiveOutUncomputed = -1;
+  static constexpr int8_t kMustNotLiveOutFalse = 0;
+  static constexpr int8_t kMustNotLiveOutTrue = 1;
+
   // Only BufferAssigner can build or modify BufferAssignments.
   friend class BufferAssigner;
   friend class DefaultBufferAllocationsManagerForComputationsWithoutOrdering;
@@ -758,6 +906,62 @@ class BufferAssignment {
     // -1 means no constraint.
     multiheap_size_constraint_per_heap_ =
         (raw_value == -1) ? UINT64_MAX : raw_value;
+    InitCaches();
+  }
+
+  void InitCaches();
+
+  using MustNotLiveOutFn = std::function<bool(
+      const HloAliasAnalysis&, const HloInstruction*, const ShapeIndex&)>;
+
+  bool ValueMustNotLiveOut(const HloValue& value,
+                           const MustNotLiveOutFn& pred) {
+    DCHECK_GE(value.id(), 0);
+    DCHECK_LT(static_cast<size_t>(value.id()), value_must_not_live_out_.size());
+    int8_t& cached = value_must_not_live_out_[value.id()];
+    if (cached == kMustNotLiveOutUncomputed) {
+      cached = pred(*alias_analysis_, value.instruction(), value.index())
+                   ? kMustNotLiveOutTrue
+                   : kMustNotLiveOutFalse;
+    }
+    return cached == kMustNotLiveOutTrue;
+  }
+
+  bool BufferMustNotLiveOut(const HloBuffer& buffer,
+                            const MustNotLiveOutFn& pred) {
+    DCHECK_GE(buffer.id(), 0);
+    DCHECK_LT(static_cast<size_t>(buffer.id()),
+              buffer_must_not_live_out_.size());
+    int8_t& cached = buffer_must_not_live_out_[buffer.id()];
+    if (cached == kMustNotLiveOutUncomputed) {
+      bool result = false;
+      for (const HloValue* value : buffer.values()) {
+        if (ValueMustNotLiveOut(*value, pred)) {
+          result = true;
+          break;
+        }
+      }
+      cached = result ? kMustNotLiveOutTrue : kMustNotLiveOutFalse;
+    }
+    return cached == kMustNotLiveOutTrue;
+  }
+
+  bool AllocationHasMustNotLiveOut(BufferAllocation* allocation,
+                                   const MustNotLiveOutFn& pred) {
+    if (allocation->has_must_not_live_out_value_) {
+      return true;
+    }
+    while (allocation->must_not_live_out_checked_count_ <
+           allocation->assigned_values_.size()) {
+      const HloValue* value =
+          allocation->assigned_values_
+              [allocation->must_not_live_out_checked_count_++];
+      if (ValueMustNotLiveOut(*value, pred)) {
+        allocation->has_must_not_live_out_value_ = true;
+        return true;
+      }
+    }
+    return false;
   }
 
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
@@ -777,7 +981,6 @@ class BufferAssignment {
 
   // Mutable accessors for allocations.
   BufferAllocation* GetMutableAssignedAllocation(const HloBuffer& buffer);
-  BufferAllocation* GetMutableAllocation(BufferAllocation::Index index);
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
   absl::Status CombineTempAllocations(
@@ -801,9 +1004,19 @@ class BufferAssignment {
 
   uint64_t multiheap_size_constraint_per_heap_;
 
-  // Maps Buffers to the index of the BufferAllocation which holds the buffer.
-  absl::flat_hash_map<const HloValue*, BufferAllocation::Index>
-      allocation_index_for_value_;
+  // Maps HloValue::Id to the index of the BufferAllocation which holds the
+  // buffer (-1 if unassigned).
+  std::vector<BufferAllocation::Index> allocation_index_for_value_id_;
+  size_t num_assigned_values_ = 0;
+
+  // Maps HloValue::Id to its live range bounds.
+  std::vector<BufferAllocation::ValueLiveRange> live_ranges_by_value_id_;
+
+  // Precomputed live-out flags and lazy must_not_live_out caches indexed by ID.
+  std::vector<uint8_t> buffer_lives_out_;
+  std::vector<uint8_t> value_lives_out_;
+  std::vector<int8_t> value_must_not_live_out_;
+  std::vector<int8_t> buffer_must_not_live_out_;
 
   // Points to the associated HloModule. The module is not owned by this class
   // and must outlive this BufferAssignment.
@@ -823,7 +1036,9 @@ class BufferAssignment {
 
   Stats stats_;
 
-  absl::flat_hash_map<HloBuffer::Id, int64_t> cached_buffer_sizes_;
+  absl::btree_map<LogicalBuffer::Color, int64_t> fragmentation_bytes_by_color_;
+
+  std::vector<int64_t> cached_buffer_sizes_;
 
   BufferAssignment(const BufferAssignment&) = delete;
   BufferAssignment& operator=(const BufferAssignment&) = delete;
@@ -883,6 +1098,14 @@ class BufferAllocationsManagerForComputationsWithoutOrdering {
 // A class which constructs a buffer assignment.
 class BufferAssigner {
  public:
+  // Specifies the buffer assignment algorithms for
+  // AssignBuffersForGlobalComputations and AssignBuffersWithSequentialOrdering.
+  struct AssignmentStrategy {
+    buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
+        Value non_sequential_algorithm;
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        sequential_algorithm;
+  };
   friend class BufferAssignmentTest;
   using Colorer =
       std::function<absl::Status(HloAliasAnalysis*, const HloOrdering&)>;
@@ -957,12 +1180,12 @@ class BufferAssigner {
     buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
         Value assignment_algorithm_for_computations_without_ordering =
             buffer_assignment::
-                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::SPATIAL;
 
     buffer_assignment::AssignmentAlgorithmForComputationsWithoutOrderingProto::
         Value fallback_algorithm_for_computations_without_ordering =
             buffer_assignment::
-                AssignmentAlgorithmForComputationsWithoutOrderingProto::DEFAULT;
+                AssignmentAlgorithmForComputationsWithoutOrderingProto::SPATIAL;
 
     // Color of "view" buffers that are pointer stand-ins aliasing into another
     // allocation (see memory_space_assignment::Options::dus_view_color for the
@@ -980,7 +1203,30 @@ class BufferAssigner {
         fallback_algorithm =
             buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
 
-    // If true, evaluate memory usage and fallback to DEFAULT algorithm.
+    // If true, the memory usage of each color is checked against its limit,
+    // and the colors that exceed it are reassigned with fallback algorithms.
+    // The best assignment of each color is kept.
+    //
+    // The fallbacks are tried in this order:
+    //  1. FAST_MERGE falls back to FAST_SPLIT.
+    //  2. The algorithms that may use more memory than BEST_OF_SPATIAL_TEMPORAL
+    //     are replaced with the fallback ones:
+    //     * For computations without a sequential ordering, FAST_MERGE is
+    //       replaced with
+    //       `fallback_algorithm_for_computations_without_ordering`.
+    //     * For the other computations, FAST_MERGE, FAST_SPLIT, SPATIAL and
+    //       TEMPORAL are replaced with `fallback_algorithm`.
+    //
+    // A DEFAULT `fallback_algorithm` tries SPATIAL and then TEMPORAL. This is
+    // equivalent to BEST_OF_SPATIAL_TEMPORAL, but skips TEMPORAL if SPATIAL
+    // fits.
+    //
+    // For example, with the default fallback algorithms, the
+    // {without ordering, sequential} algorithms {FAST_MERGE, FAST_MERGE} fall
+    // back to:
+    //  * {FAST_MERGE, FAST_SPLIT},
+    //  * {SPATIAL, SPATIAL},
+    //  * {SPATIAL, TEMPORAL}.
     bool enable_fallback = false;
 
     // Optional callback to return the memory limit for a given buffer color.
@@ -992,6 +1238,11 @@ class BufferAssigner {
     // FAST_SPLIT); unsupported colors use the DEFAULT algorithm.
     std::function<bool(LogicalBuffer::Color)> supports_fast_buffer_assignment =
         [](LogicalBuffer::Color) { return true; };
+
+    // If true, allows input-output aliased entry computation parameter
+    // allocations to be used for temporary HloBuffers, before the final output
+    // is written.
+    bool allow_reusing_aliased_entry_params_for_temp = true;
   };
 
   static std::unique_ptr<BufferAllocationsManagerForComputationsWithoutOrdering>
@@ -1064,6 +1315,17 @@ class BufferAssigner {
                          LogicalBuffer::Color color) const;
 
  private:
+  // Assigns buffers of `colors_to_assign` (all colors if null) in three steps:
+  //  1. AssignBuffersForGlobalComputations with `non_sequential_algorithm`,
+  //     which also collects the temp buffers of sequentially ordered
+  //     computations,
+  //  2. heap simulation of the collected buffers with `sequential_algorithm`
+  //     (AssignBuffersWithSequentialOrdering),
+  //  3. thread-local computations, live-out marking and
+  //     CombineTempAllocations.
+  // If `precomputed_sequential_buffers` is set, step 1 is skipped and step 2
+  // uses the given buffers instead. The caller must have already run step 1 on
+  // `assignment`.
   absl::Status RunAssignBuffers(
       const HloModule* module,
       const std::vector<const HloComputation*>& global_computations,
@@ -1073,7 +1335,12 @@ class BufferAssigner {
           sequential_algorithm,
       buffer_assignment::
           AssignmentAlgorithmForComputationsWithoutOrderingProto::Value
-              non_sequential_algorithm);
+              non_sequential_algorithm,
+      const absl::flat_hash_set<LogicalBuffer::Color>* colors_to_assign =
+          nullptr,
+      const absl::flat_hash_map<const HloComputation*,
+                                absl::flat_hash_set<const HloValue*>>*
+          precomputed_sequential_buffers = nullptr);
 
   absl::Status RunAssignBuffersWithFallback(
       const HloModule* module,
@@ -1093,7 +1360,9 @@ class BufferAssigner {
       BufferAssignment* assignment,
       buffer_assignment::
           AssignmentAlgorithmForComputationsWithoutOrderingProto::Value
-              algorithm);
+              algorithm,
+      const absl::flat_hash_set<LogicalBuffer::Color>* colors_to_assign =
+          nullptr);
 
   // Assigns dedicated thread-local buffers for the given thread-local
   // computations. `assignment` is modified to reflect the new buffer
@@ -1102,18 +1371,27 @@ class BufferAssigner {
       const std::vector<const HloComputation*>& computations,
       BufferAssignment* assignment);
 
-  // Returns true if buffer's live range interferences with buffer2's.
+  // Returns true if buffer1's live range interferes with buffer2's.
   bool LiveRangeInterferes(const HloValue* buffer1,
-                           const HloLiveRange::LiveRangeBounds& live_range1,
+                           BufferAllocation::ValueLiveRange live_range1,
                            const HloValue* buffer2,
-                           const HloLiveRange::LiveRangeBounds& live_range2,
+                           BufferAllocation::ValueLiveRange live_range2,
                            BufferAssignment* assignment);
+
+  // Returns true if any value in `hlo_buffer` has a live range that interferes
+  // with a value already assigned to `allocation`. Requires a total-order
+  // scheduled module.
+  bool HasLiveRangeInterference(const BufferAllocation& allocation,
+                                const HloBuffer& hlo_buffer,
+                                BufferAssignment* assignment);
 
   // Assigns pre-set assignments, if provided. These assignments will be added
   // to assigned_buffers and skip buffer allocation.
   absl::Status AssignPresetBuffers(
       absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
-      BufferAssignment* assignment);
+      BufferAssignment* assignment,
+      const absl::flat_hash_set<LogicalBuffer::Color>* colors_to_assign =
+          nullptr);
 
   // Handles HloBuffers that represent DUS views or constants. Returns true if
   // the buffer was handled (either allocated as a constant or skipped).

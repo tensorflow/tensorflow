@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -36,6 +37,10 @@ TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
 
 absl::StatusOr<HloInstruction*> TupleSimplifier::RemoveWholeTuple(
     HloInstruction* tuple) {
+  if (tuple->get_frontend_attribute(kDisableTupleSimplifierAttribute) ==
+      "true") {
+    return nullptr;
+  }
   HloInstruction* top_tuple = nullptr;
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
@@ -132,5 +137,13 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
 
   return changed;
 }
+
+namespace {
+
+const HloPassFactory* const kTupleSimplifierRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<TupleSimplifier>>(
+        "tuple-simplifier");
+
+}  // namespace
 
 }  // namespace xla

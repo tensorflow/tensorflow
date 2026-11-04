@@ -226,7 +226,8 @@ struct DynamicSliceFusion {
     kRequired,
 
     // Offsets that are not representable as Offset::Expr are left empty. Use
-    // only for dynamic-slice copy fusions (see dynamic_slice_copy.h): a DS/DUS
+    // for analyses needing only buffer mappings or for dynamic-slice copy
+    // fusions (see dynamic_slice_copy.h): a DS/DUS
     // copy is emitted as a single copy thunk addressed only by the
     // DynamicSliceConfig, so offset expressions are needed only for offset
     // verification, which is skipped. Not safe for fusions where the runtime
@@ -236,6 +237,11 @@ struct DynamicSliceFusion {
 
   // Finds the "hero" instruction inside a dynamic-slice fusion body.
   static const HloInstruction* FindHero(const HloComputation* body);
+
+  // Resolves the runtime addressing config of a slice or dynamic (update)
+  // slice. Returns nullopt when the config cannot be resolved.
+  static std::optional<DynamicSliceConfig> ResolveSliceConfig(
+      const HloInstruction* instr);
 
   // Resolves parameters for the hero instruction. Returns an entry for each
   // operand of the hero; the same fusion parameter may appear more than once

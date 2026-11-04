@@ -191,6 +191,24 @@ func.func @sync() -> (tensor<8x4xf32>, tensor<8x4xf32>) {
 
 // -----
 
+func.func @sync_mixed_rank(%i: index) -> (tensor<16xf32>, f32) {
+  %shared1 = xla_gpu.allocate_shared : tensor<16xf32>
+  %shared2 = xla_gpu.allocate_shared : tensor<8x4xf32>
+  %sync:2 = xla_gpu.sync_threads %shared1, %shared2
+    : tensor<16xf32>, tensor<8x4xf32>
+  %v = tensor.extract %sync#1[%i, %i] : tensor<8x4xf32>
+  return %sync#0, %v : tensor<16xf32>, f32
+}
+// CHECK-LABEL: func.func @sync_mixed_rank(
+// CHECK:         %[[SHARED1:.*]] = xla_gpu.allocate_shared : tensor<16xf32>
+// CHECK:         %[[SHARED2:.*]] = xla_gpu.allocate_shared : tensor<32xf32>
+// CHECK:         %[[SYNC0:.*]], %[[SYNC1:.*]] = xla_gpu.sync_threads %[[SHARED1]], %[[SHARED2]]
+// CHECK-SAME:      : tensor<16xf32>, tensor<32xf32>
+// CHECK:         %[[V:.*]] = tensor.extract %[[SYNC1]][{{.*}}] : tensor<32xf32>
+// CHECK-NEXT:    return %[[SYNC0]], %[[V]] : tensor<16xf32>, f32
+
+// -----
+
 func.func @index_switch(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>,
     %arg2: tensor<2x3xf32>, %arg3: tensor<2x3xf32>
     ) -> (tensor<2x3xf32>, tensor<2x3xf32>) {

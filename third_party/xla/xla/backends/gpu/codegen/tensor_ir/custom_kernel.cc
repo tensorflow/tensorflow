@@ -15,20 +15,19 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/tensor_ir/custom_kernel.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <variant>
 #include <vector>
 
-#include "tensor_ir/Runtime/CudaTile/CudaTileRuntimeKernel.h"
-#include "tensor_ir/Runtime/CudaTile/KernelLaunchHelpers.h"
-#include "tensor_ir/Runtime/IRuntimeKernel.h"
+#include "tensor_ir/Artifact/TensorIRArtifact.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/Support/Casting.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -36,22 +35,16 @@ limitations under the License.
 namespace xla::gpu::tensor_ir {
 
 absl::StatusOr<KernelReuseCache::Entry> MakeKernelCacheEntry(
-    const ::tensor_ir::rt::IRuntimeKernel& kernel) {
-  const auto* cuda_tile_kernel_ptr =
-      llvm::dyn_cast<::tensor_ir::rt::CudaTileRuntimeKernel>(&kernel);
-  if (cuda_tile_kernel_ptr == nullptr) {
-    return absl::InternalError(
-        absl::StrCat("TensorIR kernel '", kernel.name(),
-                     "' is not a CudaTile runtime kernel"));
-  }
-  const ::tensor_ir::rt::CudaTileRuntimeKernel& cuda_tile_kernel =
-      *cuda_tile_kernel_ptr;
-
-  if (!cuda_tile_kernel.hasDeviceCode()) {
+    const ::tensor_ir::rt::TensorIRArtifact& artifact) {
+  llvm::ArrayRef<char> device_code =
+      std::visit([](const auto& b) { return llvm::ArrayRef<char>(b.bytes); },
+                 artifact.getBinary());
+  if (device_code.empty()) {
     return absl::InternalError(absl::StrCat(
-        "TensorIR kernel '", cuda_tile_kernel.name(), "' has no device code"));
+        "TensorIR kernel '", artifact.getKernelName(), "' has no device code"));
   }
-  if (cuda_tile_kernel.hasTileIRBytecode()) {
+  if (std::holds_alternative<::tensor_ir::rt::TileIRBytecode>(
+          artifact.getBinary())) {
     // The buffer holds TileIR bytecode rather than an assembled cubin. That is
     // fine as far as loading goes: `cuModuleLoadData`, which StreamExecutor
     // calls to load a cubin, documents "Tile IR data" alongside cubin, fatbin
@@ -59,7 +52,7 @@ absl::StatusOr<KernelReuseCache::Entry> MakeKernelCacheEntry(
     // driver and needs r610 or newer, so say so once per process -- this is a
     // property of the installation, not of any one kernel.
     LOG_FIRST_N(WARNING, 1)
-        << "TensorIR kernel '" << cuda_tile_kernel.name()
+        << "TensorIR kernel '" << artifact.getKernelName()
         << "' is TileIR bytecode rather than an assembled cubin, because no "
            "'tileiras' assembler was found; CUDA 13.3 or newer ships one. The "
            "CUDA driver will JIT the bytecode when the kernel is loaded, which "
@@ -69,10 +62,10 @@ absl::StatusOr<KernelReuseCache::Entry> MakeKernelCacheEntry(
   // The launch grid is fixed at compile time for everything XLA emits: the
   // compiler only installs a runtime grid computer for dynamic shapes, and a
   // fusion never has any.
-  std::optional<::tensor_ir::rt::GridDims> grid = cuda_tile_kernel.staticGrid();
+  const std::optional<std::array<int32_t, 3>>& grid = artifact.getStaticGrid();
   if (!grid.has_value()) {
     return absl::InternalError(
-        absl::StrCat("TensorIR kernel '", cuda_tile_kernel.name(),
+        absl::StrCat("TensorIR kernel '", artifact.getKernelName(),
                      "' has a launch grid that is only known at run time"));
   }
 
@@ -85,11 +78,10 @@ absl::StatusOr<KernelReuseCache::Entry> MakeKernelCacheEntry(
   // The one thing lost is the `CU_CLUSTER_SCHEDULING_POLICY_SPREAD` launch
   // attribute that `launch` sets. It is a scheduling hint for thread block
   // clusters, and these kernels are launched without a cluster dimension.
-  llvm::ArrayRef<char> device_code = cuda_tile_kernel.deviceCode();
   KernelReuseCache::Entry entry;
-  entry.kernel_name = cuda_tile_kernel.funcName();
+  entry.kernel_name = artifact.getFuncName();
   entry.launch_dimensions = LaunchDimensions(
-      se::BlockDim(grid->x, grid->y, grid->z), se::ThreadDim(1, 1, 1));
+      se::BlockDim((*grid)[0], (*grid)[1], (*grid)[2]), se::ThreadDim(1, 1, 1));
   entry.shmem_bytes = 0;
   entry.binary = std::make_shared<const std::vector<uint8_t>>(
       device_code.begin(), device_code.end());

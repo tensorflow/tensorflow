@@ -261,11 +261,11 @@ mlir::LogicalResult rewriteManualComputation(
   return mlir::success();
 }
 
-SmallVector<StringAttr> getManualAxesList(
-    ArrayRef<ArrayRef<StringAttr>> manualAxesStack) {
-  SmallVector<StringAttr> manualAxesList;
-  for (ArrayRef<StringAttr> manualAxesRefs : manualAxesStack) {
-    for (StringAttr manualAxes : manualAxesRefs) {
+SmallVector<sdy::AxisRefAttr> getManualAxesList(
+    ArrayRef<ArrayRef<sdy::AxisRefAttr>> manualAxesStack) {
+  SmallVector<sdy::AxisRefAttr> manualAxesList;
+  for (ArrayRef<sdy::AxisRefAttr> manualAxesRefs : manualAxesStack) {
+    for (sdy::AxisRefAttr manualAxes : manualAxesRefs) {
       manualAxesList.push_back(manualAxes);
     }
   }
@@ -330,7 +330,7 @@ class SdyRoundTripShardMapImportPass
     sdy::iterateFuncs(
         module,
         [&](FuncOp funcOp) {
-          SmallVector<ArrayRef<StringAttr>> manualAxesStack;
+          SmallVector<ArrayRef<sdy::AxisRefAttr>> manualAxesStack;
           if (auto funcManualAxes = funcOp->getAttrOfType<sdy::ManualAxesAttr>(
                   sdy::kFuncManualAxes)) {
             manualAxesStack.push_back(funcManualAxes.getValue());

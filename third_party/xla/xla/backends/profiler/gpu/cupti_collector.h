@@ -149,6 +149,13 @@ class CuptiTraceCollector {
   absl::flat_hash_map<std::pair<uint32_t, uint64_t>, absl::string_view>
       graph_node_annotations_ = {};
 
+  // Records the launch stream for a CUDA graph launch callback event so that
+  // activity events from the graph's internal stream(s) can be mapped back to
+  // the launch stream even when callback events themselves are not exported.
+  virtual void RecordGraphLaunchStream(uint32_t device_id,
+                                       uint32_t correlation_id,
+                                       int64_t stream_id) {}
+
  private:
   AnnotationMap annotation_map_;
   std::optional<uint64_t> tracing_end_time_ns_;

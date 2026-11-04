@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -26,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/btree_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -33,12 +37,14 @@ limitations under the License.
 #include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
@@ -85,18 +91,13 @@ limitations under the License.
 #include "xla/tools/hlo_control_flow_flattening.h"
 #include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/fixed_option_set_flag.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/profiler/lib/profiler_session.h"
-#include "tsl/profiler/protobuf/profiler_options.pb.h"
-#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace FunctionalHloRunner {
@@ -387,6 +388,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
   size_t num_pending_transfers = 0;
 
   absl::Status issue_status = [&]() -> absl::Status {
+    absl::Status ready_status;
     for (int i = 0; i < output_buffers.size(); ++i) {
       if (output_buffers[i].empty()) {
         continue;
@@ -424,11 +426,11 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
                 "All outputs from a given vector of outputs should be for the "
                 "same device");
           }
-          ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+          ready_status.Update(buffer->GetReadyFuture().Await());
         }
       }
     }
-    return absl::OkStatus();
+    return ready_status;
   }();
 
   // The ToLiteral callbacks above reference `outputs`, `mu`, `status` and
@@ -596,13 +598,41 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
 
+  auto refresh_argument_ptrs = [&]() -> absl::Status {
+    if (running_options.recreate_buffers_between_repeats) {
+      device_buffers.clear();
+      argument_ptrs.clear();
+      ABSL_ASSIGN_OR_RETURN(device_buffers,
+                       create_argument_buffers_on_device(flatten_arguments));
+      argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
+      return absl::OkStatus();
+    }
+    switch (parameter_type) {
+      case ParameterType::kOneTupleOfArrays:
+        argument_ptrs = CreateArgumentPointersBasedOnAliasing(
+            output_buffers, device_buffers,
+            get_output_index_for_one_tuple_of_arrays);
+        break;
+      case ParameterType::kOneListOfArrays:
+        argument_ptrs = CreateArgumentPointersBasedOnAliasing(
+            output_buffers, device_buffers,
+            get_output_index_for_one_list_of_arrays);
+        break;
+      case ParameterType::kOther:
+        argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
+        break;
+    }
+    return absl::OkStatus();
+  };
+
   bool has_active_profiler_session = false;
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     const bool is_last_repeat = (repeat == running_options.num_repeats - 1);
     const bool profile_current_repeat =
         (running_options.profiler != nullptr) &&
         (repeat >= running_options.num_repeats -
-                       running_options.num_repeats_with_profiler);
+                       running_options.num_repeats_with_profiler) &&
+        (!running_options.multipass_profiling || is_last_repeat);
 
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
@@ -628,14 +658,47 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         running_options.profiler->CreateSession();
         has_active_profiler_session = true;
       }
-      futures->clear();
-      ABSL_ASSIGN_OR_RETURN(
-          output_buffers,
-          executable->Execute(argument_ptrs, execute_options, futures));
-      for (auto& future : *futures) {
-        ABSL_RETURN_IF_ERROR(future.Await());
-      }
+      auto execute_once = [&]() -> absl::Status {
+        futures->clear();
+        ABSL_ASSIGN_OR_RETURN(
+            std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
+                new_output_buffers,
+            executable->Execute(argument_ptrs, execute_options, futures));
+        absl::Status execute_status;
+        for (auto& future : *futures) {
+          execute_status.Update(future.Await());
+        }
+        ABSL_RETURN_IF_ERROR(execute_status);
+        output_buffers = std::move(new_output_buffers);
+        return absl::OkStatus();
+      };
 
+      if (running_options.multipass_profiling && profile_current_repeat) {
+        bool executed_in_multipass = false;
+        while (true) {
+          ABSL_ASSIGN_OR_RETURN(bool need_more_pass,
+                           running_options.profiler->NeedMorePasses());
+          if (!need_more_pass) {
+            break;
+          }
+          if (executed_in_multipass) {
+            ABSL_RETURN_IF_ERROR(refresh_argument_ptrs());
+          }
+          running_options.profiler->StartPass();
+          running_options.profiler->PushRange("hlo_runner_pass");
+          absl::Cleanup end_pass = [&] {
+            running_options.profiler->PopRange();
+            running_options.profiler->StopPass();
+          };
+          ABSL_RETURN_IF_ERROR(execute_once());
+          executed_in_multipass = true;
+        }
+        if (!executed_in_multipass) {
+          ABSL_RETURN_IF_ERROR(execute_once());
+        }
+      } else {
+        ABSL_RETURN_IF_ERROR(execute_once());
+      }
       const bool upload_active_profiler_session =
           running_options.recreate_profiler_session_between_repeats ||
           is_last_repeat;
@@ -647,23 +710,8 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
     }
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
             << repeat << ")";
-    if (!is_last_repeat) {
-      switch (parameter_type) {
-        case ParameterType::kOneTupleOfArrays:
-          argument_ptrs = CreateArgumentPointersBasedOnAliasing(
-              output_buffers, device_buffers,
-              get_output_index_for_one_tuple_of_arrays);
-          break;
-        case ParameterType::kOneListOfArrays:
-          argument_ptrs = CreateArgumentPointersBasedOnAliasing(
-              output_buffers, device_buffers,
-              get_output_index_for_one_list_of_arrays);
-          break;
-        case ParameterType::kOther:
-          argument_ptrs =
-              CreateArgumentPointersFromDeviceBuffers(device_buffers);
-          break;
-      }
+    if (!is_last_repeat && !running_options.recreate_buffers_between_repeats) {
+      ABSL_RETURN_IF_ERROR(refresh_argument_ptrs());
     }
   }
 
@@ -672,6 +720,116 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
                                      running_options.module_output_mode,
                                      running_options.log_input_output()));
   return results;
+}
+
+// Returns true if `src_buffer` (created from `src_literal` at parameter index
+// `src_arg_i`) has identical static array shape, minor-to-major host layout,
+// executable parameter layout, memory space kind, and raw host payload bytes as
+// `dst_literal`, making it safe to clone via `PjRtBuffer::CopyToMemorySpace`.
+bool CanCloneArgumentBuffer(
+    const Literal& src_literal, int src_arg_i, PjRtBuffer* src_buffer,
+    const Literal& dst_literal, const Layout& dst_layout,
+    PjRtMemorySpace* dst_memory_space,
+    absl::Span<const Layout> executable_parameter_layouts) {
+  const int64_t dst_byte_size = dst_literal.size_bytes();
+  if (src_buffer == nullptr ||
+      src_arg_i >= executable_parameter_layouts.size() ||
+      !src_literal.shape().IsArrayExcludingBuffer() ||
+      !src_literal.shape().is_static() ||
+      src_literal.size_bytes() != dst_byte_size) {
+    return false;
+  }
+  PjRtMemorySpace* src_memory_space = src_buffer->memory_space();
+  if (src_memory_space == nullptr || dst_memory_space == nullptr ||
+      src_memory_space->kind_id() != dst_memory_space->kind_id()) {
+    return false;
+  }
+  if (executable_parameter_layouts[src_arg_i] != dst_layout ||
+      !Shape::Equal().MinorToMajorOnlyInLayout()(src_literal.shape(),
+                                                 dst_literal.shape())) {
+    return false;
+  }
+  const char* src_ptr = static_cast<const char*>(src_literal.untyped_data());
+  const char* dst_ptr = static_cast<const char*>(dst_literal.untyped_data());
+  return src_ptr == dst_ptr ||
+         std::memcmp(src_ptr, dst_ptr, static_cast<size_t>(dst_byte_size)) == 0;
+}
+
+// Attempts to create the device buffer for `(device_idx, arg_i)` by cloning an
+// already-transferred buffer via `PjRtBuffer::CopyToMemorySpace`, avoiding
+// redundant host-to-device DMA transfers and host-side layout relinearization.
+//
+// Search order:
+//   1. When `device_idx > 0`, first check parameter `arg_i` on device 0 (the
+//      common SPMD / `clone_device0_arguments` case), then any other parameter
+//      on device 0 with identical shape, layout, memory-space kind, and bytes.
+//   2. Next, check earlier parameters (`0 .. arg_i - 1`) on the same device
+//      that reside in the exact same `dst_memory_space`.
+//
+// Returns `nullptr` if no matching source buffer exists or if the backend does
+// not implement `CopyToMemorySpace` for the target memory space.
+std::unique_ptr<PjRtBuffer> TryCloneArgumentBuffer(
+    int device_idx, int arg_i, const Literal& dst_literal,
+    const Layout& dst_layout, PjRtMemorySpace* dst_memory_space,
+    const std::vector<Literal>* device0_arguments,
+    const std::vector<Literal>& curr_device_arguments,
+    absl::Span<const std::vector<std::unique_ptr<PjRtBuffer>>> argument_buffers,
+    absl::Span<const Layout> executable_parameter_layouts) {
+  if (device_idx > 0 && device0_arguments != nullptr) {
+    bool copy_failed = false;
+    auto try_clone_from_device0 =
+        [&](int dev0_arg_i) -> std::unique_ptr<PjRtBuffer> {
+      if (dev0_arg_i >= device0_arguments->size() ||
+          dev0_arg_i >= argument_buffers[0].size()) {
+        return nullptr;
+      }
+      PjRtBuffer* src_buf = argument_buffers[0][dev0_arg_i].get();
+      if (!CanCloneArgumentBuffer((*device0_arguments)[dev0_arg_i], dev0_arg_i,
+                                  src_buf, dst_literal, dst_layout,
+                                  dst_memory_space,
+                                  executable_parameter_layouts)) {
+        return nullptr;
+      }
+      absl::StatusOr<std::unique_ptr<PjRtBuffer>> cloned =
+          src_buf->CopyToMemorySpace(dst_memory_space);
+      if (cloned.ok()) {
+        return *std::move(cloned);
+      }
+      copy_failed = true;
+      return nullptr;
+    };
+    if (std::unique_ptr<PjRtBuffer> cloned = try_clone_from_device0(arg_i)) {
+      return cloned;
+    }
+    for (int dev0_arg_i = 0;
+         !copy_failed && dev0_arg_i < argument_buffers[0].size();
+         ++dev0_arg_i) {
+      if (dev0_arg_i == arg_i) {
+        continue;
+      }
+      if (std::unique_ptr<PjRtBuffer> cloned =
+              try_clone_from_device0(dev0_arg_i)) {
+        return cloned;
+      }
+    }
+  }
+
+  for (int prev_i = 0; prev_i < arg_i; ++prev_i) {
+    PjRtBuffer* src_buf = argument_buffers[device_idx][prev_i].get();
+    if (src_buf == nullptr || src_buf->memory_space() != dst_memory_space ||
+        !CanCloneArgumentBuffer(curr_device_arguments[prev_i], prev_i, src_buf,
+                                dst_literal, dst_layout, dst_memory_space,
+                                executable_parameter_layouts)) {
+      continue;
+    }
+    if (absl::StatusOr<std::unique_ptr<PjRtBuffer>> cloned =
+            src_buf->CopyToMemorySpace(dst_memory_space);
+        cloned.ok()) {
+      return *std::move(cloned);
+    }
+    break;
+  }
+  return nullptr;
 }
 
 // Creates argument buffers based on the given arguments map. Note that the
@@ -756,52 +914,100 @@ CopyArgumentsToDevice(PjRtClient& client,
     return device_buffers;
   };
 
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids =
-          executable->addressable_device_logical_ids();
   ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
+  CHECK_EQ(hlo_modules.size(), 1);
+  HloModule* module = hlo_modules.front().get();
 
-  for (int i = 0; i < num_addressable_devices; ++i) {
-    PjRtDevice* curr_device = addressable_devices[i];
-    int curr_device_id = curr_device->id();
-    // 'source_device' determines where we get the input literal from.
-    PjRtDevice* source_device =
-        addressable_devices[clone_device0_arguments ? 0 : i];
-    int source_device_id = source_device->id();
-    if (!arguments.contains(source_device_id)) {
-      return InvalidArgument(
-          "The provided argument map does not contain arguments "
-          "for device: %d",
-          curr_device_id);
-    }
+  absl::Status status = [&]() -> absl::Status {
+    constexpr int64_t kMinDeviceCloneBytes = 64 * 1024;      // 64 KiB
+    constexpr int64_t kMaxPendingTransferBytes = 2LL << 30;  // 2 GiB
+    int64_t pending_transfer_bytes = 0;
+    std::vector<PjRtBuffer*> pending_buffers;
 
-    const std::vector<Literal>& curr_device_arguments =
-        arguments.at(source_device_id);
-
-    int executable_idx = hlo_modules.size() == 1
-                             ? 0
-                             : addressable_device_logical_ids[i].partition;
-    HloModule* module = hlo_modules[executable_idx].get();
-
-    argument_buffers[i].reserve(curr_device_arguments.size());
-    for (int arg_i = 0; arg_i < curr_device_arguments.size(); ++arg_i) {
-      const Literal& literal = curr_device_arguments[arg_i];
-      if (log_input) {
-        LOG(INFO) << "device_id=" << curr_device_id
-                  << ", input = " << literal.ToString();
+    // Look up device 0's argument vector by its PjRtDevice::id() (which may
+    // differ from global device ID 0 on multi-host slices).
+    const std::vector<Literal>* device0_arguments = nullptr;
+    if (num_addressable_devices > 0) {
+      auto dev0_it = arguments.find(addressable_devices[0]->id());
+      if (dev0_it != arguments.end()) {
+        device0_arguments = &dev0_it->second;
       }
-      ABSL_ASSIGN_OR_RETURN(
-          std::unique_ptr<PjRtBuffer> argument_buffer,
-          buffer_from_host_literal(module, curr_device, arg_i, literal));
-      argument_buffers[i].push_back(std::move(argument_buffer));
     }
-  }
+
+    for (int i = 0; i < num_addressable_devices; ++i) {
+      PjRtDevice* curr_device = addressable_devices[i];
+      int curr_device_id = curr_device->id();
+      // 'source_device' determines where we get the input literal from.
+      PjRtDevice* source_device =
+          addressable_devices[clone_device0_arguments ? 0 : i];
+      int source_device_id = source_device->id();
+      auto it = arguments.find(source_device_id);
+      if (it == arguments.end()) {
+        return InvalidArgument(
+            "The provided argument map does not contain arguments "
+            "for device: %d",
+            curr_device_id);
+      }
+
+      const std::vector<Literal>& curr_device_arguments = it->second;
+
+      argument_buffers[i].reserve(curr_device_arguments.size());
+      for (int arg_i = 0; arg_i < curr_device_arguments.size(); ++arg_i) {
+        const Literal& literal = curr_device_arguments[arg_i];
+        if (log_input) {
+          LOG(INFO) << "device_id=" << curr_device_id
+                    << ", input = " << literal.ToString();
+        }
+        std::unique_ptr<PjRtBuffer> argument_buffer;
+        if (literal.shape().IsArrayExcludingBuffer() &&
+            literal.shape().is_static() &&
+            literal.size_bytes() >= kMinDeviceCloneBytes &&
+            arg_i < executable_parameter_layouts.size()) {
+          ABSL_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
+                           argument_memory_space(module, curr_device, arg_i));
+          argument_buffer = TryCloneArgumentBuffer(
+              i, arg_i, literal, executable_parameter_layouts[arg_i],
+              memory_space, device0_arguments, curr_device_arguments,
+              argument_buffers, executable_parameter_layouts);
+        }
+        if (argument_buffer == nullptr) {
+          ABSL_ASSIGN_OR_RETURN(
+              argument_buffer,
+              buffer_from_host_literal(module, curr_device, arg_i, literal));
+        }
+        PjRtBuffer* created_ptr = argument_buffer.get();
+        argument_buffers[i].push_back(std::move(argument_buffer));
+        pending_buffers.push_back(created_ptr);
+        if (literal.shape().IsArrayExcludingBuffer()) {
+          pending_transfer_bytes += std::max<int64_t>(0, literal.size_bytes());
+        }
+        // Periodically drain in-flight transfers every 2 GiB so pinned host
+        // staging buffers do not accumulate unboundedly on models with many
+        // large parameters.
+        if (pending_transfer_bytes >= kMaxPendingTransferBytes) {
+          for (PjRtBuffer* pending_buf : pending_buffers) {
+            ABSL_RETURN_IF_ERROR(pending_buf->GetReadyFuture().Await());
+          }
+          pending_buffers.clear();
+          pending_transfer_bytes = 0;
+        }
+      }
+    }
+    return absl::OkStatus();
+  }();
+
+  // BufferFromHostLiteral transfers read directly from the host `Literal`s in
+  // `arguments` until each buffer's ready future completes, so every created
+  // buffer must be awaited before returning (including on error, since callers
+  // such as CreateArgumentsOnDevice own `arguments` in their local stack
+  // frame).
   for (const auto& device_argument_buffers : argument_buffers) {
     for (const auto& device_buffer : device_argument_buffers) {
-      ABSL_RETURN_IF_ERROR(device_buffer->GetReadyFuture().Await());
+      status.Update(device_buffer->GetReadyFuture().Await());
     }
   }
+  ABSL_RETURN_IF_ERROR(status);
   return argument_buffers;
 }
 
@@ -813,26 +1019,18 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
                                      bool flatten_arguments = false) {
   absl::Span<PjRtDevice* const> addressable_devices =
       executable->addressable_devices();
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids =
-          executable->addressable_device_logical_ids();
   ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
   VLOG(1) << "FunctionalHloRunner: local_executable count = "
           << hlo_modules.size();
+  CHECK_EQ(hlo_modules.size(), 1);
+  const HloModule& hlo_module = *hlo_modules.front();
 
   LOG(INFO) << "Starting argument buffer shape calculation.";
   PerDeviceShapeVecType argument_shapes_per_device;
-  // This must be true, based on the comment on
-  // PjRtLoadedExecutable::addressable_devices().
-  CHECK_EQ(addressable_devices.size(), addressable_device_logical_ids.size());
   for (int i = 0; i < static_cast<int>(addressable_devices.size()); ++i) {
     VLOG(3) << "Calculating fake argument shapes for device " << i;
     PjRtDevice* device = addressable_devices[i];
-    int executable_idx = hlo_modules.size() == 1
-                             ? 0
-                             : addressable_device_logical_ids[i].partition;
-    const HloModule& hlo_module = *hlo_modules[executable_idx];
 
     std::vector<Shape> argument_shapes;
     if (flatten_arguments) {
@@ -883,11 +1081,13 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
   }
   LOG(INFO) << "Allocated argument buffers: " << buffer_count;
 
+  absl::Status status;
   for (const auto& argument_buffers : argument_buffers_per_device) {
     for (const auto& buffer : argument_buffers) {
-      ABSL_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
+      status.Update(buffer->GetReadyFuture().Await());
     }
   }
+  ABSL_RETURN_IF_ERROR(status);
   LOG(INFO) << "Argument buffers are ready.";
 
   return argument_buffers_per_device;
@@ -910,29 +1110,36 @@ CreateArgumentsOnDevice(PjRtClient& client,
       absl::Seconds(5),
       absl::StrFormat("Argument initialization is slow. Consider changing "
                       "--hlo_argument_mode."));
+  const absl::Time init_start = absl::Now();
 
   absl::Span<PjRtDevice* const> addressable_devices =
       executable->addressable_devices();
   size_t num_addressable_devices = addressable_devices.size();
 
   PerDeviceLiteralVecType per_device_argument_literals;
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids =
-          executable->addressable_device_logical_ids();
   ABSL_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                    executable->GetHloModules());
   VLOG(1) << "FunctionalHloRunner: local_executable count = "
           << hlo_modules.size();
+  CHECK_EQ(hlo_modules.size(), 1);
+  HloModule* my_hlo_module = hlo_modules.front().get();
 
-  const bool kUseRandomInputs = running_options.module_argument_mode ==
-                                    ModuleArgumentMode::kUseRandomInputs ||
-                                running_options.module_argument_mode ==
-                                    ModuleArgumentMode::kUseSharedRandomInputs;
-  const bool kUseSharedInputs =
+  const bool use_random_inputs = running_options.module_argument_mode ==
+                                     ModuleArgumentMode::kUseRandomInputs ||
+                                 running_options.module_argument_mode ==
+                                     ModuleArgumentMode::kUseSharedRandomInputs;
+  // When engine == nullptr under kUseRandomInputs, MakeFakeArguments creates a
+  // fresh default seeded std::minstd_rand0 on each device iteration, producing
+  // identical literals across all addressable devices. Share device 0's
+  // generated literals across addressable devices in that case.
+  const bool use_shared_inputs =
       running_options.module_argument_mode ==
           ModuleArgumentMode::kUseSharedRandomInputs ||
       running_options.module_argument_mode ==
-          ModuleArgumentMode::kUseZerosAsInput;
+          ModuleArgumentMode::kUseZerosAsInput ||
+      (running_options.module_argument_mode ==
+           ModuleArgumentMode::kUseRandomInputs &&
+       engine == nullptr);
   absl::BitGen rd;
 
   std::optional<std::normal_distribution<double>> random_dist;
@@ -949,10 +1156,6 @@ CreateArgumentsOnDevice(PjRtClient& client,
     VLOG(3) << "Creating fake arguments for device " << i;
     LiteralVec& argument_literals =
         per_device_argument_literals[addressable_devices[i]->id()];
-    int executable_idx = hlo_modules.size() == 1
-                             ? 0
-                             : addressable_device_logical_ids[i].partition;
-    HloModule* my_hlo_module = hlo_modules[executable_idx].get();
     if (flatten_arguments) {
       ABSL_RETURN_IF_ERROR(EnsureSingleTupleForFlattening(*my_hlo_module));
     }
@@ -1018,7 +1221,8 @@ CreateArgumentsOnDevice(PjRtClient& client,
     } else {
       FakeArgumentsOptions options;
       options.engine = engine;
-      options.pseudo_random = kUseRandomInputs;
+      options.pseudo_random = use_random_inputs;
+      options.cache_arguments = use_random_inputs;
       if (flatten_arguments) {
         ABSL_ASSIGN_OR_RETURN(LiteralVec tupled_argument_literals,
                          MakeFakeArguments(my_hlo_module, options));
@@ -1029,20 +1233,21 @@ CreateArgumentsOnDevice(PjRtClient& client,
         ABSL_ASSIGN_OR_RETURN(argument_literals,
                          MakeFakeArguments(my_hlo_module, options));
       }
-      if (kUseSharedInputs) {
+      if (use_shared_inputs) {
         break;
       }
     }
   }
 
-  if (kUseSharedInputs) {
-    return CopyArgumentsToDevice(client, executable,
-                                 per_device_argument_literals, running_options,
-                                 flatten_arguments,
-                                 /*clone_device0_arguments=*/true);
-  }
-  return CopyArgumentsToDevice(client, executable, per_device_argument_literals,
-                               running_options, flatten_arguments);
+  ABSL_ASSIGN_OR_RETURN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers,
+      CopyArgumentsToDevice(client, executable, per_device_argument_literals,
+                            running_options, flatten_arguments,
+                            /*clone_device0_arguments=*/use_shared_inputs));
+  const double elapsed_secs = absl::ToDoubleSeconds(absl::Now() - init_start);
+  LOG(INFO) << "Initialized and loaded arguments on " << num_addressable_devices
+            << " addressable device(s) in " << elapsed_secs << "s.";
+  return device_buffers;
 }
 
 // Creates an ExecutableBuildOptions using the specified ExecutionOptions.
@@ -1472,10 +1677,13 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
     std::string serialized_executable;
     ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(
         tsl::Env::Default(), std::string(hlo_file), &serialized_executable));
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<PjRtLoadedExecutable> executable,
-        client.LoadSerializedExecutable(serialized_executable, compile_options,
-                                        LoadOptions()));
+    std::unique_ptr<PjRtLoadedExecutable> executable;
+    {
+      XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::LoadSerializedExecutable");
+      ABSL_ASSIGN_OR_RETURN(executable, client.LoadSerializedExecutable(
+                                       serialized_executable, compile_options,
+                                       LoadOptions()));
+    }
     return Run(client, executable.get(), *final_arguments, running_options,
                engine);
   }
@@ -1523,6 +1731,114 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
                                       preproc_options, compile_options);
 }
 
+absl::Status VerifyExecutableFingerprintAcrossProcesses(
+    KeyValueStoreInterface& kv_store, absl::string_view key_prefix,
+    int process_index, int process_count, absl::string_view fingerprint,
+    absl::Duration timeout) {
+  if (process_index < 0 || process_index >= process_count) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Process index %d is out of range for %d processes.",
+                        process_index, process_count));
+  }
+  ABSL_RETURN_IF_ERROR(
+      kv_store.Set(absl::StrCat(key_prefix, process_index), fingerprint));
+
+  // Maps each fingerprint to the processes that reported it.
+  absl::btree_map<std::string, std::vector<int>> processes_by_fingerprint;
+  const absl::Time deadline = absl::Now() + timeout;
+  for (int i = 0; i < process_count; ++i) {
+    if (i == process_index) {
+      processes_by_fingerprint[std::string(fingerprint)].push_back(i);
+      continue;
+    }
+    absl::StatusOr<std::string> other_fingerprint =
+        kv_store.Get(absl::StrCat(key_prefix, i),
+                     std::max(deadline - absl::Now(), absl::ZeroDuration()));
+    if (!other_fingerprint.ok()) {
+      return absl::Status(
+          other_fingerprint.status().code(),
+          absl::StrFormat("Failed to get the executable fingerprint of process "
+                          "%d, which might have failed to compile: %s",
+                          i, other_fingerprint.status().message()));
+    }
+    processes_by_fingerprint[*std::move(other_fingerprint)].push_back(i);
+  }
+
+  if (processes_by_fingerprint.size() == 1) {
+    return absl::OkStatus();
+  }
+  if (processes_by_fingerprint.contains("")) {
+    LOG(WARNING) << "Not all processes could fingerprint their executable, so "
+                    "we can't tell whether they compiled the same executable.";
+    return absl::OkStatus();
+  }
+  std::vector<std::string> fingerprint_descriptions;
+  fingerprint_descriptions.reserve(processes_by_fingerprint.size());
+  for (const auto& [other_fingerprint, processes] : processes_by_fingerprint) {
+    fingerprint_descriptions.push_back(
+        absl::StrFormat("%s on process(es) %s", other_fingerprint,
+                        absl::StrJoin(processes, ", ")));
+  }
+  return absl::FailedPreconditionError(absl::StrFormat(
+      "The processes compiled different executables (fingerprints: %s). "
+      "Running them would likely hang because the processes can issue "
+      "collectives in a different order. A common cause is autotuning with "
+      "--xla_gpu_shard_autotuning=false, since then each process picks its "
+      "own configs. Compare the optimized HLO of the processes (e.g. with "
+      "--xla_dump_to) to find the difference. This check can be disabled with "
+      "verify_executable_fingerprint_across_processes.",
+      absl::StrJoin(fingerprint_descriptions, "; ")));
+}
+
+namespace {
+
+// Processes can finish compiling at very different times (e.g. because of
+// autotuning), so we use the same generous timeout as the exchange of sharded
+// autotuning results.
+constexpr absl::Duration kExecutableFingerprintTimeout = absl::Hours(24);
+
+// Verifies that all processes compiled the same executable if this is enabled
+// and the compile options contain a key-value store and more than one process.
+//
+// This assumes that all processes compile the same modules in the same order
+// (and not concurrently), so that the n-th verification refers to the same
+// module on all processes.
+absl::Status MaybeVerifyExecutableFingerprintAcrossProcesses(
+    const PjRtClient& client, const PjRtLoadedExecutable& executable,
+    const PreprocessingOptions& preproc_options,
+    const CompileOptions& compile_options) {
+  const ExecutableBuildOptions& build_options =
+      compile_options.executable_build_options;
+  if (!preproc_options.verify_executable_fingerprint_across_processes ||
+      build_options.key_value_store() == nullptr ||
+      build_options.process_count() <= 1) {
+    return absl::OkStatus();
+  }
+  // Keys can't be overwritten, so every verification uses its own keys.
+  static std::atomic<int64_t> next_verification_id{0};
+  const int64_t verification_id = next_verification_id.fetch_add(1);
+
+  std::string fingerprint;
+  if (absl::StatusOr<std::string> result = executable.FingerprintExecutable();
+      result.ok()) {
+    fingerprint = *std::move(result);
+  } else {
+    LOG(WARNING) << "Failed to fingerprint the executable: " << result.status();
+  }
+  LOG(INFO) << "Executable fingerprint of process " << client.process_index()
+            << ": " << fingerprint;
+  // Callers don't always set the process index in the build options, so we
+  // take it from the client.
+  return VerifyExecutableFingerprintAcrossProcesses(
+      *build_options.key_value_store(),
+      absl::StrCat("functional_hlo_runner/executable_fingerprint/",
+                   verification_id, "/"),
+      client.process_index(), build_options.process_count(), fingerprint,
+      kExecutableFingerprintTimeout);
+}
+
+}  // namespace
+
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
     PjRtClient& client, const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
@@ -1542,6 +1858,8 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
     const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                    client.CompileAndLoad(std::move(module), compile_options));
+  ABSL_RETURN_IF_ERROR(MaybeVerifyExecutableFingerprintAcrossProcesses(
+      client, *executable, preproc_options, compile_options));
 
   return Run(client, executable.get(), arguments, running_options, engine);
 }
@@ -1666,11 +1984,16 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       CompileOptions modified_compile_options,
       CompleteCompileOptions(*hlo_module, compile_options, preproc_options));
 
-  return ConvertAndCallCompiler<PjRtLoadedExecutable>(
-      preproc_options.compile_as_stablehlo, hlo_module, [&](auto&& module) {
-        return client.CompileAndLoad(std::forward<decltype(module)>(module),
-                                     modified_compile_options);
-      });
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      ConvertAndCallCompiler<PjRtLoadedExecutable>(
+          preproc_options.compile_as_stablehlo, hlo_module, [&](auto&& module) {
+            return client.CompileAndLoad(std::forward<decltype(module)>(module),
+                                         modified_compile_options);
+          }));
+  ABSL_RETURN_IF_ERROR(MaybeVerifyExecutableFingerprintAcrossProcesses(
+      client, *executable, preproc_options, modified_compile_options));
+  return executable;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
@@ -1811,58 +2134,6 @@ absl::StatusOr<ResolveTopologyResult> ResolveTopology(
 }
 
 }  // namespace FunctionalHloRunner
-
-HLORunnerProfiler::HLORunnerProfiler(absl::string_view dump_path,
-                                     bool keep_xspace)
-    : dump_path_(dump_path), keep_xspace_(keep_xspace) {}
-
-absl::StatusOr<std::unique_ptr<HLORunnerProfiler>> HLORunnerProfiler::Create(
-    absl::string_view dump_path, bool keep_xspace) {
-  if (dump_path.empty()) {
-    return absl::InvalidArgumentError(
-        "Please provide a valid dump path to save XSpace results to disk.");
-  }
-  return std::make_unique<HLORunnerProfiler>(dump_path, keep_xspace);
-}
-
-void HLORunnerProfiler::CreateSession() {
-  auto options = tsl::ProfilerSession::DefaultOptions();
-  session_ = tsl::ProfilerSession::Create(options);
-}
-
-void HLORunnerProfiler::UploadSession() {
-  xspace_ = std::make_unique<tensorflow::profiler::XSpace>();
-  // Stops the ProfilerSession
-  CHECK_OK(session_->CollectData(xspace_.get()));
-
-  CHECK(!dump_path_.empty());
-
-  std::string unique_dump_path = dump_path_;
-  if (session_index_ > 0) {
-    absl::string_view stem = dump_path_;
-    absl::string_view suffix = "";
-    const std::string::size_type dot_pos = dump_path_.rfind('.');
-    const std::string::size_type slash_pos = dump_path_.rfind('/');
-    if (dot_pos != std::string::npos &&
-        (slash_pos == std::string::npos || dot_pos > slash_pos)) {
-      suffix = stem.substr(dot_pos);
-      stem = stem.substr(0, dot_pos);
-    }
-    unique_dump_path = absl::StrCat(stem, "_", session_index_, suffix);
-  }
-  ++session_index_;
-
-  LOG(INFO) << "Saving xspace result to " << unique_dump_path;
-  // Save in binary format to create xprof sessions and extract device stats.
-  CHECK_OK(WriteBinaryProto(tsl::Env::Default(), unique_dump_path, *xspace_));
-  if (!keep_xspace_) {
-    xspace_ = nullptr;
-  }
-}
-
-const tensorflow::profiler::XSpace* HLORunnerProfiler::GetXSpace() {
-  return xspace_.get();
-}
 
 void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
   auto set_manual_sharding = [](HloInstruction* hlo) {

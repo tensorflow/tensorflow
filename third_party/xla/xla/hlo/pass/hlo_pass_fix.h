@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <type_traits>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
@@ -43,11 +44,11 @@ class HloPassFix : public Pass {
                 "Pass must be a subclass of HloPassInterface");
   using RunState = HloPassInterface::RunState;
   template <typename... Args>
-  explicit HloPassFix(Args&&... args) : Pass(args...) {}
+  explicit HloPassFix(Args&&... args) : Pass(std::forward<Args>(args)...) {}
   template <typename... Args>
   static std::unique_ptr<HloPassFix> Create(int iteration_limit,
                                             Args&&... args) {
-    auto pass = std::make_unique<HloPassFix>(args...);
+    auto pass = std::make_unique<HloPassFix>(std::forward<Args>(args)...);
     pass->iteration_limit_ = iteration_limit;
     return pass;
   }

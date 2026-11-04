@@ -28,16 +28,63 @@ class ChangeDetectorTest(parameterized.TestCase):
 
   @parameterized.parameters(
       (["MODULE.bazel"], True),
+      (["MODULE.bazel.lock"], True),
       (["REPO.bazel"], True),
       (["WORKSPACE"], True),
       (["WORKSPACE.bzlmod"], True),
       ([".bazelrc"], True),
       ([".bazelversion"], True),
+      (["workspace0.bzl"], True),
+      (["workspace1.bzl"], True),
+      (["workspace2.bzl"], True),
+      (["workspace3.bzl"], True),
+      (["workspace4.bzl"], True),
+      (["requirements_lock_3_11.txt"], True),
+      (["requirements_lock_3_12.txt"], True),
+      (["models.BUILD"], True),
+      (["arm_compiler.BUILD"], True),
+      (["tools/def_file_filter/def_file_filter.BUILD"], True),
+      (["third_party/repo.bzl"], True),
+      (["third_party/quilt_repo.bzl"], True),
+      (["third_party/extensions/third_party.bzl"], True),
+      (["third_party/extensions/llvm.bzl"], True),
+      (["third_party/cccl/cccl_extension.bzl"], True),
+      (["third_party/libdrm/extension.bzl"], True),
+      (["third_party/llvm/setup.bzl"], True),
+      (["third_party/gpus/cuda_configure.bzl"], True),
+      (["third_party/gpus/rocm_configure.bzl"], True),
+      (
+          ["third_party/gpus/cuda/hermetic/cuda_redist_init_repositories.bzl"],
+          True,
+      ),
+      (["third_party/py/python_init_repositories.bzl"], True),
+      (["third_party/mkl_dnn/workspace.bzl"], True),
+      (["third_party/mkl_dnn/mkldnn_v1_async.BUILD"], True),
+      (["third_party/mkl_dnn/onednn_acl_aarch64_build_fixes.patch"], True),
+      (["third_party/mkl_dnn/BUILD"], True),
+      (["third_party/triton/intel_xpu/workspace.bzl"], True),
+      (["third_party/triton/common/series"], True),
+      (["third_party/cuda_tile/patches/series"], True),
+      (["third_party/xz/xz.BUILD.bazel"], True),
+      (["third_party/xz/config/BUILD.bazel"], True),
+      (["third_party/xz/patches/remove_have_config.diff"], True),
+      (["third_party/sqlite/BUILD"], True),
+      (["third_party/hwloc/BUILD.system"], True),
+      (["third_party/boringssl.BUILD"], True),
+      (["third_party/boringssl.patch"], True),
+      (["third_party/gpus/cuda/hermetic/cuda_Automatic.BUILD.tpl"], True),
       (["xla/flags.bzl"], False),
       (["third_party/tsl/tsl/platform/default/rules.bzl"], False),
       (["third_party/tsl/REPO.bazel"], True),
       (["third_party/tsl/tsl/BUILD"], False),
       (["third_party/tsl/tsl/platform/denormal.cc"], False),
+      (["third_party/py/rules_pywrap/pywrap.default.bzl"], False),
+      (["third_party/py/rules_pywrap/BUILD"], False),
+      (["third_party/py/numpy/BUILD"], False),
+      (["third_party/py/numpy/tf_numpy_dummy.py"], False),
+      (["third_party/rules_python/python/defs.bzl"], False),
+      (["third_party/rules_python/python/BUILD"], False),
+      (["third_party/compute_library/build_defs.bzl"], False),
       (["xla/service/cpu/cpu_compiler.cc"], False),
       (["docs/overview.md", "xla/BUILD"], False),
   )
@@ -138,6 +185,67 @@ class ChangeDetectorTest(parameterized.TestCase):
     mock_mb.return_value = None
     self.assertEqual(
         change_detector.get_diff_base("base_sha", "head_sha"), "base_sha"
+    )
+
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_merge_base", autospec=True, spec_set=True
+  )
+  def test_ensure_base_fetched_already_present(self, mock_mb, mock_git):
+    mock_mb.return_value = "merge_base_sha"
+    change_detector.ensure_base_fetched("base_sha", "head_sha", cwd="/repo")
+    mock_mb.assert_called_once_with("base_sha", "head_sha", cwd="/repo")
+    mock_git.assert_not_called()
+
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_merge_base", autospec=True, spec_set=True
+  )
+  def test_ensure_base_fetched_shallow_fetch_succeeds(self, mock_mb, mock_git):
+    mock_mb.side_effect = [None, "merge_base_sha"]
+    change_detector.ensure_base_fetched("base_sha", "head_sha", cwd="/repo")
+    mock_git.assert_called_once_with(
+        [
+            "fetch",
+            "--no-tags",
+            "--depth=50",
+            "--",
+            "origin",
+            "base_sha",
+            "head_sha",
+        ],
+        cwd="/repo",
+    )
+
+  @mock.patch.object(
+      change_detector, "run_git_best_effort", autospec=True, spec_set=True
+  )
+  @mock.patch.object(
+      change_detector, "get_merge_base", autospec=True, spec_set=True
+  )
+  def test_ensure_base_fetched_falls_back_to_unshallow(self, mock_mb, mock_git):
+    mock_mb.side_effect = [None, None]
+    change_detector.ensure_base_fetched("base_sha", "HEAD", cwd="/repo")
+    self.assertEqual(
+        mock_git.call_args_list,
+        [
+            mock.call(
+                [
+                    "fetch",
+                    "--no-tags",
+                    "--depth=50",
+                    "--",
+                    "origin",
+                    "base_sha",
+                ],
+                cwd="/repo",
+            ),
+            mock.call(["fetch", "--unshallow", "origin"], cwd="/repo"),
+        ],
     )
 
   @parameterized.named_parameters(
@@ -287,6 +395,37 @@ class ChangeDetectorTest(parameterized.TestCase):
     self.assertIn("JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS", content)
     self.assertIn("SKIP", content)
     self.assertIn("Modified files do not affect JAX builds", content)
+
+  @mock.patch.object(
+      change_detector, "evaluate_skip", autospec=True, spec_set=True
+  )
+  def test_main_writes_github_output(self, mock_eval):
+    output_file = self.create_tempfile("github_output.txt")
+    mock_eval.return_value = change_detector.SkipDecision(
+        should_skip=True,
+        reason="Modified files do not affect JAX builds",
+        changed_files_count=1,
+        elapsed_seconds=0.01,
+    )
+    rc = change_detector.main([
+        "--base_sha=base_sha",
+        "--head_sha=head_sha",
+        "--is_jax_build",
+        "--build_name=JAX ROCm",
+        f"--github_output={output_file.full_path}",
+    ])
+    self.assertEqual(rc, 0)
+    self.assertEqual(output_file.read_text(), "should_skip=true\n")
+
+  def test_main_disabled_via_env(self):
+    output_file = self.create_tempfile("github_output.txt")
+    with mock.patch.dict(os.environ, {"XLA_CI_DISABLE_BAZEL_DIFF": "true"}):
+      rc = change_detector.main([
+          "--base_sha=base_sha",
+          f"--github_output={output_file.full_path}",
+      ])
+    self.assertEqual(rc, 0)
+    self.assertEqual(output_file.read_text(), "should_skip=false\n")
 
 
 if __name__ == "__main__":

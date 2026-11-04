@@ -33,14 +33,19 @@ TEST(SignedQuantizedSlice, 1D) {
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
 
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
+  auto rng = std::mt19937();
   auto shape_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
   const std::vector<int32_t> input_shape = {shape_rng()};
   const auto offsets = RandomOffsets(rng, input_shape);
   const auto sizes = RandomSizes(rng, input_shape, offsets);
+
+  SliceTester()
+      .InputShape(input_shape)
+      .Offsets(offsets)
+      .Sizes(sizes)
+      .Test(TensorType_INT8, xnnpack_delegate.get());
 
   SliceTester()
       .InputShape(input_shape)
@@ -55,14 +60,19 @@ TEST(SignedQuantizedSlice, 2D) {
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
 
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
+  auto rng = std::mt19937();
   auto shape_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
   const std::vector<int32_t> input_shape = {shape_rng(), shape_rng()};
   const auto offsets = RandomOffsets(rng, input_shape);
   const auto sizes = RandomSizes(rng, input_shape, offsets);
+
+  SliceTester()
+      .InputShape(input_shape)
+      .Offsets(offsets)
+      .Sizes(sizes)
+      .Test(TensorType_INT8, xnnpack_delegate.get());
 
   SliceTester()
       .InputShape(input_shape)
@@ -77,8 +87,7 @@ TEST(SignedQuantizedSlice, 3D) {
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
 
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
+  auto rng = std::mt19937();
   auto shape_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
@@ -86,6 +95,12 @@ TEST(SignedQuantizedSlice, 3D) {
                                             shape_rng()};
   const auto offsets = RandomOffsets(rng, input_shape);
   const auto sizes = RandomSizes(rng, input_shape, offsets);
+
+  SliceTester()
+      .InputShape(input_shape)
+      .Offsets(offsets)
+      .Sizes(sizes)
+      .Test(TensorType_INT8, xnnpack_delegate.get());
 
   SliceTester()
       .InputShape(input_shape)
@@ -100,8 +115,7 @@ TEST(SignedQuantizedSlice, 4D) {
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
 
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
+  auto rng = std::mt19937();
   auto shape_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
@@ -109,6 +123,12 @@ TEST(SignedQuantizedSlice, 4D) {
                                             shape_rng(), shape_rng()};
   const auto offsets = RandomOffsets(rng, input_shape);
   const auto sizes = RandomSizes(rng, input_shape, offsets);
+
+  SliceTester()
+      .InputShape(input_shape)
+      .Offsets(offsets)
+      .Sizes(sizes)
+      .Test(TensorType_INT8, xnnpack_delegate.get());
 
   SliceTester()
       .InputShape(input_shape)
@@ -123,13 +143,41 @@ TEST(SignedQuantizedSlice, 5D) {
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
 
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
+  auto rng = std::mt19937();
   auto shape_rng =
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
 
   const std::vector<int32_t> input_shape = {
       shape_rng(), shape_rng(), shape_rng(), shape_rng(), shape_rng()};
+  const auto offsets = RandomOffsets(rng, input_shape);
+  const auto sizes = RandomSizes(rng, input_shape, offsets);
+
+  SliceTester()
+      .InputShape(input_shape)
+      .Offsets(offsets)
+      .Sizes(sizes)
+      .Test(TensorType_INT8, xnnpack_delegate.get());
+
+  SliceTester()
+      .InputShape(input_shape)
+      .Offsets(offsets)
+      .Sizes(sizes)
+      .UseInt64OffsetsAndSize(true)
+      .Test(TensorType_INT8, xnnpack_delegate.get());
+}
+
+TEST(SignedQuantizedSlice, 6D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  auto rng = std::mt19937();
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+
+  const std::vector<int32_t> input_shape = {shape_rng(), shape_rng(),
+                                            shape_rng(), shape_rng(),
+                                            shape_rng(), shape_rng()};
   const auto offsets = RandomOffsets(rng, input_shape);
   const auto sizes = RandomSizes(rng, input_shape, offsets);
 

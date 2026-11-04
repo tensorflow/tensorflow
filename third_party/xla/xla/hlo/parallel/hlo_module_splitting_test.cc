@@ -158,6 +158,33 @@ ENTRY %main() -> f32[] {
   EXPECT_EQ(module_split->call_sites.size(), kMainModuleCallSitesCount);
 }
 
+TEST_F(SplittingTest, SplitEntryNameDoesNotCollideWithClonedComputation) {
+  // A fusion computation is cloned into the split with its name intact, so it
+  // can already hold the name the split gives its entry.
+  constexpr absl::string_view module_text = R"(
+HloModule entry_name_clash
+
+entry {
+  x = f32[] parameter(0)
+  ROOT neg = f32[] negate(x)
+}
+
+ENTRY main {
+  p = f32[] parameter(0)
+  ROOT f = f32[] fusion(p), kind=kLoop, calls=entry
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_text));
+  auto* main = FindComputation(module.get(), "main");
+
+  ASSERT_OK_AND_ASSIGN(auto module_split,
+                       CreateHloModuleSplit(*module, {main}));
+
+  EXPECT_EQ(module_split->submodule->computation_count(), 2);
+  EXPECT_OK(module_split->submodule
+                ->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+}
+
 TEST_F(SplittingTest, SplitModule) {
   constexpr absl::string_view module_text = R"(
 HloModule simple_module

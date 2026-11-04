@@ -256,11 +256,30 @@ UNARY_TEST_COMPLEX_128(Log, {
   };
 
   if (IsCpu() || IsGpu()) {
-    error_spec_gen = +[](complex128 x) {
+    error_spec_gen = [&](complex128 x) {
       // TODO(rmlarsen): see b/162664705 and b/138578594
       bool should_skip = std::isnan(x.real()) || std::isnan(x.imag());
+
+      double abs_err = 0;
+      if (IsCpu() && std::abs(x.imag()) < 1.0e-6) {
+        // Subnormal imaginary parts are flashed to zero.
+        abs_err = std::numeric_limits<double>::min();
+      }
+      if (IsCpu() && std::abs(x.imag()) < 1.0e-280) {
+        // TODO(b/138578313) produces wrong result.
+        should_skip = true;
+      }
+
+      int distance_err = 1;
+      if (IsGpu() &&
+          (std::abs(x.imag()) < 1.0e-300 || std::abs(x.imag()) > 1.0e+300)) {
+        // __nv_atan2 is with in 2 ULP.
+        // https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/mathematical-functions.html#trigonometric-functions
+        distance_err = 2;
+      }
       return ErrorSpec::Builder()
-          .distance_err(1)
+          .abs_err(abs_err)
+          .distance_err(distance_err)
           .skip_comparison(should_skip)
           .strict_signed_zeros()
           .build();

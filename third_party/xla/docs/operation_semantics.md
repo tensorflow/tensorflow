@@ -2282,16 +2282,6 @@ in detail on the [broadcasting page](broadcasting.md).
 For StableHLO information see
 [StableHLO - divide](https://openxla.org/stablehlo/spec#divide).
 
-## Domain
-
-See also
-[`HloInstruction::CreateDomain`](https://github.com/openxla/xla/tree/main/xla/hlo/ir/hlo_instruction.h).
-
-`Domain` may appear in HLO dumps, but it is not intended to be constructed
-manually by end users.
-
-> **Note:** `Domain` is only found in HLO. It is not found in StableHLO.
-
 ## Dot
 
 See also
@@ -4141,10 +4131,11 @@ window_strides, padding)`**
 :                     :                     : types `T_0,..., T_{N-1}`, each   :
 :                     :                     : representing the base area on    :
 :                     :                     : which the window is placed.      :
-| `init_values`       | `N XlaOps`          | The N starting values for the    |
+| `init_values`       | `N XlaOps`          | A sequence of N scalars of types |
+:                     :                     : `T_0,..., T_{N-1}`, representing :
+:                     :                     : the starting values for the      :
 :                     :                     : reduction, one for each of the N :
-:                     :                     : operands. See [Reduce](#reduce)  :
-:                     :                     : for details.                     :
+:                     :                     : operands.                        :
 | `computation`       | `XlaComputation`    | Reduction function of type `T_0, |
 :                     :                     : ..., T_{N-1}, T_0, ..., T_{N-1}  :
 :                     :                     : -> Collate(T_0, ..., T_{N-1})`,  :
@@ -4171,6 +4162,7 @@ Where:
 
 *   N is required to be greater or equal to 1.
 *   All input arrays must have the same dimensions.
+*   All initial values have to form an identity under `computation`.
 *   If `N = 1`, `Collate(T)` is `T`.
 *   If `N > 1`, `Collate(T_0, ..., T_{N-1})` is a tuple of `N` elements of type
     `(T0,...T{N-1})`.

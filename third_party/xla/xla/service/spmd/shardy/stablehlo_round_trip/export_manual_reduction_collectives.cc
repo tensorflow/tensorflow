@@ -24,10 +24,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -115,14 +118,26 @@ Value createFullyManualComputation(
     std::function<Value(mlir::BlockArgument arg, OpBuilder& blockBuilder,
                         RankedTensorType paddedGlobalType)>
         bodyPopulator) {
-  SmallVector<mlir::StringAttr> manualAxes;
-  manualAxes.reserve(mesh.getAxes().size());
+  SmallVector<AxisRefAttr> allMeshAxes;
+  allMeshAxes.reserve(mesh.getAxes().size());
   for (sdy::MeshAxisAttr axis : mesh.getAxes()) {
-    manualAxes.push_back(builder.getStringAttr(axis.getName()));
+    allMeshAxes.push_back(
+        AxisRefAttr::get(builder.getContext(), axis.getName()));
   }
+  SmallVector<AxisRefAttr> boundManualAxes;
+  if (mlir::Block* block = builder.getInsertionBlock()) {
+    for (mlir::Operation* parentOp = block->getParentOp(); parentOp != nullptr;
+         parentOp = parentOp->getParentOp()) {
+      if (auto parentManual = mlir::dyn_cast<ManualComputationOp>(parentOp)) {
+        llvm::append_range(boundManualAxes, parentManual.getManualAxes());
+      }
+    }
+  }
+  SmallVector<AxisRefAttr> manualAxes =
+      sdy::getAxisSetDiff(allMeshAxes, boundManualAxes, mesh);
   TensorShardingAttr inSharding = sdy::getOrCreateSharding(input, mesh);
   if (!unreducedAxes.empty()) {
-    inSharding = inSharding.replaceUnreducedAxes(unreducedAxes);
+    inSharding = inSharding.replaceUnreducedAxes(unreducedAxes, reductionOp);
   }
 
   auto globalType = mlir::dyn_cast<RankedTensorType>(input.getType());
@@ -139,8 +154,8 @@ Value createFullyManualComputation(
     auto scalarType = RankedTensorType::get({}, globalType.getElementType());
     Value paddingVal = stablehlo::ConstantOp::create(
         builder, loc, mlir::DenseElementsAttr::get(scalarType, identityAttr));
-    manualInput = sdy::padHighSideToType(builder, loc, input, paddedGlobalType,
-                                         inSharding, paddingVal);
+    manualInput = sdy::padHighSideToType(loc, input, paddedGlobalType,
+                                         inSharding, builder, paddingVal);
   }
 
   auto op =
@@ -158,8 +173,8 @@ Value createFullyManualComputation(
       bodyPopulator(block.addArgument(localType, input.getLoc()), blockBuilder,
                     paddedGlobalType));
 
-  return sdy::sliceHighSideToType(builder, loc, op.getResult(0), globalType,
-                                  outSharding);
+  return sdy::sliceHighSideToType(loc, op.getResult(0), globalType, outSharding,
+                                  builder);
 }
 
 void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,
@@ -441,7 +456,8 @@ void syncInOutUnreducedAxes(mlir::Operation* op) {
   }
 
   sdy::setSharding(
-      input, inSharding.replaceUnreducedAxes(outSharding.getUnreducedAxes()));
+      input, inSharding.replaceUnreducedAxes(outSharding.getUnreducedAxes(),
+                                             outSharding.getReductionOp()));
 }
 
 class StablehloExportManualReductionCollectivesPass

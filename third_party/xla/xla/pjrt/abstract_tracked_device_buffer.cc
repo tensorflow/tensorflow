@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/device_event_utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -402,6 +403,20 @@ void CommonPjRtBuffer::ScopedHold::ConfirmDonation() {
   CHECK_EQ(type(), kDonation);
   parent()->ConfirmDonation(buffer());
   SetState(kDonated);
+}
+
+CommonPjRtBuffer::DonatedBufferInfo
+CommonPjRtBuffer::ScopedHold::ConfirmDonationReturningBufferInfo() {
+  CHECK(ok());
+  CHECK_EQ(type(), kDonation);
+  DonatedBufferInfo info{
+      /*raw_buffer=*/buffer()->raw_buffer(),
+      /*shape=*/std::make_shared<const Shape>(parent()->on_device_shape()),
+      /*memory_space=*/parent()->memory_space(),
+  };
+  parent()->ConfirmDonation(buffer());
+  SetState(kDonated);
+  return info;
 }
 
 void CommonPjRtBuffer::ConfirmDonation(

@@ -29,8 +29,10 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/CommonFolders.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
@@ -661,87 +664,121 @@ FailureOr<TiledLayoutAttr> SharedMemRefSliceOp::inferResultLayout(
 }
 
 LogicalResult MemRefSqueezeOp::verify() {
-  MemRefType source_type = getInput().getType();
-  MemRefType target_type = getType();
+  MemRefType input_type = getInput().getType();
+  MemRefType result_type = getType();
 
-  if (target_type.getMemorySpace() != source_type.getMemorySpace()) {
+  if (result_type.getMemorySpace() != input_type.getMemorySpace()) {
     return emitOpError("Memory spaces do not match.");
   }
 
-  if (target_type.getElementType() != source_type.getElementType()) {
+  if (result_type.getElementType() != input_type.getElementType()) {
     return emitOpError("Element types don't match.");
   }
 
-  auto source_shape = source_type.getShape();
-  auto target_shape = target_type.getShape();
+  const ArrayRef<int64_t> input_shape = input_type.getShape();
+  const ArrayRef<int64_t> result_shape = result_type.getShape();
+  // NOTE: In cases where there is flexibility on which dimension to squeeze,
+  //   such as 1x1x2 -> 1x2 (can squeeze dimension 1 or 2), this may choose
+  //   dimensions that have padding and fail in inferResultLayout.
+  // TODO(tlongeri): Unify logic in inferMemRefReshape such that we don't
+  //  need computeSqueezedDimsChecked at all.
   FAILUREOR_ASSIGN_OR_RETURN(
-      auto squeezed,
-      computeSqueezedDimsChecked(*this, source_shape, target_shape));
-  if (squeezed.empty() && source_shape != target_shape) {
+      const SmallVector<int64_t> squeezed,
+      computeSqueezedDimsChecked(*this, input_shape, result_shape));
+  if (squeezed.empty() && input_shape != result_shape) {
     return emitOpError(
         "Source and target shapes must be the same if no dimensions are "
         "squeezed.");
   }
 
-  auto source_layout = source_type.getLayout();
-  auto target_layout = target_type.getLayout();
-  bool has_tiled_layout = isa<TiledLayoutAttr>(source_layout);
-  if (has_tiled_layout != isa<TiledLayoutAttr>(target_layout)) {
-    return emitOpError(
-        "Either both src and dst or none of them should have a tiled layout");
+  if (isa<StridedLayoutAttr>(input_type.getLayout()) ||
+      isa<StridedLayoutAttr>(result_type.getLayout())) {
+    // TODO(b/568373460): This is for compatibility with older serialized
+    //   artifacts outside of the guaranteed compatibility window. Remove once
+    //   all artifacts are updated.
+    return success();
   }
-  if (has_tiled_layout) {
-    return verifyTiling();
+
+  FAILUREOR_ASSIGN_OR_RETURN(
+      const MemRefLayoutAttrInterface expected_result_layout,
+      inferResultLayout(input_type.getLayout(), squeezed,
+                        [&]() { return emitOpError(); }));
+  if (result_type.getLayout() != expected_result_layout) {
+    return emitOpError("Expected result layout to be ")
+           << expected_result_layout;
   }
   return success();
 }
 
-mlir::InFlightDiagnostic MemRefSqueezeOp::verifyTiling() {
-  MemRefType source_type = getInput().getType();
-  auto source_shape = source_type.getShape();
-  auto target_shape = getType().getShape();
-  auto squeezed_or =
-      computeSqueezedDimsChecked(*this, source_shape, target_shape);
-  if (failed(squeezed_or)) {
-    return {};
-  }
-  auto& squeezed = squeezed_or.value();
+FailureOr<MemRefLayoutAttrInterface> MemRefSqueezeOp::inferResultLayout(
+    const MemRefLayoutAttrInterface input_layout,
+    const ArrayRef<int64_t> squeezed,
+    const function_ref<InFlightDiagnostic()> emit_error) {
+  // TODO(tlongeri): Make MemRefReshapeOp::inferResultLayout more general and
+  // use that instead.
+  MLIRContext* const ctx = input_layout.getContext();
+  if (auto tiled_layout = dyn_cast<TiledLayoutAttr>(input_layout)) {
+    const int64_t input_rank = tiled_layout.getRank();
+    const int64_t result_rank = input_rank - squeezed.size();
 
-  auto tiles = cast<TiledLayoutAttr>(source_type.getLayout()).getTiles();
-  switch (tiles.size()) {
-    case 0:
-      break;
-    case 1: {
-      auto tile = tiles.front();
-      auto tile_dims = tile.dimensions();
-      int first_tiled = source_shape.size() - tile_dims.size();
-      for (int dim : squeezed) {
-        if (dim >= first_tiled) {
-          int tile_idx = dim - first_tiled;
-          if (tile_idx < 0 || tile_idx >= static_cast<int>(tile_dims.size())) {
-            return emitOpError() << "Internal error: tile index out of bounds.";
-          }
-          if (tile_dims[tile_idx] != 1) {
-            return emitOpError()
-                   << "All tiled squeezed dimensions must be of size 1.";
-          }
-        }
-      }
-      break;
-    }
-    default: {
-      auto first_tile = tiles.front();
-      for (int dim : squeezed) {
-        int first_tiled = source_shape.size() - first_tile.dimensions().size();
-        if (dim >= first_tiled) {
-          return emitOpError() << "When multiple tiles are present, no tiled "
-                                  "dimensions can be squeezed.";
-        }
+    SmallVector<int64_t> tile_strides;
+    tile_strides.reserve(result_rank);
+    for (int64_t i = 0; i < input_rank; ++i) {
+      if (!llvm::is_contained(squeezed, i)) {
+        tile_strides.push_back(tiled_layout.getTileStrides()[i]);
       }
     }
-  }
 
-  return {};
+    const ArrayRef<xla::Tile> tiles = tiled_layout.getTiles();
+
+    if (tiles.size() == 1 && tiles[0].dimensions().size() == 2 &&
+        tiles[0].dimension(0) == 1 &&
+        !llvm::is_contained(squeezed, input_rank - 1) &&
+        llvm::is_contained(squeezed, input_rank - 2) && result_rank >= 2) {
+      // For legacy reasons, for T(1, B) that squeezes the 2nd minor, infer
+      // T(1, B) instead of T(B) like in the code below.
+      return MemRefLayoutAttrInterface(TiledLayoutAttr::get(
+          ctx, {xla::Tile({1, tiles[0].dimension(1)})}, tile_strides));
+    }
+
+    SmallVector<xla::Tile> result_tiles;
+    result_tiles.reserve(tiles.size());
+    // Perform expansion as in TiledLayoutAttr::getExpandedShape, maintaining a
+    // mapping from expanded shape dimension to corresponding input dimension.
+    SmallVector<int64_t> expanded_dims = llvm::to_vector(
+        llvm::iota_range<int64_t>(0, input_rank, /*Inclusive=*/false));
+    for (const xla::Tile& input_tile : tiles) {
+      const int64_t tile_rank = input_tile.dimensions().size();
+      const int64_t expanded_rank = expanded_dims.size();
+      SmallVector<int64_t> tile;
+      for (int64_t i = 0; i < tile_rank; ++i) {
+        const int64_t input_dim = expanded_dims[expanded_rank - tile_rank + i];
+        if (llvm::is_contained(squeezed, input_dim)) {
+          if (input_tile.dimension(i) != 1) {
+            return emit_error() << "Dimension " << input_dim
+                                << " is padded but is squeezed.";
+          }
+        } else {
+          tile.push_back(input_tile.dimension(i));
+        }
+        expanded_dims.push_back(input_dim);
+      }
+      if (!tile.empty()) {
+        result_tiles.emplace_back(tile);
+      }
+    }
+    return MemRefLayoutAttrInterface(
+        TiledLayoutAttr::get(ctx, result_tiles, tile_strides));
+  }
+  if (auto affine_map_attr = dyn_cast<AffineMapAttr>(input_layout);
+      affine_map_attr && affine_map_attr.isIdentity()) {
+    const int64_t input_rank = affine_map_attr.getValue().getNumInputs();
+    const int64_t result_rank = input_rank - squeezed.size();
+    // Untiled squeeze
+    return MemRefLayoutAttrInterface(AffineMapAttr::get(
+        AffineMap::getMultiDimIdentityMap(result_rank, ctx)));
+  }
+  return emit_error() << "Only tiled or identity layouts supported.";
 }
 
 // Rewrites
@@ -783,7 +820,7 @@ struct MemRefSqueezeFoldCast : public OpRewritePattern<MemRefSqueezeOp> {
 
     MemRefType result_type = op.getType();
     FAILUREOR_ASSIGN_OR_RETURN(
-        SmallVector<int> squeezed,
+        SmallVector<int64_t> squeezed,
         computeSqueezedDimsChecked(op, cast_result_type.getShape(),
                                    result_type.getShape()));
 
@@ -867,6 +904,62 @@ LogicalResult MemRefReshapeOp::verify() {
   if (expected_result_layout != result_ty.getLayout()) {
     return emitOpError("Expected result layout to be ")
            << expected_result_layout;
+  }
+  return success();
+}
+
+LogicalResult MemRefPadOp::verify() {
+  const MemRefType input_ty = getInput().getType();
+  const MemRefType result_ty = getType();
+  if (result_ty.getMemorySpace() != input_ty.getMemorySpace()) {
+    return emitOpError("Memory spaces do not match.");
+  }
+  if (result_ty.getElementType() != input_ty.getElementType()) {
+    return emitOpError("Element types don't match.");
+  }
+  if (result_ty.getRank() != input_ty.getRank()) {
+    return emitOpError("Input and result ranks must match.");
+  }
+  if (result_ty.getLayout() != input_ty.getLayout()) {
+    return emitOpError("Input and result layouts must match.");
+  }
+
+  auto tiled_layout = dyn_cast<TiledLayoutAttr>(input_ty.getLayout());
+  if (!tiled_layout && !input_ty.getLayout().isIdentity()) {
+    return emitOpError("Only tiled or identity layouts supported.");
+  }
+  ArrayRef<int64_t> first_tile;
+  if (tiled_layout && !tiled_layout.getTiles().empty()) {
+    first_tile = tiled_layout.getTiles().front().dimensions();
+  }
+  const int64_t first_tiled_dim = input_ty.getRank() - first_tile.size();
+  for (int64_t i = 0; i < input_ty.getRank(); ++i) {
+    const int64_t in_dim = input_ty.getDimSize(i);
+    const int64_t res_dim = result_ty.getDimSize(i);
+    if (in_dim == res_dim) {
+      continue;
+    }
+    if (ShapedType::isDynamic(in_dim) || ShapedType::isDynamic(res_dim)) {
+      return emitOpError("Cannot pad dynamic dimension ") << i << ".";
+    }
+    if (res_dim < in_dim) {
+      return emitOpError("Result dimension ")
+             << i << " (" << res_dim
+             << ") must be greater than or equal to input dimension (" << in_dim
+             << ").";
+    }
+    if (tiled_layout) {
+      const int64_t tile_size =
+          i < first_tiled_dim ? 1 : first_tile[i - first_tiled_dim];
+      const int64_t aligned_dim = llvm::alignTo(in_dim, tile_size);
+      if (res_dim > aligned_dim) {
+        return emitOpError("Result dimension ")
+               << i << " (" << res_dim
+               << ") must not exceed the tile-aligned bound (" << aligned_dim
+               << ") of input dimension " << in_dim << " for tile size "
+               << tile_size << ".";
+      }
+    }
   }
   return success();
 }
@@ -2785,6 +2878,9 @@ LogicalResult ConcatenateOp::verify() {
           "Not implemented:: Expected all operands to have the same element "
           "type.");
     }
+    if (shape.size() != first_shape.size()) {
+      return emitOpError("Expected all operands to have the same rank.");
+    }
     for (int dim = 0; dim < shape.size(); ++dim) {
       if (dim != dimension && shape[dim] != first_shape[dim]) {
         return emitOpError(
@@ -2800,15 +2896,22 @@ LogicalResult ConcatenateOp::verify() {
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::PropertyRef properties,
     RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+  if (operands.empty()) {
+    return failure();
+  }
   ConcatenateOpAdaptor adaptor(operands, attributes, properties, regions);
   auto dimension = adaptor.getDimension();
+  auto first_type = dyn_cast<VectorType>(operands[0].getType());
+  if (!first_type) {
+    return failure();
+  }
   for (auto [i, operand] : llvm::enumerate(operands)) {
     if (auto operand_ty = dyn_cast<VectorType>(operand.getType());
-        !operand_ty || operand_ty.getRank() <= dimension) {
+        !operand_ty || operand_ty.getRank() <= dimension ||
+        operand_ty.getRank() != first_type.getRank()) {
       return failure();
     }
   }
-  auto first_type = cast<VectorType>(operands[0].getType());
   llvm::SmallVector<int64_t> result_shape =
       llvm::to_vector(first_type.getShape());
   Type result_dtype = first_type.getElementType();
@@ -3096,10 +3199,10 @@ LogicalResult AllReduceOp::verify() {
 
   if (in_bitwidth == 1) {
     // For mask vectors, the single (semantically scalar) result is broadcast
-    // into a vector of 32-bit ints of whatever shape the target supports (not
+    // into a vector of ints of whatever shape the target supports (not
     // necessarily the same as the input).
-    if (!out_ty.getElementType().isSignlessInteger(32)) {
-      return emitOpError("Vector mask all-reduce must have i32 output");
+    if (!out_ty.getElementType().isSignlessInteger()) {
+      return emitOpError("Vector mask all-reduce must have integer output");
     }
     switch (kind) {
       case ReductionKind::kSum:
@@ -3189,18 +3292,32 @@ LogicalResult ReduceIndexOp::verify() {
   auto bitwidth = getElementTypeBitwidth(in_ty);
   auto axis = getAxis();
   auto kind = getKind();
-  if (kind != ReductionKind::kArgMax && kind != ReductionKind::kArgMin) {
-    return emitOpError("Reduction kind must be arg_max or arg_min");
+  const bool is_arg_max_or_min =
+      kind == ReductionKind::kArgMax || kind == ReductionKind::kArgMin;
+  const bool is_find_first_set = kind == ReductionKind::kFindFirstSet;
+  if (!is_arg_max_or_min && !is_find_first_set) {
+    return emitOpError(
+        "Reduction kind must be arg_max, arg_min, or find_first_set");
   }
-  if (!in_ty.getElementType().isF32() && !in_ty.getElementType().isBF16()) {
+  if (is_arg_max_or_min && !in_ty.getElementType().isF32() &&
+      !in_ty.getElementType().isBF16()) {
     return emitOpError(
         "Not Implemented: Only f32 and bf16 input is supported for arg_max and "
         "arg_min");
   }
-  if (!out_ty.getElementType().isSignlessInteger(bitwidth)) {
+  if (is_arg_max_or_min &&
+      !out_ty.getElementType().isSignlessInteger(bitwidth)) {
     return emitOpError(
         absl::StrFormat("Arg_max and arg_min must have i%d output", bitwidth));
   }
+  if (is_find_first_set && (!in_ty.getElementType().isSignlessInteger(1) ||
+                            !out_ty.getElementType().isSignlessInteger(32))) {
+    return emitOpError(
+        "find_first_set requires i1 input and i32 output element types");
+  }
+
+  // SameOperandsAndResultRank checks the following:
+  CHECK_EQ(in_ty.getRank(), out_ty.getRank());
 
   auto in_shape = in_ty.getShape();
   auto out_shape = out_ty.getShape();
@@ -3208,33 +3325,31 @@ LogicalResult ReduceIndexOp::verify() {
     return emitOpError("Axis must be in [0, ")
            << in_shape.size() << "), but got " << axis;
   }
-  if (in_shape[axis] > (1LL << bitwidth)) {
-    return emitOpError(absl::StrFormat(
-        "Reduction dimension size (%d) exceeds 2^%d (%d), which overflows "
-        "%d-bit indices for arg_max/arg_min",
-        in_shape[axis], bitwidth, 1LL << bitwidth, bitwidth));
+  // The largest possible result is the last index along the reduced dimension
+  // for arg_max/arg_min, and the dimension size for find_first_set (returned
+  // when no element is set). It must fit in the output element type, treated
+  // as unsigned.
+  const int64_t max_result =
+      is_find_first_set ? in_shape[axis] : in_shape[axis] - 1;
+  const unsigned out_bitwidth = out_ty.getElementTypeBitWidth();
+  if (static_cast<uint64_t>(max_result) > llvm::maxUIntN(out_bitwidth)) {
+    return emitOpError("Reduction dimension size ")
+           << in_shape[axis] << " is too large for "
+           << stringifyReductionKind(kind) << ": the largest result "
+           << max_result << " does not fit in " << out_bitwidth
+           << "-bit unsigned indices";
   }
 
-  if (in_shape.size() < 2) {
+  if (is_arg_max_or_min && in_shape.size() < 2) {
     return emitOpError("Not Implemented: Only input rank > 1 is supported.");
   }
-  if (out_shape.size() != in_shape.size() - 1) {
-    return emitOpError("Output rank must be one less than input rank");
-  }
-  int out_dim = 0;
-  for (int i = 0; i < in_shape.size(); ++i) {
-    if (i == axis) {
-      continue;
+  for (int64_t i = 0; i < in_ty.getRank(); ++i) {
+    const int64_t expected_output_size = (i == axis) ? 1 : in_shape[i];
+    if (out_shape[i] != expected_output_size) {
+      return emitOpError("Expected output dimension ")
+             << i << " to have size " << expected_output_size << ", but got "
+             << out_shape[i];
     }
-    if (in_shape[i] != out_shape[out_dim]) {
-      return emitOpError(
-                 "Output shape must match input shape on non-reduction "
-                 "dimensions. ")
-             << "Output shape (" << out_shape
-             << ") does not match input shape (" << in_shape
-             << ") at input dimension " << i;
-    }
-    out_dim++;
   }
   return success();
 }
@@ -3271,6 +3386,8 @@ LogicalResult ReduceOp::verify() {
     }
   }
 
+  const Type input_element_type = input_type.getElementType();
+  const Type output_element_type = output_type.getElementType();
   switch (getKind()) {
     case ReductionKind::kArgMax:
     case ReductionKind::kArgMin:
@@ -3286,11 +3403,11 @@ LogicalResult ReduceOp::verify() {
           "minui instead");
     case ReductionKind::kMaxF:
     case ReductionKind::kMinF:
-      if (!isa<FloatType>(input_type.getElementType())) {
+      if (!isa<FloatType>(input_element_type)) {
         return emitOpError(
             "maxf and minf reductions require float element type");
       }
-      if (input_type.getElementType() != output_type.getElementType()) {
+      if (input_element_type != output_element_type) {
         return emitOpError(
             "Input and output must have the same element type for sum, max and "
             "min reductions");
@@ -3300,12 +3417,12 @@ LogicalResult ReduceOp::verify() {
     case ReductionKind::kMinSI:
     case ReductionKind::kMaxUI:
     case ReductionKind::kMinUI:
-      if (!isa<IntegerType>(input_type.getElementType())) {
+      if (!isa<IntegerType>(input_element_type)) {
         return emitOpError(
             "maxsi, minsi, maxui and minui reductions require integer element "
             "type");
       }
-      if (input_type.getElementType() != output_type.getElementType()) {
+      if (input_element_type != output_element_type) {
         return emitOpError(
             "Input and output must have the same element type for sum, max and "
             "min reductions");
@@ -3313,7 +3430,7 @@ LogicalResult ReduceOp::verify() {
       break;
     case ReductionKind::kSum:
       // TODO(tlongeri): Might be worth allowing things like bf16 -> f32.
-      if (input_type.getElementType() != output_type.getElementType()) {
+      if (input_element_type != output_element_type) {
         return emitOpError(
             "Input and output must have the same element type for sum, max and "
             "min reductions");

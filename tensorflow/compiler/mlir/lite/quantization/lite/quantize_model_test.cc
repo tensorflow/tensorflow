@@ -103,6 +103,14 @@ absl::Status QuantizeModel(
 
   auto flatbuffer_model = FlatBufferModelAbslError::BuildFromBuffer(
       output_buffer.data(), output_buffer.size());
+  for (const auto* buffer : *flatbuffer_model->GetModel()->buffers()) {
+    if (buffer != nullptr && buffer->data() != nullptr) {
+      EXPECT_EQ((buffer->data()->Data() -
+                 reinterpret_cast<const uint8_t*>(output_buffer.data())) %
+                    16,
+                0);
+    }
+  }
   *model = UnPackFlatBufferModel(*flatbuffer_model->GetModel());
   return absl::OkStatus();
 }

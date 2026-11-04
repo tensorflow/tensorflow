@@ -16,9 +16,7 @@ limitations under the License.
 #include "xla/service/scheduling_annotations_util.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <optional>
 #include <string>
 #include <vector>

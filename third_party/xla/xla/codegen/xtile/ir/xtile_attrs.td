@@ -38,4 +38,20 @@ def XTile_LayoutAttr : XTile_Attr<"Layout", [
   }];
 }
 
+def XTile_CollectiveStrategy : I32EnumAttr<
+    "CollectiveStrategy",
+    "Collective kernel emission strategy.",
+    [
+      I32EnumAttrCase<"kOneShot", 0, "one_shot">,
+      I32EnumAttrCase<"kTwoShot", 1, "two_shot">,
+    ]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::xla::xtile";
+}
+
+def XTile_CollectiveStrategyAttr :
+    EnumAttr<XTileDialect, XTile_CollectiveStrategy, "collective_strategy"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_ATTRS

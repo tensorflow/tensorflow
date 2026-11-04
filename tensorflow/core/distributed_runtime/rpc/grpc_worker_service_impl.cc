@@ -77,7 +77,7 @@ WorkerService::AsyncService::AsyncService() {
   }
 }
 
-WorkerService::AsyncService::~AsyncService() {}
+WorkerService::AsyncService::~AsyncService() = default;
 
 }  // namespace grpc
 

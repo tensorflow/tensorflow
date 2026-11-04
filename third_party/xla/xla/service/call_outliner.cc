@@ -270,10 +270,6 @@ absl::StatusOr<HloInstruction*> CallOutliner::OutlineAndReplaceBlock(
   std::vector<HloInstruction*> call_operands;
   ABSL_ASSIGN_OR_RETURN(HloComputation * outlined_computation,
                    BuildOutlinedComputation(module, block, call_operands));
-  std::string original_computation_name = GetMarkedComputationName(block.after);
-  if (!original_computation_name.empty()) {
-    outlined_computation->SetAndSanitizeName(original_computation_name);
-  }
   outlined_computation->SetExecutionThread(computation->execution_thread());
   VLOG(2) << "CallOutliner created outlined computation "
           << outlined_computation->name() << " in module " << module->name();

@@ -50,7 +50,7 @@ absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
 
 absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   std::optional<tsl::profiler::ScopedAnnotation> seq_annotation =
-      GetKernelAnnotation(profile_annotation());
+      GetInstructionAnnotation(profile_annotation());
   return executor_.ExecuteOnStream(params);
 }
 

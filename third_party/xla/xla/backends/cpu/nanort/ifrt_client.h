@@ -39,6 +39,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -154,6 +156,11 @@ class NanoIfrtClient
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> CopyArraysWithDonatedDst(
+      absl::Span<ifrt::ArrayRef> arrays,
+      absl::Span<ifrt::ArrayRef> donated_dst_arrays,
+      ifrt::ArrayCopySemantics semantics) override;
+
   absl::StatusOr<std::vector<ifrt::ArrayRef>> RemapArrays(
       const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override;
@@ -171,6 +178,15 @@ class NanoIfrtClient
       absl::Span<xla::ifrt::ArrayRef> arrays,
       absl::Span<const xla::ifrt::ArraySpec> specs,
       xla::ifrt::ArrayCopySemantics semantics) override;
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> CopyArraySlices(
+      absl::Span<const xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::IndexDomain> index_domains) override;
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> UpdateArraySlices(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArrayRef> slices,
+      absl::Span<const xla::ifrt::Index> origins) override;
 
   tsl::Future<> GetReadyFuture(
       absl::Span<const ifrt::ValueRef> values) override;

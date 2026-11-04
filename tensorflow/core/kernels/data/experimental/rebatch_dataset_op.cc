@@ -603,6 +603,14 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         }
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("batch_sizes_index"),
                                               &batch_sizes_index_));
+        if (batch_sizes_index_ < 0 ||
+            batch_sizes_index_ >=
+                static_cast<int64_t>(dataset()->batch_sizes_.size())) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Invalid batch_sizes_index in checkpoint: ", batch_sizes_index_,
+              ", expected a value in [0, ", dataset()->batch_sizes_.size(),
+              ")."));
+        }
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("offset"), &offset_));
 
         tensors_.clear();
@@ -612,6 +620,15 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
                 ctx->flr(), full_name(absl::StrCat("tensors[", i, "]")),
                 &tensors_[i]));
+          }
+          // `offset_` and `tensors_` both come from the checkpoint and
+          // GetNextInternal slices `tensors_` from `offset_`, so apply the same
+          // checks as for freshly fetched input tensors.
+          TF_RETURN_IF_ERROR(ValidateInputTensors());
+          if (offset_ < 0 || offset_ >= tensors_[0].dim_size(0)) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Invalid offset in checkpoint: ", offset_,
+                ", expected a value in [0, ", tensors_[0].dim_size(0), ")."));
           }
         }
         return absl::OkStatus();

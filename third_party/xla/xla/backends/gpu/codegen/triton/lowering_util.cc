@@ -250,24 +250,34 @@ bool IsGuaranteedDivisible(mlir::Value value, int64_t divisor) {
   return false;
 }
 
-bool IsGuaranteedInBounds(mlir::Value value, int64_t tile_size,
-                          int64_t original_shape) {
-  if (auto const_op = value.getDefiningOp<arith::ConstantIndexOp>()) {
-    return const_op.value() >= 0 &&
-           const_op.value() + tile_size <= original_shape;
+bool IsGuaranteedInBounds(mlir::Value offset, int64_t tile_size,
+                          int64_t tile_stride, int64_t original_shape) {
+  if (tile_size <= 0) {
+    return false;
   }
-  if (auto apply_indexing = value.getDefiningOp<::xla::ApplyIndexingOp>()) {
+  // Relative positions of the first and last accessed element of the tile,
+  // i.e. `offset + i * tile_stride` for `i` in `[0, tile_size)`.
+  const int64_t last = (tile_size - 1) * tile_stride;
+  const int64_t min_delta = std::min<int64_t>(0, last);
+  const int64_t max_delta = std::max<int64_t>(0, last);
+
+  Interval range;
+  if (auto const_op = offset.getDefiningOp<arith::ConstantIndexOp>()) {
+    range = Interval{const_op.value(), const_op.value()};
+  } else if (auto apply_indexing =
+                 offset.getDefiningOp<::xla::ApplyIndexingOp>()) {
     IndexingMap indexing_map = apply_indexing.getIndexingMap();
     if (indexing_map.GetNumResults() != 1) {
       return false;
     }
-
-    // Compute the maximum possible offset for the given indexing map.
-    Interval range = indexing_map.GetRangeEvaluator().ComputeExpressionRange(
+    // Compute the range of possible offsets for the given indexing map.
+    range = indexing_map.GetRangeEvaluator().ComputeExpressionRange(
         indexing_map.GetSymbolicMap().GetResult(0));
-    return range.lower >= 0 && range.upper + tile_size <= original_shape;
+  } else {
+    return false;
   }
-  return false;
+  return range.lower + min_delta >= 0 &&
+         range.upper + max_delta < original_shape;
 }
 
 std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
@@ -324,7 +334,8 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
     // if the original shape is divisible by the tile size.
     if (original_shape[dim] % sizes[dim] != 0 ||
         !IsGuaranteedDivisible(offsets[dim], sizes[dim]) ||
-        !IsGuaranteedInBounds(offsets[dim], sizes[dim], original_shape[dim])) {
+        !IsGuaranteedInBounds(offsets[dim], sizes[dim], strides[dim],
+                              original_shape[dim])) {
       mlir::Value upper_bound =
           arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
       upper_bound =
@@ -358,7 +369,8 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
 
   mlir::Value reduced_mask;
   for (unsigned dim : reduced_dims) {
-    if (!IsGuaranteedInBounds(offsets[dim], sizes[dim], original_shape[dim])) {
+    if (!IsGuaranteedInBounds(offsets[dim], sizes[dim], strides[dim],
+                              original_shape[dim])) {
       mlir::Value upper_bound =
           arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
       mlir::Value mask_right = arith::CmpIOp::create(

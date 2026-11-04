@@ -163,7 +163,7 @@ class RaggedTensorToSparseOp : public OpKernel {
       std::vector<ConstFlatSplits> rt_nested_splits,
       const Tensor& rt_dense_values_in) {
     if (rt_dense_values_in.dims() == 0) {
-      return InvalidArgument("rt_dense_values must have rank >= 1.");
+      return absl::InvalidArgumentError("rt_dense_values must have rank >= 1.");
     }
     for (int i = 0; i < rt_nested_splits.size(); ++i) {
       if (rt_nested_splits[i].size() == 0) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,8 +47,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-namespace {
 
 CodegenDecision IsTritonSupportedDataType(
     PrimitiveType type, const se::GpuComputeCapability& gpu_version) {
@@ -99,6 +99,36 @@ CodegenDecision IsTritonSupportedDataType(
           absl::StrCat("Unsupported data type: ",
                        primitive_util::LowercasePrimitiveTypeName(type)));
   }
+}
+
+namespace {
+
+// Like `IsTritonSupportedDataType`, but also allows types that are only
+// supported by some opcodes.
+CodegenDecision IsTritonSupportedDataTypeForOpcode(
+    PrimitiveType type, HloOpcode opcode,
+    const se::GpuComputeCapability& gpu_version) {
+  // F8E8M0FNU is lowered as i8, so it supports ops that don't change values.
+  if (type == F8E8M0FNU && (gpu_version.IsCuda() || gpu_version.IsRocm())) {
+    switch (opcode) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kConstant:
+      case HloOpcode::kCopy:
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kPad:
+      case HloOpcode::kParameter:
+      case HloOpcode::kReshape:
+      case HloOpcode::kSelect:
+      case HloOpcode::kSlice:
+      case HloOpcode::kTranspose:
+        return CodegenDecision::Allow();
+      default:
+        break;
+    }
+  }
+  return IsTritonSupportedDataType(type, gpu_version);
 }
 
 // Set of unary elementwise ops that are genuinely supported by Triton.
@@ -223,6 +253,12 @@ CodegenDecision IsTritonSupportedConversion(
     return error_message("Unsupported PRED to U8 conversion.");
   }
 
+  // A no-op conversion only moves data around.
+  if (input == output) {
+    return IsTritonSupportedDataTypeForOpcode(input, HloOpcode::kCopy,
+                                              gpu_version);
+  }
+
   if (!IsTritonSupportedDataType(input, gpu_version)) {
     return CodegenDecision::Forbid(
         absl::StrCat("Unsupported input type for conversion: ",
@@ -307,7 +343,20 @@ absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
     return {HloOpcode::kSelect};
   }
 
-  return {HloOpcode::kSelect, HloOpcode::kClamp};
+  absl::flat_hash_set<HloOpcode> ret{HloOpcode::kSelect, HloOpcode::kClamp};
+  const auto* cuda_cc = gpu_version.cuda_compute_capability();
+  const auto* rocm_cc = gpu_version.rocm_compute_capability();
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::F64 ||
+      (element_type == PrimitiveType::F16 &&
+       (gpu_version.IsRocm() ||
+        (cuda_cc != nullptr && cuda_cc->IsAtLeast(5, 3)))) ||
+      (element_type == PrimitiveType::BF16 &&
+       ((cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) ||
+        (rocm_cc != nullptr && rocm_cc->gfx1250())))) {
+    ret.insert(HloOpcode::kFma);
+  }
+  return ret;
 }
 
 // Returns `true` if the given opcode and element type correspond to a n-ary
@@ -340,6 +389,14 @@ CodegenDecision CanTritonHandleScan(
   if (scan.inputs().size() != 1 || scan.num_carries() != 1) {
     return CodegenDecision::Forbid(
         "Only single-input, single-carry scans are supported in Triton.");
+  }
+
+  int64_t rank = scan.inputs().front()->shape().dimensions().size();
+  if (scan.scan_dimension() != rank - 1) {
+    // TODO(b/469020791): Support scans over other dimensions. The tiled Triton
+    // scan computes wrong results for them.
+    return CodegenDecision::Forbid(
+        "Only scans over the last dimension are supported in Triton.");
   }
 
   if (!IsTritonSupportedComputation(*scan.to_apply(), gpu_version)) {
@@ -387,12 +444,6 @@ CodegenDecision CanTritonHandleReduce(
         "Unsupported reduction computation by Triton.");
   }
 
-  bool tiling_propagation_enabled =
-      reduce.GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_tiling_propagation();
-
   if (reduce.operand_count() != 2) {
     return CodegenDecision::Forbid(
         "Reduction is not a reduction of a single operand.");
@@ -401,12 +452,6 @@ CodegenDecision CanTritonHandleReduce(
   if (reduce.dimensions().empty()) {
     return CodegenDecision::Forbid(
         "Reduction must have at least one dimension.");
-  }
-
-  if (reduce.dimensions().size() > 1 && !tiling_propagation_enabled) {
-    return CodegenDecision::Forbid(
-        "Multi-dimension reductions are only supported when experimental "
-        "tiling propagation is enabled.");
   }
 
   return CodegenDecision::Allow();
@@ -472,6 +517,20 @@ CodegenDecision IsTritonSupportedReduceScatter(
   }
 
   return CodegenDecision::Allow();
+}
+
+CodegenDecision IsTritonSupportedAllToAll(
+    const HloAllToAllInstruction& all_to_all) {
+  if (!all_to_all.shape().IsArray() ||
+      !all_to_all.split_dimension().has_value()) {
+    return CodegenDecision::Forbid(
+        "Only array all-to-alls with split_dimension are supported.");
+  }
+  if (all_to_all.replica_groups().empty()) {
+    return CodegenDecision::Forbid("All-to-all does not have replica groups.");
+  }
+  return CodegenDecision(all_to_all.shape().element_type() != S4,
+                         "S4 is not supported.");
 }
 
 absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
@@ -735,6 +794,17 @@ CodegenDecision IsTritonSupportedScaledDot(
   }
   PrimitiveType lhs_scale_type = dot.operand(2)->shape().element_type();
   PrimitiveType rhs_scale_type = dot.operand(3)->shape().element_type();
+  // Lowering tt.dot_scaled with F8E4M3FN operands or scales needs F8E4M3FN
+  // conversions, which Triton only supports from Ada onwards.
+  if (const auto* cc = gpu_version.cuda_compute_capability();
+      cc && !cc->IsAtLeastAda() &&
+      absl::c_linear_search(
+          std::vector<PrimitiveType>{lhs_type, rhs_type, lhs_scale_type,
+                                     rhs_scale_type},
+          F8E4M3FN)) {
+    return CodegenDecision::Forbid(
+        "Scaled dot with F8E4M3FN is not supported by Triton before Ada.");
+  }
   std::vector<PrimitiveType> supported_scale_types = {F8E4M3FN, F8E5M2,
                                                       F8E8M0FNU, S8};
   // tt.dot_scaled only dequantizes some operand types; a scale on any other
@@ -762,25 +832,20 @@ CodegenDecision IsTritonSupportedScaledDot(
   return CodegenDecision::Allow();
 }
 
-CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
-  CHECK(hlo.opcode() == HloOpcode::kConcatenate);
-  if (hlo.shape().element_type() == S4) {
+CodegenDecision IsTritonSupportedConcatenate(
+    const HloConcatenateInstruction& concat) {
+  if (concat.shape().element_type() == S4) {
     return CodegenDecision::Forbid("S4 is not supported.");
   }
   // Triton emitter requires concatenate operands to be aligned to the tile size
   // to avoid tiles straddling operand boundaries. Since we don't know the
   // concrete tile size yet, we enforce divisibility by a minimum reasonable
-  // tile size (64).
-  // The last operand does not need to satisfy this constraint.
-  int concatenate_dimension = hlo.concatenate_dimension();
-  constexpr int kMinConcatFragmentSize = 64;
-  for (int i = 0; i < hlo.operand_count() - 1; ++i) {
-    if (hlo.operand(i)->shape().dimensions(concatenate_dimension) %
-            kMinConcatFragmentSize !=
-        0) {
-      return CodegenDecision::Forbid(
-          "Concatenate operand is not aligned for tiling.");
-    }
+  // tile size (8 for block-level fusions; GemmFusion and PriorityFusion enforce
+  // 64).
+  constexpr int64_t kMinConcatFragmentSize = 8;
+  if (!IsConcatenateAligned(concat, kMinConcatFragmentSize)) {
+    return CodegenDecision::Forbid(
+        "Concatenate operand is not aligned for tiling.");
   }
   return CodegenDecision::Allow();
 }
@@ -796,6 +861,25 @@ bool IsWithinGemmFusion(const HloInstruction& instr) {
   }
   return IsGpuFusionKind(*fusion, kTritonGemmFusionKind) ||
          IsGpuFusionKind(*fusion, kTritonNestedGemmFusionKind);
+}
+
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr) {
+  for (const HloInstruction* index_operand : instr.index_operands()) {
+    switch (index_operand->shape().element_type()) {
+      case S8:
+      case S16:
+      case S32:
+      case S64:
+        break;  // supported
+      default:
+        return CodegenDecision::Forbid(
+            "Dynamic slice is only supported with S8, S16, S32, or S64 "
+            "offsets.");
+    }
+  }
+  return CodegenDecision(instr.shape().element_type() != S4,
+                         "S4 is not supported.");
 }
 
 CodegenDecision IsTritonSupportedInstructionImpl(
@@ -825,12 +909,13 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         return CodegenDecision::Forbid(
             "Nested tuple or token shape is not supported.");
       }
-      output_type_is_supported = output_type_is_supported.And(
-          IsTritonSupportedDataType(shape.element_type(), gpu_version));
+      output_type_is_supported =
+          output_type_is_supported.And(IsTritonSupportedDataTypeForOpcode(
+              shape.element_type(), instr.opcode(), gpu_version));
     }
   } else {
-    output_type_is_supported =
-        IsTritonSupportedDataType(instr.shape().element_type(), gpu_version);
+    output_type_is_supported = IsTritonSupportedDataTypeForOpcode(
+        instr.shape().element_type(), instr.opcode(), gpu_version);
   }
 
   if (!output_type_is_supported) {
@@ -840,8 +925,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 
   CodegenDecision input_types_are_supported = CodegenDecision(
       absl::c_all_of(instr.operands(), [&](const HloInstruction* operand) {
-        return IsTritonSupportedDataType(operand->shape().element_type(),
-                                         gpu_version);
+        return IsTritonSupportedDataTypeForOpcode(
+            operand->shape().element_type(), instr.opcode(), gpu_version);
       }));
 
   if (!input_types_are_supported) {
@@ -849,8 +934,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         "Unsupported input data type: ", input_types_are_supported.Explain()));
   }
 
-  if (instr.opcode() == HloOpcode::kConcatenate) {
-    return IsTritonSupportedConcatenate(instr);
+  if (const auto* concat = DynCast<HloConcatenateInstruction>(&instr)) {
+    return IsTritonSupportedConcatenate(*concat);
   }
 
   // Special handling for the kPad instruction. Right now we only support "high"
@@ -911,10 +996,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kParameter:
       return CodegenDecision::Allow();
     case HloOpcode::kDynamicSlice:
-      // TODO(b/417172838): enable this once we confirm that no benchmarks were
-      // regressed.
-      return CodegenDecision::Forbid(
-          "dynamic slice is supported but not enabled yet");
+      return IsTritonSupportedDynamicSlice(
+          *Cast<HloDynamicSliceInstruction>(&instr));
     case HloOpcode::kBitcast:
       if (ShapeUtil::ElementsIn(instr.operand(0)->shape()) !=
           ShapeUtil::ElementsIn(instr.shape())) {
@@ -952,8 +1035,11 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
                                         gpu_version);
     case HloOpcode::kAllGather:
-      return CodegenDecision(instr.shape().element_type() != S4,
-                             "S4 is not supported.");
+      return CodegenDecision(
+          !primitive_util::IsSubByteNonPredType(instr.shape().element_type()),
+          "Sub-byte types are not supported for AllGather.");
+    case HloOpcode::kAllToAll:
+      return IsTritonSupportedAllToAll(*Cast<HloAllToAllInstruction>(&instr));
     case HloOpcode::kReduceScatter:
       return IsTritonSupportedReduceScatter(
           *Cast<HloReduceScatterInstruction>(&instr), gpu_version);
@@ -984,7 +1070,6 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kDynamicReshape:
-    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kExp2:
     case HloOpcode::kGather:
@@ -1084,6 +1169,18 @@ bool IsTritonGemm(const HloInstruction& instr) {
   }
   return absl::c_count_if(instr.fused_instructions(),
                           HloPredicateIsOp<HloOpcode::kDot>) == 1;
+}
+
+bool IsConcatenateAligned(const HloConcatenateInstruction& concat,
+                          int64_t min_fragment_size) {
+  int64_t concat_dim = concat.concatenate_dimension();
+  // The last operand does not need to satisfy the alignment constraint.
+  for (const HloInstruction* operand : llvm::drop_end(concat.operands())) {
+    if (operand->shape().dimensions(concat_dim) % min_fragment_size != 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace gpu

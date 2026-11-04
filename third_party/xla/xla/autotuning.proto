@@ -24,6 +24,7 @@ package xla;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
+import "xla/stream_executor/gpu/blas_lt_matmul_algorithm.proto";
 import "xla/tsl/protobuf/dnn.proto";
 
 message CudnnVersion {
@@ -84,6 +85,11 @@ message AutotuneResult {
   message GemmKey {
     int64 algorithm = 1;
     int64 autotune_workspace_size = 2;
+    // hipBLASLt only: if an FP8-output GEMM has no algorithm, run it with a
+    // wider output and a loop fusion that converts it to FP8. `algorithm`
+    // indexes the algorithms of the wider GEMM.
+    bool unfuse_fp8_output = 3;
+    stream_executor.gpu.BlasLtMatmulAlgorithmProto algorithm_proto = 4;
   }
 
   // Legacy and unused in new data; superseded by AlgorithmProto.
@@ -108,6 +114,9 @@ message AutotuneResult {
     // The `group_size` used for L2 tile reordering (grouping) in ragged-dot
     // fusions. A value <= 1 disables the reordering.
     int64 group_size = 11;
+    // AMD MFMA MN instruction size, 0 = auto or 16. Ignored on WMMA and on
+    // non-ROCm targets.
+    int64 mfma_size = 12;
     // LINT.ThenChange(//tensorflow/compiler/xla/service/gpu/matmul_utils.h)
   }
 

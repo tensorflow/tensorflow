@@ -31,24 +31,46 @@ limitations under the License.
 //   Each item indicates whether the corresponding lookup has a returned value.
 //   0 for missing key, 1 for found key.
 
-#include <stdint.h>
-
-#include <cstdlib>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/util.h"
+
 namespace tflite {
 namespace ops {
 namespace builtin {
 namespace hashtable_lookup {
 
-int greater(const void* a, const void* b) {
-  return *static_cast<const int*>(a) - *static_cast<const int*>(b);
+namespace {
+
+TfLiteStatus AppendValidatedString(TfLiteContext* context,
+                                   const TfLiteTensor& value, int idx,
+                                   int num_rows, DynamicBuffer& buf) {
+  TF_LITE_ENSURE(context, idx >= 0 && idx < num_rows);
+  TF_LITE_ENSURE(context, value.data.raw != nullptr);
+  TF_LITE_ENSURE(context, value.bytes >= sizeof(int32_t));
+  const int num_strings = GetStringCount(&value);
+  TF_LITE_ENSURE(context, num_strings >= num_rows);
+  TF_LITE_ENSURE(context, value.bytes / sizeof(int32_t) >=
+                              static_cast<size_t>(num_strings) + 2);
+  const int32_t* offsets = reinterpret_cast<const int32_t*>(value.data.raw);
+  const int32_t start_offset = offsets[static_cast<size_t>(idx) + 1];
+  const int32_t end_offset = offsets[static_cast<size_t>(idx) + 2];
+  TF_LITE_ENSURE(context, start_offset >= 0);
+  TF_LITE_ENSURE(context, end_offset >= start_offset);
+  TF_LITE_ENSURE(context, static_cast<size_t>(end_offset) <= value.bytes);
+  return buf.AddString(value.data.raw + start_offset,
+                       end_offset - start_offset);
 }
+
+}  // namespace
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
@@ -73,29 +95,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, NumDimensions(value), 1);
   }
 
-  TfLiteTensor* hits;
-  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 1, &hits));
-  TF_LITE_ENSURE_EQ(context, hits->type, kTfLiteUInt8);
-  TfLiteIntArray* hitSize = TfLiteIntArrayCreate(1);
-  hitSize->data[0] = SizeOfDimension(lookup, 0);
-
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   TF_LITE_ENSURE_EQ(context, value->type, output->type);
 
-  TfLiteStatus status = kTfLiteOk;
+  TfLiteTensor* hits;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 1, &hits));
+  TF_LITE_ENSURE_EQ(context, hits->type, kTfLiteUInt8);
+
   if (output->type != kTfLiteString) {
-    TfLiteIntArray* outputSize = TfLiteIntArrayCreate(NumDimensions(value));
-    outputSize->data[0] = SizeOfDimension(lookup, 0);
-    for (int i = 1; i < NumDimensions(value); i++) {
-      outputSize->data[i] = SizeOfDimension(value, i);
-    }
-    status = context->ResizeTensor(context, output, outputSize);
+    TF_LITE_ENSURE_OK(context, kernel_utils::ResizeLookupOutputTensor(
+                                   context, *lookup, *value, output));
   }
-  if (context->ResizeTensor(context, hits, hitSize) != kTfLiteOk) {
-    status = kTfLiteError;
-  }
-  return status;
+
+  TfLiteIntArray* hit_size = TfLiteIntArrayCreate(1);
+  hit_size->data[0] = SizeOfDimension(lookup, 0);
+  return context->ResizeTensor(context, hits, hit_size);
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -111,44 +126,46 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 2, &value));
 
   const int num_rows = SizeOfDimension(value, 0);
-  TF_LITE_ENSURE(context, num_rows != 0);
-  const size_t row_bytes = value->bytes / num_rows;
-  void* pointer = nullptr;
-  DynamicBuffer buf;
+  const int lookup_size = SizeOfDimension(lookup, 0);
 
-  for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
-    int idx = -1;
-    pointer = bsearch(&(lookup->data.i32[i]), key->data.i32, num_rows,
-                      sizeof(int32_t), greater);
-    if (pointer != nullptr) {
-      idx = (reinterpret_cast<char*>(pointer) - (key->data.raw)) /
-            sizeof(int32_t);
+  DynamicBuffer buf;
+  if (lookup_size == 0) {
+    if (output->type == kTfLiteString) {
+      buf.WriteToTensorAsVector(output);
     }
+    return kTfLiteOk;
+  }
+
+  TF_LITE_ENSURE(context, num_rows > 0);
+  const size_t row_bytes = value->bytes / num_rows;
+
+  const int32_t* key_begin = key->data.i32;
+  const int32_t* key_end = key_begin + num_rows;
+  for (int i = 0; i < lookup_size; i++) {
+    const int32_t target = lookup->data.i32[i];
+    const int32_t* it =
+        std::lower_bound(key_begin, key_end, target,
+                         [](int32_t lhs, int32_t rhs) { return lhs < rhs; });
+    const int idx = (it != key_end && *it == target)
+                        ? static_cast<int>(it - key_begin)
+                        : -1;
 
     if (idx >= num_rows || idx < 0) {
       if (output->type == kTfLiteString) {
-        buf.AddString(nullptr, 0);
-      } else {
-        CheckedInt<size_t> offset = CheckedInt<size_t>(i) * row_bytes;
-        if (offset.Overflow()) {
-          TF_LITE_KERNEL_LOG(context, "Hashtable Lookup: offset overflow.");
-          return kTfLiteError;
-        }
-        memset(output->data.raw + offset.Value(), 0, row_bytes);
+        TF_LITE_ENSURE_OK(context, buf.AddString(nullptr, 0));
+      } else if (row_bytes > 0) {
+        std::memset(output->data.raw + static_cast<size_t>(i) * row_bytes, 0,
+                    row_bytes);
       }
       hits->data.uint8[i] = 0;
     } else {
       if (output->type == kTfLiteString) {
-        buf.AddString(GetString(value, idx));
-      } else {
-        CheckedInt<size_t> offset_output = CheckedInt<size_t>(i) * row_bytes;
-        CheckedInt<size_t> offset_value = CheckedInt<size_t>(idx) * row_bytes;
-        if (offset_output.Overflow() || offset_value.Overflow()) {
-          TF_LITE_KERNEL_LOG(context, "Hashtable Lookup: offset overflow.");
-          return kTfLiteError;
-        }
-        memcpy(output->data.raw + offset_output.Value(),
-               value->data.raw + offset_value.Value(), row_bytes);
+        TF_LITE_ENSURE_OK(context, AppendValidatedString(context, *value, idx,
+                                                         num_rows, buf));
+      } else if (row_bytes > 0) {
+        std::memcpy(output->data.raw + static_cast<size_t>(i) * row_bytes,
+                    value->data.raw + static_cast<size_t>(idx) * row_bytes,
+                    row_bytes);
       }
       hits->data.uint8[i] = 1;
     }

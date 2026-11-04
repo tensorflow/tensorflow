@@ -37,7 +37,7 @@ const int kNumRepetitions = 100;
 // since the == operator does not canonicalize the raw strings before comparing
 // them.
 constexpr absl::string_view kRawString =
-    R"({"operation_queue_id":"0","fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"32","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1","is_tma_allowed":false,"is_warp_specialization_allowed":false,"waves_per_eu":"0","group_size":"0"}},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"})";
+    R"({"operation_queue_id":"0","fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"32","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1","is_tma_allowed":false,"is_warp_specialization_allowed":false,"waves_per_eu":"0","group_size":"0","mfma_size":"0"}},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"})";
 
 template <typename Input, typename CheckFn>
 void RunThreaded(Input input, CheckFn check_fn) {
@@ -112,6 +112,51 @@ TEST(BackendConfigWrapperTest, ComparisonDoesNotDeadlock) {
     BackendConfigWrapper other_second(proto);
     EXPECT_TRUE(source == other_second);
   });
+}
+
+TEST(BackendConfigWrapperTest, EmptyStateIsTrackedCorrectly) {
+  BackendConfigWrapper default_empty;
+  EXPECT_TRUE(default_empty.empty());
+  EXPECT_TRUE(default_empty == BackendConfigWrapper());
+
+  BackendConfigWrapper empty_str("");
+  EXPECT_TRUE(empty_str.empty());
+  EXPECT_TRUE(default_empty == empty_str);
+
+  BackendConfigWrapper stripped_empty(R"("wait_on_operation_queues":[],)");
+  EXPECT_TRUE(stripped_empty.empty());
+
+  BackendConfigWrapper from_str(std::string{kRawString});
+  EXPECT_FALSE(from_str.empty());
+  EXPECT_FALSE(default_empty == from_str);
+  EXPECT_FALSE(from_str == default_empty);
+
+  BackendConfigWrapper copied_empty(default_empty);
+  EXPECT_TRUE(copied_empty.empty());
+
+  BackendConfigWrapper copied_non_empty(from_str);
+  EXPECT_FALSE(copied_non_empty.empty());
+
+  gpu::GpuBackendConfig proto;
+  TF_EXPECT_OK(from_str.GetProto(&proto));
+  BackendConfigWrapper from_proto(proto);
+  EXPECT_FALSE(from_proto.empty());
+  EXPECT_FALSE(from_proto.GetRawString().empty());
+  EXPECT_FALSE(from_proto.empty());
+
+  // Move non-empty into empty: destination becomes non-empty.
+  BackendConfigWrapper move_dst;
+  move_dst = std::move(copied_non_empty);
+  EXPECT_FALSE(move_dst.empty());
+
+  // Self-move of non-empty preserves non-empty state.
+  BackendConfigWrapper& move_dst_ref = move_dst;
+  move_dst = std::move(move_dst_ref);
+  EXPECT_FALSE(move_dst.empty());
+
+  // Move empty into non-empty: destination becomes empty.
+  move_dst = BackendConfigWrapper();
+  EXPECT_TRUE(move_dst.empty());
 }
 
 }  // namespace

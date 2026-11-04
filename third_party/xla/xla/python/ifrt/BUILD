@@ -316,6 +316,7 @@ xla_cc_test(
         ":serdes_test_util",
         ":serdes_version",
         "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -332,7 +333,6 @@ xla_cc_test(
         ":serdes_test_util",
         ":serdes_version",
         "@com_google_absl//absl/hash:hash_testing",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -960,6 +960,7 @@ cc_library(
     ]),
     deps = [
         ":ifrt",
+        ":index_domain_proto_cc",
         ":rtti",
         ":serdes",
         ":serdes_version",
@@ -1314,6 +1315,7 @@ tf_proto_library(
     ]),
     deps = [
         ":device_proto",
+        ":index_domain_proto",
         ":shape_proto",
     ],
 )

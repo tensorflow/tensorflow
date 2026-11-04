@@ -134,6 +134,7 @@ py_library(
     srcs = ["__init__.py"],
     strict_deps = True,
     deps = [
+        ":auto_strategy",
         ":cross_device_ops",
         ":distribute_lib",
         ":merge_call_interim",
@@ -346,6 +347,18 @@ py_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/tpu:tpu_replication",
+    ],
+)
+
+distribute_py_strict_test(
+    name = "tpu_util_test",
+    srcs = ["tpu_util_test.py"],
+    deps = [
+        ":tpu_util",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/tpu:tpu_replication",
     ],
 )
@@ -2692,6 +2705,15 @@ pytype_strict_library(
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
+tf_py_strict_test(
+    name = "load_context_test",
+    srcs = ["load_context_test.py"],
+    deps = [
+        ":load_context",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 py_library(
     name = "merge_call_interim",
     srcs = [
@@ -2718,5 +2740,45 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
+    ],
+)
+
+py_library(
+    name = "auto_strategy",
+    srcs = ["auto_strategy.py"],
+    strict_deps = True,
+    deps = [
+        ":collective_all_reduce_strategy",
+        ":distribute_lib",
+        ":mirrored_strategy",
+        ":one_device_strategy",
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+tf_py_strict_test(
+    name = "auto_strategy_test",
+    srcs = ["auto_strategy_test.py"],
+    deps = [
+        ":auto_strategy",
+        ":collective_all_reduce_strategy",
+        ":mirrored_strategy",
+        ":multi_process_runner",
+        ":multi_worker_test_base",
+        ":one_device_strategy",
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/tpu:tpu_strategy_util",
     ],
 )

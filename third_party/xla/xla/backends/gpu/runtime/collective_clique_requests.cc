@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 
+#include <algorithm>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -73,6 +74,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
     }
 
     if (requirements.barrier_reqs.has_value()) {
+      req.use_barrier_semaphores |=
+          requirements.barrier_reqs->use_barrier_semaphores;
       req.use_cross_device_barrier_requested |=
           requirements.barrier_reqs->use_cross_device_barrier;
     }
@@ -95,6 +98,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
   if (requirements.barrier_reqs.has_value()) {
     req.use_cross_device_barrier_requested |=
         requirements.barrier_reqs->use_cross_device_barrier;
+    req.use_barrier_semaphores |=
+        requirements.barrier_reqs->use_barrier_semaphores;
   }
 
   req.use_gxl_requested |= requirements.use_gxl;

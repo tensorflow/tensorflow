@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -93,8 +94,8 @@ class HloSharding {
   // specified by `tile_assignment`.
   static HloSharding Tile(TileAssignment tile_assignment,
                           absl::Span<const OpMetadata> metadata = {}) {
-    return HloSharding(tile_assignment, /*replicate_on_last_tile_dim=*/false,
-                       metadata);
+    return HloSharding(std::move(tile_assignment),
+                       /*replicate_on_last_tile_dim=*/false, metadata);
   }
   static HloSharding Tile(Array<int64_t> tile_assignment,
                           absl::Span<const OpMetadata> metadata = {}) {
@@ -140,9 +141,9 @@ class HloSharding {
   static HloSharding Subgroup(Array<int64_t> tile_assignment,
                               absl::Span<const OpSharding::Type> subgroup_types,
                               absl::Span<const OpMetadata> metadata = {}) {
-    return Subgroup(
-        TileAssignment(std::make_shared<const Array<int64_t>>(tile_assignment)),
-        subgroup_types, metadata);
+    return Subgroup(TileAssignment(std::make_shared<const Array<int64_t>>(
+                        std::move(tile_assignment))),
+                    subgroup_types, metadata);
   }
 
   // Creates a new sharding for a tuple type. The given ShapeTree must have
@@ -240,9 +241,10 @@ class HloSharding {
     if (!IsTuple()) {
       return IsSingleDeviceLeaf();
     }
-    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
-      return s.IsSingleDevice();
-    });
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+             return s.IsSingleDevice();
+           });
   }
   bool IsSingleDeviceLeaf() const {
     DCHECK(!IsTuple());
@@ -265,7 +267,8 @@ class HloSharding {
     if (!IsTuple()) {
       return IsManualLeaf();
     }
-    return absl::c_all_of(tuple_elements_,
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsManual(); });
   }
   bool IsManualLeaf() const {
@@ -281,7 +284,8 @@ class HloSharding {
     if (!IsTuple()) {
       return IsUnknownLeaf();
     }
-    return absl::c_all_of(tuple_elements_,
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsUnknown(); });
   }
   bool IsUnknownLeaf() const {
@@ -297,7 +301,8 @@ class HloSharding {
     if (!IsTuple()) {
       return IsUnreducedLeaf();
     }
-    return absl::c_all_of(tuple_elements_,
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsUnreduced(); });
   }
   bool IsUnreducedLeaf() const {
@@ -360,9 +365,10 @@ class HloSharding {
       }
       return absl::c_linear_search(subgroup_types_, OpSharding::MANUAL);
     }
-    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
-      return s.IsManualSubgroup();
-    });
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+             return s.IsManualSubgroup();
+           });
   }
 
   // Returns whether the sharding represents unreduced subgroup sharding.
@@ -373,9 +379,10 @@ class HloSharding {
       }
       return absl::c_linear_search(subgroup_types_, OpSharding::UNREDUCED);
     }
-    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
-      return s.IsUnreducedSubgroup();
-    });
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+             return s.IsUnreducedSubgroup();
+           });
   }
 
   // Returns true if the sharding has any subgroup that is not REPLICATED.
@@ -863,9 +870,8 @@ class HloSharding {
         named_sharding_(
             std::make_unique<NamedSharding>(std::move(named_sharding))) {}
 
- public:
   void ExtractReductionOpFromMetadata() {
-    for (const auto& md : metadata_) {
+    for (const OpMetadata& md : metadata_) {
       if (md.op_type() == "sdy::reduction_op") {
         if (md.op_name() == "MAX") {
           reduction_op_ = ReductionOp::kMax;

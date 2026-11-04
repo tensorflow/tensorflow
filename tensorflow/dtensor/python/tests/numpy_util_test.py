@@ -19,10 +19,17 @@ from unittest import mock
 import numpy as np
 
 # pylint: disable=g-direct-tensorflow-import
+from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.dtensor.python import numpy_util
 from tensorflow.dtensor.python.tests import test_util
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
+from tensorflow.python.framework import config as tf_config
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.platform import test as tf_test
 # pylint: enable=g-direct-tensorflow-import
 
@@ -124,6 +131,43 @@ class NumpyUtilTest(test_util.DTensorBaseTest):
     self.assertAllClose(
         numpy_util.unpacked_to_numpy(tensors, sharded_on_y_x),
         np.arange(16).reshape(4, 4))
+
+  def test_unpack_multi_axis_sharded_under_tf_function(self):
+    # `pack`/`unpack` the DTensor device op itself must run eagerly, so this
+    # exercises the traceable part of the previously-broken path: `_split`
+    # recursing over 2+ sharded axes with TF (not NumPy) `split_fn`/
+    # `stack_fn` under `tf.function` tracing.
+    sharded_layout = layout.Layout([_MESH_DIM_X, _MESH_DIM_Y], mesh=self.mesh)
+    val = constant_op.constant(
+        np.arange(16).reshape(4, 4), dtype=dtypes.float32
+    )
+
+    @polymorphic_function.function
+    def fn(x):
+      return numpy_util.unpack(
+          x,
+          sharded_layout,
+          split_fn=array_ops.split,
+          stack_fn=array_ops_stack.stack,
+      )
+
+    shards = fn(val)
+    self.assertAllClose(
+        numpy_util.unpacked_to_numpy(shards, sharded_layout), val
+    )
+
+  def test_pack_tf_tensor_multi_axis_sharded(self):
+    if len(tf_config.list_logical_devices(self.mesh.device_type())) < 4:
+      self.skipTest('Test requires at least 4 devices.')
+    sharded_layout = layout.Layout([_MESH_DIM_X, _MESH_DIM_Y], mesh=self.mesh)
+    val = constant_op.constant(
+        np.arange(16).reshape(4, 4), dtype=dtypes.float32
+    )
+
+    dtensor_out = numpy_util.pack_tf_tensor(val, sharded_layout)
+
+    self.assertEqual(api.fetch_layout(dtensor_out), sharded_layout)
+    self.assertAllClose(val, numpy_util.to_numpy(dtensor_out))
 
   def test_unpack_uneven_split_raises(self):
     value = np.arange(5)

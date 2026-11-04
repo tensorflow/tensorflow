@@ -1424,6 +1424,15 @@ func.func @quantized_op_floor(%arg0: tensor<!quant.uniform<i8:f32, 0.00391329082
 
 // -----
 
+// CHECK-LABEL: "op_fma"
+func.func @op_fma(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK: "mhlo.fma"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[ARG2:%arg[0-9]+]]) : (tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  %0 = "stablehlo.fma"(%arg0, %arg1, %arg2) : (tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+
+// -----
+
 // CHECK-LABEL: "op_gather"
 func.func @op_gather(%arg0: tensor<2x3x4x2xi32>, %arg1: tensor<2x2x3x2xi64>) -> tensor<2x2x3x2x2xi32> {
   //      CHECK: "mhlo.gather"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{
@@ -2798,6 +2807,24 @@ func.func @op_unary_einsum_deprecated(%arg0: tensor<8x16xf32>) -> tensor<8xf32> 
     einsum_config = "ab->a"
   } : (tensor<8x16xf32>) -> tensor<8xf32>
   func.return %0 : tensor<8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_exp2"
+func.func @op_exp2(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.exp2"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "stablehlo.exp2"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: "op_log2"
+func.func @op_log2(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "mhlo.log2"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>
+  %0 = "stablehlo.log2"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----

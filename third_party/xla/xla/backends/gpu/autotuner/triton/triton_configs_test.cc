@@ -37,10 +37,13 @@ TEST(TritonConfigsTest, PlatformsReturnNonEmptyConfig) {
               SizeIs(2));
   EXPECT_THAT(GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopper),
               SizeIs(25));
+  // 33 tuned configs + 20 mfma_size=16 variants.
   EXPECT_THAT(GetTritonConfigsForPlatform(TritonConfigsPlatform::kMI300),
-              SizeIs(33));
+              SizeIs(53));
   EXPECT_THAT(GetTritonConfigsForPlatform(TritonConfigsPlatform::kMI350),
               SizeIs(58));
+  EXPECT_THAT(GetTritonConfigsForPlatform(TritonConfigsPlatform::kRubin),
+              SizeIs(40));
 }
 
 TEST(TritonConfigsTest, GetDefaultTritonConfigsCuda) {
@@ -56,6 +59,15 @@ TEST(TritonConfigsTest, GetDefaultTritonConfigsCuda) {
                                          0};
   EXPECT_EQ(GetDefaultTritonConfigs(se::GpuComputeCapability{blackwell_cc}),
             GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell));
+
+  se::CudaComputeCapability rubin_cc = se::CudaComputeCapability::Rubin();
+  EXPECT_EQ(GetDefaultTritonConfigs(se::GpuComputeCapability{rubin_cc}),
+            GetTritonConfigsForPlatform(TritonConfigsPlatform::kRubin));
+
+  se::CudaComputeCapability blackwell_consumer_cc{12, 0};
+  EXPECT_EQ(
+      GetDefaultTritonConfigs(se::GpuComputeCapability{blackwell_consumer_cc}),
+      GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwellConsumer));
 
   se::CudaComputeCapability volta_cc{se::CudaComputeCapability::kVolta, 0};
   EXPECT_EQ(GetDefaultTritonConfigs(se::GpuComputeCapability{volta_cc}),

@@ -371,6 +371,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@tsl//tsl/platform:bfloat16",
         "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:ml_dtypes",
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/platform:protobuf",
@@ -398,6 +399,7 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@ml_dtypes_py//ml_dtypes:float8",
+        "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:ml_dtypes",
     ],
 )
@@ -615,6 +617,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -663,6 +666,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/hlo/testlib:test_helpers",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -830,6 +834,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/random:distributions",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -1379,6 +1384,29 @@ cc_library(
         ],
 )
 
+cc_library(
+    name = "debug_options_runtime_fields",
+    srcs = ["debug_options_runtime_fields.cc"],
+    hdrs = ["debug_options_runtime_fields.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":xla_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "debug_options_runtime_fields_test",
+    srcs = ["debug_options_runtime_fields_test.cc"],
+    deps = [
+        ":debug_options_runtime_fields",
+        ":xla_proto_cc",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 xla_cc_test(
     name = "debug_options_flags_test",
     srcs = ["debug_options_flags_test.cc"],
@@ -1535,6 +1563,7 @@ tf_proto_library(
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
     deps = [
+        "//xla/stream_executor/gpu:blas_lt_matmul_algorithm_proto",
         "//xla/tsl/protobuf:dnn_proto",
         "@com_google_protobuf//:any_proto",
         "@com_google_protobuf//:duration_proto",

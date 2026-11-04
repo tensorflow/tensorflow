@@ -357,6 +357,176 @@ class SwishGradOpTest(test.TestCase):
         atol=0.0,
     )
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishDoubleGradientPreservesNegativeExtreme(self):
+    features = constant_op.constant(-709.0, dtypes.float64)
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(features)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(features)
+        output = nn_impl.swish(features)
+      first_derivative = inner_tape.gradient(output, features)
+    second_derivative = self.evaluate(
+        outer_tape.gradient(first_derivative, features)
+    )
+
+    self.assertAllClose(
+        -8.614807714413834e-306,
+        self.evaluate(first_derivative),
+        rtol=1e-6,
+        atol=0.0,
+    )
+    self.assertAllClose(
+        -8.6026399069076e-306,
+        second_derivative,
+        rtol=1e-6,
+        atol=0.0,
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishDoubleGradientLargePositiveDoesNotNaN(self):
+    # For large positive logits (e.g. 1500.0), exp(logits / 2) would overflow
+    # to inf if unselected branches in the backward pass are not guarded,
+    # causing NaN propagation.
+    features = constant_op.constant(1500.0, dtypes.float64)
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(features)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(features)
+        output = nn_impl.swish(features)
+      first_derivative = inner_tape.gradient(output, features)
+    second_derivative = self.evaluate(
+        outer_tape.gradient(first_derivative, features)
+    )
+
+    self.assertFalse(np.isnan(self.evaluate(first_derivative)))
+    self.assertFalse(np.isnan(second_derivative))
+    self.assertEqual(0.0, second_derivative)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishBetaGradientPreservesNegativeExtreme(self):
+    features = constant_op.constant(-709.0, dtypes.float64)
+    beta = constant_op.constant(1.0, dtypes.float64)
+    with backprop.GradientTape() as tape:
+      tape.watch(beta)
+      output = nn_impl.swish(features, beta=beta)
+    beta_grad = self.evaluate(tape.gradient(output, beta))
+
+    self.assertAllClose(
+        6.116525645041329e-303,
+        beta_grad,
+        rtol=1e-6,
+        atol=0.0,
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishDoubleGradientMixedTensor(self):
+    features = constant_op.constant(
+        [-709.0, -500.0, -1.0, 0.0, 1.0, 1500.0], dtype=dtypes.float64
+    )
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(features)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(features)
+        output = nn_impl.swish(features)
+      first_derivative = inner_tape.gradient(output, features)
+    second_derivative = self.evaluate(
+        outer_tape.gradient(first_derivative, features)
+    )
+    first_derivative = self.evaluate(first_derivative)
+    self.assertFalse(np.any(np.isnan(first_derivative)))
+    self.assertFalse(np.any(np.isnan(second_derivative)))
+
+    expected_first = [
+        -8.614807714413834e-306,
+        -3.5551636269639015e-215,
+        7.232948812851327e-2,
+        0.5,
+        0.9276705118714867,
+        1.0,
+    ]
+    expected_second = [
+        -8.6026399069076e-306,
+        -3.54803905055716e-215,
+        0.3023661188100153,
+        0.5,
+        0.3023661188100153,
+        0.0,
+    ]
+    self.assertAllClose(expected_first, first_derivative, rtol=1e-6, atol=0.0)
+    self.assertAllClose(expected_second, second_derivative, rtol=1e-6, atol=0.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishThirdDerivativePreservesNegativeExtreme(self):
+    features = constant_op.constant(-709.0, dtypes.float64)
+    with backprop.GradientTape() as t3:
+      t3.watch(features)
+      with backprop.GradientTape() as t2:
+        t2.watch(features)
+        with backprop.GradientTape() as t1:
+          t1.watch(features)
+          output = nn_impl.swish(features)
+        first_derivative = t1.gradient(output, features)
+      second_derivative = t2.gradient(first_derivative, features)
+    third_derivative = self.evaluate(t3.gradient(second_derivative, features))
+
+    self.assertAllClose(
+        -8.590472099401366e-306,
+        third_derivative,
+        rtol=1e-6,
+        atol=0.0,
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishContinuityAroundNegativeBoundary(self):
+    delta = 1e-6
+    features = constant_op.constant(
+        [-500.0 - delta, -500.0 + delta], dtype=dtypes.float64
+    )
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(features)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(features)
+        output = nn_impl.swish(features)
+      first_derivative = inner_tape.gradient(output, features)
+    second_derivative = self.evaluate(
+        outer_tape.gradient(first_derivative, features)
+    )
+    first_derivative = self.evaluate(first_derivative)
+
+    self.assertAllClose(
+        first_derivative[0], first_derivative[1], rtol=1e-5, atol=0.0
+    )
+    self.assertAllClose(
+        second_derivative[0], second_derivative[1], rtol=1e-5, atol=0.0
+    )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSwishEmptyFloat64(self):
+    features = constant_op.constant([], dtype=dtypes.float64)
+    beta = constant_op.constant(1.0, dtype=dtypes.float64)
+    with backprop.GradientTape() as outer_tape:
+      outer_tape.watch(features)
+      with backprop.GradientTape() as inner_tape:
+        inner_tape.watch(features)
+        output = nn_impl.swish(features, beta=beta)
+      first_derivative = inner_tape.gradient(output, features)
+    second_derivative = self.evaluate(
+        outer_tape.gradient(first_derivative, features)
+    )
+    output = self.evaluate(output)
+    first_derivative = self.evaluate(first_derivative)
+
+    with backprop.GradientTape() as beta_tape:
+      beta_tape.watch(beta)
+      output_beta = nn_impl.swish(features, beta=beta)
+    beta_grad = self.evaluate(beta_tape.gradient(output_beta, beta))
+
+    self.assertEqual((0,), output.shape)
+    self.assertEqual((0,), first_derivative.shape)
+    self.assertEqual((0,), second_derivative.shape)
+    self.assertEqual(0.0, beta_grad)
+
 
 class SoftmaxVJPFloat64InvarianceTest(test.TestCase):
   """Regression tests for GitHub issue #126525.

@@ -325,6 +325,8 @@ CUptiResult CuptiErrorManager::Subscribe(CUpti_SubscriberHandle* subscriber,
     auto f = std::bind(&CuptiErrorManager::Unsubscribe, this, *subscriber);
     RegisterUndoFunction(f);
   }
+  ALLOW_ERROR(error, CUPTI_ERROR_MAX_LIMIT_REACHED);
+  ALLOW_ERROR(error, CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED);
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -340,6 +342,12 @@ CUptiResult CuptiErrorManager::SubscribeV2(CUpti_SubscriberHandle* subscriber,
     RegisterUndoFunction(f);
   }
   // Optional V2 subscriber path unavailable; callers can fall back to V1.
+  // Note: CuptiWrapper::SubscribeV2 maps
+  // CUPTI_ERROR_MULTIPLE_SUBSCRIBERS_NOT_SUPPORTED (39) to
+  // CUPTI_ERROR_NOT_SUPPORTED because static CUPTI (libcupti_static.a) rejects
+  // allowMultipleSubscribers=1 with error 39 even when no external subscriber
+  // is active (cupti_callbacks.h); external subscriber conflicts are then
+  // detected by the V1 CuptiErrorManager::Subscribe fallback.
   ALLOW_ERROR(error, CUPTI_ERROR_NOT_SUPPORTED);
   ALLOW_ERROR(error, CUPTI_ERROR_NOT_COMPATIBLE);
   ALLOW_ERROR(error, CUPTI_ERROR_UNKNOWN);

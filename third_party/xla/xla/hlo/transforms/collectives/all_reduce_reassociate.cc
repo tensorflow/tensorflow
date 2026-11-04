@@ -55,17 +55,12 @@ bool AreAllreduceKeysEqual(AllReduceKey& key0, AllReduceKey& key1,
     return std::get<0>(key0) == std::get<0>(key1) &&
            std::get<2>(key0) == std::get<2>(key1) &&
            std::get<3>(key0) == std::get<3>(key1) &&
-           std::get<4>(key0) == std::get<4>(key1) &&
-           std::get<5>(key0) == std::get<5>(key1);
+           std::get<4>(key0) == std::get<4>(key1);
   } else {
     return key0 == key1;
   }
 }
 // Returns if the given all reduce instructions are compatible with each other.
-// Note that since the given all-reduce instructions are connected to another
-// instruction by a direct data flow edge, they must belong to the same domain.
-// As a result, we don't need to include any domain information in the
-// AllReduceKey to check compatibility.
 bool AreCompatible(const HloAllReduceInstruction* ar0,
                    const HloAllReduceInstruction* ar1, ReductionKind op_kind,
                    bool ignore_element_type) {

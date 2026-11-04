@@ -57,6 +57,10 @@ message SparseCoreTableLayout {
   // The key used to look up the shared FDO config for this table.
   string fdo_key = 12;
 
+  // The non-abbreviated key used to look up the shared FDO config for this
+  // table in Spanner.
+  string spanner_fdo_key = 13;
+
   // The name of the stack it wound up in. The sparse core python library uses
   // this name as a variable name.
   string stacked_table_name = 2;

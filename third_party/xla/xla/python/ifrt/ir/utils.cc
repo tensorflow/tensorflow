@@ -15,35 +15,297 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/utils.h"
 
-#include <cstdint>
-#include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
+#include "absl/log/check.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "xla/hlo/builder/xla_computation.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/translate/stablehlo.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/mlir/utils/type_util.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/hlo/hlo_program.h"
-#include "xla/python/ifrt/ir/constants.h"
-#include "xla/python/ifrt/memory.h"
-#include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/shape.h"
+#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/support/module_parsing.h"
+#include "xla/python/ifrt/ir/support/sharding_conversions.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
+
+namespace {
+
+// Finds a nested call site location in the given location.
+std::optional<mlir::CallSiteLoc> GetCallSiteLoc(mlir::Location loc) {
+  if (mlir::dyn_cast<mlir::NameLoc>(loc)) {
+    return GetCallSiteLoc(mlir::cast<mlir::NameLoc>(loc).getChildLoc());
+  }
+  if (auto callLoc = mlir::dyn_cast<mlir::CallSiteLoc>(loc)) {
+    return callLoc;
+  }
+  if (mlir::dyn_cast<mlir::FusedLoc>(loc)) {
+    for (auto subLoc : mlir::cast<mlir::FusedLoc>(loc).getLocations()) {
+      // If fused return the first call site location.
+      if (auto callLoc = GetCallSiteLoc(subLoc)) {
+        return callLoc;
+      }
+    }
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+void PrintFileLoc(mlir::FileLineColLoc file_loc,
+                  llvm::raw_string_ostream& loc_stream) {
+  if (file_loc.getFilename().str() != "-") {
+    loc_stream << file_loc.getFilename();
+  } else {
+    // The location printed is from the MLIR module.
+    loc_stream << "mlir";
+  }
+  loc_stream << ":" << file_loc.getLine() << ":" << file_loc.getStartColumn()
+             << " to " << file_loc.getEndColumn() << "\n";
+}
+
+// Recurses into the child locations of some of location types to find a nested
+// file location and prints info if it is found. Returns true if a file location
+// is found.
+bool RecursivelyPrintLoc(mlir::Location loc,
+                         llvm::raw_string_ostream& loc_stream) {
+  return llvm::TypeSwitch<mlir::LocationAttr, bool>(loc)
+      .Case([&](mlir::CallSiteLoc call_loc) -> bool {
+        // We recurse into the callee of a call site, as the caller will be
+        // emitted in a different note on the main diagnostic.
+        return RecursivelyPrintLoc(call_loc.getCallee(), loc_stream);
+      })
+      .Case([&](mlir::FileLineColLoc file_loc) -> bool {
+        PrintFileLoc(file_loc, loc_stream);
+        return true;
+      })
+      .Case([&](mlir::FusedLoc fused_loc) -> bool {
+        // Fused location is unique in that we try to find a sub-location to
+        // show, rather than the top-level location itself.
+        for (mlir::Location childLoc : fused_loc.getLocations()) {
+          if (RecursivelyPrintLoc(childLoc, loc_stream)) {
+            return true;
+          }
+        }
+        return false;
+      })
+      .Case([&](mlir::NameLoc name_loc) -> bool {
+        if (RecursivelyPrintLoc(name_loc.getChildLoc(), loc_stream)) {
+          if (!name_loc.getName().empty()) {
+            loc_stream << "\t ^ " << name_loc.getName() << "\n";
+          }
+          return true;
+        }
+        if (!name_loc.getName().empty()) {
+          loc_stream << name_loc.getName() << "\n";
+          return true;
+        }
+        return false;
+      })
+      .Case([&](mlir::OpaqueLoc opaque_loc) -> bool {
+        // OpaqueLoc always falls back to a different source location.
+        return RecursivelyPrintLoc(opaque_loc.getFallbackLocation(),
+                                   loc_stream);
+      })
+      .Case([](mlir::UnknownLoc) -> bool {
+        // Prefer not to show unknown locations.
+        return false;
+      });
+}
+
+void GetPrettyLocation(mlir::Location loc,
+                       llvm::raw_string_ostream& loc_stream) {
+  loc_stream << "\t";
+  if (mlir::isa<mlir::UnknownLoc>(loc)) {
+    loc_stream << "<unknown location>\n";
+    return;
+  }
+  if (std::optional<mlir::CallSiteLoc> call_loc = GetCallSiteLoc(loc)) {
+    // Print the file location from the current loc.
+    RecursivelyPrintLoc(loc, loc_stream);
+    // Print the file locations of the callers.
+    GetPrettyLocation(call_loc->getCaller(), loc_stream);
+  } else if (!RecursivelyPrintLoc(loc, loc_stream)) {
+    loc_stream << "<unknown location>\n";
+  }
+}
+
+}  // namespace
+
+std::string GetPrettyLocation(mlir::Location loc) {
+  std::string loc_str;
+  llvm::raw_string_ostream loc_stream(loc_str);
+  GetPrettyLocation(loc, loc_stream);
+  if (loc_str.empty()) {
+    return "\t<unknown location>";
+  }
+  return loc_str;
+}
+
+std::string GetArgPrettyLocation(int index, mlir::ModuleOp module) {
+  mlir::func::FuncOp func = GetMainFunction(module);
+  CHECK_GE(index, 0);
+  CHECK_LT(index, func.getNumArguments());
+  return GetPrettyLocation(func.getArgument(index).getLoc());
+}
+
+unsigned IfrtCallOpInfo::getHashValue(CallOp call_op) {
+  llvm::hash_code hash = {};
+  // Use `getInputs()/getOutputs()` instead of `getOperands()/getResults()` to
+  // ensure that the control dependencies are not included in the hash.
+  for (auto input_type : call_op.getInputs().getTypes()) {
+    hash = llvm::hash_combine(hash, input_type);
+  }
+  for (auto output_type : call_op.getOutputs().getTypes()) {
+    hash = llvm::hash_combine(hash, output_type);
+  }
+  for (mlir::NamedAttribute attr : call_op->getAttrs()) {
+    // Exclude `operandSegmentSizes` because its value changes depending on
+    // how many control dependencies a CallOp has.
+    if (attr.getName() == "operandSegmentSizes") {
+      continue;
+    }
+    hash = llvm::hash_combine(hash, attr);
+  }
+  return hash;
+}
+
+bool IfrtCallOpInfo::isEqual(CallOp lhs, CallOp rhs) {
+  if (lhs == rhs) {
+    return true;
+  }
+  // Verify that the input and output types are the same.
+  if (lhs.getInputs().getTypes() != rhs.getInputs().getTypes()) {
+    return false;
+  }
+  if (lhs.getOutputs().getTypes() != rhs.getOutputs().getTypes()) {
+    return false;
+  }
+  mlir::NamedAttrList lattrs = lhs->getAttrDictionary();
+  mlir::NamedAttrList rattrs = rhs->getAttrDictionary();
+  lattrs.erase("operandSegmentSizes");
+  rattrs.erase("operandSegmentSizes");
+  // Verify that the attributes are the same.
+  return lattrs == rattrs;
+}
+
+mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module) {
+  mlir::func::FuncOp func =
+      mlir::dyn_cast_or_null<mlir::func::FuncOp>(module.lookupSymbol("main"));
+  CHECK(func);
+  return func;
+}
+
+bool IsReshard(IfrtArrayType from, IfrtArrayType to) {
+  if (from.getShape() == to.getShape() &&
+      from.getShardingAttr() == to.getShardingAttr() &&
+      from.getDevices().size() == to.getDevices().size()) {
+    return false;
+  }
+  return true;
+}
+
+absl::StatusOr<DType> ToIfrtDType(mlir::Type type) {
+  if (llvm::isa<IfrtTokenType>(type)) {
+    return ToDType(xla::PrimitiveType::TOKEN);
+  }
+  if (llvm::isa<IfrtStringType>(type)) {
+    return DType(DType::kString);
+  }
+  xla::PrimitiveType primitive_type = xla::ConvertMlirTypeToPrimitiveType(type);
+  return ToDType(primitive_type);
+}
+
+std::string OperationToString(mlir::Operation* op,
+                              const mlir::OpPrintingFlags& flags) {
+  std::string out;
+  {
+    llvm::raw_string_ostream os(out);
+    op->print(os, flags);
+  }
+  return out;
+}
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CloneModuleIntoContext(
+    mlir::ModuleOp module, mlir::MLIRContext& context) {
+  std::string bytecode;
+  llvm::raw_string_ostream os(bytecode);
+  TF_RET_CHECK(mlir::succeeded(mlir::writeBytecodeToFile(module, os)));
+  return support::ParseMlirModuleString(bytecode, context);
+}
+
+absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
+    const IfrtArrayType array_type, Client* client,
+    const DeviceListRef& device_list) {
+  DeviceListRef array_device_list;
+  {
+    std::vector<Device*> array_devices;
+    array_devices.reserve(array_type.getDevices().size());
+    absl::Span<Device* const> devices = device_list->devices();
+    for (int logical_id : array_type.getDevices()) {
+      TF_RET_CHECK(devices[logical_id] != nullptr);
+      array_devices.push_back(devices[logical_id]);
+    }
+    ABSL_ASSIGN_OR_RETURN(array_device_list,
+                     client->MakeDeviceList(std::move(array_devices)));
+  }
+
+  IfrtShardingParamAttr sharding_attr = GetShardingParamAttr(array_type);
+
+  ABSL_ASSIGN_OR_RETURN(
+      xla::HloSharding hlo_sharding,
+      xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
+  return xla::ifrt::HloSharding::Create(std::move(array_device_list),
+                                        array_type.MemoryKind(),
+                                        std::move(hlo_sharding));
+}
+
+absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
+    mlir::Type array_type, Client* client, const DeviceListRef& device_list) {
+  IfrtArrayType ifrt_array_type = GetArrayType(array_type);
+
+  ABSL_ASSIGN_OR_RETURN(DType dtype,
+                   ToIfrtDType(ifrt_array_type.getShape().getElementType()));
+
+  ABSL_ASSIGN_OR_RETURN(
+      ShardingRef sharding,
+      ShardingFromIfrtArrayType(ifrt_array_type, client, device_list));
+  return ArraySpec{
+      /*dtype=*/dtype,
+      /*shape=*/Shape(ifrt_array_type.getShape().getShape()),
+      /*sharding=*/std::move(sharding),
+  };
+}
 
 // Returns a DeviceList for the given device ids.
 absl::StatusOr<DeviceListRef> LookUpDevices(Client* client,
@@ -54,61 +316,6 @@ absl::StatusOr<DeviceListRef> LookUpDevices(Client* client,
     ABSL_ASSIGN_OR_RETURN(devices.emplace_back(), client->LookupDevice(id));
   }
   return client->MakeDeviceList(devices);
-}
-
-absl::StatusOr<std::unique_ptr<HloProgram>> XlaComputationToHloProgram(
-    const xla::XlaComputation& xla_computation,
-    absl::Span<const int64_t> donated_input_indices,
-    absl::Span<const MemoryKind> arg_memory_kinds,
-    absl::Span<const MemoryKind> result_memory_kinds) {
-  const xla::HloModuleProto& hlo_module_proto = xla_computation.proto();
-  ABSL_ASSIGN_OR_RETURN(
-      auto host_program_shape,
-      xla::ProgramShape::FromProto(hlo_module_proto.host_program_shape()));
-  const xla::HloModuleConfig hlo_module_config(host_program_shape,
-                                               /*ignore_layouts=*/false);
-  ABSL_ASSIGN_OR_RETURN(
-      const auto hlo_module,
-      xla::HloModule::CreateFromProto(hlo_module_proto, hlo_module_config));
-
-  auto mlir_context = std::make_unique<mlir::MLIRContext>();
-  ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
-                   xla::ConvertHloToStablehlo(*mlir_context, hlo_module.get()));
-  auto program = std::make_unique<HloProgram>(std::move(mlir_context),
-                                              std::move(mlir_module));
-
-  mlir::func::FuncOp main =
-      program->mlir_module().lookupSymbol<mlir::func::FuncOp>("main");
-  if (main == nullptr) {
-    return absl::InvalidArgumentError("module has no 'main' function");
-  }
-  // TODO(b/390732473): We should always donate inputs. If an input cannot be
-  // donated at runtime, the execution can use `non_donatable_input_indices` to
-  // create a copy of device buffers on the fly. However, several runtimes
-  // ignore `non_donatable_input_indices`, so we need to be conservative at
-  // input donation.
-  for (int64_t idx : donated_input_indices) {
-    main.setArgAttr(
-        idx, kBufferDonationAttrName,
-        mlir::BoolAttr::get(program->mlir_module()->getContext(), true));
-  }
-  for (int64_t idx = 0; idx < arg_memory_kinds.size(); ++idx) {
-    if (!arg_memory_kinds[idx].is_default()) {
-      main.setArgAttr(
-          idx, kHloMemoryKindAttrName,
-          mlir::StringAttr::get(program->mlir_module()->getContext(),
-                                arg_memory_kinds[idx].value()));
-    }
-  }
-  for (int64_t idx = 0; idx < result_memory_kinds.size(); ++idx) {
-    if (!result_memory_kinds[idx].is_default()) {
-      main.setResultAttr(
-          idx, kHloMemoryKindAttrName,
-          mlir::StringAttr::get(program->mlir_module()->getContext(),
-                                result_memory_kinds[idx].value()));
-    }
-  }
-  return program;
 }
 
 }  // namespace ifrt

@@ -41,6 +41,12 @@ namespace mhlo {
 /// options specify the ops that are supported by all XLA backends.
 ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions();
 
+/// Returns options for the ChloLegalizeToHighLevelMhloPass for the CPU backend.
+ChloLegalizeToHighLevelMhloPassOptions getCpuChloToHighLevelMhloOptions();
+
+/// Returns options for the ChloLegalizeToHighLevelMhloPass for the TPU backend.
+ChloLegalizeToHighLevelMhloPassOptions getTpuChloToHighLevelMhloOptions();
+
 /// Returns options for the ChloLegalizeToHighLevelMhloPass for the GPU backend.
 ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions();
 

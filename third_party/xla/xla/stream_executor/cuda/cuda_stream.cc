@@ -140,7 +140,9 @@ bool IsFabricMemory(CUdeviceptr ptr) {
   if (ptr == 0) {
     return false;
   }
-  unsigned int handle_types = 0;
+  // The driver writes CU_POINTER_ATTRIBUTE_ALLOWED_HANDLE_TYPES as a 64-bit
+  // value, so a narrower variable leads to a stack buffer overflow.
+  uint64_t handle_types = 0;
   CUresult result = cuPointerGetAttribute(
       &handle_types, CU_POINTER_ATTRIBUTE_ALLOWED_HANDLE_TYPES, ptr);
   return result == CUDA_SUCCESS &&

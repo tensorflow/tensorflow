@@ -21,7 +21,7 @@ namespace tensorflow {
 
 class DualLossUpdater {
  public:
-  virtual ~DualLossUpdater() {}
+  virtual ~DualLossUpdater() = default;
 
   // Compute update dual (alpha), based on a single example. Various strategies
   // can be employed here, like newton step and/or line search or approximate

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/backends/gpu/transforms/composite_rewriter.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_compiler.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/test_utils.h"
@@ -87,20 +87,17 @@ class CudnnScaledDotTestBase
     debug_options.add_xla_gpu_experimental_autotune_backends(
         autotuner::Backend::CUDNN);
     debug_options.add_xla_gpu_experimental_autotune_backends(
+        autotuner::Backend::CUDNN_FISSION);
+    debug_options.add_xla_gpu_experimental_autotune_backends(
         autotuner::Backend::CUBLASLT);
+    debug_options.add_xla_gpu_experimental_autotune_backends(
+        autotuner::Backend::CUBLASLT_FISSION);
     debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(false);
     return debug_options;
   }
 
   se::CudaComputeCapability get_cuda_cc() const {
     return device_description().cuda_compute_capability();
-  }
-
-  bool IsAtLeastBlackwellWithCuDnn9() const {
-    return get_cuda_cc().IsAtLeastBlackwell() &&
-           gpu_target_config()
-                   .device_description.dnn_version()
-                   .major_version() >= 9;
   }
 
   absl::Status PopulateScale(Literal* scale, std::minstd_rand0* engine) {
@@ -222,7 +219,7 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
       {F8E5M2, F8E4M3FN, F8E8M0FNU, 32, true, true,
        CuDnnSupportResult::kSupported},
 
-      // 5. MXFP8 E5M2 x E5M2 (scale E8M0FNU, block 32) - unsupported by cuDNN
+      // 5. MXFP8 E5M2 x E5M2 (scale E8M0FNU, block 32)
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, false, false,
        CuDnnSupportResult::kNotSupported},
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, false, true,
@@ -230,7 +227,7 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, true, false,
        CuDnnSupportResult::kNotSupported},
       {F8E5M2, F8E5M2, F8E8M0FNU, 32, true, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
 
       // 6. E5M2 x F4E2M1FN (scale E8M0FNU, block 32)
       {F8E5M2, F4E2M1FN, F8E8M0FNU, 32, false, false,
@@ -270,7 +267,7 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 32, true, false,
        CuDnnSupportResult::kNotSupported},
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 32, true, true,
-       CuDnnSupportResult::kNotSupported},
+       CuDnnSupportResult::kSupported},
 
       // 10. F4E2M1FN x F4E2M1FN (scale E8M0FNU, block 16)
       {F4E2M1FN, F4E2M1FN, F8E8M0FNU, 16, false, false,
@@ -290,7 +287,7 @@ std::vector<ScaledDotCoverageTestCase> GetCoverageTestCases() {
       {F4E2M1FN, F4E2M1FN, F8E4M3FN, 16, true, false,
        CuDnnSupportResult::kNotSupported},
       {F4E2M1FN, F4E2M1FN, F8E4M3FN, 16, true, true,
-       CuDnnSupportResult::kFailed},
+       CuDnnSupportResult::kSupported},
   };
 }
 
@@ -463,14 +460,14 @@ ENTRY %main {
 
   // 3. Stage: cuDNN Graph
   std::string cudnn_graph_pattern = "N/A";
-  if (custom_call_or_fusion != nullptr && IsAtLeastBlackwellWithCuDnn9() &&
+  if (custom_call_or_fusion != nullptr &&
+      CudnnScaledDotHelper::IsAvailable(device_description()) &&
       optimized_hlo != "dot" && optimized_module_or.ok()) {
     HloModule& optimized_module = **optimized_module_or;
     if (custom_call_or_fusion->opcode() == HloOpcode::kFusion) {
       BinaryMap compilation_results;
-      CuDnnFusionCompiler cudnn_compiler(stream_executor()->AsDnn(),
-                                         device_description(),
-                                         compilation_results);
+      CuDnnFusionCompiler cudnn_compiler(
+          stream_executor(), device_description(), compilation_results);
       auto cloned = optimized_module.Clone();
       auto res = cudnn_compiler.Run(cloned.get());
       if (res.ok()) {
@@ -480,9 +477,8 @@ ENTRY %main {
       }
     } else if (custom_call_or_fusion->opcode() == HloOpcode::kCustomCall) {
       BinaryMap compilation_results;
-      CuDnnCustomCallCompiler custom_call_compiler(stream_executor()->AsDnn(),
-                                                   device_description(),
-                                                   compilation_results);
+      CuDnnCustomCallCompiler custom_call_compiler(
+          stream_executor(), device_description(), compilation_results);
       auto cloned = optimized_module.Clone();
       auto res = custom_call_compiler.Run(cloned.get());
       if (res.ok() && !compilation_results.empty()) {
@@ -495,9 +491,8 @@ ENTRY %main {
 
   // 4. Stage: Execution Status
   std::string status = "FAILURE";
-  if (!IsAtLeastBlackwellWithCuDnn9()) {
-    GTEST_SKIP()
-        << "Block scaled dot cuDNN execution requires Blackwell and cuDNN 9+.";
+  if (!CudnnScaledDotHelper::IsAvailable(device_description())) {
+    GTEST_SKIP() << "cuDNN scaled dot requires Blackwell and cuDNN 9.10+.";
   }
   if (optimized_module_or.ok()) {
     auto ref_module_or = ParseAndReturnVerifiedModule(composite_hlo);
@@ -510,9 +505,16 @@ ENTRY %main {
         auto ref_optimized_or =
             GetOptimizedModule((*ref_module_or)->ToString());
         if (ref_optimized_or.ok()) {
+          auto args_or = MakeScaledDotArguments(optimized_module_or->get());
+          CHECK_OK(args_or.status());
+          std::vector<const Literal*> arg_ptrs;
+          arg_ptrs.reserve(args_or->size());
+          for (const Literal& arg : *args_or) {
+            arg_ptrs.push_back(&arg);
+          }
           auto run_result = RunAndCompareTwoModules(
               std::move(*optimized_module_or), std::move(*ref_optimized_or),
-              ErrorSpec{/*aabs=*/0.02, /*arel=*/0.05},
+              arg_ptrs, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-5},
               /*run_hlo_passes=*/false);
           status = run_result ? "SUCCESS" : "FAILURE";
           if (!run_result) {

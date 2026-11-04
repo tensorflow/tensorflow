@@ -1,7 +1,10 @@
 load(
+    "@config_rocm_hipcc//rocm:build_defs.bzl",
+    "rocm_library",
+)
+load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
-    "rocm_library",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
@@ -316,7 +319,6 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",  # fixdeps: keep
-        "@tsl//tsl/platform:casts",
     ] + if_cuda_or_rocm_is_configured([
         ":nccl_or_rccl_collectives",
     ]),
@@ -344,7 +346,6 @@ cc_library(
         "//xla/runtime:process_id",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_interconnect_resource",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base",
@@ -433,7 +434,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",  # buildcleaner: keep
     ] + if_cuda_or_rocm_is_configured([
-        ":nccl_or_rccl_collectives",
+        ":nccl_or_rccl_collectives",  # buildcleaner: keep
     ]) + if_rocm_is_configured([
         ":mori_collectives",
     ]),
@@ -461,10 +462,14 @@ xla_test(
         ":gpu_collectives",
         ":gpu_communicator",
         ":nccl_or_rccl_collectives",  # buildcleaner: keep
+        "//xla:debug_options_flags",
         "//xla:future",
         "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
+        "//xla/core/collectives:symmetric_memory",
         "//xla/runtime:device_id",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -473,13 +478,26 @@ xla_test(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_platform",  # buildcleaner: keep
         "//xla/tsl/concurrency:executor",
+        "//xla/tsl/cuda",  # buildcleaner: keep
+        "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:env",
+        "//xla/tsl/util:tied_ref",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",  # buildcleaner: keep
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )
 
@@ -497,6 +515,7 @@ cc_library(
         "//xla/core/collectives:registered_memory",
         "//xla/core/collectives:symmetric_memory",
         "//xla/ffi/api:c_api",
+        "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:memory_allocation",
@@ -507,6 +526,57 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "mock_gpu_communicator",
+    testonly = True,
+    hdrs = ["mock_gpu_communicator.h"],
+    deps = [
+        ":gpu_communicator",
+        ":gxl_communicator",
+        "//xla:future",
+        "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/core/collectives:registered_memory",
+        "//xla/core/collectives:symmetric_memory",
+        "//xla/ffi/api:c_api",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel_args",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/tsl/util:tied_ref",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+cc_library(
+    name = "mock_gpu_collectives",
+    testonly = True,
+    hdrs = ["mock_gpu_collectives.h"],
+    deps = [
+        ":cancellation_token",
+        ":gpu_collectives",
+        ":gpu_communicator",
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_for_library",
     ],
 )
 
@@ -996,7 +1066,13 @@ cc_library(
     tags = [
         "gpu",
         "oneapi-only",
-    ],
+    ] + if_google([
+        # TODO(b/456585142): Currently we don't support building the SYCL backend.
+        "manual",
+        "nobuilder",
+        "nofixdeps",
+        "notap",
+    ]),
     visibility = ["//visibility:private"],
     deps = [
         "//xla:util",
@@ -1015,7 +1091,13 @@ cc_library(
     tags = [
         "gpu",
         "oneapi-only",
-    ],
+    ] + if_google([
+        # TODO(b/456585142): Currently we don't support building the SYCL backend.
+        "manual",
+        "nobuilder",
+        "nofixdeps",
+        "notap",
+    ]),
     visibility = ["//visibility:private"],
     deps = [
         ":gpu_clique_key",
@@ -1055,7 +1137,13 @@ cc_library(
     tags = [
         "gpu",
         "oneapi-only",
-    ],
+    ] + if_google([
+        # TODO(b/456585142): Currently we don't support building the SYCL backend.
+        "manual",
+        "nobuilder",
+        "nofixdeps",
+        "notap",
+    ]),
     visibility = ["//visibility:private"],
     deps = [
         ":gpu_collectives",
@@ -1117,11 +1205,13 @@ cc_library(
         "//xla/core/collectives:registered_memory",
         "//xla/core/collectives:symmetric_memory",
         "//xla/ffi/api:c_api",
+        "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
         "//xla/tsl/concurrency:executor",
         "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:env",
@@ -1276,10 +1366,6 @@ rocm_library(
     ],
     hdrs = ["mori_kernels.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    copts = [
-        "-DBUILD_CCO_SDMA=1",
-    ],
-    linkstatic = True,
     tags = [
         "gpu",
         "no-oneapi",

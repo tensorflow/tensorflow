@@ -4503,19 +4503,21 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         mlir::dyn_cast<RankedTensorType>(op.getUpdates().getType());
 
     if (!tensor_ty || !indices_ty || !updates_ty) return failure();
+    if (tensor_ty.getRank() < 1 || indices_ty.getRank() < 1) return failure();
     // Last dimension of the indices needs to known at compile time for
     // computation of the 'update_window_dims' attribute in the dimensions
     // struct.
     int64_t num_index_dims = indices_ty.getShape().back();
-    if (ShapedType::isDynamic(num_index_dims)) return failure();
+    if (ShapedType::isDynamic(num_index_dims) || num_index_dims < 1 ||
+        num_index_dims > tensor_ty.getRank()) {
+      return failure();
+    }
 
     auto updates = op.getUpdates();
 
     // Broadcast scalar `updates` in into expected shape as following shape:
     // updates.shape == indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
-    if (updates_ty.getRank() == 0 &&
-        (std::is_same_v<OpTy, TF::TensorScatterUpdateOp> ||
-         std::is_same_v<OpTy, TF::TensorScatterAddOp>)) {
+    if (updates_ty.getRank() == 0) {
       if (!tensor_ty.hasStaticShape()) {
         return failure();
       }
@@ -4561,6 +4563,8 @@ class ConvertTensorScatterOp : public OpRewritePattern<OpTy> {
         mlir::dyn_cast<RankedTensorType>(updates.getType()).getRank();
 
     int64_t window_dims = tensor_rank - num_index_dims;
+    if (window_dims < 0 || updates_rank < window_dims) return failure();
+
     auto dims_attr = stablehlo::ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
         llvm::to_vector<4>(

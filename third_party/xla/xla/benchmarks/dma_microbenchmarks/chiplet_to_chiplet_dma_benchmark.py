@@ -82,7 +82,7 @@ class ChipletToChipletBenchmarks(memory_base.MemoryBenchmarks):
           dst_ref=output_ref,
           send_sem=send_sem,
           recv_sem=recv_sem,
-          device_id=(1,),
+          device_id={"chiplets": 1},
       )
 
       @pl.when(chiplet_id == 0)

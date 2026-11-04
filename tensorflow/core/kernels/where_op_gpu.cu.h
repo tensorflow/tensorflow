@@ -43,7 +43,7 @@ __global__ void PropagateWhereIndicesKernel(
   // TODO(ebrevdo): Use a multi-dimensional loop, increasing the
   // dimensions of individual indices manually, instead of relying on
   // a scalar loop variable and using integer division.
-  GPU_1D_KERNEL_LOOP(i, output_rows) {
+  for (int64_t i : GpuGridRangeX<int64_t>(output_rows)) {
     TIndex index_value = ldg(output + NDIM * i);
 #pragma unroll
     for (int c = 0; c < NDIM; ++c) {
@@ -67,7 +67,7 @@ struct IsNonzero {
 template <typename T, typename TIndex>
 struct CubDeviceReduceCount {
   gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
-                        const T* d_in, TIndex* d_out, int num_items,
+                        const T* d_in, TIndex* d_out, TIndex num_items,
                         gpuStream_t stream = 0) {
     IsNonzero<T> is_nonzero;
     gpuprim::TransformInputIterator<bool, IsNonzero<T>, const T*>
@@ -81,7 +81,7 @@ struct CubDeviceReduceCount {
 template <typename TIndex>
 struct CubDeviceReduceCount<bool, TIndex> {
   gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
-                        const bool* d_in, TIndex* d_out, int num_items,
+                        const bool* d_in, TIndex* d_out, TIndex num_items,
                         gpuStream_t stream = 0) {
     return gpuprim::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in,
                                       d_out, num_items, stream);
@@ -97,7 +97,7 @@ struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
                                      false /*IsConvertibleToBool*/> {
   gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
                         const T* d_flags, OutputIterator d_out,
-                        TIndex* d_num_selected_out, int num_items,
+                        TIndex* d_num_selected_out, TIndex num_items,
                         gpuStream_t stream = 0) {
     gpuprim::CountingInputIterator<TIndex> select_counter(0);
     IsNonzero<T> is_nonzero;
@@ -115,7 +115,7 @@ struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
                                      true /*IsConvertibleToBool*/> {
   gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
                         const T* d_flags, OutputIterator d_out,
-                        TIndex* d_num_selected_out, int num_items,
+                        TIndex* d_num_selected_out, TIndex num_items,
                         gpuStream_t stream = 0) {
     gpuprim::CountingInputIterator<TIndex> select_counter(0);
     return gpuprim::DeviceSelect::Flagged(
@@ -218,7 +218,8 @@ class WhereOutputIterator {
   WhereOutputIterator(int64_t* ptr, const Eigen::DenseIndex max_row)
       : ptr_(ptr), max_row_(max_row) {}
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int64_t& operator[](int n) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int64_t& operator[](
+      std::ptrdiff_t n) const {
     // If the selection mechanism finds too many true values (because
     // the input tensor changed between allocation of output and now),
     // we may accidentally try to write past the allowable memory.  If
@@ -328,10 +329,12 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
     const Eigen::array<TIndex, NDIM> strides =
         CalculateStrides<TIndex, T, NDIM>(input);
     const TIndex output_rows = output.dimension(0);
-    GpuLaunchConfig config = GetGpuLaunchConfig(output_rows, d);
+    absl::StatusOr<GpuLaunchConfig64> config =
+        GetGpuLaunchConfig64(output_rows, d);
+    if (!config.ok()) return config.status();
     TF_CHECK_OK(GpuLaunchKernel(PropagateWhereIndicesKernel<NDIM, TIndex>,
-                                config.block_count, config.thread_per_block, 0,
-                                d.stream(), output_rows, strides,
+                                config->block_count, config->thread_per_block,
+                                0, d.stream(), output_rows, strides,
                                 output.data()));
 
     return absl::OkStatus();

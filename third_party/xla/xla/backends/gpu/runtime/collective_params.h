@@ -49,7 +49,8 @@ struct CollectiveParams {
       absl::Span<se::Stream* const> async_streams,
       LocalDeviceId local_device_id, int64_t collective_max_nchannels = 0,
       int64_t p2p_max_nchannels = 0,
-      bool collective_use_minimal_resource = false);
+      bool collective_use_minimal_resource = false,
+      bool nccl_window_symmetric = false);
 
   GpuCollectives* collectives;
   se::StreamExecutor* executor;
@@ -75,6 +76,7 @@ struct CollectiveParams {
   int local_device_count = 0;
   bool need_barrier = false;
   bool collective_use_minimal_resource;
+  bool nccl_window_symmetric = false;
 
  private:
   CollectiveParams(
@@ -86,7 +88,8 @@ struct CollectiveParams {
       const CliqueIdCallback* clique_id_callback,
       const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
       int64_t collective_max_nchannels, int64_t p2p_max_nchannels,
-      int local_device_count, bool collective_use_minimal_resource);
+      int local_device_count, bool collective_use_minimal_resource,
+      bool nccl_window_symmetric = false);
 };
 
 // The type of a kernel argument used by a collective kernel.

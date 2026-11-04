@@ -54,8 +54,10 @@ def outside_or_skip_tpu_context():
   else:
     saved_context = graph._get_control_flow_context()  # pylint: disable=protected-access
     graph._set_control_flow_context(ctx.outer_context)  # pylint: disable=protected-access
-    yield
-    graph._set_control_flow_context(saved_context)  # pylint: disable=protected-access
+    try:
+      yield
+    finally:
+      graph._set_control_flow_context(saved_context)  # pylint: disable=protected-access
 
 
 @contextlib.contextmanager

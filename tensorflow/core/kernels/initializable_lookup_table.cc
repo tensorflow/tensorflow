@@ -89,6 +89,11 @@ absl::Status InitializableLookupTable::Initialize(
   }
   TF_RETURN_IF_ERROR(DoLazyPrepare([&iter]() { return iter.total_size(); }));
   while (iter.Valid()) {
+    // An iterator can yield several batches (e.g. one per dataset element).
+    // DoInsert assumes matching key and value shapes, so check every batch,
+    // not just the first one checked above.
+    TF_RETURN_IF_ERROR(
+        CheckKeyAndValueTensorsForInsert(iter.keys(), iter.values()));
     TF_RETURN_IF_ERROR(DoInsert(iter.keys(), iter.values()));
     iter.Next();
   }

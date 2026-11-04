@@ -36,12 +36,18 @@ jobs:
       - name: "Checking out repository"
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: '0'
+          # Fetch recent commits without downloading all branches and tags.
+          fetch-depth: '100'
           persist-credentials: false
-      - name: "Fetch HEAD of main branch"
-        run: git fetch origin main --depth=1
+      - name: "Update base branch"
+        run: |
+          BASE_REF="${GITHUB_BASE_REF:-main}"
+          # Keep this fetch unshallow so clang-format can find the merge base
+          # even when the PR branch is more than checkout fetch-depth commits
+          # behind.
+          git fetch origin "refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
       - name: Install uv dependencies
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
       - name: "Run clang-format check"
         env:
           TARGET_REF: "origin/${{ github.base_ref || 'main' }}"

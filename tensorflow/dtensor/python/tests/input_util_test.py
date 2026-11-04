@@ -90,6 +90,27 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
           mesh=self.mesh,
           layouts=Layout.replicated(self.mesh, rank=2))
 
+  def testIterableFailsWithPartiallyDefinedShapeDatasetSpec(self):
+    def gen():
+      yield constant_op.constant([1, 2], dtype=dtypes.int32)
+
+    dataset = dataset_ops.DatasetV2.from_generator(
+        gen,
+        output_signature=tensor_spec.TensorSpec(
+            tensor_shape.TensorShape([None]), dtype=dtypes.int32
+        ),
+    )
+
+    with self.assertRaisesRegex(
+        ValueError, 'Dataset element shape must be fully defined'
+    ):
+      input_util.DTensorDataset(
+          dataset=dataset,
+          global_batch_size=8,
+          mesh=self.mesh,
+          layouts=Layout.replicated(self.mesh, rank=2),
+      )
+
   def testIterMismatchedLayoutFails(self):
     dataset = dataset_ops.DatasetV2.from_tensors(self.images).repeat()
 
@@ -104,6 +125,43 @@ class DTensorDatasetTest(test_util.DTensorBaseTest):
           mesh=self.mesh,
           layouts=images_layout,
           batch_dim=MESH_DIM_BATCH)
+
+  @parameterized.named_parameters(('Eager', False), ('Graph', True))
+  def testDatasetAlreadyBatchedOffsets(self, is_graph):
+    layout = Layout(
+        [MESH_DIM_BATCH, MESH_DIM_HEIGHT, MESH_DIM_WIDTH], self.mesh
+    )
+
+    # Global batch size 16. MESH_DIM_BATCH size is 4, so local batch size is 4.
+    # Non-batch sharded on height and width, so this exercises the
+    # `dataset_already_batched=True` + non-batch-sharded-layout path.
+    local_images = self._images([16, 4, 6])
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(local_images).batch(
+        4, drop_remainder=True
+    )
+
+    d_dataset = input_util.DTensorDataset(
+        dataset=dataset,
+        global_batch_size=16,
+        mesh=self.mesh,
+        layouts=layout,
+        batch_dim=MESH_DIM_BATCH,
+        dataset_already_batched=True,
+    )
+
+    iterator = iter(d_dataset)
+
+    def get_next(it):
+      return next(it)
+
+    get_next_fn = (
+        polymorphic_function.function(get_next) if is_graph else get_next
+    )
+    d_tensor = get_next_fn(iterator)
+    if is_graph:
+      mesh_util.barrier(self.mesh)
+
+    self.assertDTensorEqual(local_images, layout, d_tensor)
 
   @parameterized.named_parameters(('Eager', False), ('Graph', True))
   def testRangeIteration(self, is_graph):
@@ -603,6 +661,49 @@ class InputUtilHelpersTest(test_util.DTensorBaseTest):
     layout = Layout(layout_specs, mesh)
 
     self.assertEqual(input_util._shard_counts(layout, batch_dim), counts)
+
+  @parameterized.parameters(
+      {
+          'mesh_dims': [
+              (MESH_DIM_BATCH, 2),
+              (MESH_DIM_HEIGHT, 4),
+              (MESH_DIM_WIDTH, 2),
+          ],
+          'layout_specs': [MESH_DIM_BATCH, MESH_DIM_HEIGHT, UNSHARDED],
+          'elem_shape': [8, 16, 3],
+          'expected_matrix': [[0, 0, 0], [0, 4, 0], [0, 0, 0]],
+      },
+      {
+          'mesh_dims': [
+              (MESH_DIM_BATCH, 2),
+              (MESH_DIM_HEIGHT, 4),
+              (MESH_DIM_WIDTH, 2),
+          ],
+          'layout_specs': [MESH_DIM_BATCH, MESH_DIM_WIDTH, MESH_DIM_HEIGHT],
+          'elem_shape': [8, 6, 16],
+          'expected_matrix': [[0, 0, 0], [0, 0, 4], [0, 3, 0]],
+      },
+  )
+  def testIndexMatrixForBatchedElementSpec(
+      self, mesh_dims, layout_specs, elem_shape, expected_matrix
+  ):
+    """Regression test for the `dataset_already_batched=True` offset bug.
+
+    `_index_matrix` must be called with the *batched* element spec (shape
+    rank matching `layout.rank`, including the leading batch dim) and must
+    index it at `layout_idx + 1` to skip that leading batch dim. Passing an
+    unbatched spec, or omitting the `+ 1` offset, silently computes the wrong
+    slice offsets for sharded, non-batch dimensions.
+    """
+    num_devices = np.prod([size for _, size in mesh_dims])
+    mesh = mesh_util.create_mesh(
+        mesh_dims=mesh_dims, devices=['CPU:%d' % i for i in range(num_devices)]
+    )
+    layout = Layout(layout_specs, mesh)
+    elem_spec = tensor_spec.TensorSpec(shape=elem_shape, dtype=dtypes.float32)
+
+    matrix = input_util._index_matrix(layout, elem_spec)
+    self.assertAllEqual(matrix, expected_matrix)
 
 
 class DTensorIteratorSpecTest(test_util.DTensorBaseTest):

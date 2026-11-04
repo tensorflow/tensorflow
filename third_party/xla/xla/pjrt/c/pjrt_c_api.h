@@ -118,7 +118,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 116
+#define PJRT_API_MINOR 117
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1149,7 +1149,7 @@ struct PJRT_Client_CreateErrorBuffer_Args {
   const int64_t* shape_dims;
   size_t shape_num_dims;
   PJRT_Buffer_Type shape_element_type;
-  PJRT_Buffer_MemoryLayout* shape_layout;
+  PJRT_Buffer_MemoryLayout* shape_layout;  // DEPRECATED: Use device_layout.
 
   // Destination memory space for the error buffer.
   PJRT_Memory* memory;
@@ -1161,8 +1161,12 @@ struct PJRT_Client_CreateErrorBuffer_Args {
   // Status fields (continued).
   const PJRT_NamedValue* payload;
   size_t num_payload;
+
+  // Optional layout of the error buffer. If nullptr, the default layout for the
+  // shape and memory space is used.
+  PJRT_Buffer_MemoryLayout* device_layout;  // optional
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateErrorBuffer_Args, num_payload);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateErrorBuffer_Args, device_layout);
 
 // Creates a buffer in the given memory space that carries an error future
 // without allocating memory. If this buffer is passed to an Execute call, the

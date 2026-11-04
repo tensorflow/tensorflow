@@ -268,7 +268,7 @@ cc_test(
         "gpu",
         "no_cuda_asan",  # TODO(b/181032551).
         "notsan",
-        "requires-gpu-sm70",
+        "requires-gpu-sm80",
     ],
     deps = [
         ":devicedb_sample",

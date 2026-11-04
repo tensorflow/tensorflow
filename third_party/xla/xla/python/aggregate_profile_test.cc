@@ -64,10 +64,8 @@ TEST(AggregateProfiledInstructionsProtoTest, aggregateAndGetPercentile) {
     profiles.push_back(profile_custom_call);
   }
   tensorflow::profiler::ProfiledInstructionsProto result_90th;
-  AggregateProfiledInstructionsProto(
-      absl::Span<const tensorflow::profiler::ProfiledInstructionsProto>(
-          profiles.data(), profiles.size()),
-      90, &result_90th);
+  AggregateProfiledInstructionsProto(absl::MakeConstSpan(profiles), 90,
+                                     &result_90th);
 
   EXPECT_EQ(result_90th.costs_size(), 3);
   std::map<std::string, float> costs;
@@ -79,10 +77,8 @@ TEST(AggregateProfiledInstructionsProtoTest, aggregateAndGetPercentile) {
   EXPECT_EQ(costs["reduce"], 10);
 
   tensorflow::profiler::ProfiledInstructionsProto result_10th;
-  AggregateProfiledInstructionsProto(
-      absl::Span<const tensorflow::profiler::ProfiledInstructionsProto>(
-          profiles.data(), profiles.size()),
-      10, &result_10th);
+  AggregateProfiledInstructionsProto(absl::MakeConstSpan(profiles), 10,
+                                     &result_10th);
 
   EXPECT_EQ(result_10th.costs_size(), 3);
   for (const auto &cost : result_10th.costs()) {
@@ -104,21 +100,15 @@ TEST(AggregateProfiledInstructionsProtoTest, getIncorrectPercentile) {
   std::vector<tensorflow::profiler::ProfiledInstructionsProto> profiles = {
       profile_a};
   tensorflow::profiler::ProfiledInstructionsProto result;
-  AggregateProfiledInstructionsProto(
-      absl::Span<const tensorflow::profiler::ProfiledInstructionsProto>(
-          profiles.data(), profiles.size()),
-      -1, &result);
+  AggregateProfiledInstructionsProto(absl::MakeConstSpan(profiles), -1,
+                                     &result);
   EXPECT_EQ(result.costs_size(), 0);
-  AggregateProfiledInstructionsProto(
-      absl::Span<const tensorflow::profiler::ProfiledInstructionsProto>(
-          profiles.data(), profiles.size()),
-      101, &result);
+  AggregateProfiledInstructionsProto(absl::MakeConstSpan(profiles), 101,
+                                     &result);
   EXPECT_EQ(result.costs_size(), 0);
 
-  AggregateProfiledInstructionsProto(
-      absl::Span<const tensorflow::profiler::ProfiledInstructionsProto>(
-          profiles.data(), profiles.size()),
-      100, &result);
+  AggregateProfiledInstructionsProto(absl::MakeConstSpan(profiles), 100,
+                                     &result);
   EXPECT_EQ(result.costs_size(), 1);
 }
 }  // namespace

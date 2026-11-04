@@ -92,8 +92,11 @@ The `xla` job is *not* gated on `github.base_ref == 'main'`; the `jax` job is.
 This means the JAX suite only runs for PRs targeted at `main`, while the XLA
 suite runs for any PR plus `workflow_dispatch`.
 
-`timeout-minutes` is set at the job level, with a tighter `timeout-minutes: 60`
-(XLA single-GPU, JAX) or 80 (XLA CPU suite) on each test step.
+`timeout-minutes: 50` is set at the job level, with a tighter
+`timeout-minutes: 45` (XLA single-GPU, JAX) or 30 (XLA CPU suite) on each test
+step. On pull requests, `rocm-config` runs `change_detector.py` to skip
+unaffected `jax`/`xla` jobs before allocating GPU runners, and `bazel_diff.py`
+restricts the XLA test steps to impacted targets via `--target_pattern_file`.
 
 ## XLA CI job
 
@@ -415,24 +418,22 @@ Build(
     *plus* an explicit `"gpu"` include, since `build.py` does not have the
     `rocm_tag_filters.sh` script in scope.
 
-`build.py` is just a config-as-data factory: it emits three Bazel commands per
-build — dry-run (`--nobuild`) retry, real build, and `bazel analyze-profile
-profile.json.gz`:
+`build.py` is just a config-as-data factory: it emits the Bazel build/test
+command per build (followed by `bazel analyze-profile profile.json.gz` in
+`execute_build_commands`):
 
 ```python
-def commands(self) -> List[List[str]]:
+def commands(self, target_pattern_file: Optional[str] = None) -> List[List[str]]:
     cmds = []
     cmds.extend(self.extra_setup_commands)
-    if not (macos_build or windows_build):
-      cmds.append(retry(self.bazel_command(subcommand="build",
-                                           extra_options=("--nobuild",))))
-    cmds.append(self.bazel_command(subcommand=self.subcommand))
-    cmds.append(["bazel", "analyze-profile", "profile.json.gz"])
+    cmds.append(
+        self.bazel_command(
+            subcommand=self.subcommand,
+            target_pattern_file=target_pattern_file,
+        )
+    )
     return cmds
 ```
-
-The dry-run-then-build pattern allows retrying transient package-fetch failures
-without rebuilding.
 
 This phase ensures compilation regressions are caught even if GPU runners are
 unavailable.
@@ -476,7 +477,7 @@ PR commit
    │       │
    │       └─► XLA Linux x86 GPU ROCm
    │             └─► build_tools/ci/build.py
-   │                   └─► bazel build (nobuild → real)
+   │                   └─► bazel build
    │                         configs: warnings + rbe_linux_cpu +
    │                                  rocm_clang_hermetic
    │                         tag filter: rocm_tag_filter (compile-only)

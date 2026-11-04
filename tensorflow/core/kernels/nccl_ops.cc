@@ -28,6 +28,7 @@ limitations under the License.
 #endif
 #endif
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
 
 namespace tensorflow {
@@ -238,8 +239,7 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
     const Tensor& shape_t = c->input(0);
     TensorShape shape;
-    OP_REQUIRES_OK_ASYNC(
-        c, TensorShapeUtils::MakeShape(shape_t.vec<int32_t>(), &shape), done);
+    OP_REQUIRES_OK_ASYNC(c, tensor::MakeShape(shape_t, &shape), done);
     Tensor* output;
     OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, shape, &output), done);
 

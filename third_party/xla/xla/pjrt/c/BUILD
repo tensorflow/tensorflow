@@ -138,6 +138,10 @@ xla_cc_test(
 cc_library(
     name = "pjrt_c_api_megascale_extension_hdrs",
     hdrs = ["pjrt_c_api_megascale_extension.h"],
+    visibility = internal_visibility([
+        "//xla:internal",
+        "//xla/megascale:internal",
+    ]),
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_multi_slice_extension_hdrs",
@@ -147,6 +151,10 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_multi_slice_extension_hdrs",
     hdrs = ["pjrt_c_api_multi_slice_extension.h"],
+    visibility = internal_visibility([
+        "//xla:internal",
+        "//xla/megascale:internal",
+    ]),
     deps = [":pjrt_c_api_hdrs"],
 )
 
@@ -223,7 +231,10 @@ cc_library(
     name = "pjrt_c_api_phase_compile_extension_hdrs",
     hdrs = ["pjrt_c_api_phase_compile_extension.h"],
     visibility = ["//visibility:public"],
-    deps = [":pjrt_c_api_hdrs"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_layouts_extension_hdrs",
+    ],
 )
 
 cc_library(
@@ -234,19 +245,31 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_phase_compile_extension_hdrs",
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_wrapper_impl",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:maybe_owning_mlir_module",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:partial_program_utils",
+        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/pjrt:pjrt_relocatable",
         "//xla/pjrt:string_utils",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
 )
@@ -380,6 +403,7 @@ cc_library(
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_xla_transform_extension_hdrs",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:xla_transform",
         "//xla/tsl/lib/strings:proto_serialization",
@@ -657,7 +681,6 @@ cc_library(
         "//xla/backends/profiler/plugin:profiler_error",
         "//xla/client:local_client",
         "//xla/ffi",
-        "//xla/ffi:ffi_api",
         "//xla/ffi:ffi_interop",
         "//xla/ffi/api:c_api",
         "//xla/pjrt:pjrt_client",
@@ -667,11 +690,11 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/extensions/abi_version:gpu_abi_version_extension",
         "//xla/pjrt/extensions/cross_host_transfers:pjrt_c_api_cross_host_transfer_extension",
+        "//xla/pjrt/gpu:allocator_config",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # buildcleaner: keep to register GPU AOT compiler
         "//xla/pjrt/gpu:se_gpu_topology_description",
-        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/python:custom_call_batch_partitioner",
         "//xla/python:custom_partition_callback",
@@ -904,6 +927,7 @@ cc_library(
         "//xla/service:device_assignment",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

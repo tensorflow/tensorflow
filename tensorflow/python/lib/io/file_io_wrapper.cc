@@ -201,8 +201,8 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
       "Stat",
       [](const std::string& filename) {
         py::gil_scoped_release release;
-        std::unique_ptr<tensorflow::FileStatistics> self(
-            new tensorflow::FileStatistics);
+        std::unique_ptr<tensorflow::FileStatistics> self =
+            std::make_unique<tensorflow::FileStatistics>();
         const auto status =
             tensorflow::Env::Default()->Stat(filename, self.get());
         py::gil_scoped_acquire acquire;
@@ -237,6 +237,7 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
            py::arg("filename"), py::arg("mode"))
       .def("append",
            [](WritableFile* self, absl::string_view data) {
+             py::gil_scoped_release release;
              const auto status = self->Append(data);
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
            })
@@ -249,6 +250,11 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
              const auto status = self->Tell(&pos);
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
              return pos;
+           })
+      .def("seek",
+           [](WritableFile* self, int64_t pos) {
+             py::gil_scoped_release release;
+             tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(self->Seek(pos));
            })
       .def("flush",
            [](WritableFile* self) {
@@ -270,9 +276,10 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
                                                                  &file);
              tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
              std::unique_ptr<tensorflow::io::RandomAccessInputStream>
-                 input_stream(new tensorflow::io::RandomAccessInputStream(
-                     file.release(),
-                     /*owns_file=*/true));
+                 input_stream =
+                     std::make_unique<tensorflow::io::RandomAccessInputStream>(
+                         file.release(),
+                         /*owns_file=*/true);
              py::gil_scoped_acquire acquire;
              return new BufferedInputStream(input_stream.release(), buffer_size,
                                             /*owns_input_stream=*/true);

@@ -21,3 +21,17 @@ test_transpose {
   %p0 = f32[2,4,8,16] parameter(0)
   %out = f32[8,2,4,16] transpose(%p0), dimensions={2,0,1,3}
 }
+
+// -----
+
+// CHECK-LABEL: @test_copy_changes_layout
+// CHECK-SAME: %[[ARG0:.*]]: tensor<8x16xf32>
+// CHECK-SAME: -> (tensor<8x16xf32> {nv_tensor_ir.stride = "(1,8)"})
+// CHECK: %[[NEG:.*]] = neg %[[ARG0]]
+// CHECK: results %[[NEG]]
+
+test_copy_changes_layout {
+  %p0 = f32[8,16]{1,0} parameter(0)
+  %neg = f32[8,16]{1,0} negate(%p0)
+  ROOT %out = f32[8,16]{0,1} copy(%neg)
+}

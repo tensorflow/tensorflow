@@ -38,8 +38,9 @@ std::string ComputeStrideString(const Shape& shape);
 // which case no stride attribute needs to be attached.
 bool HasDefaultLayout(const Shape& shape);
 
-// Attaches `nv_tensor_ir.stride` to every argument and to result 0 of `graph`
-// whose corresponding shape does not have the default layout.
+// Attaches `nv_tensor_ir.stride` to every argument and result of `graph` whose
+// corresponding shape does not have the default layout. Results correspond to
+// the elements of the root tuple, or to the root itself if it is not a tuple.
 //
 // Strides are intrinsic to `computation`: they are derived purely from the
 // layouts of its parameters and its root, with no buffer assignment involved.
@@ -47,21 +48,20 @@ bool HasDefaultLayout(const Shape& shape);
 // `ImportAndLegalizeComputation`, so that everyone who imports a computation
 // (the emitter, the autotuner, tools) sees the same graph.
 //
-// `graph` must have exactly one argument per computation parameter and exactly
-// one result; this mirrors what the importer produces.
+// `graph` must have exactly one argument per computation parameter and one
+// result per computation result; this mirrors what the importer produces.
 absl::Status AttachLayoutStrides(mlir::nv_tensor_ir::GraphOp graph,
                                  const HloComputation& computation);
 
-// Attaches `nv_tensor_ir.alignment` to every argument and to result 0 of
-// `graph`.
+// Attaches `nv_tensor_ir.alignment` to every argument and result of `graph`.
 //
 // Alignments come from buffer assignment, so unlike strides they are a
 // property of the buffers the computation happens to be assigned rather than
 // of the computation itself. This can only run in the emitter, after kernel
 // arguments exist.
 //
-// `kernel_args` must hold one argument per graph argument plus one for the
-// single result.
+// `kernel_args` must hold one argument per graph argument followed by one per
+// graph result.
 absl::Status AttachBufferAlignments(
     mlir::nv_tensor_ir::GraphOp graph,
     absl::Span<const emitters::KernelArgument> kernel_args);

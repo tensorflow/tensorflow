@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
@@ -39,68 +40,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
+#include "xla/tools/multihost_hlo_runner/hlo_runner_profiler.h"
 #include "xla/tools/multihost_hlo_runner/profiler_interface.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/profiler/lib/profiler_session.h"
-#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
-// Interface that may optionally returns an XSpace proto after UploadSession()
-// is called. This can be used by caller to get a programmatic handler of the
-// profile data.
-class XSpaceProfilerInterface : public ProfilerInterface {
- public:
-  virtual const tensorflow::profiler::XSpace* GetXSpace() = 0;
-};
-
-// HLORunnerProfiler is a profiler plugin that using tsl::ProfilerSession to
-// profile CPU/GPU execution and allows programmable control of
-// profiling sessions for the MultihostHloRunner. It needs to be created after
-// PJRT client is initialized. Example usage:
-//
-//   ABSL_ASSIGN_OR_RETURN(
-//       env, xla::GetPjRtEnvironmentForGpu(...)));
-//   if (env.client != nullptr) {
-//     ABSL_ASSIGN_OR_RETURN(auto profiler, HLORunnerProfiler::Create());
-//   }
-//   profiler.CreateSession();
-//   ...
-//   profiler.UploadSession();
-class HLORunnerProfiler : public XSpaceProfilerInterface {
- public:
-  // Factory method to create a GPURunnerProfiler with profile result dump path.
-  // If keep_xspace is true, the XSpace proto can be retrieved
-  // by GetXSpace() after UploadSession() is called, which can be used by
-  // caller to get a programmatic handler of the profile data and create XProf.
-  static absl::StatusOr<std::unique_ptr<HLORunnerProfiler>> Create(
-      absl::string_view dump_path, bool keep_xspace = false);
-
-  // Default ctor.
-  explicit HLORunnerProfiler(absl::string_view dump_path, bool keep_xspace);
-
-  // Start a new profiling session.
-  void CreateSession() override;
-
-  // Stop the current profiling session.
-  void UploadSession() override;
-
-  // Returns the XSpace proto.
-  const tensorflow::profiler::XSpace* GetXSpace() override;
-
- private:
-  // The file path to dump the profiling result.
-  std::string dump_path_;
-  // Whether to keep the XSpace proto after UploadSession() is called.
-  bool keep_xspace_;
-  // The profiler session.
-  std::unique_ptr<tsl::ProfilerSession> session_;
-  // The XSpace proto to be returned by GetXSpace().
-  std::unique_ptr<tensorflow::profiler::XSpace> xspace_;
-  // Session counter to uniquely name dump paths when multiple sessions are
-  // uploaded.
-  int session_index_ = 0;
-};
 
 // FunctionalHloRunner takes an HLO module as input and runs the HLO module
 // on a single or multiple hosts with various options (e.g. SPMD). The HLO
@@ -225,6 +170,13 @@ struct PreprocessingOptions {
   // Set / update known_trip_count in while loop backend config.
   bool annotate_while_loop_trip_count = false;
 
+  // If set, and the compile options contain a key-value store and more than
+  // one process, all processes compare the fingerprints of their compiled
+  // executables and fail if they differ. Processes that run different
+  // executables (e.g. because autotuning picked different configs) can issue
+  // collectives in a different order, which usually leads to a hang.
+  bool verify_executable_fingerprint_across_processes = true;
+
   // Is the module the partitioned result of SPMD?
   bool is_spmd_partitioned_module() const {
     return spmd_partitioned_mode ==
@@ -295,6 +247,7 @@ struct RunningOptions {
   // This indicates whether we log the inputs and outputs to stderr.
   LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
   const MultiSliceConfig* multi_slice_config = nullptr;
+  bool multipass_profiling = false;
   ProfilerInterface* profiler = nullptr;
   // If not null, profiles will be stored for this run, one per repeat.
   // Note that the first repeat is a warmup run, and uses less precise
@@ -453,6 +406,19 @@ absl::Status DumpOutput(
     const FunctionalHloRunner::PerDeviceLiteralVecType& output,
     absl::string_view dump_output_to, int task_id,
     OutputFormat output_format = OutputFormat::kText);
+
+// Publishes `fingerprint` in `kv_store` and returns an error if any of the
+// other processes published a different fingerprint. All `process_count`
+// processes need to call this with the same `key_prefix` and their own
+// `process_index`. An empty fingerprint means that it's unknown, in which case
+// the check passes.
+//
+// `Compile` calls this when `verify_executable_fingerprint_across_processes`
+// is set. It's only exposed for testing.
+absl::Status VerifyExecutableFingerprintAcrossProcesses(
+    KeyValueStoreInterface& kv_store, absl::string_view key_prefix,
+    int process_index, int process_count, absl::string_view fingerprint,
+    absl::Duration timeout);
 
 }  // namespace FunctionalHloRunner
 

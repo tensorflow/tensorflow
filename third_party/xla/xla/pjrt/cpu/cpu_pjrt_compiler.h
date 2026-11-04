@@ -47,7 +47,8 @@ class CpuPjRtCompiler : public PjRtCompiler {
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       const PjRtTopologyDescription& topology,
       riegeli::Any<riegeli::Reader*> reader,
-      std::optional<CompileOptions>&& options) override;
+      std::optional<CompileOptions>&& options,
+      const DeserializeExecutableOptions& deserialize_options) override;
 
   // Deserializes a PjRtTopologyDescription from a string.
   absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>

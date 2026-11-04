@@ -55,8 +55,8 @@ limitations under the License.
 //     r3: "c"
 //   )pb"))));
 //
-// will match a proto that has the same elements in r3, but in any order, and
-// will ignore any extra fields that are set.
+// will match a proto that contains the elements in r3 in any order (allowing
+// extra elements in r3), and will ignore any extra fields that are set.
 
 #ifndef XLA_TSL_UTIL_PROTO_PROTO_MATCHERS_H_
 #define XLA_TSL_UTIL_PROTO_PROTO_MATCHERS_H_
@@ -65,7 +65,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <type_traits>
-#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
@@ -75,8 +74,10 @@ limitations under the License.
 namespace tsl {
 namespace proto_testing {
 
-// Marks the proto-matcher as allowing for extra fields to be set in the result.
-// NB that extra elements of repeated fields are still considered a failure.
+// Marks the proto-matcher as allowing for extra fields to be set in the result
+// (using MessageDifferencer::PARTIAL scope). Extra entries in map fields are
+// ignored, and extra elements in repeated fields are ignored when combined with
+// IgnoringRepeatedFieldOrdering.
 template <typename InnerMatcher,
           typename = typename InnerMatcher::is_proto_matcher>
 inline InnerMatcher Partially(InnerMatcher i) {
@@ -128,34 +129,6 @@ class UniquePtrWrapper {
   std::unique_ptr<T> ptr_;
 };
 
-// Matcher ignore-checker that makes fields not in 'gold' ignored.
-class PartialIgnore final
-    : public ::tsl::protobuf::util::MessageDifferencer::IgnoreCriteria {
-  using SpecificField =
-      ::tsl::protobuf::util::MessageDifferencer::SpecificField;
-
- public:
-  PartialIgnore() = default;
-
-  bool IsIgnored(const ::tsl::protobuf::Message& gold,
-                 const ::tsl::protobuf::Message& test,
-                 const ::tsl::protobuf::FieldDescriptor* field,
-                 const std::vector<SpecificField>& specific_field) final {
-    // Ignore any field fully absent from the gold proto.
-    if (field->is_repeated()) {
-      return gold.GetReflection()->FieldSize(gold, field) == 0;
-    }
-    return !gold.GetReflection()->HasField(gold, field);
-  }
-
-  bool IsUnknownFieldIgnored(const ::tsl::protobuf::Message&,
-                             const ::tsl::protobuf::Message&,
-                             const SpecificField&,
-                             const std::vector<SpecificField>&) final {
-    return true;
-  }
-};
-
 // Matcher that checks for proto equality. It can be modified by the Partially
 // and IgnoreRepeatedFieldOrdering to adjust the values. ExpectedProto can be
 // either a proto or string.
@@ -196,7 +169,7 @@ class ProtoMatcher {
     diff.set_message_field_comparison(cmp_);
     diff.set_report_ignores(false);
     if (partial_) {
-      diff.AddIgnoreCriteria(std::make_unique<PartialIgnore>());
+      diff.set_scope(::tsl::protobuf::util::MessageDifferencer::PARTIAL);
     }
     std::string str_report;
     if (unordered_repeated_fields_) {

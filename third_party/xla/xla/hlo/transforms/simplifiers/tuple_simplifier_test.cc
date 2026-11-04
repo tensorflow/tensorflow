@@ -441,5 +441,32 @@ ENTRY main {
   EXPECT_TRUE(ordering.ExecutesBefore(op_start_1, op_done_1));
 }
 
+TEST_F(TupleSimplifierTest, DoesNotRemoveTupleWithDisableAttribute) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+fused_computation {
+  p0 = f32[4] parameter(0)
+  p1 = f32[8] parameter(1)
+  ag = (f32[8], f32[16]) all-gather(p0, p1), dimensions={0}
+  gte.0 = f32[8] get-tuple-element(ag), index=0
+  gte.1 = f32[16] get-tuple-element(ag), index=1
+  ROOT tuple = (f32[8], f32[16]) tuple(gte.0, gte.1), frontend_attributes={disable_tuple_simplifier="true"}
+}
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  p1 = f32[8] parameter(1)
+  ROOT fusion = (f32[8], f32[16]) fusion(p0, p1), kind=kCustom, calls=fused_computation
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  Run(module.get(), /*change_expected=*/false);
+  EXPECT_THAT(
+      FindComputation(module.get(), "fused_computation")->root_instruction(),
+      op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
+}
+
 }  // namespace
 }  // namespace xla

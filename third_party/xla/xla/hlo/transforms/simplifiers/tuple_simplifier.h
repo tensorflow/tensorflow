@@ -25,6 +25,9 @@ limitations under the License.
 
 namespace xla {
 
+inline constexpr absl::string_view kDisableTupleSimplifierAttribute =
+    "disable_tuple_simplifier";
+
 // A pass which simplifies patterns of Tuple and GetTupleElement instructions in
 // the module.
 class TupleSimplifier : public HloModulePass {

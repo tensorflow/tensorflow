@@ -319,6 +319,24 @@ class FractionalAvgPoolGradOp : public OpKernel {
         context, in_depth != 0,
         absl::InvalidArgumentError("Depth dimension of input must not be 0"));
 
+    // in_backprop is sized from orig_input_tensor_shape, but the loops below
+    // walk out_backprop, writing in_backprop at (d, in_index) with d up to
+    // out_depth and the batch factor of in_index up to out_batch. The batch and
+    // depth of orig_input_tensor_shape and out_backprop are independent inputs,
+    // so an out_backprop with more batches or channels than
+    // orig_input_tensor_shape drives those writes past the in_backprop buffer.
+    // The sibling FractionalMaxPoolGrad guards the same mismatch.
+    OP_REQUIRES(context, in_batch == out_batch,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "orig_input_tensor_shape and out_backprop must have the "
+                    "same batch size, got ",
+                    in_batch, " and ", out_batch)));
+    OP_REQUIRES(context, in_depth == out_depth,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "orig_input_tensor_shape and out_backprop must have the "
+                    "same depth, got ",
+                    in_depth, " and ", out_depth)));
+
     constexpr int tensor_in_and_out_dims = 4;
     // Transform orig_input_tensor_shape into TensorShape
     TensorShape in_shape;

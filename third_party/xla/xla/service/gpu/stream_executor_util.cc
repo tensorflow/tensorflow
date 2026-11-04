@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <limits>
-#include <map>
 #include <memory>
 #include <optional>
 #include <random>
@@ -31,7 +30,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -79,7 +80,6 @@ using tsl::profiler::TraceMeLevel;
 
 namespace xla {
 namespace gpu {
-
 
 namespace {
 
@@ -343,21 +343,19 @@ FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
 
 // Returns a mutex that can be used to lock the given stream executor.
 absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
-  static absl::Mutex mu(absl::kConstInit);
-  // se::Platform*s are global singletons guaranteed to live forever.
-  static auto* mutexes =
-      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
-                   absl::Mutex>();
-
-  absl::MutexLock global_lock(mu);
-  auto it = mutexes
-                ->emplace(std::piecewise_construct,
-                          std::make_tuple(stream_exec->GetPlatform(),
-                                          stream_exec->device_ordinal()),
-                          std::make_tuple())
-                .first;
-
-  return it->second;
+  // Pre-allocate 16 slots to cover standard multi-GPU host topologies
+  // (typically 8 or 16 GPUs per host) with O(1) flat vector indexing. Ordinals
+  // >= 16 fall back to PerDeviceState's dynamic copy-on-write storage.
+  static absl::NoDestructor<PerDeviceState<absl::Mutex>> mutexes(
+      /*num_devices=*/16);
+  int device_ordinal = stream_exec->device_ordinal();
+  if (ABSL_PREDICT_FALSE(device_ordinal < 0)) {
+    static absl::NoDestructor<absl::Mutex> fallback_mu;
+    return *fallback_mu;
+  }
+  absl::StatusOr<absl::Mutex*> mu = mutexes->GetOrCreate(device_ordinal);
+  CHECK_OK(mu.status());
+  return **mu;
 }
 
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(

@@ -1258,6 +1258,17 @@ def _SigmoidGrad(op: ops.Operation, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
   y = op.outputs[0]  # y = sigmoid(x)
   with ops.control_dependencies([grad]):
+    if y.dtype.base_dtype == dtypes.float64:
+      # `1 - sigmoid(x)` is exactly `sigmoid(-x)`, but computing it as
+      # `1 - y` cancels catastrophically once `y` rounds to 1: at x = 37.43 in
+      # float64 the derivative is still 5.55e-17, and yet `1 - y` is 0, which
+      # silently zeroes the whole gradient. Using `sigmoid(-x)` avoids the
+      # subtraction, so the gradient stays accurate over the entire positive
+      # tail. Computing it here rather than in `math_ops.sigmoid` keeps the
+      # op type of `tf.nn.sigmoid` as `Sigmoid`, which Keras
+      # `binary_crossentropy` relies on to recover logits, and it applies to
+      # `tf.raw_ops.Sigmoid` as well.
+      return grad * y * gen_math_ops.sigmoid(-op.inputs[0])
     y = math_ops.conj(y)
     return gen_math_ops.sigmoid_grad(y, grad)
 
@@ -1544,8 +1555,15 @@ def _PowGrad(op: ops.Operation, grad):
 
   def _GradCxPow(w: tensor.Tensor) -> tensor.Tensor:
     if x.dtype.is_floating:
+      # `pow(0, y - 1)` is inf for y < 1, which turns the product into NaN when
+      # either factor is zero (e.g. d/dx x**0 at x = 0 is 0, not NaN).
       w = array_ops.where_v2(
-          math_ops.logical_and(math_ops.is_inf(w), math_ops.equal(grad, 0)),
+          math_ops.logical_and(
+              math_ops.is_inf(w),
+              math_ops.logical_or(
+                  math_ops.equal(grad, 0), math_ops.equal(cy, 0)
+              ),
+          ),
           math_ops.cast(0, w.dtype),
           w,
       )

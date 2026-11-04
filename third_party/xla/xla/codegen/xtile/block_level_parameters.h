@@ -39,6 +39,11 @@ struct BlockLevelParameters {
   bool is_warp_specialization_allowed = false;
   int num_tiles_per_pid = 1;
   int waves_per_eu = 0;
+  int mfma_size = 0;
+
+  // Tile sizes of the sequential dimensions, in tiling space order. Empty when
+  // sequential tile sizes are not set in the fusion config.
+  std::vector<int64_t> sequential_tile_sizes;
 
   // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
   static BlockLevelParameters FromBlockLevelFusionConfig(
@@ -52,11 +57,14 @@ struct BlockLevelParameters {
         config.is_warp_specialization_allowed();
     result.num_tiles_per_pid = std::max(1, config.num_tiles_per_pid());
     result.waves_per_eu = config.waves_per_eu();
+    result.mfma_size = config.mfma_size();
     result.output_tile_sizes.reserve(config.output_tiles_size());
     for (const auto& tile : config.output_tiles()) {
       result.output_tile_sizes.push_back(
           std::vector<int64_t>(tile.sizes().begin(), tile.sizes().end()));
     }
+    result.sequential_tile_sizes.assign(config.sequential_tile_sizes().begin(),
+                                        config.sequential_tile_sizes().end());
     return result;
   }
 
@@ -68,12 +76,15 @@ struct BlockLevelParameters {
       tile.mutable_sizes()->Add(tile_sizes.begin(), tile_sizes.end());
       *config.add_output_tiles() = tile;
     }
+    config.mutable_sequential_tile_sizes()->Add(sequential_tile_sizes.begin(),
+                                                sequential_tile_sizes.end());
     config.set_num_warps(num_warps);
     config.set_num_ctas(num_ctas);
     config.set_num_stages(num_stages);
     config.set_is_tma_allowed(is_tma_allowed);
     config.set_is_warp_specialization_allowed(is_warp_specialization_allowed);
     config.set_waves_per_eu(waves_per_eu);
+    config.set_mfma_size(mfma_size);
     if (num_tiles_per_pid > 1) {
       config.set_num_tiles_per_pid(num_tiles_per_pid);
     }

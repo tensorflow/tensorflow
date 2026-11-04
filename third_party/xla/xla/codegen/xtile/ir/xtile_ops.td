@@ -215,6 +215,16 @@ def MemRefBitcastOp : XTile_Op<"memref_bitcast",
 def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
   let summary = "Extract a tile from a memref.";
   let description = [{
+    Reads the elements `source[offsets[d] + i_d * strides[d]]` for every
+    `i_d` in `[0, full_tile_shape[d])`.
+
+    Neither the offsets nor the indices they address are required to be in
+    bounds: tiling may produce offsets past the end of a dimension (e.g. for
+    tiles of a high-padded operand), and even an in-bounds offset may address
+    indices `offsets[d] + i_d * strides[d]` past the end. Lowerings must never
+    access memory outside the `source` buffer. Elements whose index lies
+    outside `[0, dim_size)` in any dimension are not read and have an
+    unspecified value in the result.
   }];
 
   let arguments = (ins
@@ -243,6 +253,15 @@ def ExtractTileOp : XTile_Op<"extract", [TiledBufferInterface]> {
 def InsertTileOp : XTile_Op<"insert", [TiledBufferInterface]> {
   let summary = "Insert a tile into a memref.";
   let description = [{
+    Writes the tile to `destination[offsets[d] + i_d * strides[d]]` for every
+    `i_d` in `[0, full_tile_shape[d])`.
+
+    Neither the offsets nor the indices they address are required to be in
+    bounds: e.g. the last tile of a dimension that is not a multiple of the
+    tile size starts in bounds but addresses indices
+    `offsets[d] + i_d * strides[d]` past the end. Lowerings must never access
+    memory outside the `destination` buffer. Elements whose index lies outside
+    `[0, dim_size)` in any dimension are not written.
   }];
 
   let arguments = (ins
@@ -353,6 +372,48 @@ def ScanOp : XTile_Op<"scan", [Pure, AttrSizedOperandSegments, AttrSizedResultSe
     prop-dict attr-dict
     `:` `(` type($inputs) `)` `,` `(` type($inits) `)` `->` `(` type($outputs) `)` `,` `(` type($carries) `)`
     $body
+  }];
+
+  let hasVerifier = 1;
+}
+
+def ReduceScatterOp : XTile_Op<"reduce_scatter", [Pure]> {
+  let summary = "variadic reduce-scatter operation";
+  let description = [{
+    Mirrors HLO's kReduceScatter operation with one or more operands.
+
+    Output `k` on every replica is the element-wise reduction, over all
+    replicas of its replica group, of that replica's shard of input `k` along
+    `scatter_dimension`. The same binary reduction `computation` (a region
+    with two 0-d tensor arguments, terminated by `stablehlo.return`) is applied
+    to all operands.
+
+    This op exists because `stablehlo.reduce_scatter` takes exactly one operand
+    and produces one result, whereas HLO's reduce-scatter (like
+    `stablehlo.all_gather` and `stablehlo.all_reduce`) is variadic. Extending
+    StableHLO is out of scope for XTile, so reduce-scatters are emitted as this
+    op.
+
+    Example: for inputs of type `tensor<2x64xf32>`, `scatter_dimension = 0` and
+    a replica group of size 2, the outputs have type `tensor<1x64xf32>`.
+  }];
+
+  let arguments = (
+    ins
+    Variadic<AnyRankedTensor>:$inputs,
+    I64Attr:$scatter_dimension,
+    I64ElementsAttr:$replica_groups
+  );
+
+  let results = (outs Variadic<AnyRankedTensor>:$outputs);
+
+  let regions = (region SizedRegion<1>:$computation);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` `scatter_dimension` `=` $scatter_dimension
+    prop-dict attr-dict
+    `:` `(` type($inputs) `)` `->` `(` type($outputs) `)`
+    $computation
   }];
 
   let hasVerifier = 1;

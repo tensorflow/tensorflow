@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_profiling_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -133,11 +134,11 @@ class GpuHloScheduleTest : public HloTestBaseLegacy {
 
   static std::optional<std::string> ValidFingerprint(HloModule* module) {
     // Verify that the fingerprint of HLO prior to LHS is present.
-    const FrontendAttributes& attrs = module->frontend_attributes();
-    auto it = attrs.map().find(kFingerprintBeforeLHS);
+    std::optional<std::string> fingerprint = GetHloModuleFingerprint(
+        *module, HloModuleFingerprintStage::kBeforeScheduling);
     // The fingerprint is 128 bits stored as a hex string (128/4 hex digits).
-    if (it != attrs.map().end() && it->second.size() == 128 / 4) {
-      return it->second;
+    if (fingerprint.has_value() && fingerprint->size() == 128 / 4) {
+      return fingerprint;
     }
     return std::nullopt;
   }
@@ -754,6 +755,85 @@ TEST_P(GpuHloScheduleParameterizedTest, ProfileGuidedCostModel) {
       } else if (inst->opcode() == HloOpcode::kDot ||
                  inst->opcode() == HloOpcode::kAdd) {
         EXPECT_TRUE(between_target_collective_pair);
+      }
+    }
+  }
+}
+
+TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelUsesCostsOfThisModuleOnly) {
+  constexpr absl::string_view kHloText = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    add0 = f32[32,32] add(dot0, dot1)
+
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    ar-start1 = f32[32] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[32] all-reduce-done(ar-start1)
+
+    ROOT t = (f32[32], f32[32], f32[32,32]) tuple(ar-done, ar-done1, add0)
+  })";
+  ASSERT_OK_AND_ASSIGN(auto unscheduled,
+                       ParseAndReturnVerifiedModule(kHloText));
+  const std::string fingerprint = TagWithFingerprint(
+      unscheduled.get(), HloModuleFingerprintStage::kBeforeScheduling);
+  const std::string other_fingerprint = "0123456789abcdef0123456789abcdef";
+  ASSERT_NE(fingerprint, other_fingerprint);
+
+  // The profile gives the two all-reduces of this module and of another module
+  // with the same instruction names opposite costs. The compute should overlap
+  // the all-reduce that is long in this module, not the one that is long in the
+  // other module.
+  for (const auto& [long_ar_start, long_ar_done, short_ar_start] :
+       {std::tuple("ar-start", "ar-done", "ar-start1"),
+        std::tuple("ar-start1", "ar-done1", "ar-start")}) {
+    tensorflow::profiler::ProfiledInstructionsProto profile;
+    auto add_cost = [&](absl::string_view name, double cost_us) {
+      auto* cost = profile.add_costs();
+      cost->set_name(name);
+      cost->set_cost_us(cost_us);
+    };
+    add_cost("dot0", 100.0);
+    add_cost("dot1", 100.0);
+    add_cost("add0", 10.0);
+    add_cost(FingerprintedCostName(fingerprint, long_ar_start), 1000.0);
+    add_cost(FingerprintedCostName(fingerprint, short_ar_start), 10.0);
+    add_cost(FingerprintedCostName(other_fingerprint, long_ar_start), 10.0);
+    add_cost(FingerprintedCostName(other_fingerprint, short_ar_start), 1000.0);
+
+    TestConfig test_config;
+    test_config.enable_latency_hiding_scheduler = true;
+    test_config.fdo_profile = profile.SerializeAsString();
+    ASSERT_OK_AND_ASSIGN(
+        auto module,
+        ParseAndReturnVerifiedModule(kHloText, GetModuleConfig(test_config)));
+    SequentialHloOrdering order = BuildHloOrdering(module.get());
+    ASSERT_EQ(ValidFingerprint(module.get()), fingerprint);
+
+    bool between_long_collective_pair = false;
+    for (const HloInstruction* inst :
+         order.SequentialOrder(*module->entry_computation())->instructions()) {
+      if (inst->name() == long_ar_start) {
+        between_long_collective_pair = true;
+      } else if (inst->name() == long_ar_done) {
+        between_long_collective_pair = false;
+      } else if (inst->opcode() == HloOpcode::kAdd) {
+        EXPECT_TRUE(between_long_collective_pair)
+            << inst->name() << " is not inside " << long_ar_start;
       }
     }
   }
@@ -1896,6 +1976,148 @@ TEST_F(GpuHloScheduleTest, AsyncOps) {
                           HloOpcode::kAsyncDone, HloOpcode::kAdd));
 }
 
+// An async pair costs the latency between its start and done, whatever it
+// wraps: here a fusion, a fusion profiled only through the custom call inside
+// it (like a dynamic slice fusion), and a call, on the parallel execution
+// thread as compute_on produces them (CollectiveFusion's fusions wrapping
+// collective kernels are the same shape). The profile only has entries for
+// the wrapped fusion, the inner custom call and the called custom call, which
+// is how device activity is attributed; the accuracy checker at ERROR
+// strictness would fail the schedule if any pair, or the call's parameter,
+// were reported as missing.
+TEST_F(GpuHloScheduleTest, ProfilesAsyncPairsWrappingFusions) {
+  const absl::string_view kHloString = R"(
+  HloModule m
+
+  fused_negate {
+    p = f32[32] parameter(0)
+    ROOT negate = f32[32] negate(p)
+  }
+
+  async_negate {
+    p0 = f32[32] parameter(0)
+    ROOT negate-fusion = f32[32] fusion(p0), kind=kLoop, calls=fused_negate
+  }
+
+  slicing_fusion {
+    p0 = f32[4,32] parameter(0)
+    i = s32[] parameter(1)
+    zero = s32[] constant(0)
+    slice = f32[1,32] dynamic-slice(p0, i, zero), dynamic_slice_sizes={1,32}
+    ROOT inner = f32[1,32] custom-call(slice), custom_call_target="work"
+  }
+
+  async_slicing {
+    p0 = f32[4,32] parameter(0)
+    i = s32[] parameter(1)
+    ROOT slicing = f32[1,32] fusion(p0, i), kind=kCustom, calls=slicing_fusion
+  }
+
+  called {
+    p0 = f32[32] parameter(0)
+    ROOT work = f32[32] custom-call(p0), custom_call_target="work"
+  }
+
+  async_call {
+    p0 = f32[32] parameter(0)
+    ROOT call = f32[32] call(p0), to_apply=called
+  }
+
+  ENTRY e {
+    p0 = f32[32] parameter(0)
+    p1 = f32[4,32] parameter(1)
+    i = s32[] parameter(2)
+    negate-start = ((f32[32]), f32[32]) async-start(p0), calls=async_negate,
+      async_execution_thread="parallel"
+    negate-done = f32[32] async-done(negate-start)
+    slice-start = ((f32[4,32], s32[]), f32[1,32]) async-start(p1, i),
+      calls=async_slicing, async_execution_thread="parallel"
+    slice-done = f32[1,32] async-done(slice-start)
+    call-start = ((f32[32]), f32[32]) async-start(p0), calls=async_call,
+      async_execution_thread="parallel"
+    call-done = f32[32] async-done(call-start)
+    ROOT t = (f32[32], f32[1,32], f32[32]) tuple(negate-done, slice-done, call-done)
+  })";
+
+  const absl::string_view kProfile = R"pb(
+    costs { name: "negate-fusion" cost_us: 50.0 }
+    costs { name: "inner" cost_us: 60.0 }
+    costs { name: "work" cost_us: 70.0 }
+  )pb";
+
+  TestConfig test_config;
+  test_config.enable_latency_hiding_scheduler = true;
+  test_config.fdo_profile = kProfile;
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(kHloString, GetModuleConfig(test_config)));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_pgle_accuracy_checker(
+          DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR);
+  ASSERT_OK(ScheduleGpuModule(module.get()).status());
+}
+
+// Work inside an async call that the profile does not cover is a missing
+// profile entry, which the accuracy checker at ERROR strictness rejects, even
+// though it does not visit the called computation itself. (The complementary
+// case, a fully profiled call, is in ProfilesAsyncPairsWrappingFusions.)
+TEST_F(GpuHloScheduleTest, ReportsUnprofiledWorkInsideAsyncCalls) {
+  const absl::string_view kHloString = R"(
+  HloModule m
+
+  slicing_fusion {
+    p0 = f32[4,32] parameter(0)
+    i = s32[] parameter(1)
+    zero = s32[] constant(0)
+    slice = f32[1,32] dynamic-slice(p0, i, zero), dynamic_slice_sizes={1,32}
+    ROOT inner = f32[1,32] custom-call(slice), custom_call_target="work"
+  }
+
+  async_slicing {
+    p0 = f32[4,32] parameter(0)
+    i = s32[] parameter(1)
+    ROOT slicing = f32[1,32] fusion(p0, i), kind=kCustom, calls=slicing_fusion
+  }
+
+  called {
+    p0 = f32[32] parameter(0)
+    ROOT work = f32[32] custom-call(p0), custom_call_target="work"
+  }
+
+  async_call {
+    p0 = f32[32] parameter(0)
+    ROOT call = f32[32] call(p0), to_apply=called
+  }
+
+  ENTRY e {
+    p0 = f32[32] parameter(0)
+    neg = f32[32] negate(p0)
+    call-start = ((f32[32]), f32[32]) async-start(neg), calls=async_call,
+      async_execution_thread="parallel"
+    ROOT call-done = f32[32] async-done(call-start)
+  })";
+
+  // `work` is not in the profile and is reported missing.
+  const absl::string_view kProfile = R"pb(
+    costs { name: "neg" cost_us: 5.0 }
+  )pb";
+
+  TestConfig test_config;
+  test_config.enable_latency_hiding_scheduler = true;
+  test_config.fdo_profile = kProfile;
+  ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(kHloString, GetModuleConfig(test_config)));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_pgle_accuracy_checker(
+          DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR);
+  EXPECT_THAT(ScheduleGpuModule(module.get()).status(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     ::testing::HasSubstr("1 missing")));
+}
+
 TEST_F(GpuHloScheduleTest, MetadataIgnoredInFingerprint) {
   absl::string_view hlo = R"(
 HloModule test
@@ -2083,6 +2305,52 @@ TEST_F(GpuHloScheduleTest,
   // SolLatencyEstimator may be supported on this device, but explicit
   // flag=false must disable LHS.
   EXPECT_FALSE(IsLHSEnabled(*module, "", gpu_device_info));
+}
+
+TEST_F(GpuHloScheduleTest, SchedulingAnnotationsKeepMosaicGpuV2) {
+  constexpr absl::string_view kHloText = R"(
+  HloModule m
+
+  ENTRY main {
+    p0 = bf16[2,2048,4,128] parameter(0)
+    p1 = bf16[2,16384,4,128] parameter(1)
+
+    ag-start = (bf16[2,2048,4,128], bf16[2,16384,4,128]) all-gather-start(p0),
+      dimensions={1},
+      frontend_attributes={_scheduling_group_id="0"}
+    ag-done = bf16[2,16384,4,128] all-gather-done(ag-start),
+      frontend_attributes={_scheduling_group_id="0"}
+
+    mosaic = bf16[2,16384,4,128] custom-call(p1),
+      custom_call_target="mosaic_gpu_v2",
+      frontend_attributes={_scheduling_group_id="0"}
+    other = bf16[2,16384,4,128] custom-call(p1),
+      custom_call_target="other_custom_call",
+      frontend_attributes={_scheduling_group_id="0"}
+
+    ROOT result = (bf16[2,16384,4,128], bf16[2,16384,4,128], bf16[2,16384,4,128])
+      tuple(ag-done, mosaic, other)
+  })";
+
+  TestConfig test_config;
+  test_config.enable_latency_hiding_scheduler = true;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kHloText, GetModuleConfig(test_config)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* ag_start = entry->GetInstructionWithName("ag-start");
+  const HloInstruction* ag_done = entry->GetInstructionWithName("ag-done");
+  const HloInstruction* mosaic = entry->GetInstructionWithName("mosaic");
+  const HloInstruction* other = entry->GetInstructionWithName("other");
+
+  EXPECT_TRUE(
+      mosaic->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_FALSE(
+      other->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_TRUE(order.ExecutesBefore(ag_start, mosaic));
+  EXPECT_TRUE(order.ExecutesBefore(mosaic, ag_done));
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,

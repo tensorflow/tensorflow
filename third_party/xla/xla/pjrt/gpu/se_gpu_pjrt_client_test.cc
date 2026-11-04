@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -92,6 +93,7 @@ limitations under the License.
 #include "xla/pjrt/se/local_device_state.h"
 #include "xla/pjrt/se/pjrt_stream_executor_client.h"
 #include "xla/pjrt/se/stream_executor_executable.h"
+#include "xla/pjrt/strided_gather.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
@@ -111,6 +113,8 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client_test_helper.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -125,7 +129,6 @@ limitations under the License.
 #include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/numa.h"
 #include "tsl/platform/platform.h"
@@ -146,6 +149,7 @@ using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::SizeIs;
+using ::testing::VariantWith;
 
 absl::StatusOr<PjRtDeviceEventPtr::DefinitionStreamInfo>
 GetDefinitionStreamInfo(PjRtBuffer* buffer) {
@@ -315,23 +319,28 @@ TEST(StreamExecutorGpuClientTest,
 }
 
 TEST(StreamExecutorGpuClientTest, MemorySpace) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
   ASSERT_GE(client->devices().size(), 1);
 
-  for (auto* device : client->devices()) {
-    TF_ASSERT_OK_AND_ASSIGN(auto* memory_space, device->default_memory_space());
+  for (PjRtDevice* device : client->devices()) {
+    ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * memory_space,
+                         device->default_memory_space());
     EXPECT_EQ(memory_space->kind(), StreamExecutorGpuHbmMemorySpace::kKind);
     EXPECT_EQ(memory_space->kind_id(),
               StreamExecutorGpuHbmMemorySpace::kKindId);
     EXPECT_THAT(
         device->memory_space_by_kind(StreamExecutorGpuHbmMemorySpace::kKind),
         absl_testing::IsOkAndHolds(memory_space));
-    EXPECT_EQ(device->memory_spaces().size(), 2);
-    auto* pinned = device->memory_spaces()[1];
+    EXPECT_EQ(device->memory_spaces().size(), 3);
+    PjRtMemorySpace* pinned = device->memory_spaces()[1];
     EXPECT_EQ(pinned->kind_id(), PinnedHostMemorySpace::kKindId);
     EXPECT_THAT(device->memory_space_by_kind(PinnedHostMemorySpace::kKind),
                 absl_testing::IsOkAndHolds(pinned));
+    PjRtMemorySpace* unpinned = device->memory_spaces()[2];
+    EXPECT_EQ(unpinned->kind_id(), UnpinnedHostMemorySpace::kKindId);
+    EXPECT_THAT(device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind),
+                absl_testing::IsOkAndHolds(unpinned));
   }
 }
 
@@ -350,6 +359,14 @@ TEST(StreamExecutorGpuClientTest, PlatformVersionIsDerivedAtRuntime) {
               absl::StartsWith(version, "rocm ") ||
               absl::StartsWith(version, "oneapi"))
       << "unexpected platform version: " << version;
+
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
+  EXPECT_EQ(topology->platform_version(), version);
+  const auto device_descs = topology->DeviceDescriptions();
+  ASSERT_EQ(device_descs.size(), client->devices().size());
+  EXPECT_EQ(device_descs[0]->device_kind(),
+            client->devices()[0]->device_kind());
 }
 
 TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
@@ -789,6 +806,165 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
                                 "of size 8 (0 already transferred)"));
 }
 
+TEST(StreamExecutorGpuClientTest, SendErrorWaitsForOutstandingSends) {
+  // This test confirms a fix to a use-after-free bug. Specifically:
+  // 1) send1's callback fails, 2) send-done1 observes the error and aborts
+  // before send-done2, 3) send2's callback runs and references the now-deleted
+  // send1 buffer, and 4) the program is still blocked.
+  static constexpr absl::string_view kTwoSendsProgram = R"(
+    HloModule TwoSends
+
+    ENTRY main() -> f32[2] {
+      in_chain = token[] after-all()
+      data = f32[2] constant({2, 3})
+      send1 = (f32[2], u32[], token[]) send(data, in_chain),
+        channel_id=1,
+        is_host_transfer=true,
+        frontend_attributes={
+          _xla_host_transfer_handler_name="undef",
+          _xla_host_transfer_rendezvous="undef"
+        }
+      send2 = (f32[2], u32[], token[]) send(data, in_chain),
+        channel_id=2,
+        is_host_transfer=true,
+        frontend_attributes={
+          _xla_host_transfer_handler_name="undef",
+          _xla_host_transfer_rendezvous="undef"
+        }
+      send-done1 = token[] send-done(send1),
+        channel_id=1, is_host_transfer=true, control-predecessors={send2}
+      send-done2 = token[] send-done(send2),
+        channel_id=2, is_host_transfer=true, control-predecessors={send-done1}
+      ROOT result = f32[2] add(data, data)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       CompileExecutable(kTwoSendsProgram, *client));
+
+  absl::Notification send2_started;
+  absl::Notification release_send2;
+
+  // Always-failing Send handler.
+  SendCallback send_callback1 = {
+      /*channel_id=*/1, [](const PjRtTransferMetadata&, PjRtChunk, int64_t,
+                           bool) { return Internal("Fake send failure"); }};
+
+  // Send handler that blocks until the test releases it. The wait is bounded,
+  // so that an unexpected schedule fails the test instead of deadlocking it.
+  SendCallback send_callback2 = {
+      /*channel_id=*/2,
+      [&](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
+        send2_started.Notify();
+        release_send2.WaitForNotificationWithTimeout(absl::Seconds(30));
+        return absl::OkStatus();
+      }};
+
+  std::vector<std::vector<SendCallback>> send_callbacks = {
+      {send_callback1, send_callback2}};
+  std::vector<std::vector<RecvCallback>> recv_callbacks = {{}};
+
+  ExecuteOptions opts;
+  opts.send_callbacks = send_callbacks;
+  opts.recv_callbacks = recv_callbacks;
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       executable->Execute(/*argument_handles=*/{{}}, opts));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  Future<> ready = result[0][0]->GetReadyFuture();
+
+  // Ensure send2 has started, then wait to allow time for send1 to fail.
+  // Test the promise is still not ready since send2 is waiting for release,
+  // then release it and assure clean completion with expected error.
+  ASSERT_TRUE(send2_started.WaitForNotificationWithTimeout(absl::Seconds(60)));
+  absl::SleepFor(absl::Milliseconds(100));
+  EXPECT_FALSE(ready.IsReady());
+  release_send2.Notify();
+  const absl::Status status = ready.Await();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal,
+                               HasSubstr("Fake send failure")));
+}
+
+TEST(StreamExecutorGpuClientTest, SendErrorWaitsForPendingSendAfterPruning) {
+  // Like SendErrorWaitsForOutstandingSends, but many sends complete while
+  // `blocked` is pending, so the outstanding sends are pruned several times.
+  constexpr int kNumCompletedSends = 150;
+  constexpr absl::string_view kHostTransfer =
+      R"(is_host_transfer=true, frontend_attributes={)"
+      R"(_xla_host_transfer_handler_name="undef", )"
+      R"(_xla_host_transfer_rendezvous="undef"})";
+  std::string completed_sends;
+  std::string prev = "blocked";
+  for (int i = 0; i < kNumCompletedSends; ++i) {
+    absl::StrAppendFormat(
+        &completed_sends,
+        "send%1$d = (f32[2], u32[], token[]) send(data, tok), channel_id=%2$d, "
+        "%3$s, control-predecessors={%4$s}\n"
+        "send%1$d-done = token[] send-done(send%1$d), channel_id=%2$d, "
+        "is_host_transfer=true\n",
+        i, /*channel_id=*/3 + i, kHostTransfer, prev);
+    prev = absl::StrFormat("send%d-done", i);
+  }
+  std::string hlo = absl::StrFormat(R"(
+    HloModule PruneSends
+    ENTRY main() -> f32[2] {
+      tok = token[] after-all()
+      data = f32[2] constant({2, 3})
+      blocked = (f32[2], u32[], token[]) send(data, tok), channel_id=1, %1$s
+      %2$s
+      failing = (f32[2], u32[], token[]) send(data, tok), channel_id=2, %1$s,
+        control-predecessors={%3$s}
+      failing-done = token[] send-done(failing),
+        channel_id=2, is_host_transfer=true
+      blocked-done = token[] send-done(blocked),
+        channel_id=1, is_host_transfer=true, control-predecessors={failing-done}
+      ROOT result = f32[2] add(data, data)
+    })",
+                                    kHostTransfer, completed_sends, prev);
+
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto executable, CompileExecutable(hlo, *client));
+
+  absl::Notification blocked_started;
+  absl::Notification release_blocked;
+  auto block = [&](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
+    blocked_started.Notify();
+    release_blocked.WaitForNotificationWithTimeout(absl::Seconds(30));
+    return absl::OkStatus();
+  };
+  auto fail = [](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
+    return Internal("Fake send failure");
+  };
+  auto ok = [](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
+    return absl::OkStatus();
+  };
+  std::vector<SendCallback> callbacks = {{/*channel_id=*/1, block},
+                                         {/*channel_id=*/2, fail}};
+  for (int i = 0; i < kNumCompletedSends; ++i) {
+    callbacks.push_back({/*channel_id=*/3 + i, ok});
+  }
+  std::vector<std::vector<SendCallback>> send_callbacks = {callbacks};
+  std::vector<std::vector<RecvCallback>> recv_callbacks = {{}};
+  ExecuteOptions opts;
+  opts.send_callbacks = send_callbacks;
+  opts.recv_callbacks = recv_callbacks;
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       executable->Execute(/*argument_handles=*/{{}}, opts));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  Future<> ready = result[0][0]->GetReadyFuture();
+
+  ASSERT_TRUE(
+      blocked_started.WaitForNotificationWithTimeout(absl::Seconds(60)));
+  absl::SleepFor(absl::Milliseconds(100));
+  EXPECT_FALSE(ready.IsReady());
+  release_blocked.Notify();
+  EXPECT_THAT(ready.Await(), StatusIs(absl::StatusCode::kInternal,
+                                      HasSubstr("Fake send failure")));
+}
+
 // User-defined data type to be passed to FFI handler via the execute context
 // side channel.
 
@@ -892,7 +1068,7 @@ TEST(StreamExecutorGpuClientTest, ExecutionTimeoutHandlers) {
   gpu::GpuExecutableRunOptions* run_options =
       absl::down_cast<PjRtStreamExecutorRawClient*>(
           absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
-          ->gpu_run_options();
+          ->mutable_gpu_run_options();
   ASSERT_NE(run_options, nullptr);
 
   run_options->set_execution_timeout_handlers([state] {
@@ -1656,32 +1832,6 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
       *literal, LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f))));
 }
 
-TEST(StreamExecutorGpuClientTest, ShouldStageLargeTransfersWhenChunking) {
-  GpuClientOptions options = GetTestGpuClientOptions();
-  options.should_stage_host_to_device_transfers = true;
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
-  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
-      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
-
-  // Only the pointer value is used; no 1 GiB host buffer is allocated.
-  std::vector<char> host(16);
-  constexpr int64_t kOneGiB = int64_t{1} << 30;
-  ASSERT_FALSE(raw_client->IsDmaMapped(host.data(), kOneGiB));
-
-  // Without chunking, large transfers are not staged (unchanged behavior).
-  EXPECT_FALSE(
-      raw_client->ShouldStageHostToDeviceTransfers(host.data(), kOneGiB));
-  EXPECT_FALSE(
-      raw_client->ShouldStageHostToDeviceTransfers(host.data(), kOneGiB + 1));
-
-  // With chunking, staging uses bounded chunk buffers, so any size is staged.
-  raw_client->SetStagingChunkingForTesting(/*force=*/true, /*chunk_size=*/4096);
-  EXPECT_TRUE(
-      raw_client->ShouldStageHostToDeviceTransfers(host.data(), kOneGiB));
-  EXPECT_TRUE(
-      raw_client->ShouldStageHostToDeviceTransfers(host.data(), kOneGiB + 1));
-}
-
 TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   GpuClientOptions options_no_staging = GetTestGpuClientOptions();
   options_no_staging.should_stage_host_to_device_transfers = false;
@@ -1711,83 +1861,6 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *literal, LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f))));
-}
-
-constexpr int64_t kTestStagingChunkSize = 4 * 1024;
-
-// Returns `size` bytes whose content differs between any two chunks, so that
-// misplaced or reordered chunks are detected.
-std::vector<uint8_t> MakeStagingTestPattern(int64_t size) {
-  std::vector<uint8_t> pattern(size);
-  for (int64_t i = 0; i < size; ++i) {
-    pattern[i] = static_cast<uint8_t>((i * 131) ^ (i >> 8));
-  }
-  return pattern;
-}
-
-// Copies `transfer_size` bytes host->device->host at `offset` of a device
-// buffer with chunked host staging forced on, and checks the bytes survive.
-void ExpectChunkedStagingRoundTrip(int64_t offset, int64_t transfer_size) {
-  GpuClientOptions options = GetTestGpuClientOptions();
-  options.should_stage_host_to_device_transfers = true;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> pjrt_client,
-                          GetStreamExecutorGpuClient(options));
-  auto* client = absl::down_cast<CommonPjRtClient*>(pjrt_client.get());
-  auto* raw_client =
-      absl::down_cast<PjRtStreamExecutorRawClient*>(client->raw_client());
-  raw_client->SetStagingChunkingForTesting(/*force=*/true,
-                                           kTestStagingChunkSize);
-
-  std::vector<uint8_t> src = MakeStagingTestPattern(transfer_size);
-  ASSERT_TRUE(
-      raw_client->ShouldStageHostToDeviceTransfers(src.data(), transfer_size));
-  TF_ASSERT_OK_AND_ASSIGN(
-      PjRtMemorySpace * memory_space,
-      client->addressable_devices()[0]->default_memory_space());
-  TF_ASSERT_OK_AND_ASSIGN(
-      PjRtRawBufferRef raw_buffer,
-      client->AllocateRawBuffer(memory_space, offset + transfer_size,
-                                /*retry_on_oom=*/true,
-                                /*allocate_after=*/{}));
-
-  TF_ASSERT_OK(
-      raw_buffer->CopyRawHostToDevice(src.data(), offset, transfer_size)
-          .Await());
-  std::vector<uint8_t> dst(transfer_size, 0);
-  TF_ASSERT_OK(
-      raw_buffer->CopyRawDeviceToHost(dst.data(), offset, transfer_size)
-          .Await());
-  EXPECT_EQ(dst, src);
-}
-
-TEST(StreamExecutorGpuClientTest, ChunkedStagingZeroBytes) {
-  ExpectChunkedStagingRoundTrip(/*offset=*/0, 0);
-}
-
-TEST(StreamExecutorGpuClientTest, ChunkedStagingOneByte) {
-  ExpectChunkedStagingRoundTrip(/*offset=*/0, 1);
-}
-
-TEST(StreamExecutorGpuClientTest, ChunkedStagingSmallerThanChunk) {
-  ExpectChunkedStagingRoundTrip(/*offset=*/0, kTestStagingChunkSize / 2);
-}
-
-TEST(StreamExecutorGpuClientTest, ChunkedStagingEqualToChunk) {
-  ExpectChunkedStagingRoundTrip(/*offset=*/0, kTestStagingChunkSize);
-}
-
-TEST(StreamExecutorGpuClientTest, ChunkedStagingMultipleOfChunk) {
-  // More chunks than staging slots, so slots are reused.
-  ExpectChunkedStagingRoundTrip(/*offset=*/0, 8 * kTestStagingChunkSize);
-}
-
-TEST(StreamExecutorGpuClientTest, ChunkedStagingNonMultipleOfChunk) {
-  ExpectChunkedStagingRoundTrip(/*offset=*/0, 10 * kTestStagingChunkSize + 123);
-}
-
-TEST(StreamExecutorGpuClientTest, ChunkedStagingWithNonzeroOffset) {
-  ExpectChunkedStagingRoundTrip(/*offset=*/123,
-                                10 * kTestStagingChunkSize + 45);
 }
 
 TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {
@@ -1875,6 +1948,390 @@ TEST(StreamExecutorGpuClientTest, CopyFromPinnedHostMemorySpace) {
   std::vector<int32_t> expected{1, 2, 3, 4};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
+}
+
+TEST(StreamExecutorGpuClientTest, CopyToUnpinnedHostMemorySpace) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> data = {1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * device_memory_space,
+                       device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          device_memory_space, /*device_layout=*/nullptr));
+
+  EXPECT_EQ(buffer->memory_space()->kind(), "device");
+
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * unpinned_memory_space,
+      device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+  EXPECT_EQ(unpinned_memory_space->kind_id(), UnpinnedHostMemorySpace::kKindId);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> result,
+                       buffer->CopyToMemorySpace(unpinned_memory_space));
+
+  EXPECT_EQ(result->memory_space()->kind(), "unpinned_host");
+  EXPECT_TRUE(result->IsOnCpu());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                       result->ToLiteral().Await());
+  std::vector<int32_t> expected = {1, 2, 3, 4};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST(StreamExecutorGpuClientTest, CopyFromUnpinnedHostMemorySpace) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> data = {1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * device_memory_space,
+                       device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * unpinned_memory_space,
+      device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          unpinned_memory_space, /*device_layout=*/nullptr));
+
+  EXPECT_EQ(buffer->memory_space()->kind(), "unpinned_host");
+  EXPECT_TRUE(buffer->IsOnCpu());
+
+  EXPECT_EQ(unpinned_memory_space->kind_id(), UnpinnedHostMemorySpace::kKindId);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> result,
+                       buffer->CopyToMemorySpace(device_memory_space));
+
+  EXPECT_EQ(result->memory_space()->kind(), "device");
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                       result->ToLiteral().Await());
+  std::vector<int32_t> expected = {1, 2, 3, 4};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST(StreamExecutorGpuClientTest, CopyBetweenPinnedAndUnpinnedHostMemorySpace) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> data = {1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_memory_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * unpinned_memory_space,
+      device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+
+  // Pinned -> Unpinned
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> pinned_buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_memory_space, /*device_layout=*/nullptr));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> unpinned_result,
+                       pinned_buffer->CopyToMemorySpace(unpinned_memory_space));
+  EXPECT_EQ(unpinned_result->memory_space()->kind(), "unpinned_host");
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal1,
+                       unpinned_result->ToLiteral().Await());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(data), *literal1));
+
+  // Unpinned -> Pinned
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> pinned_result,
+                       unpinned_result->CopyToMemorySpace(pinned_memory_space));
+  EXPECT_EQ(pinned_result->memory_space()->kind(), "pinned_host");
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal2,
+                       pinned_result->ToLiteral().Await());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(data), *literal2));
+}
+
+TEST(StreamExecutorGpuClientTest, MutableZeroCopyUnpinnedHostMemorySpace) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  alignas(64) std::array<int32_t, 4> data = {10, 20, 30, 40};
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * unpinned_space,
+      device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kMutableZeroCopy, nullptr,
+          unpinned_space, /*device_layout=*/nullptr));
+
+  EXPECT_EQ(buffer->memory_space()->kind(), "unpinned_host");
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer::ExternalReference> buffer_ref,
+      buffer->AcquireExternalReference());
+  EXPECT_EQ(buffer_ref->OpaqueDeviceMemoryDataPointer(), data.data());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                       buffer->ToLiteral().Await());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(data), *literal));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     CreateBuffersForAsyncHostToDeviceUnpinnedHost) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * unpinned_space,
+      device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager> manager,
+      client->CreateBuffersForAsyncHostToDevice({shape}, unpinned_space));
+
+  std::vector<int32_t> data = {5, 6, 7, 8};
+  ASSERT_OK(manager->TransferLiteralToBuffer(
+      0, LiteralUtil::CreateR1<int32_t>(data), [] {}));
+
+  std::unique_ptr<PjRtBuffer> buffer = manager->RetrieveBuffer(0);
+  ASSERT_NE(buffer, nullptr);
+  EXPECT_EQ(buffer->memory_space()->kind(), "unpinned_host");
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                       buffer->ToLiteral().Await());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(data), *literal));
+
+  // Copy to device
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * device_memory_space,
+                       device->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> device_buffer,
+                       buffer->CopyToMemorySpace(device_memory_space));
+  EXPECT_EQ(device_buffer->memory_space()->kind(), "device");
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> device_literal,
+                       device_buffer->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(data),
+                                     *device_literal));
+}
+
+TEST(StreamExecutorGpuClientTest, PjRtBufferCopySlicePinnedHostSingleChunk) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> data{10, 11, 12, 13, 14, 15, 16, 17};
+  Shape shape = ShapeUtil::MakeShape(S32, {8});
+  PjRtDevice* device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_space, /*device_layout=*/nullptr));
+
+  // Slice 4 elements (16 bytes) starting at element 2 (byte offset 8).
+  StridedGather::Spec spec = {
+      /*element_size=*/16,
+      /*counts=*/{1},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/32,
+      /*src_byte_strides=*/{16},
+  };
+  StridedGather gather(spec);
+  ASSERT_EQ(gather.num_chunks(), 1);
+  ASSERT_EQ(gather.chunk_size(), 16);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                          src_buffer->CopySlice(gather, dst_shape));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(sliced_buffer->on_device_shape(), dst_shape));
+  EXPECT_EQ(sliced_buffer->memory_space()->kind(), "pinned_host");
+  EXPECT_TRUE(sliced_buffer->IsOnCpu());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                          sliced_buffer->ToLiteral().Await());
+  std::vector<int32_t> expected{12, 13, 14, 15};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     PjRtBufferCopySlicePinnedHostMultiChunkWithTranspose) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> data{10, 11, 12, 20, 21, 22};
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  PjRtDevice* device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_space, /*device_layout=*/nullptr));
+
+  // Slice columns 1 and 2 transposed: counts={2, 2}, strides={4, 12},
+  // offset=4.
+  StridedGather::Spec spec = {
+      /*element_size=*/sizeof(int32_t),
+      /*counts=*/{2, 2},
+      /*src_byte_offset=*/sizeof(int32_t),
+      /*src_byte_size=*/6 * sizeof(int32_t),
+      /*src_byte_strides=*/{sizeof(int32_t), 3 * sizeof(int32_t)},
+  };
+  StridedGather gather(spec);
+  ASSERT_GT(gather.num_chunks(), 1);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                          src_buffer->CopySlice(gather, dst_shape));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(sliced_buffer->on_device_shape(), dst_shape));
+  EXPECT_EQ(sliced_buffer->memory_space()->kind(), "pinned_host");
+  EXPECT_TRUE(sliced_buffer->IsOnCpu());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                          sliced_buffer->ToLiteral().Await());
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>({{11, 21}, {12, 22}}), *literal));
+}
+
+TEST(StreamExecutorGpuClientTest, PjRtBufferScheduleCopySliceToPinnedHost) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> src_data{10, 11, 12, 13, 14, 15, 16, 17};
+  std::vector<int32_t> dst_data{0, 0, 0, 0};
+  Shape src_shape = ShapeUtil::MakeShape(S32, {8});
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {4});
+  PjRtDevice* device = client->addressable_devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostBuffer(
+          src_data.data(), src_shape.element_type(), src_shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_space, /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> dst_buffer,
+      client->BufferFromHostBuffer(
+          dst_data.data(), dst_shape.element_type(), dst_shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          pinned_space, /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtRawBufferRef src_raw,
+      PjRtRawBuffer::CreateRawAliasOfBuffer(src_buffer.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtRawBufferRef dst_raw,
+      PjRtRawBuffer::CreateRawAliasOfBuffer(dst_buffer.get()));
+  ASSERT_NE(src_raw, nullptr);
+  ASSERT_NE(dst_raw, nullptr);
+
+  StridedGather::Spec spec = {
+      /*element_size=*/16,
+      /*counts=*/{1},
+      /*src_byte_offset=*/8,
+      /*src_byte_size=*/32,
+      /*src_byte_strides=*/{16},
+  };
+  StridedGather gather(spec);
+
+  CommonPjRtClient* common_client =
+      absl::down_cast<CommonPjRtClient*>(client.get());
+  PjRtDeviceEventPromiseRef definition_event_promise;
+  PjRtDeviceEventRef definition_event;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::tie(definition_event_promise, definition_event),
+      common_client->CreateLinkedEventPromise(pinned_space, "definition"));
+
+  PjRtDeviceEventPromiseRef src_usage_event_promise;
+  PjRtDeviceEventRef src_usage_event;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::tie(src_usage_event_promise, src_usage_event),
+      common_client->CreateLinkedEventPromise(pinned_space, "src_usage"));
+
+  src_raw->ScheduleCopySliceTo(
+      /*transfer_dependency_events=*/{}, gather, dst_raw,
+      std::move(definition_event_promise), std::move(src_usage_event_promise),
+      /*allocation_event=*/nullptr);
+
+  tsl::BlockUntilReady(definition_event.async_value());
+  EXPECT_EQ(definition_event.GetErrorIfPresent(), std::nullopt);
+  tsl::BlockUntilReady(src_usage_event.async_value());
+  EXPECT_EQ(src_usage_event.GetErrorIfPresent(), std::nullopt);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                          dst_buffer->ToLiteral().Await());
+  std::vector<int32_t> expected{12, 13, 14, 15};
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
+TEST(StreamExecutorGpuClientTest,
+     PjRtBufferCopySliceDeviceMemorySpaceReturnsUnimplemented) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient> client,
+      GetStreamExecutorGpuClient(GetTestGpuClientOptions()));
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  PjRtDevice* device = client->addressable_devices()[0];
+  PjRtMemorySpace* device_memory_space = *device->default_memory_space();
+  EXPECT_EQ(device_memory_space->kind(), "device");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          device_memory_space, /*device_layout=*/nullptr));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{1},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {1});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                          buffer->CopySlice(gather, dst_shape));
+  EXPECT_THAT(sliced_buffer->GetReadyFuture().Await(),
+              ::absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 namespace {
@@ -3145,6 +3602,325 @@ TEST(StreamExecutorGpuClientTest, SharedPoolAnchorsCollectiveMemoryAtLowerEnd) {
   EXPECT_EQ(address(default_coalesced), default_boundary);
 }
 
+// Parses `flags` as XLA_FLAGS for the lifetime of the object and restores the
+// original flag values on destruction. nullptr parses with XLA_FLAGS unset.
+class ScopedXlaFlags {
+ public:
+  explicit ScopedXlaFlags(const char* flags) {
+    if (const char* original = std::getenv("XLA_FLAGS")) {
+      original_flags_ = original;
+    }
+    Apply(flags);
+  }
+  ~ScopedXlaFlags() {
+    Apply(original_flags_ ? original_flags_->c_str() : nullptr);
+  }
+
+  ScopedXlaFlags(const ScopedXlaFlags&) = delete;
+  ScopedXlaFlags& operator=(const ScopedXlaFlags&) = delete;
+
+ private:
+  static void Apply(const char* flags) {
+    int* pargc;
+    std::vector<char*>* pargv;
+    ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
+    if (flags != nullptr) {
+      tsl::setenv("XLA_FLAGS", flags, 1);
+    } else {
+      tsl::unsetenv("XLA_FLAGS");
+    }
+    ResetFlagValues();
+    ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
+  }
+
+  std::optional<std::string> original_flags_;
+};
+
+TEST(ScopedXlaFlagsTest, RestoresNestedFlags) {
+  ScopedXlaFlags outer("--xla_gpu_memory_fraction_policy=0.85");
+  {
+    ScopedXlaFlags inner("--xla_gpu_memory_fraction_policy=0.5+");
+    EXPECT_EQ(GetDebugOptionsFromFlags().xla_gpu_memory_fraction_policy(),
+              "0.5+");
+  }
+  EXPECT_STREQ(std::getenv("XLA_FLAGS"),
+               "--xla_gpu_memory_fraction_policy=0.85");
+  EXPECT_EQ(GetDebugOptionsFromFlags().xla_gpu_memory_fraction_policy(),
+            "0.85");
+}
+
+TEST(ScopedXlaFlagsTest, RestoresUnsetAndEmptyFlags) {
+  for (const char* original : {static_cast<const char*>(nullptr), ""}) {
+    ScopedXlaFlags outer(original);
+    {
+      ScopedXlaFlags inner("--xla_gpu_memory_fraction_policy=0.5+");
+      EXPECT_EQ(GetDebugOptionsFromFlags().xla_gpu_memory_fraction_policy(),
+                "0.5+");
+    }
+    EXPECT_STREQ(std::getenv("XLA_FLAGS"), original);
+    EXPECT_TRUE(
+        GetDebugOptionsFromFlags().xla_gpu_memory_fraction_policy().empty());
+  }
+}
+
+// Choose a representable fraction whose byte conversion does not undershoot
+// the requested cap. This avoids losing a granule to division/multiplication
+// round-off while leaving the allocator's strict downward rounding unchanged.
+double MemoryFractionForBytes(int64_t bytes, int64_t total_memory) {
+  double fraction = static_cast<double>(bytes) / total_memory;
+  while (static_cast<int64_t>(total_memory * fraction) < bytes) {
+    fraction = std::nextafter(fraction, 1.0);
+  }
+  return fraction;
+}
+
+TEST(MemoryFractionForBytesTest, PreservesAlignedCapAtRoundOffBoundary) {
+  constexpr int64_t kTotal = int64_t{66199} << 20;
+  constexpr int64_t kCap = 16 << 20;
+  const double fraction = MemoryFractionForBytes(kCap, kTotal);
+  EXPECT_EQ(static_cast<int64_t>(kTotal * fraction), kCap);
+}
+
+bool SharedSpatialPoolIsDefault(const DebugOptions& debug_options) {
+  return debug_options.xla_gpu_enable_allocator_spatial_partitioning() &&
+         debug_options.xla_gpu_command_buffer_update_mode() ==
+             DebugOptions::ALWAYS_UPDATE;
+}
+
+#if GOOGLE_CUDA
+TEST(StreamExecutorGpuClientTest, CrossMappingReceiveNotifiesFailure) {
+  ScopedXlaFlags flags("--xla_gpu_enable_allocator_spatial_partitioning=true");
+  ASSERT_OK_AND_ASSIGN(auto* platform, PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(auto reservation, executor->CreateMemoryReservation(1));
+  const int64_t initial_bytes =
+      RoundUpTo<int64_t>(8 << 20, reservation->granularity());
+  const int64_t cap_bytes = 2 * initial_bytes;
+  reservation.reset();
+  int64_t free_memory = 0;
+  int64_t total_memory = 0;
+  ASSERT_TRUE(executor->DeviceMemoryUsage(&free_memory, &total_memory));
+
+  GpuClientOptions options = GetTestGpuClientOptions(1);
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.gpu_system_memory_size = initial_bytes;
+  const double cap = MemoryFractionForBytes(cap_bytes, total_memory);
+  options.allocator_config.memory_fraction_policy =
+      FlexMemFraction{cap / 2, cap};
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  struct ReceiveResult {
+    absl::Notification notified;
+    absl::Status status;
+  };
+  auto result = std::make_shared<ReceiveResult>();
+  // The nonempty buffer consumes the entire cap, so it must span the initial
+  // mapping and its extension. Rejection happens before fabric export and
+  // needs only one GPU. The whole batch must fail, including its empty buffer.
+  ASSERT_OK_AND_ASSIGN(
+      auto buffers, client->MakeCrossHostReceiveBuffers(
+                        {ShapeUtil::MakeShape(U8, {0}),
+                         ShapeUtil::MakeShape(U8, {cap_bytes})},
+                        client->addressable_devices()[0],
+                        [result](absl::StatusOr<PjRtCrossHostRecvState> state) {
+                          result->status = state.status();
+                          result->notified.Notify();
+                        }));
+  ASSERT_EQ(buffers.size(), 2);
+  ASSERT_TRUE(
+      result->notified.WaitForNotificationWithTimeout(absl::Seconds(10)))
+      << "Receive failed without notifying descriptor consumers";
+  EXPECT_THAT(result->status,
+              StatusIs(absl::StatusCode::kUnimplemented,
+                       HasSubstr("spanning physical allocations")));
+  for (const auto& buffer : buffers) {
+    EXPECT_THAT(buffer->GetReadyFuture().Await(),
+                StatusIs(absl::StatusCode::kUnimplemented,
+                         HasSubstr("spanning physical allocations")));
+  }
+}
+#endif  // GOOGLE_CUDA
+
+TEST(StreamExecutorGpuClientTest,
+     MemoryFractionOverrideSizesSeparateCollectivePool) {
+  ASSERT_OK_AND_ASSIGN(auto* platform, PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  int64_t free_memory = 0;
+  int64_t total_memory = 0;
+  ASSERT_TRUE(executor->DeviceMemoryUsage(&free_memory, &total_memory));
+  // Leave a small collective budget so testing its boundary needs little GPU
+  // memory, even if the override is accidentally ignored.
+  constexpr double kFraction = 0.9999;
+  constexpr int64_t kGranularity = 2 << 20;
+  const int64_t collective_limit = RoundUpTo<int64_t>(
+      static_cast<int64_t>(total_memory * (1.0 - kFraction)), kGranularity);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  // Both configurations create separate pools: no preallocation, or no
+  // spatial partitioning. Explicit collective sizes must still take priority.
+  for (bool preallocate : {false, true}) {
+    ScopedXlaFlags flags(
+        preallocate ? "--xla_gpu_memory_fraction_policy=0.9999 "
+                      "--xla_gpu_enable_allocator_spatial_partitioning=false "
+                      "--xla_gpu_command_buffer_update_mode=ALWAYS_UPDATE"
+                    : "--xla_gpu_memory_fraction_policy=0.9999 "
+                      "--xla_gpu_enable_allocator_spatial_partitioning=true "
+                      "--xla_gpu_command_buffer_update_mode=ALWAYS_UPDATE");
+    for (bool explicit_collective_size : {false, true}) {
+      SCOPED_TRACE(preallocate);
+      SCOPED_TRACE(explicit_collective_size);
+      GpuClientOptions options = GetTestGpuClientOptions(1);
+      options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+      options.allocator_config.preallocate = preallocate;
+      options.allocator_config.memory_fraction_policy = FixedMemFraction{0.75};
+      // Keep the default pool small; only the collective limit is under test.
+      options.allocator_config.gpu_system_memory_size = 8 << 20;
+      if (explicit_collective_size) {
+        options.allocator_config.collective_memory_size =
+            collective_limit + (8 << 20);
+      }
+      ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+      auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+          absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+      auto* allocator = raw_client->allocator();
+      auto over_fraction_limit =
+          allocator->Allocate(0, collective_limit + kGranularity,
+                              /*retry_on_failure=*/false, kCollective);
+      EXPECT_EQ(over_fraction_limit.ok(), explicit_collective_size)
+          << over_fraction_limit.status();
+    }
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, SharedPoolGrowthRequiresOptIn) {
+  const DebugOptions debug_options = GetDebugOptionsFromFlags();
+  if (!debug_options.xla_gpu_enable_allocator_spatial_partitioning() ||
+      debug_options.xla_gpu_command_buffer_update_mode() !=
+          DebugOptions::ALWAYS_UPDATE) {
+    GTEST_SKIP() << "Requires the shared spatial BFC pool.";
+  }
+  constexpr int kDefault = static_cast<int>(gpu::MemorySpaceColor::kDefault);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  constexpr int64_t kInitialBytes = 8 << 20;
+  for (bool enable_growth : {false, true}) {
+    SCOPED_TRACE(enable_growth);
+    GpuClientOptions options;
+    options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+    options.allocator_config.gpu_system_memory_size = kInitialBytes;
+    options.allowed_devices = {0};
+    if (enable_growth) {
+      ASSERT_OK_AND_ASSIGN(options.allocator_config.memory_fraction_policy,
+                           ParseMemFraction("0.75+"));
+    }
+    ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+    auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+        absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+    auto* allocator = raw_client->allocator();
+    ASSERT_OK_AND_ASSIGN(
+        auto collective,
+        allocator->Allocate(0, kInitialBytes,
+                            /*retry_on_failure=*/false, kCollective));
+    // The initial shared region is full. Only an explicitly growable policy
+    // extends for ordinary memory; the default fixed pool reports OOM.
+    auto ordinary = allocator->Allocate(0, 4 << 20,
+                                        /*retry_on_failure=*/false, kDefault);
+    EXPECT_EQ(ordinary.ok(), enable_growth) << ordinary.status();
+    EXPECT_FALSE(
+        allocator->Allocate(0, 2 << 20, /*retry_on_failure=*/false, kCollective)
+            .ok());
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, SharedPoolGrowthDisabledByXlaFlag) {
+  ScopedXlaFlags flags("--xla_gpu_memory_fraction_policy=0.75");
+  const DebugOptions debug_options = GetDebugOptionsFromFlags();
+  ASSERT_EQ(debug_options.xla_gpu_memory_fraction_policy(), "0.75");
+  if (!SharedSpatialPoolIsDefault(debug_options)) {
+    GTEST_SKIP() << "Requires the shared spatial BFC pool.";
+  }
+  constexpr int kDefault = static_cast<int>(gpu::MemorySpaceColor::kDefault);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  constexpr int64_t kInitialBytes = 8 << 20;
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.gpu_system_memory_size = kInitialBytes;
+  options.allowed_devices = {0};
+  // The client config enables growth; the bare-fraction flag must disable it.
+  options.allocator_config.memory_fraction_policy = FlexMemFraction{};
+  ASSERT_TRUE(std::holds_alternative<FlexMemFraction>(
+      options.allocator_config.GetMemoryFraction()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  auto* allocator = raw_client->allocator();
+  ASSERT_OK_AND_ASSIGN(
+      auto collective,
+      allocator->Allocate(0, kInitialBytes,
+                          /*retry_on_failure=*/false, kCollective));
+  EXPECT_FALSE(
+      allocator->Allocate(0, 4 << 20, /*retry_on_failure=*/false, kDefault)
+          .ok());
+}
+
+TEST(StreamExecutorGpuClientTest,
+     SharedPoolGrowthCapRejectsOversizedInitialAllocation) {
+  if (!SharedSpatialPoolIsDefault(GetDebugOptionsFromFlags())) {
+    GTEST_SKIP() << "Requires the shared spatial BFC pool.";
+  }
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.gpu_system_memory_size = 8 << 20;
+  // A cap far below 8 MiB on any device, so the initial allocation cannot fit.
+  options.allocator_config.memory_fraction_policy = FlexMemFraction{1e-7, 1e-6};
+  options.allowed_devices = {0};
+  EXPECT_THAT(
+      GetStreamExecutorGpuClient(options),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("growth cap")));
+}
+
+TEST(StreamExecutorGpuClientTest, SharedPoolGrowthCapLimitsExtension) {
+  if (!SharedSpatialPoolIsDefault(GetDebugOptionsFromFlags())) {
+    GTEST_SKIP() << "Requires the shared spatial BFC pool.";
+  }
+  ASSERT_OK_AND_ASSIGN(auto* platform, PlatformUtil::GetDefaultPlatform());
+  ASSERT_OK_AND_ASSIGN(auto* executor, platform->ExecutorForDevice(0));
+  int64_t free_memory = 0;
+  int64_t total_memory = 0;
+  ASSERT_TRUE(executor->DeviceMemoryUsage(&free_memory, &total_memory));
+
+  constexpr int kDefault = static_cast<int>(gpu::MemorySpaceColor::kDefault);
+  constexpr int kCollective =
+      static_cast<int>(gpu::MemorySpaceColor::kCollective);
+  constexpr int64_t kInitialBytes = 8 << 20;
+  constexpr int64_t kCapBytes = 64 << 20;
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.gpu_system_memory_size = kInitialBytes;
+  const double cap = MemoryFractionForBytes(kCapBytes, total_memory);
+  options.allocator_config.memory_fraction_policy =
+      FlexMemFraction{cap / 2, cap};
+  options.allowed_devices = {0};
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  auto* raw_client = absl::down_cast<PjRtStreamExecutorRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  auto* allocator = raw_client->allocator();
+  ASSERT_OK_AND_ASSIGN(
+      auto collective,
+      allocator->Allocate(0, kInitialBytes,
+                          /*retry_on_failure=*/false, kCollective));
+  // Growth below the cap still works.
+  ASSERT_OK_AND_ASSIGN(
+      auto ordinary,
+      allocator->Allocate(0, 4 << 20, /*retry_on_failure=*/false, kDefault));
+  // A request that would need to grow past the cap is refused.
+  EXPECT_FALSE(
+      allocator
+          ->Allocate(0, 2 * kCapBytes, /*retry_on_failure=*/false, kDefault)
+          .ok());
+}
+
 // Without preallocation there is no shared partitioned pool: default memory
 // comes from a growable BFC allocator that only serves its lower end, and
 // collective memory comes from a separate allocator. Both must keep working.
@@ -3239,6 +4015,9 @@ TEST_F(VmmTest, VmmAllocatorCanBeSet) {
                 raw_client->allocator()),
             nullptr);
 #endif
+  // The pinned host allocator keeps this true; otherwise every execution would
+  // block the host until the GPU is done.
+  EXPECT_TRUE(raw_client->allocator()->AllowsAsynchronousDeallocation());
 }
 
 TEST_F(VmmTest, VmmAllocatorE2ETest) {
@@ -3277,6 +4056,68 @@ ENTRY main (a: f32[], b: f32[]) -> f32[] {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
                           results[0][0]->ToLiteral().Await());
   EXPECT_EQ(literal->Get<float>({}), 3.0f);
+}
+
+TEST_F(VmmTest, PinnedHostBufferIsHostAccessible) {
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  options.allowed_devices = {0};
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_memory_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  std::vector<float> data{12.0, 34.0, 56.0, 78.0};
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr, pinned_memory_space,
+          /*device_layout=*/nullptr));
+  ASSERT_OK(buffer->GetReadyFuture().Await());
+  ASSERT_TRUE(buffer->IsOnCpu());
+
+  // A pinned_host buffer served from device VMM memory has no CPU mapping, so
+  // a regression faults here instead of failing the expectations.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                       buffer->AcquireExternalReference());
+  const float* host_ptr =
+      reinterpret_cast<const float*>(ref->OpaqueDeviceMemoryDataPointer());
+  EXPECT_THAT(host_ptr[0], FloatEq(12.0));
+  EXPECT_THAT(host_ptr[3], FloatEq(78.0));
+}
+
+TEST_F(VmmTest, ExecutePinnedHostOutputIsHostAccessible) {
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  options.allowed_devices = {0};
+
+  ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto executable,
+                       CompileExecutable(kD2HProgram, *client));
+
+  // Outputs are dropped between runs, so later runs may reuse host memory.
+  for (int run = 0; run < 3; ++run) {
+    ASSERT_OK_AND_ASSIGN(
+        auto result, executable->Execute({{input.get()}}, ExecuteOptions()));
+    ASSERT_EQ(result[0].size(), 1);
+    PjRtBuffer* output = result[0][0].get();
+    ASSERT_EQ(output->memory_space()->kind(), "pinned_host");
+    ASSERT_TRUE(output->IsOnCpu());
+    ASSERT_OK(output->GetReadyFuture().Await());
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer::ExternalReference> ref,
+                         output->AcquireExternalReference());
+    const int32_t* host_ptr =
+        reinterpret_cast<const int32_t*>(ref->OpaqueDeviceMemoryDataPointer());
+    EXPECT_THAT(absl::MakeConstSpan(host_ptr, 4), ElementsAre(1, 2, 3, 4))
+        << "run " << run;
+  }
 }
 
 GpuClientOptions VmmClientOptions() {
@@ -3582,34 +4423,100 @@ TEST_F(VmmTest, CollectiveSpacePlacementKeepsAddressStableAcrossExecutions) {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TEST(StreamExecutorGpuClientTest, MemoryRegistrationDisabledByDefault) {
-  int* pargc;
-  std::vector<char*>* pargv;
-  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
-  tsl::unsetenv("XLA_FLAGS");
-  ResetFlagValues();
-  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
-
+  ScopedXlaFlags flags(nullptr);
   GpuAllocatorConfig config;
   auto registration = CreateAllocatorMemoryRegistration(&config);
   EXPECT_EQ(registration, nullptr);
   EXPECT_TRUE(config.sub_allocator_alloc_visitors.empty());
   EXPECT_TRUE(config.sub_allocator_free_visitors.empty());
+  // Without the flag the default policy stays fixed.
+  EXPECT_THAT(ResolveBfcMemFraction(config),
+              IsOkAndHolds(VariantWith<FixedMemFraction>(_)));
 }
 
 TEST(StreamExecutorGpuClientTest, MemoryRegistrationEnabledWithFlag) {
-  int* pargc;
-  std::vector<char*>* pargv;
-  ResetFlagsFromEnvForTesting("XLA_FLAGS", &pargc, &pargv);
-  tsl::setenv("XLA_FLAGS",
-              "--xla_gpu_enable_nccl_user_buffers_in_default_space=true", 1);
-  ResetFlagValues();
-  ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/true);
-
+  ScopedXlaFlags flags(
+      "--xla_gpu_enable_nccl_user_buffers_in_default_space=true");
   GpuAllocatorConfig config;
+  config.memory_fraction_policy = FixedMemFraction{0.5};
   auto registration = CreateAllocatorMemoryRegistration(&config);
   EXPECT_NE(registration, nullptr);
   EXPECT_FALSE(config.sub_allocator_alloc_visitors.empty());
   EXPECT_FALSE(config.sub_allocator_free_visitors.empty());
+}
+
+TEST(StreamExecutorGpuClientTest, MemoryRegistrationPinsSpatialGrowth) {
+  ScopedXlaFlags flags(
+      "--xla_gpu_enable_nccl_user_buffers_in_default_space=true");
+  GpuAllocatorConfig config;
+  config.memory_fraction_policy = FlexMemFraction{};
+  ASSERT_TRUE(
+      std::holds_alternative<FlexMemFraction>(config.GetMemoryFraction()));
+  // The explicit registration flag wins: registration is created and the
+  // pool the allocator is built with is pinned at the start fraction.
+  EXPECT_NE(CreateAllocatorMemoryRegistration(&config), nullptr);
+  ASSERT_OK_AND_ASSIGN(MemFraction fraction, ResolveBfcMemFraction(config));
+  const auto* fixed = std::get_if<FixedMemFraction>(&fraction);
+  ASSERT_NE(fixed, nullptr);
+  EXPECT_EQ(fixed->fraction, 0.75);
+}
+
+TEST(StreamExecutorGpuClientTest, MemoryRegistrationSkipsNonPreallocatedPool) {
+  ScopedXlaFlags flags(
+      "--xla_gpu_enable_nccl_user_buffers_in_default_space=true");
+  GpuAllocatorConfig config;
+  config.memory_fraction_policy = FlexMemFraction{};
+  config.preallocate = false;
+  EXPECT_EQ(CreateAllocatorMemoryRegistration(&config), nullptr);
+  EXPECT_TRUE(config.sub_allocator_alloc_visitors.empty());
+  // No shared spatial pool, so nothing is pinned.
+  EXPECT_THAT(ResolveBfcMemFraction(config),
+              IsOkAndHolds(VariantWith<FlexMemFraction>(_)));
+}
+
+TEST(StreamExecutorGpuClientTest, NonSpatialPoolKeepsMemoryRegistration) {
+  ScopedXlaFlags flags(
+      "--xla_gpu_enable_nccl_user_buffers_in_default_space=true "
+      "--xla_gpu_enable_allocator_spatial_partitioning=false");
+  GpuAllocatorConfig config;
+  config.memory_fraction_policy = FlexMemFraction{};
+  auto registration = CreateAllocatorMemoryRegistration(&config);
+  EXPECT_NE(registration, nullptr);
+  EXPECT_FALSE(config.sub_allocator_alloc_visitors.empty());
+  EXPECT_FALSE(config.sub_allocator_free_visitors.empty());
+  EXPECT_THAT(ResolveBfcMemFraction(config),
+              IsOkAndHolds(VariantWith<FlexMemFraction>(_)));
+}
+
+TEST(StreamExecutorGpuClientTest, MemoryFractionPolicyFlagOverridesConfig) {
+  ScopedXlaFlags flags("--xla_gpu_memory_fraction_policy=0.5-0.9");
+  GpuAllocatorConfig config;
+  config.memory_fraction_policy = FixedMemFraction{0.3};
+  ASSERT_OK_AND_ASSIGN(MemFraction fraction, ResolveBfcMemFraction(config));
+  const auto* flex = std::get_if<FlexMemFraction>(&fraction);
+  ASSERT_NE(flex, nullptr);
+  EXPECT_EQ(flex->start, 0.5);
+  EXPECT_EQ(flex->cap, 0.9);
+}
+
+TEST(StreamExecutorGpuClientTest, MemoryFractionPolicyFlagEnablesGrowth) {
+  ScopedXlaFlags flags("--xla_gpu_memory_fraction_policy=0.5+");
+  GpuAllocatorConfig config;
+  ASSERT_TRUE(
+      std::holds_alternative<FixedMemFraction>(config.GetMemoryFraction()));
+  ASSERT_OK_AND_ASSIGN(MemFraction fraction, ResolveBfcMemFraction(config));
+  const auto* flex = std::get_if<FlexMemFraction>(&fraction);
+  ASSERT_NE(flex, nullptr);
+  EXPECT_EQ(flex->start, 0.5);
+  EXPECT_EQ(flex->cap, 1.0);
+}
+
+TEST(StreamExecutorGpuClientTest, InvalidMemoryFractionPolicyFlagIsReported) {
+  ScopedXlaFlags flags("--xla_gpu_memory_fraction_policy=0.9-0.5");
+  GpuAllocatorConfig config;
+  EXPECT_THAT(ResolveBfcMemFraction(config),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("--xla_gpu_memory_fraction_policy")));
 }
 
 }  // namespace

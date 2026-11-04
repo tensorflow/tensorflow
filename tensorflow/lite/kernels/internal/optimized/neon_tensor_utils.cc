@@ -273,12 +273,16 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
 //     e0 e1 e2 e3 f0 f1 f2 f3 ...
 // Once the data is interleaved, each 16-byte read from the vectors pointer
 // contains 4 bytes from each of 4 vectors.
+// Callers must ensure that `n_batch * m_cols` does not overflow `ptrdiff_t`.
 const int8_t* ShuffleVectors(const int8_t* vectors, const int n_batch,
                              const int m_cols, void** shuffled_vectors_free) {
-  int8* shuffled_vectors = reinterpret_cast<int8*>(aligned_alloc(
-      kNeonVectorAlignment, n_batch * m_cols, shuffled_vectors_free));
+  TFLITE_DCHECK(m_cols <= 0 || n_batch <= 0 ||
+                n_batch <= std::numeric_limits<ptrdiff_t>::max() / m_cols);
+  int8* shuffled_vectors = reinterpret_cast<int8*>(
+      aligned_alloc(kNeonVectorAlignment, static_cast<size_t>(n_batch) * m_cols,
+                    shuffled_vectors_free));
 
-  for (int i = 0; i < n_batch; i += 4) {
+  for (ptrdiff_t i = 0; i < n_batch; i += 4) {
     int8* shuffled_vectors_ptr = shuffled_vectors + (i * m_cols);
     const int8* unshuffled_vec0_ptr =
         reinterpret_cast<const int8*>(vectors) + (i * m_cols);
@@ -326,6 +330,9 @@ const int8_t* ShuffleVectors(const int8_t* vectors, const int n_batch,
 //   loop unrolling and instruction reordering to avoid stalls, etc.
 //   but I was not able to do significantly better. This code is, however,
 //   much worse than what the processor spec sheet suggests is possible.
+//
+// Callers must ensure that `n_batch * m_rows`, `n_batch * m_cols`, and
+// `(m_rows + 2) * m_cols` do not overflow `ptrdiff_t`.
 static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* vectors, const float* scaling_factors, int n_batch,
@@ -335,8 +342,14 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
   const int8_t* shuffled_vectors =
       ShuffleVectors(vectors, n_batch, m_cols, &shuffled_vectors_free);
 
-  for (int row = 0; row < m_rows; row += 2) {
-    for (int batch = 0; batch < n_batch; batch += 4) {
+  TFLITE_DCHECK(m_rows <= 0 || n_batch <= 0 ||
+                n_batch <= std::numeric_limits<ptrdiff_t>::max() / m_rows);
+  TFLITE_DCHECK(m_cols <= 0 || n_batch <= 0 ||
+                n_batch <= std::numeric_limits<ptrdiff_t>::max() / m_cols);
+  TFLITE_DCHECK(m_cols <= 0 || m_rows <= 0 ||
+                m_rows <= std::numeric_limits<ptrdiff_t>::max() / m_cols - 2);
+  for (ptrdiff_t row = 0; row < m_rows; row += 2) {
+    for (ptrdiff_t batch = 0; batch < n_batch; batch += 4) {
       float* result_ptr = result + (batch * m_rows) + row;
       const int8* mat_ptr0 = matrix + (row * m_cols);
       const int8* mat_ptr1 = matrix + ((row + 1) * m_cols);
@@ -454,6 +467,8 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
   free(shuffled_vectors_free);
 }
 
+// Callers must ensure that `n_batch * m_rows`, `n_batch * m_cols`, and
+// `m_rows * m_cols` do not overflow `ptrdiff_t`.
 static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* vectors, const float* scaling_factors, int n_batch,
@@ -463,8 +478,14 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
   const int8_t* shuffled_vectors =
       ShuffleVectors(vectors, n_batch, m_cols, &shuffled_vectors_free);
 
-  for (int row = 0; row < m_rows; row += 2) {
-    for (int batch = 0; batch < n_batch; batch += 4) {
+  TFLITE_DCHECK(m_rows <= 0 || n_batch <= 0 ||
+                n_batch <= std::numeric_limits<ptrdiff_t>::max() / m_rows);
+  TFLITE_DCHECK(m_cols <= 0 || n_batch <= 0 ||
+                n_batch <= std::numeric_limits<ptrdiff_t>::max() / m_cols);
+  TFLITE_DCHECK(m_cols <= 0 || m_rows <= 0 ||
+                m_rows <= std::numeric_limits<ptrdiff_t>::max() / m_cols);
+  for (ptrdiff_t row = 0; row < m_rows; row += 2) {
+    for (ptrdiff_t batch = 0; batch < n_batch; batch += 4) {
       const float* channel_scales_ptr = per_channel_scale + row;
       int32_t* row_sums_ptr = row_sums ? row_sums + row : nullptr;
 
@@ -630,14 +651,17 @@ void DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
   TFLITE_CHECK_LE(n_batch, batch_round_up);
 
   void* padded_vectors_free;
-  const int padded_vectors_size = batch_round_up * m_cols;
+  const size_t padded_vectors_size =
+      static_cast<size_t>(batch_round_up) * m_cols;
   int8_t* padded_vectors = reinterpret_cast<int8_t*>(aligned_alloc(
       kNeonVectorAlignment, padded_vectors_size, &padded_vectors_free));
   memset(padded_vectors, 0, padded_vectors_size);
 
   void* padded_result_free;
-  const int result_size = n_batch * m_rows * sizeof(float);
-  const int padded_result_size = batch_round_up * m_rows * sizeof(float);
+  const size_t result_size =
+      static_cast<size_t>(n_batch) * m_rows * sizeof(float);
+  const size_t padded_result_size =
+      static_cast<size_t>(batch_round_up) * m_rows * sizeof(float);
   float* padded_result = reinterpret_cast<float*>(aligned_alloc(
       kNeonVectorAlignment, padded_result_size, &padded_result_free));
   memcpy(padded_result, result, result_size);
@@ -645,29 +669,39 @@ void DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
          padded_result_size - result_size);
 
   // Copy the input into the padded data structure.
-  TFLITE_CHECK_LE(n_batch * m_cols, padded_vectors_size);
-  memcpy(padded_vectors, vectors, n_batch * m_cols);
+  TFLITE_CHECK_LE(static_cast<size_t>(n_batch) * m_cols, padded_vectors_size);
+  memcpy(padded_vectors, vectors, static_cast<size_t>(n_batch) * m_cols);
 
   void* padded_scaling_factors_free;
-  const int padded_scaling_factors_size = batch_round_up * sizeof(float);
+  const size_t padded_scaling_factors_size =
+      static_cast<size_t>(batch_round_up) * sizeof(float);
   float* padded_scaling_factors = reinterpret_cast<float*>(
       aligned_alloc(kNeonVectorAlignment, padded_scaling_factors_size,
                     &padded_scaling_factors_free));
-  TFLITE_CHECK_LE(n_batch * sizeof(float), padded_scaling_factors_size);
-  TFLITE_CHECK_LE(batch_round_up * sizeof(float), padded_scaling_factors_size);
-  memset(padded_scaling_factors, 0, batch_round_up * sizeof(float));
-  memcpy(padded_scaling_factors, scaling_factors, n_batch * sizeof(float));
+  TFLITE_CHECK_LE(static_cast<size_t>(n_batch) * sizeof(float),
+                  padded_scaling_factors_size);
+  TFLITE_CHECK_LE(static_cast<size_t>(batch_round_up) * sizeof(float),
+                  padded_scaling_factors_size);
+  memset(padded_scaling_factors, 0,
+         static_cast<size_t>(batch_round_up) * sizeof(float));
+  memcpy(padded_scaling_factors, scaling_factors,
+         static_cast<size_t>(n_batch) * sizeof(float));
 
   if (input_offset != nullptr) {
     void* padded_input_offset_free;
-    const int padded_input_offset_size = batch_round_up * sizeof(int32_t);
+    const size_t padded_input_offset_size =
+        static_cast<size_t>(batch_round_up) * sizeof(int32_t);
     int32_t* padded_input_offset = reinterpret_cast<int32_t*>(
         aligned_alloc(kNeonVectorAlignment, padded_input_offset_size,
                       &padded_input_offset_free));
-    TFLITE_CHECK_LE(n_batch * sizeof(int32_t), padded_input_offset_size);
-    TFLITE_CHECK_LE(batch_round_up * sizeof(int32_t), padded_input_offset_size);
-    memset(padded_input_offset, 0, batch_round_up * sizeof(int32_t));
-    memcpy(padded_input_offset, input_offset, n_batch * sizeof(int32_t));
+    TFLITE_CHECK_LE(static_cast<size_t>(n_batch) * sizeof(int32_t),
+                    padded_input_offset_size);
+    TFLITE_CHECK_LE(static_cast<size_t>(batch_round_up) * sizeof(int32_t),
+                    padded_input_offset_size);
+    memset(padded_input_offset, 0,
+           static_cast<size_t>(batch_round_up) * sizeof(int32_t));
+    memcpy(padded_input_offset, input_offset,
+           static_cast<size_t>(n_batch) * sizeof(int32_t));
 
     // Call the main kernel.
     DotprodMatrixBatchFourVectorMultiplyAccumulate(

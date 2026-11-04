@@ -63,6 +63,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_BATCH_MATMUL, 2}, "2.3.0"},
               {{BuiltinOperator_BATCH_MATMUL, 3}, "2.4.0"},
               {{BuiltinOperator_BATCH_MATMUL, 4}, "2.5.0"},
+              {{BuiltinOperator_BATCH_MATMUL, 5}, "2.23.0"},
               // The version one of broadcast to op won't be not supported since
               // the version one was rollbacked and the builtin op code number
               // has been changed because of builtin op code shortage problem.
@@ -354,6 +355,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_DEQUANTIZE, 7}, "2.21.0"},
               {{BuiltinOperator_DEQUANTIZE, 8}, "2.22.0"},
               {{BuiltinOperator_DEQUANTIZE, 9}, "2.23.0"},
+              {{BuiltinOperator_DEQUANTIZE, 10}, "2.23.0"},
               {{BuiltinOperator_REVERSE_SEQUENCE, 1}, "1.14.0"},
               {{BuiltinOperator_EQUAL, 1}, "1.14.0"},
               {{BuiltinOperator_EQUAL, 2}, "1.14.0"},
@@ -500,7 +502,8 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_STABLEHLO_COMPOSITE, 1}, "2.17.0"},
               {{BuiltinOperator_STABLEHLO_AND, 1}, "2.17.0"},
               {{BuiltinOperator_STABLEHLO_SHIFT_LEFT, 1}, "2.17.0"},
-              {{BuiltinOperator_STABLEHLO_CBRT, 1}, "2.17.0"},
+              // STABLEHLO_CBRT has no runtime kernel yet, so no release
+              // runs it.
               {{BuiltinOperator_STABLEHLO_CASE, 1}, "2.17.0"},
           });
 

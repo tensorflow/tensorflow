@@ -447,6 +447,7 @@ tsl_cc_test(
     srcs = ["env_test.cc"],
     deps = [
         ":env",
+        "//xla/tsl/protobuf:status_proto_cc",
         "//xla/tsl/testing:temporary_directory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -454,8 +455,27 @@ tsl_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:null_file_system",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+tsl_cc_test(
+    name = "writable_file_seek_test",
+    size = "small",
+    srcs = ["writable_file_seek_test.cc"],
+    # WindowsFileSystem does not implement Seek().
+    tags = ["no_windows"],
+    deps = [
+        ":env",
+        ":ram_file_system",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -463,7 +483,7 @@ cc_library(
     name = "env_time",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],
-    deps = tf_windows_aware_platform_deps("env_time") + [":types"],
+    deps = tf_windows_aware_platform_deps("env_time"),
 )
 
 cc_library(
@@ -529,7 +549,10 @@ tsl_cc_test(
         ":env_impl",  # buildcleaner: keep
         ":file_system_helper",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:null_file_system",
     ],
 )
 
@@ -684,17 +707,10 @@ cc_library(
     name = "statusor",
     hdrs = ["statusor.h"],
     deps = [
-        ":errors",
-        ":logging",
-        ":macros",
         ":status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform",
     ],
 )
 
@@ -778,7 +794,10 @@ cc_library(
     name = "threadpool_interface",
     hdrs = ["threadpool_interface.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@eigen_archive//:eigen3"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@eigen_archive//:eigen3",
+    ],
 )
 
 cc_library(
@@ -796,7 +815,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@com_google_absl//absl/base:core_headers",
-        "@tsl//tsl/platform",
         "@tsl//tsl/platform:bfloat16",
         "@tsl//tsl/platform:ml_dtypes",
         "@tsl//tsl/platform:tstring",
@@ -889,8 +907,6 @@ cc_library(
     textual_hdrs = ["resource_loader.h"],
     deps = [
         ":logging",
-        ":test",
-        "@tsl//tsl/platform",
         "@tsl//tsl/platform:path",
     ] + if_oss(["@bazel_tools//tools/cpp/runfiles"]),
 )
@@ -969,6 +985,7 @@ cc_library(
     deps = [
         ":env",
         ":file_statistics",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",

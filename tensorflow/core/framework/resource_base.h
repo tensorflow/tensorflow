@@ -40,8 +40,11 @@ class ResourceBase : public core::WeakRefCounted {
   virtual std::string DebugString() const = 0;
 
   // Returns a name for ref-counting handles.
+  // resource_id is globally unique (atomic counter), so it alone is sufficient
+  // for handle uniqueness. Avoid embedding `this` pointer — handle names are
+  // exposed to callers via error messages and would leak heap addresses.
   virtual std::string MakeRefCountingHandleName(int64_t resource_id) const {
-    return absl::StrFormat("Resource-%d-at-%p", resource_id, this);
+    return absl::StrFormat("Resource-%d", resource_id);
   }
 
   // Returns memory used by this resource.

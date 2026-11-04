@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter_v2.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -31,6 +34,7 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
@@ -38,13 +42,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -57,8 +66,11 @@ namespace {
 // DynamicSlice instruction feeding the hero through zero or more no-op
 // instructions (bitcasts, GTEs).
 struct SlicedParameter {
+  // Index of the operand in the hero instruction.
+  int64_t operand_number = 0;
+
   // The Slice or DynamicSlice instruction at the start of the chain.
-  HloInstruction* slice;
+  HloInstruction* slice = nullptr;
 
   // Bitcasts/GTEs between the slice and the hero (topological order).
   std::vector<HloInstruction*> noops;
@@ -126,6 +138,13 @@ bool IsAlignedSlice(const HloInstruction* instr) {
   return slice_bytes % kXlaAllocatedBufferAlignBytes == 0;
 }
 
+const HloInstruction* StripBitcasts(const HloInstruction* instr) {
+  while (instr->opcode() == HloOpcode::kBitcast) {
+    instr = instr->operand(0);
+  }
+  return instr;
+}
+
 bool HasSupportedShapes(const HloInstruction* hero) {
   for (const HloInstruction* operand : hero->operands()) {
     if (operand->shape().IsTuple()) {
@@ -161,6 +180,21 @@ bool HasSupportedShapes(const HloInstruction* hero) {
       }
     }
   }
+  if (const auto* callable = DynCast<HloCallableInstruction>(hero)) {
+    for (const auto& [output_index, operand_pair] :
+         callable->output_to_operand_aliasing()) {
+      int64_t op_idx = operand_pair.first;
+      for (int64_t i = 0; i < hero->operand_count(); ++i) {
+        if (i != op_idx && StripBitcasts(hero->operand(i)) ==
+                               StripBitcasts(hero->operand(op_idx))) {
+          LOG(WARNING) << "DynamicSliceFusionRewriterV2: skipping "
+                       << hero->name() << " because aliased operand " << op_idx
+                       << " shares instruction with operand " << i;
+          return false;
+        }
+      }
+    }
+  }
   return true;
 }
 
@@ -172,7 +206,8 @@ using OptLevel = DynamicSliceFusionRewriterV2::OptLevel;
 using CaptureSlice = DynamicSliceFusionRewriterV2::CaptureSlice;
 using CaptureUpdateSlice = DynamicSliceFusionRewriterV2::CaptureUpdateSlice;
 
-std::optional<SlicedParameter> ResolveSlicedParameter(HloInstruction* operand,
+std::optional<SlicedParameter> ResolveSlicedParameter(int64_t operand_number,
+                                                      HloInstruction* operand,
                                                       OptLevel opt_level) {
   HloInstruction* current = operand;
 
@@ -221,7 +256,7 @@ std::optional<SlicedParameter> ResolveSlicedParameter(HloInstruction* operand,
       return std::nullopt;
     }
     absl::c_reverse(noops);
-    return SlicedParameter{slice, std::move(noops)};
+    return SlicedParameter{operand_number, slice, std::move(noops)};
   }
 
   if (auto* ds = DynCast<HloDynamicSliceInstruction>(current)) {
@@ -232,7 +267,7 @@ std::optional<SlicedParameter> ResolveSlicedParameter(HloInstruction* operand,
       return std::nullopt;
     }
     absl::c_reverse(noops);
-    return SlicedParameter{ds, std::move(noops)};
+    return SlicedParameter{operand_number, ds, std::move(noops)};
   }
 
   return std::nullopt;
@@ -244,21 +279,12 @@ std::vector<SlicedParameter> ResolveSlicedParameters(
   std::vector<SlicedParameter> result;
   for (int64_t i = 0; i < hero->operand_count(); ++i) {
     HloInstruction* operand = hero->mutable_operand(i);
-    auto param = ResolveSlicedParameter(operand, opt_level);
+    auto param = ResolveSlicedParameter(i, operand, opt_level);
     if (!param.has_value()) {
       continue;
     }
     if (!capture_slice(hero, i, param->slice)) {
       continue;
-    }
-    // In O2 mode, the chain output may differ from the hero's operand when
-    // we looked through a tuple/GTE barrier. Replace the hero's operand so
-    // BuildFusionPlan sees a connected graph. Safe because the hero will be
-    // replaced by the fusion.
-    HloInstruction* chain_output =
-        param->noops.empty() ? param->slice : param->noops.back();
-    if (chain_output != operand) {
-      CHECK_OK(hero->ReplaceOperandWith(i, chain_output));
     }
     result.push_back(std::move(*param));
   }
@@ -408,6 +434,130 @@ std::vector<SlicedResult> ResolveSlicedResults(
   return ResolveNonTupleSlicedResult(hero, capture_update_slice);
 }
 
+void FilterAliasedParametersAndResults(
+    HloInstruction* hero, std::vector<SlicedParameter>& sliced_params,
+    std::vector<SlicedResult>& sliced_results) {
+  const auto* callable = DynCast<HloCallableInstruction>(hero);
+  if (callable == nullptr || callable->output_to_operand_aliasing().empty()) {
+    return;
+  }
+
+  auto find_sliced_param = [&](int64_t op_idx) -> const SlicedParameter* {
+    for (const SlicedParameter& param : sliced_params) {
+      if (param.operand_number == op_idx) {
+        return &param;
+      }
+    }
+    return nullptr;
+  };
+
+  // External bitcasts remain separate fusion operands that CopyInsertion can
+  // separate. Only accesses through the same fusion parameter conflict here.
+  auto fusion_operand = [&](int64_t op_idx) -> const HloInstruction* {
+    if (const SlicedParameter* param = find_sliced_param(op_idx)) {
+      return param->slice->operand(0);
+    }
+    return hero->operand(op_idx);
+  };
+
+  auto find_sliced_result = [&](int64_t leaf_idx) -> SlicedResult* {
+    for (SlicedResult& res : sliced_results) {
+      if (res.result_number == leaf_idx) {
+        return &res;
+      }
+    }
+    return nullptr;
+  };
+
+  for (const auto& [output_index, operand_pair] :
+       callable->output_to_operand_aliasing()) {
+    int64_t op_idx = operand_pair.first;
+    int64_t leaf_idx = output_index.empty() ? 0 : output_index[0];
+    const SlicedParameter* aliased_param = find_sliced_param(op_idx);
+    SlicedResult* res = find_sliced_result(leaf_idx);
+
+    if (res != nullptr && res->update_slice != nullptr) {
+      const HloInstruction* dus = res->update_slice;
+      const HloInstruction* dus_target = dus->operand(0);
+
+      bool can_capture_dus =
+          !absl::c_any_of(sliced_results, [&](const SlicedResult& other) {
+            return other.result_number != leaf_idx &&
+                   other.update_slice != nullptr &&
+                   other.update_slice->operand(0) == dus_target;
+          });
+      for (int64_t i = 0; i < hero->operand_count(); ++i) {
+        if (i != op_idx && fusion_operand(i) == dus_target) {
+          can_capture_dus = false;
+          break;
+        }
+      }
+      if (can_capture_dus && fusion_operand(op_idx) == dus_target) {
+        if (aliased_param != nullptr) {
+          const HloInstruction* slice = aliased_param->slice;
+          auto slice_config = DynamicSliceFusion::ResolveSliceConfig(slice);
+          auto update_config = DynamicSliceFusion::ResolveSliceConfig(dus);
+          // Equal byte extents preserve the runtime's offset clamping.
+          can_capture_dus =
+              slice_config.has_value() && update_config.has_value() &&
+              *slice_config == *update_config &&
+              ShapeUtil::ByteSizeOfElements(slice->operand(0)->shape()) ==
+                  ShapeUtil::ByteSizeOfElements(dus->shape()) &&
+              ShapeUtil::ByteSizeOfElements(slice->shape()) ==
+                  ShapeUtil::ByteSizeOfElements(dus->operand(1)->shape());
+        } else {
+          can_capture_dus = false;
+        }
+      }
+      if (!can_capture_dus) {
+        if (hero->shape().IsTuple()) {
+          res->update_slice = nullptr;
+          res->noops.resize(1);
+        } else {
+          sliced_results.clear();
+          res = nullptr;
+        }
+      }
+    }
+
+    if ((res == nullptr || res->update_slice == nullptr) &&
+        aliased_param == nullptr) {
+      const HloInstruction* target = hero->operand(op_idx);
+      sliced_params.erase(
+          std::remove_if(sliced_params.begin(), sliced_params.end(),
+                         [&](const SlicedParameter& param) {
+                           return param.operand_number != op_idx &&
+                                  param.slice->operand(0) == target;
+                         }),
+          sliced_params.end());
+    }
+  }
+
+  if (!hero->shape().IsTuple()) {
+    return;
+  }
+  // Aliased sliced operands are redirected to their result buffers. Other
+  // reads must not overlap a remaining DUS behind a single fusion parameter.
+  absl::flat_hash_set<const HloInstruction*> remaining_reads;
+  for (int64_t i = 0; i < hero->operand_count(); ++i) {
+    bool redirected = find_sliced_param(i) != nullptr &&
+                      absl::c_any_of(callable->output_to_operand_aliasing(),
+                                     [&](const auto& alias) {
+                                       return alias.second.first == i;
+                                     });
+    if (!redirected) {
+      remaining_reads.insert(fusion_operand(i));
+    }
+  }
+  for (SlicedResult& result : sliced_results) {
+    if (result.update_slice != nullptr &&
+        remaining_reads.contains(result.update_slice->operand(0))) {
+      result.update_slice = nullptr;
+      result.noops.resize(1);
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Resolve offset expressions
 //===----------------------------------------------------------------------===//
@@ -478,6 +628,18 @@ std::optional<DynamicSliceFusionPlan> BuildFusionPlan(
                        });
   if (!has_any_slice) {
     return std::nullopt;
+  }
+
+  // In O2 mode, the chain output may differ from the hero's operand when we
+  // looked through a tuple/GTE barrier. Replace the hero's operand so
+  // BuildFusionPlan and CreateFusionBody see a connected graph. Safe because
+  // the hero will be replaced by the fusion.
+  for (const SlicedParameter& param : sliced_params) {
+    HloInstruction* chain_output =
+        param.noops.empty() ? param.slice : param.noops.back();
+    if (chain_output != hero->operand(param.operand_number)) {
+      CHECK_OK(hero->ReplaceOperandWith(param.operand_number, chain_output));
+    }
   }
 
   // Instructions to clone into the fusion body, in dependency order.
@@ -622,8 +784,8 @@ std::optional<DynamicSliceFusionPlan> BuildFusionPlan(
 // Create fusion
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<HloComputation*> CreateFusionBody(
-    HloModule* module, const DynamicSliceFusionPlan& plan,
+std::unique_ptr<HloComputation> CreateFusionBody(
+    const DynamicSliceFusionPlan& plan,
     absl::Span<const SlicedResult> sliced_results, HloInstruction* hero) {
   HloComputation::Builder builder("dynamic-slice-fusion");
 
@@ -675,7 +837,118 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
     builder.AddInstruction(HloInstruction::CreateTuple(tuple_operands));
   }
 
-  return module->AddComputationAndUnifyNamesAndIds(builder.Build(), false);
+  return builder.Build();
+}
+
+// Constraints belong to the buffers visible to allocation, not just the cloned
+// call. Slices share their source allocation; DUS results share their
+// destination. A conflicting merge requires keeping the original, separately
+// allocated slices.
+absl::StatusOr<std::optional<FrontendAttributes>> FusionMemorySpaces(
+    const HloInstruction* hero, const HloComputation* body) {
+  FrontendAttributes attributes;
+  auto operand_attr = hero->get_frontend_attribute(kOperandsMemorySpacesAttr);
+  auto result_attr = hero->get_frontend_attribute(kResultsMemorySpacesAttr);
+  if (!operand_attr.has_value() && !result_attr.has_value()) {
+    return attributes;
+  }
+
+  const HloInstruction* cloned_hero = DynamicSliceFusion::FindHero(body);
+  TF_RET_CHECK(cloned_hero != nullptr);
+  // Only buffer indices are needed here. Offset expressions can depend on
+  // module flags unavailable until the candidate body is attached.
+  constexpr auto kOffsetResolution =
+      DynamicSliceFusion::OffsetResolution::kOptional;
+  ABSL_ASSIGN_OR_RETURN(auto outputs, DynamicSliceFusion::ResolveResults(
+                                     cloned_hero, kOffsetResolution));
+  std::map<int64_t, int64_t> operands;
+  std::map<int64_t, int64_t> results;
+  auto merge = [](std::map<int64_t, int64_t>& spaces, int64_t index,
+                  MemorySpaceColor color) {
+    if (color == MemorySpaceColor::kDefault) {
+      return true;
+    }
+    auto [it, inserted] =
+        spaces.try_emplace(index, static_cast<int64_t>(color));
+    return inserted || it->second == static_cast<int64_t>(color);
+  };
+  auto merge_result = [&](int64_t index, MemorySpaceColor color) {
+    const auto& output = outputs[index];
+    return merge(results, output.result_number, color) &&
+           (!output.parameter_number.has_value() ||
+            merge(operands, *output.parameter_number, color));
+  };
+
+  if (operand_attr.has_value()) {
+    ABSL_ASSIGN_OR_RETURN(auto spaces, ParseIndexMemorySpacePairs(*operand_attr));
+    for (auto [index, color] : spaces) {
+      if (index < 0 || index >= cloned_hero->operand_count()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid operand memory-space index: ", index));
+      }
+      ABSL_ASSIGN_OR_RETURN(auto parameter,
+                       DynamicSliceFusion::ResolveParameter(
+                           cloned_hero->operand(index), kOffsetResolution));
+      if (!merge(operands, parameter.parameter_number, color)) {
+        return std::nullopt;
+      }
+      // Copy-thunk lowering redirects aliased operands to the result buffer.
+      // The operand's memory requirement must hold at that destination too.
+      if (const auto* callable = DynCast<HloCallableInstruction>(cloned_hero)) {
+        for (const auto& [output_index, operand_index] :
+             callable->output_to_operand_aliasing()) {
+          if (operand_index.first == index &&
+              !merge_result(output_index.empty() ? 0 : output_index[0],
+                            color)) {
+            return std::nullopt;
+          }
+        }
+      }
+    }
+  }
+  if (result_attr.has_value()) {
+    ABSL_ASSIGN_OR_RETURN(auto spaces, ParseIndexMemorySpacePairs(*result_attr));
+    for (auto [index, color] : spaces) {
+      if (index < 0 || index >= outputs.size()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid result memory-space index: ", index));
+      }
+      if (!merge_result(index, color)) {
+        return std::nullopt;
+      }
+    }
+  }
+
+  auto matches_layout = [](const Shape& shape, int64_t color) {
+    if (!shape.has_layout() || shape.layout().memory_space() == 0) {
+      return true;
+    }
+    auto layout_color = AsMemorySpaceColor(shape.layout().memory_space());
+    return layout_color.ok() && static_cast<int64_t>(*layout_color) == color;
+  };
+  for (auto [index, color] : operands) {
+    if (!matches_layout(body->parameter_instruction(index)->shape(), color)) {
+      return std::nullopt;
+    }
+  }
+  const Shape& root_shape = body->root_instruction()->shape();
+  for (auto [index, color] : results) {
+    const Shape& shape =
+        root_shape.IsTuple() ? root_shape.tuple_shapes(index) : root_shape;
+    if (!matches_layout(shape, color)) {
+      return std::nullopt;
+    }
+  }
+
+  for (const auto& [name, spaces] :
+       {std::pair{kOperandsMemorySpacesAttr, &operands},
+        std::pair{kResultsMemorySpacesAttr, &results}}) {
+    if (!spaces->empty()) {
+      (*attributes.mutable_map())[std::string(name)] = absl::StrCat(
+          "{", absl::StrJoin(*spaces, ",", absl::PairFormatter(":")), "}");
+    }
+  }
+  return attributes;
 }
 
 absl::Status SetDynamicSliceFusionBackendConfig(HloInstruction* fusion) {
@@ -697,13 +970,39 @@ absl::StatusOr<bool> RewriteHero(
     HloModule* module, HloInstruction* hero,
     absl::Span<const SlicedParameter> sliced_params,
     absl::Span<const SlicedResult> sliced_results) {
+  for (const SlicedResult& result : sliced_results) {
+    const HloInstruction* replaced = result.update_slice;
+    if (replaced == nullptr && !result.noops.empty()) {
+      replaced = result.noops.back();
+    }
+    if (replaced != nullptr && replaced->HasControlDependencies()) {
+      return false;
+    }
+  }
+
+  std::vector<HloInstruction*> original_operands(hero->operands().begin(),
+                                                 hero->operands().end());
+  auto restore_operands = [&]() -> absl::Status {
+    // Fusion planning may bypass O2 tuple barriers before validation.
+    for (int64_t i = 0; i < original_operands.size(); ++i) {
+      ABSL_RETURN_IF_ERROR(hero->ReplaceOperandWith(i, original_operands[i]));
+    }
+    return absl::OkStatus();
+  };
   auto plan = BuildFusionPlan(hero, sliced_params, sliced_results);
   if (!plan.has_value()) {
     return false;
   }
 
-  ABSL_ASSIGN_OR_RETURN(HloComputation * fusion_body,
-                   CreateFusionBody(module, *plan, sliced_results, hero));
+  std::unique_ptr<HloComputation> body =
+      CreateFusionBody(*plan, sliced_results, hero);
+  ABSL_ASSIGN_OR_RETURN(auto memory_spaces, FusionMemorySpaces(hero, body.get()));
+  if (!memory_spaces.has_value()) {
+    ABSL_RETURN_IF_ERROR(restore_operands());
+    return false;
+  }
+  HloComputation* fusion_body =
+      module->AddComputationAndUnifyNamesAndIds(std::move(body), false);
 
   HloComputation* parent = hero->parent();
   HloInstruction* fusion = parent->AddInstruction(
@@ -757,6 +1056,10 @@ absl::StatusOr<bool> RewriteHero(
     ABSL_RETURN_IF_ERROR(parent->ReplaceInstruction(hero, fusion));
   }
 
+  hlo_instruction_utils::UpdateFrontendAttributes(
+      fusion, std::move(*memory_spaces),
+      {kOperandsMemorySpacesAttr, kResultsMemorySpacesAttr});
+
   return true;
 }
 
@@ -795,6 +1098,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriterV2::RunImpl(
                                                    options_.capture_slice);
       auto sliced_results =
           ResolveSlicedResults(hero, options_.capture_update_slice);
+      FilterAliasedParametersAndResults(hero, sliced_params, sliced_results);
       ABSL_ASSIGN_OR_RETURN(
           bool hero_changed,
           RewriteHero(module, hero, sliced_params, sliced_results));

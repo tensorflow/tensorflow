@@ -21,14 +21,20 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/layout_util.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -203,6 +209,37 @@ TEST(GetBatchRowColumnShapeTest, WrongPhysicalOrder) {
   auto result = GetBatchRowColumnShape(shape, /*batch_dims=*/{0, 1},
                                        /*row_dims=*/{2}, /*col_dims=*/{3});
   EXPECT_FALSE(result.ok());
+}
+
+TEST(GetBatchRowColumnShapeTest, LargeDimensionsExceedInt32) {
+  ASSERT_OK_AND_ASSIGN(Shape shape, ParseShape("f32[2,2147483649,4]{2,1,0}"));
+  ASSERT_OK_AND_ASSIGN(Shape expected,
+                       ParseShape("f32[1,4294967298,4]{2,1,0}"));
+  EXPECT_THAT(GetBatchRowColumnShape(shape, /*batch_dims=*/{},
+                                     /*row_dims=*/{0, 1}, /*col_dims=*/{2}),
+              absl_testing::IsOkAndHolds(expected));
+
+  ASSERT_OK_AND_ASSIGN(Shape large_batch_shape,
+                       ParseShape("f32[2147483648,3,4]{2,1,0}"));
+  ASSERT_OK_AND_ASSIGN(
+      MatrixLayout batch_layout,
+      MatrixLayout::For(large_batch_shape, /*batch_dims=*/{0}, /*row_dims=*/{1},
+                        /*col_dims=*/{2}));
+  EXPECT_EQ(batch_layout.batch_size, 2147483648LL);
+  EXPECT_EQ(batch_layout.num_rows, 3);
+  EXPECT_EQ(batch_layout.num_cols, 4);
+
+  ASSERT_OK_AND_ASSIGN(Shape large_col_shape,
+                       ParseShape("f32[2,3,4294967299]{2,1,0}"));
+  ASSERT_OK_AND_ASSIGN(
+      MatrixLayout col_layout,
+      MatrixLayout::For(large_col_shape, /*batch_dims=*/{0}, /*row_dims=*/{1},
+                        /*col_dims=*/{2}));
+  EXPECT_EQ(col_layout.batch_size, 2);
+  EXPECT_EQ(col_layout.num_rows, 3);
+  EXPECT_EQ(col_layout.num_cols, 4294967299LL);
+  EXPECT_EQ(col_layout.leading_dim_stride, 4294967299LL);
+  EXPECT_EQ(col_layout.batch_stride, 12884901897LL);
 }
 
 using Order = MatrixLayout::Order;
@@ -389,6 +426,101 @@ TEST(TritonGemmConfigTest, ToStringIncludesWavesPerEu) {
                           /*waves_per_eu=*/4);
   std::string str = config.ToString();
   EXPECT_NE(str.find("waves_per_eu:4"), std::string::npos);
+}
+
+class DotRequiresMinorContractingDimsTest
+    : public HloHardwareIndependentTestBase {
+ protected:
+  bool Requires(absl::string_view lhs, absl::string_view rhs,
+                absl::string_view out, const se::CudaComputeCapability& cc) {
+    absl::StatusOr<std::unique_ptr<HloModule>> module =
+        ParseAndReturnVerifiedModule(absl::Substitute(R"(
+      ENTRY e {
+        x = $0[2,3] parameter(0)
+        y = $1[3,4] parameter(1)
+        ROOT dot = $2[2,4] dot(x, y), lhs_contracting_dims={1},
+          rhs_contracting_dims={0}
+      })",
+                                                      lhs, rhs, out));
+    CHECK_OK(module);
+    return DotRequiresMinorContractingDims(
+        *(*module)->entry_computation()->root_instruction(),
+        se::GpuComputeCapability(cc));
+  }
+};
+
+TEST_F(DotRequiresMinorContractingDimsTest, S8ToS32) {
+  EXPECT_TRUE(Requires("s8", "s8", "s32", se::CudaComputeCapability::Hopper()));
+  EXPECT_FALSE(
+      Requires("s8", "s8", "f32", se::CudaComputeCapability::Hopper()));
+}
+
+TEST_F(DotRequiresMinorContractingDimsTest, Fp8BeforeBlackwell) {
+  EXPECT_TRUE(Requires("f8e4m3fn", "f8e4m3fn", "f32",
+                       se::CudaComputeCapability::Hopper()));
+  EXPECT_FALSE(Requires("f8e4m3fn", "f8e4m3fn", "f32",
+                        se::CudaComputeCapability::Blackwell()));
+}
+
+TEST_F(DotRequiresMinorContractingDimsTest, Float) {
+  EXPECT_FALSE(
+      Requires("f32", "f32", "f32", se::CudaComputeCapability::Hopper()));
+}
+
+TEST(AreContractingDimsMinorTest, Works) {
+  EXPECT_TRUE(AreContractingDimsMinor(LayoutUtil::MakeLayout({2, 1, 0}), {2}));
+  EXPECT_FALSE(AreContractingDimsMinor(LayoutUtil::MakeLayout({2, 1, 0}), {1}));
+  EXPECT_TRUE(
+      AreContractingDimsMinor(LayoutUtil::MakeLayout({1, 2, 0}), {2, 1}));
+  EXPECT_FALSE(
+      AreContractingDimsMinor(LayoutUtil::MakeLayout({1, 0, 2}), {2, 1}));
+}
+
+TEST(TritonGemmConfigTest, ProtoRoundTripPreservesMfmaSize) {
+  TritonGemmConfig config(/*block_m=*/64, /*block_n=*/128, /*block_k=*/32,
+                          /*num_stages=*/2, /*num_warps=*/4,
+                          /*num_ctas=*/1, /*is_tma_allowed=*/false,
+                          /*is_warp_specialization_allowed=*/false,
+                          /*waves_per_eu=*/0, /*group_size=*/1,
+                          /*mfma_size=*/16);
+
+  AutotuneResult::TritonGemmKey key = config.ToProto();
+  EXPECT_EQ(key.mfma_size(), 16);
+
+  ASSERT_OK_AND_ASSIGN(TritonGemmConfig restored,
+                       TritonGemmConfig::FromProto(key));
+  EXPECT_EQ(restored.mfma_size, 16);
+}
+
+TEST(TritonGemmConfigTest, FromProtoRejectsInvalidMfmaSize) {
+  TritonGemmConfig config(/*block_m=*/32, /*block_n=*/32, /*block_k=*/32,
+                          /*num_stages=*/1, /*num_warps=*/4);
+  AutotuneResult::TritonGemmKey key = config.ToProto();
+
+  key.set_mfma_size(16);
+  EXPECT_OK(TritonGemmConfig::FromProto(key));
+  key.set_mfma_size(32);
+  EXPECT_FALSE(TritonGemmConfig::FromProto(key).ok());
+  key.set_mfma_size(7);
+  EXPECT_FALSE(TritonGemmConfig::FromProto(key).ok());
+  key.set_mfma_size((int64_t{1} << 32) | 16);
+  EXPECT_FALSE(TritonGemmConfig::FromProto(key).ok());
+
+  // A forced size wider than the tile.
+  key.set_block_n(8);
+  key.set_mfma_size(16);
+  EXPECT_FALSE(TritonGemmConfig::FromProto(key).ok());
+}
+
+TEST(TritonGemmConfigTest, ToStringIncludesMfmaSize) {
+  TritonGemmConfig config(/*block_m=*/64, /*block_n=*/128, /*block_k=*/32,
+                          /*num_stages=*/2, /*num_warps=*/4,
+                          /*num_ctas=*/1, /*is_tma_allowed=*/false,
+                          /*is_warp_specialization_allowed=*/false,
+                          /*waves_per_eu=*/0, /*group_size=*/1,
+                          /*mfma_size=*/16);
+  std::string str = config.ToString();
+  EXPECT_NE(str.find("mfma_size:16"), std::string::npos);
 }
 
 }  // namespace

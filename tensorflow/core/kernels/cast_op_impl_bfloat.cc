@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/cast_op_impl.h"
-
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {

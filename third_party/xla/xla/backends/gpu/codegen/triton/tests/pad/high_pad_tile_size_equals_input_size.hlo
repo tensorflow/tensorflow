@@ -13,9 +13,9 @@ triton_computation {
 // CHECK: xtile.extract {{.*}} -> tensor<4x16xf32>
 // CHECK-NOT: tt.make_range {end = 16 : i32
 // CHECK: tt.make_range {end = 4 : i32, start = 0 : i32} : tensor<4xi32>
-// CHECK: tt.expand_dims
-// CHECK: tt.broadcast
 // CHECK: arith.cmpi slt
+// CHECK: tt.expand_dims {{.*}} : tensor<4xi1> -> tensor<4x1xi1>
+// CHECK: tt.broadcast {{.*}} : tensor<4x1xi1> -> tensor<4x16xi1>
 // CHECK-NOT: tt.make_range
 // CHECK-NOT: arith.andi
 // CHECK: arith.select

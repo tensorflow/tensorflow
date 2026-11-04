@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -913,7 +914,8 @@ class NanoExecutable final
     XlaComputation computation;
     ABSL_RETURN_IF_ERROR(MlirToXlaComputation(
         xla_program->mlir_module(), computation, /*use_tuple_args=*/false,
-        /*return_tuple=*/true, /*exec_build_options=*/nullptr));
+        /*return_tuple=*/true, /*exec_build_options=*/nullptr,
+        mlir::mhlo::getCpuChloToHighLevelMhloOptions()));
     ABSL_ASSIGN_OR_RETURN(auto nano_executable,
                      client->nano_client()->Compile(computation));
 
@@ -1573,6 +1575,15 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::CopyArrays(
   return result;
 }
 
+absl::StatusOr<std::vector<ifrt::ArrayRef>>
+NanoIfrtClient::CopyArraysWithDonatedDst(
+    absl::Span<ifrt::ArrayRef> arrays,
+    absl::Span<ifrt::ArrayRef> donated_dst_arrays,
+    ifrt::ArrayCopySemantics semantics) {
+  return absl::UnimplementedError(
+      "CopyArraysWithDonatedDst is not implemented.");
+}
+
 absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
     const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics semantics) {
@@ -1596,6 +1607,20 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::ReshardArrays(
     absl::Span<const xla::ifrt::ArraySpec> specs,
     xla::ifrt::ArrayCopySemantics semantics) {
   return absl::UnimplementedError("ReshardArrays is not implemented.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+NanoIfrtClient::CopyArraySlices(
+    absl::Span<const xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::IndexDomain> index_domains) {
+  return absl::UnimplementedError("CopyArraySlices is not implemented.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+NanoIfrtClient::UpdateArraySlices(absl::Span<xla::ifrt::ArrayRef> arrays,
+                                  absl::Span<const xla::ifrt::ArrayRef> slices,
+                                  absl::Span<const xla::ifrt::Index> origins) {
+  return absl::UnimplementedError("UpdateArraySlices is not implemented.");
 }
 
 tsl::Future<> NanoIfrtClient::GetReadyFuture(

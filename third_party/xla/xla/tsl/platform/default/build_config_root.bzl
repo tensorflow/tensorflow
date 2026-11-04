@@ -80,6 +80,11 @@ def tf_has_tag(kwargs, tag):
 def tf_has_any_tag(kwargs, tags):
     return any([tf_has_tag(kwargs, tag) for tag in tags])
 
+def tf_override_test_tags_by_target_name(name, tags):
+    """Temporary workaround for Google-internal builds. Do not use it, it will be removed."""
+    _ignore = name  # buildifier: disable=unused-variable
+    return tags
+
 def tf_exec_properties(kwargs):
     """Gets execution_properties for TensorFlow GPU tests based on the provided tags.
 

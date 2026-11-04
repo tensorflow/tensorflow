@@ -43,6 +43,7 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
@@ -108,10 +109,13 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
@@ -128,6 +132,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
@@ -304,9 +309,11 @@ Value MlirKernelEmitter::EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
   return block_id;
 }
 
-Value MlirKernelEmitter::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
-                                     int dim) const {
-  const auto counts = launch_dimensions().block_counts();
+namespace {
+
+Value EmitBlockIdForLaunch(mlir::ImplicitLocOpBuilder& builder,
+                           const LaunchDimensions& launch_dims, int dim) {
+  const auto counts = launch_dims.block_counts();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto block_id = mlir::gpu::BlockIdOp::create(
       builder, static_cast<mlir::gpu::Dimension>(dim));
@@ -314,9 +321,9 @@ Value MlirKernelEmitter::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
   return block_id;
 }
 
-Value MlirKernelEmitter::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
-                                      int dim) const {
-  const auto counts = launch_dimensions().thread_counts_per_block();
+Value EmitThreadIdForLaunch(mlir::ImplicitLocOpBuilder& builder,
+                            const LaunchDimensions& launch_dims, int dim) {
+  const auto counts = launch_dims.thread_counts_per_block();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto thread_id = mlir::gpu::ThreadIdOp::create(
       builder, static_cast<mlir::gpu::Dimension>(dim));
@@ -324,11 +331,49 @@ Value MlirKernelEmitter::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
   return thread_id;
 }
 
+}  // namespace
+
+Value MlirKernelEmitter::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
+                                     int dim) const {
+  return EmitBlockIdForLaunch(builder, launch_dimensions(), dim);
+}
+
+Value MlirKernelEmitter::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
+                                      int dim) const {
+  return EmitThreadIdForLaunch(builder, launch_dimensions(), dim);
+}
+
+llvm::SmallVector<Value> MlirKernelEmitter::EmitThreadAndBlockIds(
+    mlir::ImplicitLocOpBuilder& builder, const LaunchDimensions& launch_dims) {
+  auto& b = builder;
+  return {EmitThreadIdForLaunch(b, launch_dims, 0),
+          EmitThreadIdForLaunch(b, launch_dims, 1),
+          EmitThreadIdForLaunch(b, launch_dims, 2),
+          EmitBlockIdForLaunch(b, launch_dims, 0),
+          EmitBlockIdForLaunch(b, launch_dims, 1),
+          EmitBlockIdForLaunch(b, launch_dims, 2)};
+}
+
 llvm::SmallVector<Value> MlirKernelEmitter::EmitThreadAndBlockIds(
     mlir::ImplicitLocOpBuilder& builder) const {
-  auto& b = builder;
-  return {EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
-          EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
+  return EmitThreadAndBlockIds(builder, launch_dimensions());
+}
+
+absl::Status AnnotateMlirKernelLlvmModule(
+    const se::DeviceDescription& gpu_device_info,
+    const LaunchDimensions& launch_dims, absl::string_view kernel_name,
+    absl::string_view data_layout, const llvm::Triple& target_triple,
+    llvm::Module* module) {
+  llvm::Function* kernel_func = module->getFunction(kernel_name);
+  TF_RET_CHECK(kernel_func != nullptr)
+      << "Kernel " << kernel_name << " not found in LLVM module";
+  AddRanges(kernel_func, launch_dims, module);
+  module->setDataLayout(data_layout);
+  module->setTargetTriple(target_triple);
+  llvm::IRBuilder<> builder(module->getContext());
+  AnnotateFunctionAsGpuKernel(module, kernel_func, &builder);
+  return AnnotateKernelLaunchDimensions(gpu_device_info, launch_dims,
+                                        kernel_func, module);
 }
 
 xla::Future<KernelDefinition<LlvmKernelSource>>
@@ -350,17 +395,9 @@ MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
             std::move(source).thread_safe_module();
         llvm::Module* module = safe_module.getModuleUnlocked();
 
-        auto* kernel_func = module->getFunction(kernel_name);
-
-        AddRanges(kernel_func, launch_dims, module);
-
-        module->setDataLayout(data_layout);
-        module->setTargetTriple(target_triple);
-
-        llvm::IRBuilder<> builder(module->getContext());
-        AnnotateFunctionAsGpuKernel(module, kernel_func, &builder);
-        ABSL_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
-            gpu_device_info, launch_dims, kernel_func, module));
+        ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
+            gpu_device_info, launch_dims, kernel_name, data_layout,
+            target_triple, module));
 
         ABSL_ASSIGN_OR_RETURN(
             KernelSpec kernel_spec,
@@ -440,11 +477,64 @@ AsyncThunkSequence MlirKernelFusion::Emit(
       });
 }
 
+namespace {
+
+bool IsSupportedGpuFmaType(PrimitiveType type,
+                           const se::GpuComputeCapability& gpu_cc) {
+  switch (type) {
+    case F32:
+    case F64:
+      return true;
+    case F16: {
+      if (gpu_cc.IsRocm()) {
+        return true;
+      }
+      const auto* cuda_cc = gpu_cc.cuda_compute_capability();
+      return cuda_cc != nullptr && cuda_cc->IsAtLeast(5, 3);
+    }
+    case BF16: {
+      if (const auto* cuda_cc = gpu_cc.cuda_compute_capability()) {
+        return cuda_cc->IsAtLeastAmpere();
+      }
+      if (const auto* rocm_cc = gpu_cc.rocm_compute_capability()) {
+        return rocm_cc->gfx1250();
+      }
+      return false;
+    }
+    default:
+      return false;
+  }
+}
+
+absl::Status CheckSupportedGpuFmaOps(const HloComputation& computation,
+                                     const se::GpuComputeCapability& gpu_cc) {
+  for (const HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() == HloOpcode::kFma) {
+      PrimitiveType type = instr->shape().element_type();
+      if (!IsSupportedGpuFmaType(type, gpu_cc)) {
+        return absl::UnimplementedError(
+            absl::StrCat("Fma is not supported for element type ",
+                         primitive_util::LowercasePrimitiveTypeName(type),
+                         " on GPU target ", gpu_cc.ToString()));
+      }
+    }
+    for (const HloComputation* called : instr->called_computations()) {
+      ABSL_RETURN_IF_ERROR(CheckSupportedGpuFmaOps(*called, gpu_cc));
+    }
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment, KernelCompiler* kernel_compiler,
     BorrowedMlirContext borrowed_context) const {
+  ABSL_RETURN_IF_ERROR(
+      CheckSupportedGpuFmaOps(*fusion.fused_instructions_computation(),
+                              device.gpu_compute_capability()));
   mlir::MLIRContext* mlir_context = borrowed_context->get();
 
   mlir_context->appendDialectRegistry(MlirKernelEmitter::GetDialectRegistry());
@@ -670,11 +760,10 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }
 
-absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
+absl::StatusOr<MlirKernelSource> CompileMlirToLlvmDialect(
     const se::DeviceDescription& device, const HloModule& hlo_module,
-    const std::string& entry_function_name, int unroll_factor,
+    absl::string_view entry_function_name, int unroll_factor,
     mlir::MLIRContext& mlir_context, MlirKernelSource source) {
-  auto llvm_context = std::make_unique<llvm::LLVMContext>();
   mlir::OwningOpRef<mlir::ModuleOp> module = std::move(source).TakeModule();
 
   mlir::PassManager pm(module->getContext());
@@ -697,6 +786,21 @@ absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
 
   ABSL_RETURN_IF_ERROR(
       RunPassPipeline(module.get(), hlo_module, pm, entry_function_name));
+
+  return MlirKernelSource(nullptr, std::move(module));
+}
+
+absl::StatusOr<LlvmKernelSource> CompileMlirToLlvm(
+    const se::DeviceDescription& device, const HloModule& hlo_module,
+    const std::string& entry_function_name, int unroll_factor,
+    mlir::MLIRContext& mlir_context, MlirKernelSource source) {
+  ABSL_ASSIGN_OR_RETURN(
+      MlirKernelSource lowered_source,
+      CompileMlirToLlvmDialect(device, hlo_module, entry_function_name,
+                               unroll_factor, mlir_context, std::move(source)));
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      std::move(lowered_source).TakeModule();
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), *llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)

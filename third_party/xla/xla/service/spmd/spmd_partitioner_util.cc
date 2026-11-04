@@ -2161,8 +2161,10 @@ std::optional<int64_t> GetKValueInTopKWhenPartitionSortDim(
       supported = false;
       break;
     }
-    if (absl::c_any_of(slice->slice_starts(), [](int x) { return x != 0; }) ||
-        absl::c_any_of(slice->slice_strides(), [](int x) { return x != 1; })) {
+    if (absl::c_any_of(slice->slice_starts(),
+                       [](int64_t x) { return x != 0; }) ||
+        absl::c_any_of(slice->slice_strides(),
+                       [](int64_t x) { return x != 1; })) {
       // Strided slice or slicing at the beginning isn't supported.
       supported = false;
       break;
@@ -2538,7 +2540,8 @@ HloInstruction* PerGroupSliceFromReplicated(
     HloInstruction* replicated, HloInstruction* partition_id,
     const hlo_sharding_util::DeviceGroupTileAssignment& device_groups,
     absl::Span<const int64_t> group_dims,
-    absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b) {
+    absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b,
+    std::optional<Literal> pad_value) {
   std::vector<uint32_t> group_ids(device_groups.num_total_devices());
   for (int64_t g = 0; g < device_groups.num_groups(); ++g) {
     for (int64_t d = 0; d < device_groups.num_devices_per_group(); ++d) {
@@ -2568,7 +2571,7 @@ HloInstruction* PerGroupSliceFromReplicated(
   }();
   auto group_level_sharding = HloSharding::Tile(std::move(group_level_tile));
   auto padded_hlo = PadBaseShapeBeforeUnevenTiledSharding(
-      replicated, group_level_sharding, b);
+      replicated, group_level_sharding, b, std::move(pad_value));
   auto shard_shape =
       MakePartitionedShape(replicated->shape(), group_level_sharding);
   return b->AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -3492,11 +3495,9 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
   bool has_partitioned_slice_dim_with_dynamic_index = false;
   for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
     if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      // The start of a full-size slice is always clamped to 0.
       if (is_enzyme_opt_enabled && hlo->sharding().dimension(i) != 1) {
         update_on_a_single_partition = false;
-        if (!hlo->operand(i + 2)->IsConstant()) {
-          has_partitioned_slice_dim_with_dynamic_index = true;
-        }
       }
       continue;
     }
@@ -3509,6 +3510,11 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
 
     int64_t slice_size = hlo->operand(1)->shape().dimensions(i);
     if (slice_size == 1) {
+      // A size-1 update is always within one partition, but which one is only
+      // known at runtime if its start is.
+      if (is_enzyme_opt_enabled && !hlo->operand(i + 2)->IsConstant()) {
+        has_partitioned_slice_dim_with_dynamic_index = true;
+      }
       continue;
     }
 
@@ -3557,7 +3563,14 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
       DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices) {
     for (int64_t dim = 0; dim < hlo->shape().dimensions().size(); ++dim) {
       const HloInstruction* dus_index = hlo->operand(dim + 2);
-      CHECK(dus_index->IsConstant());
+      if (update_tensor->shape().dimensions(dim) ==
+              hlo->shape().dimensions(dim) ||
+          !dus_index->IsConstant()) {
+        // Full-size slices start at 0; runtime starts (only on
+        // non-partitioned dimensions) are clamped by the dynamic-slice and
+        // dynamic-update-slice the handler applies them with.
+        continue;
+      }
 
       int64_t start_index = dus_index->literal().GetIntegralAsS64({}).value();
       int64_t end_index = start_index + update_tensor->shape().dimensions(dim);

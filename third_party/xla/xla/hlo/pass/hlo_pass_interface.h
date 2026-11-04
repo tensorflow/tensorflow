@@ -17,10 +17,8 @@ limitations under the License.
 #define XLA_HLO_PASS_HLO_PASS_INTERFACE_H_
 
 #include <cstdint>
-#include <memory>
 #include <string>
 
-#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -83,17 +81,6 @@ class HloPassInterface {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
-  // Same as above, except that this API allows the pass to return a *different*
-  // module, rather than modifying the module in-place.
-  // TODO(b/454418238): Remove this function (and the corresponding RunImpl).
-  ABSL_DEPRECATED(
-      "This interface exists for passes which create an entire new HloModule "
-      "instead of updating the existing one in place. This is not the norm and "
-      "should not be done.")
-  absl::StatusOr<bool> Run(
-      std::unique_ptr<HloModule>& module_ptr,
-      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
-
   // Run the pass on computation on changed computations from last iteration in
   // given HLO module for specified execution_threads, with caller provided
   // RunState which holds the state information across multiple iterations.
@@ -132,13 +119,6 @@ class HloPassInterface {
   virtual absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
-
-  // TODO(b/454418238): Remove this function.
-  virtual absl::StatusOr<bool> RunImpl(
-      std::unique_ptr<HloModule>& module_ptr,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) {
-    return RunImpl(module_ptr.get(), execution_threads);
-  }
 };
 
 // Base class for passes which are module-scoped.

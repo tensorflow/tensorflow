@@ -17,6 +17,7 @@
 #  A forwarding MPI implementation that can use any other MPI implementation via an MPI ABI
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@xla//xla:py_strict.bzl", "py_strict_binary")
 
 package(

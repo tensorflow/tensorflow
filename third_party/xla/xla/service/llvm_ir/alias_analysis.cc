@@ -181,7 +181,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   std::set<BufferAllocation::Slice> buffers;
   for (const HloValue* buffer : worklist) {
     const BufferAllocation::Slice noalias_slice =
-        assignment.GetAssignedAllocation(*buffer).GetSlice(*buffer);
+        assignment.GetAssignedSlice(*buffer);
     // Our buffer must not overlap with the noalias slice.
     if (!buffer_slice.OverlapsWith(noalias_slice)) {
       buffers.insert(noalias_slice);

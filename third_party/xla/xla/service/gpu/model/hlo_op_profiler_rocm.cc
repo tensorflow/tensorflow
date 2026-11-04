@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
+#include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 
 namespace xla {
@@ -38,9 +40,7 @@ class RocmKernelTracer : public HloOpProfiler::KernelTracer,
         rocm_tracer_(&profiler::RocmTracer::GetRocmTracerSingleton()),
         start_timestamp_ns_(profiler::RocmTracer::GetTimestamp()) {
     CHECK(rocm_tracer_->IsAvailable());
-    profiler::RocmTracerOptions options;
-    options.max_annotation_strings = 1024 * 1024;
-    CHECK_OK(rocm_tracer_->Enable(options, this));
+    CHECK_OK(rocm_tracer_->Enable(this));
   }
 
   uint64_t getMedianKernelTimeNs() && override {
@@ -57,6 +57,12 @@ class RocmKernelTracer : public HloOpProfiler::KernelTracer,
     }
     // Return average of the two middle values if the number of values is even.
     return (kernel_times_ns_[i - 1] + kernel_times_ns_[i] + 1) / 2;
+  }
+
+  uint64_t getSumKernelTimeNs() && override {
+    rocm_tracer_->Disable();  // Also flushes buffer.
+    return std::accumulate(kernel_times_ns_.begin(), kernel_times_ns_.end(),
+                           uint64_t{0});
   }
 
  private:

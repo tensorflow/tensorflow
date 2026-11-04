@@ -47,3 +47,10 @@ configure the YNNPACK delegate:
 *   **`--ynnpack_no_excess_precision=true|false`** (default: `false`):
     Enable `YNN_FLAG_NO_EXCESS_PRECISION`. YNNPACK will not promote tensors to
     higher precision as a performance optimization.
+
+*   **`--ynnpack_enable_blockwise_quantization=true|false`** (default: `false`):
+    Enable support for blockwise quantization.
+
+*   **`--ynnpack_dispatch_moe_on_host=true|false`** (default: `false`):
+    Bucket the tokens of multi-token MoE ops by expert on the host, so that
+    each expert processes its tokens in one batch (prefill only).

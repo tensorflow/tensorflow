@@ -25,10 +25,6 @@ limitations under the License.
 
 namespace xla {
 
-// Separator for fingerprint and hlo_name in the cost name of
-// ProfiledInstructionsProto.
-extern const char kCostNameSep[];
-
 // Latency info for a single HLO instruction.
 struct HloLatencyInfo {
   std::vector<double> durations;
@@ -36,10 +32,16 @@ struct HloLatencyInfo {
 
 // Convert XSpace to ProfiledInstructionsProto. This function will aggregate
 // all the xplane.pb info into ProfiledInstructionsProto.
+//
+// The cost of each instruction is prefixed with the fingerprint of the module
+// that it belongs to. If `require_fingerprints` is false then instructions are
+// saved under their name alone if a fingerprint cannot be found, which can
+// lead to name collisions.
 absl::Status ConvertXplaneToProfiledInstructionsProto(
     std::vector<tensorflow::profiler::XSpace> xspaces,
     tensorflow::profiler::ProfiledInstructionsProto*
-        profiled_instructions_proto);
+        profiled_instructions_proto,
+    bool require_fingerprints = false);
 
 // Convert XSpace to ProfiledInstructionsProto. This function will aggregate
 // all the xplane.pb info under logdir into ProfiledInstructionsProto.

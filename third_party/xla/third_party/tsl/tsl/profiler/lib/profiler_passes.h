@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -68,7 +69,7 @@ class ProfilerPasses {
 
   absl::Status Status() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  bool NeedMorePasses() ABSL_LOCKS_EXCLUDED(mutex_);
+  absl::StatusOr<bool> NeedMorePasses() ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::Status StartPass() ABSL_LOCKS_EXCLUDED(mutex_);
 

@@ -145,10 +145,11 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
                             : std::nullopt,
                         GetModelName(c));
   RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
-  OP_REQUIRES_VALUE(tfrt::ResourceContext * client_graph_resource_context, c,
-                    BatchResourceType::GetClientGraphResourceContext(c));
+  absl::StatusOr<tfrt::ResourceContext*> client_graph_resource_context =
+      BatchResourceType::GetClientGraphResourceContext(c);
+  OP_REQUIRES_OK_ASYNC(c, client_graph_resource_context.status(), done);
   OP_REQUIRES_ASYNC(
-      c, client_graph_resource_context != nullptr,
+      c, *client_graph_resource_context != nullptr,
       absl::FailedPreconditionError("client graph resource context not found"),
       done);
   std::function<
@@ -269,8 +270,10 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
     };
   }
 
-  auto br = client_graph_resource_context->GetOrCreateResource<
-      tensorflow::core::RefCountPtr<BatchResourceType>>(shared_name_, creator);
+  auto br = (*client_graph_resource_context)
+                ->GetOrCreateResource<
+                    tensorflow::core::RefCountPtr<BatchResourceType>>(
+                    shared_name_, creator);
   if (!br.ok()) OP_REQUIRES_OK_ASYNC(c, br.status(), done);
   auto expected_name = BatchResourceType::GetBatchFunctionName(batch_function_);
   auto received_name =

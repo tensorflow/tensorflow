@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instruction_utils.h"
@@ -68,7 +67,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
@@ -155,7 +153,6 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kCosh:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
-    case HloOpcode::kDomain:
     case HloOpcode::kDot:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
@@ -163,6 +160,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFloor:
+    case HloOpcode::kFma:
     case HloOpcode::kGather:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
@@ -342,7 +340,6 @@ class HloParserImpl : public HloParser {
     kMetadata,
     kFusionKind,
     kDistribution,
-    kDomain,
     kPrecisionList,
     kShape,
     kShapeList,
@@ -471,12 +468,6 @@ class HloParserImpl : public HloParser {
     std::vector<int64_t> strides;
   };
 
-  // The data parsed for the kDomain instruction.
-  struct DomainData {
-    std::unique_ptr<DomainMetadata> entry_metadata;
-    std::unique_ptr<DomainMetadata> exit_metadata;
-  };
-
   // attributes ::= (',' attribute)*
   //
   // Parses attributes given names and configs of the attributes. Each parsed
@@ -579,9 +570,6 @@ class HloParserImpl : public HloParser {
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
   bool ParseBooleanListOrSingleBoolean(BoolList* boolean_list);
   bool ParseReplicaGroupsOnly(std::vector<ReplicaGroup>* replica_groups);
-
-  // Parses the metadata behind a kDOmain instruction.
-  bool ParseDomain(DomainData* domain);
 
   // Parses a sub-attribute of the window attribute, e.g.,size=1x2x3.
   bool ParseDxD(const std::string& name, std::vector<int64_t>* result);
@@ -764,6 +752,11 @@ class HloParserImpl : public HloParser {
   // Tracks recursion depth to prevent stack overflow from deeply nested input.
   int current_recursion_depth_ = 0;
   StackFrameIndexProto stack_frame_index_proto_;
+
+  // Next values used to fill elided constants (`{...}`) when
+  // fill_shortform_constants_with_random_values() is set.
+  uint32_t shortform_fill_word_ = 0;
+  uint8_t shortform_fill_byte_ = 0;
 };
 
 bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64_t>* out) {
@@ -1924,6 +1917,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     // Ternary ops.
     case HloOpcode::kClamp:
+    case HloOpcode::kFma:
     case HloOpcode::kSelect: {
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/3)) ||
@@ -2291,14 +2285,18 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           // and pass them to construct the async-wrapped computation.
           // Any mismatch between the actual operands and the expected shapes
           // in the wrapped computation will be caught by the verifier.
-          async_computation = CreateAsyncWrappedComputation(
-              *async_wrapped_opcode, /*result_shape=*/shape->tuple_shapes(1),
-              /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes(), attrs,
-              allow_attributes);
-
-          if (!async_computation) {
+          HloComputation* async_wrapped_computation =
+              CreateAsyncWrappedComputation(
+                  *async_wrapped_opcode,
+                  /*result_shape=*/shape->tuple_shapes(1),
+                  /*operand_shapes=*/shape->tuple_shapes(0).tuple_shapes(),
+                  attrs, allow_attributes);
+          // Check the raw pointer: storing it would engage the optional even
+          // when it is null.
+          if (async_wrapped_computation == nullptr) {
             return nullptr;
           }
+          async_computation = async_wrapped_computation;
         } else {
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
@@ -2687,8 +2685,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       if (!maybe_infer_shape([&] {
-            return ShapeUtil::GetTupleElementShape(operands[0]->shape(),
-                                                   *index);
+            return ShapeInference::InferGetTupleElementShape(
+                operands[0]->shape(), *index);
           })) {
         return nullptr;
       }
@@ -4075,23 +4073,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           operand_span.last(input_count), *update_computation, dim_numbers,
           indices_are_sorted.value(), unique_indices.value()));
     }
-    case HloOpcode::kDomain: {
-      DomainData domain;
-      attrs["domain"] = {/*required=*/true, AttrTy::kDomain, &domain};
-      if ((!preset_operands &&
-           !ParseOperands(&operands, builder, /*expected_size=*/1)) ||
-          !ParseAttributes(attrs, allow_attributes, shape)) {
-        return nullptr;
-      }
-      if (!maybe_infer_shape([&] {
-            return ShapeInference::InferUnaryOpShape(opcode, operands[0]);
-          })) {
-        return nullptr;
-      }
-      return builder->AddInstruction(HloInstruction::CreateDomain(
-          *shape, operands[0], std::move(domain.exit_metadata),
-          std::move(domain.entry_metadata)));
-    }
     case HloOpcode::kGetDimensionSize: {
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
@@ -4629,8 +4610,8 @@ bool HloParserImpl::ParseSingleSharding(
     return true;
   };
 
-  // Maximal sharding
-  if (mesh->IsMaximal()) {
+  // Single-device sharding
+  if (mesh->IsSingleDevice()) {
     std::vector<OpMetadata> metadata;
     if (!parse_metadata_if_present(metadata)) {
       return false;
@@ -5192,34 +5173,6 @@ bool HloParserImpl::ParseReplicaGroupsOnly(
   return true;
 }
 
-// domain ::= '{' 'kind=' domain_kind ',' 'entry=' entry_sharding ','
-//            'exit=' exit_sharding '}'
-bool HloParserImpl::ParseDomain(DomainData* domain) {
-  absl::btree_map<std::string, AttrConfig> attrs;
-  optional<std::string> kind;
-  optional<HloSharding> entry_sharding;
-  optional<HloSharding> exit_sharding;
-  attrs["kind"] = {/*required=*/true, AttrTy::kString, &kind};
-  attrs["entry"] = {/*required=*/true, AttrTy::kSharding, &entry_sharding};
-  attrs["exit"] = {/*required=*/true, AttrTy::kSharding, &exit_sharding};
-  if (!ParseSubAttributes(attrs)) {
-    return false;
-  }
-  if (*kind == ShardingMetadata::KindName()) {
-    auto entry_sharding_ptr =
-        std::make_unique<HloSharding>(std::move(*entry_sharding));
-    auto exit_sharding_ptr =
-        std::make_unique<HloSharding>(std::move(*exit_sharding));
-    domain->entry_metadata =
-        std::make_unique<ShardingMetadata>(std::move(entry_sharding_ptr));
-    domain->exit_metadata =
-        std::make_unique<ShardingMetadata>(std::move(exit_sharding_ptr));
-  } else {
-    return TokenError(StrCat("unsupported domain kind: ", *kind));
-  }
-  return true;
-}
-
 // '{' name+ '}'
 bool HloParserImpl::ParseInstructionNames(
     std::vector<HloInstruction*>* instructions) {
@@ -5233,7 +5186,12 @@ bool HloParserImpl::ParseInstructionNames(
     if (!ParseName(&name)) {
       return Error(loc, "expects a instruction name");
     }
-    std::pair<HloInstruction*, LocTy>* instr = FindInstruction(name);
+    std::optional<Shape> default_shape;
+    if (tsl::gtl::FindOrNull(current_name_table(), name) == nullptr) {
+      default_shape = ShapeUtil::MakeNil();
+    }
+    std::pair<HloInstruction*, LocTy>* instr =
+        FindInstruction(name, default_shape);
     if (!instr) {
       return TokenError(StrFormat("instruction '%s' is not defined", name));
     }
@@ -5754,11 +5712,13 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         if (!options_.fill_shortform_constants_with_random_values()) {
           break;
         }
-        // Fill data with deterministic (garbage) values. Use static to avoid
-        // creating identical constants which could potentially got CSE'ed
-        // away. This is a best-effort approach to make sure replaying a HLO
-        // gives us same optimized HLO graph.
-        static uint32_t data = 0;
+        // Fill data with deterministic (garbage) values. The counters keep
+        // running across the elided constants of one parse, so constants of
+        // the same shape get different values and are not CSE'ed away. They
+        // are parser members rather than statics, so every parse of the same
+        // text produces the same values, regardless of what was parsed before
+        // or on which thread. This is a best effort approach to make sure
+        // replaying an HLO gives us the same optimized HLO graph.
 
         // According to the System V ABI not all 8 bit values are valid booleans
         // - only the values 0 and 1 are allowed. So to avoid undefined
@@ -5772,13 +5732,14 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
             (shape.element_type() == PRED) ? kBooleanMask : kNoMask;
 
         uint32_t* raw_data = static_cast<uint32_t*>(literal->untyped_data());
-        for (int64_t i = 0; i < literal->size_bytes() / 4; ++i) {
-          raw_data[i] = data++ & mask;
+        const int64_t num_words = literal->size_bytes() / 4;
+        for (int64_t i = 0; i < num_words; ++i) {
+          raw_data[i] = shortform_fill_word_++ & mask;
         }
+        // The bytes after the last whole word.
         uint8_t* raw_data_int8 = static_cast<uint8_t*>(literal->untyped_data());
-        static uint8_t data_int8 = 0;
-        for (int64_t i = 0; i < literal->size_bytes() % 4; ++i) {
-          raw_data_int8[literal->size_bytes() / 4 + i] = data_int8++ & mask;
+        for (int64_t i = num_words * 4; i < literal->size_bytes(); ++i) {
+          raw_data_int8[i] = shortform_fill_byte_++ & mask;
         }
         break;
       }
@@ -6441,9 +6402,6 @@ bool HloParserImpl::ParseAttributeHelper(
         static_cast<optional<RandomDistribution>*>(attr_out_ptr)
             ->emplace(result);
         return true;
-      }
-      case AttrTy::kDomain: {
-        return ParseDomain(static_cast<DomainData*>(attr_out_ptr));
       }
       case AttrTy::kPrecisionList: {
         std::vector<PrecisionConfig::Precision> result;
@@ -7311,11 +7269,16 @@ bool HloParserImpl::ParseDimLevelTypes(
 //   ::= 'T' ('(' dim_list ')')+
 // dim_list
 //   ::= /*empty*/
-//   ::= (int64_t | '*') (',' (int64_t | '*'))*
+//   ::= (int64_t | '*' | 'd') (',' (int64_t | '*' | 'd'))*
 bool HloParserImpl::ParseTiles(std::vector<Tile>* tiles) {
   auto parse_and_add_tile_dimension = [&]() {
     if (lexer_.GetKind() == TokKind::kAsterisk) {
       tiles->back().add_dimensions(Tile::kCombineDimension);
+      lexer_.Lex();
+      return true;
+    }
+    if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "d") {
+      tiles->back().add_dimensions(Tile::kMatchDimension);
       lexer_.Lex();
       return true;
     }

@@ -15,12 +15,16 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
@@ -30,12 +34,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/index_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/types.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -375,6 +384,202 @@ TEST_F(ReduceScatterTest, PredOr2D) {
         << "Mismatch at replica " << r;
   }
 }
+
+struct VariadicReduceScatterTestCase {
+  std::string name;
+  PrimitiveType element_type;
+  // Full (unscattered) operand shapes; dimension 0 is scattered.
+  std::vector<Shape> operand_shapes;
+  // HLO opcode name of the reducer: add, maximum or or.
+  std::string reducer;
+};
+
+class VariadicReduceScatterTest
+    : public ReduceScatterTest,
+      public ::testing::WithParamInterface<VariadicReduceScatterTestCase> {};
+
+TEST_P(VariadicReduceScatterTest, TwoGpus) {
+  constexpr int32_t kNumReplicas = 2;
+  if (!HasDevices(kNumReplicas)) {
+    GTEST_SKIP() << "Requires " << kNumReplicas << " devices.";
+  }
+  const VariadicReduceScatterTestCase& tc = GetParam();
+  const int64_t num_operands = tc.operand_shapes.size();
+  const std::string type_name =
+      primitive_util::LowercasePrimitiveTypeName(tc.element_type);
+
+  std::vector<Shape> output_shapes;
+  std::vector<std::string> param_lines;
+  std::vector<std::string> operand_names;
+  for (int64_t k = 0; k < num_operands; ++k) {
+    const Shape& in = tc.operand_shapes[k];
+    ASSERT_EQ(in.element_type(), tc.element_type);
+    ASSERT_EQ(in.dimensions(0) % kNumReplicas, 0);
+    Shape out = in;
+    out.set_dimensions(0, in.dimensions(0) / kNumReplicas);
+    output_shapes.push_back(out);
+    param_lines.push_back(absl::StrFormat("param_%d = %s parameter(%d)", k,
+                                          ShapeUtil::HumanString(in), k));
+    operand_names.push_back(absl::StrFormat("param_%d", k));
+  }
+  const std::string module_str = absl::StrFormat(
+      R"(
+  HloModule test
+  reducer {
+    a = %s[] parameter(0)
+    b = %s[] parameter(1)
+    ROOT r = %s[] %s(a, b)
+  }
+  ENTRY test_computation {
+    %s
+    ROOT rs = %s reduce-scatter(%s), dimensions={0},
+      replica_groups={{0,1}}, to_apply=reducer
+  }
+  )",
+      type_name, type_name, type_name, tc.reducer,
+      absl::StrJoin(param_lines, "\n    "),
+      ShapeUtil::HumanString(ShapeUtil::MakeTupleShape(output_shapes)),
+      absl::StrJoin(operand_names, ", "));
+  SCOPED_TRACE(module_str);
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(module_str, kNumReplicas));
+
+  // Small non-negative integers: exactly representable (and exactly reducible)
+  // in every tested element type. Booleans use {0, 1}.
+  const float modulus = tc.element_type == PRED ? 2.0f : 9.0f;
+  auto value = [&](int rank, int64_t k, const Shape& shape,
+                   absl::Span<const int64_t> idx) -> float {
+    const int64_t linear = IndexUtil::MultidimensionalIndexToLinearIndex(
+        ShapeUtil::MakeShape(F32, shape.dimensions()), idx);
+    return static_cast<float>((linear * 7 + rank * 3 + k * 5) %
+                              static_cast<int64_t>(modulus));
+  };
+  auto reduce = [&](float a, float b) -> float {
+    if (tc.reducer == "add") {
+      return a + b;
+    }
+    if (tc.reducer == "maximum") {
+      return std::max(a, b);
+    }
+    CHECK_EQ(tc.reducer, "or");
+    return (a != 0.0f || b != 0.0f) ? 1.0f : 0.0f;
+  };
+
+  std::vector<std::vector<Literal>> inputs(kNumReplicas);
+  for (int64_t k = 0; k < num_operands; ++k) {
+    const Shape& in_shape = tc.operand_shapes[k];
+    for (int r = 0; r < kNumReplicas; ++r) {
+      ASSERT_OK_AND_ASSIGN(Literal in, Literal::Make(ShapeUtil::MakeShape(
+                                           F32, in_shape.dimensions())));
+      ASSERT_OK(in.Populate<float>([&](absl::Span<const int64_t> idx) {
+        return value(r, k, in_shape, idx);
+      }));
+      ASSERT_OK_AND_ASSIGN(Literal converted, in.Convert(tc.element_type));
+      inputs[r].push_back(std::move(converted));
+    }
+  }
+  // Replica r receives part r of every operand, reduced over all replicas.
+  std::vector<std::vector<Literal>> expected_per_replica(kNumReplicas);
+  for (int r = 0; r < kNumReplicas; ++r) {
+    for (int64_t k = 0; k < num_operands; ++k) {
+      const Shape& in_shape = tc.operand_shapes[k];
+      const Shape& out_shape = output_shapes[k];
+      const int64_t per_rank_size = out_shape.dimensions(0);
+      ASSERT_OK_AND_ASSIGN(Literal out, Literal::Make(ShapeUtil::MakeShape(
+                                            F32, out_shape.dimensions())));
+      ASSERT_OK(out.Populate<float>([&](absl::Span<const int64_t> idx) {
+        std::vector<int64_t> in_idx(idx.begin(), idx.end());
+        in_idx[0] += r * per_rank_size;
+        float acc = value(/*rank=*/0, k, in_shape, in_idx);
+        for (int p = 1; p < kNumReplicas; ++p) {
+          acc = reduce(acc, value(p, k, in_shape, in_idx));
+        }
+        return acc;
+      }));
+      ASSERT_OK_AND_ASSIGN(Literal converted, out.Convert(tc.element_type));
+      expected_per_replica[r].push_back(std::move(converted));
+    }
+  }
+
+  std::vector<std::vector<Literal*>> args(kNumReplicas);
+  for (int r = 0; r < kNumReplicas; ++r) {
+    for (Literal& input : inputs[r]) {
+      args[r].push_back(&input);
+    }
+  }
+  ASSERT_OK_AND_ASSIGN(ExecutionResult result,
+                       ExecuteReplicated(std::move(module), args));
+  VerifyOneShotReduceScatter(result.optimized_module);
+  ASSERT_EQ(result.results.size(), kNumReplicas);
+  for (int r = 0; r < kNumReplicas; ++r) {
+    Literal expected_tuple =
+        LiteralUtil::MakeTupleOwned(std::move(expected_per_replica[r]));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_tuple, result.results[r]))
+        << "Mismatch at replica " << r;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    VariadicReduceScatter, VariadicReduceScatterTest,
+    ::testing::ValuesIn<VariadicReduceScatterTestCase>({
+        {"TwoF32SameShape",
+         F32,
+         {ShapeUtil::MakeShape(F32, {256}), ShapeUtil::MakeShape(F32, {256})},
+         "add"},
+        {"TwoF32DifferentSizes",
+         F32,
+         {ShapeUtil::MakeShape(F32, {4096}), ShapeUtil::MakeShape(F32, {8192})},
+         "add"},
+        {"ThreeOperandsMixedRanks",
+         F32,
+         {ShapeUtil::MakeShape(F32, {64}), ShapeUtil::MakeShape(F32, {4, 32}),
+          ShapeUtil::MakeShape(F32, {2, 8, 8})},
+         "add"},
+        {"Bf16Add",
+         BF16,
+         {ShapeUtil::MakeShape(BF16, {2, 1024}),
+          ShapeUtil::MakeShape(BF16, {2, 16})},
+         "add"},
+        // Non-power-of-two inner sizes (1200 and 10 elements per rank).
+        {"S32MaxNonPowerOfTwo",
+         S32,
+         {ShapeUtil::MakeShape(S32, {8, 300}),
+          ShapeUtil::MakeShape(S32, {4, 5})},
+         "maximum"},
+        {"PredOr",
+         PRED,
+         {ShapeUtil::MakeShape(PRED, {32, 128}),
+          ShapeUtil::MakeShape(PRED, {4})},
+         "or"},
+        // Shapes of a real variadic reduce-scatter of the jit_generate decode
+        // step.
+        {"JitGenerate14",
+         F32,
+         {ShapeUtil::MakeShape(F32, {4, 8, 64}),
+          ShapeUtil::MakeShape(F32, {4, 8, 1})},
+         "add"},
+        // Regression test for schedule padding on variadic reduce-scatter:
+        // - Output 0 (`f32[2,4096]` from `f32[4,4096]`) uses 2 blocks per rank.
+        // - Output 1 (`f32[2,1]` from `f32[4,1]`) only needs 1 block per rank,
+        //   so the second block per rank is padded out of bounds and must be
+        //   masked out.
+        {"PaddedSmallOutput",
+         F32,
+         {ShapeUtil::MakeShape(F32, {4, 4096}),
+          ShapeUtil::MakeShape(F32, {4, 1})},
+         "add"},
+        // 12288 elements per rank: canonicalized to [R, 32, 384] so that the
+        // 4 programs per output row split the middle dimension ([1, 8, 512]
+        // tiles) instead of rounding 12288 up to a single power of two.
+        {"F32AddNonPowerOfTwoLarge",
+         F32,
+         {ShapeUtil::MakeShape(F32, {2, 24576}),
+          ShapeUtil::MakeShape(F32, {4, 2})},
+         "add"},
+    }),
+    [](const ::testing::TestParamInfo<VariadicReduceScatterTestCase>& info) {
+      return info.param.name;
+    });
 
 }  // namespace
 }  // namespace xla

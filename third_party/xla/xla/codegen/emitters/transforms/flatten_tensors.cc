@@ -718,7 +718,10 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
     llvm::SmallBitVector results_to_update(op.getNumResults(), false);
     for (auto& operand : op->getOpOperands()) {
       auto tensor_type = mlir::cast<RankedTensorType>(operand.get().getType());
-      if (tensor_type.getRank() < 2) continue;
+      if (tensor_type.getRank() < 2) {
+        new_operands.push_back(operand.get());
+        continue;
+      }
       results_to_update.set(operand.getOperandNumber());
       new_operands.push_back(
           UnrealizedConversionCastOp::create(
@@ -735,7 +738,7 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
         continue;
       }
       auto cast_to_orig_type = UnrealizedConversionCastOp::create(
-          rewriter, loc, result.getType(), result);
+          rewriter, loc, op.getResult(index).getType(), result);
       new_results.push_back(cast_to_orig_type.getResult(0));
     }
     rewriter.replaceOp(op, new_results);

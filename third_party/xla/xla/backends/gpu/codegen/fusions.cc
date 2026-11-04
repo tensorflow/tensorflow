@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/sort.h"
 #include "xla/backends/gpu/codegen/tensor_ir/fusion.h"
+#include "xla/backends/gpu/codegen/thread_block_specialized.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -109,6 +110,8 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       return std::make_unique<CuDnnFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTensorIr:
       return std::make_unique<TensorIrFusion>();
+    case HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized:
+      return std::make_unique<ThreadBlockSpecializedFusion>(analysis);
   }
 }
 

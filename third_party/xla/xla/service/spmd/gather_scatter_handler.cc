@@ -1708,7 +1708,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
               updates[0].sharding(), index_passthrough_dims.output_dims,
               index_passthrough_dims.indices_dims, indices.num_dimensions()),
           &indices_sharding)) {
-    indices = indices.Reshard(indices_sharding);
+    indices = indices.Reshard(indices_sharding,
+                              /*pad_value=*/LiteralUtil::CreateR0(
+                                  indices.base_shape().element_type(), -1));
   }
   const HloSharding original_indices_sharding = indices.sharding();
 
@@ -1861,7 +1863,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
     const GroupedSharding& output_grouped = operand_grouped;
     // Reshard indices to its intended sharding before adjusting.
     indices =
-        indices.Reshard(hlo_sharding_util::UngroupSharding(indices_grouped));
+        indices.Reshard(hlo_sharding_util::UngroupSharding(indices_grouped),
+                        /*pad_value=*/LiteralUtil::CreateR0(
+                            indices.base_shape().element_type(), -1));
     HloInstruction* indices_min;
     std::tie(indices_min, std::ignore) =
         IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(

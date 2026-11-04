@@ -63,11 +63,6 @@ SendThunk::SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
       config_(config),
       hlo_name_(instr_name) {}
 
-absl::Status SendThunk::Initialize(const InitializeParams& params) {
-  ABSL_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  return absl::OkStatus();
-}
-
 absl::StatusOr<const se::CommandBuffer::Command*> SendThunk::Record(
     const ExecuteParams& execute_params, const RecordParams& record_params,
     RecordAction record_action, se::CommandBuffer* command_buffer) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tools/hlo_decomposer.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -36,6 +37,32 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+// Appends the leaf elements of `instruction` to `elements`, decomposing any
+// tuple-shaped instruction via GetTupleElement instructions so that a flat
+// tuple can be constructed without nesting tuples.
+void AppendFlattenedTupleElements(HloInstruction* instruction,
+                                  HloComputation::Builder& builder,
+                                  std::vector<HloInstruction*>& elements) {
+  if (!instruction->shape().IsTuple()) {
+    elements.push_back(instruction);
+    return;
+  }
+  for (int64_t i = 0; i < instruction->shape().tuple_shapes().size(); ++i) {
+    HloInstruction* gte = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(instruction, i));
+    AppendFlattenedTupleElements(gte, builder, elements);
+  }
+}
+
+void AddFlatTupleRoot(const std::vector<HloInstruction*>& instructions,
+                      HloComputation::Builder& builder) {
+  std::vector<HloInstruction*> tuple_elements;
+  for (HloInstruction* instruction : instructions) {
+    AppendFlattenedTupleElements(instruction, builder, tuple_elements);
+  }
+  builder.AddInstruction(HloInstruction::CreateTuple(tuple_elements));
+}
 
 // Returns whether it makes sense to run the given instruction in isolation
 // (e.g. whether it can run without dependent instructions).
@@ -167,9 +194,7 @@ std::unique_ptr<HloModule> ExtractCollectiveOperationsIntoNewModule(
   }
 
   if (return_tuple) {
-    std::unique_ptr<HloInstruction> tuple_instruction =
-        HloInstruction::CreateTuple(result_instructions);
-    builder.AddInstruction(std::move(tuple_instruction));
+    AddFlatTupleRoot(result_instructions, builder);
   }
   HloComputation* entry_computation =
       new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
@@ -255,7 +280,7 @@ std::unique_ptr<HloModule> ExtractProducerConsumersIntoNewModule(
   }
 
   if (consumer_outputs.size() > 1) {
-    builder.AddInstruction(HloInstruction::CreateTuple(consumer_outputs));
+    AddFlatTupleRoot(consumer_outputs, builder);
   }
 
   HloComputation* entry_computation =

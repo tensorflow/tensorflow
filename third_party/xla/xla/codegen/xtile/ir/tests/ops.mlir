@@ -271,6 +271,77 @@ func.func @scan_op_carry_type_mismatch(%input: tensor<10x20x30xf32>, %init: tens
 
 // -----
 
+func.func @reduce_scatter_op(%input0: tensor<2x64xf32>, %input1: tensor<2x8xf32>) -> (tensor<1x64xf32>, tensor<1x8xf32>) {
+  %out0, %out1 = xtile.reduce_scatter(%input0, %input1) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>, tensor<2x8xf32>) -> (tensor<1x64xf32>, tensor<1x8xf32>) {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %add = stablehlo.add %arg0, %arg1 : tensor<f32>
+    stablehlo.return %add : tensor<f32>
+  }
+  return %out0, %out1 : tensor<1x64xf32>, tensor<1x8xf32>
+}
+
+// -----
+
+func.func @reduce_scatter_op_output_count_mismatch(%input0: tensor<2x64xf32>, %input1: tensor<2x8xf32>) -> tensor<1x64xf32> {
+  // expected-error @+1 {{expects one output per input, but got 2 inputs and 1 outputs}}
+  %out0 = xtile.reduce_scatter(%input0, %input1) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>, tensor<2x8xf32>) -> (tensor<1x64xf32>) {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %add = stablehlo.add %arg0, %arg1 : tensor<f32>
+    stablehlo.return %add : tensor<f32>
+  }
+  return %out0 : tensor<1x64xf32>
+}
+
+// -----
+
+func.func @reduce_scatter_op_element_type_mismatch(%input0: tensor<2x64xf32>, %input1: tensor<2x8xbf16>) -> (tensor<1x64xf32>, tensor<1x8xbf16>) {
+  // expected-error @+1 {{input #1 element type 'bf16' does not match the element type of input #0 'f32'}}
+  %out0, %out1 = xtile.reduce_scatter(%input0, %input1) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>, tensor<2x8xbf16>) -> (tensor<1x64xf32>, tensor<1x8xbf16>) {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %add = stablehlo.add %arg0, %arg1 : tensor<f32>
+    stablehlo.return %add : tensor<f32>
+  }
+  return %out0, %out1 : tensor<1x64xf32>, tensor<1x8xbf16>
+}
+
+// -----
+
+func.func @reduce_scatter_op_scatter_dimension_out_of_range(%input: tensor<2x64xf32>) -> tensor<1x64xf32> {
+  // expected-error @+1 {{scatter dimension 2 is out of range for input #0 of rank 2}}
+  %out = xtile.reduce_scatter(%input) scatter_dimension = 2 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>) -> (tensor<1x64xf32>) {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %add = stablehlo.add %arg0, %arg1 : tensor<f32>
+    stablehlo.return %add : tensor<f32>
+  }
+  return %out : tensor<1x64xf32>
+}
+
+// -----
+
+func.func @reduce_scatter_op_non_scatter_dimension_mismatch(%input: tensor<2x64xf32>) -> tensor<1x32xf32> {
+  // expected-error @+1 {{output #0 type 'tensor<1x32xf32>' differs from input type 'tensor<2x64xf32>' in non-scatter dimension 1}}
+  %out = xtile.reduce_scatter(%input) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>) -> (tensor<1x32xf32>) {
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+    %add = stablehlo.add %arg0, %arg1 : tensor<f32>
+    stablehlo.return %add : tensor<f32>
+  }
+  return %out : tensor<1x32xf32>
+}
+
+// -----
+
+func.func @reduce_scatter_op_non_scalar_reducer(%input: tensor<2x64xf32>) -> tensor<1x64xf32> {
+  // expected-error @+1 {{expects reduction computation arguments of type 'tensor<f32>', but got 'tensor<1xf32>'}}
+  %out = xtile.reduce_scatter(%input) scatter_dimension = 0 <replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>> : (tensor<2x64xf32>) -> (tensor<1x64xf32>) {
+  ^bb0(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>):
+    %add = stablehlo.add %arg0, %arg1 : tensor<1xf32>
+    stablehlo.return %add : tensor<1xf32>
+  }
+  return %out : tensor<1x64xf32>
+}
+
+// -----
+
 // expected-error @+1 {{layout has 0 dimensions, but shape has 1}}
 func.func @memref_layout_shape_size_mismatch(%arg0: memref<1024xf32, #xtile.layout<[]>>) {
   return

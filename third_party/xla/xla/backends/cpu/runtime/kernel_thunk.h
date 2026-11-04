@@ -107,12 +107,12 @@ class KernelThunk : public KernelThunkBase {
  private:
   friend class ::xla::cpu::KernelThunk;
 
-  static constexpr bool IsDynamic(size_t n) {
+  static constexpr bool IsDynamic(int64_t n) {
     return n == kDynamicKernelParameter;
   }
 
   static constexpr size_t Size(int64_t size) {
-    return std::max<size_t>(size, 0);
+    return static_cast<size_t>(std::max<int64_t>(size, 0));
   }
 
   // If we know the number of arguments and results at compile time, we use

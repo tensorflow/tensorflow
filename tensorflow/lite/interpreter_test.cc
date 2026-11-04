@@ -343,6 +343,76 @@ TEST(BasicInterpreter, CheckAlignment) {
   }
 }
 
+struct DummyAllocationPtr {
+  const void* ptr;
+  template <typename T>
+  operator const T*() const {  // NOLINT(google-explicit-constructor)
+    return reinterpret_cast<const T*>(ptr);
+  }
+};
+
+TEST(BasicInterpreter, CheckReadOnlyAlignment) {
+  struct {
+    TfLiteType type;
+    size_t alignment;
+  } cases[] = {
+      {kTfLiteFloat32, alignof(float)},
+      {kTfLiteInt32, alignof(int32_t)},
+      {kTfLiteUInt32, alignof(uint32_t)},
+      {kTfLiteInt64, alignof(int64_t)},
+      {kTfLiteUInt64, alignof(uint64_t)},
+      {kTfLiteFloat64, alignof(double)},
+      {kTfLiteInt16, alignof(int16_t)},
+      {kTfLiteFloat16, alignof(TfLiteFloat16)},
+  };
+
+  alignas(16) char raw_buffer[64] = {};
+  const int64_t expected_i64[2] = {6, -7};
+  // Place expected_i64 at non-overlapping misaligned offsets: an odd offset
+  // (raw_buffer + 1) and a 4-byte-aligned but not 8-byte-aligned offset
+  // (raw_buffer + 20).
+  memcpy(raw_buffer + 1, expected_i64, sizeof(expected_i64));
+  memcpy(raw_buffer + 20, expected_i64, sizeof(expected_i64));
+
+  const DummyAllocationPtr dummy_alloc{raw_buffer};
+
+  for (const auto& test : cases) {
+    Interpreter interpreter;
+    ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
+    TfLiteQuantizationParams quant = {};
+    ASSERT_EQ(
+        interpreter.SetTensorParametersReadOnly(
+            0, test.type, "", {2}, quant, raw_buffer + 1, 2 * 8, dummy_alloc),
+        kTfLiteOk);
+    ASSERT_EQ(
+        interpreter.SetTensorParametersReadOnly(
+            1, test.type, "", {2}, quant, raw_buffer + 20, 2 * 8, dummy_alloc),
+        kTfLiteOk);
+
+    for (int i = 0; i < 2; ++i) {
+      const TfLiteTensor& tensor = *interpreter.tensor(i);
+      EXPECT_EQ(tensor.allocation_type, kTfLiteMmapRo);
+      EXPECT_EQ(reinterpret_cast<uintptr_t>(tensor.data.raw) % test.alignment,
+                0u);
+      if (test.type == kTfLiteInt64) {
+        EXPECT_EQ(tensor.data.i64[0], expected_i64[0]);
+        EXPECT_EQ(tensor.data.i64[1], expected_i64[1]);
+      }
+    }
+    // Tensor 0 (at odd offset +1) is always realigned for align >= 2, so its
+    // `allocation` pointer must be cleared.
+    EXPECT_EQ(interpreter.tensor(0)->allocation, nullptr);
+    // Tensor 1 (at offset +20, i.e. 4 mod 8) is realigned only when
+    // test.alignment > 4; otherwise it stays zero-copy with `dummy_alloc`.
+    if (test.alignment > 4) {
+      EXPECT_EQ(interpreter.tensor(1)->allocation, nullptr);
+    } else {
+      EXPECT_EQ(interpreter.tensor(1)->data.raw, raw_buffer + 20);
+      EXPECT_EQ(interpreter.tensor(1)->allocation, dummy_alloc.ptr);
+    }
+  }
+}
+
 TEST(BasicInterpreter, CheckArenaAllocation) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(10), kTfLiteOk);

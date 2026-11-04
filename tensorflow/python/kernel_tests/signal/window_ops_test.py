@@ -22,9 +22,11 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
 from tensorflow.python.ops import math_ops
@@ -43,7 +45,10 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
   """A simple implementation of a raised cosine window that matches SciPy.
 
   https://en.wikipedia.org/wiki/Window_function#Hann_window
-  https://github.com/scipy/scipy/blob/v0.14.0/scipy/signal/windows.py#L615
+
+  Like `scipy.signal.windows.hann(length, sym=symmetric)`, a periodic window
+  is the symmetric window of length `length + 1` with its last point dropped,
+  for both even and odd `length`.
 
   Args:
     length: The window length.
@@ -56,11 +61,10 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
   """
   if length == 1:
     return np.ones(1)
-  odd = length % 2
-  if not symmetric and not odd:
+  if not symmetric:
     length += 1
   window = a - b * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
-  if not symmetric and not odd:
+  if not symmetric:
     window = window[:-1]
   return window
 
@@ -121,6 +125,65 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         pos_beta_win, neg_beta_win, tf_dtype_tol[1], tf_dtype_tol[1]
     )
+
+  @parameterized.parameters(
+      itertools.product(_WINDOW_LENGTHS, _TF_DTYPE_TOLERANCE)
+  )
+  def test_kaiser_window_dynamic_length(self, window_length, tf_dtype_tol):
+    """Check kaiser_window when the length is only known at run time."""
+    tf_dtype, tol = tf_dtype_tol
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)]
+    )
+    def kaiser(length):
+      return window_ops.kaiser_window(length, 8.0, tf_dtype)
+
+    self.assertAllClose(
+        np.kaiser(window_length, 8.0),
+        self.evaluate(kaiser(window_length)),
+        tol,
+        tol,
+    )
+
+  @parameterized.parameters(_TF_DTYPE_TOLERANCE)
+  def test_kaiser_window_zero_length(self, tf_dtype, _):
+    """A zero-length window is empty, like np.kaiser and the other windows."""
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)]
+    )
+    def kaiser(length):
+      return window_ops.kaiser_window(length, 8.0, tf_dtype)
+
+    static_window = window_ops.kaiser_window(0, 8.0, tf_dtype)
+    self.assertEqual(tf_dtype, static_window.dtype)
+    self.assertAllEqual(np.kaiser(0, 8.0), self.evaluate(static_window))
+    dynamic_window = self.evaluate(kaiser(0))
+    self.assertEqual(tf_dtype.as_numpy_dtype, dynamic_window.dtype)
+    self.assertEqual((0,), dynamic_window.shape)
+
+  def test_kaiser_window_dynamic_length_one_gradient(self):
+    """The length-1 window must not leak NaNs into the gradient of beta."""
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec([], dtypes.int32),
+            tensor_spec.TensorSpec([], dtypes.float64),
+        ]
+    )
+    def window_and_gradient(length, beta):
+      with backprop.GradientTape() as tape:
+        tape.watch(beta)
+        window = window_ops.kaiser_window(length, beta, dtypes.float64)
+        total = math_ops.reduce_sum(window)
+      return window, tape.gradient(total, beta)
+
+    window, gradient = self.evaluate(
+        window_and_gradient(1, constant_op.constant(8.0, dtypes.float64))
+    )
+    self.assertAllEqual([1.0], window)
+    self.assertAllClose(0.0, gradient)
 
   def test_kaiser_window_second_derivative_at_zero_beta(self):
     """Check that kaiser_window is twice differentiable at beta == 0.
@@ -188,6 +251,36 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       itertools.product(
+          (window_ops.hann_window, window_ops.hamming_window),
+          (3, 5, 9, 31),
+          (False, True),
+      )
+  )
+  def test_periodic_window_odd_length(
+      self, window_fn, window_length, dynamic_length
+  ):
+    """A periodic window is a truncated symmetric window, even for odd N."""
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)]
+    )
+    def periodic_window(length):
+      return window_fn(length, periodic=True, dtype=dtypes.float64)
+
+    if dynamic_length:
+      periodic = periodic_window(window_length)
+    else:
+      periodic = window_fn(window_length, periodic=True, dtype=dtypes.float64)
+    symmetric = window_fn(
+        window_length + 1, periodic=False, dtype=dtypes.float64
+    )
+    self.assertAllClose(self.evaluate(symmetric)[:-1], self.evaluate(periodic))
+    # The first point is the only zero of a periodic Hann window.
+    if window_fn is window_ops.hann_window:
+      self.assertAllGreater(self.evaluate(periodic)[1:], 0.0)
+
+  @parameterized.parameters(
+      itertools.product(
           (window_ops.hann_window, window_ops.hamming_window,
            window_ops.kaiser_window, window_ops.kaiser_bessel_derived_window,
            window_ops.vorbis_window),
@@ -245,6 +338,18 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         pos_beta_win, neg_beta_win, tf_dtype_tol[1], tf_dtype_tol[1]
     )
+
+  @parameterized.parameters(0, 2, 6, 64)
+  def test_kaiser_bessel_derived_window_length(self, window_length):
+    """The window has exactly `window_length` samples."""
+    window = window_ops.kaiser_bessel_derived_window(window_length)
+    self.assertEqual((window_length,), self.evaluate(window).shape)
+
+  @parameterized.parameters(1, 3, 5, 31)
+  def test_kaiser_bessel_derived_window_odd_length(self, window_length):
+    """Odd lengths are rejected instead of returning a shorter window."""
+    with self.assertRaisesRegex(ValueError, 'must be even'):
+      window_ops.kaiser_bessel_derived_window(window_length)
 
 
 if __name__ == '__main__':

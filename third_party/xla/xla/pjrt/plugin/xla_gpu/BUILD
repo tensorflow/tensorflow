@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -42,9 +43,9 @@ cc_library(
     srcs = [],
     hdrs = ["xla_gpu_client_options.h"],
     deps = [
-        ":xla_gpu_allocator_config",
         "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/gpu:allocator_config",
         "@com_google_absl//absl/time",
     ],
 )
@@ -54,7 +55,17 @@ cc_library(
     srcs = [],
     hdrs = ["xla_gpu_allocator_config.h"],
     deps = [
-        "//xla/tsl/framework:allocator",
+        "//xla/pjrt/gpu:allocator_config",
+    ],
+)
+
+xla_cc_test(
+    name = "xla_gpu_allocator_config_test",
+    srcs = ["xla_gpu_allocator_config_test.cc"],
+    deps = [
+        ":xla_gpu_allocator_config",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

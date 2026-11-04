@@ -898,6 +898,31 @@ class CentralStorageStrategyTest(strategy_test_lib.DistributionTestBase,
     strategy, _, _ = create_test_objects(num_gpus=0)
     self.assertFalse(strategy.extended._in_multi_worker_mode())
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_central_storage_strategy_input_options(self):
+    strategy = central_storage_strategy.CentralStorageStrategy._from_num_gpus(0)
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+
+    # PER_REPLICA mode raises NotImplementedError.
+    options = distribute_lib.InputOptions(
+        experimental_replication_mode=distribute_lib.InputReplicationMode.PER_REPLICA
+    )
+    with self.assertRaisesRegex(
+        NotImplementedError,
+        r'InputReplicationMode\.PER_REPLICA is only supported in '
+        r'`experimental_distribute_datasets_from_function`\.',
+    ):
+      strategy.experimental_distribute_dataset(dataset, options=options)
+
+    # Valid options propagate without raising AttributeError.
+    options = distribute_lib.InputOptions(
+        experimental_replication_mode=distribute_lib.InputReplicationMode.PER_WORKER
+    )
+    dist_dataset = strategy.experimental_distribute_dataset(
+        dataset, options=options
+    )
+    self.assertIsNotNone(dist_dataset)
+
 
 if __name__ == '__main__':
   test.main()

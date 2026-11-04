@@ -19,12 +19,15 @@ limitations under the License.
 #include <string.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
+#include <vector>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/dequantize.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
@@ -33,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -285,16 +289,10 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
-  if (op_data->scratch_tensor_index == -1) {
-    context->AddTensors(context,
-                        kNumTempTensorsForAdjoints + kNumTempTensorsForHybrid,
-                        &op_data->scratch_tensor_index);
-  }
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
-  TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
 
   bool adj_x = op_context.params->adj_x;
   bool adj_y = op_context.params->adj_y;
@@ -309,52 +307,82 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  // Note that quantized inference requires that all tensors have their
-  // parameters set. This is usually done during quantized training.
-  if ((lhs_data->type == kTfLiteInt8 || lhs_data->type == kTfLiteInt16) &&
-      output->type != kTfLiteInt32) {
-    double real_multiplier = 0.0;
-    TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
-        context, lhs_data, rhs_data, output, &real_multiplier));
-    int exponent;
-    QuantizeMultiplier(real_multiplier, &op_data->output_multiplier, &exponent);
-    op_data->output_shift = exponent;
-    // BatchMatMul has no fused activation functions. Therefore, set
-    // output activation min and max to min and max of int8_t or int16_t
-    // type.
-    if (lhs_data->type == kTfLiteInt8) {
-      op_data->output_activation_min = std::numeric_limits<int8_t>::min();
-      op_data->output_activation_max = std::numeric_limits<int8_t>::max();
-    } else {
-      op_data->output_activation_min = std::numeric_limits<int16_t>::min();
-      op_data->output_activation_max = std::numeric_limits<int16_t>::max();
-    }
-  }
-
-  if (lhs_data->type == kTfLiteInt16) {
-    TF_LITE_ENSURE_EQ(context, lhs_data->params.zero_point, 0);
-    TF_LITE_ENSURE_EQ(context, rhs_data->params.zero_point, 0);
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
-  }
-
-  TF_LITE_ENSURE(context, lhs_data->type == kTfLiteFloat32 ||
-                              lhs_data->type == kTfLiteInt8 ||
-                              lhs_data->type == kTfLiteInt16);
-  TF_LITE_ENSURE(context, rhs_data->type == kTfLiteFloat32 ||
-                              rhs_data->type == kTfLiteInt8 ||
-                              rhs_data->type == kTfLiteInt16);
-  // Either we have a hybrid quantization with a float32 and an int8 input,
-  // otherwise both inputs should be of the same type.
-  TF_LITE_ENSURE(
-      context,
-      (lhs_data->type == kTfLiteFloat32 && rhs_data->type == kTfLiteInt8) ||
-          lhs_data->type == rhs_data->type ||
-          (lhs_data->type == kTfLiteInt16 && rhs_data->type == kTfLiteInt8));
   // Support dimensions between 2 and 5, inclusive.
   TF_LITE_ENSURE(context, NumDimensions(lhs_data) >= 2);
   TF_LITE_ENSURE(context, NumDimensions(lhs_data) <= 5);
   TF_LITE_ENSURE(context, NumDimensions(rhs_data) >= 2);
   TF_LITE_ENSURE(context, NumDimensions(rhs_data) <= 5);
+
+  const TfLiteBlockwiseQuantizationV2* rhs_blockwise =
+      dequantize::GetBlockwiseQuantizationV2(rhs_data);
+  if (rhs_blockwise != nullptr) {
+    TF_LITE_ENSURE_EQ(context, lhs_data->type, kTfLiteInt8);
+    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt8);
+    TF_LITE_ENSURE(
+        context,
+        rhs_data->type == kTfLiteInt2 || rhs_data->type == kTfLiteInt4 ||
+            rhs_data->type == kTfLiteUInt4 || rhs_data->type == kTfLiteInt8 ||
+            rhs_data->type == kTfLiteUInt8 || rhs_data->type == kTfLiteInt16);
+    TF_LITE_ENSURE(context, lhs_data->params.scale > 0.0f &&
+                                std::isfinite(lhs_data->params.scale));
+    TF_LITE_ENSURE(context, output->params.scale > 0.0f &&
+                                std::isfinite(output->params.scale));
+    TF_LITE_ENSURE_OK(context, dequantize::ValidateBlockwiseQuantizationV2(
+                                   context, rhs_data, rhs_blockwise));
+    op_data->output_activation_min = std::numeric_limits<int8_t>::min();
+    op_data->output_activation_max = std::numeric_limits<int8_t>::max();
+  } else {
+    if (op_data->scratch_tensor_index == -1) {
+      context->AddTensors(context,
+                          kNumTempTensorsForAdjoints + kNumTempTensorsForHybrid,
+                          &op_data->scratch_tensor_index);
+    }
+    // Note that quantized inference requires that all tensors have their
+    // parameters set. This is usually done during quantized training.
+    if ((lhs_data->type == kTfLiteInt8 || lhs_data->type == kTfLiteInt16) &&
+        output->type != kTfLiteInt32) {
+      double real_multiplier = 0.0;
+      TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
+          context, lhs_data, rhs_data, output, &real_multiplier));
+      int exponent;
+      QuantizeMultiplier(real_multiplier, &op_data->output_multiplier,
+                         &exponent);
+      op_data->output_shift = exponent;
+      // BatchMatMul has no fused activation functions. Therefore, set
+      // output activation min and max to min and max of int8_t or int16_t
+      // type.
+      if (lhs_data->type == kTfLiteInt8) {
+        op_data->output_activation_min = std::numeric_limits<int8_t>::min();
+        op_data->output_activation_max = std::numeric_limits<int8_t>::max();
+      } else {
+        op_data->output_activation_min = std::numeric_limits<int16_t>::min();
+        op_data->output_activation_max = std::numeric_limits<int16_t>::max();
+      }
+    }
+
+    if (lhs_data->type == kTfLiteInt16) {
+      TF_LITE_ENSURE_EQ(context, lhs_data->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, rhs_data->params.zero_point, 0);
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+    }
+
+    TF_LITE_ENSURE(context, lhs_data->type == kTfLiteFloat32 ||
+                                lhs_data->type == kTfLiteInt8 ||
+                                lhs_data->type == kTfLiteInt16);
+    TF_LITE_ENSURE(context, rhs_data->type == kTfLiteFloat32 ||
+                                rhs_data->type == kTfLiteInt8 ||
+                                rhs_data->type == kTfLiteInt16);
+    // Either we have a hybrid quantization with a float32 and an int8 input,
+    // otherwise both inputs should be of the same type.
+    TF_LITE_ENSURE(
+        context,
+        (lhs_data->type == kTfLiteFloat32 && rhs_data->type == kTfLiteInt8) ||
+            lhs_data->type == rhs_data->type ||
+            (lhs_data->type == kTfLiteInt16 && rhs_data->type == kTfLiteInt8));
+
+    TF_LITE_ENSURE_OK(context,
+                      InitializeTemporaries(context, node, &op_context));
+  }
 
   const int lhs_rank = NumDimensions(lhs_data);
   const int rhs_rank = NumDimensions(rhs_data);
@@ -498,6 +526,8 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             filter->quantization.params);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension,
+                      filter->dims->size - 2);
     TF_LITE_ENSURE_EQ(
         context, affine_quantization->scale->size,
         filter->dims->data[affine_quantization->quantized_dimension]);
@@ -666,6 +696,270 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
+TfLiteStatus EvalInt8BlockwiseRhs(
+    TfLiteContext* context, const OpData* data, const TfLiteTensor* lhs,
+    const TfLiteTensor* rhs, const TfLiteBlockwiseQuantizationV2* rhs_blockwise,
+    bool adj_x, bool adj_y, TfLiteTensor* output) {
+  TF_LITE_ENSURE_OK(context, dequantize::ValidateBlockwiseQuantizationV2(
+                                 context, rhs, rhs_blockwise));
+
+  const RuntimeShape output_shape = GetTensorShape(output);
+  if (output_shape.FlatSize() == 0) {
+    return kTfLiteOk;
+  }
+  TF_LITE_ENSURE(context, GetTensorData<int8_t>(output) != nullptr);
+
+  const RuntimeShape orig_lhs_shape = GetTensorShape(lhs);
+  const RuntimeShape orig_rhs_shape = GetTensorShape(rhs);
+  const int lhs_rank = orig_lhs_shape.DimensionsCount();
+  const int rhs_rank = orig_rhs_shape.DimensionsCount();
+  const int output_rank = output_shape.DimensionsCount();
+
+  const int M = output_shape.Dims(output_rank - 2);
+  const int N = output_shape.Dims(output_rank - 1);
+  const int K = adj_x ? orig_lhs_shape.Dims(lhs_rank - 2)
+                      : orig_lhs_shape.Dims(lhs_rank - 1);
+  if (K == 0) {
+    const int32_t clamped_zero =
+        std::clamp(output->params.zero_point, data->output_activation_min,
+                   data->output_activation_max);
+    std::fill_n(GetTensorData<int8_t>(output), output_shape.FlatSize(),
+                static_cast<int8_t>(clamped_zero));
+    return kTfLiteOk;
+  }
+  TF_LITE_ENSURE(context, GetTensorData<int8_t>(lhs) != nullptr);
+
+  auto ensure_valid_buffer =
+      [&](const TfLiteTensor* tensor,
+          bool require_constant_or_persistent) -> TfLiteStatus {
+    if (require_constant_or_persistent) {
+      TF_LITE_ENSURE(context, IsConstantOrPersistentTensor(tensor));
+    }
+    size_t required_bytes = 0;
+    TF_LITE_ENSURE_OK(
+        context, BytesRequired(tensor->type, tensor->dims->data,
+                               tensor->dims->size, &required_bytes, context));
+    TF_LITE_ENSURE(context, tensor->bytes >= required_bytes);
+    if (required_bytes > 0) {
+      TF_LITE_ENSURE(context, tensor->data.raw != nullptr);
+    }
+    return kTfLiteOk;
+  };
+
+  const TfLiteTensor* scale_tensor = &context->tensors[rhs_blockwise->scale];
+  TF_LITE_ENSURE_OK(
+      context, ensure_valid_buffer(scale_tensor,
+                                   /*require_constant_or_persistent=*/true));
+  const TfLiteTensor* zp_tensor = nullptr;
+  if (rhs_blockwise->zero_point != kTfLiteOptionalTensor) {
+    zp_tensor = &context->tensors[rhs_blockwise->zero_point];
+    TF_LITE_ENSURE_OK(
+        context, ensure_valid_buffer(zp_tensor,
+                                     /*require_constant_or_persistent=*/true));
+  }
+  TF_LITE_ENSURE_OK(
+      context,
+      ensure_valid_buffer(rhs, /*require_constant_or_persistent=*/false));
+
+  const int64_t rhs_flat_size = orig_rhs_shape.FlatSize();
+  std::vector<int8_t> unpacked_rhs;
+  const int8_t* rhs_int8_data = nullptr;
+  const uint8_t* rhs_uint8_data = nullptr;
+  const int16_t* rhs_int16_data = nullptr;
+  switch (rhs->type) {
+    case kTfLiteInt2:
+    case kTfLiteInt4:
+    case kTfLiteUInt4:
+      TF_LITE_ENSURE(context, rhs_flat_size <= std::numeric_limits<int>::max());
+      unpacked_rhs.resize(rhs_flat_size);
+      tensor_utils::UnpackPackedIntToInt8(
+          GetTensorData<int8_t>(rhs), static_cast<int>(rhs_flat_size),
+          /*bit_width=*/rhs->type == kTfLiteInt2 ? 2 : 4, unpacked_rhs.data(),
+          /*unpack_unsigned=*/rhs->type == kTfLiteUInt4);
+      rhs_int8_data = unpacked_rhs.data();
+      break;
+    case kTfLiteInt8:
+      rhs_int8_data = GetTensorData<int8_t>(rhs);
+      break;
+    case kTfLiteUInt8:
+      rhs_uint8_data = GetTensorData<uint8_t>(rhs);
+      break;
+    case kTfLiteInt16:
+      rhs_int16_data = GetTensorData<int16_t>(rhs);
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(context,
+                         "Unsupported RHS type %s for blockwise BatchMatMul.",
+                         TfLiteTypeGetName(rhs->type));
+      return kTfLiteError;
+  }
+
+  const std::vector<float> scales =
+      dequantize::ReadBlockwiseParamsAsFloat(scale_tensor);
+  std::vector<float> zero_points = {0.0f};
+  if (zp_tensor != nullptr) {
+    zero_points = dequantize::ReadBlockwiseParamsAsFloat(zp_tensor);
+  }
+
+  auto make_strides = [](const RuntimeShape& shape) {
+    const int rank = shape.DimensionsCount();
+    std::vector<int64_t> strides(rank, 1);
+    for (int d = rank - 2; d >= 0; --d) {
+      strides[d] = strides[d + 1] * shape.Dims(d + 1);
+    }
+    return strides;
+  };
+  auto make_block_strides = [&](const TfLiteTensor* param_tensor) {
+    std::vector<int64_t> strides(rhs_rank, 0);
+    if (param_tensor == nullptr) return strides;
+    int64_t stride = 1;
+    for (int d = rhs_rank - 1; d >= 0; --d) {
+      const int extent = param_tensor->dims->data[d];
+      strides[d] = (extent == 1) ? 0 : stride;
+      stride *= extent;
+    }
+    return strides;
+  };
+
+  const std::vector<int64_t> lhs_strides = make_strides(orig_lhs_shape);
+  const std::vector<int64_t> rhs_strides = make_strides(orig_rhs_shape);
+  const std::vector<int64_t> scale_strides = make_block_strides(scale_tensor);
+  const std::vector<int64_t> zp_strides = make_block_strides(zp_tensor);
+
+  const int64_t m_stride_lhs =
+      adj_x ? lhs_strides[lhs_rank - 1] : lhs_strides[lhs_rank - 2];
+  const int64_t k_stride_lhs =
+      adj_x ? lhs_strides[lhs_rank - 2] : lhs_strides[lhs_rank - 1];
+
+  const int k_axis_rhs = adj_y ? (rhs_rank - 1) : (rhs_rank - 2);
+  const int n_axis_rhs = adj_y ? (rhs_rank - 2) : (rhs_rank - 1);
+  const int64_t k_stride_rhs = rhs_strides[k_axis_rhs];
+  const int64_t n_stride_rhs = rhs_strides[n_axis_rhs];
+  const int k_block_size = rhs_blockwise->block_shape->data[k_axis_rhs];
+  const int n_block_size = rhs_blockwise->block_shape->data[n_axis_rhs];
+  const int num_k_blocks = 1 + (K - 1) / k_block_size;
+
+  const int batch_rank = output_rank - 2;
+  const int lhs_lead = output_rank - lhs_rank;
+  const int rhs_lead = output_rank - rhs_rank;
+  int64_t num_batches = 1;
+  for (int b = 0; b < batch_rank; ++b) {
+    num_batches *= output_shape.Dims(b);
+  }
+
+  const int8_t* lhs_data = GetTensorData<int8_t>(lhs);
+  int8_t* output_data = GetTensorData<int8_t>(output);
+  const int32_t lhs_zp = lhs->params.zero_point;
+  const int32_t output_zp = output->params.zero_point;
+  const double lhs_to_out_scale = static_cast<double>(lhs->params.scale) /
+                                  static_cast<double>(output->params.scale);
+
+  std::vector<int32_t> x_row(K);
+  std::vector<int64_t> lhs_block_sums(num_k_blocks);
+
+  for (int64_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
+    int64_t rem = batch_idx;
+    int64_t lhs_batch_offset = 0;
+    int64_t rhs_batch_offset = 0;
+    int64_t scale_batch_offset = 0;
+    int64_t zp_batch_offset = 0;
+    for (int b = batch_rank - 1; b >= 0; --b) {
+      const int out_dim = output_shape.Dims(b);
+      const int coord = static_cast<int>(rem % out_dim);
+      rem /= out_dim;
+      if (b >= lhs_lead) {
+        const int lhs_axis = b - lhs_lead;
+        const int lhs_coord = (orig_lhs_shape.Dims(lhs_axis) == 1) ? 0 : coord;
+        lhs_batch_offset += lhs_coord * lhs_strides[lhs_axis];
+      }
+      if (b >= rhs_lead) {
+        const int rhs_axis = b - rhs_lead;
+        const int rhs_coord = (orig_rhs_shape.Dims(rhs_axis) == 1) ? 0 : coord;
+        rhs_batch_offset += rhs_coord * rhs_strides[rhs_axis];
+        const int rhs_block_coord =
+            rhs_coord / rhs_blockwise->block_shape->data[rhs_axis];
+        scale_batch_offset += rhs_block_coord * scale_strides[rhs_axis];
+        zp_batch_offset += rhs_block_coord * zp_strides[rhs_axis];
+      }
+    }
+
+    const int8_t* lhs_batch_ptr = lhs_data + lhs_batch_offset;
+    int8_t* out_batch_ptr =
+        output_data + batch_idx * (static_cast<int64_t>(M) * N);
+
+    for (int m = 0; m < M; ++m) {
+      const int8_t* lhs_row_ptr = lhs_batch_ptr + m * m_stride_lhs;
+      for (int kb = 0; kb < num_k_blocks; ++kb) {
+        const int k_start = kb * k_block_size;
+        const int k_end = k_start + std::min(k_block_size, K - k_start);
+        int64_t sum_x = 0;
+        for (int k = k_start; k < k_end; ++k) {
+          const int32_t x_centered =
+              static_cast<int32_t>(lhs_row_ptr[k * k_stride_lhs]) - lhs_zp;
+          x_row[k] = x_centered;
+          sum_x += x_centered;
+        }
+        lhs_block_sums[kb] = sum_x;
+      }
+
+      int8_t* out_row_ptr = out_batch_ptr + static_cast<int64_t>(m) * N;
+      for (int n = 0; n < N; ++n) {
+        const int64_t rhs_col_offset = rhs_batch_offset + n * n_stride_rhs;
+        const int n_block = n / n_block_size;
+        const int64_t scale_base =
+            scale_batch_offset + n_block * scale_strides[n_axis_rhs];
+        const int64_t zp_base =
+            zp_batch_offset + n_block * zp_strides[n_axis_rhs];
+
+        double acc_unscaled = 0.0;
+        for (int kb = 0; kb < num_k_blocks; ++kb) {
+          const int k_start = kb * k_block_size;
+          const int k_end = k_start + std::min(k_block_size, K - k_start);
+          int64_t dot_xw = 0;
+          if (rhs_int8_data != nullptr) {
+            const int8_t* rhs_col_ptr = rhs_int8_data + rhs_col_offset;
+            for (int k = k_start; k < k_end; ++k) {
+              dot_xw += static_cast<int64_t>(x_row[k]) *
+                        static_cast<int64_t>(rhs_col_ptr[k * k_stride_rhs]);
+            }
+          } else if (rhs_uint8_data != nullptr) {
+            const uint8_t* rhs_col_ptr = rhs_uint8_data + rhs_col_offset;
+            for (int k = k_start; k < k_end; ++k) {
+              dot_xw += static_cast<int64_t>(x_row[k]) *
+                        static_cast<int64_t>(rhs_col_ptr[k * k_stride_rhs]);
+            }
+          } else {
+            const int16_t* rhs_col_ptr = rhs_int16_data + rhs_col_offset;
+            for (int k = k_start; k < k_end; ++k) {
+              dot_xw += static_cast<int64_t>(x_row[k]) *
+                        static_cast<int64_t>(rhs_col_ptr[k * k_stride_rhs]);
+            }
+          }
+          const float scale_w =
+              scales[scale_base + kb * scale_strides[k_axis_rhs]];
+          const float zp_w = zero_points[zp_base + kb * zp_strides[k_axis_rhs]];
+          acc_unscaled += static_cast<double>(scale_w) *
+                          (static_cast<double>(dot_xw) -
+                           static_cast<double>(zp_w) *
+                               static_cast<double>(lhs_block_sums[kb]));
+        }
+
+        const double rounded = std::round(acc_unscaled * lhs_to_out_scale) +
+                               static_cast<double>(output_zp);
+        if (std::isnan(rounded)) {
+          out_row_ptr[n] = 0;
+        } else {
+          const double clamped = std::clamp(
+              rounded, static_cast<double>(data->output_activation_min),
+              static_cast<double>(data->output_activation_max));
+          out_row_ptr[n] = static_cast<int8_t>(static_cast<int32_t>(clamped));
+        }
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteTensor* GetTempRhs(TfLiteContext* context, TfLiteNode* node,
                          const TfLiteTensor* rhs) {
   TfLiteTensor* transposed_rhs = GetTemporary(context, node, 1);
@@ -759,6 +1053,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   bool adj_y = op_context.params->adj_y;
   bool adj_x = op_context.params->adj_x;
 
+  if (const TfLiteBlockwiseQuantizationV2* rhs_blockwise =
+          dequantize::GetBlockwiseQuantizationV2(rhs);
+      rhs_blockwise != nullptr) {
+    return EvalInt8BlockwiseRhs(context, op_data, lhs, rhs, rhs_blockwise,
+                                adj_x, adj_y, output);
+  }
+
   int32_t rhs_dims_count = orig_rhs_shape.DimensionsCount();
   int32_t lhs_dims_count = orig_lhs_shape.DimensionsCount();
   // Compress ops where rhs shape is [..., 1, X, Y] and lhs shape is
@@ -814,9 +1115,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteInt8:
     case kTfLiteInt16:
-      EvalQuantized(context, node, op_data, lhs_shape, lhs_tensor, rhs_shape,
-                    rhs_tensor, output);
-      break;
+      return EvalQuantized(context, node, op_data, lhs_shape, lhs_tensor,
+                           rhs_shape, rhs_tensor, output);
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Currently BatchMatMul doesn't support type: %s",

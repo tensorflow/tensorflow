@@ -37,7 +37,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
-#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialectDecl.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -118,6 +118,8 @@ Value GetDestinationBuffer(Value dest) {
           result_number);
     } else if (auto scf_for = dest.getDefiningOp<scf::ForOp>()) {
       dest = scf_for.getInitArgs()[result_number];
+    } else if (auto sync_threads = dest.getDefiningOp<gpu::SyncThreadsOp>()) {
+      dest = sync_threads.getOperand(result_number);
     } else if (dest.getDefiningOp<UnrealizedConversionCastOp>() ||
                dest.getDefiningOp<gpu::AllocateSharedOp>()) {
       break;
@@ -446,15 +448,11 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
 
     auto source =
         mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(op.getBase());
-    mlir::Type source_element_type = source.getType().getElementType();
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto linear_index = GetLinearIndex(op.getIndices(), b);
 
     mlir::VectorType vector_type = op.getVectorType();
-    if (vector_type.getElementType().isInteger(1)) {
-      vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
-    }
     mlir::Type gep_element_type = vector_type.getElementType();
     std::optional<int> sub_byte_width = GetSubByteBitWidth(gep_element_type);
     if (sub_byte_width) {
@@ -478,16 +476,9 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
       load.setAlignment(
           data_layout.getTypePreferredAlignment(gep_element_type));
     }
-    auto loaded = load.getResult();
-
-    if (source_element_type.isInteger(1)) {
-      Value zero = mlir::arith::ConstantOp::create(
-          b, mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
-      loaded = arith::CmpIOp::create(b, arith::CmpIPredicate::ne, loaded, zero);
-    }
 
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
-                                                            loaded);
+                                                            load.getResult());
     return success();
   }
 };
@@ -632,11 +623,6 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
 
     mlir::Value vector_value = op.getVector();
     mlir::Type vector_element_type = op.getVectorType().getElementType();
-    if (vector_element_type.isInteger(1)) {
-      vector_value = arith::ExtUIOp::create(
-          b, op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
-          vector_value);
-    }
     std::optional<int> sub_byte_width = GetSubByteBitWidth(vector_element_type);
     if (sub_byte_width) {
       linear_index = arith::ShRUIOp::create(
@@ -769,6 +755,26 @@ struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
     auto global =
         CreateGlobalOp(mlir::Attribute{}, "shared_", shaped_ty, module,
                        /*is_constant=*/false, kGPUSharedMemoryAddrSpace, b);
+    // Shared memory exists only on GPU, where an atomic update of an element
+    // narrower than 32 bits (every insert of an element narrower than a byte,
+    // and any narrow AtomicRMWOp) becomes a 32 bit CAS on the containing word,
+    // found with ptrmask. The masked pointer must stay inside this object, so
+    // the allocation is word aligned and padded to a whole number of words.
+    // This also keeps the CAS from touching bytes of a neighboring allocation.
+    // Wider types keep their natural alignment.
+    Type element_type = shaped_ty.getElementType();
+    if (element_type.isIntOrFloat() &&
+        element_type.getIntOrFloatBitWidth() < 32) {
+      auto array_ty = mlir::cast<ml::LLVMArrayType>(global.getGlobalType());
+      int64_t elem_bytes = CeilOfRatio<int64_t>(
+          array_ty.getElementType().getIntOrFloatBitWidth(), 8);
+      int64_t padded =
+          RoundUpTo<int64_t>(array_ty.getNumElements() * elem_bytes, 4) /
+          elem_bytes;
+      global.setGlobalTypeAttr(mlir::TypeAttr::get(
+          ml::LLVMArrayType::get(array_ty.getElementType(), padded)));
+      global.setAlignment(4);
+    }
 
     rewriter.setInsertionPoint(op);
     auto addr = ml::AddressOfOp::create(rewriter, op.getLoc(), global);
@@ -900,7 +906,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       AtomicRMWOp op, mlir::PatternRewriter& rewriter) const override {
     auto modifier_parameters = GetAtomicModifierParameters(op);
     if (modifier_parameters.has_value()) {
-      if (mlir::isa<mlir::VectorType>(modifier_parameters->first.getType()) &&
+      if (mlir::isa<mlir::VectorType>(
+              modifier_parameters->modifier.getType()) &&
           (!device_spec_.IsNvidiaGpu() ||
            !device_spec_.gpu().cuda_compute_capability().IsAtLeastHopper())) {
         return rewriter.notifyMatchFailure(
@@ -931,16 +938,15 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   // true; otherwise, returns false.
   LogicalResult rewriteAsDirectAtomicRMW(
       AtomicRMWOp op,
-      std::optional<std::pair<mlir::Value, ml::AtomicBinOp>>
-          modifier_parameters,
+      std::optional<AtomicModifierParameters> modifier_parameters,
       mlir::PatternRewriter& rewriter) const {
     if (device_spec_.IsCpu()) {
       return failure();  // Unimplemented.
     }
 
-    Value modifier_arg = modifier_parameters->first;
+    Value modifier_arg = modifier_parameters->modifier;
     Type element_type = modifier_arg.getType();
-    ml::AtomicBinOp atomic_bin_op = modifier_parameters->second;
+    ml::AtomicBinOp atomic_bin_op = modifier_parameters->bin_op;
 
     Location loc = op.getLoc();
     auto sync_scope = determinateScope();
@@ -971,14 +977,16 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
         if (device_spec_.IsAmdGpu()) {
           return emitAMDAtomicFAdd(loc, modifier_arg, addr,
                                    device_spec_.gpu().rocm_compute_capability(),
-                                   rewriter);
+                                   rewriter, modifier_parameters->negated);
         }
         if (device_spec_.IsIntelGpu()) {
-          return emitSPIRVAtomicFAdd(loc, modifier_arg, addr, rewriter);
+          return emitSPIRVAtomicFAdd(loc, modifier_arg, addr, rewriter,
+                                     modifier_parameters->negated);
         }
         return emitNVidiaAtomicFAdd(
             loc, modifier_arg, addr,
-            device_spec_.gpu().cuda_compute_capability(), rewriter, op);
+            device_spec_.gpu().cuda_compute_capability(), rewriter, op,
+            modifier_parameters->negated);
       }
       case ml::AtomicBinOp::fmax: {
         return rewriteAtomicFMaxAsIntAtomics(loc, modifier_arg, addr,
@@ -993,7 +1001,7 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   LogicalResult emitNVidiaAtomicFAdd(
       Location loc, Value modifier_arg, Value addr,
       const se::CudaComputeCapability& cuda_compute_capability, OpBuilder& b,
-      AtomicRMWOp& op) const {
+      AtomicRMWOp& op, bool negated) const {
     Type element_type = modifier_arg.getType();
     // "atom.add.f64 requires sm_60 or higher."
     // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-atom
@@ -1008,11 +1016,15 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
         cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::kPascal);
     if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
       return emitNvidiaVectorizedAtomicFAdd(
-          loc, modifier_arg, addr, vector_type, cuda_compute_capability, b);
+          loc, modifier_arg, addr, vector_type, cuda_compute_capability, b,
+          negated);
     }
     if (!element_type.isF32() && !is_supported_f16_atomic &&
         !is_supported_bf16_atomic && !is_supported_f64_atomic) {
       return failure();
+    }
+    if (negated) {
+      modifier_arg = arith::NegFOp::create(b, loc, modifier_arg);
     }
 
     auto rmw_op =
@@ -1025,8 +1037,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
   LogicalResult emitNvidiaVectorizedAtomicFAdd(
       Location loc, Value modifier_arg, Value addr,
       mlir::VectorType vector_type,
-      const se::CudaComputeCapability& cuda_compute_capability,
-      OpBuilder& b) const {
+      const se::CudaComputeCapability& cuda_compute_capability, OpBuilder& b,
+      bool negated) const {
     // Hopper supports 2-element and 4-element vectors of f32.
     if (!(vector_type && vector_type.getElementType().isF32() &&
           (vector_type.getNumElements() == 2 ||
@@ -1034,6 +1046,9 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           cuda_compute_capability.IsAtLeast(
               se::CudaComputeCapability::kHopper))) {
       return failure();
+    }
+    if (negated) {
+      modifier_arg = arith::NegFOp::create(b, loc, modifier_arg);
     }
 
     // TODO(https://github.com/llvm/llvm-project/issues/122760): Switch to
@@ -1073,8 +1088,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
 
   LogicalResult emitAMDAtomicFAdd(
       Location loc, Value modifier_arg, Value addr,
-      const se::RocmComputeCapability& rocm_compute_capability,
-      OpBuilder& b) const {
+      const se::RocmComputeCapability& rocm_compute_capability, OpBuilder& b,
+      bool negated) const {
     Type element_type = modifier_arg.getType();
     if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
       // TODO(rocm) Don't vectorize atomics if we cannot satisfy 4-byte
@@ -1087,6 +1102,9 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     } else if (!element_type.isF32() && !element_type.isF16() &&
                !element_type.isBF16() && !element_type.isF64()) {
       return failure();
+    }
+    if (negated) {
+      modifier_arg = arith::NegFOp::create(b, loc, modifier_arg);
     }
 
     if ((element_type.isF16() &&
@@ -1130,19 +1148,19 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     op.setIgnoreDenormalMode(true);
 
     auto unitAttr = b.getUnitAttr();
-    auto* rocdl =
-        op->getContext()->getOrLoadDialect<mlir::ROCDL::ROCDLDialect>();
-    auto noRemoteMemHelper = rocdl->getNoRemoteMemoryAttrHelper();
-    auto noFineMemHelper = rocdl->getNoFineGrainedMemoryAttrHelper();
-
-    noRemoteMemHelper.setAttr(op, unitAttr);
-    noFineMemHelper.setAttr(op, unitAttr);
+    op->setDiscardableAttr(
+        mlir::ROCDL::ROCDLDialect::NoRemoteMemoryAttrHelper::getNameStr(),
+        unitAttr);
+    op->setDiscardableAttr(
+        mlir::ROCDL::ROCDLDialect::NoFineGrainedMemoryAttrHelper::getNameStr(),
+        unitAttr);
 
     return success();
   }
 
   LogicalResult emitSPIRVAtomicFAdd(Location loc, Value modifier_arg,
-                                    Value addr, OpBuilder& b) const {
+                                    Value addr, OpBuilder& b,
+                                    bool negated) const {
     Type element_type = modifier_arg.getType();
     if (auto vector_type = dyn_cast_or_null<mlir::VectorType>(element_type)) {
       return failure();
@@ -1152,9 +1170,14 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     if (!element_type.isF32() && !element_type.isF64()) {
       return failure();
     }
+    if (negated) {
+      modifier_arg = arith::NegFOp::create(b, loc, modifier_arg);
+    }
 
-    ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                            ml::AtomicOrdering::monotonic);
+    auto rmw_op =
+        ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr,
+                                modifier_arg, ml::AtomicOrdering::monotonic);
+    rmw_op.setIgnoreDenormalMode(true);
     return success();
   }
 
@@ -1306,12 +1329,12 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
         Value addr_offset = ml::AndOp::create(
             rewriter, loc, addr_int,
             ml::ConstantOp::create(rewriter, loc, addr_int_ty, 3));
-        Value index = ml::MulOp::create(
-            rewriter, loc, addr_offset,
-            ml::ConstantOp::create(rewriter, loc, addr_int_ty, -1));
-        addr = ml::GEPOp::create(rewriter, loc, addr.getType(),
-                                 rewriter.getI8Type(), addr, index,
-                                 mlir::LLVM::GEPNoWrapFlags::inbounds);
+        // ptrmask instead of a negative GEP: LLVM would reassociate the GEP
+        // into [base + imm], and ptxas for sm_6x drops the low bits of that
+        // immediate on shared atomics, producing a misaligned CAS.
+        addr = ml::PtrMaskOp::create(
+            rewriter, loc, addr,
+            ml::ConstantOp::create(rewriter, loc, addr_int_ty, -4));
 
         Value offset =
             ml::TruncOp::create(rewriter, loc, atomic_ty, addr_offset);

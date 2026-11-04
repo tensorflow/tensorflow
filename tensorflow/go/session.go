@@ -330,24 +330,21 @@ func (o *SessionOptions) c() (ret *C.TF_SessionOptions, done func(), err error) 
 	C.TF_SetTarget(opt, t)
 	C.free(unsafe.Pointer(t))
 
-	var cConfig unsafe.Pointer
 	if sz := len(o.Config); sz > 0 {
 		status := newStatus()
 		// Copying into C-memory is the simplest thing to do in terms
 		// of memory safety and cgo rules ("C code may not keep a copy
 		// of a Go pointer after the call returns" from
 		// https://golang.org/cmd/cgo/#hdr-Passing_pointers).
-		cConfig = C.CBytes(o.Config)
+		cConfig := C.CBytes(o.Config)
 		C.TF_SetConfig(opt, cConfig, C.size_t(sz), status.c)
+		C.free(cConfig)
 		if err := status.Err(); err != nil {
 			C.TF_DeleteSessionOptions(opt)
 			return nil, func() {}, fmt.Errorf("invalid SessionOptions.Config: %v", err)
 		}
 	}
-	return opt, func() {
-		C.TF_DeleteSessionOptions(opt)
-		C.free(cConfig)
-	}, nil
+	return opt, func() { C.TF_DeleteSessionOptions(opt) }, nil
 }
 
 // cRunArgs translates the arguments to Session.Run and PartialRun.Run into

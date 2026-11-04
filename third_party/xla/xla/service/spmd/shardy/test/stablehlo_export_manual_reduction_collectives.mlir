@@ -773,6 +773,46 @@ func.func @reduce_scatter_further_shard_non_divisible(%arg0: tensor<2x4xf32> {sd
   return %0 : tensor<2x4xf32>
 }
 
+// -----
+
+sdy.mesh @mesh_x_2_y_2 = <["x"=2, "y"=2]>
+
+// CHECK-LABEL: func @all_reduce_max_inside_manual_computation
+// CHECK:         sdy.manual_computation(%arg0)
+// CHECK-SAME:      in_shardings=[<@mesh_x_2_y_2, [{"y"}, {}], unreduced=max{"x"}>]
+// CHECK-SAME:      out_shardings=[<@mesh_x_2_y_2, [{"y"}, {}]>]
+// CHECK-SAME:      manual_axes={"y"} (%[[IN0:.*]]: tensor<2x4xf32>) {
+// CHECK:           sdy.manual_computation(%[[IN0]])
+// CHECK-SAME:        in_shardings=[<@mesh_x_2_y_2, [{}, {}], unreduced=max{"x"}>]
+// CHECK-SAME:        out_shardings=[<@mesh_x_2_y_2, [{}, {}]>]
+// CHECK-SAME:        manual_axes={"x"} (%[[IN1:.*]]: tensor<2x4xf32>) {
+// CHECK:             "stablehlo.all_reduce"(%[[IN1]])
+// CHECK-SAME:          replica_groups = dense<{{\[\[0, 2\], \[1, 3\]\]}}>
+// CHECK:               stablehlo.maximum
+func.func @all_reduce_max_inside_manual_computation(%arg0: tensor<4x4xf32> {sdy.sharding = #sdy.sharding<@mesh_x_2_y_2, [{"y"}, {}], unreduced=max{"x"}>}) -> tensor<4x4xf32> {
+  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_x_2_y_2, [{"y"}, {}], unreduced=max{"x"}>] out_shardings=[<@mesh_x_2_y_2, [{"y"}, {}]>] manual_axes={"y"} (%in0: tensor<2x4xf32>) {
+    %1 = sdy.all_reduce max {"x"} %in0 out_sharding=<@mesh_x_2_y_2, [{}, {}]> : tensor<2x4xf32>
+    sdy.return %1 : tensor<2x4xf32>
+  } : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+sdy.mesh @mesh = <["x"=2, "y"=2]>
+
+// CHECK-LABEL: func @unreduced_max_sharded_transpose_of_sharded_dot_without_unreduced
+func.func @unreduced_max_sharded_transpose_of_sharded_dot_without_unreduced(%arg0: tensor<8x4xf32>, %arg1: tensor<4x2xf32>) -> tensor<2x8xf32> {
+  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}], unreduced=max{"y"}>]>}
+  // CHECK-NEXT: %[[TRANSPOSE:.*]] = stablehlo.transpose %[[DOT_GENERAL]], dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced=max{"y"}>]>}
+  // CHECK-NEXT: return %[[TRANSPOSE]]
+  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT]
+      {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>} : (tensor<8x4xf32>, tensor<4x2xf32>) -> tensor<8x2xf32>
+  %1 = stablehlo.transpose %0, dims = [1, 0] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced=max{"y"}>]>} : (tensor<8x2xf32>) -> tensor<2x8xf32>
+  return %1 : tensor<2x8xf32>
+}
+
 
 
 

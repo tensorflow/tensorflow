@@ -10,13 +10,32 @@ package(
 
 exports_files(["assets/hlo_dump_ui_bin_sanitized.js"])
 
-cc_embed_data(
-    name = "hlo_dump_assets",
+# Copybara can't re-write the path to the OSS version inside the genrule cmd, so we need to alias it.
+alias(
+    name = "zstd_compressor",
+    actual = "//xla/tools:zstd_compressor",
+)
+
+genrule(
+    name = "hlo_dump_assets_zst",
     srcs = [
         "assets/hlo_dump_template.html",
         "assets/hlo_dump_style.css",
         "assets/hlo_dump_ui_bin_sanitized.js",
     ],
+    outs = [
+        "hlo_dump_template.html.zst",
+        "hlo_dump_style.css.zst",
+        "hlo_dump_ui_bin_sanitized.js.zst",
+    ],
+    cmd = "for f in $(SRCS); do $(execpath :zstd_compressor) --compression_level=22 < $$f > $(RULEDIR)/$$(basename $$f).zst; done",
+    compatible_with = get_compatible_with_portable(),
+    tools = [":zstd_compressor"],
+)
+
+cc_embed_data(
+    name = "hlo_dump_assets",
+    srcs = [":hlo_dump_assets_zst"],
     outs = [
         "hlo_dump_assets.cc",
         "hlo_dump_assets.h",
@@ -59,8 +78,11 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@com_googlesource_code_re2//:re2",
+        "@riegeli//riegeli/bytes:read_all",
+        "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/bytes:string_writer",
         "@riegeli//riegeli/zlib:zlib_writer",
+        "@riegeli//riegeli/zstd:zstd_reader",
         "@tsl//tsl/platform:coding",
         "@tsl//tsl/platform:path",
     ],
@@ -92,7 +114,6 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

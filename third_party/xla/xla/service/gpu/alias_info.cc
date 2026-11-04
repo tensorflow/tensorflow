@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <queue>
+#include <tuple>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -29,8 +30,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -84,8 +85,10 @@ std::optional<bool> FusionCanShareBufferHint(
   // being on this path).
   // In addition to that, we can also share the buffer for Scatter fusions if
   // the scatter is the single output of the fusion.
-  HloInstruction* fusion_param =
-      user->fused_parameter(user->operand_index(operand));
+  // If 'operand' is passed to the fusion several times, all the corresponding
+  // fusion parameters read the same buffer, so we have to check the paths from
+  // all of them. This is the same as checking a single fusion parameter with
+  // the users of all of them.
   HloInstruction* output = user->fused_expression_root();
   for (int64_t index : user_index) {
     if (output->opcode() != HloOpcode::kTuple) {
@@ -97,13 +100,22 @@ std::optional<bool> FusionCanShareBufferHint(
   if (non_bitcast_root->opcode() == HloOpcode::kBitcast) {
     non_bitcast_root = non_bitcast_root->operand(0);
   }
-  std::queue<HloInstruction*> q;
-  absl::flat_hash_set<HloInstruction*> visited;
-  q.push(fusion_param);
-  visited.insert(fusion_param);
+  std::queue<std::pair<HloInstruction*, bool>> q;
+  absl::flat_hash_set<HloInstruction*> non_ds_visited;
+  absl::flat_hash_set<HloInstruction*> ds_visited;
+  auto enqueue = [&](HloInstruction* instr, bool from_ds) {
+    absl::flat_hash_set<HloInstruction*>& visited_set =
+        from_ds ? ds_visited : non_ds_visited;
+    if (visited_set.insert(instr).second) {
+      q.push({instr, from_ds});
+    }
+  };
+  for (int64_t operand_number : user->OperandIndices(operand)) {
+    enqueue(user->fused_parameter(operand_number), /*from_ds=*/false);
+  }
   bool found_path_to_output = false;
   while (!q.empty()) {
-    HloInstruction* hlo_operand = q.front();
+    auto [hlo_operand, from_ds] = q.front();
     q.pop();
     if (hlo_operand == output) {
       found_path_to_output = true;
@@ -116,30 +128,39 @@ std::optional<bool> FusionCanShareBufferHint(
       continue;
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
-      if (visited.insert(hlo).second) {
-        q.push(hlo);
-      }
       // For scatter, we can share the buffer if the path goes through one of
       // the scatter inputs.
-      if (hlo == non_bitcast_root && hlo->opcode() == HloOpcode::kScatter) {
+      if (!from_ds && hlo == non_bitcast_root &&
+          hlo->opcode() == HloOpcode::kScatter) {
         int64_t num_scatter_inputs =
             hlo->shape().IsTuple() ? hlo->shape().tuple_shapes().size() : 1;
         if (hlo->operand_index(hlo_operand) < num_scatter_inputs &&
             absl::c_count(hlo->operands(), hlo_operand) == 1) {
+          if (hlo->shape().IsTuple() &&
+              user_index != ShapeIndex{hlo->operand_index(hlo_operand)}) {
+            return false;
+          }
+          enqueue(hlo, /*from_ds=*/false);
           continue;
         }
       }
       // For sort, we can share the buffer if the operand appears only once. We
       // can share it with that output buffer that corresponds to the operand.
-      if (hlo == non_bitcast_root && hlo->opcode() == HloOpcode::kSort &&
+      if (!from_ds && hlo == non_bitcast_root &&
+          hlo->opcode() == HloOpcode::kSort &&
           absl::c_count(hlo->operands(), hlo_operand) == 1) {
-        if (user_index != ShapeIndex{hlo->operand_index(hlo_operand)}) {
+        if (hlo->shape().IsTuple() &&
+            user_index != ShapeIndex{hlo->operand_index(hlo_operand)}) {
           return false;
         }
+        enqueue(hlo, /*from_ds=*/false);
         continue;
       }
-      if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+      if (!from_ds &&
+          non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
           hlo->opcode() == HloOpcode::kDynamicSlice &&
+          hlo->operand(0) == hlo_operand &&
+          hlo->OperandIndices(hlo_operand).size() == 1 &&
           non_bitcast_root->operand(0) == hlo->operand(0) &&
           hlo->shape() == non_bitcast_root->operand(1)->shape()) {
         // We can still share the buffer in this case if the same slice is
@@ -159,26 +180,30 @@ std::optional<bool> FusionCanShareBufferHint(
             }
           }
         }
-      } else if ((!hlo->IsElementwiseOnOperand(
-                      hlo->operand_index(hlo_operand)) ||
-                  hlo->opcode() == HloOpcode::kCopy) &&
-                 hlo->opcode() != HloOpcode::kBitcast &&
-                 hlo->opcode() != HloOpcode::kTuple && hlo != reduction_hero) {
-        // This check also catches the case that we reach a different fusion
-        // output, as that fusion output would have a tuple op as user, which we
-        // do not allow here.
-        // Even if 'hlo' is not elementwise on the operand, it is ok if we are
-        // coming from the second operand and 'hlo' is a DynamicUpdateSlice
-        // which is the non_bitcast_root. This corresponds to the special case
-        // above, where we allow a DynamicSlice if it accesses the exact same
-        // slice than the DynamicUpdateSlice. When we are coming from the first
-        // operand, IsElementwiseOnOperand() will return true for a
-        // DynamicUpdateSlice.
-        if (hlo != non_bitcast_root ||
-            hlo->opcode() != HloOpcode::kDynamicUpdateSlice ||
-            hlo->operand_index(hlo_operand) != 1) {
-          return false;
+        enqueue(hlo, /*from_ds=*/true);
+      } else {
+        for (int64_t op_idx : hlo->OperandIndices(hlo_operand)) {
+          if ((!hlo->IsElementwiseOnOperand(op_idx) ||
+               hlo->opcode() == HloOpcode::kCopy) &&
+              hlo->opcode() != HloOpcode::kBitcast &&
+              hlo->opcode() != HloOpcode::kTuple && hlo != reduction_hero) {
+            // This check also catches the case that we reach a different fusion
+            // output, as that fusion output would have a tuple op as user,
+            // which we do not allow here.
+            // Even if 'hlo' is not elementwise on the operand, it is ok if we
+            // are coming from the second operand after visiting a matching
+            // DynamicSlice and 'hlo' is a DynamicUpdateSlice which is the
+            // non_bitcast_root. When we are coming from the first operand,
+            // IsElementwiseOnOperand() will return true for a
+            // DynamicUpdateSlice.
+            if (!from_ds || hlo != non_bitcast_root ||
+                hlo->opcode() != HloOpcode::kDynamicUpdateSlice ||
+                op_idx != 1) {
+              return false;
+            }
+          }
         }
+        enqueue(hlo, hlo == non_bitcast_root ? false : from_ds);
       }
     }
   }
@@ -187,12 +212,22 @@ std::optional<bool> FusionCanShareBufferHint(
     // whether that fusion output has the same iteration order. If not, we
     // cannot share.
     bool other_root_was_reached = false;
+    bool reached_other_non_elementwise_root = false;
     bool reached_root_has_transpose_hero = false;
     for (auto [root, hero] :
          llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes())) {
-      if (visited.find(&root.instruction()) != visited.end()) {
+      if (non_ds_visited.contains(&root.instruction()) ||
+          ds_visited.contains(&root.instruction())) {
         if (&root.instruction() != output) {
           other_root_was_reached = true;
+          const HloInstruction* non_bitcast_other_root = &root.instruction();
+          if (non_bitcast_other_root->opcode() == HloOpcode::kBitcast) {
+            non_bitcast_other_root = non_bitcast_other_root->operand(0);
+          }
+          if (non_bitcast_other_root != reduction_hero &&
+              !non_bitcast_other_root->IsElementwise()) {
+            reached_other_non_elementwise_root = true;
+          }
         }
         if (hero.opcode() == HloOpcode::kTranspose ||
             hero.opcode() == HloOpcode::kCopy) {
@@ -207,9 +242,10 @@ std::optional<bool> FusionCanShareBufferHint(
       // Special case: multi-output fusions with Scatter or DynamicUpdateSlice.
       // For Scatter, we currently do not support multi-output fusions anyway,
       // but still handle it here. To be on the safe side, check for
-      // !IsElementwise() instead of checking whether it is Scatter or
-      // DynamicUpdateSlice.
+      // !IsElementwise() on both the target root and any other reached root
+      // (excluding reduction_hero).
       if (!non_bitcast_root->IsElementwise() ||
+          reached_other_non_elementwise_root ||
           reached_root_has_transpose_hero) {
         return false;
       }
@@ -231,6 +267,36 @@ std::optional<bool> GpuAliasInfo::MayAlias(const HloInstruction* operand,
                                            const ShapeIndex& user_index) const {
   const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
   if (fusion != nullptr) {
+    if (GetCustomFusionConfigName(fusion) == kDynamicSliceFusionConfigName) {
+      // DynamicSliceFusionRewriterV2 creates these fusions before CopyInsertion
+      // without setting output_to_operand_aliasing, and
+      // DynamicSliceFusionV2Thunk::VerifyBufferAssignment requires the DUS
+      // output to alias its target parameter even when that parameter has
+      // additional internal uses inside the fusion.
+      if (!operand_index.empty() ||
+          fusion->OperandIndices(operand).size() != 1 ||
+          !MustAlias(operand, operand_index, fusion, user_index)) {
+        return false;
+      }
+      const HloInstruction* output = fusion->fused_expression_root();
+      ShapeIndex idx = user_index;
+      while (true) {
+        std::tie(output, idx) = FollowTupleIndirection(output, idx);
+        if (idx.empty() && IsNoOpForAliasAnalysis(output)) {
+          output = output->operand(0);
+          continue;
+        }
+        break;
+      }
+      for (const auto& [in_op, out_idx] : GetInPlaceInputOutputPairs(output)) {
+        if (out_idx == idx &&
+            output->OperandIndices(output->operand(in_op.operand_number))
+                    .size() != 1) {
+          return false;
+        }
+      }
+      return true;
+    }
     return FusionCanShareBufferHint(operand, fusion, user_index,
                                     device_description_);
   }

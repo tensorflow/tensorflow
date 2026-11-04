@@ -74,7 +74,8 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
       const PjRtTopologyDescription& topology,
       riegeli::Any<riegeli::Reader*> reader,
-      std::optional<CompileOptions>&& options) override;
+      std::optional<CompileOptions>&& options,
+      const DeserializeExecutableOptions& deserialize_options) override;
 
   PjRtPlatformId pjrt_platform_id() const { return pjrt_platform_id_; }
 

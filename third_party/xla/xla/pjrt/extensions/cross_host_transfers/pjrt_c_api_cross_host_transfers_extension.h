@@ -35,13 +35,20 @@ extern "C" {
 // CrossHostSendBuffers and CrossHostReceiveBuffers. These methods allow PjRt
 // clients to implement various optimizations for cross-host transfers.
 
-#define PJRT_API_CROSS_HOST_TRANSFERS_EXTENSION_VERSION 7
+#define PJRT_API_CROSS_HOST_TRANSFERS_EXTENSION_VERSION 8
 // Version 6 adds descriptor_destructor callback to CopyToRemoteDevice to fix
 // memory management across C API boundary.
 // Version 7 adds allow_cancel_notifier to
 // PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args. The
 // cancellation notifier only takes effect if allow_cancel_notifier is set to
 // true.
+// Version 8 adds the last GetAliveTasks snapshot to CrossHostSendBuffers and
+// CrossHostReceiveBuffers. For every 0 <= i < num_tasks, task_ids[i] has
+// incarnation incarnation_ids[i]. When num_tasks is 0 the pointers are not
+// read. When num_tasks > 0, task_ids and incarnation_ids must be non-null;
+// a null pointer returns InvalidArgument. Duplicate task ids keep the first
+// incarnation. Pointers are owned by the caller and are valid only for the
+// duration of the call. Older callers omit the fields.
 
 // ---------------------------------- Methods ----------------------------------
 
@@ -55,12 +62,15 @@ struct PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args {
   size_t num_buffers;
   PJRT_Buffer** buffers;
   const xla::GlobalDeviceId* dst_global_device_ids;  // Has size num_buffers.
-  const xla::CrossHostTransferKey* transfer_keys;  // Has size num_buffers.
+  const xla::CrossHostTransferKey* transfer_keys;    // Has size num_buffers.
   PJRT_Event** send_events;  // Output; has size num_buffers.
+  size_t num_tasks;
+  const int* task_ids;             // Has size num_tasks.
+  const int64_t* incarnation_ids;  // Has size num_tasks.
 };
 
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args,
-                          send_events);
+                          incarnation_ids);
 
 typedef PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(
     PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args* args);
@@ -75,13 +85,16 @@ struct PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args {
   PJRT_Buffer_Type* element_types;
   PJRT_Buffer_MemoryLayout** layouts;
   PJRT_Device* device;
-  const xla::GlobalDeviceId* src_global_device_ids;      // Has size num_shapes.
-  const xla::CrossHostTransferKey* transfer_keys;        // Has size num_shapes.
+  const xla::GlobalDeviceId* src_global_device_ids;  // Has size num_shapes.
+  const xla::CrossHostTransferKey* transfer_keys;    // Has size num_shapes.
   PJRT_Buffer** buffers;  // Output; has size num_shapes.
+  size_t num_tasks;
+  const int* task_ids;             // Has size num_tasks.
+  const int64_t* incarnation_ids;  // Has size num_tasks.
 };
 
 PJRT_DEFINE_STRUCT_TRAITS(
-    PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args, buffers);
+    PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args, incarnation_ids);
 
 typedef PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args* args);

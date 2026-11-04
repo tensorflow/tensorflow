@@ -125,12 +125,18 @@ class DotOperandDims {
   // (if there was any).
   absl::Status CollapseCategory(Category category, bool remove_if_empty);
 
+  // Returns true if the dimensions of the given category are sorted.
+  bool IsSorted(Category category) const;
+
   // Returns true if the dimensions of the given category are sorted and
   // consecutive.
   bool IsConsecutive(Category category) const;
 
-  // Permutes the dimensions of the category to make them consecutive at the
-  // end, unless they are already consecutive anywhere in the shape.
+  // Permutes the dimensions of the category to make them consecutive (in their
+  // listed order), unless they are already consecutive anywhere in the shape.
+  // The category is gathered to end at its highest dimension index; other
+  // dimensions before it keep their relative order, and dimensions after it
+  // (in particular the most minor one) stay in place.
   // Returns the permutation applied, or std::nullopt if dimensions were already
   // in the desired order.
   std::optional<std::vector<int64_t>> PermuteToConsecutive(Category category);
@@ -195,6 +201,27 @@ class DotOperandDims {
   // kReshape. Returns std::nullopt if that's not possible.
   absl::StatusOr<std::optional<DotOperandDims>> MapForward(
       const HloInstruction* inst) const;
+
+  // Same as above, but through all steps of `tracker`: from its input shape to
+  // its output shape (forward) or the other way around (backward). As with the
+  // single-instruction overloads, the categories are tracked, but the dot
+  // output may change (e.g. non-contracting dimensions may be split or
+  // reordered). Returns std::nullopt if the mapping is not possible.
+  absl::StatusOr<std::optional<DotOperandDims>> MapForward(
+      const ShapeTracker& tracker) const;
+  absl::StatusOr<std::optional<DotOperandDims>> MapBackward(
+      const ShapeTracker& tracker) const;
+
+  // Folds `tracker` (whose output is this operand) into the dot: returns the
+  // dims with which the dot computes exactly the same result when reading the
+  // tracker's input directly. This requires every category to keep its
+  // dimension sizes (so dimension pairing and the output shape are unchanged)
+  // and the non-contracting dimensions to stay sorted, as they are in any
+  // operand of an actual dot (so the output is not transposed). Returns
+  // std::nullopt otherwise; in particular, moving degenerate dimensions is a
+  // reshape for `tracker` and therefore not foldable.
+  absl::StatusOr<std::optional<DotOperandDims>> FoldBackward(
+      const ShapeTracker& tracker) const;
 
   // Returns a debug string representation of the DotOperandDims.
   std::string ToString() const;

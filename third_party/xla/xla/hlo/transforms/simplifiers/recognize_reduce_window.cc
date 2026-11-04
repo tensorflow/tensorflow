@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -75,8 +76,9 @@ HloInstruction* CreateInitValue(HloComputation* comp, HloOpcode opcode,
       return comp->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::MaxValue(type)));
     case HloOpcode::kAnd:
-      return comp->AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::One(type)));
+      return comp->AddInstruction(HloInstruction::CreateConstant(
+          *HloEvaluator{}.EvaluateElementwiseUnaryOp(HloOpcode::kNot,
+                                                     LiteralUtil::Zero(type))));
     case HloOpcode::kOr:
       return comp->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(type)));
@@ -360,7 +362,8 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
     if (inst->opcode() == HloOpcode::kDynamicSlice) {
       bool all_static = true;
       for (int i = 1; i < inst->operand_count(); ++i) {
-        if (inst->operand(i)->opcode() != HloOpcode::kConstant) {
+        if (inst->operand(i)->opcode() != HloOpcode::kConstant ||
+            !inst->operand(i)->literal().GetFirstInteger().has_value()) {
           all_static = false;
           break;
         }
@@ -487,7 +490,9 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
                 break;
               }
               if (get_start(rw_slice, i) == get_start(other, i) &&
-                  get_limit(rw_slice, i) == get_limit(other, i)) {
+                  get_limit(rw_slice, i) == get_limit(other, i) &&
+                  window_util::IsTrivialWindowDimension(
+                      rw->window().dimensions(i))) {
                 new_starts[i] = get_start(rw_slice, i);
                 new_limits[i] = get_limit(rw_slice, i);
               } else if (dim != -1) {
@@ -520,6 +525,14 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
                 current_window_size = size + 1;
               }
             }
+            HloInstruction* init = CreateInitValue(
+                computation, inst->opcode(), inst->shape().element_type());
+            matched &= init && rw->operand(1)->Identical(*init) &&
+                       !window_util::HasPadding(rw->window()) &&
+                       !window_util::HasStride(rw->window()) &&
+                       !window_util::HasBaseDilation(rw->window()) &&
+                       !window_util::HasWindowReversal(rw->window());
+            if (init) ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(init));
             if (matched && dim != -1) {
               if (rw_slice->opcode() == HloOpcode::kSlice) {
                 std::vector<int64_t> strides(rank, 1);
@@ -1036,6 +1049,10 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
 
   return changed;
 }
+
+const HloPassFactory* const kRecognizeReduceWindowRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<RecognizeReduceWindow>>(
+        "recognize-reduce-window");
 
 }  // namespace
 

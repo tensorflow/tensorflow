@@ -112,7 +112,7 @@ class GcsThrottle {
    * purpose of this function is to make available to monitoring or other
    * instrumentation the number of available tokens in the pool.
    */
-  inline int64_t available_tokens() TF_LOCKS_EXCLUDED(mu_) {
+  int64_t available_tokens() TF_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock l(mu_);
     UpdateState();
     return available_tokens_;
@@ -139,9 +139,7 @@ class GcsThrottle {
    */
   void UpdateState() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  inline uint64_t request_bytes_to_tokens(size_t num_bytes) {
-    return num_bytes >> 10;
-  }
+  uint64_t request_bytes_to_tokens(size_t num_bytes) { return num_bytes >> 10; }
 
   absl::Mutex mu_;
 

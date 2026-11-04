@@ -44,7 +44,7 @@ xla::HloSharding parseShardingFromString(const mlir::StringAttr& sharding);
 mlir::sdy::TensorShardingAttr convertToSdySharding(
     const xla::HloSharding& hloSharding, mlir::sdy::MeshAttr globalMesh,
     const llvm::SmallDenseMap<int64_t, mlir::StringRef>&
-        deviceIdToMaximalMeshName,
+        deviceIdToSingleDeviceMeshName,
     int64_t rank, bool openDims = false, bool inlineMesh = false);
 // Same as above, but takes an `xla::OpSharding` proto and uses fake mesh from
 // given `opSharding`. Returns a string representation of `TensorShardingAttr`

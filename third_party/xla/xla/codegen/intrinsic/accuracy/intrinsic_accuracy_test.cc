@@ -250,6 +250,11 @@ std::vector<IntrinsicAccuracyTestParam> GetAccuracyTestParams() {
       {"exponential", F32, accuracy::kGoldenExp, accuracy::kExpF32Budget},
       {"exponential", F64, accuracy::kGoldenExp, accuracy::kExpF64Budget},
 
+      {"exponential-minus-one", F32, accuracy::kGoldenExpm1,
+       accuracy::kExpm1F32Budget},
+      {"exponential-minus-one", F64, accuracy::kGoldenExpm1,
+       accuracy::kExpm1F64Budget},
+
       {"log-plus-one", F32, accuracy::kGoldenLog1p, accuracy::kLog1pF32Budget},
       {"log-plus-one", F64, accuracy::kGoldenLog1p, accuracy::kLog1pF64Budget},
 

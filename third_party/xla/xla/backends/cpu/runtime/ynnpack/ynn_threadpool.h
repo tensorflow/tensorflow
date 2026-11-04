@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_YNNPACK_YNN_THREADPOOL_H_
 #define XLA_BACKENDS_CPU_RUNTIME_YNNPACK_YNN_THREADPOOL_H_
 
-#include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 
 namespace Eigen {
@@ -27,12 +26,10 @@ class ThreadPoolInterface;
 namespace xla::cpu {
 
 // Creates an YNNPACK threadpool from an Eigen threadpool.
-absl::StatusOr<YnnThreadpool> CreateYnnThreadpool(
-    Eigen::ThreadPoolInterface* threadpool);
+YnnThreadpool CreateYnnThreadpool(Eigen::ThreadPoolInterface* threadpool);
 
 // Creates an YNNPACK threadpool from an Eigen ThreadPoolDevice.
-absl::StatusOr<YnnThreadpool> CreateYnnThreadpool(
-    const Eigen::ThreadPoolDevice* device);
+YnnThreadpool CreateYnnThreadpool(const Eigen::ThreadPoolDevice* device);
 
 }  // namespace xla::cpu
 

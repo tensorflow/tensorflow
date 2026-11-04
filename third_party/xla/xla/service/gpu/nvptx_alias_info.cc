@@ -34,9 +34,10 @@ std::optional<bool> NVPTXAliasInfo::MayAlias(
     // NCCL all-reduce and collective-broadcast can be performed in-place.
     case HloOpcode::kAllReduce:
     case HloOpcode::kCollectiveBroadcast:
-      return user->operand_count() == 1 ||
-             (user_index.size() == 1 &&
-              user->operand(user_index[0]) == operand);
+      return absl::c_count(user->operands(), operand) == 1 &&
+             (user->operand_count() == 1 ||
+              (user_index.size() == 1 &&
+               user->operand(user_index[0]) == operand));
     case HloOpcode::kCustomCall:
       // The matrix bias operand can be overwritten in-place.
       // See https://docs.nvidia.com/cuda/cublas/#cublasltmatmul.

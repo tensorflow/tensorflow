@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
@@ -102,7 +103,7 @@ TEST(ProfilerFactoryTest, FactoryClassCapturedByLambda) {
 
 class TestMultiPassProfiler : public MultiPassProfilerInterface {
  public:
-  bool NeedMorePasses() override { return false; }
+  absl::StatusOr<bool> NeedMorePasses() override { return false; }
   absl::Status StartPass() override { return absl::OkStatus(); }
   absl::Status PushRange(absl::string_view name) override {
     return absl::OkStatus();
@@ -168,7 +169,7 @@ class TrackingMultiPassProfiler : public MultiPassProfilerInterface {
   explicit TrackingMultiPassProfiler(Tracker* tracker = nullptr)
       : tracker_(tracker) {}
 
-  bool NeedMorePasses() override { return false; }
+  absl::StatusOr<bool> NeedMorePasses() override { return false; }
   absl::Status StartPass() override {
     start_pass_called_++;
     if (tracker_) tracker_->start_pass_called++;

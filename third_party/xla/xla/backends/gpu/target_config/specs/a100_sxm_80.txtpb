@@ -141,6 +141,7 @@ gpu_device_info {
   thread_dim_limit_x: 1024
   thread_dim_limit_y: 1024
   thread_dim_limit_z: 64
+  reserved_shared_memory_per_block: 1024
 }
 platform_name: "CUDA"
 device_description_str: "NVIDIA A100-SXM4-80GB"

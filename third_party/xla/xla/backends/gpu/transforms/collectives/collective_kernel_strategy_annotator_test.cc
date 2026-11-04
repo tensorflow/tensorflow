@@ -357,8 +357,11 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
           dimensions={0},
           replica_groups={{0,1,2,3,4,5,6,7}},
           to_apply=add
-      ROOT t = (f32[32768], f32[32768], f32[4096]) tuple(
-          all-reduce, all-gather, reduce-scatter)
+      all-to-all = f32[32768] all-to-all(p0),
+          dimensions={0},
+          replica_groups={{0,1,2,3,4,5,6,7}}
+      ROOT t = (f32[32768], f32[32768], f32[4096], f32[32768]) tuple(
+          all-reduce, all-gather, reduce-scatter, all-to-all)
     }
   )";
 
@@ -392,6 +395,48 @@ TEST_F(CollectiveKernelStrategyAnnotatorTest,
       GetKernelStrategy(module.get(), HloOpcode::kReduceScatter));
   EXPECT_EQ(rs_strategy,
             CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+
+  ASSERT_OK_AND_ASSIGN(auto ata_strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllToAll));
+  EXPECT_EQ(ata_strategy,
+            CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_ONE_SHOT);
+}
+
+TEST_F(CollectiveKernelStrategyAnnotatorTest,
+       AllToAllAnnotatedAsTwoShotAboveOneShotThreshold) {
+  constexpr int kNumReplicas = 8;
+  // For 8 devices, one-shot threshold is 32 MB / 8 = 4 MB, and max limit is
+  // 256 MB / 8 = 32 MB. 2097152 * 4 bytes = 8 MB (> 4 MB, <= 32 MB).
+  constexpr absl::string_view kAllToAllHlo = R"(
+    HloModule all_to_all_two_shot_test
+
+    ENTRY e {
+      p0 = f32[2097152] parameter(0)
+      ROOT all-to-all = f32[2097152] all-to-all(p0),
+          dimensions={0},
+          replica_groups={{0,1,2,3,4,5,6,7}}
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kAllToAllHlo, kNumReplicas));
+  module->mutable_config()
+      .mutable_debug_options()
+      .clear_xla_gpu_experimental_use_collective_kernels();
+  module->mutable_config()
+      .mutable_debug_options()
+      .add_xla_gpu_experimental_use_collective_kernels(
+          DebugOptions::COLLECTIVE_KERNEL_ALL_TO_ALL);
+  ASSERT_OK_AND_ASSIGN(auto local_topology, MakeLocalGpuTopology(kNumReplicas));
+
+  CollectiveKernelStrategyAnnotator annotator(*local_topology,
+                                              /*is_multimem_enabled=*/false);
+  ASSERT_OK(annotator.Run(module.get()).status());
+
+  ASSERT_OK_AND_ASSIGN(auto ata_strategy,
+                       GetKernelStrategy(module.get(), HloOpcode::kAllToAll));
+  EXPECT_EQ(ata_strategy,
+            CollectiveBackendConfig::KERNEL_STRATEGY_TRITON_TWO_SHOT);
 }
 
 }  // namespace

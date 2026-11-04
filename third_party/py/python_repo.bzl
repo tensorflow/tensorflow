@@ -86,8 +86,8 @@ Please check python_init_repositories() in your WORKSPACE file.
     else:
         requirements_with_local_wheels = str(requirements)
 
-    use_pywrap_rules = bool(
-        ctx.os.environ.get("USE_PYWRAP_RULES", False),
+    use_pywrap_rules = (
+        ctx.os.environ.get("USE_PYWRAP_RULES", "").lower() in ("true", "1")
     )
 
     if use_pywrap_rules:

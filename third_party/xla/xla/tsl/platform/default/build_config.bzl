@@ -390,7 +390,10 @@ def tf_additional_lib_deps():
     return [
         "@com_google_absl//absl/base:base",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/types:span",
+        clean_dep("//tsl/platform:protobuf"),
+        clean_dep("//xla/tsl/concurrency:executor"),
     ]
 
 def tf_additional_core_deps():

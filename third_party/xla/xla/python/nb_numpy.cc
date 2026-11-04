@@ -18,9 +18,12 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <stdexcept>
+#include <type_traits>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
 #include "xla/tsl/python/lib/core/numpy.h"
@@ -41,12 +44,8 @@ nb_numpy_ndarray::nb_numpy_ndarray(
     nb_dtype dtype, absl::Span<int64_t const> shape,
     std::optional<absl::Span<int64_t const>> strides, const void* ptr,
     nb::handle base) {
-  const int64_t* strides_ptr = nullptr;
-  if (strides) {
-    if (shape.size() != strides->size()) {
-      throw std::invalid_argument("shape and strides must have the same size.");
-    }
-    strides_ptr = strides->data();
+  if (strides && shape.size() != strides->size()) {
+    throw std::invalid_argument("shape and strides must have the same size.");
   }
   int flags = 0;
   if (base && ptr) {
@@ -57,14 +56,41 @@ nb_numpy_ndarray::nb_numpy_ndarray(
       flags = NPY_ARRAY_WRITEABLE;
     }
   }
-  // The reinterpret_cast below assumes that npy_intp and int64_t are the same
-  // width. If that changes, then the code should be updated to convert instead.
-  static_assert(sizeof(int64_t) == sizeof(npy_intp));
+  const npy_intp* shape_ptr;
+  const npy_intp* strides_ptr = nullptr;
+  absl::InlinedVector<npy_intp, 4> converted_shape;
+  absl::InlinedVector<npy_intp, 4> converted_strides;
+  static_assert(sizeof(npy_intp) <= sizeof(int64_t) &&
+                std::is_signed_v<npy_intp>);
+  if constexpr (sizeof(int64_t) == sizeof(npy_intp)) {
+    shape_ptr = reinterpret_cast<const npy_intp*>(shape.data());
+    strides_ptr =
+        strides ? reinterpret_cast<const npy_intp*>(strides->data()) : nullptr;
+  } else {
+    auto convert = [](int64_t value) -> npy_intp {
+      if (value < static_cast<int64_t>(std::numeric_limits<npy_intp>::min()) ||
+          value > static_cast<int64_t>(std::numeric_limits<npy_intp>::max())) {
+        throw std::overflow_error(
+            "NumPy shape or stride does not fit npy_intp");
+      }
+      return static_cast<npy_intp>(value);
+    };
+    converted_shape.reserve(shape.size());
+    for (int64_t value : shape) {
+      converted_shape.push_back(convert(value));
+    }
+    shape_ptr = converted_shape.data();
+    if (strides) {
+      converted_strides.reserve(strides->size());
+      for (int64_t value : *strides) {
+        converted_strides.push_back(convert(value));
+      }
+      strides_ptr = converted_strides.data();
+    }
+  }
   nb::object array = nb::steal<nb::object>(PyArray_NewFromDescr(
       &PyArray_Type, reinterpret_cast<PyArray_Descr*>(dtype.release().ptr()),
-      shape.size(), reinterpret_cast<const npy_intp*>(shape.data()),
-      reinterpret_cast<const npy_intp*>(strides_ptr), const_cast<void*>(ptr),
-      flags,
+      shape.size(), shape_ptr, strides_ptr, const_cast<void*>(ptr), flags,
       /*obj=*/nullptr));
   if (!array) {
     throw nb::python_error();

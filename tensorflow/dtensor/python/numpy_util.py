@@ -51,7 +51,10 @@ def _split(value, splits, axis=0, split_fn=np.split, stack_fn=np.stack):
 
   if len(splits) > 1:
     splits = splits[1:]
-    children = [_split(child, splits, axis + 1) for child in children]
+    children = [
+        _split(child, splits, axis + 1, split_fn=split_fn, stack_fn=stack_fn)
+        for child in children
+    ]
 
   return stack_fn(children)
 

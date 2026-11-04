@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -74,6 +75,15 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
       instr->opcode() == HloOpcode::kCopyStart ||
       instr->opcode() == HloOpcode::kCopyDone) {
     return false;
+  }
+
+  // Instructions for which no thunks are emitted do no work on any stream, so
+  // there is nothing to run asynchronously, and wrapping them would only add a
+  // synchronization point on the annotated stream. Drop the annotations
+  // instead, as they are only legal on async pairs.
+  if (EmitsNoThunks(*instr)) {
+    ClearSchedulingAnnotations(instr);
+    return true;
   }
 
   // If not already a kCall, wrap the instruction in one and move all

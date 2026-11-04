@@ -57,6 +57,7 @@ endif()
 
 add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
   ${TFLITE_SOURCE_DIR}/core/c/c_api.cc
+  ${TFLITE_SOURCE_DIR}/core/c/c_api_create.cc
   ${TFLITE_SOURCE_DIR}/core/c/c_api_experimental.cc
   ${TFLITE_SOURCE_DIR}/core/c/common.cc
   ${TFLITE_SOURCE_DIR}/core/c/operator.cc

@@ -74,7 +74,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -223,6 +222,53 @@ ComputationLayout getFlattenedComputationLayout(
   return flattenedComputationLayout;
 }
 
+// Updates the entry computation layout of `hloModule` after Shardy device-local
+// code generation by copying layouts from `oldLayout` to the new local program
+// shape and canonicalizing layouts for any parameter or output whose shape
+// changed during partitioning.
+absl::Status updateEntryComputationLayout(HloModule* hloModule,
+                                          const ComputationLayout& oldLayout) {
+  ProgramShape newProgramShape =
+      hloModule->entry_computation()->ComputeProgramShape();
+
+  // Record which parameters changed shape and copy the original parameter
+  // layouts onto the new local parameter shapes.
+  mlir::SmallVector<bool> updateParametersLayout(
+      newProgramShape.parameters_size());
+  for (int64_t i = 0; i < newProgramShape.parameters_size(); ++i) {
+    const Shape& oldParamShape = oldLayout.parameter_shape(i);
+    Shape* newParamShape = newProgramShape.mutable_parameters(i);
+    updateParametersLayout[i] =
+        !Shape::Equal().IgnoreLayout()(oldParamShape, *newParamShape);
+    ABSL_RETURN_IF_ERROR(
+        LayoutUtil::CopyLayoutBetweenShapes(oldParamShape, newParamShape));
+  }
+
+  // Record which outputs changed shape and copy the original result layout onto
+  // the new local result shape.
+  const Shape& oldResultShape = oldLayout.result_shape();
+  Shape* newResultShape = newProgramShape.mutable_result();
+  mlir::SmallVector<bool> updateOutputLayout;
+  if (newResultShape->IsTuple()) {
+    updateOutputLayout.reserve(newResultShape->tuple_shapes().size());
+    for (int64_t i = 0; i < newResultShape->tuple_shapes().size(); ++i) {
+      updateOutputLayout.push_back(!Shape::Equal().IgnoreLayout()(
+          oldResultShape.tuple_shapes(i), newResultShape->tuple_shapes(i)));
+    }
+  } else {
+    updateOutputLayout.push_back(
+        !Shape::Equal().IgnoreLayout()(oldResultShape, *newResultShape));
+  }
+  ABSL_RETURN_IF_ERROR(
+      LayoutUtil::CopyLayoutBetweenShapes(oldResultShape, newResultShape));
+  *hloModule->mutable_entry_computation_layout() =
+      ComputationLayout(newProgramShape, /*ignore_layouts=*/false);
+
+  // Give the changed parameter and output shapes canonical layouts.
+  return hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
+      hloModule, updateOutputLayout, updateParametersLayout);
+}
+
 // Returns the corresponding parameter number and index dependent on whether the
 // returned HLO module will have a single tuple level tuple.
 // - If `useTupleArgs` is true, then the param number will be 0 since there is
@@ -325,7 +371,6 @@ absl::Status runShardingPropagation(HloModule* hloModule,
                                     mlir::ModuleOp mlirModule,
                                     bool importMhloShardings,
                                     mlir::sdy::PropagationOptions options,
-                                    bool enableNativeNonFlatSupport,
                                     absl::string_view passName) {
   VLOG(1) << "Using Shardy for XLA SPMD propagation.";
 
@@ -414,8 +459,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
                                   /*liftAndDedupMeshes=*/true,
-                                  enableHloShardingV3,
-                                  enableNativeNonFlatSupport);
+                                  enableHloShardingV3);
   }
 
   // NOTE: if we are using auto-spmd, we will use conservative propagation
@@ -423,7 +467,6 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.dumpDirectory = shardyDir;
   options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
   options.enableAutoPartitioning = hloModule->use_auto_spmd_partitioning();
-  options.enableNativeNonFlatSupport = enableNativeNonFlatSupport;
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
 
   bool shardyGeneratesDeviceCode =
@@ -529,9 +572,9 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
   if (runSdyShardingPropagation) {
     propagationOptions.replicaCount = hloModule->config().replica_count();
     propagationOptions.partitionCount = hloModule->config().num_partitions();
-    ABSL_RETURN_IF_ERROR(runShardingPropagation(
-        hloModule, mlirModule.get(), importMhloShardings, propagationOptions,
-        enableNativeNonFlatSupport, name()));
+    ABSL_RETURN_IF_ERROR(runShardingPropagation(hloModule, mlirModule.get(),
+                                           importMhloShardings,
+                                           propagationOptions, name()));
   }
 
   // TODO(b/431836696): Remove once issue is fixed.
@@ -579,18 +622,8 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
       hloModule->set_spmd_parameters_shardings(std::move(param_shardings));
     }
 
-    ProgramShape newProgramShape =
-        hloModule->entry_computation()->ComputeProgramShape();
-    for (int64_t i = 0; i < newProgramShape.parameters_size(); ++i) {
-      ABSL_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-          flattenedEntryComputationLayout.parameter_shape(i),
-          newProgramShape.mutable_parameters(i)));
-    }
-    ABSL_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-        flattenedEntryComputationLayout.result_shape(),
-        newProgramShape.mutable_result()));
-    *hloModule->mutable_entry_computation_layout() =
-        ComputationLayout(newProgramShape, /*ignore_layouts=*/false);
+    ABSL_RETURN_IF_ERROR(updateEntryComputationLayout(
+        hloModule, flattenedEntryComputationLayout));
   } else {
     // Restore entry computation layout.
     *hloModule->mutable_entry_computation_layout() =

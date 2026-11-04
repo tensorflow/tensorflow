@@ -39,12 +39,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/codegen/computation_kernel_arguments.h"
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/custom_fusion_configs.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
@@ -156,8 +158,6 @@ static FusionCompiler::Options FusionCompilerOptions(
       debug_options.xla_cpu_emitter_verification_level(),
       debug_options.xla_cpu_enable_fast_min_max(),
       llvm_ir::GetCpuFastMathFlags(config),
-      debug_options.xla_cpu_use_new_xtile_lowering(),
-      options::IsMsanEnabled(config),
       target_machine_features.get_target_feature_string()};
 }
 
@@ -285,7 +285,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     // dataflow graph.
     case HloOpcode::kAfterAll:             // Defines an execution order.
     case HloOpcode::kAddDependency:        // Defines an execution order.
-    case HloOpcode::kDomain:               // Defines an HLO domain.
     case HloOpcode::kOptimizationBarrier:  // Prevents moving ops past barrier.
       return ThunkSequence::Empty();
 
@@ -428,9 +427,7 @@ template <typename CollectiveInstruction>
 static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
     const CollectiveInstruction* instruction) {
   return CollectiveThunk::OpParams{
-      /*op_id=*/instruction->channel_id().has_value()
-          ? instruction->channel_id().value()
-          : instruction->GetModule()->unique_id(),
+      /*op_id=*/instruction->unique_id(),
       /*has_channel_id=*/instruction->channel_id().has_value(),
       /*use_global_device_ids=*/instruction->use_global_device_ids(),
       /*replica_groups=*/instruction->replica_groups(),
@@ -443,9 +440,7 @@ static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
 static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
     const HloAllToAllInstruction* instruction) {
   return CollectiveThunk::OpParams{
-      /*op_id=*/instruction->channel_id().has_value()
-          ? instruction->channel_id().value()
-          : instruction->GetModule()->unique_id(),
+      /*op_id=*/instruction->unique_id(),
       /*has_channel_id=*/instruction->channel_id().has_value(),
       /*use_global_device_ids=*/std::nullopt,
       /*replica_groups=*/instruction->replica_groups(),
@@ -458,9 +453,7 @@ static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
 static absl::StatusOr<CollectiveThunk::OpParams> GetCollectiveOpParams(
     const HloCollectivePermuteInstruction* instruction) {
   return CollectiveThunk::OpParams{
-      /*op_id=*/instruction->channel_id().has_value()
-          ? instruction->channel_id().value()
-          : instruction->GetModule()->unique_id(),
+      /*op_id=*/instruction->unique_id(),
       /*has_channel_id=*/instruction->channel_id().has_value(),
       /*use_global_device_ids=*/std::nullopt,
       /*replica_groups=*/{},  // CollectivePermute does not have replica groups
@@ -588,8 +581,33 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
   if (std::optional<std::string> maybe_small_call =
           instruction->get_frontend_attribute("xla_cpu_small_call");
       maybe_small_call.has_value() && *maybe_small_call == "true") {
+    ABSL_ASSIGN_OR_RETURN(ComputationKernelArguments arguments,
+                     ComputationKernelArguments::Create(
+                         *instruction->to_apply(), buffer_assignment_));
+
+    // Hoisted loops are often clones of each other, so compile each distinct
+    // kernel once. The prefix keeps keys apart from fusion fingerprints.
+    std::optional<std::string> cache_key;
+    if (arguments.fingerprint().has_value()) {
+      cache_key = absl::StrCat("small_call:", *arguments.fingerprint());
+      if (const auto itr = kernel_spec_cache_.find(*cache_key);
+          itr != kernel_spec_cache_.end()) {
+        const KernelSpec& cached_spec = itr->second;
+        VLOG(1) << "Reusing kernel: " << cached_spec.name()
+                << " for call: " << instruction->name();
+        // Kernel parameters are positional, matching the order of `arguments`.
+        KernelSpec kernel_spec(cached_spec.name(),
+                               cached_spec.work_dimensions(),
+                               arguments.arguments(), arguments.results(),
+                               cached_spec.invariant_arguments());
+        return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
+                                       /*min_alignment=*/MinAlign());
+      }
+    }
+
     ComputationKernelEmitter emitter(instruction, &buffer_assignment_,
-                                     &target_machine_features_);
+                                     &target_machine_features_,
+                                     std::move(arguments));
     ABSL_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
                      emitter.EmitKernelDefinition());
 
@@ -598,6 +616,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCallThunk(
 
     kernels_.push_back(
         {kernel_spec.name(), std::move(kernel_source).thread_safe_module()});
+
+    if (cache_key.has_value()) {
+      kernel_spec_cache_.insert({*std::move(cache_key), kernel_spec});
+    }
 
     return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
                                    /*min_alignment=*/MinAlign());
@@ -1271,6 +1293,33 @@ std::optional<SortThunk::SortDirection> ThunkEmitter::MatchSortDirection(
   }
 }
 
+absl::StatusOr<std::string> ThunkEmitter::EmitSortComparator(
+    const HloComputation* comparator) {
+  if (auto it = comparator_names_.find(comparator);
+      it != comparator_names_.end()) {
+    return it->second;
+  }
+
+  std::string comparator_name(comparator->name());
+  if (hlo_module_config_.debug_options()
+          .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
+    ABSL_ASSIGN_OR_RETURN(comparator_name,
+                     ConvertToCName(absl::StrCat(comparator->parent()->name(),
+                                                 "_", comparator->name())));
+  }
+
+  ABSL_ASSIGN_OR_RETURN(
+      MlirKernelSource mlir_source,
+      cpu::EmitSortComparator(*mlir_context_, *comparator, comparator_name));
+  ABSL_ASSIGN_OR_RETURN(LlvmKernelSource llvm_source,
+                   fusion_compiler_.Compile(std::move(mlir_source)));
+
+  comparators_.emplace_back(comparator_name,
+                            std::move(llvm_source).thread_safe_module());
+  comparator_names_.emplace(comparator, comparator_name);
+  return comparator_name;
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
     const HloInstruction* instruction) {
   auto* sort = Cast<HloSortInstruction>(instruction);
@@ -1280,8 +1329,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   const std::optional<SortThunk::SortDirection> direction =
       MatchSortDirection(sort);
 
-  ABSL_ASSIGN_OR_RETURN(auto comparator,
-                   ir_emitter_.EmitSortComparator(hlocomparator));
+  ABSL_ASSIGN_OR_RETURN(std::string comparator_name,
+                   EmitSortComparator(hlocomparator));
   ABSL_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(sort));
 
   if (buffers.arguments.size() != buffers.results.size()) {
@@ -1311,10 +1360,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
     inputs.push_back(SortThunk::Input{result.slice, shape});
   }
 
-  ABSL_ASSIGN_OR_RETURN(
-      thunks.emplace_back(),
-      SortThunk::Create(ThunkInfo(instruction), inputs, sort->sort_dimension(),
-                        sort->is_stable(), comparator.name, direction));
+  ABSL_ASSIGN_OR_RETURN(thunks.emplace_back(),
+                   SortThunk::Create(ThunkInfo(instruction), inputs,
+                                     sort->sort_dimension(), sort->is_stable(),
+                                     std::move(comparator_name), direction));
 
   return thunks;
 }

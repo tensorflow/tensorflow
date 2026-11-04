@@ -49,6 +49,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "xla/array2d.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/profiler/kernel_name_tracer.h"
@@ -68,6 +69,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla.pb.h"
@@ -165,6 +167,140 @@ TEST_F(AlgorithmTest, Algorithm6xBF16) {
   )";
   EXPECT_TRUE(
       RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.001, /*arel=*/0.001}));
+}
+
+double ComputeMse(absl::Span<const float> actual,
+                  absl::Span<const double> expected) {
+  CHECK_EQ(actual.size(), expected.size());
+  double sum = 0;
+  for (size_t i = 0; i < actual.size(); ++i) {
+    const double d = actual[i] - expected[i];
+    sum += d * d;
+  }
+  return sum / actual.size();
+}
+
+// Compares ALG_DOT_BF16_BF16_F32, FP8X3 and FP8X4 against an exact F64 dot of
+// the same inputs, mirroring MatmulTest.Fp8xNEmulationAccuracy on TPU.
+TEST_F(AlgorithmTest, AlgorithmFp8x3AndFp8x4) {
+  if (!GpuComputeComp().IsCuda() ||
+      !GetCudaComputeCapability().IsAtLeast(8, 9)) {
+    GTEST_SKIP() << "FP8xN dot algorithms require CUDA >= 8.9.";
+  }
+  constexpr absl::string_view kFp8x3Hlo = R"(
+    HloModule AlgorithmFp8x3Lowering
+    ENTRY e {
+      p0 = bf16[128,256] parameter(0)
+      p1 = bf16[256,128] parameter(1)
+      ROOT dot = f32[128,128] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0},
+        algorithm=dot_bf16_bf16_fp8x3
+    })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_x3,
+                       GetOptimizedModule(kFp8x3Hlo));
+  ASSERT_OK_AND_ASSIGN(
+      bool filecheck_ok,
+      RunFileCheck(
+          optimized_x3->ToString(),
+          R"(CHECK-COUNT-3: custom_call_target="__cublas$lt$matmul$f8"{{.*}}"operand_precision":["HIGHEST","HIGHEST"])"));
+  EXPECT_TRUE(filecheck_ok);
+
+  constexpr int kM = 128;
+  constexpr int kK = 256;
+  constexpr int kN = 128;
+  for (absl::string_view dtype : {"bf16", "f32"}) {
+    for (auto [scale_a, scale_b] :
+         {std::pair{1.0f, 1.0f}, {100.0f, 0.01f}, {0.01f, 100.0f}}) {
+      Array2D<float> a(kM, kK);
+      Array2D<float> b(kK, kN);
+      a.FillRandom(scale_a * 0.05f, 0.0, 42);
+      b.FillRandom(scale_b * 0.05f, 0.0, 43);
+      Literal x = LiteralUtil::CreateR2FromArray2D(a);
+      Literal y = LiteralUtil::CreateR2FromArray2D(b);
+      if (dtype == "bf16") {
+        ASSERT_OK_AND_ASSIGN(x, x.Convert(BF16));
+        ASSERT_OK_AND_ASSIGN(y, y.Convert(BF16));
+      }
+      ASSERT_OK_AND_ASSIGN(Literal x64, x.Convert(F64));
+      ASSERT_OK_AND_ASSIGN(Literal y64, y.Convert(F64));
+      std::vector<double> ref(kM * kN, 0.0);
+      for (int m = 0; m < kM; ++m) {
+        for (int n = 0; n < kN; ++n) {
+          for (int k = 0; k < kK; ++k) {
+            ref[m * kN + n] +=
+                x64.Get<double>({m, k}) * y64.Get<double>({k, n});
+          }
+        }
+      }
+      auto run = [&](absl::string_view alg) -> absl::StatusOr<Literal> {
+        ABSL_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(absl::StrFormat(
+                             R"(
+                HloModule AlgorithmFp8xN
+                ENTRY e {
+                  p0 = %1$s[%2$d,%3$d] parameter(0)
+                  p1 = %1$s[%3$d,%4$d] parameter(1)
+                  ROOT dot = f32[%2$d,%4$d] dot(p0, p1),
+                    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+                    algorithm=dot_bf16_bf16_%5$s
+                })",
+                             dtype, kM, kK, kN, alg)));
+        return Execute(std::move(module), {&x, &y});
+      };
+      ASSERT_OK_AND_ASSIGN(Literal bf16, run("f32"));
+      ASSERT_OK_AND_ASSIGN(Literal fp8x3, run("fp8x3"));
+      ASSERT_OK_AND_ASSIGN(Literal fp8x4, run("fp8x4"));
+      const double bf16_mse = ComputeMse(bf16.data<float>(), ref);
+      const double fp8x3_mse = ComputeMse(fp8x3.data<float>(), ref);
+      const double fp8x4_mse = ComputeMse(fp8x4.data<float>(), ref);
+      const std::string tag =
+          absl::StrFormat("%s inputs=%s scale_a=%g scale_b=%g",
+                          device_description().name(), dtype, scale_a, scale_b);
+      EXPECT_LT(fp8x4_mse, fp8x3_mse) << tag;
+      ASSERT_OK_AND_ASSIGN(
+          Literal expected,
+          LiteralUtil::CreateR1<double>(ref).Reshape({kM, kN}));
+      ASSERT_OK_AND_ASSIGN(Literal fp8x3_f64, fp8x3.Convert(F64));
+      ASSERT_OK_AND_ASSIGN(Literal fp8x4_f64, fp8x4.Convert(F64));
+      if (dtype == "bf16") {
+        if (GetCudaComputeCapability().IsAtLeastBlackwell()) {
+          // Two F8E4M3FN slices hold a BF16 mantissa exactly, so with full F32
+          // accumulation on Blackwell FP8X4 matches an F32 accumulated BF16
+          // dot. FP8X3 drops A_low * B_low.
+          EXPECT_LT(fp8x4_mse, bf16_mse) << tag;
+          EXPECT_LT(fp8x4_mse, 1e-17) << tag;
+          EXPECT_TRUE(LiteralTestUtil::Near(
+              expected, fp8x4_f64, ErrorSpec{/*aabs=*/5e-8, /*arel=*/1e-5}))
+              << tag;
+        } else {
+          // Hopper cuBLASLt FP8 uses a reduced precision WGMMA accumulator
+          // (see b/576656261 for Triton lowering).
+          EXPECT_LT(fp8x4_mse, 1e-11) << tag;
+          EXPECT_TRUE(LiteralTestUtil::Near(
+              expected, fp8x4_f64, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-4}))
+              << tag;
+        }
+        EXPECT_GT(fp8x3_mse, 2e-10) << tag;
+        EXPECT_LT(fp8x3_mse, 4e-9) << tag;
+        EXPECT_TRUE(LiteralTestUtil::Near(
+            expected, fp8x3_f64, ErrorSpec{/*aabs=*/3e-4, /*arel=*/1e-2}))
+            << tag;
+      } else {
+        // F32 inputs keep mantissa bits below the two slices, which both
+        // algorithms drop, so they only beat a BF16 dot by rounding less.
+        EXPECT_LT(fp8x4_mse, bf16_mse) << tag;
+        EXPECT_LT(fp8x3_mse, bf16_mse) << tag;
+        EXPECT_LT(fp8x4_mse, 3e-9) << tag;
+        EXPECT_LT(fp8x3_mse, 4e-9) << tag;
+        EXPECT_TRUE(LiteralTestUtil::Near(
+            expected, fp8x4_f64, ErrorSpec{/*aabs=*/3e-4, /*arel=*/1e-2}))
+            << tag;
+        EXPECT_TRUE(LiteralTestUtil::Near(
+            expected, fp8x3_f64, ErrorSpec{/*aabs=*/3e-4, /*arel=*/1e-2}))
+            << tag;
+      }
+    }
+  }
 }
 
 TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {

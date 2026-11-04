@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -99,6 +100,36 @@ XLA_FFI_DEFINE_HANDLER(kMemsetConst, MemsetConst,
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memset_const",
                          kPlatform, kMemsetConst);
+
+static absl::Status InPlaceAddValue(se::Stream* stream,
+                                    ffi::BufferR1<F32> input,
+                                    ffi::Result<ffi::BufferR1<F32>> result,
+                                    float value) {
+  se::DeviceAddressBase src = input.device_memory();
+  se::DeviceAddressBase dst = result->device_memory();
+  if (!(src == dst)) {
+    return absl::InvalidArgumentError(
+        "InPlaceAddValue: expected input and result buffers to alias");
+  }
+  size_t num_elements = input.element_count();
+  std::vector<float> host_buf(num_elements);
+  ABSL_RETURN_IF_ERROR(stream->Memcpy(host_buf.data(), src, src.size()));
+  ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  for (float& elem : host_buf) {
+    elem += value;
+  }
+  return stream->Memcpy(&dst, host_buf.data(), dst.size());
+}
+
+XLA_FFI_DEFINE_HANDLER(kInPlaceAddValue, InPlaceAddValue,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Arg<ffi::BufferR1<F32>>()
+                           .Ret<ffi::BufferR1<F32>>()
+                           .Attr<float>("value"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$inplace_add_value",
+                         kPlatform, kInPlaceAddValue);
 
 class DynamicSliceFusionV2Test : public HloPjRtGpuTestBase {
  protected:
@@ -1627,6 +1658,155 @@ TEST_F(DynamicSliceFusionV2Test, OobClampingAccumulatesInLastSlice) {
   ASSERT_OK_AND_ASSIGN(
       Literal result, Execute(std::move(*ParseAndReturnVerifiedModule(hlo)), {},
                               /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(DynamicSliceFusionV2Test, OutputToOperandAliasingScanDisjointBuffers) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    %dsf_computation {
+      %p_in = f32[4,4] parameter(0)
+      %p_out = f32[4,4] parameter(1)
+      %p_i = s32[] parameter(2)
+      %zero = s32[] constant(0)
+      %ds = f32[1,4] dynamic-slice(%p_in, %p_i, %zero),
+        dynamic_slice_sizes={1,4},
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
+      %ds_1d = f32[4] bitcast(%ds)
+      %call = f32[4] custom-call(%ds_1d),
+        custom_call_target="__xla_test$$inplace_add_value",
+        api_version=API_VERSION_TYPED_FFI,
+        output_to_operand_aliasing={{}: (0, {})},
+        backend_config="{value = 10.0 : f32}"
+      %call_2d = f32[1,4] bitcast(%call)
+      ROOT %dus = f32[4,4]
+        dynamic-update-slice(%p_out, %call_2d, %p_i, %zero),
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
+    }
+
+    body {
+      param = (s32[], f32[4,4], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      in_buf = f32[4,4] get-tuple-element(param), index=1
+      out_buf = f32[4,4] get-tuple-element(param), index=2
+      updated = f32[4,4] fusion(in_buf, out_buf, i),
+        kind=kCustom, calls=%dsf_computation,
+        backend_config={"fusion_backend_config":{
+          "kind":"__custom_fusion",
+          "custom_fusion_config":
+            {"name":"dynamic_slice_fusion"}}}
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[4,4], f32[4,4]) tuple(next_i, in_buf, updated)
+    }
+
+    cond {
+      param = (s32[], f32[4,4], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(4)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      in_buf = f32[4,4] parameter(0)
+      zero = s32[] constant(0)
+      init_out = f32[4,4] broadcast(f32[] constant(0)), dimensions={}
+      init = (s32[], f32[4,4], f32[4,4]) tuple(zero, in_buf, init_out)
+      while = (s32[], f32[4,4], f32[4,4])
+        while(init), condition=cond, body=body
+      ROOT result = f32[4,4] get-tuple-element(while), index=2
+    }
+  )";
+
+  Literal input = LiteralUtil::CreateR2<float>({{1.0f, 2.0f, 3.0f, 4.0f},
+                                                {5.0f, 6.0f, 7.0f, 8.0f},
+                                                {9.0f, 10.0f, 11.0f, 12.0f},
+                                                {13.0f, 14.0f, 15.0f, 16.0f}});
+  Literal expected =
+      LiteralUtil::CreateR2<float>({{11.0f, 12.0f, 13.0f, 14.0f},
+                                    {15.0f, 16.0f, 17.0f, 18.0f},
+                                    {19.0f, 20.0f, 21.0f, 22.0f},
+                                    {23.0f, 24.0f, 25.0f, 26.0f}});
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&input},
+                                               /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(DynamicSliceFusionV2Test, OutputToOperandAliasingInPlaceSameBuffer) {
+  const char* hlo = R"(
+    HloModule test, is_scheduled=true
+
+    %dsf_computation {
+      %p_buf = f32[4,4] parameter(0)
+      %p_i = s32[] parameter(1)
+      %zero = s32[] constant(0)
+      %ds = f32[1,4] dynamic-slice(%p_buf, %p_i, %zero),
+        dynamic_slice_sizes={1,4},
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
+      %ds_1d = f32[4] bitcast(%ds)
+      %call = f32[4] custom-call(%ds_1d),
+        custom_call_target="__xla_test$$inplace_add_value",
+        api_version=API_VERSION_TYPED_FFI,
+        output_to_operand_aliasing={{}: (0, {})},
+        backend_config="{value = 10.0 : f32}"
+      %call_2d = f32[1,4] bitcast(%call)
+      ROOT %dus = f32[4,4]
+        dynamic-update-slice(%p_buf, %call_2d, %p_i, %zero),
+        backend_config={"dynamic_slice_config":
+          {"loop_index":0,"linear":{"byte_offset":0,"byte_stride":16}}}
+    }
+
+    body {
+      param = (s32[], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      buf = f32[4,4] get-tuple-element(param), index=1
+      updated = f32[4,4] fusion(buf, i),
+        kind=kCustom, calls=%dsf_computation,
+        backend_config={"fusion_backend_config":{
+          "kind":"__custom_fusion",
+          "custom_fusion_config":
+            {"name":"dynamic_slice_fusion"}}}
+      one = s32[] constant(1)
+      next_i = s32[] add(i, one)
+      ROOT tuple = (s32[], f32[4,4]) tuple(next_i, updated)
+    }
+
+    cond {
+      param = (s32[], f32[4,4]) parameter(0)
+      i = s32[] get-tuple-element(param), index=0
+      limit = s32[] constant(4)
+      ROOT cmp = pred[] compare(i, limit), direction=LT
+    }
+
+    ENTRY main {
+      buf = f32[4,4] parameter(0)
+      zero = s32[] constant(0)
+      init = (s32[], f32[4,4]) tuple(zero, buf)
+      while = (s32[], f32[4,4])
+        while(init), condition=cond, body=body
+      ROOT result = f32[4,4] get-tuple-element(while), index=1
+    }
+  )";
+
+  Literal input = LiteralUtil::CreateR2<float>({{1.0f, 2.0f, 3.0f, 4.0f},
+                                                {5.0f, 6.0f, 7.0f, 8.0f},
+                                                {9.0f, 10.0f, 11.0f, 12.0f},
+                                                {13.0f, 14.0f, 15.0f, 16.0f}});
+  Literal expected =
+      LiteralUtil::CreateR2<float>({{11.0f, 12.0f, 13.0f, 14.0f},
+                                    {15.0f, 16.0f, 17.0f, 18.0f},
+                                    {19.0f, 20.0f, 21.0f, 22.0f},
+                                    {23.0f, 24.0f, 25.0f, 26.0f}});
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&input},
+                                               /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 

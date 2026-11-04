@@ -65,6 +65,7 @@ from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_con
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.lite.python.util import _jit
+from tensorflow.lite.python.util import _mlir
 from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
 from tensorflow.lite.python.util import convert_debug_info_func as _convert_debug_info_func
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
@@ -646,6 +647,7 @@ class TFLiteConverterBase:
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
     self._experimental_fold_fp16_resource_casts = True
+    self._experimental_fold_fp16_casts_into_fully_connected = False
     self._experimental_tf_quantization_mode = None
     # If unset, bias:int32 is by default except 16x8 quant.
     # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
@@ -826,6 +828,9 @@ class TFLiteConverterBase:
             self._experimental_unfold_large_splat_constant
         ),
         "fold_fp16_resource_casts": self._experimental_fold_fp16_resource_casts,
+        "fold_fp16_casts_into_fully_connected": (
+            self._experimental_fold_fp16_casts_into_fully_connected
+        ),
         "default_to_single_batch_in_tensor_list_ops": (
             self._experimental_default_to_single_batch_in_tensor_list_ops
         ),
@@ -2113,7 +2118,12 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
       hlo_proto = (
           _jit(self._serving_funcs[0])
           .trace(*ordered_inputs)
-          .lower(lowering_platforms=("cpu",))
+          .lower(
+              lowering_platforms=("cpu",),
+              _private_parameters=_mlir.LoweringParameters(
+                  hoist_constants_as_args=False
+              ),
+          )
           .compiler_ir("hlo")
           .as_serialized_hlo_module_proto()
       )

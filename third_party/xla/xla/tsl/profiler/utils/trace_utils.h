@@ -75,7 +75,11 @@ constexpr int kThreadIdHostXlaRegionEnd = kThreadIdHostXlaRegionStart + 240;
 // Space for derived lines for device events.
 constexpr int kThreadIdDeviceDerivedMin = kThreadIdHostXlaRegionEnd + 1;
 constexpr int kThreadIdDeviceDerivedMax = kThreadIdDeviceDerivedMin + 99;
-constexpr int kThreadIdDerivedMax = kThreadIdDeviceDerivedMax;
+// One "Command Buffers" line per GPU stream that gets device-derived lines
+// (floor(100 / 6) = 16 streams).
+constexpr int kThreadIdCommandBufferMin = kThreadIdDeviceDerivedMax + 1;
+constexpr int kThreadIdCommandBufferMax = kThreadIdCommandBufferMin + 15;
+constexpr int kThreadIdDerivedMax = kThreadIdCommandBufferMax;
 
 static inline bool IsDerivedThreadId(int thread_id) {
   return thread_id >= kThreadIdDerivedMin && thread_id <= kThreadIdDerivedMax;

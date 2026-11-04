@@ -162,15 +162,12 @@ InterpreterLoadedExecutable::InterpreterLoadedExecutable(
     std::shared_ptr<InterpreterExecutable> executable,
     std::unique_ptr<HloEvaluatorInterface> hlo_evaluator,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<LogicalDeviceIds> addressable_device_logical_ids,
     std::vector<PjRtDevice*> addressable_devices)
     : client_(ABSL_DIE_IF_NULL(client)),
       name_(ABSL_DIE_IF_NULL(executable)->name()),
       executable_(std::move(executable)),
       hlo_evaluator_(std::move(hlo_evaluator)),
       device_assignment_(std::move(device_assignment)),
-      addressable_device_logical_ids_(
-          std::move(addressable_device_logical_ids)),
       addressable_devices_(std::move(addressable_devices)) {
   if (executable_ && executable_->dynamic_dimension_inference().has_value()) {
     hlo_evaluator_->set_dynamic_dimension_inference(
@@ -529,19 +526,12 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> InterpreterClient::Load(
                         "num_replicas: %d, num_partitions: %d",
                         num_replicas, num_partitions));
   }
-  std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids;
   std::vector<PjRtDevice*> addressable_devices;
-  PjRtLoadedExecutable::LogicalDeviceIds logical_device_ids;
-  logical_device_ids.replica = 0;
-  logical_device_ids.partition = 0;
-  addressable_device_logical_ids.push_back(std::move(logical_device_ids));
   addressable_devices.push_back(&interpreter_device_);
 
   return std::make_unique<InterpreterLoadedExecutable>(
       this, std::move(shared_interpreter_executable), std::move(evaluator),
-      std::move(device_assignment), std::move(addressable_device_logical_ids),
-      std::move(addressable_devices));
+      std::move(device_assignment), std::move(addressable_devices));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>

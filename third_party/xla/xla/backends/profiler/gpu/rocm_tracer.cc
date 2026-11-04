@@ -157,29 +157,33 @@ bool RocmTracer::IsAvailable() const {
   return ts;
 }
 
-absl::Status RocmTracer::Enable(const RocmTracerOptions& options,
-                                RocmTraceCollector* collector) {
+absl::Status RocmTracer::Enable(RocmTraceCollector* collector) {
   absl::MutexLock lock(collector_mutex_);
   if (collector_ != nullptr) {
     return absl::AlreadyExistsError("ROCM tracer is already running");
   }
+  const auto& max_annotation_strings =
+      collector->GetOptions().max_annotation_strings;
+  if (!max_annotation_strings.has_value()) {
+    return absl::InvalidArgumentError(
+        "RocmTraceCollectorOptions::max_annotation_strings is not set.");
+  }
 
-  // Clear per-session state while holding collector_mutex_ so no in-flight
-  // callback can race between the clear and the new session start.
-  annotation_map_.Clear();
+  // Must run before rocprofiler_start_context opens the gate for the new
+  // session. rocprofiler_stop_context does not join callbacks already past the
+  // gate; see AnnotationMap::Reset() for what that means for the map.
+  annotation_map_.Reset(*max_annotation_strings);
   // ROCTX frames live on thread_local stacks this thread cannot reach, so
   // isolate by generation instead of clearing: any frame pushed before this
   // point is now stale and will be dropped at pop rather than emitted into
   // the new session. See roctx_generation_ in rocm_tracer.h.
   roctx_generation_.fetch_add(1, std::memory_order_relaxed);
 
-  options_ = options;
   collector_ = collector;
 
   rocprofiler_status_t rc = rocprofiler_start_context(context_);
   if (rc != ROCPROFILER_STATUS_SUCCESS) {
     const char* errstr = rocprofiler_get_status_string(rc);
-    options_ = {};
     collector_ = nullptr;
     return absl::InternalError(
         absl::StrCat("rocprofiler_start_context failed: ", errstr));
@@ -744,13 +748,14 @@ absl::Status RocmTracer::InitProfiling(void* tool_data) {
   // scoped_annotation.h takes its AnnotationStack branch and XLA emits no
   // roctx call. Only code that links librocprofiler-sdk-roctx and calls it
   // directly reaches this callback. A follow-up adds the XLA-side emitter.
-  // Log and continue rather than ABSL_RETURN_IF_ERROR. A failure here propagates to
-  // toolInit, which returns -1 and tears down HIP-API, kernel-dispatch and
-  // memcpy tracing along with it. That is far too much collateral for an
-  // optional feature whose producer is the application: MARKER_CORE_API may be
-  // absent in an older rocprofiler-sdk, or already claimed by another tool in
-  // the process (ROCPROFILER_STATUS_ERROR_SERVICE_ALREADY_CONFIGURED). Losing
-  // ROCTX bands is acceptable; losing all GPU profiling is not.
+  // Log and continue rather than ABSL_RETURN_IF_ERROR. A failure here
+  // propagates to toolInit, which returns -1 and tears down HIP-API,
+  // kernel-dispatch and memcpy tracing along with it. That is far too much
+  // collateral for an optional feature whose producer is the application:
+  // MARKER_CORE_API may be absent in an older rocprofiler-sdk, or already
+  // claimed by another tool in the process
+  // (ROCPROFILER_STATUS_ERROR_SERVICE_ALREADY_CONFIGURED). Losing ROCTX bands
+  // is acceptable; losing all GPU profiling is not.
   if (absl::Status marker_status = RocprofilerStatusToAbslStatus(
           rocprofiler_configure_callback_tracing_service(
               context_, ROCPROFILER_CALLBACK_TRACING_MARKER_CORE_API, nullptr,
@@ -860,10 +865,7 @@ static int toolInitStatic(rocprofiler_client_finalize_t finalize_func,
                                                        tool_data);
 }
 
-// ----------------------------------------------------------------------------
-// C‑linkage entry‑point expected by rocprofiler-sdk.
-// ----------------------------------------------------------------------------
-extern "C" rocprofiler_tool_configure_result_t* rocprofiler_configure(
+static rocprofiler_tool_configure_result_t* rocprofiler_configure(
     uint32_t version, const char* runtime_version, uint32_t priority,
     rocprofiler_client_id_t* id) {
   auto& obj = RocmTracer::GetRocmTracerSingleton();  // Ensure constructed,

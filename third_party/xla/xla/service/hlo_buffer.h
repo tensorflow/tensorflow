@@ -22,11 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
 #include "xla/xla_data.pb.h"
@@ -119,24 +118,12 @@ class HloBuffer {
 
   // Memory space color. Used to indicate the memory space that the hlo buffer
   // needs to live in.
-  absl::StatusOr<BufferValue::Color> color() const {
-    // Invariant: All values in the buffer should have the same color.
-    BufferValue::Color result = values()[0]->color();
-    for (const HloValue* value : values()) {
-      if (result != value->color()) {
-        std::string details = absl::StrFormat(
-            "Not all HloValues in the HloBuffer have the same color. "
-            "Buffer id=%d has %d values:",
-            id(), values().size());
-        for (const HloValue* v : values()) {
-          absl::StrAppendFormat(&details, "\n  value %d color=%d defined at %s",
-                                v->id(), v->color(),
-                                v->defining_position().ToString());
-        }
-        return absl::FailedPreconditionError(details);
-      }
+  ABSL_ATTRIBUTE_ALWAYS_INLINE absl::StatusOr<BufferValue::Color> color()
+      const {
+    if (values_.size() == 1) {
+      return values_[0]->color();
     }
-    return result;
+    return ComputeColorSlowPath();
   }
 
   // Return the unique HLO value in the buffer. CHECK fails if the buffer does
@@ -160,6 +147,8 @@ class HloBuffer {
   bool operator!=(const HloBuffer& other) const { return !(*this == other); }
 
  private:
+  absl::StatusOr<BufferValue::Color> ComputeColorSlowPath() const;
+
   // Unique identifier for this HloBuffer.
   Id id_;
 

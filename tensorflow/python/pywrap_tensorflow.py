@@ -16,7 +16,7 @@
 
 import ctypes
 # importing hashlib to avoid a linkage issue. refer b/372709714
-import hashlib
+import hashlib  # pylint: disable=unused-import
 import os
 import sys
 import traceback
@@ -25,7 +25,7 @@ import traceback
 # TODO(vam): Override boringssl static linking by explicitly importing openssl
 # Please refer to b/304394983 for more information.
 try:
-  import ssl
+  import ssl  # pylint: disable=unused-import
 except ImportError:
   print(f'{traceback.format_exc()}')
   print('\nWarning: Failed to load ssl module. Continuing without ssl support.')
@@ -63,12 +63,6 @@ try:
     # override an RTLD_GLOBAL in _default_dlopen_flags).
     sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_LOCAL)
 
-  # Python2.7 does not have a ModuleNotFoundError.
-  try:
-    ModuleNotFoundError
-  except NameError:
-    ModuleNotFoundError = ImportError  # pylint: disable=redefined-builtin
-
   # pylint: disable=wildcard-import,g-import-not-at-top,line-too-long,undefined-variable
   try:
     from tensorflow.python._pywrap_tensorflow_internal import *
@@ -80,11 +74,16 @@ try:
   # This logic is used in other internal projects using py_extension.
   except ModuleNotFoundError:
     pass
-
-  if _use_dlopen_global_flags:
-    pywrap_dlopen_global_flags.reset_dlopen_flags()
-  elif _can_set_rtld_local:
-    sys.setdlopenflags(_default_dlopen_flags)
+  finally:
+    # Always restore the dlopen flags, even if the import above raised an
+    # ImportError that is not a ModuleNotFoundError (e.g. a genuine load
+    # failure). Otherwise a real failure here would leave the process's
+    # dlopen flags permanently altered for any caller that catches the
+    # resulting ImportError and keeps running.
+    if _use_dlopen_global_flags:
+      pywrap_dlopen_global_flags.reset_dlopen_flags()
+    elif _can_set_rtld_local:
+      sys.setdlopenflags(_default_dlopen_flags)
 except ImportError as exc:
   if os.name == 'nt':
     try:

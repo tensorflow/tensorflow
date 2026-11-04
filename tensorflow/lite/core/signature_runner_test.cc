@@ -16,13 +16,17 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
@@ -191,6 +195,77 @@ TEST(SignatureRunnerTest, TestPlaceholderSignaturesDefaultNames) {
   EXPECT_EQ(std::string(input_names[1]), "input1");
   ASSERT_EQ(output_names.size(), 1);
   EXPECT_EQ(std::string(output_names[0]), "output0");
+}
+
+TEST(SignatureRunnerTest, OutOfBoundsSignatureSubgraphAndTensorIndex) {
+  TestErrorReporter reporter;
+  std::unique_ptr<FlatBufferModel> base_model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/multi_signatures.bin", &reporter);
+  ASSERT_NE(base_model, nullptr);
+
+  std::unique_ptr<ModelT> unpacked_model(base_model->GetModel()->UnPack());
+  ASSERT_NE(unpacked_model, nullptr);
+  ASSERT_GE(unpacked_model->signature_defs.size(), 2);
+
+  // Set first signature's subgraph_index out of bounds.
+  unpacked_model->signature_defs[0]->subgraph_index = 99;
+  // Append out-of-bounds input and output tensor indices to the second
+  // signature while keeping its existing valid input ("x") and output
+  // ("output_0") tensor indices.
+  ASSERT_FALSE(unpacked_model->signature_defs[1]->inputs.empty());
+  ASSERT_FALSE(unpacked_model->signature_defs[1]->outputs.empty());
+  auto oob_input = std::make_unique<TensorMapT>();
+  oob_input->name = "oob_input";
+  oob_input->tensor_index = 99;
+  unpacked_model->signature_defs[1]->inputs.push_back(std::move(oob_input));
+
+  auto oob_output = std::make_unique<TensorMapT>();
+  oob_output->name = "oob_output";
+  oob_output->tensor_index = 99;
+  unpacked_model->signature_defs[1]->outputs.push_back(std::move(oob_output));
+
+  flatbuffers::FlatBufferBuilder fbb;
+  FinishModelBuffer(fbb, Model::Pack(fbb, unpacked_model.get()));
+
+  std::unique_ptr<FlatBufferModel> corrupted_model =
+      FlatBufferModel::BuildFromBuffer(
+          reinterpret_cast<const char*>(fbb.GetBufferPointer()), fbb.GetSize(),
+          &reporter);
+  ASSERT_NE(corrupted_model, nullptr);
+
+  ops::builtin::BuiltinOpResolver resolver;
+  InterpreterOptions options;
+  options.SetUseSignatureTensorNames(true);
+  InterpreterBuilder builder(*corrupted_model, resolver, &options);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ASSERT_NE(interpreter, nullptr);
+
+  EXPECT_EQ(interpreter->GetSignatureRunner("add"), nullptr);
+  EXPECT_EQ(interpreter->input_tensor_by_signature("x", "add"), nullptr);
+  EXPECT_EQ(interpreter->output_tensor_by_signature("output_0", "add"),
+            nullptr);
+
+  EXPECT_EQ(interpreter->input_tensor_by_signature("oob_input", "sub"),
+            nullptr);
+  EXPECT_EQ(interpreter->output_tensor_by_signature("oob_output", "sub"),
+            nullptr);
+  TfLiteTensor* valid_input =
+      interpreter->input_tensor_by_signature("x", "sub");
+  ASSERT_NE(valid_input, nullptr);
+  EXPECT_STREQ(valid_input->name, "x");
+  const TfLiteTensor* valid_output =
+      interpreter->output_tensor_by_signature("output_0", "sub");
+  ASSERT_NE(valid_output, nullptr);
+  EXPECT_STREQ(valid_output->name, "output_0");
+
+  SignatureRunner* sub_runner = interpreter->GetSignatureRunner("sub");
+  ASSERT_NE(sub_runner, nullptr);
+  EXPECT_EQ(sub_runner->input_tensor("oob_input"), nullptr);
+  EXPECT_EQ(sub_runner->output_tensor("oob_output"), nullptr);
+  EXPECT_EQ(sub_runner->input_tensor("x"), valid_input);
+  EXPECT_EQ(sub_runner->output_tensor("output_0"), valid_output);
 }
 
 }  // namespace

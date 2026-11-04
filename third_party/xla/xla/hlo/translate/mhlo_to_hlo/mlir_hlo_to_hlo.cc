@@ -3027,26 +3027,31 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     literal_ptr = &*literal;
   }
 
+  std::string call_target_name(op.getCallTargetName());
   auto aliasInfo = xla::ConvertOutputOperandAliasing<
       mlir::stablehlo::OutputOperandAliasAttr>(op.getOutputOperandAliases());
-  // Pin and Unpin are the boundary to transition into or out of a buffer
-  // chain and their operands and results are not different types. XLA/HLO
-  // requires alias info for Pin and Unpin custom calls, such as to support
-  // copy insertion to add the needed copies of the Pin operand and the Unpin
-  // result. We keep this detail within XLA/HLO and do not require StableHLO
-  // users to add alias of different types to theses custom calls.
-  if (absl::string_view(op.getCallTargetName()) ==
-          xla::kUnpinCustomCallTarget ||
-      absl::string_view(op.getCallTargetName()) == xla::kPinCustomCallTarget) {
+  if (!aliasInfo.ok()) {
+    return failure();
+  }
+  // Pin, Unpin, FanIn, and FanOut transition into, out of, or across buffer
+  // chains. FanIn aliases its single result to operand 0 ({{}: (0, {})}).
+  // FanOut aliases output 0 (anchor buffer) to operand 0 ({{0}: (0, {})}),
+  // leaving outputs 1..N unaliased so they can be precolored to kView.
+  if (call_target_name == xla::kUnpinCustomCallTarget ||
+      call_target_name == xla::kPinCustomCallTarget ||
+      call_target_name == xla::kFanInCustomCallTarget) {
     aliasInfo = {std::make_pair(
         xla::ShapeIndex(),
+        std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
+  } else if (call_target_name == xla::kFanOutCustomCallTarget) {
+    aliasInfo = {std::make_pair(
+        xla::ShapeIndex({0}),
         std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
   }
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
 
   auto custom_call_schedule = xla::SCHEDULE_NONE;
 
-  std::string call_target_name(op.getCallTargetName());
   xla::Shape result_shape;
   if (op->getNumResults() == 1) {
     result_shape = xla::TypeToShape(op.getResult(0).getType());
@@ -4176,29 +4181,6 @@ LogicalResult ExportXlaOp(RaggedDotOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
-LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
-  auto& valueMap = *ctx.values;
-
-  xla::Shape shape = xla::TypeToShape(op.getResult().getType());
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), valueMap, &operand, op))) {
-    return failure();
-  }
-
-  auto entry = xla::ConvertSharding(op.getEntryMetadata());
-  if (!entry) {
-    return failure();
-  }
-  auto exit = xla::ConvertSharding(op.getExitMetadata());
-  if (!exit) {
-    return failure();
-  }
-
-  valueMap[op] = xla::internal::XlaBuilderFriend::BuildDomain(
-      ctx.builder, operand, *exit, *entry, shape);
-  return success();
-}
-
 LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   llvm::SmallVector<xla::XlaOp> args;
@@ -4596,15 +4578,25 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     literal_ptr = &*literal;
   }
 
+  std::string call_target_name(op.getCallTargetName());
   auto aliasInfo =
       xla::ConvertOutputOperandAliasing<mlir::mhlo::OutputOperandAliasAttr>(
           op.getOutputOperandAliases());
-  // XLA/HLO requires alias info for Pin and Unpin custom calls.
-  if (absl::string_view(op.getCallTargetName()) ==
-          xla::kUnpinCustomCallTarget ||
-      absl::string_view(op.getCallTargetName()) == xla::kPinCustomCallTarget) {
+  if (!aliasInfo.ok()) {
+    return failure();
+  }
+  // XLA/HLO requires alias info for Pin, Unpin, FanIn, and FanOut custom calls.
+  // FanIn aliases its single result to operand 0 ({{}: (0, {})}).
+  // FanOut aliases output 0 (anchor buffer) to operand 0 ({{0}: (0, {})}).
+  if (call_target_name == xla::kUnpinCustomCallTarget ||
+      call_target_name == xla::kPinCustomCallTarget ||
+      call_target_name == xla::kFanInCustomCallTarget) {
     aliasInfo = {std::make_pair(
         xla::ShapeIndex(),
+        std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
+  } else if (call_target_name == xla::kFanOutCustomCallTarget) {
+    aliasInfo = {std::make_pair(
+        xla::ShapeIndex({0}),
         std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
   }
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
@@ -4614,7 +4606,6 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  std::string call_target_name(op.getCallTargetName());
   xla::Shape result_shape;
   if (op->getNumResults() == 1) {
     result_shape = xla::TypeToShape(op.getResult(0).getType());
@@ -4823,6 +4814,19 @@ LogicalResult ExportXlaOp(BitcastOp op, OpLoweringContext ctx) {
 
 template <typename Op,
           xla::XlaOp OpFunc(xla::XlaOp,
+                            const std::optional<xla::ResultAccuracy>&)>
+LogicalResult ExportElementwiseXlaOp(Op op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
+    return failure();
+  }
+  value_map[op] = OpFunc(operand, /*result_accuracy=*/std::nullopt);
+  return success();
+}
+
+template <typename Op,
+          xla::XlaOp OpFunc(xla::XlaOp,
                             const std::optional<xla::ResultAccuracy>&, bool)>
 LogicalResult ExportElementwiseXlaOp(Op op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
@@ -4836,26 +4840,13 @@ LogicalResult ExportElementwiseXlaOp(Op op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(AsinOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
-    return failure();
-  }
-  value_map[op] =
-      xla::Asin(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
-  return success();
+  return ExportElementwiseXlaOp<AsinOp, xla::Asin>(op, ctx);
 }
 
 LogicalResult ExportXlaOp(AsinhOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
-    return failure();
-  }
-  value_map[op] =
-      xla::Asinh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
-  return success();
+  return ExportElementwiseXlaOp<AsinhOp, xla::Asinh>(op, ctx);
 }
+
 LogicalResult ExportXlaOp(MulhiOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs;
@@ -4875,25 +4866,11 @@ LogicalResult ExportXlaOp(AcosOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(CoshOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
-    return failure();
-  }
-  value_map[op] =
-      xla::Cosh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
-  return success();
+  return ExportElementwiseXlaOp<CoshOp, xla::Cosh>(op, ctx);
 }
 
 LogicalResult ExportXlaOp(SinhOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
-    return failure();
-  }
-  value_map[op] =
-      xla::Sinh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
-  return success();
+  return ExportElementwiseXlaOp<SinhOp, xla::Sinh>(op, ctx);
 }
 
 LogicalResult ExportXlaOp(AcoshOp op, OpLoweringContext ctx) {

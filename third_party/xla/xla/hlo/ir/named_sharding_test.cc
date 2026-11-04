@@ -574,8 +574,8 @@ TEST(NamedShardingTest, NumDevices) {
   NamedSharding sharding(mesh, {});
   EXPECT_EQ(sharding.num_devices(), 2 * 4 * 3 * 8);
 
-  Mesh maximal_mesh(5);
-  NamedSharding single_device_sharding(maximal_mesh);
+  Mesh single_device_mesh(5);
+  NamedSharding single_device_sharding(single_device_mesh);
   EXPECT_EQ(single_device_sharding.num_devices(), 1);
 
   Mesh empty_mesh;
@@ -863,7 +863,7 @@ TEST(NamedShardingTest, NamedShardingProtoConversion) {
   EXPECT_EQ(sharding, from_proto);
 }
 
-TEST(NamedShardingPredicatesTest, HasPartialReplication_Maximal) {
+TEST(NamedShardingPredicatesTest, HasPartialReplication_SingleDevice) {
   EXPECT_FALSE(NamedSharding(Mesh(5)).HasPartialReplication());
 }
 

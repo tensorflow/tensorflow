@@ -45,6 +45,16 @@ class SliceTester {
 
   inline const std::vector<int32_t>& InputShape() const { return input_shape_; }
 
+  inline SliceTester& InputShapeSignature(
+      const std::vector<int32_t>& shape_signature) {
+    input_shape_signature_ = shape_signature;
+    return *this;
+  }
+
+  inline const std::vector<int32_t>& InputShapeSignature() const {
+    return input_shape_signature_;
+  }
+
   inline SliceTester& Offsets(const std::vector<int32_t>& offsets) {
     offsets_ = std::vector<int32_t>(offsets);
     offsets_int64_.resize(offsets.size());
@@ -52,7 +62,17 @@ class SliceTester {
     return *this;
   }
 
+  inline SliceTester& OffsetsInt64(const std::vector<int64_t>& offsets) {
+    offsets_int64_ = offsets;
+    use_int64_offsets_and_sizes_ = true;
+    return *this;
+  }
+
   inline const std::vector<int32_t> Offsets() const { return offsets_; }
+
+  inline size_t OffsetsCount() const {
+    return UseInt64OffsetsAndSize() ? offsets_int64_.size() : offsets_.size();
+  }
 
   inline const void* OffsetsData() const {
     return UseInt64OffsetsAndSize() ? (void*)offsets_int64_.data()
@@ -61,7 +81,7 @@ class SliceTester {
 
   inline const size_t OffsetsSizeInBytes() const {
     if (use_int64_offsets_and_sizes_) {
-      return Offsets().size() * sizeof(int64_t);
+      return offsets_int64_.size() * sizeof(int64_t);
     } else {
       return Offsets().size() * sizeof(int32_t);
     }
@@ -71,16 +91,29 @@ class SliceTester {
     sizes_ = std::vector<int32_t>(sizes);
     sizes_int64_.resize(sizes.size());
     std::copy(sizes_.begin(), sizes_.end(), sizes_int64_.begin());
-    output_shape_ = std::vector<int32_t>(sizes);
-    for (size_t i = 0; i < sizes.size(); i++) {
-      if (output_shape_[i] < 0) {
-        output_shape_[i] = input_shape_[i] - offsets_[i];
+    if (!has_explicit_output_shape_) {
+      output_shape_ = std::vector<int32_t>(sizes);
+      for (size_t i = 0; i < sizes.size(); i++) {
+        if (output_shape_[i] < 0 && i < input_shape_.size() &&
+            i < offsets_.size()) {
+          output_shape_[i] = input_shape_[i] - offsets_[i];
+        }
       }
     }
     return *this;
   }
 
+  inline SliceTester& SizesInt64(const std::vector<int64_t>& sizes) {
+    sizes_int64_ = sizes;
+    use_int64_offsets_and_sizes_ = true;
+    return *this;
+  }
+
   inline const std::vector<int32_t> Sizes() const { return sizes_; }
+
+  inline size_t SizesCount() const {
+    return UseInt64OffsetsAndSize() ? sizes_int64_.size() : sizes_.size();
+  }
 
   inline const void* SizesData() const {
     return UseInt64OffsetsAndSize() ? (void*)sizes_int64_.data()
@@ -89,10 +122,16 @@ class SliceTester {
 
   inline const size_t SizesSizeInBytes() const {
     if (use_int64_offsets_and_sizes_) {
-      return Sizes().size() * sizeof(int64_t);
+      return sizes_int64_.size() * sizeof(int64_t);
     } else {
       return Sizes().size() * sizeof(int32_t);
     }
+  }
+
+  inline SliceTester& OutputShape(const std::vector<int32_t>& shape) {
+    output_shape_ = shape;
+    has_explicit_output_shape_ = true;
+    return *this;
   }
 
   std::vector<int32_t> OutputShape() const { return output_shape_; }
@@ -118,6 +157,7 @@ class SliceTester {
   }
 
   void Test(TensorType tensor_type, TfLiteDelegate* delegate) const;
+  void TestUnsupported(TensorType tensor_type, TfLiteDelegate* delegate) const;
   template <typename T>
   void Test(Interpreter* default_interpreter,
             Interpreter* delegate_interpreter) const;
@@ -126,11 +166,13 @@ class SliceTester {
   std::vector<char> CreateTfLiteModel(TensorType tensor_type) const;
 
   std::vector<int32_t> input_shape_;
+  std::vector<int32_t> input_shape_signature_;
   std::vector<int32_t> offsets_;
   std::vector<int64_t> offsets_int64_;
   std::vector<int32_t> sizes_;
   std::vector<int64_t> sizes_int64_;
   std::vector<int32_t> output_shape_;
+  bool has_explicit_output_shape_ = false;
   bool use_int64_offsets_and_sizes_ = false;
   std::vector<std::vector<int32_t>> reshape_input_shapes_;
   bool require_delegation_ = false;

@@ -75,26 +75,48 @@ inline TfLiteStatus ReadAndNormalizeAxis(TfLiteContext* context,
 // Computes the product of tensor dimensions in the half-open range
 // [begin, end). Validates that the range is within the tensor rank, every
 // dimension in the range is non-negative, and every intermediate product fits
-// int. The intermediate overflow check is intentional: kernels that loop over
-// this product can otherwise overflow even when a later zero dimension would
-// make the final tensor element count zero.
+// `T` (e.g. `int` or `size_t`). The intermediate overflow check is intentional:
+// kernels that loop over this product can otherwise overflow even when a later
+// zero dimension would make the final tensor element count zero.
+template <typename T>
 inline TfLiteStatus CheckedDimensionProduct(TfLiteContext* context,
                                             const TfLiteTensor& tensor,
-                                            int begin, int end, int& product) {
+                                            int begin, int end, T& product) {
+  TF_LITE_ENSURE(context, tensor.dims != nullptr);
   TF_LITE_ENSURE(context, begin >= 0);
   TF_LITE_ENSURE(context, end >= begin);
   TF_LITE_ENSURE(context, end <= NumDimensions(&tensor));
 
-  CheckedInt<int> checked_product = 1;
+  CheckedInt<T> checked_product = 1;
   for (int i = begin; i < end; ++i) {
     const int dim = SizeOfDimension(&tensor, i);
     TF_LITE_ENSURE(context, dim >= 0);
     checked_product *= dim;
     TF_LITE_ENSURE_MSG(context, !checked_product.Overflow(),
-                       "Dimension product overflows int.");
+                       "Dimension product overflowed.");
   }
   product = checked_product.Value();
   return kTfLiteOk;
+}
+
+// Resizes `output` to `[lookup.dims[0], value.dims[1], ...]` for axis-0 lookup
+// kernels (`EMBEDDING_LOOKUP`, `HASHTABLE_LOOKUP`). Validates that `lookup` has
+// rank 1 and `value` has rank >= 1.
+inline TfLiteStatus ResizeLookupOutputTensor(TfLiteContext* context,
+                                             const TfLiteTensor& lookup,
+                                             const TfLiteTensor& value,
+                                             TfLiteTensor* output) {
+  TF_LITE_ENSURE(context, output != nullptr);
+  TF_LITE_ENSURE(context, lookup.dims != nullptr);
+  TF_LITE_ENSURE(context, value.dims != nullptr);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(&lookup), 1);
+  TF_LITE_ENSURE(context, NumDimensions(&value) >= 1);
+  TfLiteIntArray* output_size = TfLiteIntArrayCreate(NumDimensions(&value));
+  output_size->data[0] = SizeOfDimension(&lookup, 0);
+  for (int i = 1; i < NumDimensions(&value); ++i) {
+    output_size->data[i] = SizeOfDimension(&value, i);
+  }
+  return context->ResizeTensor(context, output, output_size);
 }
 
 // Gets the checked element count for `tensor` and validates that its data

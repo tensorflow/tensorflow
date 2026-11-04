@@ -70,12 +70,13 @@ namespace sdy = ::mlir::sdy;
 // is a local tensor carries the manual axes in its `xla.sdy.manual_axes`
 // attribute and the remaining axes in its dimension shardings.
 sdy::TensorShardingPerValueAttr localizeShardings(
-    sdy::TensorShardingPerValueAttr shardings,
-    mlir::ArrayRef<mlir::StringAttr> manualAxes, mlir::MLIRContext* context) {
+    sdy::TensorShardingPerValueAttr shardings, sdy::ManualAxesAttr manualAxes,
+    const mlir::SymbolTable& symbolTable, mlir::MLIRContext* context) {
   llvm::SmallVector<sdy::TensorShardingAttr> localShardings;
   localShardings.reserve(shardings.size());
   for (sdy::TensorShardingAttr sharding : shardings.getShardings()) {
-    localShardings.push_back(sdy::eraseManualAxes(sharding, manualAxes));
+    localShardings.push_back(sdy::eraseManualAxes(
+        sharding, manualAxes.getValue(), sharding.getMesh(symbolTable)));
   }
   return sdy::TensorShardingPerValueAttr::get(context, localShardings);
 }
@@ -166,8 +167,9 @@ class SdyRoundTripShardMapExportPass
         if (enableHloShardingV3) {
           globalToLocalShape->setAttr(
               mlir::sdy::kShardingAttr,
-              localizeShardings(inShardings, manualComputation.getManualAxes(),
-                                moduleOp.getContext()));
+              localizeShardings(inShardings,
+                                manualComputation.getManualAxesAttr(),
+                                symbolTable, moduleOp.getContext()));
           globalToLocalShape->setAttr(kManualAxes,
                                       manualComputation.getManualAxesAttr());
         } else {
@@ -193,10 +195,10 @@ class SdyRoundTripShardMapExportPass
         // of the out shardings together with the manual axes. This is also the
         // only carrier of the manual axes when the manual computation has no
         // operands, i.e. when there is no `xla.sdy.GlobalToLocalShape`.
-        callOp->setAttr(
-            mlir::sdy::kShardingAttr,
-            localizeShardings(outShardings, manualComputation.getManualAxes(),
-                              moduleOp.getContext()));
+        callOp->setAttr(mlir::sdy::kShardingAttr,
+                        localizeShardings(outShardings,
+                                          manualComputation.getManualAxesAttr(),
+                                          symbolTable, moduleOp.getContext()));
         callOp->setAttr(kManualAxes, manualComputation.getManualAxesAttr());
       }
 

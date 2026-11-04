@@ -75,6 +75,13 @@ TEST(RocmComputeCapability, IsSupportedGfxVersion) {
   ASSERT_TRUE(RocmComputeCapability{"gfx1201"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx942"}.is_supported_gfx_version());
   ASSERT_TRUE(RocmComputeCapability{"gfx1250"}.is_supported_gfx_version());
+  ASSERT_TRUE(RocmComputeCapability{"gfx1102"}.is_supported_gfx_version());
+  ASSERT_TRUE(RocmComputeCapability{"gfx1152"}.is_supported_gfx_version());
+  ASSERT_TRUE(RocmComputeCapability{"gfx1153"}.is_supported_gfx_version());
+  ASSERT_TRUE(
+      RocmComputeCapability{"gfx1152:xnack-"}.is_supported_gfx_version());
+  ASSERT_TRUE(
+      RocmComputeCapability{"gfx1250-strict"}.is_supported_gfx_version());
   ASSERT_FALSE(RocmComputeCapability{"some_string"}.is_supported_gfx_version());
 }
 
@@ -123,19 +130,38 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_TRUE(RocmComputeCapability{"gfx1200"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1100"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1103"}.has_hipblaslt());
-  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1102"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1152"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1153"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1102"}.gfx11_discrete());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1152"}.gfx11_apu());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1153"}.gfx11_apu());
+  EXPECT_FALSE(RocmComputeCapability{"gfx1152"}.gfx11_discrete());
 
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_hipblaslt());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250-strict"}.has_hipblaslt());
   EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_nhwc_layout_support());
+  EXPECT_FALSE(
+      RocmComputeCapability{"gfx1250-strict"}.has_nhwc_layout_support());
   EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_fast_fp16_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250-strict"}.has_fast_fp16_support());
   EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_mfma_instr_support());
+  EXPECT_FALSE(
+      RocmComputeCapability{"gfx1250-strict"}.has_mfma_instr_support());
   EXPECT_TRUE(
       RocmComputeCapability{"gfx1250"}.has_packed_fp16_atomics_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250-strict"}
+                  .has_packed_fp16_atomics_support());
   EXPECT_TRUE(
       RocmComputeCapability{"gfx1250"}.has_packed_bf16_atomics_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250-strict"}
+                  .has_packed_bf16_atomics_support());
   EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_ocp_fp8_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250-strict"}.has_ocp_fp8_support());
   EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_mx_type_support());
-
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250-strict"}.has_mx_type_support());
   EXPECT_TRUE(RocmComputeCapability{"gfx1250"}.has_tdm_support());
+  EXPECT_TRUE(RocmComputeCapability{"gfx1250-strict"}.has_tdm_support());
   EXPECT_FALSE(RocmComputeCapability{"gfx942"}.has_tdm_support());
   EXPECT_FALSE(RocmComputeCapability{"gfx1201"}.has_tdm_support());
 
@@ -145,6 +171,8 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_FALSE(RocmComputeCapability{"gfx908"}.has_peer_visible_atomics());
   EXPECT_FALSE(RocmComputeCapability{"gfx1201"}.has_peer_visible_atomics());
   EXPECT_FALSE(RocmComputeCapability{"gfx1250"}.has_peer_visible_atomics());
+  EXPECT_FALSE(
+      RocmComputeCapability{"gfx1250-strict"}.has_peer_visible_atomics());
 }
 
 TEST(GpuComputeCapability, ProtoConversion) {
@@ -210,6 +238,22 @@ TEST(DeviceDescription, ProtoConversion) {
       DeviceDescription from_proto,
       DeviceDescription::FromProto(device_description.ToProto()));
   EXPECT_THAT(from_proto, Eq(device_description));
+}
+
+TEST(DeviceDescription, LocalityDomainCountProtoAndEquality) {
+  DeviceDescription device_description;
+  device_description.set_locality_domain_count(2);
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription from_proto,
+      DeviceDescription::FromProto(device_description.ToProto()));
+  EXPECT_EQ(from_proto.locality_domain_count(), 2);
+  EXPECT_EQ(from_proto, device_description);
+
+  DeviceDescription other = device_description;
+  other.set_locality_domain_count(3);
+  EXPECT_NE(other, device_description);
+  EXPECT_FALSE(other.EqualsTo(device_description,
+                              {DeviceDescription::CompareOptions::kPortable}));
 }
 
 TEST(DeviceDescription, EqualsToIgnoringVersionNumbers) {

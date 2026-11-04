@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_H_
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_H_
 
-#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -33,74 +32,51 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Element types supported by the Triton all-gather kernel.
-// Complex types, tokens, tuples, and exotic types (e.g. 4-bit integers, 8-bit
-// floats) are not supported.
-inline constexpr auto kSupportedAllGatherTypes =
-    std::array{PRED, F16, BF16, F32, F64, S8, S16, S32, S64, U8, U16, U32, U64};
+// Returns the element types supported by the Triton all-gather kernel: all
+// Triton-supported data types that are not sub-byte types (except PRED).
+std::vector<PrimitiveType> SupportedAllGatherTypes(
+    const se::GpuComputeCapability& gpu_cc);
 
 // Maximum number of GPU thread-blocks launched per all-gather kernel.
 // This number is set by picking the max number of blocks for all reduce and
 // scaling it because the outputs are bigger for all-gather.
 // The number is somewhat arbitrary and should be revisited.
-inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 64;
+inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 128;
 
 // Optimal threshold for one-shot all-gather in bytes for the collective kernel,
 // applied to the gathered output buffer size.
 // Base on the experimental results.
-inline constexpr int64_t kMaxAllGatherSizeBytes = 16 * 1024 * 1024;  // 16 MB
+inline constexpr int64_t kMaxAllGatherSizeBytes = 32 * 1024 * 1024;  // 32 MB
+
+// Maximum number of operands supported by the variadic Triton all-gather
+// kernel.
+inline constexpr int64_t kAllGatherMaxNumOperands = 16;
 
 // Encapsulates the information needed to perform an all-gather via the Triton
 // collective kernel backend.
 struct AllGatherInfo {
   int64_t num_devices;
-  int64_t num_elements;
-  PrimitiveType element_type;
+  int64_t max_output_elements;
 };
-
-// Returns absl::OkStatus() if the all-gather kernel is supported for the given
-// element type, per-rank input element count, and number of devices, or an
-// error status detailing why it is not supported.
-absl::Status IsAllGatherKernelSupported(int64_t num_elements,
-                                        int64_t num_devices,
-                                        PrimitiveType element_type);
-
-// A broader check for all-gather kernel support that verifies device, operand
-// count, replica group, gather dimension, and element-type constraints.
-// Returns absl::OkStatus() if supported, or an absl::UnimplementedError
-// explaining why not.
-absl::Status IsAllGatherKernelSupported(
-    bool is_collective_kernel_enabled, const se::DeviceDescription& device_info,
-    int32_t num_operands, int64_t num_devices, int64_t num_elements,
-    int64_t per_rank_gather_dim_size, PrimitiveType element_type, bool is_local,
-    const std::vector<ReplicaGroup>& replica_groups);
 
 // Constructs an AllGatherInfo object for the given all-gather instruction.
 // Returns absl::UnimplementedError if the Triton all-gather kernel is not
 // supported for this instruction's configuration.
 absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
-    bool is_collective_kernel_enabled, const GpuTopology& gpu_topology,
-    const HloAllGatherInstruction* all_gather,
+    const GpuTopology& gpu_topology, const HloAllGatherInstruction* all_gather,
     const DeviceAssignment* device_assignment);
 
-// Returns the launch dimensions for the all-gather kernel.
-// All-gather uses a one-shot strategy: each rank contributes its local slice
-// to the symmetric buffer and then reads each peer's slice.
-// warp_size should be device_description.threads_per_warp() (32 on NVIDIA,
-// 64 on AMD) so that the thread count is a multiple of the hardware warp.
-LaunchDimensions AllGatherLaunchDimensions(
-    int64_t elements, int64_t num_ranks,
-    const se::DeviceDescription& device_info);
-
 // Creates a CollectiveKernelSpec describing the resource requirements of a
-// Triton all-gather kernel.  The kernel argument layout matches all-reduce:
-//   [0] local input buffer (kInputBuffer, index 0)
-//   [1] output buffer (kOutputBuffer, index 0)
-//   [2] runtime rank  (kRuntimeRank)
-//   [3] invocation count (kInvocationCount)
-//   [4] signal flags (kScratchBuffer, index 0)
-//   [5] remote scratch buffer pointer table (kScratchBuffer, index 1)
-// `scratch_memory_type` is used for both scratch buffers.
+// Triton all-gather kernel with N operands. The kernel argument layout matches
+// all-reduce:
+//   [0, N)      local input buffers (kInputBuffer, index i)
+//   [N, 2N)     output buffers (kOutputBuffer, index i)
+//   [2N]        runtime rank  (kRuntimeRank)
+//   [2N + 1]    invocation count (kInvocationCount)
+//   [2N + 2]    signal flags (kScratchBuffer, index 0)
+//   [2N + 3 + i] remote scratch buffer pointer table of operand i
+//               (kScratchBuffer, index 1 + i)
+// `scratch_memory_type` is used for all scratch buffers.
 absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
     const HloInstruction* instr, const LaunchDimensions& launch_dimensions,
     SymmetricMemoryType scratch_memory_type);

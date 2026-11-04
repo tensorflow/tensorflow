@@ -1,6 +1,7 @@
-load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/pjrt/cpu:package_groups.bzl", "xla_cpu_internal_packages")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "if_include_google_deps")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -186,8 +187,6 @@ cc_library(
         "//xla:executable_run_options",
         "//xla:future",
         "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -204,18 +203,18 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
-        "//xla/pjrt:async_work_runner",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:compiled_memory_stats",
         "//xla/pjrt:device_event",
         "//xla/pjrt:dynamic_shapes",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:host_memory_spaces",
+        "//xla/pjrt:infer_dispatch_info",
         "//xla/pjrt:layout_mode",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:raw_buffer",
@@ -232,6 +231,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/runtime:chip_id",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
         "//xla/service:compiled_module",
@@ -246,7 +246,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
         "//xla/service:maybe_owning_device_address",
-        "//xla/service/cpu:cpu_compiler",
+        "//xla/service/cpu:cpu_compiler_pure",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_executable_run_options",
         "//xla/service/cpu:cpu_xfeed",
@@ -279,10 +279,11 @@ cc_library(
         "@riegeli//riegeli/messages:parse_message",
         "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:fingerprint",
-        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:setround",
         "@tsl//tsl/profiler/lib:traceme",
-    ],
+    ] + if_include_google_deps(
+        xla_internal(["//xla/service/cpu/google:export_hlo"]),
+    ),
     alwayslink = True,
 )
 
@@ -299,7 +300,6 @@ xla_cc_test(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/ffi",
-        "//xla/ffi:ffi_api",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
         "//xla/mlir_hlo",
@@ -308,7 +308,10 @@ xla_cc_test(
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:strided_gather",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:cpu_execute_options",
         "//xla/pjrt/plugin/xla_cpu:cpu_memory",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
         "//xla/service:hlo_proto_cc",
@@ -328,7 +331,9 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@com_google_benchmark//:benchmark",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

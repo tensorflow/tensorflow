@@ -131,10 +131,13 @@ func.func @slice_variable_start_negsize(%arg0: tensor<3x4xi32>, %arg1: tensor<2x
   // CHECK-NEXT: %16 = mhlo.reshape %15 : (tensor<1xi32>) -> tensor<i32>
   // CHECK-NEXT: %17 = "mhlo.dynamic_slice"(%12, %14, %16) <{slice_sizes = dense<[3, 4]> : tensor<2xi64>}> : (tensor<6x8xi32>, tensor<i32>, tensor<i32>) -> tensor<3x4xi32>
   // CHECK-NEXT: %18 = "mhlo.slice"(%17) <{limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}> : (tensor<3x4xi32>) -> tensor<1x4xi32>
-  // CHECK-NEXT: %19 = mhlo.constant dense<4> : tensor<i32>
-  // CHECK-NEXT: %20 = mhlo.subtract %19, %16 : tensor<i32>
-  // CHECK-NEXT: %21 = "mhlo.set_dimension_size"(%18, %20) <{dimension = 1 : i64}> : (tensor<1x4xi32>, tensor<i32>) -> tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>
-  // CHECK-NEXT: %cast = tensor.cast %21 : tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>> to tensor<1x4xi32>
+  // CHECK-NEXT: %19 = mhlo.constant dense<0> : tensor<i32>
+  // CHECK-NEXT: %20 = mhlo.constant dense<4> : tensor<i32>
+  // CHECK-NEXT: %21 = mhlo.subtract %20, %16 : tensor<i32>
+  // CHECK-NEXT: %22 = mhlo.constant dense<4> : tensor<i32>
+  // CHECK-NEXT: %23 = mhlo.clamp %19, %21, %22 : tensor<i32>
+  // CHECK-NEXT: %24 = "mhlo.set_dimension_size"(%18, %23) <{dimension = 1 : i64}> : (tensor<1x4xi32>, tensor<i32>) -> tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>
+  // CHECK-NEXT: %cast = tensor.cast %24 : tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>> to tensor<1x4xi32>
   // CHECK-NEXT: return %cast : tensor<1x4xi32>
   %sizes = "tf.Const"() {value = dense<[1, -1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
   %0 = "tf.Slice"(%arg0, %arg1, %sizes) : (tensor<3x4xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x4xi32>

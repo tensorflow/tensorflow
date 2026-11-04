@@ -163,11 +163,13 @@ tsl_pybind_extension(
         ":mlir_kernel_emitter",
         # placeholder for index annotation deps  # buildcleaner: keep
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@nanobind",
         "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
+        "//xla/backends/cpu/codegen:computation_kernel_arguments",
         "//xla/backends/cpu/codegen:computation_kernel_emitter",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:fusion_emitter",

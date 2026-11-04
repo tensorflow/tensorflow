@@ -268,12 +268,6 @@ absl::Status CpuExecutable::ExecuteThunks(
   ABSL_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
                    Thunk::CustomCallExecuteParams::Create(run_options));
 
-  // Prepare for executing YNNPACK fusions.
-  std::optional<Thunk::YnnParams> ynn_params;
-  if (has_ynn_fusions()) {
-    ABSL_ASSIGN_OR_RETURN(ynn_params, Thunk::YnnParams::Create(run_options));
-  }
-
   // Use the intra-op thread pool to offload thunk executor tasks.
   auto* intra_op_thread_pool =
       run_options ? run_options->intra_op_thread_pool() : nullptr;
@@ -284,7 +278,6 @@ absl::Status CpuExecutable::ExecuteThunks(
       &*function_library_, &allocations,
       GetXfeedManager(GetDeviceOrdinal(run_options)), intra_op_thread_pool,
       &task_runner, &collective_execute_params, &custom_call_execute_params,
-      ynn_params ? &*ynn_params : nullptr,
       /*run_id=*/-1,
       /*device_ordinal=*/GetDeviceOrdinal(run_options),
       /*session=*/

@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
+#include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -97,7 +98,8 @@ TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
         std::unique_ptr<Thunk> thunk,
         kernel_compiler
             .Compile(thunk_info, std::move(kernel_source),
-                     absl::StrCat("kernel", i), kernel_arguments, dimensions)
+                     GpuKernelSpec(absl::StrCat("kernel", i), dimensions,
+                                   kernel_arguments))
             .Await());
   }
 

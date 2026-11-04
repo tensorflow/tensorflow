@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
@@ -63,25 +64,29 @@ std::unique_ptr<ProfilerPasses> ProfilerPasses::Create(
 }
 
 absl::Status ProfilerPasses::Status() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   return status_;
 }
 
-bool ProfilerPasses::NeedMorePasses() {
-  absl::MutexLock l(&mutex_);
-  if (!status_.ok()) return false;
+absl::StatusOr<bool> ProfilerPasses::NeedMorePasses() {
+  absl::MutexLock l(mutex_);
+  if (!status_.ok()) return status_;
 #if !defined(IS_MOBILE_PLATFORM)
   if (multi_pass_profiler_ == nullptr) {
     return false;
   }
-  return multi_pass_profiler_->NeedMorePasses();
+  absl::StatusOr<bool> need_more = multi_pass_profiler_->NeedMorePasses();
+  if (!need_more.ok()) {
+    status_ = need_more.status();
+  }
+  return need_more;
 #else
   return false;
 #endif
 }
 
 absl::Status ProfilerPasses::StartPass() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 #if !defined(IS_MOBILE_PLATFORM)
   if (!status_.ok()) {
     return absl::InternalError("Previous operations failed");
@@ -119,7 +124,7 @@ absl::Status ProfilerPasses::StartPass() {
 }
 
 absl::Status ProfilerPasses::PushRange(absl::string_view name) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   if (!status_.ok()) {
     return status_;
   }
@@ -132,7 +137,7 @@ absl::Status ProfilerPasses::PushRange(absl::string_view name) {
 }
 
 absl::Status ProfilerPasses::PopRange() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   if (!status_.ok()) {
     return status_;
   }
@@ -145,7 +150,7 @@ absl::Status ProfilerPasses::PopRange() {
 }
 
 absl::Status ProfilerPasses::StopPass() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 #if !defined(IS_MOBILE_PLATFORM)
   if (pass_count_ == 1) {
     first_pass_stop_time_ns_ = profiler::GetCurrentTimeNanos();
@@ -159,7 +164,7 @@ absl::Status ProfilerPasses::StopPass() {
 
 #if !defined(IS_MOBILE_PLATFORM)
 absl::Status ProfilerPasses::CollectDataInternal(XSpace* space) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   VLOG(3) << "Profiler passes collecting data.";
   if (multi_pass_profiler_ != nullptr) {
     multi_pass_profiler_->Stop().IgnoreError();

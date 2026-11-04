@@ -97,6 +97,8 @@ TEST_F(AsyncSignatureRunnerTest, WrongSignatureKeyTest) {
                  {{"output", 1}}, 1);
   signature_runner_ = interpreter_->GetAsyncSignatureRunner(nullptr);
   EXPECT_EQ(nullptr, signature_runner_);
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner(kSignatureKey);
+  EXPECT_EQ(nullptr, signature_runner_);
 }
 
 TEST_F(AsyncSignatureRunnerTest, InputsTest) {

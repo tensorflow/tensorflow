@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Attributes.h"
@@ -42,9 +43,14 @@ std::unique_ptr<llvm::Module> ParseEmbeddedBitcode(
     llvm::LLVMContext& context, const std::string& bitcode,
     absl::string_view source_name = "embedded_module");
 
-// Returns true if the Eigen C++ intrinsics were compiled and are available.
+// Returns true if the C++ bitcode intrinsics were compiled and are available.
 // If the compiler does not support vector extensions, this will return false.
 bool AreEigenIntrinsicsAvailable(absl::string_view features = "");
+bool AreCppGenIntrinsicsAvailable();
+
+class CppGenIntrinsicLibrary;
+std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
+    const intrinsics::IntrinsicOptions& options);
 
 // Helper for Intrinsic<T> classes that use CppGen backend for some types.
 // Looks up a function by name in the module (assuming it was linked from

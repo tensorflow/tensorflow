@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>

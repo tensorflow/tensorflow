@@ -21,6 +21,7 @@ limitations under the License.
 #include "triton/Dialect/Triton/IR/Dialect.h"
 // Above header needs to be included first to avoid 'major' macro collision.
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
+#include "triton/Dialect/Triton/IR/Utility.h"
 
 namespace mlir::triton::xla {
 
@@ -104,6 +106,9 @@ struct CollapsedOpData {
   SmallVector<int64_t> sizes;
   SmallVector<int64_t> strides;
   SmallVector<OpFoldResult> offsets;
+  // For each dimension of the collapsed op, stores the original logical
+  // dimensions that were merged into it in major-to-minor order.
+  SmallVector<SmallVector<int64_t>> dim_groups;
 };
 
 // If the minor-most dimensions are contiguous in memory, returns the shape with
@@ -115,8 +120,8 @@ struct CollapsedOpData {
 // only use 64-bit wide loads/stores even though memory layout would allow for
 // 128-bit ones.
 std::optional<CollapsedOpData> CollapseContiguousMinorDims(
-    PatternRewriter& rewriter, Location loc, ArrayRef<int64_t> orig_shape,
-    ArrayRef<int64_t> orig_layout, ArrayRef<int64_t> orig_sizes,
+    PatternRewriter& rewriter, Location loc, ArrayRef<int64_t> memref_shape,
+    ArrayRef<int64_t> memref_layout, ArrayRef<int64_t> unreduced_tile_sizes,
     ArrayRef<int64_t> orig_strides, ArrayRef<OpFoldResult> orig_offsets,
     RankedTensorType tile_type) {
   Type elem_type = tile_type.getElementType();
@@ -129,11 +134,15 @@ std::optional<CollapsedOpData> CollapseContiguousMinorDims(
   }
   int64_t bit_width = elem_type.getIntOrFloatBitWidth();
 
-  SmallVector<int64_t> shape = to_vector(orig_shape);
-  SmallVector<int64_t> layout = to_vector(orig_layout);
-  SmallVector<int64_t> sizes = to_vector(orig_sizes);
+  SmallVector<int64_t> shape = to_vector(memref_shape);
+  SmallVector<int64_t> layout = to_vector(memref_layout);
+  SmallVector<int64_t> sizes = to_vector(unreduced_tile_sizes);
   SmallVector<int64_t> strides = to_vector(orig_strides);
   SmallVector<OpFoldResult> offsets = to_vector(orig_offsets);
+  SmallVector<SmallVector<int64_t>> dim_groups(memref_shape.size());
+  for (int64_t i = 0; i < static_cast<int64_t>(memref_shape.size()); ++i) {
+    dim_groups[i] = {i};
+  }
 
   bool collapsed_any = false;
   for (int64_t current_rank = shape.size(); current_rank >= 2; --current_rank) {
@@ -141,13 +150,6 @@ std::optional<CollapsedOpData> CollapseContiguousMinorDims(
     // [1] are the two minormost dimensions that are not collapsed yet.
     int64_t m0 = layout[0];
     int64_t m1 = layout[1];
-
-    // Simple merge requires m0 to be the most minor logical dim and m1 to be
-    // adjacent to it (m1 == m0 - 1). Bail on non-default / non-contiguous
-    // layout.
-    if (m0 != current_rank - 1 || m1 != m0 - 1) {
-      break;
-    }
 
     // Only collapse if doing so allows for wider load/store. SASS has
     // vectorized load/store instructions up to 128 bits.
@@ -201,24 +203,28 @@ std::optional<CollapsedOpData> CollapseContiguousMinorDims(
       }
     }
 
-    // Collapse m1 and m0.
+    // Collapse m1 (major) and m0 (minor) into m1's position, then erase m0.
     int64_t merged_size = sizes[m1] * sizes[m0];
     OpFoldResult merged_offset =
         ComputeMergedOffset(rewriter, loc, offsets[m1], shape[m0]);
 
-    shape.pop_back();
-    shape.back() = merged_shape;
+    shape[m1] = merged_shape;
+    sizes[m1] = merged_size;
+    offsets[m1] = merged_offset;
+    dim_groups[m1].append(dim_groups[m0].begin(), dim_groups[m0].end());
 
-    sizes.pop_back();
-    sizes.back() = merged_size;
-
-    strides.pop_back();
-    // We already checked that strides.back() is 1.
-
-    offsets.pop_back();
-    offsets.back() = merged_offset;
+    shape.erase(shape.begin() + m0);
+    sizes.erase(sizes.begin() + m0);
+    strides.erase(strides.begin() + m0);
+    offsets.erase(offsets.begin() + m0);
+    dim_groups.erase(dim_groups.begin() + m0);
 
     layout.erase(layout.begin());
+    for (int64_t& d : layout) {
+      if (d > m0) {
+        --d;
+      }
+    }
 
     collapsed_any = true;
   }
@@ -229,43 +235,127 @@ std::optional<CollapsedOpData> CollapseContiguousMinorDims(
 
   return CollapsedOpData{
       std::move(shape),   std::move(layout),  std::move(sizes),
-      std::move(strides), std::move(offsets),
+      std::move(strides), std::move(offsets), std::move(dim_groups),
   };
 }
 
-// Computes the tensor shape for the collapsed extract/insert op, preserving
-// rank-reduced unit dimensions from the original op.
-SmallVector<int64_t> GetCollapsedTensorShape(
-    ArrayRef<int64_t> orig_sizes, ArrayRef<int64_t> collapsed_sizes,
-    ArrayRef<int64_t> orig_tensor_shape) {
+struct CollapsedTileMapping {
+  // Axes of `rank_reduced_tile_shape` permuted so that collapsed dimensions are
+  // adjacent and in major-to-minor order.
+  SmallVector<int64_t> transposed_tile_shape;
+  // `transposed_tile_shape` with contiguous minor-most dimensions collapsed.
+  SmallVector<int64_t> collapsed_tile_shape;
+  // Permutation mapping axes of `transposed_tile_shape` to
+  // `rank_reduced_tile_shape`.
+  SmallVector<int32_t> transposed_to_orig_order;
+};
+
+// Returns the layout and shape information needed to emit the collapse ops.
+//
+// In case of non-default layout, we need to transpose the original tile
+// (`rank_reduced_tile_shape` -> `transposed_tile_shape`) so that collapsed
+// dimensions are adjacent and in major-to-minor order to enable collapsing
+// reshape (`transposed_tile_shape` -> `collapsed_tile_shape`). When the
+// collapse merges a dimension into a rank-reduced one, we may need a transpose
+// without the reshape to restore the original dimension order.
+//
+// Note: `CollapseInsertOp` applies the steps below in this order (`trans` then
+// `reshape` before `insert`), whereas `CollapseExtractOp` applies their inverse
+// after `extract` (`reshape` from `collapsed_tile_shape` to
+// `transposed_tile_shape`, then `trans` to `rank_reduced_tile_shape`).
+//
+// Preserves rank-reduced unit dimensions from the original op.
+//
+// Examples:
+//
+// # Reshape+transpose case:
+//
+//   memref_shape = f32[16, 8, 32, 2]{3, 0, 2, 1}
+//   unreduced_tile_sizes = [4, 1, 8, 2]
+//   rank_reduced_tile_shape = [4, 8, 2]
+//
+//   m0 == 3 (tile size 2) gets collapsed into m1 == 0 (tile size 4).
+//   The resulting tile is [8, 8].
+//
+//   To get from `rank_reduced_tile_shape` [4, 8, 2] to `collapsed_tile_shape`
+//   [8, 8] (or in reverse for extract):
+//     transpose [4, 8, 2] -> [4, 2, 8]
+//     reshape [4, 2, 8] -> [8, 8]
+//
+// # Transpose-only case (no reshape):
+//
+//   memref_shape = f32[2, 64, 2]{2, 0, 1}
+//   unreduced_tile_sizes = [1, 64, 2]
+//   rank_reduced_tile_shape = [64, 2]
+//
+//   m0 == 2 (tile size 2) gets collapsed into rank-reduced m1 == 0
+//   (tile size 1). The resulting tile is [2, 64].
+//
+//   To get from `rank_reduced_tile_shape` [64, 2] to `collapsed_tile_shape`
+//   [2, 64] (or in reverse for extract):
+//     transpose [64, 2] -> [2, 64]
+//
+// # Reshape-only case (no transpose):
+//
+//   memref_shape = f32[16, 32, 2]{2, 1, 0}
+//   unreduced_tile_sizes = [4, 8, 2]
+//   rank_reduced_tile_shape = [4, 8, 2]
+//
+//   m0 == 2 (tile size 2) gets collapsed into m1 == 1 (tile size 8).
+//   The resulting tile is [4, 16].
+//
+//   To get from `rank_reduced_tile_shape` [4, 8, 2] to `collapsed_tile_shape`
+//   [4, 16] (or in reverse for extract):
+//     reshape [4, 8, 2] -> [4, 16]
+std::optional<CollapsedTileMapping> GetCollapsedTileMapping(
+    ArrayRef<int64_t> unreduced_tile_sizes,
+    ArrayRef<int64_t> collapsed_unreduced_tile_sizes,
+    ArrayRef<SmallVector<int64_t>> collapsed_dim_groups,
+    ArrayRef<int64_t> rank_reduced_tile_shape) {
   std::optional<llvm::SmallDenseSet<unsigned>> reduced_dims =
-      mlir::computeRankReductionMask(orig_sizes, orig_tensor_shape);
-  if (!reduced_dims.has_value() || reduced_dims->empty()) {
-    return to_vector(collapsed_sizes);
+      mlir::computeRankReductionMask(unreduced_tile_sizes,
+                                     rank_reduced_tile_shape);
+  if (!reduced_dims.has_value()) {
+    return std::nullopt;
   }
 
-  SmallVector<int64_t> tensor_shape;
-  int64_t first_collapsed_dim =
-      static_cast<int64_t>(collapsed_sizes.size()) - 1;
-  for (int64_t d = 0; d < first_collapsed_dim; ++d) {
-    if (!reduced_dims->contains(d)) {
-      tensor_shape.push_back(collapsed_sizes[d]);
+  SmallVector<int64_t> collapsed_tile_shape;
+  SmallVector<int64_t> transposed_tile_shape;
+  SmallVector<int64_t> transposed_dims;
+  for (int64_t g = 0;
+       g < static_cast<int64_t>(collapsed_unreduced_tile_sizes.size()); ++g) {
+    // Exclude reduced dimensions from the
+    // transposed_tile_shape/collapsed_tile_shape.
+    bool group_retained = false;
+    for (int64_t orig_dim : collapsed_dim_groups[g]) {
+      if (!reduced_dims->contains(orig_dim)) {
+        transposed_tile_shape.push_back(unreduced_tile_sizes[orig_dim]);
+        transposed_dims.push_back(orig_dim);
+        group_retained = true;
+      }
+    }
+    if (group_retained) {
+      collapsed_tile_shape.push_back(collapsed_unreduced_tile_sizes[g]);
     }
   }
 
-  bool all_collapsed_dims_reduced = true;
-  for (int64_t d = first_collapsed_dim;
-       d < static_cast<int64_t>(orig_sizes.size()); ++d) {
-    if (!reduced_dims->contains(d)) {
-      all_collapsed_dims_reduced = false;
-      break;
-    }
+  if (collapsed_tile_shape.empty() && !collapsed_unreduced_tile_sizes.empty()) {
+    collapsed_tile_shape.push_back(collapsed_unreduced_tile_sizes.back());
+    transposed_tile_shape.push_back(collapsed_unreduced_tile_sizes.back());
+    transposed_dims.push_back(collapsed_dim_groups.back().front());
   }
 
-  if (!all_collapsed_dims_reduced || tensor_shape.empty()) {
-    tensor_shape.push_back(collapsed_sizes.back());
-  }
-  return tensor_shape;
+  SmallVector<int32_t> transposed_to_orig_order(transposed_dims.size());
+  absl::c_iota(transposed_to_orig_order, 0);
+  absl::c_sort(transposed_to_orig_order, [&](int32_t a, int32_t b) {
+    return transposed_dims[a] < transposed_dims[b];
+  });
+
+  return CollapsedTileMapping{
+      /*transposed_tile_shape=*/std::move(transposed_tile_shape),
+      /*collapsed_tile_shape=*/std::move(collapsed_tile_shape),
+      /*transposed_to_orig_order=*/std::move(transposed_to_orig_order),
+  };
 }
 
 class CollapseExtractOp : public mlir::OpRewritePattern<ExtractOp> {
@@ -282,10 +372,14 @@ class CollapseExtractOp : public mlir::OpRewritePattern<ExtractOp> {
       return failure();
     }
 
-    SmallVector<int64_t> collapsed_tensor_shape = GetCollapsedTensorShape(
-        op.getStaticSizes(), collapsed_data->sizes, op.getType().getShape());
+    std::optional<CollapsedTileMapping> mapping = GetCollapsedTileMapping(
+        op.getStaticSizes(), collapsed_data->sizes, collapsed_data->dim_groups,
+        op.getType().getShape());
+    if (!mapping.has_value()) {
+      return failure();
+    }
     RankedTensorType collapsed_type = RankedTensorType::get(
-        collapsed_tensor_shape, op.getType().getElementType());
+        mapping->collapsed_tile_shape, op.getType().getElementType());
 
     ExtractOp new_extract = ExtractOp::create(
         rewriter, op.getLoc(), collapsed_type, op.getSrc(),
@@ -294,10 +388,14 @@ class CollapseExtractOp : public mlir::OpRewritePattern<ExtractOp> {
     new_extract->setDiscardableAttrs(op->getDiscardableAttrDictionary());
 
     Value result = new_extract.getResult();
-    if (collapsed_type != op.getType()) {
+    if (mapping->collapsed_tile_shape != mapping->transposed_tile_shape) {
       result = triton::ReshapeOp::create(rewriter, op.getLoc(),
-                                         op.getType().getShape(), result,
+                                         mapping->transposed_tile_shape, result,
                                          /*allowReorder=*/false);
+    }
+    if (!absl::c_is_sorted(mapping->transposed_to_orig_order)) {
+      result = triton::TransOp::create(rewriter, op.getLoc(), result,
+                                       mapping->transposed_to_orig_order);
     }
     rewriter.replaceOp(op, result);
     return success();
@@ -320,13 +418,22 @@ class CollapseInsertOp : public mlir::OpRewritePattern<InsertOp> {
       return failure();
     }
 
-    SmallVector<int64_t> collapsed_tensor_shape = GetCollapsedTensorShape(
-        op.getStaticSizes(), collapsed_data->sizes, src_type.getShape());
+    std::optional<CollapsedTileMapping> mapping = GetCollapsedTileMapping(
+        op.getStaticSizes(), collapsed_data->sizes, collapsed_data->dim_groups,
+        src_type.getShape());
+    if (!mapping.has_value()) {
+      return failure();
+    }
     Value new_src = op.getSrc();
-    if (ArrayRef<int64_t>(collapsed_tensor_shape) != src_type.getShape()) {
-      new_src = triton::ReshapeOp::create(rewriter, op.getLoc(),
-                                          collapsed_tensor_shape, new_src,
-                                          /*allowReorder=*/false);
+    if (!absl::c_is_sorted(mapping->transposed_to_orig_order)) {
+      new_src = triton::TransOp::create(
+          rewriter, op.getLoc(), new_src,
+          inversePermutation(mapping->transposed_to_orig_order));
+    }
+    if (mapping->collapsed_tile_shape != mapping->transposed_tile_shape) {
+      new_src = triton::ReshapeOp::create(
+          rewriter, op.getLoc(), mapping->collapsed_tile_shape, new_src,
+          /*allowReorder=*/false);
     }
 
     InsertOp new_insert = InsertOp::create(

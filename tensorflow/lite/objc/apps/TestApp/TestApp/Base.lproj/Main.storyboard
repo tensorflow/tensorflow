@@ -51,7 +51,7 @@
                                     </barButtonItem>
                                 </items>
                             </toolbar>
-                            <textView clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleToFill" misplaced="YES" editable="NO" adjustsFontForContentSizeCategory="YES" selectable="NO" translatesAutoresizingMaskIntoConstraints="NO" id="7Ws-3t-76I">
+                            <textView clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleToFill" misplaced="YES" editable="NO" selectable="NO" translatesAutoresizingMaskIntoConstraints="NO" id="7Ws-3t-76I">
                                 <rect key="frame" x="0.0" y="194" width="375" height="488"/>
                                 <color key="backgroundColor" red="0.12820077356385221" green="0.40366933178860925" blue="0.96080166101455688" alpha="1" colorSpace="custom" customColorSpace="displayP3"/>
                                 <color key="textColor" systemColor="tableCellGroupedBackgroundColor"/>

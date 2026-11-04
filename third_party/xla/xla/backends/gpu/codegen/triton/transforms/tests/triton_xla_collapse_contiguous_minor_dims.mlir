@@ -359,3 +359,92 @@ func.func @rank_reduced_collapsed_minor_unit_dims(%arg0: !tt.ptr<f32>) -> tensor
       [0, 0, 0] [4, 1, 1] [2, 1, 1] : tensor<4xf32>
   return %0 : tensor<4xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @non_default_layout_extract_transpose
+// CHECK-SAME:  (%[[ARG0:.*]]: !tt.ptr<bf16>, %[[IDX:.*]]: index) -> tensor<2x2x64x64xbf16> {
+// CHECK-DAG:    %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:    %[[MUL:.*]] = arith.muli %[[IDX]], %[[C2]] : index
+// CHECK:        %[[EXTRACT:.*]] = triton_xla.extract from %[[ARG0]]
+// CHECK-SAME:       as memref<1x2x65536x32768xbf16, #xtile.layout<[2, 3, 1, 0]>>
+// CHECK-SAME:       [0, 0, %[[MUL]], 0] [1, 2, 128, 64] [1, 1, 1, 1] : tensor<2x128x64xbf16>
+// CHECK:        %[[RESHAPE:.*]] = tt.reshape %[[EXTRACT]] : tensor<2x128x64xbf16> -> tensor<2x64x2x64xbf16>
+// CHECK:        %[[TRANS:.*]] = tt.trans %[[RESHAPE]] {order = array<i32: 0, 2, 1, 3>} : tensor<2x64x2x64xbf16> -> tensor<2x2x64x64xbf16>
+// CHECK:        return %[[TRANS]] : tensor<2x2x64x64xbf16>
+func.func @non_default_layout_extract_transpose(%arg0: !tt.ptr<bf16>, %idx: index) -> tensor<2x2x64x64xbf16> {
+  %0 = triton_xla.extract from %arg0
+      as memref<1x2x2x32768x32768xbf16, #xtile.layout<[2, 3, 4, 1, 0]>>
+      [0, 0, 0, %idx, 0] [1, 2, 2, 64, 64] [1, 1, 1, 1, 1] : tensor<2x2x64x64xbf16>
+  return %0 : tensor<2x2x64x64xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @non_default_layout_insert_transpose
+// CHECK-SAME:  (%[[SRC:.*]]: tensor<2x2x64x64xbf16>, %[[DST:.*]]: !tt.ptr<bf16>, %[[IDX:.*]]: index) {
+// CHECK-DAG:    %[[C2:.*]] = arith.constant 2 : index
+// CHECK-DAG:    %[[MUL:.*]] = arith.muli %[[IDX]], %[[C2]] : index
+// CHECK-DAG:    %[[TRANS:.*]] = tt.trans %[[SRC]] {order = array<i32: 0, 2, 1, 3>} : tensor<2x2x64x64xbf16> -> tensor<2x64x2x64xbf16>
+// CHECK-DAG:    %[[RESHAPE:.*]] = tt.reshape %[[TRANS]] : tensor<2x64x2x64xbf16> -> tensor<2x128x64xbf16>
+// CHECK:        triton_xla.insert %[[RESHAPE]] into %[[DST]]
+// CHECK-SAME:       as memref<1x2x65536x32768xbf16, #xtile.layout<[2, 3, 1, 0]>>
+// CHECK-SAME:       [0, 0, %[[MUL]], 0] [1, 2, 128, 64] [1, 1, 1, 1] : tensor<2x128x64xbf16>
+// CHECK:        return
+func.func @non_default_layout_insert_transpose(%src: tensor<2x2x64x64xbf16>, %dst: !tt.ptr<bf16>, %idx: index) {
+  triton_xla.insert %src into %dst
+      as memref<1x2x2x32768x32768xbf16, #xtile.layout<[2, 3, 4, 1, 0]>>
+      [0, 0, 0, %idx, 0] [1, 2, 2, 64, 64] [1, 1, 1, 1, 1] : tensor<2x2x64x64xbf16>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @non_default_layout_multi_step_extract_transpose
+// CHECK-SAME:  (%[[ARG0:.*]]: !tt.ptr<i8>) -> tensor<2x64x4xi8> {
+// CHECK:        %[[EXTRACT:.*]] = triton_xla.extract from %[[ARG0]]
+// CHECK-SAME:       as memref<512xi8, #xtile.layout<[0]>>
+// CHECK-SAME:       [0] [512] [1] : tensor<512xi8>
+// CHECK:        %[[RESHAPE:.*]] = tt.reshape %[[EXTRACT]] : tensor<512xi8> -> tensor<64x4x2xi8>
+// CHECK:        %[[TRANS:.*]] = tt.trans %[[RESHAPE]] {order = array<i32: 2, 0, 1>} : tensor<64x4x2xi8> -> tensor<2x64x4xi8>
+// CHECK:        return %[[TRANS]] : tensor<2x64x4xi8>
+func.func @non_default_layout_multi_step_extract_transpose(%arg0: !tt.ptr<i8>) -> tensor<2x64x4xi8> {
+  %0 = triton_xla.extract from %arg0
+      as memref<2x64x4xi8, #xtile.layout<[0, 2, 1]>>
+      [0, 0, 0] [2, 64, 4] [1, 1, 1] : tensor<2x64x4xi8>
+  return %0 : tensor<2x64x4xi8>
+}
+
+// -----
+
+// CHECK-LABEL: func.func @non_default_layout_multi_step_insert_transpose
+// CHECK-SAME:  (%[[SRC:.*]]: tensor<2x64x4xi8>, %[[DST:.*]]: !tt.ptr<i8>) {
+// CHECK:        %[[TRANS:.*]] = tt.trans %[[SRC]] {order = array<i32: 1, 2, 0>} : tensor<2x64x4xi8> -> tensor<64x4x2xi8>
+// CHECK:        %[[RESHAPE:.*]] = tt.reshape %[[TRANS]] : tensor<64x4x2xi8> -> tensor<512xi8>
+// CHECK:        triton_xla.insert %[[RESHAPE]] into %[[DST]]
+// CHECK-SAME:       as memref<512xi8, #xtile.layout<[0]>>
+// CHECK-SAME:       [0] [512] [1] : tensor<512xi8>
+// CHECK:        return
+func.func @non_default_layout_multi_step_insert_transpose(%src: tensor<2x64x4xi8>, %dst: !tt.ptr<i8>) {
+  triton_xla.insert %src into %dst
+      as memref<2x64x4xi8, #xtile.layout<[0, 2, 1]>>
+      [0, 0, 0] [2, 64, 4] [1, 1, 1] : tensor<2x64x4xi8>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func.func @non_default_layout_rank_reduced_collapsed_dim
+// CHECK-SAME:  (%[[ARG0:.*]]: !tt.ptr<f32>) -> tensor<64x2xf32> {
+// CHECK:        %[[EXTRACT:.*]] = triton_xla.extract from %[[ARG0]]
+// CHECK-SAME:       as memref<4x64xf32, #xtile.layout<[0, 1]>>
+// CHECK-SAME:       [0, 0] [2, 64] [1, 1] : tensor<2x64xf32>
+// CHECK-NOT:    tt.reshape
+// CHECK:        %[[TRANS:.*]] = tt.trans %[[EXTRACT]] {order = array<i32: 1, 0>} : tensor<2x64xf32> -> tensor<64x2xf32>
+// CHECK:        return %[[TRANS]] : tensor<64x2xf32>
+func.func @non_default_layout_rank_reduced_collapsed_dim(%arg0: !tt.ptr<f32>) -> tensor<64x2xf32> {
+  %0 = triton_xla.extract from %arg0
+      as memref<2x64x2xf32, #xtile.layout<[2, 0, 1]>>
+      [0, 0, 0] [1, 64, 2] [1, 1, 1] : tensor<64x2xf32>
+  return %0 : tensor<64x2xf32>
+}

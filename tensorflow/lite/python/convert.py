@@ -513,6 +513,7 @@ def build_conversion_flags(
     allow_bfloat16=False,
     unfold_large_splat_constant=False,
     fold_fp16_resource_casts=True,
+    fold_fp16_casts_into_fully_connected=False,
     supported_backends=None,
     disable_per_channel_quantization=False,
     enable_mlir_dynamic_range_quantizer=False,
@@ -617,6 +618,10 @@ def build_conversion_flags(
       in the flatbuffer model to reduce size.
     fold_fp16_resource_casts: Whether to fold 16-bit float (fp16/bf16) resource
       casts.
+    fold_fp16_casts_into_fully_connected: Whether to fold
+      `cast(f32 -> f16)(fully_connected(cast(f16 -> f32)(x), ...))` into a
+      fully_connected with f16 activations (StableHLO -> TFLite pipeline used
+      for MLIR bytecode conversion only; needs runtime support).
     supported_backends: List of TFLite backends which needs to check
       compatibility.
     disable_per_channel_quantization: Disable per-channel quantized weights for
@@ -756,6 +761,10 @@ def build_conversion_flags(
   conversion_flags.unfold_large_splat_constant = unfold_large_splat_constant
   if hasattr(conversion_flags, "fold_fp16_resource_casts"):
     conversion_flags.fold_fp16_resource_casts = fold_fp16_resource_casts
+  if hasattr(conversion_flags, "fold_fp16_casts_into_fully_connected"):
+    conversion_flags.fold_fp16_casts_into_fully_connected = (
+        fold_fp16_casts_into_fully_connected
+    )
   if supported_backends:
     conversion_flags.supported_backends.extend(supported_backends)
   conversion_flags.disable_per_channel_quantization = (

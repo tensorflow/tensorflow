@@ -565,7 +565,7 @@ absl::Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
         "The insertion index must be at most ", dims(), " got ", d));
   }
   if (TF_PREDICT_FALSE(dims() >= MaxDimensions())) {
-    return absl::InternalError(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Shape has ", dims(), " dimensions which is the maximum allowed"));
   }
 

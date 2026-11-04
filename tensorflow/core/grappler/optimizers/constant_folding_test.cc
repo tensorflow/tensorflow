@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -4418,6 +4421,851 @@ TEST_F(ConstantFoldingTest, RedundantVariableUpdateAddZerosToHandle) {
       EXPECT_TRUE((t.type_id() == TFT_UNSET) ||
                   ((t.type_id() == TFT_PRODUCT) && (t.args_size() == 0)));
     }
+  }
+}
+
+TEST_F(ConstantFoldingTest, SimplifyStridedSliceInt64AndHighRankMaskBounds) {
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    auto in1 = ops::Variable(scope.WithOpName("in1"), {3, 5}, DT_FLOAT);
+    const int64_t high_base = int64_t{1} << 32;
+    auto begin =
+        ops::Const<int64_t>(scope.WithOpName("begin"), {high_base, 0}, {2});
+    auto end =
+        ops::Const<int64_t>(scope.WithOpName("end"), {high_base + 3, 5}, {2});
+    auto strides =
+        ops::Const<int64_t>(scope.WithOpName("strides"), {1, 1}, {2});
+    ops::StridedSlice s1(scope.WithOpName("s1"), in1, begin, end, strides);
+
+    GrapplerItem item;
+    item.fetch = {"s1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "s1") {
+        found = true;
+        EXPECT_EQ("StridedSlice", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    auto in1 =
+        ops::Variable(scope.WithOpName("in1"), TensorShape({1, 1}), DT_FLOAT);
+    auto begin_valid = ops::Const(scope.WithOpName("begin_valid"), {0, 0}, {2});
+    auto end_valid = ops::Const(scope.WithOpName("end_valid"), {1, 1}, {2});
+    auto strides_valid =
+        ops::Const(scope.WithOpName("strides_valid"), {1, 1}, {2});
+    ops::StridedSlice s1(
+        scope.WithOpName("s1"), in1, begin_valid, end_valid, strides_valid,
+        ops::StridedSlice::Attrs().BeginMask(1).EndMask(1).EllipsisMask(1));
+
+    GrapplerItem item;
+    item.fetch = {"s1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    bool found_input = false;
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "in1") {
+        found_input = true;
+        auto* shape_proto = (*node->mutable_attr())["shape"].mutable_shape();
+        shape_proto->Clear();
+        for (int d = 0; d < 32; ++d) {
+          shape_proto->add_dim()->set_size(1);
+        }
+      }
+    }
+    EXPECT_TRUE(found_input);
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "s1") {
+        found = true;
+        EXPECT_EQ("Identity", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+}
+
+TEST_F(ConstantFoldingTest, ReverseRankZeroAndOutOfBoundsAxisSkipped) {
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    Output in1 =
+        ops::Variable(scope.WithOpName("in1"), TensorShape({1, 1}), DT_FLOAT);
+    Output axis_oob = ops::Const(scope.WithOpName("axis_oob"), {0}, {1});
+    ops::Reverse r1(scope.WithOpName("r1"), in1, axis_oob);
+
+    GrapplerItem item;
+    item.fetch = {"r1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    bool found_input = false;
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "axis_oob") {
+        found_input = true;
+        Tensor bad_axis(DT_INT32, TensorShape({1}));
+        bad_axis.vec<int>()(0) = std::numeric_limits<int>::max();
+        bad_axis.AsProtoTensorContent(
+            (*node->mutable_attr())["value"].mutable_tensor());
+      }
+    }
+    EXPECT_TRUE(found_input);
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "r1") {
+        found = true;
+        EXPECT_EQ("ReverseV2", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    Output in1 = ops::Placeholder(scope.WithOpName("in1"), DT_FLOAT,
+                                  ops::Placeholder::Shape(TensorShape({1})));
+    Output axis_oob = ops::Const(scope.WithOpName("axis_oob"), {0}, {1});
+    ops::Reverse r1(scope.WithOpName("r1"), in1, axis_oob);
+
+    GrapplerItem item;
+    item.fetch = {"r1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    bool found_input = false;
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "in1") {
+        found_input = true;
+        (*node->mutable_attr())["shape"].mutable_shape()->Clear();
+      }
+    }
+    EXPECT_TRUE(found_input);
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "r1") {
+        found = true;
+        EXPECT_EQ("ReverseV2", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+}
+
+TEST_F(ConstantFoldingTest,
+       MaterializeShapesAndSimplifySliceRankAndElementBounds) {
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    Output size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+    auto static_array =
+        ops::TensorArray(scope.WithOpName("static"), size, DT_FLOAT,
+                         ops::TensorArray::DynamicSize(false));
+    auto static_sz = ops::TensorArraySize(
+        scope.WithOpName("static_sz"), static_array.handle, static_array.flow);
+
+    GrapplerItem item;
+    item.fetch = {"static_sz"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    bool found_input = false;
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "size") {
+        found_input = true;
+        Tensor empty_size(DT_INT32, TensorShape({0}));
+        empty_size.AsProtoTensorContent(
+            (*node->mutable_attr())["value"].mutable_tensor());
+      }
+    }
+    EXPECT_TRUE(found_input);
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "static_sz") {
+        found = true;
+        EXPECT_EQ("TensorArraySizeV3", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    Output size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+    auto static_array =
+        ops::TensorArray(scope.WithOpName("static"), size, DT_FLOAT,
+                         ops::TensorArray::DynamicSize(false));
+    auto static_sz = ops::TensorArraySize(
+        scope.WithOpName("static_sz"), static_array.handle, static_array.flow);
+
+    GrapplerItem item;
+    item.fetch = {"static_sz"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    bool found_input = false;
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "size") {
+        found_input = true;
+        Tensor int64_size(DT_INT64, TensorShape({}));
+        int64_size.scalar<int64_t>()() = 5;
+        auto* tensor_proto = (*node->mutable_attr())["value"].mutable_tensor();
+        int64_size.AsProtoTensorContent(tensor_proto);
+        (*node->mutable_attr())["dtype"].set_type(DT_INT64);
+      }
+    }
+    EXPECT_TRUE(found_input);
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "static_sz") {
+        found = true;
+        EXPECT_EQ("TensorArraySizeV3", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    auto in1 = ops::Variable(scope.WithOpName("in1"), {3, 5}, DT_FLOAT);
+    auto begin = ops::Const(scope.WithOpName("begin"), {0, 0}, {2});
+    auto size = ops::Const(scope.WithOpName("size"), {-1, -1}, {2});
+    ops::Slice s1(scope.WithOpName("s1"), in1, begin, size);
+
+    GrapplerItem item;
+    item.fetch = {"s1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    bool found_input = false;
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "begin") {
+        found_input = true;
+        Tensor empty_begin(DT_INT32, TensorShape({0}));
+        empty_begin.AsProtoTensorContent(
+            (*node->mutable_attr())["value"].mutable_tensor());
+      }
+    }
+    EXPECT_TRUE(found_input);
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "s1") {
+        found = true;
+        EXPECT_EQ("Slice", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+  {
+    tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+    auto in1 = ops::Variable(scope.WithOpName("in1"), {3, 5}, DT_FLOAT);
+    auto begin = ops::Const(scope.WithOpName("begin"), {0, 0}, {2});
+    auto end = ops::Const(scope.WithOpName("end"), {3, 5}, {2});
+    auto strides = ops::Const(scope.WithOpName("strides"), {1, 1}, {2});
+    ops::StridedSlice s1(scope.WithOpName("s1"), in1, begin, end, strides);
+
+    GrapplerItem item;
+    item.fetch = {"s1"};
+    TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+    bool found_input = false;
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      NodeDef* node = item.graph.mutable_node(i);
+      if (node->name() == "begin") {
+        found_input = true;
+        Tensor empty_begin(DT_INT32, TensorShape({0}));
+        empty_begin.AsProtoTensorContent(
+            (*node->mutable_attr())["value"].mutable_tensor());
+      }
+    }
+    EXPECT_TRUE(found_input);
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "s1") {
+        found = true;
+        EXPECT_EQ("StridedSlice", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+}
+
+TEST_F(ConstantFoldingTest, StridedSliceValidSparseEllipsisMapping) {
+  struct SliceSpec {
+    std::vector<int64_t> end;
+    int ellipsis_mask;
+    int bounds_mask;
+  };
+  // First, middle, trailing, zero-width, implicit, empty, and masked specs.
+  const std::vector<SliceSpec> specs = {
+      {{0, 4}, 1, 0},       {{2, 0, 4}, 2, 0}, {{2, 0}, 2, 0},
+      {{2, 0, 3, 4}, 2, 0}, {{2}, 0, 0},       {{}, 0, 0},
+      {{2, 0, 0}, 2, 4},
+  };
+  for (DataType dtype : {DT_INT32, DT_INT64}) {
+    for (const auto& spec : specs) {
+      SCOPED_TRACE(dtype);
+      SCOPED_TRACE(spec.ellipsis_mask);
+      SCOPED_TRACE(spec.end.size());
+      const int64_t count = spec.end.size();
+      Tensor begin(dtype, TensorShape({count}));
+      Tensor end(dtype, TensorShape({count}));
+      Tensor strides(dtype, TensorShape({count}));
+      for (int i = 0; i < count; ++i) {
+        if (dtype == DT_INT32) {
+          begin.vec<int32_t>()(i) = 0;
+          end.vec<int32_t>()(i) = spec.end[i];
+          strides.vec<int32_t>()(i) = 1;
+        } else {
+          begin.vec<int64_t>()(i) = 0;
+          end.vec<int64_t>()(i) = spec.end[i];
+          strides.vec<int64_t>()(i) = 1;
+        }
+      }
+      Scope scope = Scope::NewRootScope();
+      auto input =
+          ops::Variable(scope.WithOpName("input"), {2, 3, 4}, DT_FLOAT);
+      ops::StridedSlice slice(scope.WithOpName("slice"), input,
+                              ops::Const(scope, begin), ops::Const(scope, end),
+                              ops::Const(scope, strides),
+                              ops::StridedSlice::Attrs()
+                                  .EllipsisMask(spec.ellipsis_mask)
+                                  .BeginMask(spec.bounds_mask)
+                                  .EndMask(spec.bounds_mask));
+      GrapplerItem item;
+      item.fetch = {"slice"};
+      TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+      ConstantFolding optimizer(/*cpu_device=*/nullptr);
+      GraphDef got;
+      TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+      bool found = false;
+      for (const NodeDef& node : got.node()) {
+        if (node.name() == "slice") {
+          found = true;
+          EXPECT_EQ("Identity", node.op());
+        }
+      }
+      EXPECT_TRUE(found);
+      auto input_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 3, 4}));
+      auto expected =
+          EvaluateNodes(item.graph, item.fetch, {{"input", input_t}});
+      auto actual = EvaluateNodes(got, item.fetch, {{"input", input_t}});
+      ASSERT_EQ(1, expected.size());
+      ASSERT_EQ(1, actual.size());
+      test::ExpectTensorEqual<float>(expected[0], actual[0]);
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, ReverseValidScalarAndRankEight) {
+  for (int rank : {0, 8}) {
+    SCOPED_TRACE(rank);
+    TensorShape shape;
+    for (int i = 0; i < rank; ++i) shape.AddDim(1);
+    Tensor axes(DT_INT64, TensorShape({rank == 0 ? 0 : 2}));
+    if (rank != 0) {
+      axes.vec<int64_t>()(0) = -8;
+      axes.vec<int64_t>()(1) = -1;
+    }
+    Scope scope = Scope::NewRootScope();
+    auto input = ops::Variable(scope.WithOpName("input"), shape, DT_FLOAT);
+    ops::Reverse reverse(scope.WithOpName("reverse"), input,
+                         ops::Const(scope, axes));
+    GrapplerItem item;
+    item.fetch = {"reverse"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "reverse") {
+        found = true;
+        EXPECT_EQ("Identity", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+    auto input_t = GenerateRandomTensor<DT_FLOAT>(shape);
+    auto expected = EvaluateNodes(item.graph, item.fetch, {{"input", input_t}});
+    auto actual = EvaluateNodes(got, item.fetch, {{"input", input_t}});
+    ASSERT_EQ(1, expected.size());
+    ASSERT_EQ(1, actual.size());
+    test::ExpectTensorEqual<float>(expected[0], actual[0]);
+  }
+}
+
+TEST_F(ConstantFoldingTest, SliceValidSymbolicDimensionWithInt64Size) {
+  Scope scope = Scope::NewRootScope();
+  auto input = ops::Placeholder(scope.WithOpName("input"), DT_FLOAT,
+                                ops::Placeholder::Shape({-1, 5}));
+  auto begin = ops::Const<int64_t>(scope, {0, 0}, {2});
+  auto size = ops::Const<int64_t>(scope, {-1, 5}, {2});
+  ops::Slice slice(scope.WithOpName("slice"), input, begin, size);
+  GrapplerItem item;
+  item.fetch = {"slice"};
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+  ConstantFolding optimizer(RewriterConfig::AGGRESSIVE, /*cpu_device=*/nullptr);
+  GraphDef got;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+  bool found = false;
+  for (const NodeDef& node : got.node()) {
+    if (node.name() == "slice") {
+      found = true;
+      EXPECT_EQ("Identity", node.op());
+    }
+  }
+  EXPECT_TRUE(found);
+  auto input_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 5}));
+  auto expected = EvaluateNodes(item.graph, item.fetch, {{"input", input_t}});
+  auto actual = EvaluateNodes(got, item.fetch, {{"input", input_t}});
+  ASSERT_EQ(1, expected.size());
+  ASSERT_EQ(1, actual.size());
+  test::ExpectTensorEqual<float>(expected[0], actual[0]);
+}
+
+TEST_F(ConstantFoldingTest, TensorArrayPositiveScalarSizeMaterialization) {
+  for (int32_t count : {1, 5}) {
+    SCOPED_TRACE(count);
+    Scope scope = Scope::NewRootScope();
+    auto size = ops::Const(scope.WithOpName("size"), count, TensorShape({}));
+    auto array = ops::TensorArray(scope.WithOpName("array"), size, DT_FLOAT,
+                                  ops::TensorArray::DynamicSize(false));
+    ops::TensorArraySize result(scope.WithOpName("result"), array.handle,
+                                array.flow);
+    GrapplerItem item;
+    item.fetch = {"result"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "result") {
+        found = true;
+        EXPECT_EQ("Const", node.op());
+        Tensor value;
+        ASSERT_TRUE(value.FromProto(node.attr().at("value").tensor()));
+        ASSERT_EQ(DT_INT32, value.dtype());
+        ASSERT_EQ(0, value.dims());
+        EXPECT_EQ(count, value.scalar<int32_t>()());
+      }
+    }
+    EXPECT_TRUE(found);
+    auto expected = EvaluateNodes(item.graph, item.fetch);
+    auto actual = EvaluateNodes(got, item.fetch);
+    ASSERT_EQ(1, expected.size());
+    ASSERT_EQ(1, actual.size());
+    test::ExpectTensorEqual<int32_t>(expected[0], actual[0]);
+  }
+}
+
+TEST_F(ConstantFoldingTest, SliceAndReverseWithUnknownRankRemainUnchanged) {
+  Scope scope = Scope::NewRootScope();
+  auto input = ops::Placeholder(scope.WithOpName("input"), DT_FLOAT);
+  auto begin = ops::Const(scope, {0, 0}, {2});
+  auto end = ops::Const(scope, {3, 5}, {2});
+  auto strides = ops::Const(scope, {1, 1}, {2});
+  ops::Slice slice(scope.WithOpName("slice"), input, begin, end);
+  ops::StridedSlice strided(scope.WithOpName("strided"), input, begin, end,
+                            strides);
+  ops::Reverse reverse(scope.WithOpName("reverse"), input,
+                       ops::Const(scope, {0}, {1}));
+  GrapplerItem item;
+  item.fetch = {"slice", "strided", "reverse"};
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef got;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+  for (const auto& name : item.fetch) {
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == name) {
+        found = true;
+        EXPECT_EQ(name == "slice"     ? "Slice"
+                  : name == "strided" ? "StridedSlice"
+                                      : "ReverseV2",
+                  node.op());
+      }
+    }
+    EXPECT_TRUE(found) << name;
+  }
+}
+
+TEST_F(ConstantFoldingTest,
+       SliceStridedSliceReverseAndTensorArrayInvalidEdgeCasesSkipped) {
+  // ReverseV2: duplicate canonical axes [0, -1] on rank-1 input and rank > 8.
+  {
+    Scope scope = Scope::NewRootScope();
+    auto in_dup = ops::Variable(scope.WithOpName("in_dup"), {1}, DT_FLOAT);
+    auto axis_dup = ops::Const(scope.WithOpName("axis_dup"), {0}, {1});
+    ops::Reverse rev_dup(scope.WithOpName("rev_dup"), in_dup, axis_dup);
+    auto in_r9 = ops::Variable(scope.WithOpName("in_r9"), {1, 1}, DT_FLOAT);
+    ops::Reverse rev_r9(scope.WithOpName("rev_r9"), in_r9,
+                        ops::Const(scope, {0}, {1}));
+    GrapplerItem item;
+    item.fetch = {"rev_dup", "rev_r9"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    bool found_axis_dup = false;
+    bool found_in_r9 = false;
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() == "axis_dup") {
+        found_axis_dup = true;
+        Tensor t(DT_INT32, TensorShape({2}));
+        t.vec<int32_t>()(0) = 0;
+        t.vec<int32_t>()(1) = -1;
+        t.AsProtoTensorContent(
+            (*node.mutable_attr())["value"].mutable_tensor());
+      } else if (node.name() == "in_r9") {
+        found_in_r9 = true;
+        auto* shape_proto = (*node.mutable_attr())["shape"].mutable_shape();
+        shape_proto->Clear();
+        for (int d = 0; d < 9; ++d) {
+          shape_proto->add_dim()->set_size(1);
+        }
+      }
+    }
+    EXPECT_TRUE(found_axis_dup);
+    EXPECT_TRUE(found_in_r9);
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const auto& name : item.fetch) {
+      bool found = false;
+      for (const NodeDef& node : got.node()) {
+        if (node.name() == name) {
+          found = true;
+          EXPECT_EQ("ReverseV2", node.op());
+        }
+      }
+      EXPECT_TRUE(found) << name;
+    }
+  }
+  // Slice: negative size -2 on symbolic dim and mismatched begin/size dtypes.
+  {
+    Scope scope = Scope::NewRootScope();
+    auto input = ops::Placeholder(scope.WithOpName("input"), DT_FLOAT,
+                                  ops::Placeholder::Shape({-1, 5}));
+    auto size_neg = ops::Const<int64_t>(scope.WithOpName("size_neg"), {-1, 5},
+                                        TensorShape({2}));
+    ops::Slice neg_slice(scope.WithOpName("neg_slice"), input,
+                         ops::Const<int64_t>(scope, {0, 0}, {2}), size_neg);
+    auto begin_i32 = ops::Const<int32_t>(scope.WithOpName("begin_i32"), {0, 0},
+                                         TensorShape({2}));
+    auto size_i64 = ops::Const<int32_t>(scope.WithOpName("size_i64"), {-1, 5},
+                                        TensorShape({2}));
+    ops::Slice mismatch_slice(scope.WithOpName("mismatch_slice"), input,
+                              begin_i32, size_i64);
+    GrapplerItem item;
+    item.fetch = {"neg_slice", "mismatch_slice"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    bool found_size_neg = false;
+    bool found_size_i64 = false;
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() == "size_neg") {
+        found_size_neg = true;
+        Tensor t(DT_INT64, TensorShape({2}));
+        t.vec<int64_t>()(0) = -2;
+        t.vec<int64_t>()(1) = 5;
+        t.AsProtoTensorContent(
+            (*node.mutable_attr())["value"].mutable_tensor());
+      } else if (node.name() == "size_i64") {
+        found_size_i64 = true;
+        Tensor t(DT_INT64, TensorShape({2}));
+        t.vec<int64_t>()(0) = -1;
+        t.vec<int64_t>()(1) = 5;
+        t.AsProtoTensorContent(
+            (*node.mutable_attr())["value"].mutable_tensor());
+        (*node.mutable_attr())["dtype"].set_type(DT_INT64);
+      }
+    }
+    EXPECT_TRUE(found_size_neg);
+    EXPECT_TRUE(found_size_i64);
+    ConstantFolding optimizer(RewriterConfig::AGGRESSIVE,
+                              /*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const auto& name : item.fetch) {
+      bool found = false;
+      for (const NodeDef& node : got.node()) {
+        if (node.name() == name) {
+          found = true;
+          EXPECT_EQ("Slice", node.op());
+        }
+      }
+      EXPECT_TRUE(found) << name;
+    }
+  }
+  // StridedSlice: multi-bit ellipsis_mask=3, non_ellipsis_specs > rank, and
+  // non-unit stride / negative bound.
+  {
+    Scope scope = Scope::NewRootScope();
+    auto input = ops::Variable(scope.WithOpName("input"), {2, 3}, DT_FLOAT);
+    ops::StridedSlice multi_ellipsis(scope.WithOpName("multi_ellipsis"), input,
+                                     ops::Const(scope, {0, 0}, {2}),
+                                     ops::Const(scope, {2, 3}, {2}),
+                                     ops::Const(scope, {1, 1}, {2}));
+    auto b_many = ops::Const(scope.WithOpName("b_many"), {0, 0}, {2});
+    auto e_many = ops::Const(scope.WithOpName("e_many"), {2, 3}, {2});
+    auto s_many = ops::Const(scope.WithOpName("s_many"), {1, 1}, {2});
+    ops::StridedSlice too_many_specs(scope.WithOpName("too_many_specs"), input,
+                                     b_many, e_many, s_many);
+    ops::StridedSlice non_unit_stride(scope.WithOpName("non_unit_stride"),
+                                      input, ops::Const(scope, {0, 0}, {2}),
+                                      ops::Const(scope, {2, 3}, {2}),
+                                      ops::Const(scope, {1, 2}, {2}));
+    GrapplerItem item;
+    item.fetch = {"multi_ellipsis", "too_many_specs", "non_unit_stride"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    bool found_multi = false;
+    bool found_b_many = false;
+    bool found_e_many = false;
+    bool found_s_many = false;
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() == "multi_ellipsis") {
+        found_multi = true;
+        (*node.mutable_attr())["ellipsis_mask"].set_i(3);
+      } else if (node.name() == "b_many" || node.name() == "e_many" ||
+                 node.name() == "s_many") {
+        Tensor t(DT_INT32, TensorShape({3}));
+        if (node.name() == "b_many") {
+          found_b_many = true;
+          t.vec<int32_t>()(0) = 0;
+          t.vec<int32_t>()(1) = 0;
+          t.vec<int32_t>()(2) = 0;
+        } else if (node.name() == "e_many") {
+          found_e_many = true;
+          t.vec<int32_t>()(0) = 2;
+          t.vec<int32_t>()(1) = 3;
+          t.vec<int32_t>()(2) = 1;
+        } else {
+          found_s_many = true;
+          t.vec<int32_t>()(0) = 1;
+          t.vec<int32_t>()(1) = 1;
+          t.vec<int32_t>()(2) = 1;
+        }
+        t.AsProtoTensorContent(
+            (*node.mutable_attr())["value"].mutable_tensor());
+      }
+    }
+    EXPECT_TRUE(found_multi);
+    EXPECT_TRUE(found_b_many);
+    EXPECT_TRUE(found_e_many);
+    EXPECT_TRUE(found_s_many);
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    for (const auto& name : item.fetch) {
+      bool found = false;
+      for (const NodeDef& node : got.node()) {
+        if (node.name() == name) {
+          found = true;
+          EXPECT_EQ("StridedSlice", node.op());
+        }
+      }
+      EXPECT_TRUE(found) << name;
+    }
+  }
+  // TensorArraySizeV3: non-positive scalar sizes (0 and -1) and 1-D size.
+  for (int32_t bad_size : {0, -1, 1}) {
+    SCOPED_TRACE(bad_size);
+    Scope scope = Scope::NewRootScope();
+    auto size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+    auto array = ops::TensorArray(scope.WithOpName("array"), size, DT_FLOAT,
+                                  ops::TensorArray::DynamicSize(false));
+    ops::TensorArraySize result(scope.WithOpName("result"), array.handle,
+                                array.flow);
+    GrapplerItem item;
+    item.fetch = {"result"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    bool found_size = false;
+    for (NodeDef& node : *item.graph.mutable_node()) {
+      if (node.name() == "size") {
+        found_size = true;
+        Tensor t(DT_INT32, bad_size == 1 ? TensorShape({1}) : TensorShape({}));
+        if (bad_size == 1) {
+          t.vec<int32_t>()(0) = 5;
+        } else {
+          t.scalar<int32_t>()() = bad_size;
+        }
+        t.AsProtoTensorContent(
+            (*node.mutable_attr())["value"].mutable_tensor());
+      }
+    }
+    EXPECT_TRUE(found_size);
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef got;
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &got));
+    bool found = false;
+    for (const NodeDef& node : got.node()) {
+      if (node.name() == "result") {
+        found = true;
+        EXPECT_EQ("TensorArraySizeV3", node.op());
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+}
+
+// Optimizes `item`, which holds a valid TensorArraySizeV3 node "control" of a
+// size-3 TensorArrayV3 and a TensorArraySizeV3 node "result". "control" must be
+// materialized, which shows that shape materialization ran on the graph, and
+// "result" must be left unchanged with `result_input` as its first input.
+void ExpectOnlyControlTensorArraySizeMaterialized(
+    const GrapplerItem& item, const std::string& result_input,
+    GraphDef* optimized) {
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, optimized));
+  bool found_control = false;
+  bool found_result = false;
+  for (const NodeDef& node : optimized->node()) {
+    if (node.name() == "control") {
+      found_control = true;
+      EXPECT_EQ("Const", node.op());
+      if (node.op() == "Const") {
+        Tensor value;
+        ASSERT_TRUE(value.FromProto(node.attr().at("value").tensor()));
+        ASSERT_EQ(DT_INT32, value.dtype());
+        ASSERT_EQ(0, value.dims());
+        EXPECT_EQ(3, value.scalar<int32_t>()());
+      }
+    } else if (node.name() == "result") {
+      found_result = true;
+      EXPECT_EQ("TensorArraySizeV3", node.op());
+      ASSERT_GE(node.input_size(), 1);
+      EXPECT_EQ(result_input, node.input(0));
+    }
+  }
+  EXPECT_TRUE(found_control);
+  EXPECT_TRUE(found_result);
+}
+
+TEST_F(ConstantFoldingTest, TensorArraySizeRequiresTensorArrayV3HandleOnPort0) {
+  enum Producer {
+    kIdentityNPort1,
+    kIdentityNPort0,
+    kStackV2,
+    kTensorArrayFlowPort,
+  };
+  for (Producer producer :
+       {kIdentityNPort1, kIdentityNPort0, kStackV2, kTensorArrayFlowPort}) {
+    SCOPED_TRACE(producer);
+    Scope scope = Scope::NewRootScope();
+    auto control_size =
+        ops::Const(scope.WithOpName("control_size"), 3, TensorShape({}));
+    auto control_array =
+        ops::TensorArray(scope.WithOpName("control_array"), control_size,
+                         DT_FLOAT, ops::TensorArray::DynamicSize(false));
+    ops::TensorArraySize control(scope.WithOpName("control"),
+                                 control_array.handle, control_array.flow);
+    auto size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+    auto array = ops::TensorArray(scope.WithOpName("array"), size, DT_FLOAT,
+                                  ops::TensorArray::DynamicSize(false));
+    auto other = ops::Const(scope.WithOpName("other"), 7, TensorShape({}));
+    Output handle = array.handle;
+    std::string result_input = "array";
+    if (producer == kIdentityNPort1) {
+      // IdentityN forwards `other` on port 0 and the array handle on port 1.
+      auto id_n = ops::IdentityN(scope.WithOpName("id_n"),
+                                 {Output(other), array.handle});
+      handle = id_n.output[1];
+      result_input = "id_n:1";
+    } else if (producer == kIdentityNPort0) {
+      auto id_n = ops::IdentityN(scope.WithOpName("id_n"), {array.handle});
+      handle = id_n.output[0];
+      result_input = "id_n";
+    }
+    ops::TensorArraySize result(scope.WithOpName("result"), handle, array.flow);
+    GrapplerItem item;
+    item.fetch = {"control", "result"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    if (producer == kStackV2 || producer == kTensorArrayFlowPort) {
+      // StackV2 has no C++ op wrapper, so add it and rewire "result" here.
+      if (producer == kStackV2) {
+        *item.graph.add_node() = test::function::NDef(
+            "stack", "StackV2", {"other"}, {{"elem_type", DT_FLOAT}});
+        result_input = "stack";
+      } else {
+        result_input = "array:1";
+      }
+      bool found = false;
+      for (NodeDef& node : *item.graph.mutable_node()) {
+        if (node.name() == "result") {
+          found = true;
+          node.set_input(0, result_input);
+        }
+      }
+      ASSERT_TRUE(found);
+    }
+    GraphDef got;
+    ExpectOnlyControlTensorArraySizeMaterialized(item, result_input, &got);
+    if (producer == kIdentityNPort1) {
+      // The array behind id_n:1 has size 5, not the value 7 of the constant
+      // that IdentityN forwards on port 0.
+      auto expected = EvaluateNodes(item.graph, {"result"});
+      auto actual = EvaluateNodes(got, {"result"});
+      ASSERT_EQ(1, expected.size());
+      ASSERT_EQ(1, actual.size());
+      EXPECT_EQ(5, expected[0].scalar<int32_t>()());
+      test::ExpectTensorEqual<int32_t>(expected[0], actual[0]);
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, TensorArraySizeDynamicOrMalformedDynamicSize) {
+  for (bool malformed : {false, true}) {
+    SCOPED_TRACE(malformed);
+    Scope scope = Scope::NewRootScope();
+    auto control_size =
+        ops::Const(scope.WithOpName("control_size"), 3, TensorShape({}));
+    auto control_array =
+        ops::TensorArray(scope.WithOpName("control_array"), control_size,
+                         DT_FLOAT, ops::TensorArray::DynamicSize(false));
+    ops::TensorArraySize control(scope.WithOpName("control"),
+                                 control_array.handle, control_array.flow);
+    auto size = ops::Const(scope.WithOpName("size"), 5, TensorShape({}));
+    auto array = ops::TensorArray(scope.WithOpName("array"), size, DT_FLOAT,
+                                  ops::TensorArray::DynamicSize(!malformed));
+    ops::TensorArraySize result(scope.WithOpName("result"), array.handle,
+                                array.flow);
+    GrapplerItem item;
+    item.fetch = {"control", "result"};
+    TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+    if (malformed) {
+      // An int-typed `dynamic_size` must not be read as a bool (false).
+      bool found = false;
+      for (NodeDef& node : *item.graph.mutable_node()) {
+        if (node.name() == "array") {
+          found = true;
+          (*node.mutable_attr())["dynamic_size"].set_i(0);
+        }
+      }
+      ASSERT_TRUE(found);
+    }
+    GraphDef got;
+    ExpectOnlyControlTensorArraySizeMaterialized(item, "array", &got);
   }
 }
 

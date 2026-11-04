@@ -340,7 +340,7 @@ std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlanWithScratchAllocator(
     uint64_t input_stride, uint64_t input_distance, uint64_t *output_embed,
     uint64_t output_stride, uint64_t output_distance, fft::Type type,
     bool in_place_fft, int batch_count, ScratchAllocator *scratch_allocator) {
-  std::unique_ptr<ROCMFftPlan> fft_plan_ptr{new ROCMFftPlan()};
+  std::unique_ptr<ROCMFftPlan> fft_plan_ptr = std::make_unique<ROCMFftPlan>();
   absl::Status status = fft_plan_ptr->Initialize(
       parent_, stream, rank, elem_count, input_embed, input_stride,
       input_distance, output_embed, output_stride, output_distance, type,

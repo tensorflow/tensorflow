@@ -15,8 +15,10 @@
 #include "xla/python/ifrt_proxy/server/grpc_service_impl.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -27,17 +29,25 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
+#include "grpcpp/client_context.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "grpcpp/support/channel_arguments.h"
+#include "grpcpp/support/status.h"
+#include "grpcpp/support/sync_stream.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
+#include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/ifrt_proxy/server/grpc_server.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
+#include "xla/python/ifrt_proxy/server/ifrt_backend.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -70,6 +80,81 @@ TEST(GrpcServiceImplTest, CanBeUsedToSetupAnGrpcServer) {
   ASSERT_THAT(MakeGrpcServer(), absl_testing::IsOk());
   // Also implicitly tests that destruction of both the server and the
   // implementation objects.
+}
+
+class FakeBackend final : public BackendInterface {
+ public:
+  explicit FakeBackend(std::function<void()> on_destroy)
+      : on_destroy_(std::move(on_destroy)) {}
+  ~FakeBackend() override { on_destroy_(); }
+
+  tsl::Future<Response> Process(std::unique_ptr<IfrtRequest> request) override {
+    return tsl::Future<Response>(absl::UnimplementedError("FakeBackend"));
+  }
+
+ private:
+  std::function<void()> on_destroy_;
+};
+
+GrpcServiceImpl::BackendFactory FakeBackendFactory(
+    std::function<void()> on_destroy) {
+  return [on_destroy = std::move(on_destroy)](
+             IfrtProxyVersion version, uint64_t session_id,
+             std::shared_ptr<HostBufferStore> host_buffer_store,
+             AttributeMap initialization_data)
+             -> absl::StatusOr<std::unique_ptr<BackendInterface>> {
+    return std::make_unique<FakeBackend>(on_destroy);
+  };
+}
+
+// Opens a session on `service` and closes it, which tears it down.
+::grpc::Status OpenAndCloseSession(GrpcServiceImpl& service) {
+  ::grpc::ServerBuilder builder;
+  builder.RegisterService(&service);
+  std::unique_ptr<::grpc::Server> server = builder.BuildAndStart();
+  std::unique_ptr<grpc::GrpcIfrtService::Stub> stub =
+      grpc::GrpcIfrtService::NewStub(
+          server->InProcessChannel(::grpc::ChannelArguments()));
+
+  GrpcIfrtSessionMetadata metadata;
+  *metadata.mutable_version() = Version();
+  ::grpc::ClientContext context;
+  context.AddMetadata("ifrt-proxy-grpc-ifrt-session-metadata-bin",
+                      metadata.SerializeAsString());
+  std::unique_ptr<::grpc::ClientReaderWriter<IfrtRequest, IfrtResponse>>
+      stream = stub->IfrtSession(&context);
+  stream->WritesDone();
+  return stream->Finish();
+}
+
+TEST(GrpcServiceImplTest, SessionTeardownWithinTimeoutFinishes) {
+  absl::Notification torn_down;
+  GrpcServiceImpl::Options options;
+  options.session_teardown_timeout = absl::Seconds(5);
+  GrpcServiceImpl service(FakeBackendFactory([&] { torn_down.Notify(); }),
+                          std::move(options));
+
+  EXPECT_TRUE(OpenAndCloseSession(service).ok());
+  EXPECT_TRUE(torn_down.HasBeenNotified());
+}
+
+void RunSessionWhoseTeardownOutlastsTimeout() {
+  absl::Notification never_notified;
+  GrpcServiceImpl::Options options;
+  options.session_teardown_timeout = absl::Seconds(1);
+  GrpcServiceImpl service(
+      FakeBackendFactory([&] {
+        never_notified.WaitForNotificationWithTimeout(absl::Seconds(30));
+      }),
+      std::move(options));
+  (void)OpenAndCloseSession(service);
+}
+
+TEST(GrpcServiceImplDeathTest, SessionTeardownTimeoutCrashesProcess) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  EXPECT_DEATH(RunSessionWhoseTeardownOutlastsTimeout(),
+               "Teardown of IFRT session 1 did not finish within 1s; crashing "
+               "so that the server can be restarted");
 }
 
 class GrpcIfrtServiceImplHostBufferTest

@@ -33,19 +33,18 @@ namespace stream_executor::gpu {
 __global__ void MultiGpuBarrierWithNcclKernelImpl(
     int64_t rank, int64_t num_ranks, ncclWindow_t signal_buffers_handle,
     uint32_t* sync_counter) {
-  // 1. Get individual signal buffers pointers.
-  std::array<uint32_t* __restrict__, MultiGpuBarrierWithNcclKernel::kMaxPeers>
+  __shared__ std::array<uint32_t* __restrict__,
+                        MultiGpuBarrierWithNcclKernel::kMaxPeers>
       signal_buffers;
 
-#pragma unroll
-  for (int64_t i = 0; i < MultiGpuBarrierWithNcclKernel::kMaxPeers; ++i) {
-    if (i < num_ranks) {
-      signal_buffers[i] = reinterpret_cast<uint32_t*>(
-          ncclGetLsaPointer(signal_buffers_handle, 0, i));
-    }
+  for (int64_t i = threadIdx.x; i < num_ranks; i += blockDim.x) {
+    signal_buffers[i] = reinterpret_cast<uint32_t*>(
+        ncclGetLsaPointer(signal_buffers_handle, 0, i));
   }
+  __syncthreads();
 
-  SyncRemoteBlocksAndUpdateCounter<PlatformType::kCuda>(
+  SyncRemoteBlocksAndUpdateCounter<PlatformType::kCuda,
+                                   MultiGpuBarrierWithNcclKernel::kMaxPeers>(
       rank, num_ranks, signal_buffers, sync_counter);
 }
 

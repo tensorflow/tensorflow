@@ -762,6 +762,16 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       output_spec_cache_->Retrieve().has_value();
 
   xla::ifrt::LoadedExecutable::ExecuteResult result;
+  // A cancellation handle is issued only when the execution status is tracked,
+  // since the server releases its cancellation state when the status future
+  // becomes ready.
+  if (result_needs_exec_status &&
+      rpc_helper_->protocol_version() >= protocol_version::kCancelExecution) {
+    const uint64_t cancellation_handle = rpc_helper_->NextHandle();
+    req->set_cancellation_handle(cancellation_handle);
+    result.cancellation_handle =
+        std::make_shared<proxy::CancellationHandle>(cancellation_handle);
+  }
   // TODO(hyeontaek): `GetOutputLayouts()` uses a concrete layout for a
   // default layout. This will change as proper IFRT layout support is fleshed
   // out. While the code here using `layouts` will automatically benefit from

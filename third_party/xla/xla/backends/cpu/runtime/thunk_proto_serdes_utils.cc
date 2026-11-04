@@ -66,16 +66,22 @@ absl::StatusOr<Thunk::Info> ThunkInfoFromProto(const InfoProto& proto) {
   return info;
 }
 
-absl::StatusOr<std::shared_ptr<Resource>> CreateResourceFromProto(
+absl::StatusOr<Resource::Kind> ResourceKindFromProto(
     const ResourceProto& proto) {
   switch (proto.kind()) {
     case ResourceProto::TOKEN:
-      return Resource::Create(Resource::kToken);
+      return Resource::kToken;
     case ResourceProto::COLLECTIVE_COMMUNICATOR:
-      return Resource::Create(Resource::kCollectiveCommunicator);
+      return Resource::kCollectiveCommunicator;
     default:
       return absl::UnimplementedError("Resource kind not supported.");
   }
+}
+
+absl::StatusOr<std::shared_ptr<Resource>> CreateResourceFromProto(
+    const ResourceProto& proto) {
+  ABSL_ASSIGN_OR_RETURN(Resource::Kind kind, ResourceKindFromProto(proto));
+  return Resource::Create(kind);
 }
 
 absl::StatusOr<ResourceProto> ToProto(const Resource& resource) {

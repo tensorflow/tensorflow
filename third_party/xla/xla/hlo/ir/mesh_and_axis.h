@@ -84,9 +84,6 @@ class Mesh {
     return axes_names_.empty() && device_assignment_.num_elements() == 1;
   }
 
-  // Backward compatibility alias for `IsSingleDevice()`.
-  bool IsMaximal() const { return IsSingleDevice(); }
-
   bool operator==(const Mesh& other) const {
     return device_assignment_ == other.device_assignment_ &&
            axes_names_ == other.axes_names_;

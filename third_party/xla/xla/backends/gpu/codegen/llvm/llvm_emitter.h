@@ -21,8 +21,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -38,9 +39,6 @@ void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
                           int64_t bytes_per_element,
                           absl::string_view symbol_name, int allocation_idx,
                           DenseDataIntermediate content, bool emit_initializer);
-
-AsyncThunkSequence EmitBitonicSortLLVMIR(const HloSortInstruction* sort,
-                                         IrEmitterContext* ir_emitter_context);
 
 // Input = {static array, dynamic_dim0, dynamic_dim1}
 // Output = {dynamic array(with dynamic dimension meta data at the end)}

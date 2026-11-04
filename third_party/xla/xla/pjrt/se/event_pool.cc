@@ -21,8 +21,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/pjrt/async_work_runner.h"
-#include "xla/pjrt/never_run_on_fiber.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -41,7 +39,7 @@ EventPool::EventPool(bool allow_reuse)
     : allow_reuse_(allow_reuse), next_sequence_number_(1) {}
 
 absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
-    AsyncWorkRunner* async_work_runner, se::StreamExecutor* executor) {
+    se::StreamExecutor* executor) {
   std::unique_ptr<se::Event> event;
 
   EventPool* pool = nullptr;
@@ -54,9 +52,7 @@ absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
     }
   }
   if (!event) {
-    ABSL_ASSIGN_OR_RETURN(event, NeverRunOnFiber(async_work_runner, [&]() {
-                       return executor->CreateEvent();
-                     }));
+    ABSL_ASSIGN_OR_RETURN(event, executor->CreateEvent());
   }
   return EventPool::Handle(pool, std::move(event));
 }
@@ -68,9 +64,8 @@ void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
 }
 
 absl::StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
-    AsyncWorkRunner* async_work_runner, se::Stream* stream) {
-  ABSL_ASSIGN_OR_RETURN(EventPool::Handle handle,
-                   AllocateEvent(async_work_runner, stream->parent()));
+    se::Stream* stream) {
+  ABSL_ASSIGN_OR_RETURN(EventPool::Handle handle, AllocateEvent(stream->parent()));
   ThenRecordEvent(stream, handle);
   return handle;
 }

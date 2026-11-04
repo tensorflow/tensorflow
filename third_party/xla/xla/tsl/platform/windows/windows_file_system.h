@@ -61,6 +61,10 @@ class WindowsFileSystem : public FileSystem {
   absl::Status GetMatchingPaths(const std::string& pattern,
                                 std::vector<std::string>* result) override;
 
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                std::vector<std::string>* result,
+                                bool multithreaded) override;
+
   bool Match(absl::string_view filename, absl::string_view pattern) override;
 
   absl::Status Stat(const std::string& fname, FileStatistics* stat) override;

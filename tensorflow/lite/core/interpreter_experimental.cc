@@ -182,9 +182,13 @@ async::AsyncSignatureRunner* Interpreter::GetAsyncSignatureRunner(
 
   for (const auto& signature : signature_defs_) {
     if (signature.signature_key == signature_key) {
+      Subgraph* target_subgraph = subgraph(signature.subgraph_index);
+      if (target_subgraph == nullptr) {
+        return nullptr;
+      }
       auto status = async_signature_runner_map_.insert(
-          {signature_key, async::AsyncSignatureRunner(
-                              &signature, subgraph(signature.subgraph_index))});
+          {signature_key,
+           async::AsyncSignatureRunner(&signature, target_subgraph)});
       return &(status.first->second);
     }
   }

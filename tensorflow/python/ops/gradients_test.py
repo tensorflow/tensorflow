@@ -14,8 +14,10 @@
 # ==============================================================================
 """Tests for tensorflow.ops.gradients."""
 
+import gc
 import sys
 import warnings
+import weakref
 
 from absl.testing import parameterized
 import numpy as np
@@ -23,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import forwardprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
@@ -862,6 +865,35 @@ class HessianTest(test_util.TensorFlowTestCase):
     self.assertAllEqual((m, n, m, n), hess_actual.shape)
     self.assertAllClose(hess_value, hess_actual.reshape((m * n, m * n)))
 
+  def testHessianNameScope(self):
+    # `name` is documented as grouping all the gradient ops together, so the
+    # ops hessians() adds must land under it rather than in the enclosing
+    # scope.
+    # _AsList() leaves tuples alone, so every pairing of the containers the
+    # two arguments accept has to survive being concatenated.
+    wrappers = [
+        lambda v: v,
+        lambda v: (v,),
+        lambda v: [v],
+    ]
+    for name, expected in [(None, "hessians"), ("my_hessians", "my_hessians")]:
+      for wrap_ys in wrappers:
+        for wrap_xs in wrappers:
+          with ops.Graph().as_default() as g:
+            x = constant_op.constant([1.0, 2.0, 3.0])
+            y = math_ops.reduce_sum(x * x * x)
+            existing_ops = set(g.get_operations())
+            if name is None:
+              gradients.hessians(wrap_ys(y), wrap_xs(x))
+            else:
+              gradients.hessians(wrap_ys(y), wrap_xs(x), name=name)
+            added = [
+                op.name for op in g.get_operations() if op not in existing_ops
+            ]
+          self.assertNotEmpty(added)
+          for op_name in added:
+            self.assertEqual(expected, op_name.split("/")[0])
+
 
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
 
@@ -1188,6 +1220,59 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       y = F(x)
       with self.assertRaises(RuntimeError):
         gradients.gradients(y, x)
+
+  def testCustomGradientReleasedWithGraph(self):
+
+    @custom_gradient.custom_gradient
+    def Square(x):
+
+      def Grad(dy):
+        return 2.0 * x * dy
+
+      return x * x, Grad
+
+    graph = ops.Graph()
+    with graph.as_default():
+      x = constant(3.0)
+      y = Square(x)
+      dx = gradients.gradients(y, x)[0]
+      with session.Session() as sess:
+        self.assertEqual(6.0, sess.run(dx))
+    name = y.op.get_attr("_gradient_op_type").decode()
+    self.assertIn(name, ops.gradient_registry.list())
+    registered_grad_fn = ops.gradient_registry.lookup(name)
+
+    graph_ref = weakref.ref(graph)
+    del graph, x, y, dx, sess
+    gc.collect()
+    self.assertIsNone(graph_ref())
+    self.assertNotIn(name, ops.gradient_registry.list())
+    with self.assertRaisesRegex(LookupError, "garbage collected"):
+      registered_grad_fn(None)
+
+  @test_util.run_v2_only
+  def testCustomGradientForwardAccumulatorInFunction(self):
+
+    @custom_gradient.custom_gradient
+    def Square(x):
+
+      def Grad(dy):
+        return 2.0 * x * dy
+
+      return x * x, Grad
+
+    @def_function.function
+    def SquareJvpAndGrad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        with forwardprop.ForwardAccumulator(x, constant(1.0)) as acc:
+          y = Square(x)
+      return y, acc.jvp(y), tape.gradient(y, x)
+
+    y, jvp, dx = SquareJvpAndGrad(constant(3.0))
+    self.assertEqual(9.0, self.evaluate(y))
+    self.assertEqual(6.0, self.evaluate(jvp))
+    self.assertEqual(6.0, self.evaluate(dx))
 
   def testCustomGradientWithVariables(self):
 

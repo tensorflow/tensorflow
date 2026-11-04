@@ -41,7 +41,7 @@ __global__ void GatherSliceOpKernel(
     const int64_t loc = i / slice_size;
     const auto indices_i = indices + IXDIM * loc;
     bool out_of_bounds = false;
-    Index offset = 0;
+    int64_t offset = 0;
     // Avoid empty std::array access, which fails to compile on GPU.
     if constexpr (IXDIM > 0) {
 #pragma unroll
@@ -63,7 +63,7 @@ __global__ void GatherSliceOpKernel(
     // to one offset.  The calculation of offset can be shared within
     // the warp or block and then the warp / block can cooperate to
     // the copy.
-    const Index loc_offset = i - loc * slice_size;
+    const int64_t loc_offset = i - loc * slice_size;
     out[i] = (out_of_bounds) ? T(0) : ldg(params + offset + loc_offset);
   }
 }

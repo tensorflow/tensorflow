@@ -47,8 +47,6 @@ class SendThunk : public CollectiveThunk {
   SendThunk(ThunkInfo thunk_info, const P2PConfig& config, const Buffer& buffer,
             absl::string_view instr_name);
 
-  absl::Status Initialize(const InitializeParams& params) override;
-
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const ExecuteParams& execute_params, const RecordParams& record_params,
       RecordAction record_action, se::CommandBuffer* command_buffer) override;

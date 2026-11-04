@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -37,12 +38,16 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -139,8 +144,8 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
     const std::string root_name(
         module->entry_computation()->root_instruction()->name());
     BinaryMap dnn_compiled_graphs;
-    CuDnnFusionCompiler cudnn_compiler(
-        stream_executor()->AsDnn(), device_description(), dnn_compiled_graphs);
+    CuDnnFusionCompiler cudnn_compiler(stream_executor(), device_description(),
+                                       dnn_compiled_graphs);
     // Run filecheck even if CuDnnFusionCompiler failed.
     cudnn_compiler.Run(module.get()).IgnoreError();
     std::string dump;
@@ -284,8 +289,8 @@ ENTRY e {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(stream_executor()->AsDnn(),
-                                     device_description(), dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(stream_executor(), device_description(),
+                                     dnn_compiled_graphs);
   ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -318,8 +323,8 @@ e {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(stream_executor()->AsDnn(),
-                                     device_description(), dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(stream_executor(), device_description(),
+                                     dnn_compiled_graphs);
   EXPECT_THAT(cudnn_compiler.Run(module.get()),
               absl_testing::IsOkAndHolds(false));
   // Single dot is not supported by cuDNN, so Triton should be used.
@@ -367,8 +372,8 @@ ENTRY e {
   ROOT r = tuple(f0, f1)
 })"));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(stream_executor()->AsDnn(),
-                                     device_description(), dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(stream_executor(), device_description(),
+                                     dnn_compiled_graphs);
   ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -414,6 +419,57 @@ ENTRY e {
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+class CuDnnFusionStreamAnnotationTest : public CuDnnFusionExecutionTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        CuDnnFusionExecutionTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_stream_annotation(true);
+    return debug_options;
+  }
+};
+
+TEST_F(CuDnnFusionStreamAnnotationTest,
+       FusionInStreamAnnotatedCallExecutesCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+fusion1 {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT r = f32[32,64] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+annotated {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT f = f32[32,64] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+}
+
+ENTRY e {
+  p0 = f32[32,96] parameter(0)
+  p1 = f32[96,64] parameter(1)
+  ROOT c = f32[32,64] call(p0, p1), to_apply=annotated,
+    frontend_attributes={_xla_stream_annotation="1",inlineable="false"}
+})";
+
+  // The stream-annotated call is wrapped into an async computation on the
+  // parallel execution thread, so the cuDNN fusion must be compiled there.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized,
+                       GetOptimizedModule(kHloText));
+  ASSERT_TRUE(absl::c_any_of(
+      optimized->computations(), [](const HloComputation* computation) {
+        return computation->execution_thread() ==
+                   HloInstruction::kParallelExecutionThread &&
+               absl::c_any_of(computation->instructions(),
+                              [](const HloInstruction* instruction) {
+                                return IsCudnnFusion(*instruction);
+                              });
+      }));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(CuDnnFusionFileCheckTest, VectorTensorMultiplicationWorksCorrectly) {
@@ -539,10 +595,14 @@ ENTRY e {
   {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                          ParseAndReturnVerifiedModule(kHlo));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_gpu_cudnn_deviceless_compilation_mode(
+            DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO);
     const se::DeviceDescription& device_description =
         this->device_description();
     BinaryMap dnn_compiled_graphs;
-    CuDnnFusionCompiler cudnn_compiler(/*dnn_support=*/nullptr,
+    CuDnnFusionCompiler cudnn_compiler(/*stream_exec=*/nullptr,
                                        device_description, dnn_compiled_graphs);
     ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
     EXPECT_TRUE(changed);
@@ -647,21 +707,25 @@ ENTRY e {
   const se::DeviceDescription& device_description =
       executor->GetDeviceDescription();
 
-  // Compile with live dnn_support.
+  // Compile with live StreamExecutor.
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_live,
                        ParseAndReturnVerifiedModule(kHlo));
   BinaryMap binary_map_live;
-  CuDnnFusionCompiler live_compiler(executor->AsDnn(), device_description,
+  CuDnnFusionCompiler live_compiler(executor, device_description,
                                     binary_map_live);
   ASSERT_OK_AND_ASSIGN(bool changed_live, live_compiler.Run(module_live.get()));
   ASSERT_TRUE(changed_live);
 
-  // Compile deviceless (null dnn_support, same DeviceDescription).
+  // Compile deviceless (null stream_exec, same DeviceDescription).
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_deviceless,
                        ParseAndReturnVerifiedModule(kHlo));
+  module_deviceless->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_cudnn_deviceless_compilation_mode(
+          DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO);
   BinaryMap binary_map_deviceless;
   CuDnnFusionCompiler deviceless_compiler(
-      /*dnn_support=*/nullptr, device_description, binary_map_deviceless);
+      /*stream_exec=*/nullptr, device_description, binary_map_deviceless);
   ASSERT_OK_AND_ASSIGN(bool changed_deviceless,
                        deviceless_compiler.Run(module_deviceless.get()));
   ASSERT_TRUE(changed_deviceless);

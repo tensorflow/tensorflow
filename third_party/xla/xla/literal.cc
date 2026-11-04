@@ -44,7 +44,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "hwy//highway.h"
+#include "hwy/highway.h"
 #include "xla/index_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"

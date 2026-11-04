@@ -21,13 +21,14 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -389,7 +389,9 @@ struct FpToFpOpConversion
-           "unsupported rounding mode for f32->bf16 conversion: " +
-           stringifyRoundingMode(rounding) + "\n");
+@@ -334,8 +334,10 @@ struct FpToFpOpConversion
+           "unsupported rounding mode for f32->" + dstName +
+           " conversion: " + stringifyRoundingMode(rounding) + "\n");
      }
--    return LLVM::createLLVMIntrinsicCallOp(rewriter, loc, name, bf16_ty, {v})
 +    Value pzo = LLVM::createConstantI1(loc, rewriter, false);
-+    return LLVM::createLLVMIntrinsicCallOp(rewriter, loc, name, bf16_ty,
+     auto name = ("llvm.nvvm.f2" + dstName + "." + suffix).str();
+-    return LLVM::createLLVMIntrinsicCallOp(rewriter, loc, name, dstTy, {v})
++    return LLVM::createLLVMIntrinsicCallOp(rewriter, loc, name, dstTy,
 +                                           {v, pzo})
          .getResult(0);
    }

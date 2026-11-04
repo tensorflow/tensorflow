@@ -37,6 +37,23 @@ namespace tensorflow {
 TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
                                           DataType dtype);
 
+// Converts `obj` -- a NumPy array or NumPy scalar -- to an integer array of
+// the dtype described by the dtype-like Python object `numpy_dtype`, and
+// returns the new array (a new reference). The finiteness check and the cast
+// happen inside this single C++ entry point, mirroring the eager conversion in
+// `PySeqToTFE_TensorHandle`: no array is traversed, or allocated, on the Python
+// side and `ndarray.astype` is not called from Python.
+//
+// NumPy's float -> integer cast maps NaN and Inf onto the smallest
+// representable integer (0 for the float8 types) instead of failing, while
+// converting the equivalent Python list raises TypeError. Floating point,
+// complex and the user dtypes NumPy can classify (bfloat16, float8_*, ...)
+// that hold a non-finite element are therefore rejected with TypeError rather
+// than cast. Every other source dtype is cast unchanged.
+//
+// Returns nullptr and sets the Python error indicator on failure.
+PyObject* PyArrayToIntegerArray(PyObject* obj, PyObject* numpy_dtype);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_PY_SEQ_TENSOR_H_

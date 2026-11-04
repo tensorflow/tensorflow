@@ -991,6 +991,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
+        ":compatibility",
         ":cpu_check",
         "//tensorflow/lite/core/c:common",
     ] + selects.with_or({
@@ -1025,6 +1026,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
+        ":compatibility",
         ":cpu_check",
         ":tensor_utils_no_eigen",
         "//tensorflow/lite/core/c:common",
@@ -1383,6 +1385,20 @@ cc_test(
         ":avx2_quantization_utils",
         ":common",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "kernel_utils_test",
+    srcs = ["kernel_utils_test.cc"],
+    deps = [
+        ":kernel_utils",
+        "//tensorflow/lite:array",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

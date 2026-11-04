@@ -227,10 +227,19 @@ class MklSoftmaxOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     try {
       const Tensor& src_tensor = context->input(0);
-      auto src_shape = src_tensor.shape();
+      TensorShape src_shape = src_tensor.shape();
+      // The formats below go up to 5 dimensions. Softmax normalizes along the
+      // last dimension, so collapse the others into one for more dimensions.
+      if (src_shape.dims() > 5) {
+        int64_t num_rows = 1;
+        for (int i = 0; i < src_shape.dims() - 1; ++i) {
+          num_rows *= src_shape.dim_size(i);
+        }
+        const int64_t last_dim = src_shape.dim_size(src_shape.dims() - 1);
+        src_shape = TensorShape({num_rows, last_dim});
+      }
       const int input_dims = src_shape.dims();
       memory::format_tag src_fmt;
-      // TODO(intel-tf): Add support for dimensions larger than 5.
       switch (input_dims) {
         case 1:
           src_fmt = memory::format_tag::a;
@@ -249,7 +258,7 @@ class MklSoftmaxOp : public OpKernel {
           break;
         default:
           OP_REQUIRES_OK(context,
-                         absl::AbortedError("Input dims must be <= 5 and >=1"));
+                         absl::AbortedError("Input dims must be >= 1"));
           return;
       }
 

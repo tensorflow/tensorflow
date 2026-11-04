@@ -101,6 +101,16 @@ class CategoricalOp : public XlaOpKernel {
     }
     xla::PrimitiveType type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(0), &type));
+    // Sample in float32 for half-precision logits (the non-XLA kernels sample
+    // in at least float32): the spacing between half-precision values grows
+    // with the logits and can round the Gumbel noise away, which makes equal
+    // logits always pick the first class.
+    xla::XlaOp sampling_logits = logits;
+    if (type == xla::F16 || type == xla::BF16) {
+      type = xla::F32;
+      uniform_shape.set_element_type(type);
+      sampling_logits = xla::ConvertElementType(logits, type);
+    }
     xla::XlaOp log_uniforms = GetLogUniforms(uniform_shape, type, ctx);
 
     if (num_samples_is_dynamic) {
@@ -113,7 +123,7 @@ class CategoricalOp : public XlaOpKernel {
     // https://hips.seas.harvard.edu/blog/2013/04/06/the-gumbel-max-trick-for-discrete-distributions/
     // TODO(b/68769470): Switch to using a cumulative sum approach.
     auto softmax_entries =
-        xla::Sub(logits, log_uniforms,
+        xla::Sub(sampling_logits, log_uniforms,
                  /*broadcast_dimensions=*/{0, class_dimension});
 
     xla::PrimitiveType xla_output_type;
@@ -166,9 +176,6 @@ class StatelessCategoricalOp : public CategoricalOp {
     xla::XlaOp seed = ctx->Input(2);
 
     xla::XlaBuilder* builder = ctx->builder();
-    if (uniform_shape.element_type() == xla::BF16) {
-      uniform_shape.set_element_type(xla::F32);
-    }
     // We want a number in (0, 1) rather than [0, 1) or (0, 1]:
     // * log(-log(0)) is ∞.
     // * log(-log(1)) is -∞.

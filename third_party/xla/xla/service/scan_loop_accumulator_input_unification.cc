@@ -192,9 +192,13 @@ FindAccumulatorInputPairs(const HloDataflowAnalysis& dataflow_analysis,
     // dynamic-slice.
     HloInstruction* gte_user = input_gte_inner->users().at(0);
     VLOG(3) << "User of the inner loop input = " << gte_user->ToString();
-    if (MatchShapeCoveringDynamicIndexInstruction(
-            gte_user, input_gte_inner, HloOpcode::kDynamicSlice, config)
-            .has_value()) {
+    std::optional<int64_t> slice_dim =
+        MatchShapeCoveringDynamicIndexInstruction(
+            gte_user, input_gte_inner, HloOpcode::kDynamicSlice, config);
+    std::optional<int64_t> update_dim =
+        MatchShapeCoveringDynamicIndexInstruction(
+            acc->users().at(0), acc, HloOpcode::kDynamicUpdateSlice, config);
+    if (slice_dim.has_value() && slice_dim == update_dim) {
       acc_input_pairs.emplace_back(acc, input_gte_inner);
     }
   }

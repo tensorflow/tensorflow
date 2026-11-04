@@ -31,7 +31,9 @@ BaseScopedDiagnosticHandler::BaseScopedDiagnosticHandler(MLIRContext* context,
                                                          bool filter_stack)
     : SourceMgrDiagnosticHandler(source_mgr_, context, diag_stream_),
       diag_stream_(diag_str_),
-      propagate_(propagate) {}
+      propagate_(propagate) {
+  setHandler([this](Diagnostic& diag) { return this->handler(&diag); });
+}
 
 BaseScopedDiagnosticHandler::~BaseScopedDiagnosticHandler() {
   // Verify errors were consumed and re-register old handler.

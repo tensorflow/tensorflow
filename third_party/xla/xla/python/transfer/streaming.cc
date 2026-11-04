@@ -506,6 +506,8 @@ void PullTable::Reset() {
   mu_.lock();
   auto entries = std::move(entries_);
   auto paused_fetches_by_uuid = std::move(paused_fetches_);
+  entries_.clear();
+  paused_fetches_.clear();
   entry_heap_.clear();
   fetch_heap_.clear();
   mu_.unlock();

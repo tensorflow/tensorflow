@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <ostream>
 #include <vector>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -378,6 +380,13 @@ REGISTER_OP("Pack")
       int32_t axis;
       TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank + 1, &axis));
 
+      if (rank >= TensorShape::MaxDimensions()) {
+        return errors::InvalidArgument(
+            "Cannot pack tensors of rank ", rank,
+            ": packing would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), ".");
+      }
+
       // Copy all dimensions over, inserting a dimension of value #inputs
       // at <axis>.
       std::vector<DimensionHandle> dims;
@@ -705,21 +714,38 @@ REGISTER_OP("SplitV")
         // known.
         int64_t split_dim = c->Value(split_dimension);
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
-        std::vector<int64_t> data;
-        if (size_splits->dtype() == DT_INT32) {
-          data =
-              AsInt64<int32_t>(size_splits, size_splits->shape().dim_size(0));
-        } else {
-          data =
-              AsInt64<int64_t>(size_splits, size_splits->shape().dim_size(0));
+        ShapeHandle size_splits_shape;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &size_splits_shape));
+        if (size_splits->dims() != 1) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "size_splits must be 1-D, got rank ", size_splits->dims()));
         }
-        if (num_outputs != data.size()) {
+        const int64_t num_size_splits = size_splits->shape().dim_size(0);
+        if (num_outputs != num_size_splits) {
           return absl::InvalidArgumentError(
               "Length of size_splits should be equal to num_outputs");
         }
+        // The kernel computes in Tlen, so sizes have to fit in it.
+        int64_t max_tlen;
+        std::vector<int64_t> data;
+        if (size_splits->dtype() == DT_INT32) {
+          max_tlen = std::numeric_limits<int32_t>::max();
+          data = AsInt64<int32_t>(size_splits, num_size_splits);
+        } else if (size_splits->dtype() == DT_INT8) {
+          max_tlen = std::numeric_limits<int8_t>::max();
+          data = AsInt64<int8_t>(size_splits, num_size_splits);
+        } else if (size_splits->dtype() == DT_INT64) {
+          max_tlen = std::numeric_limits<int64_t>::max();
+          data = AsInt64<int64_t>(size_splits, num_size_splits);
+        } else {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Unexpected dtype for size_splits: ",
+                           DataTypeString(size_splits->dtype())));
+        }
         int64_t total_size = 0;
         bool has_neg_one = false;
-        for (const auto size : data) {
+        for (int i = 0; i < num_outputs; ++i) {
+          const int64_t size = data[i];
           if (size == -1) {
             if (has_neg_one) {
               return absl::InvalidArgumentError(
@@ -727,10 +753,27 @@ REGISTER_OP("SplitV")
             }
             has_neg_one = true;
           } else {
+            // As in the SplitV kernel, reject a negative size before summing
+            // it and keep the sum within Tlen, so that neither the sum nor
+            // `split_dim_size - total_size` below overflows.
+            if (size < 0) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Split size at index ", i, " must be >= 0. Got: ", size));
+            }
+            if (total_size > max_tlen - size) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Sum of size_splits overflows the index type at index ", i,
+                  "."));
+            }
             total_size += size;
           }
         }
         auto split_dim_size = c->Value(c->Dim(input, split_dim));
+        if (c->ValueKnown(split_dim_size) && split_dim_size > max_tlen) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Input size along split_dim must be <= max(Tlen). Got: ",
+              split_dim_size));
+        }
         // If the sizes of the splits are known, then
         // make sure that the sizes add up to the expected
         // dimension size, with the possibility of a -1.
@@ -2172,6 +2215,13 @@ REGISTER_OP("ExpandDims")
 
       if (dim < 0) {
         dim += rank + 1;
+      }
+
+      if (rank >= TensorShape::MaxDimensions()) {
+        return errors::InvalidArgument(
+            "Cannot expand a tensor of rank ", rank,
+            ": expanding would exceed the maximum supported rank of ",
+            TensorShape::MaxDimensions(), ".");
       }
 
       ShapeHandle end;

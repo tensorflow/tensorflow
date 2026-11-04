@@ -64,20 +64,21 @@ class RollOp : public OpKernel {
         context, shift.shape() == axis.shape(),
         absl::InvalidArgumentError("shift and axis must have the same size"));
     const int64_t num_elements = input.NumElements();
-    const int num_shifts = static_cast<int>(shift_flat.size());
+    const int64_t num_shifts = shift_flat.size();
     const int num_dims = input.dims();
 
     // if there are any duplicate axes, shift_mod_sum will have the
     // total modulo sum of shifts for each dimension
     absl::InlinedVector<int64_t, 4> shift_mod_sum(num_dims, 0);
-    for (int i = 0; i < num_shifts; i++) {
-      int axis = axis_flat(i);
+    for (int64_t i = 0; i < num_shifts; i++) {
+      int64_t axis = axis_flat(i);
       if (axis < 0) {
         axis += num_dims;
       }
       OP_REQUIRES(context, FastBoundsCheck(axis, num_dims),
-                  absl::InvalidArgumentError(
-                      absl::StrCat("axis ", axis, " is out of range")));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "axis ", axis_flat(i),
+                      " is out of range for input of rank ", num_dims, ".")));
       const int64_t ds = std::max<int64_t>(input.dim_size(axis), 1);
       // reduce the shift first so the sum cannot overflow int64_t
       const int64_t sum =

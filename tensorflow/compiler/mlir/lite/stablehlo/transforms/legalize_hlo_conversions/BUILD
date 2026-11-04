@@ -111,8 +111,13 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
+        "//tensorflow/compiler/mlir/lite:tfl_carrier",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@xla//xla/mlir_hlo",

@@ -1258,6 +1258,24 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
   EXPECT_FALSE(Identical(
       *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
       *HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op1, op2)));
+
+  // AfterAll and AddDependency.
+  auto token1 = HloInstruction::CreateToken();
+  auto token2 = HloInstruction::CreateToken();
+  EXPECT_TRUE(Identical(*token1, *token2));
+  EXPECT_TRUE(Identical(*HloInstruction::CreateAfterAll({token1.get()}),
+                        *HloInstruction::CreateAfterAll({token1.get()})));
+  EXPECT_FALSE(Identical(*HloInstruction::CreateAfterAll({token1.get()}),
+                         *HloInstruction::CreateAfterAll({token2.get()})));
+  EXPECT_TRUE(
+      Identical(*HloInstruction::CreateAddDependency(op1, token1.get()),
+                *HloInstruction::CreateAddDependency(op1, token1.get())));
+  EXPECT_FALSE(
+      Identical(*HloInstruction::CreateAddDependency(op1, token1.get()),
+                *HloInstruction::CreateAddDependency(op2, token1.get())));
+  EXPECT_FALSE(
+      Identical(*HloInstruction::CreateAddDependency(op1, token1.get()),
+                *HloInstruction::CreateAddDependency(op1, token2.get())));
 }
 
 TEST_F(HloInstructionTest, IdenticalCallInstructions) {

@@ -171,10 +171,11 @@ TEST_F(SymbolicExprTest, ReplaceDims) {
   SymbolicExpr s1 = CreateSymbolExpr(2, /*num_dims=*/1, &ctx);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
 
-  // Testing both signatures of ReplaceDims.
-  EXPECT_EQ(expr_to_sub.ReplaceDims({d0 + s1}), ((d0 + s1) + s0 * 2) * s1);
-  EXPECT_EQ(expr_to_sub.ReplaceDims({d0 + s1}, /*current_num_dims=*/1,
-                                    /*new_num_dims=*/1, /*num_symbols=*/2),
+  EXPECT_EQ(expr_to_sub.ReplaceDimsAndSymbols({d0 + s1}),
+            ((d0 + s1) + s0 * 2) * s1);
+  EXPECT_EQ(expr_to_sub.ReplaceDimsAndSymbols({d0 + s1}, {},
+                                              /*num_old_dims=*/1,
+                                              /*num_new_dims=*/1),
             ((d0 + s1) + s0 * 2) * s1);
 }
 
@@ -184,13 +185,19 @@ TEST_F(SymbolicExprTest, ReplaceDimsWithShiftedSymbols) {
   SymbolicExpr s1 = CreateSymbolExpr(1, /*num_dims=*/1, &ctx);
   SymbolicExpr c7 = CreateSymbolicConstant(7, &ctx);
   SymbolicExpr expr_to_sub = (s0 * 2 + d0) * s1;
-  SymbolicExpr result = expr_to_sub.ReplaceDims(
-      {c7}, /*current_num_dims=*/1, /*new_num_dims=*/0, /*num_symbols=*/2);
+  SymbolicExpr result = expr_to_sub.ReplaceDimsAndSymbols(
+      {c7}, {}, /*num_old_dims=*/1, /*num_new_dims=*/0);
   // Dimensions are replaced and symbols are shifted.
-
   SymbolicExpr new_s0 = CreateSymbolExpr(0, /*num_dims=*/0, &ctx);
   SymbolicExpr new_s1 = CreateSymbolExpr(1, /*num_dims=*/0, &ctx);
-  EXPECT_EQ(result, ((new_s0 * 2 + c7) * new_s1));
+  EXPECT_EQ(result, (new_s0 * 2 + c7) * new_s1);
+
+  // Unreplaced dimensions are preserved and symbols are shifted.
+  SymbolicExpr expanded_s0 = CreateSymbolExpr(0, /*num_dims=*/2, &ctx);
+  SymbolicExpr expanded_s1 = CreateSymbolExpr(1, /*num_dims=*/2, &ctx);
+  EXPECT_EQ(expr_to_sub.ReplaceDimsAndSymbols({}, {}, /*num_old_dims=*/1,
+                                              /*num_new_dims=*/2),
+            (expanded_s0 * 2 + d0) * expanded_s1);
 }
 
 TEST_F(SymbolicExprTest, ReplaceSymbols) {
@@ -199,8 +206,9 @@ TEST_F(SymbolicExprTest, ReplaceSymbols) {
   SymbolicExpr s1 = CreateSymbolExpr(1, /*num_dims=*/1, &ctx);
   SymbolicExpr c7 = CreateSymbolicConstant(7, &ctx);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
-  SymbolicExpr result = expr_to_sub.ReplaceSymbols({d0, c7}, /*num_dims=*/1);
-  EXPECT_EQ(result, ((d0 + (d0 * 2)) * c7));
+  SymbolicExpr result =
+      expr_to_sub.ReplaceDimsAndSymbols({}, {d0, c7}, /*num_old_dims=*/1);
+  EXPECT_EQ(result, (d0 + (d0 * 2)) * c7);
 }
 
 TEST_F(SymbolicExprTest, ReplaceDimsAndSymbols) {
@@ -210,7 +218,7 @@ TEST_F(SymbolicExprTest, ReplaceDimsAndSymbols) {
   SymbolicExpr c7 = CreateSymbolicConstant(7, &ctx);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
   SymbolicExpr result = expr_to_sub.ReplaceDimsAndSymbols({s0}, {d0, c7});
-  EXPECT_EQ(result, ((s0 + (d0 * 2)) * c7));
+  EXPECT_EQ(result, (s0 + (d0 * 2)) * c7);
 }
 
 TEST_F(SymbolicExprTest, UniquingWorks) {

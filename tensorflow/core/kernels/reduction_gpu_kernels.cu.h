@@ -994,76 +994,70 @@ namespace reduction_op_helper {
 template <typename T, typename Op>
 struct IsSum {
   constexpr static bool value =
-      (std::is_same<Op, gpuprim::Sum>::value ||
-       std::is_same<Op, Eigen::internal::SumReducer<T>>::value ||
-       std::is_same<Op, Sum<T>>::value);
+      (std::is_same_v<Op, gpuprim::Sum> ||
+       std::is_same_v<Op, Eigen::internal::SumReducer<T>> ||
+       std::is_same_v<Op, Sum<T>>);
 };
 
 template <typename T, typename Op>
 struct IsMax {
   constexpr static bool value =
-      (std::is_same<Op, MaxPropagateNaN>::value ||
-       std::is_same<Op, gpuprim::Max>::value ||
-       std::is_same<
-           Op, Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>>::value);
+      (std::is_same_v<Op, MaxPropagateNaN> ||
+       std::is_same_v<Op, gpuprim::Max> ||
+       std::is_same_v<Op, Eigen::internal::MaxReducer<T, Eigen::PropagateNaN>>);
 };
 
 template <typename T, typename Op>
 struct IsMin {
   constexpr static bool value =
-      (std::is_same<Op, MinPropagateNaN>::value ||
-       std::is_same<Op, gpuprim::Min>::value ||
-       std::is_same<
-           Op, Eigen::internal::MinReducer<T, Eigen::PropagateNaN>>::value);
+      (std::is_same_v<Op, MinPropagateNaN> ||
+       std::is_same_v<Op, gpuprim::Min> ||
+       std::is_same_v<Op, Eigen::internal::MinReducer<T, Eigen::PropagateNaN>>);
 };
 
 template <typename T, typename Op>
 struct IsProd {
   constexpr static bool value =
-      (std::is_same<Op, Prod<T>>::value ||
-       std::is_same<Op, Eigen::internal::ProdReducer<T>>::value);
+      (std::is_same_v<Op, Prod<T>> ||
+       std::is_same_v<Op, Eigen::internal::ProdReducer<T>>);
 };
 
 template <typename T, typename Op>
 struct IdentityValue {
   static_assert(IsSum<T, Op>::value || IsMax<T, Op>::value ||
                     IsMin<T, Op>::value || IsProd<T, Op>::value ||
-                    std::is_same<Op, And>::value || std::is_same<Op, Or>::value,
+                    std::is_same_v<Op, And> || std::is_same_v<Op, Or>,
                 "IdentityValue not yet defined for this type");
 
   template <typename U = T, typename OpCopy = Op>
-  U operator()(
-      typename std::enable_if<IsSum<U, OpCopy>::value, U>::type t = U(0)) {
+  U operator()(std::enable_if_t<IsSum<U, OpCopy>::value, U> t = U(0)) {
     return t;
   }
 
   template <typename U = T, typename OpCopy = Op>
-  U operator()(typename std::enable_if<IsMax<U, OpCopy>::value, U>::type t =
+  U operator()(std::enable_if_t<IsMax<U, OpCopy>::value, U> t =
                    Eigen::NumTraits<U>::lowest()) {
     return t;
   }
 
   template <typename U = T, typename OpCopy = Op>
-  U operator()(typename std::enable_if<IsMin<U, OpCopy>::value, U>::type t =
+  U operator()(std::enable_if_t<IsMin<U, OpCopy>::value, U> t =
                    Eigen::NumTraits<U>::highest()) {
     return t;
   }
 
   template <typename U = T, typename OpCopy = Op>
-  U operator()(
-      typename std::enable_if<IsProd<U, OpCopy>::value, U>::type t = U(1)) {
+  U operator()(std::enable_if_t<IsProd<U, OpCopy>::value, U> t = U(1)) {
     return t;
   }
 
   template <typename U = T, typename OpCopy = Op>
-  U operator()(typename std::enable_if<std::is_same<OpCopy, And>::value,
-                                       bool>::type t = true) {
+  U operator()(std::enable_if_t<std::is_same_v<OpCopy, And>, bool> t = true) {
     return t;
   }
 
   template <typename U = T, typename OpCopy = Op>
-  U operator()(typename std::enable_if<std::is_same<OpCopy, Or>::value,
-                                       bool>::type t = false) {
+  U operator()(std::enable_if_t<std::is_same_v<OpCopy, Or>, bool> t = false) {
     return t;
   }
 };

@@ -73,7 +73,6 @@ cc_library(
     deps = [
         ":byteswaptensor",
         ":naming",
-        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

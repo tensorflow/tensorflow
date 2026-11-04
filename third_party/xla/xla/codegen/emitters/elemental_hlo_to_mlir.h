@@ -148,6 +148,11 @@ void GetLoopBoundsFromIndexingMap(mlir::ImplicitLocOpBuilder& b,
 // Is an operation with the given opcode supported by the elemental IR emitter?
 bool IsSupportedElementalOp(HloOpcode opcode);
 
+// Emits MLIR for a kIota instruction at the given target indices.
+absl::StatusOr<llvm::SmallVector<mlir::Value, 1>> EmitIota(
+    const HloInstruction* instr, mlir::ValueRange indices,
+    mlir::ImplicitLocOpBuilder& builder);
+
 }  // namespace emitters
 }  // namespace xla
 

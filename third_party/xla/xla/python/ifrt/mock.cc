@@ -36,6 +36,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/index.h"
+#include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -169,6 +171,13 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
         return delegated_->CopyArrays(arrays, std::move(devices), memory_kind,
                                       semantics);
       });
+  ON_CALL(*this, CopyArraysWithDonatedDst)
+      .WillByDefault([this](absl::Span<ArrayRef> arrays,
+                            absl::Span<ArrayRef> donated_dst_arrays,
+                            ArrayCopySemantics semantics) {
+        return delegated_->CopyArraysWithDonatedDst(arrays, donated_dst_arrays,
+                                                    semantics);
+      });
   ON_CALL(*this, RemapArrays)
       .WillByDefault([this](const RemapPlan& plan, absl::Span<ArrayRef> arrays,
                             ArrayCopySemantics semantics) {
@@ -189,6 +198,17 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
                             absl::Span<const ArraySpec> specs,
                             ArrayCopySemantics semantics) {
         return delegated_->ReshardArrays(arrays, specs, semantics);
+      });
+  ON_CALL(*this, CopyArraySlices)
+      .WillByDefault([this](absl::Span<const ArrayRef> arrays,
+                            absl::Span<const IndexDomain> index_domains) {
+        return delegated_->CopyArraySlices(arrays, index_domains);
+      });
+  ON_CALL(*this, UpdateArraySlices)
+      .WillByDefault([this](absl::Span<ArrayRef> arrays,
+                            absl::Span<const ArrayRef> slices,
+                            absl::Span<const Index> origins) {
+        return delegated_->UpdateArraySlices(arrays, slices, origins);
       });
   ON_CALL(*this, GetReadyFuture)
       .WillByDefault([this](absl::Span<const ValueRef> values) {

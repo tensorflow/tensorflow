@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/latency_hiding_scheduler.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -2423,8 +2424,9 @@ bool DefaultSchedulerCore::AddOccupierToResource(
   // Since it points to the newly inserted element, increment it
   it++;
   accumulated_delay += new_edge_remaining;
-  CHECK(new_edge.OriginalLatency() - 0.0001 < accumulated_delay &&
-        accumulated_delay < new_edge.OriginalLatency() + 0.0001);
+  const HloGraphNode::TimeCost tolerance =
+      std::max(1e-4, 1e-9 * new_edge.OriginalLatency());
+  CHECK_LE(std::abs(accumulated_delay - new_edge.OriginalLatency()), tolerance);
   for (; it != occupiers.end(); it++) {
     it->second += accumulated_delay;
   }
@@ -2649,20 +2651,14 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     VLOG(2) << "Scheduled annotated node (" << num_scheduled << "/"
             << annotation_size << "): " << node->GetInstr().name();
   }
-  // If for some reason we could not schedule all the instructions in the
-  // annotation in one go, we clear the annotation for the remaining
-  // instruction. Currently this should only happen for async-start
-  // instructions.
+  // If we could not schedule all the instructions in the annotation in one go
+  // (e.g., due to dynamic dependencies added during scheduling), clear the
+  // annotation for all remaining instructions in the group.
   if (num_scheduled < annotation_size - non_ready_instr) {
     for (auto* inst :
          annotation_tracker_->GetInstructions(computation, annotation)) {
       HloGraphNode& node = sched_state->sched_graph->GetNode(inst);
       if (!node.IsScheduled()) {
-        TF_RET_CHECK(
-            scheduling_context_->GetAsyncTracker()->IsSupportedAsyncStart(
-                node.GetInstr()) ||
-            scheduling_context_->GetAsyncTracker()->IsSupportedAsyncDone(
-                node.GetInstr()));
         VLOG(2) << "Could not schedule all annotated nodes with annotation ID "
                 << annotation << " in one go; clearing annotation for "
                 << node.GetInstr().name();

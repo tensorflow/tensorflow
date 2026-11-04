@@ -924,13 +924,7 @@ static void PackRhsHelper(::testing::benchmark::State& state,
       /*inner_dim_reordered*/ false,              //
       /*Alignment*/ 0>;
 
-  using SubMapper = Eigen::internal::TensorContractionSubMapper<
-      T, Index, Eigen::internal::Rhs, Evaluator,  //
-      nocontract_t, contract_t,                   //
-      packet_size,                                //
-      /*inner_dim_contiguous*/ true,              //
-      /*inner_dim_reordered*/ false,              //
-      /*Alignment*/ 0>;
+  using SubMapper = typename InputMapper::SubMapper;
 
 #if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
   using PackRhsImpl =

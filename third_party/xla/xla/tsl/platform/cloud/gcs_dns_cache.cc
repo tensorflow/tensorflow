@@ -238,9 +238,13 @@ void GcsDnsCache::WorkerThread() {
     {
       // Don't immediately re-resolve the addresses.
       absl::MutexLock l(mu_);
-      if (cancelled_) return;
+      if (cancelled_) {
+        return;
+      }
       cond_var_.WaitWithTimeout(&mu_, absl::Seconds(refresh_rate_secs_));
-      if (cancelled_) return;
+      if (cancelled_) {
+        return;
+      }
     }
 
     // Resolve DNS values

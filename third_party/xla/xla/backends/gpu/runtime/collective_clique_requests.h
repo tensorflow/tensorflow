@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_CLIQUE_REQUESTS_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <tuple>
 #include <vector>
@@ -38,23 +39,33 @@ namespace xla::gpu {
 // initialize stage.
 class CollectiveCliqueRequests {
  public:
+  static constexpr int64_t kMaxCliqueSemaphores =
+      GpuCommunicator::kMaxCliqueSemaphores;
+  static constexpr int64_t kMaxCollectiveIds =
+      GpuCommunicator::kMaxCollectiveIds;
+
   // Allows to request additional barrier with acquired cliques.
   struct BarrierRequirements {
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const BarrierRequirements& reqs) {
-      absl::Format(&sink, "{use_cross_device_barrier: %d}",
-                   reqs.use_cross_device_barrier);
+      absl::Format(&sink,
+                   "{use_cross_device_barrier: %d, use_barrier_semaphores: %d}",
+                   reqs.use_cross_device_barrier, reqs.use_barrier_semaphores);
     }
 
     bool operator==(const BarrierRequirements& other) const {
-      return other.use_cross_device_barrier == use_cross_device_barrier;
+      return other.use_cross_device_barrier == use_cross_device_barrier &&
+             other.use_barrier_semaphores == use_barrier_semaphores;
     }
 
     bool operator<(const BarrierRequirements& other) const {
-      return use_cross_device_barrier < other.use_cross_device_barrier;
+      return std::tie(use_cross_device_barrier, use_barrier_semaphores) <
+             std::tie(other.use_cross_device_barrier,
+                      other.use_barrier_semaphores);
     }
 
     bool use_cross_device_barrier = false;
+    bool use_barrier_semaphores = false;
   };
 
   // For each requested clique key, we also assign a monotonically increasing
@@ -112,6 +123,9 @@ class CollectiveCliqueRequests {
 
     // Requirements for GXL.
     bool use_gxl_requested = false;
+
+    // Requirements for barrier semaphores.
+    bool use_barrier_semaphores = false;
   };
 
   // An extra set of requirements for the collective clique. When XLA runtime
@@ -166,7 +180,6 @@ class CollectiveCliqueRequests {
   std::vector<CliqueRequest> OrderedRequestedCliques() const;
 
   size_t size() const { return cliques_.size(); }
-
 
  private:
   absl::flat_hash_map<GpuCliqueKey, CliqueRequest> cliques_;

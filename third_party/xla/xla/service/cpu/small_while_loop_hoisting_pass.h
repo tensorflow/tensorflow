@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -31,7 +32,9 @@ namespace xla::cpu {
 // kernel instead of a series of thunks.
 class SmallWhileLoopHoistingPass final : public HloModulePass {
  public:
-  explicit SmallWhileLoopHoistingPass(int64_t small_buffer_access_size);
+  SmallWhileLoopHoistingPass(
+      int64_t small_buffer_access_size,
+      const TargetMachineFeatures* target_machine_features);
 
   absl::string_view name() const final { return "small-while-loop-hoisting"; }
 
@@ -45,6 +48,7 @@ class SmallWhileLoopHoistingPass final : public HloModulePass {
 
  private:
   int64_t small_buffer_access_size_;
+  const TargetMachineFeatures* target_machine_features_;
 };
 }  // namespace xla::cpu
 

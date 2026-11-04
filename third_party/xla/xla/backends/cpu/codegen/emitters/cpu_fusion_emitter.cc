@@ -53,8 +53,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
@@ -229,10 +227,8 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   builder.setInsertionPointToStart(fusion_module.getBody());
   auto entry_func = FuncOp::create(
       builder, loc, entry_function_name,
-      mlir::FunctionType::get(context, param_types, result_types),
-      /*sym_visibility=*/mlir::StringAttr{},
-      mlir::ArrayAttr::get(context, arg_attrs),
-      /*res_attrs=*/mlir::ArrayAttr{});
+      mlir::FunctionType::get(context, param_types, result_types));
+  entry_func.setArgAttrsAttr(mlir::ArrayAttr::get(context, arg_attrs));
   entry_func->setAttr("xla.entry", mlir::UnitAttr::get(context));
   // TODO(willfroom): Remove backend kind.
   SetBackendKind(context, entry_func, xla::BackendKind::kCpu);

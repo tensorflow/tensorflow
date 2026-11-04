@@ -198,6 +198,12 @@ class TransposePlan {
     return output_chunk_size_bytes_[chunk_id];
   }
 
+  // Maximum chunk size in bytes across all chunks in the plan.
+  int64_t MaxInputChunkSizeBytes() const { return max_input_chunk_size_bytes_; }
+  int64_t MaxOutputChunkSizeBytes() const {
+    return max_output_chunk_size_bytes_;
+  }
+
   // Returns a human-readable description of the plan.
   std::string ToString() const;
 
@@ -400,6 +406,8 @@ class TransposePlan {
   std::vector<int64_t> output_chunk_iteration_offsets_;
   std::vector<int64_t> input_chunk_size_bytes_;
   std::vector<int64_t> output_chunk_size_bytes_;
+  int64_t max_input_chunk_size_bytes_ = 0;
+  int64_t max_output_chunk_size_bytes_ = 0;
 
   // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
   // nest. The outer vector is indexed on the thread ID.

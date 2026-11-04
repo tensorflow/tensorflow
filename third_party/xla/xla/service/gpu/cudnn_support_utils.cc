@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -28,9 +30,13 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -229,5 +235,36 @@ bool IsAmaxRoot(const HloInstruction& root) {
   return root.IsRoot() && root.opcode() == HloOpcode::kTuple &&
          root.operand(1)->opcode() == HloOpcode::kReduce;
 }
+
+absl::StatusOr<se::dnn::DnnSupport* absl_nullable> ResolveCudnnSupport(
+    const DebugOptions& debug_options,
+    se::StreamExecutor* absl_nullable stream_exec,
+    se::SemanticVersion dnn_version) {
+  const DebugOptions::CudnnDevicelessCompilationMode mode =
+      debug_options.xla_gpu_cudnn_deviceless_compilation_mode();
+  const bool use_deviceless =
+      mode == DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS ||
+      (mode == DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO &&
+       stream_exec == nullptr);
+  if (use_deviceless) {
+    // TODO(b/568668570): Guard with cuDNN version 9.23.
+    if (dnn_version < se::SemanticVersion(9, 8, 0)) {
+      return absl::FailedPreconditionError(
+          "Deviceless cuDNN compilation requires cuDNN >= 9.8");
+    }
+    return nullptr;
+  }
+  if (stream_exec == nullptr) {
+    return absl::InvalidArgumentError(
+        "StreamExecutor is null and deviceless cuDNN compilation is not "
+        "enabled");
+  }
+  se::dnn::DnnSupport* dnn_support = stream_exec->AsDnn();
+  if (dnn_support == nullptr) {
+    return absl::FailedPreconditionError("DnnSupport is null");
+  }
+  return dnn_support;
+}
+
 }  // namespace gpu
 }  // namespace xla

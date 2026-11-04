@@ -33,7 +33,9 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
         *   Use header `absl/status/status_macros.h`.
         *   Use `ABSL_RETURN_IF_ERROR` for error propagation.
         *   Use `ABSL_ASSIGN_OR_RETURN` for `StatusOr` assignments.
-    *   **Safely access `StatusOr<T>` values**: Check `.ok()` before accessing.
+    *   **Safely access `StatusOr<T>` values**: Check `.ok()` before accessing,
+        or unwrap via `ABSL_ASSIGN_OR_RETURN` (never call `.value()` or
+        `*status_or` unchecked).
 
 2.  **Assertions & Invariant Checks (`TF_RET_CHECK`)**:
     *   **Avoid `DCHECK` / `LOG(DFATAL)`** for checking returnable errors.
@@ -73,12 +75,29 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
                 ...
             ```
 
-4.  **Performance Sensitivity**:
+4.  **Performance Sensitivity, Containers, and Determinism**:
     *   OpenXLA is a compiler; patterns should be efficient.
     *   Avoid unnecessary string copies or expensive allocations in hot paths (e.g., HLO passes).
+    *   Prefer Abseil container algorithms (`absl::c_find`, `absl::c_any_of`,
+        `absl::c_all_of`, `absl::c_sort`, `absl::c_transform` from
+        `absl/algorithm/container.h`) over iterator-pair `std::*` algorithms on
+        full containers.
+    *   Prefer `absl::flat_hash_map` and `absl::flat_hash_set` over
+        `std::unordered_map` and `std::unordered_set`, and `std::vector` indexed
+        by dense ID over `std::map` for dense integer keys.
+    *   **Deterministic iteration**: Never iterate directly over pointer-keyed
+        or unordered hash containers (`absl::flat_hash_map`,
+        `absl::flat_hash_set`) when creating instructions, assigning IDs, or
+        emitting code. Sort by a deterministic key (such as
+        `HloInstruction::unique_id()` or name) or use `HloInstructionMap` so
+        compilation output is reproducible across runs.
+    *   Use `int64_t` when computing element counts, byte sizes, or strides to
+        prevent 32-bit signed integer overflow.
 
 5.  **Testing**:
-    *   Write unit tests using `EXPECT_EQ`, `EXPECT_TRUE`, etc.
+    *   Write unit tests using `EXPECT_EQ`, `EXPECT_TRUE`, etc., and GoogleMock
+        container matchers (`ElementsAre`, `UnorderedElementsAre`, `IsEmpty`,
+        `FieldsAre`, `Optional`).
     *   Use the status testing macros `ASSERT_OK_AND_ASSIGN`, `ASSERT_OK`, and
         `EXPECT_OK` from `<gmock/gmock.h>` and the status matchers
         (`absl_testing::IsOk`, `absl_testing::IsOkAndHolds`,
@@ -88,12 +107,26 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
             `TF_EXPECT_OK`.
         *   When you refactor code that uses the `TF_*` macros, replace them,
             but do not touch unrelated code.
-    *   Put tests into an anonymous namespace.
-    *   Use `HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>` or
+        *   Never write weak boolean error checks like
+            `EXPECT_FALSE(status.ok())`; verify both the error code and message
+            substring with
+            `absl_testing::StatusIs(absl::StatusCode::k..., HasSubstr("..."))`.
+        *   When testing functions returning `xla::Decision`, assert on
+            `decision.Explain()` whenever a case is forbidden.
+    *   Put tests and `using ::testing::...;` declarations into an anonymous
+        `namespace {` block.
+    *   Use `HloInterpreterReferenceMixin<HloTestBase>` or
         `HloHardwareIndependentTestBase` for compiler pass tests locally where
-        possible.
+        possible (do not use `HloTestBaseLegacy`), and configure flags by
+        overriding `GetDebugOptionsForTest()`.
+    *   Embed HLO modules directly in C++ unit tests using `R"hlo(...)hlo"` raw
+        string literals rather than imperative `HloInstruction::Create*` builder
+        chains or standalone `.hlo` files.
+    *   Test helper functions must return `absl::Status` or `absl::StatusOr<T>`
+        rather than calling `CHECK(...)` inside helpers.
     *   When running GPU tests, pass `--config=cuda` to the test command.
-    *   Ensure tests are deterministic and do not flake.
+    *   Ensure tests are deterministic and do not flake (never use
+        `absl::SleepFor` or unseeded RNGs).
 
 6.  **BUILD targets**:
     *   When defining BUILD targets prefer these XLA specific rules:
@@ -102,21 +135,63 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
         *   Instead of `cc_test` use `xla_cc_test` (or `xla_test` when the test
             requires a real hardware backend).
 
-7.  **Explicit Typing**:
-    *   **Avoid `auto`** in public headers or complex logic chains.
+7.  **Strict C++17 (`-std=c++17`), Control Flow, and Explicit Typing**:
+    *   **C++17 only**: The codebase compiles with `-std=c++17` and
+        `-Wc++17-compat-pedantic`. Do not use C++20/23 features:
+        *   Use `absl::Span` (`absl/types/span.h`), never `std::span`.
+        *   Do not call `.contains()` on `std::map`, `std::set`,
+            `std::unordered_map`, or `std::unordered_set` (use
+            `absl::flat_hash_map` / `absl::flat_hash_set` or
+            `.find(k) != .end()`).
+        *   Use `absl::StartsWith` / `absl::EndsWith` (`absl/strings/match.h`),
+            never `std::string::starts_with` / `ends_with`.
+        *   Use `absl::StrCat` / `absl::StrFormat`, never `std::format`.
+        *   Use `absl::bit_cast` (`absl/base/casts.h`), never `std::bit_cast`.
+    *   **Braces and early returns**: Always enclose `if`, `for`, and `while`
+        bodies in `{}` braces, even for single-line statements (preventing macro
+        expansion bugs with `ABSL_RETURN_IF_ERROR`), and prefer early returns or
+        `continue` over deep nesting.
+    *   **Avoid `auto`** in public headers or complex logic chains; spell out
+        types explicitly when unwrapping `absl::StatusOr<T>` or where integer
+        width matters (`int64_t` vs. `int32_t`).
 
 8.  **Compiler Phases & Invariants**:
     *   **Phase Ordering**: Understand where your pass or change sits in the pipeline (e.g., Optimizations, Layout Assignment, Fusion).
     *   **Invariants**: Respect the invariants of the current phase.
         *   *Example*: Do not generate `kCustomCall` instructions before the relevant expansion pass if they are not supported by the HLO verifier at that stage.
-        *   *Example*: Do not rely on layout information before Layout Assignment.
+        *   *Example*: Do not rely on layout information before Layout
+            Assignment. Passes running *after* Layout Assignment or Memory Space
+            Assignment must preserve physical layouts (`minor_to_major`) and
+            memory spaces (`Layout::memory_space()`).
+    *   **Metadata and `OriginalValue` preservation**: Return an accurate
+        `bool changed` from `HloPassInterface::RunImpl`, and preserve
+        `sharding()`, `metadata()`, `frontend_attributes()`, `original_value()`
+        (`OriginalValue`), and control dependencies when replacing or
+        decomposing HLO instructions.
+    *   **Corner-case shapes and semantics**: Handle dynamic dimensions
+        (`shape.is_dynamic()`), zero-element arrays
+        (`ShapeUtil::IsZeroElementArray(shape)`), rank-0 scalars, tuple/token
+        shapes, sub-byte element types (`s4`, `u4`, `s2`, `u2`), and
+        `DynamicSlice` start-index clamping
+        (`[0, max(0, operand_dim - slice_dim)]`).
 
 9.  **Namespaces**:
     *   Prefer `xla::gpu` over nested namespaces.
+    *   Never put namespace-level `using` declarations in `.h` files, and always
+        qualify `std::` and `absl::` explicitly at call sites.
 
-10. **MLIR Operation Creation**:
+10. **MLIR and Triton Codegen**:
     *   **Always** use the static `OpTy::create(rewriter, ...)` method when creating MLIR operations.
     *   **Avoid** using `rewriter.create<OpTy>(...)`. This syntax is deprecated.
+    *   Create top-level MLIR modules with
+        `xla::llvm_ir::CreateMlirModuleOp(loc)`
+        (`xla/service/llvm_ir/llvm_util.h`) rather than
+        `mlir::ModuleOp::create(loc)`, and pass a cached
+        `mlir::SymbolTableCollection` instead of constructing
+        `mlir::SymbolTable(module_op)` inside per-operation rewrite patterns
+        ($O(N^2)$).
+    *   Validate Triton tile element counts (`<= 1,048,576`) and device shared
+        memory limits from `se::DeviceDescription` before invoking the emitter.
 
 11. **License Headers**:
     *   Any new source or build files created in this codebase must include the
@@ -141,6 +216,30 @@ suggesting, or modifying code within the OpenXLA codebase (everything under
         ==============================================================================*/
         ```
         (Use `#` comment prefixes for Python and `BUILD` files.)
+
+12. **Portability and Compatibility Policies**:
+    *   **Avoiding `#ifdef`s** (see `docs/avoiding_ifdefs.md`): Never use
+        `#if` / `#ifdef` to skip unit tests (query `se::DeviceDescription` at
+        runtime and call `GTEST_SKIP()`); use
+        `if constexpr (tsl::kIsDebugBuild)` instead of `#ifndef NDEBUG`; and
+        never conditionally `#include` CUDA, ROCm, or cuDNN headers in public
+        `.h` files.
+    *   **GPU AOT Compatibility** (see `docs/gpu_aot_compatibility.md`):
+        Maintain 6-month backward and 2-week forward compatibility for
+        `GpuExecutableProto`, `ThunkProto`, and transitive protos; use a 2-phase
+        rollout (runtime support first, compiler emission after 2 weeks) for new
+        thunks or custom-call/FFI targets; and register runtime-read
+        `DebugOptions` field numbers in `kRuntimeFields` in
+        `xla/debug_options_runtime_fields.cc`.
+    *   **CUDA/cuDNN Dynamic Version Checks**: Guard any CUDA/cuDNN API, enum,
+        or struct field introduced after major version `X.0` with an explicit
+        runtime version check (`driver_version()`, `runtime_version()`, or
+        library version) and register newly called C API symbols in
+        `xla/tsl/cuda/*.symbols`.
+    *   **CPU Runtime ABI**: Preserve bidirectional compatibility across
+        `CompilationResultProto`, `ThunkProto`, and `XLA_CPU_KernelCallFrame`
+        within the same `kHostExecutionAbiVersion`
+        (`xla/backends/cpu/runtime/host_execution_abi.h`).
 
 ## Editing This File
 

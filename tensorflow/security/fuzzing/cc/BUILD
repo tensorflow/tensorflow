@@ -268,3 +268,33 @@ tf_cc_fuzz_test(
         "@xla//xla/tsl/platform:env",
     ],
 )
+
+tf_cc_fuzz_test(
+    name = "decode_gif_fuzz",
+    srcs = ["decode_gif_fuzz.cc"],
+    deps = [
+        "//tensorflow/core:gif_internal",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "decode_jpeg_fuzz",
+    srcs = ["decode_jpeg_fuzz.cc"],
+    deps = [
+        "//tensorflow/core:jpeg_internal",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_fuzz_test(
+    name = "tflite_interp_overflow_fuzz",
+    srcs = ["tflite_interp_overflow_fuzz.cc"],
+    data = ["//tensorflow/lite:testdata/add.bin"],
+    deps = [
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)

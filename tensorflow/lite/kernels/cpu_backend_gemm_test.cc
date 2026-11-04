@@ -618,13 +618,71 @@ TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8) {
 TEST(CpuBackendGemmInvalidGemmTest, Float) {
   // A standard Gemm operation.
   TestMaybeValidGemm<float, float, float, float>(2, 3, 3, 4, 2, 4);
+  MatrixParams<float> lhs_params;
+  lhs_params.rows = 2;
+  lhs_params.cols = 3;
+  MatrixParams<float> rhs_params;
+  rhs_params.rows = 3;
+  rhs_params.cols = 4;
+  MatrixParams<float> dst_params;
+  dst_params.rows = 5;
+  dst_params.cols = 4;
+  EXPECT_FALSE(
+      cpu_backend_gemm::IsValidGemm(lhs_params, rhs_params, dst_params));
   // An invalid Gemm that will abort in debug mode.
 #if !defined(TARGET_IPHONE_SIMULATOR) && !defined(TARGET_OS_IPHONE)
   ASSERT_DEBUG_DEATH(
       (TestMaybeValidGemm<float, float, float, float>(2, 3, 3, 0, 2, 4)), "");
   ASSERT_DEBUG_DEATH(
       (TestMaybeValidGemm<float, float, float, float>(2, 3, 9, 4, 2, 4)), "");
+  ASSERT_DEBUG_DEATH(
+      (TestMaybeValidGemm<float, float, float, float>(2, 3, 3, 4, 5, 4)), "");
 #endif
+}
+
+TEST(CpuBackendGemmPerChannelNullBiasTest, Int8WithNullBias) {
+  CpuBackendContext cpu_backend_context;
+  const int rows = 2;
+  const int depth = 4;
+  const int cols = 3;
+  std::vector<int8_t> lhs_data(rows * depth, 2);
+  std::vector<int8_t> rhs_data(depth * cols, 3);
+  std::vector<int8_t> dst_data(rows * cols, 0);
+  std::vector<int8_t> expected(rows * cols, 0);
+  std::vector<int32_t> multiplier_fixedpoint = {1073741824, 1073741824};
+  std::vector<int> multiplier_exponent = {-1, -1};
+
+  MatrixParams<int8_t> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = rows;
+  lhs_params.cols = depth;
+
+  MatrixParams<int8_t> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = depth;
+  rhs_params.cols = cols;
+
+  MatrixParams<int8_t> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = rows;
+  dst_params.cols = cols;
+
+  GemmParams<int32_t, int8_t, QuantizationFlavor::kIntegerWithPerRowMultiplier>
+      params;
+  params.bias = nullptr;
+  params.clamp_min = -128;
+  params.clamp_max = 127;
+  params.multiplier_fixedpoint_perchannel = multiplier_fixedpoint.data();
+  params.multiplier_exponent_perchannel = multiplier_exponent.data();
+
+  ReferenceGemm(lhs_params, lhs_data.data(), rhs_params, rhs_data.data(),
+                dst_params, expected.data(), params, &cpu_backend_context);
+  Gemm(lhs_params, lhs_data.data(), rhs_params, rhs_data.data(), dst_params,
+       dst_data.data(), params, &cpu_backend_context);
+  // Each dot product is 4 * (2 * 3) = 24, scaled by (1073741824 / 2^31) * 2^-1
+  // = 0.25 -> 6.
+  EXPECT_EQ(dst_data, std::vector<int8_t>(rows * cols, 6));
+  EXPECT_EQ(dst_data, expected);
 }
 
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8Int16) {

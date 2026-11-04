@@ -14,12 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/python/profiler/internal/python_hooks.h"
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <initializer_list>
+#include <stack>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -70,34 +75,78 @@ bool ThreadingSetProfile(PyObject* callback) {
   return res != nullptr;
 }
 
-const char* PyUnicodeToStringOrUnknown(PyObject* obj) {
+// Returns the UTF-8 text of `obj`, or "<unknown>" if `obj` is not a str.
+// Requires the GIL; the result is valid while `obj` is alive.
+absl::string_view PyUnicodeToStringOrUnknown(PyObject* obj) {
   if (obj != nullptr && PyUnicode_Check(obj)) {
-    const char* str = PyUnicode_AsUTF8(obj);
+    Py_ssize_t size = 0;
+    const char* str = PyUnicode_AsUTF8AndSize(obj, &size);
     if (str != nullptr) {
-      return str;
+      return absl::string_view(str, static_cast<size_t>(size));
     }
     PyErr_Clear();
   }
   return "<unknown>";
 }
 
-std::string GetEventName(PyObject* co_filename, PyObject* co_name,
-                         int co_firstlineno) {
-  absl::string_view filename = PyUnicodeToStringOrUnknown(co_filename);
-  absl::string_view function = PyUnicodeToStringOrUnknown(co_name);
-
-  return absl::StrCat("$", tsl::io::Basename(filename), ":", co_firstlineno,
-                      " ", function);
-}
-
-std::string GetEventName(absl::string_view method_name, PyObject* module) {
+// Returns the trace event name of `event`. `to_string` returns the text of one
+// of the event's Python string objects.
+template <typename ToString>
+std::string GetEventName(const PythonTraceEntry& event, ToString to_string) {
+  if (event.co_filename != nullptr) {
+    absl::string_view filename = to_string(event.co_filename);
+    absl::string_view function = to_string(event.co_name);
+    return absl::StrCat("$", tsl::io::Basename(filename), ":",
+                        event.co_firstlineno, " ", function);
+  }
   // Python stack does not have a filename/line_no for native calls.
   // Use module name and function/method name instead.
-  absl::string_view filename = PyUnicodeToStringOrUnknown(module);
-  if (!method_name.empty()) {
-    return absl::StrCat("$", filename, " ", method_name);
+  absl::string_view filename = to_string(event.m_module);
+  if (!event.method_name.empty()) {
+    return absl::StrCat("$", filename, " ", event.method_name);
   }
   return "$<unknown>";
+}
+
+// Ends the calls still open in `active` at `end_time_ns` and moves them to
+// `events`, innermost first.
+void CloseActiveEvents(uint64_t end_time_ns,
+                       std::stack<PythonTraceEntry>& active,
+                       std::deque<PythonTraceEntry>& events) {
+  while (!active.empty()) {
+    PythonTraceEntry& entry = active.top();
+    entry.end_time_ns = end_time_ns;
+    events.push_back(std::move(entry));
+    active.pop();
+  }
+}
+
+// Moves the Python references held by `event` into `ref_counts`. Reads only the
+// pointer values, so it does not need the GIL.
+void TakeReferences(PythonTraceEntry& event,
+                    absl::flat_hash_map<PyObject*, size_t>& ref_counts) {
+  for (PyObject* obj : {event.co_filename, event.co_name, event.m_module}) {
+    if (obj != nullptr) {
+      ++ref_counts[obj];
+    }
+  }
+  event.owns_python_refs = false;
+}
+
+// Drops `count` references to `obj`. Requires the GIL.
+void ReleaseReferences(PyObject* obj, size_t count) {
+#if !defined(Py_GIL_DISABLED) && !defined(Py_LIMITED_API) && \
+    !defined(Py_REF_DEBUG)
+  // Drop all but the last reference in one step, then let Py_DECREF free the
+  // object if that was the last one. Neither call changes immortal objects.
+  Py_SET_REFCNT(obj, Py_REFCNT(obj) - static_cast<Py_ssize_t>(count - 1));
+  Py_DECREF(obj);
+#else
+  // Free-threaded, limited-API, and ref-debug builds: one Py_DECREF each.
+  for (size_t i = 0; i < count; ++i) {
+    Py_DECREF(obj);
+  }
+#endif
 }
 
 void AddEventToXLine(const PythonTraceEntry& event,
@@ -178,10 +227,7 @@ void ForEachThread(PyThreadState* curr_thread, ForEachThreadFunc&& callback) {
 }
 
 std::string PythonTraceEntry::Name() const {
-  if (co_filename) {
-    return GetEventName(co_filename, co_name, co_firstlineno);
-  }
-  return GetEventName(method_name, m_module);
+  return GetEventName(*this, PyUnicodeToStringOrUnknown);
 }
 
 PythonHooks* PythonHooks::GetSingleton() {
@@ -251,16 +297,28 @@ void PythonHookContext::Stop() {
 }
 
 std::vector<PerThreadConsumeData> PythonHookContext::Consume() {
-  std::vector<PerThreadConsumeData> consumed_data;
+  if (!Py_IsInitialized()) {
+    return {};
+  }
 
+  struct HarvestedEvents {
+    HarvestedEvents() = default;
+    HarvestedEvents(const HarvestedEvents&) = delete;
+    HarvestedEvents& operator=(const HarvestedEvents&) = delete;
+    HarvestedEvents(HarvestedEvents&&) = default;
+    HarvestedEvents& operator=(HarvestedEvents&&) = default;
+
+    int64_t thread_id = 0;
+    std::deque<PythonTraceEntry> events;
+  };
+  std::vector<HarvestedEvents> harvested;
+  const bool stopped = stopped_.load(std::memory_order_acquire);
+
+  // 1. With the GIL: move the per-thread event queues out of `entry_shards_`.
+  // After Stop(), calls still on the stack are ended now and moved out too.
   {
-    PyGILState_STATE gil_state;
-    bool has_gil = false;
-    if (Py_IsInitialized()) {
-      gil_state = PyGILState_Ensure();
-      has_gil = true;
-    }
-
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    const uint64_t now = tsl::profiler::GetCurrentTimeNanos();
     for (EntryShard& shard : entry_shards_) {
 #ifdef Py_GIL_DISABLED
       absl::MutexLock lock(shard.mu);
@@ -268,44 +326,66 @@ std::vector<PerThreadConsumeData> PythonHookContext::Consume() {
       DCHECK(PyGILState_Check());
 #endif  // Py_GIL_DISABLED
       // NOLINTNEXTLINE
-      for (auto& it : shard.entries) {
-        int64_t thread_id = it.first;
-        PerThreadEvents& thread_events = it.second;
-        VLOG(1) << "Consuming " << thread_events.completed.size() << ":"
-                << thread_events.active.size() << " events on thread "
-                << thread_id;
-
-        PerThreadConsumeData thread_data;
-        thread_data.thread_id = thread_id;
-        thread_data.events.reserve(thread_events.completed.size());
-        for (const PythonTraceEntry& event : thread_events.completed) {
-          thread_data.events.push_back(
-              {event.Name(), event.start_time_ns, event.end_time_ns});
+      for (auto& [thread_id, thread_events] : shard.entries) {
+        HarvestedEvents& h = harvested.emplace_back();
+        h.thread_id = thread_id;
+        h.events.swap(thread_events.completed);
+        if (stopped && options_.include_incomplete_events) {
+          CloseActiveEvents(now, thread_events.active, h.events);
+          CloseActiveEvents(now, thread_events.active_c, h.events);
         }
-        thread_events.completed.clear();
-
-        if (stopped_ && options_.include_incomplete_events) {
-          uint64_t now = tsl::profiler::GetCurrentTimeNanos();
-          while (!thread_events.active.empty()) {
-            PythonTraceEntry& event = thread_events.active.top();
-            thread_data.events.push_back(
-                {event.Name(), event.start_time_ns, now});
-            thread_events.active.pop();
-          }
-          while (!thread_events.active_c.empty()) {
-            PythonTraceEntry& event = thread_events.active_c.top();
-            thread_data.events.push_back(
-                {event.Name(), event.start_time_ns, now});
-            thread_events.active_c.pop();
-          }
-        }
-        consumed_data.push_back(std::move(thread_data));
       }
     }
+    PyGILState_Release(gil_state);
+  }
 
-    if (has_gil) {
-      PyGILState_Release(gil_state);
+  // 2. Without the GIL: take over the events' Python references, counted per
+  // object. This reads pointer values only, never the objects.
+  absl::flat_hash_map<PyObject*, size_t> ref_counts;
+  for (HarvestedEvents& h : harvested) {
+    for (PythonTraceEntry& event : h.events) {
+      TakeReferences(event, ref_counts);
     }
+  }
+
+  // 3. With the GIL: copy the text of each distinct object, then drop all of
+  // its references at once. If the interpreter is shutting down, skip this and
+  // leak the references; the names then read "<unknown>".
+  absl::flat_hash_map<PyObject*, std::string> names;
+  if (!ref_counts.empty() && Py_IsInitialized()) {
+    names.reserve(ref_counts.size());
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    // NOLINTNEXTLINE
+    for (const auto& [obj, count] : ref_counts) {
+      names.try_emplace(obj, PyUnicodeToStringOrUnknown(obj));
+      ReleaseReferences(obj, count);
+    }
+    PyGILState_Release(gil_state);
+  }
+
+  // 4. Without the GIL: build the event names from `names`, then free the
+  // queues. No entry owns a reference any more.
+  auto copied_text = [&names](PyObject* obj) -> absl::string_view {
+    auto it = names.find(obj);
+    if (it == names.end()) {
+      return "<unknown>";
+    }
+    return it->second;
+  };
+  std::vector<PerThreadConsumeData> consumed_data;
+  consumed_data.reserve(harvested.size());
+  for (HarvestedEvents& h : harvested) {
+    // NOLINTNEXTLINE(clang-diagnostic-pre-c++20-compat)
+    VLOG(1) << "Consuming " << h.events.size() << " events on thread "
+            << h.thread_id;
+    PerThreadConsumeData& thread_data = consumed_data.emplace_back();
+    thread_data.thread_id = h.thread_id;
+    thread_data.events.reserve(h.events.size());
+    for (const PythonTraceEntry& event : h.events) {
+      thread_data.events.push_back({GetEventName(event, copied_text),
+                                    event.start_time_ns, event.end_time_ns});
+    }
+    h.events.clear();
   }
 
   return consumed_data;

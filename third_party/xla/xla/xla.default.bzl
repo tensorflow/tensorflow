@@ -99,8 +99,15 @@ def xla_cc_test(
     Args:
       name: The name of the test.
       deps: The dependencies of the test.
-      **kwargs: Other arguments to pass to the test.
+      **kwargs: Other arguments to pass to the test, including:
+        - tags: Tags for the test.
+        - flaky: If True, retries test up to 3 times.
     """
+
+    # Set flaky attribute if "flaky" tag is present
+    existing_tags = kwargs.get("tags", [])
+    if "flaky" in existing_tags and not kwargs.get("flaky", False):
+        kwargs["flaky"] = True
 
     strict_cc_test(
         name = name,

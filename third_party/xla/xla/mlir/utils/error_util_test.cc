@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Diagnostics.h"
@@ -68,6 +69,12 @@ TEST_F(BaseScopedDiagnosticHandlerTest,
   EXPECT_TRUE(absl::StrContains(s.message(), "Diagnostic message reported"));
   EXPECT_TRUE(
       absl::StrContains(s.message(), "Second diagnostic message reported"));
+}
+
+TEST_F(BaseScopedDiagnosticHandlerTest, VerifyThatWarningsAreIgnored) {
+  BaseScopedDiagnosticHandler handler(&context_);
+  emitWarning(loc_) << "Warning message";
+  EXPECT_OK(handler.ConsumeStatus());
 }
 
 }  // namespace

@@ -15,17 +15,20 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
 
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/synchronization/notification.h"
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -158,6 +161,76 @@ TEST(OneDnnThreadPoolTest, FallbackThreadPool) {
   for (int i = 0; i < num_elements; ++i) {
     EXPECT_NEAR(dst_data[i], std::exp(1.0f), 1e-5);
   }
+}
+
+TEST(OneDnnThreadPoolTest, GetInParallelTracking) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+
+  for (bool is_async : {false, true}) {
+    OneDnnThreadPool threadpool(threads.AsEigenThreadPool(), is_async);
+
+    // Outside parallel_for on the calling thread, get_in_parallel() is false.
+    EXPECT_FALSE(threadpool.get_in_parallel());
+
+    // Outside parallel_for on an Eigen worker thread (simulating ThunkExecutor
+    // dispatching a thunk onto intra_op_threadpool), get_in_parallel() must
+    // still be false so top-level oneDNN primitives run multi-threaded.
+    absl::Notification worker_done;
+    threads.Schedule([&] {
+      EXPECT_FALSE(threadpool.get_in_parallel());
+      worker_done.Notify();
+    });
+    worker_done.WaitForNotification();
+
+    // Inside parallel_for, get_in_parallel() must be true on every worker.
+    constexpr int kNumTasks = 16;
+    std::atomic<int> in_parallel_true_count{0};
+    threadpool.parallel_for(kNumTasks, [&](int i, int n) {
+      EXPECT_EQ(n, kNumTasks);
+      if (threadpool.get_in_parallel()) {
+        in_parallel_true_count.fetch_add(1, std::memory_order_relaxed);
+      }
+    });
+    if (is_async) {
+      tsl::BlockUntilReady(threadpool.done_event());
+    }
+    EXPECT_EQ(in_parallel_true_count.load(), kNumTasks);
+    EXPECT_FALSE(threadpool.get_in_parallel());
+  }
+}
+
+TEST(OneDnnThreadPoolTest, NestedParallelForAsyncRaceAndCompletion) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+  OneDnnThreadPool threadpool(threads.AsEigenThreadPool(), /*is_async=*/true);
+
+  constexpr int kOuterTasks = 32;
+  constexpr int kInnerTasks = 16;
+  std::atomic<int> completed_inner_tasks{0};
+
+  threadpool.parallel_for(kOuterTasks, [&](int outer_i, int outer_n) {
+    EXPECT_EQ(outer_n, kOuterTasks);
+    EXPECT_TRUE(threadpool.get_in_parallel());
+
+    // Directly invoking nested parallel_for from multiple outer workers must
+    // not race on `done_event_` and must finish before the outer done_event
+    // completes.
+    threadpool.parallel_for(kInnerTasks, [&](int inner_i, int inner_n) {
+      EXPECT_EQ(inner_n, kInnerTasks);
+      EXPECT_TRUE(threadpool.get_in_parallel());
+      completed_inner_tasks.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    EXPECT_TRUE(threadpool.get_in_parallel());
+  });
+
+  // Capture done_event immediately after outer parallel_for returns (matching
+  // OneDnnFusionThunk::OneDnnRuntime::Invoke).
+  tsl::AsyncValueRef<tsl::Chain> done = threadpool.done_event();
+  tsl::BlockUntilReady(done);
+
+  EXPECT_EQ(completed_inner_tasks.load(std::memory_order_relaxed),
+            kOuterTasks * kInnerTasks);
+  EXPECT_FALSE(threadpool.get_in_parallel());
 }
 
 }  // namespace

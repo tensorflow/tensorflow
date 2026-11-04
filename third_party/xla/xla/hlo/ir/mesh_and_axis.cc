@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/STLExtras.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/xla_data.pb.h"
@@ -152,11 +151,10 @@ MeshProto Mesh::ToProto() const {
   std::vector<MeshProto::MeshAxis> axes;
   axes.reserve(num_axes());
 
-  for (auto [name, size] :
-       llvm::zip_equal(axes_names_, device_assignment_.dimensions())) {
+  for (int64_t i = 0; i < axes_names_.size(); ++i) {
     MeshProto::MeshAxis axis;
-    axis.set_name(name);
-    axis.set_size(size);
+    axis.set_name(axes_names_[i]);
+    axis.set_size(device_assignment_.dim(i));
     axes.push_back(std::move(axis));
   }
   proto.mutable_axes()->Assign(axes.begin(), axes.end());

@@ -50,9 +50,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/matmul_indexing_utils.h"
@@ -109,16 +111,6 @@ bool IsTritonSupportedRaggedDot(
     return false;
   }
 
-  // Tiling propagation must be enabled.  TritonBackend::IsSupported gates
-  // kRaggedDot fusions on this flag — the xtile pipeline needs
-  // TiledHloComputation::Tile to drive code generation.
-  if (!instr.GetModule()
-           ->config()
-           .debug_options()
-           .xla_gpu_experimental_enable_tiling_propagation()) {
-    return false;
-  }
-
   // The xtile emitter's PrimitiveTypeToMlirType conversion supports the
   // following element types for ragged-dot operands and output.
   // Complex types (C64, C128) fall to the default branch and return
@@ -150,7 +142,8 @@ bool IsTritonSupportedRaggedDot(
 }
 
 absl::StatusOr<bool> IsCublasSupportedMatMul(
-    const HloInstruction& dot, bool allow_matrix_vector_multiplication) {
+    const HloInstruction& dot, bool allow_matrix_vector_multiplication,
+    bool is_normalized) {
   if (dot.opcode() != HloOpcode::kDot) {
     return false;
   }
@@ -160,24 +153,26 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
   for (int operand : {0, 1}) {
     ABSL_ASSIGN_OR_RETURN(DotOperandDims dims,
                      DotOperandDims::FromDotOperand(&dot, operand));
-    // cuBLAS only supports single contracting dimension.
-    if (dims.Rank(DotOperandDims::kContracting) != 1) {
+    if (dims.Rank(DotOperandDims::kContracting) == 0) {
       return false;
     }
-    // cuBLAS doesn't support minor batch dimension.
-    if (absl::c_any_of(dims.Indices(DotOperandDims::kBatch), [&](int64_t dim) {
-          return dim == dims.shape().dimensions().size() - 1;
-        })) {
-      return false;
+    if (is_normalized) {
+      // cuBLAS only supports single contracting dimension.
+      if (dims.Rank(DotOperandDims::kContracting) > 1) {
+        return false;
+      }
+      // cuBLAS doesn't support a physically minor batch dimension.
+      if (absl::c_linear_search(dims.Indices(DotOperandDims::kBatch),
+                                LayoutUtil::Minor(dims.shape().layout(), 0))) {
+        return false;
+      }
+      // cuBLAS supports up to one non-contracting dimension.
+      if (dims.Rank(DotOperandDims::kNonContracting) > 1) {
+        return false;
+      }
     }
-    // cuBLAS supports up to one non-contracting dimension.
-    const auto& nc_dims = dims.Sizes(DotOperandDims::kNonContracting);
-    if (nc_dims.size() > 1) {
-      return false;
-    }
-    if (nc_dims.size() == 1) {
-      num_matrix_operands += (nc_dims[0] != 1);
-    }
+    num_matrix_operands +=
+        (dims.TotalSize(DotOperandDims::kNonContracting) != 1);
   }
 
   if (num_matrix_operands == 0 ||
@@ -280,6 +275,31 @@ bool IsContiguousSlice(const HloInstruction& instr) {
     return IsContiguousSlice(full_shape, slice_shape, std::nullopt);
   }
   return false;
+}
+
+bool EmitsNoThunks(const HloInstruction& hlo) {
+  switch (hlo.opcode()) {
+    // The module is already scheduled, so instructions that only order other
+    // instructions are no-ops.
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kAfterAll:
+    // Their semantics are encoded by buffer assignment.
+    case HloOpcode::kBitcast:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
+    // Constants are emitted as globals that are initialized when the
+    // executable is loaded.
+    case HloOpcode::kConstant:
+      return true;
+    case HloOpcode::kCustomCall:
+      return hlo.custom_call_target() == kNopCustomCallTarget ||
+             hlo.custom_call_target() == kPinCustomCallTarget ||
+             hlo.custom_call_target() == kUnpinCustomCallTarget ||
+             hlo.custom_call_target() == kCreateBufferCustomCallTarget;
+    default:
+      return false;
+  }
 }
 
 llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {

@@ -189,7 +189,8 @@ struct PJRT_LoadedExecutable {
   // addressed by the compiled executable program. `client` owns the objects
   // these point to.
   std::vector<PJRT_Device*> addressable_devices;
-  std::vector<PJRT_LogicalDeviceIds> addressable_device_logical_ids;
+  absl::StatusOr<std::vector<PJRT_LogicalDeviceIds>>
+      addressable_device_logical_ids;
 
   PJRT_LoadedExecutable(std::shared_ptr<xla::PjRtLoadedExecutable> executable,
                         PJRT_Client* client);
@@ -208,11 +209,12 @@ struct PJRT_Buffer {
   // Set and cached the first time PJRT_Buffer_DynamicDimensionIndices is
   // called.
   std::optional<std::vector<size_t>> dynamic_dim_indices;
-  // Used to synchronize concurrent setting of cached values.
+  // Used to synchronize concurrent setting of cached values and external
+  // references.
   absl::Mutex mu;
   // Manages, holds, and takes ownership of external references.
   std::vector<std::unique_ptr<xla::PjRtBuffer::ExternalReference>>
-      external_references;
+      external_references ABSL_GUARDED_BY(mu);
 };
 
 struct PJRT_FulfillAliasBufferCallback {

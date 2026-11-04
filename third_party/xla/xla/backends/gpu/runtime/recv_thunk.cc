@@ -63,11 +63,6 @@ RecvThunk::RecvThunk(ThunkInfo thunk_info, const P2PConfig& config,
       config_(config),
       hlo_name_(instr_name) {}
 
-absl::Status RecvThunk::Initialize(const InitializeParams& params) {
-  ABSL_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  return absl::OkStatus();
-}
-
 absl::StatusOr<std::unique_ptr<RecvThunk>> RecvThunk::FromProto(
     ThunkInfo thunk_info, const RecvThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {

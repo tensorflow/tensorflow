@@ -72,6 +72,12 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   }
 }
 
+bool IsNonTrivialHeroUser(const HloInstructionAdaptor& node) {
+  return node.instruction().opcode() != HloOpcode::kTuple &&
+         node.instruction().opcode() != HloOpcode::kParameter &&
+         !IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3);
+}
+
 std::optional<HloInstructionAdaptor> FindHero(
     const HloInstructionAdaptor& root,
     absl::AnyInvocable<bool(const HloInstruction&)> predicate) {
@@ -97,14 +103,8 @@ std::optional<HloInstructionAdaptor> FindHero(
   }
 
   // Make sure that no non-elementwise op is reachable from the transpose.
-  auto is_nontrivial = [](HloInstructionAdaptor node) {
-    return node.instruction().opcode() != HloOpcode::kTuple &&
-           node.instruction().opcode() != HloOpcode::kParameter &&
-           !IsIntermediate(&node.instruction(),
-                           /*allowed_operand_count=*/3);
-  };
   bool visit_operands = false;
-  if (HloBfsAnyOf(hero->GetUsers(), hero->parent(), is_nontrivial,
+  if (HloBfsAnyOf(hero->GetUsers(), hero->parent(), IsNonTrivialHeroUser,
                   visit_operands)) {
     return std::nullopt;
   }

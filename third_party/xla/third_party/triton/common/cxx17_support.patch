@@ -6,7 +6,7 @@ compiled with C++17.
 
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -9,7 +9,7 @@
+@@ -9,7 +9,7 @@ endif()
  project(triton CXX C)
  include(CTest)
  
@@ -18,7 +18,7 @@ compiled with C++17.
 
 --- a/include/triton/Analysis/Membar.h
 +++ b/include/triton/Analysis/Membar.h
-@@ -137,7 +137,10 @@
+@@ -137,7 +137,10 @@ struct ThreadIssuer {
    Kind kind = Unknown;
    Region *region = nullptr;
  
@@ -30,7 +30,7 @@ compiled with C++17.
  };
  
  // Empty summaries contain no operations. Nonempty summaries preserve an issuer
-@@ -151,7 +154,12 @@
+@@ -151,7 +154,12 @@ public:
    bool hasSameKnownIssuer(const IssuerSummary &other) const;
    void join(const IssuerSummary &other);
  
@@ -44,7 +44,7 @@ compiled with C++17.
  
  private:
    std::optional<ThreadIssuer> issuer;
-@@ -176,7 +184,14 @@
+@@ -176,7 +184,14 @@ struct BlockInfo {
      CompletionSync completion = CompletionSync::None;
      bool peerWaitNeedsSync = false;
  
@@ -60,7 +60,7 @@ compiled with C++17.
    } threadSync;
    struct ThreadDemandState {
      bool hasDemand = false;
-@@ -186,7 +201,15 @@
+@@ -186,7 +201,15 @@ struct BlockInfo {
      IssuerSummary publicationIssuers;
      bool mayNotifyPeer = false;
  
@@ -77,7 +77,7 @@ compiled with C++17.
    } threadDemands;
  
    BlockInfo() = default;
-@@ -275,7 +298,13 @@
+@@ -275,7 +298,13 @@ struct BlockInfo {
      threadDemands = {};
    }
  
@@ -92,7 +92,7 @@ compiled with C++17.
  
    /// Checks one pair of access maps with the same alias and operation filters.
    static bool isIntersected(const SliceMapT &lhsSlices,
-@@ -359,7 +388,13 @@
+@@ -359,7 +388,13 @@ struct MembarInfo {
      entryBlockInfo.transformSlices(transform);
    }
  
@@ -108,9 +108,25 @@ compiled with C++17.
  
  /// Classify the barriers that synchronize local memory accesses in `op`
 
+--- a/include/triton/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVMBase.h
++++ b/include/triton/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVMBase.h
+@@ -150,8 +150,11 @@ protected:
+   ModuleAxisInfoAnalysis &axisAnalysisPass;
+ };
+ 
++template <typename DestOp> void noopCustomize(DestOp) {}
++
+ // Trivial case where we map elementwise to an existing LLVM operator
+-template <typename SourceOp, typename DestOp, auto Customize = [](DestOp) {}>
++template <typename SourceOp, typename DestOp,
++          void (*Customize)(DestOp) = noopCustomize<DestOp>>
+ struct ElementwiseOpConversion
+     : public ElementwiseOpConversionBase<
+           SourceOp, ElementwiseOpConversion<SourceOp, DestOp, Customize>> {
+
 --- a/include/triton/Tools/Sys/GetEnv.h
 +++ b/include/triton/Tools/Sys/GetEnv.h
-@@ -67,8 +67,8 @@
+@@ -68,8 +68,8 @@ inline const std::set<std::string> CACHE_NEUTRAL_ENV_VARS = {
  namespace tools {
  
  inline void assertIsRecognized(const std::string &env) {
@@ -122,9 +138,40 @@ compiled with C++17.
                               "Please add it to triton/Tools/Sys/GetEnv.h";
    assert((is_invalidating || is_neutral) && errmsg.c_str());
 
+--- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -688,12 +688,15 @@ void mlir::triton::populateClampFOpToLLVMPattern(
+                                    benefit);
+ }
+ 
++static void setIntMinNotPoison(LLVM::AbsOp op) {
++  op.setIsIntMinPoison(false);
++}
++
+ void mlir::triton::populateElementwiseOpToLLVMPatterns(
+     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
+     ModuleAxisInfoAnalysis &axisInfoAnalysis, PatternBenefit benefit) {
+ #define POPULATE_UNARY_OP(SRC_OP, DST_OP, ...)                                 \
+-  patterns.add<                                                                \
+-      ElementwiseOpConversion<SRC_OP, DST_OP __VA_OPT__(, ) __VA_ARGS__>>(     \
++  patterns.add<ElementwiseOpConversion<SRC_OP, DST_OP, ##__VA_ARGS__>>(        \
+       typeConverter, axisInfoAnalysis, benefit);
+ 
+   POPULATE_UNARY_OP(arith::TruncIOp, LLVM::TruncOp)
+@@ -702,8 +705,7 @@ void mlir::triton::populateElementwiseOpToLLVMPatterns(
+   POPULATE_UNARY_OP(arith::FPToUIOp, LLVM::FPToUIOp)
+   POPULATE_UNARY_OP(arith::UIToFPOp, LLVM::UIToFPOp)
+   POPULATE_UNARY_OP(arith::NegFOp, LLVM::FNegOp)
+-  POPULATE_UNARY_OP(math::AbsIOp, LLVM::AbsOp,
+-                    [](LLVM::AbsOp op) { op.setIsIntMinPoison(false); })
++  POPULATE_UNARY_OP(math::AbsIOp, LLVM::AbsOp, setIntMinNotPoison)
+   POPULATE_UNARY_OP(math::FloorOp, math::FloorOp)
+   POPULATE_UNARY_OP(math::CeilOp, math::CeilOp)
+   POPULATE_UNARY_OP(math::LogOp, math::LogOp)
+
 --- a/lib/Dialect/TritonGPU/Transforms/Utility.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Utility.cpp
-@@ -318,7 +318,7 @@
+@@ -318,7 +318,7 @@ std::string GraphDumper::emitEdge(const std::string &srcId,
  
  std::string GraphDumper::emitValueNode(Value value) const {
    NodeInfo info = onValue(value);
@@ -133,7 +180,7 @@ compiled with C++17.
      std::string shapeStr = getShapeStr(value.getType());
      if (auto arg = mlir::dyn_cast<BlockArgument>(value))
        info["label"] =
-@@ -331,7 +331,7 @@
+@@ -331,7 +331,7 @@ std::string GraphDumper::emitValueNode(Value value) const {
  
  std::string GraphDumper::emitOperationNode(Operation *op) const {
    NodeInfo info = onOperation(op);
@@ -145,7 +192,7 @@ compiled with C++17.
 
 --- a/lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionScheduling.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionScheduling.cpp
-@@ -340,7 +340,7 @@
+@@ -340,7 +340,7 @@ void deserializeManualPartitions(Operation *region, Graph *graph) {
              cast<DenseI32ArrayAttr>(op->getAttr(kPartitionAttrName))
                  .asArrayRef();
          for (auto id : partitionIds) {
@@ -154,7 +201,7 @@ compiled with C++17.
              auto partition = graph->addPartition();
              partition->addFlag(Flags::MANUAL);
              manual_partitions[id] = partition;
-@@ -1213,7 +1213,7 @@
+@@ -1213,7 +1213,7 @@ void duplicateCheapOps(Graph *graph, std::string funcName,
                  } else if (child->getPartition() == startPartition) {
                    // found a path, set all nodes on the path to the partition
                    node->addPartition(startPartition);
@@ -166,7 +213,7 @@ compiled with C++17.
 
 --- a/lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionSchedulingUtility.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionSchedulingUtility.cpp
-@@ -200,7 +200,7 @@
+@@ -203,7 +203,7 @@ void visualize(std::string key, std::string filename, std::string title,
        tools::getBoolEnv("TRITON_PARTITION_SCHEDULING_DUMP_LOOP_ONLY");
  
    static std::map<std::string, int> keys;
@@ -178,7 +225,7 @@ compiled with C++17.
 
 --- a/lib/Tools/LinearLayout.cpp
 +++ b/lib/Tools/LinearLayout.cpp
-@@ -1189,7 +1189,7 @@
+@@ -1189,7 +1189,7 @@ LinearLayout::getFreeVariableMasks() const {
    for (StringAttr dim : getInDimNames()) {
      int32_t mask = 0;
      for (int i = 0; i < getInDimSizeLog2(dim); i++, c++) {
@@ -196,7 +243,7 @@ compiled with C++17.
  #include <cmath>
  #include <cstddef>
  #include <cstdint>
-@@ -260,12 +259,23 @@
+@@ -260,12 +259,23 @@ constexpr uint32_t ToFloatBits(uint16_t h) {
    }
  }
  
@@ -225,7 +272,7 @@ compiled with C++17.
 
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -945,7 +945,7 @@
+@@ -998,7 +998,7 @@ void init_triton_llvm(py::module_ &m) {
        // Mark linked-in functions as internal because backends use external
        // linkage as a signifier of kernel functions.
        for (llvm::Function &fn : dstMod->functions()) {
@@ -237,7 +284,7 @@ compiled with C++17.
 
 --- a/third_party/amd/backend/codegen/CMakeLists.txt
 +++ b/third_party/amd/backend/codegen/CMakeLists.txt
-@@ -12,7 +12,7 @@
+@@ -12,7 +12,7 @@ set(TRITON_AMD_LLVM_REVISION "unknown" CACHE STRING
  set(TRITON_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
  add_library(triton_amd_codegen SHARED amdgpu_codegen.cc
              "${TRITON_SOURCE_DIR}/lib/Tools/LLVMOptions.cpp")
@@ -249,7 +296,7 @@ compiled with C++17.
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertFpCastOpToLLVM.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertFpCastOpToLLVM.cpp
-@@ -433,8 +433,9 @@
+@@ -472,8 +472,9 @@ SmallVector<Value> UnscaledF8x4ToFp32(ISAFamily family, Location loc,
  }
  
  // OCP Bf8/Fp8 -> Bf16
@@ -261,7 +308,7 @@ compiled with C++17.
  SmallVector<Value> OcpF8ToBf16SW(Location loc,
                                   ConversionPatternRewriter &rewriter,
                                   const SmallVector<Value> &v) {
-@@ -622,11 +623,13 @@
+@@ -661,11 +662,13 @@ SmallVector<Value> scalePk8DowncastToFp8(Location loc,
  // In saturation mode, inf and out-of-range numbers are converted to the largest
  // normal number, i.e. ±448. NaNs are converted to NaNs.
  // For UZ formats please check: https://onnx.ai/onnx/technical/float8.html
@@ -283,7 +330,7 @@ compiled with C++17.
 
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpPipeline.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ConvertWarpPipeline.cpp
-@@ -129,7 +129,7 @@
+@@ -129,7 +129,7 @@ static LogicalResult validatePipelinedForBody(scf::ForOp forOp) {
              "non-warp-pipeline scf.execute_region inside pipelined_for body");
        ++numClusters;
      } else if (isWarpPipelineIgnorableBarrier(&op)) {
@@ -292,7 +339,7 @@ compiled with C++17.
          return op.emitError("multiple pre-existing barriers between pipeline "
                              "stages; insert a dummy stage instead");
        existingBarrierMap[numClusters] = &op;
-@@ -144,8 +144,8 @@
+@@ -144,8 +144,8 @@ static LogicalResult validatePipelinedForBody(scf::ForOp forOp) {
    if (numClusters < 2)
      return forOp.emitError(
          "pipelined_for body must contain at least two pipeline stages");
@@ -303,7 +350,7 @@ compiled with C++17.
      return forOp.emitError("pipelined_for body has both top-of-loop and "
                             "bottom-of-loop pre-existing barriers");
    return success();
-@@ -438,7 +438,7 @@
+@@ -438,7 +438,7 @@ private:
      // Normally, we don't expect a pipelined loop begins with a barrier
      // but sometimes required by memory prefetching pattern.
      auto bottomBar = existingBarrierMap.find(numClusters);
@@ -315,7 +362,7 @@ compiled with C++17.
 
 --- a/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp
-@@ -1160,18 +1160,23 @@
+@@ -1161,18 +1161,23 @@ void Pingponger::getDotPingponged() {
    // Prune Memory operations that may be moved to only those involved in dot
    // computation. To understand the "cluster assumptions" we also estimate
    // the impact of any additional loads/stores.
@@ -354,7 +401,7 @@ compiled with C++17.
 
 --- a/third_party/amd/lib/TritonAMDGPUTransforms/ConvertToBufferOps.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUTransforms/ConvertToBufferOps.cpp
-@@ -499,9 +499,10 @@
+@@ -501,9 +501,10 @@ private:
    bool analyzeSmallTensorOfst;
  };
  
@@ -369,9 +416,9 @@ compiled with C++17.
    using OpRewritePattern<SourceOp>::OpRewritePattern;
  
 
---- a/third_party/amd/lib/TritonAMDGPUTransforms/LowerLoops.cpp
-+++ b/third_party/amd/lib/TritonAMDGPUTransforms/LowerLoops.cpp
-@@ -679,8 +679,8 @@
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/Pipeliner/LowerLoops.cpp
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/Pipeliner/LowerLoops.cpp
+@@ -295,8 +295,8 @@ LogicalResult initSchedule(int maxDist, Stages &stages, int numStages,
    // Make assignments
    Clusters clusterVec;
    schedule.clusters.clear();
@@ -383,9 +430,9 @@ compiled with C++17.
    clusters[SCHED_GLOBAL_LOAD] = clusterVec[globalLoadCluster];
    clusters[SCHED_LOCAL_STORE] = clusterVec[localStoreCluster];
 
---- a/third_party/amd/lib/TritonAMDGPUTransforms/ScheduleLoops.cpp
-+++ b/third_party/amd/lib/TritonAMDGPUTransforms/ScheduleLoops.cpp
-@@ -352,8 +352,8 @@
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/Pipeliner/ScheduleLoops.cpp
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/Pipeliner/ScheduleLoops.cpp
+@@ -352,8 +352,8 @@ void initSymbolicSchedule(int maxDist, Stages &stages, Clusters &clusters,
    stages[SCHED_ASYNC_WAIT] = stages[SCHED_LOCAL_LOAD];
  
    Clusters clusterVec;
@@ -396,7 +443,7 @@ compiled with C++17.
  
    // This is a symbolic cluster assignment. In this stage, we only focus on
    // global load and compute ops.
-@@ -491,8 +491,8 @@
+@@ -491,8 +491,8 @@ buildSchedule(scf::ForOp &forOp, int numStages, const LoadToInfoMap &loadToInfo,
    LDBG("Build ChainedDotSchedule");
    tt::CoarseSchedule schedule(numStages);
    ChainedDotClusters clusters;
@@ -419,7 +466,7 @@ compiled with C++17.
  
  namespace mlir {
  namespace triton {
-@@ -175,7 +175,7 @@
+@@ -175,7 +175,7 @@ public:
        currDesc.leadDimensionBaseOffset = 0;
      }
      int32_t smemByteOffsetb128 = smemByteOffsetb8 >> 4;
@@ -428,7 +475,7 @@ compiled with C++17.
      // Add the base address to the descriptor
      Value low = tb.add(tb.i32_val(uint32_t(descBits)), baseb128);
      Value high = tb.i32_val(descBits >> 32);
-@@ -288,7 +288,7 @@
+@@ -288,7 +288,7 @@ private:
            loc, "MMA instruction exceeds the shared-memory layout");
  
      auto desc =
@@ -440,21 +487,12 @@ compiled with C++17.
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
-@@ -782,7 +782,7 @@
+@@ -681,7 +681,7 @@ LogicalResult convertMMA(triton::DotOp op, triton::DotOp::Adaptor adaptor,
  
    TensorCoreType mmaType = getMmaTypeDot(op, aTensorTy, bTensorTy, dTensorTy);
-   const auto &instrMap = isTuring ? mmaInstrPtxTuring : mmaInstrPtxAmpere;
--  if (!instrMap.contains(mmaType))
-+  if (!instrMap.count(mmaType))
-     return op.emitError(
-         "unsupported MMA instruction for the given operand/result types");
- 
-@@ -816,7 +816,7 @@
- 
-   TensorCoreType mmaType =
-       getMmaTypeDotScaled(op, aTensorTy, bTensorTy, dTensorTy);
--  if (!mmaInstrPtxScaled.contains(mmaType))
-+  if (!mmaInstrPtxScaled.count(mmaType))
+   if (mmaType == TensorCoreType::NOT_APPLICABLE ||
+-      (isTuring && !mmaInstrPtxTuring.contains(mmaType)))
++      (isTuring && !mmaInstrPtxTuring.count(mmaType)))
      return op.emitError(
          "unsupported MMA instruction for the given operand/result types");
  
@@ -471,7 +509,7 @@ compiled with C++17.
  
  using namespace mlir;
  using namespace mlir::triton;
-@@ -201,7 +201,7 @@
+@@ -201,7 +201,7 @@ static Value createInstDescriptor(ConversionPatternRewriter &rewriter,
    if (kSize == 64)
      desc.kSize = 1;
  
@@ -480,7 +518,7 @@ compiled with C++17.
  }
  
  static Value createScaleInstDescriptorFp8(ConversionPatternRewriter &rewriter,
-@@ -267,7 +267,7 @@
+@@ -267,7 +267,7 @@ static Value createScaleInstDescriptorFp8(ConversionPatternRewriter &rewriter,
      desc.BScaleFactor *= 2;
    }
  
@@ -489,7 +527,7 @@ compiled with C++17.
  }
  
  static Value createScaleInstDescriptorFp4(
-@@ -313,7 +313,7 @@
+@@ -313,7 +313,7 @@ static Value createScaleInstDescriptorFp4(
      // K96 selectors are byte offsets into three (block32) or six (block16)
      // consecutive scales, including across scale words.
      desc.kSizeLower = 1;
@@ -498,7 +536,7 @@ compiled with C++17.
    }
    if (kSize == 128) {
      desc.kSizeUpper = 1;
-@@ -345,7 +345,7 @@
+@@ -345,7 +345,7 @@ static Value createScaleInstDescriptorFp4(
             "MMAv5 with kind=mxf4nvf4 and .block16 only supports SFB_ID 0");
    }
  
@@ -508,9 +546,44 @@ compiled with C++17.
  
  //===----------------------------------------------------------------------===//
 
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -884,6 +884,10 @@ struct MulhiUIOpConversion
+ 
+ } // namespace mlir::triton
+ 
++static void setApproxDivFastmathFlags(LLVM::FDivOp op) {
++  op.setFastmathFlags(LLVM::FastmathFlags::afn);
++}
++
+ void mlir::triton::NVIDIA::populateElementwiseOpToLLVMPatterns(
+     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
+     ModuleAxisInfoAnalysis &axisInfoAnalysis, int computeCapability,
+@@ -897,8 +901,7 @@ void mlir::triton::NVIDIA::populateElementwiseOpToLLVMPatterns(
+                                     benefit.getBenefit() + 1);
+ 
+ #define POPULATE_OP(SRC_OP, DST_OP, ...)                                       \
+-  patterns.add<                                                                \
+-      ElementwiseOpConversion<SRC_OP, DST_OP __VA_OPT__(, ) __VA_ARGS__>>(     \
++  patterns.add<ElementwiseOpConversion<SRC_OP, DST_OP, ##__VA_ARGS__>>(        \
+       typeConverter, axisInfoAnalysis, benefit)
+ 
+   POPULATE_OP(arith::SubFOp, LLVM::FSubOp);
+@@ -906,9 +909,7 @@ void mlir::triton::NVIDIA::populateElementwiseOpToLLVMPatterns(
+   POPULATE_OP(arith::MulFOp, LLVM::FMulOp);
+   POPULATE_OP(triton::PreciseDivFOp, LLVM::FDivOp);
+   POPULATE_OP(triton::PreciseSqrtOp, LLVM::SqrtOp);
+-  POPULATE_OP(triton::ApproxDivFOp, LLVM::FDivOp, [](LLVM::FDivOp op) {
+-    op.setFastmathFlags(LLVM::FastmathFlags::afn);
+-  });
++  POPULATE_OP(triton::ApproxDivFOp, LLVM::FDivOp, setApproxDivFastmathFlags);
+ 
+   POPULATE_OP(arith::ExtFOp, LLVM::FPExtOp);
+   POPULATE_OP(arith::TruncFOp, LLVM::FPTruncOp);
+
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
-@@ -841,7 +841,7 @@
+@@ -850,7 +850,7 @@ public:
               triton::nvgpu::MemSyncScope::SYSTEM}};
      const bool doPTXLDPromotion = !useRed && isPromotableToNVPTXLD(op) &&
                                    vec == 1 && packed == 1 &&
@@ -522,7 +595,7 @@ compiled with C++17.
 
 --- a/third_party/proton/common/lib/TraceDataIO/CircularLayoutParser.cpp
 +++ b/third_party/proton/common/lib/TraceDataIO/CircularLayoutParser.cpp
-@@ -110,14 +110,14 @@
+@@ -110,14 +110,14 @@ void CircularLayoutParser::parseSegment(
          trace.asyncEvents.push_back(entry);
          continue;
        }
@@ -539,7 +612,7 @@ compiled with C++17.
          prevState = scopeState[entry->scopeId];
  
        if (entry->isStart) {
-@@ -174,7 +174,7 @@
+@@ -174,7 +174,7 @@ void CircularLayoutParser::pairAsyncEvents(
      if (endpoint.entry->isStart) {
        // A warp cannot have two outstanding instances of the same static event
        // because a later end would not identify which instance it completes.
@@ -551,7 +624,7 @@ compiled with C++17.
 
 --- a/third_party/proton/common/lib/TraceDataIO/TraceWriter.cpp
 +++ b/third_party/proton/common/lib/TraceDataIO/TraceWriter.cpp
-@@ -91,7 +91,7 @@
+@@ -91,7 +91,7 @@ void populateTraceInfo(std::shared_ptr<CircularLayoutParserResult> result,
  
      // Group block traces by proc id
      int procId = bt.procId;
@@ -560,7 +633,7 @@ compiled with C++17.
        procToBlockTraces[procId] = {};
      }
      procToBlockTraces[procId].push_back(&bt);
-@@ -203,12 +203,12 @@
+@@ -203,12 +203,12 @@ void writeProfileEvents(json &object, const BlockTrace &blockTrace,
      for (const auto &event : trace.profileEvents) {
        int lineId = eventLineIds.at(event.first.get());
        int scopeId = event.first->scopeId;
@@ -575,7 +648,7 @@ compiled with C++17.
                               ? "scope_" + std::to_string(scopeId)
                               : metadata.scopeName.at(scopeId);
        std::string tid = "warp " + std::to_string(warpId) + " (line " +
-@@ -250,12 +250,12 @@
+@@ -250,12 +250,12 @@ void writeAsyncEvents(json &object, const BlockTrace &blockTrace,
    constexpr double freq = 1000.0;
    for (const auto &link : blockTrace.asyncLinks) {
      int scopeId = link.first.entry->scopeId;
@@ -593,17 +666,15 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/include/Session/Session.h
 +++ b/third_party/proton/csrc/include/Session/Session.h
-@@ -151,10 +151,10 @@
+@@ -151,10 +151,10 @@ private:
    size_t getSessionId(const std::string &path) { return sessionPaths[path]; }
  
    bool hasSession(const std::string &path) {
 -    return sessionPaths.contains(path);
--  }
--
--  bool hasSession(size_t sessionId) { return sessions.contains(sessionId); }
 +    return sessionPaths.count(path);
-+  }
-+
+   }
+ 
+-  bool hasSession(size_t sessionId) { return sessions.contains(sessionId); }
 +  bool hasSession(size_t sessionId) { return sessions.count(sessionId); }
  
    void removeSession(size_t sessionId);
@@ -611,7 +682,7 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/include/Utility/Map.h
 +++ b/third_party/proton/csrc/include/Utility/Map.h
-@@ -68,7 +68,7 @@
+@@ -68,7 +68,7 @@ public:
  
    bool contains(const Key &key) const {
      std::shared_lock<std::shared_mutex> lock(mutex);
@@ -623,7 +694,7 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/include/Utility/Set.h
 +++ b/third_party/proton/csrc/include/Utility/Set.h
-@@ -19,7 +19,7 @@
+@@ -19,7 +19,7 @@ public:
  
    bool contains(const Key &key) const {
      std::shared_lock<std::shared_mutex> lock(mutex);
@@ -635,7 +706,7 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/lib/Data/Dump/HatchetMsgPack.cpp
 +++ b/third_party/proton/csrc/lib/Data/Dump/HatchetMsgPack.cpp
-@@ -102,14 +102,14 @@
+@@ -103,14 +103,14 @@ countMetricEntries(const std::map<MetricKind, std::unique_ptr<Metric>> &metrics,
    }
    if (isRoot) {
      if (metricSummary.hasKernelMetric &&
@@ -653,7 +724,7 @@ compiled with C++17.
        metricEntries += kCycleInclusiveCount;
      }
    }
-@@ -202,14 +202,14 @@
+@@ -203,14 +203,14 @@ void packMetrics(MsgPackWriter &writer,
    }
    if (isRoot) {
      if (metricSummary.hasKernelMetric &&
@@ -670,7 +741,7 @@ compiled with C++17.
        PCSamplingMetric pcSamplingMetric;
        for (size_t i = 0; i < PCSamplingMetric::Count; i++) {
          const auto valueName = pcSamplingMetric.getValueName(i);
-@@ -217,7 +217,7 @@
+@@ -218,7 +218,7 @@ void packMetrics(MsgPackWriter &writer,
          writer.packUInt(0);
        }
      }
@@ -679,7 +750,7 @@ compiled with C++17.
        writer.packStr(CycleMetric::getValueName(CycleMetric::Duration));
        writer.packUInt(0);
        writer.packStr(
-@@ -348,7 +348,7 @@
+@@ -348,7 +348,7 @@ TreeData::buildHatchetMsgPack(TreeData::Tree *tree,
      linkedChildren.reserve(virtualNode.children.size());
      for (const auto &child : virtualNode.children) {
        const auto &childNode = virtualTree->getNode(child.id);
@@ -691,7 +762,7 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/lib/Data/Dump/TraceDataDump.cpp
 +++ b/third_party/proton/csrc/lib/Data/Dump/TraceDataDump.cpp
-@@ -215,7 +215,7 @@
+@@ -215,7 +215,7 @@ convertToTimelineTrace(std::vector<CycleEvent> &cycleEvents) {
            }
  
            auto scopeName = event.contexts.back().name;
@@ -730,7 +801,7 @@ compiled with C++17.
  
  std::map<uint64_t, MetricBuffer::MetricDescriptor>
      MetricBuffer::metricDescriptors;
-@@ -101,22 +115,22 @@
+@@ -101,22 +115,22 @@ collectTensorMetrics(Runtime *runtime,
                                     stream);
      runtime->synchronizeStream(stream);
      if (tensorMetric.typeIndex == variant_index_v<double, MetricValueType>) {
@@ -757,7 +828,7 @@ compiled with C++17.
        }
        tensorMetricsHost[name] = std::move(values);
      } else {
-@@ -166,7 +180,7 @@
+@@ -166,7 +180,7 @@ void MetricBuffer::queue(uint64_t seqId, MetricValueType scalarMetric,
          } else {
            static_assert(sizeof(T) == sizeof(uint64_t),
                          "MetricValueType alternative must be 8 bytes");
@@ -766,7 +837,7 @@ compiled with C++17.
          }
        },
        scalarMetric);
-@@ -204,7 +218,7 @@
+@@ -204,7 +218,7 @@ void MetricBuffer::synchronize(DeviceBuffer &buffer) {
  MetricBuffer::DeviceBuffer &MetricBuffer::getOrCreateBuffer() {
    std::lock_guard<std::mutex> lock(bufferMutex);
    auto device = runtime->getDevice();
@@ -778,7 +849,7 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/lib/Data/TraceData.cpp
 +++ b/third_party/proton/csrc/lib/Data/TraceData.cpp
-@@ -53,7 +53,7 @@
+@@ -53,7 +53,7 @@ public:
      void addChild(const Context &context, size_t id) { children[context] = id; }
  
      bool hasChild(const Context &context) const {
@@ -787,7 +858,7 @@ compiled with C++17.
      }
  
      size_t getChild(const Context &context) const {
-@@ -152,7 +152,7 @@
+@@ -152,7 +152,7 @@ public:
      return nextEventId++;
    }
  
@@ -796,7 +867,7 @@ compiled with C++17.
  
    Event &getEvent(size_t eventId) {
      auto it = traceEvents.find(eventId);
-@@ -253,7 +253,7 @@
+@@ -253,7 +253,7 @@ void TraceData::addMetrics(
    auto &event = currentTrace->getEvent(eventId);
    auto &flexibleMetrics = event.metricSet.flexibleMetrics;
    for (auto [metricName, metricValue] : metrics) {
@@ -808,7 +879,7 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/lib/Profiler/Cupti/CuptiPCSampling.cpp
 +++ b/third_party/proton/csrc/lib/Profiler/Cupti/CuptiPCSampling.cpp
-@@ -365,7 +365,7 @@
+@@ -365,7 +365,7 @@ void CuptiPCSampling::processPCSamplingData(ConfigureData *configureData,
        auto *cubinData = getCubinData(pcData->cubinCrc);
        auto key =
            CubinData::LineInfoKey{pcData->functionIndex, pcData->pcOffset};
@@ -817,7 +888,7 @@ compiled with C++17.
          auto [lineNumber, fileName, dirName] =
              getSassToSourceCorrelation(pcData->functionName, pcData->pcOffset,
                                         cubinData->cubin, cubinData->cubinSize);
-@@ -376,7 +376,7 @@
+@@ -376,7 +376,7 @@ void CuptiPCSampling::processPCSamplingData(ConfigureData *configureData,
        auto &lineInfo = cubinData->lineInfo[key];
        for (size_t j = 0; j < pcData->stallReasonCount; ++j) {
          auto *stallReason = &pcData->stallReason[j];
@@ -826,7 +897,7 @@ compiled with C++17.
                  stallReason->pcSamplingStallReasonIndex))
            throw makeOutOfRange("Invalid stall reason index");
          for (const auto &[data, baseEntry] : dataToEntry) {
-@@ -392,7 +392,7 @@
+@@ -392,7 +392,7 @@ void CuptiPCSampling::processPCSamplingData(ConfigureData *configureData,
                    [stallReason->pcSamplingStallReasonIndex]);
            auto samples = stallReason->samples;
            auto stalledSamples =
@@ -867,7 +938,7 @@ compiled with C++17.
  
  void GraphState::recordNode(uint64_t nodeId, const std::string &name,
                              std::optional<MetricNodeState> metricNodeState,
-@@ -69,7 +84,7 @@
+@@ -69,7 +84,7 @@ void GraphState::recordNode(uint64_t nodeId, const std::string &name,
  void GraphState::buildLaunchEntries(const DataToEntryMap &dataToEntry,
                                      DataToEntryMap &dataToGraphEntry) const {
    for (const auto &[data, entry] : dataToEntry) {
@@ -876,7 +947,7 @@ compiled with C++17.
        // This data object was not enabled during graph capture.
        continue;
      dataToGraphEntry.insert({data, entry});
-@@ -153,11 +168,11 @@
+@@ -153,11 +168,11 @@ void emitMetricRecords(MetricBuffer &metricBuffer, uint64_t *hostBasePtr,
        break;
      }
      case variant_index_v<int64_t, MetricValueType>: {
@@ -890,7 +961,7 @@ compiled with C++17.
        break;
      }
      case variant_index_v<std::vector<uint64_t>, MetricValueType>: {
-@@ -171,7 +186,7 @@
+@@ -171,7 +186,7 @@ void emitMetricRecords(MetricBuffer &metricBuffer, uint64_t *hostBasePtr,
      case variant_index_v<std::vector<int64_t>, MetricValueType>: {
        std::vector<int64_t> values(metricDesc.size);
        for (size_t j = 0; j < metricDesc.size; ++j) {
@@ -899,7 +970,7 @@ compiled with C++17.
        }
        metricValueVariant = std::move(values);
        break;
-@@ -179,7 +194,7 @@
+@@ -179,7 +194,7 @@ void emitMetricRecords(MetricBuffer &metricBuffer, uint64_t *hostBasePtr,
      case variant_index_v<std::vector<double>, MetricValueType>: {
        std::vector<double> values(metricDesc.size);
        for (size_t j = 0; j < metricDesc.size; ++j) {
@@ -911,7 +982,7 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/lib/Profiler/Instrumentation/InstrumentationProfiler.cpp
 +++ b/third_party/proton/csrc/lib/Profiler/Instrumentation/InstrumentationProfiler.cpp
-@@ -90,7 +90,7 @@
+@@ -90,7 +90,7 @@ std::vector<uint32_t>
  getUnitIdVector(const std::map<std::string, std::string> &modeOptions,
                  size_t totalUnits) {
    std::vector<uint32_t> unitIdVector;
@@ -920,7 +991,7 @@ compiled with C++17.
      auto &samplingOption = modeOptions.at("sampling_options");
      auto unitIds = proton::split(samplingOption, ",");
      for (auto uintId : unitIds) {
-@@ -118,7 +118,7 @@
+@@ -118,7 +118,7 @@ InstrumentationProfiler::getParserConfig(uint64_t functionId,
    auto config = std::make_shared<CircularLayoutParserConfig>();
    config->scratchMemSize =
        functionMetadata.at(functionId).getScratchMemorySize();
@@ -929,7 +1000,7 @@ compiled with C++17.
        modeOptions.at("granularity") != "GRANULARITY.WARP") {
      throw makeInvalidArgument("Only warp granularity is supported for now");
    }
-@@ -146,7 +146,7 @@
+@@ -146,7 +146,7 @@ void InstrumentationProfiler::initFunctionMetadata(
      const std::vector<std::pair<size_t, std::string>> &scopeIdPairs,
      const std::vector<std::pair<size_t, size_t>> &scopeIdParentPairs,
      const std::string &metadataPath) {
@@ -938,7 +1009,7 @@ compiled with C++17.
      throw makeInvalidArgument(
          "Duplicate function id: " + std::to_string(functionId) +
          " for function " + functionName);
-@@ -155,7 +155,7 @@
+@@ -155,7 +155,7 @@ void InstrumentationProfiler::initFunctionMetadata(
    for (auto &pair : scopeIdPairs) {
      auto scopeId = pair.first;
      auto scopeName = pair.second;
@@ -947,7 +1018,7 @@ compiled with C++17.
        throw makeInvalidArgument(
            "Duplicate scope id: " + std::to_string(scopeId) + " for function " +
            functionName);
-@@ -173,7 +173,7 @@
+@@ -173,7 +173,7 @@ void InstrumentationProfiler::initFunctionMetadata(
      std::vector<Context> reversedContexts;
      reversedContexts.emplace_back(name);
      auto currentId = scopeId;
@@ -956,7 +1027,7 @@ compiled with C++17.
        auto parentId = scopeIdParentMap[currentId];
        auto parentName = functionScopeIdNames[functionId].at(parentId);
        reversedContexts.emplace_back(parentName);
-@@ -239,7 +239,7 @@
+@@ -239,7 +239,7 @@ void InstrumentationProfiler::exitInstrumentedOp(uint64_t streamId,
    }
  
    int64_t timeShiftCost = 0;
@@ -968,7 +1039,7 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/lib/Profiler/RocprofSDK/RocprofSDKPCSamplingSourceLocations.cpp
 +++ b/third_party/proton/csrc/lib/Profiler/RocprofSDK/RocprofSDKPCSamplingSourceLocations.cpp
-@@ -229,8 +229,8 @@
+@@ -229,8 +229,8 @@ void RocprofSDKPCSampling::clearSourceLocationCacheLocked(
  void RocprofSDKPCSampling::tryReleaseCodeObject(uint64_t codeObjectId) {
    metadataState.withLock([&](MetadataState &metadata) {
      samplingState.withLock([&](SamplingState &sampling) {
@@ -982,7 +1053,7 @@ compiled with C++17.
 
 --- a/third_party/proton/csrc/lib/Session/Session.cpp
 +++ b/third_party/proton/csrc/lib/Session/Session.cpp
-@@ -66,7 +66,7 @@
+@@ -66,7 +66,7 @@ makeContextSource(const std::string &contextSourceName) {
  void throwIfSessionNotInitialized(
      const std::map<size_t, std::unique_ptr<Session>> &sessions,
      size_t sessionId) {
@@ -1001,7 +1072,7 @@ compiled with C++17.
  #include <cstring>
  #include <limits>
  #include <type_traits>
-@@ -78,7 +77,10 @@
+@@ -78,7 +77,10 @@ void MsgPackWriter::packInt(int64_t value) {
  
  void MsgPackWriter::packDouble(double value) {
    out.push_back(0xcb);

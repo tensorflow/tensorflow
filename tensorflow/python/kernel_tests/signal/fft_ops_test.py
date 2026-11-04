@@ -22,9 +22,11 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_spectral_ops
@@ -516,6 +518,75 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         with self.assertRaisesRegex(ValueError, "at least rank 1"):
           fn(array_ops.ones([], dtype=dtype))
 
+  def testNDOpsRejectScalarInputEager(self):
+    if not test_util.is_gpu_available():
+      return
+    for fn, dtype in (
+        (fft_ops.fftnd, dtypes.complex64),
+        (fft_ops.ifftnd, dtypes.complex64),
+    ):
+      for args, kwargs in [
+          ((array_ops.ones([], dtype=dtype),), {}),
+          ((array_ops.ones([2, 2], dtype=dtype),), {"axes": []}),
+          ((array_ops.ones([2, 2], dtype=dtype),), {"axes": 0}),
+      ]:
+        try:
+          self.evaluate(fn(*args, **kwargs))
+          self.fail("Expected ValueError or InvalidArgumentError")
+        except (ValueError, errors.InvalidArgumentError) as e:
+          self.assertRegex(
+              str(e),
+              r"at least rank 1|axes must not be empty|axes must be 1D|"
+              r"Dimension must be 0 but is",
+          )
+
+  def testEmptyOuterDimPassThrough(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([0, 1], dtype=dtypes.complex64)
+    y = gen_spectral_ops.fftnd(x, [2], [-1])
+    self.assertEqual(self.evaluate(y).shape, (0, 2))
+
+  def testEmptyInnerDimZeroFilled(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([1, 0], dtype=dtypes.complex64)
+    y = self.evaluate(gen_spectral_ops.fftnd(x, [2], [-1]))
+    self.assertEqual(y.shape, (1, 2))
+    self.assertTrue(np.all(y == 0))
+
+  def testNDEmptyFFTLengthEmptyOutput(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([1, 0], dtype=dtypes.complex64)
+    # A zero fft_length on an empty input sizes the output dim to 0.
+    for fn in (gen_spectral_ops.fftnd, gen_spectral_ops.ifftnd):
+      y = fn(x, [0], [-1])
+      self.assertEqual(self.evaluate(y).shape, (1, 0))
+    non_empty = array_ops.zeros([1, 1], dtype=dtypes.complex64)
+    for fn in (gen_spectral_ops.fftnd, gen_spectral_ops.ifftnd):
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError, r"fft_length\[0\] must be > 0"
+      ):
+        self.evaluate(fn(non_empty, [0], [-1]))
+
+  def testNDMissingBoundsCheckC2C(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([1, 1], dtype=dtypes.complex64)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "Input dimension"):
+      self.evaluate(gen_spectral_ops.fftnd(x, [1000], [-1]))
+
+  def testNDOpsRejectScalarFFTLength(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([2, 2], dtype=dtypes.complex64)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"fft_length must have shape \[1\]",
+    ):
+      self.evaluate(gen_spectral_ops.fftnd(x, 2, [-1]))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
@@ -591,6 +662,88 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
       ):
         with self.assertRaisesRegex(ValueError, "at least rank 1"):
           fn(array_ops.ones([], dtype=dtype))
+
+  def testNDOpsRejectScalarInputEager(self):
+    if not test_util.is_gpu_available():
+      return
+    for fn, dtype in (
+        (fft_ops.rfftnd, dtypes.float32),
+        (fft_ops.irfftnd, dtypes.complex64),
+    ):
+      for args, kwargs in [
+          ((array_ops.ones([], dtype=dtype),), {}),
+          ((array_ops.ones([2, 2], dtype=dtype),), {"axes": []}),
+          ((array_ops.ones([2, 2], dtype=dtype),), {"axes": 0}),
+      ]:
+        try:
+          self.evaluate(fn(*args, **kwargs))
+          self.fail("Expected ValueError or InvalidArgumentError")
+        except (ValueError, errors.InvalidArgumentError) as e:
+          self.assertRegex(
+              str(e),
+              r"at least rank 1|axes must not be empty|axes must be 1D|"
+              r"Dimension must be 0 but is",
+          )
+
+  def testEmptyInnerDimZeroFilled(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([1, 0], dtype=dtypes.float32)
+    # An empty input carries no frequency content, so the output is sized
+    # from fft_length and zero-filled. This guards the old bug where the
+    # output buffer was returned unwritten (uninitialized memory).
+    for y in (
+        gen_spectral_ops.rfft(x, [2]),
+        gen_spectral_ops.rfftnd(x, [2], [-1]),
+    ):
+      y = self.evaluate(y)
+      self.assertEqual(y.shape, (1, 2))
+      self.assertTrue(np.all(y == 0))
+
+  def testEmptyOuterDimPassThrough(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([0, 1], dtype=dtypes.float32)
+    for y in (
+        gen_spectral_ops.rfft(x, [2]),
+        gen_spectral_ops.rfftnd(x, [2], [-1]),
+    ):
+      y = self.evaluate(y)
+      self.assertEqual(y.shape, (0, 2))
+
+  def testEmptyFFTLengthEmptyOutput(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([1, 0], dtype=dtypes.float32)
+    y1 = gen_spectral_ops.rfft(x, [0])
+    self.assertEqual(self.evaluate(y1).shape, (1, 0))
+    y2 = gen_spectral_ops.rfftnd(x, [0], [-1])
+    self.assertEqual(self.evaluate(y2).shape, (1, 0))
+    x_c = array_ops.zeros([1, 0], dtype=dtypes.complex64)
+    y3 = gen_spectral_ops.irfft(x_c, [0])
+    self.assertEqual(self.evaluate(y3).shape, (1, 0))
+    y4 = gen_spectral_ops.irfftnd(x_c, [0], [-1])
+    self.assertEqual(self.evaluate(y4).shape, (1, 0))
+    non_empty = array_ops.zeros([1, 1], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"fft_length\[0\] must be > 0"
+    ):
+      self.evaluate(gen_spectral_ops.rfftnd(non_empty, [0], [-1]))
+    non_empty_c = array_ops.zeros([1, 1], dtype=dtypes.complex64)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, r"fft_length\[0\] must be > 0"
+    ):
+      self.evaluate(gen_spectral_ops.irfftnd(non_empty_c, [0], [-1]))
+
+  def testNDOpsRejectScalarFFTLength(self):
+    if not test_util.is_gpu_available():
+      return
+    x = array_ops.zeros([2, 2], dtype=dtypes.float32)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"fft_length must have shape \[1\]",
+    ):
+      self.evaluate(gen_spectral_ops.rfftnd(x, 2, [-1]))
 
   def _np_fftn(self, x, fft_length=None, axes=None, norm=None):
     return np.fft.rfftn(x, s=fft_length, axes=axes, norm=norm)
@@ -1124,6 +1277,36 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
         self.evaluate(v)
 
+  @test_util.disable_xla("XLA may handle zero fft_length differently")
+  def test_zero_fft_length_raises(self):
+    # fft_length=[0] must raise InvalidArgumentError instead of crashing the
+    # process with a fatal assertion in the DUCC FFT library (GitHub #123399).
+    x = array_ops.fill([3, 3, 31], -1.0)
+    fft_length = [0]
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
+      with self.session():
+        v = gen_spectral_ops.rfft(input=x, fft_length=fft_length)
+        self.evaluate(v)
+
+  @test_util.disable_xla("XLA may handle zero fft_length differently")
+  def test_zero_fft_length_raises_multidim_and_inverse(self):
+    # The zero fft_length guard also applies to multi-dimensional and
+    # inverse transforms, not just the 1-D forward case above.
+    x = array_ops.fill([3, 3, 31], -1.0)
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
+      self.evaluate(gen_spectral_ops.rfft2d(input=x, fft_length=[0, 31]))
+    y = math_ops.complex(
+        array_ops.ones([3, 3, 16]), array_ops.zeros([3, 3, 16])
+    )
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must be > 0"):
+      self.evaluate(gen_spectral_ops.irfft(input=y, fft_length=[0]))
+
+  def test_zero_fft_length_empty_input_passthrough(self):
+    # Empty inputs keep the existing passthrough behavior for fft_length=[0].
+    x = array_ops.zeros([0, 31])
+    v = self.evaluate(gen_spectral_ops.rfft(input=x, fft_length=[0]))
+    self.assertEqual(0, v.size)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class FFTShiftTest(test.TestCase, parameterized.TestCase):
@@ -1187,6 +1370,35 @@ class FFTShiftTest(test.TestCase, parameterized.TestCase):
           feed_dict={x: x_np})
     self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np, axes=axes))
     self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np, axes=axes))
+
+  def test_unknown_rank_placeholder(self):
+    if context.executing_eagerly():
+      return
+    rng = np.random.default_rng(0)
+    x = array_ops.placeholder(shape=None, dtype="float32")
+    y_fftshift = fft_ops.fftshift(x)
+    y_ifftshift = fft_ops.ifftshift(x)
+    x_np = rng.random((3, 5, 7), dtype=np.float32)
+    with self.session() as sess:
+      y_fftshift_res, y_ifftshift_res = sess.run(
+          [y_fftshift, y_ifftshift], feed_dict={x: x_np}
+      )
+    self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np))
+    self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np))
+
+  def test_unknown_rank_dynamic(self):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    def shift_fn(x):
+      return fft_ops.fftshift(x), fft_ops.ifftshift(x)
+
+    rng = np.random.default_rng(0)
+    for shape in [(5,), (3, 6), (3, 5, 7)]:
+      x_np = rng.random(shape, dtype=np.float32)
+      shifted, unshifted = self.evaluate(shift_fn(x_np))
+      self.assertAllClose(shifted, np.fft.fftshift(x_np))
+      self.assertAllClose(unshifted, np.fft.ifftshift(x_np))
 
   def test_negative_axes(self):
     with self.session():

@@ -3294,15 +3294,6 @@ class Subgraph {
                                    node_index, node, context->tensors,
                                    input_output_tensors);
       case kTfLiteBuiltinFullyConnected: {
-        // FullyConnected with sparse weight has version 8, which cannot be
-        // delegated to XNNPack.
-        if (registration->version == 8) {
-          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                   "Unsupported version %d of FullyConnected.",
-                                   registration->version);
-          return kTfLiteError;
-        }
-
         const TfLiteFullyConnectedParams* fc_params =
             static_cast<const TfLiteFullyConnectedParams*>(node->builtin_data);
 
@@ -4982,6 +4973,17 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorShape(logging_context, filter_tensor, 2, filter_tensor_id,
                          BuiltinOperator_FULLY_CONNECTED, node_index));
+    // XNNPACK has no fully connected operator for sparse weights. The node's
+    // version is no proxy for them: all nodes of an operator share one
+    // version, so a sparse node can carry a version above 8 and a dense node
+    // version 8.
+    if (filter_tensor.sparsity != nullptr) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported sparse filter tensor %d in FULLY_CONNECTED node #%d",
+          filter_tensor_id, node_index);
+      return kTfLiteError;
+    }
     // Dynamic filter is supported, but only for FP32.
     if (!(delegate.support_dynamic_fully_connected_operator() &&
           filter_tensor.type == kTfLiteFloat32)) {
@@ -5990,6 +5992,14 @@ class Subgraph {
         logging_context, begin_tensor, size_tensor, 0, node_index, "SLICE"));
 
     const int num_dims = begin_tensor.dims->data[0];
+    if (num_dims != input_tensor.dims->size) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "begin_tensor size (%d) must be equal to input rank (%d) in SLICE "
+          "node #%d",
+          num_dims, input_tensor.dims->size, node_index);
+      return kTfLiteError;
+    }
     if (num_dims > XNN_MAX_TENSOR_DIMS) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -6024,6 +6034,14 @@ class Subgraph {
                                  "size %" PRId64
                                  " must be positive or -1 in SLICE node #%d",
                                  size[i], node_index);
+        return kTfLiteError;
+      }
+      if (size[i] > 0 &&
+          begin[i] > std::numeric_limits<int64_t>::max() - size[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "begin %" PRId64 " + size %" PRId64
+                                 " overflows in SLICE node #%d",
+                                 begin[i], size[i], node_index);
         return kTfLiteError;
       }
     }

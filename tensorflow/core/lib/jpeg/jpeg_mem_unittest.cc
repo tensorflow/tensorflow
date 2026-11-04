@@ -20,12 +20,15 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/platform/env.h"
@@ -591,6 +594,146 @@ TEST(JpegMemTest, StrideTooLargeAllocationFails) {
   uint8_t* imgdata =
       Uncompress(temp, fsize, flags, &out_w, &out_h, &out_c, nullptr);
   EXPECT_EQ(imgdata, nullptr);
+}
+
+size_t FindJpegScanDataOffset(const tstring& jpeg) {
+  const auto* bytes = reinterpret_cast<const uint8_t*>(jpeg.data());
+  const size_t size = jpeg.size();
+  if (size < 4 || bytes[0] != 0xff || bytes[1] != 0xd8) {
+    return 0;
+  }
+  size_t pos = 2;
+  while (pos + 4 <= size) {
+    if (bytes[pos] != 0xff) {
+      return 0;
+    }
+    while (pos < size && bytes[pos] == 0xff) {
+      ++pos;
+    }
+    if (pos >= size) {
+      return 0;
+    }
+    const uint8_t marker = bytes[pos++];
+    if (marker == 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+      continue;
+    }
+    if (pos + 2 > size) {
+      return 0;
+    }
+    const size_t seg_len =
+        (static_cast<size_t>(bytes[pos]) << 8) | bytes[pos + 1];
+    if (seg_len < 2 || pos + seg_len > size) {
+      return 0;
+    }
+    if (marker == 0xda) {
+      return pos + seg_len;
+    }
+    pos += seg_len;
+  }
+  return 0;
+}
+
+// Verify XMP metadata length is checked in size_t against the JPEG APP1
+// 65533-byte payload limit before packet allocation and marker emission.
+TEST(JpegMemTest, XmpMetadataOverflowAndApp1LimitHandledCleanly) {
+  const uint8_t pixel = 128;
+  tstring out;
+
+#if SIZE_MAX > UINT32_MAX
+  const char dummy = 'x';
+  CompressFlags wrap_flags;
+  wrap_flags.format = FORMAT_GRAYSCALE;
+  wrap_flags.xmp_metadata =
+      absl::string_view(&dummy, static_cast<size_t>((uint64_t{1} << 32) - 28));
+  EXPECT_FALSE(Compress(&pixel, 1, 1, wrap_flags, &out));
+  EXPECT_TRUE(out.empty());
+#endif
+
+  const std::string over_limit_xmp(65505, 'a');
+  CompressFlags over_flags;
+  over_flags.format = FORMAT_GRAYSCALE;
+  over_flags.xmp_metadata = over_limit_xmp;
+  EXPECT_FALSE(Compress(&pixel, 1, 1, over_flags, &out));
+  EXPECT_TRUE(out.empty());
+
+  // Exact APP1 boundary positive control: 28 + 1 + 65504 == 65533 bytes.
+  const std::string max_valid_xmp(65504, 'b');
+  CompressFlags valid_flags;
+  valid_flags.format = FORMAT_GRAYSCALE;
+  valid_flags.xmp_metadata = max_valid_xmp;
+  ASSERT_TRUE(Compress(&pixel, 1, 1, valid_flags, &out));
+  EXPECT_GT(out.size(), max_valid_xmp.size());
+}
+
+// Verify partial-read black-filling uses 64-bit stride arithmetic without
+// signed 32-bit integer overflow when custom stride * height reaches 2 GiB.
+TEST(JpegMemTest, PartialReadBlackFillAvoidsStrideOverflow) {
+  if (sizeof(size_t) < 8) {
+    return;
+  }
+
+  CompressFlags cflags;
+  cflags.format = FORMAT_GRAYSCALE;
+  std::unique_ptr<uint8_t[]> storage;
+
+  // 8x16 grayscale JPEG suspended after MCU row 0 (first_bad_line = 8)
+  // with stride = 1 << 28 so first_bad_line * stride == 2 GiB.
+  constexpr int kW = 8;
+  constexpr int kH = 16;
+  uint8_t two_mcu[kW * kH];
+  for (int r = 0; r < kH; ++r) {
+    for (int c = 0; c < kW; ++c) {
+      two_mcu[r * kW + c] =
+          (r < 8)
+              ? 180
+              : static_cast<uint8_t>(((r * 173 + c * 97) ^ (r * c * 53)) & 255);
+    }
+  }
+  cflags.quality = 100;
+  const tstring two_mcu_jpeg = Compress(two_mcu, kW, kH, cflags);
+  ASSERT_FALSE(two_mcu_jpeg.empty());
+  const size_t scan2 = FindJpegScanDataOffset(two_mcu_jpeg);
+  ASSERT_GT(scan2, 0u);
+  ASSERT_GT(two_mcu_jpeg.size(), scan2 + 24);
+  size_t cut2 = scan2 + (two_mcu_jpeg.size() - scan2) / 2;
+  while (cut2 + 4 < two_mcu_jpeg.size() &&
+         static_cast<uint8_t>(two_mcu_jpeg[cut2 - 1]) == 0xff) {
+    ++cut2;
+  }
+  std::string suspended_row8(two_mcu_jpeg.data(), cut2);
+  suspended_row8.push_back(static_cast<char>(0xff));
+
+  UncompressFlags flags8;
+  flags8.components = 1;
+  flags8.stride = 1 << 28;
+  flags8.min_acceptable_fraction = 0.0f;
+
+  const size_t stride8 = static_cast<size_t>(flags8.stride);
+  const size_t total8 = 9ULL * stride8;
+  flags8.crop = true;
+  flags8.crop_x = 0;
+  flags8.crop_y = 0;
+  flags8.crop_width = kW;
+  flags8.crop_height = 9;
+  auto alloc8 = [&](int width, int height, int components) -> uint8_t* {
+    if (width != kW || height != 9 || components != 1) {
+      return nullptr;
+    }
+    storage.reset(new uint8_t[total8]);
+    storage[8ULL * stride8] = 0x7f;
+    storage[8ULL * stride8 + kW - 1] = 0x7f;
+    storage[total8 - 1] = 0x7f;
+    return storage.get();
+  };
+  uint8_t* res8 =
+      Uncompress(suspended_row8.data(), static_cast<int>(suspended_row8.size()),
+                 flags8, nullptr, alloc8);
+  ASSERT_EQ(res8, storage.get());
+  EXPECT_GT(storage[0], 120);
+  EXPECT_EQ(storage[8ULL * stride8], 0);
+  EXPECT_EQ(storage[8ULL * stride8 + kW - 1], 0);
+  EXPECT_EQ(storage[total8 - 1], 0);
+  storage.reset();
 }
 
 }  // namespace

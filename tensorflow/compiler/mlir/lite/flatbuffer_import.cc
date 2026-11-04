@@ -757,10 +757,17 @@ static StatusOr<Operation*> BuildSparseConstOp(const tflite::TensorT& tensor,
       .getOperation();
 }
 
-StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
-                                  llvm::ArrayRef<uint8_t> buffer,
-                                  bool is_variable, OpBuilder builder,
-                                  Location loc, bool use_stablehlo_constant) {
+// Builds the constant op for `tensor`, whose data is `buffer`.
+// `subgraph_tensors` and `get_tensor_buffer` give access to the other tensors
+// of the subgraph; they are only needed for tensors whose quantization
+// parameters live in other tensors (N-D blockwise quantization).
+StatusOr<Operation*> BuildConstOp(
+    const tflite::TensorT& tensor, llvm::ArrayRef<uint8_t> buffer,
+    bool is_variable, OpBuilder builder, Location loc,
+    bool use_stablehlo_constant,
+    const std::vector<std::unique_ptr<tflite::TensorT>>* subgraph_tensors =
+        nullptr,
+    std::optional<tfl::TensorBufferResolver> get_tensor_buffer = std::nullopt) {
   if (tensor.sparsity != nullptr) {
     return BuildSparseConstOp(tensor, buffer, builder, loc);
   }
@@ -780,6 +787,23 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   }
 
   mlir::ElementsAttr value;
+  if (tfl::IsBlockwiseQuantizedWithBlockShape(tensor)) {
+    if (subgraph_tensors == nullptr || !get_tensor_buffer.has_value()) {
+      return absl::InternalError(
+          "Blockwise quantized constants need access to the subgraph "
+          "tensors");
+    }
+    TF_ASSIGN_OR_RETURN(value, tfl::ConvertIntBuffer(shaped_type, buffer));
+    TF_ASSIGN_OR_RETURN(
+        mlir::Type blockwise_type,
+        tfl::GetBlockwiseQuantizedType(tensor, builder, value.getElementType(),
+                                       *subgraph_tensors, *get_tensor_buffer));
+    auto op = tfl::QConstOp::create(
+        builder, loc, mlir::TypeAttr::get(shaped_type.clone(blockwise_type)),
+        value);
+    return op.getOperation();
+  }
+
   if (tfl::IsQuantized(tensor)) {
     bool truncate = shaped_type.getElementType().getIntOrFloatBitWidth() == 64;
     TF_ASSIGN_OR_RETURN(value,
@@ -1319,7 +1343,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
           llvm::isa<mlir::quant::UniformQuantizedPerAxisType>(qtype))) {
       return;
     }
-    for (auto& use : value.getUses()) {
+    for (auto& use : llvm::make_early_inc_range(value.getUses())) {
       Operation* user = use.getOwner();
       if (user->hasTrait<mlir::OpTrait::IsTerminator>()) continue;
 
@@ -1533,6 +1557,28 @@ StatusOr<FuncOp> ConvertSubgraph(
     const tflite::ControlEdges& control_edges,
     const std::unique_ptr<tfl::FlatBufferModelAbslError>& model_ptr,
     bool use_stablehlo_constant, DebugMetadata& debug_metadata) {
+  // Returns the data of the constant tensor at `index` in the subgraph.
+  auto get_tensor_buffer =
+      [&](int32_t index) -> absl::StatusOr<llvm::ArrayRef<uint8_t>> {
+    const tflite::TensorT& tensor = *subgraph.tensors[index];
+    if (tensor.external_buffer != 0) {
+      return absl::UnimplementedError(
+          "Quantization parameters in external buffers are not supported");
+    }
+    if (tensor.buffer >= buffers.size()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Tensor ", index, " refers to an invalid buffer"));
+    }
+    const tflite::BufferT& buffer = *buffers[tensor.buffer];
+    if (IsValidBufferOffset(buffer.offset)) {
+      const uint8_t* file_begin_ptr =
+          reinterpret_cast<const uint8_t*>(model_ptr->allocation()->base());
+      return llvm::ArrayRef<uint8_t>(file_begin_ptr + buffer.offset,
+                                     buffer.size);
+    }
+    return llvm::ArrayRef<uint8_t>(buffer.data);
+  };
+
   // Populate from metadata.
   ControlNodes control_nodes;
   for (const auto [from, to] : control_edges) {
@@ -1715,7 +1761,8 @@ StatusOr<FuncOp> ConvertSubgraph(
                                                         const_tensor.buffer,
                                                         op_builder, const_loc)
                   : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
-                                 op_builder, const_loc, use_stablehlo_constant);
+                                 op_builder, const_loc, use_stablehlo_constant,
+                                 &subgraph.tensors, get_tensor_buffer);
         }
 
         if (!op_or_err.ok()) {
@@ -1815,7 +1862,8 @@ StatusOr<FuncOp> ConvertSubgraph(
                 ? BuildExternalConstOpWithBufferIndex(
                       const_tensor, const_tensor.buffer, op_builder, const_loc)
                 : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
-                               op_builder, const_loc, use_stablehlo_constant);
+                               op_builder, const_loc, use_stablehlo_constant,
+                               &subgraph.tensors, get_tensor_buffer);
       }
 
       if (!op_or_err.ok()) {

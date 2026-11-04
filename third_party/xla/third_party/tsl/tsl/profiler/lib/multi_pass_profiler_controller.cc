@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/profiler_interface.h"
@@ -43,12 +44,17 @@ MultiPassProfilerController::~MultiPassProfilerController() {
   }
 }
 
-bool MultiPassProfilerController::NeedMorePasses() {
+absl::StatusOr<bool> MultiPassProfilerController::NeedMorePasses() {
   if (state_ == MultiPassProfilerState::kPassStopped ||
       state_ == MultiPassProfilerState::kStarted ||
       state_ == MultiPassProfilerState::kInit) {
-    if (!status_.ok()) return false;
-    return profiler_->NeedMorePasses();
+    if (!status_.ok()) return status_;
+    absl::StatusOr<bool> need_more = profiler_->NeedMorePasses();
+    if (!need_more.ok()) {
+      status_ = need_more.status();
+      LOG(ERROR) << status_;
+    }
+    return need_more;
   }
   return false;
 }

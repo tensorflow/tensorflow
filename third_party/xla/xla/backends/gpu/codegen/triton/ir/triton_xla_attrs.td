@@ -92,6 +92,7 @@ def TTXLA_BarrierModeEnum : I32EnumAttr<"BarrierMode",
       I32EnumAttrCase<"kSymmetric", 0, "symmetric">,
       I32EnumAttrCase<"kConsumerSymmetric", 1, "consumer_symmetric">,
       I32EnumAttrCase<"kProducerSymmetric", 2, "producer_symmetric">,
+      I32EnumAttrCase<"kPairwiseSymmetric", 3, "pairwise_symmetric">,
     ]> {
   let cppNamespace = "::mlir::triton::xla";
   let genSpecializedAttr = 0;

@@ -245,6 +245,15 @@ def _validate_input(flattened_layouts: Sequence[layout_lib.Layout],
           (expected_rank, elem_spec, layout.sharding_specs))
 
     if dataset_already_batched:
+      if elem_spec.shape.rank == 0:
+        raise ValueError(
+            (
+                'Dataset element shape must have rank >= 1 when the dataset is '
+                'already batched, got spec %s.'
+            )
+            % elem_spec
+        )
+
       # Check that the batch dimension size of all dataset elements match.
       batch_dim_size = first_elem_shape.as_list()[0]
       if batch_dim_size is None:
@@ -256,6 +265,12 @@ def _validate_input(flattened_layouts: Sequence[layout_lib.Layout],
         raise ValueError(
             ('Size of batch dimension of element spec %s does not match '
              'expected size %d.') % (elem_spec, batch_dim_size))
+
+    if not elem_spec.shape.is_fully_defined():
+      raise ValueError(
+          'Dataset element shape must be fully defined, got spec %s.'
+          % elem_spec
+      )
 
 
 def _shard_counts(layout: layout_lib.Layout,
@@ -303,7 +318,9 @@ def _index_matrix(layout: layout_lib.Layout,
 
   Args:
     layout: the layout of the dataset element.
-    elem_spec: the spec of the dataset element.
+    elem_spec: the spec of the *batched* dataset element, i.e. its shape must
+      already include the leading batch dimension and have the same rank as
+      `layout`.
 
   Returns:
     The index matrix as a tensor.
@@ -315,7 +332,11 @@ def _index_matrix(layout: layout_lib.Layout,
       if spec == layout_lib.UNSHARDED or spec != dim:
         row.append(0)
       else:
-        row.append(elem_spec.shape[layout_idx] // layout.mesh.dim_size(dim))
+        # `layout_idx` enumerates `layout.sharding_specs[1:]`, i.e. it is
+        # zero-based over the non-batch dims, while `elem_spec.shape` (which
+        # includes the batch dim at index 0) needs the matching tensor axis,
+        # which is one higher.
+        row.append(elem_spec.shape[layout_idx + 1] // layout.mesh.dim_size(dim))
     matrix.append(row)
 
   return constant_op.constant(matrix, dtype=dtypes.int32)
@@ -483,6 +504,14 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
               [loc[batch_dim] for loc in mesh.local_device_locations()]))
 
       for layout in flattened_layouts:
+        if layout.rank == 0:
+          raise ValueError(
+              (
+                  'batch_dim %s was specified but at least one layout has rank '
+                  '0: %s'
+              )
+              % (batch_dim, layout)
+          )
         if batch_dim != layout.sharding_specs[0]:
           raise ValueError(
               ('batch_dim %s was specified but at least one layout did not '
@@ -544,9 +573,16 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._all_shard_counts = [
         _shard_counts(layout, batch_dim) for layout in flattened_layouts
     ]
+    # `_index_matrix` requires the *batched* element spec (shape rank must
+    # match `layout.rank`, including the leading batch dim).
+    flattened_batched_elem_spec = nest.flatten(
+        self._batched_dataset.element_spec
+    )
     self._index_matrices = [
         _index_matrix(layout, elem_spec)
-        for layout, elem_spec in zip(flattened_layouts, flattened_elem_spec)
+        for layout, elem_spec in zip(
+            flattened_layouts, flattened_batched_elem_spec
+        )
     ]
 
   def __iter__(self):
@@ -580,8 +616,13 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
           data_service_ops.distribute(
               processing_mode=sharding_policy,
               service=self._tf_data_service_config.dispatcher_address,
-              job_name=f'{self._tf_data_service_config.job_name}_{config.client_id()}',
-              target_workers='LOCAL'))
+              job_name=(
+                  f'{self._tf_data_service_config.job_name}_'
+                  f'{config.client_id()}'
+              ),
+              target_workers='LOCAL',
+          )
+      )
 
     for local_replica_idx, replica_id in enumerate(self._local_replica_ids):
       # Select the shard for the corresponding replica.

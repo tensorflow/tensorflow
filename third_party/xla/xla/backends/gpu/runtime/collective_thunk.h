@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -130,7 +131,6 @@ class CollectiveThunk : public Command {
   bool requires_warmup() const override { return true; }
 
   absl::Status Prepare(const PrepareParams& params) override;
-  absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const ExecuteParams& execute_params, const RecordParams& record_params,
@@ -168,15 +168,6 @@ class CollectiveThunk : public Command {
   // for one-sided or device-initiated collectives.
   virtual absl::Status PrepareCollective(const PrepareParams& params,
                                          const GpuCliqueKey& clique_key) {
-    return absl::OkStatus();
-  }
-
-  // Initializes collective operation for execution.
-  //
-  // At this stage it is possible to resolve buffer slices from a buffer
-  // assignment, but the content of all buffers is undefined.
-  virtual absl::Status InitializeCollective(const InitializeParams& params,
-                                            const GpuCliqueKey& clique_key) {
     return absl::OkStatus();
   }
 
@@ -292,6 +283,12 @@ struct DeviceBufferPair {
   se::DeviceAddressBase destination_buffer;
   int64_t source_memory_space;
   int64_t destination_memory_space;
+
+  // Only buffers in the collective memory space are remotely accessible.
+  bool IsRMA() const {
+    return source_memory_space == Layout::kCollectiveMemorySpace &&
+           destination_memory_space == Layout::kCollectiveMemorySpace;
+  }
 };
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(

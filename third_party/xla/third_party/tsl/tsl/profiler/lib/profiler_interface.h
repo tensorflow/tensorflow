@@ -75,7 +75,7 @@ class ProfilerInterface {
 class MultiPassProfilerInterface : public ProfilerInterface {
  public:
   // Returns true if there are more passes to profile.
-  virtual bool NeedMorePasses() = 0;
+  virtual absl::StatusOr<bool> NeedMorePasses() = 0;
 
   // Starts a new profiling pass.
   virtual absl::Status StartPass() = 0;

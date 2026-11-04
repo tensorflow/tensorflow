@@ -55,18 +55,24 @@ namespace internal {
 // TODO(ezhulenev): Consolidate this part of the code with the image patch
 // extraction code since they are both very similar.
 
+// Image patch mappers do not depend on `inner_dim_contiguous`,
+// `inner_dim_reordered`, or `Alignment` (all packet loads use `Unaligned`).
+// Canonicalize the implementation and `SubMapper` typedef to `<..., false,
+// false, 0>` so `TensorContractionEvaluatorBase::evalProduct` does not
+// instantiate duplicate copies of `gemm_pack_rhs` and
+// `gemm_pack_colmajor_block` for each `(inner_dim_contiguous,
+// inner_dim_reordered, Alignment)` combination.
 template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
           typename Device, typename Scalar_, typename Index,
-          typename nocontract_t, typename contract_t, int Side, int packet_size,
-          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
+          typename nocontract_t, typename contract_t, int Side, int packet_size>
 class TensorContractionInputMapper<
     Scalar_, Index, Side,
     TensorEvaluator<
         const TensorReshapingOp<NewDimension,
                                 const TensorImagePatchOp<Rows, Cols, ArgType> >,
         Device>,
-    nocontract_t, contract_t, packet_size, inner_dim_contiguous,
-    inner_dim_reordered, Alignment> {
+    nocontract_t, contract_t, packet_size, /*inner_dim_contiguous=*/false,
+    /*inner_dim_reordered=*/false, /*Alignment=*/0> {
  public:
   typedef Scalar_ Scalar;
 
@@ -76,8 +82,8 @@ class TensorContractionInputMapper<
           const TensorReshapingOp<
               NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
           Device>,
-      nocontract_t, contract_t, packet_size, inner_dim_contiguous,
-      inner_dim_reordered, Alignment>
+      nocontract_t, contract_t, packet_size, /*inner_dim_contiguous=*/false,
+      /*inner_dim_reordered=*/false, /*Alignment=*/0>
       Self;
 
   typedef TensorContractionSubMapper<
@@ -86,8 +92,8 @@ class TensorContractionInputMapper<
           const TensorReshapingOp<
               NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
           Device>,
-      nocontract_t, contract_t, packet_size, inner_dim_contiguous,
-      inner_dim_reordered, Alignment>
+      nocontract_t, contract_t, packet_size, /*inner_dim_contiguous=*/false,
+      /*inner_dim_reordered=*/false, /*Alignment=*/0>
       SubMapper;
 
   typedef SubMapper VectorMapper;
@@ -281,8 +287,8 @@ class TensorContractionInputMapper<
           const TensorReshapingOp<
               NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
           Device>,
-      nocontract_t, contract_t, packet_size, inner_dim_contiguous,
-      inner_dim_reordered, Alignment>;
+      nocontract_t, contract_t, packet_size, /*inner_dim_contiguous=*/false,
+      /*inner_dim_reordered=*/false, /*Alignment=*/0>;
 
   // Load coefficient from a patch specified by the "within patch offset"
   // (patchId) and the precomputed indices of the first element of the patch.
@@ -677,14 +683,47 @@ template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
           typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, int Side, int packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
-class TensorContractionSubMapper<
+class TensorContractionInputMapper<
     Scalar, Index, Side,
     TensorEvaluator<
         const TensorReshapingOp<NewDimension,
                                 const TensorImagePatchOp<Rows, Cols, ArgType> >,
         Device>,
     nocontract_t, contract_t, packet_size, inner_dim_contiguous,
-    inner_dim_reordered, Alignment> {
+    inner_dim_reordered, Alignment>
+    : public TensorContractionInputMapper<
+          Scalar, Index, Side,
+          TensorEvaluator<
+              const TensorReshapingOp<
+                  NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
+              Device>,
+          nocontract_t, contract_t, packet_size,
+          /*inner_dim_contiguous=*/false, /*inner_dim_reordered=*/false,
+          /*Alignment=*/0> {
+ public:
+  using Base = TensorContractionInputMapper<
+      Scalar, Index, Side,
+      TensorEvaluator<
+          const TensorReshapingOp<
+              NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
+          Device>,
+      nocontract_t, contract_t, packet_size,
+      /*inner_dim_contiguous=*/false, /*inner_dim_reordered=*/false,
+      /*Alignment=*/0>;
+  using Base::Base;
+};
+
+template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
+          typename Device, typename Scalar, typename Index,
+          typename nocontract_t, typename contract_t, int Side, int packet_size>
+class TensorContractionSubMapper<
+    Scalar, Index, Side,
+    TensorEvaluator<
+        const TensorReshapingOp<NewDimension,
+                                const TensorImagePatchOp<Rows, Cols, ArgType> >,
+        Device>,
+    nocontract_t, contract_t, packet_size, /*inner_dim_contiguous=*/false,
+    /*inner_dim_reordered=*/false, /*Alignment=*/0> {
  public:
   typedef typename packet_traits<Scalar>::type Packet;
   typedef typename packet_traits<Scalar>::half HalfPacket;
@@ -695,8 +734,8 @@ class TensorContractionSubMapper<
           const TensorReshapingOp<
               NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
           Device>,
-      nocontract_t, contract_t, packet_size, inner_dim_contiguous,
-      inner_dim_reordered, Alignment>
+      nocontract_t, contract_t, packet_size, /*inner_dim_contiguous=*/false,
+      /*inner_dim_reordered=*/false, /*Alignment=*/0>
       ParentMapper;
 
   typedef TensorContractionSubMapper<
@@ -705,8 +744,8 @@ class TensorContractionSubMapper<
           const TensorReshapingOp<
               NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
           Device>,
-      nocontract_t, contract_t, packet_size, inner_dim_contiguous,
-      inner_dim_reordered, Alignment>
+      nocontract_t, contract_t, packet_size, /*inner_dim_contiguous=*/false,
+      /*inner_dim_reordered=*/false, /*Alignment=*/0>
       Self;
 
   typedef Self LinearMapper;
@@ -746,8 +785,7 @@ class TensorContractionSubMapper<
   template <typename PacketT = Packet>
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE PacketT loadPacket(Index i,
                                                            Index j) const {
-    return m_base_mapper.template loadPacket<Alignment>(i + m_depth_offset,
-                                                        j + m_col_offset);
+    return m_base_mapper.loadPacket(i + m_depth_offset, j + m_col_offset);
   }
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Scalar
   loadCoeffStandard(Index i) const {

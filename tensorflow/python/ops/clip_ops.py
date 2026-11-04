@@ -204,8 +204,9 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
 
   Raises:
     ValueError: If the clip_norm tensor is not a 0-D scalar tensor.
-    TypeError: If dtype of the input is not a floating point or
-      complex type.
+    TypeError: If the input is not a floating point type, in graph mode.
+    InvalidArgumentError: If the input is not a floating point type, in eager
+      mode.
   """
   with ops.name_scope(name, "clip_by_norm", [t, clip_norm]) as name:
     values = ops.convert_to_tensor(
@@ -365,6 +366,8 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   t_list = list(t_list)
   if use_norm is None:
     use_norm = global_norm(t_list, name)
+  else:
+    use_norm = ops.convert_to_tensor(use_norm, name="use_norm")
 
   with ops.name_scope(name, "clip_by_global_norm",
                       t_list + [clip_norm]) as name:

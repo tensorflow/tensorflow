@@ -157,7 +157,7 @@ MasterService::AsyncService::AsyncService() {
   }
 }
 
-MasterService::AsyncService::~AsyncService() {}
+MasterService::AsyncService::~AsyncService() = default;
 
 }  // namespace grpc
 

@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients_impl
@@ -111,6 +112,37 @@ class BiasAddTestBase(test.TestCase):
       nn_ops.bias_add(
           array_ops.reshape([1, 2], shape=[1, 2]),
           array_ops.reshape([1], shape=[1]))
+
+  def testNCHWRankTooLow(self):
+    # A rank-2 NCHW input aborted the GPU kernel with a CHECK failure
+    # (issue #94379); the added OP_REQUIRES makes the kernel raise
+    # InvalidArgumentError instead. Checked in eager only: in graph mode
+    # BiasAddShape rejects rank-2 NCHW at construction (WithRankAtLeast 3, a
+    # ValueError) before the kernel runs, so a graph-mode test would exercise
+    # the pre-existing shape function rather than this guard. Eager places the
+    # op on GPU when one is present and on CPU otherwise.
+    if not context.executing_eagerly():
+      self.skipTest("kernel guard is reachable only in eager mode")
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "at least 3D"
+    ):
+      nn_ops.bias_add(
+          array_ops.ones([2, 6], dtype=dtypes.float32),
+          array_ops.ones([6], dtype=dtypes.float32),
+          data_format="NCHW",
+      )
+
+  def testNCHWRankTooLowGrad(self):
+    # BiasAddGrad has the same NCHW rank requirement and the same eager-only
+    # kernel guard as the forward op (see testNCHWRankTooLow).
+    if not context.executing_eagerly():
+      self.skipTest("kernel guard is reachable only in eager mode")
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "at least 3D"
+    ):
+      gen_nn_ops.bias_add_grad(
+          array_ops.ones([2, 6], dtype=dtypes.float32), data_format="NCHW"
+      )
 
   def testIntTypes(self):
     for t in [np.int8, np.int16, np.int32, np.int64]:
@@ -296,7 +328,11 @@ class BiasAddTestBase(test.TestCase):
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
   def test1x1Image(self):
-    for (data_format, use_gpu) in [("NHWC", False), ("NCHW", False)]:
+    for data_format, use_gpu in [
+        ("NHWC", False),
+        ("NCHW", False),
+        ("NCHW", True),
+    ]:
       np_input = np.arange(1.0, 129.0).reshape([4, 1, 1, 32]).astype(np.float32)
       self._testGradient(np_input,
                          np.random.rand(32).astype(np.float32), dtypes.float32,
@@ -320,3 +356,38 @@ class BiasAddTestBase(test.TestCase):
         self._testGradient(
             np.random.randn(*shape), np.random.randn(shape[-1]), dtypes.float64,
             data_format, use_gpu)
+
+  @test_util.run_gpu_only
+  def testGradientWithManyChannels(self):
+    channels = 2**29
+    for data_format, shape in (
+        ("NHWC", [1, channels]),
+        ("NCHW", [1, channels, 1]),
+    ):
+      try:
+        with test_util.force_gpu():
+          out_backprop = array_ops.ones(shape, dtype=dtypes.float16)
+          bias_backprop = gen_nn_ops.bias_add_grad(
+              out_backprop, data_format=data_format
+          )
+          last_values = self.evaluate(bias_backprop[-4:])
+      except errors_impl.ResourceExhaustedError as e:
+        self.skipTest("Not enough GPU memory: %s" % e)
+      self.assertAllEqual(last_values, np.ones([4], dtype=np.float16))
+
+  @test_util.run_gpu_only
+  def testLargeDimsOverflowOnGpu(self):
+    with test_util.force_gpu():
+      bias = array_ops.zeros([0], dtype=dtypes.float32)
+      large_batch = array_ops.zeros([2**31, 0], dtype=dtypes.float32)
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError, "supports at most"
+      ):
+        self.evaluate(nn_ops.bias_add(large_batch, bias, data_format="NHWC"))
+      large_channel = array_ops.zeros([0, 2**31], dtype=dtypes.float32)
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError, "supports at most"
+      ):
+        self.evaluate(
+            gen_nn_ops.bias_add_grad(large_channel, data_format="NHWC")
+        )

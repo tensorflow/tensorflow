@@ -239,6 +239,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/pass:hlo_pass_registry",
         "//xla/service:memory_annotations_hdr",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -249,6 +250,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:statusor",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -659,10 +661,52 @@ cc_library(
 )
 
 cc_library(
+    name = "dot_algorithm_rewriter",
+    srcs = ["dot_algorithm_rewriter.cc"],
+    hdrs = ["dot_algorithm_rewriter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_creation_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "dot_algorithm_rewriter_test",
+    srcs = ["dot_algorithm_rewriter_test.cc"],
+    deps = [
+        ":dot_algorithm_rewriter",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/evaluator:hlo_evaluator",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/utils:hlo_matchers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "dot_dimension_normalizer",
     srcs = ["dot_dimension_normalizer.cc"],
     hdrs = ["dot_dimension_normalizer.h"],
     deps = [
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -747,6 +791,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:name_uniquer",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -145,7 +145,7 @@ class GpuCompiler : public LLVMCompiler {
 
   static AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
-      bool is_rocm);
+      bool is_non_cuda_platform);
 
   // Returns the LLVM command line options that we use for compilation.
   // THey need to be set globally whenever we call into LLVM.
@@ -175,11 +175,6 @@ class GpuCompiler : public LLVMCompiler {
 
   static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
       const stream_executor::DeviceDescription& device_description);
-
-  // Run right before GemmRewriter to add pads for gpublas gemms.
-  virtual void AddPaddingForGpublasGemms(
-      HloPassPipeline& pipeline, const DebugOptions& debug_options,
-      const se::GpuComputeCapability& gpu_version) = 0;
 
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
@@ -302,11 +297,6 @@ class GpuCompiler : public LLVMCompiler {
 
   MlirContextPool mlir_context_pool_;
 };
-
-void GpuCollectiveBufferAnalysis(
-    HloModule* module, const HloAliasAnalysis& alias_analysis,
-    std::function<void(HloInstruction*, const ShapeIndex&)> add_index_to_copy,
-    const GpuTopology* gpu_topology = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

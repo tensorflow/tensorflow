@@ -17,6 +17,10 @@
 * `tf.lite`
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
     * `tfl.cast` now supports casting packed INT2/INT4/UINT4 inputs to any non-packed output type (CAST op version 10).
+    * `tfl.dequantize` now supports inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) (DEQUANTIZE op version 10).
+    * `tfl.batch_matmul` now supports RHS inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) alongside INT8 affine LHS and output tensors (BATCH_MATMUL op version 5).
+* `tf.function` / `PolymorphicFunction`:
+    * Added `clear_cache()` method to `PolymorphicFunction` to explicitly clear compiled concrete functions and dispatch tables, freeing retained graph memory.
 
 ### Bug Fixes and Other Changes
 
@@ -25,6 +29,19 @@
     dimensions instead of raising an `InvalidArgumentError`. This matches the
     documented definition of the op and the behavior of the XLA lowering used by
     `tf.function(jit_compile=True)`.
+*   `tf.image.resize_with_pad`: the resized size and padding are now computed
+    exactly instead of in float32. For some sizes the image used to be scaled
+    one pixel short of the target and padded with a row or column of zeros
+    (e.g. 512x512 to 224x224), or placed one pixel off center.
+*   `tf.signal.hann_window` and `tf.signal.hamming_window`: `periodic=True`
+    (the default) now also produces a periodic window for odd
+    `window_length`. Previously odd lengths always got the symmetric window,
+    so `tf.signal.stft` and `tf.signal.inverse_stft` with the default window
+    and an odd `frame_length` now return different values. The new values
+    match `scipy.signal.get_window` and `tf.raw_ops.AudioSpectrogram`.
+*   `tf.vectorized_map`, `tf.GradientTape.jacobian` and `batch_jacobian`:
+    `tf.roll` with a negative axis no longer rolls along the wrong dimension,
+    which could mix values between batch elements or return a wrong Jacobian.
 
 ## Thanks to our Contributors
 
@@ -52,6 +69,9 @@ In `tensorflow/c/experimental/filesystem/filesystem_interface.h`, removed `TF_Tr
 
 ### Major Features and Improvements
 
+*   Support for Python 3.14 has been added.
+* `tf.distribute.experimental`
+    * Introduces `tf.distribute.experimental.auto_strategy`, a dynamic factory API that automatically detects available hardware (TPUs, multiple GPUs, or multi-worker clusters via `TF_CONFIG`) and resolves the optimal distribution strategy, safely falling back to single device execution.
 * `tf.lite`
     * Adds support for QUI4 (Quantized Unsigned 4-bit) in Dequantize operator.
     * Adds support for FP16 and BF16 in Unpack operator.

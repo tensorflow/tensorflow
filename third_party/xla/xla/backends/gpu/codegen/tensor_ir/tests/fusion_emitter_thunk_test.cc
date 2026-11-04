@@ -54,6 +54,22 @@ ENTRY main {
     backend_config={"fusion_backend_config":{"kind":"__tensorir","tensor_ir_fusion_config":{}}}
 })";
 
+constexpr absl::string_view kTwoOutputsF32 = R"(
+fused_computation {
+  p0 = f32[8,16] parameter(0)
+  p1 = f32[8,16] parameter(1)
+  add = f32[8,16] add(p0, p1)
+  mul = f32[8,16] multiply(p0, p1)
+  ROOT tuple = (f32[8,16], f32[8,16]) tuple(add, mul)
+}
+
+ENTRY main {
+  p0 = f32[8,16] parameter(0)
+  p1 = f32[8,16] parameter(1)
+  ROOT fusion = (f32[8,16], f32[8,16]) fusion(p0, p1), kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__tensorir","tensor_ir_fusion_config":{}}}
+})";
+
 // Checks the shape of what the TensorIR emitter hands to the runtime. Unlike
 // the numerics tests next door these only compile and never launch, so they
 // need a GPU to be visible but not one whose driver can load the kernel.
@@ -128,6 +144,17 @@ TEST_F(TensorIrThunkTest, PassesInputsThenOutput) {
 
   EXPECT_EQ(thunk->arguments().size(), 3);
   EXPECT_THAT(thunk->written(), ElementsAre(false, false, true));
+}
+
+// A fusion with several outputs gets one pointer per output after the inputs.
+TEST_F(TensorIrThunkTest, PassesInputsThenAllOutputs) {
+  std::unique_ptr<Executable> executable;
+  ASSERT_OK_AND_ASSIGN(
+      const CustomKernelThunk* thunk,
+      CompileToSingleCustomKernelThunk(kTwoOutputsF32, &executable));
+
+  EXPECT_EQ(thunk->arguments().size(), 4);
+  EXPECT_THAT(thunk->written(), ElementsAre(false, false, true, true));
 }
 
 // The reason for using `CustomKernelThunk` rather than a bespoke thunk: the

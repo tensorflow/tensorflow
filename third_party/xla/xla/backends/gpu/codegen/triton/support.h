@@ -19,8 +19,11 @@ limitations under the License.
 // This file is the home of the basic Triton support checks which are used by
 // multiple other components.
 
+#include <cstdint>
+
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/decision.h"
 #include "xla/shape.h"
@@ -37,6 +40,11 @@ using CodegenDecision = Decision;
 // Currently does not perform any check for non-CUDA compute capabilities.
 absl::Status EnsureTritonSupportsComputeCapability(
     const se::GpuComputeCapability& gpu_compute_capability);
+
+// Returns `CodegenDecision`'s equivalent of `true` if `type` is supported by
+// Triton for `gpu_version`.
+CodegenDecision IsTritonSupportedDataType(
+    PrimitiveType type, const se::GpuComputeCapability& gpu_version);
 
 // Return `CodegenDecision`'s equivalent of `true` if the parameter instruction
 // is supported by the Triton emitters for the given compute capability. Note
@@ -70,6 +78,11 @@ bool IsTritonFusedComputation(const HloComputation& computation);
 // whose backend config kind is one of the Triton GEMM fusion kinds
 // (`kTritonGemmFusionKind` or `kTritonNestedGemmFusionKind`).
 bool IsTritonGemm(const HloInstruction& instr);
+
+// Returns `true` if all non-final operands of `concat` have their
+// concatenate-dimension size divisible by `min_fragment_size`.
+bool IsConcatenateAligned(const HloConcatenateInstruction& concat,
+                          int64_t min_fragment_size);
 
 namespace internal {
 // TODO(b/363981282): Remove the function below once all ops are tested via
