@@ -841,7 +841,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   auto shard_shape = MakePartitionedShape(shape, target);
   auto slice = state_.b->AddInstruction(HloInstruction::CreateDynamicSlice(
       shard_shape, padded_hlo,
-      MakePartitionOffsets(shape, target, state_.partition_id, state_.b),
+      MakePartitionOffsets(shape, target, state_.partition_id, state_.b, S32),
       shard_shape.dimensions()));
   slice->set_sharding(target);
   return PartitionedHlo(slice, base_shape_, state_);
@@ -952,7 +952,7 @@ HloInstruction* PartitionedHlo::PadWithValueHlo(
 
   HloInstruction* mask = nullptr;
   auto offsets = MakePartitionOffsets(base_shape_, sharding,
-                                      state_.partition_id, state_.b);
+                                      state_.partition_id, state_.b, S32);
   for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
     if (base_shape_.dimensions(i) % sharding.dimension(i) == 0 ||
         absl::c_linear_search(skipped_dims, i)) {
@@ -1657,7 +1657,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
         final_result_shape,
         hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
             sharding(), dus_ar_dims),
-        state_.partition_id, state_.b, dus_ar_dims);
+        state_.partition_id, state_.b, S32, dus_ar_dims);
     auto dus =
         state_.b->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
             final_result_shape, zero_bcast, result, offsets));
@@ -1787,9 +1787,9 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
         i, padded_base_shape.dimensions(i) * temp_target_sharding.dimension(i));
   }
   auto offsets = MakePartitionOffsets(padded_base_shape, temp_target_sharding,
-                                      state_.partition_id, state_.b);
+                                      state_.partition_id, state_.b, S32);
   auto old_offsets = MakePartitionOffsets(padded_base_shape, sharding(),
-                                          state_.partition_id, state_.b);
+                                          state_.partition_id, state_.b, S32);
   for (int64_t i = 0; i < offsets.size(); ++i) {
     offsets[i] = state_.b->AddInstruction(HloInstruction::CreateBinary(
         offsets[i]->shape(), HloOpcode::kSubtract, offsets[i], old_offsets[i]));
@@ -4445,22 +4445,15 @@ absl::Status SpmdPartitioningVisitor::HandleIota(HloInstruction* hlo) {
 
   SetPartitionedHlo(hlo, [&] {
     int64_t dimension = Cast<HloIotaInstruction>(hlo)->iota_dimension();
-    auto iota = b_.AddInstruction(HloInstruction::CreateIota(
+    HloInstruction* iota = b_.AddInstruction(HloInstruction::CreateIota(
         MakePartitionedShape(hlo->shape(), sharding), dimension));
 
     if (sharding.dimension(dimension) > 1) {
-      auto partition_ordinals = MakeTiledPartitionOrdinals(
-          sharding, MakePartitioningState().partition_id, &b_);
-      auto multiplier = b_.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32_t>(iota->shape().dimensions(dimension))));
-      auto offset = b_.AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeShape(S32, {}), HloOpcode::kMultiply,
-          partition_ordinals[dimension], multiplier));
-      if (iota->shape().element_type() != S32) {
-        offset = b_.AddInstruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeShape(iota->shape().element_type(), {}), offset));
-      }
-      auto broadcast = b_.AddInstruction(
+      const int64_t dims_for_offset[] = {dimension};
+      HloInstruction* offset = MakePartitionOffsets(
+          hlo->shape(), sharding, MakePartitioningState().partition_id, &b_,
+          iota->shape().element_type(), dims_for_offset)[dimension];
+      HloInstruction* broadcast = b_.AddInstruction(
           HloInstruction::CreateBroadcast(iota->shape(), offset, {}));
       return b_.AddInstruction(HloInstruction::CreateBinary(
           iota->shape(), HloOpcode::kAdd, iota, broadcast));

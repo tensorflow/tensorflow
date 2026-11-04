@@ -471,7 +471,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
       (amount + right_padding) % (shard_size * participating_shards));
   HloInstruction* shard_offset = MakePartitionOffsets(
       hlo->shape(), hlo->sharding(), MakePartitioningState().partition_id, &b_,
-      {dim})[dim];
+      S32, {dim})[dim];
   HloInstruction* iota = b_.AddInstruction(HloInstruction::CreateIota(
       ShapeUtil::ChangeElementType(rotated0->shape(), S32), dim));
   HloInstruction* selection_boundary =
@@ -682,7 +682,7 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
   single_element_per_device_shape.set_dimensions(dim, participating_shards);
   HloInstruction* shard_offset = MakePartitionOffsets(
       single_element_per_device_shape, element_sharding,
-      MakePartitioningState().partition_id, &b_, {dim})[dim];
+      MakePartitioningState().partition_id, &b_, S32, {dim})[dim];
 
   HloInstruction* zero_offset = b_.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));

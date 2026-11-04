@@ -275,7 +275,7 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
     absl::Span<const int64_t> trivial_slice_dims, int64_t index_vector_dim,
     SpmdBuilder* b) {
   auto operand_offsets = MakePartitionOffsets(
-      operand.base_shape(), operand.sharding(), partition_id, b);
+      operand.base_shape(), operand.sharding(), partition_id, b, S32);
   const PrimitiveType indices_type = indices.hlo()->shape().element_type();
   // Find the per-dimension index bounds.
   std::vector<HloInstruction*> min_indices;
@@ -738,7 +738,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
   if (need_offset) {
     std::vector<HloInstruction*> operand_offsets = MakePartitionOffsets(
         operand.base_shape(), operand.sharding(), operand.state().partition_id,
-        b, operand_parallel_dims);
+        b, S32, operand_parallel_dims);
     absl::InlinedVector<HloInstruction*, 4> index_offsets;
     for (int start_idx = 0; start_idx < dnums.start_index_map_size();
          ++start_idx) {
@@ -1320,7 +1320,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
   if (need_offset) {
     std::vector<HloInstruction*> operand_offsets = MakePartitionOffsets(
         operands[0].base_shape(), operands[0].sharding(),
-        operands[0].state().partition_id, b, operand_parallel_dims);
+        operands[0].state().partition_id, b, S32, operand_parallel_dims);
     absl::InlinedVector<HloInstruction*, 4> index_offsets;
     for (int start_idx = 0;
          start_idx < dnums.scatter_dims_to_operand_dims_size(); ++start_idx) {
