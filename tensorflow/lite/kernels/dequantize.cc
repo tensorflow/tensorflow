@@ -77,6 +77,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context,
                       ValidateBlockwiseQuantizationV2(context, op_context.input,
                                                       blockwise_params));
+  } else if (op_context.input->quantization.type != kTfLiteNoQuantization &&
+             op_context.input->quantization.type != kTfLiteAffineQuantization) {
+    TF_LITE_KERNEL_LOG(context,
+                       "DEQUANTIZE does not support quantization type %d of "
+                       "its input.",
+                       op_context.input->quantization.type);
+    return kTfLiteError;
   } else if (op_context.input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
   }
