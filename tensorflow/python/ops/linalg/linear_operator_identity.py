@@ -775,7 +775,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         num_rows=self._num_rows,
         multiplier=1. / self.multiplier,
         is_non_singular=self.is_non_singular,
-        is_self_adjoint=True,
+        is_self_adjoint=self.is_self_adjoint,
         is_positive_definite=self.is_positive_definite,
         is_square=True)
 
