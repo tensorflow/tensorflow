@@ -307,6 +307,15 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
 mlir::Type StorageType(mlir::Type t);
 mlir::Type GetSignlessType(mlir::Type t);
 
+// Returns whether the scan `combiner` computes a running sum: it has two
+// parameters `p0` and `p1` of the output element type, and its root is
+// `tuple(x, x)`, where `x` is `add(p0, p1)` or, as produced by
+// FloatNormalization, `convert(add(convert(p0), convert(p1)))`, with the add
+// operands in either order. Both tuple elements must be the same instruction
+// because `LowerScan` (xtile_lower_to_triton.cc) derives the carry from the
+// output.
+bool IsAdditiveScanCombiner(const HloComputation& combiner);
+
 // Triton tt.dot_scaled takes scale operands only for low-precision lhs/rhs
 // value dtypes that it interprets through a dot-scaled element-type attribute.
 // Other HLO scaled-dot operand dtypes are emitted without attaching a scale

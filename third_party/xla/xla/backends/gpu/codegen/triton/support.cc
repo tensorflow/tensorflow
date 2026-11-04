@@ -409,6 +409,13 @@ CodegenDecision CanTritonHandleScan(
         "Triton requires the scan combiner to be associative.");
   }
 
+  // Mirrors EmitScan. Support is re-checked after FloatNormalization (e.g. by
+  // FusionBlockLevelRewriter), which may wrap the bf16 add in converts.
+  if (!xtile::IsAdditiveScanCombiner(*scan.to_apply())) {
+    return CodegenDecision::Forbid(
+        "Only additive scans are supported in Triton.");
+  }
+
   switch (scan.shape().tuple_shapes(0).element_type()) {
     case PrimitiveType::F8E4M3FN:
     case PrimitiveType::F8E5M2:

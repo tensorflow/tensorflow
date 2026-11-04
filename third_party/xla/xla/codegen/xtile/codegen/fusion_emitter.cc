@@ -2205,15 +2205,11 @@ absl::StatusOr<std::vector<TensorValue>> EmitScan(
         "in Triton emission.");
   }
 
-  const HloInstruction* scan_root = hlo_scan.to_apply()->root_instruction();
-  if (!HloPredicateIsOp<HloOpcode::kTuple>(scan_root) ||
-      !absl::c_all_of(scan_root->operands(),
-                      HloPredicateIsOp<HloOpcode::kAdd>)) {
+  if (!IsAdditiveScanCombiner(*hlo_scan.to_apply())) {
     // Non-additive scans (e.g. min, max, product) require their respective
     // identity elements for out-of-bounds padding, which is not yet supported.
     return absl::UnimplementedError(
-        "Only additive scan operations are currently supported in Triton "
-        "emission.");
+        "Only additive scans are supported in Triton.");
   }
 
   // TODO(b/390559452): Support complex-typed scans. Complex additive scans pass

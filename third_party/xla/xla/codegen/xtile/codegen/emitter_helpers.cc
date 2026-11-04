@@ -251,6 +251,36 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   return result;
 }
 
+bool IsAdditiveScanCombiner(const HloComputation& combiner) {
+  const HloInstruction* root = combiner.root_instruction();
+  // LowerScan derives the carry from the output, so both tuple elements must
+  // be the same instruction.
+  if (combiner.num_parameters() != 2 || root->opcode() != HloOpcode::kTuple ||
+      root->operand_count() != 2 || root->operand(0) != root->operand(1)) {
+    return false;
+  }
+  const HloInstruction* output = root->operand(0);
+  const HloInstruction* p0 = combiner.parameter_instruction(0);
+  const HloInstruction* p1 = combiner.parameter_instruction(1);
+  PrimitiveType type = output->shape().element_type();
+  if (p0->shape().element_type() != type ||
+      p1->shape().element_type() != type) {
+    return false;
+  }
+  // FloatNormalization promotes low-precision additions by wrapping the
+  // parameters and the add result in kConvert instructions.
+  auto unwrap_convert = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kConvert ? instr->operand(0) : instr;
+  };
+  const HloInstruction* add = unwrap_convert(output);
+  if (add->opcode() != HloOpcode::kAdd) {
+    return false;
+  }
+  const HloInstruction* lhs = unwrap_convert(add->operand(0));
+  const HloInstruction* rhs = unwrap_convert(add->operand(1));
+  return (lhs == p0 && rhs == p1) || (lhs == p1 && rhs == p0);
+}
+
 bool IsTritonDotScaledOperandType(PrimitiveType type) {
   return type == F4E2M1FN || type == F8E4M3FN || type == F8E5M2;
 }

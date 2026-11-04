@@ -158,6 +158,32 @@ ENTRY main {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(ScanRewriterTritonTest, NonAdditiveScanNotRewritten) {
+  constexpr absl::string_view kHloText = R"(
+HloModule non_additive_scan
+
+combiner {
+  in = f32[] parameter(0)
+  carry = f32[] parameter(1)
+  max = f32[] maximum(carry, in)
+  ROOT t = (f32[], f32[]) tuple(max, max)
+}
+
+ENTRY main {
+  input = f32[100]{0} parameter(0)
+  init = f32[] constant(-inf)
+  scan = (f32[100]{0}, f32[]) scan(input, init), dimensions={0}, num_carries=1, to_apply=combiner, is_associative=true
+  ROOT gte0 = f32[100]{0} get-tuple-element(scan), index=0
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  ScanRewriterTriton rewriter(device_info_);
+  ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 TEST_F(ScanRewriterTritonTest, ScanAsRootNotRewritten) {
   constexpr absl::string_view kHloText = R"(
 HloModule scan_as_root
