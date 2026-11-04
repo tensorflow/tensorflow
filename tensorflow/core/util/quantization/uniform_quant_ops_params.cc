@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 
 namespace tensorflow {
 namespace {
@@ -144,7 +145,20 @@ UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
   }
 
   if (dimension_numbers_.input_spatial_dimensions_size() == 0) {
-    // dimension_numbers Attr string was empty.
+    // dimension_numbers Attr string was empty. The kernel and output spatial
+    // dimensions are appended below, so they must not already be populated;
+    // otherwise a partially specified attr would leave extra dimension numbers
+    // behind and CalculateOutputShape would index the output shape with them.
+    if (dimension_numbers_.kernel_spatial_dimensions_size() != 0 ||
+        dimension_numbers_.output_spatial_dimensions_size() != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "kernel_spatial_dimensions and output_spatial_dimensions must be "
+          "empty when input_spatial_dimensions is empty. Given "
+          "kernel_spatial_dimensions size ",
+          dimension_numbers_.kernel_spatial_dimensions_size(),
+          " and output_spatial_dimensions size ",
+          dimension_numbers_.output_spatial_dimensions_size()));
+    }
     dimension_numbers_.set_input_batch_dimension(0);
     dimension_numbers_.set_input_feature_dimension(1);
     for (int64_t i = 0; i < num_spatial_dims; ++i) {
