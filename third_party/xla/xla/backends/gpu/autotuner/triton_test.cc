@@ -617,7 +617,7 @@ TEST_F(TritonBackendTest, GetOverriddenConfigs) {
   ASSERT_TRUE(
       tsl::protobuf::TextFormat::PrintToString(gemm_config, &gemm_config_str));
 
-  debug_options_.set_xla_gpu_override_gemm_autotuner(gemm_config_str);
+  debug_options_.set_xla_gpu_override_triton_config(gemm_config_str);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo));
   ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
@@ -653,7 +653,7 @@ TEST_F(TritonBackendTest, GetOverriddenConfigsFromFile) {
   EXPECT_OK(
       tsl::WriteStringToFile(tsl::Env::Default(), file_path, gemm_configs_str));
 
-  debug_options_.set_xla_gpu_gemm_autotuner_override_file(file_path);
+  debug_options_.set_xla_gpu_override_triton_configs_file(file_path);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo));
   ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,

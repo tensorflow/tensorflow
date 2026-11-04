@@ -856,8 +856,8 @@ ENTRY main {
 
   // Without the block-level emitter, no backend could keep the fusion as a
   // Triton fusion, so it keeps its config.
-  debug_options.clear_xla_gpu_experimental_autotune_backends();
-  debug_options.add_xla_gpu_experimental_autotune_backends(
+  debug_options.clear_xla_config_assigner_backends();
+  debug_options.add_xla_config_assigner_backends(
       autotuner::Backend::NATIVE_EMITTER);
   EXPECT_FALSE(GetShouldAssignConfigToInstructionFn(
       debug_options,
@@ -1000,7 +1000,7 @@ TEST_F(AutotunerFlagsTest, GetEnabledBackendsTreatsEmptyListLikeDefaultList) {
                        get_enabled_backends());
   // DebugOptions that don't start from DefaultDebugOptionsIgnoringFlags() can
   // leave the list of autotune backends empty.
-  debug_options.clear_xla_gpu_experimental_autotune_backends();
+  debug_options.clear_xla_config_assigner_backends();
   ASSERT_OK_AND_ASSIGN(std::vector<autotuner::Backend> backends,
                        get_enabled_backends());
 

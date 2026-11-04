@@ -603,7 +603,7 @@ class CompareGPUExecutablesDebugOptionsTest
 // not cause a mismatch.
 TEST_P(CompareGPUExecutablesDebugOptionsTest, IgnoresCompileOnlyFields) {
   constexpr int kCompileOnlyFields[] = {
-      DebugOptions::kXlaGpuExperimentalAutotuneBackendsFieldNumber,
+      DebugOptions::kXlaConfigAssignerBackendsFieldNumber,
       DebugOptions::kXlaGpuExperimentalDeterministicOpsTritonFieldNumber,
       DebugOptions::kXlaGpuExperimentalEnableConvFusionFieldNumber,
       DebugOptions::kXlaGpuExperimentalGemmFusionV2FieldNumber,

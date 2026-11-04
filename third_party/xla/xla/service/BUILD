@@ -6081,7 +6081,7 @@ xla_aot_compile_gpu(
     xla_flags = " ".join([
         "--xla_gpu_experimental_enable_conv_fusion=true",
         "--xla_gpu_cudnn_deviceless_compilation_mode=CUDNN_DEVICELESS_COMPILATION_AUTO",
-        "--xla_gpu_experimental_autotune_backends=cudnn",
+        "--xla_config_assigner_backends=cudnn",
     ]),
 )
 

@@ -261,7 +261,7 @@ absl::StatusOr<std::vector<TritonGemmConfig>>
 TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
   std::vector<TritonGemmConfig> configs;
   const std::string& override_file =
-      debug_options().xla_gpu_gemm_autotuner_override_file();
+      debug_options().xla_gpu_override_triton_configs_file();
   if (!override_file.empty()) {
     std::string file_content;
     ABSL_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), override_file,
@@ -279,10 +279,10 @@ TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
       configs.push_back(config);
     }
   }
-  if (!debug_options().xla_gpu_override_gemm_autotuner().empty()) {
+  if (!debug_options().xla_gpu_override_triton_config().empty()) {
     AutotuneResult::TritonGemmKey gemm_config;
     CHECK(tsl::protobuf::TextFormat::ParseFromString(
-        debug_options().xla_gpu_override_gemm_autotuner(), &gemm_config));
+        debug_options().xla_gpu_override_triton_config(), &gemm_config));
     ABSL_ASSIGN_OR_RETURN(TritonGemmConfig config,
                      TritonGemmConfig::FromProto(gemm_config));
     configs.push_back(config);

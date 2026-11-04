@@ -303,10 +303,9 @@ TEST_F(TritonFusionNumericsVerifierTest, DetectMismatch) {
   ASSERT_OK(f32_result);
 
   // Compare the fusions from the different modules, triggering a mismatch.
-  EXPECT_THAT(
-      profile_util->CheckOutputBuffer(
-          *f64_result, *f32_result, debug_options.xla_gpu_autotune_gemm_rtol()),
-      absl_testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(profile_util->CheckOutputBuffer(
+                  *f64_result, *f32_result, debug_options.xla_autotune_rtol()),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 // By default, AutotunerCompileUtil filters out kernels that cause registers to

@@ -77,13 +77,11 @@ class MxScaledDotExecutionTest
     // All three backends work on the Triton GEMM fusion wrapping the scaled
     // dot, so the two flags above must stay on. Enable only the backend under
     // test, plus NATIVE_EMITTER for the other, non-GEMM fusions.
-    test_config.mutable_debug_options()
-        .clear_xla_gpu_experimental_autotune_backends();
-    test_config.mutable_debug_options()
-        .add_xla_gpu_experimental_autotune_backends(GetParam().backend);
-    test_config.mutable_debug_options()
-        .add_xla_gpu_experimental_autotune_backends(
-            autotuner::Backend::NATIVE_EMITTER);
+    test_config.mutable_debug_options().clear_xla_config_assigner_backends();
+    test_config.mutable_debug_options().add_xla_config_assigner_backends(
+        GetParam().backend);
+    test_config.mutable_debug_options().add_xla_config_assigner_backends(
+        autotuner::Backend::NATIVE_EMITTER);
 
     if (!absl::c_linear_search(accepted_by, GetParam().backend)) {
       // No other enabled backend takes GEMM fusions, so compilation must fail.

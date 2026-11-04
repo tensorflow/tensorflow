@@ -233,8 +233,8 @@ TEST_F(NVPTXCompilerScaledDotTest, MMinorMxfp4FallsBackToCublasLt) {
 TEST_F(NVPTXCompilerScaledDotTest,
        ScaledDotIsDecomposedWhenCudnnFissionExcludedFromAutotuneBackends) {
   HloModuleConfig config = GetModuleConfigForTest();
-  auto* backends = config.mutable_debug_options()
-                       .mutable_xla_gpu_experimental_autotune_backends();
+  auto* backends =
+      config.mutable_debug_options().mutable_xla_config_assigner_backends();
   backends->Clear();
   backends->Add(autotuner::Backend::CUBLASLT);
   backends->Add(autotuner::Backend::CUBLASLT_FISSION);
@@ -255,8 +255,8 @@ TEST_F(NVPTXCompilerScaledDotTest,
     DebugOptions& opts = config.mutable_debug_options();
     opts.set_xla_gpu_experimental_scaled_dot_with_triton(true);
     opts.set_xla_gpu_cudnn_gemm_fusion_level(2);
-    opts.clear_xla_gpu_experimental_autotune_backends();
-    opts.add_xla_gpu_experimental_autotune_backends(autotuner::Backend::CUDNN);
+    opts.clear_xla_config_assigner_backends();
+    opts.add_xla_config_assigner_backends(autotuner::Backend::CUDNN);
     return config;
   };
 
@@ -266,8 +266,8 @@ TEST_F(NVPTXCompilerScaledDotTest,
   EXPECT_TRUE(HasCudnnFusion(*excluded_module));
 
   HloModuleConfig deterministic = make_config();
-  deterministic.mutable_debug_options()
-      .add_xla_gpu_experimental_autotune_backends(autotuner::Backend::TRITON);
+  deterministic.mutable_debug_options().add_xla_config_assigner_backends(
+      autotuner::Backend::TRITON);
   deterministic.mutable_debug_options().set_xla_gpu_deterministic_ops(true);
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> deterministic_module,
                        GetOptimizedModule(kScaledDotHlo, deterministic));

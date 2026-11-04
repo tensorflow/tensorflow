@@ -83,14 +83,13 @@ class CudnnScaledDotTestBase
     DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
     debug_options.set_xla_gpu_cudnn_gemm_fusion_level(2);
-    debug_options.clear_xla_gpu_experimental_autotune_backends();
-    debug_options.add_xla_gpu_experimental_autotune_backends(
-        autotuner::Backend::CUDNN);
-    debug_options.add_xla_gpu_experimental_autotune_backends(
+    debug_options.clear_xla_config_assigner_backends();
+    debug_options.add_xla_config_assigner_backends(autotuner::Backend::CUDNN);
+    debug_options.add_xla_config_assigner_backends(
         autotuner::Backend::CUDNN_FISSION);
-    debug_options.add_xla_gpu_experimental_autotune_backends(
+    debug_options.add_xla_config_assigner_backends(
         autotuner::Backend::CUBLASLT);
-    debug_options.add_xla_gpu_experimental_autotune_backends(
+    debug_options.add_xla_config_assigner_backends(
         autotuner::Backend::CUBLASLT_FISSION);
     debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(false);
     return debug_options;
