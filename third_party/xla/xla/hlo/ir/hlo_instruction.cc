@@ -3790,8 +3790,12 @@ absl::Status HloInstruction::ReplaceUsesWith(
 
 absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
-  // Make a copy since users span might get mutated during the loop
-  std::vector<HloInstruction*> users_vector(users.begin(), users.end());
+  // Make a copy since users span might get mutated during the loop. An inline
+  // capacity of 4 fits in a single 64-byte cache line (40 bytes on 64-bit
+  // platforms) and covers typical HLO instruction fanout (1-4 users) without
+  // heap allocation.
+  absl::InlinedVector<HloInstruction*, 4> users_vector(users.begin(),
+                                                       users.end());
   for (HloInstruction* user : users_vector) {
     ABSL_RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
   }
@@ -3820,9 +3824,7 @@ absl::Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
 absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     HloInstruction* new_producer) {
   bool new_producer_is_user = false;
-  // Make a copy since users span might get mutated during the loop
-  std::vector<HloInstruction*> users_vector(users().begin(), users().end());
-  for (HloInstruction* user : users_vector) {
+  for (HloInstruction* user : users()) {
     if (user == new_producer) {
       // It's possible that new_producer is a user of this instruction as might
       // be the case when replacing an instruction with a kCopy of itself. In

@@ -877,5 +877,32 @@ void BM_Defuse(::testing::benchmark::State& state) {
 // NOLINTNEXTLINE(misc-include-cleaner)
 BENCHMARK(BM_Defuse)->Arg(16)->Arg(1024);
 
+void BM_ReplaceAllUsesWithDifferentShape(::testing::benchmark::State& state) {
+  const int num_users = state.range(0);
+  const Shape shape0 = ShapeUtil::MakeShape(F32, {4});
+  const Shape shape1 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloComputation::Builder builder("bm_replace_uses");
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape0, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "p1"));
+  std::vector<HloInstruction*> users;
+  users.reserve(num_users);
+  for (int i = 0; i < num_users; ++i) {
+    users.push_back(builder.AddInstruction(
+        HloInstruction::CreateUnary(shape0, HloOpcode::kNegate, p0)));
+  }
+  HloInstruction* root =
+      builder.AddInstruction(HloInstruction::CreateTuple(users));
+  std::unique_ptr<HloComputation> comp = builder.Build(root);
+
+  for (auto s : state) {
+    CHECK_OK(p0->ReplaceAllUsesWithDifferentShape(p1));
+    std::swap(p0, p1);
+  }
+}
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_ReplaceAllUsesWithDifferentShape)->Arg(4)->Arg(16);
+
 }  // namespace
 }  // namespace xla

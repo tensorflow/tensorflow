@@ -53,8 +53,13 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::Each;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Not;
+using ::testing::Property;
+using ::testing::UnorderedElementsAre;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
 
@@ -1399,6 +1404,109 @@ ENTRY %main (x: f32[8]) -> f32[8] {
   EXPECT_EQ(inner_start->async_execution_thread(), "inner_thread");
   EXPECT_EQ(inner_start->async_wrapped_computation()->execution_thread(),
             "inner_thread");
+}
+
+TEST_F(HloInstructionTest, ReplaceAllUsesWithDifferentShapeAllUsers) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  n0 = f32[4] negate(p0)
+  n1 = f32[4] negate(p0)
+  n2 = f32[4] negate(p0)
+  n3 = f32[4] negate(p0)
+  n4 = f32[4] negate(p0)
+  ROOT t = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(n0, n1, n2, n3, n4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* n0 = FindInstruction(module.get(), "n0");
+  HloInstruction* n1 = FindInstruction(module.get(), "n1");
+  HloInstruction* n2 = FindInstruction(module.get(), "n2");
+  HloInstruction* n3 = FindInstruction(module.get(), "n3");
+  HloInstruction* n4 = FindInstruction(module.get(), "n4");
+  const std::vector<HloInstruction*> all_users = {n0, n1, n2, n3, n4};
+
+  ASSERT_OK(p0->ReplaceAllUsesWithDifferentShape(p1));
+  EXPECT_THAT(p0->users(), IsEmpty());
+  EXPECT_THAT(p1->users(), UnorderedElementsAre(n0, n1, n2, n3, n4));
+  EXPECT_THAT(all_users,
+              Each(Property(&HloInstruction::operands, ElementsAre(p1))));
+}
+
+TEST_F(HloInstructionTest, ReplaceAllUsesWithDifferentShapeSpanSubsetOfUsers) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  n0 = f32[4] negate(p0)
+  n1 = f32[4] negate(p0)
+  n2 = f32[4] negate(p0)
+  n3 = f32[4] negate(p0)
+  n4 = f32[4] negate(p0)
+  ROOT t = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(n0, n1, n2, n3, n4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* n0 = FindInstruction(module.get(), "n0");
+  HloInstruction* n1 = FindInstruction(module.get(), "n1");
+  HloInstruction* n2 = FindInstruction(module.get(), "n2");
+  HloInstruction* n3 = FindInstruction(module.get(), "n3");
+  HloInstruction* n4 = FindInstruction(module.get(), "n4");
+
+  ASSERT_OK(p0->ReplaceAllUsesWithDifferentShape({n0, n1}, p1));
+  EXPECT_THAT(p0->users(), UnorderedElementsAre(n2, n3, n4));
+  EXPECT_THAT(p1->users(), UnorderedElementsAre(n0, n1));
+  EXPECT_THAT(std::vector<HloInstruction*>({n0, n1}),
+              Each(Property(&HloInstruction::operands, ElementsAre(p1))));
+  EXPECT_THAT(std::vector<HloInstruction*>({n2, n3, n4}),
+              Each(Property(&HloInstruction::operands, ElementsAre(p0))));
+}
+
+TEST_F(HloInstructionTest, ReplaceAllUsesWithDifferentShapeSpanManyUsers) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY e {
+  p0 = f32[4] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  n0 = f32[4] negate(p0)
+  n1 = f32[4] negate(p0)
+  n2 = f32[4] negate(p0)
+  n3 = f32[4] negate(p0)
+  n4 = f32[4] negate(p0)
+  ROOT t = (f32[4], f32[4], f32[4], f32[4], f32[4]) tuple(n0, n1, n2, n3, n4)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* p0 = entry->parameter_instruction(0);
+  HloInstruction* p1 = entry->parameter_instruction(1);
+  HloInstruction* n0 = FindInstruction(module.get(), "n0");
+  HloInstruction* n1 = FindInstruction(module.get(), "n1");
+  HloInstruction* n2 = FindInstruction(module.get(), "n2");
+  HloInstruction* n3 = FindInstruction(module.get(), "n3");
+  HloInstruction* n4 = FindInstruction(module.get(), "n4");
+  const std::vector<HloInstruction*> all_users = {n0, n1, n2, n3, n4};
+
+  ASSERT_OK(p0->ReplaceAllUsesWithDifferentShape(p0->users(), p1));
+  EXPECT_THAT(p0->users(), IsEmpty());
+  EXPECT_THAT(p1->users(), UnorderedElementsAre(n0, n1, n2, n3, n4));
+  EXPECT_THAT(all_users,
+              Each(Property(&HloInstruction::operands, ElementsAre(p1))));
 }
 
 TEST_F(HloInstructionTest, DefuseMultiOperandFusion) {
