@@ -180,7 +180,8 @@ class EmitterContext {
 
   // Evaluates tiling parameters for the given affine expressions, e.g. offsets.
   absl::StatusOr<mlir::SmallVector<mlir::Value>> EvaluateTilingParameters(
-      mlir::ArrayRef<SymbolicExpr> exprs);
+      mlir::ArrayRef<SymbolicExpr> exprs,
+      mlir::ArrayRef<std::pair<SymbolicExpr, Interval>> tile_constraints = {});
 
   // A tiled scan leaves its `scf.for` over the scan dimension open, so that
   // the epilogue and the writes of the output tiles are emitted inside the
