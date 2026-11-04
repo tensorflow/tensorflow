@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for sparse ops."""
 
+import collections
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -327,6 +329,17 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(
         [1.0, 5.0], self.evaluate(result_kw.values)
     )
+
+    # Containers with SparseTensorValue should preserve container type.
+    dd = collections.defaultdict(list, {'a': sp_val})
+    res_dd = sparse_ops._replace_sparse_with_values(dd, [])
+    self.assertIsInstance(res_dd, collections.defaultdict)
+    self.assertEqual(res_dd.default_factory, list)
+
+    od = collections.OrderedDict([('b', sp_val), ('a', 2)])
+    res_od = sparse_ops._replace_sparse_with_values(od, [])
+    self.assertIsInstance(res_od, collections.OrderedDict)
+    self.assertEqual(list(res_od.keys()), ['b', 'a'])
 
     # Mismatched shapes with SparseTensorValue should fail.
     sp_incomp_shape = sparse_tensor.SparseTensorValue(

@@ -21,6 +21,7 @@ See also `tf.sparse.SparseTensor`.
 API docstring: tensorflow.sparse
 """
 
+import collections
 import numbers
 
 import numpy as np
@@ -3537,14 +3538,21 @@ def _assert_sparse_compatible(sparse_tensors):
 def _convert_sparse_values(value):
   if isinstance(value, sparse_tensor.SparseTensorValue):
     return sparse_tensor.SparseTensor.from_value(value)
+  if isinstance(value, collections.defaultdict):
+    return collections.defaultdict(
+        value.default_factory,
+        ((k, _convert_sparse_values(v)) for k, v in value.items()),
+    )
+  if isinstance(value, dict):
+    return type(value)(
+        (k, _convert_sparse_values(v)) for k, v in value.items()
+    )
   if isinstance(value, tuple):
     if hasattr(value, "_fields"):
       return type(value)(*(_convert_sparse_values(v) for v in value))
-    return tuple(_convert_sparse_values(v) for v in value)
+    return type(value)(_convert_sparse_values(v) for v in value)
   if isinstance(value, list):
-    return [_convert_sparse_values(v) for v in value]
-  if isinstance(value, dict):
-    return {k: _convert_sparse_values(v) for k, v in value.items()}
+    return type(value)(_convert_sparse_values(v) for v in value)
   return value
 
 
