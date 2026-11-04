@@ -880,6 +880,11 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     return load_state_ != nullptr && load_state_->IsDeleted();
   }
 
+  absl::Status ClearExecutionState() override {
+    return load_state_ != nullptr ? load_state_->ClearExecutionState()
+                                  : absl::OkStatus();
+  }
+
   const tsl::RCReference<PjRtExecutableLoadState>& load_state() const {
     return load_state_;
   }
