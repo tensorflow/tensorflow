@@ -494,6 +494,13 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testParameterizedTruncatedNormal(
         0., 1., -6., -3., variance_rtol=5e-2)
 
+  def testParameterizedTruncatedNormalFarRightTail(self):
+    self._testParameterizedTruncatedNormal(0., 1., 6., 7., variance_rtol=2e-2)
+
+  def testParameterizedTruncatedNormalFarLeftTail(self):
+    self._testParameterizedTruncatedNormal(
+        0., 1., -7., -6., variance_rtol=2e-2)
+
   def testParameterizedTruncatedNormalSmallStddev(self):
     self._testParameterizedTruncatedNormal(0., 0.1, 0.05, 0.10)
 
