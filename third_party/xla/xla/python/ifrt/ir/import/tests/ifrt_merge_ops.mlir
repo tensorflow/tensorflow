@@ -12,15 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: ifrt-opt %s -ifrt-merge-copies-and-reshards | FileCheck %s
+// RUN: ifrt-opt %s -ifrt-merge-ops | FileCheck %s
 
 #sharding = #ifrt.sharding_param<2 to [0] on 2>
+#sharding_2d = #ifrt.sharding_param<1x2 to [0] on 2>
 !array0 = !ifrt.array<tensor<2xi32>, #sharding, [0,1]>
 !array1 = !ifrt.array<tensor<2xi32>, #sharding, [2,3]>
 !array2 = !ifrt.array<tensor<2xi32>, #sharding, [4,5]>
 !array3 = !ifrt.array<tensor<2xi32>, #sharding, [6,7]>
+!array0_f32 = !ifrt.array<tensor<2xf32>, #sharding, [0,1]>
+!array0_2d = !ifrt.array<tensor<1x2xi32>, #sharding_2d, [0,1]>
+!array1_2d = !ifrt.array<tensor<1x2xi32>, #sharding_2d, [2,3]>
 !array_default_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "device">
 !array_pinned_host_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "pinned_host">
+!array_pinned_host_mk_2d = !ifrt.array<tensor<1x2xi32>, #sharding_2d, [0,1], memory_kind = "pinned_host">
 !array_minor_to_major = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{0,1}">
 !array_major_to_minor = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{1,0}">
 
@@ -337,6 +342,97 @@ func.func @dont_merge_reshards_on_different_devices(
   %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> (!array1)
   %1, %ctrl_1 = ifrt.Reshard(%arg1) : (!array1) -> (!array2)
   return %0, %1 : !array1, !array2
+}
+
+// CHECK-LABEL: @merge_bitcast_arrays
+func.func @merge_bitcast_arrays(
+    %arg0: !array0, %arg1: !array0, %arg2: !array_pinned_host_mk)
+  -> (!array0_f32, !array0_2d, !array_pinned_host_mk_2d) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[BC:.*]]:3, %{{.*}} = ifrt.BitcastArrays(%arg0, %arg1, %arg2)
+  // CHECK-NEXT: return %[[BC]]#0, %[[BC]]#1, %[[BC]]#2
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> !array0_f32
+  %1, %ctrl_1 = ifrt.BitcastArrays(%arg1) : (!array0) -> !array0_2d
+  %2, %ctrl_2 = ifrt.BitcastArrays(%arg2) : (!array_pinned_host_mk) -> !array_pinned_host_mk_2d
+  return %0, %1, %2 : !array0_f32, !array0_2d, !array_pinned_host_mk_2d
+}
+
+// CHECK-LABEL: @merge_bitcast_arrays_with_multiple_inputs
+func.func @merge_bitcast_arrays_with_multiple_inputs(
+    %arg0: !array0, %arg1: !array0, %arg2: !array0, %arg3: !array0)
+  -> (!array0_2d, !array0_2d, !array0_2d, !array0_2d) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[BC:.*]]:4, %{{.*}} = ifrt.BitcastArrays(%arg0, %arg1, %arg2, %arg3)
+  // CHECK-NEXT: return %[[BC]]#0, %[[BC]]#1, %[[BC]]#2, %[[BC]]#3
+  %0, %1, %ctrl_0 = ifrt.BitcastArrays(%arg0, %arg1) : (!array0, !array0) -> (!array0_2d, !array0_2d)
+  %2, %3, %ctrl_1 = ifrt.BitcastArrays(%arg2, %arg3) : (!array0, !array0) -> (!array0_2d, !array0_2d)
+  return %0, %1, %2, %3 : !array0_2d, !array0_2d, !array0_2d, !array0_2d
+}
+
+// CHECK-LABEL: @merge_bitcast_arrays_for_same_devices_only
+func.func @merge_bitcast_arrays_for_same_devices_only(
+    %arg0: !array0, %arg1: !array0, %arg2: !array1, %arg3: !array1)
+  -> (!array0_2d, !array0_2d, !array1_2d, !array1_2d) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[BC0:.*]]:2, %{{.*}} = ifrt.BitcastArrays(%arg0, %arg1)
+  // CHECK-NEXT: %[[BC1:.*]]:2, %{{.*}} = ifrt.BitcastArrays(%arg2, %arg3)
+  // CHECK-NEXT: return %[[BC0]]#0, %[[BC0]]#1, %[[BC1]]#0, %[[BC1]]#1
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> !array0_2d
+  %1, %ctrl_1 = ifrt.BitcastArrays(%arg1) : (!array0) -> !array0_2d
+  %2, %ctrl_2 = ifrt.BitcastArrays(%arg2) : (!array1) -> !array1_2d
+  %3, %ctrl_3 = ifrt.BitcastArrays(%arg3) : (!array1) -> !array1_2d
+  return %0, %1, %2, %3 : !array0_2d, !array0_2d, !array1_2d, !array1_2d
+}
+
+// CHECK-LABEL: @dont_merge_bitcast_arrays_if_any_control_dependencies
+func.func @dont_merge_bitcast_arrays_if_any_control_dependencies(
+    %arg0: !array0, %arg1: !array0)
+  -> (!array0_2d, !array0_2d) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[CALL:.*]]:2, %[[CTRL:.*]] = ifrt.Call @identity2(%arg0, %arg1)
+  // CHECK-NEXT: %[[BC0:.*]], %{{.*}} = ifrt.BitcastArrays(%[[CALL]]#0) after %[[CTRL]]
+  // CHECK-NEXT: %[[BC1:.*]], %{{.*}} = ifrt.BitcastArrays(%[[CALL]]#1)
+  // CHECK-NEXT: return %[[BC0]], %[[BC1]]
+  %0:2, %ctrl_0 = ifrt.Call @identity2(%arg0, %arg1) on devices [0,1]
+      : (!array0, !array0) -> (!array0, !array0)
+  %1, %ctrl_1 = ifrt.BitcastArrays(%0#0) after %ctrl_0 : (!array0) -> !array0_2d
+  %2, %ctrl_2 = ifrt.BitcastArrays(%0#1) : (!array0) -> !array0_2d
+  return %1, %2 : !array0_2d, !array0_2d
+}
+
+// CHECK-LABEL: @dont_merge_dependent_bitcast_arrays_on_same_devices
+func.func @dont_merge_dependent_bitcast_arrays_on_same_devices(
+    %arg0: !array0, %arg1: !array0)
+  -> (!array0, !array0_2d) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[BC0:.*]], %{{.*}} = ifrt.BitcastArrays(%arg0) : (!ifrt.array<tensor<2xi32>
+  // CHECK-NEXT: %[[BC1:.*]]:2, %{{.*}} = ifrt.BitcastArrays(%[[BC0]], %arg1)
+  // CHECK-NEXT: return %[[BC1]]#0, %[[BC1]]#1
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) : (!array0) -> !array0_2d
+  %1, %ctrl_1 = ifrt.BitcastArrays(%0) : (!array0_2d) -> !array0
+  %2, %ctrl_2 = ifrt.BitcastArrays(%arg1) : (!array0) -> !array0_2d
+  return %1, %2 : !array0, !array0_2d
+}
+
+// CHECK-LABEL: @dont_merge_donated_bitcast_arrays_with_shared_input
+func.func @dont_merge_donated_bitcast_arrays_with_shared_input(
+    %arg0: !array0 {ifrt.donated})
+  -> (!array0_2d, !array0_2d) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[BC0:.*]], %{{.*}} = ifrt.BitcastArrays(%arg0) <donated = true>
+  // CHECK-NEXT: %[[BC1:.*]], %{{.*}} = ifrt.BitcastArrays(%arg0) <donated = true>
+  // CHECK-NEXT: return %[[BC0]], %[[BC1]]
+  %0, %ctrl_0 = ifrt.BitcastArrays(%arg0) <donated = true> : (!array0) -> !array0_2d
+  %1, %ctrl_1 = ifrt.BitcastArrays(%arg0) <donated = true> : (!array0) -> !array0_2d
+  return %0, %1 : !array0_2d, !array0_2d
+}
+
+// CHECK-LABEL: @dont_merge_different_op_types_on_same_devices
+func.func @dont_merge_different_op_types_on_same_devices(
+    %arg0: !array0, %arg1: !array0, %arg2: !array0)
+  -> (!array0, !array0, !array0_2d) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[COPY:.*]], %{{.*}} = ifrt.CopyArrays(%arg0)
+  // CHECK-NEXT: %[[RESHARD:.*]], %{{.*}} = ifrt.Reshard(%arg1)
+  // CHECK-NEXT: %[[BITCAST:.*]], %{{.*}} = ifrt.BitcastArrays(%arg2)
+  // CHECK-NEXT: return %[[COPY]], %[[RESHARD]], %[[BITCAST]]
+  %0, %ctrl_0 = ifrt.CopyArrays(%arg0) : (!array0) -> (!array0)
+  %1, %ctrl_1 = ifrt.Reshard(%arg1) : (!array0) -> (!array0)
+  %2, %ctrl_2 = ifrt.BitcastArrays(%arg2) : (!array0) -> (!array0_2d)
+  return %0, %1, %2 : !array0, !array0, !array0_2d
 }
 
 func.func @identity1(%arg0: tensor<2xi32>) -> (tensor<2xi32>) {
