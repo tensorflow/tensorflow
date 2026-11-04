@@ -911,8 +911,8 @@ Value ExtractGroupSizeScalar(mlir::ImplicitLocOpBuilder& b,
   return mlir::arith::IndexCastOp::create(b, b.getIndexType(), gs_raw);
 }
 
-// Resolves `hlo` (traversing through a leading kConvert and up any nested
-// fusion parameter chain) to the entry-function buffer argument that backs it.
+// Resolves `hlo` (traversing through a leading kConvert and fusion parameter)
+// to the entry-function buffer argument that backs it.
 // The returned buffer Value carries the underlying (pre-convert) element type,
 // which callers can obtain via `getElementTypeOrSelf`.
 mlir::Value ResolveBufferArgument(EmitterContext& emitter_ctx,
@@ -922,7 +922,7 @@ mlir::Value ResolveBufferArgument(EmitterContext& emitter_ctx,
     hlo = hlo->operand(0);
   }
   if (hlo->opcode() == HloOpcode::kParameter && !fusion.IsUserOf(hlo)) {
-    hlo = hlo->parent()->FusionInstruction()->operand(hlo->parameter_number());
+    hlo = fusion.operand(hlo->parameter_number());
   }
   int64_t arg_idx = fusion.operand_index(hlo);
   return emitter_ctx.entry_func().getArgument(arg_idx);
@@ -2588,22 +2588,16 @@ EmitTiledHloInstructionImpl(EmitterContext& emitter_ctx,
 
   const HloFusionInstruction& fusion = emitter_ctx.fusion();
   if (hlo->opcode() == HloOpcode::kParameter && !fusion.IsUserOf(hlo)) {
-    hlo = hlo->parent()->FusionInstruction()->operand(hlo->parameter_number());
+    hlo = fusion.operand(hlo->parameter_number());
   }
 
   if (fusion.IsUserOf(hlo)) {
-    int64_t arg_index = fusion.operand_index(hlo);
-    // Walk up the parameter chain to find the outermost operand index.
-    while (auto* instr = hlo->parent()->FusionInstruction()) {
-      arg_index = hlo->parameter_number();  // Nested operands are parameters.
-      hlo = instr->operand(arg_index);
-    }
     ABSL_ASSIGN_OR_RETURN(TileInfo tile_info,
                      TileInfo::Construct(emitter_ctx, tiled_hlo));
-    ABSL_ASSIGN_OR_RETURN(
-        TensorValue parameter,
-        EmitParameterExtract(b, tile_info,
-                             emitter_ctx.entry_func().getArgument(arg_index)));
+    ABSL_ASSIGN_OR_RETURN(TensorValue parameter,
+                     EmitParameterExtract(b, tile_info,
+                                          emitter_ctx.entry_func().getArgument(
+                                              fusion.operand_index(hlo))));
 
     // Workaround(i1_to_i8_workaround)
     // Some types are stored using different types, e.g. i1 is stored in memory
@@ -3107,70 +3101,6 @@ absl::Status EmitGeneric(ImplicitLocOpBuilder& b,
   return absl::OkStatus();
 }
 
-// Implementation for the tiling space.
-class TileRequirementsVisitor : public DefaultTileRequirementsVisitor {
- public:
-  explicit TileRequirementsVisitor(
-      const gpu::TiledHloComputation& computation) {
-    for (const gpu::TiledHloInstruction* tiled_hlo :
-         computation.instructions()) {
-      PopulateMap(tiled_hlo);
-    }
-  }
-
-  absl::StatusOr<llvm::SmallVector<int64_t>> RequiredReplicaIdBounds(
-      const HloInstruction& instr) const override {
-    ABSL_ASSIGN_OR_RETURN(auto tiled_hlo, LookupTiledHlo(&instr));
-    llvm::SmallVector<int64_t> bounds;
-    bounds.reserve(tiled_hlo->tile().replica_ids().size());
-    for (const auto& replica_id : tiled_hlo->tile().replica_ids()) {
-      SymbolicExpr upper_bound = replica_id.upper_bound.Canonicalize();
-      if (upper_bound.GetType() != SymbolicExprType::kConstant) {
-        return absl::InternalError(
-            absl::StrCat("Replica ID bound expression is not a constant: ",
-                         upper_bound.ToString()));
-      }
-      bounds.push_back(upper_bound.GetValue());
-    }
-    return bounds;
-  }
-
- private:
-  // Look up the instruction in the tiled HLO map.
-  // For parameters to nested fusions, we walk up the parameter chain to find
-  // the outermost operand index.
-  absl::StatusOr<const gpu::TiledHloInstruction*> LookupTiledHlo(
-      const HloInstruction* original_instr) const {
-    auto it = hlo_to_tiled_.find(original_instr);
-    if (it != hlo_to_tiled_.end()) {
-      return it->second;
-    }
-    if (original_instr->opcode() == HloOpcode::kParameter) {
-      if (auto* fusion = original_instr->parent()->FusionInstruction()) {
-        const HloInstruction* resolved_instr =
-            fusion->operand(original_instr->parameter_number());
-        return LookupTiledHlo(resolved_instr);
-      }
-    }
-    return absl::InternalError(absl::StrCat(
-        "InternalError: HLO instruction not found in tiled HLO map: ",
-        original_instr->ToString()));
-  }
-
-  void PopulateMap(const gpu::TiledHloInstruction* tiled_hlo) {
-    hlo_to_tiled_[tiled_hlo->hlo()] = tiled_hlo;
-    for (const auto& region : tiled_hlo->hlo_regions()) {
-      for (const auto* region_instruction : region.instructions()) {
-        PopulateMap(region_instruction);
-      }
-    }
-  }
-
-  absl::flat_hash_map<const HloInstruction*,
-                      const xla::gpu::TiledHloInstruction*>
-      hlo_to_tiled_;
-};
-
 }  // namespace
 
 // TODO(b/447133106): Contrary to the name, this function still does a lot of
@@ -3197,8 +3127,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
   // Compute function argument types.
   ABSL_ASSIGN_OR_RETURN(SmallVector<Type> fn_arg_types,
-                   GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc,
-                                 TileRequirementsVisitor(tiled_computation)));
+                   GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc));
   // Metadata arguments are opaque to the tiling infra.
   llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
       "num_opaque_args", b.getI32IntegerAttr(opaque_args_types.size()))};

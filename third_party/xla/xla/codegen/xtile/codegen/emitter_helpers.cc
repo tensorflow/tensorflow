@@ -1106,8 +1106,7 @@ absl::StatusOr<Type> GetMlirType(
 absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
     absl::Span<mlir::Type> opaque_args_types,
-    const std::optional<GpuComputeCapability>& gpu_cc,
-    const DefaultTileRequirementsVisitor& /*tile_requirements_visitor*/) {
+    const std::optional<GpuComputeCapability>& gpu_cc) {
   SmallVector<Type> fn_arg_types;
 
   auto hlo_computation = fusion.fused_instructions_computation();

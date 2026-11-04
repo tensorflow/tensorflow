@@ -520,24 +520,11 @@ absl::StatusOr<mlir::Type> GetMlirType(
     mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
     const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
 
-// Visitor to determine tile based requirements while iterating over the fusion
-// instructions.
-struct DefaultTileRequirementsVisitor {
-  DefaultTileRequirementsVisitor() = default;
-  virtual ~DefaultTileRequirementsVisitor() = default;
-  virtual absl::StatusOr<llvm::SmallVector<int64_t>> RequiredReplicaIdBounds(
-      const HloInstruction& instr) const {
-    return llvm::SmallVector<int64_t>();
-  }
-};
-
 // Function to get the MLIR types from a HloFusionInstruction.
 absl::StatusOr<llvm::SmallVector<mlir::Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
     absl::Span<mlir::Type> opaque_args_types,
-    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc,
-    const DefaultTileRequirementsVisitor& tile_requirements_visitor =
-        DefaultTileRequirementsVisitor());
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
 
 // Function to check if the operands of a concatenation are valid for tiling.
 absl::Status CheckConcatenateOperands(
