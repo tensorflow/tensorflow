@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/message_lite.h"
 #include "google/protobuf/wire_format.h"
 #include "tsl/platform/protobuf.h"
 
