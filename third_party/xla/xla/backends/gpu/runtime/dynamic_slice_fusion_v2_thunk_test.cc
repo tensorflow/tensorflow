@@ -731,11 +731,12 @@ TEST_P(DynamicSliceFusionV2CommandBufferTest, UpdatesLoopDependentOffsets) {
                            std::move(commands),
                            CommandExecutor::SynchronizationMode::kSerialize));
 
-  CommandBufferThunk command_buffer_thunk(
-      std::move(command_executor), Thunk::ThunkInfo(),
-      /*devices_in_process=*/1,
-      /*thunks=*/nullptr,
-      /*enable_command_buffers_during_profiling=*/true);
+  CommandBufferThunkOptions options;
+  options.enable_command_buffers_during_profiling = true;
+  CommandBufferThunk command_buffer_thunk(std::move(command_executor),
+                                          Thunk::ThunkInfo(),
+                                          /*devices_in_process=*/1,
+                                          /*thunks=*/nullptr, options);
 
   se::DeviceAddress<int32_t> src = executor->AllocateArray<int32_t>(4, 0);
   std::vector<int32_t> src_data{10, 20, 30, 40};

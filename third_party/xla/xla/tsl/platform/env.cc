@@ -728,8 +728,11 @@ class FileStream : public protobuf::io::ZeroCopyInputStream {
     absl::string_view result;
     absl::Status s =
         file_->Read(pos_, result, absl::MakeSpan(scratch_, kBufSize));
-    if (result.empty()) {
+    if (!s.ok() && !absl::IsOutOfRange(s)) {
       status_ = s;
+      return false;
+    }
+    if (result.empty()) {
       return false;
     }
     pos_ += result.size();
@@ -768,7 +771,7 @@ absl::Status ReadBinaryProto(Env* env, const std::string& fname,
     return absl::DataLossError(
         absl::StrCat("Can't parse ", fname, " as binary proto"));
   }
-  return absl::OkStatus();
+  return stream->status();
 }
 
 absl::Status WriteTextProto(Env* env, const std::string& fname,
@@ -793,7 +796,7 @@ absl::Status ReadTextProto(Env* env, absl::string_view fname,
     return absl::DataLossError(
         absl::StrCat("Can't parse ", fname, " as text proto"));
   }
-  return absl::OkStatus();
+  return stream->status();
 }
 
 absl::Status ReadTextOrBinaryProto(Env* env, const std::string& fname,

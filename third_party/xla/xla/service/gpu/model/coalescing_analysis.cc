@@ -113,7 +113,7 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
 }
 
 double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
-    const experimental::TiledHloInstruction& hbm_access_instr,
+    const TiledHloInstruction& hbm_access_instr,
     const se::DeviceDescription& device_info) {
   const HloInstruction* hlo = hbm_access_instr.hlo();
   const Shape& shape = hlo->shape();

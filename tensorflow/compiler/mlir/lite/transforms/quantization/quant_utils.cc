@@ -145,8 +145,11 @@ std::optional<quant::QuantizedType> GetQTypeFromDefiningDequantize(
   if (!dq_op) {
     return std::nullopt;
   }
-  return cast<quant::QuantizedType>(
-      getElementTypeOrSelf(dq_op.getInput().getType()));
+  if (auto qtype = dyn_cast<quant::QuantizedType>(
+          getElementTypeOrSelf(dq_op.getInput().getType()))) {
+    return qtype;
+  }
+  return std::nullopt;
 }
 
 std::optional<quant::QuantizedType> GetQTypeFromConsumingQuantize(

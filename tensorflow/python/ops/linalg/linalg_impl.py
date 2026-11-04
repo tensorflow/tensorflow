@@ -488,9 +488,9 @@ def banded_triangular_solve(
       'LEFT_RIGHT' alignment, where the superdiagonals are padded on the right
       and subdiagonals are padded on the left. This is the alignment cuSPARSE
       uses.  See  `tf.linalg.set_diag` for more details.
-    rhs: A `Tensor` of shape [..., M] or [..., M, N] and with the same dtype as
-      `diagonals`. Note that if the shape of `rhs` and/or `diags` isn't known
-      statically, `rhs` will be treated as a matrix rather than a vector.
+    rhs: A `Tensor` of shape `[..., M, N]` and with the same dtype as `bands`.
+      Must have rank at least 2. For a single right-hand side, use shape `[...,
+      M, 1]`.
     lower: An optional `bool`. Defaults to `True`. Boolean indicating whether
       `bands` represents a lower or upper triangular matrix.
     adjoint: An optional `bool`. Defaults to `False`. Boolean indicating whether
@@ -498,7 +498,7 @@ def banded_triangular_solve(
     name:  A name to give this `Op` (optional).
 
   Returns:
-    A `Tensor` of shape [..., M] or [..., M, N] containing the solutions.
+    A `Tensor` of shape `[..., M, N]` containing the solutions.
   """
   with ops.name_scope(name, 'banded_triangular_solve', [bands, rhs]):
     return gen_linalg_ops.banded_triangular_solve(

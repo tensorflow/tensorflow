@@ -4556,6 +4556,76 @@ ENTRY entry {
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
 
+TEST_P(SpmdPartitioningTest, NoPartitionSortInTopKWithLargeSliceStartOrStride) {
+  // 4294967296 == 2^32 (truncates to 0 in 32-bit int) and
+  // 4294967297 == 2^32 + 1 (truncates to 1 in 32-bit int). Neither non-zero
+  // start nor non-unit stride should be matched as a TopK slice.
+  for (absl::string_view slice_spec :
+       {"[4294967296:4294967298], [0:2]", "[0:4294967298:4294967297], [0:2]"}) {
+    std::string hlo_string = absl::StrCat(
+        R"hlo(
+HloModule module
+
+%compare-greater-than.8 (p.0.lhs.9: bf16[], p.0.rhs.10: bf16[],
+                         p.1.lhs.11: s32[], p.1.rhs.12: s32[]) -> pred[] {
+  %p.1.lhs.11 = s32[] parameter(2)
+  %p.1.rhs.12 = s32[] parameter(3)
+  %p.0.lhs.9 = bf16[] parameter(0)
+  %convert.13 = f32[] convert(bf16[] %p.0.lhs.9)
+  %bitcast-convert.16 = s32[] bitcast-convert(f32[] %convert.13)
+  %constant.20 = s32[] constant(0)
+  %compare.21 = pred[] compare(s32[] %bitcast-convert.16, s32[] %constant.20),
+    direction=LT
+  %constant.15 = u32[] constant(2147483647)
+  %bitcast-convert.17 = u32[] bitcast-convert(f32[] %convert.13)
+  %subtract.18 = u32[] subtract(u32[] %constant.15, u32[] %bitcast-convert.17)
+  %bitcast-convert.19 = s32[] bitcast-convert(u32[] %subtract.18)
+  %select.22 = s32[] select(pred[] %compare.21, s32[] %bitcast-convert.19,
+    s32[] %bitcast-convert.16)
+  %p.0.rhs.10 = bf16[] parameter(1)
+  %convert.14 = f32[] convert(bf16[] %p.0.rhs.10)
+  %bitcast-convert.24 = s32[] bitcast-convert(f32[] %convert.14)
+  %constant.28 = s32[] constant(0)
+  %compare.29 = pred[] compare(s32[] %bitcast-convert.24, s32[] %constant.28),
+    direction=LT
+  %constant.23 = u32[] constant(2147483647)
+  %bitcast-convert.25 = u32[] bitcast-convert(f32[] %convert.14)
+  %subtract.26 = u32[] subtract(u32[] %constant.23, u32[] %bitcast-convert.25)
+  %bitcast-convert.27 = s32[] bitcast-convert(u32[] %subtract.26)
+  %select.30 = s32[] select(pred[] %compare.29, s32[] %bitcast-convert.27,
+    s32[] %bitcast-convert.24)
+  ROOT %compare.31 = pred[] compare(s32[] %select.22, s32[] %select.30),
+    direction=GT
+}
+
+ENTRY entry {
+  %arg = bf16[4294967298,8] parameter(0)
+  %copy = bf16[4294967298,8] copy(%arg), sharding={devices=[1,2]<=[2]}
+  %iota = s32[4294967298,8] iota(), iota_dimension=1
+  %sort = (bf16[4294967298,8], s32[4294967298,8]) sort(%copy, %iota),
+    dimensions={1}, is_stable=true, to_apply=%compare-greater-than.8
+  %gte.0 = bf16[4294967298,8] get-tuple-element(%sort), index=0
+  %slice.0 = bf16[2,2] slice(%gte.0), slice={)hlo",
+        slice_spec, R"hlo(}
+  %gte.1 = s32[4294967298,8] get-tuple-element(%sort), index=1
+  %slice.1 = s32[2,2] slice(%gte.1), slice={)hlo",
+        slice_spec, R"hlo(}
+  ROOT %tuple = (bf16[2,2], s32[2,2]) tuple(%slice.0, %slice.1),
+    sharding={{replicated}, {replicated}}
+}
+)hlo");
+
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         PartitionComputation(hlo_string, /*num_devices=*/2));
+    EXPECT_EQ(NumOfInstructions(module.get(), HloOpcode::kSort), 1);
+    const HloInstruction* sort =
+        FindInstruction(module.get(), HloOpcode::kSort);
+    ASSERT_NE(sort, nullptr);
+    EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 8);
+    EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 8);
+  }
+}
+
 TEST_P(SpmdPartitioningTest, SortShardedOnSortDim_SlowSortBug) {
   // Test with the sort in b/258523376 (same comparator, shapes, and sharding)
   absl::string_view hlo_string = R"(
@@ -10059,6 +10129,100 @@ TEST_P(SpmdPartitioningTest, DynamicUpdateSliceOfConstantOutOfRange) {
                     op::Shape("s32[128,32]")));
 }
 
+TEST_P(SpmdPartitioningTest,
+       DynamicUpdateSliceSizeOneDynamicIndexOnPartitionedDimWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      %input = f64[8,8] parameter(0), sharding={devices=[4,1]<=[4]}
+      %update = f64[1,1] constant({ {1} })
+      %index = s32[] parameter(1)
+      %c1 = s32[] constant(1)
+      ROOT %dynamic-update-slice = f64[8,8]
+        dynamic-update-slice(%input, %update, %index, %c1),
+        sharding={devices=[4,1]<=[4]}
+    })";
+
+  // Which partition the update lands in is only known at runtime, so this
+  // takes the single-partition path rather than the constant-index one.
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Shape("f64[2,8]"));
+}
+
+TEST_P(SpmdPartitioningTest,
+       DynamicUpdateSliceDynamicIndexOnNonPartitionedDimWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      %input = f64[8,8] parameter(0), sharding={devices=[4,1]<=[4]}
+      %update = f64[1,1] constant({ {1} })
+      %c1 = s32[] constant(1)
+      %index = s32[] parameter(1)
+      ROOT %dynamic-update-slice = f64[8,8]
+        dynamic-update-slice(%input, %update, %c1, %index),
+        sharding={devices=[4,1]<=[4]}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  // The runtime start is on a dimension every shard holds in full, so the
+  // update is applied to the region there, cut out and put back with a local
+  // dynamic-slice and dynamic-update-slice; the input is never gathered.
+  auto input = AllOf(op::Parameter(0), op::Shape("f64[2,8]"));
+  auto region = AllOf(op::DynamicSlice(input, op::Constant(), op::Parameter(1)),
+                      op::Shape("f64[2,1]"));
+  EXPECT_THAT(root,
+              AllOf(op::DynamicUpdateSlice(input, op::Select(_, region, _),
+                                           op::Constant(), op::Parameter(1)),
+                    op::Shape("f64[2,8]")));
+  for (const HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    EXPECT_NE(instruction->opcode(), HloOpcode::kAllGather)
+        << instruction->ToString();
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       DynamicUpdateSliceSpanningPartitionsWithDynamicIndexWithEnzymeOpt) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    ENTRY entry {
+      %input = f64[16,8] parameter(0), sharding={devices=[4,1]<=[4]}
+      %update = f64[6,2] parameter(1), sharding={devices=[4,1]<=[4]}
+      %c3 = s32[] constant(3)
+      %index = s32[] parameter(2)
+      ROOT %dynamic-update-slice = f64[16,8]
+        dynamic-update-slice(%input, %update, %c3, %index),
+        sharding={devices=[4,1]<=[4]}
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  auto input = AllOf(op::Parameter(0), op::Shape("f64[4,8]"));
+  auto region = AllOf(op::DynamicSlice(input, op::Constant(), op::Parameter(2)),
+                      op::Shape("f64[4,2]"));
+  EXPECT_THAT(root,
+              AllOf(op::DynamicUpdateSlice(input, op::Select(_, region, _),
+                                           op::Constant(), op::Parameter(2)),
+                    op::Shape("f64[4,8]")));
+}
+
 TEST_P(SpmdPartitioningTest, DynamicUpdateSliceSingleDimensionWithEnzymeOpt) {
   absl::string_view hlo_string = R"(
     HloModule module
@@ -10241,6 +10405,244 @@ TEST_P(SpmdPartitioningTest, DusOfSliceWithEnzymeOpt) {
                                                  sharded_input, _, _, _)),
                                              _)),
                           op::Shape("f32[20,768,1528]")));
+}
+
+TEST_P(SpmdPartitioningTest, DusOfSliceOfUnshardedTupleElementWithEnzymeOpt) {
+  // The update is a slice, at the DUS's own window, of a tuple element that
+  // carries no sharding of its own; the tuple does. The element keeps the
+  // tuple's layout rather than being replicated, so nothing is gathered and
+  // the DUS writes its window without moving data.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f64[4,16,8] parameter(0), sharding={devices=[1,2,2]<=[4]}
+    %b = f64[4,16,8] parameter(1), sharding={devices=[1,2,2]<=[4]}
+    %t = (f64[4,16,8], f64[4,16,8]) tuple(%a, %b), sharding={{devices=[1,2,2]<=[4]}, {devices=[1,2,2]<=[4]}}
+    %g = f64[4,16,8] get-tuple-element(%t), index=1
+    %upd = f64[4,15,8] slice(%g), slice={[0:4], [0:15], [0:8]}, sharding={devices=[1,2,2]<=[4]}
+    %zero = f64[] constant(0)
+    %base = f64[4,16,8] broadcast(%zero), dimensions={}, sharding={devices=[1,2,2]<=[4]}
+    c0 = s64[] constant(0)
+    ROOT %dus = f64[4,16,8] dynamic-update-slice(%base, %upd, c0, c0, c0), sharding={devices=[1,2,2]<=[4]}
+  }
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("f64[4,8,4]"));
+  EXPECT_EQ(
+      NumOfInstructions(module->entry_computation(), HloOpcode::kAllGather), 0);
+  EXPECT_EQ(NumOfInstructions(module->entry_computation(),
+                              HloOpcode::kCollectivePermute),
+            0);
+}
+
+TEST_P(SpmdPartitioningTest, DusOfSliceOfReplicatedSourceWithEnzymeOpt) {
+  // The slice's source is laid out differently from the DUS (replicated
+  // here): the update piece is brought into the DUS's layout rather than
+  // used as the whole array.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f64[4,16,8] parameter(0), sharding={replicated}
+    %upd = f64[4,15,8] slice(%a), slice={[0:4], [0:15], [0:8]}, sharding={devices=[1,2,2]<=[4]}
+    %zero = f64[] constant(0)
+    %base = f64[4,16,8] broadcast(%zero), dimensions={}, sharding={devices=[1,2,2]<=[4]}
+    c0 = s64[] constant(0)
+    ROOT %dus = f64[4,16,8] dynamic-update-slice(%base, %upd, c0, c0, c0), sharding={devices=[1,2,2]<=[4]}
+  }
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/4,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("f64[4,8,4]"));
+  EXPECT_EQ(
+      NumOfInstructions(module->entry_computation(), HloOpcode::kAllGather), 0);
+}
+
+TEST_P(SpmdPartitioningTest, DusOfElementwiseOfSlicesWithEnzymeOpt) {
+  // The update is a stencil's interior: elementwise ops over slices taken at
+  // the DUS's own window of the y dimension, which is split over two shards
+  // (60 rows each; the window [1, 118) is 59 + 58 rows). The slices'
+  // operands are used directly and no data moves between shards.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f32[8,120,248] parameter(0), sharding={devices=[1,2,4]<=[8]}
+    %b = f32[8,120,248] parameter(1), sharding={devices=[1,2,4]<=[8]}
+    %in = f32[8,120,248] parameter(2), sharding={devices=[1,2,4]<=[8]}
+    %sa = f32[8,117,248] slice(%a), slice={[0:8], [1:118], [0:248]}, sharding={devices=[1,2,4]<=[8]}
+    %sb = f32[8,117,248] slice(%b), slice={[0:8], [1:118], [0:248]}, sharding={devices=[1,2,4]<=[8]}
+    %m = f32[8,117,248] multiply(%sa, %sb), sharding={devices=[1,2,4]<=[8]}
+    %u = f32[8,117,248] negate(%m), sharding={devices=[1,2,4]<=[8]}
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    ROOT dus = f32[8,120,248] dynamic-update-slice(%in, %u, c0, c1, c0), sharding={devices=[1,2,4]<=[8]}
+  }
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto a = AllOf(op::Parameter(0), op::Shape("f32[8,60,62]"));
+  auto b = AllOf(op::Parameter(1), op::Shape("f32[8,60,62]"));
+  auto in = AllOf(op::Parameter(2), op::Shape("f32[8,60,62]"));
+  EXPECT_THAT(root, AllOf(op::Select(_, in, op::Negate(op::Multiply(a, b))),
+                          op::Shape("f32[8,60,62]")));
+  EXPECT_EQ(NumOfInstructions(module->entry_computation(),
+                              HloOpcode::kCollectivePermute),
+            0);
+}
+
+TEST_P(SpmdPartitioningTest, DusOfElementwiseOfShiftedSlicesWithEnzymeOpt) {
+  // A three-point stencil: the centre slice is at the window, the two
+  // neighbours are shifted by one row. The centre costs nothing; each
+  // neighbour needs the one row held by the other shard, as the slices
+  // themselves would have.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f32[8,120,248] parameter(0), sharding={devices=[1,2,4]<=[8]}
+    %in = f32[8,120,248] parameter(1), sharding={devices=[1,2,4]<=[8]}
+    %l = f32[8,117,248] slice(%a), slice={[0:8], [0:117], [0:248]}, sharding={devices=[1,2,4]<=[8]}
+    %c = f32[8,117,248] slice(%a), slice={[0:8], [1:118], [0:248]}, sharding={devices=[1,2,4]<=[8]}
+    %r = f32[8,117,248] slice(%a), slice={[0:8], [2:119], [0:248]}, sharding={devices=[1,2,4]<=[8]}
+    %s = f32[8,117,248] add(%l, %r), sharding={devices=[1,2,4]<=[8]}
+    %u = f32[8,117,248] subtract(%s, %c), sharding={devices=[1,2,4]<=[8]}
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    ROOT dus = f32[8,120,248] dynamic-update-slice(%in, %u, c0, c1, c0), sharding={devices=[1,2,4]<=[8]}
+  }
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto a = AllOf(op::Parameter(0), op::Shape("f32[8,60,62]"));
+  auto in = AllOf(op::Parameter(1), op::Shape("f32[8,60,62]"));
+  EXPECT_THAT(root, AllOf(op::Select(_, in, op::Subtract(op::Add(_, _), a)),
+                          op::Shape("f32[8,60,62]")));
+}
+
+TEST_P(SpmdPartitioningTest, DusOfElementwiseOfMultiSliceWithEnzymeOpt) {
+  // The stencil's three shifted reads come from one multislice, as
+  // recognize_multislice emits them; the centre result (shift 1) sits at the
+  // DUS window. A splat constant among the leaves is broadcast.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f32[8,120,248] parameter(0), sharding={devices=[1,2,4]<=[8]}
+    %in = f32[8,120,248] parameter(1), sharding={devices=[1,2,4]<=[8]}
+    %ms = (f32[8,117,248], f32[8,117,248], f32[8,117,248]) custom-call(%a), custom_call_target="_SPMDInternalOp_MultiSlice", sharding={{devices=[1,2,4]<=[8]}, {devices=[1,2,4]<=[8]}, {devices=[1,2,4]<=[8]}}, backend_config="dimension=1,amount=2,start_indices=[0, 0, 0],limit_indices=[8, 117, 248],strides=[1, 1, 1],bufferize=0"
+    %l = f32[8,117,248] get-tuple-element(%ms), index=0, sharding={devices=[1,2,4]<=[8]}
+    %c = f32[8,117,248] get-tuple-element(%ms), index=1, sharding={devices=[1,2,4]<=[8]}
+    %r = f32[8,117,248] get-tuple-element(%ms), index=2, sharding={devices=[1,2,4]<=[8]}
+    %two = f32[] constant(2)
+    %twos = f32[8,117,248] broadcast(%two), dimensions={}, sharding={devices=[1,2,4]<=[8]}
+    %s = f32[8,117,248] add(%l, %r), sharding={devices=[1,2,4]<=[8]}
+    %cc = f32[8,117,248] multiply(%c, %twos), sharding={devices=[1,2,4]<=[8]}
+    %u = f32[8,117,248] subtract(%s, %cc), sharding={devices=[1,2,4]<=[8]}
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    ROOT dus = f32[8,120,248] dynamic-update-slice(%in, %u, c0, c1, c0), sharding={devices=[1,2,4]<=[8]}
+  }
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto a = AllOf(op::Parameter(0), op::Shape("f32[8,60,62]"));
+  auto in = AllOf(op::Parameter(1), op::Shape("f32[8,60,62]"));
+  EXPECT_THAT(root,
+              AllOf(op::Select(_, in,
+                               op::Subtract(op::Add(_, _),
+                                            op::Multiply(a, op::Broadcast(_)))),
+                    op::Shape("f32[8,60,62]")));
+}
+
+TEST_P(SpmdPartitioningTest, DusOfElementwiseOfSliceAndConstantWithEnzymeOpt) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f32[16] parameter(0), sharding={devices=[2]<=[2]}
+    %in = f32[16] parameter(1), sharding={devices=[2]<=[2]}
+    %s = f32[13] slice(%a), slice={[1:14]}, sharding={devices=[2]<=[2]}
+    %k = f32[13] constant({2,2,2,2,2,2,2,2,2,2,2,2,2}), sharding={devices=[2]<=[2]}
+    %u = f32[13] multiply(%s, %k), sharding={devices=[2]<=[2]}
+    c1 = s32[] constant(1)
+    ROOT dus = f32[16] dynamic-update-slice(%in, %u, c1), sharding={devices=[2]<=[2]}
+  }
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2,
+                                            SpmdPartitionerOptions(),
+                                            /*enable_enzyme_opt=*/true));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto a = AllOf(op::Parameter(0), op::Shape("f32[8]"));
+  auto in = AllOf(op::Parameter(1), op::Shape("f32[8]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Select(_, in, op::Multiply(a, op::Broadcast(op::Constant()))),
+            op::Shape("f32[8]")));
+  EXPECT_EQ(NumOfInstructions(module->entry_computation(),
+                              HloOpcode::kCollectivePermute),
+            0);
+}
+
+TEST_P(SpmdPartitioningTest, DusOfSliceWithoutShardingDoesNotCrash) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f32[16] parameter(0), sharding={devices=[2]<=[2]}
+    %in = f32[16] parameter(1), sharding={devices=[2]<=[2]}
+    %s = f32[13] slice(%a), slice={[1:14]}
+    c1 = s32[] constant(1)
+    ROOT dus = f32[16] dynamic-update-slice(%in, %s, c1), sharding={devices=[2]<=[2]}
+  }
+)hlo";
+
+  EXPECT_OK(PartitionComputation(hlo_string, /*num_devices=*/2,
+                                 SpmdPartitionerOptions(),
+                                 /*enable_enzyme_opt=*/true));
+
+  absl::string_view elementwise_hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %a = f32[16] parameter(0), sharding={devices=[2]<=[2]}
+    %in = f32[16] parameter(1), sharding={devices=[2]<=[2]}
+    %s = f32[13] slice(%a), slice={[1:14]}
+    %u = f32[13] negate(%s)
+    c1 = s32[] constant(1)
+    ROOT dus = f32[16] dynamic-update-slice(%in, %u, c1), sharding={devices=[2]<=[2]}
+  }
+)hlo";
+
+  EXPECT_OK(PartitionComputation(elementwise_hlo_string, /*num_devices=*/2,
+                                 SpmdPartitionerOptions(),
+                                 /*enable_enzyme_opt=*/true));
 }
 
 TEST_P(SpmdPartitioningTest, DusOfSliceWithoutEnzymeOpt) {

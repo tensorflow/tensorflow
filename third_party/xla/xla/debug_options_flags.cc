@@ -419,7 +419,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_triton_gemm_any(true);
   opts.set_xla_gpu_experimental_gemm_fusion_v2(true);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
-  opts.set_xla_gpu_experimental_enable_tiling_propagation(true);
   opts.set_xla_gpu_experimental_cost_model_gemm_tiling_default(false);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
@@ -439,6 +438,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_collect_cost_model_stats(false);
   opts.set_xla_gpu_cublas_fallback(true);
   opts.set_xla_gpu_cudnn_gemm_fusion_level(0);
+  opts.set_xla_gpu_cudnn_non_gemm_fusion_level(0);
   opts.set_xla_gpu_enable_while_loop_double_buffering(false);
   opts.set_xla_gpu_enable_while_loop_unrolling(
       DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL);
@@ -558,6 +558,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
+  opts.set_xla_gpu_enable_command_buffer_telemetry(false);
   // TODO(b/449025971): Set to true once the issue is fixed.
   opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
@@ -2512,6 +2513,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "mode."));
 
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_command_buffer_telemetry",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_command_buffer_telemetry),
+      debug_options->xla_gpu_enable_command_buffer_telemetry(),
+      "Records the HLO annotation of each CUDA graph node so "
+      "profiles can attribute command buffer kernels, memcpys and memsets to "
+      "HLO ops. Requires CUDA 13.2+; otherwise it does nothing. Graph nodes "
+      "appear in a profile only with "
+      "--xla_enable_command_buffers_during_profiling=true."));
+
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_nccl_comm_splitting",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_nccl_comm_splitting),
       debug_options->xla_gpu_enable_nccl_comm_splitting(),
@@ -2890,6 +2902,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_cudnn_gemm_fusion_level(),
       "cuDNN GEMM fusion level; higher level corresponds to more kinds of "
       "fused operations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cudnn_non_gemm_fusion_level",
+      int32_setter_for(&DebugOptions::set_xla_gpu_cudnn_non_gemm_fusion_level),
+      debug_options->xla_gpu_cudnn_non_gemm_fusion_level(),
+      "Lets cuDNN compile non-GEMM fusions. Current levels: 0: Disabled. 1: "
+      "Compile pointwise fusions with cuDNN."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_mock_custom_calls",
                 bool_setter_for(&DebugOptions::set_xla_gpu_mock_custom_calls),
@@ -4080,6 +4098,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "If true, require that BlasLt matmuls execute the exact algorithm "
       "described by BlasLtMatmulAlgorithmProto rather than falling back to the "
       "heuristic algorithm index."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_horizontal_fusion",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_enable_horizontal_fusion),
+      debug_options->xla_gpu_experimental_enable_horizontal_fusion(),
+      "Enable experimental thread-block specialized horizontal fusion of "
+      "independent small-grid GPU kernels."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

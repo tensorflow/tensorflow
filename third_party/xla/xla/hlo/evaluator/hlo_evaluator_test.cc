@@ -9029,6 +9029,23 @@ TEST(EvalErrorTest, Payload) {
             internal::EvalErrorDetail::kDynamicValueDependence);
 }
 
+TEST_F(HloEvaluatorTest, IdentityReducePrecisionF8E4M3FN) {
+  constexpr absl::string_view kHlo = R"(
+  HloModule IdentityReducePrecisionF8E4M3FN
+
+  ENTRY main {
+    c = f8e4m3fn[4] constant({0.001953125, 1, 256, -448})
+    ROOT rp = f8e4m3fn[4] reduce-precision(c), exponent_bits=4, mantissa_bits=3
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  Literal expected = LiteralUtil::CreateR1<float8_e4m3fn>(
+      {float8_e4m3fn(0.001953125f), float8_e4m3fn(1.0f), float8_e4m3fn(256.0f),
+       float8_e4m3fn(-448.0f)});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 //===----------------------------------------------------------------------===//
 // Perfrormance benchmarks below.
 //===----------------------------------------------------------------------===//

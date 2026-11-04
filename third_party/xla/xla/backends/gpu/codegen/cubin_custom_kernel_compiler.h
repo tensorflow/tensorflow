@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
@@ -73,10 +75,7 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
         gpu_topology_(gpu_topology) {}
 
   xla::Future<std::unique_ptr<Thunk>> Compile(
-      Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-      const std::string& sanitized_kernel_name,
-      const emitters::KernelArguments& kernel_arguments,
-      const LaunchDimensions& launch_dimensions) override;
+      Thunk::ThunkInfo thunk_info, GpuKernelDefinition kernel_def) override;
 
   xla::Future<LlvmKernelSource> CompileMlirToLlvm(
       const se::DeviceDescription& device, const HloModule& hlo_module,
@@ -84,7 +83,8 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
       MlirKernelSource source, BorrowedMlirContext borrowed_context) override;
 
   xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
-      LlvmKernelSource kernel_source) override;
+      LlvmKernelSource kernel_source,
+      std::optional<GpuKernelSpec> kernel_spec) override;
 
   xla::Future<TritonWrapperResult> CompileTritonToLlvm(
       absl::string_view kernel_name, const HloModule& hlo_module,
@@ -100,7 +100,7 @@ class CubinCustomKernelCompiler final : public KernelCompiler {
 
   absl::StatusOr<std::unique_ptr<Thunk>> CompileImpl(
       Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-      const std::string& sanitized_kernel_name,
+      absl::string_view sanitized_kernel_name,
       const emitters::KernelArguments& kernel_arguments,
       const LaunchDimensions& launch_dimensions);
 

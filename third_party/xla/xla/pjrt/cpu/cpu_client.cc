@@ -1030,7 +1030,7 @@ absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
   memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
   memory_stats.serialized_buffer_assignment = proto.SerializeAsString();
   memory_stats.PopulateBufferStatsFromAllocations(
-      cpu_executable_->GetAllocations());
+      cpu_executable_->GetAllocations(), &buffer_assignment);
   HloModuleProto hlo_module_proto = cpu_executable_->module().ToProto();
   ABSL_ASSIGN_OR_RETURN(auto peak_memories,
                    ComputePeakMemorySizes(proto, hlo_module_proto));

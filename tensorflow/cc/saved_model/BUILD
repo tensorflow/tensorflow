@@ -513,10 +513,7 @@ cc_library(
         "singleprint.cc",
         "singleprint.h",
     ],
-    visibility = [
-        "//tensorflow:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/protobuf:for_core_protos_cc",
     ],
@@ -587,7 +584,6 @@ cc_library(
     name = "fingerprinting",
     hdrs = ["fingerprinting.h"],
     visibility = [
-        "//learning/brain/contrib/hub/server/ingestion:__subpackages__",
         "//learning/brain/contrib/tpu_modeling:__subpackages__",
         "//learning/gemini/deployment/disaggregation/wiz_cc:__subpackages__",
         "//learning/metadata/artifactoid/cc:__subpackages__",

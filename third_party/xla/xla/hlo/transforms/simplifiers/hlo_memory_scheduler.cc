@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 
 #include <algorithm>
-#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -325,10 +324,10 @@ class ListScheduler {
     // communicating processor to do its work.
     if (opcode == HloOpcode::kOutfeed &&
         !instruction->outfeed_config().empty()) {
-      return INT_MAX;
+      return std::numeric_limits<int64_t>::max();
     }
     if (opcode == HloOpcode::kInfeed && !instruction->infeed_config().empty()) {
-      return INT_MIN;
+      return std::numeric_limits<int64_t>::min();
     }
 
     int64_t freed_bytes = 0;

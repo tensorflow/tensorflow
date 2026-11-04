@@ -231,7 +231,10 @@ cc_library(
     name = "pjrt_c_api_phase_compile_extension_hdrs",
     hdrs = ["pjrt_c_api_phase_compile_extension.h"],
     visibility = ["//visibility:public"],
-    deps = [":pjrt_c_api_hdrs"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_layouts_extension_hdrs",
+    ],
 )
 
 cc_library(
@@ -242,19 +245,31 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
+        ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_phase_compile_extension_hdrs",
         ":pjrt_c_api_status_utils",
         ":pjrt_c_api_wrapper_impl",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt:maybe_owning_mlir_module",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:partial_program_utils",
+        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:pjrt_layout",
+        "//xla/pjrt:pjrt_relocatable",
         "//xla/pjrt:string_utils",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
 )

@@ -2685,8 +2685,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       if (!maybe_infer_shape([&] {
-            return ShapeUtil::GetTupleElementShape(operands[0]->shape(),
-                                                   *index);
+            return ShapeInference::InferGetTupleElementShape(
+                operands[0]->shape(), *index);
           })) {
         return nullptr;
       }

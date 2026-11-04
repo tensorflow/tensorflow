@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/platform/env.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,7 +29,9 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "tsl/platform/null_file_system.h"
 #include "tsl/platform/path.h"
@@ -36,6 +40,7 @@ namespace tsl {
 namespace {
 
 using absl_testing::IsOk;
+using absl_testing::StatusIs;
 using ::testing::ElementsAre;
 
 TEST(EnvTest, StartDetachedThread) {
@@ -200,6 +205,47 @@ TEST(EnvTest, ReadFileToStringAllowsShortReadsForSystemFiles) {
   EXPECT_FALSE(content.empty());
 }
 #endif
+
+class FailingRandomAccessFile : public RandomAccessFile {
+ public:
+  absl::Status Read(uint64_t offset, absl::string_view& result,
+                    absl::Span<char> scratch) const override {
+    result = absl::string_view();
+    return absl::NotFoundError("Object not found");
+  }
+};
+
+class FailingRandomAccessFileSystem : public NullFileSystem {
+ public:
+  absl::Status NewRandomAccessFile(
+      const std::string& fname,
+      std::unique_ptr<RandomAccessFile>* result) override {
+    *result = std::make_unique<FailingRandomAccessFile>();
+    return absl::OkStatus();
+  }
+};
+
+TEST(EnvTest, ReadProtoPropagatesLazyRandomAccessFileError) {
+  Env* default_env = Env::Default();
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  const std::string empty_path =
+      tsl::io::JoinPath(temp_dir.path(), "empty.proto");
+  ASSERT_THAT(WriteStringToFile(default_env, empty_path, ""), IsOk());
+  tensorflow::StatusProto proto;
+  EXPECT_THAT(ReadBinaryProto(default_env, empty_path, &proto), IsOk());
+  EXPECT_THAT(ReadTextProto(default_env, empty_path, &proto), IsOk());
+
+  FailingRandomAccessFileSystem lazy_fs;
+  SingleFileSystemEnv env(&lazy_fs);
+  EXPECT_THAT(ReadBinaryProto(&env, "missing.pb", &proto),
+              StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(ReadTextProto(&env, "missing.txtpb", &proto),
+              StatusIs(absl::StatusCode::kNotFound));
+  EXPECT_THAT(ReadTextOrBinaryProto(&env, "missing", &proto),
+              StatusIs(absl::StatusCode::kNotFound));
+}
 
 }  // namespace
 }  // namespace tsl

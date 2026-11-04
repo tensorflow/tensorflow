@@ -16,22 +16,70 @@ limitations under the License.
 #ifndef XLA_PJRT_C_API_CLIENT_PJRT_C_API_PHASE_COMPILER_H_
 #define XLA_PJRT_C_API_CLIENT_PJRT_C_API_PHASE_COMPILER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/pjrt_relocatable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
+
+// This class is a wrapper around a PJRT C API Relocatable. It provides a C++
+// interface for a relocatable.
+class PjRtCApiRelocatable : public PjRtRelocatable {
+ public:
+  PjRtCApiRelocatable(
+      const PJRT_Api* c_api,
+      const PJRT_PhaseCompile_Extension* phase_compile_extension,
+      PJRT_Relocatable* relocatable);
+
+  absl::string_view name() const override;
+  absl::string_view build_id() const override;
+  absl::string_view call_backend_config() const override;
+  bool has_side_effects() const override;
+  absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<std::vector<PrimitiveType>> GetParameterElementTypes()
+      const override;
+  absl::StatusOr<std::vector<PrimitiveType>> GetOutputElementTypes()
+      const override;
+  absl::StatusOr<std::vector<DimensionVector>> GetParameterDimensions()
+      const override;
+  absl::StatusOr<std::vector<DimensionVector>> GetOutputDimensions()
+      const override;
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const override;
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const override;
+  absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>>
+  GetParameterOutputAliases() const override;
+
+  const PJRT_Api* pjrt_c_api() const { return c_api_; }
+  PJRT_Relocatable* c_relocatable() const { return relocatable_.get(); }
+
+ private:
+  const PJRT_Api* c_api_;
+  const PJRT_PhaseCompile_Extension* phase_compile_extension_;
+  std::unique_ptr<PJRT_Relocatable, std::function<void(PJRT_Relocatable*)>>
+      relocatable_;
+};
 
 // This class is a wrapper around the PJRT C API PhaseCompiler. It provides a
 // C++ interface for the phase compiler.
@@ -80,6 +128,31 @@ class PjRtCApiPhaseCompiler : public PjRtPhaseCompiler {
     return absl::UnimplementedError(
         "PjRtCApiPhaseCompiler::Compile is not implemented.");
   }
+
+  // Compiles the MLIR module and returns a 'PjRtRelocatable'. The returned
+  // PjRtRelocatable must be provided to LinkRelocatables, along with any
+  // dependencies, to LinkRelocatables. is_entrypoint must be true
+  // if this module will be the entrypoint for the program and false if it is
+  // to be called from another relocatable.
+  absl::StatusOr<std::unique_ptr<PjRtRelocatable>> CompileToRelocatable(
+      CompileOptions options, MaybeOwningMlirModule module,
+      const PjRtTopologyDescription& topology, absl::string_view name,
+      bool is_entrypoint, PjRtClient* client) override;
+
+  // Deserializes a relocatable from a string of bytes.
+  absl::StatusOr<std::unique_ptr<PjRtRelocatable>> DeserializeRelocatable(
+      absl::string_view serialized) const override;
+
+  // Links together one or more relocatables and returns a 'PjRtExecutable'.
+  // The returned PjRtExecutable must be loaded by a compatible client before
+  // execution. The entrypoint relocatable must have been compiled with
+  // is_entrypoint set to true, while dependencies must have been compiled with
+  // is_entrypoint set to false.
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> LinkRelocatables(
+      CompileOptions options, const PjRtTopologyDescription& topology,
+      std::shared_ptr<const PjRtRelocatable> entrypoint,
+      std::vector<std::shared_ptr<const PjRtRelocatable>> dependencies)
+      override;
 
   // CApiPhaseCompiler does not need to provide a registration of phases, as it
   // is wrapping a plugin-initialized phase compiler.

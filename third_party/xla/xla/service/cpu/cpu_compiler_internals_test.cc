@@ -305,6 +305,46 @@ TEST_F(CpuCompilerInternalsTest, IdenticalSmallWhileLoopsShareKernel) {
   EXPECT_EQ(num_kernels, 1);
 }
 
+TEST_F(CpuCompilerInternalsTest, SharedSortComparatorEmittedOnce) {
+  static constexpr absl::string_view kHlo = R"(
+    shared_compare {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT lt = pred[] compare(lhs, rhs), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[16] parameter(0)
+      p1 = f32[16] parameter(1)
+      sorted0 = f32[16] sort(p0), dimensions={0}, to_apply=shared_compare
+      sorted1 = f32[16] sort(p1), dimensions={0}, to_apply=shared_compare
+      ROOT r = (f32[16], f32[16]) tuple(sorted0, sorted1)
+    }
+  )";
+  // Skip RunHloPasses: FlattenCallGraph would give each sort its own clone.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+
+  absl::Mutex mu;
+  int64_t num_definitions = 0;
+  auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
+    absl::MutexLock lock(mu);
+    for (const llvm::Function& function : llvm_module) {
+      if (!function.isDeclaration() && function.getName() == "shared_compare") {
+        ++num_definitions;
+      }
+    }
+  };
+
+  CpuCompiler compiler;
+  compiler.SetPreOptimizationHook(pre_opt_hook);
+  ASSERT_OK(compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
+                                /*options=*/{}));
+  compiler.RemovePreOptimizationHook();
+
+  EXPECT_EQ(num_definitions, 1);
+}
+
 TEST_F(CpuCompilerInternalsTest, DisablePlatformDependentMathUnified) {
   HloModuleConfig config;
   // Test default: platform dependent math should be enabled.

@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_command_buffer_telemetry.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer_telemetry_pre_13_4.h"
 
 namespace stream_executor::gpu::command_buffer_telemetry {
@@ -30,7 +31,9 @@ std::optional<uint32_t> GetGraphExecId(CUgraphExec /*exec*/) {
   return std::nullopt;
 }
 
-void RegisterPre134ExecGraphNodes(CUgraph /*root_graph*/,
-                                  CUgraphExec /*exec*/) {}
+std::optional<TrackedGraph> RegisterPre134ExecGraphNodes(CUgraph /*root_graph*/,
+                                                         CUgraphExec /*exec*/) {
+  return std::nullopt;
+}
 
 }  // namespace stream_executor::gpu::command_buffer_telemetry

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -533,7 +534,15 @@ absl::StatusOr<TensorValue> MaskOperand(mlir::ImplicitLocOpBuilder& b,
                                         Value neutral_value) {
   llvm::ArrayRef<int64_t> tile_shape = operand_value.getType().getShape();
 
-  int64_t dimension_size = operand.hlo()->shape().dimensions(dimension_index);
+  // `operand_value` uses the storage shape, which is smaller than the logical
+  // shape along the packed dimension of sub-byte types (e.g. f4e2m1fn), so
+  // compare against the storage shape too.
+  const Shape& logical_shape = operand.hlo()->shape();
+  llvm::SmallVector<int64_t> logical_dims(logical_shape.dimensions().begin(),
+                                          logical_shape.dimensions().end());
+  ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> storage_dims,
+                   GetStorageShape(logical_dims, logical_shape));
+  int64_t dimension_size = storage_dims[dimension_index];
   int64_t tile_size = tile_shape[dimension_index];
 
   if (dimension_size % tile_size == 0) {
@@ -787,6 +796,7 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
     Value iv = for_op.getInductionVar();
+    Value iv_i32 = Cast(b, iv, b.getI32Type());
     const gpu::TilingSpace::DimensionInfo& dim_info =
         tiled_scaled_dot.tile().tiling_space().GetDimensionInfo(
             *tiled_scaled_dot.hlo(), sequential_dim_ids.front());
@@ -799,6 +809,35 @@ absl::StatusOr<TensorValue> EmitScaledDot(
     const gpu::TiledHloRegion& region = tiled_scaled_dot.hlo_regions().front();
     ABSL_ASSIGN_OR_RETURN(auto results,
                      EmitTiledComputation(emitter_ctx, region, region.roots()));
+
+    // Mask out-of-bounds contracting lanes: lhs/rhs with 0 and non-scalar
+    // scales with 1, so tail lanes contribute exactly 0.
+    const DotDimensionNumbers& dim_numbers = scaled_dot.dot_dimension_numbers();
+    for (int side : {0, 1}) {
+      int64_t contracting_dim_idx =
+          side == 0 ? dim_numbers.lhs_contracting_dimensions(0)
+                    : dim_numbers.rhs_contracting_dimensions(0);
+      const gpu::TiledHloInstruction* operand = tiled_scaled_dot.operand(side);
+      Value zero = CreateConst(b, results[side].getType().getElementType(), 0,
+                               /*shape=*/{});
+      ABSL_ASSIGN_OR_RETURN(results[side],
+                       MaskOperand(b, *operand, results[side], iv_i32,
+                                   contracting_dim_idx, zero));
+
+      int scale_idx = side + 2;
+      const gpu::TiledHloInstruction* scale_operand =
+          tiled_scaled_dot.operand(scale_idx);
+      if (results[scale_idx] &&
+          IsTritonDotScaledOperandType(
+              operand->hlo()->shape().element_type()) &&
+          !ShapeUtil::IsScalar(scale_operand->hlo()->shape())) {
+        Value scale_one = CreateConst(
+            b, results[scale_idx].getType().getElementType(), 1, /*shape=*/{});
+        ABSL_ASSIGN_OR_RETURN(results[scale_idx],
+                         MaskOperand(b, *scale_operand, results[scale_idx],
+                                     iv_i32, contracting_dim_idx, scale_one));
+      }
+    }
 
     // Emit the partial dot.
     Value acc = for_op.getRegionIterArgs().front();
@@ -1840,6 +1879,30 @@ TensorValue EmitTranspose(mlir::ImplicitLocOpBuilder& b,
                                                 order);
 }
 
+// Returns the integer type to use for the pad bounds mask computation
+// `iota * tile_stride < pad_input_dim_size - tile_offset` of a single
+// dimension. Returns `i32` if all intermediate values are statically known to
+// fit in `i32`, and `i64` otherwise.
+Type GetPadMaskComparisonType(mlir::ImplicitLocOpBuilder& b,
+                              int64_t pad_input_dim_size, int64_t tile_size,
+                              int64_t tile_stride, Value tile_offset) {
+  std::optional<Interval> offset_range = GetRange(tile_offset);
+  if (!offset_range.has_value() || !offset_range->IsFeasible()) {
+    return b.getI64Type();
+  }
+  constexpr Interval kI32Range{std::numeric_limits<int32_t>::min(),
+                               std::numeric_limits<int32_t>::max()};
+  Interval input_dim_range{pad_input_dim_size, pad_input_dim_size};
+  Interval scaled_iota_range{0, tile_stride * (tile_size - 1)};
+  if (kI32Range.Contains(input_dim_range) &&
+      kI32Range.Contains(*offset_range) &&
+      kI32Range.Contains(input_dim_range - *offset_range) &&
+      kI32Range.Contains(scaled_iota_range)) {
+    return b.getI32Type();
+  }
+  return b.getI64Type();
+}
+
 absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
                                     const gpu::TiledHloInstruction& tiled_pad) {
   auto& b = emitter_ctx.b();
@@ -1849,18 +1912,19 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
   const gpu::TiledHloInstruction* tiled_operand = tiled_pad.operand(0);
   const auto& pad_input_shape = tiled_operand->hlo()->shape().dimensions();
 
-  // Compute tile offsets.
+  // Compute tile offsets and strides.
   ABSL_ASSIGN_OR_RETURN(TileInfo tile_info,
                    TileInfo::Construct(emitter_ctx, tiled_pad));
   SmallVector<Value, 3> tile_offsets = tile_info.offsets();
+  ArrayRef<int64_t> tile_strides = tile_info.tile_strides();
 
   // Compute mask.
-  Type i32_type = b.getI32Type();
   Value mask;
   for (auto [dim_index, sizes] : llvm::enumerate(
-           llvm::zip(pad_input_shape, tile_sizes, tile_offsets,
+           llvm::zip(pad_input_shape, tile_sizes, tile_offsets, tile_strides,
                      tiled_pad.hlo()->padding_config().dimensions()))) {
-    auto [pad_input_dim_size, tile_size, tile_offset, dim_config] = sizes;
+    auto [pad_input_dim_size, tile_size, tile_offset, tile_stride, dim_config] =
+        sizes;
     if (dim_config.edge_padding_low() != 0) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Low padding is not supported but got edge_padding_low: ",
@@ -1877,18 +1941,30 @@ absl::StatusOr<TensorValue> EmitPad(EmitterContext& emitter_ctx,
       continue;
     }
 
-    // LHS for the compare is an iota broadcasted to the output shape.
-    TensorValue range = Iota(b, tile_size);
-    TensorValue bcast = xtile::BroadcastInDims(
-        b, range, tile_sizes, {static_cast<int64_t>(dim_index)});
+    Type int_type = GetPadMaskComparisonType(b, pad_input_dim_size, tile_size,
+                                             tile_stride, tile_offset);
 
-    // RHS for the compare is splat(pad_input_dim_size - tile_offset).
-    Value tile_offset_i32 = Cast(b, tile_offset, i32_type);
+    // LHS for the compare is a 1D iota (scaled by the tile stride).
+    TensorValue range =
+        mlir::cast<TensorValue>(Cast(b, Iota(b, tile_size), int_type));
+    if (tile_stride != 1) {
+      range = mlir::cast<TensorValue>(
+          arith::MulIOp::create(
+              b, range, CreateConst(b, int_type, tile_stride, {tile_size}))
+              .getResult());
+    }
+
+    // Compare in 1D against splat(pad_input_dim_size - tile_offset), then
+    // broadcast the i1 mask to the output tile shape.
+    Value tile_offset_int = Cast(b, tile_offset, int_type);
     Value threshold = arith::SubIOp::create(
-        b, CreateConst(b, i32_type, pad_input_dim_size), tile_offset_i32);
-    TensorValue threshold_splat = xtile::Splat(b, threshold, tile_sizes);
-    Value cmp = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, bcast,
-                                      threshold_splat);
+        b, CreateConst(b, int_type, pad_input_dim_size), tile_offset_int);
+    TensorValue threshold_splat = xtile::Splat(b, threshold, {tile_size});
+    Value cmp_1d = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, range,
+                                         threshold_splat);
+    TensorValue cmp =
+        xtile::BroadcastInDims(b, mlir::cast<TensorValue>(cmp_1d), tile_sizes,
+                               {static_cast<int64_t>(dim_index)});
     mask = mask ? stablehlo::AndOp::create(b, mask, cmp) : cmp;
   }
   if (!mask) {

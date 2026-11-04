@@ -280,3 +280,29 @@ func.func @test_8x16_vector_transpose_bf16(%arg0: vector<8x16xbf16>) -> vector<1
 // CHECK-SAME:   : vector<16x8xi16> to vector<16x8xbf16>
 // CHECK:      return %[[CAST_OUT]] : vector<16x8xbf16>
 
+// -----
+
+func.func @wrap_comparator(
+  %arg0: tensor<f32>,
+  %arg1: tensor<f32>) -> i1
+    attributes {xla.cpu.is_comparator}
+{
+  %false = arith.constant false
+  return %false : i1
+}
+
+// CHECK-LABEL: func.func @wrap_comparator(
+// CHECK-SAME:    %[[PARAMS:[^:]+]]: !llvm.ptr {llvm.nonnull, llvm.noundef}) -> (i1 {llvm.zeroext}) attributes
+// CHECK-SAME:  uwtable_kind = #llvm.uwtableKind<async>
+// CHECK-DAG:     %[[P0_PTR:.+]] = llvm.load %[[PARAMS]] invariant : !llvm.ptr -> !llvm.ptr
+// CHECK-DAG:     %[[P0:.+]] = builtin.unrealized_conversion_cast %[[P0_PTR]] : !llvm.ptr to tensor<f32>
+// CHECK-DAG:     %[[P1_GEP:.+]] = llvm.getelementptr inbounds %[[PARAMS]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.ptr
+// CHECK-DAG:     %[[P1_PTR:.+]] = llvm.load %[[P1_GEP]] invariant : !llvm.ptr -> !llvm.ptr
+// CHECK-DAG:     %[[P1:.+]] = builtin.unrealized_conversion_cast %[[P1_PTR]] : !llvm.ptr to tensor<f32>
+// CHECK:         %[[RES:.+]] = call @wrap_comparator_wrapped(%[[P0]], %[[P1]]) : (tensor<f32>, tensor<f32>) -> i1
+// CHECK:         return %[[RES]] : i1
+// CHECK:       }
+// CHECK:       func.func private @wrap_comparator_wrapped(
+// CHECK-SAME:    %[[ARG0:.+]]: tensor<f32>, %[[ARG1:.+]]: tensor<f32>) -> i1
+// CHECK-SAME:    llvm.always_inline
+// CHECK-SAME:    llvm.linkage = #llvm.linkage<internal>

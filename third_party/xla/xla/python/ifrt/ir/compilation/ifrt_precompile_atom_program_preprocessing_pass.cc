@@ -35,9 +35,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/ir/compilation/passes.h"
+#include "xla/python/ifrt/ir/compilation/utils.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/ir/utils.h"
 
 namespace xla {
 namespace ifrt {

@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,6 +25,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
@@ -55,6 +59,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -122,6 +127,10 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
       ABSL_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue, fns[&epilogue],
                                              call_targets, &mlir_context_));
     }
+
+    // Verify the IR before canonicalization, which could otherwise remove
+    // invalid but dead ops.
+    TF_RET_CHECK(mlir::verify(module.get()).succeeded());
 
     // Canonicalize and CSE for better readability of check tests.
     mlir::PassManager pm(&mlir_context_);
@@ -1766,7 +1775,46 @@ TEST_F(ElementalHloToMlirTest, ReducePrecision) {
                         exponent_bits=8, mantissa_bits=23
                      }
                    )",
-                "// CHECK: @main"));
+                R"(
+                // CHECK: @main
+                // CHECK-NEXT: %[[EXTRACTED:.*]] = tensor.extract
+                // CHECK-NEXT: return %[[EXTRACTED]]
+                )"));
+  EXPECT_OK(Run(R"(
+                     ENTRY main {
+                       %p0 = f8e4m3fn[5,7] parameter(0)
+                       ROOT r = f8e4m3fn[5,7] reduce-precision(%p0),
+                        exponent_bits=4, mantissa_bits=3
+                     }
+                   )",
+                R"(
+                // CHECK: @main
+                // CHECK-NEXT: %[[EXTRACTED:.*]] = tensor.extract
+                // CHECK-NEXT: return %[[EXTRACTED]]
+                )"));
+  EXPECT_OK(Run(R"(
+                     ENTRY main {
+                       %p0 = f8e8m0fnu[5,7] parameter(0)
+                       ROOT r = f8e8m0fnu[5,7] reduce-precision(%p0),
+                        exponent_bits=8, mantissa_bits=0
+                     }
+                   )",
+                R"(
+                // CHECK: @main
+                // CHECK-NEXT: %[[EXTRACTED:.*]] = tensor.extract
+                // CHECK-NEXT: return %[[EXTRACTED]]
+                )"));
+  EXPECT_OK(Run(R"(
+                     ENTRY main {
+                       %p0 = f32[5,7] parameter(0)
+                       ROOT r = f32[5,7] reduce-precision(%p0),
+                        exponent_bits=5, mantissa_bits=10
+                     }
+                   )",
+                R"(
+                // CHECK: @main
+                // CHECK: arith.bitcast
+                )"));
 }
 
 TEST_F(ElementalHloToMlirTest, Map) {
@@ -1806,6 +1854,68 @@ TEST_F(ElementalHloToMlirTest, BroadcastSelect) {
     // CHECK-DAG: tensor.extract %[[P0]][]
     // CHECK-DAG: tensor.extract %[[P1]][%[[X]], %[[Y]]]
     // CHECK-DAG: tensor.extract %[[P2]][%[[X]], %[[Y]]]
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, BroadcastClamp) {
+  EXPECT_OK(Run(R"(
+    ENTRY main {
+      lo = f32[] parameter(0)
+      x = f32[5,7] parameter(1)
+      hi = f32[] parameter(2)
+      ROOT r = f32[5,7] clamp(lo, x, hi)
+    })",
+                R"(
+    // CHECK: @main
+    // CHECK-SAME: %[[LO:.*]]: tensor<f32>, %[[X:.*]]: tensor<5x7xf32>
+    // CHECK-SAME: %[[HI:.*]]: tensor<f32>
+    // CHECK-SAME: %[[I:.*]]: index {{{.*}}}, %[[J:.*]]: index {{{.*}}}
+    // CHECK-DAG: tensor.extract %[[LO]][]
+    // CHECK-DAG: tensor.extract %[[X]][%[[I]], %[[J]]]
+    // CHECK-DAG: tensor.extract %[[HI]][]
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, OperandUsedAtDifferentIndices) {
+  EXPECT_OK(Run(R"(
+    ENTRY main {
+      p0 = f32[4,4] parameter(0)
+      t = f32[4,4] transpose(p0), dimensions={1,0}
+      ROOT a = f32[4,4] add(p0, t)
+    })",
+                R"(
+    // CHECK: func.func private @main_a(
+    // CHECK-SAME: %[[P0:[^:]+]]: tensor<4x4xf32>, %[[I:[^:]+]]: index
+    // CHECK-SAME: %[[J:[^:]+]]: index
+    // CHECK-DAG: %[[A:[^ ]+]] = xla.pure_call @main_p0(%[[P0]], %[[I]], %[[J]])
+    // CHECK-DAG: %[[B:[^ ]+]] = xla.pure_call @main_p0(%[[P0]], %[[J]], %[[I]])
+    // CHECK: arith.addf %[[A]], %[[B]]
+  )"));
+}
+
+TEST_F(ElementalHloToMlirTest, ReduceOfIndexingAndElementwiseChain) {
+  EXPECT_OK(Run(R"(
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT sum = f32[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f32[8,16] parameter(0)
+      t = f32[16,8] transpose(p0), dimensions={1,0}
+      n = f32[16,8] negate(t)
+      b = f32[2,8,8] bitcast(n)
+      c = f32[] constant(0)
+      ROOT r = f32[2,8] reduce(b, c), dimensions={2}, to_apply=add
+    })",
+                R"(
+    // CHECK: func.func private @main_r(
+    // CHECK-SAME: %[[P0:[^:]+]]: tensor<8x16xf32>
+    // CHECK: scf.for %[[K:[^ ]+]] =
+    // CHECK: %[[V:[^ ]+]] = tensor.extract %[[P0]][%[[K]], %{{.*}}]
+    // CHECK: arith.negf %[[V]]
+    // CHECK: func.call @add_sum
   )"));
 }
 
@@ -1901,6 +2011,36 @@ ENTRY main {
       // CHECK: %[[FMA:.*]] = math.fma {{.*}}, {{.*}}, {{.*}} : f32
       // CHECK: return %[[FMA]] : f32
       )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DeepNonElementwiseChainDoesNotOverflowStack) {
+  std::string hlo = R"(
+HloModule deep_non_elementwise_chain
+
+ENTRY main {
+  v0 = f32[4,8] parameter(0)
+)";
+  constexpr int kChainLength = 500;
+  for (int i = 0; i < kChainLength; ++i) {
+    if (i % 2 == 0) {
+      absl::StrAppendFormat(&hlo, "  v%d = f32[8,4] bitcast(v%d)\n", i + 1, i);
+    } else {
+      absl::StrAppendFormat(
+          &hlo, "  %sv%d = f32[4,8] transpose(v%d), dimensions={1,0}\n",
+          i + 1 == kChainLength ? "ROOT " : "", i + 1, i);
+    }
+  }
+  absl::StrAppend(&hlo, "}\n");
+
+  absl::Status status;
+  tsl::ThreadOptions thread_options;
+  thread_options.stack_size = 512 * 1024;
+  {
+    std::unique_ptr<tsl::Thread> thread(tsl::Env::Default()->StartThread(
+        thread_options, "deep_chain_worker",
+        [&]() { status = Run(hlo, "// CHECK: @main_v500"); }));
+  }
+  EXPECT_OK(status);
 }
 
 }  // namespace

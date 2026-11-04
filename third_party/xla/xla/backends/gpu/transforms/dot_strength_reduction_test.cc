@@ -691,7 +691,7 @@ INSTANTIATE_TEST_SUITE_P(
               }
             )",
                           /*expected_changed=*/false},
-        OneHotDotTestCase{"Negative_BatchDimsPresent",
+        OneHotDotTestCase{"BatchedOneHotDotToGather",
                           R"(
               HloModule m
               ENTRY entry {
@@ -701,6 +701,65 @@ INSTANTIATE_TEST_SUITE_P(
                 cmp = pred[4,128,256] compare(bcast_indices, iota), direction=EQ
                 lhs = bf16[4,128,256] convert(cmp)
                 rhs = bf16[4,256,512] parameter(1)
+                ROOT dot = bf16[4,128,512] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+              }
+            )",
+                          /*expected_changed=*/true,
+                          R"(
+              // CHECK-DAG: [[BATCH_IOTA:%[^ ]+]] = s32[4,128,1]{2,1,0} iota(), iota_dimension=0
+              // CHECK-DAG: [[IDX_RESHAPE:%[^ ]+]] = s32[4,128,1]{2,1,0} reshape(%indices)
+              // CHECK-DAG: [[START_INDICES:%[^ ]+]] = s32[4,128,2]{2,1,0} concatenate([[BATCH_IOTA]], [[IDX_RESHAPE]]), dimensions={2}
+              // CHECK-DAG: [[GATHER:%[^ ]+]] = bf16[4,128,512]{2,1,0} gather(%rhs, [[START_INDICES]]), offset_dims={2}, collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=2, slice_sizes={1,1,512}
+              // CHECK: ROOT {{.*}} = bf16[4,128,512]{2,1,0} select({{.*}}, [[GATHER]], {{.*}})
+            )"},
+        OneHotDotTestCase{"BatchedRhsOneHotDotToGather",
+                          R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[4,128] parameter(0)
+                lhs = bf16[4,512,256] parameter(1)
+                bcast_indices = s32[4,128,256] broadcast(indices), dimensions={0,1}
+                iota = s32[4,128,256] iota(), iota_dimension=2
+                cmp = pred[4,128,256] compare(bcast_indices, iota), direction=EQ
+                rhs = bf16[4,128,256] convert(cmp)
+                ROOT dot = bf16[4,512,128] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}
+              }
+            )",
+                          /*expected_changed=*/true,
+                          R"(
+              // CHECK-DAG: [[GATHER:%[^ ]+]] = bf16[4,512,128]{2,1,0} gather(%lhs, {{.*}}), offset_dims={1}, collapsed_slice_dims={0,2}, start_index_map={0,2}, index_vector_dim=2, slice_sizes={1,512,1}
+              // CHECK-DAG: [[MASK:%[^ ]+]] = pred[4,512,128]{2,1,0} broadcast({{.*}}), dimensions={0,2}
+              // CHECK: ROOT {{.*}} = bf16[4,512,128]{2,1,0} select([[MASK]], [[GATHER]], {{.*}})
+            )"},
+        OneHotDotTestCase{"BatchedBroadcastedWeightsPeelsBatchBroadcast",
+                          R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[4,8,128] parameter(0)
+                bcast_indices = s32[4,8,128,256] broadcast(indices), dimensions={0,1,2}
+                iota = s32[4,8,128,256] iota(), iota_dimension=3
+                cmp = pred[4,8,128,256] compare(bcast_indices, iota), direction=EQ
+                lhs = bf16[4,8,128,256] convert(cmp)
+                table = bf16[8,256,512] parameter(1)
+                rhs = bf16[4,8,256,512] broadcast(table), dimensions={1,2,3}
+                ROOT dot = bf16[4,8,128,512] dot(lhs, rhs), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+              }
+            )",
+                          /*expected_changed=*/true,
+                          R"(
+              // CHECK-DAG: [[GATHER:%[^ ]+]] = bf16[4,8,128,512]{3,2,1,0} gather(%table, {{.*}}), offset_dims={3}, collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=3, slice_sizes={1,1,512}
+              // CHECK: ROOT {{.*}} = bf16[4,8,128,512]{3,2,1,0} select({{.*}}, [[GATHER]], {{.*}})
+            )"},
+        OneHotDotTestCase{"Negative_BatchedSubByteIndices",
+                          R"(
+              HloModule m
+              ENTRY entry {
+                indices = s4[4,128] parameter(0)
+                bcast_indices = s4[4,128,4] broadcast(indices), dimensions={0,1}
+                iota = s4[4,128,4] iota(), iota_dimension=2
+                cmp = pred[4,128,4] compare(bcast_indices, iota), direction=EQ
+                lhs = bf16[4,128,4] convert(cmp)
+                rhs = bf16[4,4,512] parameter(1)
                 ROOT dot = bf16[4,128,512] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
               }
             )",
@@ -932,6 +991,59 @@ INSTANTIATE_TEST_SUITE_P(
                 cmp = pred[2,3,4] compare(bcast_indices, iota), direction=EQ
                 rhs = f32[2,3,4] convert(cmp)
                 ROOT dot = f32[2,2,3] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={2}, algorithm=dot_f32_f32_f32
+              }
+            )"},
+                      OneHotExecutionTestCase{"BatchedLhsOneHot",
+                                              R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[2,3] parameter(0)
+                param = f32[4,2] parameter(1)
+                neg_param = f32[4,2] negate(param)
+                b0 = f32[1,4,2] reshape(param)
+                b1 = f32[1,4,2] reshape(neg_param)
+                rhs = f32[2,4,2] concatenate(b0, b1), dimensions={0}
+                bcast_indices = s32[2,3,4] broadcast(indices), dimensions={0,1}
+                iota = s32[2,3,4] iota(), iota_dimension=2
+                cmp = pred[2,3,4] compare(bcast_indices, iota), direction=EQ
+                lhs = f32[2,3,4] convert(cmp)
+                ROOT dot = f32[2,3,2] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f32_f32_f32
+              }
+            )"},
+                      OneHotExecutionTestCase{"BatchedRhsOneHot",
+                                              R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[2,3] parameter(0)
+                param = f32[4,2] parameter(1)
+                neg_param = f32[4,2] negate(param)
+                b0 = f32[1,4,2] reshape(param)
+                b1 = f32[1,4,2] reshape(neg_param)
+                cat = f32[2,4,2] concatenate(b0, b1), dimensions={0}
+                lhs = f32[2,2,4] transpose(cat), dimensions={0,2,1}
+                bcast_indices = s32[2,3,4] broadcast(indices), dimensions={0,1}
+                iota = s32[2,3,4] iota(), iota_dimension=2
+                cmp = pred[2,3,4] compare(bcast_indices, iota), direction=EQ
+                rhs = f32[2,3,4] convert(cmp)
+                ROOT dot = f32[2,2,3] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, algorithm=dot_f32_f32_f32
+              }
+            )"},
+                      OneHotExecutionTestCase{"BatchedNonLeadingOneHotBatchDim",
+                                              R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[2,3] parameter(0)
+                indices_t = s32[3,2] transpose(indices), dimensions={1,0}
+                param = f32[4,2] parameter(1)
+                neg_param = f32[4,2] negate(param)
+                b0 = f32[1,4,2] reshape(param)
+                b1 = f32[1,4,2] reshape(neg_param)
+                rhs = f32[2,4,2] concatenate(b0, b1), dimensions={0}
+                bcast_indices = s32[3,2,4] broadcast(indices_t), dimensions={0,1}
+                iota = s32[3,2,4] iota(), iota_dimension=2
+                cmp = pred[3,2,4] compare(bcast_indices, iota), direction=EQ
+                lhs = f32[3,2,4] convert(cmp)
+                ROOT dot = f32[2,3,2] dot(lhs, rhs), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f32_f32_f32
               }
             )"}),
     [](const ::testing::TestParamInfo<OneHotExecutionTestCase>& info) {

@@ -389,6 +389,21 @@ def FuseA4W2DRQFullyConnectedPass : Pass<"tfl-fuse-a4w2-drq-fully-connected", "m
   ];
 }
 
+def LowerBlockwiseDequantizePass : Pass<"tfl-lower-blockwise-dequantize", "mlir::func::FuncOp"> {
+  let summary = "Lowers constant blockwise dequantizes to dequantizes of blockwise quantized constants.";
+  let description = [{
+      Rewrites a `tfl.blockwise_dequantize` whose input, scales and zero points
+      are all constants into a `tfl.pseudo_qconst` with a
+      `!tfl.blockwise_quant` element type feeding a `tfl.dequantize`. Unlike
+      `tfl.blockwise_dequantize`, the result can be exported: the parameters
+      are serialized as `BlockwiseQuantization` with a `block_shape`.
+  }];
+  let constructor = "CreateLowerBlockwiseDequantizePass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect"
+  ];
+}
+
 def FoldFp16CastsIntoFullyConnectedPass : Pass<"tfl-fold-fp16-casts-into-fully-connected", "mlir::func::FuncOp"> {
   let summary = "Folds f16 <-> f32 casts around a float fully_connected into it.";
   let description = [{

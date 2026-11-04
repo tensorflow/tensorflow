@@ -60,6 +60,8 @@ class HloFusionAnalysis {
     kCuDnn,
     kSort,
     kTensorIr,
+    kThreadBlockSpecialized,
+    kPhasedBlockCluster,
   };
 
   // Precomputed information about inputs (arguments) and outputs (roots) of the

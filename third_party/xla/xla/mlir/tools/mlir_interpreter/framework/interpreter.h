@@ -132,7 +132,8 @@ class InterpreterScope {
     auto ret = values_.find(v);
     if (ret == values_.end()) {
       if (!parent_scope_) {
-        v.dump();
+        v.print(llvm::errs());
+        llvm::errs() << "\n";
       }
 
       assert(parent_scope_ && "value not found");

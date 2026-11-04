@@ -71,19 +71,9 @@ absl::StatusOr<Schedule> GetSchedule(
 
 }  // namespace xla::gpu
 
-namespace xla::gpu::experimental {
-using ::xla::gpu::GetSchedule;
-using ::xla::gpu::Schedule;
-}  // namespace xla::gpu::experimental
-
 namespace xla {
 using ::xla::gpu::GetSchedule;
 using ::xla::gpu::Schedule;
 }  // namespace xla
-
-namespace xla::experimental {
-using ::xla::gpu::GetSchedule;
-using ::xla::gpu::Schedule;
-}  // namespace xla::experimental
 
 #endif  // XLA_CODEGEN_TILING_SCHEDULING_H_

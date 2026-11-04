@@ -776,8 +776,6 @@ cc_library(
 xla_test(
     name = "tridiagonal_test",
     srcs = ["tridiagonal_test.cc"],
-    # TODO(b/579918825): Offloaded SparseCore fusions fail to compile on unaligned pred windows.
-    backend_args = get_sc_offload_backend_args(enable_sparse_core_fusion_offloading = False),
     backends = ALL_HARDWARE_BACKENDS,
     shard_count = 10,
     tags = ["optonly"],

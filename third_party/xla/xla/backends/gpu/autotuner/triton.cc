@@ -368,6 +368,18 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
   }
   const FusionBackendConfig& backend_config =
       gpu_config->fusion_backend_config();
+  if (backend_config.kind() != kTritonGemmFusionKind &&
+      backend_config.kind() != kCuDnnFusionKind &&
+      backend_config.kind() != kCustomFusionKind) {
+    return false;
+  }
+
+  // cuDNN scaled dot fusions take pre-swizzled scales and must not be retuned.
+  if (backend_config.kind() != kTritonGemmFusionKind &&
+      hlo_query::ContainsInstrWithOpcode(instr.fused_instructions_computation(),
+                                         {HloOpcode::kScaledDot})) {
+    return false;
+  }
 
   // TODO: b/487920266 - sometimes we create fusions that can't be tiled.
   // Bail out here if that's the case.
@@ -381,14 +393,13 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
       VLOG(1) << "Failed to borrow MLIRContext: " << mlir_context.status();
       return false;
     }
-    auto ts = experimental::TilingSpace::Create(*fusion_adaptor,
-                                                (*mlir_context)->get());
+    auto ts = TilingSpace::Create(*fusion_adaptor, (*mlir_context)->get());
     if (!ts.ok()) {
       VLOG(1) << "Failed to create tiling space: " << ts.status().message();
       return false;
     }
-    auto tiled_computation_or = experimental::TiledHloComputation::Tile(
-        *fusion_adaptor, std::move(ts.value()));
+    auto tiled_computation_or =
+        TiledHloComputation::Tile(*fusion_adaptor, std::move(ts.value()));
     if (!tiled_computation_or.ok()) {
       VLOG(1) << "Fusion is not tileable with experimental tiling: "
               << tiled_computation_or.status().message();
@@ -398,8 +409,7 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
     // constraints here.
     return true;
   }
-  return backend_config.kind() == kCuDnnFusionKind ||
-         backend_config.kind() == kCustomFusionKind;
+  return true;
 }
 
 std::string TritonBackend::version() const { return TRITON_VERSION; }

@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -52,6 +54,9 @@ HloPassOptions::HloPassOptions(const tsl::protobuf::Message& message) {
       case tsl::protobuf::FieldDescriptor::CPPTYPE_INT64:
         value.set_int_val(reflection->GetInt64(message, field));
         break;
+      case tsl::protobuf::FieldDescriptor::CPPTYPE_STRING:
+        value.set_string_val(reflection->GetString(message, field));
+        break;
       default:
         LOG(FATAL) << "Field '" << field->full_name() << "' of type "
                    << field->cpp_type_name()
@@ -68,6 +73,8 @@ absl::string_view TypeName(const HloPassOptionValue& value) {
       return "bool";
     case HloPassOptionValue::kIntVal:
       return "int64";
+    case HloPassOptionValue::kStringVal:
+      return "string";
     case HloPassOptionValue::VALUE_NOT_SET:
       return "unset";
   }
@@ -109,6 +116,12 @@ void HloPassOptions::MergeInto(tsl::protobuf::Message& message) const {
       case tsl::protobuf::FieldDescriptor::CPPTYPE_INT64:
         if (std::optional<int64_t> value = Get<int64_t>(field->name())) {
           reflection->SetInt64(&message, field, *value);
+        }
+        break;
+      case tsl::protobuf::FieldDescriptor::CPPTYPE_STRING:
+        if (std::optional<std::string> value =
+                Get<std::string>(field->name())) {
+          reflection->SetString(&message, field, *std::move(value));
         }
         break;
       default:

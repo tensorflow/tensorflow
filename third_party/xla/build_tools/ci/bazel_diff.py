@@ -53,12 +53,20 @@ KEEP_TARGET_PREFIXES: Tuple[str, ...] = (
 # GitHub Actions' 1024 KB step summary upload limit.
 _MAX_STEP_SUMMARY_TARGETS = 500
 
+# Default target patterns used when constructing the cquery expression.
+DEFAULT_CQUERY_TARGET_PATTERNS: Tuple[str, ...] = (
+    "//xla/...",
+    "//build_tools/...",
+    "@tsl//tsl/...",
+)
+
 
 class BuildConfig(Protocol):
   """Protocol describing the Build attributes used by bazel-diff.
 
   Attributes:
     target_patterns: Sequence of Bazel target patterns to build or test.
+    build_tag_filters: Sequence of tags for --build_tag_filters.
     configs: Sequence of Bazel --config names.
     repo_env: Mapping of --repo_env variables.
     options: Mapping of additional Bazel flags.
@@ -67,6 +75,7 @@ class BuildConfig(Protocol):
   """
 
   target_patterns: Sequence[str]
+  build_tag_filters: Sequence[str]
   configs: Sequence[str]
   repo_env: Mapping[str, Any]
   options: Mapping[str, Any]
@@ -275,6 +284,38 @@ def resolve_java_bin(
   return "java"
 
 
+def _pattern_to_query_term(pattern: str) -> str:
+  """Converts a Bazel target pattern to a query expression term."""
+  if pattern.endswith("/..."):
+    return f"{pattern}:all-targets"
+  if pattern.endswith(":*"):
+    return f"{pattern[:-2]}:all-targets"
+  return pattern
+
+
+def build_cquery_expression(
+    target_patterns: Sequence[str] = DEFAULT_CQUERY_TARGET_PATTERNS,
+) -> str:
+  """Constructs the deps(...) cquery expression from build target patterns."""
+  patterns = target_patterns or DEFAULT_CQUERY_TARGET_PATTERNS
+  positive_terms: List[str] = []
+  negative_terms: List[str] = []
+  for raw_pattern in patterns:
+    pattern = raw_pattern.strip()
+    if not pattern:
+      continue
+    if pattern.startswith("-"):
+      negative_terms.append(_pattern_to_query_term(pattern[1:]))
+    else:
+      positive_terms.append(_pattern_to_query_term(pattern))
+  if not positive_terms:
+    positive_terms = [
+        _pattern_to_query_term(p) for p in DEFAULT_CQUERY_TARGET_PATTERNS
+    ]
+  expr = " - ".join([" + ".join(positive_terms), *negative_terms])
+  return f"deps({expr})"
+
+
 def run_generate_hashes(
     jar_path: str,
     workspace_dir: str,
@@ -282,6 +323,7 @@ def run_generate_hashes(
     cquery_options: Optional[Sequence[str]] = None,
     use_cquery: bool = True,
     startup_options: Optional[Sequence[str]] = None,
+    target_patterns: Sequence[str] = DEFAULT_CQUERY_TARGET_PATTERNS,
     cwd: Optional[str] = None,
     java_bin: Optional[str] = None,
 ) -> None:
@@ -299,13 +341,15 @@ def run_generate_hashes(
       "-w",
       workspace_dir,
       output_json,
+      # Skip querying '//external:all-targets' since XLA's .bazelrc sets
+      # '--noenable_workspace' by default.
+      "--excludeExternalTargets",
       f"--fineGrainedHashExternalRepos={fine_grained_repos}",
   ]
   if use_cquery:
     args.append("--useCquery")
     args.append(
-        "--cqueryExpression=deps(//xla/...:all-targets +"
-        " //build_tools/...:all-targets + @tsl//tsl/...:all-targets)"
+        f"--cqueryExpression={build_cquery_expression(target_patterns)}"
     )
     if cquery_options:
       args.append(f"--cqueryCommandOptions={' '.join(cquery_options)}")
@@ -322,11 +366,14 @@ def run_get_impacted_targets(
     starting_hashes: str,
     final_hashes: str,
     output_txt: str,
+    startup_options: Optional[Sequence[str]] = None,
     cwd: Optional[str] = None,
     java_bin: Optional[str] = None,
 ) -> None:
   """Executes bazel-diff get-impacted-targets."""
-  resolved_java = java_bin or resolve_java_bin(cwd or workspace_dir)
+  resolved_java = java_bin or resolve_java_bin(
+      cwd or workspace_dir, startup_options=startup_options
+  )
   args = [
       resolved_java,
       "-jar",
@@ -340,7 +387,12 @@ def run_get_impacted_targets(
       workspace_dir,
       "-o",
       output_txt,
+      # Explicitly exclude '//external:*' labels so bazel-diff does not run
+      # 'bazel mod graph' to auto-detect whether Bzlmod is enabled.
+      "--excludeExternalTargets",
   ]
+  if startup_options:
+    args.append(f"--bazelStartupOptions={' '.join(startup_options)}")
   logging.info("Running bazel-diff get-impacted-targets: %s", " ".join(args))
   subprocess.run(args, cwd=cwd or workspace_dir, check=True)
 
@@ -422,8 +474,14 @@ def dict_to_cli_options(options_dict: Any) -> List[str]:
 
 
 def get_cquery_command_options(build: BuildConfig) -> List[str]:
-  """Extracts --config, --repo_env, and Starlark build flags from a Build."""
+  """Extracts --config, tag/universe filters, --repo_env, and build flags."""
   options = [f"--config={config}" for config in build.configs]
+  tag_filters = ",".join(build.build_tag_filters)
+  if tag_filters:
+    options.append(f"--build_tag_filters={tag_filters}")
+  universe_scope = ",".join(build.target_patterns)
+  if universe_scope:
+    options.append(f"--universe_scope={universe_scope}")
   for key, value in build.repo_env.items():
     options.append(f"--repo_env={key}={value}")
   for key, value in build.options.items():
@@ -660,6 +718,7 @@ def compute_impacted_targets(
 
   cquery_options = get_cquery_command_options(build)
   use_cquery = build.bazel_diff_use_cquery
+  target_patterns = build.target_patterns
   startup_options = None
   if build.startup_options:
     startup_options = dict_to_cli_options(build.startup_options)
@@ -684,6 +743,7 @@ def compute_impacted_targets(
         cquery_options=cquery_options,
         use_cquery=use_cquery,
         startup_options=startup_options,
+        target_patterns=target_patterns,
     )
 
     # Generate head hashes
@@ -700,6 +760,7 @@ def compute_impacted_targets(
         cquery_options=cquery_options,
         use_cquery=use_cquery,
         startup_options=startup_options,
+        target_patterns=target_patterns,
     )
 
     # Determine impacted targets
@@ -709,6 +770,7 @@ def compute_impacted_targets(
         base_hashes_json,
         head_hashes_json,
         impacted_txt,
+        startup_options=startup_options,
     )
 
     with open(impacted_txt, "r", encoding="utf-8") as f:
@@ -734,7 +796,6 @@ def compute_impacted_targets(
           "Skipping git checkout restore for invalid ref: %r", original_head
       )
 
-  target_patterns = build.target_patterns
   filtered_targets = filter_and_normalize_targets(
       raw_targets, target_patterns=target_patterns
   )
@@ -756,10 +817,6 @@ def compute_impacted_targets(
     with open(filtered_impacted_file, "w", encoding="utf-8") as f:
       for target in filtered_targets:
         f.write(f"{target}\n")
-      if target_patterns:
-        for pattern in target_patterns:
-          if pattern.startswith("-"):
-            f.write(f"{pattern}\n")
   except OSError as e:
     logging.warning("Failed to write filtered impacted targets file: %s", e)
     return BazelDiffDecision(
@@ -785,6 +842,7 @@ class CliBuildConfig:
 
   Attributes:
     target_patterns: Sequence of Bazel target patterns to build or test.
+    build_tag_filters: Sequence of tags for --build_tag_filters.
     configs: Sequence of Bazel --config names.
     repo_env: Mapping of --repo_env variables.
     options: Mapping of additional Bazel flags.
@@ -793,6 +851,7 @@ class CliBuildConfig:
   """
 
   target_patterns: Sequence[str] = ("//xla/...",)
+  build_tag_filters: Sequence[str] = ()
   configs: Sequence[str] = ()
   repo_env: Mapping[str, Any] = dataclasses.field(default_factory=dict)
   options: Mapping[str, Any] = dataclasses.field(default_factory=dict)
