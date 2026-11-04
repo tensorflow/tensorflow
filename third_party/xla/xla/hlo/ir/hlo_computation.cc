@@ -1395,6 +1395,8 @@ void HloComputation::ToProto(HloComputationProto* proto,
          "computation is inside a module before dumping it.";
   proto->set_id(unique_id_);
   proto->set_name(name_);
+  proto->mutable_instructions()->Reserve(proto->instructions_size() +
+                                         instruction_count());
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     instruction->ToProto(proto->add_instructions(), options);
   }

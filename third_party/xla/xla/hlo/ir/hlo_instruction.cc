@@ -4738,6 +4738,8 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
   proto->set_name(name_);
   *proto->mutable_opcode() = std::string(HloOpcodeString(opcode_));
   shape().ToProto(*proto->mutable_shape());
+  proto->mutable_operand_ids()->Reserve(proto->operand_ids_size() +
+                                        operands_.size());
   for (const HloInstruction* operand : operands_) {
     proto->add_operand_ids(operand->unique_id());
   }

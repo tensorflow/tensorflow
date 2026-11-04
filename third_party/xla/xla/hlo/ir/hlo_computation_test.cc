@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -799,6 +800,52 @@ ENTRY entry {
   EXPECT_THAT(cloned_gte->operands(), ::testing::ElementsAre(cloned_t1));
 }
 
+TEST_F(HLOComputationTest,
+       ToProtoSerializesAllComputationsInstructionsAndOperands) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+sub {
+  sp0 = f32[4] parameter(0)
+  ROOT sneg = f32[4] negate(sp0)
+}
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  called = f32[4] call(p0), to_apply=sub
+  ROOT t = (f32[4], f32[4], f32[4]) tuple(p0, p1, called)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* entry = module->entry_computation();
+  const HloInstruction* p0 = entry->parameter_instruction(0);
+  const HloInstruction* p1 = entry->parameter_instruction(1);
+  const HloInstruction* called = entry->GetInstructionWithName("called");
+  const HloInstruction* t = entry->root_instruction();
+
+  HloModuleProto module_proto = module->ToProto();
+  ASSERT_EQ(module_proto.computations_size(), module->computation_count());
+  const HloComputationProto& entry_proto =
+      module_proto.computations(module_proto.computations_size() - 1);
+  EXPECT_EQ(entry_proto.id(), entry->unique_id());
+  ASSERT_EQ(entry_proto.instructions_size(), entry->instruction_count());
+  const HloInstructionProto& root_proto =
+      entry_proto.instructions(entry_proto.instructions_size() - 1);
+  EXPECT_EQ(root_proto.id(), t->unique_id());
+  EXPECT_THAT(root_proto.operand_ids(),
+              ::testing::ElementsAre(p0->unique_id(), p1->unique_id(),
+                                     called->unique_id()));
+
+  HloInstructionProto inst_proto;
+  inst_proto.add_operand_ids(999999);
+  t->ToProto(&inst_proto);
+  EXPECT_THAT(inst_proto.operand_ids(),
+              ::testing::ElementsAre(999999, p0->unique_id(), p1->unique_id(),
+                                     called->unique_id()));
+}
+
 std::unique_ptr<HloComputation> MakeAddChainComputation(
     int num_instructions, absl::string_view name = "add_chain") {
   const Shape shape = ShapeUtil::MakeShape(F32, {4});
@@ -836,6 +883,17 @@ void BM_CloneComputation(::testing::benchmark::State& state) {
 }
 // NOLINTNEXTLINE(misc-include-cleaner)
 BENCHMARK(BM_CloneComputation)->Arg(16)->Arg(1024);
+
+void BM_ModuleToProto(::testing::benchmark::State& state) {
+  HloModule module("bm_to_proto", HloModuleConfig());
+  module.AddEntryComputation(MakeAddChainComputation(state.range(0), "entry"));
+  for (auto s : state) {
+    HloModuleProto proto = module.ToProto();
+    tsl::testing::DoNotOptimize(proto);
+  }
+}
+// NOLINTNEXTLINE(misc-include-cleaner)
+BENCHMARK(BM_ModuleToProto)->Arg(16)->Arg(1024);
 
 void BM_Defuse(::testing::benchmark::State& state) {
   const Shape shape = ShapeUtil::MakeShape(F32, {4});
