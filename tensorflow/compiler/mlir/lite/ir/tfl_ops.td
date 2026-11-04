@@ -1242,7 +1242,7 @@ in the batch dimensions and broadcasting.
 
   let arguments = (ins
     TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$x,
-    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$y,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8, TFL_BlockwiseQuantType]>:$y,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
     // Used in post-training dynamic range quantization. If the value is true,
