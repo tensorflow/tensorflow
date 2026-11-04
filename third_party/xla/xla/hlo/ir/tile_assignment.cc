@@ -290,9 +290,9 @@ std::optional<IotaTileAssignment> TryToConvertV1ToV2(const TileAssignment& T) {
   CanonicalizeIotaDims(dims_span, perm_span);
   if (dims_span.empty()) {
     canonicalized_dims[0] = 1;
-    dims_span = absl::MakeSpan(canonicalized_dims.data(), 1);
+    dims_span = absl::MakeSpan(canonicalized_dims).first(1);
     canonicalized_perm[0] = 0;
-    perm_span = absl::MakeSpan(canonicalized_perm.data(), 1);
+    perm_span = absl::MakeSpan(canonicalized_perm).first(1);
   }
   return IotaTileAssignment(dims, dims_span, perm_span);
 }
