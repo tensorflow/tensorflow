@@ -40,7 +40,11 @@ class SysconfigTest(googletest.TestCase):
       regex = re.compile(regex_str)
       return any(regex.match(item) for item in items)
     self.assertTrue(list_contains(compile_flags, ".*/include"))
-    self.assertTrue(list_contains(compile_flags, ".*_GLIBCXX_USE_CXX11_ABI.*"))
+    self.assertTrue(
+        list_contains(
+            compile_flags, r".*(_GLIBCXX_USE_CXX11_ABI|-stdlib=libc\+\+).*"
+        )
+    )
     self.assertTrue(list_contains(compile_flags, ".*EIGEN_MAX_ALIGN_BYTES.*"))
     self.assertTrue(list_contains(compile_flags, ".*std.*"))
 
