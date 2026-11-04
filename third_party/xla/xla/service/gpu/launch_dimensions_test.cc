@@ -21,7 +21,6 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/service/gpu/launch_dimensions.pb.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
