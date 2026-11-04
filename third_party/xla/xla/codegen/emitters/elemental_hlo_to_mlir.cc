@@ -55,6 +55,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -78,6 +79,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
@@ -1356,7 +1358,49 @@ SmallVector<Value, 2> ProvideParameterRange(
   return scalars;
 }
 
+bool IsLineInfoEnabled(const DebugOptions& debug_options) {
+  return debug_options.xla_gpu_generate_line_info() ||
+         debug_options.xla_gpu_generate_debug_info();
+}
+
+mlir::Location GetInstructionLocation(const HloInstruction& instr,
+                                      MLIRContext* mlir_context) {
+  auto name = mlir::StringAttr::get(mlir_context, instr.name());
+  const OpMetadata& metadata = instr.metadata();
+  if (metadata.source_file().empty()) {
+    return mlir::NameLoc::get(name);
+  }
+  return mlir::NameLoc::get(
+      name, mlir::FileLineColLoc::get(mlir_context, metadata.source_file(),
+                                      metadata.source_line(),
+                                      metadata.source_column()));
+}
+
 namespace {
+
+// Sets the builder's location to the source location of `instr` (if
+// `enabled`) and restores the previous location on destruction.
+class ScopedInstructionLocation {
+ public:
+  ScopedInstructionLocation(const HloInstruction* instr, bool enabled,
+                            ImplicitLocOpBuilder& builder)
+      : builder_(builder) {
+    if (enabled) {
+      prev_loc_ = builder_.getLoc();
+      builder_.setLoc(GetInstructionLocation(*instr, builder_.getContext()));
+    }
+  }
+
+  ~ScopedInstructionLocation() {
+    if (prev_loc_) {
+      builder_.setLoc(prev_loc_);
+    }
+  }
+
+ private:
+  ImplicitLocOpBuilder& builder_;
+  mlir::LocationAttr prev_loc_;  // Null if the location was not changed.
+};
 
 class SubgraphConverter {
  public:
@@ -1374,6 +1418,8 @@ class SubgraphConverter {
         indices_(indices),
         builder_(builder),
         mlir_context_(mlir_context),
+        emit_source_locations_(IsLineInfoEnabled(
+            computation.computation().parent()->config().debug_options())),
         provide_operand_fn_(
             std::bind(std::mem_fn(&SubgraphConverter::ProvideOperand), this,
                       std::placeholders::_1, std::placeholders::_2,
@@ -1408,6 +1454,7 @@ class SubgraphConverter {
   ValueRange indices_;
   ImplicitLocOpBuilder& builder_;
   MLIRContext* mlir_context_;
+  bool emit_source_locations_;
   absl::node_hash_map<std::pair<const HloInstruction*, std::vector<void*>>,
                       SmallVector<Value>>
       cached_instructions_;
@@ -1511,6 +1558,8 @@ absl::StatusOr<SmallVector<Value>> SubgraphConverter::EmitInstruction(
     // only their transitive operands get emitted until they are popped again.
     WorkItem completed = std::move(item);
     workstack.pop_back();
+    ScopedInstructionLocation scoped_loc(completed.instr,
+                                         emit_source_locations_, builder_);
     ABSL_ASSIGN_OR_RETURN(auto entry,
                      HloToMlir(completed.instr, this_fn_, completed.indices,
                                completed.operand_indices, provide_operand_fn_,

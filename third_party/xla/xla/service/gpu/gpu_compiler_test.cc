@@ -194,7 +194,7 @@ class GpuCompilerTest
   // Must match the fusion-dispatch pipeline check in
   // GpuCompiler::RunPostSchedulingPipelines.
   bool RunsFusionDispatchPipeline() const {
-    return get_cuda_cc().IsAtLeastAmpere() ||
+    return get_cuda_cc().IsAtLeastAmpere() || get_rocm_cc().gfx9_mi200() ||
            get_rocm_cc().gfx9_mi300_series() || get_rocm_cc().gfx1250();
   }
 };
@@ -1079,8 +1079,8 @@ TEST_F(
     GpuCompilerTest,
     FusionBlockLevelRewriterRewritesKLoopTransposeWithBitcastIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+, MI300+ or "
-                    "gfx1250 to run.";
+    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+, MI200, "
+                    "MI300/350, or gfx1250 to run.";
   }
 
   // If this test starts failing, then it's likely that this no longer generates
@@ -1227,6 +1227,40 @@ ENTRY main {
   EXPECT_EQ(async_start_thunk->thunks().size(), 1);
   EXPECT_THAT(async_start_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kCublasLtMatmul)));
+}
+
+TEST_F(GpuCompilerTest, SanitizesConstantNamesInParallelExecutionThread) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+f {
+  ROOT c.1 = f32[] constant(41)
+}
+
+ENTRY main {
+  ROOT call = f32[] call(),
+    to_apply=f,
+    frontend_attributes={_xla_stream_annotation="1"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  compile_options.early_exit_with_layouts = false;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(optimized_module),
+                             /*executor=*/nullptr, compile_options));
 }
 
 TEST_F(GpuCompilerTest, StreamAnnotationThunkTestFDO) {
@@ -1450,8 +1484,8 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
 
 TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "fusion-dispatch requires Ampere+, MI300+ or gfx1250 to "
-                    "run.";
+    GTEST_SKIP() << "fusion-dispatch requires Ampere+, MI200, MI300/350, or "
+                    "gfx1250 to run.";
   }
 
   DebugOptions debug_options = GetDebugOptionsForTest();

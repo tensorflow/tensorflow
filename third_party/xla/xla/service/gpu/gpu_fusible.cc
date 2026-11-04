@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -1198,6 +1199,50 @@ bool ContainsSignificantReduce(const HloInstruction& instr,
     return ContainsSignificantReduceNoCache(instr);
   }
   return cache->ContainsSignificantReduce(instr);
+}
+
+namespace {
+
+std::optional<int64_t> MinReduceInputElementsNoCache(
+    const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kReduce) {
+    if (instr.operand_count() == 0 || !instr.operand(0)->shape().IsArray() ||
+        instr.operand(0)->shape().is_unbounded_dynamic()) {
+      return std::nullopt;
+    }
+    int64_t elements = ShapeUtil::ElementsIn(instr.operand(0)->shape());
+    return elements > 0 ? std::make_optional(elements) : std::nullopt;
+  }
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return std::nullopt;
+  }
+  std::optional<int64_t> min_elements;
+  for (const HloInstruction* node :
+       instr.fused_instructions_computation()->instructions()) {
+    std::optional<int64_t> node_min = MinReduceInputElementsNoCache(*node);
+    if (node_min.has_value()) {
+      min_elements = min_elements.has_value()
+                         ? std::min(*min_elements, *node_min)
+                         : node_min;
+    }
+  }
+  return min_elements;
+}
+
+}  // namespace
+
+std::optional<int64_t> FusionInfoCache::GetMinReduceInputElements(
+    const HloInstruction& instr) {
+  return GetOrCompute(instr, &FusionInfoCache::min_reduce_input_elements_,
+                      [&]() { return MinReduceInputElementsNoCache(instr); });
+}
+
+std::optional<int64_t> GetMinReduceInputElements(
+    const HloInstruction& instr, FusionInfoCache* absl_nullable cache) {
+  if (cache == nullptr) {
+    return MinReduceInputElementsNoCache(instr);
+  }
+  return cache->GetMinReduceInputElements(instr);
 }
 
 }  // namespace gpu

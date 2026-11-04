@@ -596,6 +596,7 @@ cc_library(
     hdrs = ["command_buffer_thunk.h"],
     deps = [
         ":annotation",
+        ":collective_cliques",
         ":collective_memory",
         ":command",
         ":command_executor",
@@ -613,6 +614,7 @@ cc_library(
         "//xla/stream_executor/gpu:scoped_command_buffer_annotation",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/util:tied_ref",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:function_ref",

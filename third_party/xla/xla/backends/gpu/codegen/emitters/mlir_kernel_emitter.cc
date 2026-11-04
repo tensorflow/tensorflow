@@ -56,10 +56,12 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
+#include "mlir/Dialect/LLVMIR/Transforms/Passes.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -93,6 +95,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
@@ -556,9 +559,8 @@ MlirKernelEmitter::CreateMLIRModule(
     MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  mlir::OpBuilder builder(&mlir_context);
-  auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
-  mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(
+      emitters::GetInstructionLocation(fusion, &mlir_context));
 
   ABSL_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
                    emitters::EmitKernelApi(*module, fusion, buffer_assignment,
@@ -780,6 +782,11 @@ absl::StatusOr<MlirKernelSource> CompileMlirToLlvmDialect(
     pm.addPass(createInsertPDLPass());
   }
   AddLoweringPasses(pm, device);
+  if (emitters::IsLineInfoEnabled(hlo_module.config().debug_options())) {
+    mlir::LLVM::DIScopeForLLVMFuncOpPassOptions di_options;
+    di_options.emissionKind = mlir::LLVM::DIEmissionKind::DebugDirectivesOnly;
+    pm.addPass(mlir::LLVM::createDIScopeForLLVMFuncOpPass(di_options));
+  }
 
   ABSL_RETURN_IF_ERROR(
       RunPassPipeline(module.get(), hlo_module, pm, entry_function_name));

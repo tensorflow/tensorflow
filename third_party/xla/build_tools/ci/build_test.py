@@ -72,6 +72,7 @@ class BuildTest(parameterized.TestCase):
       self.assertNotIn("remote_download_toplevel", builds[build_type].options)
     for build_type in (
         build.BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
+        build.BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
         build.BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     ):
       self.assertIs(

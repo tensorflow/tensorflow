@@ -783,7 +783,8 @@ absl::Status RunOptimizationPasses(
   }
   pipeline.AddPass<RaggedDotRewriter>(
       gpu_version,
-      se::dnn::VersionInfo(gpu_target_config.device_description.dnn_version()));
+      se::dnn::VersionInfo(gpu_target_config.device_description.dnn_version()),
+      gpu_target_config.device_description.runtime_version());
   pipeline.AddPass<ScaledDotRewriter>([&compiler, &gpu_target_config](
                                           const HloInstruction* instr) {
     return !compiler.IsScaledDotSupportedByBackend(instr, gpu_target_config);
@@ -3230,7 +3231,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   // fusions are validated there.
   if ((cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) ||
       (rocm_cc != nullptr &&
-       (rocm_cc->gfx9_mi300_series() || rocm_cc->gfx1250()))) {
+       (rocm_cc->gfx9_mi200() || rocm_cc->gfx9_mi300_series() ||
+        rocm_cc->gfx1250()))) {
     // This needs to run after every pass affecting fusions. The last passes
     // that create new fusions are FusionWrapper and StreamAttributeAnnotator.
     main_pipeline.AddPass<HloPassPipeline>(

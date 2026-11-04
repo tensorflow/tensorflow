@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_THREAD_BLOCK_SPECIALIZED_H_
 #define XLA_BACKENDS_GPU_CODEGEN_THREAD_BLOCK_SPECIALIZED_H_
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Pass/PassManager.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/llvm_kernel_source.h"
@@ -86,6 +88,16 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
   std::vector<NestedKernelSpec> nested_kernels_;
   LaunchDimensions launch_dimensions_;
 };
+
+std::string GetNestedKernelFunctionName(absl::string_view entry_function_name,
+                                        size_t index);
+absl::Status RunPassManager(mlir::ModuleOp module, mlir::PassManager& pm);
+absl::Status LowerLauncherModuleToLlvmDialect(
+    mlir::ModuleOp launcher_module, const se::DeviceDescription& device_info,
+    bool should_verify);
+absl::Status SpliceNestedKernelModuleIntoLauncher(
+    mlir::ModuleOp launcher_module, mlir::ModuleOp nested_module,
+    absl::string_view nested_fn_name);
 
 }  // namespace xla::gpu
 
