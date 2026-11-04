@@ -157,6 +157,7 @@ xla_cc_test(
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",

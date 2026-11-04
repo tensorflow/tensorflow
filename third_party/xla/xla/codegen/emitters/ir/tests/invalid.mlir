@@ -32,6 +32,16 @@ func.func @apply_indexing(%d0: index, %d1: index, %s0: index) -> (index, index) 
 
 // -----
 
+#map0 = #xla.indexing_map<"(d0, d1) -> (d0, d1), domain: d0 in [0, 7], d1 in [0, 7]">
+func.func @apply_indexing_multi_result_xla_range(%d0: index, %d1: index)
+    -> (index, index) {
+  // expected-error @+1 {{'xla.range' is only supported on single-result ops, but the op has 2 results}}
+  %0:2 = xla.apply_indexing #map0 (%d0, %d1) {xla.range = [0 : index, 7 : index]}
+  func.return %0#0, %0#1 : index, index
+}
+
+// -----
+
 #map = #xla.indexing_map<"()[s0, s1] -> (s0, s1), domain: s0 in [0, 1024], s1 in [0, 32]">
 func.func @loop_result_num_mismatch(%input: tensor<1024x32xf32>,
     %init: f32) -> (f32) {

@@ -37,10 +37,12 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -2041,6 +2044,52 @@ ENTRY main {
         [&]() { status = Run(hlo, "// CHECK: @main_v500"); }));
   }
   EXPECT_OK(status);
+}
+
+TEST_F(ElementalHloToMlirTest, ApplyIndexingPreservesTighterResultRanges) {
+  mlir::ImplicitLocOpBuilder b(mlir::UnknownLoc::get(&mlir_context_),
+                               &mlir_context_);
+  auto module = llvm_ir::CreateMlirModuleOp(b.getLoc());
+  b.setInsertionPointToStart(module->getBody());
+  auto index_type = b.getIndexType();
+  auto func = mlir::func::FuncOp::create(
+      b, "test_fn", b.getFunctionType({index_type, index_type}, {}));
+  func.setArgAttr(0, "xla.range", b.getIndexArrayAttr({0, 15}));
+  func.setArgAttr(1, "xla.range", b.getIndexArrayAttr({0, 7}));
+  mlir::Block* entry = func.addEntryBlock();
+  b.setInsertionPointToStart(entry);
+  mlir::Value wide_pid = entry->getArgument(0);
+  mlir::Value narrow_pid = entry->getArgument(1);
+
+  IndexingMap narrowed_map(
+      SymbolicMap::Get(&mlir_context_, /*num_dimensions=*/1, /*num_symbols=*/0,
+                       {CreateDimExpr(0, &mlir_context_)}),
+      {IndexingMap::Variable{{0, 7}, "d0"}}, /*range_vars=*/{}, /*rt_vars=*/{});
+
+  // Default (`preserve_result_ranges = false`) folds back to `wide_pid`.
+  auto folded_results =
+      ApplyIndexing(narrowed_map, {wide_pid}, /*symbols=*/{}, b);
+  ASSERT_EQ(folded_results.size(), 1);
+  EXPECT_EQ(folded_results[0], wide_pid);
+  EXPECT_EQ(GetRange(folded_results[0]), (Interval{0, 15}));
+
+  // `preserve_result_ranges = true` keeps an unfolded `ApplyIndexingOp` with
+  // `xla.range` when the map's range is strictly narrower than the operand's.
+  auto preserved_results =
+      ApplyIndexing(narrowed_map, {wide_pid}, /*symbols=*/{}, b,
+                    /*preserve_result_ranges=*/true);
+  ASSERT_EQ(preserved_results.size(), 1);
+  EXPECT_NE(preserved_results[0], wide_pid);
+  EXPECT_NE(preserved_results[0].getDefiningOp<ApplyIndexingOp>(), nullptr);
+  EXPECT_EQ(GetRange(preserved_results[0]), (Interval{0, 7}));
+
+  // When the operand's range is already contained in the map's range, it still
+  // folds directly to `narrow_pid`.
+  auto redundant_results =
+      ApplyIndexing(narrowed_map, {narrow_pid}, /*symbols=*/{}, b,
+                    /*preserve_result_ranges=*/true);
+  ASSERT_EQ(redundant_results.size(), 1);
+  EXPECT_EQ(redundant_results[0], narrow_pid);
 }
 
 }  // namespace

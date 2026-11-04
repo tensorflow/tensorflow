@@ -666,13 +666,29 @@ SmallVector<Value, 1> MapElementwiseOp(
 }  // namespace
 
 SmallVector<Value, 3> ApplyIndexing(IndexingMap map, ValueRange dims,
-                                    ValueRange symbols,
-                                    ImplicitLocOpBuilder& b) {
+                                    ValueRange symbols, ImplicitLocOpBuilder& b,
+                                    bool preserve_result_ranges) {
   SmallVector<Value, 3> results;
+  results.reserve(map.GetNumResults());
+  bool should_preserve_ranges = preserve_result_ranges && !map.IsKnownEmpty();
+  SmallVector<Interval> result_ranges;
+  if (should_preserve_ranges) {
+    result_ranges = map.ComputeResultRanges();
+  }
   for (unsigned int i = 0; i < map.GetNumResults(); ++i) {
-    SmallVector<Value, 1> result;
     IndexingMap sub_map = map.GetSubMap(i);
-    b.createOrFold<ApplyIndexingOp>(result, dims, symbols, std::move(sub_map));
+    // Annotating the op with `xla.range` keeps `ApplyIndexingOp::fold` from
+    // folding it to an operand whose range is not contained in `result_range`.
+    std::optional<Interval> result_range;
+    if (should_preserve_ranges &&
+        sub_map.GetSymbolicMap().GetResult(0).GetType() ==
+            SymbolicExprType::kVariable &&
+        result_ranges[i].IsFeasible() && !result_ranges[i].IsUnconstrained()) {
+      result_range = result_ranges[i];
+    }
+    SmallVector<Value, 1> result;
+    b.createOrFold<ApplyIndexingOp>(result, dims, symbols, std::move(sub_map),
+                                    result_range);
     results.append(result);
   }
   return results;
