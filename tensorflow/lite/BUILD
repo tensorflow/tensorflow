@@ -440,6 +440,7 @@ cc_library(
 #         "@tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
 #         "@tsl//tsl/profiler/lib:traceme",
 #         "@tsl//tsl/profiler/lib:traceme_encode",
+#         "//third_party/tcmalloc:malloc_hook",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/base:core_headers",
 #         "@com_google_absl//absl/debugging:stacktrace",
