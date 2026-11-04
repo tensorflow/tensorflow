@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/decision.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -228,6 +229,13 @@ bool DoesTileFitInRegisters(int64_t tile_size,
           ? kFractionOfRegistersEstimatedForBoundaryAndIotaTiles
           : 1.0;
 
+  // Number of 32-bit registers needed to store 1 element of the tile. 64-bit
+  // types use two registers per element. Sub-32-bit types are unpacked to one
+  // value per register.
+  int64_t num_registers_per_element = CeilOfRatio(
+      primitive_util::BitWidth(GetFirstShape(tiled_hlo.hlo()).element_type()),
+      32);
+
   // Register allocation happens at PTX->SASS level, so we can't know the exact
   // number of registers used by a kernel. We make a few assumptions about the
   // kernel we will generate (this may not hold in the future):
@@ -241,13 +249,9 @@ bool DoesTileFitInRegisters(int64_t tile_size,
   // TODO(b/363194951): Check how many registers we need for scratch memory
   // for indexing computation and expensive instructions like exponential or
   // cosine.
-  //
-  // TODO(b/363194951): Check how the number of registers used depends on the
-  // data type. `registers_per_block_limit()` returns the number of 32-bit
-  // registers. Check if 64-bit types need twice as many registers. Check if
-  // smaller types can fit into one register.
-  return tile_size <= fraction_of_registers_available *
-                          device_info.registers_per_block_limit();
+  return num_registers_per_element * tile_size <=
+         fraction_of_registers_available *
+             device_info.registers_per_block_limit();
 }
 
 // How the instructions of a region are executed relative to the root of the
