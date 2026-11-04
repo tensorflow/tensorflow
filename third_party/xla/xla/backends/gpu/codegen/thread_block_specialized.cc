@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/loop.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
@@ -502,16 +503,18 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
             IsPdlEnabled(fusion.GetModule()->config().debug_options(),
                          ir_emitter_context.gpu_compute_capability());
 
+        GpuKernelSpec spec{std::move(kernel_name), std::move(launch_dims), args,
+                           std::nullopt, use_pdl};
         return ir_emitter_context.kernel_compiler()
-            ->CompileToTargetBinary(LlvmKernelSource(std::move(safe_module)))
-            .Map([kernel_name = std::move(kernel_name),
-                  launch_dims = std::move(launch_dims),
-                  use_pdl](const std::vector<uint8_t>& cubin) mutable {
+            ->CompileToTargetBinary(LlvmKernelSource(std::move(safe_module)),
+                                    spec)
+            .Map([spec = std::move(spec)](
+                     const std::vector<uint8_t>& cubin) mutable {
               KernelReuseCache::Entry entry{
-                  std::move(kernel_name), launch_dims,
+                  std::string{spec.name()}, spec.launch_dimensions(),
                   /*cluster_dim=*/std::nullopt, /*shmem_bytes=*/0,
                   std::make_shared<const std::vector<uint8_t>>(cubin)};
-              entry.use_pdl = use_pdl;
+              entry.use_pdl = spec.use_pdl();
               return entry;
             });
       });

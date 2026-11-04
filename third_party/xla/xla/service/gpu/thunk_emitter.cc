@@ -58,6 +58,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
@@ -616,19 +617,13 @@ Future<ThunkSequence> ThunkEmitter::EmitPadToStatic(
                        GetDefaultBufferAlignment(), instr));
 
   ABSL_ASSIGN_OR_RETURN(
-      KernelDefinition<LlvmKernelSource> kernel_def,
+      (KernelDefinition<LlvmKernelSource, GpuKernelSpec> kernel_def),
       EmitPadToStaticLLVMIR(instr, ir_emitter_context_, kernel_arguments));
-
-  KernelSpec spec = kernel_def.spec();
-  ABSL_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      LaunchDimensions::FromWorkDimensions(spec.work_dimensions()));
 
   return ir_emitter_context_->kernel_compiler()
       ->Compile(Thunk::ThunkInfo::WithProfileAnnotation(
                     instr, ir_emitter_context_->GetNextThunkId()),
-                std::move(kernel_def).TakeSource(),
-                GpuKernelSpec(spec.name(), launch_dimensions, kernel_arguments))
+                std::move(kernel_def))
       .Map([](auto thunk) { return ThunkSequence::Of(std::move(thunk)); });
 }
 
@@ -641,19 +636,13 @@ Future<ThunkSequence> ThunkEmitter::EmitSliceToDynamic(
                        ir_emitter_context_->buffer_assignment(),
                        GetDefaultBufferAlignment(), instr));
   ABSL_ASSIGN_OR_RETURN(
-      KernelDefinition<LlvmKernelSource> kernel_def,
+      (KernelDefinition<LlvmKernelSource, GpuKernelSpec> kernel_def),
       EmitSliceToDynamicLLVMIR(instr, ir_emitter_context_, kernel_arguments));
-
-  KernelSpec spec = kernel_def.spec();
-  ABSL_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      LaunchDimensions::FromWorkDimensions(spec.work_dimensions()));
 
   return ir_emitter_context_->kernel_compiler()
       ->Compile(Thunk::ThunkInfo::WithProfileAnnotation(
                     instr, ir_emitter_context_->GetNextThunkId()),
-                std::move(kernel_def).TakeSource(),
-                GpuKernelSpec(spec.name(), launch_dimensions, kernel_arguments))
+                std::move(kernel_def))
       .Map([](auto thunk) { return ThunkSequence::Of(std::move(thunk)); });
 }
 
@@ -1678,21 +1667,23 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
               gpu_device_info, launch_dimensions, kernel,
               local_module.getModuleUnlocked()));
 
+          GpuKernelSpec spec{
+              std::move(kernel_name), std::move(launch_dimensions),
+              kernel_arguments,       result.shmem_bytes,
+              result.use_pdl,         result.tma_metadata};
           return kernel_compiler
-              ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)})
-              .Map([use_pdl = result.use_pdl, shmem_bytes = result.shmem_bytes,
-                    launch_dimensions = std::move(launch_dimensions),
-                    tma_metadata = result.tma_metadata,
-                    kernel_name = std::move(kernel_name)](
+              ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)},
+                                      spec)
+              .Map([spec = std::move(spec)](
                        const std::vector<uint8_t>& cubin) mutable {
                 return KernelReuseCache::Entry{
-                    std::move(kernel_name),
-                    launch_dimensions,
+                    std::string{spec.name()},
+                    spec.launch_dimensions(),
                     /*cluster_dim=*/std::nullopt,
-                    shmem_bytes,
+                    static_cast<int64_t>(*spec.scratch_bytes()),
                     std::make_shared<const std::vector<uint8_t>>(cubin),
-                    tma_metadata,
-                    use_pdl};
+                    spec.tma_metadata(),
+                    spec.use_pdl()};
               });
         });
   };
@@ -2076,20 +2067,14 @@ Future<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateState(
                        ir_emitter_context_->buffer_assignment(),
                        GetDefaultBufferAlignment(), instr));
 
-  ABSL_ASSIGN_OR_RETURN(KernelDefinition<LlvmKernelSource> kernel_def,
+  ABSL_ASSIGN_OR_RETURN(GpuKernelDefinition kernel_def,
                    EmitRngGetAndUpdateStateLLVMIR(instr, ir_emitter_context_,
                                                   kernel_arguments));
-
-  KernelSpec spec = kernel_def.spec();
-  ABSL_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      LaunchDimensions::FromWorkDimensions(spec.work_dimensions()));
 
   return ir_emitter_context_->kernel_compiler()
       ->Compile(Thunk::ThunkInfo::WithProfileAnnotation(
                     instr, ir_emitter_context_->GetNextThunkId()),
-                std::move(kernel_def).TakeSource(),
-                GpuKernelSpec(spec.name(), launch_dimensions, kernel_arguments))
+                std::move(kernel_def))
       .Map([](auto thunk) { return ThunkSequence::Of(std::move(thunk)); });
 }
 

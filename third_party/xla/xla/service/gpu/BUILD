@@ -476,6 +476,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:fusions",
+        "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/backends/gpu/codegen:kernel_compiler",
         "//xla/backends/gpu/codegen:sort",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",

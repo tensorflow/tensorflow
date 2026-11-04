@@ -86,6 +86,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
@@ -101,7 +102,6 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/ir_printing.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/frontend_attributes.h"
@@ -136,8 +136,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/platform.h"
@@ -376,21 +374,22 @@ absl::Status AnnotateMlirKernelLlvmModule(
                                         kernel_func, module);
 }
 
-xla::Future<KernelDefinition<LlvmKernelSource>>
+xla::Future<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>
 MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
                                  const std::string& kernel_name,
+                                 const emitters::KernelArguments& args,
                                  IrEmitterContext& parent_context) const {
   return CreateLLVMModule(parent_context.gpu_device_info(), fusion, kernel_name,
                           &parent_context.buffer_assignment(),
                           parent_context.kernel_compiler(),
                           parent_context.BorrowMlirContext())
-      .Map([target_triple = parent_context.target_triple(),
-            buffer_assignment = &parent_context.buffer_assignment(),
+      .Map([args, target_triple = parent_context.target_triple(),
             &gpu_device_info = parent_context.gpu_device_info(), kernel_name,
             launch_dims = launch_dimensions(),
             data_layout = parent_context.data_layout(),
-            fusion = &fusion](LlvmKernelSource source)
-               -> absl::StatusOr<KernelDefinition<LlvmKernelSource>> {
+            fusion = &fusion](LlvmKernelSource source) mutable
+               -> absl::StatusOr<
+                   KernelDefinition<LlvmKernelSource, GpuKernelSpec>> {
         llvm::orc::ThreadSafeModule safe_module =
             std::move(source).thread_safe_module();
         llvm::Module* module = safe_module.getModuleUnlocked();
@@ -399,12 +398,15 @@ MlirKernelFusion::EmitLlvmModule(const HloFusionInstruction& fusion,
             gpu_device_info, launch_dims, kernel_name, data_layout,
             target_triple, module));
 
-        ABSL_ASSIGN_OR_RETURN(
-            KernelSpec kernel_spec,
-            emitters::GetKernelSpec(kernel_name, *fusion, buffer_assignment,
-                                    launch_dims.AsWorkDimensions()));
-        return KernelDefinition<LlvmKernelSource>(
-            std::move(kernel_spec), LlvmKernelSource{std::move(safe_module)});
+        bool use_pdl =
+            IsPdlEnabled(fusion->GetModule()->config().debug_options(),
+                         gpu_device_info.gpu_compute_capability());
+
+        return KernelDefinition<LlvmKernelSource, GpuKernelSpec>(
+            GpuKernelSpec{std::move(kernel_name), std::move(launch_dims),
+                          std::move(args), /*scratch_bytes=*/std::nullopt,
+                          use_pdl},
+            LlvmKernelSource{std::move(safe_module)});
       });
 }
 
@@ -412,40 +414,35 @@ AsyncThunkSequence MlirKernelFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   VLOG(4) << "Fusion: " << fusion.fused_instructions_computation()->ToString();
-  ABSL_ASSIGN_OR_RETURN(auto args, emitters::KernelArguments::Create(
-                                  ir_emitter_context.buffer_assignment(),
-                                  GetDefaultBufferAlignment(), &fusion));
+  ABSL_ASSIGN_OR_RETURN(
+      emitters::KernelArguments args,
+      emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
+                                        GetDefaultBufferAlignment(), &fusion));
   auto [future_entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
       fusion.fused_instructions_computation(), args.args(),
       /*discriminator=*/"MlirKernelFusion",
       [&]() -> xla::Future<KernelReuseCache::Entry> {
         std::string kernel_name = ir_emitter_context.GetSanitizedUniqueName(
             std::string(fusion.name()));
-        return EmitLlvmModule(fusion, kernel_name, ir_emitter_context)
-            .Map([&ir_emitter_context, &fusion,
-                  kernel_name = std::move(kernel_name)](
-                     KernelDefinition<LlvmKernelSource> kernel_def) mutable
+        return EmitLlvmModule(fusion, kernel_name, args, ir_emitter_context)
+            .Map([kernel_compiler = ir_emitter_context.kernel_compiler()](
+                     KernelDefinition<LlvmKernelSource, GpuKernelSpec>
+                         kernel_def) mutable
                      -> xla::Future<KernelReuseCache::Entry> {
-              KernelSpec spec = kernel_def.spec();
-              ABSL_ASSIGN_OR_RETURN(
-                  LaunchDimensions launch_dims,
-                  LaunchDimensions::FromWorkDimensions(spec.work_dimensions()));
+              GpuKernelSpec spec = kernel_def.spec();
 
-              bool use_pdl =
-                  IsPdlEnabled(fusion.GetModule()->config().debug_options(),
-                               ir_emitter_context.gpu_compute_capability());
-
-              return ir_emitter_context.kernel_compiler()
-                  ->CompileToTargetBinary(std::move(kernel_def).TakeSource())
-                  .Map([kernel_name = std::move(kernel_name),
-                        launch_dims = std::move(launch_dims),
-                        use_pdl](const std::vector<uint8_t>& cubin) mutable {
+              return kernel_compiler
+                  ->CompileToTargetBinary(std::move(kernel_def).TakeSource(),
+                                          spec)
+                  .Map([spec = std::move(spec)](
+                           const std::vector<uint8_t>& cubin) mutable {
                     KernelReuseCache::Entry entry{
-                        kernel_name, launch_dims, std::nullopt,
+                        std::string{spec.name()}, spec.launch_dimensions(),
+                        /*cluster_dim=*/std::nullopt,
                         /*shmem_bytes=*/0,
                         std::make_shared<const std::vector<uint8_t>>(cubin)};
 
-                    entry.use_pdl = use_pdl;
+                    entry.use_pdl = spec.use_pdl();
                     return entry;
                   });
             });

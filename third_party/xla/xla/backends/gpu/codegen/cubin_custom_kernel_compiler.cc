@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -83,8 +84,9 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLlvmImpl(
 }  // namespace
 
 xla::Future<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::Compile(
-    Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-    const GpuKernelSpec& kernel_spec) {
+    Thunk::ThunkInfo thunk_info, GpuKernelDefinition kernel_def) {
+  const GpuKernelSpec& kernel_spec = kernel_def.spec();
+  LlvmKernelSource kernel_source = std::move(kernel_def.source());
   if (!thread_pool_) {
     return CompileImpl(std::move(thunk_info), std::move(kernel_source),
                        kernel_spec.name(), kernel_spec.kernel_arguments(),
@@ -122,7 +124,7 @@ xla::Future<LlvmKernelSource> CubinCustomKernelCompiler::CompileMlirToLlvm(
 
 xla::Future<std::vector<uint8_t>>
 CubinCustomKernelCompiler::CompileToTargetBinary(
-    LlvmKernelSource kernel_source) {
+    LlvmKernelSource kernel_source, std::optional<GpuKernelSpec> kernel_spec) {
   if (!thread_pool_) {
     return CompileToCubinImpl(std::move(kernel_source));
   }

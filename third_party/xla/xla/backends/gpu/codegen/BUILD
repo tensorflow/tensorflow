@@ -261,6 +261,7 @@ cc_library(
     hdrs = ["thread_block_specialized.h"],
     deps = [
         ":fusion_emitter",
+        ":gpu_kernel_spec",
         ":kernel_compiler",
         "//xla:future",
         "//xla:status_macros",
@@ -347,6 +348,7 @@ cc_library(
     hdrs = ["sort.h"],
     deps = [
         ":fusion_emitter",
+        ":gpu_kernel_spec",
         ":kernel_compiler",
         "//xla:future",
         "//xla:shape_util",
@@ -421,9 +423,9 @@ cc_library(
         "//xla/backends/gpu/codegen/triton:triton_kernel_source",
         "//xla/backends/gpu/codegen/triton:triton_wrapper_result",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen:kernel_definition",
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
-        "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:mlir_context_pool",
@@ -432,7 +434,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:TargetParser",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -481,6 +482,7 @@ xla_cc_test(
     tags = ["gpu"],
     deps = [
         ":cubin_custom_kernel_compiler",
+        ":gpu_kernel_spec",
         ":kernel_compiler",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
