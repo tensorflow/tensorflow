@@ -835,6 +835,7 @@ cc_library(
         "//xla/backends/gpu/runtime:collective_memory_requests",
         "//xla/backends/gpu/runtime:collective_params",
         "//xla/backends/gpu/runtime:command_buffer_conversion_pass",
+        "//xla/backends/gpu/runtime:command_buffer_requests",
         "//xla/backends/gpu/runtime:execution_stream_id",
         "//xla/backends/gpu/runtime:per_device_state",
         "//xla/backends/gpu/runtime:sequential_thunk",

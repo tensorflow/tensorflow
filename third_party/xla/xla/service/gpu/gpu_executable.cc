@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -814,6 +815,7 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
+  CommandBufferRequests command_buffer_requests;
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
     Thunk::PrepareParams prepare_params{
@@ -823,7 +825,8 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         executor,
         &buffer_allocations,
         &execution_scoped_state,
-        run_options->run_options().custom_options()};
+        run_options->run_options().custom_options(),
+        &command_buffer_requests};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     ABSL_RETURN_IF_ERROR(thunk_executor.Prepare(prepare_params));
@@ -870,8 +873,9 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         run_options->run_options().custom_options(),
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count(),
-        &execution_scoped_state};
-    initialize_params.persistent_alloc_indices = persistent_alloc_indices;
+        &execution_scoped_state,
+        persistent_alloc_indices,
+        &command_buffer_requests};
 
     tsl::profiler::TraceMe trace_initialize("Thunks::Initialize");
     ABSL_RETURN_IF_ERROR(thunk_executor.Initialize(initialize_params));

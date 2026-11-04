@@ -152,6 +152,7 @@ cc_library(
     deps = [
         ":annotation",
         ":command",
+        ":command_buffer_requests",
         ":command_state",
         ":thunk",
         "//xla:util",
@@ -243,6 +244,7 @@ xla_cc_test(
     srcs = ["command_executor_test.cc"],
     deps = [
         ":command",
+        ":command_buffer_requests",
         ":command_executor",
         ":command_state",
         ":thunk",
@@ -605,6 +607,7 @@ cc_library(
         ":sequential_thunk",  # build_cleaner: keep
         ":thunk",
         ":thunk_proto_cc",
+        "//xla:status_macros",
         "//xla:util",
         "//xla/service:buffer_assignment",  # build_cleaner: keep
         "//xla/service/gpu:buffer_allocations",  # build_cleaner: keep
@@ -639,6 +642,7 @@ xla_test(
         ":annotation",
         ":command",
         ":command_buffer_cmd_emitter",
+        ":command_buffer_requests",
         ":command_buffer_thunk",
         ":command_executor",
         ":conditional_thunk",
@@ -1057,6 +1061,7 @@ cc_library(
         ":collective_memory",
         ":collective_params",
         ":command",
+        ":command_buffer_requests",
         ":command_state",
         ":per_device_state",
         ":record_ffi",
@@ -1150,6 +1155,7 @@ xla_test(
         ":collective_memory_requests",
         ":collective_params",
         ":command",
+        ":command_buffer_requests",
         ":command_state",
         ":custom_call_thunk",
         ":thunk",
@@ -1545,6 +1551,7 @@ xla_test(
     deps = [
         ":command",
         ":command_buffer_cmd_emitter",
+        ":command_buffer_requests",
         ":command_buffer_thunk",
         ":command_executor",
         ":command_state",
@@ -2855,7 +2862,10 @@ cc_library(
     name = "command_buffer_requests",
     hdrs = ["command_buffer_requests.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@com_google_absl//absl/container:node_hash_map"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 cc_library(
@@ -3729,6 +3739,7 @@ cc_library(
         ":collective_memory",
         ":collective_memory_requests",
         ":collective_params",
+        ":command_buffer_requests",
         ":thunk_id",
         ":thunk_kind_proto_cc",
         ":thunk_proto_cc",
@@ -4068,6 +4079,7 @@ xla_test(
     deps = [
         ":collective_params",
         ":command",
+        ":command_buffer_requests",
         ":command_buffer_thunk",
         ":command_executor",
         ":command_state",

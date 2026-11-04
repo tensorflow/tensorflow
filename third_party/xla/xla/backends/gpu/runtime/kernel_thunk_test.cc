@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
@@ -506,6 +507,7 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
                                .cuda_ptx_in_memory()
                                .value()
                                .ptx;
+  CommandBufferRequests command_buffer_requests;
   Thunk::InitializeParams initialize_params;
   initialize_params.executor = executor;
   initialize_params.src = executable_source;
@@ -517,6 +519,7 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
 
   initialize_params.buffer_allocations = &buffer_allocations;
   initialize_params.persistent_alloc_indices.emplace();
+  initialize_params.command_buffer_requests = &command_buffer_requests;
 
   ServiceExecutableRunOptions run_options;
   run_options.mutable_run_options()->set_stream(stream.get());

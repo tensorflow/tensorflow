@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
@@ -412,10 +413,12 @@ TEST(CommandBufferThunkTest, AbsentPersistentAllocIndicesFallsBackToThunks) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, /*device_ordinal=*/0, &allocator);
 
+  CommandBufferRequests command_buffer_requests;
   Thunk::InitializeParams initialize_params;
   initialize_params.executor = stream_executor;
   initialize_params.buffer_allocations = &allocations;
   initialize_params.stream = stream.get();
+  initialize_params.command_buffer_requests = &command_buffer_requests;
 
   // With absent persistent allocation indices, initialization skips command
   // buffer creation and execution falls back to the thunk sequence.
@@ -1908,6 +1911,154 @@ TEST_F(CommandBufferThunkTelemetryTest, TelemetryRegistersAnnotations) {
 
     thunk.reset();
     EXPECT_TRUE(registry().empty());
+  }
+}
+
+namespace {
+
+class DynamicWarmupCopyThunk : public CountingDeviceToDeviceCopyThunk {
+ public:
+  DynamicWarmupCopyThunk(Thunk::ThunkInfo thunk_info,
+                         const ShapedSlice& source_buffer,
+                         const ShapedSlice& destination_buffer,
+                         int64_t mem_size, int* record_count, int* exec_count,
+                         bool requires_warmup_in_prepare)
+      : CountingDeviceToDeviceCopyThunk(std::move(thunk_info), source_buffer,
+                                        destination_buffer, mem_size,
+                                        record_count),
+        exec_count_(exec_count),
+        requires_warmup_in_prepare_(requires_warmup_in_prepare) {}
+
+  absl::Status Prepare(const PrepareParams& params) override {
+    if (params.command_buffer_requests != nullptr) {
+      params.command_buffer_requests->SetRequiresWarmup(
+          this, requires_warmup_in_prepare_);
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    ++*exec_count_;
+    requires_warmup_in_prepare_ = false;
+    return CountingDeviceToDeviceCopyThunk::ExecuteOnStream(params);
+  }
+
+ private:
+  int* exec_count_;
+  bool requires_warmup_in_prepare_;
+};
+
+}  // namespace
+
+TEST(CommandBufferThunkTest, DynamicWarmupRequestInPrepare) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  constexpr int64_t kLength = 4;
+  constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
+  Shape shape = ShapeUtil::MakeShape(S32, {kLength});
+
+  se::DeviceAddress<int32_t> a =
+      stream_executor->AllocateArray<int32_t>(kLength, 0);
+  se::DeviceAddress<int32_t> b =
+      stream_executor->AllocateArray<int32_t>(kLength, 0);
+  ASSERT_OK(stream->Memset32(&a, 42, kByteLength));
+  ASSERT_OK(stream->MemZero(&b, kByteLength));
+
+  BufferAllocation source(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation destination(/*index=*/1, kByteLength, /*color=*/0);
+  BufferAllocation::Slice source_slice(&source, 0, kByteLength);
+  BufferAllocation::Slice destination_slice(&destination, 0, kByteLength);
+
+  int record_count = 0;
+  int exec_count = 0;
+  auto copy_thunk = std::make_unique<DynamicWarmupCopyThunk>(
+      Thunk::ThunkInfo(), ShapedSlice{source_slice, shape},
+      ShapedSlice{destination_slice, shape}, kByteLength, &record_count,
+      &exec_count, /*requires_warmup_in_prepare=*/true);
+
+  CommandSequence commands;
+  commands.Append(copy_thunk.get());
+  ASSERT_OK_AND_ASSIGN(CommandExecutor executor,
+                       CommandExecutor::Create(std::move(commands), serialize));
+  EXPECT_FALSE(executor.requires_warmup({}));
+
+  ThunkSequence fallback_thunks;
+  fallback_thunks.push_back(std::move(copy_thunk));
+  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
+                           /*devices_in_process=*/1,
+                           std::make_unique<SequentialThunk>(
+                               Thunk::ThunkInfo(), std::move(fallback_thunks)));
+
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
+  ServiceExecutableRunOptions run_options;
+  BufferAllocations allocations({a, b}, /*device_ordinal=*/0, &allocator);
+  std::vector<BufferAllocation::Index> persistent_alloc_indices = {0, 1};
+
+  // Step 1: Prepare requests warmup -> Initialize skips recording ->
+  // ExecuteOnStream runs fallback thunk sequence.
+  {
+    Thunk::ExecutionScopedState scoped_state;
+    CommandBufferRequests command_buffer_requests;
+    Thunk::PrepareParams prepare_params{};
+    prepare_params.executor = stream_executor;
+    prepare_params.buffer_allocations = &allocations;
+    prepare_params.execution_scoped_state = &scoped_state;
+    prepare_params.command_buffer_requests = &command_buffer_requests;
+    ASSERT_OK(thunk.Prepare(prepare_params));
+
+    Thunk::InitializeParams init_params{};
+    init_params.executor = stream_executor;
+    init_params.buffer_allocations = &allocations;
+    init_params.stream = stream.get();
+    init_params.command_buffer_trace_stream = stream.get();
+    init_params.execution_scoped_state = &scoped_state;
+    init_params.persistent_alloc_indices =
+        absl::MakeConstSpan(persistent_alloc_indices);
+    init_params.command_buffer_requests = &command_buffer_requests;
+    ASSERT_OK(thunk.Initialize(init_params));
+    EXPECT_EQ(record_count, 0);
+
+    Thunk::ExecuteParams exec_params =
+        CreateExecuteParams(run_options, allocations, stream.get(),
+                            absl::MakeConstSpan(persistent_alloc_indices));
+    ASSERT_OK(thunk.ExecuteOnStream(exec_params));
+    ASSERT_OK(stream->BlockHostUntilDone());
+    EXPECT_EQ(exec_count, 1);
+    EXPECT_EQ(record_count, 0);
+  }
+
+  // Step 2: Now warmup_done is true -> Initialize records command buffer ->
+  // ExecuteOnStream submits command buffer without calling fallback thunks.
+  {
+    Thunk::ExecutionScopedState scoped_state;
+    CommandBufferRequests command_buffer_requests;
+    Thunk::PrepareParams prepare_params{};
+    prepare_params.executor = stream_executor;
+    prepare_params.buffer_allocations = &allocations;
+    prepare_params.execution_scoped_state = &scoped_state;
+    prepare_params.command_buffer_requests = &command_buffer_requests;
+    ASSERT_OK(thunk.Prepare(prepare_params));
+
+    Thunk::InitializeParams init_params{};
+    init_params.executor = stream_executor;
+    init_params.buffer_allocations = &allocations;
+    init_params.stream = stream.get();
+    init_params.command_buffer_trace_stream = stream.get();
+    init_params.execution_scoped_state = &scoped_state;
+    init_params.persistent_alloc_indices =
+        absl::MakeConstSpan(persistent_alloc_indices);
+    init_params.command_buffer_requests = &command_buffer_requests;
+    ASSERT_OK(thunk.Initialize(init_params));
+    EXPECT_EQ(record_count, 1);
+
+    Thunk::ExecuteParams exec_params =
+        CreateExecuteParams(run_options, allocations, stream.get(),
+                            absl::MakeConstSpan(persistent_alloc_indices));
+    ASSERT_OK(thunk.ExecuteOnStream(exec_params));
+    ASSERT_OK(stream->BlockHostUntilDone());
+    EXPECT_EQ(exec_count, 1);
+    EXPECT_EQ(record_count, 1);
   }
 }
 
