@@ -342,6 +342,7 @@ CompiledIfrtIrProgram::Create(
   if (ifrt_ir_program->OwnsMlirContext()) {
     auto context = std::make_unique<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
+    context->enableThreadSafeLocking();
     ABSL_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
                      CloneModuleIntoContext(mlir_module, *context));
     ifrt_ir_program = std::make_unique<xla::ifrt::IfrtIRProgram>(
