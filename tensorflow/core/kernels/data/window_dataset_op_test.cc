@@ -12,6 +12,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/window_dataset_op.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
