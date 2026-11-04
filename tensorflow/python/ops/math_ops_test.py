@@ -1844,13 +1844,16 @@ class ScalarCoercionTest(test_util.TensorFlowTestCase):
         [2.0, 4.0, 8.0],
     )
 
-    # Negative test: Mismatched tensor dtypes must still raise TypeError / InvalidArgumentError
+    # Negative test: Mismatched tensor dtypes must still raise
+    # TypeError or InvalidArgumentError.
     y_int = constant_op.constant(2, dtype=dtypes.int32)
     with self.assertRaises((errors.InvalidArgumentError, TypeError)):
       self.evaluate(math_ops.pow(y_int, x))
 
-    # Negative test: Incompatible non-numeric type raises ValueError or TypeError
-    with self.assertRaises((errors.InvalidArgumentError, TypeError, ValueError)):
+    # Negative test: Incompatible non-numeric type raises ValueError/TypeError.
+    with self.assertRaises(
+        (errors.InvalidArgumentError, TypeError, ValueError)
+    ):
       self.evaluate(math_ops.pow("invalid", x))
 
 
