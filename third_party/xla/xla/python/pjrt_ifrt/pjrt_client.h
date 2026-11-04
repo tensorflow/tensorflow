@@ -273,6 +273,14 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> CopyArraySlices(
+      absl::Span<const ArrayRef> arrays,
+      absl::Span<const IndexDomain> index_domains) override;
+
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> UpdateArraySlices(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArrayRef> slices,
+      absl::Span<const Index> origins) override;
+
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
   tsl::Future<> DeleteValues(absl::Span<ValueRef> values) override;

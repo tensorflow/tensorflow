@@ -405,9 +405,9 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
       return mlir::success();
     }
 
-    if (TdmAllowed(
-            CanUseTdm(allow_tdm_, src_shape, sizes, strides, src_layout,
-                      tile_type.getElementType().getIntOrFloatBitWidth()))) {
+    if (TdmAllowed(CanUseTdm(
+            allow_tdm_, src_shape, sizes, strides, src_layout, offsets,
+            tile_type.getElementType().getIntOrFloatBitWidth()))) {
       SmallVector<int64_t> singleton_dims =
           GetSingletonTileDims(sizes, src_layout);
       TdmDescriptorOperands operands(op.getSrc(), src_shape, src_layout, sizes,
@@ -554,7 +554,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
           builder, cast_to_tensor_desc.getResult(0), src,
           xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
     } else if (TdmAllowed(CanUseTdm(
-                   allow_tdm_, dst_shape, sizes, strides, dst_layout,
+                   allow_tdm_, dst_shape, sizes, strides, dst_layout, offsets,
                    tile_type.getElementType().getIntOrFloatBitWidth()))) {
       SmallVector<int64_t> singleton_dims =
           GetSingletonTileDims(sizes, dst_layout);

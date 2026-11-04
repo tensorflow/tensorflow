@@ -15,19 +15,25 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/literal_test_util.h"
 
 namespace xla::gpu {
 namespace {
@@ -232,6 +238,188 @@ TEST_F(
   )";
   ASSERT_OK_AND_ASSIGN(bool matched, RunFileCheck(m->ToString(), kPattern));
   EXPECT_TRUE(matched);
+}
+
+TEST_F(GpuAlgebraicSimplifierTest, SimplifyOneHotReduceSumToGather) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+
+    add_f32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      idx = s32[32768] parameter(0)
+      weights = f32[2048,512] parameter(1)
+      bcast_idx = s32[32768,512] broadcast(idx), dimensions={0}
+      iota = s32[32768,512] iota(), iota_dimension=1
+      eq = pred[32768,512] compare(bcast_idx, iota), direction=EQ
+      bcast_w = f32[1,2048,16,512] broadcast(weights), dimensions={1,3}
+      reshape_w = f32[32768,512] reshape(bcast_w)
+      zero = f32[] constant(0)
+      bcast_zero = f32[32768,512] broadcast(zero), dimensions={}
+      sel = f32[32768,512] select(eq, reshape_w, bcast_zero)
+      ROOT red = f32[32768] reduce(sel, zero), dimensions={1}, to_apply=add_f32
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  ASSERT_THAT(GpuAlgebraicSimplifier(options, Hopper()).Run(m.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Select(
+          m::And(m::Compare(m::Parameter(0), m::Broadcast(m::Constant())),
+                 m::Compare(m::Parameter(0), m::Broadcast(m::Constant()))),
+          m::Gather(m::Reshape(m::Broadcast(m::Parameter(1))),
+                    m::Concatenate(m::Iota(), m::Reshape(m::Parameter(0)))),
+          m::Broadcast(m::Constant()))));
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       SimplifyOneHotReduceSumPeelsBroadcastOnTrue) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+
+    add_f32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      idx = s32[16,2048] parameter(0)
+      weights = f32[2048,512] parameter(1)
+      bcast_idx = s32[16,2048,512] broadcast(idx), dimensions={0,1}
+      iota = s32[16,2048,512] iota(), iota_dimension=2
+      eq = pred[16,2048,512] compare(bcast_idx, iota), direction=EQ
+      bcast_w = f32[16,2048,512] broadcast(weights), dimensions={1,2}
+      zero = f32[] constant(0)
+      bcast_zero = f32[16,2048,512] broadcast(zero), dimensions={}
+      sel = f32[16,2048,512] select(eq, bcast_w, bcast_zero)
+      ROOT red = f32[16,2048] reduce(sel, zero), dimensions={2}, to_apply=add_f32
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  ASSERT_THAT(GpuAlgebraicSimplifier(options, Hopper()).Run(m.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Select(
+          m::And(m::Compare(m::Parameter(0), m::Broadcast(m::Constant())),
+                 m::Compare(m::Parameter(0), m::Broadcast(m::Constant()))),
+          m::Gather(m::Parameter(1),
+                    m::Concatenate(m::Iota(), m::Reshape(m::Parameter(0)))),
+          m::Broadcast(m::Constant()))));
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       SimplifyOneHotReduceSumPreservesOutOfBoundsSemantics) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+
+    add_f32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      idx = s32[2,3] parameter(0)
+      weights = f32[2,16] parameter(1)
+      bcast_idx = s32[2,3,16] broadcast(idx), dimensions={0,1}
+      iota = s32[2,3,16] iota(), iota_dimension=2
+      eq = pred[2,3,16] compare(bcast_idx, iota), direction=EQ
+      bcast_w = f32[2,3,16] broadcast(weights), dimensions={0,2}
+      zero = f32[] constant(0)
+      bcast_zero = f32[2,3,16] broadcast(zero), dimensions={}
+      sel = f32[2,3,16] select(eq, bcast_w, bcast_zero)
+      ROOT red = f32[2,3] reduce(sel, zero), dimensions={2}, to_apply=add_f32
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m_before, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m_after, ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Include negative, valid (0..15), and out-of-bounds (16, 100) indices.
+  Literal idx_lit = LiteralUtil::CreateR2<int32_t>({{-1, 0, 15}, {16, 5, 100}});
+  Literal weights_lit = LiteralUtil::CreateR2<float>(
+      {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f,
+        12.0f, 13.0f, 14.0f, 15.0f, 16.0f},
+       {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f, 90.0f, 100.0f,
+        110.0f, 120.0f, 130.0f, 140.0f, 150.0f, 160.0f}});
+
+  HloEvaluator evaluator;
+  ASSERT_OK_AND_ASSIGN(Literal expected,
+                       evaluator.Evaluate(*m_before, {&idx_lit, &weights_lit}));
+
+  AlgebraicSimplifierOptions options;
+  ASSERT_THAT(GpuAlgebraicSimplifier(options, Hopper()).Run(m_after.get()),
+              absl_testing::IsOkAndHolds(true));
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       evaluator.Evaluate(*m_after, {&idx_lit, &weights_lit}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       SimplifyOneHotReduceSumPeelsNarrowConvertAndBroadcastOnTrue) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+
+    add_f32 {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      idx = s32[2,3] parameter(0)
+      weights = bf16[3,8] parameter(1)
+      bcast_idx = s32[2,3,8] broadcast(idx), dimensions={0,1}
+      iota = s32[2,3,8] iota(), iota_dimension=2
+      eq = pred[2,3,8] compare(bcast_idx, iota), direction=EQ
+      bcast_w = bf16[2,3,8] broadcast(weights), dimensions={1,2}
+      conv_w = f32[2,3,8] convert(bcast_w)
+      zero = f32[] constant(0)
+      bcast_zero = f32[2,3,8] broadcast(zero), dimensions={}
+      sel = f32[2,3,8] select(eq, conv_w, bcast_zero)
+      ROOT red = f32[2,3] reduce(sel, zero), dimensions={2}, to_apply=add_f32
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m_before, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m_after, ParseAndReturnVerifiedModule(kModuleStr));
+
+  Literal idx_lit = LiteralUtil::CreateR2<int32_t>({{-1, 0, 7}, {8, 5, 2}});
+  ASSERT_OK_AND_ASSIGN(
+      Literal weights_lit,
+      LiteralUtil::CreateR2<float>(
+          {{1.5f, 2.5f, 3.5f, 4.5f, 5.5f, 6.5f, 7.5f, 8.5f},
+           {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f},
+           {5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f}})
+          .Convert(BF16));
+
+  ASSERT_OK_AND_ASSIGN(
+      Literal expected,
+      HloEvaluator().Evaluate(*m_before, {&idx_lit, &weights_lit}));
+
+  AlgebraicSimplifierOptions options;
+  ASSERT_THAT(GpuAlgebraicSimplifier(options, Hopper()).Run(m_after.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(
+      m_after->entry_computation()->root_instruction(),
+      GmockMatch(m::Select(
+          m::And(m::Compare(m::Parameter(0), m::Broadcast(m::Constant())),
+                 m::Compare(m::Parameter(0), m::Broadcast(m::Constant()))),
+          m::Convert(m::Gather(
+              m::Parameter(1),
+              m::Concatenate(m::Iota(), m::Reshape(m::Parameter(0))))),
+          m::Broadcast(m::Constant()))));
+
+  ASSERT_OK_AND_ASSIGN(Literal actual, HloEvaluator().Evaluate(
+                                           *m_after, {&idx_lit, &weights_lit}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
 }
 
 }  // namespace

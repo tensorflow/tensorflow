@@ -326,6 +326,11 @@ CustomCallThunk::CustomCallThunk(
       gpu_compute_capability_(gpu_compute_capability),
       cpu_target_machine_options_(std::move(cpu_target_machine_options)) {}
 
+std::string CustomCallThunk::ToString(int indent) const {
+  return absl::StrCat(TracedCommand::ToString(indent),
+                      use_pdl_ ? ", use_pdl=true" : "");
+}
+
 absl::StatusOr<CustomCallThunk::CallFrameLease> CustomCallThunk::BuildCallFrame(
     const BufferAllocations* absl_nullable buffer_allocations) {
   if (!call_frame_.has_value()) {

@@ -119,6 +119,12 @@ extern const char kScopedVmemLimitKibAttr[];
 extern const char kIntegerAttr[];
 extern const char kXlaCseSafeZeroOperandAttr[];
 
+// XLA:TPU frontend attribute that opts a fusion into native packed bf16
+// emission whatever the global bf16 emission mode. It applies to the whole
+// fusion: one fused instruction carrying it with value "true" opts in every
+// bf16 op that XLA fuses with it. On a call it propagates to the callee.
+extern const char kXlaTpuNativeBf16Attr[];
+
 // Frontend attribute asking XLA to launch and schedule independent collectives
 // with the same nonempty value as one group. Groups may mix operation types;
 // for example, they can prefetch the next layer's weights together.

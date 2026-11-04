@@ -47,6 +47,25 @@ def _ResizeNearestNeighborGrad(op: ops.Operation, grad):
   return [grads, None]
 
 
+@ops.RegisterGradient("ResizeNearestNeighborGrad")
+def _ResizeNearestNeighborGradGrad(op: ops.Operation, grad):
+  """The transpose of the nearest neighbor resize gradient is a resize."""
+  image = op.inputs[0]
+  if image.get_shape()[1:3].is_fully_defined():
+    image_shape = image.get_shape()[1:3]
+  else:
+    image_shape = array_ops.shape(image)[1:3]
+  return [
+      gen_image_ops.resize_nearest_neighbor(
+          grad,
+          image_shape,
+          align_corners=op.get_attr("align_corners"),
+          half_pixel_centers=op.get_attr("half_pixel_centers"),
+      ),
+      None,
+  ]
+
+
 @ops.RegisterGradient("AdjustContrastv2")
 def _AdjustContrastGrad(op: ops.Operation, grad):
   """The derivatives for `tf.image.adjust_contrast`.
@@ -98,11 +117,15 @@ def _ResizeBilinearGrad(op: ops.Operation, grad):
   Returns:
     The gradients w.r.t. the input.
   """
-  grad0 = gen_image_ops.resize_bilinear_grad(
-      grad,
-      op.inputs[0],
-      align_corners=op.get_attr("align_corners"),
-      half_pixel_centers=op.get_attr("half_pixel_centers"))
+  image = op.inputs[0]
+  grad0 = None
+  if image.dtype.is_floating:
+    grad0 = gen_image_ops.resize_bilinear_grad(
+        grad,
+        image,
+        align_corners=op.get_attr("align_corners"),
+        half_pixel_centers=op.get_attr("half_pixel_centers"),
+    )
   return [grad0, None]
 
 
@@ -121,13 +144,21 @@ def _ScaleAndTranslateGrad(op, grad):
     The gradients w.r.t. the input.
   """
 
-  grad0 = gen_image_ops.scale_and_translate_grad(
-      grad,
-      op.inputs[0],
-      op.inputs[2],
-      op.inputs[3],
-      kernel_type=op.get_attr("kernel_type"),
-      antialias=op.get_attr("antialias"))
+  image = op.inputs[0]
+  grad0 = None
+  if image.dtype.is_floating:
+    # ScaleAndTranslateGrad only has a float32 kernel and only reads the shape
+    # of the original image, while the forward op also accepts half, bfloat16
+    # and double images. Run it in float32 and return the input's dtype.
+    grad0 = gen_image_ops.scale_and_translate_grad(
+        grad,
+        math_ops.cast(image, dtypes.float32),
+        op.inputs[2],
+        op.inputs[3],
+        kernel_type=op.get_attr("kernel_type"),
+        antialias=op.get_attr("antialias"),
+    )
+    grad0 = math_ops.cast(grad0, image.dtype)
   return [grad0, None, None, None]
 
 
@@ -143,13 +174,20 @@ def _ResizeBicubicGrad(op: ops.Operation, grad):
     The gradients w.r.t. the input.
   """
   allowed_types = [dtypes.float32, dtypes.float64]
+  image = op.inputs[0]
   grad0 = None
-  if op.inputs[0].dtype in allowed_types:
+  if image.dtype.is_floating:
+    # ResizeBicubicGrad only takes float32 and float64 images, so compute the
+    # gradient for half and bfloat16 images in float32.
+    if image.dtype not in allowed_types:
+      image = math_ops.cast(image, dtypes.float32)
     grad0 = gen_image_ops.resize_bicubic_grad(
         grad,
-        op.inputs[0],
+        image,
         align_corners=op.get_attr("align_corners"),
-        half_pixel_centers=op.get_attr("half_pixel_centers"))
+        half_pixel_centers=op.get_attr("half_pixel_centers"),
+    )
+    grad0 = math_ops.cast(grad0, op.inputs[0].dtype)
   return [grad0, None]
 
 

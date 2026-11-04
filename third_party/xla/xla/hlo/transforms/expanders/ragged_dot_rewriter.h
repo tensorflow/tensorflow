@@ -23,26 +23,37 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace xla {
 
 inline const stream_executor::dnn::VersionInfo
     kMinCudnnVersionForRaggedDotFusion(9, 22);
 
-// The ragged-dot wgrad (kRaggedContracting) path lowers to cuDNN's
-// moe_grouped_matmul_bwd, which requires a newer cuDNN than the forward
-// ragged-dot fusion.
+// The ragged-dot wgrad path for kRaggedContracting lowers to cuDNN
+// moe_grouped_matmul_bwd, which requires cuDNN 9.24 or newer, cuBLASLt 13.5 or
+// newer from CUDA Toolkit 13.3, and compute capability SM90 through SM119.
 inline const stream_executor::dnn::VersionInfo
     kMinCudnnVersionForRaggedDotWgradFusion(9, 24);
+inline constexpr stream_executor::SemanticVersion
+    kMinCudaToolkitVersionForRaggedDotWgradFusion{13, 3, 0};
+
+bool SupportsCudnnRaggedDotWgrad(
+    const stream_executor::GpuComputeCapability& gpu_compute_capability,
+    stream_executor::dnn::VersionInfo cudnn_version,
+    stream_executor::SemanticVersion toolkit_version);
 
 // RaggedDotRewriter converts ragged dots to general dots through expansion.
 class RaggedDotRewriter : public HloModulePass {
  public:
-  explicit RaggedDotRewriter(se::GpuComputeCapability gpu_compute_capability,
-                             stream_executor::dnn::VersionInfo cudnn_version =
-                                 stream_executor::dnn::VersionInfo())
+  explicit RaggedDotRewriter(
+      se::GpuComputeCapability gpu_compute_capability,
+      stream_executor::dnn::VersionInfo cudnn_version =
+          stream_executor::dnn::VersionInfo(),
+      stream_executor::SemanticVersion toolkit_version = {0, 0, 0})
       : gpu_compute_capability_(gpu_compute_capability),
-        cudnn_version_(cudnn_version) {}
+        cudnn_version_(cudnn_version),
+        toolkit_version_(toolkit_version) {}
 
   absl::string_view name() const override { return "ragged_dot_rewriter"; }
 
@@ -54,6 +65,7 @@ class RaggedDotRewriter : public HloModulePass {
  private:
   stream_executor::GpuComputeCapability gpu_compute_capability_;
   stream_executor::dnn::VersionInfo cudnn_version_;
+  stream_executor::SemanticVersion toolkit_version_;
 };
 
 }  // namespace xla

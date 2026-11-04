@@ -254,6 +254,51 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceAddress) {
               absl_testing::IsOkAndHolds(MemorySpace::kDevice));
 }
 
+TEST(CudaExecutorTest, IsHostMemoryPinnedWorksWithRegisteredHostMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  constexpr size_t kSize = 64 * 1024;
+  std::vector<uint8_t> buffer(kSize);
+  // Pageable host memory isn't pinned until we register it.
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+
+  ASSERT_TRUE(executor->HostMemoryRegister(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+  EXPECT_TRUE(executor->IsHostMemoryPinned(buffer.data() + 1024, 4096));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), 0));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data() + kSize / 2, kSize));
+
+  ASSERT_TRUE(executor->HostMemoryUnregister(buffer.data()));
+  EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+}
+
+TEST(CudaExecutorTest, IsHostMemoryPinnedWorksWithHostMemory) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                       executor->HostMemoryAllocate(256));
+  EXPECT_TRUE(
+      executor->IsHostMemoryPinned(allocation->address().opaque(), 256));
+}
+
+TEST(CudaExecutorTest, IsHostMemoryPinnedIsFalseForDeviceAddress) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  DeviceAddressBase allocation = executor->Allocate(256);
+  ASSERT_NE(allocation.opaque(), nullptr);
+  EXPECT_FALSE(executor->IsHostMemoryPinned(allocation.opaque(), 256));
+  executor->Deallocate(&allocation);
+}
+
 TEST(CudaExecutorTest, AllocateCollectiveMemoryWithDeviceAllocator) {
   ASSERT_OK_AND_ASSIGN(Platform * platform,
                        PlatformManager::PlatformWithName("CUDA"));

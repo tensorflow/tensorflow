@@ -207,7 +207,6 @@ func.func @attr_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<
 
 // CustomCallSchedule aka #mhlo<custom_call_schedule> is unsupported at the moment (see negative test below).
 // DequantizeMode aka #mhlo<dequantize_mode> is unused at the moment.
-// DomainKind aka #mhlo<kind> is unsupported at the moment (see negative test below).
 // DotDimensionNumbers aka #mhlo.dot is covered below.
 
 // CHECK-LABEL: "attr_fft_type_fft"
@@ -967,8 +966,6 @@ func.func @op_divide(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0 = "mhlo.divide"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
-
-// DomainOp aka mhlo.domain is unsupported at the moment (see negative test below).
 
 // CHECK-LABEL: "op_dot_general"
 func.func @op_dot_general(%arg0: tensor<8x8x16xf32>, %arg1: tensor<8x16x8xf32>) -> tensor<8x8x8xf32> {
@@ -2423,18 +2420,6 @@ func.func @op_custom_call_custom_call_schedule_earliest_ffi(%arg0: tensor<f32>) 
     backend_config = {foo = "bar"},
     api_version = 4 : i32,
     custom_call_schedule = #mhlo<custom_call_schedule EARLIEST>
-  } : (tensor<f32>) -> tensor<f32>
-  func.return %0 : tensor<f32>
-}
-
-// -----
-
-func.func @op_domain(%arg0: tensor<f32>) -> tensor<f32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.domain' that was explicitly marked illegal}}
-  %0 = "mhlo.domain"(%arg0) {
-    kind = #mhlo<kind sharding>,
-    entry_metadata = "\08\01\1A\01\01\22\01\01",
-    exit_metadata = "\08\02"
   } : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }

@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier_options.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -41,8 +41,11 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
         compute_capability_(std::move(compute_capability)) {}
 
   absl::Status HandleAdd(HloInstruction* add) override;
+  absl::Status HandleReduce(HloInstruction* reduce) override;
 
  private:
+  bool ConvIsLowerable(HloInstruction* conv) const override;
+
   // Returns true if the dot precision config is supported by simplifier.
   bool SupportedDotPrecisionConfig(const PrecisionConfig& config,
                                    bool has_contracting_dim) override;
@@ -63,6 +66,12 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
   absl::StatusOr<bool> TryToSinkBroadcastOperandsOfChainedAdds(
       HloInstruction* add);
 
+  // Tries to convert reduce_sum(select(compare(broadcast(idx), iota, EQ),
+  // on_true, broadcast(0))) over the iota dimension into
+  // select(in_bounds, gather(on_true, ...), broadcast(0)).
+  absl::StatusOr<bool> TryToSimplifyOneHotReduceToGather(
+      HloInstruction* reduce);
+
   se::GpuComputeCapability compute_capability_;
 };
 
@@ -72,6 +81,8 @@ class GpuAlgebraicSimplifier : public AlgebraicSimplifier {
                                   se::GpuComputeCapability compute_capability)
       : AlgebraicSimplifier(options),
         compute_capability_(std::move(compute_capability)) {}
+
+  absl::string_view name() const override { return "gpu-algebraic-simplifier"; }
 
  protected:
   absl::StatusOr<bool> RunImpl(

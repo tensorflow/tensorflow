@@ -85,16 +85,14 @@ def _convert_to_sparse_tensors(sp_inputs):
       objects.
 
   Returns:
-    `sp_inputs` converted to `SparseTensor` objects.
+    A list of `SparseTensor` objects.
 
   Raises:
-    ValueError: if any item in `sp_inputs` is neither `SparseTensor` nor
-      `SparseTensorValue`.
+    TypeError: if `sp_inputs` is not a list or tuple, or if any element is not
+      a `SparseTensor` or `SparseTensorValue`.
   """
-  if isinstance(sp_inputs, list):
+  if isinstance(sp_inputs, (list, tuple)):
     return [_convert_to_sparse_tensor(sp_input) for sp_input in sp_inputs]
-  if isinstance(sp_inputs, tuple):
-    return (_convert_to_sparse_tensor(sp_input) for sp_input in sp_inputs)
   raise TypeError("Inputs must be a list or tuple.")
 
 
@@ -372,9 +370,9 @@ def sparse_concat(axis,
 
 
   Args:
-    axis: Dimension to concatenate along. Must be in range [-rank, rank),
-      where rank is the number of dimensions in each input `SparseTensor`.
-    sp_inputs: List of `SparseTensor` to concatenate.
+    axis: Dimension to concatenate along. Must be in range [-rank, rank), where
+      rank is the number of dimensions in each input `SparseTensor`.
+    sp_inputs: Non-empty list or tuple of `SparseTensor` to concatenate.
     name: A name prefix for the returned tensors (optional).
     expand_nonconcat_dim: Whether to allow the expansion in the non-concat
       dimensions. Defaulted to False.
@@ -385,7 +383,8 @@ def sparse_concat(axis,
     A `SparseTensor` with the concatenated output.
 
   Raises:
-    TypeError: If `sp_inputs` is not a list of `SparseTensor`.
+    TypeError: If `sp_inputs` is not a list or tuple of `SparseTensor`.
+    ValueError: If `sp_inputs` is empty.
   """
   expand_nonconcat_dim = deprecation.deprecated_argument_lookup(
       "expand_nonconcat_dims", expand_nonconcat_dims,
@@ -400,6 +399,9 @@ def sparse_concat(axis,
 @tf_export("sparse.concat", v1=[])
 def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  # pylint: disable=missing-docstring
   sp_inputs = _convert_to_sparse_tensors(sp_inputs)
+
+  if not sp_inputs:
+    raise ValueError("sp_inputs must not be empty.")
 
   if len(sp_inputs) == 1:  # Degenerate case of one tensor.
     return sp_inputs[0]
@@ -638,18 +640,26 @@ def sparse_cross(inputs, name=None, separator=None):
 
 
   Args:
-    inputs: An iterable of `Tensor` or `SparseTensor`.
+    inputs: An iterable of `Tensor` or `SparseTensor`. All input tensors must
+      have an integer or `string` dtype.
     name: Optional name for the op.
     separator: A string added between each string being joined. Defaults to
       '_X_'.
 
   Returns:
     A `SparseTensor` of type `string`.
+
+  Raises:
+    TypeError: If `inputs` is not a list or tuple, if any element in `inputs`
+      is not a `Tensor` or `SparseTensor`, or if any input has a dtype other
+      than integer or `string` (such as `float` or `bool`).
   """
   if separator is None:
     separator = "_X_"
   separator = ops.convert_to_tensor(separator, dtypes.string)
-  indices, values, shapes, dense_inputs = _sparse_cross_internal_v2(inputs)
+  indices, values, shapes, dense_inputs = _sparse_cross_internal_v2(
+      inputs, op_name="tf.sparse.cross"
+  )
   indices_out, values_out, shape_out = gen_sparse_ops.sparse_cross_v2(
       indices=indices,
       values=values,
@@ -692,22 +702,30 @@ def sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
                       Fingerprint64("e"), Fingerprint64("c")))
 
   Args:
-    inputs: An iterable of `Tensor` or `SparseTensor`.
-    num_buckets: An `int` that is `>= 0`.
-      output = hashed_value%num_buckets if num_buckets > 0 else hashed_value.
+    inputs: An iterable of `Tensor` or `SparseTensor`. All input tensors must
+      have an integer or `string` dtype.
+    num_buckets: An `int` that is `>= 0`. output = hashed_value%num_buckets if
+      num_buckets > 0 else hashed_value.
     hash_key: Integer hash_key that will be used by the `FingerprintCat64`
       function. If not given, will use a default key.
     name: Optional name for the op.
 
   Returns:
     A `SparseTensor` of type `int64`.
+
+  Raises:
+    TypeError: If `inputs` is not a list or tuple, if any element in `inputs`
+      is not a `Tensor` or `SparseTensor`, or if any input has a dtype other
+      than integer or `string` (such as `float` or `bool`).
   """
   return _sparse_cross_internal(
       inputs=inputs,
       hashed_output=True,
       num_buckets=num_buckets,
       hash_key=hash_key,
-      name=name)
+      name=name,
+      op_name="tf.sparse.cross_hashed",
+  )
 
 
 _sparse_cross_hashed = sparse_cross_hashed
@@ -715,8 +733,8 @@ _sparse_cross_hashed = sparse_cross_hashed
 _DEFAULT_HASH_KEY = 0xDECAFCAFFE
 
 
-def _sparse_cross_internal_v2(inputs):
-  """See gen_sparse_ops.sparse_cross_v2."""
+def _validate_sparse_cross_inputs(inputs, op_name="tf.sparse.cross"):
+  """Validates inputs for sparse cross ops."""
   if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
   if not all(
@@ -724,6 +742,22 @@ def _sparse_cross_internal_v2(inputs):
           i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
       for i in inputs):
     raise TypeError("All inputs must be Tensor or SparseTensor.")
+  for i, inp in enumerate(inputs):
+    inp_dtype = (
+        inp.values.dtype
+        if isinstance(inp, sparse_tensor.SparseTensor)
+        else inp.dtype
+    )
+    if not (inp_dtype.is_integer or inp_dtype == dtypes.string):
+      raise TypeError(
+          f"Unexpected dtype for inputs[{i}]: {inp_dtype}. "
+          f"{op_name} only supports integer and string dtypes."
+      )
+
+
+def _sparse_cross_internal_v2(inputs, op_name="tf.sparse.cross"):
+  """See gen_sparse_ops.sparse_cross_v2."""
+  _validate_sparse_cross_inputs(inputs, op_name=op_name)
   sparse_inputs = [
       i for i in inputs if isinstance(i, sparse_tensor.SparseTensor)
   ]
@@ -734,27 +768,24 @@ def _sparse_cross_internal_v2(inputs):
   values = [sp_input.values for sp_input in sparse_inputs]
   shapes = [sp_input.dense_shape for sp_input in sparse_inputs]
   for i in range(len(values)):
-    if values[i].dtype != dtypes.string:
+    if values[i].dtype.is_integer:
       values[i] = math_ops.cast(values[i], dtypes.int64)
   for i in range(len(dense_inputs)):
-    if dense_inputs[i].dtype != dtypes.string:
+    if dense_inputs[i].dtype.is_integer:
       dense_inputs[i] = math_ops.cast(dense_inputs[i], dtypes.int64)
   return indices, values, shapes, dense_inputs
 
 
-def _sparse_cross_internal(inputs,
-                           hashed_output=False,
-                           num_buckets=0,
-                           hash_key=None,
-                           name=None):
+def _sparse_cross_internal(
+    inputs,
+    hashed_output=False,
+    num_buckets=0,
+    hash_key=None,
+    name=None,
+    op_name="tf.sparse.cross",
+):
   """See gen_sparse_ops.sparse_cross."""
-  if not isinstance(inputs, (tuple, list)):
-    raise TypeError("Inputs must be a list")
-  if not all(
-      isinstance(
-          i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
-      for i in inputs):
-    raise TypeError("All inputs must be SparseTensors")
+  _validate_sparse_cross_inputs(inputs, op_name=op_name)
 
   sparse_inputs = [
       i for i in inputs if isinstance(i, sparse_tensor.SparseTensor)
@@ -770,11 +801,11 @@ def _sparse_cross_internal(inputs,
 
   internal_type = dtypes.string
   for i in range(len(values)):
-    if values[i].dtype != dtypes.string:
+    if values[i].dtype.is_integer:
       values[i] = math_ops.cast(values[i], dtypes.int64)
       internal_type = dtypes.int64
   for i in range(len(dense_inputs)):
-    if dense_inputs[i].dtype != dtypes.string:
+    if dense_inputs[i].dtype.is_integer:
       dense_inputs[i] = math_ops.cast(dense_inputs[i], dtypes.int64)
       internal_type = dtypes.int64
 
@@ -2909,20 +2940,43 @@ def sparse_transpose(sp_input, perm=None, name=None):
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
+    ValueError: If `perm` is statically known and is not a 1-D permutation
+      of the dimensions of `sp_input`. If the rank of `sp_input` is unknown,
+      `perm` is only checked to be a permutation of `range(len(perm))`.
   """
   with ops.name_scope(name, "SparseTranspose", [sp_input]) as name:
     if perm is None:
+      # The default permutation is valid by construction: skip validation.
       if sp_input.shape.rank is not None:
         rank = sp_input.shape.rank
         perm = (rank - 1) - np.arange(0, rank, 1)
+        perm_ = perm
       else:
         rank = array_ops.rank(sp_input)
         perm = (rank - 1) - math_ops.range(0, rank, 1)
+        perm_ = None
+    else:
+      perm_ = tensor_util.constant_value(ops.convert_to_tensor(perm))
+      if perm_ is not None:
+        if perm_.ndim != 1:
+          raise ValueError(
+              "'perm' must be a 1-D permutation of the dimensions of"
+              f" 'sp_input'. Received perm={perm_.tolist()}."
+          )
+        rank = (
+            sp_input.shape.rank
+            if sp_input.shape.rank is not None
+            else len(perm_)
+        )
+        if sorted(perm_.tolist()) != list(range(rank)):
+          raise ValueError(
+              "'perm' must be a 1-D permutation of the dimensions of"
+              f" 'sp_input'. Received perm={perm_.tolist()} for rank {rank}."
+          )
     indices = sp_input.indices
     transposed_indices = array_ops.transpose(
         array_ops.gather(array_ops.transpose(indices), perm))
 
-    perm_ = tensor_util.constant_value(ops.convert_to_tensor(perm))
     if perm_ is not None and sp_input.get_shape().is_fully_defined():
       old_shape_ = sp_input.get_shape().as_list()
       transposed_dense_shape = list(old_shape_)  # Copy.

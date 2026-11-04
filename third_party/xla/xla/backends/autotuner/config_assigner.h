@@ -111,32 +111,46 @@ class ConfigAssigner {
   using InstructionGroup = std::vector<HloInstruction*>;
 
   // Gets the best config for each given instruction and errors out if any of
-  // them fails.
+  // them fails. The config could be one of the following depending on the
+  // options:
+  // 1. Check the forced config or the cache.
+  // 2. Check the first compilable estimated config (if cost model is enabled).
+  // 3. Check the first compilable config or the default config (if
+  //    autotuning is disabled), or tune the instruction.
+  // Tuned config is updated in the cache if it is provided.
   absl::StatusOr<std::vector<Config>> GetConfigsForAll(
       const std::vector<InstructionGroup>& instruction_groups);
 
-  // Returns a future that will contain the best config for the given HLO
-  // instruction. The config could be one of the following depending on the
-  // options:
-  // 1. Check the cache.
-  // 2. Check the first compilable estimated config (if cost model is enabled).
-  // 3. Check the first compilable config or the default config (if
-  //    autotuning is disabled).
-  // 4. Tune the instruction.
-  // Tuned config is updated in the cache if it is provided.
-  tsl::Future<Config> GetConfig(const HloInstruction* instr);
+  // Returns a forced or cached config for the given HLO instruction, or
+  // std::nullopt on a cache miss.
+  // Cache miss with expect_all_instructions_in_cache makes the method return a
+  // NotFound error.
+  absl::StatusOr<std::optional<Config>> GetForcedOrCachedConfig(
+      const HloInstruction* instr);
+
+  // Attempts to compile estimated configs in sorted order with fastest first.
+  // Returns std::nullopt if prefer_estimated_configs is false or no estimated
+  // config compiles.
+  // Estimated configs compile on the thread pool.
+  // If autotuning is enabled, a compilable estimated config is inserted into
+  // the cache.
+  tsl::Future<std::optional<Config>> GetConfigUsingEstimations(
+      const HloInstruction* instr);
+
+  // Tunes the given HLO instruction and inserts the winning config into the
+  // cache. Falls back to the first compilable or default config when
+  // autotuning is disabled.
+  tsl::Future<Config> GetTunedOrFallbackConfig(const HloInstruction* instr);
 
   // Gets the first compilable config under the supported configurations for the
   // given HLO instruction.
   absl::StatusOr<Config> GetFirstCompilableConfig(
       const HloInstruction* instr, std::vector<Config> supported_configs);
 
-  // Attempts to compile estimated configs in sorted order with fastest first.
-  // If only_with_estimates is set, stops at the first config without an
-  // estimated runtime. Returns the first compilable config found, or an error
-  // status.
-  absl::StatusOr<Config> GetFirstCompilableEstimatedConfig(
-      const HloInstruction* instr, bool only_with_estimates);
+  // Returns the supported configs that have an estimated runtime, sorted with
+  // the fastest first.
+  absl::StatusOr<std::vector<Config>> GetEstimatedConfigs(
+      const HloInstruction* instr);
 
   // Gets the first compilable supported config or default config for the given
   // HLO instruction when autotuning is disabled.

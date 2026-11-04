@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdio>
 #include <cstring>
 #include <numeric>
+#include <optional>
 #include <vector>
 
 #include "ynnpack/composites/composites.h"  // from @XNNPACK
@@ -38,6 +39,44 @@ namespace tflite {
 namespace ynnpack {
 
 namespace {
+
+struct QuantParamsInfo {
+  int32_t scale_idx = -1;
+  int32_t zp_idx = -1;
+  int32_t block_size = 0;
+};
+
+std::optional<QuantParamsInfo> GetBlockwiseOrMultiAxisQuantParams(
+    const TfLiteTensor& tensor) {
+  if (tensor.quantization.type == kTfLiteBlockwiseQuantization) {
+    const auto* quant_params = static_cast<const TfLiteBlockwiseQuantization*>(
+        tensor.quantization.params);
+    if (!quant_params) return std::nullopt;
+    return QuantParamsInfo{quant_params->scale, quant_params->zero_point,
+                           quant_params->blocksize};
+  } else if (tensor.quantization.type == kTfLiteMultiAxisQuantization) {
+    const auto* quant_params = static_cast<const TfLiteMultiAxisQuantization*>(
+        tensor.quantization.params);
+    if (!quant_params) return std::nullopt;
+    return QuantParamsInfo{quant_params->scales, quant_params->zero_points,
+                           quant_params->blocksize};
+  }
+  return std::nullopt;
+}
+
+TfLiteStatus ValidateScaleAndZeroPointTensors(TfLiteContext* context,
+                                              int32_t scale_idx,
+                                              int32_t zp_idx) {
+  TF_LITE_ENSURE(context, scale_idx >= 0 && scale_idx < context->tensors_size);
+  const TfLiteTensor& scale_tensor = context->tensors[scale_idx];
+  TF_LITE_ENSURE(context, IsTensorSupported(scale_tensor));
+  if (zp_idx >= 0) {
+    TF_LITE_ENSURE(context, zp_idx < context->tensors_size);
+    const TfLiteTensor& zp_tensor = context->tensors[zp_idx];
+    TF_LITE_ENSURE(context, IsTensorSupported(zp_tensor));
+  }
+  return kTfLiteOk;
+}
 
 TfLiteStatus DefineQuantizedDot(
     TfLiteContext* context, ynn_subgraph_t subgraph, int rank_a, int rank_b,
@@ -139,11 +178,12 @@ TfLiteStatus DefineBlockwiseQuantizedMatMul(
     bool mutual_broadcast, const TfLiteTensor& input_a_tensor,
     const TfLiteTensor& input_b_tensor, const TfLiteTensor& output_tensor,
     uint32_t* output_id) {
-  const auto* bq_params = static_cast<const TfLiteBlockwiseQuantization*>(
-      input_b_tensor.quantization.params);
-  TF_LITE_ENSURE(context, bq_params != nullptr);
-  const int32_t block_size = bq_params->blocksize;
-  TF_LITE_ENSURE(context, block_size > 0);
+  auto quant_params = GetBlockwiseOrMultiAxisQuantParams(input_b_tensor);
+  TF_LITE_ENSURE(context, quant_params.has_value());
+  TF_LITE_ENSURE(context, quant_params->block_size > 0);
+  int32_t b_scale_idx = quant_params->scale_idx;
+  int32_t b_zp_idx = quant_params->zp_idx;
+  int32_t block_size = quant_params->block_size;
 
   bool is_input_a_quantized = IsQuantized(input_a_tensor);
   bool is_output_quantized = IsQuantized(output_tensor);
@@ -209,19 +249,20 @@ TfLiteStatus DefineBlockwiseQuantizedMatMul(
   }
 
   // Scale and Zero Point for B.
-  uint32_t raw_b_scale_id = GetOrCreateValueId(
-      context, subgraph, tensor_to_value_id, bq_params->scale);
+  uint32_t raw_b_scale_id =
+      GetOrCreateValueId(context, subgraph, tensor_to_value_id, b_scale_idx);
   TF_LITE_ENSURE(context, raw_b_scale_id != YNN_INVALID_VALUE_ID);
 
   uint32_t raw_b_zp_id = YNN_INVALID_VALUE_ID;
-  if (bq_params->zero_point > 0) {
-    raw_b_zp_id = GetOrCreateValueId(context, subgraph, tensor_to_value_id,
-                                     bq_params->zero_point);
+  if (b_zp_idx >= 0) {
+    raw_b_zp_id =
+        GetOrCreateValueId(context, subgraph, tensor_to_value_id, b_zp_idx);
     TF_LITE_ENSURE(context, raw_b_zp_id != YNN_INVALID_VALUE_ID);
   }
 
   uint32_t dot_flags = 0;
-  if (input_b_tensor.type == kTfLiteInt8 && IsConstant(input_b_tensor)) {
+  if (input_b_tensor.type == kTfLiteInt8 && IsConstant(input_b_tensor) &&
+      raw_b_zp_id == YNN_INVALID_VALUE_ID) {
     dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;
   }
 
@@ -263,7 +304,8 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
                           const TfLiteTensor& input_b_tensor,
                           const TfLiteTensor& output_tensor,
                           uint32_t* output_id) {
-  if (input_b_tensor.quantization.type == kTfLiteBlockwiseQuantization) {
+  auto quant_params = GetBlockwiseOrMultiAxisQuantParams(input_b_tensor);
+  if (quant_params && quant_params->block_size > 0) {
     return DefineBlockwiseQuantizedMatMul(
         context, subgraph, tensor_to_value_id, rank_a, rank_b, a_id, b_id,
         bias_id, adj_x, adj_y, mutual_broadcast, input_a_tensor, input_b_tensor,
@@ -277,14 +319,6 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
   bool is_quantized = is_input_a_quantized && is_output_quantized;
   bool is_dynamically_quantized =
       !is_input_a_quantized && is_input_b_quantized && !is_output_quantized;
-
-  bool is_per_channel = false;
-  if (is_quantized || is_dynamically_quantized) {
-    const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
-        input_b_tensor.quantization.params);
-    is_per_channel =
-        quant_params && quant_params->scale && quant_params->scale->size > 1;
-  }
 
   uint32_t a_scale_id = YNN_INVALID_VALUE_ID;
   uint32_t a_zp_id = YNN_INVALID_VALUE_ID;
@@ -367,7 +401,8 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
     }
 
     uint32_t dot_flags = 0;
-    if (input_b_tensor.type == kTfLiteInt8 && IsConstant(input_b_tensor)) {
+    if (input_b_tensor.type == kTfLiteInt8 && IsConstant(input_b_tensor) &&
+        b_zp_id == YNN_INVALID_VALUE_ID) {
       // In TFlite, quantized int8 weights are in the range [-127, 127] (see
       // quantization_spec.md for reference).
       dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;
@@ -377,8 +412,9 @@ TfLiteStatus DefineMatMul(TfLiteContext* context, ynn_subgraph_t subgraph,
         context, subgraph, rank_a, rank_b, {rank_a - 1}, {rank_b - 2},
         current_a_id, a_scale_id, a_zp_id, current_b_id, b_scale_id, b_zp_id,
         is_dynamically_quantized ? YNN_INVALID_VALUE_ID : broadcasted_bias_id,
-        rank_a - 1, out_scale_id, out_zp_id, is_per_channel, /*is_conv=*/false,
-        GetYnnType(output_tensor.type), &dot_output_id, dot_flags));
+        rank_a - 1, out_scale_id, out_zp_id, /*is_per_channel=*/false,
+        /*is_conv=*/false, GetYnnType(output_tensor.type), &dot_output_id,
+        dot_flags));
 
     if (is_dynamically_quantized && bias_id != YNN_INVALID_VALUE_ID) {
       TF_LITE_ENSURE_YNN_STATUS(ynn_define_binary(
@@ -467,32 +503,25 @@ TfLiteStatus IsBatchMatMulSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE(context, input_a.dims->size <= YNN_MAX_TENSOR_RANK);
   TF_LITE_ENSURE(context, input_b.dims->size <= YNN_MAX_TENSOR_RANK);
 
-  if (input_b.quantization.type == kTfLiteBlockwiseQuantization) {
-    const auto* quant_params = static_cast<const TfLiteBlockwiseQuantization*>(
-        input_b.quantization.params);
-    TF_LITE_ENSURE(context, quant_params != nullptr);
-    TF_LITE_ENSURE(context, quant_params->blocksize > 0);
-    bool adj_y = false;
-    if (!is_runtime_bmm) {
-      const auto* params =
-          static_cast<const TfLiteBatchMatMulParams*>(node->builtin_data);
-      if (params) adj_y = params->adj_y;
-    } else {
-      adj_y = true;
+  if (auto quant_params = GetBlockwiseOrMultiAxisQuantParams(input_b)) {
+    if (input_b.quantization.type == kTfLiteBlockwiseQuantization) {
+      TF_LITE_ENSURE(context, quant_params->block_size > 0);
     }
-    const size_t k_dim = adj_y ? input_b.dims->data[input_b.dims->size - 1]
-                               : input_b.dims->data[input_b.dims->size - 2];
-    TF_LITE_ENSURE_EQ(context, k_dim % quant_params->blocksize, 0);
-    TF_LITE_ENSURE(context, quant_params->scale >= 0 &&
-                                quant_params->scale < context->tensors_size);
-    const TfLiteTensor& scale_tensor = context->tensors[quant_params->scale];
-    TF_LITE_ENSURE(context, IsTensorSupported(scale_tensor));
-    if (quant_params->zero_point > 0) {
-      TF_LITE_ENSURE(context, quant_params->zero_point < context->tensors_size);
-      const TfLiteTensor& zp_tensor =
-          context->tensors[quant_params->zero_point];
-      TF_LITE_ENSURE(context, IsTensorSupported(zp_tensor));
+    if (quant_params->block_size > 0) {
+      bool adj_y = false;
+      if (!is_runtime_bmm) {
+        const auto* params =
+            static_cast<const TfLiteBatchMatMulParams*>(node->builtin_data);
+        if (params) adj_y = params->adj_y;
+      } else {
+        adj_y = true;
+      }
+      const size_t k_dim = adj_y ? input_b.dims->data[input_b.dims->size - 1]
+                                 : input_b.dims->data[input_b.dims->size - 2];
+      TF_LITE_ENSURE_EQ(context, k_dim % quant_params->block_size, 0);
     }
+    TF_LITE_ENSURE_STATUS(ValidateScaleAndZeroPointTensors(
+        context, quant_params->scale_idx, quant_params->zp_idx));
   }
 
   return kTfLiteOk;
@@ -598,23 +627,16 @@ TfLiteStatus IsFullyConnectedSupported(
   TF_LITE_ENSURE_EQ(context, weights.dims->size, 2);
   TF_LITE_ENSURE(context, input.dims->size <= YNN_MAX_TENSOR_RANK);
 
-  if (weights.quantization.type == kTfLiteBlockwiseQuantization) {
-    const auto* quant_params = static_cast<const TfLiteBlockwiseQuantization*>(
-        weights.quantization.params);
-    TF_LITE_ENSURE(context, quant_params != nullptr);
-    TF_LITE_ENSURE(context, quant_params->blocksize > 0);
-    const size_t input_channels = weights.dims->data[1];
-    TF_LITE_ENSURE_EQ(context, input_channels % quant_params->blocksize, 0);
-    TF_LITE_ENSURE(context, quant_params->scale >= 0 &&
-                                quant_params->scale < context->tensors_size);
-    const TfLiteTensor& scale_tensor = context->tensors[quant_params->scale];
-    TF_LITE_ENSURE(context, IsTensorSupported(scale_tensor));
-    if (quant_params->zero_point > 0) {
-      TF_LITE_ENSURE(context, quant_params->zero_point < context->tensors_size);
-      const TfLiteTensor& zp_tensor =
-          context->tensors[quant_params->zero_point];
-      TF_LITE_ENSURE(context, IsTensorSupported(zp_tensor));
+  if (auto quant_params = GetBlockwiseOrMultiAxisQuantParams(weights)) {
+    if (weights.quantization.type == kTfLiteBlockwiseQuantization) {
+      TF_LITE_ENSURE(context, quant_params->block_size > 0);
     }
+    if (quant_params->block_size > 0) {
+      const size_t input_channels = weights.dims->data[1];
+      TF_LITE_ENSURE_EQ(context, input_channels % quant_params->block_size, 0);
+    }
+    TF_LITE_ENSURE_STATUS(ValidateScaleAndZeroPointTensors(
+        context, quant_params->scale_idx, quant_params->zp_idx));
   }
 
   const auto* params =
@@ -1069,10 +1091,15 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
 
   bool is_per_channel = false;
   if (is_quantized) {
-    const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
-        filter_tensor.quantization.params);
-    is_per_channel =
-        quant_params && quant_params->scale && quant_params->scale->size > 1;
+    if (filter_tensor.quantization.type == kTfLiteAffineQuantization) {
+      const auto* quant_params = static_cast<const TfLiteAffineQuantization*>(
+          filter_tensor.quantization.params);
+      is_per_channel =
+          quant_params && quant_params->scale && quant_params->scale->size > 1;
+    } else if (filter_tensor.quantization.type ==
+               kTfLiteMultiAxisQuantization) {
+      is_per_channel = true;
+    }
   }
 
   float padding_value = 0.0f;
@@ -1178,7 +1205,8 @@ TfLiteStatus DefineConv(TfLiteContext* context, ynn_subgraph_t subgraph,
     std::iota(b_reduce_axes, b_reduce_axes + 3, groups == 1 ? 0 : 1);
 
     uint32_t dot_flags = 0;
-    if (filter_tensor.type == kTfLiteInt8 && IsConstant(filter_tensor)) {
+    if (filter_tensor.type == kTfLiteInt8 && IsConstant(filter_tensor) &&
+        current_b_zp_id == YNN_INVALID_VALUE_ID) {
       // In TFlite, quantized int8 weights are in the range [-127, 127] (see
       // quantization_spec.md for reference).
       dot_flags |= YNN_NODE_FLAG_SYMMETRIC_B;

@@ -41,12 +41,12 @@ std::vector<PrimitiveType> SupportedAllGatherTypes(
 // This number is set by picking the max number of blocks for all reduce and
 // scaling it because the outputs are bigger for all-gather.
 // The number is somewhat arbitrary and should be revisited.
-inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 64;
+inline constexpr int64_t kAllGatherMaxBlocksPerGrid = 128;
 
 // Optimal threshold for one-shot all-gather in bytes for the collective kernel,
 // applied to the gathered output buffer size.
 // Base on the experimental results.
-inline constexpr int64_t kMaxAllGatherSizeBytes = 16 * 1024 * 1024;  // 16 MB
+inline constexpr int64_t kMaxAllGatherSizeBytes = 32 * 1024 * 1024;  // 32 MB
 
 // Maximum number of operands supported by the variadic Triton all-gather
 // kernel.

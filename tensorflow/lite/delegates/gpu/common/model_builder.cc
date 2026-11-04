@@ -1109,6 +1109,16 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                                                         /*runtime_inputs=*/1,
                                                         /*const_inputs=*/0,
                                                         /*outputs=*/1));
+      if (operation_type_ == OperationType::GELU) {
+        const TfLiteGeluParams* tf_options;
+        if (absl::Status status = RetrieveBuiltinData(tflite_node, &tf_options);
+            !status.ok()) {
+          return status;
+        }
+        GeluAttributes attr;
+        attr.approximate = tf_options->approximate;
+        node->operation.attributes = std::move(attr);
+      }
 
       RETURN_IF_ERROR(reader->AddInput(node, 0));
     } else if (IsTwoArgumentOperation() &&

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_CPU_CPU_CLIENT_H_
 #define XLA_PJRT_CPU_CPU_CLIENT_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -25,7 +26,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -37,6 +37,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "riegeli/base/any.h"
+#include "riegeli/bytes/reader.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
@@ -45,7 +47,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
-#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
@@ -53,10 +54,8 @@ limitations under the License.
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/execution_stream_event_map.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/dynamic_shapes.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
@@ -72,14 +71,13 @@ limitations under the License.
 #include "xla/service/device_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -106,7 +104,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
       bool asynchronous, int max_transpose_threads,
       std::function<void(HloModuleConfig&)> customize_hlo_module_config,
-      int cpu_device_count, int max_inflight_computations);
+      int cpu_device_count, int max_inflight_computations,
+      const Eigen::ThreadPoolDevice* intra_op_device = nullptr);
 
   ~PjRtCpuRawClient() override;
 
@@ -129,12 +128,8 @@ class PjRtCpuRawClient : public PjRtRawClient {
     return compile_thread_pool_.get();
   }
 
-  tsl::thread::ThreadPool* eigen_intraop_pool() const {
-    return eigen_intraop_pool_.get();
-  }
-
-  Eigen::ThreadPoolDevice* eigen_intraop_device() const {
-    return eigen_intraop_device_.get();
+  const Eigen::ThreadPoolDevice* eigen_intraop_device() const {
+    return intraop_device_;
   }
 
   cpu::CpuCollectives* collectives() const { return collectives_.get(); }
@@ -306,14 +301,15 @@ class PjRtCpuRawClient : public PjRtRawClient {
   // the member variables of this class that are already destroyed.
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
+  const Eigen::ThreadPoolDevice* intraop_device_ = nullptr;
   std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
   std::unique_ptr<ThreadPoolAsyncWorkRunner> execute_work_runner_;
   std::unique_ptr<ThreadPoolAsyncWorkRunner> async_work_runner_;
 };
 
-// Standalone factory that creates a CommonPjRtClientImpl for CPU using the
+// Standalone factory that creates a CommonPjRtClient for CPU using the
 // given raw client, topology, and process ID.
-std::unique_ptr<CommonPjRtClientImpl> CreatePjRtCpuClient(
+std::unique_ptr<CommonPjRtClient> CreatePjRtCpuClient(
     std::unique_ptr<PjRtCpuRawClient> raw_client,
     std::shared_ptr<const CpuTopologyDescription> topology, int process_id);
 

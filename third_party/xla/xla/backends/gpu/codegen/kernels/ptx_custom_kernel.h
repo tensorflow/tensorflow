@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -60,7 +61,8 @@ absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
 absl::StatusOr<CustomKernel> CreateSharedCubinCustomKernel(
     std::string kernel_name, std::shared_ptr<const std::vector<uint8_t>> cubin,
     int num_args, se::BlockDim block_dim, se::ThreadDim thread_dim,
-    size_t shared_memory_bytes);
+    size_t shared_memory_bytes,
+    std::optional<se::ClusterDim> cluster_dim = std::nullopt);
 
 }  // namespace xla::gpu::kernel
 #endif  // XLA_BACKENDS_GPU_CODEGEN_KERNELS_PTX_CUSTOM_KERNEL_H_

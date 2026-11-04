@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -136,5 +137,13 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
 
   return changed;
 }
+
+namespace {
+
+const HloPassFactory* const kTupleSimplifierRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<TupleSimplifier>>(
+        "tuple-simplifier");
+
+}  // namespace
 
 }  // namespace xla

@@ -120,6 +120,7 @@ struct HloRunnerConfig {
   bool compile_as_stablehlo = false;
   bool use_layouts_from_hlo_module = false;
   bool force_auto_layout = false;
+  bool verify_executable_fingerprint_across_processes = true;
   int32_t num_repeats = 1;
   int32_t num_repeats_with_profiler = 1;
   bool recreate_profiler_session_between_repeats = false;
@@ -188,6 +189,8 @@ PreprocessingOptionsFromFlags(const HloRunnerConfig& opts) {
           ? std::make_optional(opts.while_execution_count)
           : std::nullopt;
   out.remove_infeed_outfeed = opts.remove_infeed_outfeed;
+  out.verify_executable_fingerprint_across_processes =
+      opts.verify_executable_fingerprint_across_processes;
   return out;
 }
 
@@ -629,6 +632,11 @@ int main(int argc, char** argv) {
                 "entry_computation_layout."),
       tsl::Flag("force_auto_layout", &opts.force_auto_layout,
                 "If set, force auto layout."),
+      tsl::Flag("verify_executable_fingerprint_across_processes",
+                &opts.verify_executable_fingerprint_across_processes,
+                "If set, all processes check after compilation that they "
+                "compiled the same executable and fail otherwise. Processes "
+                "that run different executables usually hang."),
       tsl::Flag("num_repeats", &opts.num_repeats,
                 "Repeatedly execute the HLO for this many times."),
       tsl::Flag("num_repeats_with_profiler", &opts.num_repeats_with_profiler,

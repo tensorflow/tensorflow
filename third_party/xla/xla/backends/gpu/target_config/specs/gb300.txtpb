@@ -29,7 +29,7 @@ gpu_device_info {
   memory_bandwidth: 7928064000000
   l2_cache_size: 135528448
   clock_rate_ghz: 2.07
-  device_memory_size: 297021079552
+  device_memory_size: 297020948480
   shared_memory_per_block_optin: 232448
   cuda_compute_capability {
     major: 10

@@ -582,7 +582,8 @@ PJRT_Stream_Extension stream{
 };
 
 static PJRT_Error* RegisterCustomCall(PJRT_Gpu_Register_Custom_Call_Args* args,
-                                      XLA_FFI_Handler_Traits traits) {
+                                      XLA_FFI_Handler_Traits traits,
+                                      XLA_FFI_Handler* record) {
   std::string function_name(args->function_name, args->function_name_size);
   switch (args->api_version) {
     case 0:
@@ -601,7 +602,8 @@ static PJRT_Error* RegisterCustomCall(PJRT_Gpu_Register_Custom_Call_Args* args,
                   reinterpret_cast<XLA_FFI_Handler*>(args->handler_instantiate),
                   reinterpret_cast<XLA_FFI_Handler*>(args->handler_prepare),
                   reinterpret_cast<XLA_FFI_Handler*>(args->handler_initialize),
-                  reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute)},
+                  reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute),
+                  record},
               traits)));
     default:
       return StatusToPjRtError(absl::UnimplementedError(
@@ -624,7 +626,14 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
       PJRT_STRUCT_SIZE(PJRT_Gpu_Register_Custom_Call_Args, traits)) {
     traits = args->traits;
   }
-  return RegisterCustomCall(args, traits);
+  // `handler_record` was appended in extension v4; honor it when the caller's
+  // struct covers it, otherwise default to nullptr (pre-v4 callers omit it).
+  XLA_FFI_Handler* record = nullptr;
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Gpu_Register_Custom_Call_Args, handler_record)) {
+    record = reinterpret_cast<XLA_FFI_Handler*>(args->handler_record);
+  }
+  return RegisterCustomCall(args, traits, record);
 }
 
 const PJRT_Api* GetGpuPjrtApi() {
@@ -636,6 +645,7 @@ const PJRT_Api* GetGpuPjrtApi() {
       },
       /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
       /*custom_call_handles_traits=*/true,
+      /*custom_call_handles_record=*/true,
   };
 
   static PJRT_Layouts_Extension layouts_extension =

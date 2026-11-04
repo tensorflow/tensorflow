@@ -458,7 +458,9 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   b.create<mlir::func::ReturnOp>(results);
 
   if (VLOG_IS_ON(5)) {
-    entry_function->getParentOfType<mlir::ModuleOp>().dump();
+    entry_function->getParentOfType<mlir::ModuleOp>().print(
+        llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
+    llvm::errs() << "\n";
   }
   return absl::OkStatus();
 }

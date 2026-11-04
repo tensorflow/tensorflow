@@ -617,11 +617,14 @@ def _state_to_olabel(labels, num_labels, states):
   num_label_states = _get_dim(labels, 1) + 1
   label_states = states[:, :, 1:num_label_states]
   blank_states = states[:, :, num_label_states:]
+  # Clamp before subtracting so labels - 1 cannot overflow for INT32_MIN.
+  # Any label <= 0 maps to -1, which one_hot turns into an all-off row.
   one_hot = array_ops.one_hot(
-      labels - 1,
+      math_ops.maximum(labels, 0) - 1,
       depth=(num_labels - 1),
       on_value=0.0,
-      off_value=math_ops.log(0.0))
+      off_value=math_ops.log(0.0),
+  )
   one_hot = array_ops.expand_dims(one_hot, axis=0)
   label_states = array_ops.expand_dims(label_states, axis=3)
   label_olabels = math_ops.reduce_logsumexp(label_states + one_hot, axis=2)
@@ -750,13 +753,14 @@ def _ctc_loss_op_standard(labels, logits, logit_length, logits_time_major,
   logits = array_ops.concat([part_before, part_after, part_blank], axis=2)
   # Keep out-of-range ids unchanged so the kernel rejects them instead of
   # aliasing num_classes onto the blank index num_classes - 1.
+  # Masked subtract: where() would also compute values - 1 on INT32_MIN.
   values = labels.values
   shift = math_ops.logical_and(
       values >= blank_index, values < _get_dim(logits, 2)
   )
   labels = sparse_tensor.SparseTensor(
       labels.indices,
-      array_ops.where(shift, values - 1, values),
+      values - math_ops.cast(shift, values.dtype),
       labels.dense_shape,
   )
   return _ctc_loss_impl(
@@ -775,11 +779,12 @@ def _ctc_loss_op_cudnn(labels, logits, logit_length, logits_time_major,
   logits = array_ops.concat([part_blank, part_before, part_after], axis=2)
   # Keep out-of-range ids unchanged so the kernel rejects them instead of
   # shifting -1 to 0 (the blank index in cuDNN layout).
+  # Masked add: where() would also compute values + 1 on INT32_MAX.
   values = labels.values
   shift = math_ops.logical_and(values >= 0, values < blank_index)
   labels = sparse_tensor.SparseTensor(
       labels.indices,
-      array_ops.where(shift, values + 1, values),
+      values + math_ops.cast(shift, values.dtype),
       labels.dense_shape,
   )
   return _ctc_loss_impl(
@@ -912,13 +917,14 @@ def ctc_loss_v2(labels,
                                 axis=2)
       # Keep out-of-range ids unchanged so the kernel rejects them instead of
       # aliasing num_classes onto the blank index num_classes - 1.
+      # Masked subtract: where() would also compute values - 1 on INT32_MIN.
       values = labels.values
       shift = math_ops.logical_and(
           values >= blank_index, values < _get_dim(logits, 2)
       )
       labels = sparse_tensor.SparseTensor(
           labels.indices,
-          array_ops.where(shift, values - 1, values),
+          values - math_ops.cast(shift, values.dtype),
           labels.dense_shape,
       )
 
@@ -1203,7 +1209,10 @@ def ctc_loss_dense(labels,
           ],
           axis=2,
       )
-      labels = array_ops.where(labels < blank_index_val, labels + 1, labels)
+      # labels + 1 would be computed for every element, including padding,
+      # and overflow at the dtype max, so only add 1 where the mask is set.
+      shift_labels = labels < blank_index_val
+      labels = labels + math_ops.cast(shift_labels, labels.dtype)
     else:
       blank_index_val = blank_index
 
@@ -1212,9 +1221,8 @@ def ctc_loss_dense(labels,
     if unique:
       unique_y, unique_idx = unique
       if blank_index != 0:
-        unique_y = array_ops.where(
-            unique_y < blank_index_val, unique_y + 1, unique_y
-        )
+        shift_unique_y = unique_y < blank_index_val
+        unique_y = unique_y + math_ops.cast(shift_unique_y, unique_y.dtype)
         label_mask_len = math_ops.reduce_max(unique_idx, axis=1) + 1
         max_label_length = _get_dim(unique_y, 1)
         label_mask = array_ops.sequence_mask(label_mask_len, max_label_length)

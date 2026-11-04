@@ -291,7 +291,6 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:collective_combiner_utils",
-        "//xla/service:hlo_domain_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -365,7 +364,6 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:collective_combiner_utils",
-        "//xla/service:hlo_domain_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -504,6 +502,7 @@ xla_cc_test(
         ":collective_transformation_reorderer",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_verifier",
@@ -521,9 +520,11 @@ cc_library(
     srcs = ["collective_permute_cse.cc"],
     hdrs = ["collective_permute_cse.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/pass:hlo_pass_registry",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -533,6 +534,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -603,7 +605,9 @@ cc_library(
     hdrs = ["while_loop_all_reduce_code_motion_setup.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:reduction_kind",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/expanders:op_expander_pass",
         "//xla/service:collective_ops_utils",
@@ -640,7 +644,6 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_domain_map",
         "@com_google_absl//absl/log",
     ],
 )
@@ -854,7 +857,6 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/service:collective_combiner_utils",
         "//xla/service:collective_ops_utils",
-        "//xla/service:hlo_domain_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",

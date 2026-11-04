@@ -68,6 +68,9 @@ typedef struct {
     } abs;
     struct {
       bool is_per_channel_quantized;
+      // The input is quantized with `BlockwiseQuantization` with a non-empty
+      // `block_shape`.
+      bool is_blockwise_quantized;
     } dequantize;
     struct {
       bool is_per_channel_quantized;
@@ -78,6 +81,11 @@ typedef struct {
     struct {
       bool is_per_channel_quantized;
     } embedding_lookup;
+    struct {
+      // RHS (input 1) is quantized with `BlockwiseQuantization` with a
+      // non-empty `block_shape`.
+      bool is_rhs_blockwise_quantized;
+    } batch_matmul;
   } ext_options;
 } OpSignature;
 

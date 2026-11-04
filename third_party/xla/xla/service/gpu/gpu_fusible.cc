@@ -18,12 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -320,6 +322,65 @@ bool IsInputFusibleTranspose(const HloInstruction& instr) {
   return GetDescriptionForTiledTransposeEmitter(instr).has_value();
 }
 
+bool IsConcatenateFusion(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kFusion || instr.IsCustomFusion() ||
+      instr.fusion_kind() != HloInstruction::FusionKind::kInput) {
+    return false;
+  }
+  // Cheap pre-filter to skip the adaptor allocation and hero traversal below
+  if (!absl::c_any_of(instr.fused_instructions_computation()->instructions(),
+                      [](const HloInstruction* node) {
+                        return node->opcode() == HloOpcode::kConcatenate;
+                      })) {
+    return false;
+  }
+  std::unique_ptr<HloFusionAdaptor> fusion =
+      HloFusionAdaptor::ForInstruction(&instr);
+  return absl::c_all_of(
+      fusion->GetRoots(), [](const HloInstructionAdaptor& root) {
+        return FindNonTrivialHero(root).opcode() == HloOpcode::kConcatenate;
+      });
+}
+
+namespace {
+
+// Uses the same predicate as HloFusionAnalysis, so a merge never silently
+// moves an input concatenate fusion to the loop emitter, losing the vectorized
+// loads.
+FusionDecision MultiOutputFusionKeepsConcatenateEmitter(
+    const HloInstruction& instr1, const HloInstruction& instr2) {
+  const HloInstruction* producer = nullptr;
+  const HloInstruction* consumer = nullptr;
+  if (instr1.IsUserOf(&instr2)) {
+    producer = &instr2;
+    consumer = &instr1;
+  } else if (instr2.IsUserOf(&instr1)) {
+    producer = &instr1;
+    consumer = &instr2;
+  }
+  absl::InlinedVector<std::unique_ptr<HloFusionAdaptor>, 2> fusions;
+  if (consumer != nullptr) {
+    // with_extra_outputs so FindNonTrivialHero below resolves heroes in the
+    // same merged context HloFusionAnalysis would see.
+    fusions.push_back(HloFusionAdaptor::ForProducerConsumer(
+        producer, consumer, /*with_extra_outputs=*/true));
+  } else {
+    fusions.push_back(HloFusionAdaptor::ForInstruction(&instr1));
+    fusions.push_back(HloFusionAdaptor::ForInstruction(&instr2));
+  }
+  absl::InlinedVector<HloInstructionAdaptor, 2> roots;
+  absl::InlinedVector<HloInstructionAdaptor, 2> heroes;
+  for (const auto& fusion : fusions) {
+    for (const HloInstructionAdaptor& root : fusion->GetRoots()) {
+      roots.push_back(root);
+      heroes.push_back(FindNonTrivialHero(root));
+    }
+  }
+  return UseConcatenateFusion(roots, heroes);
+}
+
+}  // namespace
+
 const HloInstruction* GetRealHeroForMultiOutputFusion(
     const HloInstruction& instr, const se::DeviceDescription& device_info) {
   if (instr.opcode() != HloOpcode::kFusion) {
@@ -448,6 +509,14 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
     }
     return element_instr->shape();
   };
+
+  if (IsConcatenateFusion(instr1) || IsConcatenateFusion(instr2)) {
+    if (auto keeps_emitter =
+            MultiOutputFusionKeepsConcatenateEmitter(instr1, instr2);
+        !keeps_emitter) {
+      return keeps_emitter;
+    }
+  }
 
   // All shapes of the root tuple of multi-output fusions should agree, i.e. all
   // root ops should have equal output shapes. An exception are
@@ -856,12 +925,15 @@ bool IsFusibleAsMultiOutputFusionRoot(
   // its emitter doesn't support it.
   //
   // Custom fusions cannot be fused with anything.
+  //
+  // Input concatenate fusions are admitted only if the merge keeps the
+  // concatenate emitter; see ShapesCompatibleForMultiOutputFusion.
 
   return instr.IsFusible() && !instr.IsCustomFusion() &&
          (IsInputFusibleReduction(instr, device_info) ||
           IsInputFusibleTranspose(instr) ||
           instr.IsLoopFusion() ||  // TODO(b/130013493): Use IsLoopFusible here.
-          instr.IsElementwise());
+          instr.IsElementwise() || IsConcatenateFusion(instr));
 }
 
 HloInstruction::FusionKind ChooseFusionKind(
@@ -1127,6 +1199,50 @@ bool ContainsSignificantReduce(const HloInstruction& instr,
     return ContainsSignificantReduceNoCache(instr);
   }
   return cache->ContainsSignificantReduce(instr);
+}
+
+namespace {
+
+std::optional<int64_t> MinReduceInputElementsNoCache(
+    const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kReduce) {
+    if (instr.operand_count() == 0 || !instr.operand(0)->shape().IsArray() ||
+        instr.operand(0)->shape().is_unbounded_dynamic()) {
+      return std::nullopt;
+    }
+    int64_t elements = ShapeUtil::ElementsIn(instr.operand(0)->shape());
+    return elements > 0 ? std::make_optional(elements) : std::nullopt;
+  }
+  if (instr.opcode() != HloOpcode::kFusion) {
+    return std::nullopt;
+  }
+  std::optional<int64_t> min_elements;
+  for (const HloInstruction* node :
+       instr.fused_instructions_computation()->instructions()) {
+    std::optional<int64_t> node_min = MinReduceInputElementsNoCache(*node);
+    if (node_min.has_value()) {
+      min_elements = min_elements.has_value()
+                         ? std::min(*min_elements, *node_min)
+                         : node_min;
+    }
+  }
+  return min_elements;
+}
+
+}  // namespace
+
+std::optional<int64_t> FusionInfoCache::GetMinReduceInputElements(
+    const HloInstruction& instr) {
+  return GetOrCompute(instr, &FusionInfoCache::min_reduce_input_elements_,
+                      [&]() { return MinReduceInputElementsNoCache(instr); });
+}
+
+std::optional<int64_t> GetMinReduceInputElements(
+    const HloInstruction& instr, FusionInfoCache* absl_nullable cache) {
+  if (cache == nullptr) {
+    return MinReduceInputElementsNoCache(instr);
+  }
+  return cache->GetMinReduceInputElements(instr);
 }
 
 }  // namespace gpu

@@ -468,7 +468,7 @@ TEST_F(GpuExecutableTest, CommandBufferAllocationPolicy) {
                                          /*memory_allocator=*/nullptr);
     std::optional<std::vector<BufferAllocation::Index>> persistent_indices;
     ABSL_RETURN_IF_ERROR(allocation_scope->ExecuteWithBufferAllocations(
-        buffer_allocations, /*device_ordinal=*/0,
+        buffer_allocations,
         [&](const BufferAllocations&,
             std::optional<absl::Span<const BufferAllocation::Index>> indices) {
           if (indices.has_value()) {
@@ -1226,6 +1226,7 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
 
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_executable_embed_debug_info(true);
+  debug_options.set_xla_gpu_experimental_nccl_window_symmetric(true);
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable,
@@ -1233,6 +1234,9 @@ TEST_F(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
                                debug_options));
   ASSERT_TRUE(executable->has_module());
   EXPECT_EQ(executable->constants().size(), 1);
+  EXPECT_TRUE(executable->module_config()
+                  .debug_options()
+                  .xla_gpu_experimental_nccl_window_symmetric());
 
   EXPECT_TRUE(XlaDebugInfoManager::Get()->TracksModule(
       executable->module().unique_id()));
@@ -1546,6 +1550,122 @@ TEST_F(GpuExecutableTest,
     });
   }
   done.Wait();
+}
+
+class RecordCollectiveParamsThunk : public Thunk {
+ public:
+  RecordCollectiveParamsThunk(ThunkInfo thunk_info,
+                              std::optional<LocalDeviceId>* local_device_id,
+                              std::optional<GlobalDeviceId>* global_device_id)
+      : Thunk(Kind::kKernel, std::move(thunk_info)),
+        local_device_id_(local_device_id),
+        global_device_id_(global_device_id) {}
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    *local_device_id_ = params.collective_params->local_device_id;
+    *global_device_id_ = params.collective_params->global_device_id;
+    return absl::OkStatus();
+  }
+
+  BufferUses buffer_uses() const override { return {}; }
+
+  absl::StatusOr<ThunkProto> ToProto() const override { return ThunkProto(); }
+
+ private:
+  std::optional<LocalDeviceId>* local_device_id_;
+  std::optional<GlobalDeviceId>* global_device_id_;
+};
+
+TEST_F(GpuExecutableTest, CollectiveParamsUsesRunOptionsDeviceOrdinal) {
+  ASSERT_OK_AND_ASSIGN(
+      se::Platform * platform,
+      se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
+
+  std::optional<LocalDeviceId> recorded_local_device_id;
+  std::optional<GlobalDeviceId> recorded_global_device_id;
+
+  ThunkSequence thunks;
+  thunks.push_back(std::make_unique<RecordCollectiveParamsThunk>(
+      ThunkInfoWithId(1), &recorded_local_device_id,
+      &recorded_global_device_id));
+
+  GpuExecutable::Params params;
+  params.module_name = "collective_params_device_ordinal_test";
+  params.executable = std::make_unique<ThunkExecutor>(std::move(thunks));
+  params.device_description = device_description();
+  params.enable_debug_info_manager = false;
+  SetDummyBufferAssignment(params);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> exec,
+                       GpuExecutable::Create(std::move(params)));
+
+  se::MockStreamExecutor executor;
+  se::MockStream stream;
+  const se::GpuComputeCapability& compute_capability =
+      device_description().gpu_compute_capability();
+
+  EXPECT_CALL(executor, GetPlatform()).WillRepeatedly(Return(platform));
+  EXPECT_CALL(executor, device_ordinal()).WillRepeatedly(Return(0));
+  EXPECT_CALL(executor, SynchronizeAllActivity()).WillRepeatedly(Return(true));
+  EXPECT_CALL(executor, Activate()).WillRepeatedly([]() { return nullptr; });
+  EXPECT_CALL(stream, parent()).WillRepeatedly(Return(&executor));
+  if (const se::CudaComputeCapability* cuda_cc =
+          compute_capability.cuda_compute_capability()) {
+    EXPECT_CALL(stream, GetCudaComputeCapability())
+        .WillRepeatedly(Return(*cuda_cc));
+  }
+  if (const se::RocmComputeCapability* rocm_cc =
+          compute_capability.rocm_compute_capability()) {
+    EXPECT_CALL(stream, GetRocmComputeCapability())
+        .WillRepeatedly(Return(*rocm_cc));
+  }
+
+  DeviceAssignment device_assn(/*replica_count=*/1, /*computation_count=*/1);
+  device_assn(0, 0) = 42;
+  LoopbackCollectives loopback_collectives;
+  GpuExecutableRunOptions gpu_opts;
+  gpu_opts.set_collectives(&loopback_collectives);
+  gpu_opts.set_gpu_global_device_ids(GpuExecutableRunOptions::DeviceIdMap{
+      {LocalDeviceId(3), GlobalDeviceId(42)},
+      {LocalDeviceId(0), GlobalDeviceId(7)},
+  });
+  FakeDeviceAddressAllocator allocator(platform);
+
+  // When `run_options.device_ordinal()` is set (e.g., virtual GPU 3 sharing
+  // physical executor 0), `CollectiveParams` should use `LocalDeviceId(3)`.
+  {
+    ExecutableRunOptions exec_run_options;
+    exec_run_options.set_stream(&stream);
+    exec_run_options.set_allocator(&allocator);
+    exec_run_options.set_device_assignment(&device_assn);
+    exec_run_options.set_gpu_executable_run_options(&gpu_opts);
+    exec_run_options.set_run_id(RunId(1));
+    exec_run_options.set_device_ordinal(3);
+    exec_run_options.set_physical_device_ordinal(0);
+    ServiceExecutableRunOptions run_opts(exec_run_options);
+    ASSERT_OK(
+        exec->ExecuteAsyncOnStream(&run_opts, std::vector<ExecutionInput>{}));
+    EXPECT_THAT(recorded_local_device_id, Optional(LocalDeviceId(3)));
+    EXPECT_THAT(recorded_global_device_id, Optional(GlobalDeviceId(42)));
+  }
+
+  // When `run_options.device_ordinal()` is unset (-1), `CollectiveParams`
+  // should fall back to `stream->parent()->device_ordinal()` (0).
+  {
+    recorded_local_device_id.reset();
+    recorded_global_device_id.reset();
+    device_assn(0, 0) = 7;
+    ExecutableRunOptions exec_run_options;
+    exec_run_options.set_stream(&stream);
+    exec_run_options.set_allocator(&allocator);
+    exec_run_options.set_device_assignment(&device_assn);
+    exec_run_options.set_gpu_executable_run_options(&gpu_opts);
+    exec_run_options.set_run_id(RunId(2));
+    ServiceExecutableRunOptions run_opts(exec_run_options);
+    ASSERT_OK(
+        exec->ExecuteAsyncOnStream(&run_opts, std::vector<ExecutionInput>{}));
+    EXPECT_THAT(recorded_local_device_id, Optional(LocalDeviceId(0)));
+    EXPECT_THAT(recorded_global_device_id, Optional(GlobalDeviceId(7)));
+  }
 }
 
 int64_t BufferSizeBytes(const BufferValue& buffer) {

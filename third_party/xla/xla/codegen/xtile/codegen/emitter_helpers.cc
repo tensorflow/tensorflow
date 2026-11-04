@@ -52,9 +52,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
-#include "xla/codegen/tiling/experimental/reshape_analysis.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/reshape_analysis.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
@@ -93,7 +94,7 @@ using ::stream_executor::GpuComputeCapability;
 
 namespace ma = ::mlir::arith;
 namespace mh = ::mlir::mhlo;
-namespace ge = ::xla::gpu::experimental;
+namespace gpu = ::xla::gpu;
 namespace mm = ::mlir::math;
 
 namespace {
@@ -108,6 +109,18 @@ bool ArePowersOfTwo(ArrayRef<int64_t> values) {
 // Emit a value as Index clamped to [lower, upper].
 Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
                        int64_t lower, int64_t upper) {
+  // `lower` and `upper` may not fit in the type of `value`, e.g. an s8 offset
+  // into a dimension of size 300 has `upper` = 299. The constants are built in
+  // the type of `value` and would be truncated silently, so in that case
+  // extend `value` to 64 bits first. XLA signed integers are signless here and
+  // are sign-extended. Unsigned integers are not supported by the arith ops
+  // below and are rejected by the Triton support checks for runtime variables.
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(value.getType());
+      int_type && int_type.isSignless() && int_type.getWidth() < 64 &&
+      (!llvm::isIntN(int_type.getWidth(), lower) ||
+       !llvm::isIntN(int_type.getWidth(), upper))) {
+    value = ma::ExtSIOp::create(b, b.getI64Type(), value);
+  }
   Value clamped_index =
       ma::MaxSIOp::create(b, value, CreateConst(b, value.getType(), lower));
   clamped_index = ma::MinSIOp::create(b, clamped_index,
@@ -392,7 +405,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   // Then plug in pid, sequential and runtime values.
 
   MLIRContext* mlir_context = tiled_computation_.GetMLIRContext();
-  const ge::TilingSpace& tiling_space = tiled_computation_.tiling_space();
+  const gpu::TilingSpace& tiling_space = tiled_computation_.tiling_space();
   int64_t num_dimensions = tiling_space.num_dimensions();
   int64_t num_parallel_dimensions = tiling_space.num_parallel_dimensions();
   // Get all dimension and symbol IDs from all of the expressions.
@@ -431,14 +444,14 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
                                              default_replacement);
   for (const int64_t dim : dim_ids) {
     switch (tiling_space.dimensions()[dim].type) {
-      case ge::TilingSpace::DimensionSemantics::kParallel:
-      case ge::TilingSpace::DimensionSemantics::kReplica:
+      case gpu::TilingSpace::DimensionSemantics::kParallel:
+      case gpu::TilingSpace::DimensionSemantics::kReplica:
         dim_replacements[dim] = schedule_.GetPidExpr(dim);
         break;
-      case ge::TilingSpace::DimensionSemantics::kSequential: {
+      case gpu::TilingSpace::DimensionSemantics::kSequential: {
         dim_replacements[dim] =
             CreateSymbolExpr(symbol_count++, dim_values.size(), mlir_context);
-        auto [value, range] = GetSequentialDimValue(ge::TiledDimId(dim));
+        auto [value, range] = GetSequentialDimValue(gpu::TiledDimId(dim));
         symbol_values.push_back(value);
         symbol_variables.push_back(IndexingMap::Variable{
             range, absl::StrCat("k_", dim - num_parallel_dimensions)});
@@ -713,6 +726,21 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
           MaybeBroadcastScalarToShape(b, inputs[2], inputs[1].getType());
       return Minimum(b, {Maximum(b, {min_val, inputs[1]}), max_val});
     }
+    case HloOpcode::kFma: {
+      PrimitiveType element_type = hlo.shape().element_type();
+      if (element_type != F16 && element_type != BF16 && element_type != F32 &&
+          element_type != F64) {
+        return absl::UnimplementedError(absl::StrCat(
+            "Unsupported element type for fma: ",
+            primitive_util::LowercasePrimitiveTypeName(element_type)));
+      }
+      Value lhs =
+          MaybeBroadcastScalarToShape(b, inputs[0], inputs[1].getType());
+      lhs = MaybeBroadcastScalarToShape(b, lhs, inputs[2].getType());
+      Value rhs = MaybeBroadcastScalarToShape(b, inputs[1], lhs.getType());
+      Value addend = MaybeBroadcastScalarToShape(b, inputs[2], lhs.getType());
+      return mlir::stablehlo::FmaOp::create(b, lhs, rhs, addend);
+    }
     case HloOpcode::kAnd:
       return mlir::stablehlo::AndOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kOr:
@@ -832,7 +860,7 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 }
 
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
-    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+    EmitterContext& emitter_ctx, const gpu::TiledHloInstruction& tiled_hlo) {
   const Shape& logical_shape = tiled_hlo.hlo()->shape();
   ABSL_ASSIGN_OR_RETURN(SmallVector<int64_t> logical_tile_strides,
                    tiled_hlo.tile().GetStaticTileStrides());
@@ -1161,7 +1189,7 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
   SmallVector<int64_t> padded_output_tile_sizes =
       GetPaddedTileSizes(output_tile_sizes);
   SmallVector<int64_t> dim_positions =
-      gpu::experimental::PositionsOfNonTrivialDims(output_shape.dimensions());
+      gpu::PositionsOfNonTrivialDims(output_shape.dimensions());
   // If all output dimensions are non-trivial, no broadcast expansion is needed.
   if (dim_positions.size() == padded_output_tile_sizes.size()) {
     return EmitTiledReshape(b, padded_output_tile_sizes, input);
@@ -1170,17 +1198,6 @@ absl::StatusOr<TensorValue> EmitTiledBroadcastedReshape(
   reshape_tile_sizes.reserve(dim_positions.size());
   for (int64_t dim : dim_positions) {
     reshape_tile_sizes.push_back(padded_output_tile_sizes[dim]);
-  }
-  // In legacy tiling, backward propagation does not clamp trivial dimensions
-  // (size == 1). If a trivial dimension is tiled > 1 downstream (e.g. for a
-  // Dot), the input tile already contains elements along that dimension (e.g.
-  // 256 elements vs. 16 in reshape_tile_sizes). In this case, no broadcast
-  // expansion is needed; reshape directly to the full output tile.
-  //
-  // In experimental tiling, trivial dimensions are clamped to tile size 1, so
-  // Product(reshape_tile_sizes) == input.getNumElements() always holds.
-  if (Product(reshape_tile_sizes) != input.getType().getNumElements()) {
-    return EmitTiledReshape(b, padded_output_tile_sizes, input);
   }
   ABSL_ASSIGN_OR_RETURN(TensorValue re,
                    EmitTiledReshape(b, reshape_tile_sizes, input));

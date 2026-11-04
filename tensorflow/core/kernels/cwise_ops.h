@@ -19,6 +19,7 @@ limitations under the License.
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <type_traits>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -126,11 +127,12 @@ struct safe_div_or_mod_op {
     if (TF_PREDICT_TRUE(safe_b != 0)) {
       // Avoid FPE for INT_MIN/-1.
       const T safe_a = tensorflow::internal::SubtleMustCopy(a);
-      if (TF_PREDICT_FALSE(std::is_signed<T>::value &&
+      if (TF_PREDICT_FALSE(std::is_signed_v<T> &&
                            safe_a == std::numeric_limits<T>::min() &&
                            safe_b == T(-1))) {
-        // Prefer to overflow 'a' instead of crashing.
-        return DivOrMod()(-safe_a, 1);
+        // Return the two's complement wraparound result (INT_MIN for
+        // division, 0 for modulo) without overflowing 'a' or crashing.
+        return DivOrMod()(safe_a, T(1));
       }
       return DivOrMod()(safe_a, safe_b);
     } else {
@@ -304,7 +306,8 @@ struct functor_traits<scalar_right<Tout, Tin, Binary>> {
 
 // similar to std::equal_to, but with the DEVICE_FUNC qualifier
 template <class T>
-struct equal_to : std::function<bool(T, T)> {
+struct equal_to {
+  using result_type = bool;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x == y;
@@ -313,7 +316,8 @@ struct equal_to : std::function<bool(T, T)> {
 
 // similar to std::not_equal_to, but with the DEVICE_FUNC qualifier
 template <class T>
-struct not_equal_to : std::function<bool(T, T)> {
+struct not_equal_to {
+  using result_type = bool;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x != y;
@@ -322,7 +326,8 @@ struct not_equal_to : std::function<bool(T, T)> {
 
 // similar to std::greater, but with the DEVICE_FUNC qualifier
 template <class T>
-struct greater : std::function<bool(T, T)> {
+struct greater {
+  using result_type = bool;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x > y;
@@ -331,7 +336,8 @@ struct greater : std::function<bool(T, T)> {
 
 // similar to std::less, but with the DEVICE_FUNC qualifier
 template <class T>
-struct less : std::function<bool(T, T)> {
+struct less {
+  using result_type = bool;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x < y;
@@ -340,7 +346,8 @@ struct less : std::function<bool(T, T)> {
 
 // similar to std::greater_equal, but with the DEVICE_FUNC qualifier
 template <class T>
-struct greater_equal : std::function<bool(T, T)> {
+struct greater_equal {
+  using result_type = bool;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x >= y;
@@ -349,7 +356,8 @@ struct greater_equal : std::function<bool(T, T)> {
 
 // similar to std::less_equal, but with the DEVICE_FUNC qualifier
 template <class T>
-struct less_equal : std::function<bool(T, T)> {
+struct less_equal {
+  using result_type = bool;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool operator()(const T& x,
                                                         const T& y) const {
     return x <= y;

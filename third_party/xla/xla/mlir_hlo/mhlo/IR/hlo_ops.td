@@ -2173,34 +2173,6 @@ def MHLO_DynamicUpdateSliceOp: MHLO_Op<"dynamic_update_slice",
 // MHLO Other op definitions.
 //===----------------------------------------------------------------------===//
 
-def MHLO_DomainOp : MHLO_Op<"domain", [HLO_CompatibleOperandsAndResultType, InferTypeOpInterface, Pure]> {
-  let summary = "Domain operation";
-  let description = [{
-    This operation is private to the XLA compiler, so it is does not yet have
-    a specification.
-
-    Informally, these operations are used to group instructions with the same
-    DomainMetadata property. ShardingMetadata is the main use case today to
-    group instructions on the same device. Domain instructions provide two
-    major benefits:
-      - Prevent unintentionally optimizing instructions across domains.
-      - Automatically assign the metadata of the instructions created in the domain.
-    Without domain instructions, each HLO optimization pass would have to check
-    and propagate the metadata, which would be easy to miss and also adds
-    complexity to the compiler. Since domain instructions connect two different
-    domains, each domain instruction is associated with two DomainMetadata --
-    one on the operand side and one on the user side of the domain.
-  }];
-  let arguments = (ins
-    MHLO_TensorOrToken:$operand,
-    MHLO_DomainKindAttr:$kind,
-    StrAttr:$entry_metadata,
-    StrAttr:$exit_metadata
-  );
-  let results = (outs MHLO_TensorOrToken:$result);
-  let hasCustomHLOConverter = 1;
-}
-
 def MHLO_BatchNormGradOp : MHLO_Op<"batch_norm_grad", [Pure,
     AllElementTypesMatch<["operand", "grad_operand", "grad_scale", "grad_offset"]>,
     InferTensorType]> {

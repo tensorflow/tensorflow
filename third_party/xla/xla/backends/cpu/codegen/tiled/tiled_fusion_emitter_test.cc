@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -92,9 +92,8 @@ TEST_F(TiledFusionEmitterTest, EvaluatesMultipleCandidates) {
   // Assert that this fusion has multiple tiling candidates.
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
   ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<gpu::experimental::TilingSpace> tiling_space,
-      gpu::experimental::TilingSpace::Create(*fusion_adaptor,
-                                             mlir_context.get()));
+      std::unique_ptr<gpu::TilingSpace> tiling_space,
+      gpu::TilingSpace::Create(*fusion_adaptor, mlir_context.get()));
   ASSERT_OK_AND_ASSIGN(auto candidates, tiling_space->GetValidTilings());
   EXPECT_GT(candidates.size(), 1);
 }

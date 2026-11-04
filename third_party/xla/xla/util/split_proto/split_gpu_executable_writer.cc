@@ -70,6 +70,13 @@ SplitProtoManifest BuildManifest(int32_t num_of_contants) {
   return manifest;
 }
 
+// Returns whether the executable has an embedded HLO module. Note that
+// `hlo_module_with_config` can also be present with only the config set.
+bool HasHloModule(const gpu::GpuExecutableProto& executable) {
+  return executable.has_hlo_module_with_config() &&
+         executable.hlo_module_with_config().has_hlo_module();
+}
+
 // Normalizes the backend config JSONs by sorting the keys to ensure
 // deterministic serialization, since the order of keys in JSON is not
 // guaranteed.
@@ -77,6 +84,10 @@ SplitProtoManifest BuildManifest(int32_t num_of_contants) {
 // For this we need to re-map the de-duped payload IDs since two configs that
 // were bit different before may become the same after normalization.
 absl::Status NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
+  if (!HasHloModule(executable)) {
+    // Don't create an empty `hlo_module` if there is no module.
+    return absl::OkStatus();
+  }
   HloModuleProto* module =
       executable.mutable_hlo_module_with_config()->mutable_hlo_module();
   std::vector<std::string> new_payloads;
@@ -196,7 +207,11 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
       "failed to normalize backend config in GpuExecutableProto split proto");
   // Module IDs are created via a static counter when deserializing, and they
   // can cause non-determinism, so we don't preserve them.
-  executable.mutable_hlo_module_with_config()->mutable_hlo_module()->clear_id();
+  if (HasHloModule(executable)) {
+    executable.mutable_hlo_module_with_config()
+        ->mutable_hlo_module()
+        ->clear_id();
+  }
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       WriteRecord(record_writer, executable),
       "failed to serialize the rest of the fields in GpuExecutableProto "

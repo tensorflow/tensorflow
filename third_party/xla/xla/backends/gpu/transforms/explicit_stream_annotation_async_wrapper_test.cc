@@ -25,11 +25,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/side_effect_util.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -67,6 +70,63 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, AnnotatedOpIsWrapped) {
   EXPECT_TRUE(*filecheck_result);
 
   ASSERT_TRUE(mutated);
+}
+
+TEST_F(ExplicitStreamAnnotationAsyncWrapperTest,
+       AnnotatedInstructionsWithoutThunksAreNotWrapped) {
+  // Instructions can inherit the annotation of the op they belong to, e.g. the
+  // get-tuple-elements that pick out the results of a multi-result call. Those
+  // that do no work on any stream must not become async calls of their own;
+  // those that do (here partition-id, which writes its result with a memset)
+  // must still run on the annotated stream.
+  const absl::string_view hlo_string = R"(
+  HloModule m
+
+  %two (p: f32[]) -> (f32[], f32[]) {
+    %p = f32[] parameter(0)
+    %one = f32[] constant(1)
+    %add = f32[] add(%p, %one)
+    ROOT %t = (f32[], f32[]) tuple(%p, %add)
+  }
+
+  ENTRY %main (x: f32[]) -> (f32[1], f32[4], u32[]) {
+    %x = f32[] parameter(0)
+    %call = (f32[], f32[]) call(%x), to_apply=%two, frontend_attributes={_xla_stream_annotation="1"}
+    %gte0 = f32[] get-tuple-element(%call), index=0, frontend_attributes={_xla_stream_annotation="1"}
+    %gte1 = f32[] get-tuple-element(%call), index=1, frontend_attributes={_xla_stream_annotation="1"}
+    %mul = f32[] multiply(%gte0, %gte1)
+    %bitcast = f32[1] bitcast(%mul), frontend_attributes={_xla_stream_annotation="1"}
+    %alloc = f32[4] custom-call(), custom_call_target="AllocateBuffer", frontend_attributes={_xla_stream_annotation="1"}
+    %pid = u32[] partition-id(), frontend_attributes={_xla_stream_annotation="1"}
+    ROOT %t = (f32[1], f32[4], u32[]) tuple(%bitcast, %alloc, %pid), frontend_attributes={_xla_stream_annotation="1"}
+  })";
+
+  DebugOptions debug_options =
+      HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_stream_annotation(true);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config().set_debug_options(debug_options);
+  ExplicitStreamAnnotationAsyncWrapper wrapper_pass;
+  ASSERT_OK_AND_ASSIGN(bool mutated, wrapper_pass.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  int num_async_starts = 0;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    num_async_starts += instr->opcode() == HloOpcode::kAsyncStart;
+    EXPECT_NE(instr->opcode(), HloOpcode::kPartitionId) << instr->ToString();
+    if (instr->opcode() == HloOpcode::kGetTupleElement ||
+        instr->opcode() == HloOpcode::kBitcast ||
+        instr->opcode() == HloOpcode::kTuple ||
+        instr->opcode() == HloOpcode::kCustomCall) {
+      EXPECT_FALSE(
+          instr->frontend_attributes().map().contains(kXlaStreamAnnotationAttr))
+          << instr->ToString();
+    }
+  }
+  // Only the call and the partition-id are made asynchronous.
+  EXPECT_EQ(num_async_starts, 2);
 }
 
 TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, OverlappingGemms) {

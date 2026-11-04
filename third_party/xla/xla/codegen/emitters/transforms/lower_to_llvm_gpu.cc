@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -222,6 +223,29 @@ struct ExpBF16ToAMDGPU
   }
 };
 
+// Lowers scalar `math.fma` directly to `llvm.intr.fma` instead of
+// MathToNVVM's libdevice `@__nv_fmaf` / `@__nv_fma` call. In particular,
+// MathToNVVM (`populateOpPatterns<math::FmaOp>` in `MathToNVVM.cpp` via
+// `OpToFuncCallLowering::maybeCast` in `OpToFuncCallLowering.h`) upcasts `f16`
+// and `bf16` `math.fma` to `f32`, calls `@__nv_fmaf`, and truncates back, which
+// double-rounds instead of using the native `fma.rn.f16` / `fma.rn.bf16`
+// instruction.
+class FmaToLLVM : public mlir::ConvertOpToLLVMPattern<mlir::math::FmaOp> {
+ public:
+  using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::math::FmaOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    if (!mlir::isa<mlir::FloatType>(op.getType())) {
+      return rewriter.notifyMatchFailure(op, "not a scalar float fma");
+    }
+    rewriter.replaceOpWithNewOp<mlir::LLVM::FMAOp>(
+        op, adaptor.getA(), adaptor.getB(), adaptor.getC());
+    return mlir::success();
+  }
+};
+
 class LowerToLLVMGPUPass
     : public impl::LowerToLLVMGPUPassBase<LowerToLLVMGPUPass> {
  public:
@@ -306,6 +330,7 @@ class LowerToLLVMGPUPass
       } else {
         mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
         mlir::configureGpuToNVVMConversionLegality(target);
+        patterns.add<FmaToLLVM>(converter, mlir::PatternBenefit(2));
       }
       return mlir::success();
     };

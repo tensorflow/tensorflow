@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 
+#include <array>
+
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
@@ -268,6 +270,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"ResizeBilinear", 1, {1}},
       {"ResizeBilinearGrad"},
       {"ResizeNearestNeighbor", 1, {1}},
+      {"ResizeNearestNeighborGrad", 1, {1}},
       {"Reverse", 1, {0}},
       {"ReverseSequence", 1, {0}},
       {"ReverseV2", 1, {0}},
@@ -295,7 +298,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"SerializeTensor"},
       {"SetSize"},
       {"Shape"},
-      {"Sigmoid"},
       {"Size"},
       {"Slice", 1, {2}},
       {"Softmax"},
@@ -392,8 +394,8 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"TensorListScatter", 1, {2}},
       {"TensorListScatterV2", 2, {2, 3}},
       {"TensorListStack"},
-      {"TensorScatterAdd", 2, {0, 2}},
-      {"TensorScatterSub", 2, {0, 2}},
+      {"TensorScatterAdd", 1, {0}},
+      {"TensorScatterSub", 1, {0}},
       {"TensorScatterUpdate", 1, {0}},
       {"TensorStridedSliceUpdate", 1, {0}},
       {"TensorSummary"},
@@ -428,7 +430,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 490> a = {{
+  static std::array<OpIndexInfo, 491> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -731,6 +733,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"ResizeBilinear"},
       {"ResizeBilinearGrad"},
       {"ResizeNearestNeighbor"},
+      {"ResizeNearestNeighborGrad"},
       {"ResourceGather"},
       {"ResourceGatherNd"},
       {"Reverse"},

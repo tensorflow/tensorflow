@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/primitive_util.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/tests/restricted/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
@@ -163,6 +164,45 @@ TEST_F(ScaledDotRewriterElementSizeTest, Fp4OperandDropsSubByteElementSize) {
           << "Non-sub-byte instruction retains custom element size: "
           << instruction->ToString();
     }
+  }
+}
+
+TEST_F(ScaledDotRewriterElementSizeTest, PreservesOperandLayouts) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    ENTRY main {
+      lhs = f4e2m1fn[4,128,256]{1,0,2:E(4)} parameter(0)
+      rhs = f8e4m3fn[128,4,64]{0,2,1} parameter(1)
+      lhs_scale = f8e8m0fnu[4,4,16]{1,0,2} parameter(2)
+      rhs_scale = f8e8m0fnu[4,4,64]{0,2,1} parameter(3)
+      ROOT dot = bf16[4,256,64]{2,1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+        lhs_batch_dims={0},
+        rhs_batch_dims={1},
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )"));
+
+  ASSERT_OK_AND_ASSIGN(bool changed, ScaledDotRewriter().Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloVerifier verifier(HloVerifierOpts{}
+                           .MakeLayoutSensitive()
+                           .WithAllowMixedPrecision(true)
+                           .VerifyBroadcastDimensionsOrder()
+                           .VerifyReshapeIsBitcast());
+  EXPECT_OK(verifier.Run(module.get()));
+
+  const HloComputation* entry = module->entry_computation();
+  const HloInstruction* dot = entry->root_instruction();
+  ASSERT_EQ(dot->opcode(), HloOpcode::kDot);
+  for (int i : {0, 1}) {
+    const HloInstruction* dequantized = dot->operand(i);
+    EXPECT_EQ(dequantized->opcode(), HloOpcode::kMultiply);
+    EXPECT_EQ(
+        dequantized->shape().layout().minor_to_major(),
+        entry->parameter_instruction(i)->shape().layout().minor_to_major());
   }
 }
 

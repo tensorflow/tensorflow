@@ -59,6 +59,7 @@ do_external_licenses_check(){
 @platforms//os
 @ml_dtypes_py//ml_dtypes
 @ruy//
+@rules_cc//
 @rules_java_builtin//toolchains
 @rules_ml_toolchain//
 @rules_python//

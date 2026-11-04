@@ -2878,6 +2878,9 @@ LogicalResult ConcatenateOp::verify() {
           "Not implemented:: Expected all operands to have the same element "
           "type.");
     }
+    if (shape.size() != first_shape.size()) {
+      return emitOpError("Expected all operands to have the same rank.");
+    }
     for (int dim = 0; dim < shape.size(); ++dim) {
       if (dim != dimension && shape[dim] != first_shape[dim]) {
         return emitOpError(
@@ -2893,15 +2896,22 @@ LogicalResult ConcatenateOp::verify() {
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, mlir::PropertyRef properties,
     RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+  if (operands.empty()) {
+    return failure();
+  }
   ConcatenateOpAdaptor adaptor(operands, attributes, properties, regions);
   auto dimension = adaptor.getDimension();
+  auto first_type = dyn_cast<VectorType>(operands[0].getType());
+  if (!first_type) {
+    return failure();
+  }
   for (auto [i, operand] : llvm::enumerate(operands)) {
     if (auto operand_ty = dyn_cast<VectorType>(operand.getType());
-        !operand_ty || operand_ty.getRank() <= dimension) {
+        !operand_ty || operand_ty.getRank() <= dimension ||
+        operand_ty.getRank() != first_type.getRank()) {
       return failure();
     }
   }
-  auto first_type = cast<VectorType>(operands[0].getType());
   llvm::SmallVector<int64_t> result_shape =
       llvm::to_vector(first_type.getShape());
   Type result_dtype = first_type.getElementType();
@@ -3282,18 +3292,32 @@ LogicalResult ReduceIndexOp::verify() {
   auto bitwidth = getElementTypeBitwidth(in_ty);
   auto axis = getAxis();
   auto kind = getKind();
-  if (kind != ReductionKind::kArgMax && kind != ReductionKind::kArgMin) {
-    return emitOpError("Reduction kind must be arg_max or arg_min");
+  const bool is_arg_max_or_min =
+      kind == ReductionKind::kArgMax || kind == ReductionKind::kArgMin;
+  const bool is_find_first_set = kind == ReductionKind::kFindFirstSet;
+  if (!is_arg_max_or_min && !is_find_first_set) {
+    return emitOpError(
+        "Reduction kind must be arg_max, arg_min, or find_first_set");
   }
-  if (!in_ty.getElementType().isF32() && !in_ty.getElementType().isBF16()) {
+  if (is_arg_max_or_min && !in_ty.getElementType().isF32() &&
+      !in_ty.getElementType().isBF16()) {
     return emitOpError(
         "Not Implemented: Only f32 and bf16 input is supported for arg_max and "
         "arg_min");
   }
-  if (!out_ty.getElementType().isSignlessInteger(bitwidth)) {
+  if (is_arg_max_or_min &&
+      !out_ty.getElementType().isSignlessInteger(bitwidth)) {
     return emitOpError(
         absl::StrFormat("Arg_max and arg_min must have i%d output", bitwidth));
   }
+  if (is_find_first_set && (!in_ty.getElementType().isSignlessInteger(1) ||
+                            !out_ty.getElementType().isSignlessInteger(32))) {
+    return emitOpError(
+        "find_first_set requires i1 input and i32 output element types");
+  }
+
+  // SameOperandsAndResultRank checks the following:
+  CHECK_EQ(in_ty.getRank(), out_ty.getRank());
 
   auto in_shape = in_ty.getShape();
   auto out_shape = out_ty.getShape();
@@ -3301,33 +3325,31 @@ LogicalResult ReduceIndexOp::verify() {
     return emitOpError("Axis must be in [0, ")
            << in_shape.size() << "), but got " << axis;
   }
-  if (in_shape[axis] > (1LL << bitwidth)) {
-    return emitOpError(absl::StrFormat(
-        "Reduction dimension size (%d) exceeds 2^%d (%d), which overflows "
-        "%d-bit indices for arg_max/arg_min",
-        in_shape[axis], bitwidth, 1LL << bitwidth, bitwidth));
+  // The largest possible result is the last index along the reduced dimension
+  // for arg_max/arg_min, and the dimension size for find_first_set (returned
+  // when no element is set). It must fit in the output element type, treated
+  // as unsigned.
+  const int64_t max_result =
+      is_find_first_set ? in_shape[axis] : in_shape[axis] - 1;
+  const unsigned out_bitwidth = out_ty.getElementTypeBitWidth();
+  if (static_cast<uint64_t>(max_result) > llvm::maxUIntN(out_bitwidth)) {
+    return emitOpError("Reduction dimension size ")
+           << in_shape[axis] << " is too large for "
+           << stringifyReductionKind(kind) << ": the largest result "
+           << max_result << " does not fit in " << out_bitwidth
+           << "-bit unsigned indices";
   }
 
-  if (in_shape.size() < 2) {
+  if (is_arg_max_or_min && in_shape.size() < 2) {
     return emitOpError("Not Implemented: Only input rank > 1 is supported.");
   }
-  if (out_shape.size() != in_shape.size() - 1) {
-    return emitOpError("Output rank must be one less than input rank");
-  }
-  int out_dim = 0;
-  for (int i = 0; i < in_shape.size(); ++i) {
-    if (i == axis) {
-      continue;
+  for (int64_t i = 0; i < in_ty.getRank(); ++i) {
+    const int64_t expected_output_size = (i == axis) ? 1 : in_shape[i];
+    if (out_shape[i] != expected_output_size) {
+      return emitOpError("Expected output dimension ")
+             << i << " to have size " << expected_output_size << ", but got "
+             << out_shape[i];
     }
-    if (in_shape[i] != out_shape[out_dim]) {
-      return emitOpError(
-                 "Output shape must match input shape on non-reduction "
-                 "dimensions. ")
-             << "Output shape (" << out_shape
-             << ") does not match input shape (" << in_shape
-             << ") at input dimension " << i;
-    }
-    out_dim++;
   }
   return success();
 }
@@ -3364,6 +3386,8 @@ LogicalResult ReduceOp::verify() {
     }
   }
 
+  const Type input_element_type = input_type.getElementType();
+  const Type output_element_type = output_type.getElementType();
   switch (getKind()) {
     case ReductionKind::kArgMax:
     case ReductionKind::kArgMin:
@@ -3379,11 +3403,11 @@ LogicalResult ReduceOp::verify() {
           "minui instead");
     case ReductionKind::kMaxF:
     case ReductionKind::kMinF:
-      if (!isa<FloatType>(input_type.getElementType())) {
+      if (!isa<FloatType>(input_element_type)) {
         return emitOpError(
             "maxf and minf reductions require float element type");
       }
-      if (input_type.getElementType() != output_type.getElementType()) {
+      if (input_element_type != output_element_type) {
         return emitOpError(
             "Input and output must have the same element type for sum, max and "
             "min reductions");
@@ -3393,12 +3417,12 @@ LogicalResult ReduceOp::verify() {
     case ReductionKind::kMinSI:
     case ReductionKind::kMaxUI:
     case ReductionKind::kMinUI:
-      if (!isa<IntegerType>(input_type.getElementType())) {
+      if (!isa<IntegerType>(input_element_type)) {
         return emitOpError(
             "maxsi, minsi, maxui and minui reductions require integer element "
             "type");
       }
-      if (input_type.getElementType() != output_type.getElementType()) {
+      if (input_element_type != output_element_type) {
         return emitOpError(
             "Input and output must have the same element type for sum, max and "
             "min reductions");
@@ -3406,7 +3430,7 @@ LogicalResult ReduceOp::verify() {
       break;
     case ReductionKind::kSum:
       // TODO(tlongeri): Might be worth allowing things like bf16 -> f32.
-      if (input_type.getElementType() != output_type.getElementType()) {
+      if (input_element_type != output_element_type) {
         return emitOpError(
             "Input and output must have the same element type for sum, max and "
             "min reductions");
@@ -3427,6 +3451,17 @@ LogicalResult AssumeMultipleOp::verify() {
            << *value << " that is not a multiple of " << getMultiple();
   }
   return success();
+}
+
+OpFoldResult AssumeMultipleOp::fold(FoldAdaptor adaptor) {
+  if (getMultiple() == 1) {
+    return getValue();
+  }
+  if (auto int_attr = dyn_cast_if_present<IntegerAttr>(adaptor.getValue());
+      int_attr && int_attr.getInt() % getMultiple() == 0) {
+    return getValue();
+  }
+  return nullptr;
 }
 
 LogicalResult SublaneShuffleOp::verify() {

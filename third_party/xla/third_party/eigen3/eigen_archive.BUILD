@@ -33,8 +33,6 @@ ALL_FILES_WITH_EXTENSIONS = glob(["**/*.*"])
 EIGEN_HEADERS = glob(
     [
         "Eigen/*",
-        "contrib/Eigen/*",
-        "contrib/Eigen/CXX11/*",
         "unsupported/Eigen/*",
         "unsupported/Eigen/CXX11/*",
     ],
@@ -48,8 +46,6 @@ EIGEN_SOURCES = glob(
     [
         "Eigen/**/src/**/*.h",
         "Eigen/**/src/**/*.inc",
-        "contrib/Eigen/**/src/**/*.h",
-        "contrib/Eigen/**/src/**/*.inc",
         "unsupported/Eigen/**/src/**/*.h",
         "unsupported/Eigen/**/src/**/*.inc",
     ],
@@ -92,8 +88,10 @@ cc_library(
     srcs = glob([
         "blas/*.cpp",
         "blas/*.h",
+        "blas/f2c/*.c",
+        "blas/f2c/*.h",
     ]) + [
-        "Eigen/src/Core/util/blas.h",
+        "Eigen/src/misc/blas.h",
     ],
     hdrs = ["blas/blas.h"],
     copts = ["-O3"],

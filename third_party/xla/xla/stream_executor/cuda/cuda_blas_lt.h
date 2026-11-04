@@ -33,6 +33,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -115,6 +116,13 @@ class BlasLt : public gpu::BlasLt {
     absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
         size_t max_algorithm_count, size_t max_workspace_size) const override;
 
+    absl::StatusOr<gpu::BlasLtMatmulAlgorithm> GetBlasLtMatmulAlgorithm(
+        const MatmulAlgorithm& algorithm) const override;
+
+    absl::StatusOr<MatmulAlgorithm> GetMatmulAlgorithm(
+        const gpu::BlasLtMatmulAlgorithm& algorithm,
+        size_t max_workspace_size) const override;
+
     absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
       auto palgo = std::any_cast<cublasLtMatmulAlgo_t>(&algorithm.opaque_algo);
       if (palgo == nullptr) {
@@ -126,6 +134,8 @@ class BlasLt : public gpu::BlasLt {
     }
 
    private:
+    absl::Status SetDummyFp8ScalePointersIfNeeded() const;
+
     const BlasLt& blas_lt_;
     MatmulDesc op_desc_;
     MatrixLayout a_desc_;

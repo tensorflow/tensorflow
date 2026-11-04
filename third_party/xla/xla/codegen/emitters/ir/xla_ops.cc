@@ -342,25 +342,21 @@ absl::StatusOr<IndexingMapWithAdditions> GetNewIndexingMapAfterFoldingSequence(
     replacements[operand_exprs[producer_result]] =
         producer.getSymbolicMap()
             .GetResult(producer_result_id)
-            .ReplaceDims(producer_dim_replacements, num_producer_dims,
-                         num_producer_dims, producer_map.GetSymbolCount());
+            .ReplaceDimsAndSymbols(producer_dim_replacements);
     for (const auto& [expr, range] : producer_map.GetSymbolicConstraints()) {
       added_constraints.push_back(
-          {expr.ReplaceDims(producer_dim_replacements, num_producer_dims,
-                            num_producer_dims, producer_map.GetSymbolCount()),
-           range});
+          {expr.ReplaceDimsAndSymbols(producer_dim_replacements), range});
     }
   }
 
   int new_num_dims = num_dims + added_dim_args.size();
-  int num_symbols = indexing_map.GetSymbolCount();
   auto new_symbolic_map = indexing_map.GetSymbolicMap()
                               .SetNumDimensions(new_num_dims)
                               .Replace(replacements);
   SmallVector<std::pair<SymbolicExpr, Interval>> new_constraints;
   for (const auto& [expr, range] : indexing_map.GetSymbolicConstraints()) {
     new_constraints.push_back(
-        {expr.ReplaceDims({}, num_dims, new_num_dims, num_symbols)
+        {expr.ReplaceDimsAndSymbols({}, {}, num_dims, new_num_dims)
              .Replace(replacements),
          range});
   }
@@ -572,7 +568,8 @@ struct FoldApplyIndexingOperands
     new_constraints.reserve(indexing_map.GetSymbolicConstraints().size());
     for (const auto& [expr, interval] : indexing_map.GetSymbolicConstraints()) {
       new_constraints.push_back(
-          {expr.ReplaceDims(dim_replacements, num_dims, new_num_dims, 0),
+          {expr.ReplaceDimsAndSymbols(dim_replacements, {}, num_dims,
+                                      new_num_dims),
            interval});
     }
     IndexingMap new_indexing_map(symbolic_map.ReplaceDimsAndSymbols(
@@ -1092,9 +1089,8 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
 
     llvm::MapVector<SymbolicExpr, Interval> new_constraints;
     for (auto [expr, interval] : loop_indexing_map.GetSymbolicConstraints()) {
-      new_constraints[expr.ReplaceDims(
-          dim_replacements, num_dims, used_dim_vars.size(),
-          loop_indexing_map.GetSymbolCount())] = interval;
+      new_constraints[expr.ReplaceDimsAndSymbols(
+          dim_replacements, {}, num_dims, used_dim_vars.size())] = interval;
     }
 
     IndexingMap new_indexing_map(new_symbolic_map, std::move(used_dim_vars),

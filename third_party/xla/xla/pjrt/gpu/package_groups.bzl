@@ -30,3 +30,8 @@ def xla_gpu_internal_packages(name = "xla_gpu_internal_packages"):
         name = "legacy_se_gpu_pjrt_compiler_users",
         packages = ["//..."],
     )
+
+    native.package_group(
+        name = "gpu_pjrt_client_hash_users",
+        packages = ["//..."],
+    )

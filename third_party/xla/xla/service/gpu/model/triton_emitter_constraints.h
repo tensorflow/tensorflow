@@ -19,14 +19,13 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/types/span.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/service/decision.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
-namespace experimental {
 
 // Evaluates a subset of Triton hardware and emitter constraints on candidate
 // tile sizes without requiring construction of concrete tiled HLO instructions.
@@ -38,8 +37,6 @@ Decision VerifySubsetOfTritonConstraints(
 
 Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
                                  const se::DeviceDescription& device_info);
-
-}  // namespace experimental
 
 }  // namespace gpu
 }  // namespace xla

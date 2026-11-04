@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
@@ -403,7 +404,7 @@ std::unique_ptr<CustomCallThunk> CreateSelectKThunk(
     const BufferAllocation& alloc_in, const BufferAllocation& alloc_out_val,
     const BufferAllocation& alloc_out_idx,
     const BufferAllocation& alloc_scratch, int64_t batch_size = 1,
-    int64_t num_elements = 4096, int64_t k = 32) {
+    int64_t num_elements = 4096, int64_t k = 32, bool use_pdl = false) {
   BufferAllocation::Slice slice_in(&alloc_in, 0, alloc_in.size());
   BufferAllocation::Slice slice_out_val(&alloc_out_val, 0,
                                         alloc_out_val.size());
@@ -426,7 +427,9 @@ std::unique_ptr<CustomCallThunk> CreateSelectKThunk(
   auto thunk = CustomCallThunk::Create(
       Thunk::ThunkInfo(), std::string(kTopKCustomCallTarget),
       std::move(operands), std::move(results), /*attributes=*/{},
-      /*called_computation=*/nullptr, "CUDA", se::GpuComputeCapability());
+      /*called_computation=*/nullptr, "CUDA", se::GpuComputeCapability(),
+      /*execution_state=*/nullptr,
+      /*cpu_target_machine_options=*/std::nullopt, use_pdl);
   CHECK_OK(thunk.status());
   return std::move(*thunk);
 }
@@ -512,6 +515,39 @@ TEST(CommandBufferConversionPassTest, ChecksKnownCudaVersions) {
   }
 }
 
+TEST(CommandBufferConversionPassTest, ForwardsCommandBufferTelemetryFlag) {
+  // The pass forwards both flags as is; whether the CUDA versions support
+  // telemetry is decided at runtime by
+  // `CommandBuffer::SupportsNodeAnnotations`.
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+
+  for (bool telemetry : {false, true}) {
+    for (bool during_profiling : {false, true}) {
+      SCOPED_TRACE(absl::StrCat("telemetry=", telemetry,
+                                ", during_profiling=", during_profiling));
+      debug_options.set_xla_gpu_enable_command_buffer_telemetry(telemetry);
+      debug_options.set_xla_enable_command_buffers_during_profiling(
+          during_profiling);
+
+      BufferAllocation alloc0(0, 1024, 0);
+      ThunkSequence thunks;
+      thunks.push_back(CreateCopyThunk(alloc0));
+      FakeErrorAllocator allocator;
+      CommandBufferConversionPass pass("test", /*devices_in_process=*/1);
+      ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                           TestGpuDeviceInfo::RTXA6000DeviceInfo(), allocator),
+                  IsOkAndHolds(true));
+      ASSERT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+      const auto& thunk = static_cast<const CommandBufferThunk&>(*thunks[0]);
+      EXPECT_EQ(thunk.IsCommandBufferTelemetryEnabled(), telemetry);
+      EXPECT_EQ(thunk.IsEnabledDuringProfiling(), during_profiling);
+    }
+  }
+}
+
 TEST(CommandBufferConversionPassTest,
      ConvertsSelectKThunkToCommandBufferThunk) {
   ThunkSequence thunks;
@@ -528,7 +564,7 @@ TEST(CommandBufferConversionPassTest,
 
   thunks.push_back(CreateSelectKThunk(alloc_in, alloc_out_val, alloc_out_idx,
                                       alloc_scratch, kBatchSize, kNumElements,
-                                      kTopK));
+                                      kTopK, /*use_pdl=*/true));
 
   DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_graph_min_graph_size(1);
@@ -550,6 +586,8 @@ TEST(CommandBufferConversionPassTest,
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kCustomCall));
+  EXPECT_THAT(thunks.ToString(/*indent=*/0),
+              ::testing::HasSubstr("kCustomCall, use_pdl=true"));
 }
 
 TEST(CommandBufferConversionPassTest,

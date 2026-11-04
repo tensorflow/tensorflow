@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
-#include "xla/hlo/transforms/simplifiers/dot_dimension_merger.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
@@ -119,8 +118,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
            .xla_gpu_experimental_disable_binary_libraries()) {
     pipeline.AddPass<ConvRewriter>(gpu_version);
     pipeline.AddPass<ConvPaddingLegalization>();
-    auto rcc = gpu_version.rocm_compute_capability();
-    pipeline.AddPass<CudnnFusedConvRewriter>(*rcc, dnn_version,
+    pipeline.AddPass<CudnnFusedConvRewriter>(gpu_version, dnn_version,
                                              toolkit_version);
   }
 
@@ -136,7 +134,7 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
       hlo_module->config().debug_options(),
-      /*is_rocm=*/true);
+      /*is_non_cuda_platform=*/true);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 
@@ -180,22 +178,11 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     const CompileOptions& options, const GpuTopology& gpu_topology,
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
     CompilationStats* compilation_stats, mlir::MLIRContext* mlir_context) {
-  HloPassPipeline pre_pipeline("AMDGPU post-layout_assignment part 1",
-                               compilation_stats);
-
-  pre_pipeline.AddPass<DotDimensionMerger>();
-
-  ABSL_RETURN_IF_ERROR(
-      pre_pipeline
-          .Run(hlo_module,
-               /*execution_threads=*/{HloInstruction::kMainExecutionThread})
-          .status());
-
   ABSL_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_topology, alias_info, thread_pool,
       compilation_stats, mlir_context));
 
-  HloPassPipeline post_pipeline("AMDGPU post-layout_assignment part 2",
+  HloPassPipeline post_pipeline("AMDGPU post-layout_assignment",
                                 compilation_stats);
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp

@@ -116,6 +116,7 @@ CodegenDecision IsTritonSupportedDataTypeForOpcode(
       case HloOpcode::kConcatenate:
       case HloOpcode::kConstant:
       case HloOpcode::kCopy:
+      case HloOpcode::kDynamicSlice:
       case HloOpcode::kPad:
       case HloOpcode::kParameter:
       case HloOpcode::kReshape:
@@ -342,7 +343,20 @@ absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
     return {HloOpcode::kSelect};
   }
 
-  return {HloOpcode::kSelect, HloOpcode::kClamp};
+  absl::flat_hash_set<HloOpcode> ret{HloOpcode::kSelect, HloOpcode::kClamp};
+  const auto* cuda_cc = gpu_version.cuda_compute_capability();
+  const auto* rocm_cc = gpu_version.rocm_compute_capability();
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::F64 ||
+      (element_type == PrimitiveType::F16 &&
+       (gpu_version.IsRocm() ||
+        (cuda_cc != nullptr && cuda_cc->IsAtLeast(5, 3)))) ||
+      (element_type == PrimitiveType::BF16 &&
+       ((cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) ||
+        (rocm_cc != nullptr && rocm_cc->gfx1250())))) {
+    ret.insert(HloOpcode::kFma);
+  }
+  return ret;
 }
 
 // Returns `true` if the given opcode and element type correspond to a n-ary
@@ -849,6 +863,25 @@ bool IsWithinGemmFusion(const HloInstruction& instr) {
          IsGpuFusionKind(*fusion, kTritonNestedGemmFusionKind);
 }
 
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr) {
+  for (const HloInstruction* index_operand : instr.index_operands()) {
+    switch (index_operand->shape().element_type()) {
+      case S8:
+      case S16:
+      case S32:
+      case S64:
+        break;  // supported
+      default:
+        return CodegenDecision::Forbid(
+            "Dynamic slice is only supported with S8, S16, S32, or S64 "
+            "offsets.");
+    }
+  }
+  return CodegenDecision(instr.shape().element_type() != S4,
+                         "S4 is not supported.");
+}
+
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (internal::IsTritonUnsupportedOpcode(instr.opcode())) {
@@ -963,10 +996,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kParameter:
       return CodegenDecision::Allow();
     case HloOpcode::kDynamicSlice:
-      // TODO(b/417172838): enable this once we confirm that no benchmarks were
-      // regressed.
-      return CodegenDecision::Forbid(
-          "dynamic slice is supported but not enabled yet");
+      return IsTritonSupportedDynamicSlice(
+          *Cast<HloDynamicSliceInstruction>(&instr));
     case HloOpcode::kBitcast:
       if (ShapeUtil::ElementsIn(instr.operand(0)->shape()) !=
           ShapeUtil::ElementsIn(instr.shape())) {
@@ -1039,7 +1070,6 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kDynamicReshape:
-    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kExp2:
     case HloOpcode::kGather:

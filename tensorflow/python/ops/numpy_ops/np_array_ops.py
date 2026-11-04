@@ -162,6 +162,18 @@ def full_like(a, fill_value, dtype=None, order='K', subok=True, shape=None):  # 
   return array_ops.broadcast_to(fill_value, array_ops.shape(a))
 
 
+def _cast(x, dtype, name=None):
+  """Casts `x` to `dtype`, testing complex values against zero for bool.
+
+  `math_ops.cast` keeps only the real part of a complex tensor, so `-3j` would
+  become `False`. NumPy treats a complex value as true if either part is
+  nonzero.
+  """
+  if x.dtype.is_complex and dtypes.as_dtype(dtype) == dtypes.bool:
+    return math_ops.not_equal(x, 0, name=name)
+  return math_ops.cast(x, dtype, name=name)
+
+
 def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
   """Main implementation of np.array()."""
   result_t = val
@@ -181,9 +193,9 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
     # supply that information so that convert_to_tensor will do best-effort
     # conversion to that dtype first.
     result_t = np_arrays.convert_to_tensor(result_t, dtype_hint=dtype)
-    result_t = math_ops.cast(result_t, dtype=dtype)
+    result_t = _cast(result_t, dtype)
   elif dtype:
-    result_t = math_ops.cast(result_t, dtype)
+    result_t = _cast(result_t, dtype)
 
   if copy:
     result_t = array_ops.identity(result_t)
@@ -365,6 +377,11 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   a = asarray(a)
 
   maybe_rank = a.shape.rank
+  if maybe_rank is not None and maybe_rank < 2:
+    # NumPy checks the rank before any per-axis checks, so a rank-0 or
+    # rank-1 input gets this message instead of the out-of-bounds or
+    # same-axis errors below. `trace` inherits this check.
+    raise ValueError('diag requires an array of at least two dimensions')
   if (
       maybe_rank is not None
       and isinstance(axis1, (int, np.integer))
@@ -383,7 +400,7 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
           f'for input of rank {maybe_rank}.'
       )
     if norm1 == norm2:
-      raise ValueError('axis1 and axis2 cannot be the same axis')
+      raise ValueError('axis1 and axis2 cannot be the same')
     # Reassign after validation so the error messages above keep the
     # original user-supplied values and the fast path below consumes
     # normalized, non-negative axes.
@@ -918,6 +935,9 @@ def real(val):
   val = asarray(val)
   # TODO(srbs): np.real returns a scalar if val is a scalar, whereas we always
   # return an ndarray.
+  if val.dtype == dtypes.bool:
+    # `math_ops.real` rejects bool, which is already real.
+    return val
   return math_ops.real(val)
 
 
@@ -1652,7 +1672,7 @@ def nonzero(a):
         'arrays to return.'
     )
   return array_ops_stack.unstack(
-      array_ops.where_v2(math_ops.cast(a, dtypes.bool)), a.shape.rank, axis=1
+      array_ops.where_v2(_cast(a, dtypes.bool)), a.shape.rank, axis=1
   )
 
 

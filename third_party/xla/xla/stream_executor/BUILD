@@ -1,11 +1,11 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "stream_executor_build_defs_bzl_deps", "stream_executor_friends", "stream_executor_internal")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -414,6 +414,7 @@ cc_library(
     srcs = ["device_address_vmm_allocator_factory_stub.cc"],
     tags = ["manual"],
     deps = [
+        ":device_address_allocator",
         ":device_address_vmm_allocator",
         ":platform",
         ":stream",
@@ -433,6 +434,7 @@ cc_library(
         "manual",
     ],
     deps = [
+        ":device_address_allocator",
         ":device_address_vmm_allocator",
         ":platform",
         ":stream",
@@ -453,6 +455,7 @@ cc_library(
         "rocm-only",
     ],
     deps = [
+        ":device_address_allocator",
         ":device_address_vmm_allocator",
         ":platform",
         ":stream",
@@ -468,12 +471,12 @@ cc_library(
     name = "device_address_vmm_allocator_factory",
     deps = [
         ":device_address_vmm_allocator",
-    ] + if_cuda_or_rocm_is_configured(
+    ] + if_cuda_or_rocm(
         [],
         [":device_address_vmm_allocator_factory_stub"],
-    ) + if_rocm_is_configured(
+    ) + if_rocm(
         [":device_address_vmm_allocator_factory_rocm"],
-    ) + if_cuda_is_configured(
+    ) + if_cuda(
         [":device_address_vmm_allocator_factory_cuda"],
     ),
 )

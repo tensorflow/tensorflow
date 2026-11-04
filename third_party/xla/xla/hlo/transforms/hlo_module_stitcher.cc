@@ -29,12 +29,36 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
 namespace xla {
+namespace {
+
+// Recursively interns `src_id` (and its ancestor chain) from `src_frames` into
+// `dst_frames`, returning the corresponding ID in `dst_frames`.
+StackFrameId InternStackFrame(
+    const StackFrames& src_frames, StackFrameId src_id, StackFrames& dst_frames,
+    absl::flat_hash_map<StackFrameId, StackFrameId>& interned) {
+  if (auto it = interned.find(src_id); it != interned.end()) {
+    return it->second;
+  }
+  HloStackFrame frame = src_frames.GetStackFrame(src_id);
+  if (frame.empty()) {
+    return StackFrameId{};
+  }
+  frame.parent_frame_id =
+      InternStackFrame(src_frames, frame.parent_frame_id, dst_frames, interned);
+  StackFrameId dst_id = dst_frames.AddStackFrame(frame);
+  interned[src_id] = dst_id;
+  return dst_id;
+}
+
+}  // namespace
 
 absl::StatusOr<bool> HloModuleStitcher::RunImpl(
     HloModule* module,
@@ -94,6 +118,26 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
         if (cloned_sub_entry == nullptr) {
           cloned_sub_entry = module->DeepCloneComputation(sub_entry, &context);
         }
+        // Intern the submodule's stack frames into the parent module and remap
+        // cloned instructions' stack_frame_ids.
+        const StackFrames& src_frames = sub_module->stack_frames();
+        StackFrames& dst_frames = module->mutable_stack_frames();
+        absl::flat_hash_map<StackFrameId, StackFrameId> frame_id_map;
+        for (const HloComputation* sub_comp : sub_module->computations()) {
+          HloComputation* cloned_comp = context.FindComputation(sub_comp);
+          if (cloned_comp == nullptr) {
+            continue;
+          }
+          for (HloInstruction* new_inst : cloned_comp->instructions()) {
+            int src_id = new_inst->metadata().stack_frame_id();
+            if (src_id != 0) {
+              new_inst->mutable_metadata().set_stack_frame_id(
+                  InternStackFrame(src_frames, StackFrameId{src_id}, dst_frames,
+                                   frame_id_map)
+                      .value);
+            }
+          }
+        }
 
         std::vector<HloInstruction*> operands;
         operands.reserve(inst->operand_count());
@@ -119,6 +163,7 @@ absl::StatusOr<bool> HloModuleStitcher::RunImpl(
         HloInstruction* call = comp->AddInstruction(HloInstruction::CreateCall(
             result_shape, operands, cloned_sub_entry));
         call->set_frontend_attributes(inst->frontend_attributes());
+        call->set_metadata(inst->metadata());
 
         HloInstruction* replacement = call;
         if (!ShapeUtil::Equal(result_shape, inst->shape())) {

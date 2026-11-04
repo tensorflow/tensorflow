@@ -1450,6 +1450,79 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     SupportTestTypeAndDeviceToString);
 
+using DynamicSliceTest = SupportTestWithTypeAndDeviceParam;
+
+TEST_P(DynamicSliceTest, OperandTypes) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = $0[256,256] parameter(0)
+  start_1 = s32[] parameter(1)
+  start_2 = s32[] constant(0)
+  ROOT dynamic_slice_op = $0[32,256] dynamic-slice(operand, start_1, start_2),
+                          dynamic_slice_sizes={32,256}
+})";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                 kHloTestTemplate, data_type,
+                                                 HloOpcode::kDynamicSlice));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 4}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DynamicSliceTestSuite, DynamicSliceTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    SupportTestTypeAndDeviceToString);
+
+using DynamicSliceOffsetTypesTest = SupportTestWithTypeAndDeviceParam;
+
+TEST_P(DynamicSliceOffsetTypesTest, DynamicSlice2D) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = f32[256,256] parameter(0)
+  start_1 = $0[] parameter(1)
+  start_2 = $0[] parameter(2)
+  ROOT dynamic_slice_op = f32[32,64] dynamic-slice(operand, start_1, start_2),
+                          dynamic_slice_sizes={32,64}
+})";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                 kHloTestTemplate, data_type,
+                                                 HloOpcode::kDynamicSlice));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 4}, cc);
+}
+
+constexpr std::array kTestedOpsDynamicSlice = {HloOpcode::kDynamicSlice};
+
+// Dynamic slices whose offset is computed and shared between several slices.
+TEST_F(SupportTest, DynamicSlicesWithSharedComputedOffset) {
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  p0 = s32[64] parameter(0)
+  p1 = s32[64] parameter(1)
+  p2 = u32[1] parameter(2)
+  convert = s32[1] convert(p2)
+  c16 = s32[1] constant({16})
+  multiply = s32[1] multiply(convert, c16)
+  offset = s32[] bitcast(multiply)
+  ds0 = s32[16] dynamic-slice(p0, offset), dynamic_slice_sizes={16}
+  ds1 = s32[16] dynamic-slice(p1, offset), dynamic_slice_sizes={16}
+  ROOT add = s32[16] add(ds0, ds1)
+})";
+  ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kDynamicSlice));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16},
+                 DefaultDeviceForTesting());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DynamicSliceOffsetTypesTestSuite, DynamicSliceOffsetTypesTest,
+    ::testing::Combine(::testing::Values(S8, S16, S32, S64, U8, U16, U32, U64),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    SupportTestTypeAndDeviceToString);
+
 using CollectiveTest = SupportTestWithTypeAndDeviceParam;
 
 TEST_P(CollectiveTest, IsTritonSupportedAllGather) {
@@ -2085,25 +2158,6 @@ INSTANTIATE_TEST_SUITE_P(
     BatchNormGradSuite, BatchNormGradTest,
     AllTestCombinationsForOpcodes({HloOpcode::kBatchNormGrad}),
     SupportTestTypeAndOpcodeAndDeviceToString);
-
-using DomainTest = SupportTestWithTypeAndOpcodeAndDeviceParam;
-
-TEST_P(DomainTest, Domain) {
-  auto [data_type, opcode, cc] = GetParam();
-  const std::string kHloTestTemplate = R"(
-ENTRY triton_computation {
-  operand = $0[] parameter(0)
-  ROOT domain_op = $0[] domain(operand), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
-})";
-  ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
-}
-
-INSTANTIATE_TEST_SUITE_P(DomainSuite, DomainTest,
-                         AllTestCombinationsForOpcodes({HloOpcode::kDomain}),
-                         SupportTestTypeAndOpcodeAndDeviceToString);
 
 using GetDimensionSizeTest = SupportTestWithDeviceParam;
 
@@ -3629,7 +3683,6 @@ constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
     HloOpcode::kDynamicReshape,
-    HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kExp2,
     HloOpcode::kGather,
@@ -3666,6 +3719,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsScan.begin(), kTestedOpsScan.end());
   ret.insert(kTestedOpsSlice.begin(), kTestedOpsSlice.end());
   ret.insert(kTestedOpsConcatenate.begin(), kTestedOpsConcatenate.end());
+  ret.insert(kTestedOpsDynamicSlice.begin(), kTestedOpsDynamicSlice.end());
   ret.insert(kTestedOpsTranspose.begin(), kTestedOpsTranspose.end());
   ret.insert(kTestedOpsCollectives.begin(), kTestedOpsCollectives.end());
   ret.insert(kTestedOpsBroadcast.begin(), kTestedOpsBroadcast.end());
@@ -3691,7 +3745,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kConditional);
   ret.emplace(HloOpcode::kConvolution);
   ret.emplace(HloOpcode::kCustomCall);
-  ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
   ret.emplace(HloOpcode::kFft);
   ret.emplace(HloOpcode::kFusion);

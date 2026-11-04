@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
@@ -82,23 +84,21 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLlvmImpl(
 }  // namespace
 
 xla::Future<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::Compile(
-    Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-    const std::string& sanitized_kernel_name,
-    const emitters::KernelArguments& kernel_arguments,
-    const LaunchDimensions& launch_dimensions) {
+    Thunk::ThunkInfo thunk_info, GpuKernelDefinition kernel_def) {
+  const GpuKernelSpec& kernel_spec = kernel_def.spec();
+  LlvmKernelSource kernel_source = std::move(kernel_def.source());
   if (!thread_pool_) {
     return CompileImpl(std::move(thunk_info), std::move(kernel_source),
-                       sanitized_kernel_name, kernel_arguments,
-                       launch_dimensions);
+                       kernel_spec.name(), kernel_spec.kernel_arguments(),
+                       kernel_spec.launch_dimensions());
   }
   return tsl::MakeFutureOn(
       *thread_pool_->AsExecutor(),
       [this, thunk_info = std::move(thunk_info),
-       kernel_source = std::move(kernel_source), sanitized_kernel_name,
-       kernel_arguments, launch_dimensions]() mutable {
+       kernel_source = std::move(kernel_source), kernel_spec]() mutable {
         return CompileImpl(std::move(thunk_info), std::move(kernel_source),
-                           sanitized_kernel_name, kernel_arguments,
-                           launch_dimensions);
+                           kernel_spec.name(), kernel_spec.kernel_arguments(),
+                           kernel_spec.launch_dimensions());
       });
 }
 
@@ -124,7 +124,7 @@ xla::Future<LlvmKernelSource> CubinCustomKernelCompiler::CompileMlirToLlvm(
 
 xla::Future<std::vector<uint8_t>>
 CubinCustomKernelCompiler::CompileToTargetBinary(
-    LlvmKernelSource kernel_source) {
+    LlvmKernelSource kernel_source, std::optional<GpuKernelSpec> kernel_spec) {
   if (!thread_pool_) {
     return CompileToCubinImpl(std::move(kernel_source));
   }
@@ -152,7 +152,7 @@ CubinCustomKernelCompiler::CompileToCubinImpl(LlvmKernelSource kernel_source) {
 
 absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
     Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-    const std::string& sanitized_kernel_name,
+    absl::string_view sanitized_kernel_name,
     const emitters::KernelArguments& kernel_arguments,
     const LaunchDimensions& launch_dimensions) {
   ABSL_ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
@@ -161,7 +161,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
   ABSL_ASSIGN_OR_RETURN(
       CustomKernel custom_kernel,
       kernel::CreateOwnedCubinCustomKernel(
-          sanitized_kernel_name, std::move(cubin),
+          std::string(sanitized_kernel_name), std::move(cubin),
           kernel_arguments.args().size(), launch_dimensions.block_counts(),
           launch_dimensions.thread_counts_per_block(), 0));
 

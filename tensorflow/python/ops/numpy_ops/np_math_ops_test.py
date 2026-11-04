@@ -706,6 +706,30 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.average(scalar, axis=0)
 
+  def testSpacesDestinationAxisOutOfBounds(self):  # pylint: disable=invalid-name
+    # NumPy raises AxisError for out-of-bounds destination axes instead of
+    # letting the backend fail with a confusing error.
+    start = np.ones([2, 3])
+    stop = np.ones([2, 3])
+    fns = (np_math_ops.linspace, np_math_ops.logspace, np_math_ops.geomspace)
+    for axis in (3, -4):
+      for fn in fns:
+        with self.subTest(fn=fn.__name__, axis=axis):
+          with self.assertRaisesRegex(
+              ValueError,
+              r'destination: axis %d is out of bounds for array of dimension'
+              % axis,
+          ):
+            fn(start, stop, 3, axis=axis)
+
+    # Valid boundary axes: NumPy allows the destination axis to equal bd (the
+    # broadcast rank of start/stop), which inserts the samples axis last, or
+    # -(bd + 1), which inserts it first.
+    for fn in fns:
+      with self.subTest(fn=fn.__name__):
+        self.assertEqual((2, 3, 3), fn(start, stop, 3, axis=2).shape)
+        self.assertEqual((3, 2, 3), fn(start, stop, 3, axis=-3).shape)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
@@ -1034,19 +1058,22 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.trace(a, axis1=0, axis2=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.trace(a, axis1=-3, axis2=1)
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(
+        ValueError, r'axis1 and axis2 cannot be the same$'
+    ):
       np_math_ops.trace(a, axis1=1, axis2=1)
     # Mixed-sign duplicates normalize to the same axis.
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
       np_math_ops.trace(a, axis1=1, axis2=-1)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # NumPy raises its "diag requires" error for rank < 2 before any
+    # per-axis checks.
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array(5))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array([1, 2, 3]))
-    # A rank-1 input has no valid trace axes: the out-of-bounds default
-    # axes (axis1=-2, axis2=-1) must raise, not silently route the input
-    # to the rank>=2-only `math_ops.trace` fast path.
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # NumPy checks the rank first, so explicit axes on a rank-1 input
+    # still raise the "diag requires" error.
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array([1.0, 2.0, 3.0]), axis1=-2, axis2=-1)
 
   def testTracePromotesSmallIntegersAndBool(self):

@@ -229,16 +229,16 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
                                          scratch_memory_type,
                                          /*should_memzero=*/true,
                                          /*should_double_buffer=*/true});
-  // One symmetric scratch buffer per operand that holds one rank's slice
-  // (= input size). Double-buffering is handled by the should_double_buffer
+  // One symmetric scratch buffer per operand that holds all ranks' slices
+  // (= output size). Double-buffering is handled by the should_double_buffer
   // flag.
   for (int32_t i = 0; i < num_operands; ++i) {
-    const int64_t remote_size = xla::RoundUpTo<uint64_t>(
-        ShapeUtil::ByteSizeOf(instr->operand(i)->shape()),
+    const int64_t output_size = xla::RoundUpTo<uint64_t>(
+        ShapeUtil::ByteSizeOf(instr->operand(i)->shape()) * group_size,
         kXlaAllocatedBufferAlignBytes);
     codegen_config.argument_descriptors.push_back(
         {KernelArgType::kScratchBuffer, /*index=*/1 + i});
-    kernel_spec.scratch_buffers.push_back({remote_size,
+    kernel_spec.scratch_buffers.push_back({output_size,
                                            /*requires_multimem=*/false,
                                            scratch_memory_type,
                                            /*should_memzero=*/false,

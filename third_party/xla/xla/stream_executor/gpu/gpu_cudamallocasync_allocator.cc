@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/vlog_is_on.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
@@ -75,38 +76,27 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatisticsNoLock() {
   VLOG(8) << "\nThe sorted list of (ptr,size):";
   VLOG(8) << absl::StrJoin(ptr_size_string, ",");
 
-  cuuint64_t mem_reserved_current;
-  if (auto result = cuMemPoolGetAttribute(cuda_state_->pool,
-                                          CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT,
-                                          &mem_reserved_current)) {
-    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
-               << cuda::ToStatus(result);
-  }
-  cuuint64_t mem_used_current;
-  if (auto result = cuMemPoolGetAttribute(cuda_state_->pool,
-                                          CU_MEMPOOL_ATTR_USED_MEM_CURRENT,
-                                          &mem_used_current)) {
-    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
-               << cuda::ToStatus(result);
-  }
-  cuuint64_t mem_reserved_high;
-  if (auto result = cuMemPoolGetAttribute(cuda_state_->pool,
-                                          CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH,
-                                          &mem_reserved_high)) {
-    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
-               << cuda::ToStatus(result);
-  }
-  cuuint64_t mem_used_high;
-  if (auto result = cuMemPoolGetAttribute(
-          cuda_state_->pool, CU_MEMPOOL_ATTR_USED_MEM_HIGH, &mem_used_high)) {
-    LOG(ERROR) << "Error while fetching extra cudaMallocAsync pool attribute: "
-               << cuda::ToStatus(result);
-  }
-  LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT: "
-             << mem_reserved_current;
-  LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_CURRENT: " << mem_used_current;
-  LOG(ERROR) << "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH: " << mem_reserved_high;
-  LOG(ERROR) << "CU_MEMPOOL_ATTR_USED_MEM_HIGH: " << mem_used_high;
+  // Logs the given attribute of the memory pool, or the error if the query
+  // fails.
+  auto log_pool_attribute = [&](CUmemPool_attribute attribute,
+                                absl::string_view attribute_name) {
+    cuuint64_t value = 0;
+    if (auto result =
+            cuMemPoolGetAttribute(cuda_state_->pool, attribute, &value)) {
+      LOG(ERROR) << "Error while fetching cudaMallocAsync pool attribute "
+                 << attribute_name << ": " << cuda::ToStatus(result);
+      return;
+    }
+    LOG(ERROR) << attribute_name << ": " << value;
+  };
+  log_pool_attribute(CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT,
+                     "CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT");
+  log_pool_attribute(CU_MEMPOOL_ATTR_USED_MEM_CURRENT,
+                     "CU_MEMPOOL_ATTR_USED_MEM_CURRENT");
+  log_pool_attribute(CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH,
+                     "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH");
+  log_pool_attribute(CU_MEMPOOL_ATTR_USED_MEM_HIGH,
+                     "CU_MEMPOOL_ATTR_USED_MEM_HIGH");
 }
 
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);

@@ -62,6 +62,15 @@ absl::StatusOr<bool> RunWhileDCE(
         continue;
       }
 
+      // TODO(b/260601110) : Bail if any of the computations the while_op uses
+      // are used by something else.
+      if (while_body_comp->caller_instructions().size() > 1 ||
+          xla_while->while_condition()->caller_instructions().size() > 1) {
+        VLOG(1) << "WhileDCE SKIP while: " << xla_while->ToString()
+                << " because while computations are shared.";
+        continue;
+      }
+
       // Remove dead tuple elements.
       const int64_t tuple_element_count =
           ShapeUtil::TupleElementCount(xla_while->shape());

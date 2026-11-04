@@ -514,17 +514,20 @@ class ArrayCreationTest(test.TestCase):
       np_array_ops.diagonal(a, axis1=-7, axis2=0)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.diagonal(a, axis1=0, axis2=5)
-    # NumPy raises for 0-d/1-d inputs too.
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # NumPy raises for 0-d/1-d inputs too, with its own "diag requires"
+    # message before any per-axis checks.
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_array_ops.diagonal(np.array(5))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_array_ops.diagonal(np.array([1, 2, 3]))
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(
+        ValueError, r'axis1 and axis2 cannot be the same$'
+    ):
       np_array_ops.diagonal(a, axis1=0, axis2=0)
     # Mixed-sign duplicates normalize to the same axis.
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
       np_array_ops.diagonal(a, axis1=0, axis2=-3)
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
       np_array_ops.diagonal(a, axis1=-1, axis2=2)
 
   def testDiagFlat(self):
@@ -707,6 +710,23 @@ class ArrayMethodsTest(test.TestCase):
     run_test([[True, False], [True, True]], axis=(0, 1), keepdims=True)
     run_test([5.2, 3.5], axis=0)
     run_test([1, 0], axis=0)
+    run_test([-3j, 0j])
+    run_test([[1j, 2 + 0j], [0j, 1 - 1j]], axis=1)
+
+  def testComplexToBool(self):
+    # A complex value is true if its real or imaginary part is nonzero.
+    x = np.array([[-3j, 0j], [2 + 0j, 1 - 1j]], np.complex128)
+    expected = x.astype(bool)
+    for a in [x, x.tolist(), ops.convert_to_tensor(x), np_array_ops.array(x)]:
+      self.assertAllEqual(expected, np_array_ops.asarray(a, dtype=bool))
+      if hasattr(a, 'astype'):
+        self.assertAllEqual(expected, a.astype(bool))
+      self.assertAllEqual(np.nonzero(x), np_array_ops.nonzero(a))
+      self.assertAllEqual(np.where(x), np_array_ops.where(a))
+      self.assertAllEqual(
+          np.compress(x[0], [1, 2]), np_array_ops.compress(a[0], [1, 2])
+      )
+      self.assertAllEqual(np.logical_not(x), np_math_ops.logical_not(a))
 
   def testCompress(self):
 
@@ -890,6 +910,7 @@ class ArrayMethodsTest(test.TestCase):
     run_test(3j)
     run_test([])
     run_test([1, 2, 3])
+    run_test([True, False])
     run_test([1 + 5j, 2 + 3j])
     run_test([[1 + 5j, 2 + 3j], [1 + 7j, 2 + 8j]])
 
@@ -1228,6 +1249,7 @@ class ArrayMethodsTest(test.TestCase):
     run_test(3j)
     run_test([])
     run_test([1, 2, 3])
+    run_test([True, False])
     run_test([1 + 5j, 2 + 3j])
     run_test([[1 + 5j, 2 + 3j], [1 + 7j, 2 + 8j]])
 

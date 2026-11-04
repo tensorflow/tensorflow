@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/kernel_thunk_utils.h"
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/service/shaped_slice.pb.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -73,7 +75,12 @@ CustomKernelThunk::CustomKernelThunk(
       device_states_(devices_in_process) {}
 
 std::string CustomKernelThunk::ToString(int indent) const {
-  return custom_kernel_.ToString();
+  return KernelThunkToString(custom_kernel_.name(),
+                             thunk_info().profile_annotation,
+                             LaunchDimensions(custom_kernel_.block_dims(),
+                                              custom_kernel_.thread_dims()),
+                             custom_kernel_.cluster_dims(),
+                             custom_kernel_.shared_memory_bytes(), use_pdl_);
 }
 
 absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {

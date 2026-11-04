@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -844,13 +845,13 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
 
   bool completed = false;
   int64_t last_iter_num = -1;
-  std::unique_ptr<tsl::profiler::TraceMeConsumer> iteration_scope;
+  std::optional<tsl::profiler::TraceMeConsumer> iteration_scope;
   while (!inline_ready->empty()) {
     TaggedNode tagged_node = inline_ready->front();
 
     int64_t current_iter_num = tagged_node.get_iter_num();
     if (current_iter_num != last_iter_num) {
-      iteration_scope = std::make_unique<tsl::profiler::TraceMeConsumer>(
+      iteration_scope.emplace(
           // From TraceMeProducer in DirectSession::RunInternal,
           // GraphMgr::ExecuteAsync, or FunctionLibraryRuntime::Run.
           [&] {

@@ -46,7 +46,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "hwy//targets.h"
+#include "hwy/targets.h"
 #include "xla/array.h"
 #include "xla/ef57.h"
 #include "xla/hlo/testlib/test.h"

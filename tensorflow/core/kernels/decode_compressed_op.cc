@@ -18,7 +18,6 @@ limitations under the License.
 #include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <string>
 
 #include "absl/status/status.h"
@@ -60,8 +59,7 @@ class MemoryInputStream : public io::InputStreamInterface {
       s = absl::OutOfRangeError("reached end of file");
     }
     if (bytes > 0) {
-      result->resize(bytes);
-      memcpy(&(*result)[0], &buf_[pos_], bytes);
+      result->assign_as_view(&buf_[pos_], bytes);
       pos_ += bytes;
     }
     return s;
@@ -101,11 +99,6 @@ class DecodeCompressedOp : public OpKernel {
   // specified in `compression_type_`. Return absl::OkStatus() on success, and
   // anything else on failure.
   absl::Status DecompressOne(const tstring& input, tstring& output) {
-    if (compression_type_.empty()) {
-      output = input;
-      return absl::OkStatus();
-    }
-
     if (compression_type_ == "ZLIB" || compression_type_ == "GZIP") {
       // TODO: Don't use ZlibInputStream, since we're just going to read the
       // entire thing into memory.
@@ -120,11 +113,34 @@ class DecodeCompressedOp : public OpKernel {
           /*output_buffer_bytes=*/static_cast<size_t>(kBufferSize),
           zlib_options);
 
-      absl::Status result = zlib_stream.ReadNBytes(INT_MAX, &output);
+      // Cap the decompressed output size, mirroring the 1GB limit enforced
+      // on the ZSTD branch below. Without this cap, ReadNBytes(INT_MAX, ...)
+      // would decompress an attacker-controlled, highly-compressible input
+      // (a "decompression bomb") up to ~2GiB with no compression-ratio or
+      // absolute-size check, causing unbounded memory growth / OOM.
+      //
+      // Read kMaxDecompressedBytes + 1 bytes rather than exactly the cap,
+      // so a stream that is exactly kMaxDecompressedBytes long is correctly
+      // accepted and one that is even one byte longer is correctly
+      // rejected - reading exactly the cap would make these two cases
+      // indistinguishable.
+      absl::Status result =
+          zlib_stream.ReadNBytes(kMaxDecompressedBytes + 1, &output);
 
-      // ReadNBytes returns OutOfRange for EOF. Swallow it and return OkStatus,
-      // since we're reading INT_MAX bytes anyway.
-      if (absl::IsOutOfRange(result)) return absl::OkStatus();
+      if (absl::IsOutOfRange(result)) {
+        // Stream ended before or exactly at the limit. ReadNBytes swallows
+        // EOF only if it read up to the requested amount; here it failed to
+        // read limit + 1, so the true size is <= 1GB.
+        return absl::OkStatus();
+      }
+
+      if (result.ok()) {
+        // Read exactly limit + 1 bytes, meaning the stream is larger than
+        // 1GB. Free the oversized buffer before propagating the error.
+        output.clear();
+        return absl::InvalidArgumentError(
+            "Decompressed size exceeds 1GB limit");
+      }
 
       return result;
     }
@@ -149,7 +165,7 @@ class DecodeCompressedOp : public OpKernel {
             "Failed to determine decompressed size");
       }
 
-      if (max_decompressed_size > 1024 * 1024 * 1024) {
+      if (max_decompressed_size > kMaxDecompressedBytes) {
         ZSTD_freeDCtx(decompress_ctx);
         return absl::InvalidArgumentError(
             "Decompressed size exceeds 1GB limit");
@@ -183,6 +199,10 @@ class DecodeCompressedOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor* bytes_tensor;
     OP_REQUIRES_OK(context, context->input("bytes", &bytes_tensor));
+    if (compression_type_.empty()) {
+      OP_REQUIRES_OK(context, context->set_output("output", *bytes_tensor));
+      return;
+    }
     const auto& bytes_flat = bytes_tensor->flat<tstring>();
 
     Tensor* output_tensor = nullptr;
@@ -197,6 +217,8 @@ class DecodeCompressedOp : public OpKernel {
 
  private:
   enum { kBufferSize = 256 << 10 /* 256 kB */ };
+  // Maximum decompressed size accepted for every compression type.
+  static constexpr int64_t kMaxDecompressedBytes = 1024LL * 1024 * 1024;  // 1GB
   std::string compression_type_;
 };
 

@@ -211,6 +211,37 @@ TEST(GetBatchRowColumnShapeTest, WrongPhysicalOrder) {
   EXPECT_FALSE(result.ok());
 }
 
+TEST(GetBatchRowColumnShapeTest, LargeDimensionsExceedInt32) {
+  ASSERT_OK_AND_ASSIGN(Shape shape, ParseShape("f32[2,2147483649,4]{2,1,0}"));
+  ASSERT_OK_AND_ASSIGN(Shape expected,
+                       ParseShape("f32[1,4294967298,4]{2,1,0}"));
+  EXPECT_THAT(GetBatchRowColumnShape(shape, /*batch_dims=*/{},
+                                     /*row_dims=*/{0, 1}, /*col_dims=*/{2}),
+              absl_testing::IsOkAndHolds(expected));
+
+  ASSERT_OK_AND_ASSIGN(Shape large_batch_shape,
+                       ParseShape("f32[2147483648,3,4]{2,1,0}"));
+  ASSERT_OK_AND_ASSIGN(
+      MatrixLayout batch_layout,
+      MatrixLayout::For(large_batch_shape, /*batch_dims=*/{0}, /*row_dims=*/{1},
+                        /*col_dims=*/{2}));
+  EXPECT_EQ(batch_layout.batch_size, 2147483648LL);
+  EXPECT_EQ(batch_layout.num_rows, 3);
+  EXPECT_EQ(batch_layout.num_cols, 4);
+
+  ASSERT_OK_AND_ASSIGN(Shape large_col_shape,
+                       ParseShape("f32[2,3,4294967299]{2,1,0}"));
+  ASSERT_OK_AND_ASSIGN(
+      MatrixLayout col_layout,
+      MatrixLayout::For(large_col_shape, /*batch_dims=*/{0}, /*row_dims=*/{1},
+                        /*col_dims=*/{2}));
+  EXPECT_EQ(col_layout.batch_size, 2);
+  EXPECT_EQ(col_layout.num_rows, 3);
+  EXPECT_EQ(col_layout.num_cols, 4294967299LL);
+  EXPECT_EQ(col_layout.leading_dim_stride, 4294967299LL);
+  EXPECT_EQ(col_layout.batch_stride, 12884901897LL);
+}
+
 using Order = MatrixLayout::Order;
 
 struct GetMatrixLayoutTestParams {

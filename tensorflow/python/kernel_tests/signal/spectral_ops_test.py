@@ -38,13 +38,7 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
   def _np_hann_periodic_window(length):
     if length == 1:
       return np.ones(1)
-    odd = length % 2
-    if not odd:
-      length += 1
-    window = 0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(length) / (length - 1))
-    if not odd:
-      window = window[:-1]
-    return window
+    return 0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(length) / length)
 
   @staticmethod
   def _np_frame(data, window_length, hop_length):
@@ -365,6 +359,24 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
 
     # Check that the inverse and original signal are close.
     self.assertAllClose(inverse_mdct, signal, atol=tol, rtol=tol)
+
+  def test_inverse_stft_zero_frames(self):
+    stfts = np.zeros((0, 5), dtype=np.complex64)
+    inverse_stft = spectral_ops.inverse_stft(
+        stfts, frame_length=8, frame_step=4, fft_length=8
+    )
+    self.assertAllEqual(
+        self.evaluate(inverse_stft), np.zeros((0,), dtype=np.float32)
+    )
+
+  def test_inverse_stft_zero_frames_batched(self):
+    stfts = np.zeros((2, 0, 5), dtype=np.complex64)
+    inverse_stft = spectral_ops.inverse_stft(
+        stfts, frame_length=8, frame_step=4, fft_length=8
+    )
+    self.assertAllEqual(
+        self.evaluate(inverse_stft), np.zeros((2, 0), dtype=np.float32)
+    )
 
   def test_inverse_stft_rejects_zero_frame_length(self):
     # Regression for https://github.com/tensorflow/tensorflow/issues/117843:

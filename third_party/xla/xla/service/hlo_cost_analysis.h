@@ -484,7 +484,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleRecv(const HloInstruction* recv) override;
   absl::Status HandleRecvDone(const HloInstruction* recv_done) override;
   absl::Status HandleCopy(const HloInstruction* copy) override;
-  absl::Status HandleDomain(const HloInstruction* domain) override;
   absl::Status HandleDot(const HloInstruction* dot) override;
   absl::Status HandleRaggedDot(const HloInstruction* dot) override;
   absl::Status HandleScaledDot(const HloInstruction* dot) override;

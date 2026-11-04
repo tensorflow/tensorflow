@@ -70,7 +70,7 @@ def QI32 : QuantizedType<"Uniform", [32], 1>;
 // TFL native op traits (for quantization).
 //
 // Ops in this link should have those traits specified:
-// https://www.tensorflow.org/lite/performance/quantization_spec
+// https://developers.google.com/edge/litert/conversion/tensorflow/quantization/quantization_spec
 //===----------------------------------------------------------------------===//
 
 def FixedOutputRangeInterface : OpInterface<

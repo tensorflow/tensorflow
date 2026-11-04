@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,6 +33,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/per_device_state.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/ffi/api/kernel_api.h"
+#include "xla/ffi/api/kernel_c_api.h"
 #include "xla/ffi/api/record_api.h"
 #include "xla/ffi/api/record_c_api.h"
 #include "xla/ffi/record_ffi.h"
@@ -193,8 +194,7 @@ absl::StatusOr<const XLA_FFI_Command*> RecordMultiGpuBarrierWithNccl(
         {static_cast<int32_t>(MultiGpuBarrierWithNcclKernel::kMaxPeers), 1, 1},
         /*cluster=*/{0, 0, 0}};
     return record_ctx.CreateLaunch(
-        std::string(kernel->name()).c_str(),
-        kernel->platform_specific_handle().kernel,
+        kernel->name(), kernel->platform_specific_handle().kernel,
         /*kernel_size=*/0, ffi::SourceFormat::kFunctionPtr, launch_dims,
         /*shared_mem_bytes=*/0, /*uses_pdl=*/false, kernel_args);
   }

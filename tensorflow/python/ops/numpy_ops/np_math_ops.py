@@ -890,6 +890,10 @@ def floor(x):
 @tf_export.tf_export('experimental.numpy.conj', v1=[])
 @np_utils.np_doc('conj')
 def conj(x):
+  x = np_array_ops.asarray(x)
+  if x.dtype == dtypes.bool:
+    # `math_ops.conj` rejects bool, which has no imaginary part to negate.
+    return x
   return _scalar(math_ops.conj, x)
 
 
@@ -1058,7 +1062,7 @@ def cbrt(x):
 @tf_export.tf_export('experimental.numpy.conjugate', v1=[])
 @np_utils.np_doc('conjugate', link=np_utils.AliasOf('conj'))
 def conjugate(x):
-  return _scalar(math_ops.conj, x)
+  return conj(x)
 
 
 @tf_export.tf_export('experimental.numpy.exp2', v1=[])
@@ -1088,13 +1092,20 @@ def fix(x):
 @tf_export.tf_export('experimental.numpy.iscomplex', v1=[])
 @np_utils.np_doc('iscomplex')
 def iscomplex(x):
-  return np_array_ops.imag(x) != 0
+  x = np_array_ops.asarray(x)
+  if x.dtype.is_complex:
+    return np_array_ops.imag(x) != 0
+  # Comparing against 0 would fail for bool, so answer from the dtype.
+  return np_array_ops.zeros_like(x, dtype=dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.isreal', v1=[])
 @np_utils.np_doc('isreal')
 def isreal(x):
-  return np_array_ops.imag(x) == 0
+  x = np_array_ops.asarray(x)
+  if x.dtype.is_complex:
+    return np_array_ops.imag(x) == 0
+  return np_array_ops.ones_like(x, dtype=dtypes.bool)
 
 
 @tf_export.tf_export('experimental.numpy.iscomplexobj', v1=[])
@@ -1412,6 +1423,32 @@ def logical_not(x):
   return math_ops.logical_not(x)
 
 
+def _validate_destination_axis(axis, start, stop):
+  """Validates the destination axis for linspace and geomspace."""
+  # NumPy raises AxisError for an out-of-bounds destination axis instead of
+  # letting the backend fail with a confusing error. In NumPy the samples
+  # array has rank `bd + 1`, where `bd` is the broadcast rank of `start` and
+  # `stop`, and valid destination axes are [-(bd + 1), bd] - exactly the
+  # domain the backend's `expand_dims`/`moveaxis` accepts. Only
+  # statically-known ranks and Python-int `axis` values are checked; unknown
+  # ranks or tensor axes, e.g. `@tf.function` with an unspecified input
+  # signature, behave exactly as before, and no graph ops are added on the
+  # eager path.
+  if isinstance(axis, (int, np.integer)):
+    maybe_bd = start.shape.rank
+    maybe_bd_stop = stop.shape.rank
+    if maybe_bd is not None and maybe_bd_stop is not None:
+      dimension = max(maybe_bd, maybe_bd_stop) + 1
+      normalized = int(axis)
+      if normalized < 0:
+        normalized += dimension
+      if normalized < 0 or normalized >= dimension:
+        raise ValueError(
+            f'destination: axis {axis} is out of bounds for array of '
+            f'dimension {dimension}'
+        )
+
+
 @tf_export.tf_export('experimental.numpy.linspace', v1=[])
 @np_utils.np_doc('linspace')
 def linspace(  # pylint: disable=missing-docstring
@@ -1443,6 +1480,8 @@ def linspace(  # pylint: disable=missing-docstring
         f'Received: num={num}'
     )
   step = ops.convert_to_tensor(np.nan)
+  _validate_destination_axis(axis, start, stop)
+
   if endpoint:
     result = math_ops.linspace(start, stop, num, axis=axis)
     if num > 1:
@@ -1525,6 +1564,7 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=None, axis=0):  # pylint
   computation_dtype = np.promote_types(dtype.as_numpy_dtype, np.float32)
   start = np_array_ops.asarray(start, dtype=computation_dtype)
   stop = np_array_ops.asarray(stop, dtype=computation_dtype)
+  _validate_destination_axis(axis, start, stop)
   # follow the numpy geomspace convention for negative and complex endpoints
   start_sign = 1 - np_array_ops.sign(np_array_ops.real(start))
   stop_sign = 1 - np_array_ops.sign(np_array_ops.real(stop))
@@ -1985,7 +2025,7 @@ def _enable_numpy_methods(tensor_class):
   setattr(tensor_class, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
   setattr(tensor_class, 'ravel', np_array_ops.ravel)
   setattr(tensor_class, 'clip', clip)
-  setattr(tensor_class, 'astype', math_ops.cast)
+  setattr(tensor_class, 'astype', np_array_ops._cast)  # pylint: disable=protected-access
   setattr(tensor_class, '__round__', np_array_ops.around)
   setattr(tensor_class, 'max', np_array_ops.amax)
   setattr(tensor_class, 'mean', np_array_ops.mean)

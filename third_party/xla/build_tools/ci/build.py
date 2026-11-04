@@ -57,6 +57,9 @@ _DEFAULT_BAZEL_OPTIONS = dict(
     jobs=150,
     bes_upload_mode="fully_async",
     build_runfile_links=False,
+    show_timestamps=True,
+    show_progress_rate_limit=5,
+    experimental_remote_grpc_log="bazel_remote_grpc.log",
 )
 
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
@@ -207,10 +210,21 @@ class Build:
     options = _dict_to_cli_options(self.options)
     startup_options = _dict_to_cli_options(self.startup_options)
     configs = [f"--config={config}" for config in self.configs]
+    effective_build_tag_filters = self.build_tag_filters
+    effective_test_tag_filters = self.test_tag_filters
+    if target_pattern_file:
+      # Explicit target labels in --target_pattern_file bypass Bazel's wildcard
+      # exclusion of `tags = ["manual"]`, so exclude manual targets explicitly.
+      if "-manual" not in effective_build_tag_filters:
+        effective_build_tag_filters = (*effective_build_tag_filters, "-manual")
+      if "-manual" not in effective_test_tag_filters:
+        effective_test_tag_filters = (*effective_test_tag_filters, "-manual")
     build_tag_filters = (
-        f"--build_tag_filters={','.join(self.build_tag_filters)}"
+        f"--build_tag_filters={','.join(effective_build_tag_filters)}"
     )
-    test_tag_filters = f"--test_tag_filters={','.join(self.test_tag_filters)}"
+    test_tag_filters = (
+        f"--test_tag_filters={','.join(effective_test_tag_filters)}"
+    )
     action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
     test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
     repo_env = [f"--repo_env={k}={v}" for k, v in self.repo_env.items()]
@@ -433,10 +447,11 @@ Build(
         "-//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
         "-//xla/backends/cpu/runtime/ynnpack:ynn_interop",
         "-//xla/backends/cpu/runtime/ynnpack:ynn_threadpool",
-        # triton is not windows compatible
+        # triton and sycl are not windows compatible
         "-//xla/backends/gpu/...",
         "-//xla/codegen/emitters/tests/...",
         "-//xla/service/gpu/...",
+        "-//xla/stream_executor/sycl/...",
     ),
     build_tag_filters=windows_x86_tag_filter,
     test_tag_filters=windows_x86_tag_filter,
@@ -454,6 +469,8 @@ Build(
     # the Windows CI container image includes the lld/COFF/Driver.cpp
     # LinkerDriver::enqueuePath fix (b/571437556).
     command_retries=2,
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 Build(
@@ -554,6 +571,8 @@ Build(
     test_tag_filters=oneapi_test_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
     subcommand="build",
+    use_bazel_diff=True,
+    bazel_diff_use_cquery=True,
 )
 
 # ROCm builds - hermetic LLVM
@@ -804,7 +823,7 @@ Build(
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}\\openxla\\xla",
     ),
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options={**_DEFAULT_BAZEL_OPTIONS, "remote_download_minimal": True},
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
     subcommand="build",
     startup_options={

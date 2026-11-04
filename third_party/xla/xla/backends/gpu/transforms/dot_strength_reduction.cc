@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
+#include "xla/backends/gpu/transforms/one_hot_gather_utils.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,13 +37,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/primitive_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/tensor_float_32_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -151,13 +154,68 @@ HloInstruction* ReduceDimensions(HloInstruction* instruction,
       metadata);
 }
 
+constexpr int kF32MantissaBits = 23;
+constexpr int kTf32MantissaBits = 10;
+constexpr int kBf16MantissaBits = 7;
+
 struct OneHotDotMatch {
   HloInstruction* indices;
   HloInstruction* one_hot;
   HloInstruction* weights;
   int64_t weights_contract_dim;
   bool lhs_is_one_hot;
+  // If set, round F32 gathered weights to this many mantissa bits.
+  std::optional<int> weights_round_mantissa_bits;
 };
+
+// On Ampere+ CUDA GPUs (and ROCm when defaulting to BF16), F32 dots round
+// their inputs to TF32 (10 mantissa bits) or BF16 (7 mantissa bits) unless
+// full F32 precision is requested. Returns the number of mantissa bits to
+// keep for F32 weights (23, 10, or 7), or std::nullopt if the dot algorithm
+// is not supported.
+std::optional<int> GetF32MantissaBits(
+    const HloDotInstruction* dot,
+    const se::GpuComputeCapability& compute_capability) {
+  const PrecisionConfig& precision_config = dot->precision_config();
+  switch (precision_config.algorithm()) {
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+      return kTf32MantissaBits;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4:
+      return kBf16MantissaBits;
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
+    case PrecisionConfig::ALG_UNSET: {
+      const auto& precisions = precision_config.operand_precision();
+      const auto* cuda_cc = compute_capability.cuda_compute_capability();
+      const bool is_f32_dot =
+          precision_config.algorithm() ==
+              PrecisionConfig::ALG_DOT_F32_F32_F32 ||
+          dot->shape().element_type() != F32 ||
+          dot->operand(0)->shape().element_type() != F32 ||
+          dot->operand(1)->shape().element_type() != F32 ||
+          (cuda_cc != nullptr && !cuda_cc->IsAtLeastAmpere()) ||
+          absl::c_any_of(precisions,
+                         [](int p) { return p == PrecisionConfig::HIGHEST; });
+      if (is_f32_dot) {
+        return kF32MantissaBits;
+      }
+      if (dot->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_default_to_alg_dot_bf16_bf16_f32() &&
+          absl::c_all_of(precisions,
+                         [](int p) { return p == PrecisionConfig::DEFAULT; })) {
+        return kBf16MantissaBits;
+      }
+      return (cuda_cc != nullptr && tsl::tensor_float_32_execution_enabled())
+                 ? kTf32MantissaBits
+                 : kF32MantissaBits;
+    }
+    default:
+      return std::nullopt;
+  }
+}
 
 // Matches a dot where one operand is a one-hot tensor built by comparing
 // integer `indices` against an `iota` along the contracting dimension.
@@ -175,25 +233,21 @@ struct OneHotDotMatch {
 // Output: `OneHotDotMatch{indices, one_hot, weights,
 // /*weights_contract_dim=*/0,
 //                         /*lhs_is_one_hot=*/true}`
-std::optional<OneHotDotMatch> MatchOneHotDot(HloDotInstruction* dot) {
+std::optional<OneHotDotMatch> MatchOneHotDot(
+    HloDotInstruction* dot,
+    const se::GpuComputeCapability& compute_capability) {
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  if (dnums.lhs_batch_dimensions_size() != 0 ||
-      dnums.rhs_batch_dimensions_size() != 0 ||
+  if (dnums.lhs_batch_dimensions_size() != dnums.rhs_batch_dimensions_size() ||
       dnums.lhs_contracting_dimensions_size() != 1 ||
-      dnums.rhs_contracting_dimensions_size() != 1) {
+      dnums.rhs_contracting_dimensions_size() != 1 ||
+      !dot->shape().is_static() || !dot->operand(0)->shape().is_static() ||
+      !dot->operand(1)->shape().is_static() ||
+      ShapeUtil::IsZeroElementArray(dot->shape())) {
     return std::nullopt;
   }
 
-  // TODO(b/485881552): Default-precision F32 dots run in TF32 on GPU, while
-  // gather keeps full F32 precision. Only rewrite F32 dots when full F32
-  // precision is requested.
-  const PrecisionConfig::Algorithm alg = dot->precision_config().algorithm();
-  const auto& precisions = dot->precision_config().operand_precision();
-  const bool full_f32_precision =
-      alg == PrecisionConfig::ALG_DOT_F32_F32_F32 ||
-      (alg == PrecisionConfig::ALG_UNSET && precisions.size() == 2 &&
-       absl::c_all_of(precisions,
-                      [](int p) { return p == PrecisionConfig::HIGHEST; }));
+  const std::optional<int> f32_mantissa_bits =
+      GetF32MantissaBits(dot, compute_capability);
 
   for (int side = 0; side < 2; ++side) {
     HloInstruction* one_hot = dot->mutable_operand(side);
@@ -205,7 +259,8 @@ std::optional<OneHotDotMatch> MatchOneHotDot(HloDotInstruction* dot) {
         (side == 0) ? dnums.rhs_contracting_dimensions(0)
                     : dnums.lhs_contracting_dimensions(0);
 
-    if (weights->shape().element_type() == F32 && !full_f32_precision) {
+    if (weights->shape().element_type() == F32 &&
+        !f32_mantissa_bits.has_value()) {
       continue;
     }
     const int64_t one_hot_rank = one_hot->shape().dimensions().size();
@@ -279,27 +334,31 @@ std::optional<OneHotDotMatch> MatchOneHotDot(HloDotInstruction* dot) {
       continue;
     }
 
-    const int bit_width =
-        primitive_util::BitWidth(indices->shape().element_type());
-    const int value_bits = ShapeUtil::ElementIsSigned(indices->shape())
-                               ? bit_width - 1
-                               : bit_width;
-    if (value_bits < 63 && (num_classes - 1) >= (int64_t{1} << value_bits)) {
+    if (!IsValidOneHotIndexType(indices->shape().element_type(), num_classes)) {
       continue;
     }
 
-    absl::Span<const int64_t> one_hot_nc_dims =
+    absl::Span<const int64_t> one_hot_prefix_dims =
         one_hot->shape().dimensions().first(one_hot_rank - 1);
-    int64_t one_hot_nc_elements = 1;
-    for (int64_t d : one_hot_nc_dims) {
-      one_hot_nc_elements *= d;
+    int64_t one_hot_prefix_elements = 1;
+    for (int64_t d : one_hot_prefix_dims) {
+      one_hot_prefix_elements *= d;
     }
-    if (one_hot_nc_elements != ShapeUtil::ElementsIn(indices->shape())) {
+    if (one_hot_prefix_elements != ShapeUtil::ElementsIn(indices->shape())) {
       continue;
     }
 
-    return OneHotDotMatch{indices, one_hot, weights, weights_contract_dim,
-                          /*lhs_is_one_hot=*/side == 0};
+    std::optional<int> weights_round_mantissa_bits;
+    if (weights->shape().element_type() == F32 &&
+        *f32_mantissa_bits < kF32MantissaBits) {
+      weights_round_mantissa_bits = *f32_mantissa_bits;
+    }
+    return OneHotDotMatch{indices,
+                          one_hot,
+                          weights,
+                          weights_contract_dim,
+                          /*lhs_is_one_hot=*/side == 0,
+                          weights_round_mantissa_bits};
   }
 
   return std::nullopt;
@@ -349,51 +408,6 @@ SinkableBroadcast MatchSinkableBroadcast(HloInstruction* weights,
     }
   }
   return {/*sunk_bcast=*/weights_curr, /*gather_source=*/bcast_operand};
-}
-
-// Builds an in-bounds mask `0 <= indices <= num_classes - 1` (or
-// `indices <= num_classes - 1` for unsigned types).
-//
-// Input:  reshaped_indices = s32[4], num_classes = 128
-// Output: in_bounds = pred[4] and(compare(reshaped_indices, 0, GE),
-//                                 compare(reshaped_indices, 127, LE))
-absl::StatusOr<HloInstruction*> CreateInBoundsMask(
-    HloInstruction* reshaped_indices, int64_t num_classes,
-    const OpMetadata* metadata) {
-  HloComputation* computation = reshaped_indices->parent();
-  const PrimitiveType indices_type = reshaped_indices->shape().element_type();
-  Shape pred_shape =
-      ShapeUtil::ChangeElementType(reshaped_indices->shape(), PRED);
-  ABSL_ASSIGN_OR_RETURN(
-      Literal max_class_lit,
-      LiteralUtil::CreateR0<int64_t>(num_classes - 1).Convert(indices_type));
-  HloInstruction* max_class_const = computation->AddInstruction(
-      HloInstruction::CreateConstant(std::move(max_class_lit)));
-  HloInstruction* max_class_bcast = computation->AddInstruction(
-      HloInstruction::CreateBroadcast(reshaped_indices->shape(),
-                                      max_class_const, {}),
-      metadata);
-  HloInstruction* in_bounds = computation->AddInstruction(
-      HloInstruction::CreateCompare(pred_shape, reshaped_indices,
-                                    max_class_bcast, ComparisonDirection::kLe),
-      metadata);
-  if (ShapeUtil::ElementIsSigned(reshaped_indices->shape())) {
-    HloInstruction* zero_idx = computation->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::Zero(indices_type)));
-    HloInstruction* zero_idx_bcast = computation->AddInstruction(
-        HloInstruction::CreateBroadcast(reshaped_indices->shape(), zero_idx,
-                                        {}),
-        metadata);
-    HloInstruction* ge_zero = computation->AddInstruction(
-        HloInstruction::CreateCompare(pred_shape, reshaped_indices,
-                                      zero_idx_bcast, ComparisonDirection::kGe),
-        metadata);
-    in_bounds = computation->AddInstruction(
-        HloInstruction::CreateBinary(pred_shape, HloOpcode::kAnd, ge_zero,
-                                     in_bounds),
-        metadata);
-  }
-  return in_bounds;
 }
 
 // Re-applies the sunk broadcast and reshape after `select`.
@@ -472,118 +486,122 @@ absl::StatusOr<HloInstruction*> ExpandOneHotDot(HloDotInstruction* dot,
                                                 const OneHotDotMatch& match) {
   HloComputation* computation = dot->parent();
   const OpMetadata* metadata = &dot->metadata();
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   HloInstruction* indices = match.indices;
   HloInstruction* one_hot = match.one_hot;
   HloInstruction* weights = match.weights;
   const int64_t weights_contract_dim = match.weights_contract_dim;
   const bool lhs_is_one_hot = match.lhs_is_one_hot;
+  const auto& one_hot_batch_dims = lhs_is_one_hot
+                                       ? dnums.lhs_batch_dimensions()
+                                       : dnums.rhs_batch_dimensions();
+  const auto& weights_batch_dims = lhs_is_one_hot
+                                       ? dnums.rhs_batch_dimensions()
+                                       : dnums.lhs_batch_dimensions();
+  const int64_t num_batch_dims = one_hot_batch_dims.size();
 
   const int64_t num_classes = one_hot->shape().dimensions().back();
-  absl::Span<const int64_t> one_hot_nc_dims =
+  absl::Span<const int64_t> one_hot_prefix_dims =
       one_hot->shape().dimensions().first(one_hot->shape().dimensions().size() -
                                           1);
-  const int64_t k = one_hot_nc_dims.size();
+  const int64_t k = one_hot_prefix_dims.size();
   const PrimitiveType indices_type = indices->shape().element_type();
   const PrimitiveType out_type = dot->shape().element_type();
 
   HloInstruction* reshaped_indices = indices;
-  if (indices->shape().dimensions() != one_hot_nc_dims) {
+  if (indices->shape().dimensions() != one_hot_prefix_dims) {
     reshaped_indices = computation->AddInstruction(
         HloInstruction::CreateReshape(
-            ShapeUtil::MakeShape(indices_type, one_hot_nc_dims), indices),
+            ShapeUtil::MakeShape(indices_type, one_hot_prefix_dims), indices),
         metadata);
   }
 
-  std::vector<int64_t> start_indices_dims(one_hot_nc_dims.begin(),
-                                          one_hot_nc_dims.end());
-  start_indices_dims.push_back(1);
-  HloInstruction* start_indices = computation->AddInstruction(
-      HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(indices_type, start_indices_dims),
-          reshaped_indices),
-      metadata);
+  std::vector<int64_t> indices_perm;
+  indices_perm.reserve(k);
+  for (int64_t b_dim : one_hot_batch_dims) {
+    indices_perm.push_back(b_dim);
+  }
+  for (int64_t d = 0; d < k; ++d) {
+    if (!absl::c_linear_search(one_hot_batch_dims, d)) {
+      indices_perm.push_back(d);
+    }
+  }
+  HloInstruction* ordered_indices = reshaped_indices;
+  if (!absl::c_is_sorted(indices_perm)) {
+    ordered_indices = computation->AddInstruction(
+        HloInstruction::CreateTranspose(
+            ShapeUtil::PermuteDimensions(indices_perm,
+                                         reshaped_indices->shape()),
+            reshaped_indices, indices_perm),
+        metadata);
+  }
 
-  const auto [sunk_bcast, gather_source] =
-      MatchSinkableBroadcast(weights, weights_contract_dim, num_classes);
+  HloInstruction* sunk_bcast = nullptr;
+  HloInstruction* gather_source = weights;
+  int64_t source_contract_dim = weights_contract_dim;
+  std::vector<BatchDimMapping> source_batch_to_indices_dim;
 
-  absl::Span<const int64_t> source_dims = gather_source->shape().dimensions();
-  const int64_t m = source_dims.size() - 1;
-
-  std::vector<int64_t> offset_dims(m);
-  absl::c_iota(offset_dims, lhs_is_one_hot ? k : 0);
-
-  std::vector<int64_t> slice_sizes;
-  slice_sizes.reserve(source_dims.size());
-  std::vector<int64_t> source_slice_dims;
-  source_slice_dims.reserve(m);
-  for (int64_t d = 0; d < source_dims.size(); ++d) {
-    if (d == weights_contract_dim) {
-      slice_sizes.push_back(1);
-    } else {
-      slice_sizes.push_back(source_dims[d]);
-      source_slice_dims.push_back(source_dims[d]);
+  if (num_batch_dims == 0) {
+    SinkableBroadcast sinkable =
+        MatchSinkableBroadcast(weights, weights_contract_dim, num_classes);
+    sunk_bcast = sinkable.sunk_bcast;
+    gather_source = sinkable.gather_source;
+  } else if (weights->opcode() == HloOpcode::kBroadcast &&
+             absl::c_is_sorted(weights->dimensions()) &&
+             absl::c_linear_search(weights->dimensions(),
+                                   weights_contract_dim)) {
+    // Peel batch-only broadcasts on `weights` when all non-contracting dims and
+    // `weights_contract_dim` originate from the pre-broadcast operand.
+    bool all_nc_dims_present = true;
+    for (int64_t d = 0; d < weights->shape().dimensions().size(); ++d) {
+      if (d != weights_contract_dim &&
+          !absl::c_linear_search(weights_batch_dims, d) &&
+          !absl::c_linear_search(weights->dimensions(), d)) {
+        all_nc_dims_present = false;
+        break;
+      }
+    }
+    if (all_nc_dims_present) {
+      gather_source = weights->mutable_operand(0);
+      for (int64_t sub_dim = 0; sub_dim < weights->dimensions().size();
+           ++sub_dim) {
+        const int64_t full_dim = weights->dimensions(sub_dim);
+        if (full_dim == weights_contract_dim) {
+          source_contract_dim = sub_dim;
+        } else {
+          auto it = absl::c_find(weights_batch_dims, full_dim);
+          if (it != weights_batch_dims.end()) {
+            const int64_t b_idx = it - weights_batch_dims.begin();
+            source_batch_to_indices_dim.push_back({sub_dim, b_idx});
+          }
+        }
+      }
     }
   }
 
-  std::vector<int64_t> gather_dims;
-  gather_dims.reserve(k + m);
-  if (lhs_is_one_hot) {
-    gather_dims.insert(gather_dims.end(), one_hot_nc_dims.begin(),
-                       one_hot_nc_dims.end());
-    gather_dims.insert(gather_dims.end(), source_slice_dims.begin(),
-                       source_slice_dims.end());
-  } else {
-    gather_dims.insert(gather_dims.end(), source_slice_dims.begin(),
-                       source_slice_dims.end());
-    gather_dims.insert(gather_dims.end(), one_hot_nc_dims.begin(),
-                       one_hot_nc_dims.end());
-  }
-  Shape gather_shape = (sunk_bcast == nullptr)
-                           ? dot->shape()
-                           : ShapeUtil::MakeShape(out_type, gather_dims);
-  Shape raw_gather_shape = ShapeUtil::ChangeElementType(
-      gather_shape, gather_source->shape().element_type());
-
-  GatherDimensionNumbers gather_dnums =
-      HloGatherInstruction::MakeGatherDimNumbers(
-          /*offset_dims=*/offset_dims,
-          /*collapsed_slice_dims=*/{weights_contract_dim},
-          /*start_index_map=*/{weights_contract_dim},
-          /*index_vector_dim=*/k);
-  // Note: GPU gather emitters clamp out-of-bounds indices to [0, num_classes-1]
-  // in IR, and the `select` below masks out-of-bounds entries to zero.
-  HloInstruction* gather = computation->AddInstruction(
-      HloInstruction::CreateGather(raw_gather_shape, gather_source,
-                                   start_indices, gather_dnums, slice_sizes,
-                                   /*indices_are_sorted=*/false),
-      metadata);
-  gather = ConvertTo(gather, out_type, metadata);
-
-  ABSL_ASSIGN_OR_RETURN(HloInstruction * in_bounds,
-                   CreateInBoundsMask(reshaped_indices, num_classes, metadata));
-
-  HloInstruction* in_bounds_bcast = in_bounds;
-  if (in_bounds->shape().dimensions() != gather_shape.dimensions()) {
-    std::vector<int64_t> bcast_dims(k);
-    absl::c_iota(bcast_dims, lhs_is_one_hot ? 0 : m);
-    in_bounds_bcast = computation->AddInstruction(
-        HloInstruction::CreateBroadcast(
-            ShapeUtil::ChangeElementType(gather_shape, PRED), in_bounds,
-            bcast_dims),
-        metadata);
+  if (num_batch_dims > 0 && gather_source == weights) {
+    source_batch_to_indices_dim.reserve(num_batch_dims);
+    for (int64_t b_idx = 0; b_idx < num_batch_dims; ++b_idx) {
+      source_batch_to_indices_dim.push_back({weights_batch_dims[b_idx], b_idx});
+    }
   }
 
-  HloInstruction* zero_out = computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(out_type)));
-  HloInstruction* zero_gather = computation->AddInstruction(
-      HloInstruction::CreateBroadcast(gather_shape, zero_out, {}), metadata);
-  HloInstruction* selected = computation->AddInstruction(
-      HloInstruction::CreateTernary(gather_shape, HloOpcode::kSelect,
-                                    in_bounds_bcast, gather, zero_gather),
-      metadata);
+  OneHotGatherSpec spec;
+  spec.indices = ordered_indices;
+  spec.num_batch_dims = num_batch_dims;
+  spec.gather_source = gather_source;
+  spec.source_contract_dim = source_contract_dim;
+  spec.source_batch_to_indices_dim = std::move(source_batch_to_indices_dim);
+  spec.lhs_is_one_hot = lhs_is_one_hot;
+  spec.out_type = out_type;
+  spec.weights_round_mantissa_bits = match.weights_round_mantissa_bits;
+
+  ABSL_ASSIGN_OR_RETURN(HloInstruction * selected,
+                   BuildOneHotGatherAndSelect(computation, spec, metadata));
 
   if (sunk_bcast != nullptr) {
-    selected = SinkBroadcastAfterSelect(selected, sunk_bcast, one_hot_nc_dims,
+    selected = SinkBroadcastAfterSelect(selected, sunk_bcast,
+                                        ordered_indices->shape().dimensions(),
                                         lhs_is_one_hot, dot->shape(), metadata);
   }
 
@@ -596,7 +614,8 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
     HloInstruction* instruction) {
   HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
   if (enable_one_hot_dot_to_gather_) {
-    if (std::optional<OneHotDotMatch> match = MatchOneHotDot(dot)) {
+    if (std::optional<OneHotDotMatch> match =
+            MatchOneHotDot(dot, compute_capability_)) {
       return ExpandOneHotDot(dot, *match);
     }
   }
@@ -651,12 +670,17 @@ bool DotStrengthReduction::InstructionMatchesPattern(
   if (instruction->opcode() != HloOpcode::kDot) {
     return false;
   }
+  HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
   if (enable_one_hot_dot_to_gather_ &&
-      MatchOneHotDot(Cast<HloDotInstruction>(instruction)).has_value()) {
+      MatchOneHotDot(dot, compute_capability_).has_value()) {
     return true;
   }
-
-  const HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
+  // FP8xN dots are decomposed by DotAlgorithmRewriter after layout assignment.
+  const auto algorithm = dot->precision_config().algorithm();
+  if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_FP8X3 ||
+      algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_FP8X4) {
+    return false;
+  }
   const HloInstruction* lhs = dot->operand(0);
   const HloInstruction* rhs = dot->operand(1);
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();

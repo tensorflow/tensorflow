@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -902,7 +903,9 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     DeviceListRef executable_devices) {
   VLOG(3) << "PjRtLoadedExecutable::Create";
   if (VLOG_IS_ON(3)) {
-    module.mlir_module().dump();
+    module.mlir_module().print(llvm::errs(),
+                               mlir::OpPrintingFlags().useLocalScope());
+    llvm::errs() << "\n";
   }
   VLOG(3) << compile_options.ToProto()->DebugString();
 

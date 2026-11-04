@@ -15,6 +15,7 @@
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl", "if_sycl_build_is_configured", "sycl_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@xla//xla/tsl:tsl.bzl", "tf_openmp_copts")
 load("@xla//xla/tsl/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml", "if_mkldnn_openmp")
 load("@xla//xla/tsl/mkl:build_defs_gpu.bzl", "convert_cl_to_cpp", "convert_header_to_cpp")
@@ -134,9 +135,9 @@ expand_template(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "12",
-        "@DNNL_VERSION_PATCH@": "3",
-        "@DNNL_VERSION_HASH@": "6db5f1ba860ca8f65c3f65c4498ad867e9642447",
+        "@DNNL_VERSION_MINOR@": "14",
+        "@DNNL_VERSION_PATCH@": "1",
+        "@DNNL_VERSION_HASH@": "a190d4ab9b001e930d91a9c323089602b6c3d730",
     },
     template = "include/oneapi/dnnl/dnnl_version.h.in",
 )
@@ -145,7 +146,7 @@ expand_template(
     name = "dnnl_version_hash_h",
     out = "include/oneapi/dnnl/dnnl_version_hash.h",
     substitutions = {
-        "@DNNL_VERSION_HASH@": "6db5f1ba860ca8f65c3f65c4498ad867e9642447",
+        "@DNNL_VERSION_HASH@": "a190d4ab9b001e930d91a9c323089602b6c3d730",
     },
     template = "include/oneapi/dnnl/dnnl_version_hash.h.in",
 )
@@ -166,7 +167,10 @@ _INCLUDES_LIST = [
     "src/common",
     "src/cpu/gemm",
     "src/graph",
-    "third_party",
+    "third_party/ittnotify",
+    "third_party/ittnotify/ittnotify",
+    "third_party/spdlog",
+    "third_party/xbyak",
 ] + if_sycl_build_is_configured(
     [
         "include/oneapi",
@@ -178,6 +182,7 @@ _INCLUDES_LIST = [
         "src/gpu/intel/jit/config",
         "src/gpu/intel/microkernels",
         "third_party/ngen",
+        "third_party/level_zero",
     ],
     # TODO(intel-tf): Use default value to eliminate empty list
     [],
@@ -279,7 +284,7 @@ cc_library(
             "src/graph/backend/dnnl/kernels/*.cpp",
             "src/graph/utils/*.cpp",
             "src/graph/utils/pm/*.cpp",
-            "third_party/ittnotify/*.c",
+            "third_party/ittnotify/**/*.c",
         ],
         exclude = [
             "src/cpu/aarch64/**",

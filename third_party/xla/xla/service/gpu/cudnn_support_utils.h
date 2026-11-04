@@ -19,11 +19,17 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -33,7 +39,8 @@ namespace gpu {
 // implementation of the given `conv` operation vectorized to `vector_size`.
 //
 // This function does not guarantee that a convolution will be padded and/or
-// vectorized. It only checks that it is a valid candiate for such optimization.
+// vectorized. It only checks that it is a valid candidate for such
+// optimization.
 absl::StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
     const se::CudaComputeCapability& compute_capability,
     HloCustomCallInstruction& conv, int vector_size);
@@ -78,6 +85,21 @@ inline constexpr absl::string_view kWorkspaceAllocationCustomCallTarget =
 // Detects `ROOT tuple(..., custom-call())` used to allocate workspace buffers.
 bool IsWorkspaceAllocationRoot(const HloInstruction& root);
 bool IsAmaxRoot(const HloInstruction& root);
+
+// Resolves the DnnSupport pointer to use for cuDNN graph compilation.
+//
+// When compiling with a device, returns `stream_exec->AsDnn()`.
+//
+// When compiling devicelessly, returns `nullptr` (which is a valid input to
+// cuDNN functions when deviceless compilation is enabled)
+//
+// Returns an error if there's no device, and deviceless cuDNN compilation is
+// not supported.
+absl::StatusOr<se::dnn::DnnSupport* absl_nullable> ResolveCudnnSupport(
+    const DebugOptions& debug_options,
+    se::StreamExecutor* absl_nullable stream_exec,
+    se::SemanticVersion dnn_version);
+
 }  // namespace gpu
 }  // namespace xla
 

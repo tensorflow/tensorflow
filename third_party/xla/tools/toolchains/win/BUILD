@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@rules_java//java:defs.bzl", "java_runtime")
+
 licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])

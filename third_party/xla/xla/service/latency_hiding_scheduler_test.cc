@@ -6487,5 +6487,103 @@ ENTRY main {
   EXPECT_EQ(FindStart(done), pipelined_ctx);
 }
 
+TEST_F(LatencyHidingSchedulerTest,
+       ScheduleAnnotationClearsUnscheduledNonAsyncGapNodes) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[4,4]{1,0} parameter(0)
+  p1 = f32[4,4]{1,0} parameter(1)
+
+  ag1_start = (f32[4,4]{1,0}, f32[8,4]{1,0}) all-gather-start(p0), dimensions={0}, replica_groups={{0,1}}, frontend_attributes={_scheduling_group_id="1"}
+  ag1_done = f32[8,4]{1,0} all-gather-done(ag1_start), frontend_attributes={_scheduling_group_id="1"}
+
+  ag0a_start = (f32[8,4]{1,0}, f32[16,4]{1,0}) all-gather-start(ag1_done), dimensions={0}, replica_groups={{0,1}}, frontend_attributes={_scheduling_group_id="0"}
+  ag0a_done = f32[16,4]{1,0} all-gather-done(ag0a_start), frontend_attributes={_scheduling_group_id="0"}
+  bc = f32[1,16,4]{2,1,0} bitcast(ag0a_done)
+  ag0b_start = (f32[1,16,4]{2,1,0}, f32[2,16,4]{2,1,0}) all-gather-start(bc), dimensions={0}, replica_groups={{0,1}}, frontend_attributes={_scheduling_group_id="0"}
+  ag0b_done = f32[2,16,4]{2,1,0} all-gather-done(ag0b_start), frontend_attributes={_scheduling_group_id="0"}
+  ag0b_user = f32[2,16,4]{2,1,0} negate(ag0b_done)
+
+  other_start = (f32[4,4]{1,0}, f32[8,4]{1,0}) all-gather-start(p1), dimensions={0}, replica_groups={{0,1}}
+  other_done = f32[8,4]{1,0} all-gather-done(other_start)
+
+  ROOT root = (f32[2,16,4]{2,1,0}, f32[8,4]{1,0}) tuple(ag0b_user, other_done)
+}
+)";
+
+  // Emulates an in-order async queue (such as SparseCore offload queuing) that
+  // adds `start -> inflight_start` dependencies dynamically when an async-done
+  // is scheduled.
+  class InOrderQueueAsyncTracker : public AsyncTracker {
+   public:
+    using AsyncTracker::AsyncTracker;
+    using AsyncTracker::UpdateTargetDefinedStates;
+
+    void UpdateTargetDefinedStates(
+        const HloInstruction& hlo, const HloScheduleGraph* schedule_graph,
+        const LatencyEstimator* latency_estimator,
+        LatencyEstimator::TimeCost current_time,
+        SchedulerCore::SchedulingState* sched_state) override {
+      if (IsSupportedAsyncDone(hlo)) {
+        HloGraphNode& start = schedule_graph->GetNode(hlo.operand(0));
+        for (HloGraphNode* inflight_start : inflight_starts_) {
+          HloGraphNode::UpdateOrAddDependency(&start, inflight_start,
+                                              /*latency=*/1.0);
+        }
+        inflight_starts_.push_back(&start);
+      } else if (IsSupportedAsyncStart(hlo)) {
+        auto it =
+            absl::c_find(inflight_starts_, &schedule_graph->GetNode(&hlo));
+        if (it != inflight_starts_.end()) {
+          inflight_starts_.erase(it);
+        }
+      }
+    }
+
+   private:
+    std::vector<HloGraphNode*> inflight_starts_;
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseHloText(hlo_string));
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  sched_config.all_gather_overlap_limit = INT32_MAX;
+  sched_config.parallel_collective_overlap_limit = INT32_MAX;
+
+  auto legalizer_config =
+      std::make_unique<LegalizeSchedulingAnnotations::Config>();
+  legalizer_config->propagate_annotation = true;
+
+  ASSERT_OK(RunScheduler(
+      hlo_module.get(), sched_config, std::make_unique<TestLatencyEstimator>(),
+      std::make_unique<InOrderQueueAsyncTracker>(sched_config),
+      std::move(legalizer_config), /*skip_async_collective_creator=*/true));
+
+  // Verify LegalizeSchedulingAnnotations propagated group "0" onto `bc`.
+  const HloInstruction* bc = FindInstruction(hlo_module.get(), "bc");
+  ASSERT_NE(bc, nullptr);
+  EXPECT_TRUE(bc->frontend_attributes().map().contains("_scheduling_group_id"));
+
+  const std::vector<HloInstruction*>& seq =
+      hlo_module->schedule()
+          .sequence(hlo_module->entry_computation())
+          .instructions();
+  // `other_done` is scheduled before group 0 becomes ready, so scheduling
+  // `ag0b_done` adds a dynamic queue edge requiring `other_start` to be
+  // scheduled between `ag0b_done` and `ag0b_start` (leaving `ag0b_start`, `bc`,
+  // `ag0a_done`, and `ag0a_start` unscheduled when group 0 exits). Group 1 is
+  // then scheduled normally once those nodes drain `nodes_holding_annotations`.
+  EXPECT_LT(GetIndex(seq, "ag1_start"), GetIndex(seq, "ag1_done"));
+  EXPECT_LT(GetIndex(seq, "ag1_done"), GetIndex(seq, "ag0a_start"));
+  EXPECT_LT(GetIndex(seq, "ag0a_start"), GetIndex(seq, "ag0a_done"));
+  EXPECT_LT(GetIndex(seq, "ag0a_done"), GetIndex(seq, "bc"));
+  EXPECT_LT(GetIndex(seq, "bc"), GetIndex(seq, "ag0b_start"));
+  EXPECT_LT(GetIndex(seq, "ag0b_start"), GetIndex(seq, "other_start"));
+  EXPECT_LT(GetIndex(seq, "other_start"), GetIndex(seq, "ag0b_done"));
+  EXPECT_LT(GetIndex(seq, "ag0b_done"), GetIndex(seq, "other_done"));
+}
+
 }  // namespace
 }  // namespace xla

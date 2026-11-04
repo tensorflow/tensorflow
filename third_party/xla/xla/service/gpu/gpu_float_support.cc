@@ -185,6 +185,12 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
                cuda_compute_capability->IsAtLeastAmpere();
       }
       return false;
+    case HloOpcode::kFma:
+      // Never normalize an existing low-precision fma to a wider fma (which
+      // would double-round); unsupported target/type combinations return
+      // Unimplemented during codegen. Return false when queried on a
+      // higher-precision fma so f32 fma is never demoted to low precision.
+      return hlo.shape().element_type() == LowPrecisionType();
     case HloOpcode::kAdd:
     case HloOpcode::kMultiply:
     case HloOpcode::kSubtract: {

@@ -55,7 +55,7 @@ std::optional<int64_t> GetNumBatchDimensions(
 HloSharding GetBatchSharding(const HloSharding& sharding,
                              int64_t num_batch_dims) {
   if (!sharding.IsTiled() || num_batch_dims <= 0 ||
-      num_batch_dims >= sharding.TiledDataRank()) {
+      num_batch_dims > sharding.TiledDataRank()) {
     return HloSharding::Replicate(sharding.metadata());
   }
 
