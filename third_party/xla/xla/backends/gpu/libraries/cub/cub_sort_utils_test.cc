@@ -44,10 +44,10 @@ TEST(CubSortUtilsTest, SegmentedSortAddsSpace) {
   // aligned. Fix in a follow-up.
   // 2. Offsets space added: (batch_size + 1) * sizeof(int32_t).
 
-  // scratch_size = 0: aligned to 4 -> 4. Offsets: (2+1)*4 = 12. Total = 16.
+  // scratch_size = 0: aligned to 4 -> 0. Offsets: (2+1)*4 = 12. Total = 12.
   EXPECT_EQ(AddSegmentedSortOffsetsToScratchSize(/*scratch_size=*/0,
                                                  /*batch_size=*/2),
-            16);
+            12);
   // scratch_size = 1: aligned to 4 -> 4. Offsets: 12. Total = 16.
   EXPECT_EQ(AddSegmentedSortOffsetsToScratchSize(/*scratch_size=*/1,
                                                  /*batch_size=*/2),
@@ -56,11 +56,10 @@ TEST(CubSortUtilsTest, SegmentedSortAddsSpace) {
   EXPECT_EQ(AddSegmentedSortOffsetsToScratchSize(/*scratch_size=*/3,
                                                  /*batch_size=*/2),
             16);
-  // scratch_size = 4: aligned to 4 -> 8 (always adds padding if %4==0).
-  // Offsets: 12. Total = 20.
+  // scratch_size = 4: aligned to 4 -> 4. Offsets: 12. Total = 16.
   EXPECT_EQ(AddSegmentedSortOffsetsToScratchSize(/*scratch_size=*/4,
                                                  /*batch_size=*/2),
-            20);
+            16);
 }
 
 TEST(CreateCubSortCustomCallTest, CreatesCorrectCustomCall) {
