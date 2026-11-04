@@ -66,12 +66,12 @@ Classes
       - An HloValue with its defining position at the while instruction's
         result.
 
-  - HloBuffer (Hlo alias analysis concept): A memory container that holds one
-    or more HloValues that must alias. Typically, each HloValue corresponds to
-    1 HloBuffer; however, many exceptions exist. For example, tensors that are
+  - HloBuffer (Hlo alias analysis concept): A memory container that holds 1
+    or more HloValues that must alias. Typically, each HloBufer corresponds to
+    1 HloValue; however, many exceptions exist. For example, tensors that are
     modified by a while loop have their HloValues share an HloBuffer, for the
     HloValues that come immediately before, during, and immediately after the
-    loop. HloBuffers are shared between HloValues wherever there is aliasing,
+    loop. An HloBuffer is shared between HloValues wherever there is aliasing,
     whether implicit by the nature of the instruction (e.g.,
     dynamic-update-slice) or explicit (e.g., fusion input-output aliasing).
 
