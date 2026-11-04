@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
 
@@ -25,6 +27,8 @@ namespace {
 
 using protobuf::TextFormat;
 using ::testing::ElementsAreArray;
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(UniformQuantizedConvolutionParamsTest, DilatedSize) {
   EXPECT_EQ(UniformQuantizedConvolutionParams::DilatedSize(0, 2), 0);
@@ -174,10 +178,10 @@ TEST(UniformQuantizedConvolutionParamsTest,
   // input_batch_dimension and input_feature_dimension both name dim 0, so the
   // lhs dimension numbers are not a permutation. They are used as a transpose
   // permutation, so this must be rejected rather than reach the kernel.
-  EXPECT_FALSE(params
-                   .ValidateOrFillParamsAndValidateShape(
-                       /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3})
-                   .ok());
+  EXPECT_THAT(
+      params.ValidateOrFillParamsAndValidateShape(
+          /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("permutation")));
 }
 
 TEST(UniformQuantizedConvolutionParamsTest,
@@ -205,10 +209,10 @@ TEST(UniformQuantizedConvolutionParamsTest,
                                            /*feature_group_count=*/1,
                                            /*batch_group_count=*/1,
                                            /*padding=*/"VALID");
-  EXPECT_FALSE(params
-                   .ValidateOrFillParamsAndValidateShape(
-                       /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3})
-                   .ok());
+  EXPECT_THAT(
+      params.ValidateOrFillParamsAndValidateShape(
+          /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("permutation")));
 }
 
 TEST(UniformQuantizedConvolutionParamsTest,
@@ -236,10 +240,39 @@ TEST(UniformQuantizedConvolutionParamsTest,
                                            /*feature_group_count=*/1,
                                            /*batch_group_count=*/1,
                                            /*padding=*/"VALID");
-  EXPECT_FALSE(params
-                   .ValidateOrFillParamsAndValidateShape(
-                       /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3})
-                   .ok());
+  EXPECT_THAT(
+      params.ValidateOrFillParamsAndValidateShape(
+          /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3}),
+      StatusIs(absl::StatusCode::kInvalidArgument, HasSubstr("permutation")));
+}
+
+TEST(UniformQuantizedConvolutionParamsTest,
+     ValidateOrFillParamsAndValidateShapeEmptyInputSpatialWithKernelSpatial) {
+  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+  // input_spatial_dimensions is empty, which selects the default-fill branch,
+  // but kernel_spatial_dimensions and output_spatial_dimensions are already
+  // populated. The defaults would be appended on top of them, leaving extra
+  // dimension numbers that index past the output shape, so this must be
+  // rejected.
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            kernel_spatial_dimensions: 2
+                                            kernel_spatial_dimensions: 3
+                                            output_spatial_dimensions: 2
+                                            output_spatial_dimensions: 3
+                                          )pb",
+                                          &dimension_numbers));
+  UniformQuantizedConvolutionParams params(/*window_strides=*/{},
+                                           /*lhs_dilation=*/{},
+                                           /*rhs_dilation=*/{},
+                                           dimension_numbers,
+                                           /*feature_group_count=*/1,
+                                           /*batch_group_count=*/1,
+                                           /*padding=*/"VALID");
+  EXPECT_THAT(params.ValidateOrFillParamsAndValidateShape(
+                  /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3}),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("must be empty when input_spatial_dimensions "
+                                 "is empty")));
 }
 
 TEST(UniformQuantizedConvolutionParamsTest, CalculateOutputShapeDefaultAttr) {
