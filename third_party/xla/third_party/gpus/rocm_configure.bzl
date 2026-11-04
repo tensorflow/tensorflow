@@ -7,6 +7,7 @@
   * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets.
   * `TF_ROCM_MULTIPLE_PATHS`: Colon-separated list of ROCm installation paths to merge.
   * `LLVM_PATH`: Path to LLVM installation (used with TF_ROCM_MULTIPLE_PATHS).
+  * `TF_ROCM_SYSDEPS_PATHS`: Colon-separated prefixes merged under `lib/rocm_sysdeps`.
   * `TF_ROCM_RBE_DOCKER_IMAGE`: Docker image to be used in rbe worker to execute the action
   * `TF_ROCM_RBE_SINGLE_GPU_POOL`: The name of the rbe pool used to execute single gpu tests
   * `TF_ROCM_RBE_MULTI_GPU_POOL`: The name of the rbe pool used to execute multi gpu tests
@@ -41,6 +42,7 @@ _TF_ROCM_AMDGPU_TARGETS = "TF_ROCM_AMDGPU_TARGETS"
 _TF_ROCM_CONFIG_REPO = "TF_ROCM_CONFIG_REPO"
 _TF_ROCM_MULTIPLE_PATHS = "TF_ROCM_MULTIPLE_PATHS"
 _LLVM_PATH = "LLVM_PATH"
+_TF_ROCM_SYSDEPS_PATHS = "TF_ROCM_SYSDEPS_PATHS"
 _DISTRIBUTION_PATH = "rocm/rocm_dist"
 _ROCM_DISTRO_VERSION = "ROCM_DISTRO_VERSION"
 _ROCM_DISTRO_URL = "ROCM_DISTRO_URL"
@@ -359,6 +361,21 @@ def _setup_rocm_distro_dir(repository_ctx):
             repository_ctx.symlink(llvm_path, _DISTRIBUTION_PATH + "/llvm")
             repository_ctx.symlink(llvm_path, _DISTRIBUTION_PATH + "/lib/llvm")
             repository_ctx.symlink(llvm_path + "/amdgcn", _DISTRIBUTION_PATH + "/amdgcn")
+
+        # Merge TF_ROCM_SYSDEPS_PATHS prefixes under lib/rocm_sysdeps.
+        sysdeps_paths = repository_ctx.os.environ.get(_TF_ROCM_SYSDEPS_PATHS)
+        if sysdeps_paths:
+            for sysdeps_path in sysdeps_paths.split(":"):
+                cmd = "find " + sysdeps_path + "/* \\( -type f -o -type l \\)"
+                result = execute(repository_ctx, [bash_bin, "-c", cmd])
+                result_files = result.stdout.strip().split("\n") if result.stdout.strip() else []
+                for file_path in result_files:
+                    relative_path = file_path[len(sysdeps_path):]
+                    symlink_path = _DISTRIBUTION_PATH + "/lib/rocm_sysdeps" + relative_path
+                    if files_exist(repository_ctx, [symlink_path], bash_bin)[0]:
+                        fail("File already present: " + relative_path)
+                    else:
+                        repository_ctx.symlink(file_path, symlink_path)
         repository_ctx.report_progress("Using ROCm from multiple paths: {}".format(multiple_paths))
         return _get_rocm_config(repository_ctx, bash_bin, _DISTRIBUTION_PATH, _DISTRIBUTION_PATH)
 
@@ -546,6 +563,7 @@ _ENVIRONS = [
     _TF_ROCM_AMDGPU_TARGETS,
     _TF_ROCM_MULTIPLE_PATHS,
     _LLVM_PATH,
+    _TF_ROCM_SYSDEPS_PATHS,
     _TF_ROCM_RBE_DOCKER_IMAGE,
     _TF_ROCM_RBE_POOL,
     _TF_ROCM_RBE_SINGLE_GPU_POOL,
