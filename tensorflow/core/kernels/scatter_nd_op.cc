@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/state_ops.cc.
 #define EIGEN_USE_THREADS
 
+#include <cstdint>
 #include <string>
 #include <type_traits>
 
@@ -194,6 +195,44 @@ class ScatterNdOp : public ScatterOpBase<Device> {
   }
 };
 
+namespace {
+
+absl::Status ValidateTensorScatterInputs(const TensorShape& shape,
+                                         const TensorShape& indices_shape,
+                                         const TensorShape& updates_shape) {
+  if (indices_shape.dims() < 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Indices shape must have rank at least one. Found:",
+                     indices_shape.DebugString()));
+  }
+
+  if (TensorShapeUtils::IsScalar(updates_shape)) {
+    const int64_t ix = indices_shape.dim_size(indices_shape.dims() - 1);
+    if (ix < 1 || ix > shape.dims()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Inner dimensions of output shape must match "
+          "inner dimensions of updates shape. Output: ",
+          shape.DebugString(), " updates: ", updates_shape.DebugString()));
+    }
+    if (shape.num_elements() <= 0) {
+      return absl::InvalidArgumentError(
+          "Indices and updates specified for empty output shape");
+    }
+  } else {
+    if (!ValidEmptyOutputShape(shape.num_elements(),
+                               indices_shape.num_elements(),
+                               updates_shape.num_elements())) {
+      return absl::InvalidArgumentError(
+          "Indices and updates specified for empty output shape");
+    }
+    TF_RETURN_IF_ERROR(
+        ValidateScatterNdUpdateShape(shape, indices_shape, updates_shape));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 template <typename Device, typename T, typename Index,
           scatter_nd_op::UpdateOp op>
 class TensorScatterOp : public ScatterOpBase<Device> {
@@ -209,67 +248,21 @@ class TensorScatterOp : public ScatterOpBase<Device> {
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
 
-    OP_REQUIRES(c, indices.shape().dims() >= 1,
-                absl::InvalidArgumentError(absl::StrCat(
-                    "Indices shape must have rank at least one. Found:",
-                    indices.shape().DebugString())));
+    const TensorShape& shape = input.shape();
+    OP_REQUIRES_OK(c, ValidateTensorScatterInputs(shape, indices.shape(),
+                                                  updates.shape()));
 
-    TensorShape shape = input.shape();
-
-    const int64_t outer_dims = indices.shape().dims() - 1;
-    const int64_t ix = indices.shape().dim_size(outer_dims);
-
-    if (TensorShapeUtils::IsScalar(updates.shape())) {
-      OP_REQUIRES(c, ix >= 1 && ix <= shape.dims(),
-                  absl::InvalidArgumentError(absl::StrCat(
-                      "Inner dimensions of output shape must match "
-                      "inner dimensions of updates shape. Output: ",
-                      shape.DebugString(),
-                      " updates: ", updates.shape().DebugString())));
-      OP_REQUIRES(c, shape.num_elements() > 0,
-                  absl::InvalidArgumentError(
-                      "Indices and updates specified for empty output shape"));
-    } else {
-      OP_REQUIRES(c,
-                  ValidEmptyOutputShape(shape.num_elements(),
-                                        indices.shape().num_elements(),
-                                        updates.shape().num_elements()),
-                  absl::InvalidArgumentError(
-                      "Indices and updates specified for empty output shape"));
-      OP_REQUIRES_OK(c, ValidateScatterNdUpdateShape(shape, indices.shape(),
-                                                     updates.shape()));
-    }
-
-    AllocatorAttributes alloc_attr;
-    MemoryType memory_type = DEVICE_MEMORY;
-    if (std::is_same_v<Device, CPUDevice>) {
-      alloc_attr.set_on_host(true);
-      memory_type = HOST_MEMORY;
-    } else {
-      memory_type = DEVICE_MEMORY;
-    }
-    std::unique_ptr<Tensor> forwarded_input =
-        c->forward_input(0, 0, input.dtype(), shape, memory_type, alloc_attr);
-
-    if (forwarded_input == nullptr) {
+    Tensor* out = nullptr;
+    if (!c->forward_input_to_output_with_shape(0, 0, shape, &out)) {
       // We were not able to forward the input, so we deep copy the tensor and
       // set the output.
-      Tensor* out;
-      OP_REQUIRES_OK(c, c->allocate_output(0, input.shape(), &out));
-
+      OP_REQUIRES_OK(c, c->allocate_output(0, shape, &out));
       OP_REQUIRES_OK(c, tensorflow::functor::DoCopy(c->eigen_device<Device>(),
                                                     input, out));
-      OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
-                            c, indices, updates, shape, out, false /*allocate*/,
-                            this->bad_indices_policy_));
-    } else {
-      // Output forwarded, so simply perform the scatter.
-      OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
-                            c, indices, updates, shape, forwarded_input.get(),
-                            false /*allocate*/, this->bad_indices_policy_));
-
-      c->set_output(0, *forwarded_input);
     }
+    OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
+                          c, indices, updates, shape, out, false /*allocate*/,
+                          this->bad_indices_policy_));
   }
 };
 
