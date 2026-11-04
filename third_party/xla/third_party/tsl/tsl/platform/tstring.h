@@ -388,7 +388,7 @@ inline tstring& tstring::operator=(const char* str) {
 }
 
 inline tstring& tstring::operator=(char c) {
-  resize_uninitialized(1);
+  resize_uninitialized(/*new_size=*/1);
   (*this)[0] = c;
 
   return *this;
@@ -516,7 +516,7 @@ inline void tstring::resize_uninitialized(size_t new_size) {
 }
 
 inline void tstring::clear() noexcept {
-  TF_TString_ResizeUninitialized(&tstr_, 0);
+  TF_TString_ResizeUninitialized(&tstr_, /*new_size=*/0);
 }
 
 inline void tstring::reserve(size_t n) { TF_TString_Reserve(&tstr_, n); }
@@ -674,7 +674,7 @@ inline void tstring::swap(tstring& str) noexcept {
   std::swap(tstr_, str.tstr_);
 }
 
-inline void tstring::push_back(char ch) { append(1, ch); }
+inline void tstring::push_back(char ch) { append(/*n=*/1, ch); }
 
 // Friends
 

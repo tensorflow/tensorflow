@@ -572,8 +572,8 @@ __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
 // switching to fp16 as late as you can in the calculations.
 //
 // Note: Assumes little endian.
-template <typename F>
-__device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
+template <typename T, typename F>
+__device__ T GpuAtomicCasHelper16(T* ptr, F accumulate) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
   static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "Not little endian");
 #endif
@@ -586,26 +586,23 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
   uint32_t result =
       GpuAtomicCasHelper(address, [accumulate, shift, mask](uint32_t arg) {
         uint16_t high = static_cast<uint16_t>(arg >> shift);
-        Eigen::half acc =
-            accumulate(Eigen::numext::bit_cast<Eigen::half>(high));
+        T acc = accumulate(Eigen::numext::bit_cast<T>(high));
         return (static_cast<uint32_t>(Eigen::numext::bit_cast<uint16_t>(acc))
                 << shift) |
                (arg & mask);
       });
-  return Eigen::numext::bit_cast<Eigen::half>(
-      static_cast<uint16_t>(result >> shift));
+  return Eigen::numext::bit_cast<T>(static_cast<uint16_t>(result >> shift));
+}
+
+template <typename F>
+__device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
+  return GpuAtomicCasHelper16(ptr, accumulate);
 }
 
 template <typename F>
 __device__ Eigen::bfloat16 GpuAtomicCasHelper(Eigen::bfloat16* ptr,
                                               F accumulate) {
-  Eigen::half ret = detail::GpuAtomicCasHelper(
-      reinterpret_cast<Eigen::half*>(ptr), [accumulate](Eigen::half a) {
-        Eigen::bfloat16 acc =
-            accumulate(Eigen::numext::bit_cast<Eigen::bfloat16>(a));
-        return Eigen::numext::bit_cast<Eigen::half>(acc);
-      });
-  return Eigen::numext::bit_cast<Eigen::bfloat16>(ret);
+  return GpuAtomicCasHelper16(ptr, accumulate);
 }
 
 template <typename F>

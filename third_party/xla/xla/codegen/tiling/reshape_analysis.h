@@ -116,14 +116,6 @@ llvm::SmallVector<int64_t> PositionsOfNonTrivialDims(
 
 }  // namespace xla::gpu
 
-namespace xla::gpu::experimental {
-using ::xla::gpu::DimensionRange;
-using ::xla::gpu::GetMinimalReshapes;
-using ::xla::gpu::MinimalReshape;
-using ::xla::gpu::MinimalReshapeCategory;
-using ::xla::gpu::PositionsOfNonTrivialDims;
-}  // namespace xla::gpu::experimental
-
 namespace xla {
 using ::xla::gpu::DimensionRange;
 using ::xla::gpu::GetMinimalReshapes;
@@ -131,13 +123,5 @@ using ::xla::gpu::MinimalReshape;
 using ::xla::gpu::MinimalReshapeCategory;
 using ::xla::gpu::PositionsOfNonTrivialDims;
 }  // namespace xla
-
-namespace xla::experimental {
-using ::xla::gpu::DimensionRange;
-using ::xla::gpu::GetMinimalReshapes;
-using ::xla::gpu::MinimalReshape;
-using ::xla::gpu::MinimalReshapeCategory;
-using ::xla::gpu::PositionsOfNonTrivialDims;
-}  // namespace xla::experimental
 
 #endif  // XLA_CODEGEN_TILING_RESHAPE_ANALYSIS_H_

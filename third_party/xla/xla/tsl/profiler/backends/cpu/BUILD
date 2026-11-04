@@ -19,9 +19,6 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:traceme_global_flags",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:thread_annotations",
     ] + if_static([
         ":traceme_recorder_impl",
     ]),
@@ -87,9 +84,7 @@ cc_library(
         "//xla/tsl/profiler:internal",
     ]),
     deps = [
-        "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ] + if_static([

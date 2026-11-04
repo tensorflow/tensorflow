@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
@@ -835,6 +836,11 @@ H AbslHashValue(H h, const RepeatedWhileTupleIndicesKey& key) {
                     key.dynamic_update_slice_value,
                     key.dynamic_update_slice_indices);
 }
+
+const HloPassFactory* const kWhileLoopSimplifierRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<WhileLoopSimplifier>>(
+        "simplify-while-loops");
+
 }  // namespace
 
 // If the while loop init passes the same values to several tuple indices, and

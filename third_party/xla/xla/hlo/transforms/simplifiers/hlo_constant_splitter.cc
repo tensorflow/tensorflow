@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -113,6 +114,10 @@ absl::StatusOr<bool> DuplicateConstantExpressionPerUser(
   }
   return changed;
 }
+
+const HloPassFactory* const kHloConstantSplitterRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<HloConstantSplitter>>(
+        "hlo-constant-splitter");
 
 }  // namespace
 

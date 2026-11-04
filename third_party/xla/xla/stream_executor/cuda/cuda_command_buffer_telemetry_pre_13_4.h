@@ -29,6 +29,7 @@ limitations under the License.
 #include <optional>
 
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_command_buffer_telemetry.h"
 
 namespace stream_executor::gpu::command_buffer_telemetry {
 
@@ -41,8 +42,11 @@ std::optional<uint32_t> GetGraphExecId(CUgraphExec exec);
 // child / conditional graphs) into `CudaGraphAnnotationRegistry` keyed by
 // `exec`'s `cuGraphExecGetId` and synthesized CUPTI `graphNodeId` in
 // `KeySpace::kPre134ExecGraph`. Makes CUDA calls, so callers check
-// `CudaCommandBuffer::ShouldRecordAnnotations()` first.
-void RegisterPre134ExecGraphNodes(CUgraph root_graph, CUgraphExec exec);
+// `CudaCommandBuffer::ShouldRecordAnnotations()` first. Returns the exec entry
+// if this call created it: the caller then owns it and must unregister it when
+// it destroys or re-instantiates `exec`.
+std::optional<TrackedGraph> RegisterPre134ExecGraphNodes(CUgraph root_graph,
+                                                         CUgraphExec exec);
 
 }  // namespace stream_executor::gpu::command_buffer_telemetry
 

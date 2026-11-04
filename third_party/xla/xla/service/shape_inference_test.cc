@@ -6495,5 +6495,33 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                               {"f32[?]", "f32[?]", HloOpcode::kSinh},
                               {"f32[?]", "f32[?]", HloOpcode::kSqrt},
                               {"f32[?]", "f32[?]", HloOpcode::kTanh}}));
+
+TEST_F(ShapeInferenceTest, MulhiRequiresIntegralType) {
+  const Shape s32_vec = ShapeUtil::MakeShape(S32, {4});
+  const Shape u32_vec = ShapeUtil::MakeShape(U32, {4});
+  ASSERT_OK_AND_ASSIGN(Shape s32_out, ShapeInference::InferBinaryOpShape(
+                                          HloOpcode::kMulhi, s32_vec, s32_vec,
+                                          /*broadcast_dimensions=*/{}));
+  EXPECT_TRUE(ShapeUtil::Equal(s32_out, s32_vec));
+  ASSERT_OK_AND_ASSIGN(Shape u32_out, ShapeInference::InferBinaryOpShape(
+                                          HloOpcode::kMulhi, u32_vec, u32_vec,
+                                          /*broadcast_dimensions=*/{}));
+  EXPECT_TRUE(ShapeUtil::Equal(u32_out, u32_vec));
+
+  EXPECT_THAT(
+      ShapeInference::InferBinaryOpShape(HloOpcode::kMulhi, vector_32_,
+                                         vector_32_,
+                                         /*broadcast_dimensions=*/{}),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Expected integral type in argument to mulhi operation")));
+  EXPECT_THAT(
+      ShapeInference::InferBinaryOpShape(HloOpcode::kMulhi, pred_, pred_,
+                                         /*broadcast_dimensions=*/{}),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Expected integral type in argument to mulhi operation")));
+}
+
 }  // namespace
 }  // namespace xla

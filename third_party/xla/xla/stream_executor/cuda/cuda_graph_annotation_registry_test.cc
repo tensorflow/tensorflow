@@ -143,6 +143,67 @@ TEST(CudaGraphAnnotationRegistryTest, UnregisterGraph) {
   EXPECT_TRUE(registry.empty());
 }
 
+TEST(CudaGraphAnnotationRegistryTest, TrackGraphAndRetainGraphsCountOwners) {
+  Registry registry;
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
+
+  // Retaining an untracked graph does nothing.
+  registry.RetainGraphs({{kOtherGraph, Registry::KeySpace::kTemplateGraph}});
+  EXPECT_FALSE(registry.IsGraphTracked(kOtherGraph));
+
+  // Retaining a live entry adds an owner reference that must be balanced.
+  registry.RetainGraphs({{kGraph, Registry::KeySpace::kTemplateGraph}});
+  registry.UnregisterGraph(kGraph);
+  EXPECT_TRUE(registry.IsGraphTracked(kGraph));
+  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("a")));
+
+  // Tracking an already-tracked graph returns false and does not add an owner.
+  EXPECT_FALSE(registry.TrackGraph(kGraph));
+  registry.UnregisterGraph(kGraph);
+  EXPECT_FALSE(registry.IsGraphTracked(kGraph));
+  EXPECT_TRUE(registry.empty());
+}
+
+TEST(CudaGraphAnnotationRegistryTest, UnregisterGraphsBatchesUnderOneLock) {
+  Registry registry;
+  constexpr uint32_t kEmptyGraph = 30;
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
+  ASSERT_TRUE(registry.TrackGraph(kOtherGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode, "b"));
+  ASSERT_TRUE(registry.TrackGraph(kEmptyGraph));
+  ASSERT_TRUE(
+      registry.TrackGraph(kGraph, Registry::KeySpace::kPre134ExecGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(
+      kGraph, kNode, "exec", Registry::KeySpace::kPre134ExecGraph));
+  {
+    // Under a hold, the graphs with annotations are parked, the empty one is
+    // erased, and an untracked graph is ignored.
+    Registry::HarvestHold hold = registry.AcquireHarvestHold();
+    registry.UnregisterGraphs(
+        {{kGraph, Registry::KeySpace::kTemplateGraph},
+         {kEmptyGraph, Registry::KeySpace::kTemplateGraph},
+         {kGraph, Registry::KeySpace::kPre134ExecGraph},
+         {/*graph_id=*/99, Registry::KeySpace::kTemplateGraph}});
+    Registry::Stats stats = registry.GetStats();
+    EXPECT_EQ(stats.live_graphs, 1);
+    EXPECT_EQ(stats.parked_graphs, 2);
+    EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("a")));
+    EXPECT_THAT(
+        Lookup(registry, kGraph, kNode, Registry::KeySpace::kPre134ExecGraph),
+        Optional(Eq("exec")));
+    EXPECT_TRUE(registry.IsGraphTracked(kOtherGraph));
+  }
+  EXPECT_EQ(Lookup(registry, kGraph, kNode), std::nullopt);
+  // Without a hold, entries are erased.
+  registry.UnregisterGraphs(
+      {{kOtherGraph, Registry::KeySpace::kTemplateGraph}});
+  EXPECT_TRUE(registry.empty());
+  registry.UnregisterGraphs({});
+  EXPECT_TRUE(registry.empty());
+}
+
 TEST(CudaGraphAnnotationRegistryTest, ParkThenPurge) {
   Registry registry;
   ASSERT_TRUE(registry.TrackGraph(kGraph));

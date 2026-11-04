@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,7 +25,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "llvm/IR/LLVMContext.h"
@@ -335,62 +333,6 @@ ENTRY e {
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
-}
-
-TEST_P(TritonTest, CodegenDynamicSliceWithCorrectOffsets) {
-  // TODO(b/417172838): we now should support non-majormost dimensions, port
-  // this test to fusion_emitter_device_test with that support.
-
-  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
-  // because we don't support dynamic slice on those dimensions.
-  constexpr absl::string_view kHloText = R"(
-HloModule t
-
-triton_gemm {
-  dot_lhs = f32[2,4] parameter(0)
-  dynamic_slice_input = f32[4,5,2] parameter(1)
-  start_index0 = s32[] parameter(2)
-  start_index1 = s32[] parameter(3)
-  start_index2 = s32[] parameter(4)
-  dynamic_slice = f32[1,5,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1, start_index2), dynamic_slice_sizes={1,5,2}
-  bitcast = f32[5,2] bitcast(dynamic_slice)
-  ROOT dot = f32[4,5] dot(dot_lhs, bitcast), lhs_contracting_dims={0}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  dot_lhs = f32[2,4] parameter(0)
-  dynamic_slice_input = f32[4,5,2] parameter(1)
-  start_index0 = s32[] parameter(2)
-  start_index1 = s32[] constant(0)
-  start_index2 = s32[] constant(0)
-  ROOT fusion = f32[4,5] fusion(dot_lhs, dynamic_slice_input, start_index0, start_index1, start_index2),
-       kind=kCustom, calls=triton_gemm,
-       backend_config={
-         "fusion_backend_config":{
-           "kind":"__triton_gemm","triton_gemm_config":{
-             "block_m":"32","block_n":"32","block_k":"32",
-             "num_stages":"1","num_warps":"1","num_ctas":"1"}}}
-})";
-  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                       GetModuleAndNestedFusionMetadata(kHloText));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
-  EXPECT_OK(
-      CreateTritonIrAndFileCheck(*module_and_metadata.computation,
-                                 module_and_metadata.block_level_parameters, R"(
-    CHECK: xtile.entry_func @triton_fn(%[[ARG0:.*]]: memref<2x4xf32>, %[[ARG1:.*]]: memref<4x5x2xf32>, %[[ARG2:.*]]: memref<i32>, %[[ARG3:.*]]: memref<i32>, %[[ARG4:.*]]: memref<i32>, %[[ARG5:.*]]: memref<4x5xf32>
-    CHECK-DAG: %[[c3:.*]] = arith.constant 3 : i32
-    CHECK-DAG: %[[c0:.*]] = arith.constant 0 : i32
-    CHECK: %[[START:.*]] = xtile.extract %[[ARG2]][] [] []
-    CHECK: %[[V2:.*]] = tensor.extract %[[START]][] : tensor<i32>
-    CHECK: %[[CLAMP0:.*]] = arith.maxsi %[[V2]], %[[c0]] : i32
-    CHECK: %[[CLAMP1:.*]] = arith.minsi %[[CLAMP0]], %[[c3]] : i32
-    CHECK: %[[OFFSET:.*]] = arith.index_cast %[[CLAMP1]] : i32 to index
-    CHECK-DAG: xtile.extract %[[ARG0]]{{.*}} [32, 32] [1, 1]
-    CHECK-DAG: xtile.extract %[[ARG1]][%[[OFFSET]], %{{.*}}, %{{.*}}] [1, 32, 32] [1, 1, 1]
-    CHECK: tt.dot
-  )"));
 }
 
 TEST_P(TritonGemmTest, DoNotUseTensorCoresWithHighestPrecision) {
@@ -1010,69 +952,6 @@ ENTRY e {
 )");
 }
 
-// This tests the complexity heuristics in TritonWrapper.
-// TODO(b/393299275): this is not worth keeping as a codegen test. Really, we
-// should not reject tilings that are slow/spill in codegen. If this has use in
-// autotuning, then this should be tested/called in the autotuner.
-// The generic Triton emitter does not want to deal with this.
-TEST_P(TritonGemmTest, DISABLED_FailForTooComplexTiling) {
-  auto cc = se::CudaComputeCapability::Ampere();
-  const se::DeviceDescription device_info =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  llvm::LLVMContext llvm_ctx;
-  llvm::Triple target_triple(nvptx::TargetTriple());
-  std::string data_layout(nvptx::DataLayout());
-
-  constexpr absl::string_view kHloTextTemplate = R"(
-HloModule module
-
-triton_gemm_dot {
-  p0 = s8[1024,1024] parameter(0)
-  p1 = f32[1024,1024] parameter(1)
-  c0 = f32[1024,1024] convert(p0)
-  ROOT dot.0 = f32[1024,1024] dot(c0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY entry {
-  p0 = s8[1024,1024] parameter(0)
-  p1 = f32[1024,1024] parameter(1)
-  ROOT r = f32[1024,1024] fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
-      triton_gemm_config: {"block_m":$0,"block_n":$1,"block_k":$2,
-      "num_stages":1,"num_warps":2,
-      "num_ctas":1}}}
-})";
-
-  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module1_and_metadata,
-                       GetModuleAndNestedFusionMetadata(
-                           absl::Substitute(kHloTextTemplate, 512, 512, 32)));
-
-  const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
-      module1_and_metadata.computation->FusionInstruction());
-  EXPECT_THAT(
-      TritonWrapper("test_fn", *fusion1, se::GpuComputeCapability{cc},
-                    device_info, module1_and_metadata.block_level_parameters,
-                    target_triple, data_layout, mlir_context_),
-      absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                             "Tiling complexity heuristic exceeded"));
-
-  // Succeeds if the tiling is not too complex.
-  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
-                       GetModuleAndNestedFusionMetadata(
-                           absl::Substitute(kHloTextTemplate, 32, 32, 32)));
-
-  const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
-      module1_and_metadata.computation->FusionInstruction());
-
-  EXPECT_OK(TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
-                          device_info,
-                          module2_and_metadata.block_level_parameters,
-                          target_triple, data_layout, mlir_context_)
-                .status());
-}
-
 // TODO(b/393299275): this test may have some value while Triton tiling
 // propagation is being replaced, but has little worth as a codegen test.
 // Consider moving this.
@@ -1148,8 +1027,6 @@ TEST_P(TritonGemmTest, DynamicSliceIsSupportedInLhsEndToEnd) {
   // The select is used to restrict the start index to values that make sense.
   // If it was constant, then the dynamic-slice would be optimized to slice. It
   // is not strictly needed, because we also support clamping the indices.
-  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
-  // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1178,8 +1055,6 @@ ENTRY e {
 }
 
 TEST_P(TritonGemmTest, DynamicSliceIsSupportedInRhs) {
-  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
-  // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1214,65 +1089,9 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-class TritonGemmDynamicSliceClampingTest
-    : public TritonTestBase,
-      public ::testing::WithParamInterface<int> {};
-
-TEST_P(TritonGemmDynamicSliceClampingTest,
-       DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
-  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
-  // because we don't support dynamic slice on those dimensions.
-  // TODO(b/417172838): we now should support non-majormost dimensions, port
-  // this test to fusion_emitter_device_test with that support.
-
-  const std::string hlo_text = absl::Substitute(R"(
-HloModule m
-
-triton_gemm {
-  dynamic_slice_input = f32[7,2] parameter(0)
-  dot_rhs = f32[2,4] parameter(1)
-  start_index0 = s32[] parameter(2)
-  start_index1 = s32[] parameter(3)
-  dynamic_slice = f32[5,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1),
-                  dynamic_slice_sizes={5,2}
-  ROOT dot = f32[5, 4] dot(dynamic_slice, dot_rhs),
-          lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  dynamic_slice_input = f32[7,2] parameter(0)
-  dot_rhs = f32[2,4] parameter(1)
-  start_index0 = s32[] constant($0)
-  start_index1 = s32[] constant(0)
-  ROOT fusion = f32[5,4] fusion(dynamic_slice_input, dot_rhs, start_index0, start_index1),
-       kind=kCustom, calls=triton_gemm,
-       backend_config={
-         "fusion_backend_config":{
-           "kind":"__triton_gemm","triton_gemm_config":{
-             "block_m":"32","block_n":"32","block_k":"32",
-             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
-})",
-                                                GetParam());
-  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                       GetModuleAndNestedFusionMetadata(hlo_text));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
-}
-
-std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
-  return absl::StrCat("WithOffsetEq", data.param < 0 ? "Negative" : "",
-                      std::abs(data.param));
-}
-
-INSTANTIATE_TEST_SUITE_P(All, TritonGemmDynamicSliceClampingTest,
-                         ::testing::Values(-100, 3, 999), OffsetParamToString);
-
 TEST_P(TritonGemmTest, DynamicSliceOfMajormostContractingDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is contracted.
-  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
-  // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1307,55 +1126,9 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-TEST_P(TritonGemmTest, DynamicSliceOfMajormostBatchDimIsSupported) {
-  // Tests that dynamic-slice works on the majormost dimension even if that
-  // dimension is a batch.
-  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
-  // because we don't support dynamic slice on those dimensions.
-  // TODO(b/417172838): we now should support non-majormost dimensions, port
-  // this test to fusion_emitter_device_test with that support.
-  constexpr absl::string_view kHloText = R"(
-HloModule m
-
-triton_gemm {
-  dot_lhs = f32[2,2,4] parameter(0)
-  dynamic_slice_input = f32[7,2,4] parameter(1)
-  start_index0 = s32[] parameter(2)
-  start_index1 = s32[] parameter(3)
-  start_index2 = s32[] parameter(4)
-  dynamic_slice = f32[2,2,4] dynamic-slice(dynamic_slice_input, start_index0, start_index1, start_index2),
-                  dynamic_slice_sizes={2,2,4}
-  ROOT dot = f32[2,4,4] dot(dot_lhs, dynamic_slice),
-             lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  dot_lhs = f32[2,2,4] parameter(0)
-  dynamic_slice_input = f32[7,2,4] parameter(1)
-  start_index0 = s32[] constant(2)
-  start_index1 = s32[] constant(0)
-  start_index2 = s32[] constant(0)
-  ROOT fusion = f32[2,4,4] fusion(dot_lhs, dynamic_slice_input, start_index0, start_index1, start_index2),
-       kind=kCustom, calls=triton_gemm,
-       backend_config={
-         "fusion_backend_config":{
-           "kind":"__triton_gemm","triton_gemm_config":{
-             "block_m":"32","block_n":"32","block_k":"32",
-             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
-})";
-
-  ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
-                       GetModuleAndNestedFusionMetadata(kHloText));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
-                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
-}
-
 TEST_P(TritonGemmTest, DynamicSliceSingleDimensionIntoReshapeIsSupported) {
   // This directly tests the targeted use case (b/307922364) of iterating over
   // layer weights and extracting them with dynamic slice.
-  // The start index(es) for the non-majormost dimension(s) are constant zero(s)
-  // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
 HloModule m
 

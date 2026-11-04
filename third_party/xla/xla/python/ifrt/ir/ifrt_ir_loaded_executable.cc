@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.h"
 #include "xla/python/ifrt/ir/program_memory_tracer.h"
 #include "xla/python/ifrt/ir/serialization_utils.h"
-#include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/ir/utils.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"

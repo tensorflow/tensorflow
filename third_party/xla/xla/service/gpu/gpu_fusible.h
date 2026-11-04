@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -65,6 +67,7 @@ class FusionInfoCache {
     num_unnested_reductions_.erase(instr);
     contains_scan_.erase(instr);
     contains_significant_reduce_.erase(instr);
+    min_reduce_input_elements_.erase(instr);
   }
 
   // Returns expected shared memory usage of a given instruction in bytes.
@@ -82,6 +85,12 @@ class FusionInfoCache {
   // Returns whether the instruction is a significant reduction (reducing by a
   // factor of at least 16) or, in the case of a fusion, contains one.
   bool ContainsSignificantReduce(const HloInstruction& instr)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Returns the minimum positive input element count among all array `kReduce`
+  // instructions in `instr` (or `instr` itself if it is a `kReduce`), or
+  // `std::nullopt` if none exist.
+  std::optional<int64_t> GetMinReduceInputElements(const HloInstruction& instr)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
@@ -128,6 +137,8 @@ class FusionInfoCache {
       ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<const HloInstruction*, bool> contains_significant_reduce_
       ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<const HloInstruction*, std::optional<int64_t>>
+      min_reduce_input_elements_ ABSL_GUARDED_BY(mutex_);
 };
 
 // Returns the computations within `module` whose instructions can still be
@@ -314,6 +325,13 @@ bool ContainsScan(const HloInstruction& instr,
 // factor of at least 16) or, in the case of a fusion, contains one.
 bool ContainsSignificantReduce(const HloInstruction& instr,
                                FusionInfoCache* cache = nullptr);
+
+// Returns the minimum positive input element count among all array `kReduce`
+// instructions in `instr` (or `instr` itself if it is a `kReduce`), or
+// `std::nullopt` if none exist.
+std::optional<int64_t> GetMinReduceInputElements(
+    const HloInstruction& instr,
+    FusionInfoCache* absl_nullable cache = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -1730,6 +1731,114 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadAndCompile(
                                       preproc_options, compile_options);
 }
 
+absl::Status VerifyExecutableFingerprintAcrossProcesses(
+    KeyValueStoreInterface& kv_store, absl::string_view key_prefix,
+    int process_index, int process_count, absl::string_view fingerprint,
+    absl::Duration timeout) {
+  if (process_index < 0 || process_index >= process_count) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Process index %d is out of range for %d processes.",
+                        process_index, process_count));
+  }
+  ABSL_RETURN_IF_ERROR(
+      kv_store.Set(absl::StrCat(key_prefix, process_index), fingerprint));
+
+  // Maps each fingerprint to the processes that reported it.
+  absl::btree_map<std::string, std::vector<int>> processes_by_fingerprint;
+  const absl::Time deadline = absl::Now() + timeout;
+  for (int i = 0; i < process_count; ++i) {
+    if (i == process_index) {
+      processes_by_fingerprint[std::string(fingerprint)].push_back(i);
+      continue;
+    }
+    absl::StatusOr<std::string> other_fingerprint =
+        kv_store.Get(absl::StrCat(key_prefix, i),
+                     std::max(deadline - absl::Now(), absl::ZeroDuration()));
+    if (!other_fingerprint.ok()) {
+      return absl::Status(
+          other_fingerprint.status().code(),
+          absl::StrFormat("Failed to get the executable fingerprint of process "
+                          "%d, which might have failed to compile: %s",
+                          i, other_fingerprint.status().message()));
+    }
+    processes_by_fingerprint[*std::move(other_fingerprint)].push_back(i);
+  }
+
+  if (processes_by_fingerprint.size() == 1) {
+    return absl::OkStatus();
+  }
+  if (processes_by_fingerprint.contains("")) {
+    LOG(WARNING) << "Not all processes could fingerprint their executable, so "
+                    "we can't tell whether they compiled the same executable.";
+    return absl::OkStatus();
+  }
+  std::vector<std::string> fingerprint_descriptions;
+  fingerprint_descriptions.reserve(processes_by_fingerprint.size());
+  for (const auto& [other_fingerprint, processes] : processes_by_fingerprint) {
+    fingerprint_descriptions.push_back(
+        absl::StrFormat("%s on process(es) %s", other_fingerprint,
+                        absl::StrJoin(processes, ", ")));
+  }
+  return absl::FailedPreconditionError(absl::StrFormat(
+      "The processes compiled different executables (fingerprints: %s). "
+      "Running them would likely hang because the processes can issue "
+      "collectives in a different order. A common cause is autotuning with "
+      "--xla_gpu_shard_autotuning=false, since then each process picks its "
+      "own configs. Compare the optimized HLO of the processes (e.g. with "
+      "--xla_dump_to) to find the difference. This check can be disabled with "
+      "verify_executable_fingerprint_across_processes.",
+      absl::StrJoin(fingerprint_descriptions, "; ")));
+}
+
+namespace {
+
+// Processes can finish compiling at very different times (e.g. because of
+// autotuning), so we use the same generous timeout as the exchange of sharded
+// autotuning results.
+constexpr absl::Duration kExecutableFingerprintTimeout = absl::Hours(24);
+
+// Verifies that all processes compiled the same executable if this is enabled
+// and the compile options contain a key-value store and more than one process.
+//
+// This assumes that all processes compile the same modules in the same order
+// (and not concurrently), so that the n-th verification refers to the same
+// module on all processes.
+absl::Status MaybeVerifyExecutableFingerprintAcrossProcesses(
+    const PjRtClient& client, const PjRtLoadedExecutable& executable,
+    const PreprocessingOptions& preproc_options,
+    const CompileOptions& compile_options) {
+  const ExecutableBuildOptions& build_options =
+      compile_options.executable_build_options;
+  if (!preproc_options.verify_executable_fingerprint_across_processes ||
+      build_options.key_value_store() == nullptr ||
+      build_options.process_count() <= 1) {
+    return absl::OkStatus();
+  }
+  // Keys can't be overwritten, so every verification uses its own keys.
+  static std::atomic<int64_t> next_verification_id{0};
+  const int64_t verification_id = next_verification_id.fetch_add(1);
+
+  std::string fingerprint;
+  if (absl::StatusOr<std::string> result = executable.FingerprintExecutable();
+      result.ok()) {
+    fingerprint = *std::move(result);
+  } else {
+    LOG(WARNING) << "Failed to fingerprint the executable: " << result.status();
+  }
+  LOG(INFO) << "Executable fingerprint of process " << client.process_index()
+            << ": " << fingerprint;
+  // Callers don't always set the process index in the build options, so we
+  // take it from the client.
+  return VerifyExecutableFingerprintAcrossProcesses(
+      *build_options.key_value_store(),
+      absl::StrCat("functional_hlo_runner/executable_fingerprint/",
+                   verification_id, "/"),
+      client.process_index(), build_options.process_count(), fingerprint,
+      kExecutableFingerprintTimeout);
+}
+
+}  // namespace
+
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
     PjRtClient& client, const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
@@ -1749,6 +1858,8 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
     const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                    client.CompileAndLoad(std::move(module), compile_options));
+  ABSL_RETURN_IF_ERROR(MaybeVerifyExecutableFingerprintAcrossProcesses(
+      client, *executable, preproc_options, compile_options));
 
   return Run(client, executable.get(), arguments, running_options, engine);
 }
@@ -1873,11 +1984,16 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       CompileOptions modified_compile_options,
       CompleteCompileOptions(*hlo_module, compile_options, preproc_options));
 
-  return ConvertAndCallCompiler<PjRtLoadedExecutable>(
-      preproc_options.compile_as_stablehlo, hlo_module, [&](auto&& module) {
-        return client.CompileAndLoad(std::forward<decltype(module)>(module),
-                                     modified_compile_options);
-      });
+  ABSL_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      ConvertAndCallCompiler<PjRtLoadedExecutable>(
+          preproc_options.compile_as_stablehlo, hlo_module, [&](auto&& module) {
+            return client.CompileAndLoad(std::forward<decltype(module)>(module),
+                                         modified_compile_options);
+          }));
+  ABSL_RETURN_IF_ERROR(MaybeVerifyExecutableFingerprintAcrossProcesses(
+      client, *executable, preproc_options, modified_compile_options));
+  return executable;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(

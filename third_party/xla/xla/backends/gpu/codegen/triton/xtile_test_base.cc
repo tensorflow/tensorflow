@@ -84,11 +84,10 @@ XTileTestBase::CreateXTileIrAndFileCheck(
     absl::string_view filecheck_pattern) {
   mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module;
   LoadMlirDialectsForTriton(*mlir_context());
-  namespace ge = ::xla::gpu;
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
-  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<ge::TilingSpace> tiling_space,
-                   ge::TilingSpace::Create(*fusion_adaptor, mlir_context()));
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                   TilingSpace::Create(*fusion_adaptor, mlir_context()));
   ABSL_ASSIGN_OR_RETURN(
       llvm::SmallVector<int64_t> concrete_sizes,
       GetTilingSpaceConcreteSizes(
@@ -100,11 +99,11 @@ XTileTestBase::CreateXTileIrAndFileCheck(
   ABSL_RETURN_IF_ERROR(
       tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(concrete_sizes)));
   ABSL_ASSIGN_OR_RETURN(
-      ge::TiledHloComputation tiled_computation,
-      ge::TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
+      TiledHloComputation tiled_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
   tiled_computation.Simplify();
   tiled_computation.SortInstructionsPostOrder();
-  if (Decision constraints = ge::VerifyTritonConstraints(
+  if (Decision constraints = VerifyTritonConstraints(
           tiled_computation, TestGpuDeviceInfo::RTXA6000DeviceInfo());
       !constraints) {
     return absl::InternalError(

@@ -25,6 +25,8 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace emitters {
@@ -147,6 +150,15 @@ void GetLoopBoundsFromIndexingMap(mlir::ImplicitLocOpBuilder& b,
 
 // Is an operation with the given opcode supported by the elemental IR emitter?
 bool IsSupportedElementalOp(HloOpcode opcode);
+
+// Returns whether emitted ops should carry the source locations of their HLO
+// instructions, so that line info can be generated for them.
+bool IsLineInfoEnabled(const DebugOptions& debug_options);
+
+// Returns a location with the name of `instr` and, if present in its metadata,
+// its source file and line.
+mlir::Location GetInstructionLocation(const HloInstruction& instr,
+                                      mlir::MLIRContext* mlir_context);
 
 // Emits MLIR for a kIota instruction at the given target indices.
 absl::StatusOr<llvm::SmallVector<mlir::Value, 1>> EmitIota(

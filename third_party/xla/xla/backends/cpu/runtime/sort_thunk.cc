@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
-#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status_macros.h"
@@ -203,20 +202,9 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
       // `less_than_` may already be initialized in the constructor.
       return;
     }
-    absl::StatusOr<FunctionLibrary::Comparator*> comparator =
+    less_than_ =
         params.function_library->ResolveFunction<FunctionLibrary::Comparator>(
             comparator_name_);
-
-    if (ABSL_PREDICT_TRUE(comparator.ok())) {
-      less_than_ = [comparator](const void** data) {
-        bool result;
-        (*comparator)(&result, nullptr, data, nullptr, nullptr, nullptr);
-        ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&result, sizeof(result));
-        return result;
-      };
-    } else {
-      less_than_ = std::move(comparator.status());
-    }
   });
 
   ABSL_RETURN_IF_ERROR(less_than_.status());

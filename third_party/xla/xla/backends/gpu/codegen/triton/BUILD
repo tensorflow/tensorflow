@@ -35,6 +35,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla/backends/gpu/codegen:fusion_emitter",
+        "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/backends/gpu/codegen:kernel_compiler",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
         "//xla/backends/gpu/codegen/kernels:ptx_custom_kernel",

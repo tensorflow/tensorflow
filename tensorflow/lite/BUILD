@@ -156,6 +156,7 @@ filegroup(
         ":array.cc",
         ":array.h",
         ":builtin_ops.h",
+        ":checked_int.h",
         ":logger.h",
         ":minimal_logging.cc",
         ":minimal_logging.h",
@@ -1235,11 +1236,33 @@ cc_library(
     copts = tflite_copts_warnings() + tflite_copts(),
     deps = [
         ":array",
+        ":checked_int",
         ":kernel_api",
         ":macros",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "checked_int",
+    hdrs = ["checked_int.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings() + tflite_copts(),
+    deps = [
+        ":macros",
+        "//tensorflow/lite/core/c:c_api_types",
+    ],
+)
+
+cc_test(
+    name = "checked_int_test",
+    size = "small",
+    srcs = ["checked_int_test.cc"],
+    deps = [
+        ":checked_int",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

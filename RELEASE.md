@@ -17,6 +17,8 @@
 * `tf.lite`
     * Adds blockwise quantization support in the converter and `quant_spec` metadata in `FullyConnectedOptions`.
     * `tfl.cast` now supports casting packed INT2/INT4/UINT4 inputs to any non-packed output type (CAST op version 10).
+    * `tfl.dequantize` now supports inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) (DEQUANTIZE op version 10).
+    * `tfl.batch_matmul` now supports RHS inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) alongside INT8 affine LHS and output tensors (BATCH_MATMUL op version 5).
 * `tf.function` / `PolymorphicFunction`:
     * Added `clear_cache()` method to `PolymorphicFunction` to explicitly clear compiled concrete functions and dispatch tables, freeing retained graph memory.
 
@@ -27,6 +29,10 @@
     dimensions instead of raising an `InvalidArgumentError`. This matches the
     documented definition of the op and the behavior of the XLA lowering used by
     `tf.function(jit_compile=True)`.
+*   `tf.image.resize_with_pad`: the resized size and padding are now computed
+    exactly instead of in float32. For some sizes the image used to be scaled
+    one pixel short of the target and padded with a row or column of zeros
+    (e.g. 512x512 to 224x224), or placed one pixel off center.
 *   `tf.signal.hann_window` and `tf.signal.hamming_window`: `periodic=True`
     (the default) now also produces a periodic window for odd
     `window_length`. Previously odd lengths always got the symmetric window,
@@ -37,6 +43,9 @@
     on x86 when the output dtype can hold the `int64` maximum, which clamped
     every value to the `int64` minimum. `uint32` and `uint64` inputs no longer
     raise `NotFoundError`.
+*   `tf.vectorized_map`, `tf.GradientTape.jacobian` and `batch_jacobian`:
+    `tf.roll` with a negative axis no longer rolls along the wrong dimension,
+    which could mix values between batch elements or return a wrong Jacobian.
 
 ## Thanks to our Contributors
 

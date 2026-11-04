@@ -102,6 +102,7 @@ SmallVector<int64_t> GetSingletonTileDims(
   CHECK_EQ(tile_offsets.size(), tile_sizes.size());
   for (auto [dim, size] : llvm::enumerate(tile_sizes)) {
     if (size == 1 && !xtriton::IsGuaranteedInBounds(tile_offsets[dim], size,
+                                                    /*tile_stride=*/1,
                                                     original_shape[dim])) {
       return ::xla::Decision::Forbid(
           "singleton tile dim offset is not provably in bounds.");

@@ -4567,6 +4567,34 @@ int64_t SubOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SquaredDifferenceOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult SquaredDifferenceOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
+    // Quant types not supported for the following.
+    return {};
+  }
+
+  auto lhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getLhs());
+  auto rhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getRhs());
+  if (!lhs || !rhs) return {};
+
+  return ConstFoldBinaryOp(
+      getType(), getOperands(),
+      [](APFloat a, APFloat b) {
+        const APFloat diff = a - b;
+        return diff * diff;
+      },
+      [](APInt a, APInt b) {
+        const APInt diff = a - b;
+        return diff * diff;
+      });
+}
+
+//===----------------------------------------------------------------------===//
 // TopKOp
 //===----------------------------------------------------------------------===//
 

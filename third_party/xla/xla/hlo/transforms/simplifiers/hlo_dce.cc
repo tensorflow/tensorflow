@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
 #include "xla/shape.h"
@@ -469,6 +470,9 @@ absl::StatusOr<bool> RemoveDanglingComputations(
   }
   return changed;
 }
+
+const HloPassFactory* const kHloDCERegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<HloDCE>>("dce");
 
 }  // namespace
 

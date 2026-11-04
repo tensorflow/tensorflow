@@ -97,6 +97,9 @@ struct MismatchDetails {
   // highlighting, the graph view, and tooltips are unaffected.
   bool has_element_level_data = true;
   std::optional<double> diff_score;
+  // The instruction matched its reference. Set with diff_score = 0.0: it
+  // renders green, without a mismatch tooltip or tensor inspector state.
+  bool verified_match = false;
 };
 
 struct TensorKey {

@@ -588,19 +588,17 @@ class CoalescingForTiledHloTest : public CoalescingTest {
       const HloInstruction* root, absl::Span<int64_t const> tile_sizes) {
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
 
-    auto tiling_space_or =
-        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    auto tiling_space_or = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
     CHECK_OK(tiling_space_or);
     auto tiling_space = std::move(tiling_space_or.value());
     CHECK_OK(tiling_space->AssignTileSizes(tile_sizes));
 
-    absl::StatusOr<experimental::TiledHloComputation> tiled_hlo_computation =
-        experimental::TiledHloComputation::Tile(*fusion_adaptor,
-                                                std::move(tiling_space));
+    absl::StatusOr<TiledHloComputation> tiled_hlo_computation =
+        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
     CHECK_OK(tiled_hlo_computation);
 
     std::vector<double> result;
-    for (const experimental::TiledHloInstruction* operand :
+    for (const TiledHloInstruction* operand :
          tiled_hlo_computation->roots()[0]->operands()) {
       result.push_back(BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
           *operand, device_info_));

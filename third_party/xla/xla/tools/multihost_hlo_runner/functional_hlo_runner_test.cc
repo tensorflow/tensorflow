@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/tests/xla_test_backend_predicates.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -55,6 +57,8 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/mock_pjrt_client.h"
@@ -91,6 +95,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
@@ -102,10 +107,14 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::AllOf;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 using ::testing::Lt;
+using ::testing::Not;
 using ::testing::Property;
 using ::testing::SizeIs;
 using HloModuleAndArguments = ::xla::FunctionalHloRunner::HloModuleAndArguments;
@@ -739,7 +748,7 @@ absl::StatusOr<std::string> GetExpectedBackendFingerprint() {
   if (platform_name == "rocm") {
     return "3128633344";
   }
-  return "286644258";
+  return "3718979401";
 }
 }  // namespace
 
@@ -2032,6 +2041,152 @@ TEST_F(FunctionalHloRunnerTest,
   EXPECT_TRUE(distinct_results.at(dev0_id)[0].IsAllFloat(0.0f));
   EXPECT_TRUE(distinct_results.at(dev1_id)[0].IsAllFloat(0.0f));
   EXPECT_NE(distinct_results.at(dev0_id)[2], distinct_results.at(dev1_id)[2]);
+}
+
+// Runs VerifyExecutableFingerprintAcrossProcesses concurrently for one process
+// per fingerprint, where process i reports `fingerprints[i]`, and returns the
+// results by process index.
+std::vector<absl::Status> VerifyFingerprintsConcurrently(
+    const std::vector<std::string>& fingerprints) {
+  const int process_count = fingerprints.size();
+  InMemoryKeyValueStore kv_store(/*allow_overwrite=*/false);
+  std::vector<absl::Status> results(process_count);
+  {
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "verify_fingerprints",
+                                 process_count);
+    for (int i = 0; i < process_count; ++i) {
+      pool.Schedule([&, i] {
+        results[i] =
+            FunctionalHloRunner::VerifyExecutableFingerprintAcrossProcesses(
+                kv_store, "test/", /*process_index=*/i, process_count,
+                fingerprints[i], /*timeout=*/absl::Minutes(1));
+      });
+    }
+  }  // The destructor of `pool` waits until all processes are done.
+  return results;
+}
+
+TEST(VerifyExecutableFingerprintAcrossProcessesTest,
+     SucceedsIfAllFingerprintsMatch) {
+  EXPECT_THAT(VerifyFingerprintsConcurrently({"abc", "abc", "abc"}),
+              Each(absl_testing::IsOk()));
+}
+
+TEST(VerifyExecutableFingerprintAcrossProcessesTest,
+     FailsOnAllProcessesIfFingerprintsDiffer) {
+  EXPECT_THAT(
+      VerifyFingerprintsConcurrently({"abc", "def", "abc"}),
+      Each(absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                  AllOf(HasSubstr("abc on process(es) 0, 2"),
+                                        HasSubstr("def on process(es) 1")))));
+}
+
+TEST(VerifyExecutableFingerprintAcrossProcessesTest,
+     SucceedsIfAFingerprintIsUnknown) {
+  EXPECT_THAT(VerifyFingerprintsConcurrently({"abc", ""}),
+              Each(absl_testing::IsOk()));
+}
+
+TEST(VerifyExecutableFingerprintAcrossProcessesTest,
+     FailsIfAProcessDoesNotReportItsFingerprint) {
+  InMemoryKeyValueStore kv_store;
+  // InMemoryKeyValueStore returns NotFound if `Get` times out.
+  EXPECT_THAT(FunctionalHloRunner::VerifyExecutableFingerprintAcrossProcesses(
+                  kv_store, "test/", /*process_index=*/0, /*process_count=*/2,
+                  "abc", /*timeout=*/absl::ZeroDuration()),
+              absl_testing::StatusIs(absl::StatusCode::kNotFound,
+                                     HasSubstr("process 1")));
+}
+
+TEST(VerifyExecutableFingerprintAcrossProcessesTest,
+     FailsForInvalidProcessIndex) {
+  InMemoryKeyValueStore kv_store;
+  EXPECT_THAT(FunctionalHloRunner::VerifyExecutableFingerprintAcrossProcesses(
+                  kv_store, "test/", /*process_index=*/2, /*process_count=*/2,
+                  "abc", /*timeout=*/absl::ZeroDuration()),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+// A key-value store that simulates the other processes of a multi-process
+// setup. `Get` returns `peer_value` if it's set, or otherwise the value of the
+// last `Set` call, i.e. the other processes report the same value as the
+// process under test.
+class FakePeersKeyValueStore : public InMemoryKeyValueStore {
+ public:
+  explicit FakePeersKeyValueStore(
+      std::optional<std::string> peer_value = std::nullopt)
+      : peer_value_(std::move(peer_value)) {}
+
+  absl::StatusOr<std::string> Get(absl::string_view key,
+                                  absl::Duration timeout) override {
+    absl::MutexLock lock(mu_);
+    return peer_value_.value_or(last_set_value_);
+  }
+
+  absl::Status Set(absl::string_view key, absl::string_view value) override {
+    absl::MutexLock lock(mu_);
+    last_set_value_ = std::string(value);
+    return absl::OkStatus();
+  }
+
+  std::string last_set_value() {
+    absl::MutexLock lock(mu_);
+    return last_set_value_;
+  }
+
+ private:
+  const std::optional<std::string> peer_value_;
+  absl::Mutex mu_;
+  std::string last_set_value_ ABSL_GUARDED_BY(mu_);
+};
+
+// Compiles a module as process 0 of 2 processes, which exchange the
+// fingerprints of their executables through `kv_store`.
+absl::Status CompileAsFirstOfTwoProcesses(
+    std::shared_ptr<KeyValueStoreInterface> kv_store,
+    const FunctionalHloRunner::PreprocessingOptions& preproc_options) {
+  ABSL_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client, GetPjRtClient());
+  ABSL_ASSIGN_OR_RETURN(HloModuleAndArguments hlo_module_and_arguments,
+                   FunctionalHloRunner::LoadHloModuleAndArguments(
+                       GetHloPath("single_device.hlo"), InputFormat::kText));
+  CompileOptions compile_options;
+  ExecutableBuildOptions& build_options =
+      compile_options.executable_build_options;
+  *build_options.mutable_debug_options() = GetDebugOptionsFromFlags();
+  // The fake key-value store can't exchange autotuning results.
+  build_options.mutable_debug_options()->set_xla_gpu_shard_autotuning(false);
+  build_options.set_process_count(2);
+  build_options.set_key_value_store(std::move(kv_store));
+  return FunctionalHloRunner::Compile(*client,
+                                      hlo_module_and_arguments.hlo_module.get(),
+                                      preproc_options, compile_options)
+      .status();
+}
+
+TEST_F(FunctionalHloRunnerTest,
+       CompileSucceedsIfAllProcessesCompiledTheSameExecutable) {
+  auto kv_store = std::make_shared<FakePeersKeyValueStore>();
+  EXPECT_OK(CompileAsFirstOfTwoProcesses(
+      kv_store, FunctionalHloRunner::PreprocessingOptions{}));
+  // The process published the fingerprint of its executable.
+  EXPECT_THAT(kv_store->last_set_value(), Not(IsEmpty()));
+}
+
+TEST_F(FunctionalHloRunnerTest,
+       CompileFailsIfProcessesCompiledDifferentExecutables) {
+  auto kv_store = std::make_shared<FakePeersKeyValueStore>("other_fingerprint");
+  EXPECT_THAT(
+      CompileAsFirstOfTwoProcesses(kv_store,
+                                   FunctionalHloRunner::PreprocessingOptions{}),
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             HasSubstr("other_fingerprint on process(es) 1")));
+}
+
+TEST_F(FunctionalHloRunnerTest, CompileDoesNotVerifyFingerprintsIfDisabled) {
+  auto kv_store = std::make_shared<FakePeersKeyValueStore>("other_fingerprint");
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  preproc_options.verify_executable_fingerprint_across_processes = false;
+  EXPECT_OK(CompileAsFirstOfTwoProcesses(kv_store, preproc_options));
 }
 
 }  // namespace

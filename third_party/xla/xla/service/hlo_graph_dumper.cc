@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/hlo_graph_dumper.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
@@ -45,7 +45,6 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "sqlite3.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -70,11 +69,9 @@ limitations under the License.
 #include "xla/tsl/lib/io/zip_writer.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/util.h"
 #include "tsl/platform/base64.h"
-#include "tsl/platform/path.h"
 #include "tsl/platform/thread_annotations.h"
 
 #ifndef _WIN32
@@ -1779,6 +1776,7 @@ NodeFilter MakeNodeRadiusAroundFilter(
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
   absl::flat_hash_map<const HloInstruction*, NodeFilterResult> nodes;
+  std::vector<const HloInstruction*> visited_nodes;
   std::deque<std::pair<const HloInstruction*, /*depth*/ int64_t>> worklist;
   worklist.push_back({root, 0});
   while (!worklist.empty()) {
@@ -1787,7 +1785,11 @@ NodeFilter MakeNodeRadiusAroundFilter(
     std::tie(instr, depth) = worklist.front();
     worklist.pop_front();
 
-    nodes[instr] = ShouldFilterInputNode(instr) ? kHideNode : kNormalNode;
+    auto [node_it, inserted] = nodes.insert_or_assign(
+        instr, ShouldFilterInputNode(instr) ? kHideNode : kNormalNode);
+    if (inserted) {
+      visited_nodes.push_back(instr);
+    }
     if (depth == radius) {
       continue;
     }
@@ -1857,9 +1859,8 @@ NodeFilter MakeNodeRadiusAroundFilter(
 
   // Make a second pass over 'nodes' to fix up the NodeFilterResults now that we
   // know which nodes will be included in the graph.
-  for (auto& kv : nodes) {
-    const HloInstruction* instr = kv.first;
-    NodeFilterResult& filter_result = kv.second;
+  for (const HloInstruction* instr : visited_nodes) {
+    NodeFilterResult& filter_result = nodes[instr];
     const auto& operands = instr->operands();
 
     if (absl::c_any_of(operands, is_displayed) &&
@@ -2031,120 +2032,63 @@ static absl::StatusOr<std::string> Compress(absl::string_view input) {
   return compressed;
 }
 
-using Sqlite3StmtPtr =
-    std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)>;
-
-static absl::Status RunSql(sqlite3* db, const char* sql,
-                           absl::string_view error_prefix) {
-  char* err_msg = nullptr;
-  if (sqlite3_exec(db, sql, nullptr, nullptr, &err_msg) != SQLITE_OK) {
-    auto cleanup = absl::MakeCleanup([err_msg] { sqlite3_free(err_msg); });
-    return Internal("%s: %s", error_prefix,
-                    err_msg ? err_msg : "unknown error");
+std::string EscapeJSONString(absl::string_view raw) {
+  std::string out;
+  out.reserve(raw.size() + 2);
+  out.push_back('"');
+  for (unsigned char c : raw) {
+    switch (c) {
+      case '"':
+        out.append("\\\"");
+        break;
+      case '\\':
+        out.append("\\\\");
+        break;
+      case '\b':
+        out.append("\\b");
+        break;
+      case '\f':
+        out.append("\\f");
+        break;
+      case '\n':
+        out.append("\\n");
+        break;
+      case '\r':
+        out.append("\\r");
+        break;
+      case '\t':
+        out.append("\\t");
+        break;
+      default:
+        if (c < 0x20) {
+          absl::StrAppendFormat(&out, "\\u%04x", c);
+        } else {
+          out.push_back(static_cast<char>(c));
+        }
+        break;
+    }
   }
-  return absl::OkStatus();
+  out.push_back('"');
+  return out;
 }
 
-static absl::StatusOr<Sqlite3StmtPtr> PrepareStatement(
-    sqlite3* db, const char* sql, absl::string_view error_prefix) {
-  sqlite3_stmt* stmt = nullptr;
-  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-    return Internal("%s: %s", error_prefix, sqlite3_errmsg(db));
-  }
-  return Sqlite3StmtPtr(stmt, sqlite3_finalize);
-}
-
-static absl::Status CreateSqliteDb(
+std::string BuildFusionExplorerMetadataJson(
     const FusionVisualizerProgress& visualizer_progress,
-    absl::string_view graph_title, const std::string& db_path) {
-  sqlite3* db_raw = nullptr;
-  int rc = sqlite3_open(db_path.c_str(), &db_raw);
-  std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db(db_raw, sqlite3_close);
-  if (rc != SQLITE_OK) {
-    return Internal("Failed to open SQLite DB at %s: %s", db_path,
-                    sqlite3_errmsg(db.get()));
-  }
-
-  const char* create_metadata_table =
-      "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT);";
-  const char* create_graphs_table =
-      "CREATE TABLE graphs (id INTEGER PRIMARY KEY, content BLOB);";
-  const char* create_frames_table =
-      "CREATE TABLE frames (id INTEGER PRIMARY KEY, label TEXT, graph_id "
-      "INTEGER, to_highlight TEXT);";
-
-  ABSL_RETURN_IF_ERROR(RunSql(db.get(), create_metadata_table,
-                         "Failed to create metadata table"));
-  ABSL_RETURN_IF_ERROR(
-      RunSql(db.get(), create_graphs_table, "Failed to create graphs table"));
-  ABSL_RETURN_IF_ERROR(
-      RunSql(db.get(), create_frames_table, "Failed to create frames table"));
-
-  ABSL_RETURN_IF_ERROR(
-      RunSql(db.get(), "BEGIN TRANSACTION;", "Failed to begin transaction"));
-
-  // Insert title into metadata
-  const char* insert_metadata_sql =
-      "INSERT INTO metadata (key, value) VALUES ('title', ?);";
-  ABSL_ASSIGN_OR_RETURN(
-      Sqlite3StmtPtr metadata_stmt,
-      PrepareStatement(db.get(), insert_metadata_sql,
-                       "Failed to prepare metadata insert statement"));
-
-  sqlite3_bind_text(metadata_stmt.get(), 1, graph_title.data(),
-                    graph_title.size(), SQLITE_TRANSIENT);
-  if (sqlite3_step(metadata_stmt.get()) != SQLITE_DONE) {
-    return Internal("Failed to insert title metadata: %s",
-                    sqlite3_errmsg(db.get()));
-  }
-
-  const char* insert_graph_sql =
-      "INSERT INTO graphs (id, content) VALUES (?, ?);";
-  ABSL_ASSIGN_OR_RETURN(
-      Sqlite3StmtPtr graph_stmt,
-      PrepareStatement(db.get(), insert_graph_sql,
-                       "Failed to prepare graph insert statement"));
-
-  for (int i = 0; i < visualizer_progress.dot_graphs.size(); ++i) {
-    ABSL_ASSIGN_OR_RETURN(std::string compressed,
-                     Compress(visualizer_progress.dot_graphs[i]));
-    sqlite3_bind_int(graph_stmt.get(), 1, i);
-    sqlite3_bind_blob(graph_stmt.get(), 2, compressed.data(), compressed.size(),
-                      SQLITE_TRANSIENT);
-    if (sqlite3_step(graph_stmt.get()) != SQLITE_DONE) {
-      return Internal("Failed to insert graph %d: %s", i,
-                      sqlite3_errmsg(db.get()));
+    absl::string_view graph_title) {
+  std::string json = absl::StrCat("{\"title\":", EscapeJSONString(graph_title),
+                                  ",\"frames\":[");
+  for (size_t i = 0; i < visualizer_progress.frames.size(); ++i) {
+    if (i > 0) {
+      json.push_back(',');
     }
-    sqlite3_reset(graph_stmt.get());
+    const auto& frame = visualizer_progress.frames[i];
+    absl::StrAppend(&json, "{\"id\":", i,
+                    ",\"label\":", EscapeJSONString(frame.label),
+                    ",\"to_highlight\":", EscapeJSONString(frame.to_highlight),
+                    ",\"graph_id\":", frame.dot_graph, "}");
   }
-
-  const char* insert_frame_sql =
-      "INSERT INTO frames (id, label, graph_id, to_highlight) VALUES (?, ?, ?, "
-      "?);";
-  ABSL_ASSIGN_OR_RETURN(
-      Sqlite3StmtPtr frame_stmt,
-      PrepareStatement(db.get(), insert_frame_sql,
-                       "Failed to prepare frame insert statement"));
-
-  for (int i = 0; i < visualizer_progress.frames.size(); ++i) {
-    const auto& f = visualizer_progress.frames[i];
-    sqlite3_bind_int(frame_stmt.get(), 1, i);
-    sqlite3_bind_text(frame_stmt.get(), 2, f.label.c_str(), -1,
-                      SQLITE_TRANSIENT);
-    sqlite3_bind_int(frame_stmt.get(), 3, f.dot_graph);
-    sqlite3_bind_text(frame_stmt.get(), 4, f.to_highlight.c_str(), -1,
-                      SQLITE_TRANSIENT);
-    if (sqlite3_step(frame_stmt.get()) != SQLITE_DONE) {
-      return Internal("Failed to insert frame %d: %s", i,
-                      sqlite3_errmsg(db.get()));
-    }
-    sqlite3_reset(frame_stmt.get());
-  }
-
-  ABSL_RETURN_IF_ERROR(
-      RunSql(db.get(), "COMMIT TRANSACTION;", "Failed to commit transaction"));
-
-  return absl::OkStatus();
+  json.append("]}");
+  return json;
 }
 
 }  // namespace
@@ -2156,34 +2100,22 @@ absl::StatusOr<std::string> WrapFusionExplorer(
     return Internal("Empty");
   }
 
-  std::string db_path = tsl::io::GetTempFilename("db");
-  auto cleanup = absl::MakeCleanup(
-      [&db_path] { tsl::Env::Default()->DeleteFile(db_path).IgnoreError(); });
-
-  ABSL_RETURN_IF_ERROR(CreateSqliteDb(visualizer_progress, graph_title, db_path));
-
   std::string zip_data = "#!/usr/bin/env python3\n";
+  auto file = std::make_unique<WritableStringFile>(&zip_data);
+  ABSL_ASSIGN_OR_RETURN(tsl::io::ZipWriter zip_writer,
+                   tsl::io::ZipWriter::Create(std::move(file)));
 
-  {
-    auto file = std::make_unique<WritableStringFile>(&zip_data);
-    ABSL_ASSIGN_OR_RETURN(tsl::io::ZipWriter zip_writer,
-                     tsl::io::ZipWriter::Create(std::move(file)));
-
-    ABSL_RETURN_IF_ERROR(zip_writer.AddFile("__main__.py", kPythonServerCode));
-    ABSL_RETURN_IF_ERROR(zip_writer.AddFile("viewer.html", kViewerHtmlCode));
-
-    // Stream SQLite DB file directly into zip_writer to prevent buffering
-    // a large string in memory.
-    std::unique_ptr<tsl::ReadOnlyMemoryRegion> region;
-    ABSL_RETURN_IF_ERROR(
-        tsl::Env::Default()->NewReadOnlyMemoryRegionFromFile(db_path, &region));
-    absl::string_view db_view(static_cast<const char*>(region->data()),
-                              region->length());
-    ABSL_RETURN_IF_ERROR(zip_writer.AddFile("fusions.db", db_view));
-
-    ABSL_RETURN_IF_ERROR(std::move(zip_writer).Finish());
+  ABSL_RETURN_IF_ERROR(zip_writer.AddFile("__main__.py", kPythonServerCode));
+  ABSL_RETURN_IF_ERROR(zip_writer.AddFile("viewer.html", kViewerHtmlCode));
+  ABSL_RETURN_IF_ERROR(zip_writer.AddFile(
+      "metadata.json",
+      BuildFusionExplorerMetadataJson(visualizer_progress, graph_title)));
+  for (size_t i = 0; i < visualizer_progress.dot_graphs.size(); ++i) {
+    ABSL_RETURN_IF_ERROR(zip_writer.AddFile(absl::StrCat("graphs/", i, ".dot"),
+                                       visualizer_progress.dot_graphs[i]));
   }
 
+  ABSL_RETURN_IF_ERROR(std::move(zip_writer).Finish());
   return zip_data;
 }
 
@@ -2197,13 +2129,6 @@ absl::StatusOr<std::string> WrapFusionExplorer(
   const FusionVisualizerProgress& visualizer_progress =
       fusion_visualizer_states[FusionVisualizerStateKey(computation)];
   return WrapFusionExplorer(visualizer_progress, GraphTitle(computation));
-}
-
-static std::string EscapeJSONString(absl::string_view raw) {
-  return absl::StrCat(
-      "\"",
-      absl::StrReplaceAll(raw, {{"\n", "\\n"}, {"\"", "\\\""}, {"\\", "\\\\"}}),
-      "\"");
 }
 
 static absl::StatusOr<std::string> EncodeBase64(absl::string_view input) {

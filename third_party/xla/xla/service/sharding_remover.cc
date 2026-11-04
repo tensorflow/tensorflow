@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/spmd/shard_barrier_partitioner.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "tsl/platform/errors.h"
@@ -94,5 +95,13 @@ absl::StatusOr<bool> ShardingRemover::RunImpl(
 
   return changed;
 }
+
+namespace {
+
+const HloPassFactory* const kShardingRemoverRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<ShardingRemover>>(
+        "sharding-remover");
+
+}  // namespace
 
 }  // namespace xla

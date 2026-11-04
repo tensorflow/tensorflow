@@ -223,6 +223,13 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
               input_tensor->shape()->Get(input_quant->quantized_dimension()))) {
         op_sig.ext_options.dequantize.is_per_channel_quantized = true;
       }
+      if (input_quant != nullptr) {
+        const BlockwiseQuantization* blockwise =
+            input_quant->details_as_BlockwiseQuantization();
+        op_sig.ext_options.dequantize.is_blockwise_quantized =
+            blockwise != nullptr && blockwise->block_shape() != nullptr &&
+            !blockwise->block_shape()->empty();
+      }
     } break;
 
     case BuiltinOperator_QUANTIZE: {
@@ -256,6 +263,28 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
             table_quant->scale()->size() > 1 &&
             IsTensorSizeEqual(table_quant->scale()->size(),
                               table_tensor->shape()->Get(0));
+      }
+    } break;
+
+    case BuiltinOperator_BATCH_MATMUL: {
+      if (op->inputs() == nullptr || op->inputs()->size() < 2 ||
+          subgraph->tensors() == nullptr) {
+        break;
+      }
+      const int32_t rhs_index = op->inputs()->Get(1);
+      if (rhs_index < 0 ||
+          static_cast<size_t>(rhs_index) >= subgraph->tensors()->size()) {
+        break;
+      }
+      const Tensor* rhs_tensor = subgraph->tensors()->Get(rhs_index);
+      const QuantizationParameters* rhs_quant =
+          rhs_tensor != nullptr ? rhs_tensor->quantization() : nullptr;
+      if (rhs_quant != nullptr) {
+        const BlockwiseQuantization* blockwise =
+            rhs_quant->details_as_BlockwiseQuantization();
+        op_sig.ext_options.batch_matmul.is_rhs_blockwise_quantized =
+            blockwise != nullptr && blockwise->block_shape() != nullptr &&
+            !blockwise->block_shape()->empty();
       }
     } break;
 

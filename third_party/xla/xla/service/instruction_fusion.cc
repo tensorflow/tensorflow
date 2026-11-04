@@ -1002,7 +1002,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       };
 
       auto get_constant_operand =
-          [](const HloInstruction* operand) -> std::optional<int> {
+          [](const HloInstruction* operand) -> std::optional<int64_t> {
         if (operand->IsConstant()) {
           return operand->literal().GetFirstInteger();
         }

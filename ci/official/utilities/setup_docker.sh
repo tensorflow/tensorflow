@@ -78,4 +78,4 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
   fi
 
 fi
-tfrun() { docker exec tf "$@"; }
+_tfrun_exec() { docker exec tf "$@"; }

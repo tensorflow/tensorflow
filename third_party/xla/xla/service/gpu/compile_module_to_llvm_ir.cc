@@ -272,7 +272,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   if (has_constants_module) {
     ABSL_ASSIGN_OR_RETURN(
         results.constants_binary,
-        compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
+        compiler
+            ->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule(),
+                                    /*kernel_spec=*/std::nullopt)
             .Await());
   } else {
     VLOG(2) << "Constants LLVM module is empty; skipping target compilation.";

@@ -333,15 +333,16 @@ def embedding_lookup(
   """
     **Behavior Difference between CPU and GPU**
 
-    Please note that when using `tf.nn.embedding_lookup` on a GPU, if an out-of-bound 
-    index is encountered, a value of 0 will be stored in the corresponding output value. 
-    On the other hand, when using `tf.nn.embedding_lookup` on a CPU, an error will be 
-    returned if an out-of-bound index is found.
+    Please note that when using `tf.nn.embedding_lookup` on a GPU, if an
+    out-of-bound index is encountered, a value of 0 will be stored in the
+    corresponding output value. On the other hand, when using
+    `tf.nn.embedding_lookup` on a CPU, an error will be returned if an
+    out-of-bound index is found.
 
-    This behavior difference can impact the results of your computation, especially when 
-    dealing with indices that may go beyond the bounds of the tensor. 
-    Make sure to be mindful of this distinction when using the `tf.nn.embedding_lookup` 
-    function in your computations.
+    This behavior difference can impact the results of your computation,
+    especially when dealing with indices that may go beyond the bounds of the
+    tensor. Make sure to be mindful of this distinction when using the
+    `tf.nn.embedding_lookup` function in your computations.
 
     **Usage Example**
 
@@ -472,9 +473,9 @@ def embedding_lookup_sparse(
       element must be appropriately sized for the given `partition_strategy`.
     sp_ids: N x M `SparseTensor` of int64 ids where N is typically batch size
       and M is arbitrary or a `RaggedTensor` with rank 2.
-    sparse_weights: `SparseTensor` or `RaggedTensor` of same type and shape as
-      `sparse_ids`, containing float / double weights corresponding to
-      `sparse_ids`, or `None` if all weights are assumed to be 1.0.
+    sp_weights: `SparseTensor` or `RaggedTensor` of same type and shape as
+      `sp_ids`, containing float / double weights corresponding to `sp_ids`, or
+      `None` if all weights are assumed to be 1.0.
     partition_strategy: A string specifying the partitioning strategy, relevant
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`. See `tf.nn.embedding_lookup` for more details.
@@ -618,17 +619,17 @@ def embedding_lookup_sparse_v2(
   it selects the `params` elements `[7, 8]` and row 2 has the value 2 so it
   selects the `params` elements `[5, 6]`.
 
-  If `sparse_weights` is specified, it must have the same shape as `sp_ids`.
-  `sparse_weights` is used to assign a weight to each slice of `params`. For
+  If `sp_weights` is specified, it must have the same shape as `sp_ids`.
+  `sp_weights` is used to assign a weight to each slice of `params`. For
   example:
 
   >>> params = tf.constant([[1, 2], [3, 4], [5, 6], [7, 8]], dtype=tf.float32)
   >>> sp_ids = tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0], [2, 0]],
   ...                          values=[0, 1, 3, 2], dense_shape=(3, 2))
-  >>> sparse_weights = tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0], [2, 0]],
-  ...                                  values=[0.1, 1.0, 0.5, 2.0],
-  ...                                  dense_shape=(3, 2))
-  >>> tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights=sparse_weights,
+  >>> sp_weights = tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0], [2, 0]],
+  ...                              values=[0.1, 1.0, 0.5, 2.0],
+  ...                              dense_shape=(3, 2))
+  >>> tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights=sp_weights,
   ...                               combiner='sum').numpy()
   array([[3.1, 4.2], [3.5, 4.], [10., 12.]], dtype=float32)
 
@@ -636,7 +637,7 @@ def embedding_lookup_sparse_v2(
   rows, where each row can have any number of elements. The output has shape
   `(M, p1, ..., pn)`. Each slice of the output `output[i, ...]` is obtained as
   follows: The `combiner` argument is used to combine the values
-  `params[sp_ids[i, j], ...] * sparse_weights[i, j]` for each `j` in `range(0,
+  `params[sp_ids[i, j], ...] * sp_weights[i, j]` for each `j` in `range(0,
   len(sp_ids[i]))`, e.g. by taking the sum or mean of the values.
 
   This op assumes that there is at least one id for each row in the dense tensor
@@ -667,9 +668,9 @@ def embedding_lookup_sparse_v2(
       representing sharded embedding tensors following "div" partition strategy.
     sp_ids: N x M `SparseTensor` of int64 ids where N is typically batch size
       and M is arbitrary or a `RaggedTensor` with rank 2.
-    sparse_weights: `SparseTensor` or `RaggedTensor` of same type and shape as
-      `sparse_ids`, containing float / double weights corresponding to
-      `sparse_ids`, or `None` if all weights are assumed to be 1.0.
+    sp_weights: `SparseTensor` or `RaggedTensor` of same type and shape as
+      `sp_ids`, containing float / double weights corresponding to `sp_ids`, or
+      `None` if all weights are assumed to be 1.0.
     combiner: A string specifying the reduction op. Currently "mean", "sqrtn"
       and "sum" are supported. "sum" computes the weighted sum of the embedding
       results for each row. "mean" is the weighted sum divided by the total

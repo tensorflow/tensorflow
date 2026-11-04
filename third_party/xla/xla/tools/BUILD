@@ -54,6 +54,14 @@ package(
 
 exports_files(["data/hlo_isolation_cli_test.hlo"])
 
+exports_files(
+    [
+        "benchmarks/hlo/hlo_gemma4_2b_bf16.hlo",
+        "benchmarks/hlo/nv_maxtext_1n1g_jit_train_step_before_optimization.hlo",
+    ],
+    visibility = ["//xla/pjrt/gpu:__pkg__"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",

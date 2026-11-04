@@ -44,10 +44,12 @@ struct MemoryUsage {
   // The memory footprint (in kilobytes).
   //
   // For Linux:
-  // This is the maximum memory size (in kilobytes) occupied by an OS process
-  // that is held in main memory (RAM). Such memory usage information is
-  // generally referred as resident set size (rss). This is an alias to
-  // rusage::ru_maxrss.
+  // This is the current memory size (in kilobytes) occupied by an OS process
+  // that is held in main memory (RAM), read from /proc/self/smaps_rollup
+  // (Rss:). Reading VMA-backed RSS from /proc/self/smaps_rollup excludes
+  // unmapped GPU driver pages that some kernel drivers (such as Mali kbase) add
+  // to mm->rss_stat[MM_FILEPAGES]. If /proc/self/smaps_rollup is unavailable,
+  // this falls back to the maximum resident set size via rusage::ru_maxrss.
   //
   // For Mac:
   // This is the physical memory footprint (in kilobytes). This is an alias to
@@ -89,9 +91,9 @@ struct MemoryUsage {
   // non-heap uses of memory such as thread stacks, globals, code, etc.
   size_t in_use_allocated_bytes;
 
-  // Private footprint (in kilobytes).
+  // Private footprint (in bytes).
   //
-  // For Linux this is the rusage::ru_maxrss + VmSwap.
+  // For Linux this is (mem_footprint_kb + VmSwap) * 1024.
   // For Mac this is the task_vm_info::phys_footprint.
   // For Windows this is the PrivateUsage.
   size_t private_footprint_bytes;

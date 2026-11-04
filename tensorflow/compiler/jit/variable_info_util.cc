@@ -32,9 +32,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
@@ -46,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
@@ -261,7 +265,23 @@ absl::Status LockVariables(absl::Span<VariableInfo*> variables) {
       VLOG(4) << "Acquiring reader lock for variable "
               << reinterpret_cast<void*>(variable);
       mu->lock_shared();
-      variables[i]->set_shared_lock_held();
+      const TensorBuffer* buf = variable->is_initialized
+                                    ? DMAHelper::buffer(variable->tensor())
+                                    : nullptr;
+      if (buf != nullptr &&
+          const_cast<TensorBuffer*>(buf)->root_buffer() == buf &&
+          variable->tensor()->TotalBytes() > 0 &&
+          AsyncValueTensor::FromTensor(variable->tensor()) == nullptr &&
+          GetXlaOpsCommonFlags()->tf_xla_use_device_api.IsEnabledForGpu() &&
+          dynamic_cast<const PjRtTensorBuffer*>(buf) == nullptr) {
+        // Upgrade to an exclusive lock so PreparePjRtExecutableArguments can
+        // safely update the variable's TensorBuffer to a PjRtTensorBuffer.
+        mu->unlock_shared();
+        mu->lock();
+        variables[i]->set_lock_held();
+      } else {
+        variables[i]->set_shared_lock_held();
+      }
     } else {
       VLOG(4) << "Acquiring lock for variable "
               << reinterpret_cast<void*>(variable);

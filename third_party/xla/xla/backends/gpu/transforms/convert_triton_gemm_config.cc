@@ -199,7 +199,6 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
   // (`block_n`) is omitted if the LHS (RHS) has no non-contracting dimension.
   // TODO(b/515334583): when supported, we can propagate tile from the dot
   // directly, avoiding the need to play with the output tiles.
-  using TilingSpace = experimental::TilingSpace;
   using DimensionSemantics = TilingSpace::DimensionSemantics;
   using DimensionInfo = TilingSpace::DimensionInfo;
 
@@ -236,9 +235,8 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
   absl::c_sort(parallel_tile_sizes);
 
   do {
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<experimental::TilingSpace> ts,
-        experimental::TilingSpace::Create(fusion_adaptor, mlir_context));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> ts,
+                     TilingSpace::Create(fusion_adaptor, mlir_context));
     llvm::SmallVector<int64_t> tile_sizes(ts->num_dimensions(), 1);
     for (const DimensionInfo& dim : ts->dimensions()) {
       if (dim.type == DimensionSemantics::kParallel) {
@@ -259,8 +257,8 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
               << " as tiling assignment failed: " << assign_status.message();
       continue;
     }
-    absl::StatusOr<experimental::TiledHloComputation> tiled_computation =
-        experimental::TiledHloComputation::Tile(fusion_adaptor, std::move(ts));
+    absl::StatusOr<TiledHloComputation> tiled_computation =
+        TiledHloComputation::Tile(fusion_adaptor, std::move(ts));
     if (!tiled_computation.ok()) {
       VLOG(8) << "Failed to tile the computation with output tile sizes "
               << absl::StrJoin(parallel_tile_sizes, ",")
@@ -268,8 +266,8 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
       continue;
     }
 
-    Decision verification_status = experimental::VerifyTritonConstraints(
-        *tiled_computation, device_description);
+    Decision verification_status =
+        VerifyTritonConstraints(*tiled_computation, device_description);
     if (!verification_status) {
       VLOG(8) << "Candidate tiling violates Triton constraints: "
               << verification_status.Explain();
@@ -277,7 +275,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     }
     // Finds the corresponding tiled instruction for its original HLO
     // instruction.
-    absl::Span<const experimental::TiledHloInstruction* const> instructions =
+    absl::Span<const TiledHloInstruction* const> instructions =
         tiled_computation->instructions();
     auto tiled_dot = absl::c_find_if(
         instructions, [&](const auto* tiled) { return tiled->hlo() == dot; });

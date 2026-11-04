@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   review:
-    if: github.event.label.name == 'Agent Review'
+    if: github.repository == 'tensorflow/tensorflow' && github.event.label.name == 'Agent Review'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -44,6 +44,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           AUTH_HEADER=$(printf "x-access-token:%s" "${GITHUB_TOKEN}" | base64 | tr -d '\n')
+          echo "::add-mask::${AUTH_HEADER}"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${AUTH_HEADER}" \
             fetch --no-tags origin "${PR_HEAD_SHA}" --depth=1
 

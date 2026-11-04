@@ -144,7 +144,7 @@ def TPU_AllReduceOp : TPU_Op<"all_reduce", [Pure]> {
   let hasVerifier = 1;
 }
 
-def TPU_ReduceIndexOp : TPU_Op<"reduce_index", [Pure]> {
+def TPU_ReduceIndexOp : TPU_Op<"reduce_index", [Pure, SameOperandsAndResultRank]> {
   let arguments = (ins
     AnyVectorOfNonZeroRank:$input,
     I32Attr:$axis,
@@ -1338,6 +1338,7 @@ def TPU_AssumeMultipleOp : TPU_Op<"assume_multiple", [Pure, SameOperandsAndResul
   let results = (outs AnyTypeOf<[Index, AnyInteger]>:$result);
   let assemblyFormat = [{$value `,` $multiple attr-dict `:` type($result)}];
   let hasVerifier = 1;
+  let hasFolder = 1;
 }
 
 def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments, ViewLikeOpInterface]> {
@@ -1923,6 +1924,25 @@ def TPU_DelayOp : TPU_Op<"delay"> {
   let arguments = (ins I32:$nanos);
   let results = (outs);
   let assemblyFormat = [{ $nanos attr-dict }];
+}
+
+def TPU_RequestPStateOp : TPU_Op<"request_p_state"> {
+  let summary = "Requests a TensorCore P-state transition.";
+  let description = [{
+    Requests a transition to the given TensorCore P-state, which controls the
+    TensorCore frequency; other subsystems may adjust their frequencies to match
+    the TensorCore. The transition is not immediate and is best-effort: the
+    hardware or firmware may ignore or clamp the request due to rate-limiting,
+    power, or thermal constraints.
+
+    The `p_state` attribute specifies the target P-state index and must be
+    non-negative. Supported on TPU7x+.
+
+    TODO(b/581416218): Link to the documentation once it is available.
+  }];
+  let arguments = (ins ConfinedAttr<I32Attr, [IntNonNegative]>:$p_state);
+  let results = (outs);
+  let assemblyFormat = [{ $p_state attr-dict }];
 }
 
 // Expands the granularity of mask to subelements.

@@ -2052,3 +2052,42 @@ func.func @NotFoldSoftmaxRuntimeInput(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
   // CHECK: "tfl.softmax"(%arg0)
 }
+
+// CHECK-LABEL: @ConstFoldSquaredDifferenceF32
+func.func @ConstFoldSquaredDifferenceF32() -> tensor<4xf32> {
+  %lhs = arith.constant dense<[1.0, 2.0, 3.0, -4.0]> : tensor<4xf32>
+  %rhs = arith.constant dense<[3.0, 2.0, 0.5, 1.0]> : tensor<4xf32>
+  %0 = tfl.squared_difference %lhs, %rhs : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<[4.000000e+00, 0.000000e+00, 6.250000e+00, 2.500000e+01]> : tensor<4xf32>
+  // CHECK: return %[[CST]]
+}
+
+// The LayerNorm shape: a row minus its (broadcast) mean, squared.
+// CHECK-LABEL: @ConstFoldSquaredDifferenceBroadcast
+func.func @ConstFoldSquaredDifferenceBroadcast() -> tensor<2x3xf32> {
+  %lhs = arith.constant dense<[[1.0, 2.0, 3.0], [4.0, 6.0, 8.0]]> : tensor<2x3xf32>
+  %mean = arith.constant dense<[[2.0], [6.0]]> : tensor<2x1xf32>
+  %0 = "tfl.squared_difference"(%lhs, %mean) : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}1.000000e+00, 0.000000e+00, 1.000000e+00], [4.000000e+00, 0.000000e+00, 4.000000e+00]]> : tensor<2x3xf32>
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @ConstFoldSquaredDifferenceI32
+func.func @ConstFoldSquaredDifferenceI32() -> tensor<3xi32> {
+  %lhs = arith.constant dense<[5, -2, 7]> : tensor<3xi32>
+  %rhs = arith.constant dense<[2, 3, 7]> : tensor<3xi32>
+  %0 = tfl.squared_difference %lhs, %rhs : tensor<3xi32>
+  func.return %0 : tensor<3xi32>
+  // CHECK: %[[CST:.*]] = arith.constant dense<[9, 25, 0]> : tensor<3xi32>
+  // CHECK: return %[[CST]]
+}
+
+// CHECK-LABEL: @NotFoldSquaredDifferenceRuntimeInput
+func.func @NotFoldSquaredDifferenceRuntimeInput(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  %rhs = arith.constant dense<1.0> : tensor<4xf32>
+  %0 = tfl.squared_difference %arg0, %rhs : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+  // CHECK: tfl.squared_difference %arg0
+}

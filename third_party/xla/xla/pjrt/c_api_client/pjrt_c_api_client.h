@@ -1107,6 +1107,12 @@ absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler(
 
 absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler();
 
+std::string GetPluginStablehloVersionOrDefault(const PJRT_Api* c_api,
+                                               const PjRtClient* client);
+
+std::string GetPluginSdyVersionOrDefault(const PJRT_Api* c_api,
+                                         const PjRtClient* client);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_C_API_CLIENT_PJRT_C_API_CLIENT_H_

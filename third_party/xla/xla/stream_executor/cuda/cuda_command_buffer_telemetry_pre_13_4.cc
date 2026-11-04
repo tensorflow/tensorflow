@@ -83,28 +83,34 @@ std::optional<uint32_t> GetGraphExecId(CUgraphExec exec) {
   return static_cast<uint32_t>(exec_id);
 }
 
-void RegisterPre134ExecGraphNodes(CUgraph root_graph, CUgraphExec exec) {
+std::optional<TrackedGraph> RegisterPre134ExecGraphNodes(CUgraph root_graph,
+                                                         CUgraphExec exec) {
   // The caller (`MaybeFinalizeGraphTelemetry`) already checked that recording
   // is on.
   if (root_graph == nullptr || exec == nullptr) {
-    return;
+    return std::nullopt;
   }
   const std::optional<uint32_t> exec_id = GetGraphExecId(exec);
   if (!exec_id.has_value()) {
-    return;
+    return std::nullopt;
   }
 
-  // Attach the exec graph's cleanup to `root_graph`. `exec` doesn't hold this
-  // reference: it is attached after instantiation. So the entry lives exactly
-  // as long as `root_graph`, which outlives `exec` because
-  // `~CudaCommandBuffer()` destroys `graph_exec_` before `graph_`.
-  if (!TrackAndAttach(*exec_id, root_graph, KeySpace::kPre134ExecGraph)
-           .has_value()) {
-    return;
+  // If this call creates the exec entry, the caller owns it: it unregisters it
+  // when it destroys or re-instantiates `exec`.
+  Registry& registry = Registry::Default();
+  const bool created =
+      registry.TrackGraph(*exec_id, KeySpace::kPre134ExecGraph);
+  if (!created &&
+      !registry.IsGraphTracked(*exec_id, KeySpace::kPre134ExecGraph)) {
+    return std::nullopt;
   }
 
   uint32_t next_flat_local_id = 0;
   ProjectGraphHierarchyDfs(root_graph, *exec_id, &next_flat_local_id);
+  if (!created) {
+    return std::nullopt;
+  }
+  return TrackedGraph{*exec_id, KeySpace::kPre134ExecGraph};
 }
 
 }  // namespace stream_executor::gpu::command_buffer_telemetry

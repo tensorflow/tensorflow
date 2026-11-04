@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"  // from @XNNPACK
+#include "slinky/base/ref_count.h"  // from @slinky
 #include "slinky/base/thread_pool.h"  // from @slinky
 #include "slinky/base/thread_pool_impl.h"  // from @slinky
 #include "tensorflow/lite/builtin_ops.h"
@@ -117,11 +118,18 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
         runtime_(nullptr) {}
 
   ~YNNPackDelegateKernel() override {
+    if (init_task_) {
+      thread_pool_->wait_for(&*init_task_);
+    }
     if (runtime_) ynn_delete_runtime(runtime_);
     if (subgraph_) ynn_delete_subgraph(subgraph_);
   }
 
   TfLiteStatus BuildSubgraphAndRuntime(TfLiteContext* context) {
+    if (init_task_) {
+      thread_pool_->wait_for(&*init_task_);
+      init_task_ = nullptr;
+    }
     // The constants folded by the previous runtime (e.g. the packed weights)
     // are only reused by the new subgraph's constant folding while that
     // runtime is alive, so keep it until the new subgraph is optimized.
@@ -344,14 +352,23 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
       }
     }
 
-    ynn_threadpool_t ynn_tp = reinterpret_cast<ynn_threadpool_t>(thread_pool_);
-    TF_LITE_ENSURE_YNN_STATUS(ynn_optimize_subgraph(subgraph_, ynn_tp, 0));
-    old_runtime.reset();
-    const ynn_status create_status =
-        ynn_create_runtime(subgraph_, ynn_tp, 0, &runtime_);
-    ynn_delete_subgraph(subgraph_);
-    subgraph_ = nullptr;
-    TF_LITE_ENSURE_YNN_STATUS(create_status);
+    auto init_subgraph = [this, old_runtime = old_runtime.release()]() {
+      ynn_threadpool_t ynn_tp =
+          reinterpret_cast<ynn_threadpool_t>(thread_pool_);
+      init_status_ = ynn_optimize_subgraph(subgraph_, ynn_tp, 0);
+      ynn_delete_runtime(old_runtime);
+      if (init_status_ == ynn_status_success) {
+        init_status_ = ynn_create_runtime(subgraph_, ynn_tp, 0, &runtime_);
+      }
+      ynn_delete_subgraph(subgraph_);
+      subgraph_ = nullptr;
+    };
+    if (thread_pool_) {
+      init_task_ = thread_pool_->enqueue(init_subgraph);
+    } else {
+      init_subgraph();
+      TF_LITE_ENSURE_YNN_STATUS(init_status_);
+    }
 
     return kTfLiteOk;
   }
@@ -441,6 +458,12 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
 
     if (rebuild_required) {
       TF_LITE_ENSURE_STATUS(BuildSubgraphAndRuntime(context));
+    }
+
+    if (init_task_) {
+      thread_pool_->wait_for(&*init_task_);
+      init_task_ = nullptr;
+      TF_LITE_ENSURE_YNN_STATUS(init_status_);
     }
 
     // Set input shapes in YNNPACK.
@@ -555,6 +578,8 @@ class YNNPackDelegateKernel : public SimpleDelegateKernelInterface {
  private:
   const TfLiteYNNPackDelegateOptions options_;
   slinky::thread_pool* thread_pool_ = nullptr;
+  slinky::ref_count<slinky::thread_pool::task> init_task_;
+  ynn_status init_status_ = ynn_status_success;
   ynn_subgraph_t subgraph_;
   ynn_runtime_t runtime_;
 

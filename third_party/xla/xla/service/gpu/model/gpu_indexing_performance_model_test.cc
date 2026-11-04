@@ -1064,6 +1064,52 @@ ENTRY main {
   EXPECT_TRUE(res2.IsInfinite());
 }
 
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_SoftmaxF64_RegisterSpill_ReturnsInfinite) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f64[] parameter(0)
+  Arg_1 = f64[] parameter(1)
+  ROOT add = f64[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f64[16,8000] parameter(0)
+  constant_0 = f64[] constant(0)
+  reduce_0 = f64[16] reduce(param_0, constant_0), dimensions={1}, to_apply=add
+  broadcast = f64[16,8000] broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f64[16,8000] multiply(param_0, broadcast)
+}
+
+ENTRY main {
+  param_0 = f64[16,8000] parameter(0)
+  ROOT triton_softmax = f64[16,8000] fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  // f64 requires 2 registers per element. With a 65536 register limit and 0.4
+  // fraction for boundary tiles (26214 registers), a padded tile of 1 * 8192
+  // elements (16384 registers) fits, while 2 * 8192 elements (32768 registers)
+  // spills.
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData res_fits,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 8000}}}));
+  EXPECT_FALSE(res_fits.IsInfinite());
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData res_spills,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{2, 8000}}}));
+  EXPECT_TRUE(res_spills.IsInfinite());
+}
+
 TEST_F(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_BroadcastReduce_RegisterSpill_ReturnsInfinite) {  // NOLINT(whitespace/line_length)
@@ -1298,16 +1344,15 @@ ENTRY main {
 
   absl::InlinedVector<int64_t, 4> output_tile_sizes = {9, 9, 9};
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<experimental::TilingSpace> tiling_space,
-      experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
   EXPECT_OK(tiling_space->AssignTileSizes(
       xla::xtile::GetPaddedTileSizes(output_tile_sizes)));
 
-  ASSERT_OK_AND_ASSIGN(experimental::TiledHloComputation tiled_hlo_computation,
-                       experimental::TiledHloComputation::Tile(
-                           *fusion_adaptor, std::move(tiling_space)));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
 
   int64_t num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
       tiled_hlo_computation);
@@ -1347,9 +1392,8 @@ ENTRY main {
 
   absl::InlinedVector<int64_t, 4> output_tile_sizes = {1};
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<experimental::TilingSpace> tiling_space,
-      experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
   absl::InlinedVector<int64_t, 4> tile_sizes = output_tile_sizes;
   tile_sizes.push_back(4096);
@@ -1357,9 +1401,9 @@ ENTRY main {
   EXPECT_OK(tiling_space->AssignTileSizes(
       xla::xtile::GetPaddedTileSizes(tile_sizes)));
 
-  ASSERT_OK_AND_ASSIGN(experimental::TiledHloComputation tiled_hlo_computation,
-                       experimental::TiledHloComputation::Tile(
-                           *fusion_adaptor, std::move(tiling_space)));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
 
   int64_t num_warps = GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
       tiled_hlo_computation);
@@ -1726,29 +1770,26 @@ TEST_P(RegisterFitConsistencyTest, PreFilterMatchesExactFitCheck) {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->root_instruction());
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<experimental::TilingSpace> tiling_space,
-      experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TilingSpace> tiling_space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
-  ASSERT_OK_AND_ASSIGN(experimental::TiledHloComputation symbolic,
-                       experimental::TiledHloComputation::Tile(
-                           *fusion_adaptor, tiling_space->Clone()));
+  ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation symbolic,
+      TiledHloComputation::Tile(*fusion_adaptor, tiling_space->Clone()));
 
   auto tile = [&](absl::Span<const int64_t> tile_sizes)
-      -> absl::StatusOr<experimental::TiledHloComputation> {
-    std::unique_ptr<experimental::TilingSpace> concrete_space =
-        tiling_space->Clone();
+      -> absl::StatusOr<TiledHloComputation> {
+    std::unique_ptr<TilingSpace> concrete_space = tiling_space->Clone();
     ABSL_RETURN_IF_ERROR(concrete_space->AssignTileSizes(tile_sizes));
-    return experimental::TiledHloComputation::Tile(*fusion_adaptor,
-                                                   std::move(concrete_space));
+    return TiledHloComputation::Tile(*fusion_adaptor,
+                                     std::move(concrete_space));
   };
   auto passes_precheck = [&](absl::Span<const int64_t> tile_sizes) {
     return internal::DoesTilingFitInRegisters(*fusion_adaptor, symbolic,
                                               tile_sizes, device_info_);
   };
   auto passes_check = [&](absl::Span<const int64_t> tile_sizes) {
-    absl::StatusOr<experimental::TiledHloComputation> concrete =
-        tile(tile_sizes);
+    absl::StatusOr<TiledHloComputation> concrete = tile(tile_sizes);
     CHECK_OK(concrete);
     return internal::DoesComputationFitInRegisters(*fusion_adaptor, *concrete,
                                                    device_info_);
