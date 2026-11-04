@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"  // IWYU pragma: keep
 
@@ -160,10 +161,9 @@ void IfrtVerifyDonationPass::runOnOperation() {
             .Case<CallOp, CallLoadedExecutableOp>([&](auto& op) {
               return verifyCallOpAliasesAndDonations(op, donated_value_to_op);
             })
-            .Case<BitcastArraysOp, CopyArraysOp, RemapArraysOp, ReshardOp>(
-                [&](auto& op) {
-                  return verifyOpRequiringAllDonated(op, donated_value_to_op);
-                })
+            .Case<IfrtPairwiseArrayOpInterface, RemapArraysOp>([&](auto op) {
+              return verifyOpRequiringAllDonated(op, donated_value_to_op);
+            })
             .Case<mlir::func::ReturnOp>([&](mlir::func::ReturnOp return_op) {
               for (const auto& [idx, result] :
                    llvm::enumerate(return_op.getOperands())) {

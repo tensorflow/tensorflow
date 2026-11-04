@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/log.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/CommandLine.h"  // IWYU pragma: keep
 #include "llvm/Support/raw_ostream.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/import/passes.h"
 #include "xla/python/ifrt/ir/utils.h"
@@ -53,21 +55,19 @@ class ReshardToCopyArraysOpPattern : public mlir::OpRewritePattern<ReshardOp> {
     llvm::SmallVector<int> copy_indices;
     // Indices of the input arrays that are resharded.
     llvm::SmallVector<int> reshard_indices;
-    llvm::SmallVector<mlir::Value> reshard_inputs_left;
-    llvm::SmallVector<mlir::Type> reshard_outputs_left;
+    llvm::BitVector keep_reshards(op.getOutputs().size(), false);
     for (const auto& [idx, pair] :
          llvm::enumerate(llvm::zip(op.getInputs(), op.getOutputs()))) {
       if (IsReshard(GetArrayType(std::get<0>(pair)),
                     GetArrayType(std::get<1>(pair)))) {
         reshard_indices.push_back(idx);
-        reshard_inputs_left.push_back(op.getInputs()[idx]);
-        reshard_outputs_left.push_back(op.getOutputs()[idx].getType());
+        keep_reshards.set(idx);
       } else {
         copy_indices.push_back(idx);
       }
     }
 
-    if (reshard_indices.size() == op.getInputs().size()) {
+    if (keep_reshards.all()) {
       // All arrays are resharded. No need to modify the ifrt.Reshard op.
       return mlir::failure();
     }
@@ -96,14 +96,9 @@ class ReshardToCopyArraysOpPattern : public mlir::OpRewritePattern<ReshardOp> {
 
     // Replace the ifrt.Reshard with a pruned version that only takes the arrays
     // that are resharded.
-    if (!reshard_inputs_left.empty()) {
-      ReshardOp reshard_op =
-          ReshardOp::create(rewriter, op.getLoc(),
-                            /*outputs=*/reshard_outputs_left,
-                            /*control_output=*/op.getControlOutput().getType(),
-                            /*inputs=*/reshard_inputs_left,
-                            /*donated=*/op.getDonated(),
-                            /*control_inputs=*/op.getControlInputs());
+    if (keep_reshards.any()) {
+      IfrtPairwiseArrayOpInterface reshard_op =
+          op.cloneWithKeptOutputs(rewriter, keep_reshards);
       for (const auto& [idx, output] :
            llvm::zip(reshard_indices, reshard_op.getOutputs())) {
         outputs[idx] = output;
@@ -126,7 +121,7 @@ class ReshardToCopyArraysOpPattern : public mlir::OpRewritePattern<ReshardOp> {
           /*reuse=*/false,
           /*control_inputs=*/op.getControlInputs());
       outputs[array_idx] = copy_arrays_op.getOutputs().front();
-      if (reshard_inputs_left.empty()) {
+      if (keep_reshards.none()) {
         // No reshard op left, so the control output is replaced with the
         // control output of the last inserted CopyArrays op.
         control_output = copy_arrays_op.getControlOutput();
