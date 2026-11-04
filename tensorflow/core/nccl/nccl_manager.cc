@@ -883,6 +883,12 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         break;
       }
       case kAllToAll: {
+        if (collective->participants.empty()) {
+          p->done_callback(
+              absl::InternalError("Participant size is zero for ncclAllToAll"));
+          collective->Unref();
+          continue;
+        }
         const char* sendbuff = p->input->tensor_data().data();
         char* recvbuff = const_cast<char*>(p->output->tensor_data().data());
         size_t count =
