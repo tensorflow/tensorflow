@@ -44,10 +44,12 @@ class TwoLevelIterator : public Iterator {
   }
   absl::string_view key() const override {
     assert(Valid());
+    if (!Valid()) return absl::string_view();
     return data_iter_->key();
   }
   absl::string_view value() const override {
     assert(Valid());
+    if (!Valid()) return absl::string_view();
     return data_iter_->value();
   }
   absl::Status status() const override {
@@ -107,7 +109,7 @@ void TwoLevelIterator::SeekToFirst() {
 }
 
 void TwoLevelIterator::Next() {
-  assert(Valid());
+  if (!Valid()) return;
   data_iter_->Next();
   SkipEmptyDataBlocksForward();
 }
