@@ -101,8 +101,9 @@ mlir::Value ExpandAndBroadcastValue(mlir::ImplicitLocOpBuilder& builder,
 bool IsGuaranteedDivisible(mlir::Value value, int64_t divisor);
 
 // Returns true if every element `offset + i * tile_stride`, i in
-// [0, tile_size), is guaranteed to lie in [0, original_shape). Returns false if
-// `offset` is not a constant or an apply indexing op.
+// [0, tile_size), is guaranteed to lie in [0, original_shape). The range of
+// `offset` is taken from `xla::GetRange`, i.e. constants, apply indexing ops
+// and values annotated with `xla.range`. Returns false if no range is known.
 bool IsGuaranteedInBounds(mlir::Value offset, int64_t tile_size,
                           int64_t tile_stride, int64_t original_shape);
 

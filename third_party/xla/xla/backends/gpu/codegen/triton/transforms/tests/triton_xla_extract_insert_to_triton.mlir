@@ -656,7 +656,6 @@ func.func @extract_with_transposing_layout(
 // CHECK-TMA-SAME:        tensor<64x2x128xbf16> -> tensor<2x64x128xbf16>
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}], %[[TRANS]]
 
-
 // -----
 
 // A strided tile whose last element lies past the end of the dimension
@@ -712,3 +711,103 @@ module {
 // CHECK-TDM:         tt.load
 // CHECK-TDM:         tt.make_tensor_descriptor
 // CHECK-TDM:         tt.descriptor_store
+
+// -----
+
+#indexing_map_concat_rhs = #xla.indexing_map<"(pid) -> ((pid mod 12) * 128 - 1024), domain: pid in [0, 95], pid mod 12 in [8, 11]">
+module {
+  func.func @extract_with_indexing_map_constraint_has_no_mask(
+      %arg0: !tt.ptr<i8>, %arg1: !tt.ptr<i8>) {
+    %0 = tt.get_program_id x : i32
+    %1 = arith.index_cast %0 : i32 to index
+    // Without the `pid mod 12 in [8, 11]` constraint, the indexing map range is
+    // [-1024, 384], which would require both lower and upper bounds masks for a
+    // dimension of size 512. With the constraint, the range is [0, 384], so the
+    // slice [offset, offset + 128) is guaranteed to be within [0, 512) and no
+    // mask is needed.
+    %2 = xla.apply_indexing #indexing_map_concat_rhs(%1)
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<10240x512xi8, #xtile.layout<[1, 0]>>
+        [0, %2] [64, 128] [1, 1] : tensor<64x128xi8>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<10240x512xi8, #xtile.layout<[1, 0]>>
+        [0, %2] [64, 128] [1, 1] : tensor<64x128xi8>
+    func.return
+  }
+}
+
+// CHECK-LABEL: tt.func @extract_with_indexing_map_constraint_has_no_mask
+// CHECK-NOT:     arith.cmpi
+// CHECK:         %[[LOAD:.*]] = tt.load %{{.*}} : tensor<64x128x!tt.ptr<i8>>
+// CHECK:         tt.store %{{.*}}, %[[LOAD]] : tensor<64x128x!tt.ptr<i8>>
+
+// -----
+
+module {
+  func.func @insert_with_xla_range_offset_has_no_mask(
+      %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>) {
+    %0 = tt.get_program_id x : i32
+    // The offset is not a constant or an `xla.apply_indexing` op, so its range
+    // [0, 15] is only known from the `xla.range` attribute.
+    %1 = arith.index_cast %0 {xla.range = [0 : index, 15 : index]} : i32 to index
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<32x1xf32, #xtile.layout<[1, 0]>>
+        [0, 0] [32, 1] [1, 1] : tensor<32x1xf32>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<32x16xf32, #xtile.layout<[1, 0]>>
+        [0, %1] [32, 1] [1, 1] : tensor<32x1xf32>
+    func.return
+  }
+}
+
+// CHECK-LABEL: tt.func @insert_with_xla_range_offset_has_no_mask
+// CHECK-NOT:     arith.cmpi
+// CHECK:         %[[LOAD:.*]] = tt.load %{{.*}} : tensor<32x1x!tt.ptr<f32>>
+// CHECK:         tt.store %{{.*}}, %[[LOAD]] : tensor<32x1x!tt.ptr<f32>>
+
+// -----
+
+module {
+  func.func @insert_with_non_divisible_shape_in_bounds_has_no_mask(
+      %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>) {
+    %0 = tt.get_program_id x : i32
+    // 10 is not a multiple of the tile size 4, but every accessed element
+    // `offset + i`, i in [0, 4), lies in [0, 6] which is within [0, 10).
+    %1 = arith.index_cast %0 {xla.range = [0 : index, 3 : index]} : i32 to index
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<32x4xf32, #xtile.layout<[1, 0]>>
+        [0, 0] [32, 4] [1, 1] : tensor<32x4xf32>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<32x10xf32, #xtile.layout<[1, 0]>>
+        [0, %1] [32, 4] [1, 1] : tensor<32x4xf32>
+    func.return
+  }
+}
+
+// CHECK-LABEL: tt.func @insert_with_non_divisible_shape_in_bounds_has_no_mask
+// CHECK-NOT:     arith.cmpi
+// CHECK:         %[[LOAD:.*]] = tt.load %{{.*}} : tensor<32x4x!tt.ptr<f32>>
+// CHECK:         tt.store %{{.*}}, %[[LOAD]] : tensor<32x4x!tt.ptr<f32>>
+
+// -----
+
+module {
+  func.func @insert_with_non_divisible_shape_out_of_bounds_has_mask(
+      %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>) {
+    %0 = tt.get_program_id x : i32
+    // The last accessed element can be 7 + 3 = 10, which is out of bounds.
+    %1 = arith.index_cast %0 {xla.range = [0 : index, 7 : index]} : i32 to index
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<32x4xf32, #xtile.layout<[1, 0]>>
+        [0, 0] [32, 4] [1, 1] : tensor<32x4xf32>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<32x10xf32, #xtile.layout<[1, 0]>>
+        [0, %1] [32, 4] [1, 1] : tensor<32x4xf32>
+    func.return
+  }
+}
+
+// CHECK-LABEL: tt.func @insert_with_non_divisible_shape_out_of_bounds_has_mask
+// CHECK:         %[[LOAD:.*]] = tt.load %{{.*}} : tensor<32x4x!tt.ptr<f32>>
+// CHECK:         arith.cmpi
+// CHECK:         tt.store %{{.*}}, %[[LOAD]], %{{.*}} : tensor<32x4x!tt.ptr<f32>>
