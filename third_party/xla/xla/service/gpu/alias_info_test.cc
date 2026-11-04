@@ -1214,5 +1214,61 @@ ENTRY main {
       fusion->mutable_operand(0), {}, fusion, {}, alias_info()));
 }
 
+TEST_F(AliasInfoTest, ThreadBlockSpecializedFusionBufferSharing) {
+  const char* const kModuleString = R"(
+HloModule horizontal_fusion
+
+fused_computation.0 {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  ROOT add = f32[2,3]{1,0} add(p0, p1)
+}
+
+fused_computation.1 {
+  p0 = f32[2,3]{1,0} parameter(0)
+  ROOT exp = f32[2,3]{1,0} exponential(p0)
+}
+
+fused_computation.2 {
+  p0 = f32[2,3]{0,1} parameter(0)
+  copy = f32[2,3]{1,0} copy(p0)
+  ROOT neg = f32[2,3]{1,0} negate(copy)
+}
+
+horizontal_fusion_computation {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  p2 = f32[2,3]{0,1} parameter(2)
+  f0 = f32[2,3]{1,0} fusion(p0, p1), kind=kLoop, calls=fused_computation.0
+  f1 = f32[2,3]{1,0} fusion(p1), kind=kLoop, calls=fused_computation.1
+  f2 = f32[2,3]{1,0} fusion(p2), kind=kLoop, calls=fused_computation.2
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(f0, f1, f2)
+}
+
+ENTRY main {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  p2 = f32[2,3]{0,1} parameter(2)
+  ROOT fusion = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[2,3]{1,0})
+      fusion(p0, p1, p2), kind=kLoop, calls=horizontal_fusion_computation
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  // p0 is only used by f0 (output {0}), which is elementwise.
+  ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {2}));
+  // p1 is shared between f0 and f1, which run on disjoint CTAs without sync.
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {2}));
+  // p2 is only used by f2, which contains a layout-changing copy.
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(2), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(2), {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(2), {2}));
+}
+
 }  // namespace
 }  // namespace xla::gpu

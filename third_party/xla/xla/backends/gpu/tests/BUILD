@@ -278,6 +278,26 @@ xla_test(
 )
 
 xla_test(
+    name = "horizontal_fusion_test",
+    srcs = ["horizontal_fusion_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":gpu_pjrt_codegen_test",
+        "//xla:error_spec",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms:horizontal_fusion",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "swap_conv_operands_test",
     srcs = [
         "swap_conv_operands_test.cc",

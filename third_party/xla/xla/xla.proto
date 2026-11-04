@@ -1993,7 +1993,11 @@ message DebugOptions {
   // (ScanRewriterTriton).
   optional bool xla_gpu_experimental_enable_triton_scan = 562;
 
-  // Next id: 565
+  // If true, enables experimental thread-block specialized horizontal fusion of
+  // independent small-grid GPU kernels.
+  optional bool xla_gpu_experimental_enable_horizontal_fusion = 565;
+
+  // Next id: 566
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

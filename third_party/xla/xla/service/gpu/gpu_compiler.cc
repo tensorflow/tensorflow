@@ -123,6 +123,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gpu_transpose_folding.h"
 #include "xla/backends/gpu/transforms/group_collectives_by_key.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
+#include "xla/backends/gpu/transforms/horizontal_fusion.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
 #include "xla/backends/gpu/transforms/move_copy_to_users.h"
 #include "xla/backends/gpu/transforms/pdl_launch_annotation.h"
@@ -3238,6 +3239,14 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     main_pipeline.AddPass<HloPassPipeline>(
         FusionDispatchPipeline(gpu_device_info, ShapeSizeBytesFunction(),
                                mlir_context, thread_pool, &mlir_context_pool_));
+  }
+
+  if (module->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_horizontal_fusion()) {
+    HloPassPipeline& pipeline =
+        main_pipeline.AddPass<HloPassPipeline>("horizontal-fusion");
+    pipeline.AddPass<HorizontalFusion>(gpu_device_info);
   }
 
   // Sanitize constant names. This is in its own pipeline to ensure it always

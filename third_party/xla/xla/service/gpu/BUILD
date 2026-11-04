@@ -1904,6 +1904,7 @@ cc_library(
         "//xla/backends/gpu/transforms:gpu_transpose_folding",
         "//xla/backends/gpu/transforms:group_collectives_by_key",
         "//xla/backends/gpu/transforms:hoist_fused_bitcasts",
+        "//xla/backends/gpu/transforms:horizontal_fusion",
         "//xla/backends/gpu/transforms:layout_assignment",
         "//xla/backends/gpu/transforms:move_copy_to_users",
         "//xla/backends/gpu/transforms:pdl_launch_annotation",
