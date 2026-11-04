@@ -289,4 +289,17 @@ The pass dumps:
   ];
 }
 
+def IfrtCopyConstantsPass :
+    Pass<"ifrt-copy-constants", "mlir::ModuleOp"> {
+  let summary = "Copies constants produced in one atom program to their consumers.";
+  let description = [{
+Copies `ConstantLike` ops returned by producer `ifrt.Call` atom programs into
+consumer `ifrt.Call` atom programs, tracing across zero or more `ifrt.Reshard`
+or `ifrt.CopyArrays` ops.
+
+Note: this pass does not clean up dead arguments, results, or transfers left
+behind after copying constants.
+  }];
+}
+
 #endif  // XLA_PYTHON_IFRT_IR_IMPORT_PASSES_TD_
