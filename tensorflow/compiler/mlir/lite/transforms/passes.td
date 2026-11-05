@@ -283,7 +283,6 @@ def PrepareTFPass : Pass<"tfl-prepare-tf", "mlir::func::FuncOp"> {
   let dependentDialects = ["TFL::TensorFlowLiteDialect",
     "mlir::quant::QuantDialect",
     "mlir::quantfork::QuantizationForkDialect",
-    "mhlo::MhloDialect",
     "stablehlo::StablehloDialect"
   ];
   let options = [

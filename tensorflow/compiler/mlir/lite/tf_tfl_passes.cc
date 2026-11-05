@@ -351,6 +351,10 @@ void AddPostQuantizationStableHloToTfPasses(
 
   // TFLite dialect passes.
   if (!pass_config.disable_hlo_to_tfl_conversion) {
+    // TODO(markoristic): Temporary. PrepareHlo and the HLO->TFL legalization
+    // consume StableHLO while the preceding passes still produce MHLO. Remove
+    // once the whole pipeline runs on StableHLO.
+    pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::odml::CreatePrepareHloPass());
     // This pass must be added right before the legalization because pattern

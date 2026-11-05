@@ -22,7 +22,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "mhlo/IR/hlo_ops.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -31,52 +31,38 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
 
-// Convert a DenseIntElementsAttr to a vector of int64_t.
-std::vector<int64_t> ConvertI64DenseIntAttr(DenseIntElementsAttr attr) {
-  auto values = attr.getValues<int64_t>();
-  return {values.begin(), values.end()};
-}
-
 // Returns true if the fft op is a supported rfft op.
-bool IsSupportedRfftOp(mhlo::FftOp fft_op) {
-  const auto fft_type = llvm::StringSwitch<std::optional<mhlo::FftType>>(
-                            mlir::mhlo::stringifyFftType(fft_op.getFftType()))
-                            .Case("FFT", mhlo::FftType::FFT)
-                            .Case("RFFT", mhlo::FftType::RFFT)
-                            .Case("IFFT", mhlo::FftType::IFFT)
-                            .Case("IRFFT", mhlo::FftType::IRFFT)
-                            .Default(std::nullopt);
-  if (!fft_type || *fft_type != mhlo::FftType::RFFT) {
+bool IsSupportedRfftOp(stablehlo::FftOp fft_op) {
+  if (fft_op.getFftType() != stablehlo::FftType::RFFT) {
     return false;
   }
 
-  const std::vector<int64_t> fft_lengths =
-      ConvertI64DenseIntAttr(fft_op.getFftLength());
+  const auto fft_lengths = fft_op.getFftLength();
 
   if (fft_lengths.size() > 2) return false;  // Only support 2D FFT.
 
   // Check if the trailing input shape matches the fft_lengths.
-  const std::vector<int64_t> input_shape =
+  const auto input_shape =
       mlir::cast<ShapedType>(fft_op.getOperand().getType()).getShape();
   return std::equal(input_shape.end() - fft_lengths.size(), input_shape.end(),
                     fft_lengths.begin(), fft_lengths.end());
 }
 
 // Returns a tensor of the dimension size of the input tensor. Result of
-// mhlo::GetDimensionSizeOp is always a scalar value, but we need a tensor to
-// concatenate with other dimension sizes.
+// stablehlo::GetDimensionSizeOp is always a scalar value, but we need a tensor
+// to concatenate with other dimension sizes.
 Value GetDimensionSizeTensor(OpBuilder& rewriter, Location loc, Value input,
                              int64_t dim) {
   auto size_scalar =
-      mhlo::GetDimensionSizeOp::create(rewriter, loc, input, dim);
-  return mhlo::ReshapeOp::create(
+      stablehlo::GetDimensionSizeOp::create(rewriter, loc, input, dim);
+  return stablehlo::ReshapeOp::create(
       rewriter, loc, RankedTensorType::get({1}, rewriter.getI32Type()),
       size_scalar);
 }
@@ -98,18 +84,17 @@ Value GetDimensionSizeTensor(OpBuilder& rewriter, Location loc, Value input,
 //     rfft_2d
 //       |
 //     squeeze
-class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
+class ConvertNDFftTo2DFftOp : public OpRewritePattern<stablehlo::FftOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(mhlo::FftOp fft_op,
+  LogicalResult matchAndRewrite(stablehlo::FftOp fft_op,
                                 PatternRewriter& rewriter) const final {
     if (!IsSupportedRfftOp(fft_op)) {
       return rewriter.notifyMatchFailure(fft_op, "Unsupported fft op.");
     }
 
-    const auto fft_lengths =
-        llvm::to_vector(fft_op.getFftLength().getValues<int64_t>());
+    const auto fft_lengths = fft_op.getFftLength();
     if (fft_lengths.size() != 1) {
       return rewriter.notifyMatchFailure(
           fft_op, "Can only lower a single fft dimension");
@@ -117,7 +102,7 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
 
     auto input_type =
         mlir::dyn_cast_or_null<RankedTensorType>(fft_op.getOperand().getType());
-    const std::vector<int64_t> input_shape =
+    const auto input_shape =
         input_type
             ? input_type.getShape()
             : mlir::cast<ShapedType>(fft_op.getOperand().getType()).getShape();
@@ -127,14 +112,14 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
 
     // Create a new fft_length attribute for the 2D FFT.
     SmallVector<int64_t, 3> new_fft_lengths = {1, fft_lengths.back()};
-    auto new_fft_lengths_attr = rewriter.getI64TensorAttr(new_fft_lengths);
+    auto new_fft_lengths_attr = rewriter.getDenseI64ArrayAttr(new_fft_lengths);
 
     bool is_dynamic_shape = !input_type || !input_type.hasStaticShape();
 
     // Input can have a single trivial batch dim next to the fft dimension, in
     // which case we don't need to expand the input.
     if (input_shape[input_shape.size() - 2] != 1) {
-      const std::vector<int64_t> output_shape = output_type.getShape();
+      const auto output_shape = output_type.getShape();
 
       // [a, b, c, d, e] -> [a, b, c, d, 1, e]
       SmallVector<int64_t, 6> expanded_input_shape{input_shape.begin(),
@@ -147,8 +132,8 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
                      : mlir::cast<ShapedType>(fft_op.getOperand().getType())
                            .getElementType());
 
-      // Dynamic shape needs to be handled separately as mhlo::ReshapeOp does
-      // not support dynamic shape.
+      // Dynamic shape needs to be handled separately as stablehlo::ReshapeOp
+      // does not support dynamic shape.
       if (is_dynamic_shape) {
         // Programmatically-
         // 1. Get the dimensions of the input tensor and create shape vector.
@@ -159,40 +144,38 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
           expanded_input_shape_values.push_back(GetDimensionSizeTensor(
               rewriter, fft_op.getLoc(), fft_operand, i));
         }
-        expanded_input_shape_values.push_back(mhlo::ConstantOp::create(
-            rewriter, fft_op.getLoc(), rewriter.getI32TensorAttr({1})));
+        auto one_cst_attr = DenseIntElementsAttr::get(
+            RankedTensorType::get({1}, rewriter.getI32Type()), 1);
+        expanded_input_shape_values.push_back(stablehlo::ConstantOp::create(
+            rewriter, fft_op.getLoc(), one_cst_attr));
         expanded_input_shape_values.push_back(GetDimensionSizeTensor(
             rewriter, fft_op.getLoc(), fft_operand, input_shape.size() - 1));
 
-        auto expanded_input_shape_tensor = mhlo::ConcatenateOp::create(
-            rewriter, fft_op.getLoc(),
-            RankedTensorType::get(
-                {static_cast<int64_t>(expanded_input_shape_values.size())},
-                rewriter.getI32Type()),
-            expanded_input_shape_values, 0);
+        auto expanded_input_shape_tensor = stablehlo::ConcatenateOp::create(
+            rewriter, fft_op.getLoc(), expanded_input_shape_values, 0);
 
-        // Create a new mhlo.dynamic_reshape op with the expanded input and
+        // Create a new stablehlo.dynamic_reshape op with the expanded input and
         // expanded input shape. SHAPE tensor is created in the previous step.
-        fft_operand = mhlo::DynamicReshapeOp::create(
+        fft_operand = stablehlo::DynamicReshapeOp::create(
             rewriter, fft_op.getLoc(), expanded_input_type, fft_operand,
             expanded_input_shape_tensor);
       } else {
-        fft_operand = mhlo::ReshapeOp::create(rewriter, fft_op.getLoc(),
-                                              expanded_input_type, fft_operand);
+        fft_operand = stablehlo::ReshapeOp::create(
+            rewriter, fft_op.getLoc(), expanded_input_type, fft_operand);
       }
 
       SmallVector<int64_t, 6> new_output_shape = {output_shape.begin(),
                                                   output_shape.end() - 1};
       new_output_shape.push_back(1);
       new_output_shape.push_back(output_shape.back());
-      // Create a new mhlo.fft op with the expanded input and fft_length.
+      // Create a new stablehlo.fft op with the expanded input and fft_length.
       output_type = mlir::RankedTensorType::get(new_output_shape,
                                                 output_type.getElementType());
     }
 
-    auto new_fft =
-        mhlo::FftOp::create(rewriter, fft_op.getLoc(), output_type, fft_operand,
-                            fft_op.getFftType(), new_fft_lengths_attr);
+    auto new_fft = stablehlo::FftOp::create(
+        rewriter, fft_op.getLoc(), output_type, fft_operand,
+        fft_op.getFftType(), new_fft_lengths_attr);
 
     if (input_shape[input_shape.size() - 2] != 1) {
       // Squeeze the output dimensions back to 2D.
@@ -207,20 +190,16 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
             rewriter, fft_op.getLoc(), new_fft.getResult(),
             new_fft.getResult().getType().getShape().size() - 1));
 
-        auto shape_tensor = mhlo::ConcatenateOp::create(
-            rewriter, fft_op.getLoc(),
-            RankedTensorType::get(
-                {static_cast<int64_t>(output_shape_values.size())},
-                rewriter.getI32Type()),
-            output_shape_values, 0);
-        auto squeeze_op = mhlo::DynamicReshapeOp::create(
+        auto shape_tensor = stablehlo::ConcatenateOp::create(
+            rewriter, fft_op.getLoc(), output_shape_values, 0);
+        auto squeeze_op = stablehlo::DynamicReshapeOp::create(
             rewriter, fft_op.getLoc(), fft_op.getResult().getType(),
             new_fft.getResult(), shape_tensor);
         rewriter.replaceOp(fft_op, squeeze_op.getResult());
       } else {
-        auto squeeze_op = mhlo::ReshapeOp::create(rewriter, fft_op.getLoc(),
-                                                  fft_op.getResult().getType(),
-                                                  new_fft.getResult());
+        auto squeeze_op = stablehlo::ReshapeOp::create(
+            rewriter, fft_op.getLoc(), fft_op.getResult().getType(),
+            new_fft.getResult());
         rewriter.replaceOp(fft_op, squeeze_op.getResult());
       }
     } else {
@@ -231,12 +210,12 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
   }
 };
 
-class LegalizeRfftOp : public OpConversionPattern<mhlo::FftOp> {
+class LegalizeRfftOp : public OpConversionPattern<stablehlo::FftOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::FftOp fft_op, OpAdaptor adaptor,
+      stablehlo::FftOp fft_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     if (!IsSupportedRfftOp(fft_op)) {
       return rewriter.notifyMatchFailure(fft_op, "Unsupported fft op.");
@@ -247,8 +226,7 @@ class LegalizeRfftOp : public OpConversionPattern<mhlo::FftOp> {
     if (!input_type)
       return rewriter.notifyMatchFailure(fft_op, "Unsupported input type.");
 
-    const auto fft_lengths =
-        llvm::to_vector(fft_op.getFftLength().getValues<int64_t>());
+    const auto fft_lengths = fft_op.getFftLength();
     if (fft_lengths.size() != 2) {
       return rewriter.notifyMatchFailure(
           fft_op, "TFLite RFFT2d requires 2D FFT Length.");
@@ -274,14 +252,16 @@ class LegalizeRfftOp : public OpConversionPattern<mhlo::FftOp> {
 };
 
 // Returns true if the fft op is a legal fft op.
-bool IsLegalFftOp(mhlo::FftOp fft_op) { return !IsSupportedRfftOp(fft_op); }
+bool IsLegalFftOp(stablehlo::FftOp fft_op) {
+  return !IsSupportedRfftOp(fft_op);
+}
 
 }  // namespace
 
 void PopulateLegalizeFftPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                                  ConversionTarget& target) {
   patterns.add<LegalizeRfftOp>(ctx);
-  target.addDynamicallyLegalOp<mhlo::FftOp>(IsLegalFftOp);
+  target.addDynamicallyLegalOp<stablehlo::FftOp>(IsLegalFftOp);
 }
 
 void PopulatePrepareFftPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {

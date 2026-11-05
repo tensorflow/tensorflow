@@ -50,9 +50,6 @@ class QuantDialect;
 namespace quantfork {
 class QuantizationForkDialect;
 }
-namespace mhlo {
-class MhloDialect;
-}
 namespace TF {
 class TensorFlowDialect;
 }
