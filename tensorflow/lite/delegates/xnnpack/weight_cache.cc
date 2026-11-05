@@ -331,19 +331,24 @@ bool WeightCacheBuilder::StopBuildStep() {
 }
 
 void* CacheMissHandler::Reserve(size_t size) {
-  CacheMissHandler::Buffer buffer{
-      /*data=*/std::make_unique<uint8_t[]>(size + kMinAlignment),
-      /*loc=*/
-      BufferLocation{/*offset=*/min_offset_ + buffers_.size(), /*size=*/size},
-      /*ptr=*/nullptr,
-      /*used=*/false,
-  };
-
   // Calls to Reserve / Append do not support interleaving. When a Reserve call
   // hasn't been used, we can replace the buffer. This will free the memory and
   // prevent taking up too much memory in the case Reserve is called but then
   // never appended.
-  if (!buffers_.empty() && !buffers_.back().used) {
+  const bool replace_unused = !buffers_.empty() && !buffers_.back().used;
+  // A replaced buffer keeps its offset, which keeps the offsets of all the
+  // buffers distinct.
+  const size_t offset = replace_unused ? buffers_.back().loc.offset
+                                       : min_offset_ + buffers_.size();
+  CacheMissHandler::Buffer buffer{
+      // The buffer is left uninitialized: it is about to be overwritten with
+      // packed data and zeroing it would touch every page one more time.
+      /*data=*/std::unique_ptr<uint8_t[]>(new uint8_t[size + kMinAlignment]),
+      /*loc=*/BufferLocation{/*offset=*/offset, /*size=*/size},
+      /*ptr=*/nullptr,
+      /*used=*/false,
+  };
+  if (replace_unused) {
     buffers_.back() = std::move(buffer);
   } else {
     buffers_.emplace_back(std::move(buffer));
@@ -383,7 +388,8 @@ MMapWeightCacheProvider::MMapWeightCacheProvider(
       XNN_MOVE_CONSTRUCT_MEMBER(file_descriptor_),
       XNN_MOVE_CONSTRUCT_MEMBER(builder_),
       XNN_MOVE_CONSTRUCT_MEMBER(cache_miss_handler_),
-      XNN_MOVE_CONSTRUCT_MEMBER(offset_to_addr_) {
+      XNN_MOVE_CONSTRUCT_MEMBER(offset_to_addr_),
+      XNN_MOVE_CONSTRUCT_MEMBER(in_memory_) {
   // The contexts need to keep pointing to their owning object.
   cache_provider_.context = this;
   other.cache_provider_.context = &other;
@@ -408,12 +414,15 @@ MMapWeightCacheProvider& MMapWeightCacheProvider::operator=(
   XNN_MOVE_MEMBER(builder_);
   XNN_MOVE_MEMBER(cache_miss_handler_);
   XNN_MOVE_MEMBER(offset_to_addr_);
+  XNN_MOVE_MEMBER(in_memory_);
 #undef XNN_MOVE_MEMBER
   return *this;
 }
 
 bool MMapWeightCacheProvider::WriteCacheMissFlag() {
-  if (cache_miss_handler_.HasCacheMisses()) {
+  // In-memory caches don't have a file to mark as stale: all their buffers go
+  // through the cache miss handler.
+  if (cache_miss_handler_.HasCacheMisses() && !in_memory_) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_WARNING,
                     "Cache file is stale. Setting stale flag.");
     return WriteStaleFlag();
@@ -475,13 +484,16 @@ bool MMapWeightCacheProvider::StartBuild(const char* path, FileDescriptor fd) {
   const char* const safe_path = Sanitize(path);
   SetFilePath(safe_path);
 
+  if (!fd.IsValid() && IsInMemoryCachePath(file_path_)) {
+    // In-memory caches are never written to a file. Packed buffers are stored
+    // by the cache miss handler as they are inserted, without build steps.
+    in_memory_ = true;
+    return true;
+  }
+
   if (!fd.IsValid()) {
-    if (IsInMemoryCachePath(file_path_)) {
-      fd = CreateInMemoryFileDescriptor("XNNPack in-memory weight cache");
-    } else {
-      fd = FileDescriptor::Open(file_path_.c_str(), O_CREAT | O_TRUNC | O_RDWR,
-                                0644);
-    }
+    fd = FileDescriptor::Open(file_path_.c_str(), O_CREAT | O_TRUNC | O_RDWR,
+                              0644);
   }
   XNNPACK_RETURN_CHECK(fd.IsValid(), "could not open file ('%s'): %s.",
                        file_path_.c_str(), strerror(errno));
@@ -670,6 +682,11 @@ bool MMapWeightCacheProvider::LoadLastBuildStep() {
 }
 
 bool MMapWeightCacheProvider::StartBuildStep() {
+  if (in_memory_) {
+    // In-memory caches store buffers as they are inserted. Build steps are
+    // no-ops.
+    return true;
+  }
   XNNPACK_RETURN_CHECK(CanStartBuildStep(),
                        "cannot append data to an existing cache file.");
   if (IsBuilding()) {
@@ -679,6 +696,9 @@ bool MMapWeightCacheProvider::StartBuildStep() {
 }
 
 bool MMapWeightCacheProvider::StopBuildStep() {
+  if (in_memory_) {
+    return true;
+  }
   XNNPACK_RETURN_CHECK(builder_.StopBuildStep());
 #if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
   if (!mmap_handles_.empty()) {
@@ -792,11 +812,17 @@ void* MMapWeightCacheProvider::OffsetToAddr(const size_t offset) {
 }
 
 void MMapWeightCacheProvider::Release() {
+  // Flag the cache file before forgetting about the cache misses.
+  WriteCacheMissFlag();
   buffer_address_to_identifier_.clear();
+  buffer_remaps_.clear();
   cache_key_to_offset_.clear();
   mmap_handles_.clear();
+  offset_to_addr_.clear();
   mmap_buffer_base_offset_ = 0;
   builder_ = WeightCacheBuilder();
+  cache_miss_handler_ = CacheMissHandler();
+  in_memory_ = false;
 }
 
 size_t MMapWeightCacheProvider::look_up(
