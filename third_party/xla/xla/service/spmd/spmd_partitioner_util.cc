@@ -408,6 +408,14 @@ std::vector<HloInstruction*> MakePartitionOffsets(
   return offsets;
 }
 
+std::vector<HloInstruction*> MakePartitionOffsets(
+    const Shape& shape, const HloSharding& sharding,
+    HloInstruction* partition_id, SpmdBuilder* b,
+    absl::Span<const int64_t> dims) {
+  return MakePartitionOffsets(shape, sharding, partition_id, b,
+                              GetOffsetType(shape, sharding), dims);
+}
+
 std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
     const HloSharding& sharding, HloInstruction* partition_id, SpmdBuilder* b) {
   CHECK(!sharding.IsReplicatedOrSingleDevice());
@@ -1101,27 +1109,41 @@ int64_t MultiplyAddDivideOffsetCalculation::Calculate(
 
 HloInstruction* MultiplyAddDivideOffsetCalculation::Calculate(
     HloInstruction* shard_ordinal, SpmdBuilder* b) const {
-  auto scalar_shape = ShapeUtil::MakeShape(S32, {});
+  PrimitiveType type = S32;
+  if (multiplier_ > std::numeric_limits<int32_t>::max() ||
+      multiplier_ < std::numeric_limits<int32_t>::min() ||
+      offset_ > std::numeric_limits<int32_t>::max() ||
+      offset_ < std::numeric_limits<int32_t>::min() ||
+      divisor_ > std::numeric_limits<int32_t>::max() ||
+      divisor_ < std::numeric_limits<int32_t>::min() ||
+      shard_ordinal->shape().element_type() == S64) {
+    type = S64;
+  }
+  auto scalar_shape = ShapeUtil::MakeShape(type, {});
   if (multiplier_ == 0) {
     return b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32_t>(offset_ / divisor_)));
+        LiteralUtil::CreateR0(type, offset_ / divisor_)));
   }
   HloInstruction* result = shard_ordinal;
+  if (result->shape().element_type() != type) {
+    result = b->AddInstruction(
+        HloInstruction::CreateConvert(ShapeUtil::MakeShape(type, {}), result));
+  }
   if (multiplier_ != 1) {
     result = b->AddInstruction(HloInstruction::CreateBinary(
-        scalar_shape, HloOpcode::kMultiply, shard_ordinal,
+        scalar_shape, HloOpcode::kMultiply, result,
         b->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32_t>(multiplier_)))));
+            LiteralUtil::CreateR0(type, multiplier_)))));
   }
   if (offset_ != 0) {
-    auto offset = b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32_t>(offset_)));
+    auto offset = b->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0(type, offset_)));
     result = b->AddInstruction(HloInstruction::CreateBinary(
         scalar_shape, HloOpcode::kAdd, result, offset));
   }
   if (divisor_ != 1) {
-    auto divisor = b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32_t>(divisor_)));
+    auto divisor = b->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0(type, divisor_)));
     result = b->AddInstruction(HloInstruction::CreateBinary(
         scalar_shape, HloOpcode::kDivide, result, divisor));
   }
@@ -1206,6 +1228,20 @@ HloInstruction* OffsetCalculation::Calculate(HloInstruction* shard_ordinal,
   }
   auto lhs = lhs_->Calculate(shard_ordinal, b);
   auto rhs = rhs_->Calculate(shard_ordinal, b);
+  if (lhs->shape().element_type() != rhs->shape().element_type()) {
+    PrimitiveType target_type = (lhs->shape().element_type() == S64 ||
+                                 rhs->shape().element_type() == S64)
+                                    ? S64
+                                    : lhs->shape().element_type();
+    if (lhs->shape().element_type() != target_type) {
+      lhs = b->AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::MakeShape(target_type, {}), lhs));
+    }
+    if (rhs->shape().element_type() != target_type) {
+      rhs = b->AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::MakeShape(target_type, {}), rhs));
+    }
+  }
   return b->AddInstruction(
       HloInstruction::CreateBinary(lhs->shape(), opcode_, lhs, rhs));
 }
@@ -1970,12 +2006,15 @@ std::optional<HloInstruction*> ExchangeHaloAndGetValidData(
           HloInstruction::CreateSlice(slice_shape, concat, start_indices,
                                       slice_shape.dimensions(), strides));
     } else {
+      HloInstruction* offset_dim =
+          start_offset_on_padded_concat_calculation.Calculate(partition_ordinal,
+                                                              b);
+      PrimitiveType offset_type = offset_dim->shape().element_type();
       auto zero = b->AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+          HloInstruction::CreateConstant(LiteralUtil::Zero(offset_type)));
       std::vector<HloInstruction*> slice_offsets(base_shape.dimensions().size(),
                                                  zero);
-      slice_offsets[dim] = start_offset_on_padded_concat_calculation.Calculate(
-          partition_ordinal, b);
+      slice_offsets[dim] = offset_dim;
       valid_slice = b->AddInstruction(HloInstruction::CreateDynamicSlice(
           slice_shape, concat, slice_offsets, slice_shape.dimensions()));
     }
@@ -1990,11 +2029,23 @@ std::optional<HloInstruction*> ExchangeHaloAndGetValidData(
                                 explicit_left_padding_on_full_shape;
   // Mask off garbage data due to uneven partition or low/high padding.
   if (explicit_left_padding_on_full_shape > 0 || total_right_padding > 0) {
-    auto index_shape = ShapeUtil::ChangeElementType(valid_slice->shape(), S32);
+    PrimitiveType index_type = S32;
+    if (base_shape.dimensions(dim) + explicit_left_padding_on_full_shape >=
+            std::numeric_limits<int32_t>::max() ||
+        padded_full_shape_size >= std::numeric_limits<int32_t>::max() ||
+        offset_on_padded_shape->shape().element_type() == S64) {
+      index_type = S64;
+    }
+    auto index_shape =
+        ShapeUtil::ChangeElementType(valid_slice->shape(), index_type);
     auto iota = b->AddInstruction(HloInstruction::CreateIota(index_shape, dim));
-    auto broadcast_start_index_in_padded_shape =
-        b->AddInstruction(HloInstruction::CreateBroadcast(
-            index_shape, offset_on_padded_shape, {}));
+    HloInstruction* start_offset = offset_on_padded_shape;
+    if (start_offset->shape().element_type() != index_type) {
+      start_offset = b->AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::MakeShape(index_type, {}), start_offset));
+    }
+    auto broadcast_start_index_in_padded_shape = b->AddInstruction(
+        HloInstruction::CreateBroadcast(index_shape, start_offset, {}));
     auto index_in_padded_shape = b->AddInstruction(
         HloInstruction::CreateBinary(index_shape, HloOpcode::kAdd, iota,
                                      broadcast_start_index_in_padded_shape));
@@ -2005,8 +2056,8 @@ std::optional<HloInstruction*> ExchangeHaloAndGetValidData(
           b->AddInstruction(HloInstruction::CreateBroadcast(
               index_shape,
               b->AddInstruction(
-                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
-                      explicit_left_padding_on_full_shape))),
+                  HloInstruction::CreateConstant(LiteralUtil::CreateR0(
+                      index_type, explicit_left_padding_on_full_shape))),
               {}));
       predicates.push_back(b->AddInstruction(HloInstruction::CreateCompare(
           mask_shape, index_in_padded_shape, valid_index_start,
@@ -2017,9 +2068,9 @@ std::optional<HloInstruction*> ExchangeHaloAndGetValidData(
           b->AddInstruction(HloInstruction::CreateBroadcast(
               index_shape,
               b->AddInstruction(
-                  HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
-                      base_shape.dimensions(dim) +
-                      explicit_left_padding_on_full_shape))),
+                  HloInstruction::CreateConstant(LiteralUtil::CreateR0(
+                      index_type, base_shape.dimensions(dim) +
+                                      explicit_left_padding_on_full_shape))),
               {}));
       predicates.push_back(b->AddInstruction(HloInstruction::CreateCompare(
           mask_shape, index_in_padded_shape, valid_index_limit,
@@ -2586,7 +2637,7 @@ HloInstruction* PerGroupSliceFromReplicated(
   return b->AddInstruction(HloInstruction::CreateDynamicSlice(
       shard_shape, padded_hlo,
       MakePartitionOffsets(replicated->shape(), group_level_sharding, group_id,
-                           b, S32),
+                           b),
       shard_shape.dimensions()));
 }
 

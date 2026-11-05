@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1403,12 +1404,12 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
             o->shape(),
             windowed_op_is_lhs ? *lhs_sharding_transposed_to_match_output
                                : *rhs_sharding_transposed_to_match_output,
-            ccw_data_partition_id, &body_b, S32);
+            ccw_data_partition_id, &body_b);
         auto cw_offsets = MakePartitionOffsets(
             o->shape(),
             windowed_op_is_lhs ? *lhs_sharding_transposed_to_match_output
                                : *rhs_sharding_transposed_to_match_output,
-            cw_data_partition_id, &body_b, S32);
+            cw_data_partition_id, &body_b);
         o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
             o->shape(), o, ccw_dot, ccw_offsets));
         o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
@@ -1475,7 +1476,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
           o->shape(),
           windowed_op_is_lhs ? *lhs_sharding_transposed_to_match_output
                              : *rhs_sharding_transposed_to_match_output,
-          data_partition_id, &body_b, S32, einsum_config.windowing_dims);
+          data_partition_id, &body_b, einsum_config.windowing_dims);
       o = body_b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
           o->shape(), o, dot, offsets));
     }
@@ -5042,17 +5043,29 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       }
       // Mask off invalid data in collapsed dimensions.
       for (int64_t dim : dims_to_mask) {
+        int64_t dim_size = reduce_outside->operand(0)->shape().dimensions(dim);
+        HloInstruction* slice_offset = slice_offsets[dim];
+        PrimitiveType index_type =
+            (dim_size >= std::numeric_limits<int32_t>::max() ||
+             padded_shape.dimensions(dim) >=
+                 std::numeric_limits<int32_t>::max() ||
+             slice_offset->shape().element_type() == S64)
+                ? S64
+                : S32;
         auto* iota = body->AddInstruction(HloInstruction::CreateIota(
-            ShapeUtil::ChangeElementType(operand0->shape(), S32), dim));
+            ShapeUtil::ChangeElementType(operand0->shape(), index_type), dim));
+        if (slice_offset->shape().element_type() != index_type) {
+          slice_offset = body->AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::MakeShape(index_type, {}), slice_offset));
+        }
         auto* add = body->AddInstruction(HloInstruction::CreateBinary(
             iota->shape(), HloOpcode::kAdd, iota,
             body->AddInstruction(HloInstruction::CreateBroadcast(
-                iota->shape(), slice_offsets[dim], {}))));
+                iota->shape(), slice_offset, {}))));
         auto* limit = body->AddInstruction(HloInstruction::CreateBroadcast(
             iota->shape(),
-            body->AddInstruction(
-                HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
-                    reduce_outside->operand(0)->shape().dimensions(dim)))),
+            body->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0(index_type, dim_size))),
             {}));
         auto* compare = body->AddInstruction(HloInstruction::CreateCompare(
             ShapeUtil::ChangeElementType(iota->shape(), PRED), add, limit,
