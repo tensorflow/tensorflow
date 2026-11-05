@@ -331,7 +331,7 @@ TEST_F(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
 }
 
 TEST_F(WeightCacheBuilderTest, InMemoryCacheCanBeBuilt) {
-  if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+  if (!InMemoryFileDescriptorAvailable()) {
     GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
                     "isn't supported by the current system, skipping test.";
   }
@@ -529,6 +529,25 @@ TEST(CacheMissHandlerTest, MultipleAppendsReturnDifferentOffsets) {
   ASSERT_THAT(buffer1_it, Not(offset_to_addr.end()));
   ASSERT_THAT(buffer2_it, Not(offset_to_addr.end()));
   EXPECT_THAT(buffer1_it->second, Not(buffer2_it->second));
+}
+
+TEST(CacheMissHandlerTest, UnusedReserveDoesntReuseOffsets) {
+  const double kData[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  CacheMissHandler cache_miss_handler;
+  std::map<size_t, void*> offset_to_addr;
+  const PackIdentifier dummy_id{2, 3, 4};
+  // The first buffer is reserved but never appended, e.g. because the packed
+  // data was already in the cache. The next reservation replaces it.
+  ASSERT_THAT(cache_miss_handler.Reserve(sizeof(kData)), Not(IsNull()));
+  void* const ptr1 = cache_miss_handler.Reserve(sizeof(kData));
+  std::memcpy(ptr1, kData, sizeof(kData));
+  const BufferLocation loc1 = cache_miss_handler.Append(
+      dummy_id, ptr1, sizeof(kData), kDefaultFingerprint.id, offset_to_addr);
+  const BufferLocation loc2 = cache_miss_handler.Append(
+      dummy_id, kData, sizeof(kData), kDefaultFingerprint.id, offset_to_addr);
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(2));
+  EXPECT_THAT(loc1.offset, Ne(loc2.offset));
+  EXPECT_THAT(offset_to_addr.size(), Eq(2));
 }
 
 struct FakeContext {
@@ -817,7 +836,8 @@ TEST_P(BuildMMapWeightCacheProviderTest, BuildStepSequenceWorks) {
                   kWeightIndex2);
 
   EXPECT_TRUE(cache_provider.IsActive());
-  EXPECT_TRUE(cache_provider.IsBuilding());
+  // In-memory caches don't use build steps.
+  EXPECT_EQ(cache_provider.IsBuilding(), !use_in_memory_cache);
   ASSERT_TRUE(cache_provider.StopBuildStep());
 
   ASSERT_TRUE(cache_provider.IsActive());
@@ -1413,6 +1433,112 @@ TEST_F(MaliciousCacheTest, BufferOffsetPlusSizeOverflowsInt64) {
 
   MMapWeightCacheProvider cache_provider;
   EXPECT_FALSE(cache_provider.Load(fd_.GetCPath()));
+}
+
+class InMemoryWeightCacheTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    xnn_set_fingerprint(kDefaultFingerprint);
+    ASSERT_TRUE(provider_.LoadOrStartBuild(kInMemoryCachePath));
+  }
+
+  static xnn_weights_cache_look_up_key Key(uint32_t seed,
+                                           const std::string& weights) {
+    return {.seed = seed,
+            .kernel = weights.data(),
+            .bias = nullptr,
+            .fingerprint_id = kDefaultFingerprint.id};
+  }
+
+  // Packs `weights` the way XNNPack does and returns the cache offset.
+  size_t Insert(const xnn_weights_cache_look_up_key& key,
+                const std::string& weights) {
+    void* const reserved = provider_.ReserveSpace(weights.size());
+    if (reserved == nullptr) {
+      return SIZE_MAX;
+    }
+    std::memcpy(reserved, weights.data(), weights.size());
+    return provider_.LookUpOrInsert(&key, reserved, weights.size());
+  }
+
+  MMapWeightCacheProvider provider_;
+};
+
+TEST(InMemoryWeightCacheProviderTest, IsAlwaysAvailable) {
+  EXPECT_TRUE(TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider());
+}
+
+TEST_F(InMemoryWeightCacheTest, DoesntNeedBuildSteps) {
+  EXPECT_TRUE(provider_.IsActive());
+  EXPECT_FALSE(provider_.CanStartBuildStep());
+  EXPECT_FALSE(provider_.IsBuilding());
+  // Build steps are accepted but don't do anything.
+  EXPECT_TRUE(provider_.StartBuildStep());
+  EXPECT_FALSE(provider_.IsBuilding());
+  EXPECT_TRUE(provider_.StopBuildStep());
+}
+
+TEST_F(InMemoryWeightCacheTest, BuffersHaveStableAddresses) {
+  std::vector<std::string> weights;
+  std::vector<size_t> offsets;
+  std::vector<const void*> addresses;
+  for (int i = 0; i < 16; ++i) {
+    weights.push_back(GenerateRandomString(100000 + i));
+    ASSERT_TRUE(provider_.MapBufferIdentifier(
+        weights.back().data(), weights.back().size(), /*identifier=*/i));
+    offsets.push_back(Insert(Key(/*seed=*/1, weights.back()), weights.back()));
+    ASSERT_NE(offsets.back(), SIZE_MAX);
+    // The address is usable as soon as the buffer is inserted.
+    addresses.push_back(provider_.OffsetToAddr(offsets.back()));
+    ASSERT_NE(addresses.back(), nullptr);
+  }
+  for (size_t i = 0; i < weights.size(); ++i) {
+    EXPECT_EQ(provider_.OffsetToAddr(offsets[i]), addresses[i]);
+    EXPECT_THAT(LightSpan<const char>(addresses[i], weights[i].size()),
+                ElementsAreArray(weights[i]));
+  }
+}
+
+TEST_F(InMemoryWeightCacheTest, DeduplicatesBuffers) {
+  const std::string weights = GenerateRandomString(10000);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  const xnn_weights_cache_look_up_key key = Key(/*seed=*/1, weights);
+  const size_t offset = Insert(key, weights);
+  ASSERT_NE(offset, SIZE_MAX);
+  EXPECT_EQ(provider_.LookUp(&key), offset);
+  EXPECT_EQ(Insert(key, weights), offset);
+
+  // The same weights packed differently get their own buffer.
+  const xnn_weights_cache_look_up_key other_key = Key(/*seed=*/2, weights);
+  const size_t other_offset = Insert(other_key, weights);
+  ASSERT_NE(other_offset, SIZE_MAX);
+  EXPECT_NE(other_offset, offset);
+}
+
+TEST_F(InMemoryWeightCacheTest, ReleaseClearsTheCache) {
+  const std::string weights = GenerateRandomString(64);
+  const xnn_weights_cache_look_up_key key = Key(/*seed=*/1, weights);
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  const size_t offset = Insert(key, weights);
+  ASSERT_NE(offset, SIZE_MAX);
+
+  provider_.Release();
+  EXPECT_FALSE(provider_.IsActive());
+
+  // A released provider can start a new cache whose offsets point to the new
+  // data.
+  const std::string other_weights = GenerateRandomString(64);
+  ASSERT_TRUE(provider_.StartBuild(kInMemoryCachePath));
+  ASSERT_TRUE(provider_.MapBufferIdentifier(weights.data(), weights.size(),
+                                            /*identifier=*/1));
+  EXPECT_EQ(provider_.LookUp(&key), SIZE_MAX);
+  const size_t new_offset = Insert(key, other_weights);
+  ASSERT_NE(new_offset, SIZE_MAX);
+  EXPECT_THAT(LightSpan<const char>(provider_.OffsetToAddr(new_offset),
+                                    other_weights.size()),
+              ElementsAreArray(other_weights));
 }
 
 }  // namespace
