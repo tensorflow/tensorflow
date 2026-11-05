@@ -137,7 +137,7 @@ inline void DepthwiseConv(const DepthwiseParams& params,
 #ifndef TFLITE_WITH_RUY
   // Cap the number of threads to 2 for float path to avoid regression in
   // performance (b/132294857).
-  if (std::is_floating_point<T>::value) {
+  if (std::is_floating_point_v<T>) {
     thread_count = std::min(thread_count, 2);
   }
 #endif
