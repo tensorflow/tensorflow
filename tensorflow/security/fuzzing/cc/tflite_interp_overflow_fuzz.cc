@@ -26,6 +26,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstring>
 #include <fstream>
+#include <ios>
 #include <iterator>
 #include <memory>
 #include <string>
