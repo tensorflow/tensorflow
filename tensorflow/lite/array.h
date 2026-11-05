@@ -92,13 +92,13 @@ inline FloatArrayUniquePtr BuildTfLiteArray<float>(const int size) {
 // If T is explicitely specified and the type of values is not the same as T,
 // then a static_cast is performed.
 template <class T = void, class U,
-          class Type = std::conditional_t<std::is_same<T, void>::value, U, T>>
+          class Type = std::conditional_t<std::is_same_v<T, void>, U, T>>
 TfLiteArrayUniquePtr<Type> BuildTfLiteArray(const int size,
                                             const U* const values) {
   TfLiteArrayUniquePtr<Type> array = BuildTfLiteArray<Type>(size);
   // If size is 0, the array pointer may be null.
   if (array && values) {
-    if (std::is_same<Type, U>::value) {
+    if (std::is_same_v<Type, U>) {
       memcpy(array->data, values, size * sizeof(Type));
     } else {
       for (int i = 0; i < size; ++i) {
@@ -130,8 +130,7 @@ template <
     class ElementType =
         std::decay_t<decltype(*std::declval<Container>().data())>,
     class SizeType = std::decay_t<decltype(std::declval<Container>().size())>,
-    class Type =
-        std::conditional_t<std::is_same<T, void>::value, ElementType, T>>
+    class Type = std::conditional_t<std::is_same_v<T, void>, ElementType, T>>
 TfLiteArrayUniquePtr<Type> BuildTfLiteArray(const Container& values) {
   return BuildTfLiteArray<Type>(static_cast<int>(values.size()), values.data());
 }
