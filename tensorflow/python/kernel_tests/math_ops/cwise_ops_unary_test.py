@@ -644,7 +644,8 @@ class UnaryOpTest(test.TestCase):
     # Test IEEE-754 / ISO C99 compliance for complex abs:
     # hypot(+-inf, NaN) = +inf and hypot(NaN, +-inf) = +inf
     for dtype in [np.complex64, np.complex128]:
-      # Extended test ranges
+      # Extended test ranges covering combinations of inf, nan, finite,
+      # and -0.0 (20 cases)
       x_1d = np.array([
           complex(np.inf, np.nan),
           complex(-np.inf, np.nan),
@@ -658,26 +659,38 @@ class UnaryOpTest(test.TestCase):
           complex(0.0, np.inf),
           complex(-np.inf, 0.0),
           complex(0.0, -np.inf),
+          complex(np.inf, np.inf),
+          complex(-np.inf, np.inf),
+          complex(np.inf, -np.inf),
+          complex(-np.inf, -np.inf),
+          complex(np.nan, np.nan),
+          complex(-0.0, 0.0),
+          complex(0.0, -0.0),
+          complex(-0.0, -0.0),
       ], dtype=dtype)
-      self.assertAllClose(np.abs(x_1d), math_ops.abs(x_1d))
 
-      # Python built-in aliasing
-      self.assertAllClose(np.abs(x_1d), _ABS(x_1d))
+      for device_fn in (test_util.force_cpu, test_util.use_gpu):
+        with device_fn():
+          with self.subTest(dtype=dtype, device=device_fn.__name__):
+            self.assertAllClose(np.abs(x_1d), math_ops.abs(x_1d))
 
-      # multidimensional checks
-      x_2d = x_1d.reshape((2, 6))
-      self.assertAllClose(np.abs(x_2d), math_ops.abs(x_2d))
-      self.assertAllClose(np.abs(x_2d), _ABS(x_2d))
+            # Python built-in aliasing
+            self.assertAllClose(np.abs(x_1d), _ABS(x_1d))
 
-      # scalar bounds (N=1)
-      x_scalar = np.array(complex(np.inf, np.nan), dtype=dtype)
-      self.assertAllClose(np.abs(x_scalar), math_ops.abs(x_scalar))
-      self.assertAllClose(np.abs(x_scalar), _ABS(x_scalar))
+            # Multidimensional checks (4, 5) for 20 elements
+            x_2d = x_1d.reshape((4, 5))
+            self.assertAllClose(np.abs(x_2d), math_ops.abs(x_2d))
+            self.assertAllClose(np.abs(x_2d), _ABS(x_2d))
 
-      # empty bounds (N=0)
-      x_empty = np.array([], dtype=dtype)
-      self.assertAllClose(np.abs(x_empty), math_ops.abs(x_empty))
-      self.assertAllClose(np.abs(x_empty), _ABS(x_empty))
+            # Scalar bounds (N=1)
+            x_scalar = np.array(complex(np.inf, np.nan), dtype=dtype)
+            self.assertAllClose(np.abs(x_scalar), math_ops.abs(x_scalar))
+            self.assertAllClose(np.abs(x_scalar), _ABS(x_scalar))
+
+            # Empty bounds (N=0)
+            x_empty = np.array([], dtype=dtype)
+            self.assertAllClose(np.abs(x_empty), math_ops.abs(x_empty))
+            self.assertAllClose(np.abs(x_empty), _ABS(x_empty))
 
   @test_util.run_deprecated_v1
   def testGradGrad(self):
