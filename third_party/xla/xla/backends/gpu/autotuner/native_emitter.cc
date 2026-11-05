@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallSet.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -114,6 +115,10 @@ NativeEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>>
 NativeEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
+  if (IsGenericTritonFusion(instr)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "NativeEmitterBackend: unsupported instruction: ", instr.name()));
+  }
   auto config = std::make_unique<BackendConfig>();
   NativeEmitterBackendConfig* native_emitter_config =
       config->mutable_native_emitter();
@@ -138,6 +143,10 @@ absl::Status NativeEmitterBackend::ApplyConfig(HloInstruction& instr,
                                                const BackendConfig& config) {
   if (!config.has_native_emitter()) {
     return absl::InvalidArgumentError("Expected NativeEmitterBackendConfig.");
+  }
+  if (IsGenericTritonFusion(instr)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "NativeEmitterBackend: unsupported instruction: ", instr.name()));
   }
   const NativeEmitterBackendConfig& native_emitter_fusion_config =
       config.native_emitter();
