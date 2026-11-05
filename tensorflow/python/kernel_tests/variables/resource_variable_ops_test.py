@@ -1968,7 +1968,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # branch and string updates its exclusive-lock branch. Before the variable
     # is in copy-on-read mode, which a gather puts it in,
     # EnsureSparseVariableAccess rejects it first.
-    with ops.device("/CPU:0"):
+    with context.eager_mode(), ops.device("/CPU:0"):
       for var_dtype, updates, message in (
           (dtypes.bfloat16, [[1.0, 1.0]], "expected float but got bfloat16"),
           (dtypes.float32, [["a", "b"]], "expected string but got float"),
@@ -1990,7 +1990,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
   def testAssignUpdateRejectsVariableOfAnotherDtype(self):
     # Runs eagerly, like the test above.
-    with ops.device("/CPU:0"):
+    with context.eager_mode(), ops.device("/CPU:0"):
       ref = resource_variable_ops.ResourceVariable(
           np.zeros(2), dtype=dtypes.bfloat16)
       self.evaluate(ref.initializer)

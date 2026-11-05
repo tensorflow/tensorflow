@@ -592,6 +592,7 @@ class TrainingOpsTest(TensorFlowTestCase):
         )
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("Tests C++ kernel validation")
   def testResourceApplyOpsRejectVariableOfAnotherDtype(self):
     # Regression test for #113074 and #113145: these ops take their type from
     # the learning rate and gradient, so they could be given a variable of
