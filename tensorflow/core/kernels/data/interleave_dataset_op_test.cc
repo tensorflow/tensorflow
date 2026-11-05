@@ -19,15 +19,23 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 #include "tensorflow/core/platform/test.h"
+// IWYU pragma: begin_keep
+#include "tensorflow/core/platform/test_benchmark.h"
+// IWYU pragma: end_keep
 #include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
@@ -110,7 +118,10 @@ class InterleaveDatasetParams : public DatasetParams {
   DataTypeVector type_arguments_;
 };
 
-class InterleaveDatasetOpTest : public DatasetOpsTestBase {};
+class InterleaveDatasetOpTest : public DatasetOpsTestBase {
+ protected:
+  void TestBody() override {}
+};
 
 FunctionDefHelper::AttrValueWrapper MakeTensorSliceDatasetFunc(
     const DataTypeVector& output_types,
@@ -614,6 +625,202 @@ TEST_F(InterleaveDatasetOpTest, BlockLengthOutOfBounds) {
   EXPECT_EQ(Initialize(dataset_params).code(),
             absl::StatusCode::kInvalidArgument);
 }
+
+TEST_F(InterleaveDatasetOpTest, SplitProvider) {
+  auto params = InterleaveDatasetParams2();
+  TF_ASSERT_OK(InitializeRuntime(params));
+  TF_EXPECT_OK(CheckSplitProviderFullIteration(
+      params,
+      CreateTensors<int64_t>(TensorShape({1}),
+                             {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}})));
+  TF_EXPECT_OK(CheckSplitProviderShardedIteration(
+      params, /*num_shards=*/3, /*shard_index=*/1,
+      CreateTensors<int64_t>(TensorShape({1}), {{3}, {4}, {5}})));
+}
+
+TEST_F(InterleaveDatasetOpTest, SymbolicCheckpointSaveAndRestore) {
+  auto dataset_params = InterleaveDatasetParams2();
+  TF_ASSERT_OK(Initialize(dataset_params));
+
+  IteratorContext::Params params(iterator_ctx_.get());
+  params.symbolic_checkpoint = true;
+  iterator_ctx_ = std::make_unique<IteratorContext>(std::move(params));
+
+  TF_ASSERT_OK(dataset_->MakeIterator(iterator_ctx_.get(), /*parent=*/nullptr,
+                                      dataset_params.iterator_prefix(),
+                                      &iterator_));
+
+  const std::vector<Tensor> expected_outputs = CreateTensors<int64_t>(
+      TensorShape({1}), {{0}, {3}, {1}, {4}, {2}, {5}, {6}, {7}, {8}});
+  const std::vector<int> breakpoints = {0, 4, 7, 11};
+  bool end_of_sequence = false;
+  int cur_iteration = 0;
+  std::vector<Tensor> out_tensors;
+  for (int breakpoint : breakpoints) {
+    VariantTensorDataWriter writer;
+    TF_ASSERT_OK(iterator_ctx_->checkpoint()->Save(&writer));
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
+    // Restore into a fresh `IteratorContext` (whose `MemoryCheckpoint` is
+    // empty) to mirror `IteratorResource::Restore`.
+    iterator_ctx_ = std::make_unique<IteratorContext>(*iterator_ctx_);
+    TF_ASSERT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                                 dataset_params.iterator_prefix(), *dataset_,
+                                 &iterator_));
+
+    while (cur_iteration <= breakpoint) {
+      std::vector<Tensor> next;
+      TF_ASSERT_OK(
+          iterator_->GetNext(iterator_ctx_.get(), &next, &end_of_sequence));
+      out_tensors.insert(out_tensors.end(), next.begin(), next.end());
+      cur_iteration++;
+    }
+  }
+  TF_EXPECT_OK(
+      ExpectEqual(out_tensors, expected_outputs, /*compare_order=*/true));
+}
+
+TEST_F(InterleaveDatasetOpTest, SymbolicCheckpointSkip) {
+  auto dataset_params = InterleaveDatasetParams2();
+  TF_ASSERT_OK(Initialize(dataset_params));
+
+  IteratorContext::Params params(iterator_ctx_.get());
+  params.symbolic_checkpoint = true;
+  iterator_ctx_ = std::make_unique<IteratorContext>(std::move(params));
+  TF_ASSERT_OK(dataset_->MakeIterator(iterator_ctx_.get(), /*parent=*/nullptr,
+                                      dataset_params.iterator_prefix(),
+                                      &iterator_));
+  // Skipping 7 elements exhausts the first two input elements inside
+  // `SkipInternal` (which must purge their sub-iterator state from
+  // `iterator_ctx_->checkpoint()` and propagate the input iterator position
+  // recorded when the second input element was opened) and opens the third
+  // input element.
+  bool end_of_sequence = false;
+  int num_skipped = 0;
+  TF_ASSERT_OK(iterator_->Skip(iterator_ctx_.get(), /*num_to_skip=*/7,
+                               &end_of_sequence, &num_skipped));
+  EXPECT_FALSE(end_of_sequence);
+  EXPECT_EQ(num_skipped, 7);
+  {
+    VariantTensorDataWriter skip_writer;
+    TF_ASSERT_OK(iterator_ctx_->checkpoint()->Save(&skip_writer));
+    std::vector<const VariantTensorData*> skip_data;
+    skip_writer.GetData(&skip_data);
+    VariantTensorDataReader skip_reader(skip_data);
+    auto sub_iterator_index_key = [&](int input_element_index) {
+      return FullName(
+          name_utils::IteratorPrefix(
+              TensorSliceDatasetOp::kDatasetType,
+              absl::StrCat(iterator_->prefix(), "[", input_element_index, "]")),
+          "index");
+    };
+    EXPECT_FALSE(skip_reader.Contains(sub_iterator_index_key(0)));
+    EXPECT_FALSE(skip_reader.Contains(sub_iterator_index_key(1)));
+    EXPECT_TRUE(skip_reader.Contains(sub_iterator_index_key(2)));
+    int64_t input_index = -1;
+    TF_ASSERT_OK(skip_reader.ReadScalar(
+        FullName(name_utils::IteratorPrefix(TensorSliceDatasetOp::kDatasetType,
+                                            iterator_->prefix()),
+                 "index"),
+        &input_index));
+    EXPECT_EQ(input_index, 2);
+  }
+
+  // `DatasetBaseIterator::Skip` does not call `IteratorContext::SaveCheckpoint`
+  // (only `GetNext`, `MakeIterator`, and `Restore` do), so call `GetNext` once
+  // so the remaining open sub-iterator saves its state before the symbolic
+  // checkpoint is saved.
+  std::vector<Tensor> out_tensors;
+  TF_ASSERT_OK(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence));
+  EXPECT_FALSE(end_of_sequence);
+  TF_EXPECT_OK(ExpectEqual(out_tensors,
+                           CreateTensors<int64_t>(TensorShape({1}), {{7}}),
+                           /*compare_order=*/true));
+
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(iterator_ctx_->checkpoint()->Save(&writer));
+  std::vector<const VariantTensorData*> data;
+  writer.GetData(&data);
+  VariantTensorDataReader reader(data);
+  // Restore into a fresh `IteratorContext` (whose `MemoryCheckpoint` is empty)
+  // to mirror `IteratorResource::Restore`.
+  iterator_ctx_ = std::make_unique<IteratorContext>(*iterator_ctx_);
+  TF_ASSERT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
+                               dataset_params.iterator_prefix(), *dataset_,
+                               &iterator_));
+  TF_EXPECT_OK(
+      CheckIteratorGetNext(CreateTensors<int64_t>(TensorShape({1}), {{8}}),
+                           /*compare_order=*/true));
+}
+
+InterleaveDatasetParams InterleaveBenchmarkDatasetParams() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/{CreateTensor<int64_t>(TensorShape{100, 10, 1})},
+      /*node_name=*/"tensor_slice_dataset");
+  return InterleaveDatasetParams(
+      std::move(tensor_slice_dataset_params),
+      /*other_arguments=*/{},
+      /*cycle_length=*/2,
+      /*block_length=*/1,
+      /*func=*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib=*/{test::function::MakeTensorSliceDataset()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({1})},
+      /*node_name=*/kNodeName);
+}
+
+// `test_benchmark.h` provides `BENCHMARK`, `benchmark::State`, and
+// `benchmark::DoNotOptimize` without re-exporting the internal headers that
+// define them (`registration.h`, `state.h`, `utils.h`), which do not exist in
+// the benchmark release that open-source TensorFlow builds with.
+// NOLINTBEGIN(misc-include-cleaner)
+void BM_InterleaveDatasetGetNext(benchmark::State& state) {
+  auto dataset_params = InterleaveBenchmarkDatasetParams();
+  InterleaveDatasetOpTest test_base;
+  TF_CHECK_OK(test_base.InitializeRuntime(dataset_params));
+  std::unique_ptr<TestDataset> dataset;
+  TF_CHECK_OK(test_base.MakeDataset(dataset_params, &dataset));
+  std::unique_ptr<TestIterator> iterator;
+  std::vector<Tensor> out_tensors;
+  for (auto _ : state) {
+    TF_CHECK_OK(test_base.MakeIterator(dataset_params, *dataset, &iterator));
+    bool end_of_sequence = false;
+    while (!end_of_sequence) {
+      TF_CHECK_OK(iterator->GetNext(&out_tensors, &end_of_sequence));
+      benchmark::DoNotOptimize(out_tensors);
+    }
+  }
+  state.SetItemsProcessed(state.iterations() * 1000);
+}
+BENCHMARK(BM_InterleaveDatasetGetNext);
+
+void BM_InterleaveDatasetSkip(benchmark::State& state) {
+  auto dataset_params = InterleaveBenchmarkDatasetParams();
+  InterleaveDatasetOpTest test_base;
+  TF_CHECK_OK(test_base.InitializeRuntime(dataset_params));
+  std::unique_ptr<TestDataset> dataset;
+  TF_CHECK_OK(test_base.MakeDataset(dataset_params, &dataset));
+  std::unique_ptr<TestIterator> iterator;
+  for (auto _ : state) {
+    TF_CHECK_OK(test_base.MakeIterator(dataset_params, *dataset, &iterator));
+    bool end_of_sequence = false;
+    while (!end_of_sequence) {
+      int num_skipped = 0;
+      TF_CHECK_OK(iterator->iterator()->Skip(iterator->ctx(), /*num_to_skip=*/1,
+                                             &end_of_sequence, &num_skipped));
+      benchmark::DoNotOptimize(num_skipped);
+    }
+  }
+  state.SetItemsProcessed(state.iterations() * 1000);
+}
+BENCHMARK(BM_InterleaveDatasetSkip);
+// NOLINTEND(misc-include-cleaner)
 
 }  // namespace
 }  // namespace data
