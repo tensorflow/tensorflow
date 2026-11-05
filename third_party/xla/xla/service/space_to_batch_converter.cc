@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -401,6 +402,13 @@ bool ConvolutionVisitor::IsForwardWindowDilatedConv(
 
 bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
     HloInstruction* convolution) {
+  // Every convolution this pass builds takes only the rewritten lhs and rhs, so
+  // scale and sparsity operands would be dropped.
+  if (hlo_query::IsScaledConvolution(*convolution) ||
+      hlo_query::IsSparseConvolution(*convolution)) {
+    return false;
+  }
+
   ConvolutionDimensionNumbers dim_numbers =
       convolution->convolution_dimension_numbers();
 
@@ -483,6 +491,10 @@ bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
 }
 
 bool ConvolutionVisitor::IsThisBackPropFilterConv(HloInstruction* convolution) {
+  if (hlo_query::IsScaledConvolution(*convolution) ||
+      hlo_query::IsSparseConvolution(*convolution)) {
+    return false;
+  }
   auto activations = convolution->mutable_operand(0);
   auto kernel = convolution->mutable_operand(1);
   auto dim_numbers = convolution->convolution_dimension_numbers();
