@@ -210,6 +210,23 @@ class ReductionShapeOverflowTest(test.TestCase):
                                 "more than 2\\*\\*63 - 1 elements"):
       self.evaluate(reduce_fn(x))
 
+  @test_util.run_v2_only
+  @test_util.disable_xla("XLA does not support compiling shapes whose "
+                         "element count overflows an int64")
+  def testEmptyInputWithOverflowingCollapsedDimensions(self):
+    # The kernel collapses adjacent dimensions that are all kept or all
+    # reduced into one. For an empty input that size can overflow an int64
+    # while the output shape stays valid: 2**62 * 3 for kept dimensions 2 and
+    # 3 below, and for reduced dimensions 2 and 3 after that.
+    x = array_ops.zeros((0, 5, 2**62, 3), dtype=dtypes.int64)
+    for reduction in (math_ops.reduce_sum, math_ops.reduce_mean,
+                      math_ops.reduce_prod, math_ops.reduce_max,
+                      math_ops.reduce_min):
+      self.assertEqual([0, 2**62, 3], reduction(x, axis=1).shape.as_list())
+    x = array_ops.zeros((0, 3, 2**62, 3), dtype=dtypes.int64)
+    self.assertAllEqual(
+        [0, 0, 0], self.evaluate(math_ops.reduce_sum(x, axis=[0, 2, 3])))
+
   def testRepresentableEmptyReductionStillWorks(self):
     # Reducing a zero dimension away is fine whenever the resulting shape can
     # be represented, and must keep working.

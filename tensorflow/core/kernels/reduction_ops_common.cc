@@ -157,8 +157,13 @@ absl::Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
         // Starts a new run of reduce or !reduce.
         data_reshape_.push_back(size);
       } else {
-        // Continue a run of reduce or !reduce.
-        data_reshape_.back() *= size;
+        // Continue a run of reduce or !reduce. Unless the input is empty, a
+        // run's size is at most its element count, so the size can overflow
+        // only for an empty input. The run then only shapes tensors with no
+        // elements, so give it size 0.
+        const int64_t run_size =
+            MultiplyWithoutOverflow(data_reshape_.back(), size);
+        data_reshape_.back() = run_size < 0 ? 0 : run_size;
       }
     }
     // If reduce_first_axis_ is true (input's dimension 0, 2, 4, etc

@@ -2845,9 +2845,9 @@ bool ConstantFolding::IsReductionCandidateForSimplification(
       !TensorShape::IsValid(*output_tensor_shape)) {
     return false;
   }
-  const int input_num_elements =
+  const int64_t input_num_elements =
       TensorShape(*input_tensor_shape).num_elements();
-  const int output_num_elements =
+  const int64_t output_num_elements =
       TensorShape(*output_tensor_shape).num_elements();
   *is_single_element_op = input_num_elements == 1 && output_num_elements == 1;
 
