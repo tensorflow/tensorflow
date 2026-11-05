@@ -55,7 +55,7 @@ inline bool AveragePool(const PoolParams& params,
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
               std::min(params.filter_height, input_height - in_y_origin);
-          int32_t acc = 0;
+          int64_t acc = 0;
           int filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
                ++filter_y) {
@@ -72,8 +72,8 @@ inline bool AveragePool(const PoolParams& params,
           // Round to the closest integer value.
           acc = acc > 0 ? (acc + filter_count / 2) / filter_count
                         : (acc - filter_count / 2) / filter_count;
-          acc = std::max(acc, params.quantized_activation_min);
-          acc = std::min(acc, params.quantized_activation_max);
+          acc = std::max<int64_t>(acc, params.quantized_activation_min);
+          acc = std::min<int64_t>(acc, params.quantized_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
               static_cast<int8_t>(acc);
         }
@@ -173,7 +173,7 @@ inline bool AveragePool(const PoolParams& params,
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
               std::min(params.filter_height, input_height - in_y_origin);
-          int32_t acc = 0;
+          int64_t acc = 0;
           int filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
                ++filter_y) {
@@ -190,8 +190,8 @@ inline bool AveragePool(const PoolParams& params,
           // Round to the closest integer value.
           acc = acc > 0 ? (acc + filter_count / 2) / filter_count
                         : (acc - filter_count / 2) / filter_count;
-          acc = std::max(acc, params.quantized_activation_min);
-          acc = std::min(acc, params.quantized_activation_max);
+          acc = std::max<int64_t>(acc, params.quantized_activation_min);
+          acc = std::min<int64_t>(acc, params.quantized_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
               static_cast<int16_t>(acc);
         }
