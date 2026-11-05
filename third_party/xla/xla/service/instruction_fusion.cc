@@ -670,10 +670,13 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
 
         HloInstruction* fusion_instruction = nullptr;
 
-        // Try "regular" fusion if the operand may be duplicated. Otherwise,
-        // perform multi-output fusion, unless this creates a cycle.
-        FusionDecision use_regular_fusion(do_not_duplicate.count(operand) == 0,
-                                          "operand can not be duplicated");
+        // Try "regular" fusion if the operand does not need to be duplicated,
+        // or if it may be duplicated. Otherwise, perform multi-output fusion,
+        // unless this creates a cycle.
+        FusionDecision use_regular_fusion(
+            !FusionWouldDuplicate(*operand, *instruction) ||
+                do_not_duplicate.count(operand) == 0,
+            "operand can not be duplicated");
         if (use_regular_fusion) {
           use_regular_fusion =
               use_regular_fusion.And(ShouldFuse(instruction, i));
