@@ -28,10 +28,71 @@ from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
 class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
+
+  @parameterized.named_parameters(
+      ("Negative", -1), ("AtSize", 3), ("PastSize", 4)
+  )
+  def testGetItemOutOfBounds(self, index):
+    with self.session(), self.test_scope():
+      tensor_list = list_ops.tensor_list_from_tensor(
+          [1.0, 2.0, 3.0], element_shape=[]
+      )
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          f"Trying to access element {index} in a list with 3 elements",
+      ):
+        self.evaluate(
+            list_ops.tensor_list_get_item(
+                tensor_list, index, element_dtype=dtypes.float32
+            )
+        )
+
+  @parameterized.named_parameters(("First", 0, 1.0), ("Last", 2, 3.0))
+  def testGetItemAtBoundary(self, index, expected):
+    with self.session(), self.test_scope():
+      tensor_list = list_ops.tensor_list_from_tensor(
+          [1.0, 2.0, 3.0], element_shape=[]
+      )
+      item = list_ops.tensor_list_get_item(
+          tensor_list, index, element_dtype=dtypes.float32
+      )
+      self.assertAllEqual(self.evaluate(item), expected)
+
+  def testGetItemWithDynamicIndex(self):
+    with self.session() as sess, self.test_scope():
+      index = array_ops.placeholder(dtypes.int32, shape=[])
+      tensor_list = list_ops.tensor_list_from_tensor(
+          [1.0, 2.0, 3.0], element_shape=[]
+      )
+      item = list_ops.tensor_list_get_item(
+          tensor_list, index, element_dtype=dtypes.float32
+      )
+      self.assertAllEqual(sess.run(item, {index: 0}), 1.0)
+      self.assertAllEqual(sess.run(item, {index: 2}), 3.0)
+
+  def testTensorArrayReadAfterUnstackOutOfBounds(self):
+    @def_function.function(jit_compile=True, autograph=False)
+    def read_after_unstack(x):
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3).unstack(x)
+      return ta.read(0), ta.read(1), ta.read(2)
+
+    with self.session():
+      rows = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
+      self.assertAllEqual(
+          self.evaluate(read_after_unstack(constant_op.constant(rows))), rows
+      )
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          r"Trying to access element [12] in a list with 1 elements",
+      ):
+        self.evaluate(
+            read_after_unstack(constant_op.constant([[1.0, 2.0]]))
+        )
 
   def testGetItemFromEmptyList(self):
     # Regression test for GitHub issue 109648. Reading from a statically
