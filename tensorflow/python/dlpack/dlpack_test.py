@@ -128,6 +128,29 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
     else:
       self.assertEqual(tf_tensor_device, tf_tensor2.device)
 
+  @parameterized.named_parameters(
+      ("int32", dtypes.int32), ("float32", dtypes.float32)
+  )
+  def testExportToMatchingBackingDeviceWithoutCopy(self, dtype) -> None:
+    with ops.device("/CPU:0"):
+      source = constant_op.constant([1, 2, 3], dtype=dtype)
+    device = source.__dlpack_device__()
+    self.assertEqual(device, (1, 0))
+    for copy in (None, False):
+      capsule = source.__dlpack__(dl_device=device, copy=copy)
+      restored = dlpack.from_dlpack(capsule)
+      self.assertEqual(restored.__dlpack_device__(), device)
+      self.assertAllEqual(source, restored)
+      self.assertTrue(
+          np.shares_memory(np.from_dlpack(source), np.from_dlpack(restored))
+      )
+    with self.assertRaisesRegex(RuntimeError, "different dl_device"):
+      source.__dlpack__(dl_device=(2, 0), copy=False)
+    with self.assertRaisesRegex(RuntimeError, "copy=True"):
+      source.__dlpack__(dl_device=device, copy=True)
+    with self.assertRaisesRegex(RuntimeError, "non-None stream"):
+      source.__dlpack__(stream=1, dl_device=device)
+
   def testRoundTripWithoutToDlpack(self) -> None:
     """`np.from_dlpack` should work directly on a CPU eager tensor.
 
