@@ -34,7 +34,7 @@ namespace tsl {
 // Degenerate file system that provides no implementations.
 class NullFileSystem : public FileSystem {
  public:
-  NullFileSystem() {}
+  NullFileSystem() = default;
 
   ~NullFileSystem() override = default;
 
