@@ -8439,13 +8439,10 @@ cc_library(
         "fill_functor.h",
     ],
     deps = [
-        ":meta_support",
-        ":quantization_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
         "@eigen_archive//:eigen3",
-        "@gemmlowp",
     ],
 )
 
@@ -8487,7 +8484,10 @@ cc_library(
 
 cc_library(
     name = "loose_headers",
-    tags = ["avoid_dep"],
+    tags = [
+        "avoid_dep",
+        "nofixdeps",
+    ],
     textual_hdrs = glob(["*.h"]),
     visibility = LOOSE_HEADER_VISIBILITY,
     deps = [
