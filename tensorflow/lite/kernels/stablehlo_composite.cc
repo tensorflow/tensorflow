@@ -115,6 +115,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                         context->ResizeTensor(context, output, output_size));
     }
   }
+
+  // The decomposition subgraph only runs if this op is not delegated, so don't
+  // keep its arena alive after the output shapes are known. `Eval` allocates it
+  // again when needed and releases it afterwards.
+  if (!this_subgraph->ShouldPreserveAllTensors()) {
+    TF_LITE_ENSURE_OK(context, decomposition_subgraph->ReleaseMemory());
+  }
   return kTfLiteOk;
 }
 
@@ -163,6 +170,9 @@ TfLiteStatus Eval_dynamic(TfLiteContext* context, TfLiteNode* node,
 TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node,
                          Subgraph* this_subgraph,
                          Subgraph* decomposition_subgraph) {
+  // The subgraph memory is released at the end of `Prepare` and of every
+  // `Eval`, so allocate it again before running.
+  TF_LITE_ENSURE_OK(context, decomposition_subgraph->AllocateTensors());
   const int num_inputs = node->inputs->size;
   const int num_outputs = node->outputs->size;
   const int* const start = node->inputs->data;
