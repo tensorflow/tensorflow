@@ -568,7 +568,7 @@ TEST_F(TensorContentTest, Bool) {
 class TypeImportTest : public ::testing::TestWithParam<
                            std::pair<tensorflow::DataType, ArrayDataType>> {
  protected:
-  TypeImportTest() {}
+  TypeImportTest() = default;
 
   void BuildUnaryNode(const std::string& op_name, tensorflow::DataType dtype,
                       NodeDef* node) {
