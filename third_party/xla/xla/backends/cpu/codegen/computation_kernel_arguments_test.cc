@@ -429,8 +429,7 @@ ENTRY e {
   EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
 }
 
-// The unused parameter p1 has a buffer outside the kernel table.
-TEST_F(ComputationKernelArgumentsTest, UndescribedBufferNotReusable) {
+TEST_F(ComputationKernelArgumentsTest, UnusedParameterSharesFingerprint) {
   constexpr absl::string_view kHlo = R"(
 HloModule m
 
@@ -450,13 +449,46 @@ ENTRY e {
   p0 = f32[16] parameter(0)
   p1 = f32[16] parameter(1)
   c0 = f32[16] call(p0, p1), to_apply=call_a
-  c1 = f32[16] call(p1, p0), to_apply=call_b
+  c1 = f32[16] call($ARGS_B), to_apply=call_b
+  ROOT t = (f32[16], f32[16]) tuple(c0, c1)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(absl::StrReplaceAll(
+                                        kHlo, {{"$ARGS_B", "p1, p0"}})));
+  EXPECT_EQ(calls.a.arguments().size(), 2);
+  ASSERT_TRUE(calls.a.fingerprint().has_value());
+  EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
+
+  ASSERT_OK_AND_ASSIGN(Calls aliased, CreateForModule(absl::StrReplaceAll(
+                                          kHlo, {{"$ARGS_B", "p0, p0"}})));
+  ASSERT_TRUE(aliased.b.fingerprint().has_value());
+  EXPECT_NE(aliased.a.fingerprint(), aliased.b.fingerprint());
+}
+
+TEST_F(ComputationKernelArgumentsTest, RootParameterSharesFingerprint) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+call_a {
+  ROOT p0 = f32[16] parameter(0)
+}
+
+call_b {
+  ROOT p0 = f32[16] parameter(0)
+}
+
+ENTRY e {
+  p0 = f32[16] parameter(0)
+  p1 = f32[16] parameter(1)
+  c0 = f32[16] call(p0), to_apply=call_a
+  c1 = f32[16] call(p1), to_apply=call_b
   ROOT t = (f32[16], f32[16]) tuple(c0, c1)
 }
 )";
   ASSERT_OK_AND_ASSIGN(Calls calls, CreateForModule(kHlo));
-  EXPECT_EQ(calls.a.fingerprint(), std::nullopt);
-  EXPECT_EQ(calls.b.fingerprint(), std::nullopt);
+  EXPECT_EQ(calls.a.arguments().size(), 1);
+  ASSERT_TRUE(calls.a.fingerprint().has_value());
+  EXPECT_EQ(calls.a.fingerprint(), calls.b.fingerprint());
 }
 
 }  // namespace

@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/spmd/spmd_partitioner.h"
@@ -374,25 +375,33 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
 
 std::vector<HloInstruction*> MakePartitionOffsets(
     const Shape& shape, const HloSharding& sharding,
-    HloInstruction* partition_id, SpmdBuilder* b,
+    HloInstruction* partition_id, SpmdBuilder* b, PrimitiveType offset_type,
     absl::Span<const int64_t> dims) {
   CHECK(!shape.IsTuple());
 
-  auto shard_shape = MakePartitionedShape(shape, sharding);
+  Shape shard_shape = MakePartitionedShape(shape, sharding);
   std::vector<HloInstruction*> offsets;
 
   for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
     if (sharding.dimension(i) == 1 ||
         (!dims.empty() && !absl::c_linear_search(dims, i))) {
       offsets.push_back(b->AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
+          HloInstruction::CreateConstant(LiteralUtil::Zero(offset_type))));
     } else {
-      std::vector<int32_t> offset_array(sharding.num_devices());
-      sharding.EachTile([&](absl::Span<const int64_t> indices, int64_t device) {
-        offset_array[device] = indices[i] * shard_shape.dimensions(i);
-      });
-      offsets.push_back(
-          TableLookup<int32_t>(offset_array, S32, partition_id, b));
+      offsets.push_back(primitive_util::ArrayTypeSwitch(
+          [&](auto type) -> HloInstruction* {
+            using NativeT = primitive_util::NativeTypeOf<type>;
+            absl::InlinedVector<NativeT, 8> offset_array(
+                sharding.num_devices());
+            sharding.EachTile([&](absl::Span<const int64_t> indices,
+                                  int64_t device) {
+              offset_array[device] =
+                  static_cast<NativeT>(indices[i] * shard_shape.dimensions(i));
+            });
+            return TableLookup<NativeT>(offset_array, offset_type, partition_id,
+                                        b);
+          },
+          offset_type));
     }
   }
 
@@ -407,7 +416,7 @@ std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
     dimensions.remove_suffix(1);
   }
   auto table_shape = ShapeUtil::MakeShape(S32, dimensions);
-  return MakePartitionOffsets(table_shape, sharding, partition_id, b);
+  return MakePartitionOffsets(table_shape, sharding, partition_id, b, S32);
 }
 
 Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
@@ -2161,8 +2170,10 @@ std::optional<int64_t> GetKValueInTopKWhenPartitionSortDim(
       supported = false;
       break;
     }
-    if (absl::c_any_of(slice->slice_starts(), [](int x) { return x != 0; }) ||
-        absl::c_any_of(slice->slice_strides(), [](int x) { return x != 1; })) {
+    if (absl::c_any_of(slice->slice_starts(),
+                       [](int64_t x) { return x != 0; }) ||
+        absl::c_any_of(slice->slice_strides(),
+                       [](int64_t x) { return x != 1; })) {
       // Strided slice or slicing at the beginning isn't supported.
       supported = false;
       break;
@@ -2575,7 +2586,7 @@ HloInstruction* PerGroupSliceFromReplicated(
   return b->AddInstruction(HloInstruction::CreateDynamicSlice(
       shard_shape, padded_hlo,
       MakePartitionOffsets(replicated->shape(), group_level_sharding, group_id,
-                           b),
+                           b, S32),
       shard_shape.dimensions()));
 }
 
@@ -3493,11 +3504,9 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
   bool has_partitioned_slice_dim_with_dynamic_index = false;
   for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
     if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      // The start of a full-size slice is always clamped to 0.
       if (is_enzyme_opt_enabled && hlo->sharding().dimension(i) != 1) {
         update_on_a_single_partition = false;
-        if (!hlo->operand(i + 2)->IsConstant()) {
-          has_partitioned_slice_dim_with_dynamic_index = true;
-        }
       }
       continue;
     }
@@ -3510,6 +3519,11 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
 
     int64_t slice_size = hlo->operand(1)->shape().dimensions(i);
     if (slice_size == 1) {
+      // A size-1 update is always within one partition, but which one is only
+      // known at runtime if its start is.
+      if (is_enzyme_opt_enabled && !hlo->operand(i + 2)->IsConstant()) {
+        has_partitioned_slice_dim_with_dynamic_index = true;
+      }
       continue;
     }
 
@@ -3558,7 +3572,14 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
       DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices) {
     for (int64_t dim = 0; dim < hlo->shape().dimensions().size(); ++dim) {
       const HloInstruction* dus_index = hlo->operand(dim + 2);
-      CHECK(dus_index->IsConstant());
+      if (update_tensor->shape().dimensions(dim) ==
+              hlo->shape().dimensions(dim) ||
+          !dus_index->IsConstant()) {
+        // Full-size slices start at 0; runtime starts (only on
+        // non-partitioned dimensions) are clamped by the dynamic-slice and
+        // dynamic-update-slice the handler applies them with.
+        continue;
+      }
 
       int64_t start_index = dus_index->literal().GetIntegralAsS64({}).value();
       int64_t end_index = start_index + update_tensor->shape().dimensions(dim);

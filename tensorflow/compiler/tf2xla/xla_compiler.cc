@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
@@ -1559,6 +1561,17 @@ absl::Status XlaCompiler::CompileGraph(
 
   // Report the error here if initialization failed.
   TF_RETURN_IF_ERROR(initialization_status_);
+
+  // Optionally convert v1 control flow (Switch/Merge/Enter/...) to functional
+  // While/If, which ValidateGraph would otherwise reject. Off by default.
+  static const bool functionalize_v1_control_flow = [] {
+    const char* value = std::getenv("TF_XLA_FUNCTIONALIZE_CONTROL_FLOW");
+    return value != nullptr && absl::string_view(value) == "1";
+  }();
+  if (functionalize_v1_control_flow) {
+    TF_RETURN_IF_ERROR(
+        FunctionalizeControlFlow(graph.get(), local_flib_def_.get()));
+  }
 
   // Detect invalid nodes.
   // FunctionalizeControlFlow may remove some nodes from the graph.

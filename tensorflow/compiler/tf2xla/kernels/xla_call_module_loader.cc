@@ -58,9 +58,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
 #include "shardy/dialect/sdy/transforms/common/passes.h"  // from @shardy
-#include "shardy/dialect/sdy/transforms/common/propagation_options.h"  // from @shardy
 #include "shardy/dialect/sdy/transforms/import/passes.h"  // from @shardy
-#include "shardy/dialect/sdy/transforms/propagation/passes.h"  // from @shardy
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -571,13 +569,12 @@ absl::Status XlaCallModuleLoader::PrepareStablehloForLowering(
       // XlaCallModules are combined.
       xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/true);
     } else {
-      // When the outer TF compiler is not using Shardy, propagate Shardy
-      // shardings within this module and export directly to HLO shardings so
-      // GSPMD can partition the lowered HLO computation.
-      mlir::sdy::PropagationOptions options;
-      mlir::sdy::addPropagationPipeline(pm, options);
+      // The outer TF compiler uses GSPMD, which propagates and partitions the
+      // whole computation, so only export SDY shardings and `shard_map`s to
+      // their GSPMD forms here, matching the round-trip export otherwise.
       xla::sdy::StablehloExportPipelineOptions export_options;
       export_options.keepHloShardingConstraints = true;
+      export_options.addMissingShardingToControlFlow = false;
       export_options.simplifyReplicatedShardings = true;
       xla::sdy::addStablehloExportPipeline(pm, export_options);
     }

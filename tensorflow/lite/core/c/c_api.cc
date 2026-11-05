@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/core/create_op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/model_builder.h"
@@ -163,15 +162,6 @@ static void InitTfLiteRegistration(TfLiteRegistration* registration,
   registration->custom_name = registration_external->custom_name;
   registration->version = registration_external->version;
   registration->registration_external = registration_external;
-}
-
-TfLiteInterpreter* TfLiteInterpreterCreate(
-    const TfLiteModel* model,
-    const TfLiteInterpreterOptions* optional_options) {
-  std::unique_ptr<tflite::MutableOpResolver> resolver =
-      tflite::CreateOpResolver();
-  return tflite::internal::InterpreterCreateWithOpResolver(
-      model, optional_options, resolver.get());
 }
 
 void TfLiteInterpreterDelete(TfLiteInterpreter* interpreter) {

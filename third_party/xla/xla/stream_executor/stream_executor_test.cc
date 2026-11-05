@@ -84,5 +84,13 @@ TEST(StreamExecutorTest, GetDeviceDescriptionConcurrent) {
   }
 }
 
+TEST(StreamExecutorTest, LocalityDomainStreamsUnsupportedByDefault) {
+  ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
+  absl::StatusOr<std::unique_ptr<Stream>> stream =
+      executor->CreateStreamInLocalityDomain(/*locality_domain_id=*/0);
+  ASSERT_FALSE(stream.ok());
+  EXPECT_EQ(stream.status().code(), absl::StatusCode::kUnimplemented);
+}
+
 }  // namespace
 }  // namespace stream_executor

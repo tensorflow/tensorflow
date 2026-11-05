@@ -24,7 +24,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -36,7 +35,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/optimize_batch_matmul_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
@@ -107,6 +105,9 @@ bool IsRhsFoldableIntoFullyConnected(mlir::Value value) {
   if (!ranked_type || ranked_type.getRank() != 2) {
     return false;
   }
+  if (mlir::isa<BlockwiseQuantType>(ranked_type.getElementType())) {
+    return false;
+  }
 
   if (IsFromFoldableChain(value)) {
     return true;
@@ -133,6 +134,19 @@ struct ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs
           bmm_op,
           "rhs is neither a rank 2 value foldable into a constant nor a rank 2 "
           "signed int4/int8 quantized value.");
+    }
+    // The filter transpose of a shared blockwise-dequantized rhs cannot be
+    // pushed into its constant operands, which would leave a float filter;
+    // such a static-range quantized matmul stays a blockwise quantized
+    // batch_matmul instead.
+    if (mlir::isa_and_nonnull<DequantizeOp>(bmm_op.getX().getDefiningOp()) &&
+        mlir::isa_and_nonnull<BlockwiseDequantizeOp>(
+            bmm_op.getY().getDefiningOp()) &&
+        !bmm_op.getY().hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          bmm_op,
+          "SRQ batch_matmul with a shared blockwise-dequantized rhs stays "
+          "batch_matmul");
     }
 
     // Create a tfl.transpose op that performs ZX transpose on `input`.

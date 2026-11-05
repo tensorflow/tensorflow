@@ -106,6 +106,8 @@ const char kIntegerAttr[] = "integer";
 
 const char kXlaCseSafeZeroOperandAttr[] = "_xla_cse_safe_zero_operand";
 
+const char kXlaTpuNativeBf16Attr[] = "_xla_tpu_native_bf16";
+
 const char kCollectiveGroupKeyAttr[] = "collective_group_key";
 
 const char kCollectiveGroupMarkerAttr[] = "_collectives_group";

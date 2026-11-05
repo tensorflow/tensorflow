@@ -642,7 +642,8 @@ def scalar_mul(scalar, x, name=None):
 
   Args:
     scalar: A 0-D scalar `Tensor`. Must have known shape.
-    x: A `Tensor` or `IndexedSlices` to be scaled.
+    x: A `Tensor` or `IndexedSlices` to be scaled. Python sequences and other
+      values convertible to a `Tensor` are also accepted.
     name: A name for the operation (optional).
 
   Returns:
@@ -651,7 +652,15 @@ def scalar_mul(scalar, x, name=None):
   Raises:
     ValueError: if scalar is not a 0-D `scalar`.
   """
-  base_dtype = dtypes.as_dtype(x.dtype).base_dtype
+  x_dtype = getattr(x, "dtype", None)
+  if x_dtype is None:
+    # Python lists/tuples/scalars: convert like every other math op does,
+    # preferring the dtype of an explicitly typed `scalar`.
+    x = ops.convert_to_tensor(
+        x, dtype_hint=getattr(scalar, "dtype", None), name="x"
+    )
+    x_dtype = x.dtype
+  base_dtype = dtypes.as_dtype(x_dtype).base_dtype
   scalar = ops.convert_to_tensor(
       scalar, dtype=base_dtype, name="scalar")
   shape = scalar.get_shape()
@@ -1758,6 +1767,11 @@ def floordiv(x, y, name=None):
   Note: `x` and `y` must have the same type, and the result will have the same
   type as well.
 
+  For signed integer types, dividing the minimum representable value by `-1`
+  (e.g. `int_min / -1`) overflows the signed integer range and wraps around to
+  the minimum signed integer value in two's complement arithmetic rather than
+  raising an exception.
+
   Args:
     x: `Tensor` numerator of real numeric type.
     y: `Tensor` denominator of real numeric type.
@@ -2769,6 +2783,10 @@ def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis, keepdims):
         f"Received integer type {means.dtype}."
     )
   diff = input_tensor - means
+  # Rounding error in `means` shifts every element of `diff` by the same
+  # amount. Subtracting the squared mean of `diff` removes that shift from the
+  # result instead of counting it as variance.
+  mean_diff = reduce_mean(diff, axis=axis, keepdims=keepdims)
   if diff.dtype.is_complex:
     # For complex values we need to take the absolute value before squaring.
     # This is achieved by multiplying with the conjugate.
@@ -2776,9 +2794,18 @@ def _reduce_variance_in_stable_dtype(input_tensor, is_float16, axis, keepdims):
     squared_deviations = gen_math_ops.real(
         gen_math_ops.mul(gen_math_ops.conj(diff), diff), Tout=real_dtype
     )
+    squared_mean_diff = gen_math_ops.real(
+        gen_math_ops.mul(gen_math_ops.conj(mean_diff), mean_diff),
+        Tout=real_dtype,
+    )
   else:
     squared_deviations = gen_math_ops.square(diff)
-  return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+    squared_mean_diff = gen_math_ops.square(mean_diff)
+  return gen_math_ops.maximum(
+      reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+      - squared_mean_diff,
+      0,
+  )
 
 
 @tf_export("math.reduce_std")
@@ -5570,7 +5597,31 @@ def tensordot(a, b, axes, name=None):
   with ops.name_scope(name, "Tensordot", [a, b, axes]) as name:
     a = ops.convert_to_tensor(a, name="a")
     b = ops.convert_to_tensor(b, name="b")
+    if isinstance(axes, np.ndarray) and axes.ndim == 2:
+      axes = axes.tolist()
     a_axes, b_axes = _tensordot_axes(a, axes)
+    if (
+        isinstance(a_axes, (list, tuple, np.ndarray))
+        and isinstance(b_axes, (list, tuple, np.ndarray))
+        and a.shape.rank is not None
+        and b.shape.rank is not None
+    ):
+      # The contraction is lowered to a reshape + matmul, so mismatched axes
+      # whose sizes have equal products would otherwise be silently accepted.
+      a_dims = a.shape.as_list()
+      b_dims = b.shape.as_list()
+      for a_axis, b_axis in zip(a_axes, b_axes):
+        if isinstance(a_axis, compat.integral_types) and isinstance(
+            b_axis, compat.integral_types
+        ):
+          a_dim = a_dims[a_axis]
+          b_dim = b_dims[b_axis]
+          if a_dim is not None and b_dim is not None and a_dim != b_dim:
+            raise ValueError(
+                "Contraction axes of a and b must have the same size. "
+                f"Received axis {a_axis} of a with size {a_dim} and axis "
+                f"{b_axis} of b with size {b_dim}."
+            )
     a_reshape, a_free_dims, a_free_dims_static = _tensordot_reshape(a, a_axes)
     b_reshape, b_free_dims, b_free_dims_static = _tensordot_reshape(
         b, b_axes, True)

@@ -1784,11 +1784,10 @@ TEST_P(IndexingAnalysisTest, FusionOpReshapeOfConcat) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1) -> (d0 * 8 + d1),
+                            (d0, d1) -> (d1),
                             domain:
-                            d0 in [0, 3],
-                            d1 in [0, 7],
-                            d0 * 8 + d1 in [0, 1]
+                            d0 in [0, 0],
+                            d1 in [0, 1]
                           operand id = 1
                             (d0, d1) -> (d0 * 8 + d1 - 2),
                             domain:
@@ -3023,6 +3022,49 @@ TEST_P(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
                   d0 in [0, 999],
                   d1 in [0, 999]
               )"));
+}
+
+TEST_P(IndexingAnalysisTest,
+       EpilogueIndexing_SizeOneDimensionsAgreeWithAndWithoutEpilogue) {
+  // Regression test: with size-1 dimensions, the indexing of a root that has
+  // an elementwise epilogue must compare equal to the indexing of a root that
+  // is the hero itself. The multi-output concatenate emitter relies on this.
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+    fused_computation {
+      p0 = f32[1,2,100] parameter(0)
+      p1 = f32[1,1,100] parameter(1)
+      p2 = f32[1,1,100] parameter(2)
+      c0 = f32[1,2,100] concatenate(p1, p2), dimensions={1}
+      div = f32[1,2,100] divide(c0, p0)
+      c1 = f32[1,2,100] concatenate(p2, p1), dimensions={1}
+      ROOT t = (f32[1,2,100], f32[1,2,100]) tuple(div, c1)
+    }
+    ENTRY e {
+      p0 = f32[1,2,100] parameter(0)
+      p1 = f32[1,1,100] parameter(1)
+      p2 = f32[1,1,100] parameter(2)
+      ROOT fusion = (f32[1,2,100], f32[1,2,100]) fusion(p0, p1, p2),
+          kind=kInput, calls=fused_computation
+    }
+  )");
+  ASSERT_TRUE(module.ok());
+  auto* computation = (*module)->GetComputationWithName("fused_computation");
+  auto fusion = HloFusionAdaptor::ForComputation(computation);
+  HloInstructionAdaptor c0(*computation->GetInstructionWithName("c0"),
+                           fusion.get());
+  HloInstructionAdaptor div(*computation->GetInstructionWithName("div"),
+                            fusion.get());
+  HloInstructionAdaptor c1(*computation->GetInstructionWithName("c1"),
+                           fusion.get());
+
+  IndexingMap with_epilogue =
+      ComputeEpilogueInputToOutputIndexing(c0, div, &mlir_context_);
+  IndexingMap without_epilogue =
+      ComputeEpilogueInputToOutputIndexing(c1, c1, &mlir_context_);
+  EXPECT_EQ(with_epilogue, without_epilogue)
+      << "with epilogue: " << ToString(with_epilogue)
+      << "\nwithout epilogue: " << ToString(without_epilogue);
 }
 
 TEST_P(IndexingAnalysisTest, BroadcastingElementwise) {

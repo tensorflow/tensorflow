@@ -150,10 +150,7 @@ absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,
   absl::MutexLock l(writer_mu_);
   const OpId op_id = writer_next_op_id_++;
 
-  if (writes_stopped_) {
-    return absl::FailedPreconditionError(
-        "GrpcClientSession: writes no longer allowed.");
-  }
+  ABSL_RETURN_IF_ERROR(finish_status_);
 
   ABSL_RETURN_IF_ERROR(response_callbacks_->Add(op_id, std::move(callback)));
 
@@ -199,13 +196,22 @@ void GrpcClientSession::Finish(const absl::Status& client_status) {
             << client_status;
 
   absl::call_once(finish_once_, [&] {
-    LOG(INFO) << "GrpcClientSession: Finish(): calling context_->TryCancel();";
-    context_->TryCancel();
+    // Only cancel before `stream_->Finish()` if the reader loop is still
+    // running (to unblock `stream_->Read()`). If the reader loop has already
+    // exited because the server closed the stream, calling
+    // `context_->TryCancel()` before `stream_->Finish()` causes
+    // `stream_->Finish()` to return `CANCELLED` instead of the server's status.
+    if (!reader_thread_stopped_.HasBeenNotified()) {
+      LOG(INFO)
+          << "GrpcClientSession: Finish(): calling context_->TryCancel();";
+      context_->TryCancel();
 
-    LOG(INFO) << "GrpcClientSession: Waiting for reader thread to stop.";
-    reader_thread_stopped_.WaitForNotification();
+      LOG(INFO) << "GrpcClientSession: Waiting for reader thread to stop.";
+      reader_thread_stopped_.WaitForNotification();
+    }
 
-    auto finish_stream_and_get_server_status = [&]() -> absl::Status {
+    absl::Status combined_status;
+    {
       LOG(INFO) << "GrpClientSession: Attempting to call stream->Finish()";
       absl::MutexLock l(writer_mu_);
       // Note: stream_->Finish() counts as a write, and needs to be serialized
@@ -215,38 +221,28 @@ void GrpcClientSession::Finish(const absl::Status& client_status) {
       absl::Status server_status = xla::FromGrpcStatus(stream_->Finish());
       LOG(INFO) << "GrpClientSession: stream->Finish() returned server status "
                 << server_status;
+      context_->TryCancel();
 
-      CHECK(!writes_stopped_);
-      writes_stopped_ = true;
+      if (!client_status.ok() && !server_status.ok()) {
+        combined_status = tsl::errors::CreateWithUpdatedMessage(
+            client_status,
+            absl::StrCat("Client error: ", client_status.ToString(),
+                         "; Server error: ", server_status.ToString()));
+      } else if (!client_status.ok()) {
+        combined_status = client_status;
+      } else if (!server_status.ok()) {
+        combined_status = server_status;
+      } else {
+        combined_status = absl::AbortedError("Finish(OK) called.");
+      }
 
-      return server_status;
-    };
-
-    // Prioritize `client_status` if non-OK because `context_->TryCancel()`
-    // above causes `stream_->Finish()` to return `CANCELLED` even when the
-    // stream was healthy before client-initiated termination. If both
-    // `client_status` and `server_status` are non-OK, include both in the
-    // combined error message so neither error is lost.
-    absl::Status server_status = finish_stream_and_get_server_status();
-    absl::Status combined_status;
-    if (!client_status.ok() && !server_status.ok()) {
-      combined_status = tsl::errors::CreateWithUpdatedMessage(
-          client_status,
-          absl::StrCat("Client error: ", client_status.ToString(),
-                       "; Server error: ", server_status.ToString()));
-    } else if (!client_status.ok()) {
-      combined_status = client_status;
-    } else {
-      combined_status = server_status;
+      CHECK(finish_status_.ok());
+      finish_status_ = combined_status;
     }
 
     auto all_callbacks = response_callbacks_->PopAll();
     for (auto& [_, cb] : all_callbacks) {
-      if (combined_status.ok()) {
-        cb(absl::AbortedError("Finish(OK) called."));
-      } else {
-        cb(combined_status);
-      }
+      cb(combined_status);
     }
 
     LOG(INFO) << "GrpClientSession::Finish(): calling terminated cb with "

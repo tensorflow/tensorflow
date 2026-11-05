@@ -2735,6 +2735,25 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalClamp(
   }
 }
 
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalFma(
+    const HloInstruction* hlo,
+    const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
+    const llvm_ir::IrArray::Index& index) {
+  ABSL_ASSIGN_OR_RETURN(llvm::Value * a,
+                   operand_to_generator.at(hlo->operand(0))(index));
+  ABSL_ASSIGN_OR_RETURN(llvm::Value * b,
+                   operand_to_generator.at(hlo->operand(1))(index));
+  ABSL_ASSIGN_OR_RETURN(llvm::Value * c,
+                   operand_to_generator.at(hlo->operand(2))(index));
+  PrimitiveType prim_type = hlo->shape().element_type();
+  if (prim_type != F32 && prim_type != F64) {
+    return Unimplemented("Fma unimplemented for %s",
+                         PrimitiveType_Name(prim_type));
+  }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fma, {a, b, c},
+                                      {a->getType()}, b_);
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
@@ -3457,6 +3476,11 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> absl::StatusOr<llvm::Value*> {
         return EmitElementalClamp(hlo, operand_to_generator, index);
+      };
+    case HloOpcode::kFma:
+      return [this, hlo, &operand_to_generator](
+                 const IrArray::Index& index) -> absl::StatusOr<llvm::Value*> {
+        return EmitElementalFma(hlo, operand_to_generator, index);
       };
     case HloOpcode::kReducePrecision:
       return [this, hlo, &operand_to_generator](

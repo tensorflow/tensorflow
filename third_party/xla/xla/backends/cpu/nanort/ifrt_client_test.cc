@@ -464,6 +464,7 @@ int main(int argc, char** argv) {
       "ArrayImplTest.MakeArrayFromHostBufferWithCustomLayout:"
       // `MakeErrorArrays` is not supported in NanoIfrtClient.
       "ArrayImplTest.MakeErrorArrays:"
+      "ArrayImplTest.MakeErrorArraysWithCustomLayout:"
       "ArrayImplTest.CopyPoisonedArray:"
       "ArrayImplTest.PoisonedZeroSizedArrays:"
       // Sub-byte types are not supported in NanoIfrtClient.

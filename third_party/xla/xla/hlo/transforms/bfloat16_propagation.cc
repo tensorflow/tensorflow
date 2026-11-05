@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/bfloat16_propagation.h"
 
-#include <array>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -75,8 +74,7 @@ bool IsAssociativeScan(const HloInstruction* hlo) {
 // says nothing about them.
 bool IsTupleForwarder(const HloInstruction* hlo) {
   return hlo->opcode() == HloOpcode::kTuple ||
-         hlo->opcode() == HloOpcode::kGetTupleElement ||
-         hlo->opcode() == HloOpcode::kDomain;
+         hlo->opcode() == HloOpcode::kGetTupleElement;
 }
 
 // Returns true if every array leaf of `shape` has element type `type`. Stops

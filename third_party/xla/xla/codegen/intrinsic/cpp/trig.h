@@ -23,8 +23,6 @@ limitations under the License.
 
 namespace xla::codegen {
 
-#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
-    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 float sinh_f32(float x) asm("xla.sinh.f32");
 Vec4f sinh_v4f32(Vec4f x) asm("xla.sinh.v4f32");
 Vec8f sinh_v8f32(Vec8f x) asm("xla.sinh.v8f32");
@@ -44,8 +42,6 @@ float acos_f32(float x) asm("xla.acos.f32");
 Vec4f acos_v4f32(Vec4f x) asm("xla.acos.v4f32");
 Vec8f acos_v8f32(Vec8f x) asm("xla.acos.v8f32");
 Vec16f acos_v16f32(Vec16f x) asm("xla.acos.v16f32");
-#endif  // defined(__has_attribute) && __has_attribute(ext_vector_type) &&
-        // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 
 }  // namespace xla::codegen
 

@@ -21,13 +21,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
@@ -47,28 +45,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_in_place_transpose.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/resource_constant_fold_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/resource_elementwise_fold.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir::TFL {
 namespace {
-
-// Retrieves the underlying AsmResourceBlob from a resource attribute.
-static AsmResourceBlob* GetBlob(DenseResourceElementsAttr attr) {
-  if (AsmResourceBlob* blob = attr.getRawHandle().getBlob()) return blob;
-  if (auto* resource = attr.getRawHandle().getResource())
-    return resource->getBlob();
-  return nullptr;
-}
-
-static std::string GetResourceKey(DenseResourceElementsAttr attr) {
-  AsmResourceBlob* blob = GetBlob(attr);
-  if (blob && !blob->getData().empty()) {
-    return absl::StrCat("ptr_",
-                        reinterpret_cast<uintptr_t>(blob->getData().data()));
-  }
-  return attr.getRawHandle().getKey().str();
-}
 
 template <typename OpT>
 struct ResourceOpFolder;
@@ -94,7 +77,7 @@ struct ResourceOpFolder<TFL::TransposeOp> {
     const_op = input.getDefiningOp();
     if (!const_op) return false;
 
-    AsmResourceBlob* blob = GetBlob(resource_attr);
+    AsmResourceBlob* blob = GetResourceBlob(resource_attr);
     if (!blob || !blob->isMutable()) return false;
 
     auto input_type = mlir::cast<ShapedType>(resource_attr.getType());
@@ -175,6 +158,11 @@ struct ResourceOpFolder<TFL::TransposeOp> {
   static ShapedType GetResultType(OpType op) {
     return mlir::cast<ShapedType>(op.getType());
   }
+
+  static Operation* CreateConstant(OpBuilder& builder, Location loc,
+                                   ShapedType type, ElementsAttr value) {
+    return builder.create<arith::ConstantOp>(loc, type, value);
+  }
 };
 
 template <>
@@ -193,7 +181,7 @@ struct ResourceOpFolder<TFL::CastOp> {
     const_op = input.getDefiningOp();
     if (!const_op) return false;
 
-    AsmResourceBlob* blob = GetBlob(resource_attr);
+    AsmResourceBlob* blob = GetResourceBlob(resource_attr);
     if (!blob) return false;
 
     auto input_type = mlir::dyn_cast<ShapedType>(resource_attr.getType());
@@ -310,159 +298,12 @@ struct ResourceOpFolder<TFL::CastOp> {
   static ShapedType GetResultType(OpType op) {
     return mlir::cast<ShapedType>(op.getType());
   }
+
+  static Operation* CreateConstant(OpBuilder& builder, Location loc,
+                                   ShapedType type, ElementsAttr value) {
+    return builder.create<arith::ConstantOp>(loc, type, value);
+  }
 };
-
-template <typename OpT, typename Folder = ResourceOpFolder<OpT>>
-LogicalResult FoldResourceOpPattern(ModuleOp module) {
-  struct Candidate {
-    OpT op;
-    Operation* const_op;
-    DenseResourceElementsAttr resource_attr;
-    std::string resource_key;
-    std::string signature;
-  };
-
-  llvm::SmallVector<Candidate> candidates;
-  absl::flat_hash_map<std::string, llvm::SmallVector<size_t>>
-      resource_to_candidate_indices;
-
-  module.walk([&](OpT op) {
-    Operation* const_op = nullptr;
-    DenseResourceElementsAttr resource_attr;
-    if (Folder::Match(op, const_op, resource_attr)) {
-      std::string key = GetResourceKey(resource_attr);
-      std::string sig = Folder::GetSignature(op);
-      size_t idx = candidates.size();
-      candidates.push_back({op, const_op, resource_attr, key, sig});
-      resource_to_candidate_indices[key].push_back(idx);
-    }
-  });
-
-  if (candidates.empty()) return success();
-
-  absl::flat_hash_map<std::string, llvm::SmallPtrSet<Operation*, 4>>
-      resource_to_all_const_ops;
-  module.walk([&](Operation* op) {
-    ElementsAttr attr;
-    if (matchPattern(op, m_Constant(&attr))) {
-      if (auto res_attr = mlir::dyn_cast<DenseResourceElementsAttr>(attr)) {
-        resource_to_all_const_ops[GetResourceKey(res_attr)].insert(op);
-      }
-    }
-  });
-
-  llvm::SmallVector<Operation*> ops_to_erase;
-  llvm::SmallVector<Operation*> const_ops_to_erase;
-
-  for (auto& [key, indices] : resource_to_candidate_indices) {
-    if (indices.empty()) continue;
-
-    AsmResourceBlob* blob = GetBlob(candidates[indices[0]].resource_attr);
-    if (!blob) continue;
-
-    llvm::DenseSet<Operation*> candidate_ops;
-    llvm::DenseSet<Operation*> unique_candidate_const_ops;
-    for (size_t idx : indices) {
-      candidate_ops.insert(candidates[idx].op.getOperation());
-      unique_candidate_const_ops.insert(candidates[idx].const_op);
-    }
-
-    absl::flat_hash_map<std::string, llvm::SmallVector<size_t>>
-        sig_to_candidate_indices;
-    for (size_t idx : indices) {
-      sig_to_candidate_indices[candidates[idx].signature].push_back(idx);
-    }
-
-    const auto& all_module_const_ops = resource_to_all_const_ops[key];
-    bool all_users_are_candidates =
-        (unique_candidate_const_ops.size() == all_module_const_ops.size());
-    if (all_users_are_candidates) {
-      for (Operation* const_op : unique_candidate_const_ops) {
-        for (Operation* user : const_op->getUsers()) {
-          if (!candidate_ops.contains(user)) {
-            all_users_are_candidates = false;
-            break;
-          }
-        }
-        if (!all_users_are_candidates) break;
-      }
-    }
-
-    bool is_single_signature = (sig_to_candidate_indices.size() == 1);
-    bool can_fold_in_place = all_users_are_candidates && is_single_signature;
-
-    if (can_fold_in_place) {
-      const auto& first_cand = candidates[indices[0]];
-      DenseResourceElementsAttr new_attr;
-      if (failed(Folder::Fold(first_cand.op, first_cand.resource_attr, blob,
-                              new_attr, /*in_place=*/true))) {
-        continue;
-      }
-
-      ShapedType new_type = Folder::GetResultType(first_cand.op);
-      for (Operation* const_op : unique_candidate_const_ops) {
-        const_op->setAttr("value", new_attr);
-        const_op->getResult(0).setType(new_type);
-      }
-
-      for (size_t idx : indices) {
-        candidates[idx].op->replaceAllUsesWith(candidates[idx].const_op);
-        ops_to_erase.push_back(candidates[idx].op.getOperation());
-      }
-
-      if (!(new_attr.getRawHandle() ==
-            first_cand.resource_attr.getRawHandle())) {
-        *blob = mlir::AsmResourceBlob();
-      }
-    } else {
-      bool all_signatures_folded = true;
-      for (auto& [sig, sig_indices] : sig_to_candidate_indices) {
-        if (sig_indices.empty()) continue;
-        const auto& first_cand = candidates[sig_indices[0]];
-
-        DenseResourceElementsAttr new_attr;
-        if (failed(Folder::Fold(first_cand.op, first_cand.resource_attr, blob,
-                                new_attr, /*in_place=*/false))) {
-          all_signatures_folded = false;
-          continue;
-        }
-
-        ShapedType new_type = Folder::GetResultType(first_cand.op);
-        absl::flat_hash_map<Operation*, Operation*> orig_const_to_new_const;
-
-        for (size_t idx : sig_indices) {
-          auto& cand = candidates[idx];
-          Operation*& new_cst_op = orig_const_to_new_const[cand.const_op];
-          if (!new_cst_op) {
-            OpBuilder builder(cand.const_op);
-            new_cst_op = builder.create<arith::ConstantOp>(
-                cand.const_op->getLoc(), new_type, new_attr);
-          }
-          cand.op->replaceAllUsesWith(new_cst_op);
-          ops_to_erase.push_back(cand.op.getOperation());
-        }
-      }
-
-      if (all_users_are_candidates && all_signatures_folded) {
-        for (Operation* const_op : unique_candidate_const_ops) {
-          const_ops_to_erase.push_back(const_op);
-        }
-        *blob = mlir::AsmResourceBlob();
-      }
-    }
-  }
-
-  for (Operation* op : ops_to_erase) {
-    op->erase();
-  }
-  for (Operation* op : const_ops_to_erase) {
-    if (op->use_empty()) {
-      op->erase();
-    }
-  }
-
-  return success();
-}
 
 struct PushTransposeThroughBlockwiseDequantize
     : public OpRewritePattern<TransposeOp> {
@@ -611,6 +452,141 @@ struct PushTransposeThroughBlockwiseDequantize
   }
 };
 
+// Pushes a reshape that only inserts or removes size-1 dimensions through a
+// constant `tfl.blockwise_dequantize`, e.g. when a 3-D batched weight
+// `[K2, K, N]` is expanded to `[1, K2, K, N]` for single-token `BATCH_MATMUL`.
+struct PushUnitDimReshapeThroughBlockwiseDequantize
+    : public OpRewritePattern<ReshapeOp> {
+  explicit PushUnitDimReshapeThroughBlockwiseDequantize(MLIRContext* ctx)
+      : OpRewritePattern<ReshapeOp>(ctx) {}
+
+  LogicalResult matchAndRewrite(ReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto deq = op.getInput().getDefiningOp<BlockwiseDequantizeOp>();
+    if (!deq || !deq.getOutput().hasOneUse()) return failure();
+
+    ElementsAttr input_attr;
+    if (!matchPattern(deq.getInput(), m_Constant(&input_attr))) {
+      if (auto const_op = deq.getInput().getDefiningOp<TFL::ConstOp>()) {
+        input_attr = const_op.getValue();
+      } else {
+        return failure();
+      }
+    }
+
+    auto input_type =
+        mlir::dyn_cast<RankedTensorType>(deq.getInput().getType());
+    auto output_type = mlir::dyn_cast<RankedTensorType>(op.getType());
+    if (!input_type || !output_type || !input_type.hasStaticShape() ||
+        !output_type.hasStaticShape()) {
+      return failure();
+    }
+
+    ArrayAttr block_shape_attr = deq.getBlockShapeAttr();
+    if (!block_shape_attr ||
+        static_cast<int64_t>(block_shape_attr.size()) != input_type.getRank()) {
+      return failure();
+    }
+
+    auto scales_type =
+        mlir::dyn_cast<RankedTensorType>(deq.getScales().getType());
+    if (!scales_type || !scales_type.hasStaticShape() ||
+        scales_type.getRank() != input_type.getRank()) {
+      return failure();
+    }
+
+    Value zp = deq.getZeroPoints();
+    bool has_zp =
+        zp && !mlir::isa<NoneType>(zp.getType()) &&
+        !(zp.getDefiningOp() && mlir::isa<TFL::NoValueOp>(zp.getDefiningOp()));
+    RankedTensorType zp_type;
+    if (has_zp) {
+      zp_type = mlir::dyn_cast<RankedTensorType>(zp.getType());
+      if (!zp_type || !zp_type.hasStaticShape() ||
+          zp_type.getRank() != input_type.getRank()) {
+        return failure();
+      }
+    }
+
+    ArrayRef<int64_t> in_shape = input_type.getShape();
+    ArrayRef<int64_t> out_shape = output_type.getShape();
+    SmallVector<int64_t, 4> new_block_shape;
+    SmallVector<int64_t, 4> new_scales_shape;
+    SmallVector<int64_t, 4> new_zp_shape;
+
+    size_t in_idx = 0;
+    size_t out_idx = 0;
+    while (in_idx < in_shape.size() || out_idx < out_shape.size()) {
+      if (in_idx < in_shape.size() && out_idx < out_shape.size() &&
+          in_shape[in_idx] == out_shape[out_idx]) {
+        new_block_shape.push_back(
+            mlir::cast<IntegerAttr>(block_shape_attr[in_idx]).getInt());
+        new_scales_shape.push_back(scales_type.getDimSize(in_idx));
+        if (has_zp) new_zp_shape.push_back(zp_type.getDimSize(in_idx));
+        ++in_idx;
+        ++out_idx;
+      } else if (out_idx < out_shape.size() && out_shape[out_idx] == 1) {
+        new_block_shape.push_back(1);
+        new_scales_shape.push_back(1);
+        if (has_zp) new_zp_shape.push_back(1);
+        ++out_idx;
+      } else if (in_idx < in_shape.size() && in_shape[in_idx] == 1 &&
+                 scales_type.getDimSize(in_idx) == 1 &&
+                 (!has_zp || zp_type.getDimSize(in_idx) == 1)) {
+        ++in_idx;
+      } else {
+        return failure();
+      }
+    }
+
+    auto reshape_operand = [&](Value val, RankedTensorType new_type) -> Value {
+      ElementsAttr attr;
+      if (!matchPattern(val, m_Constant(&attr))) {
+        if (auto const_op = val.getDefiningOp<TFL::ConstOp>()) {
+          attr = const_op.getValue();
+        }
+      }
+      if (attr) {
+        if (auto dense_attr = mlir::dyn_cast<DenseElementsAttr>(attr)) {
+          return rewriter.create<arith::ConstantOp>(
+              op.getLoc(), dense_attr.reshape(new_type));
+        }
+        if (auto resource_attr =
+                mlir::dyn_cast<DenseResourceElementsAttr>(attr)) {
+          auto reshaped_resource = DenseResourceElementsAttr::get(
+              new_type, resource_attr.getRawHandle());
+          return rewriter.create<arith::ConstantOp>(op.getLoc(), new_type,
+                                                    reshaped_resource);
+        }
+      }
+      SmallVector<int32_t, 4> shape_i32(new_type.getShape().begin(),
+                                        new_type.getShape().end());
+      auto shape_const = rewriter.create<arith::ConstantOp>(
+          op.getLoc(), rewriter.getI32TensorAttr(shape_i32));
+      return rewriter.create<ReshapeOp>(op.getLoc(), new_type, val,
+                                        shape_const);
+    };
+
+    auto new_input_type =
+        RankedTensorType::get(out_shape, input_type.getElementType());
+    Value new_input = reshape_operand(deq.getInput(), new_input_type);
+    Value new_scales = reshape_operand(
+        deq.getScales(),
+        RankedTensorType::get(new_scales_shape, scales_type.getElementType()));
+    Value new_zp = zp;
+    if (has_zp) {
+      new_zp = reshape_operand(
+          zp, RankedTensorType::get(new_zp_shape, zp_type.getElementType()));
+    }
+
+    auto new_deq = rewriter.create<BlockwiseDequantizeOp>(
+        op.getLoc(), output_type, new_input, new_scales, new_zp,
+        rewriter.getI64ArrayAttr(new_block_shape), deq.getSymmetricAttr());
+    rewriter.replaceOp(op, new_deq.getOutput());
+    return success();
+  }
+};
+
 }  // namespace
 
 void LargeConstantFoldPass::runOnOperation() {
@@ -618,18 +594,28 @@ void LargeConstantFoldPass::runOnOperation() {
   MLIRContext* ctx = &getContext();
 
   RewritePatternSet patterns(ctx);
-  patterns.add<PushTransposeThroughBlockwiseDequantize>(ctx);
+  patterns.add<PushTransposeThroughBlockwiseDequantize,
+               PushUnitDimReshapeThroughBlockwiseDequantize>(ctx);
   GreedyRewriteConfig config;
   config.enableFolding(false);
   if (failed(applyPatternsGreedily(module, std::move(patterns), config))) {
     signalPassFailure();
     return;
   }
-  if (failed(FoldResourceOpPattern<TFL::TransposeOp>(module))) {
+  if (failed(
+          FoldResourceOpPattern<TFL::TransposeOp,
+                                ResourceOpFolder<TFL::TransposeOp>>(module))) {
     signalPassFailure();
   }
   if (GetOptions().fold_fp16_resource_casts) {
-    if (failed(FoldResourceOpPattern<TFL::CastOp>(module))) {
+    if (failed(
+            FoldResourceOpPattern<TFL::CastOp, ResourceOpFolder<TFL::CastOp>>(
+                module))) {
+      signalPassFailure();
+    }
+  }
+  if (GetOptions().fold_elementwise_ops) {
+    if (failed(FoldResourceElementwiseOps(module))) {
       signalPassFailure();
     }
   }

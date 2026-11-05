@@ -127,7 +127,6 @@ class PjRtExecutableLoadState
     LocalDeviceId local_device_id;
     GlobalDeviceId global_device_id;
     int process_index;
-    std::shared_ptr<DeviceAssignment> device_assignment;
     std::optional<int32_t> slice_id;
     int replica;
     int partition;
@@ -135,6 +134,8 @@ class PjRtExecutableLoadState
 
   virtual void Delete() = 0;
   virtual bool IsDeleted() const = 0;
+
+  virtual absl::Status ClearExecutionState() { return absl::OkStatus(); }
 
   virtual absl::Status Preload(PjRtExecutable* executable) {
     return absl::OkStatus();
@@ -295,6 +296,8 @@ class PjRtRawClient {
 
   virtual void RecordMemoryStats() {}
 
+  virtual void RecordLinearizeBytes(bool is_h2d, size_t bytes) {}
+
   // Imports foreign memory as a raw buffer.
   virtual absl::StatusOr<PjRtRawBufferRef> ImportForeignMemory(
       PjRtMemorySpace* memory_space, void* device_ptr, size_t size,
@@ -345,6 +348,10 @@ class PjRtRawClient {
                                                int32_t launch_id,
                                                absl::Status error) {
     return absl::UnimplementedError("PoisonExecution is not supported");
+  }
+
+  virtual bool CanRecoverDonation(const absl::Status& status) const {
+    return false;
   }
 
   virtual absl::Status TransferToInfeed(LocalDeviceId local_device_id,

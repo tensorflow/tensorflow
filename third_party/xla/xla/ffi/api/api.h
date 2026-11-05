@@ -607,6 +607,9 @@ struct AttrsTag {};
 template <typename T>
 struct CtxTag {};
 
+template <typename T, ExecutionStage stage>
+struct IsStageCompatibleCtx : std::true_type {};
+
 //----------------------------------------------------------------------------//
 // A template for counting tagged arguments in the Ts pack.
 //----------------------------------------------------------------------------//
@@ -752,6 +755,8 @@ class Binding {
 
   template <typename T>
   Binding<stage, Ts..., internal::CtxTag<T>> Ctx() && {
+    static_assert(internal::IsStageCompatibleCtx<T, stage>::value,
+                  "context type is not compatible with the execution stage");
     return {std::move(*this)};
   }
 
@@ -1787,7 +1792,7 @@ struct Decode<AttrTag<T>> {
         return false;
       }
       for (size_t i = 0; i < a->len; ++i) {
-        if (XLA_FFI_PREDICT_FALSE(a->ptr[i] != b.data()[i])) {
+        if (XLA_FFI_PREDICT_FALSE(a->ptr[i] != b[i])) {
           return false;
         }
       }

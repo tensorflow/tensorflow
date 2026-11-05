@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/conv_kind_assignment.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
-#include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_compiler.h"
 #include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
@@ -60,16 +59,13 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
 #include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/convert_mover.h"
-#include "xla/hlo/transforms/simplifiers/dot_dimension_merger.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
@@ -81,7 +77,6 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
@@ -174,24 +169,6 @@ class MatmulBfloat16Support : public FloatSupport {
 
 }  // namespace
 
-void NVPTXCompiler::AddPaddingForGpublasGemms(
-    HloPassPipeline& pipeline, const DebugOptions& debug_options,
-    const se::GpuComputeCapability& gpu_version) {
-  if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
-    for (const CublasPaddingRequirement& requirement :
-         CublasPaddingRequirements) {
-      if (gpu_version.cuda_compute_capability()->SupportsAllFeaturesOf(
-              requirement.min_compute_capability)) {
-        pipeline.AddPass<CublasPadForGemms>(gpu_version, requirement.data_type,
-                                            requirement.multiple_of);
-      }
-    }
-    // Padding a gemm operand that's a constant results in pad(constant).  Run
-    // constant-folding to simplify this into a new constant.
-    pipeline.AddPass<HloConstantFolding>();
-  }
-}
-
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
     se::dnn::VersionInfo dnn_version,
@@ -248,7 +225,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
       hlo_module->config().debug_options(),
-      /*is_rocm=*/false);
+      /*is_non_cuda_platform=*/false);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 
@@ -296,18 +273,6 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
-bool NVPTXCompiler::IsScaledDotSupportedByBackend(
-    const HloInstruction* instr,
-    const GpuTargetConfig& gpu_target_config) const {
-  if (GpuCompiler::IsScaledDotSupportedByBackend(instr, gpu_target_config)) {
-    return true;
-  }
-  if (const auto* scaled_dot = DynCast<HloScaledDotInstruction>(instr)) {
-    return CudnnScaledDotHelper::IsSupported(scaled_dot);
-  }
-  return false;
-}
-
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTopology& gpu_topology,
@@ -335,7 +300,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           ? se::dnn::VersionInfo(
                 gpu_target_config.device_description.dnn_version())
           : se::dnn::VersionInfo{});
-  pre_pipeline.AddPass<DotDimensionMerger>();
 
   ABSL_RETURN_IF_ERROR(
       pre_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
@@ -385,31 +349,6 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
     return absl::OkStatus();
   }
 
-  // Decide whether to run cuDNN compilation deviceless (no live cuDNN handle).
-  bool use_deviceless_cudnn = false;
-  switch (debug_options.xla_gpu_cudnn_deviceless_compilation_mode()) {
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_UNSET:
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_DISABLED:
-      use_deviceless_cudnn = false;
-      break;
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_ALWAYS:
-      // Force deviceless even if we have a device.
-      use_deviceless_cudnn = true;
-      break;
-    case DebugOptions::CUDNN_DEVICELESS_COMPILATION_AUTO:
-    default:
-      // Deviceless only when there is no live device to query.
-      use_deviceless_cudnn = (stream_exec == nullptr);
-      break;
-  }
-  // Without a live device and without deviceless compilation there is nothing
-  // to do.
-  if (stream_exec == nullptr && !use_deviceless_cudnn) {
-    return absl::OkStatus();
-  }
-  se::dnn::DnnSupport* dnn_support =
-      use_deviceless_cudnn ? nullptr : stream_exec->AsDnn();
-
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
@@ -421,10 +360,10 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
   const absl::flat_hash_set<absl::string_view> execution_threads = {
       HloInstruction::kMainExecutionThread,
       HloInstruction::kParallelExecutionThread};
-  CuDnnFusionCompiler fusion_compiler(dnn_support, gpu_device_info,
+  CuDnnFusionCompiler fusion_compiler(stream_exec, gpu_device_info,
                                       *dnn_compiled_graphs);
   ABSL_RETURN_IF_ERROR(fusion_compiler.Run(module, execution_threads).status());
-  CuDnnCustomCallCompiler call_compiler(dnn_support, gpu_device_info,
+  CuDnnCustomCallCompiler call_compiler(stream_exec, gpu_device_info,
                                         *dnn_compiled_graphs);
   return call_compiler.Run(module, execution_threads).status();
 }

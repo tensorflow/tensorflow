@@ -53,10 +53,10 @@ namespace xla {
 // from/to the same or overlapping buffer slices concurrently), or resource
 // races (using the same mutable resource concurrently).
 //
-// Resources can behave as buffers and require an execution order (operation
-// must wait for the completion of execution of all dependencies), or as a
-// scheduling barrier (operation must wait for the completion of scheduling of
-// all dependencies). See more details in the `NodeEdge::Kind` definition.
+// Resources can require an execution order (an operation must wait for all
+// dependencies to finish executing) or a scheduling barrier (an operation must
+// wait for all dependencies to start executing). Currently all resources use
+// execution order; see `NodeEdge::Kind` for details.
 //
 // We use buffer and resource use conflicts to define an execution order of
 // operations as a directed acyclic graph (DAG) that satisfies all dependencies.
@@ -121,28 +121,29 @@ class ExecutionGraph {
     enum class Kind {
       // If two operations have a scheduling edge between them, then the
       // dependent operation must be scheduled (start execution) after the
-      // dependency operation scheduled (started execution), however it doesn't
-      // have to wait for the completion of execution. We use this type of
-      // edge to guarantee that operations that share the same resource (i.e.
-      // collective communicator) start execution in a deterministic order
-      // across different ranks, however the execution of operations can
-      // overlap and finish in any order, and backend-implementation specific.
+      // dependency operation has been scheduled (started execution), without
+      // waiting for it to finish. Currently no `Resource::Kind` uses
+      // `kScheduling`; it is retained for operations whose `Execute()` starts
+      // work in a deterministic order across ranks before returning.
       kScheduling,
 
       // If two operations have an execution edge between them, then the
-      // dependent operation must wait for the completion of dependency
-      // operation execution. We use this type of edge to order execution of
-      // operations that read and write from/to the same buffers, as otherwise
-      // we may create data races.
+      // dependent operation must wait for the dependency operation to finish
+      // executing. We use this type of edge to order operations that read and
+      // write the same buffers or share stateful resources (such as collective
+      // communicators), as otherwise we may create races.
       kExecution,
     };
 
+    // Currently all resources map to `kExecution`. `kCollectiveCommunicator`
+    // cannot use `kScheduling` because container operations (such as while
+    // loops and conditionals) may return from `Execute()` before their nested
+    // collectives have started.
     static constexpr NodeEdge::Kind KindOf(Resource::Kind resource) {
       switch (resource) {
         case Resource::kToken:
-          return NodeEdge::Kind::kExecution;
         case Resource::kCollectiveCommunicator:
-          return NodeEdge::Kind::kScheduling;
+          return NodeEdge::Kind::kExecution;
       }
     }
 

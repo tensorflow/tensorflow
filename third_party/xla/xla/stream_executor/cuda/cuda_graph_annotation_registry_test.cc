@@ -37,11 +37,11 @@ namespace stream_executor::gpu {
 namespace {
 
 using ::testing::_;
+using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Optional;
 using Registry = CudaGraphAnnotationRegistry;
-using TrackMode = CudaGraphAnnotationRegistry::TrackMode;
 
 constexpr uint32_t kGraph = 10;
 constexpr uint32_t kOtherGraph = 20;
@@ -60,130 +60,157 @@ std::optional<std::string> Lookup(
   return annotation;
 }
 
-// Tracks a newly created graph and returns its token.
-Registry::Token Track(Registry& registry, uint32_t graph_id) {
-  return registry.TrackGraph(graph_id, TrackMode::kNewGraph).token;
-}
-
-TEST(CudaGraphAnnotationRegistryTest, GetOrCreateReturnsExistingToken) {
+TEST(CudaGraphAnnotationRegistryTest, TrackGraphIsGetOrCreate) {
   Registry registry;
   EXPECT_TRUE(registry.empty());
   EXPECT_FALSE(registry.IsGraphTracked(kGraph));
 
-  Registry::TrackResult first =
-      registry.TrackGraph(kGraph, TrackMode::kGetOrCreate);
-  EXPECT_NE(first.token, Registry::kInvalidToken);
-  EXPECT_TRUE(first.newly_tracked);
+  EXPECT_TRUE(registry.TrackGraph(kGraph));
   EXPECT_TRUE(registry.IsGraphTracked(kGraph));
   EXPECT_FALSE(registry.empty());
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
 
-  Registry::TrackResult again =
-      registry.TrackGraph(kGraph, TrackMode::kGetOrCreate);
-  EXPECT_EQ(again.token, first.token);
-  EXPECT_FALSE(again.newly_tracked);
+  // Tracking again keeps the entry and its annotations.
+  EXPECT_FALSE(registry.TrackGraph(kGraph));
+  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("a")));
 
-  Registry::TrackResult other =
-      registry.TrackGraph(kOtherGraph, TrackMode::kNewGraph);
-  EXPECT_NE(other.token, Registry::kInvalidToken);
-  EXPECT_NE(other.token, first.token);
-  EXPECT_TRUE(other.newly_tracked);
+  EXPECT_TRUE(registry.TrackGraph(kOtherGraph));
   EXPECT_EQ(registry.GetStats().live_graphs, 2);
+}
+
+TEST(CudaGraphAnnotationRegistryTest, GetNodeAnnotationsForTesting) {
+  Registry registry;
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.TrackGraph(kOtherGraph));
+  // Registers the annotations across two graphs in reverse order, so the result
+  // is sorted only if GetNodeAnnotationsForTesting sorts it.
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode + i,
+                                                "op" + std::to_string(7 - i)));
+    ASSERT_TRUE(registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode + i,
+                                                "op" + std::to_string(3 - i)));
+  }
+  ASSERT_TRUE(
+      registry.TrackGraph(kGraph, Registry::KeySpace::kPre134ExecGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(
+      kGraph, kNode, "exec", Registry::KeySpace::kPre134ExecGraph));
+  // Parked entries are included too.
+  Registry::HarvestHold hold = registry.AcquireHarvestHold();
+  registry.UnregisterGraph(kOtherGraph);
+  ASSERT_EQ(registry.GetStats().parked_graphs, 1);
+
+  EXPECT_THAT(
+      registry.GetNodeAnnotationsForTesting(Registry::KeySpace::kTemplateGraph),
+      ElementsAre("op0", "op1", "op2", "op3", "op4", "op5", "op6", "op7"));
+  EXPECT_THAT(registry.GetNodeAnnotationsForTesting(
+                  Registry::KeySpace::kPre134ExecGraph),
+              ElementsAre("exec"));
 }
 
 TEST(CudaGraphAnnotationRegistryTest, InsertIfAbsent) {
   Registry registry;
-  Registry::Token token = Track(registry, kGraph);
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
 
-  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, token, kNode, ""));
-  EXPECT_TRUE(registry.RegisterNodeAnnotation(kGraph, token, kNode, "first"));
-  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, token, kNode, "second"));
+  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, kNode, ""));
+  EXPECT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "first"));
+  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, kNode, "second"));
   EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("first")));
 
-  // Writes need a live entry and its token.
-  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, token + 1, kNode2, "x"));
-  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, Registry::kInvalidToken,
-                                               kNode2, "x"));
-  EXPECT_FALSE(
-      registry.RegisterNodeAnnotation(kOtherGraph, token, kOtherNode, "x"));
-  EXPECT_EQ(Lookup(registry, kGraph, kNode2), std::nullopt);
+  // Writes need a tracked graph.
+  EXPECT_FALSE(registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode, "x"));
+  EXPECT_EQ(Lookup(registry, kOtherGraph, kOtherNode), std::nullopt);
   EXPECT_FALSE(registry.IsGraphTracked(kOtherGraph));
   EXPECT_EQ(registry.GetStats().live_graphs, 1);
 }
 
-TEST(CudaGraphAnnotationRegistryTest, TokenMismatchNoOp) {
+TEST(CudaGraphAnnotationRegistryTest, UnregisterGraph) {
   Registry registry;
-  Registry::Token token = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, token, kNode, "a"));
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
 
-  registry.UnregisterGraph(kGraph, token + 1);
+  // Unregistering an untracked graph does nothing.
+  registry.UnregisterGraph(kOtherGraph);
   EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("a")));
 
-  // An untracked ID matches no token either.
-  registry.UnregisterGraph(kOtherGraph, token);
-  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("a")));
-
-  registry.UnregisterGraph(kGraph, token);
+  registry.UnregisterGraph(kGraph);
   EXPECT_EQ(Lookup(registry, kGraph, kNode), std::nullopt);
+  EXPECT_FALSE(registry.IsGraphTracked(kGraph));
   EXPECT_TRUE(registry.empty());
+  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
 
-  // The old token can't bring the entry back or unregister it twice.
-  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, token, kNode, "a"));
-  registry.UnregisterGraph(kGraph, token);
+  // A second cleanup of the same graph does nothing either.
+  registry.UnregisterGraph(kGraph);
   EXPECT_TRUE(registry.empty());
 }
 
-TEST(CudaGraphAnnotationRegistryTest, NewGraphRetiresStale) {
+TEST(CudaGraphAnnotationRegistryTest, TrackGraphAndRetainGraphsCountOwners) {
   Registry registry;
-  Registry::Token t1 = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t1, kNode, "old"));
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
 
-  // A new graph got the ID before the old graph's cleanup ran.
-  Registry::TrackResult second =
-      registry.TrackGraph(kGraph, TrackMode::kNewGraph);
-  Registry::Token t2 = second.token;
-  EXPECT_TRUE(second.newly_tracked);
-  EXPECT_NE(t2, t1);
-  EXPECT_EQ(Lookup(registry, kGraph, kNode), std::nullopt);
-  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, t1, kNode, "old"));
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t2, kNode, "new"));
+  // Retaining an untracked graph does nothing.
+  registry.RetainGraphs({{kOtherGraph, Registry::KeySpace::kTemplateGraph}});
+  EXPECT_FALSE(registry.IsGraphTracked(kOtherGraph));
 
-  // The old graph's late cleanup must leave the new graph's entry alone.
-  registry.UnregisterGraph(kGraph, t1);
+  // Retaining a live entry adds an owner reference that must be balanced.
+  registry.RetainGraphs({{kGraph, Registry::KeySpace::kTemplateGraph}});
+  registry.UnregisterGraph(kGraph);
   EXPECT_TRUE(registry.IsGraphTracked(kGraph));
-  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("new")));
-  EXPECT_EQ(registry.GetStats().live_graphs, 1);
+  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("a")));
+
+  // Tracking an already-tracked graph returns false and does not add an owner.
+  EXPECT_FALSE(registry.TrackGraph(kGraph));
+  registry.UnregisterGraph(kGraph);
+  EXPECT_FALSE(registry.IsGraphTracked(kGraph));
+  EXPECT_TRUE(registry.empty());
 }
 
-TEST(CudaGraphAnnotationRegistryTest, NewGraphParksStaleEntryWhileHeld) {
+TEST(CudaGraphAnnotationRegistryTest, UnregisterGraphsBatchesUnderOneLock) {
   Registry registry;
-  Registry::HarvestHold hold = registry.AcquireHarvestHold();
-  Registry::Token t1 = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t1, kNode, "old"));
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t1, kNode2, "old2"));
-
-  // The retired entry takes the park path, so the old graph's events resolve.
-  Registry::Token t2 = Track(registry, kGraph);
-  EXPECT_EQ(registry.GetStats().parked_graphs, 1);
-  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("old")));
-
-  // Parking the newer entry replaces the older parked one.
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t2, kNode, "new"));
-  registry.UnregisterGraph(kGraph, t2);
-  Registry::Stats stats = registry.GetStats();
-  EXPECT_EQ(stats.parked_graphs, 1);
-  EXPECT_EQ(stats.parked_bytes, 3);
-  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("new")));
-  EXPECT_EQ(Lookup(registry, kGraph, kNode2), std::nullopt);
+  constexpr uint32_t kEmptyGraph = 30;
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
+  ASSERT_TRUE(registry.TrackGraph(kOtherGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode, "b"));
+  ASSERT_TRUE(registry.TrackGraph(kEmptyGraph));
+  ASSERT_TRUE(
+      registry.TrackGraph(kGraph, Registry::KeySpace::kPre134ExecGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(
+      kGraph, kNode, "exec", Registry::KeySpace::kPre134ExecGraph));
+  {
+    // Under a hold, the graphs with annotations are parked, the empty one is
+    // erased, and an untracked graph is ignored.
+    Registry::HarvestHold hold = registry.AcquireHarvestHold();
+    registry.UnregisterGraphs(
+        {{kGraph, Registry::KeySpace::kTemplateGraph},
+         {kEmptyGraph, Registry::KeySpace::kTemplateGraph},
+         {kGraph, Registry::KeySpace::kPre134ExecGraph},
+         {/*graph_id=*/99, Registry::KeySpace::kTemplateGraph}});
+    Registry::Stats stats = registry.GetStats();
+    EXPECT_EQ(stats.live_graphs, 1);
+    EXPECT_EQ(stats.parked_graphs, 2);
+    EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("a")));
+    EXPECT_THAT(
+        Lookup(registry, kGraph, kNode, Registry::KeySpace::kPre134ExecGraph),
+        Optional(Eq("exec")));
+    EXPECT_TRUE(registry.IsGraphTracked(kOtherGraph));
+  }
+  EXPECT_EQ(Lookup(registry, kGraph, kNode), std::nullopt);
+  // Without a hold, entries are erased.
+  registry.UnregisterGraphs(
+      {{kOtherGraph, Registry::KeySpace::kTemplateGraph}});
+  EXPECT_TRUE(registry.empty());
+  registry.UnregisterGraphs({});
+  EXPECT_TRUE(registry.empty());
 }
 
 TEST(CudaGraphAnnotationRegistryTest, ParkThenPurge) {
   Registry registry;
-  Registry::Token token = Track(registry, kGraph);
-  ASSERT_TRUE(
-      registry.RegisterNodeAnnotation(kGraph, token, kNode, "annotation"));
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "annotation"));
   {
     Registry::HarvestHold hold = registry.AcquireHarvestHold();
-    registry.UnregisterGraph(kGraph, token);
+    registry.UnregisterGraph(kGraph);
     Registry::Stats stats = registry.GetStats();
     EXPECT_EQ(stats.live_graphs, 0);
     EXPECT_EQ(stats.parked_graphs, 1);
@@ -193,8 +220,11 @@ TEST(CudaGraphAnnotationRegistryTest, ParkThenPurge) {
     EXPECT_FALSE(registry.empty());
     // The destroyed graph's events still resolve until the harvest ends.
     EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("annotation")));
-    // But the graph is dead: its token no longer admits writes.
-    EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, token, kNode2, "x"));
+    // But the graph is dead: it no longer admits writes, and a second cleanup
+    // doesn't count its bytes twice.
+    EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, kNode2, "x"));
+    registry.UnregisterGraph(kGraph);
+    EXPECT_EQ(registry.GetStats().parked_bytes, 10);
   }
   Registry::Stats stats = registry.GetStats();
   EXPECT_EQ(stats.parked_graphs, 0);
@@ -204,14 +234,32 @@ TEST(CudaGraphAnnotationRegistryTest, ParkThenPurge) {
   EXPECT_TRUE(registry.empty());
 }
 
+TEST(CudaGraphAnnotationRegistryTest, ParkedEntryIsNotRevived) {
+  Registry registry;
+  Registry::HarvestHold hold = registry.AcquireHarvestHold();
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "parked"));
+  registry.UnregisterGraph(kGraph);
+
+  // Graph IDs are not reused, so the parked entry still belongs to the
+  // destroyed graph: tracking its ID neither revives nor replaces it.
+  EXPECT_FALSE(registry.TrackGraph(kGraph));
+  EXPECT_FALSE(registry.IsGraphTracked(kGraph));
+  EXPECT_FALSE(registry.RegisterNodeAnnotation(kGraph, kNode2, "x"));
+  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("parked")));
+  Registry::Stats stats = registry.GetStats();
+  EXPECT_EQ(stats.live_graphs, 0);
+  EXPECT_EQ(stats.parked_graphs, 1);
+}
+
 TEST(CudaGraphAnnotationRegistryTest, OverlappingHolds) {
   Registry registry;
-  Registry::Token token = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, token, kNode, "a"));
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
   std::optional<Registry::HarvestHold> first(registry.AcquireHarvestHold());
   Registry::HarvestHold second = registry.AcquireHarvestHold();
   EXPECT_EQ(registry.GetStats().active_holds, 2);
-  registry.UnregisterGraph(kGraph, token);
+  registry.UnregisterGraph(kGraph);
 
   // Moving a hold transfers it without releasing it.
   std::optional<Registry::HarvestHold> moved(std::move(second));
@@ -230,11 +278,30 @@ TEST(CudaGraphAnnotationRegistryTest, OverlappingHolds) {
   EXPECT_EQ(Lookup(registry, kGraph, kNode), std::nullopt);
 }
 
+TEST(CudaGraphAnnotationRegistryTest, LiveEntriesSurvivePurge) {
+  Registry registry;
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.TrackGraph(kOtherGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "live"));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode, "dead"));
+  {
+    Registry::HarvestHold hold = registry.AcquireHarvestHold();
+    registry.UnregisterGraph(kOtherGraph);
+  }
+  // Releasing the hold purges only the parked entry.
+  EXPECT_TRUE(registry.IsGraphTracked(kGraph));
+  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("live")));
+  EXPECT_EQ(Lookup(registry, kOtherGraph, kOtherNode), std::nullopt);
+  Registry::Stats stats = registry.GetStats();
+  EXPECT_EQ(stats.live_graphs, 1);
+  EXPECT_EQ(stats.parked_graphs, 0);
+}
+
 TEST(CudaGraphAnnotationRegistryTest, EmptyEntryNotParked) {
   Registry registry;
   Registry::HarvestHold hold = registry.AcquireHarvestHold();
-  Registry::Token token = Track(registry, kGraph);
-  registry.UnregisterGraph(kGraph, token);
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  registry.UnregisterGraph(kGraph);
 
   EXPECT_EQ(registry.GetStats().parked_graphs, 0);
   EXPECT_TRUE(registry.empty());
@@ -243,11 +310,11 @@ TEST(CudaGraphAnnotationRegistryTest, EmptyEntryNotParked) {
 TEST(CudaGraphAnnotationRegistryTest, ParkCapDrops) {
   // Room for "12345", but not for "123456" as well.
   Registry registry(/*max_parked_bytes=*/10);
-  Registry::Token t1 = Track(registry, kGraph);
-  Registry::Token t2 = Track(registry, kOtherGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t1, kNode, "12345"));
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.TrackGraph(kOtherGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "12345"));
   ASSERT_TRUE(
-      registry.RegisterNodeAnnotation(kOtherGraph, t2, kOtherNode, "123456"));
+      registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode, "123456"));
 
   absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
   // Only the last release warns, and only about the drops.
@@ -257,8 +324,8 @@ TEST(CudaGraphAnnotationRegistryTest, ParkCapDrops) {
   log.StartCapturingLogs();
   {
     Registry::HarvestHold hold = registry.AcquireHarvestHold();
-    registry.UnregisterGraph(kGraph, t1);
-    registry.UnregisterGraph(kOtherGraph, t2);
+    registry.UnregisterGraph(kGraph);
+    registry.UnregisterGraph(kOtherGraph);
     Registry::Stats stats = registry.GetStats();
     EXPECT_EQ(stats.parked_graphs, 1);
     EXPECT_EQ(stats.parked_bytes, 5);
@@ -269,86 +336,19 @@ TEST(CudaGraphAnnotationRegistryTest, ParkCapDrops) {
 }
 
 TEST(CudaGraphAnnotationRegistryTest,
-     ParkReplacementOverCapKeepsOldParkedEntry) {
-  // Room for "1234" (4 bytes), not for "123456" (6 bytes).
-  Registry registry(/*max_parked_bytes=*/5);
-  Registry::HarvestHold hold = registry.AcquireHarvestHold();
-
-  Registry::Token t1 = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t1, kNode, "1234"));
-  registry.UnregisterGraph(kGraph, t1);
-  EXPECT_EQ(registry.GetStats().parked_graphs, 1);
-  EXPECT_EQ(registry.GetStats().parked_bytes, 4);
-
-  // A new graph with the same ID has a 6-byte annotation that exceeds the cap
-  // even after subtracting the old 4-byte entry. Retiring it must drop the new
-  // entry and preserve the old parked entry.
-  Registry::Token t2 = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t2, kNode, "123456"));
-  registry.UnregisterGraph(kGraph, t2);
-
-  Registry::Stats stats = registry.GetStats();
-  EXPECT_EQ(stats.parked_graphs, 1);
-  EXPECT_EQ(stats.parked_bytes, 4);
-  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("1234")));
-}
-
-TEST(CudaGraphAnnotationRegistryTest, ParkReplacementUnderCapReplacesOldEntry) {
-  // Room for both the old 6-byte entry and the new 7-byte entry.
-  Registry registry(/*max_parked_bytes=*/20);
-  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
-  // The replaced parked entry counts as one dropped graph.
-  EXPECT_CALL(log, Log(absl::LogSeverity::kWarning, _,
-                       HasSubstr("dropped the annotations of 1 graph")))
-      .Times(1);
-  log.StartCapturingLogs();
-  {
-    Registry::HarvestHold hold = registry.AcquireHarvestHold();
-
-    Registry::Token t1 = Track(registry, kGraph);
-    ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t1, kNode, "1234"));
-    ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t1, kNode2, "56"));
-    registry.UnregisterGraph(kGraph, t1);
-    Registry::Stats stats = registry.GetStats();
-    EXPECT_EQ(stats.parked_graphs, 1);
-    EXPECT_EQ(stats.parked_nodes, 2);
-    EXPECT_EQ(stats.parked_bytes, 6);
-
-    // A new graph with the same ID is retired too. Its entry fits under the
-    // cap, so it replaces the older parked entry.
-    Registry::Token t2 = Track(registry, kGraph);
-    ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t2, kNode, "abcdefg"));
-    registry.UnregisterGraph(kGraph, t2);
-
-    stats = registry.GetStats();
-    EXPECT_EQ(stats.live_graphs, 0);
-    EXPECT_EQ(stats.parked_graphs, 1);
-    EXPECT_EQ(stats.parked_nodes, 1);
-    EXPECT_EQ(stats.parked_bytes, 7);
-    EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("abcdefg")));
-    EXPECT_EQ(Lookup(registry, kGraph, kNode2), std::nullopt);
-  }
-  EXPECT_TRUE(registry.empty());
-}
-
-TEST(CudaGraphAnnotationRegistryTest,
      TemplateAndPre134ExecKeySpacesAreDisjoint) {
   constexpr uint32_t kSameGraphId = 7;
   Registry registry;
 
   // Track template graph 7 and register an annotation.
-  Registry::TrackResult tmpl = registry.TrackGraph(
-      kSameGraphId, TrackMode::kNewGraph, Registry::KeySpace::kTemplateGraph);
-  ASSERT_TRUE(tmpl.newly_tracked);
+  ASSERT_TRUE(
+      registry.TrackGraph(kSameGraphId, Registry::KeySpace::kTemplateGraph));
   ASSERT_TRUE(registry.RegisterNodeAnnotation(
-      kSameGraphId, tmpl.token, kNode, "template_op",
-      Registry::KeySpace::kTemplateGraph));
+      kSameGraphId, kNode, "template_op", Registry::KeySpace::kTemplateGraph));
 
-  // Track pre-13.4 exec graph 7 with the same integer ID and kNewGraph; it must
-  // NOT retire or overwrite the live template graph 7.
-  Registry::TrackResult exec = registry.TrackGraph(
-      kSameGraphId, TrackMode::kNewGraph, Registry::KeySpace::kPre134ExecGraph);
-  ASSERT_TRUE(exec.newly_tracked);
+  // Pre-13.4 exec graph 7 with the same integer ID gets its own entry.
+  ASSERT_TRUE(
+      registry.TrackGraph(kSameGraphId, Registry::KeySpace::kPre134ExecGraph));
   EXPECT_TRUE(registry.IsGraphTracked(kSameGraphId,
                                       Registry::KeySpace::kTemplateGraph));
   EXPECT_TRUE(registry.IsGraphTracked(kSameGraphId,
@@ -357,11 +357,11 @@ TEST(CudaGraphAnnotationRegistryTest,
 
   // Copy from template graph 7 into exec graph 7, plus a direct exec node.
   EXPECT_TRUE(registry.CopyNodeAnnotation(
-      kSameGraphId, exec.token, kOtherNode, kSameGraphId, kNode, "fallback",
+      kSameGraphId, kOtherNode, kSameGraphId, kNode, "fallback",
       Registry::KeySpace::kPre134ExecGraph));
-  EXPECT_TRUE(registry.RegisterNodeAnnotation(
-      kSameGraphId, exec.token, kNode, "exec_only_op",
-      Registry::KeySpace::kPre134ExecGraph));
+  EXPECT_TRUE(
+      registry.RegisterNodeAnnotation(kSameGraphId, kNode, "exec_only_op",
+                                      Registry::KeySpace::kPre134ExecGraph));
 
   // Each key space sees only its own entries.
   EXPECT_THAT(
@@ -378,8 +378,7 @@ TEST(CudaGraphAnnotationRegistryTest,
               Optional(Eq("template_op")));
 
   // Unregistering exec graph 7 leaves template graph 7 live and intact.
-  registry.UnregisterGraph(kSameGraphId, exec.token,
-                           Registry::KeySpace::kPre134ExecGraph);
+  registry.UnregisterGraph(kSameGraphId, Registry::KeySpace::kPre134ExecGraph);
   EXPECT_TRUE(registry.IsGraphTracked(kSameGraphId,
                                       Registry::KeySpace::kTemplateGraph));
   EXPECT_FALSE(registry.IsGraphTracked(kSameGraphId,
@@ -392,31 +391,14 @@ TEST(CudaGraphAnnotationRegistryTest,
             std::nullopt);
 }
 
-TEST(CudaGraphAnnotationRegistryTest, LiveBeforeParked) {
-  Registry registry;
-  Registry::HarvestHold hold = registry.AcquireHarvestHold();
-  Registry::Token t1 = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t1, kNode, "parked"));
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t1, kNode2, "parked2"));
-  registry.UnregisterGraph(kGraph, t1);
-
-  // A newer graph with the same ID. Parked entries don't count as tracked.
-  Registry::TrackResult t2 =
-      registry.TrackGraph(kGraph, TrackMode::kGetOrCreate);
-  EXPECT_TRUE(t2.newly_tracked);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, t2.token, kNode, "live"));
-  EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("live")));
-  EXPECT_THAT(Lookup(registry, kGraph, kNode2), Optional(Eq("parked2")));
-}
-
 TEST(CudaGraphAnnotationRegistryTest, CopyFromLive) {
   Registry registry;
-  Registry::Token source = Track(registry, kOtherGraph);
-  Registry::Token clone = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kOtherGraph, source, kOtherNode,
-                                              "original"));
+  ASSERT_TRUE(registry.TrackGraph(kOtherGraph));
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(
+      registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode, "original"));
 
-  EXPECT_TRUE(registry.CopyNodeAnnotation(kGraph, clone, kNode, kOtherGraph,
+  EXPECT_TRUE(registry.CopyNodeAnnotation(kGraph, kNode, kOtherGraph,
                                           kOtherNode, "fallback"));
   EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("original")));
 }
@@ -424,55 +406,54 @@ TEST(CudaGraphAnnotationRegistryTest, CopyFromLive) {
 TEST(CudaGraphAnnotationRegistryTest, CopyFromParked) {
   Registry registry;
   Registry::HarvestHold hold = registry.AcquireHarvestHold();
-  Registry::Token source = Track(registry, kOtherGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kOtherGraph, source, kOtherNode,
-                                              "original"));
-  registry.UnregisterGraph(kOtherGraph, source);
-  Registry::Token clone = Track(registry, kGraph);
+  ASSERT_TRUE(registry.TrackGraph(kOtherGraph));
+  ASSERT_TRUE(
+      registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode, "original"));
+  registry.UnregisterGraph(kOtherGraph);
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
 
-  EXPECT_TRUE(registry.CopyNodeAnnotation(kGraph, clone, kNode, kOtherGraph,
+  EXPECT_TRUE(registry.CopyNodeAnnotation(kGraph, kNode, kOtherGraph,
                                           kOtherNode, "fallback"));
   EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("original")));
 }
 
 TEST(CudaGraphAnnotationRegistryTest, CopyFallback) {
   Registry registry;
-  Registry::Token clone = Track(registry, kGraph);
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
 
-  EXPECT_FALSE(registry.CopyNodeAnnotation(kGraph, clone, kNode, kOtherGraph,
+  EXPECT_FALSE(registry.CopyNodeAnnotation(kGraph, kNode, kOtherGraph,
                                            kOtherNode, /*fallback=*/""));
   EXPECT_EQ(Lookup(registry, kGraph, kNode), std::nullopt);
-  EXPECT_TRUE(registry.CopyNodeAnnotation(kGraph, clone, kNode, kOtherGraph,
+  EXPECT_TRUE(registry.CopyNodeAnnotation(kGraph, kNode, kOtherGraph,
                                           kOtherNode, "fallback"));
   EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("fallback")));
-  // Copies need the live entry's token too.
-  EXPECT_FALSE(registry.CopyNodeAnnotation(kGraph, clone + 1, kNode2,
-                                           kOtherGraph, kOtherNode, "x"));
-  EXPECT_EQ(Lookup(registry, kGraph, kNode2), std::nullopt);
+  // Copies need a tracked destination graph too.
+  EXPECT_FALSE(
+      registry.CopyNodeAnnotation(kOtherGraph, kNode2, kGraph, kNode, "x"));
+  EXPECT_EQ(Lookup(registry, kOtherGraph, kNode2), std::nullopt);
 }
 
 TEST(CudaGraphAnnotationRegistryTest, CopyNoOverwrite) {
   Registry registry;
-  Registry::Token source = Track(registry, kOtherGraph);
-  Registry::Token clone = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kOtherGraph, source, kOtherNode,
-                                              "original"));
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, clone, kNode, "precise"));
+  ASSERT_TRUE(registry.TrackGraph(kOtherGraph));
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(
+      registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode, "original"));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "precise"));
 
-  EXPECT_FALSE(registry.CopyNodeAnnotation(kGraph, clone, kNode, kOtherGraph,
+  EXPECT_FALSE(registry.CopyNodeAnnotation(kGraph, kNode, kOtherGraph,
                                            kOtherNode, "fallback"));
   EXPECT_THAT(Lookup(registry, kGraph, kNode), Optional(Eq("precise")));
 
   // The source may be a node of the destination graph itself.
-  EXPECT_TRUE(
-      registry.CopyNodeAnnotation(kGraph, clone, kNode2, kGraph, kNode, ""));
+  EXPECT_TRUE(registry.CopyNodeAnnotation(kGraph, kNode2, kGraph, kNode, ""));
   EXPECT_THAT(Lookup(registry, kGraph, kNode2), Optional(Eq("precise")));
 }
 
 TEST(CudaGraphAnnotationRegistryTest, VisitorNotCalledOnMiss) {
   Registry registry;
-  Registry::Token token = Track(registry, kGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, token, kNode, "a"));
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
   int calls = 0;
   auto visitor = [&calls](absl::string_view) { ++calls; };
 
@@ -486,12 +467,11 @@ TEST(CudaGraphAnnotationRegistryTest, VisitorNotCalledOnMiss) {
 TEST(CudaGraphAnnotationRegistryTest, ClearKeepsHolds) {
   Registry registry;
   Registry::HarvestHold hold = registry.AcquireHarvestHold();
-  Registry::Token live = Track(registry, kGraph);
-  Registry::Token parked = Track(registry, kOtherGraph);
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, live, kNode, "a"));
-  ASSERT_TRUE(
-      registry.RegisterNodeAnnotation(kOtherGraph, parked, kOtherNode, "b"));
-  registry.UnregisterGraph(kOtherGraph, parked);
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.TrackGraph(kOtherGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "a"));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kOtherGraph, kOtherNode, "b"));
+  registry.UnregisterGraph(kOtherGraph);
 
   registry.ClearForTesting();
   EXPECT_TRUE(registry.empty());
@@ -501,15 +481,10 @@ TEST(CudaGraphAnnotationRegistryTest, ClearKeepsHolds) {
   EXPECT_EQ(stats.parked_bytes, 0);
   EXPECT_EQ(stats.active_holds, 1);
 
-  // Tokens keep increasing, so a cleared graph's late cleanup stays stale.
-  Registry::Token token = Track(registry, kGraph);
-  EXPECT_GT(token, parked);
-  registry.UnregisterGraph(kGraph, live);
-  EXPECT_TRUE(registry.IsGraphTracked(kGraph));
-
   // The hold survived, so unregistered entries are still parked.
-  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, token, kNode, "c"));
-  registry.UnregisterGraph(kGraph, token);
+  ASSERT_TRUE(registry.TrackGraph(kGraph));
+  ASSERT_TRUE(registry.RegisterNodeAnnotation(kGraph, kNode, "c"));
+  registry.UnregisterGraph(kGraph);
   EXPECT_EQ(registry.GetStats().parked_graphs, 1);
 }
 
@@ -534,24 +509,20 @@ TEST(CudaGraphAnnotationRegistryTest, Concurrency) {
       pool.Schedule([&, w] {
         for (int g = 0; g < kGraphsPerWriter; ++g) {
           const uint32_t graph_id = w * kGraphsPerWriter + g + 1;
-          Registry::Token token = Track(registry, graph_id);
-          Registry::TrackResult again =
-              registry.TrackGraph(graph_id, TrackMode::kGetOrCreate);
-          EXPECT_EQ(again.token, token);
-          EXPECT_FALSE(again.newly_tracked);
+          EXPECT_TRUE(registry.TrackGraph(graph_id));
+          EXPECT_FALSE(registry.TrackGraph(graph_id));
           for (int n = 0; n + 1 < kNodesPerGraph; ++n) {
             EXPECT_TRUE(registry.RegisterNodeAnnotation(
-                graph_id, token, static_cast<uint64_t>(n),
-                annotation(graph_id, n)));
+                graph_id, static_cast<uint64_t>(n), annotation(graph_id, n)));
           }
           // The last node copies node 0 of the same graph.
-          EXPECT_TRUE(registry.CopyNodeAnnotation(
-              graph_id, token, /*node_id=*/3, graph_id,
-              /*source_node_id=*/0, "fallback"));
-          // Unregister every other graph, the second time with a stale token.
+          EXPECT_TRUE(
+              registry.CopyNodeAnnotation(graph_id, /*node_id=*/3, graph_id,
+                                          /*source_node_id=*/0, "fallback"));
+          // Unregister every other graph, twice.
           if (g % 2 == 0) {
-            registry.UnregisterGraph(graph_id, token);
-            registry.UnregisterGraph(graph_id, token);
+            registry.UnregisterGraph(graph_id);
+            registry.UnregisterGraph(graph_id);
           }
         }
         writers_running.fetch_sub(1, std::memory_order_release);
@@ -607,22 +578,25 @@ TEST(CudaGraphAnnotationRegistryTest, StatsReportLiveAndParkedSizes) {
   Registry& registry = Registry::Default();
   registry.ClearForTesting();
 
-  auto token1 = Track(registry, 1);
-  registry.RegisterNodeAnnotation(1, token1, 10, "node_a");
-  registry.RegisterNodeAnnotation(1, token1, 11, "node_b");
+  ASSERT_TRUE(registry.TrackGraph(1));
+  registry.RegisterNodeAnnotation(1, 10, "node_a");
+  registry.RegisterNodeAnnotation(1, 11, "node_b");
 
-  auto token2 = Track(registry, 2);
-  registry.RegisterNodeAnnotation(2, token2, 20, "node_c");
+  ASSERT_TRUE(registry.TrackGraph(2));
+  registry.RegisterNodeAnnotation(2, 20, "node_c");
 
   {
     Registry::Stats stats = registry.GetStats();
     EXPECT_EQ(stats.live_graphs, 2);
     EXPECT_EQ(stats.live_nodes, 3);
     EXPECT_EQ(stats.live_bytes, 18);
+    EXPECT_EQ(absl::StrCat(stats),
+              "live_graphs=2 live_nodes=3 live_bytes=18 parked_graphs=0 "
+              "parked_nodes=0 parked_bytes=0 active_holds=0");
   }
 
   Registry::HarvestHold hold = registry.AcquireHarvestHold();
-  registry.UnregisterGraph(1, token1);
+  registry.UnregisterGraph(1);
 
   {
     Registry::Stats stats = registry.GetStats();
@@ -632,10 +606,9 @@ TEST(CudaGraphAnnotationRegistryTest, StatsReportLiveAndParkedSizes) {
     EXPECT_EQ(stats.parked_graphs, 1);
     EXPECT_EQ(stats.parked_nodes, 2);
     EXPECT_EQ(stats.parked_bytes, 12);
-
-    std::string str = absl::StrCat(stats);
-    EXPECT_THAT(str, ::testing::HasSubstr("live_bytes=6"));
-    EXPECT_THAT(str, ::testing::HasSubstr("parked_nodes=2"));
+    EXPECT_EQ(absl::StrCat(stats),
+              "live_graphs=1 live_nodes=1 live_bytes=6 parked_graphs=1 "
+              "parked_nodes=2 parked_bytes=12 active_holds=1");
   }
 }
 

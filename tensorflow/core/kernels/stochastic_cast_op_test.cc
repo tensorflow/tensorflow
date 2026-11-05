@@ -39,8 +39,7 @@ namespace internal {
 // Comparison based stochastic rounding for cross verification.
 template <typename Scalar, typename IntResultType, typename Generator>
 struct StochasticCastVerifier {
-  static_assert(std::is_integral<IntResultType>::value,
-                "Integer type expected");
+  static_assert(std::is_integral_v<IntResultType>, "Integer type expected");
   const Scalar max =
       static_cast<Scalar>(std::numeric_limits<IntResultType>::max());
   const Scalar min =

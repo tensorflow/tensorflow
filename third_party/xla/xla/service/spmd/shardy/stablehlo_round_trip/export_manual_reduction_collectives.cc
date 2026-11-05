@@ -118,24 +118,23 @@ Value createFullyManualComputation(
     std::function<Value(mlir::BlockArgument arg, OpBuilder& blockBuilder,
                         RankedTensorType paddedGlobalType)>
         bodyPopulator) {
-  llvm::SmallDenseSet<StringRef> boundManualAxes;
+  SmallVector<AxisRefAttr> allMeshAxes;
+  allMeshAxes.reserve(mesh.getAxes().size());
+  for (sdy::MeshAxisAttr axis : mesh.getAxes()) {
+    allMeshAxes.push_back(
+        AxisRefAttr::get(builder.getContext(), axis.getName()));
+  }
+  SmallVector<AxisRefAttr> boundManualAxes;
   if (mlir::Block* block = builder.getInsertionBlock()) {
     for (mlir::Operation* parentOp = block->getParentOp(); parentOp != nullptr;
          parentOp = parentOp->getParentOp()) {
       if (auto parentManual = mlir::dyn_cast<ManualComputationOp>(parentOp)) {
-        for (StringRef axisName : parentManual.getManualAxes()) {
-          boundManualAxes.insert(axisName);
-        }
+        llvm::append_range(boundManualAxes, parentManual.getManualAxes());
       }
     }
   }
-  SmallVector<mlir::StringAttr> manualAxes;
-  manualAxes.reserve(mesh.getAxes().size());
-  for (sdy::MeshAxisAttr axis : mesh.getAxes()) {
-    if (!boundManualAxes.contains(axis.getName())) {
-      manualAxes.push_back(builder.getStringAttr(axis.getName()));
-    }
-  }
+  SmallVector<AxisRefAttr> manualAxes =
+      sdy::getAxisSetDiff(allMeshAxes, boundManualAxes, mesh);
   TensorShardingAttr inSharding = sdy::getOrCreateSharding(input, mesh);
   if (!unreducedAxes.empty()) {
     inSharding = inSharding.replaceUnreducedAxes(unreducedAxes, reductionOp);
@@ -155,8 +154,8 @@ Value createFullyManualComputation(
     auto scalarType = RankedTensorType::get({}, globalType.getElementType());
     Value paddingVal = stablehlo::ConstantOp::create(
         builder, loc, mlir::DenseElementsAttr::get(scalarType, identityAttr));
-    manualInput = sdy::padHighSideToType(builder, loc, input, paddedGlobalType,
-                                         inSharding, paddingVal);
+    manualInput = sdy::padHighSideToType(loc, input, paddedGlobalType,
+                                         inSharding, builder, paddingVal);
   }
 
   auto op =
@@ -174,8 +173,8 @@ Value createFullyManualComputation(
       bodyPopulator(block.addArgument(localType, input.getLoc()), blockBuilder,
                     paddedGlobalType));
 
-  return sdy::sliceHighSideToType(builder, loc, op.getResult(0), globalType,
-                                  outSharding);
+  return sdy::sliceHighSideToType(loc, op.getResult(0), globalType, outSharding,
+                                  builder);
 }
 
 void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,

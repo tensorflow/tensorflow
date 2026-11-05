@@ -1,6 +1,6 @@
 --- a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp
-@@ -217,8 +217,8 @@
+@@ -199,8 +199,8 @@ Value TargetInfo::loadRelaxed(RewriterBase &rewriter, Location loc, Value ptr,
          Value loaded = LLVM::LoadOp::create(
              rewriter, loc, valueTy, ptr, alignment, /*isVolatile=*/false,
              /*isNonTemporal=*/false, /*isInvariant=*/false,

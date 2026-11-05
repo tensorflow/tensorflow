@@ -33,6 +33,7 @@ distribute_py_strict_test(
         # copybara:uncomment_end
         "//conditions:default": None,
     }),
+    shard_count = 8,
     tags = [
         "no_windows",  # TODO(b/171350360)
         "nomultivm",  # multi_worker_test_base incompatible with multivm base

@@ -43,16 +43,12 @@ xla_cc_binary(
     deps = [
         "//xla:debug_options_flags",
         "//xla:error_spec",
-        "//xla/backends/gpu/codegen/tools:test_lib",
-        "//xla/codegen/tools:test_lib",
         "//xla/hlo/ir:hlo",
         "//xla/service:gpu_plugin",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:pjrt_gpu_client_registry",
         "//xla/tools:hlo_module_loader",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest",
@@ -196,6 +192,7 @@ xla_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service:algorithm_util",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_compiler",
@@ -371,6 +368,11 @@ xla_cc_test(
 xla_test(
     name = "fusion_emitter_int4_device_test",
     srcs = ["fusion_emitter_int4_device_test.cc"],
+    backend_tags = {
+        # Intermittently aborts with HSA_STATUS_ERROR_ILLEGAL_INSTRUCTION on the
+        # MI350X CI runners; excluded from ROCm CI via --config=no_flaky.
+        "amdgpu_any": ["flaky"],
+    },
     backends = [
         "a100",
         "h100",

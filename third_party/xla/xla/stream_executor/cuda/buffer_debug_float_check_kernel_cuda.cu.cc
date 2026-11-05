@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "Eigen/Core"
 #include "third_party/gpus/cuda/include/cuda/atomic"
+#include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"

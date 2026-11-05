@@ -251,7 +251,8 @@ bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
   if (!xla_gpu_experimental_all_fusions_with_triton_ &&
       !absl::c_any_of(
           fusion->fused_instructions_computation()->instructions(),
-          HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>)) {
+          HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose,
+                           HloOpcode::kConcatenate>)) {
     return false;
   }
   const HloComputation* fusion_computation =

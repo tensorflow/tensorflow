@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -22,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/ArithDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/Block.h"
@@ -48,9 +51,10 @@ namespace {
 class EmitterHelpersTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    context_.loadDialect<
-        mlir::triton::TritonDialect, mlir::triton::gpu::TritonGPUDialect,
-        mlir::triton::xla::XlaTritonDialect, mlir::LLVM::LLVMDialect>();
+    context_.loadDialect<mlir::arith::ArithDialect, mlir::triton::TritonDialect,
+                         mlir::triton::gpu::TritonGPUDialect,
+                         mlir::triton::xla::XlaTritonDialect,
+                         mlir::LLVM::LLVMDialect>();
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> ParseModule(
@@ -392,6 +396,79 @@ TEST_F(EmitterHelpersTest,
   // One operand is the splatted mask of the reduced dimension.
   EXPECT_TRUE(and_op.getLhs().getDefiningOp<mlir::triton::SplatOp>() ||
               and_op.getRhs().getDefiningOp<mlir::triton::SplatOp>());
+}
+
+TEST_F(EmitterHelpersTest,
+       CreateTensorOfPointersAndMaskUnboundedUpperRangeHasMask) {
+  auto [entry_block, mlir_module] =
+      CreateModuleAndEntryBlock({mlir::LLVM::LLVMPointerType::get(&context_, 1),
+                                 mlir::IntegerType::get(&context_, 32)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  auto offset_op = mlir::arith::IndexCastOp::create(
+      builder, builder.getIndexType(), entry_block->getArgument(1));
+  // `SimplifyArithPass` can attach `[0, INT64_MAX]` (e.g. on `maxsi(x, 0)`).
+  // Ensure `IsGuaranteedInBounds` does not overflow `upper + max_delta`.
+  offset_op->setAttr(
+      "xla.range",
+      builder.getIndexArrayAttr({0, std::numeric_limits<int64_t>::max()}));
+  EXPECT_FALSE(xgt::IsGuaranteedInBounds(offset_op.getResult(), /*tile_size=*/4,
+                                         /*tile_stride=*/1,
+                                         /*original_shape=*/8));
+
+  auto [tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{8}, /*layout=*/{0},
+      /*offsets=*/{offset_op.getResult()}, /*sizes=*/{1}, /*strides=*/{1},
+      /*reduced_dims=*/{}, /*tile_shape=*/{1});
+
+  ASSERT_TRUE(tile);
+  EXPECT_TRUE(mask_tile);
+}
+
+TEST_F(EmitterHelpersTest,
+       CreateTensorOfPointersAndMaskInfeasibleRangeHasMask) {
+  auto [entry_block, mlir_module] =
+      CreateModuleAndEntryBlock({mlir::LLVM::LLVMPointerType::get(&context_, 1),
+                                 mlir::IntegerType::get(&context_, 32)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  auto offset_op = mlir::arith::IndexCastOp::create(
+      builder, builder.getIndexType(), entry_block->getArgument(1));
+  offset_op->setAttr("xla.range", builder.getIndexArrayAttr({0, -1}));
+
+  auto [tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{8}, /*layout=*/{0},
+      /*offsets=*/{offset_op.getResult()}, /*sizes=*/{1}, /*strides=*/{1},
+      /*reduced_dims=*/{}, /*tile_shape=*/{1});
+
+  ASSERT_TRUE(tile);
+  EXPECT_TRUE(mask_tile);
+}
+
+TEST_F(EmitterHelpersTest,
+       CreateTensorOfPointersAndMaskUnitTileSizeInBoundsHasNoMask) {
+  auto [entry_block, mlir_module] =
+      CreateModuleAndEntryBlock({mlir::LLVM::LLVMPointerType::get(&context_, 1),
+                                 mlir::IntegerType::get(&context_, 32)});
+  mlir::ImplicitLocOpBuilder builder(mlir_module->getLoc(), entry_block,
+                                     entry_block->begin());
+
+  mlir::Value base_ptr = entry_block->getArgument(0);
+  auto offset_op = mlir::arith::IndexCastOp::create(
+      builder, builder.getIndexType(), entry_block->getArgument(1));
+  offset_op->setAttr("xla.range", builder.getIndexArrayAttr({0, 7}));
+
+  auto [tile, mask_tile] = xgt::CreateTensorOfPointersAndMask(
+      builder, base_ptr, /*original_shape=*/{8}, /*layout=*/{0},
+      /*offsets=*/{offset_op.getResult()}, /*sizes=*/{1}, /*strides=*/{1},
+      /*reduced_dims=*/{}, /*tile_shape=*/{1});
+
+  ASSERT_TRUE(tile);
+  EXPECT_FALSE(mask_tile);
 }
 }  // namespace
 }  // namespace xla::gpu

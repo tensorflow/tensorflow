@@ -33,7 +33,7 @@ new file mode 100644
 
 --- a/third_party/nvidia/backend/driver.c
 +++ b/third_party/nvidia/backend/driver.c
-@@ -991,6 +991,37 @@ cleanup:
+@@ -996,6 +996,37 @@ cleanup:
    return NULL;
  }
  
@@ -71,7 +71,7 @@ new file mode 100644
  static void _launch(int gridX, int gridY, int gridZ, int num_warps,
                      int num_ctas, int launch_cooperative_grid, int launch_pdl,
                      int shared_memory, CUstream stream, CUfunction function,
-@@ -1102,6 +1133,9 @@ bool extractPointer(void *ptr, PyObject *obj) {
+@@ -1107,6 +1138,9 @@ bool extractPointer(void *ptr, PyObject *obj) {
    if (*dev_ptr == 0) {
      return true; // valid nullptr
    }

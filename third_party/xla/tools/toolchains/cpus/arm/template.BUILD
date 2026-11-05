@@ -14,6 +14,8 @@
 # ==============================================================================
 
 # Repository initialized in tensorflow/workspace2.bzl
+load("@rules_cc//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
+load("@rules_cc//cc/toolchains:cc_toolchain_suite.bzl", "cc_toolchain_suite")
 load(":cc_config.bzl", "cc_toolchain_config")
 
 package(default_visibility = ["//visibility:public"])

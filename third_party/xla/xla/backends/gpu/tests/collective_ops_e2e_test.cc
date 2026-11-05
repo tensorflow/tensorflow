@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -26,7 +27,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
+#include "absl/log/globals.h"
 #include "absl/log/log.h"
+#include "absl/log/log_entry.h"
+#include "absl/log/log_sink.h"
+#include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -297,6 +302,9 @@ class CollectivesModeOps
     }
     debug_options.set_xla_gpu_collective_permute_mode(collectives_mode_);
     debug_options.set_xla_gpu_all_gather_mode(collectives_mode_);
+    if (RequiresCollectiveMemory()) {
+      debug_options.set_xla_gpu_experimental_nccl_window_symmetric(true);
+    }
     return debug_options;
   }
 
@@ -3903,6 +3911,240 @@ ENTRY main {
         LiteralUtil::CreateR1<float>(std::vector<float>(128, 2.0f)), literal,
         ErrorSpec(1e-4)));
   }
+}
+
+class CommandBufferRecordCounter : public absl::LogSink {
+ public:
+  void Send(const absl::LogEntry& entry) override {
+    if (absl::StrContains(entry.text_message(),
+                          "Abandon previously acquired clique")) {
+      abandon_count_.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (absl::StrContains(entry.text_message(),
+                          "Initialized command buffer on device #")) {
+      record_count_.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+
+  int64_t abandon_count() const {
+    return abandon_count_.load(std::memory_order_relaxed);
+  }
+
+  int64_t record_count() const {
+    return record_count_.load(std::memory_order_relaxed);
+  }
+
+  void Reset() {
+    abandon_count_.store(0, std::memory_order_relaxed);
+    record_count_.store(0, std::memory_order_relaxed);
+  }
+
+ private:
+  std::atomic<int64_t> abandon_count_{0};
+  std::atomic<int64_t> record_count_{0};
+};
+
+class CommandBufferCliqueEvictionTest : public CollectiveOpsTestE2E {
+ public:
+  static constexpr int64_t kNumReplicas = 4;
+  static constexpr int64_t kNumPartitions = 1;
+
+  // Sub-group module: collective over {{0,2},{1,3}} captured into a CUDA graph.
+  static constexpr absl::string_view kSubHlo = R"(
+HloModule SubCliqueAllReduce, replica_count=4
+
+apply_op {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT sum = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[128]{0} parameter(0)
+  ROOT ar = f32[128]{0} all-reduce(p0), replica_groups={{0,2},{1,3}}, to_apply=apply_op
+}
+)";
+
+  // Trigger module: uses two independent inputs so HLO simplification preserves
+  // both collectives. Acquires world clique {{0,1,2,3}} first and then
+  // sub-clique {{0,2},{1,3}} in the same run so `AcquireClique` splits {{0,2}}
+  // and {{1,3}} from {{0,1,2,3}}, abandoning the standalone sub-cliques and
+  // evicting their previously captured command buffers.
+  static constexpr absl::string_view kSplitTriggerHlo = R"(
+HloModule SplitTriggerAllReduce, replica_count=4
+
+apply_op {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT sum = f32[] add(x, y)
+}
+
+ENTRY main {
+  p0 = f32[128]{0} parameter(0)
+  p1 = f32[128]{0} parameter(1)
+  world = f32[128]{0} all-reduce(p0), replica_groups={{0,1,2,3}}, to_apply=apply_op
+  sub = f32[128]{0} all-reduce(p1), replica_groups={{0,2},{1,3}}, to_apply=apply_op
+  ROOT out = f32[128]{0} add(world, sub)
+}
+)";
+
+  CommandBufferCliqueEvictionTest()
+      : CollectiveOpsTestE2E(/*memory_size=*/128 * kMB,
+                             /*collectives_memory_size=*/64 * kMB) {}
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions options = CollectiveOpsTestE2E::GetDebugOptionsForTest();
+    options.clear_xla_gpu_enable_command_buffer();
+    options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+    options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+    options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES_KERNEL);
+    options.clear_xla_gpu_experimental_use_collective_kernels();
+    options.set_xla_gpu_graph_min_graph_size(1);
+    options.set_xla_gpu_enable_nccl_comm_splitting(true);
+    return options;
+  }
+
+ protected:
+  void SetUp() override {
+    CollectiveOpsTestE2E::SetUp();
+    if (device_count() < kNumReplicas * kNumPartitions) {
+      GTEST_SKIP() << "Test requires " << kNumReplicas * kNumPartitions
+                   << " devices (" << device_count() << " available)";
+    }
+
+    prev_cb_vlog_ = absl::SetVLogLevel("command_buffer_thunk", 3);
+    prev_cliques_vlog_ = absl::SetVLogLevel("gpu_cliques", 3);
+    absl::AddLogSink(&counter_);
+    log_sink_added_ = true;
+
+    std::vector<Literal*> sub_args = {&input0_};
+    sub_replica_args_ =
+        std::vector<std::vector<Literal*>>(kNumReplicas, sub_args);
+    std::vector<Literal*> trigger_args = {&input0_, &input1_};
+    trigger_replica_args_ =
+        std::vector<std::vector<Literal*>>(kNumReplicas, trigger_args);
+  }
+
+  void TearDown() override {
+    if (log_sink_added_) {
+      absl::RemoveLogSink(&counter_);
+      absl::SetVLogLevel("gpu_cliques", prev_cliques_vlog_);
+      absl::SetVLogLevel("command_buffer_thunk", prev_cb_vlog_);
+    }
+    CollectiveOpsTestE2E::TearDown();
+  }
+
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateSubExecutable(
+      bool enable_command_buffers = true) {
+    HloModuleConfig config =
+        GetModuleConfigForTest(kNumReplicas, kNumPartitions);
+    DebugOptions options = GetDebugOptionsForTest();
+    if (!enable_command_buffers) {
+      options.clear_xla_gpu_enable_command_buffer();
+    }
+    config.set_debug_options(options);
+    auto module = ParseAndReturnVerifiedModule(kSubHlo, config);
+    if (!module.ok()) {
+      return module.status();
+    }
+    return CreateExecutable(std::move(*module), /*run_hlo_passes=*/true);
+  }
+
+  absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
+  CreateSplitTriggerExecutable() {
+    HloModuleConfig config =
+        GetModuleConfigForTest(kNumReplicas, kNumPartitions);
+    DebugOptions options = GetDebugOptionsForTest();
+    options.clear_xla_gpu_enable_command_buffer();
+    config.set_debug_options(options);
+    auto module = ParseAndReturnVerifiedModule(kSplitTriggerHlo, config);
+    if (!module.ok()) {
+      return module.status();
+    }
+    return CreateExecutable(std::move(*module), /*run_hlo_passes=*/true);
+  }
+
+  void VerifyResults(absl::Span<const Literal> results,
+                     const Literal& expected) {
+    ASSERT_EQ(results.size(), kNumReplicas);
+    for (const Literal& r : results) {
+      EXPECT_TRUE(LiteralTestUtil::Equal(expected, r));
+    }
+  }
+
+  CommandBufferRecordCounter counter_;
+  bool log_sink_added_ = false;
+  int prev_cb_vlog_ = 0;
+  int prev_cliques_vlog_ = 0;
+  Literal input0_ = LiteralUtil::CreateR1<float>(std::vector<float>(128, 1.0f));
+  Literal input1_ = LiteralUtil::CreateR1<float>(std::vector<float>(128, 2.0f));
+  Literal expected_sub_ =
+      LiteralUtil::CreateR1<float>(std::vector<float>(128, 2.0f));
+  Literal expected_trigger_ =
+      LiteralUtil::CreateR1<float>(std::vector<float>(128, 8.0f));
+  std::vector<std::vector<Literal*>> sub_replica_args_;
+  std::vector<std::vector<Literal*>> trigger_replica_args_;
+};
+
+TEST_F(CommandBufferCliqueEvictionTest,
+       RecapturesCommandBufferAfterPreexistingCliqueSplit4Gpu) {
+  // Step 0: Create standalone cliques {{0,2}} and {{1,3}} with a
+  // non-command-buffer executable *before* `sub_exec` (and its
+  // `CommandBufferThunk`) exist.
+  ASSERT_OK_AND_ASSIGN(auto eager_sub_exec,
+                       CreateSubExecutable(/*enable_command_buffers=*/false));
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> preexisting_clique_results,
+      ExecuteReplicated(eager_sub_exec.get(), sub_replica_args_,
+                        /*run_hlo_passes=*/true));
+  VerifyResults(preexisting_clique_results, expected_sub_);
+
+  // Step 1: Instantiate executables, warm up `sub_exec` (iteration 1), and
+  // record initial command buffers across all 4 GPUs on standalone cliques
+  // {{0,2}} and {{1,3}} (iteration 2).
+  ASSERT_OK_AND_ASSIGN(auto sub_exec, CreateSubExecutable());
+  ASSERT_OK_AND_ASSIGN(auto split_trigger_exec, CreateSplitTriggerExecutable());
+
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> warmup_results,
+                       ExecuteReplicated(sub_exec.get(), sub_replica_args_,
+                                         /*run_hlo_passes=*/true));
+  VerifyResults(warmup_results, expected_sub_);
+
+  counter_.Reset();
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> initial_capture_results,
+                       ExecuteReplicated(sub_exec.get(), sub_replica_args_,
+                                         /*run_hlo_passes=*/true));
+  VerifyResults(initial_capture_results, expected_sub_);
+  EXPECT_EQ(counter_.record_count(), kNumReplicas);
+
+  // Step 2: Execute `split_trigger_exec` to acquire world super-clique
+  // {{0,1,2,3}} and split {{0,2}} and {{1,3}} from it, abandoning the two
+  // standalone sub-cliques and destroying the tied command buffers on all
+  // 4 devices before `ncclCommDestroy`.
+  counter_.Reset();
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> trigger_results,
+      ExecuteReplicated(split_trigger_exec.get(), trigger_replica_args_,
+                        /*run_hlo_passes=*/true));
+  VerifyResults(trigger_results, expected_trigger_);
+  EXPECT_EQ(counter_.abandon_count(), 2);
+
+  // Step 3: Re-executing `sub_exec` on the split child communicators runs one
+  // warmup iteration and re-captures fresh command buffers on all 4 devices
+  // on the following iteration.
+  counter_.Reset();
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> post_split_warmup_results,
+                       ExecuteReplicated(sub_exec.get(), sub_replica_args_,
+                                         /*run_hlo_passes=*/true));
+  VerifyResults(post_split_warmup_results, expected_sub_);
+  EXPECT_EQ(counter_.record_count(), 0);
+
+  counter_.Reset();
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> recaptured_results,
+                       ExecuteReplicated(sub_exec.get(), sub_replica_args_,
+                                         /*run_hlo_passes=*/true));
+  VerifyResults(recaptured_results, expected_sub_);
+  EXPECT_EQ(counter_.record_count(), kNumReplicas);
 }
 
 }  // namespace

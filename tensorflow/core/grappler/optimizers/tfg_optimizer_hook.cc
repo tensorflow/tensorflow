@@ -169,7 +169,8 @@ Status TFGGrapplerOptimizer::Optimize(
   if (VLOG_IS_ON(5)) {
     VLOG(5) << "TFG After Graph: \n"
             << optimized_graph->DebugString() << "\nMLIR module: \n";
-    module.dump();
+    module.print(llvm::errs(), mlir::OpPrintingFlags().useLocalScope());
+    llvm::errs() << "\n";
   }
 
   return absl::OkStatus();

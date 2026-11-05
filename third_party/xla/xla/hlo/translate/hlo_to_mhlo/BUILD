@@ -274,6 +274,7 @@ cc_library(
         "stack_location_utils",
         ":hlo_utils",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

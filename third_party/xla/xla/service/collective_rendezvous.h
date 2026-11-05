@@ -42,13 +42,10 @@ namespace xla {
 // * Only ops with the same opcode can communicate with each other.  At the
 //   moment we only support kAllReduce, so we don't check for this explicitly.
 //
-// * For cross-module all-reduces (i.e. instr->channel_id().has_value()),
-//   only ops with the same value for channel_id() can communicate with each
-//   other.
-//
-// * For cross-replica (i.e. same-module) all-reduces (i.e.
-//   !channel_id().has_value()), only ops from the same module (as
-//   identified by its unique_id()) can communicate with each other.
+// * Only ops with matching `op_id` can communicate with each other. For CPU
+//   collectives, `op_id` is set to `instruction->unique_id()`; on backends
+//   that match by channel or module, `op_id` is `channel_id()` when present
+//   or the module's `unique_id()` otherwise.
 //
 struct RendezvousKey {
   enum CollectiveOpKind {

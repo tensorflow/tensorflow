@@ -149,6 +149,8 @@ def get_subchannel_matmul_configs(
           lhs_quantized_dtype=lhs_quantized_dtype,
           rhs_quantized_dtype=rhs_quantized_dtype,
           pre_quantize_lhs=pre_quantize_lhs,
+          inner_acc_dtype=inner_acc_dtype,
+          subchannel_size=subchannel_size,
           chip_version=chip_version,
       )
       configs.append(

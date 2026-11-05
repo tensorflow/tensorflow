@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/xla_test_backend_predicates.h"
 
 namespace xla {
 namespace {
@@ -172,6 +173,12 @@ TEST_P(BatchGroupedConvolution2DTest, DoIt) {
   const BatchGroupedConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
 
+  const bool has_depth_multiplier = spec.kernel_dims[3] > spec.output_batch;
+  const bool keep_for_coverage = spec.output_batch == 129 && !use_bfloat16;
+  if (test::HasModifiers({test::kGrm}) && has_depth_multiplier &&
+      spec.output_batch >= 128 && !keep_for_coverage) {
+    GTEST_SKIP() << "Too slow.";
+  }
 
   const std::string hlo_text = BuildHloTextBatchGroupedConvolution2D(
       spec, use_bfloat16, /*scheduled=*/false);
@@ -235,6 +242,9 @@ ENTRY main {
 }
 
 TEST_F(ConvDepthwiseBackpropFilterTest, DepthwiseBatchOuterDot) {
+  if (test::HasModifiers({test::kGrm})) {
+    GTEST_SKIP() << "Too slow.";
+  }
   const std::string hlo_string = R"(
 HloModule main, entry_computation_layout={(f32[8,30,1,16,5]{3,0,2,1,4},f32[8,30,30,16,3]{3,0,2,1,4})->f32[30,30,16,1,11]{2,3,1,0,4}}
 

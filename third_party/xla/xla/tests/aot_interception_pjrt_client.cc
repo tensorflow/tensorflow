@@ -35,6 +35,7 @@ limitations under the License.
 #include "riegeli/base/maker.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
+#include "xla/backends/gpu/runtime/collective_kernel_thunk.pb.h"
 #include "xla/debug_options_runtime_fields.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
@@ -268,12 +269,18 @@ absl::string_view AOTInterceptionPjrtClient::PlatformSubdir(
 absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
     const HumanReadableAotExecutable& fresh,
     const HumanReadableAotExecutable& golden) {
-  // The ignored fields hold backend machine code and device-specific details.
-  // Both debug_options copies are compared on their runtime fields only,
-  // except `xla_dump_to`.
+  // The ignored fields hold backend machine code, device-specific details and
+  // the optimized HLO module. Both debug_options copies are compared on their
+  // runtime fields only, except `xla_dump_to`.
   return CompareStructurally(
       fresh, golden,
       {
+          // The runtime still reads the HLO module (constants, called
+          // computations), but nearly every compiler change rewrites it, so
+          // comparing it costs a golden update per change. The thunks and the
+          // module `config` are still compared.
+          FieldByPath(gpu::GpuExecutableProto::descriptor(),
+                      {"hlo_module_with_config", "hlo_module"}),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName("binary"),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName("asm_text"),
           gpu::GpuExecutableProto::descriptor()->FindFieldByName(
@@ -289,6 +296,10 @@ absl::Status AOTInterceptionPjrtClient::CompareGPUExecutables(
           stream_executor::KernelLoaderSpecProto::descriptor()->FindFieldByName(
               "ptx"),
           stream_executor::KernelLoaderSpecProto::descriptor()->FindFieldByName(
+              "cubin"),
+          // Opaque collective-kernel binary, same as the KernelLoaderSpecProto
+          // payloads above.
+          gpu::CollectiveKernelThunkProto::descriptor()->FindFieldByName(
               "cubin"),
           stream_executor::ExecutableAbiVersionProto::CudaPlatformVersion::
               descriptor()

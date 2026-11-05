@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/runtime/device_id.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/tied_ref.h"
@@ -47,8 +46,6 @@ class FakeSymmetricMemory : public SymmetricMemory {
   stream_executor::DeviceAddressBase addr_;
 };
 
-class FakeMulticastMemory : public stream_executor::gpu::MulticastMemory {};
-
 GpuCliqueKey MakeCliqueKey() {
   return GpuCliqueKey({GlobalDeviceId(0), GlobalDeviceId(1)},
                       /*num_local_participants=*/2);
@@ -64,9 +61,7 @@ TEST(CollectiveMemoryCacheTest, FindReturnsNullptrWhenNotCached) {
   stream_executor::DeviceAddressBase addr = MakeAddress(0x1000, 64);
 
   EXPECT_EQ(cache.FindSymmetricMemory(0, clique, addr), nullptr);
-  EXPECT_EQ(cache.FindMulticastMemory(0, clique, addr), nullptr);
   EXPECT_EQ(cache.FindSymmetricMemory(4, clique, addr), nullptr);
-  EXPECT_EQ(cache.FindMulticastMemory(4, clique, addr), nullptr);
 }
 
 TEST(CollectiveMemoryCacheTest, IsolatesEntriesByDeviceOrdinal) {
@@ -114,15 +109,10 @@ TEST(CollectiveMemoryCacheTest, ExpiredTiedRefReturnsNullptr) {
     cache.AddSymmetricMemory(0, clique, addr,
                              owner.Tie<SymmetricMemory>(
                                  std::make_unique<FakeSymmetricMemory>(addr)));
-    cache.AddMulticastMemory(0, clique, addr,
-                             owner.Tie<stream_executor::gpu::MulticastMemory>(
-                                 std::make_unique<FakeMulticastMemory>()));
     EXPECT_NE(cache.FindSymmetricMemory(0, clique, addr), nullptr);
-    EXPECT_NE(cache.FindMulticastMemory(0, clique, addr), nullptr);
   }
 
   EXPECT_EQ(cache.FindSymmetricMemory(0, clique, addr), nullptr);
-  EXPECT_EQ(cache.FindMulticastMemory(0, clique, addr), nullptr);
 }
 
 TEST(CollectiveMemoryCacheTest, ConcurrentAddAndFindAcrossDevices) {
@@ -146,20 +136,13 @@ TEST(CollectiveMemoryCacheTest, ConcurrentAddAndFindAcrossDevices) {
             MakeAddress(0x1000 * (t + 1), 64);
         auto sym = owner.Tie<SymmetricMemory>(
             std::make_unique<FakeSymmetricMemory>(addr));
-        auto mcast = owner.Tie<stream_executor::gpu::MulticastMemory>(
-            std::make_unique<FakeMulticastMemory>());
 
         start.WaitForNotification();
 
         auto added_sym =
             cache.AddSymmetricMemory(ordinal, clique, addr, std::move(sym));
-        auto added_mcast =
-            cache.AddMulticastMemory(ordinal, clique, addr, std::move(mcast));
         EXPECT_NE(added_sym, nullptr);
-        EXPECT_NE(added_mcast, nullptr);
         EXPECT_EQ(cache.FindSymmetricMemory(ordinal, clique, addr), added_sym);
-        EXPECT_EQ(cache.FindMulticastMemory(ordinal, clique, addr),
-                  added_mcast);
       });
     }
     start.Notify();

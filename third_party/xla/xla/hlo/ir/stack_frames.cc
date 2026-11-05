@@ -146,13 +146,21 @@ StackFrameId StackFrames::AddStackFrame(const HloStackFrame& frame) {
   }
   FileLocationId loc_id = loc_it->second;
 
-  FrameKey frame_key = {loc_id, frame.parent_frame_id};
+  // Clamp out-of-bounds parent_frame_id to 0 (root) so it cannot reference the
+  // frame currently being added and form a self-loop.
+  StackFrameId parent_frame_id = frame.parent_frame_id;
+  if (!parent_frame_id.valid() ||
+      parent_frame_id.value > proto_.stack_frames_size()) {
+    parent_frame_id = StackFrameId{};
+  }
+
+  FrameKey frame_key = {loc_id, parent_frame_id};
   auto [frame_it, frame_inserted] = frame_to_id_.try_emplace(
       frame_key, StackFrameId{proto_.stack_frames_size() + 1});
   if (frame_inserted) {
     auto* frame_proto = proto_.add_stack_frames();
     frame_proto->set_file_location_id(loc_id);
-    frame_proto->set_parent_frame_id(frame.parent_frame_id.value);
+    frame_proto->set_parent_frame_id(parent_frame_id.value);
   }
   return frame_it->second;
 }
@@ -161,11 +169,14 @@ bool StackFrames::IsPrefix(StackFrameId prefix, StackFrameId full) const {
   if (!prefix.valid()) {
     return true;
   }
+  if (prefix.value > proto_.stack_frames_size()) {
+    return false;
+  }
   while (full.valid()) {
     if (full == prefix) {
       return true;
     }
-    if (!full.valid() || full.value > proto_.stack_frames_size()) {
+    if (full.value > proto_.stack_frames_size()) {
       return false;
     }
     full = StackFrameId{proto_.stack_frames(full.value - 1).parent_frame_id()};
@@ -175,8 +186,20 @@ bool StackFrames::IsPrefix(StackFrameId prefix, StackFrameId full) const {
 
 StackFrameId StackFrames::Concatenate(StackFrameId prefix,
                                       StackFrameId suffix) {
+  if (!prefix.valid() || prefix.value > proto_.stack_frames_size()) {
+    prefix = StackFrameId{};
+  }
+  if (!suffix.valid() || suffix.value > proto_.stack_frames_size()) {
+    suffix = StackFrameId{};
+  }
+  if (!prefix.valid()) {
+    return suffix;
+  }
+  if (!suffix.valid()) {
+    return prefix;
+  }
   std::vector<HloStackFrame> frames;
-  while (suffix.valid()) {
+  while (suffix.valid() && suffix.value <= proto_.stack_frames_size()) {
     frames.push_back(GetStackFrame(suffix));
     suffix = frames.back().parent_frame_id;
   }

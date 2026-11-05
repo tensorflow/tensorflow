@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/staging_buffer.h"
+#include "xla/pjrt/strided_gather.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -84,6 +85,21 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
   absl::StatusOr<std::vector<PjRtRawBufferRef>> MultiSlice(
       absl::Span<const SliceInfo> slices);
 
+  // Location of a raw buffer inside a Linux dma-buf, for external DMA engines
+  // (e.g. NICs). `offset` is measured from the start of the dma-buf, including
+  // for raw buffers created with Slice(). The backend owns `fd`.
+  struct ExternalDmaInfo {
+    int fd = -1;
+    uint64_t offset = 0;
+    uint64_t size = 0;
+  };
+
+  // Returns where this buffer lives inside its dma-buf. The result is valid
+  // while this raw buffer is alive. Only returns a valid result when the
+  // backend supports external DMA and the buffer is allocated and reachable by
+  // external DMA.
+  absl::StatusOr<ExternalDmaInfo> GetExternalDmaInfo() const;
+
   void CopyTo(PjRtRawBufferRef dst_raw_buffer,
               PjRtDeviceEventPromiseRef definition_event_promise,
               PjRtDeviceEventPromiseRef src_usage_event_promise,
@@ -95,6 +111,19 @@ class PjRtRawBufferInterface : public PJRT_RawBuffer {
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
       absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+
+  void ScheduleCopySliceTo(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      const StridedGather& gather, PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+
+  void ScheduleUpdateSlice(PjRtDeviceEventRefVector transfer_dependency_events,
+                           const StridedGather& gather,
+                           PjRtRawBufferRef src_raw_buffer,
+                           PjRtDeviceEventPromiseRef definition_event_promise,
+                           PjRtDeviceEventPromiseRef src_usage_event_promise);
 
   void DecrefAfter(PjRtDeviceEventRefVector avs);
 
@@ -194,6 +223,10 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
   // Creates an event which signals when the allocation is complete.
   virtual absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() = 0;
 
+  // Returns where this buffer lives inside its dma-buf, or Unimplemented if
+  // the backend does not expose device memory as a dma-buf.
+  virtual absl::StatusOr<ExternalDmaInfo> GetExternalDmaInfo() const;
+
   // Copies directly into dst_raw_buffer. Must set definition_event_promise,
   // when dst_raw_buffer is ready, allocation_event before using dst_raw_buffer
   // and src_usage_event_promise when done using this buffer.
@@ -213,6 +246,28 @@ class PjRtRawBuffer : public PjRtRawBufferInterface,
       PjRtDeviceEventPromiseRef definition_event_promise,
       PjRtDeviceEventPromiseRef src_usage_event_promise,
       absl::AnyInvocable<void(absl::Status) &&> allocation_event) = 0;
+
+  // Blocks on a list of dependencies and then copies a strided slice of
+  // this buffer directly into dst_raw_buffer. Must set
+  // definition_event_promise when dst_raw_buffer is ready,
+  // allocation_event before using dst_raw_buffer, and
+  // src_usage_event_promise when done using this buffer.
+  virtual void ScheduleCopySliceTo(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      const StridedGather& gather, PjRtRawBufferRef dst_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise,
+      absl::AnyInvocable<void(absl::Status) &&> allocation_event);
+
+  // Blocks on a list of dependencies and then updates a strided slice of
+  // this buffer with the contents of src_raw_buffer. Must set
+  // definition_event_promise when this buffer is ready, and
+  // src_usage_event_promise when done using src_raw_buffer.
+  virtual void ScheduleUpdateSlice(
+      PjRtDeviceEventRefVector transfer_dependency_events,
+      const StridedGather& gather, PjRtRawBufferRef src_raw_buffer,
+      PjRtDeviceEventPromiseRef definition_event_promise,
+      PjRtDeviceEventPromiseRef src_usage_event_promise);
 
   // Returns the async value associated with the buffer.
   virtual PjRtDeviceEventPtr GetRawBufferAsyncValue() = 0;

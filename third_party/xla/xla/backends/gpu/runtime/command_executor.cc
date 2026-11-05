@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/runtime/execution_graph.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/gpu/scoped_command_buffer_annotation.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -200,7 +201,6 @@ CommandExecutor::CommandExecutor(
     Command::BufferUses buffer_uses = command->buffer_uses();
     buffer_uses_.insert(buffer_uses.begin(), buffer_uses.end());
     requires_update_on_initialize_ |= command->requires_update_on_initialize();
-    requires_warmup_ |= command->requires_warmup();
     requires_update_on_execute_ |= command->requires_update_on_execute();
   });
 
@@ -404,12 +404,18 @@ CommandExecutor::RecordCreate(
     Command* command = commands_[id];
 
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(command->profile_annotation());
+        GetInstructionAnnotation(command->profile_annotation());
 
     // Skip recording collective commands if mock collectives are enabled.
     if (execute_params.mock_collectives && command->IsCollective()) {
       continue;
     }
+
+    // Builds the annotation only while telemetry recording is on: this runs
+    // for every command on every record.
+    stream_executor::ScopedCommandBufferAnnotation cb_annotation([&] {
+      return GetInstructionAnnotationString(command->profile_annotation());
+    });
 
     std::vector<const se::CommandBuffer::Command*> command_dependencies =
         Dependencies(record_params, command_buffer, id, record_id);
@@ -564,9 +570,19 @@ absl::Status CommandExecutor::RecordUpdate(
       continue;
     }
 
-    std::optional<tsl::profiler::ScopedAnnotation> annotation =
-        GetKernelAnnotation(command->profile_annotation());
-
+    // Do not push a per-command ScopedAnnotation during in-place parameter
+    // updates: unchanged-buffer commands are skipped above (leaving update-time
+    // NVTX attribution incomplete even when CUPTI tracks
+    // cuGraphExec*NodeSetParams), while full node attribution uses RecordCreate
+    // (or --cuda-graph-trace=node:nvtx-precapture for cudaProfilerStart).
+    // Commands that rebuild a child graph on RecordUpdate (TracedCommand cache
+    // misses, direct TraceCommandBufferFactory::Create callers, and
+    // HostExecuteStartThunk::Record) still push their annotation locally.
+    // Builds the annotation only while telemetry recording is on: this runs
+    // for every command on every record.
+    stream_executor::ScopedCommandBufferAnnotation cb_annotation([&] {
+      return GetInstructionAnnotationString(command->profile_annotation());
+    });
     Command::RecordUpdate record_action{recorded_commands[id]};
     ABSL_ASSIGN_OR_RETURN(recorded_commands[id],
                      command->Record(execute_params, record_params,

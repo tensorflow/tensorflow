@@ -39,10 +39,12 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/pjrt/gpu/allocator_config.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
@@ -54,6 +56,28 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 namespace xla {
+
+std::string GetGpuPlatformVersion(
+    const stream_executor::DeviceDescription& device_description) {
+  const stream_executor::SemanticVersion v =
+      device_description.runtime_version();
+  const stream_executor::GpuComputeCapability& cc =
+      device_description.gpu_compute_capability();
+  if (cc.rocm_compute_capability() != nullptr) {
+    const int encoded_version = v.major_version() * 10000000 +
+                                v.minor_version() * 100000 + v.patch_version();
+    return absl::StrCat("rocm ", encoded_version);
+  }
+  if (cc.cuda_compute_capability() != nullptr) {
+    const int encoded_version =
+        v.major_version() * 1000 + v.minor_version() * 10 + v.patch_version();
+    return absl::StrCat("cuda ", encoded_version);
+  }
+  if (cc.oneapi_compute_capability() != nullptr) {
+    return absl::StrCat("oneapi ", v.IsValid() ? v.ToString() : "2026.0");
+  }
+  return "<unknown>";
+}
 
 static size_t RoundUpGpuMemoryLimit(size_t allocator_memory) {
   // GPU device allocations can be rounded up by backend allocation granularity.
@@ -240,6 +264,13 @@ absl::StatusOr<std::shared_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 
   tsl::BFCAllocator::Options opts;
   opts.allow_growth = !preallocate;
+  // Growing pools can retain entirely free regions that are individually too
+  // small for a later request. Let BFC return those regions and retry with a
+  // larger region before reporting OOM. Preallocated pools must stay reserved.
+  if (!preallocate) {
+    ABSL_RETURN_IF_ERROR(tsl::ReadBoolFromEnvVar("TF_ENABLE_GPU_GARBAGE_COLLECTION",
+                                            true, &opts.garbage_collection));
+  }
   opts.enable_spatial_partitioning = enable_spatial_partitioning;
   if (enable_spatial_partitioning) {
     // Default memory (S(0), upper end) mixes buffers with different lifetimes.

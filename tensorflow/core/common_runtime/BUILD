@@ -870,7 +870,10 @@ tf_cc_test(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:state",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3309,6 +3312,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:relu_op",
         "//tensorflow/core/kernels:state",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3642,6 +3646,9 @@ tf_cc_test(
     srcs = ["request_cost_test.cc"],
     deps = [
         ":request_cost",
+        ":request_cost_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],

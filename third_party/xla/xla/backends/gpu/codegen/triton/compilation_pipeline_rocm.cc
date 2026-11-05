@@ -78,7 +78,8 @@ static bool is_in_thread_transpose_enabled(
 // @triton//:third_party/amd/backend/compiler.py
 static void MakeTTGIR(mlir::OpPassManager* pm,
                       const stream_executor::RocmComputeCapability& rocm_cc,
-                      int num_warps, int num_ctas, int num_stages) {
+                      int num_warps, int num_ctas, int num_stages,
+                      int mfma_size) {
   pm->addPass(mt::createConvertTritonToTritonGPU(
       {absl::StrCat("hip:", rocm_cc.gfx_version()), num_warps,
        rocm_cc.threads_per_warp(), num_ctas}));
@@ -86,8 +87,11 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mt::gpu::createTritonGPUF32DotTC({false}));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
+  mlir::TritonAMDGPUAccelerateMatmulOptions accelerate_matmul_options;
+  accelerate_matmul_options.gfxArch = rocm_cc.gfx_version();
+  accelerate_matmul_options.matrixInstructionSize = mfma_size;
   pm->addPass(
-      mlir::createTritonAMDGPUAccelerateMatmul({rocm_cc.gfx_version()}));
+      mlir::createTritonAMDGPUAccelerateMatmul(accelerate_matmul_options));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   // TODO ROCm Check if we want to compare MI100 and greater
   pm->addPass(mlir::createTritonAMDGPUOptimizeEpilogue());
@@ -168,8 +172,8 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mt::createAllocateAMDGPUSharedMemoryPass(rocm_cc.gfx_version()));
   pm->addPass(mt::createTritonAMDGPUMembar({rocm_cc.gfx_version()}));
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
-  pm->addPass(
-      mt::createConvertTritonAMDGPUToLLVMPass(rocm_cc.gfx_version(), true));
+  pm->addPass(mt::createConvertTritonAMDGPUToLLVMPass(
+      rocm_cc.gfx_version(), /*ftz=*/true, /*cuMode=*/false));
   pm->addPass(
       mlir::triton::AMD::createTritonAMDGPUConvertWarpSpecializeToLLVMPass(
           rocm_cc.gfx_version()));
@@ -196,9 +200,9 @@ static void MakeLLIR(mlir::OpPassManager* pm,
 void CreateTritonRocmPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::RocmComputeCapability& rocm_cc, int num_warps,
-    int num_ctas, int num_stages) {
+    int num_ctas, int num_stages, int mfma_size) {
   MakeTTIR(pm, rocm_cc);
-  MakeTTGIR(pm, rocm_cc, num_warps, num_ctas, num_stages);
+  MakeTTGIR(pm, rocm_cc, num_warps, num_ctas, num_stages, mfma_size);
   MakeLLIR(pm, rocm_cc, num_stages);
 }
 

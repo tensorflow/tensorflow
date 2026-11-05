@@ -244,21 +244,21 @@ TEST_F(BuildAllGatherInfoTest, FailsWithoutNvlink) {
 }
 
 TEST_F(BuildAllGatherInfoTest, FailsForLargeOutputs) {
-  // 4 * 1024 * 1024 F32 elements * 2 devices = 32 MB > 16 MB limit ->
+  // 8 * 1024 * 1024 F32 elements * 2 devices = 64 MB > 32 MB limit ->
   // unimplemented.
-  EXPECT_THAT(BuildInfo(F32, /*num_elements=*/4 * 1024 * 1024,
+  EXPECT_THAT(BuildInfo(F32, /*num_elements=*/8 * 1024 * 1024,
                         /*replica_groups=*/{0, 1}),
               StatusIs(absl::StatusCode::kUnimplemented,
                        HasSubstr("only supported for small outputs")));
 }
 
-TEST_F(BuildAllGatherInfoTest, SucceedsFor16MBOutput) {
-  // 2 * 1024 * 1024 F32 elements * 2 devices = 16 MB == 16 MB limit -> ok.
-  EXPECT_THAT(BuildInfo(F32, /*num_elements=*/2 * 1024 * 1024,
+TEST_F(BuildAllGatherInfoTest, SucceedsFor32MBOutput) {
+  // 4 * 1024 * 1024 F32 elements * 2 devices = 32 MB == 32 MB limit -> ok.
+  EXPECT_THAT(BuildInfo(F32, /*num_elements=*/4 * 1024 * 1024,
                         /*replica_groups=*/{0, 1}),
               IsOkAndHolds(AllOf(Field(&AllGatherInfo::num_devices, 2),
                                  Field(&AllGatherInfo::max_output_elements,
-                                       4 * 1024 * 1024))));
+                                       8 * 1024 * 1024))));
 }
 
 TEST_F(BuildAllGatherInfoTest, VariadicChecksSizePerOperandAndUsesMaxElements) {
@@ -300,6 +300,50 @@ TEST_F(BuildAllGatherInfoTest, VariadicChecksSizePerOperandAndUsesMaxElements) {
                 Field(&AllGatherInfo::max_output_elements, 4 * 1024 * 1024))));
 }
 
+TEST_F(BuildAllGatherInfoTest, FailsForMoreThanMaxOperands) {
+  std::vector<std::string> params;
+  std::vector<std::string> param_names;
+  std::vector<std::string> output_shapes;
+  for (int i = 0; i <= kAllGatherMaxNumOperands; ++i) {
+    params.push_back(absl::StrFormat("param_%d = f32[8] parameter(%d)", i, i));
+    param_names.push_back(absl::StrFormat("param_%d", i));
+    output_shapes.push_back("f32[16]");
+  }
+  const std::string module_str = absl::StrFormat(
+      R"(
+  HloModule test
+  ENTRY test_computation {
+    %s
+    ROOT all-gather = (%s) all-gather(%s),
+        dimensions={0}, replica_groups={{0,1}}
+  }
+  )",
+      absl::StrJoin(params, "\n"), absl::StrJoin(output_shapes, ", "),
+      absl::StrJoin(param_names, ", "));
+  se::DeviceDescription device_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  *target_config_proto.mutable_gpu_device_info() = device_info.ToProto();
+  target_config_proto.mutable_gpu_device_info()
+      ->mutable_device_interconnect_info()
+      ->set_active_links(18);
+  target_config_proto.set_platform_name("CUDA");
+  ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
+                       gpu::GpuTargetConfig::FromProto(target_config_proto));
+  GpuTopology gpu_topology("platform_version", /*num_partitions=*/1,
+                           /*num_hosts_per_partition=*/1,
+                           /*num_devices_per_host=*/2, target_config);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str, 2));
+  const HloInstruction* hlo_instr =
+      HloHardwareIndependentTestBase::FindInstruction(module.get(),
+                                                      HloOpcode::kAllGather);
+  EXPECT_THAT(
+      BuildAllGatherInfo(gpu_topology, Cast<HloAllGatherInstruction>(hlo_instr),
+                         /*device_assignment=*/nullptr),
+      StatusIs(absl::StatusCode::kUnimplemented,
+               HasSubstr("supports at most 16 operands")));
+}
+
 TEST_F(BuildAllGatherInfoTest,
        CreateAllGatherKernelSpecMatchesAllReduceArgumentLayout) {
   constexpr absl::string_view kModuleStr = R"(
@@ -336,6 +380,10 @@ TEST_F(BuildAllGatherInfoTest,
   EXPECT_EQ(spec.codegen_config.argument_descriptors[5].type,
             KernelArgType::kScratchBuffer);
   EXPECT_EQ(spec.codegen_config.argument_descriptors[5].index, 1);
+  EXPECT_EQ(spec.codegen_config.sync_count_increment, 1u);
+  ASSERT_EQ(spec.scratch_buffers.size(), 2);
+  EXPECT_TRUE(spec.scratch_buffers[1].should_double_buffer);
+  EXPECT_EQ(spec.scratch_buffers[1].size_bytes, 1024 * sizeof(float));
 }
 
 }  // namespace

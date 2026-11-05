@@ -536,6 +536,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "stateless_random_ops_gen",
     visibility = [
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/data/experimental/ops:__pkg__",
@@ -795,6 +796,7 @@ py_library(
     deps = [
         ":array_ops_gen",
         ":array_ops_stack",
+        ":logging_ops_gen",
         ":math_ops_gen",
         ":shape_util",
         "//tensorflow/core/config:flags_py",
@@ -1499,6 +1501,7 @@ py_library(
         ":array_ops",
         ":array_ops_gen",
         ":array_ops_stack",
+        ":control_flow_assert",
         ":ctc_ops_gen",
         ":custom_gradient",
         ":functional_ops",
@@ -3444,6 +3447,7 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:forwardprop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:function",
@@ -3511,6 +3515,7 @@ py_library(
         ":math_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -3644,6 +3649,7 @@ cuda_py_strict_test(
     tags = [
         "no_windows_gpu",
     ],
+    xla_enabled = True,
     deps = [
         ":array_ops",
         ":gradients",
@@ -3712,6 +3718,7 @@ cuda_py_strict_test(
         ":nn_ops_gen",
         ":variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -4006,6 +4013,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],

@@ -465,6 +465,15 @@ inline bool CheckForOverflow<Eigen::half>(double as_double, Eigen::half* out) {
   return (Eigen::numext::isinf(*out) && std::isfinite(as_double));
 }
 
+// BFloat16Converter only runs when bfloat16 is requested, so a value that
+// overflows keeps the +/-inf from the cast instead of falling back to another
+// converter.
+template <>
+inline bool CheckForOverflow<Eigen::bfloat16>(double /*as_double*/,
+                                              Eigen::bfloat16* /*out*/) {
+  return false;
+}
+
 template <class T>
 static const char* ConvertOneFloat(PyObject* v, T* out) {
   if (PyErr_Occurred()) {
@@ -569,6 +578,28 @@ struct ConverterTraits<Eigen::half> {
 };
 
 typedef Converter<Eigen::half> NumpyHalfConverter;
+
+template <>
+struct ConverterTraits<Eigen::bfloat16> {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               Eigen::bfloat16 value) {
+    AbstractTensorInterface* t =
+        tensorflow::unwrap(ctx)->CreateTensor(DT_BFLOAT16, {});
+    if (t != nullptr) *static_cast<Eigen::bfloat16*>(t->Data()) = value;
+    return t;
+  }
+
+  static AbstractTensorInterface* CreateTensor(
+      TFE_Context* ctx, absl::Span<const int64_t> dim_sizes) {
+    return tensorflow::unwrap(ctx)->CreateTensor(DT_BFLOAT16, dim_sizes);
+  }
+
+  static const char* ConvertScalar(PyObject* v, Eigen::bfloat16* out) {
+    return ConvertOneFloat<Eigen::bfloat16>(v, out);
+  }
+};
+
+typedef Converter<Eigen::bfloat16> BFloat16Converter;
 
 // String support
 
@@ -979,6 +1010,10 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     case DT_HALF:
       status = NumpyHalfConverter::Convert(ctx, obj, &state, &handle, &error);
+      break;
+
+    case DT_BFLOAT16:
+      status = BFloat16Converter::Convert(ctx, obj, &state, &handle, &error);
       break;
 
     case DT_INT64:

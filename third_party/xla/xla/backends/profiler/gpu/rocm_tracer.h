@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
 #include "xla/stream_executor/rocm/roctracer_wrapper.h"
 
@@ -32,12 +31,6 @@ namespace xla {
 namespace profiler {
 // forward declare (interface)
 class RocmTraceCollector;
-
-struct RocmTracerOptions {
-  // maximum number of annotation strings that AnnotationMap in RocmTracer can
-  // store. e.g. 1M
-  uint64_t max_annotation_strings;
-};
 
 // The class use to enable rocprofiler-sdk buffered callback/activity tracing
 // and forward the collected trace events to RocmTraceCollector. There should be
@@ -54,8 +47,7 @@ class RocmTracer {
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
 
-  absl::Status Enable(const RocmTracerOptions& options,
-                      RocmTraceCollector* collector);
+  absl::Status Enable(RocmTraceCollector* collector);
   void Disable();
 
   static uint64_t GetTimestamp();
@@ -114,14 +106,13 @@ class RocmTracer {
   absl::Status InitProfiling(void* tool_data);
 
   uint32_t num_gpus_{0};
-  std::optional<RocmTracerOptions> options_;
   RocmTraceCollector* collector_{nullptr};
   absl::Mutex collector_mutex_;
 
   bool api_tracing_enabled_{false};
   bool activity_tracing_enabled_{false};
 
-  AnnotationMap annotation_map_{/* default size, e.g. */ 1024 * 1024};
+  AnnotationMap annotation_map_;
 
   // ROCTX range state lives in a thread_local stack in rocm_tracer.cc, not
   // here. roctx pushes and pops are thread-local by definition and the

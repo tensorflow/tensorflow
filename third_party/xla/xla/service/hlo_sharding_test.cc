@@ -632,6 +632,21 @@ INSTANTIATE_TEST_SUITE_P(HloShardingRepresentationTest,
                          HloShardingRepresentationTest,
                          ::testing::Values(false, true));
 
+// Tests that an empty tuple without sharding has no sharding properties.
+TEST_F(HloShardingTest, EmptyTupleWithoutShardingProperties) {
+  HloSharding sharding = HloSharding::Tuple(ShapeUtil::MakeTupleShape({}), {});
+
+  EXPECT_TRUE(sharding.IsTuple());
+  EXPECT_TRUE(sharding.tuple_elements().empty());
+  EXPECT_FALSE(sharding.IsSingleDevice());
+  EXPECT_FALSE(sharding.IsManual());
+  EXPECT_FALSE(sharding.IsUnknown());
+  EXPECT_FALSE(sharding.IsUnreduced());
+  EXPECT_FALSE(sharding.IsManualSubgroup());
+  EXPECT_FALSE(sharding.IsUnreducedSubgroup());
+  EXPECT_FALSE(sharding.UniqueDevice().has_value());
+}
+
 TEST_F(HloShardingTest, NestedTuple) {
   // nested_tuple_shape = (f32[], (f32[3]), f32[4, 6])
   Shape nested_tuple_shape = ShapeUtil::MakeTupleShape({

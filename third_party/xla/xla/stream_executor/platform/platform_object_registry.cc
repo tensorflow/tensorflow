@@ -53,11 +53,6 @@ PlatformObjectRegistry::FindObject(const std::type_info& type,
     return it->second;
   }
 
-  absl::StatusOr<Platform*> platform =
-      PlatformManager::PlatformWithId(platform_id);
-  std::string platform_name =
-      platform.ok() ? platform.value()->Name() : "<unknown>";
-
   return absl::NotFoundError(
       absl::StrFormat("Object %s not found for platform %s and trait %s",
                       type.name(), GetPlatformName(platform_id), type.name()));

@@ -16,25 +16,26 @@ limitations under the License.
 #include "xla/service/cpu/cpu_layout_assignment.h"
 
 #include <cstdint>
-#include <numeric>
 #include <optional>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
+#include "xla/service/layout_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace xla {
@@ -77,40 +78,17 @@ static optional<int64_t> ShouldMakeOperandColumnMajor(
   }
 
   const HloInstruction* operand = instruction.operand(*operand_idx);
-  if (operand->opcode() != HloOpcode::kConstant) {
+  if (operand->opcode() != HloOpcode::kConstant ||
+      operand->shape().dimensions().size() <= 1) {
     return nullopt;
   }
 
-  auto it = cache->find(operand);
-  if (it == cache->end()) {
-    auto insert_result =
-        cache->insert({operand, ShouldMakeAllUsersColMajor(operand)});
-    CHECK(insert_result.second);
-    it = insert_result.first;
+  auto [it, inserted] = cache->try_emplace(operand, false);
+  if (inserted) {
+    it->second = ShouldMakeAllUsersColMajor(operand);
   }
 
   return it->second ? operand_idx : nullopt;
-}
-
-static Shape RowMajorShape(Shape shape) {
-  ShapeUtil::ForEachMutableSubshape(
-      &shape, [](Shape* subshape, const ShapeIndex& index) {
-        if (!subshape->IsArray()) {
-          return;
-        }
-        std::vector<int64_t> dimension_order(subshape->dimensions().size());
-        std::iota(dimension_order.rbegin(), dimension_order.rend(), 0);
-        *subshape->mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
-      });
-  return shape;
-}
-
-static Shape ColMajorShape(const Shape& old_shape) {
-  Shape new_shape(old_shape);
-  std::vector<int64_t> dimension_order(new_shape.dimensions().size());
-  absl::c_iota(dimension_order, 0);
-  *new_shape.mutable_layout() = LayoutUtil::MakeLayout(dimension_order);
-  return new_shape;
 }
 
 static bool OperandsAndResultMustHaveRowMajorLayout(
@@ -134,65 +112,82 @@ absl::Status CpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   ShouldMakeOperandColMajorCache cache;
 
+  auto set_collective_dim_major_layout = [&](const HloInstruction* inst,
+                                             int64_t dim) -> absl::Status {
+    Shape shape = inst->shape();
+    ShapeUtil::ForEachMutableLeafShape(
+        &shape, [dim](Shape* subshape, const ShapeIndex& /*index*/) {
+          if (!subshape->IsArray()) {
+            return;
+          }
+          Layout layout =
+              (!subshape->has_layout() ||
+               subshape->layout().minor_to_major().empty())
+                  ? LayoutUtil::GetDefaultLayoutForShape(*subshape)
+                  : LayoutUtil::MakeLayout(subshape->layout().minor_to_major());
+          *subshape->mutable_layout() =
+              layout.minor_to_major().empty()
+                  ? layout
+                  : LayoutUtil::MoveDimToMajor(layout, dim);
+        });
+    ABSL_RETURN_IF_ERROR(SetInstructionLayout(shape, inst));
+    if (shape.IsTuple()) {
+      TF_RET_CHECK(shape.tuple_shapes().size() == inst->operand_count());
+      for (int64_t i = 0; i < inst->operand_count(); ++i) {
+        ABSL_RETURN_IF_ERROR(
+            SetArrayOperandLayout(shape.tuple_shapes(i).layout(), inst, i));
+      }
+    } else {
+      TF_RET_CHECK(inst->operand_count() == 1);
+      ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(shape.layout(), inst, 0));
+    }
+    return absl::OkStatus();
+  };
+
   const HloComputation* computation = constraints->computation();
   for (auto* instruction : computation->instructions()) {
     if (OperandsAndResultMustHaveRowMajorLayout(*instruction,
                                                 target_machine_features_)) {
-      ABSL_RETURN_IF_ERROR(SetInstructionLayout(RowMajorShape(instruction->shape()),
-                                           instruction));
-      for (int i = 0; i < instruction->operand_count(); i++) {
-        ABSL_RETURN_IF_ERROR(SetOperandLayout(
-            RowMajorShape(instruction->operand(i)->shape()), instruction, i));
-      }
+      Shape row_major_shape = instruction->shape();
+      LayoutUtil::ClearLayout(&row_major_shape);
+      LayoutUtil::SetToDefaultLayout(&row_major_shape);
+      ABSL_RETURN_IF_ERROR(SetInstructionLayout(row_major_shape, instruction));
     } else if (optional<int64_t> op_idx =
                    ShouldMakeOperandColumnMajor(&cache, *instruction)) {
       const HloInstruction* op = instruction->operand(*op_idx);
-      ABSL_RETURN_IF_ERROR(
-          SetOperandLayout(ColMajorShape(op->shape()), instruction, *op_idx));
+      ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(
+          LayoutUtil::MakeAscendingLayout(op->shape().dimensions().size()),
+          instruction, *op_idx));
     } else if (instruction->opcode() == HloOpcode::kReduceScatter) {
       // XLA:CPU can only support reduce-scatter where the scatter dimension
       // is the most major dimension in the layout.
       auto ars = Cast<HloReduceScatterInstruction>(instruction);
-      ABSL_RETURN_IF_ERROR(SetInstructionLayout(
-          ShapeUtil::MoveDimToMajor(ars->shape(), ars->scatter_dimension()),
-          ars));
+      ABSL_RETURN_IF_ERROR(
+          set_collective_dim_major_layout(ars, ars->scatter_dimension()));
+      continue;
     } else if (instruction->opcode() == HloOpcode::kAllGather) {
       // XLA:CPU can only support all-gathers where the gather dimension is the
       // most major dimension in the layout.
       auto ag = Cast<HloAllGatherInstruction>(instruction);
-      ABSL_RETURN_IF_ERROR(SetInstructionLayout(
-          ShapeUtil::MoveDimToMajor(ag->shape(), ag->all_gather_dimension()),
-          ag));
-    } else {
-      for (int64_t operand_no = 0; operand_no < instruction->operand_count();
-           ++operand_no) {
-        // Skip operands which already have a constraint.
-        if (constraints->OperandLayout(instruction, operand_no) != nullptr) {
-          continue;
-        }
-        // Skip over forwarded operands.
-        if (AnyOperandBufferForwarded(instruction, operand_no)) {
-          continue;
-        }
-        // Skip operands with non-array shapes.
-        if (!instruction->operand(operand_no)->shape().IsArray()) {
-          continue;
-        }
-        Shape operand_shape(
-            RowMajorShape(instruction->operand(operand_no)->shape()));
-        ABSL_RETURN_IF_ERROR(
-            SetOperandLayout(operand_shape, instruction, operand_no));
-      }
-      // Skip over the root instruction for the top-level computation.
-      if (computation->parent()->entry_computation() == computation &&
-          computation->root_instruction() == instruction) {
+      ABSL_RETURN_IF_ERROR(
+          set_collective_dim_major_layout(ag, ag->all_gather_dimension()));
+      continue;
+    }
+    for (int64_t operand_no = 0; operand_no < instruction->operand_count();
+         ++operand_no) {
+      const Shape& operand_shape = instruction->operand(operand_no)->shape();
+      if (!operand_shape.IsArray() || operand_shape.dimensions().size() <= 1) {
         continue;
       }
-      // Skip instructions which don't produce array shapes (tuples, opaque,
-      // etc.).
-      if (!instruction->shape().IsArray()) {
+      if (constraints->OperandLayout(instruction, operand_no) != nullptr) {
         continue;
       }
+      if (AnyOperandBufferForwarded(instruction, operand_no)) {
+        continue;
+      }
+      ABSL_RETURN_IF_ERROR(SetArrayOperandLayout(
+          LayoutUtil::GetDefaultLayoutForShape(operand_shape), instruction,
+          operand_no));
     }
   }
   return absl::OkStatus();

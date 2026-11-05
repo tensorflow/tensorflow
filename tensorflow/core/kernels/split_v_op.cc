@@ -27,6 +27,7 @@ limitations under the License.
 #define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
 #endif
 
+#include <cstdint>
 #include <limits>
 #include <numeric>
 
@@ -115,7 +116,9 @@ class SplitVOpBase : public OpKernel {
     if (num_split == 1) {
       context->set_output(0, context->input(0));
       OP_REQUIRES(
-          context, (*split_sizes_vec)[0] == input_size_split_dim,
+          context,
+          (*split_sizes_vec)[0] == input_size_split_dim ||
+              (*split_sizes_vec)[0] == -1,
           errors::InvalidArgument("If there is only one output, it must have "
                                   "the same size as the input. Input size: ",
                                   input_size_split_dim,
@@ -200,7 +203,7 @@ class SplitVOpBase : public OpKernel {
   template <typename IndexType>
   std::tuple<IndexType, IndexType, IndexType> SetDims(
       const TensorShape& input_shape, const int32_t split_dim) const {
-    static_assert(std::is_integral<IndexType>::value,
+    static_assert(std::is_integral_v<IndexType>,
                   "IndexType must be an integer type");
     int32_t prefix_dim_size = 1;
     for (int i = 0; i < split_dim; ++i) {
@@ -577,6 +580,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU_LEN);
                               .HostMemory("output"),            \
                           SplitVOpCPU<int32, len_type>);
 
+REGISTER_GPU_int32(int8_t);
 REGISTER_GPU_int32(int32_t);
 REGISTER_GPU_int32(int64_t);
 
@@ -594,6 +598,7 @@ REGISTER_GPU_int32(int64_t);
                               .HostMemory("output"),            \
                           SplitVOpCPU<int32, len_type>);
 
+TF_CALL_int8(REGISTER_DEFAULT_KERNEL);
 TF_CALL_int32(REGISTER_DEFAULT_KERNEL);
 TF_CALL_int64(REGISTER_DEFAULT_KERNEL);
 #undef REGISTER_DEFAULT_KERNEL

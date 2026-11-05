@@ -47,7 +47,7 @@ Supported mapping type: string → int64, int64 → string
    </td>
    <td rowspan="2" colspan="5" >Supported natively when num_oov_buckets=0 and dtype=dtypes.string.
 <p>
-For the oov concept, you will need a <a href="https://www.tensorflow.org/lite/guide/ops_select" title="Select TensorFlow operators to use in TensorFlow Lite">Flex delegate</a>.
+For the oov concept, you will need a <a href="https://developers.google.com/edge/litert/conversion/tensorflow/ops_select" title="Select TensorFlow operators to use in TensorFlow Lite">Flex delegate</a>.
    </td>
   </tr>
   <tr>
@@ -55,9 +55,9 @@ For the oov concept, you will need a <a href="https://www.tensorflow.org/lite/gu
   <tr>
    <td>tf.lookup.StaticVocabularyTable
    </td>
-   <td colspan="5" >Supported but you will need a <a href="https://www.tensorflow.org/lite/guide/ops_select" title="Select TensorFlow operators to use in TensorFlow Lite">Flex delegate</a>.
+   <td colspan="5" >Supported but you will need a <a href="https://developers.google.com/edge/litert/conversion/tensorflow/ops_select" title="Select TensorFlow operators to use in TensorFlow Lite">Flex delegate</a>.
 <p>
-Use tf.index_table_from_tensor or tf.index_to_string_table_from_tensor instead if possible if you don’t want to use <a href="https://www.tensorflow.org/lite/guide/ops_select" title="Select TensorFlow operators to use in TensorFlow Lite">Flex delegate</a>.
+Use tf.index_table_from_tensor or tf.index_to_string_table_from_tensor instead if possible if you don’t want to use <a href="https://developers.google.com/edge/litert/conversion/tensorflow/ops_select" title="Select TensorFlow operators to use in TensorFlow Lite">Flex delegate</a>.
    </td>
   </tr>
   <tr>
@@ -73,7 +73,7 @@ tf.contrib.lookup.MutableDenseHashTable
   <tr>
    <td>tf.lookup.IdTableWithHashBuckets
    </td>
-   <td colspan="5" >Supported but you need a <a href="https://www.tensorflow.org/lite/guide/ops_select" title="Select TensorFlow operators to use in TensorFlow Lite">Flex delegate</a>.
+   <td colspan="5" >Supported but you need a <a href="https://developers.google.com/edge/litert/conversion/tensorflow/ops_select" title="Select TensorFlow operators to use in TensorFlow Lite">Flex delegate</a>.
    </td>
   </tr>
 </table>

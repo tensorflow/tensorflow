@@ -49,6 +49,7 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -58,6 +59,7 @@
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/device.h"
+#include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/memory.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -68,6 +70,7 @@
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -306,11 +309,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
 
   for (int i = 1; i < arrays.size(); ++i) {
     const auto& sharding = arrays[i]->sharding();
-    if (*sharding.devices() != *arrays[0]->sharding().devices() ||
+    if ((devices.has_value() &&
+         *sharding.devices() != *arrays[0]->sharding().devices()) ||
         sharding.memory_kind() != arrays[0]->sharding().memory_kind()) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports arrays with the same device list and "
-          "memory kind");
+          "memory kind when `devices` is specified");
     }
   }
 
@@ -386,8 +390,40 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::BitcastArrays(
 
 tsl::Future<std::vector<uint64_t>> Client::HashValues(
     absl::Span<const ValueRef> values, HashMode mode) {
-  return absl::UnimplementedError(
-      "HashValues is not implemented in IFRT Proxy.");
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_values = values.size()]() {
+    return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointHashValues",
+                                        {{"n_values", n_values}});
+  });
+  if (rpc_helper_->protocol_version() < protocol_version::kClientHashValues) {
+    return absl::UnimplementedError(
+        absl::StrCat("HashValues requires protocol version ",
+                     protocol_version::kClientHashValues,
+                     ", but the server has ", rpc_helper_->protocol_version()));
+  }
+  if (values.empty()) {
+    return std::vector<uint64_t>();
+  }
+
+  auto req = std::make_unique<HashValuesRequest>();
+  req->set_hash_mode(ToHashModeProto(mode));
+  for (const ValueRef& value : values) {
+    // TODO(b/261991179): Support other Value types.
+    auto* proxy_array = dyn_cast<xla::ifrt::proxy::Array>(value.get());
+    if (proxy_array == nullptr) {
+      return absl::InvalidArgumentError(
+          "HashValues only supports values that are instances of "
+          "xla::ifrt::proxy::Array");
+    }
+    ABSL_ASSIGN_OR_RETURN(ArrayHandle handle,
+                     proxy_array->GetHandle(ArrayCopySemantics::kAlwaysCopy));
+    req->add_value_handles(handle.handle);
+  }
+
+  return rpc_helper_->HashValues(std::move(req))
+      .Map([](const std::shared_ptr<HashValuesResponse>& response) {
+        return std::vector<uint64_t>(response->hashes().begin(),
+                                     response->hashes().end());
+      });
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(
@@ -464,6 +500,32 @@ tsl::Future<> Client::DeleteValues(absl::Span<xla::ifrt::ValueRef> values) {
     futures.push_back(value->Delete());
   }
   return tsl::JoinFutures(futures);
+}
+
+void Client::CancelExecution(
+    xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
+    absl::Status error) {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointCancelExecution");
+  CHECK(!error.ok());
+  if (rpc_helper_->protocol_version() < protocol_version::kCancelExecution) {
+    return;
+  }
+  auto* proxy_handle =
+      dynamic_cast<proxy::CancellationHandle*>(cancellation_handle.get());
+  if (proxy_handle == nullptr) {
+    return;
+  }
+  auto req = std::make_unique<CancelExecutionRequest>();
+  req->set_cancellation_handle(proxy_handle->handle());
+  *req->mutable_error() = tsl::StatusToProto(error);
+  rpc_helper_->CancelExecution(std::move(req))
+      .OnReady([](absl::StatusOr<std::shared_ptr<CancelExecutionResponse>>
+                      response) {
+        if (!response.ok()) {
+          LOG(ERROR) << "Failed to cancel execution: " << response.status();
+        }
+      });
 }
 
 absl::Span<xla::ifrt::Device* const> Client::GetAllDevices() const {

@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -735,6 +736,194 @@ TEST_F(RaggedTensorFromVariantKernelTest, 2DValuesTensorIn1DOut) {
 
   test::ExpectTensorEqual<int64_t>(*GetOutput(0), expected_splits_1);
   test::ExpectTensorEqual<int>(*GetOutput(1), expected_values);
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest,
+       ShallowSharedVariantBatchBelowLimitControl) {
+  Tensor shared_values(DT_UINT8, TensorShape({1024}));
+  shared_values.flat<uint8>().setConstant(0x5a);
+  RaggedTensorVariant component(shared_values, {});
+  std::vector<Variant> batch(64, Variant(component));
+  EXPECT_EQ(
+      batch.front().get<RaggedTensorVariant>()->values().tensor_data().data(),
+      batch.back().get<RaggedTensorVariant>()->values().tensor_data().data());
+
+  BuildDecodeRaggedTensorGraph<uint8, int64_t>(
+      /*input_ragged_rank=*/0, /*output_ragged_rank=*/1, TensorShape({64}),
+      batch);
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->shape(), TensorShape({65}));
+  EXPECT_EQ(GetOutput(1)->shape(), TensorShape({64 * 1024}));
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest, StackedValuesSizeOverflowRejected) {
+  // 4096 shallow-shared copies of a [1048577] uint8 tensor have cumulative
+  // values_size = 4096 * 1048577 = 2^32 + 4096, which exceeds INT32_MAX.
+  Tensor shared_values(DT_UINT8, TensorShape({1048577}));
+  shared_values.flat<uint8>().setConstant(0x41);
+  RaggedTensorVariant component(shared_values, {});
+  std::vector<Variant> batch(4096, Variant(component));
+
+  BuildDecodeRaggedTensorGraph<uint8, int64_t>(
+      /*input_ragged_rank=*/0, /*output_ragged_rank=*/1, TensorShape({4096}),
+      batch);
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT) << status;
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Stacked ragged values size exceeds supported range"))
+      << status;
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest, StackedSplitsSizeOverflowRejected) {
+  // 4096 shallow-shared copies of a rank-1 ragged component with 1048578
+  // splits have cumulative split_size = 1 + 4096 * 1048577 = 2^32 + 4097,
+  // which exceeds INT32_MAX.
+  Tensor shared_splits(DT_INT64, TensorShape({1048578}));
+  auto splits_flat = shared_splits.flat<int64_t>();
+  splits_flat.setZero();
+  splits_flat(1048577) = 1;
+  Tensor shared_values(DT_UINT8, TensorShape({1}));
+  shared_values.flat<uint8>()(0) = 7;
+
+  RaggedTensorVariant component(shared_values, {shared_splits});
+  std::vector<Variant> batch(4096, Variant(component));
+
+  BuildDecodeRaggedTensorGraph<uint8, int64_t>(
+      /*input_ragged_rank=*/1, /*output_ragged_rank=*/2, TensorShape({4096}),
+      batch);
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT) << status;
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Stacked ragged split size exceeds supported range"))
+      << status;
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest,
+       OuterBatchSplitStepOverflowInt32Rejected) {
+  // A 3D zero-element encoded_variant with shape [65536, 65536, 0] and
+  // Tsplits=int32 has outer batch split step j * split_diff = 32768 * 65536 =
+  // 2147483648 at j = 32768, which exceeds INT32_MAX.
+  BuildDecodeRaggedTensorGraph<int, int32>(
+      /*input_ragged_rank=*/0, /*output_ragged_rank=*/3,
+      TensorShape({65536, 65536, 0}), {});
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Ragged split value exceeds supported range"))
+      << status;
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest,
+       OuterSplitValueOverflowInt32Rejected) {
+  // 2048 shallow-shared copies of a [1048577] uint8 component with
+  // Tsplits=int32 have outer split sum 2048 * 1048577 = 2147485696, which
+  // exceeds INT32_MAX.
+  Tensor shared_values(DT_UINT8, TensorShape({1048577}));
+  shared_values.flat<uint8>().setZero();
+  RaggedTensorVariant component(shared_values, {});
+  std::vector<Variant> batch(2048, Variant(component));
+
+  BuildDecodeRaggedTensorGraph<uint8, int32>(
+      /*input_ragged_rank=*/0, /*output_ragged_rank=*/1, TensorShape({2048}),
+      batch);
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Ragged split value exceeds supported range"))
+      << status;
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest,
+       InnerComponentSplitOffsetOverflowInt32Rejected) {
+  // 2048 shallow-shared copies of a rank-1 ragged component with int32 splits
+  // [0, 1048577] have cumulative inner split offset 2048 * 1048577 =
+  // 2147485696, which exceeds INT32_MAX.
+  Tensor shared_splits(DT_INT32, TensorShape({2}));
+  shared_splits.vec<int32>()(0) = 0;
+  shared_splits.vec<int32>()(1) = 1048577;
+  Tensor shared_values(DT_UINT8, TensorShape({1}));
+  shared_values.flat<uint8>()(0) = 1;
+  RaggedTensorVariant component(shared_values, {shared_splits});
+  std::vector<Variant> batch(2048, Variant(component));
+
+  BuildDecodeRaggedTensorGraph<uint8, int32>(
+      /*input_ragged_rank=*/1, /*output_ragged_rank=*/2, TensorShape({2048}),
+      batch);
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Ragged split value exceeds supported range"))
+      << status;
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest,
+       InnerComponentSplitOffsetUnderflowInt32Rejected) {
+  Tensor neg_splits(DT_INT32, TensorShape({2}));
+  neg_splits.vec<int32>()(0) = 0;
+  neg_splits.vec<int32>()(1) = -1073741825;
+  Tensor shared_values(DT_UINT8, TensorShape({1}));
+  shared_values.flat<uint8>()(0) = 1;
+  RaggedTensorVariant neg_component(shared_values, {neg_splits});
+  BuildDecodeRaggedTensorGraph<uint8, int32>(
+      /*input_ragged_rank=*/1, /*output_ragged_rank=*/2, TensorShape({2}),
+      {Variant(neg_component), Variant(neg_component)});
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Ragged split value exceeds supported range"))
+      << status;
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest,
+       OversizedZeroElementValuesDimRejected) {
+  Tensor empty_values(DT_INT32, TensorShape({2147483648LL, 0}));
+  RaggedTensorVariant component(empty_values, {});
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      /*input_ragged_rank=*/0, /*output_ragged_rank=*/1, TensorShape({1}),
+      {Variant(component)});
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT) << status;
+  EXPECT_TRUE(absl::StrContains(
+      status.message(), "Stacked ragged values size exceeds supported range"))
+      << status;
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest,
+       OversizedZeroElementEncodedDimRejected) {
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      /*input_ragged_rank=*/0, /*output_ragged_rank=*/2,
+      TensorShape({2147483648LL, 0}), {});
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "encoded_variant dimension 0 has size"))
+      << status;
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest,
+       MaxRankMinusOneNonRaggedStackSucceeds) {
+  std::vector<int64_t> dims_253(TensorShape::MaxDimensions() - 1, 1);
+  Tensor values_253(DT_INT32, TensorShape(dims_253));
+  values_253.flat<int>()(0) = 42;
+  RaggedTensorVariant component_253(values_253, {});
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      /*input_ragged_rank=*/-1, /*output_ragged_rank=*/0, TensorShape({1}),
+      {Variant(component_253)});
+  TF_ASSERT_OK(RunOpKernel());
+  EXPECT_EQ(GetOutput(0)->dims(), TensorShape::MaxDimensions());
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest, MaxRankNonRaggedStackRejected) {
+  std::vector<int64_t> dims_254(TensorShape::MaxDimensions(), 1);
+  Tensor values_254(DT_INT32, TensorShape(dims_254));
+  values_254.flat<int>()(0) = 42;
+  RaggedTensorVariant component_254(values_254, {});
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      /*input_ragged_rank=*/-1, /*output_ragged_rank=*/0, TensorShape({1}),
+      {Variant(component_254)});
+  const absl::Status status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT) << status;
+  EXPECT_TRUE(absl::StrContains(status.message(), "maximum allowed")) << status;
 }
 }  // namespace
 }  // namespace tensorflow

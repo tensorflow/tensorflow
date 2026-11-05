@@ -30,6 +30,34 @@ prefix_path = "tensorflow/core/lib"
 
 class DecodeImageOpTest(test.TestCase):
 
+  def _gifWithLogicalScreen(self, width, height):
+    # Minimal single-frame GIF89a: the given logical screen size, a 2-color
+    # global color table and one 1x1 frame.
+    return (
+        b"GIF89a"
+        + width.to_bytes(2, "little")
+        + height.to_bytes(2, "little")
+        + b"\x80\x00\x00"
+        + b"\x00\x00\x00\xff\xff\xff"
+        + b"\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00"
+        + b"\x02\x02\x44\x01\x00"
+        + b"\x3b"
+    )
+
+  def testGifHugeLogicalScreenRaises(self):
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "GIF logical screen too large"
+    ):
+      self.evaluate(
+          image_ops.decode_image(self._gifWithLogicalScreen(32767, 32767))
+      )
+
+  def testGifZeroLogicalScreenDecodes(self):
+    image = self.evaluate(
+        image_ops.decode_image(self._gifWithLogicalScreen(0, 0))
+    )
+    self.assertEqual((1, 1, 1, 3), image.shape)
+
   def testBmp(self):
     # Read a real bmp and verify shape
     path = os.path.join(prefix_path, "bmp", "testdata", "lena.bmp")
@@ -112,6 +140,26 @@ class DecodeImageOpTest(test.TestCase):
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
         self.evaluate(decode)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyBytes(self):
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "Input is empty"
+    ):
+      self.evaluate(image_ops.decode_image(b""))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidJxlDimensions(self):
+    # JXL header declaring xsize = 0x80000000, which does not fit in int.
+    data = bytes.fromhex(
+        "ff0afeffffff7f980208c400b19f200000152aa38c1bbc9ceb3232f24387c5b48"
+        "deb0c6db56f0d68b89028a2e1af323374f8b7e479d69e5c16c2c99153d4c95c14"
+        "669b6c39b9c4f30734c4"
+    )
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, "Failed to decode JXL header"
+    ):
+      self.evaluate(image_ops.decode_image(data))
 
 
 if __name__ == "__main__":

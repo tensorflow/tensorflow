@@ -88,8 +88,6 @@ std::string FileSystem::TranslateName(absl::string_view name) const {
 }
 
 absl::Status FileSystem::IsDirectory(const std::string& name) {
-  // Check if path exists.
-  ABSL_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
   ABSL_RETURN_IF_ERROR(Stat(name, &stat));
   if (stat.is_directory) {

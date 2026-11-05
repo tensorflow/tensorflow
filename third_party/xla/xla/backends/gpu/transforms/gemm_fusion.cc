@@ -46,13 +46,11 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/autotuner/triton/triton_configs.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/backends/gpu/transforms/bitcast_utils.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
-#include "xla/codegen/tiling/experimental/tile.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/codegen/tiling/tile.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/analysis/shape_tracker.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -718,10 +716,22 @@ bool AllowedInGemmFusion(const HloInstruction& instr) {
     // the moment. Includes kFusion, kReduce, kAllReduce, etc.
     return false;
   }
+  // Collectives need runtime collective parameters, so keep them separate.
+  if (hlo_query::IsCollectiveCommunicationOp(instr.opcode())) {
+    return false;
+  }
+  // Triton emitter requires concatenate operands to be aligned to the tile size
+  // to avoid tiles straddling operand boundaries. Since we don't know the
+  // concrete tile size yet, we enforce divisibility by a minimum reasonable
+  // tile size (64).
+  if (const auto* concat = DynCast<HloConcatenateInstruction>(&instr);
+      concat != nullptr &&
+      !IsConcatenateAligned(*concat, /*min_fragment_size=*/64)) {
+    return false;
+  }
   return HloPredicateIsNotOp<HloOpcode::kDot, HloOpcode::kScaledDot,
-                             HloOpcode::kParameter, HloOpcode::kAllGather,
-                             HloOpcode::kAllGatherStart,
-                             HloOpcode::kAllGatherDone>(&instr);
+                             HloOpcode::kParameter, HloOpcode::kAllGatherDone>(
+      &instr);
 }
 
 // Returns true if we should consider fusing the instruction into the GEMM
@@ -977,6 +987,15 @@ absl::StatusOr<HloInstruction*> FusionSearchSpace::HoistBitcast(
       if (!operand->IsElementwise()) {
         return instr;
       }
+      // Elementwise operations preserve logical indices, not necessarily
+      // physical offsets. In particular, a layout-changing copy cannot be
+      // commuted with a bitcast using the same shape for every operand.
+      if (absl::c_any_of(operand->operands(), [&](HloInstruction* arg) {
+            return !ShapeUtil::EqualIgnoringElementType(operand->shape(),
+                                                        arg->shape());
+          })) {
+        return instr;
+      }
       // bitcast(op(a, b)) -> op(bitcast(a), bitcast(b))
       std::vector<HloInstruction*> new_operands;
       for (HloInstruction* arg : operand->operands()) {
@@ -1081,6 +1100,14 @@ absl::StatusOr<HloInstruction*> FusionSearchSpace::SinkBitcast(
       if (!user->IsElementwise()) {
         return instr;
       }
+      // As in HoistBitcast, logical elementwise semantics do not justify
+      // commuting a bitcast across a change in physical layout.
+      if (absl::c_any_of(user->operands(), [&](HloInstruction* arg) {
+            return !ShapeUtil::EqualIgnoringElementType(user->shape(),
+                                                        arg->shape());
+          })) {
+        return instr;
+      }
       // Sink past elementwise users.
       // op(bitcast(a), b) -> bitcast(op(a, bitcast(b)))
       std::vector<HloInstruction*> new_operands;
@@ -1172,12 +1199,11 @@ absl::Status RemoveEdgeBitcasts(HloInstruction* fusion,
 // that we know they will be divisiable by 2. Specifically, extract the
 // variables for block_m, block_n, block_k.
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> BuildEvenBlockSizeReplacements(
-    const experimental::TiledHloInstruction& tiled_dot,
-    mlir::MLIRContext& mlir_context) {
+    const TiledHloInstruction& tiled_dot, mlir::MLIRContext& mlir_context) {
   const DotDimensionNumbers& dim_numbers =
       tiled_dot.hlo()->dot_dimension_numbers();
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> even_variable_replacements;
-  auto add_var_from_tile = [&](const experimental::DimTile& dim_tile) {
+  auto add_var_from_tile = [&](const DimTile& dim_tile) {
     llvm::DenseSet<VariableID> vars;
     dim_tile.size.GetUsedVariables(vars);
     CHECK_EQ(vars.size(), 1)
@@ -1205,7 +1231,7 @@ llvm::DenseMap<SymbolicExpr, SymbolicExpr> BuildEvenBlockSizeReplacements(
 // Returns true if `inst` is an S4 instruction whose minor-most non-unit
 // physical dimension has a tile size not divisible by 2.
 bool InstructionHasUntileableS4MinorDimension(
-    const experimental::TiledHloInstruction& inst,
+    const TiledHloInstruction& inst,
     const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacement_map) {
   const Shape& shape = inst.hlo()->shape();
   if (shape.element_type() != PrimitiveType::S4 || !shape.has_layout()) {
@@ -1213,7 +1239,7 @@ bool InstructionHasUntileableS4MinorDimension(
   }
 
   // Find the minor-most non-unit dimension according to the physical layout.
-  llvm::ArrayRef<experimental::DimTile> dim_tiles = inst.tile().dim_tiles();
+  llvm::ArrayRef<DimTile> dim_tiles = inst.tile().dim_tiles();
   auto minor_to_major = shape.layout().minor_to_major();
   auto minor_dim = absl::c_find_if(
       minor_to_major, [&](int64_t dim) { return shape.dimensions(dim) != 1; });
@@ -1230,19 +1256,16 @@ bool InstructionHasUntileableS4MinorDimension(
 // Returns true if any instruction in `instructions`, or in any of their
 // (transitively) nested regions, has an untileable S4 minor dimension.
 bool AnyInstructionHasUntileableS4MinorDimension(
-    absl::Span<const experimental::TiledHloInstruction* const> instructions,
+    absl::Span<const TiledHloInstruction* const> instructions,
     const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacement_map) {
-  return absl::c_any_of(
-      instructions, [&](const experimental::TiledHloInstruction* inst) {
-        return InstructionHasUntileableS4MinorDimension(*inst,
-                                                        replacement_map) ||
-               absl::c_any_of(
-                   inst->hlo_regions(),
-                   [&](const experimental::TiledHloRegion& region) {
-                     return AnyInstructionHasUntileableS4MinorDimension(
-                         region.instructions(), replacement_map);
-                   });
-      });
+  return absl::c_any_of(instructions, [&](const TiledHloInstruction* inst) {
+    return InstructionHasUntileableS4MinorDimension(*inst, replacement_map) ||
+           absl::c_any_of(inst->hlo_regions(),
+                          [&](const TiledHloRegion& region) {
+                            return AnyInstructionHasUntileableS4MinorDimension(
+                                region.instructions(), replacement_map);
+                          });
+  });
 }
 
 // Most S4 parameters are okay, but there are cases where the tile size along
@@ -1254,13 +1277,12 @@ bool AnyInstructionHasUntileableS4MinorDimension(
 // TODO(b/514309966): Fix tiling to handle this case and remove this check.
 FusionDecision CanUnpackS4ParametersInFusion(
     const HloFusionAdaptor& fusion_adaptor, mlir::MLIRContext& mlir_context) {
-  auto tiling_space =
-      experimental::TilingSpace::Create(fusion_adaptor, &mlir_context);
+  auto tiling_space = TilingSpace::Create(fusion_adaptor, &mlir_context);
   if (!tiling_space.ok()) {
     return FusionDecision::Forbid(tiling_space.status().message());
   }
-  auto tiled_computation = experimental::TiledHloComputation::Tile(
-      fusion_adaptor, std::move(*tiling_space));
+  auto tiled_computation =
+      TiledHloComputation::Tile(fusion_adaptor, std::move(*tiling_space));
   if (!tiled_computation.ok()) {
     return FusionDecision::Forbid(tiled_computation.status().message());
   }
@@ -1271,8 +1293,7 @@ FusionDecision CanUnpackS4ParametersInFusion(
     return FusionDecision::Forbid(
         "Expected tiled computation root to be a single dot instruction.");
   }
-  const experimental::TiledHloInstruction* tiled_dot =
-      tiled_computation->roots()[0];
+  const TiledHloInstruction* tiled_dot = tiled_computation->roots()[0];
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map =
       BuildEvenBlockSizeReplacements(*tiled_dot, mlir_context);
@@ -1288,18 +1309,16 @@ FusionDecision CanUnpackS4ParametersInFusion(
   return FusionDecision::Allow();
 }
 
-// Checks if the fusion can be tiled by SymbolicTileAnalysis.
 FusionDecision CanTile(mlir::MLIRContext& mlir_context,
                        const HloFusionAdaptor& fusion,
                        const se::DeviceDescription& device_description) {
-  namespace ge = ::xla::gpu::experimental;
-  auto ts = ge::TilingSpace::Create(fusion, &mlir_context);
+  auto ts = TilingSpace::Create(fusion, &mlir_context);
   if (!ts.ok()) {
     return FusionDecision::Forbid(
         absl::StrCat("Failed to create tiling space: ", ts.status().message()));
   }
   auto tiled_computation =
-      ge::TiledHloComputation::Tile(fusion, std::move(ts.value()));
+      TiledHloComputation::Tile(fusion, std::move(ts.value()));
   if (!tiled_computation.ok()) {
     return FusionDecision::Forbid(
         absl::StrCat("Fusion is not tileable with experimental tiling: ",
@@ -1312,7 +1331,7 @@ FusionDecision CanTile(mlir::MLIRContext& mlir_context,
   std::optional<HloInstructionAdaptor> dot =
       HloBfsFindIf(fusion.GetRoots(), fusion, [](HloInstructionAdaptor node) {
         return HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(
-              &node.instruction());
+            &node.instruction());
       });
   if (!dot.has_value()) {
     return FusionDecision::Forbid("No dot instruction found in the fusion.");
@@ -1539,6 +1558,8 @@ FusionDecision ShouldFuseOperand(HloInstruction* operand,
             "Not fusing power op with multiple users.");
       }
       break;
+    case HloOpcode::kDynamicSlice:
+      return FusionDecision::Allow();
     default:
       break;
   }
@@ -2235,7 +2256,17 @@ absl::StatusOr<bool> RunOnComputation(
     HloComputation* computation,
     const se::DeviceDescription& device_description) {
   GemmFusionVisitor visitor(device_description);
-  ABSL_RETURN_IF_ERROR(computation->Accept(&visitor));
+  // Collect the dots up front: fusing an epilogue can remove an unvisited
+  // operand (e.g. bitcast(other_dot)), hiding other dots from a DFS traversal.
+  std::vector<HloInstruction*> dots;
+  for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
+    if (HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(instruction)) {
+      dots.push_back(instruction);
+    }
+  }
+  for (HloInstruction* dot : dots) {
+    ABSL_RETURN_IF_ERROR(dot->Visit(&visitor));
+  }
   return visitor.changed();
 }
 

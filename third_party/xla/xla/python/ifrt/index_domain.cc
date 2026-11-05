@@ -90,6 +90,37 @@ absl::StatusOr<IndexDomain> IndexDomain::Intersect(
   return IndexDomain(Index(origin), Shape(shape));
 }
 
+absl::StatusOr<bool> IndexDomain::Contains(const IndexDomain& other) const {
+  absl::Span<const int64_t> a_origin = origin_.elements();
+  absl::Span<const int64_t> a_shape = shape_.dims();
+  absl::Span<const int64_t> b_origin = other.origin_.elements();
+  absl::Span<const int64_t> b_shape = other.shape_.dims();
+  if (a_origin.size() != a_shape.size() || b_origin.size() != b_shape.size() ||
+      a_shape.size() != b_shape.size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot check containment of IndexDomains with mismatched numbers of "
+        "dimensions: ",
+        *this, " vs. ", other));
+  }
+
+  bool contains = true;
+  for (int i = 0; i < a_shape.size(); ++i) {
+    if (a_shape[i] < 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "IndexDomain cannot have negative shape dimensions: ", *this));
+    }
+    if (b_shape[i] < 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "IndexDomain cannot have negative shape dimensions: ", other));
+    }
+    if (b_origin[i] < a_origin[i] ||
+        b_origin[i] + b_shape[i] > a_origin[i] + a_shape[i]) {
+      contains = false;
+    }
+  }
+  return contains;
+}
+
 std::ostream& operator<<(std::ostream& os, const IndexDomain& index_domain) {
   return os << absl::StrCat(index_domain);
 }

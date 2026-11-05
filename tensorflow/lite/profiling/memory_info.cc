@@ -68,6 +68,32 @@ int64_t GetCurrentVmSwapKb() {
   // If the VmSwap line is not found, it means 0 swap is being used.
   return 0;
 }
+
+// Returns the current CPU VMA-backed resident set size in kilobytes on Linux,
+// or -1 if unavailable. Reading Rss from /proc/self/smaps_rollup walks only
+// userspace CPU virtual memory areas and excludes unmapped GPU driver pages
+// injected into mm->rss_stat[MM_FILEPAGES] on Mali (mali_kbase).
+int64_t GetCurrentCpuRssKb() {
+  FILE* smaps_file = fopen("/proc/self/smaps_rollup", "r");
+  if (!smaps_file) {
+    return -1;
+  }
+  char line[256];
+  while (fgets(line, sizeof(line), smaps_file)) {
+    if (strncmp(line, "Rss:", 4) == 0) {
+      int64_t value_kb = 0;
+      if (sscanf(line + 4, "%" SCNd64, &value_kb) == 1) {
+        fclose(smaps_file);
+        return value_kb;
+      } else {
+        fclose(smaps_file);
+        return -1;
+      }
+    }
+  }
+  fclose(smaps_file);
+  return -1;
+}
 #endif
 
 }  // namespace
@@ -82,12 +108,18 @@ bool MemoryUsage::IsSupported() {
 MemoryUsage GetMemoryUsage() {
   MemoryUsage result;
 #ifdef __linux__
-  rusage res;
-  if (getrusage(RUSAGE_SELF, &res) == 0) {
-    result.mem_footprint_kb = res.ru_maxrss;
+  int64_t rss_kb = GetCurrentCpuRssKb();
+  if (rss_kb < 0) {
+    rusage res;
+    if (getrusage(RUSAGE_SELF, &res) == 0) {
+      rss_kb = res.ru_maxrss;
+    }
+  }
+  if (rss_kb >= 0) {
+    result.mem_footprint_kb = rss_kb;
     int64_t vm_swap_kb = GetCurrentVmSwapKb();
     if (vm_swap_kb >= 0) {
-      result.private_footprint_bytes = (vm_swap_kb + res.ru_maxrss) * 1024;
+      result.private_footprint_bytes = (vm_swap_kb + rss_kb) * 1024;
     }
   }
 #if defined(__NO_MALLINFO__) || !defined(__GLIBC__) ||         \

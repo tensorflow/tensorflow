@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -278,6 +279,28 @@ TEST_F(ShapeInferenceTest, BitcastConvertPredToF32) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(ShapeInferenceTest, BitcastConvertWithDynamicMajorDimension) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[<=10,2]"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferBitcastConvertShape(operand, PrimitiveType::S64));
+  TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("s64[<=10]"));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(ShapeInferenceTest, BitcastConvertWithDynamicContractedDimension) {
+  // Narrowing to a wider element type consumes the minor dimension, which
+  // must be static: fewer than ratio valid elements cannot form an element.
+  TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[10,<=2]"));
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferBitcastConvertShape(operand, PrimitiveType::S64);
+  EXPECT_FALSE(inferred_shape.ok());
+  EXPECT_THAT(inferred_shape.status().message(),
+              HasSubstr("Last dimension of input shape must be static"));
+}
+
 TEST_F(ShapeInferenceTest, ClampAllMatrix) {
   const absl::StatusOr<Shape> inferred_shape =
       ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, matrix_64_48_,
@@ -374,6 +397,32 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
                    .ok());
   ASSERT_FALSE(ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, f32_,
                                                    vector_64_, vector_32_)
+                   .ok());
+}
+
+TEST_F(ShapeInferenceTest, FmaShapes) {
+  ASSERT_OK_AND_ASSIGN(
+      Shape inferred_matrix,
+      ShapeInference::InferTernaryOpShape(HloOpcode::kFma, matrix_64_48_,
+                                          matrix_64_48_, matrix_64_48_));
+  EXPECT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_matrix));
+
+  ASSERT_OK_AND_ASSIGN(
+      Shape inferred_scalar,
+      ShapeInference::InferTernaryOpShape(HloOpcode::kFma, f32_, f32_, f32_));
+  EXPECT_TRUE(ShapeUtil::Equal(f32_, inferred_scalar));
+
+  // Integer inputs are rejected.
+  EXPECT_FALSE(
+      ShapeInference::InferTernaryOpShape(HloOpcode::kFma, s32_, s32_, s32_)
+          .ok());
+  // Mismatched shapes are rejected.
+  EXPECT_FALSE(ShapeInference::InferTernaryOpShape(HloOpcode::kFma, vector_64_,
+                                                   vector_32_, vector_64_)
+                   .ok());
+  // Scalar broadcasting is not allowed for HLO fma.
+  EXPECT_FALSE(ShapeInference::InferTernaryOpShape(HloOpcode::kFma, f32_,
+                                                   matrix_64_48_, matrix_64_48_)
                    .ok());
 }
 
@@ -5499,6 +5548,34 @@ TEST_F(ShapeInferenceTest, UnboundedDynamicSlice) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(ShapeInferenceTest, DynamicSliceOnBufferOperand) {
+  // Tests that ShapeInference::InferDynamicSliceShape accepts a buffer shaped
+  // input operand and infers a standard array output shape while still
+  // rejecting tuple inputs. Calls InferDynamicSliceShape on b(f32[4, 10]) to
+  // check that the inferred shape is f32[2, 5] (not a buffer), and on a tuple
+  // shape to check that InvalidArgument is returned.
+  ASSERT_OK_AND_ASSIGN(const Shape array_shape, ParseShape("f32[4, 10]"));
+  ASSERT_OK_AND_ASSIGN(const Shape buffer_operand, ParseShape("b(f32[4, 10])"));
+  ASSERT_OK_AND_ASSIGN(const Shape start_index, ParseShape("s32[]"));
+  ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[2, 5]"));
+  ASSERT_OK_AND_ASSIGN(
+      const Shape inferred_shape,
+      ShapeInference::InferDynamicSliceShape(
+          buffer_operand, /*start_index_shapes=*/{start_index, start_index},
+          /*slice_sizes=*/{2, 5}, /*allow_scalar_indices=*/true));
+  EXPECT_FALSE(inferred_shape.IsBuffer());
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+
+  const Shape tuple_operand = ShapeUtil::MakeTupleShape({array_shape});
+  EXPECT_THAT(
+      ShapeInference::InferDynamicSliceShape(
+          tuple_operand, /*start_index_shapes=*/{start_index, start_index},
+          /*slice_sizes=*/{2, 5}, /*allow_scalar_indices=*/true),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_F(ShapeInferenceTest, UnboundedDynamicUpdateSlice) {
   ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
   ASSERT_OK_AND_ASSIGN(const Shape update, ParseShape("f32[?, 5]"));
@@ -6418,5 +6495,33 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                               {"f32[?]", "f32[?]", HloOpcode::kSinh},
                               {"f32[?]", "f32[?]", HloOpcode::kSqrt},
                               {"f32[?]", "f32[?]", HloOpcode::kTanh}}));
+
+TEST_F(ShapeInferenceTest, MulhiRequiresIntegralType) {
+  const Shape s32_vec = ShapeUtil::MakeShape(S32, {4});
+  const Shape u32_vec = ShapeUtil::MakeShape(U32, {4});
+  ASSERT_OK_AND_ASSIGN(Shape s32_out, ShapeInference::InferBinaryOpShape(
+                                          HloOpcode::kMulhi, s32_vec, s32_vec,
+                                          /*broadcast_dimensions=*/{}));
+  EXPECT_TRUE(ShapeUtil::Equal(s32_out, s32_vec));
+  ASSERT_OK_AND_ASSIGN(Shape u32_out, ShapeInference::InferBinaryOpShape(
+                                          HloOpcode::kMulhi, u32_vec, u32_vec,
+                                          /*broadcast_dimensions=*/{}));
+  EXPECT_TRUE(ShapeUtil::Equal(u32_out, u32_vec));
+
+  EXPECT_THAT(
+      ShapeInference::InferBinaryOpShape(HloOpcode::kMulhi, vector_32_,
+                                         vector_32_,
+                                         /*broadcast_dimensions=*/{}),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Expected integral type in argument to mulhi operation")));
+  EXPECT_THAT(
+      ShapeInference::InferBinaryOpShape(HloOpcode::kMulhi, pred_, pred_,
+                                         /*broadcast_dimensions=*/{}),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Expected integral type in argument to mulhi operation")));
+}
+
 }  // namespace
 }  // namespace xla

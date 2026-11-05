@@ -16,13 +16,21 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -617,6 +625,98 @@ TEST_F(ExecutorTest, NonDerivedErrorOverridesDerivedCancellationError) {
       << s;
   rendez->Unref();
 }
+
+Node* BuildLoweredWhileLoop(int loop_iters, Graph* g) {
+  Node* in0 = test::graph::Constant(g, VI(0));
+  Node* enter = test::graph::Enter(g, in0, "while_frame");
+  const std::string next_name = "next_iter";
+  Node* merge = test::graph::Merge(g, enter, {next_name});
+  Node* bound = test::graph::Constant(g, VI(loop_iters));
+  g->AddControlEdge(merge, bound);
+  Node* less = test::graph::Less(g, merge, bound);
+  Node* cond = test::graph::LoopCond(g, less);
+  Node* sw = test::graph::Switch(g, merge, cond);
+  Node* exit = test::graph::Exit(g, sw);
+  Node* body_in = test::graph::Identity(g, sw, 1);
+  Node* one = test::graph::Constant(g, VI(1));
+  g->AddControlEdge(body_in, one);
+  Node* add = test::graph::Add(g, body_in, one);
+  Node* next = test::graph::Next(g, next_name, add);
+  g->AddEdge(next, 0, merge, 1);
+  return exit;
+}
+
+TEST_F(ExecutorTest, InlineLoweredWhileLoop) {
+  for (const int loop_iters : {0, 1, 10}) {
+    SCOPED_TRACE(absl::StrCat("loop_iters = ", loop_iters));
+    if (rendez_ != nullptr) {
+      CHECK(rendez_->Unref());
+      rendez_ = nullptr;
+    }
+    auto g = std::make_unique<Graph>(OpRegistry::Global());
+    Node* exit = BuildLoweredWhileLoop(loop_iters, g.get());
+    test::graph::Send(g.get(), exit, "out", BOB, kIncarnation, ALICE);
+    Create(std::move(g));
+
+    Executor::Args exec_args;
+    exec_args.rendezvous = rendez_;
+    exec_args.stats_collector = &step_stats_collector_;
+    exec_args.runner = [](std::function<void()> fn) { fn(); };
+    exec_args.run_all_kernels_inline = true;
+    TF_ASSERT_OK(exec_->Run(exec_args));
+
+    Tensor out = VI(-1);
+    bool is_dead = false;
+    TF_ASSERT_OK(rendez_->Recv(Key(BOB, kIncarnation, ALICE, "out"),
+                               Rendezvous::Args(), &out, &is_dead));
+    EXPECT_FALSE(is_dead);
+    EXPECT_EQ(loop_iters, out.scalar<int32_t>()());
+  }
+}
+
+static void BM_ProcessInlineLoweredWhileLoop(
+    ::testing::benchmark::State& state) {
+  const int loop_iters = state.range(0);
+
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
+  Node* exit = BuildLoweredWhileLoop(loop_iters, g.get());
+  test::graph::Identity(g.get(), exit);
+  FixupSourceAndSinkEdges(g.get());
+
+  std::unique_ptr<Device> device(
+      DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
+  const int version = g->versions().producer();
+  LocalExecutorParams params;
+  params.device = device.get();
+  params.create_kernel = [&device, version](
+                             const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+    return CreateNonCachedKernel(device.get(), nullptr, props, version, kernel);
+  };
+  params.delete_kernel = [](OpKernel* kernel) {
+    DeleteNonCachedKernel(kernel);
+  };
+  Executor* exec = nullptr;
+  TF_CHECK_OK(NewLocalExecutor(params, *g, &exec));
+  std::unique_ptr<Executor> exec_owner(exec);
+
+  Rendezvous* rendez = NewLocalRendezvous();
+  Executor::Args args;
+  args.rendezvous = rendez;
+  args.runner = [](std::function<void()> fn) { fn(); };
+  args.run_all_kernels_inline = true;
+
+  for (auto s : state) {
+    TF_CHECK_OK(exec->Run(args));
+  }
+  rendez->Unref();
+}
+BENCHMARK(BM_ProcessInlineLoweredWhileLoop)  // NOLINT(misc-include-cleaner)
+    ->Arg(0)
+    ->Arg(1)
+    ->Arg(10)
+    ->Arg(100)
+    ->Arg(1000);
 
 // Create a graph that is 'depth' deep. At each level, fan-in and fan-out a
 // maximum of 'width' nodes. All nodes are no-ops and all dependencies are

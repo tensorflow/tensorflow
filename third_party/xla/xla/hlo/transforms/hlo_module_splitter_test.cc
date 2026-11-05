@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/test.h"
@@ -362,6 +364,67 @@ ENTRY entry {
 
   EXPECT_FALSE(changed);
   EXPECT_TRUE(splitter.submodules().empty());
+}
+
+TEST_F(HloModuleSplitterTest, SplitsCallPreservesStackFrames) {
+  const char* hlo_string = R"(
+HloModule module
+
+FileNames
+1 "test.py"
+
+FunctionNames
+1 "entry_fn"
+2 "callee_fn"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=10 end_line=10 column=1 end_column=5}
+2 {file_name_id=1 function_name_id=2 line=20 end_line=20 column=1 end_column=5}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+2 {file_location_id=2 parent_frame_id=1}
+
+callee {
+  p0 = f32[] parameter(0)
+  ROOT neg = f32[] negate(p0), metadata={op_name="neg" stack_frame_id=2}
+}
+
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  ROOT call = f32[] call(p0), to_apply=callee,
+    frontend_attributes={inlineable="xla_late"},
+    metadata={stack_frame_id=1}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto split_result, RunSplitter(hlo_string));
+  ASSERT_EQ(split_result.submodules.size(), 1);
+  // The custom-call in the main module preserves its stack_frame_id (pointing
+  // to entry_fn) even when op_name is empty.
+  int call_frame_id = split_result.module->entry_computation()
+                          ->root_instruction()
+                          ->metadata()
+                          .stack_frame_id();
+  EXPECT_GT(call_frame_id, 0);
+  HloStackFrame call_frame = split_result.module->stack_frames().GetStackFrame(
+      StackFrameId{call_frame_id});
+  EXPECT_EQ(call_frame.function_name, "entry_fn");
+  EXPECT_EQ(call_frame.line, 10);
+
+  // The submodule canonicalizes its stack frames, retaining only callee_fn.
+  const HloModule* sub_module = split_result.submodules[0].get();
+  EXPECT_EQ(sub_module->stack_frames().proto().stack_frames_size(), 1);
+  int neg_frame_id = sub_module->entry_computation()
+                         ->root_instruction()
+                         ->metadata()
+                         .stack_frame_id();
+  EXPECT_EQ(neg_frame_id, 1);
+  HloStackFrame frame =
+      sub_module->stack_frames().GetStackFrame(StackFrameId{neg_frame_id});
+  EXPECT_EQ(frame.file_name, "test.py");
+  EXPECT_EQ(frame.function_name, "callee_fn");
+  EXPECT_EQ(frame.line, 20);
 }
 
 }  // namespace

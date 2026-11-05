@@ -156,3 +156,16 @@
 *   Added date: 2026-03-10
 *   Changes:
     *   Added support for `LoadedExecutable::SetDeleteOptions`.
+
+## Version kCancelExecution
+
+*   Added date: 2026-10-21
+*   Changes:
+    *   Added support for `Client::CancelExecution`.
+
+## Version kClientHashValues
+
+*   Added date: 2026-10-25
+*   Changes:
+    *   Added support for `Client::HashValues`.
+

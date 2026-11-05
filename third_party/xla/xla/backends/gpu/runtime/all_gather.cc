@@ -153,6 +153,11 @@ absl::StatusOr<AllGatherInfo> BuildAllGatherInfo(
   }
   const int64_t num_devices =
       all_gather->device_list()->num_devices_per_group();
+  if (all_gather->operand_count() > kAllGatherMaxNumOperands) {
+    return absl::UnimplementedError(absl::StrFormat(
+        "All-gather kernel supports at most %d operands. Got %d.",
+        kAllGatherMaxNumOperands, all_gather->operand_count()));
+  }
   if (device_info.device_interconnect_info().active_links <= 0) {
     return absl::UnimplementedError(
         "Collective kernels are only supported on devices with NVLink/UALink "
@@ -224,16 +229,16 @@ absl::StatusOr<CollectiveKernelSpec> CreateAllGatherKernelSpec(
                                          scratch_memory_type,
                                          /*should_memzero=*/true,
                                          /*should_double_buffer=*/true});
-  // One symmetric scratch buffer per operand that holds one rank's slice
-  // (= input size). Double-buffering is handled by the should_double_buffer
+  // One symmetric scratch buffer per operand that holds all ranks' slices
+  // (= output size). Double-buffering is handled by the should_double_buffer
   // flag.
   for (int32_t i = 0; i < num_operands; ++i) {
-    const int64_t remote_size = xla::RoundUpTo<uint64_t>(
-        ShapeUtil::ByteSizeOf(instr->operand(i)->shape()),
+    const int64_t output_size = xla::RoundUpTo<uint64_t>(
+        ShapeUtil::ByteSizeOf(instr->operand(i)->shape()) * group_size,
         kXlaAllocatedBufferAlignBytes);
     codegen_config.argument_descriptors.push_back(
         {KernelArgType::kScratchBuffer, /*index=*/1 + i});
-    kernel_spec.scratch_buffers.push_back({remote_size,
+    kernel_spec.scratch_buffers.push_back({output_size,
                                            /*requires_multimem=*/false,
                                            scratch_memory_type,
                                            /*should_memzero=*/false,

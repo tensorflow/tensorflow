@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_FUSION_COMPILER_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_CUDNN_FUSION_COMPILER_H_
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -34,16 +35,28 @@ namespace gpu {
 // compiles them using a cuDNN handle and serializes them.
 class CuDnnFusionCompiler : public HloModulePass {
  public:
-  explicit CuDnnFusionCompiler(se::dnn::DnnSupport* dnn_support,
+  explicit CuDnnFusionCompiler(se::StreamExecutor* absl_nullable stream_exec,
                                const se::DeviceDescription& gpu_device_info,
                                BinaryMap& compilation_results)
-      : dnn_support_(dnn_support),
+      : stream_exec_(stream_exec),
         gpu_device_info_(gpu_device_info),
         compilation_results_(compilation_results) {}
 
   absl::string_view name() const override { return "cudnn-fusion-compiler"; }
 
   static absl::StatusOr<int> GetAvailablePlanCount(
+      se::dnn::DnnSupport* dnn_support,
+      const se::DeviceDescription& gpu_device_info,
+      const HloFusionInstruction& hlo);
+
+  // Whether `hlo` (a fusion with no gemm/conv/ragged-dot/scaled-dot hero) is
+  // eligible to become a cuDNN fusion: rejects fusions with more than one
+  // concatenate (cuDNN reports execution plans available for these but fails
+  // to lower them), then probes cuDNN for at least one available execution
+  // plan via `GetAvailablePlanCount`. Returns false (not an error) when
+  // ineligible; propagates genuine probe failures (e.g. stream/graph
+  // construction errors) as a non-OK status.
+  static absl::StatusOr<bool> IsSupportedNonGemmFusion(
       se::StreamExecutor* stream_exec,
       const se::DeviceDescription& gpu_device_info,
       const HloFusionInstruction& hlo);
@@ -75,7 +88,7 @@ class CuDnnFusionCompiler : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  se::dnn::DnnSupport* dnn_support_;
+  se::StreamExecutor* absl_nullable stream_exec_;
   const se::DeviceDescription& gpu_device_info_;
   BinaryMap& compilation_results_;
 };

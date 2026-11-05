@@ -272,6 +272,21 @@ func.func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
 
 // -----
 
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[4]{0}, f32[4]{0}, f32[4]{0})->f32[4]{0}}
+
+// CHECK:       ENTRY %[[$main_5:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[4] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = f32[4] parameter(1)
+// CHECK-NEXT:  %[[Arg_2_3:[^ ]+]] = f32[4] parameter(2)
+// CHECK-NEXT:  ROOT %[[fma_4:[^ ]+]] = f32[4] fma(%[[Arg_0_1]], %[[Arg_1_2]], %[[Arg_2_3]])
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = stablehlo.fma %arg0, %arg1, %arg2 : tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+// CHECK-DIRECT: stablehlo.fma
+
+// -----
+
 // CHECK-LABEL: HloModule main, entry_computation_layout={(f32[16,8]{1,0})->f32[16,8]{1,0}}
 
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
@@ -1328,7 +1343,7 @@ module {
 // CHECK-NEXT:  %[[Arg_3_4:[^ ]+]] = bf16[] parameter(3)
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = bf16[16,256] parameter(0)
 // CHECK-NEXT:  %[[Arg_2_3:[^ ]+]] = s32[16,256] parameter(2)
-// CHECK-NEXT:  %[[sort_11:[^ ]+]] = (bf16[16,256], s32[16,256]) sort(%[[Arg_0_1]], %[[Arg_2_3]]), dimensions={1}, is_stable=true, to_apply=%[[$top_k_gt_comparator_5]], metadata=
+// CHECK-NEXT:  %[[sort_11:[^ ]+]] = (bf16[16,256], s32[16,256]) sort(%[[Arg_0_1]], %[[Arg_2_3]]), dimensions={1}, to_apply=%[[$top_k_gt_comparator_5]], metadata=
 // CHECK-NEXT:  %[[get_tuple_element_12:[^ ]+]] = bf16[16,256] get-tuple-element(%[[sort_11]]), index=0, metadata=
 // CHECK-NEXT:  %[[slice_13:[^ ]+]] = bf16[16,4] slice(%[[get_tuple_element_12]]), slice={[0:16], [0:4]}, metadata=
 // CHECK-NEXT:  %[[get_tuple_element_14:[^ ]+]] = s32[16,256] get-tuple-element(%[[sort_11]]), index=1, metadata=
@@ -2135,6 +2150,26 @@ func.func @main(%arg0: memref<2xf32>) -> tensor<2xf32> {
     api_version = 4 : i32
   } : (memref<2xf32>) -> tensor<2xf32>
   func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout
+//       CHECK: ENTRY
+func.func @main(%arg0: memref<2xf32>) -> memref<2xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="FanOut",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{0}: (0, {})}
+  //               CHECK: custom-call({{.*}}), custom_call_target="FanIn",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0:2 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "FanOut",
+    api_version = 4 : i32
+  } : (memref<2xf32>) -> (memref<2xf32>, memref<2xf32>)
+  %1 = "stablehlo.custom_call"(%0#0, %0#1) {
+    call_target_name = "FanIn",
+    api_version = 4 : i32
+  } : (memref<2xf32>, memref<2xf32>) -> memref<2xf32>
+  func.return %1 : memref<2xf32>
 }
 
 // -----

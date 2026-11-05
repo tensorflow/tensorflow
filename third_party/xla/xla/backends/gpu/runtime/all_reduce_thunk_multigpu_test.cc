@@ -72,8 +72,7 @@ class DirectAllReduceThunk : public AllReduceReduceScatterThunkBase {
         std::vector<DeviceBufferPair> device_buffers,
         ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                config_.config.operand_element_type));
-    return RunAllReduce(config_.reduction_kind, device_buffers, stream, comm,
-                        /*use_symmetric_buffer=*/false);
+    return RunAllReduce(config_.reduction_kind, device_buffers, stream, comm);
   }
 };
 

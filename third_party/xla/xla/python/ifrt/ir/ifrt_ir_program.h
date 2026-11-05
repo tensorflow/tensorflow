@@ -54,8 +54,12 @@ namespace ifrt {
 
 struct IfrtIRProgram : RTTIExtends<IfrtIRProgram, Program> {
   IfrtIRProgram() = default;
+  // Borrows an externally owned `mlir::ModuleOp` without taking ownership.
   explicit IfrtIRProgram(mlir::ModuleOp mlir_module)
       : mlir_module(std::move(mlir_module)) {}
+  // Takes ownership of `module` (erasing it on destruction) and optionally
+  // `context`. If `context` is `nullptr`, the external `mlir::MLIRContext`
+  // backing `module` must outlive this `IfrtIRProgram`.
   IfrtIRProgram(std::unique_ptr<mlir::MLIRContext> context,
                 mlir::OwningOpRef<mlir::ModuleOp> module)
       : mlir_module(*module),
@@ -82,6 +86,8 @@ struct IfrtIRProgram : RTTIExtends<IfrtIRProgram, Program> {
   static char ID;  // NOLINT
 
  private:
+  // Note: `mlir_context` must precede `owning_mlir_module` so that
+  // `owning_mlir_module` is erased before `mlir_context` is destroyed.
   std::unique_ptr<mlir::MLIRContext> mlir_context;
   mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module;
 };
@@ -118,10 +124,11 @@ struct SerializeIfrtIRProgramOptions
 };
 
 // Options for deserializing IFRT IR programs.
-// If `context` is not nullptr then deserialization will create a new MLIR
-// context, which will be owned by the deserialized program. Otherwise, the
-// deserialization will use the provided MLIR context and the returned program
-// will not own a MLIR context.
+// If `context` is `nullptr`, deserialization creates a new `mlir::MLIRContext`
+// owned by the returned `IfrtIRProgram`. Otherwise, deserialization uses the
+// provided `mlir::MLIRContext` and the returned `IfrtIRProgram` owns only the
+// deserialized `mlir::ModuleOp` (so `context` must outlive the returned
+// `IfrtIRProgram`).
 struct DeserializeIfrtIRProgramOptions
     : RTTIExtends<DeserializeIfrtIRProgramOptions,
                   DeserializeExecutableOptions> {

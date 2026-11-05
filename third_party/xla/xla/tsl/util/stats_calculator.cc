@@ -172,7 +172,6 @@ void StatsCalculator::ComputeStatsByType(
   int64_t run_count = run_total_us_.count();
 
   for (const auto& det : details_) {
-    const std::string node_name = det.first;
     const Detail& detail = det.second;
 
     int64_t curr_time_val =

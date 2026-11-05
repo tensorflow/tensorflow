@@ -126,7 +126,7 @@ compiled with C++17.
 
 --- a/include/triton/Tools/Sys/GetEnv.h
 +++ b/include/triton/Tools/Sys/GetEnv.h
-@@ -67,8 +67,8 @@ inline const std::set<std::string> CACHE_NEUTRAL_ENV_VARS = {
+@@ -68,8 +68,8 @@ inline const std::set<std::string> CACHE_NEUTRAL_ENV_VARS = {
  namespace tools {
  
  inline void assertIsRecognized(const std::string &env) {
@@ -140,7 +140,7 @@ compiled with C++17.
 
 --- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -689,22 +689,24 @@ void mlir::triton::populateElementwiseOpToLLVMPatterns(
+@@ -688,12 +688,15 @@ void mlir::triton::populateClampFOpToLLVMPattern(
                                     benefit);
  }
  
@@ -158,8 +158,7 @@ compiled with C++17.
        typeConverter, axisInfoAnalysis, benefit);
  
    POPULATE_UNARY_OP(arith::TruncIOp, LLVM::TruncOp)
-   POPULATE_UNARY_OP(arith::ExtSIOp, LLVM::SExtOp)
-   POPULATE_UNARY_OP(arith::ExtUIOp, LLVM::ZExtOp)
+@@ -702,8 +705,7 @@ void mlir::triton::populateElementwiseOpToLLVMPatterns(
    POPULATE_UNARY_OP(arith::FPToUIOp, LLVM::FPToUIOp)
    POPULATE_UNARY_OP(arith::UIToFPOp, LLVM::UIToFPOp)
    POPULATE_UNARY_OP(arith::NegFOp, LLVM::FNegOp)
@@ -273,7 +272,7 @@ compiled with C++17.
 
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -980,7 +980,7 @@ void init_triton_llvm(py::module_ &m) {
+@@ -998,7 +998,7 @@ void init_triton_llvm(py::module_ &m) {
        // Mark linked-in functions as internal because backends use external
        // linkage as a signifier of kernel functions.
        for (llvm::Function &fn : dstMod->functions()) {
@@ -363,7 +362,7 @@ compiled with C++17.
 
 --- a/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp
-@@ -1160,18 +1160,23 @@ void Pingponger::getDotPingponged() {
+@@ -1161,18 +1161,23 @@ void Pingponger::getDotPingponged() {
    // Prune Memory operations that may be moved to only those involved in dot
    // computation. To understand the "cluster assumptions" we also estimate
    // the impact of any additional loads/stores.
@@ -402,7 +401,7 @@ compiled with C++17.
 
 --- a/third_party/amd/lib/TritonAMDGPUTransforms/ConvertToBufferOps.cpp
 +++ b/third_party/amd/lib/TritonAMDGPUTransforms/ConvertToBufferOps.cpp
-@@ -499,9 +499,10 @@ private:
+@@ -501,9 +501,10 @@ private:
    bool analyzeSmallTensorOfst;
  };
  
@@ -417,9 +416,9 @@ compiled with C++17.
    using OpRewritePattern<SourceOp>::OpRewritePattern;
  
 
---- a/third_party/amd/lib/TritonAMDGPUTransforms/LowerLoops.cpp
-+++ b/third_party/amd/lib/TritonAMDGPUTransforms/LowerLoops.cpp
-@@ -679,8 +679,8 @@ LogicalResult initSchedule(int maxDist, Stages &stages, int numStages,
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/Pipeliner/LowerLoops.cpp
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/Pipeliner/LowerLoops.cpp
+@@ -295,8 +295,8 @@ LogicalResult initSchedule(int maxDist, Stages &stages, int numStages,
    // Make assignments
    Clusters clusterVec;
    schedule.clusters.clear();
@@ -431,8 +430,8 @@ compiled with C++17.
    clusters[SCHED_GLOBAL_LOAD] = clusterVec[globalLoadCluster];
    clusters[SCHED_LOCAL_STORE] = clusterVec[localStoreCluster];
 
---- a/third_party/amd/lib/TritonAMDGPUTransforms/ScheduleLoops.cpp
-+++ b/third_party/amd/lib/TritonAMDGPUTransforms/ScheduleLoops.cpp
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/Pipeliner/ScheduleLoops.cpp
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/Pipeliner/ScheduleLoops.cpp
 @@ -352,8 +352,8 @@ void initSymbolicSchedule(int maxDist, Stages &stages, Clusters &clusters,
    stages[SCHED_ASYNC_WAIT] = stages[SCHED_LOCAL_LOAD];
  
@@ -488,7 +487,7 @@ compiled with C++17.
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
-@@ -680,7 +680,7 @@ LogicalResult convertMMA(triton::DotOp op, triton::DotOp::Adaptor adaptor,
+@@ -681,7 +681,7 @@ LogicalResult convertMMA(triton::DotOp op, triton::DotOp::Adaptor adaptor,
  
    TensorCoreType mmaType = getMmaTypeDot(op, aTensorTy, bTensorTy, dTensorTy);
    if (mmaType == TensorCoreType::NOT_APPLICABLE ||
@@ -549,7 +548,7 @@ compiled with C++17.
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -884,31 +884,32 @@ private:
+@@ -884,6 +884,10 @@ struct MulhiUIOpConversion
  
  } // namespace mlir::triton
  
@@ -560,13 +559,7 @@ compiled with C++17.
  void mlir::triton::NVIDIA::populateElementwiseOpToLLVMPatterns(
      LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
      ModuleAxisInfoAnalysis &axisInfoAnalysis, int computeCapability,
-     const TargetInfo &targetInfo, PatternBenefit benefit) {
-   using namespace mlir::triton::gpu;
- 
-   mlir::triton::populateElementwiseOpToLLVMPatterns(typeConverter, patterns,
-                                                     axisInfoAnalysis, benefit);
- 
-   patterns.add<MulhiUIOpConversion>(typeConverter, axisInfoAnalysis,
+@@ -897,8 +901,7 @@ void mlir::triton::NVIDIA::populateElementwiseOpToLLVMPatterns(
                                      benefit.getBenefit() + 1);
  
  #define POPULATE_OP(SRC_OP, DST_OP, ...)                                       \
@@ -576,7 +569,7 @@ compiled with C++17.
        typeConverter, axisInfoAnalysis, benefit)
  
    POPULATE_OP(arith::SubFOp, LLVM::FSubOp);
-   POPULATE_OP(arith::AddFOp, LLVM::FAddOp);
+@@ -906,9 +909,7 @@ void mlir::triton::NVIDIA::populateElementwiseOpToLLVMPatterns(
    POPULATE_OP(arith::MulFOp, LLVM::FMulOp);
    POPULATE_OP(triton::PreciseDivFOp, LLVM::FDivOp);
    POPULATE_OP(triton::PreciseSqrtOp, LLVM::SqrtOp);
@@ -590,7 +583,7 @@ compiled with C++17.
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/LoadStoreOpToLLVM.cpp
-@@ -841,7 +841,7 @@ public:
+@@ -850,7 +850,7 @@ public:
               triton::nvgpu::MemSyncScope::SYSTEM}};
      const bool doPTXLDPromotion = !useRed && isPromotableToNVPTXLD(op) &&
                                    vec == 1 && packed == 1 &&

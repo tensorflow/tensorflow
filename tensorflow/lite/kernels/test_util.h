@@ -279,7 +279,10 @@ struct TensorData {
              std::vector<TfLiteDimensionType> format = {},
              std::vector<int> block_size = {}, std::vector<int> block_map = {},
              std::vector<int> shape_signature = {},
-             int per_block_quantization = 0)
+             int per_block_quantization = 0,
+             bool multi_axis_quantization = false,
+             std::vector<int> quantized_dimensions = {},
+             std::vector<int> scale_shape = {})
       : type(type),
         shape(shape),
         min(min),
@@ -297,7 +300,10 @@ struct TensorData {
         block_size(block_size),
         block_map(block_map),
         shape_signature(shape_signature),
-        per_block_quantization(per_block_quantization) {}
+        per_block_quantization(per_block_quantization),
+        multi_axis_quantization(multi_axis_quantization),
+        quantized_dimensions(std::move(quantized_dimensions)),
+        scale_shape(std::move(scale_shape)) {}
   TensorType type;
   std::vector<int> shape;
   float min;
@@ -314,6 +320,9 @@ struct TensorData {
   std::vector<int> block_map;
   std::vector<int> shape_signature;
   int per_block_quantization;
+  bool multi_axis_quantization;
+  std::vector<int> quantized_dimensions;
+  std::vector<int> scale_shape;
 };
 
 class SingleOpResolver : public OpResolver {
@@ -403,7 +412,11 @@ class SingleOpModel {
   template <typename T>
   int AddConstInput(const TensorData& t, const T* data, size_t size) {
     int id = 0;
-    if (t.per_channel_quantization) {
+    if (t.multi_axis_quantization) {
+      id = AddTensorMultiAxisQuant(t, data, size);
+    } else if (t.per_block_quantization != 0) {
+      id = AddTensorPerBlockQuant(t, data, size);
+    } else if (t.per_channel_quantization) {
       id = AddTensorPerChannelQuant(t, data, size);
     } else {
       id = AddTensor(t, data, size);
@@ -1330,7 +1343,7 @@ class SingleOpModel {
     // TODO(zichuanwei): support blockwise zero point.
     flatbuffers::Offset<BlockwiseQuantization> blockwise_quant_params = 0;
     blockwise_quant_params = CreateBlockwiseQuantization(
-        builder_, scale_tensor_id, /*zero_points=*/0,
+        builder_, scale_tensor_id, /*zero_points=*/-1,
         /*block_size=*/t.per_block_quantization);
     flatbuffers::Offset<QuantizationParameters> q_params = 0;
     q_params = CreateQuantizationParameters(
@@ -1360,6 +1373,86 @@ class SingleOpModel {
                      /*name=*/0, q_params, /*is_variable=*/false));
     scale_tensor_id = AddTensor<uint16_t>(scale_tensor_data, fp16_scales.data(),
                                           fp16_scales.size());
+    tensor_data_[id] = t;
+    return id;
+  }
+
+  int AddTensorMultiAxisQuant(const TensorData& t) {
+    // type does not matter when adding empty data.
+    return AddTensorMultiAxisQuant<uint8_t>(t, nullptr, 0);
+  }
+
+  template <typename T>
+  int AddTensorMultiAxisQuant(const TensorData& t, const T* data, size_t size) {
+    const int id = tensors_.size();
+    std::vector<int> scale_shape;
+    if (!t.scale_shape.empty()) {
+      scale_shape = t.scale_shape;
+    } else {
+      scale_shape = t.shape;
+      if (t.per_block_quantization > 0) {
+        // Assumes the blocked dimension is the innermost dimension. For shapes
+        // where the blocked dimension is not the innermost dimension (e.g.
+        // BatchMatMul [Batch, K, N] where K is blocked), callers should specify
+        // explicit `t.scale_shape`.
+        scale_shape[t.shape.size() - 1] =
+            t.shape[t.shape.size() - 1] / t.per_block_quantization;
+      } else if (t.quantized_dimensions.size() == 1 &&
+                 t.quantized_dimensions[0] < static_cast<int>(t.shape.size())) {
+        scale_shape = {t.shape[t.quantized_dimensions[0]]};
+      } else {
+        for (size_t i = 0; i < scale_shape.size(); ++i) {
+          bool is_quant_dim = false;
+          for (int qd : t.quantized_dimensions) {
+            if (qd == static_cast<int>(i)) {
+              is_quant_dim = true;
+              break;
+            }
+          }
+          if (!is_quant_dim) {
+            scale_shape[i] = 1;
+          }
+        }
+      }
+    }
+    TensorData scale_tensor_data(TensorType_FLOAT32, scale_shape);
+    int scale_tensor_id = id + 1;
+    std::vector<int> quant_dims = t.quantized_dimensions;
+    if (quant_dims.empty()) {
+      quant_dims.push_back(0);
+    }
+    flatbuffers::Offset<MultiAxisQuantization> multi_axis_quant_params =
+        CreateMultiAxisQuantizationDirect(
+            builder_, scale_tensor_id,
+            /*zero_points=*/-1,
+            /*block_size=*/t.per_block_quantization, &quant_dims);
+    flatbuffers::Offset<QuantizationParameters> q_params =
+        CreateQuantizationParameters(
+            builder_, /*min=*/0, /*max=*/0,
+            /*scale=*/0,
+            /*zero point=*/0, QuantizationDetails_MultiAxisQuantization,
+            *reinterpret_cast<flatbuffers::Offset<void>*>(
+                &multi_axis_quant_params),
+            /*quantized_dimension=*/0);
+    int buffer_id = 0;
+    if (size) {
+      if (buffers_.empty()) {
+        buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
+      }
+      builder_.ForceVectorAlignment(size, sizeof(T), 16);
+      buffer_id = buffers_.size();
+      auto data_buffer = builder_.CreateVector(
+          reinterpret_cast<const uint8_t*>(data), sizeof(T) * size);
+      buffers_.push_back(CreateBuffer(builder_, data_buffer));
+    }
+
+    tensors_.push_back(
+        CreateTensor(builder_, builder_.CreateVector<int>(t.shape), t.type,
+                     /*buffer=*/buffer_id,
+                     /*name=*/0, q_params, /*is_variable=*/false));
+    scale_tensor_id = AddTensor<float>(
+        scale_tensor_data, t.per_channel_quantization_scales.data(),
+        t.per_channel_quantization_scales.size());
     tensor_data_[id] = t;
     return id;
   }

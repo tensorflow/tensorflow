@@ -115,7 +115,7 @@ absl::Status CheckOperandAndScaleShapes(absl::string_view side,
 HloInstruction* BroadcastAndReshape(HloInstruction* scale,
                                     const Shape& operand_shape,
                                     HloComputation* computation) {
-  Shape scale_shape = scale->shape();
+  const Shape& scale_shape = scale->shape();
   std::vector<int64_t> broadcast_dims;
   std::vector<int64_t> shape_dims;
 
@@ -129,13 +129,26 @@ HloInstruction* BroadcastAndReshape(HloInstruction* scale,
                            scale_shape.dimensions(i));
     }
   }
-  Shape new_scales_shape(scale_shape.element_type(), shape_dims);
-  LayoutUtil::SetToDefaultLayout(&new_scales_shape);
+
+  Shape reshaped_scales_shape =
+      ShapeUtil::ChangeElementType(operand_shape, scale_shape.element_type());
+  if (!reshaped_scales_shape.has_layout()) {
+    LayoutUtil::SetToDefaultLayout(&reshaped_scales_shape);
+  }
+  // Order the broadcast dimensions like the operand layout, each block
+  // dimension just minor to its scale dimension, so that the reshape is a
+  // bitcast.
+  std::vector<int64_t> new_scales_minor_to_major;
+  for (int64_t i : reshaped_scales_shape.layout().minor_to_major()) {
+    if (operand_shape.dimensions(i) != scale_shape.dimensions(i)) {
+      new_scales_minor_to_major.push_back(broadcast_dims[i] + 1);
+    }
+    new_scales_minor_to_major.push_back(broadcast_dims[i]);
+  }
+  Shape new_scales_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      scale_shape.element_type(), shape_dims, new_scales_minor_to_major);
   HloInstruction* new_scales = computation->AddInstruction(
       HloInstruction::CreateBroadcast(new_scales_shape, scale, broadcast_dims));
-  Shape reshaped_scales_shape(scale_shape.element_type(),
-                              operand_shape.dimensions());
-  LayoutUtil::SetToDefaultLayout(&reshaped_scales_shape);
   return computation->AddInstruction(
       HloInstruction::CreateReshape(reshaped_scales_shape, new_scales));
 }

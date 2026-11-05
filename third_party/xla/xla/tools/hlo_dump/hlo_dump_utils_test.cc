@@ -682,6 +682,74 @@ ENTRY main {
   EXPECT_TRUE(found_add1);
 }
 
+TEST(HloDumpUtilsTest, PopulateMismatchGraphData_AsyncComputationIsAScope) {
+  const absl::string_view hlo_string = R"hlo(
+HloModule sc_module
+
+tc_fused {
+  p0 = f32[4] parameter(0)
+  ROOT neg = f32[4] negate(p0)
+}
+
+sc_fused {
+  p0 = f32[4] parameter(0)
+  ROOT add = f32[4] add(p0, p0)
+}
+
+wrapped {
+  w0 = f32[4] parameter(0)
+  ROOT sc_fusion = f32[4] fusion(w0), kind=kLoop, calls=sc_fused
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  tc_fusion = f32[4] fusion(p0), kind=kLoop, calls=tc_fused
+  start = ((f32[4]), f32[4]) async-start(tc_fusion), async_execution_thread="sparsecore", calls=wrapped
+  ROOT done = f32[4] async-done(start)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo_string));
+
+  GraphData graph_data = PopulateMismatchGraphData(*module, {});
+  absl::flat_hash_map<std::string, int64_t> key_to_id;
+  absl::flat_hash_map<std::string, std::string> key_to_thread;
+  for (const auto& node : graph_data.nodes) {
+    key_to_id[node.key] = node.id;
+    key_to_thread[node.key] = node.execution_thread;
+  }
+  // The offloaded computation is boxed under the async-start, like a fusion.
+  EXPECT_THAT(
+      key_to_id,
+      ::testing::IsSupersetOf(
+          {::testing::Key("tc_fusion/neg"), ::testing::Key("start"),
+           ::testing::Key("start/w0"), ::testing::Key("start/sc_fusion"),
+           ::testing::Key("start/sc_fusion/add")}));
+
+  // The async-start feeds its computation's parameter, and the computation's
+  // root, not the start, feeds the async-done.
+  std::vector<std::pair<int64_t, int64_t>> edges;
+  for (const auto& edge : graph_data.edges) {
+    edges.push_back({edge.supplier_id, edge.consumer_id});
+  }
+  EXPECT_THAT(
+      edges,
+      ::testing::IsSupersetOf(
+          {::testing::Pair(key_to_id["tc_fusion"], key_to_id["start"]),
+           ::testing::Pair(key_to_id["start"], key_to_id["start/w0"]),
+           ::testing::Pair(key_to_id["start/sc_fusion"], key_to_id["done"])}));
+  EXPECT_THAT(edges, ::testing::Not(::testing::Contains(::testing::Pair(
+                         key_to_id["start"], key_to_id["done"]))));
+
+  // Ops in the offloaded computation run on its thread, the async-start does
+  // not. Fused ops take the thread of the computation calling the fusion.
+  EXPECT_EQ(key_to_thread["start"], "");
+  EXPECT_EQ(key_to_thread["start/w0"], "sparsecore");
+  EXPECT_EQ(key_to_thread["start/sc_fusion"], "sparsecore");
+  EXPECT_EQ(key_to_thread["start/sc_fusion/add"], "sparsecore");
+  EXPECT_EQ(key_to_thread["tc_fusion/neg"], "");
+}
+
 TEST(HloDumpUtilsTest, PopulateMismatchGraphData_NestedFusionHierarchy) {
   const absl::string_view hlo_string = R"hlo(
 HloModule nested_fusion_module
@@ -2295,6 +2363,69 @@ ENTRY main {
   EXPECT_DOUBLE_EQ(scores["sub"], 0.0);
   EXPECT_GT(scores["add"], 0.0);
   EXPECT_NE(scores["add"], kNanInfMismatchDiffScore);
+}
+
+TEST(HloDumpUtilsTest, VerifiedMatchRendersGreenWithoutMismatchState) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"hlo(
+HloModule m
+fused_comp {
+  fp = f32[4,8] parameter(0)
+  good_op = f32[4,8] abs(fp)
+  ROOT bad_op = f32[4,8] negate(good_op)
+}
+ENTRY main {
+  p0 = f32[4,8] parameter(0)
+  pre = f32[4,8] exponential(p0)
+  ROOT fus = f32[4,8] fusion(pre), kind=kLoop, calls=fused_comp
+}
+)hlo"));
+
+  MismatchDetails bad;
+  bad.target_instruction_name = "bad_op";
+  bad.actual = 4.0;
+  bad.expected = 2.0;
+  bad.rel_error = 1.0;
+  bad.sample_index = {0, 0};
+  bad.percentage_of_elems_exceeding_both_errors = 100.0;
+
+  auto verified = [](absl::string_view name) {
+    MismatchDetails details;
+    details.target_instruction_name = std::string(name);
+    details.diff_score = 0.0;
+    details.verified_match = true;
+    return details;
+  };
+  std::vector<MismatchDetails> details = {verified("pre"), verified("good_op"),
+                                          bad};
+
+  auto annotations = PopulateMismatchAnnotations(*module, details);
+  EXPECT_FALSE(annotations.contains(TensorKey::Create("p0", {})));
+  EXPECT_EQ(annotations[TensorKey::Create("pre", {})].background_color,
+            "lightgreen");
+  EXPECT_FALSE(
+      annotations[TensorKey::Create("pre", {})].tooltip_data.has_value());
+  EXPECT_EQ(annotations[TensorKey::Create("bad_op", {})].background_color,
+            "pink");
+  EXPECT_TRUE(
+      annotations[TensorKey::Create("bad_op", {})].tooltip_data.has_value());
+
+  GraphData graph =
+      PopulateMismatchGraphData(*module, details, kUnverifiedDiffScore);
+  absl::flat_hash_map<std::string, double> scores;
+  for (const auto& node : graph.nodes) {
+    scores[node.key] = node.diff_score;
+  }
+  EXPECT_DOUBLE_EQ(scores["p0"], kUnverifiedDiffScore);
+  EXPECT_DOUBLE_EQ(scores["fus/fp"], kUnverifiedDiffScore);
+  EXPECT_DOUBLE_EQ(scores["pre"], 0.0);
+  EXPECT_DOUBLE_EQ(scores["fus/good_op"], 0.0);
+  EXPECT_DOUBLE_EQ(scores["fus/bad_op"], 100.0);
+
+  auto vis = PopulateTensorVisualizations(*module, details);
+  EXPECT_FALSE(vis.at("pre").has_mismatch);
+  EXPECT_EQ(vis.at("pre").mismatch_count, 0);
+  EXPECT_TRUE(vis.at("bad_op").has_mismatch);
 }
 
 }  // namespace

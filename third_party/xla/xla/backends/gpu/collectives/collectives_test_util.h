@@ -46,7 +46,8 @@ absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
 CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
                     std::vector<GlobalDeviceId> device_ids,
                     bool blocking = true, size_t num_ids = 1,
-                    GpuCollectives* custom_backend = nullptr);
+                    GpuCollectives* custom_backend = nullptr,
+                    bool use_minimal_resource = false);
 
 absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
 SplitCommunicators(
@@ -64,7 +65,8 @@ absl::StatusOr<std::vector<std::unique_ptr<se::MemoryAllocation>>> Allocate(
 std::vector<Future<std::unique_ptr<SymmetricMemory>>> CreateSymmetricMemory(
     tsl::Executor& exec,
     absl::Span<const std::unique_ptr<GpuCommunicator>> comms,
-    absl::Span<const std::unique_ptr<se::MemoryAllocation>> allocs);
+    absl::Span<const std::unique_ptr<se::MemoryAllocation>> allocs,
+    bool symmetric_window = false);
 
 absl::StatusOr<std::vector<std::unique_ptr<SymmetricMemory>>>
 AwaitSymmetricMemory(

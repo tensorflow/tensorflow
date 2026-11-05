@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/computation_layout.h"
 #include "xla/shape.h"
@@ -418,11 +419,18 @@ absl::StatusOr<bool> ProcessAgenda(
       changed |= computation_changed;
     }
 
-    for (auto* instruction : computation->instructions()) {
-      for (HloComputation* called_computation :
-           instruction->called_computations()) {
-        if (to_remove.erase(called_computation) > 0) {
-          agenda.push(called_computation);
+    if (computation->HasCalledComputations()) {
+      for (const HloInstructionInfo& instruction :
+           computation->instructions_with_info()) {
+        if (!HloInstruction::MightHaveCalledComputations(
+                instruction.opcode())) {
+          continue;
+        }
+        for (HloComputation* called_computation :
+             instruction->called_computations()) {
+          if (to_remove.erase(called_computation) > 0) {
+            agenda.push(called_computation);
+          }
         }
       }
     }
@@ -462,6 +470,9 @@ absl::StatusOr<bool> RemoveDanglingComputations(
   }
   return changed;
 }
+
+const HloPassFactory* const kHloDCERegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<HloDCE>>("dce");
 
 }  // namespace
 

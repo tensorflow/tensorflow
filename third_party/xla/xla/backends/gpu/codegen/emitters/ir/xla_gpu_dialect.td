@@ -26,6 +26,9 @@ def XlaGpuDialect : Dialect {
   }];
 
   let cppNamespace = "::xla::gpu";
+  let dependentDialects = [
+    "mlir::gpu::GPUDialect",
+  ];
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
 }

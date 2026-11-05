@@ -411,16 +411,19 @@ LogicalResult PushSqueezeDimsUpThroughExpandDims(SqueezeDimsOp op,
     return rewriter.notifyMatchFailure(op, "Expected expand_dims producer.");
   }
 
-  if (expand_dims.getSrc().getType() == op.getType()) {
+  uint32_t expand_axis = expand_dims.getAxis();
+  uint32_t squeeze_axis = op.getAxis();
+  if (expand_axis == squeeze_axis ||
+      expand_dims.getSrc().getType().getRank() == 1) {
+    if (expand_dims.getSrc().getType() != op.getType()) {
+      return rewriter.notifyMatchFailure(
+          op, "Cannot fold when source and result types differ.");
+    }
     rewriter.replaceOp(op, expand_dims.getSrc());
     return success();
   }
 
   // Swap: squeeze_dims(expand_dims) -> expand_dims(squeeze_dims)
-  uint32_t expand_axis = expand_dims.getAxis();
-  uint32_t squeeze_axis = op.getAxis();
-  CHECK_NE(expand_axis, squeeze_axis);
-
   squeeze_axis -= squeeze_axis > expand_axis;
   expand_axis -= expand_axis > squeeze_axis;
 

@@ -26,11 +26,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/btree_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
@@ -43,6 +45,9 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
@@ -65,6 +70,7 @@ using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using TritonBackendConfig = AutotuneResult::TritonGemmKey;
+using ::testing::ElementsAre;
 using ::testing::Gt;
 using ::testing::IsEmpty;
 using ::testing::Not;
@@ -134,21 +140,21 @@ const char kSimpleGemmFusionHlo[] = R"(
   })";
 
 const char kScaledDotHlo[] = R"hlo(
-HloModule ScaledDotIsFused, entry_computation_layout={(bf16[4,4]{1,0}, bf16[4,4]{1,0}, bf16[1,1]{1,0}, bf16[1,1]{1,0})->bf16[4,4]{1,0}}
+HloModule ScaledDotIsFused, entry_computation_layout={(f8e5m2[4,32]{1,0}, f8e5m2[4,32]{1,0}, f8e8m0fnu[4,1]{1,0}, f8e8m0fnu[4,1]{1,0})->bf16[4,4]{1,0}}
 
-%fusion_dot (parameter_0: bf16[4,4], parameter_1: bf16[4,4], parameter_2: bf16[1,1], parameter_3: bf16[1,1]) -> bf16[4,4] {
-  %parameter_0 = bf16[4,4]{1,0} parameter(0)
-  %parameter_1 = bf16[4,4]{1,0} parameter(1)
-  %parameter_2 = bf16[1,1]{1,0} parameter(2)
-  %parameter_3 = bf16[1,1]{1,0} parameter(3)
+%fusion_dot (parameter_0: f8e5m2[4,32], parameter_1: f8e5m2[4,32], parameter_2: f8e8m0fnu[4,1], parameter_3: f8e8m0fnu[4,1]) -> bf16[4,4] {
+  %parameter_0 = f8e5m2[4,32]{1,0} parameter(0)
+  %parameter_1 = f8e5m2[4,32]{1,0} parameter(1)
+  %parameter_2 = f8e8m0fnu[4,1]{1,0} parameter(2)
+  %parameter_3 = f8e8m0fnu[4,1]{1,0} parameter(3)
   ROOT %dot.1 = bf16[4,4]{1,0} scaled-dot(%parameter_0, %parameter_1, %parameter_2, %parameter_3), lhs_contracting_dims={1}, rhs_contracting_dims={1}, metadata={op_name="foo"}
 }
 
-ENTRY %entry (lhs: bf16[4,4], rhs: bf16[4,4], lhs_scale: bf16[1,1], rhs_scale: bf16[1,1]) -> bf16[4,4] {
-  %lhs = bf16[4,4]{1,0} parameter(0)
-  %rhs = bf16[4,4]{1,0} parameter(1)
-  %lhs_scale = bf16[1,1]{1,0} parameter(2)
-  %rhs_scale = bf16[1,1]{1,0} parameter(3)
+ENTRY %entry (lhs: f8e5m2[4,32], rhs: f8e5m2[4,32], lhs_scale: f8e8m0fnu[4,1], rhs_scale: f8e8m0fnu[4,1]) -> bf16[4,4] {
+  %lhs = f8e5m2[4,32]{1,0} parameter(0)
+  %rhs = f8e5m2[4,32]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[4,1]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[4,1]{1,0} parameter(3)
   ROOT %fusion = bf16[4,4]{1,0} fusion(%lhs, %rhs, %lhs_scale, %rhs_scale), kind=kCustom, calls=%fusion_dot, metadata={op_name="foo"}, backend_config={"operation_queue_id":"0","fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
 })hlo";
 
@@ -164,6 +170,25 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
         compiler_(GetCompilerForPlatform(platform_)),
         backend_(&debug_options_, compiler_.get(), &target_config_,
                  &alias_info_, &mlir_context_pool_) {}
+
+  // Returns the mfma_size values of the Triton configs for `hlo` on `device`
+  // instead of the local GPU, so the result is the same on every CI machine.
+  absl::StatusOr<absl::btree_set<int>> GetMfmaSizes(
+      absl::string_view hlo, const se::DeviceDescription& device) {
+    target_config_.device_description = device;
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo));
+    ABSL_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                     backend_.GetSupportedConfigs(
+                         *module->entry_computation()->root_instruction()));
+    absl::btree_set<int> values;
+    for (const std::unique_ptr<BackendConfig>& config : configs) {
+      if (config->has_triton()) {
+        values.insert(config->triton().mfma_size());
+      }
+    }
+    return values;
+  }
 
   DebugOptions debug_options_;
   se::Platform* platform_;
@@ -227,6 +252,30 @@ TEST_F(TritonBackendTest, GetSupportedConfigsForScaledDot) {
   EXPECT_GT(configs.value().size(), 0);
 }
 
+TEST_F(TritonBackendTest, MfmaSizeDependsOnArchAndSearchMode) {
+  const se::DeviceDescription mi300 = TestGpuDeviceInfo::AMDMI300DeviceInfo();
+  const se::DeviceDescription mi350 = TestGpuDeviceInfo::AMDMI350DeviceInfo();
+  const se::DeviceDescription mi210 = TestGpuDeviceInfo::AMDMI210DeviceInfo();
+  const se::DeviceDescription rx7900 = TestGpuDeviceInfo::AMDRX7900DeviceInfo();
+
+  // Regular dots are gated by the hint tables and scaled dots by an explicit
+  // predicate, and both must agree.
+  for (absl::string_view hlo : {kHlo, kScaledDotHlo}) {
+    SCOPED_TRACE(hlo);
+    debug_options_.set_xla_gpu_exhaustive_tiling_search(false);
+    EXPECT_THAT(GetMfmaSizes(hlo, mi300), IsOkAndHolds(ElementsAre(0, 16)));
+    EXPECT_THAT(GetMfmaSizes(hlo, mi350), IsOkAndHolds(ElementsAre(0)));
+    EXPECT_THAT(GetMfmaSizes(hlo, mi210), IsOkAndHolds(ElementsAre(0)));
+    EXPECT_THAT(GetMfmaSizes(hlo, rx7900), IsOkAndHolds(ElementsAre(0)));
+
+    debug_options_.set_xla_gpu_exhaustive_tiling_search(true);
+    EXPECT_THAT(GetMfmaSizes(hlo, mi300), IsOkAndHolds(ElementsAre(0, 16)));
+    EXPECT_THAT(GetMfmaSizes(hlo, mi350), IsOkAndHolds(ElementsAre(0, 16)));
+    EXPECT_THAT(GetMfmaSizes(hlo, mi210), IsOkAndHolds(ElementsAre(0, 16)));
+    EXPECT_THAT(GetMfmaSizes(hlo, rx7900), IsOkAndHolds(ElementsAre(0)));
+  }
+}
+
 TEST_F(TritonBackendTest, GetSupportedConfigsWithEstimatesForScaledDot) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(kScaledDotHlo));
@@ -250,6 +299,52 @@ TEST_F(TritonBackendTest, GetAndApplyConfigForScaledDot) {
                        backend_.GetSupportedConfigs(*fusion_instr));
   ASSERT_THAT(configs, Not(IsEmpty()));
   EXPECT_THAT(backend_.ApplyConfig(*fusion_instr, *configs[0]), IsOk());
+}
+
+TEST_F(TritonBackendTest, CudnnScaledDotFusionIsUnsupported) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kScaledDotHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  GpuBackendConfig gpu_config;
+  gpu_config.mutable_fusion_backend_config()->set_kind(kCuDnnFusionKind);
+  ASSERT_OK(fusion->set_backend_config(gpu_config));
+  EXPECT_THAT(backend_.GetSupportedConfigs(*fusion), IsOkAndHolds(IsEmpty()));
+}
+
+TEST_F(TritonBackendTest, ScaledDotIsUnsupportedWhenScaledDotWithTritonOff) {
+  debug_options_.set_xla_gpu_experimental_scaled_dot_with_triton(false);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kScaledDotHlo));
+  EXPECT_THAT(backend_.GetSupportedConfigs(
+                  *module->entry_computation()->root_instruction()),
+              IsOkAndHolds(IsEmpty()));
+}
+
+TEST_F(TritonBackendTest, ScaledDotUnsupportedByTritonIsUnsupported) {
+  // Triton drops the scales of BF16 operands, so they must be all ones.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+    c {
+      lhs = bf16[4,32] parameter(0)
+      rhs = bf16[4,32] parameter(1)
+      lhs_scale = bf16[4,1] parameter(2)
+      rhs_scale = bf16[4,1] parameter(3)
+      ROOT dot = bf16[4,4] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+          lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    }
+
+    ENTRY e {
+      lhs = bf16[4,32] parameter(0)
+      rhs = bf16[4,32] parameter(1)
+      lhs_scale = bf16[4,1] parameter(2)
+      rhs_scale = bf16[4,1] parameter(3)
+      ROOT fusion = bf16[4,4] fusion(lhs, rhs, lhs_scale, rhs_scale),
+          kind=kCustom, calls=c,
+          backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    })hlo"));
+  EXPECT_THAT(backend_.GetSupportedConfigs(
+                  *module->entry_computation()->root_instruction()),
+              IsOkAndHolds(IsEmpty()));
 }
 
 TEST_F(TritonBackendTest, GetSupportedConfigsRestrictedDefaultSearch) {

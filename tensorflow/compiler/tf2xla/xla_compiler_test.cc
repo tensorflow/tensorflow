@@ -2514,8 +2514,8 @@ TEST_F(XlaCompilerTest,
   ASSERT_EQ(root->opcode(), xla::HloOpcode::kGetTupleElement);
   const xla::HloInstruction* tanh = root->operand(0)->operand(0);
   EXPECT_EQ(tanh->opcode(), xla::HloOpcode::kTanh);
-  EXPECT_TRUE(tanh->has_sharding());
-  EXPECT_EQ(tanh->sharding(), xla::HloSharding::IotaTile({2}));
+  // Propagation is left to the outer GSPMD compilation.
+  EXPECT_FALSE(tanh->has_sharding());
 }
 
 }  // namespace

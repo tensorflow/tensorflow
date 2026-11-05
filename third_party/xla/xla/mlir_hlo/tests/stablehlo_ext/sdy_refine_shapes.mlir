@@ -92,6 +92,32 @@ func.func @main(%arg0: tensor<16x32xf32>) -> tensor<?x32xf32> {
 
 // -----
 
+// Sub-axis manual axis with merged full axis in sharding.
+
+sdy.mesh @mesh = <["a"=4, "b"=2]>
+
+// CHECK-LABEL: func @main
+// CHECK-SAME:  (%arg0: tensor<16x32xf32>) -> tensor<16x32xf32>
+func.func @main(%arg0: tensor<16x32xf32>) -> tensor<?x32xf32> {
+  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 : tensor<16x32xf32>
+  // CHECK-NEXT: %[[MC:.*]] = sdy.manual_computation(%[[ADD]])
+  // CHECK-SAME:     in_shardings=[<@mesh, [{"a", ?}, {?}]>]
+  // CHECK-SAME:     out_shardings=[<@mesh, [{"a", ?}, {?}]>]
+  // CHECK-SAME:     manual_axes={"a":(1)2} (%arg1: tensor<8x32xf32>) {
+  // CHECK-NEXT:  %[[ADD_2:.*]] = stablehlo.add %arg1, %arg1 : tensor<8x32xf32>
+  // CHECK-NEXT:  sdy.return %[[ADD_2]] : tensor<8x32xf32>
+  // CHECK-NEXT: } : (tensor<16x32xf32>) -> tensor<16x32xf32>
+  // CHECK-NEXT: return %[[MC]] : tensor<16x32xf32>
+  %0 = stablehlo.add %arg0, %arg0 : (tensor<16x32xf32>, tensor<16x32xf32>) -> tensor<?x32xf32>
+  %1 = sdy.manual_computation(%0) in_shardings=[<@mesh, [{"a", ?}, {?}]>] out_shardings=[<@mesh, [{"a", ?}, {?}]>] manual_axes={"a":(1)2} (%arg1: tensor<?x32xf32>) {
+    %2 = stablehlo.add %arg1, %arg1 : tensor<?x32xf32>
+    sdy.return %2 : tensor<?x32xf32>
+  } : (tensor<?x32xf32>) -> tensor<?x32xf32>
+  return %1: tensor<?x32xf32>
+}
+
+// -----
+
 // The dimension being refined is not the one which is manually sharded.
 
 sdy.mesh @mesh = <["x"=2]>

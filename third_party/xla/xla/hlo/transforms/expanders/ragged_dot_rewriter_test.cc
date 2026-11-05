@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -144,6 +145,67 @@ TEST_F(RaggedDotRewriterTest, RewriteIfCudnnVersionTooOldForRaggedDotFusion) {
       RaggedDotRewriter(GetCudaComputeCapability(), se::dnn::VersionInfo{9, 21})
           .Run(module.get()));
   EXPECT_TRUE(changed);
+}
+
+TEST_F(RaggedDotRewriterTest, RaggedDotWgradFusionGate) {
+  constexpr absl::string_view kWgradModule = R"hlo(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[64,9]{1,0} parameter(0)
+    p1 = bf16[64,8]{1,0} parameter(1)
+    p2 = s64[2]{0} parameter(2)
+    ROOT ragged-dot = bf16[2,9,8]{2,1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={0}, rhs_contracting_dims={0},
+                      lhs_ragged_dims={0}
+  })hlo";
+
+  struct TestCase {
+    se::GpuComputeCapability cc;
+    se::dnn::VersionInfo cudnn;
+    se::SemanticVersion toolkit;
+    bool expected_changed;
+  };
+  const TestCase cases[] = {
+      {se::CudaComputeCapability::Hopper(),
+       kMinCudnnVersionForRaggedDotWgradFusion,
+       kMinCudaToolkitVersionForRaggedDotWgradFusion, false},
+      {se::CudaComputeCapability::Blackwell(),
+       se::dnn::VersionInfo{9, 25, 1},
+       {13, 3, 0},
+       false},
+      {se::CudaComputeCapability::Hopper(),
+       se::dnn::VersionInfo{9, 25, 1},
+       {13, 2, 0},
+       true},
+      {se::CudaComputeCapability::Hopper(),
+       se::dnn::VersionInfo{9, 23, 0},
+       {13, 3, 0},
+       true},
+      {se::CudaComputeCapability::Ampere(),
+       se::dnn::VersionInfo{9, 25, 1},
+       {13, 3, 0},
+       true},
+      {se::CudaComputeCapability{se::CudaComputeCapability::kBlackwell_12, 0},
+       se::dnn::VersionInfo{9, 25, 1},
+       {13, 3, 0},
+       true},
+  };
+  for (const TestCase& tc : cases) {
+    EXPECT_EQ(SupportsCudnnRaggedDotWgrad(tc.cc, tc.cudnn, tc.toolkit),
+              !tc.expected_changed);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(kWgradModule));
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_gpu_experimental_use_ragged_dot_fusion(true);
+    ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        RaggedDotRewriter(tc.cc, tc.cudnn, tc.toolkit).Run(module.get()));
+    EXPECT_EQ(changed, tc.expected_changed);
+  }
+  EXPECT_FALSE(SupportsCudnnRaggedDotWgrad(
+      GetRocmComputeCapability(), se::dnn::VersionInfo{9, 25, 1}, {13, 3, 0}));
 }
 
 TEST_F(RaggedDotRewriterTest, DontRewriteIfUsingRaggedDotFusionRocm) {

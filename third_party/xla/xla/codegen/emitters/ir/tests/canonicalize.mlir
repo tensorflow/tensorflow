@@ -338,3 +338,68 @@ func.func @fold_constant_dimensions(%input: tensor<350xf32>, %a1 : index) -> (te
 // CHECK:           %[[BL_X:.*]] = gpu.block_id  x
 // CHECK:           xla.loop (%[[TH_X]], %[[BL_X]], %[[C9]], %[[SCALAR]])
 // CHECK-SAME:        in #[[$MAP]]
+
+// -----
+
+#map1 = #xla.indexing_map<"(d0) -> (d0 + 1), domain: d0 in [0, 10], d0 mod 2 in [0, 0]">
+#map2 = #xla.indexing_map<"(d0, d1)[s0] -> (d0 + s0), domain: d0 in [0, 20], d1 in [0, 5], s0 in [0, 30], d0 + s0 in [0, 25]">
+func.func @fold_sequence_with_constraints_and_symbols(
+    %arg0: index, %arg1: index, %s0: index) -> index {
+  %0 = xla.apply_indexing #map1(%arg0)
+  %1 = xla.apply_indexing #map2(%0, %arg1)[%s0]
+  func.return %1 : index
+}
+
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1) -> (d0 + d1 + 1),
+// CHECK-SAME: domain: d0 in [0, 30], d1 in [0, 10], d0 + d1 in [-1, 24], d1 mod 2 in [0, 0]">
+
+// CHECK-LABEL: func.func @fold_sequence_with_constraints_and_symbols
+// CHECK-SAME: (%[[ARG0:.*]]: index, %[[ARG1:.*]]: index, %[[S0:.*]]: index)
+
+// CHECK-NEXT: xla.apply_indexing #[[$MAP]](%[[S0]], %[[ARG0]])
+
+// -----
+
+func.func @preserve_tighter_xla_range_on_variable_result() -> index {
+  %pid = gpu.thread_id x {xla.range = [0 : index, 15 : index]}
+  %0 = xla.apply_indexing #xla.indexing_map<
+    "(d0) -> (d0 mod 8), domain: d0 in [0, 7]">(%pid)
+    {xla.range = [0 : index, 7 : index]}
+  func.return %0 : index
+}
+
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0), domain: d0 in [0, 7]">
+// CHECK-LABEL: func.func @preserve_tighter_xla_range_on_variable_result
+// CHECK: %[[PID:.*]] = gpu.thread_id x {xla.range = [0 : index, 15 : index]}
+// CHECK: %[[RES:.*]] = xla.apply_indexing #[[$MAP]](%[[PID]]) {xla.range = [0 : index, 7 : index]}
+// CHECK: return %[[RES]] : index
+
+// -----
+
+func.func @fold_redundant_xla_range_on_variable_result() -> index {
+  %pid = gpu.thread_id x {xla.range = [0 : index, 7 : index]}
+  %0 = xla.apply_indexing #xla.indexing_map<
+    "(d0) -> (d0), domain: d0 in [0, 7]">(%pid)
+    {xla.range = [0 : index, 7 : index]}
+  func.return %0 : index
+}
+
+// CHECK-LABEL: func.func @fold_redundant_xla_range_on_variable_result
+// CHECK-NEXT: %[[PID:.*]] = gpu.thread_id x {xla.range = [0 : index, 7 : index]}
+// CHECK-NEXT: return %[[PID]] : index
+
+// -----
+
+func.func @preserve_xla_range_on_variable_result_with_unknown_operand_range(
+    %arg0: index) -> index {
+  %0 = xla.apply_indexing #xla.indexing_map<
+    "(d0) -> (d0), domain: d0 in [0, 7]">(%arg0)
+    {xla.range = [0 : index, 7 : index]}
+  func.return %0 : index
+}
+
+// CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0), domain: d0 in [0, 7]">
+// CHECK-LABEL: func.func @preserve_xla_range_on_variable_result_with_unknown_operand_range
+// CHECK-SAME: (%[[ARG0:.*]]: index)
+// CHECK-NEXT: %[[RES:.*]] = xla.apply_indexing #[[$MAP]](%[[ARG0]]) {xla.range = [0 : index, 7 : index]}
+// CHECK-NEXT: return %[[RES]] : index

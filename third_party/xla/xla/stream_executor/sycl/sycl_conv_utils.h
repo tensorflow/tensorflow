@@ -125,10 +125,17 @@ struct OneDnnConvConfig {
   std::optional<Fusion> fusion;
 };
 
+struct OnednnConvBufferPointers {
+  void* input_data;
+  void* filter_data;
+  void* result_data;
+  void* bias_data = nullptr;
+  void* side_input_data = nullptr;
+};
+
 absl::StatusOr<OneDnnConvPrimitive> CreateOneDnnConvPrimitive(
-    const OneDnnConvPrimitiveDesc& pd,
-    absl::Span<const DeviceAddressBase> operand_buffers,
-    DeviceAddressBase result_buffer, Stream* stream);
+    const OneDnnConvPrimitiveDesc& pd, Stream* stream,
+    const OnednnConvBufferPointers& buffer_pointers);
 
 absl::StatusOr<OneDnnConvPrimitiveDesc> CreateOneDnnConvPrimitiveDesc(
     const OneDnnConvConfig& config, Stream* stream);

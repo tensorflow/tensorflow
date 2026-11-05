@@ -20,8 +20,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
 #include "absl/log/check.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -33,6 +37,10 @@ limitations under the License.
 namespace se = stream_executor;
 
 namespace {
+
+using ::testing::_;
+using ::testing::MatchesRegex;
+
 static se::StreamExecutor* GpuExecutor() {
   auto name = absl::AsciiStrToUpper(
       xla::PlatformUtil::CanonicalPlatformName("gpu").value());
@@ -132,6 +140,31 @@ TEST(GpuCudaMallocAsyncAllocator, SyncAddressAlignedNewPool) {
   allocator.DeallocateRaw(addr1);
   allocator.DeallocateRaw(addr2);
   EXPECT_TRUE(stream->ok());
+}
+
+TEST(GpuCudaMallocAsyncAllocator, LogsPoolStatisticsWhenAllocationFails) {
+  se::StreamExecutor* executor = GpuExecutor();
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  auto allocator = GpuCudaMallocAsyncAllocator(
+      tsl::PlatformDeviceId(executor->device_ordinal()),
+      /*release_threshold=*/2048, /*reserve_memory=*/false,
+      /*compute_stats=*/true);
+  allocator.SetStreamAndPreallocateMemory(
+      stream->platform_specific_handle().stream);
+
+  absl::ScopedMockLog log(absl::MockLogDefault::kIgnoreUnexpected);
+  for (absl::string_view attribute :
+       {"CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT",
+        "CU_MEMPOOL_ATTR_USED_MEM_CURRENT", "CU_MEMPOOL_ATTR_RESERVED_MEM_HIGH",
+        "CU_MEMPOOL_ATTR_USED_MEM_HIGH"}) {
+    EXPECT_CALL(log, Log(absl::LogSeverity::kError, _,
+                         MatchesRegex(absl::StrCat(attribute, ": [0-9]+"))));
+  }
+  log.StartCapturingLogs();
+
+  // No GPU can allocate 1 EiB, so the allocation fails and the allocator logs
+  // the statistics of its memory pool.
+  EXPECT_EQ(allocator.AllocateRaw(128, uint64_t{1} << 60), nullptr);
 }
 
 }  // namespace stream_executor

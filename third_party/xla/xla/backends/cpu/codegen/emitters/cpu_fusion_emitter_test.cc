@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -172,6 +174,86 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(llvm_dump, kExpected));
   EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(CpuFusionEmitterTest, SortComparatorMlirAndLlvm) {
+  constexpr absl::string_view kSortHlo = R"(
+    HloModule sort_module
+    compare {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT lt = pred[] compare(lhs, rhs), direction=LT
+    }
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ROOT sorted = f32[8] sort(p0), dimensions={0}, to_apply=compare
+    }
+  )";
+  constexpr absl::string_view kExpectedMlir = R"(
+    CHECK:      func.func @compare(
+    CHECK-SAME:   %[[ARG0:.+]]: tensor<f32>, %[[ARG1:.+]]: tensor<f32>) -> i1
+    CHECK-SAME:   xla.cpu.is_comparator
+    CHECK-NOT:    xla.entry
+    CHECK:        %[[LHS:.+]] = tensor.extract %[[ARG0]][] : tensor<f32>
+    CHECK:        %[[RHS:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
+    CHECK:        %[[CMP:.+]] = xla.pure_call @compare_lt(%[[LHS]], %[[RHS]]) : (f32, f32) -> i8
+    CHECK:        %[[RES:.+]] = arith.trunci %[[CMP]] : i8 to i1
+    CHECK:        return %[[RES]] : i1
+  )";
+  constexpr absl::string_view kExpectedLlvm = R"(
+    CHECK:      define zeroext i1 @compare(ptr noundef nonnull %{{.+}}) #[[ATTR:[0-9]+]]
+    CHECK:      attributes #[[ATTR]] = {{{.*}}uwtable{{[ }]}}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kSortHlo));
+  const HloComputation* comparator =
+      hlo_module->entry_computation()->root_instruction()->to_apply();
+  auto mlir_context = FusionCompiler::CreateContext();
+  ASSERT_OK_AND_ASSIGN(
+      MlirKernelSource mlir_source,
+      EmitSortComparator(*mlir_context, *comparator, "compare"));
+  EXPECT_THAT(RunFileCheck(mlir_source.ToString(), kExpectedMlir),
+              absl_testing::IsOkAndHolds(true));
+
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(LlvmKernelSource llvm_source,
+                       compiler.Compile(std::move(mlir_source)));
+  EXPECT_THAT(RunFileCheck(llvm_source.ToString(), kExpectedLlvm),
+              absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(CpuFusionEmitterTest, SortComparatorUnsupportedOp) {
+  constexpr absl::string_view kSortHlo = R"(
+    HloModule sort_module
+    cond {
+      state = s32[] parameter(0)
+      limit = s32[] constant(4)
+      ROOT lt = pred[] compare(state, limit), direction=LT
+    }
+    body {
+      state = s32[] parameter(0)
+      one = s32[] constant(1)
+      ROOT next = s32[] add(state, one)
+    }
+    compare {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      loop = s32[] while(lhs), condition=cond, body=body
+      ROOT lt = pred[] compare(loop, rhs), direction=LT
+    }
+    ENTRY main {
+      p0 = s32[8] parameter(0)
+      ROOT sorted = s32[8] sort(p0), dimensions={0}, to_apply=compare
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kSortHlo));
+  const HloComputation* comparator =
+      hlo_module->entry_computation()->root_instruction()->to_apply();
+  auto mlir_context = FusionCompiler::CreateContext();
+  EXPECT_THAT(EmitSortComparator(*mlir_context, *comparator, "compare"),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST_P(CpuFusionEmitterTest, WorkDimensionsTest) {

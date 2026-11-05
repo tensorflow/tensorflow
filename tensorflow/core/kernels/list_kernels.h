@@ -935,7 +935,7 @@ class TensorListScatterIntoExistingList : public OpKernel {
     // (undefined behavior) before the comparison/resize below.
     const size_t needed = static_cast<size_t>(max_index) + 1;
     if (needed > output_list->tensors().size()) {
-      output_list->tensors().resize(needed);
+      output_list->tensors().resize(needed, Tensor(DT_INVALID));
     }
 
     // Scatter the values.

@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
@@ -77,6 +78,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
@@ -1175,10 +1177,14 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
     ABSL_ASSIGN_OR_RETURN(Shape shard_shape,
                      array_spec.sharding->GetShardShape(array_spec.shape));
     xla::Shape xla_shape;
+    const xla::Layout* layout = nullptr;
     if (primitive_type == xla::TOKEN) {
       xla_shape = xla::ShapeUtil::MakeTokenShape();
     } else {
       xla_shape = xla::ShapeUtil::MakeShape(primitive_type, shard_shape.dims());
+      if (array_spec.layout != nullptr) {
+        layout = &array_spec.layout->xla_layout();
+      }
     }
 
     PjRtArray::PjRtBuffers buffers;
@@ -1207,7 +1213,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
           buffers.emplace_back(),
           pjrt_client_->CreateErrorBuffer(
               error, xla_shape,
-              absl::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
+              absl::down_cast<PjRtMemory*>(memory)->pjrt_memory(), layout));
     }
     ABSL_ASSIGN_OR_RETURN(
         arrays.emplace_back(),
@@ -1381,11 +1387,12 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArraysImpl(
 
   for (int i = 1; i < arrays.size(); ++i) {
     const auto& sharding = arrays[i]->sharding();
-    if (*sharding.devices() != *arrays[0]->sharding().devices() ||
+    if ((devices.has_value() &&
+         *sharding.devices() != *arrays[0]->sharding().devices()) ||
         sharding.memory_kind() != arrays[0]->sharding().memory_kind()) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports arrays with the same device list and "
-          "memory kind");
+          "memory kind when `devices` is specified");
     }
   }
 
@@ -2016,6 +2023,19 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(
     absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
     ArrayCopySemantics semantics) {
   return Unimplemented("ReshardArrays not available with pjrt-ifrt client.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::CopyArraySlices(
+    absl::Span<const ArrayRef> arrays,
+    absl::Span<const IndexDomain> index_domains) {
+  return Unimplemented("CopyArraySlices not available with pjrt-ifrt client.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::UpdateArraySlices(
+    absl::Span<ArrayRef> arrays, absl::Span<const ArrayRef> slices,
+    absl::Span<const Index> origins) {
+  return Unimplemented(
+      "UpdateArraySlices not available with pjrt-ifrt client.");
 }
 
 tsl::Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {

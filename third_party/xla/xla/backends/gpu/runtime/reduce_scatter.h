@@ -35,6 +35,10 @@ inline constexpr int64_t kMaxReduceScatterSizeBytes =
 // Maximum number of blocks per grid for the Triton reduce-scatter kernel.
 inline constexpr int64_t kReduceScatterMaxBlocksPerGrid = 64;
 
+// Maximum number of operands supported by the variadic Triton reduce-scatter
+// kernel.
+inline constexpr int64_t kReduceScatterMaxNumOperands = 16;
+
 // Encapsulates the information needed to perform a reduce-scatter via the
 // Triton collective kernel backend.
 struct ReduceScatterInfo {

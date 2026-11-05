@@ -16,7 +16,6 @@ limitations under the License.
 #define XLA_CODEGEN_EMITTERS_TRANSFORMS_ATOMIC_RMW_UTILS_H_
 
 #include <optional>
-#include <utility>
 
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/IR/Value.h"
@@ -25,9 +24,18 @@ limitations under the License.
 namespace xla {
 namespace emitters {
 
-// Returns atomic op modifier and the atomic bin op kind.
-std::optional<std::pair<mlir::Value, mlir::LLVM::AtomicBinOp>>
-GetAtomicModifierParameters(AtomicRMWOp op);
+// Describes an atomic read-modify-write as a binary op plus its argument.
+struct AtomicModifierParameters {
+  mlir::Value modifier;
+  mlir::LLVM::AtomicBinOp bin_op;
+  // True when `modifier` is subtracted instead of added.
+  bool negated = false;
+};
+
+// Returns the value combined into the atomic, the operation to apply, and
+// whether that value is negated.
+std::optional<AtomicModifierParameters> GetAtomicModifierParameters(
+    AtomicRMWOp op);
 
 }  // namespace emitters
 }  // namespace xla

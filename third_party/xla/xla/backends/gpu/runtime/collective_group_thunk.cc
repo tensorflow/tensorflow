@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/util.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
 
@@ -139,6 +142,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectiveGroupThunk::Record(
       se::TraceCommandBufferFactory::Create(
           execute_params.stream->parent(),
           execute_params.command_buffer_trace_stream, [&](se::Stream* stream) {
+            std::optional<tsl::profiler::ScopedAnnotation> annotation =
+                std::holds_alternative<RecordUpdate>(record_action)
+                    ? GetInstructionAnnotation(profile_annotation())
+                    : std::nullopt;
             return ExecuteOnStream(execute_params.WithComputeStream(stream));
           }));
 

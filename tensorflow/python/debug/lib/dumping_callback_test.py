@@ -1150,6 +1150,49 @@ class DumpingCallbackTest(
       self.assertEqual(reader.num_graph_execution_traces(), 0)
       self.assertFalse(reader.outermost_graphs())
 
+  def testDisableTracingKeepsTracedFunctions(self):
+
+    @def_function.function
+    def times_two(x):
+      return x * 2.0
+
+    x = constant_op.constant([1.0, 2.0])
+    dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="FULL_HEALTH"
+    )
+    self.evaluate(times_two(x))
+    dumping_callback.disable_dump_debug_info()
+    self.assertAllClose(self.evaluate(times_two(x)), [2.0, 4.0])
+
+  def testReenablingWithSameDumpRootKeepsDataFromBothRuns(self):
+
+    @def_function.function
+    def times_two(x):
+      return x * 2.0
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1.0
+
+    x = constant_op.constant([1.0, 2.0])
+    for func in (times_two, plus_one):
+      writer = dumping_callback.enable_dump_debug_info(
+          self.dump_root, tensor_debug_mode="FULL_HEALTH"
+      )
+      self.evaluate(func(x))
+      writer.FlushNonExecutionFiles()
+      writer.FlushExecutionFiles()
+      dumping_callback.disable_dump_debug_info()
+
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      executed_op_types = [
+          trace.op_type
+          for trace in reader.graph_execution_traces()
+          if trace.op_type not in ["Const", "Placeholder"]
+      ]
+      self.assertCountEqual(executed_op_types, ["Mul", "AddV2"])
+
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("CurtHealth", "CURT_HEALTH"),

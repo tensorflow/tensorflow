@@ -569,6 +569,23 @@ func.func @async_ifrt_call_test(%arg0: tensor<i32>) -> tensor<i32> {
 
 // -----
 
+// Test that a future operand of tf.AsyncIfrtCall is awaited before the call.
+
+// CHECK-LABEL: func @async_ifrt_call_on_future
+func.func @async_ifrt_call_on_future(%arg0: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[FUTURE0:%.*]] = tf_mlrt.async_ifrt_call
+  // CHECK-SAME: program_id = 123
+  // CHECK: [[TENSOR0:%.*]] = tf_mlrt.await [[FUTURE0]]
+  // CHECK: [[FUTURE1:%.*]] = tf_mlrt.async_ifrt_call([[TENSOR0]])
+  // CHECK-SAME: program_id = 456
+  // CHECK: tf_mlrt.await [[FUTURE1]]
+  %0 = "tf.AsyncIfrtCall"(%arg0) {program_id = 123 : i64, variable_arg_indices = [], __op_key = 0 : i32, operandSegmentSizes = array<i32: 1, 0>} : (tensor<i32>) -> tensor<i32>
+  %1 = "tf.AsyncIfrtCall"(%0) {program_id = 456 : i64, variable_arg_indices = [], __op_key = 1 : i32, operandSegmentSizes = array<i32: 1, 0>} : (tensor<i32>) -> tensor<i32>
+  return %1 : tensor<i32>
+}
+
+// -----
+
 // Test lowering of tf.PartitionedCall and tf.StatefulPartitionedCall to func.call
 
 // CHECK-LABEL: func private @callee

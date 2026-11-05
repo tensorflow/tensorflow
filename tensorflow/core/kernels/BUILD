@@ -285,7 +285,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:tstring",
+        "@com_google_absl//absl/container:inlined_vector",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 0,
@@ -297,7 +299,11 @@ cc_library(
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
-    deps = ["@eigen_archive//:eigen3"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@eigen_archive//:eigen3",
+    ],
 )
 
 tf_kernel_library(
@@ -976,6 +982,8 @@ tf_kernel_library(
     deps = ARRAY_DEPS + [
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core/debug:debug_io_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -1033,7 +1041,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "broadcast_to_op",
     prefix = "broadcast_to_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -1396,6 +1407,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1635,6 +1650,24 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "ragged_cross_op_test",
+    size = "small",
+    srcs = ["ragged_cross_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_cross_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/ops:ragged_array_ops_op_lib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_kernel_library(
     name = "ragged_fill_empty_rows_op",
     prefix = "ragged_fill_empty_rows_op",
@@ -1821,6 +1854,7 @@ tf_cc_test(
     size = "small",
     srcs = ["concat_op_test.cc"],
     deps = [
+        ":concat_lib",
         ":concat_op",
         ":ops_testutil",
         ":ops_util",
@@ -1837,6 +1871,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/base:prefetch",
         "@com_google_googletest//:gtest",
@@ -1916,7 +1951,7 @@ tf_cuda_cc_test(
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
         "no_mac_arm64",
-        "requires-gpu-sm70",
+        "requires-gpu-sm90",
     ],
     deps = [
         ":conv_ops",
@@ -4548,6 +4583,7 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
         "@xla//xla/stream_executor:event_based_timer",
@@ -5021,7 +5057,22 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/util:overflow",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "depth_space_ops_gpu_test",
+    size = "small",
+    srcs = ["depth_space_ops_gpu_test.cu.cc"],
+    deps = [
+        ":depth_space_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
     ],
@@ -5075,6 +5126,29 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "@net_zstd//:zstd",
     ] + PARSING_DEPS,
+)
+
+tf_cc_test(
+    name = "decode_compressed_op_test",
+    srcs = ["decode_compressed_op_test.cc"],
+    deps = [
+        ":decode_compressed_op",
+        ":ops_testutil",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_benchmark//:benchmark",
+    ],
 )
 
 tf_kernel_library(
@@ -5674,6 +5748,7 @@ tf_cuda_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -6390,12 +6465,30 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:word2vec_ops",
+        "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_test(
+    name = "word2vec_kernels_test",
+    size = "small",
+    srcs = ["word2vec_kernels_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":word2vec_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -8281,6 +8374,8 @@ tf_kernel_library(
         "//tensorflow/core/summary:schema",
         "//tensorflow/core/summary:summary_db_writer",
         "//tensorflow/core/summary:summary_file_writer",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

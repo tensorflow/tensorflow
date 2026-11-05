@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler_utils.h"
+#include "xla/stream_executor/cuda/cuda_graph_annotation_registry.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
 #include "xla/tsl/profiler/utils/timespan.h"
@@ -81,6 +83,13 @@ using tsl::profiler::XPlaneBuilder;
 bool IsNvtxActivityEvent(const CuptiTracerEvent& event) {
   return event.source == CuptiTracerEventSource::Activity &&
          event.type == CuptiTracerEventType::ThreadMarkerRange;
+}
+
+bool IsCudaGraphLaunchCallback(const CuptiTracerEvent& event) {
+  return event.source == CuptiTracerEventSource::DriverCallback &&
+         event.type == CuptiTracerEventType::CudaGraph &&
+         event.stream_id != CuptiTracerEvent::kInvalidStreamId &&
+         event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId;
 }
 
 // Returns true if the event originates from the host or false if it originates
@@ -445,8 +454,20 @@ class PerDeviceCollector {
 
   void set_start_gpu_ns(uint64_t start_gpu_ns) { start_gpu_ns_ = start_gpu_ns; }
 
+  void RecordGraphLaunchStream(uint32_t correlation_id, int64_t stream_id) {
+    if (correlation_id == CuptiTracerEvent::kInvalidCorrelationId ||
+        stream_id == CuptiTracerEvent::kInvalidStreamId) {
+      return;
+    }
+    absl::MutexLock l(m_);
+    graph_launch_streams_[correlation_id] = stream_id;
+  }
+
   void AddDeviceEvent(CuptiTracerEvent&& event, bool aggregated_tracing) {
     absl::MutexLock l(m_);
+    if (IsCudaGraphLaunchCallback(event)) {
+      graph_launch_streams_[event.correlation_id] = event.stream_id;
+    }
     if (aggregated_tracing) {
       if (event.start_time_ns < start_gpu_ns_) {
         return;
@@ -482,9 +503,30 @@ class PerDeviceCollector {
                XPlaneBuilder* host_plane, XPlaneBuilder* nvtx_plane,
                bool aggregated_tracing) {
     absl::MutexLock l(m_);
+    // When a CUDA graph forks into parallel branches, CUPTI reports a new
+    // internal stream ID for each instantiated graph's forked branch (e.g.,
+    // graph 1's fork uses stream 100, graph 2's fork uses stream 200). To avoid
+    // creating hundreds of stream rows in XProf, we number the internal streams
+    // within each graph launch (0, 1, ...) and reuse the first launch's stream
+    // IDs for later launches on the same launch stream.
+    // Example:
+    //   Launch 1 (on stream 50): internal stream 100 -> index 0 -> keeps 100.
+    //   Launch 2 (on stream 50): internal stream 200 -> index 0 -> remaps to
+    //   100.
+    absl::flat_hash_map<uint32_t, std::vector<int64_t>>
+        correlation_id_to_fork_streams;
+    std::vector<size_t> deferred_fork_event_indices;
     // Tracking event types per line.
     absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
+    auto emit_event = [&](CuptiTracerEvent& event, int64_t line_id,
+                          XPlaneBuilder* plane, int64_t num_occurrences) {
+      XLineBuilder line = plane->GetOrCreateLine(line_id);
+      line.SetTimestampNs(start_gpu_ns_);
+      CreateXEvent(event, plane, end_gpu_ns, &line, num_occurrences,
+                   aggregated_tracing);
+      events_types_per_line[line_id].emplace(event.type);
+    };
     for (xla::profiler::CuptiTracerEvent& event : events_) {
       size_t index = &event - &events_[0];
       int64_t num_occurrences =
@@ -494,6 +536,23 @@ class PerDeviceCollector {
       // regular host/device lines.
       if (event.type == CuptiTracerEventType::Environment) {
         continue;
+      }
+      if (event.source == CuptiTracerEventSource::Activity &&
+          event.graph_id != 0 &&
+          event.stream_id != CuptiTracerEvent::kInvalidStreamId &&
+          event.type != CuptiTracerEventType::Overhead &&
+          !IsNvtxActivityEvent(event)) {
+        auto launch_it = graph_launch_streams_.find(event.correlation_id);
+        if (launch_it != graph_launch_streams_.end() &&
+            event.stream_id != launch_it->second) {
+          auto& streams = correlation_id_to_fork_streams[event.correlation_id];
+          if (auto it = absl::c_lower_bound(streams, event.stream_id);
+              it == streams.end() || *it != event.stream_id) {
+            streams.insert(it, event.stream_id);
+          }
+          deferred_fork_event_indices.push_back(index);
+          continue;
+        }
       }
       int64_t line_id = CuptiTracerEvent::kInvalidThreadId;
       bool is_host_event = IsHostEvent(event, &line_id);
@@ -510,11 +569,26 @@ class PerDeviceCollector {
               << " line_id=" << line_id
               << (is_host_event ? " host plane=" : " device plane=")
               << plane->Name();
-      XLineBuilder line = plane->GetOrCreateLine(line_id);
-      line.SetTimestampNs(start_gpu_ns_);
-      CreateXEvent(event, plane, end_gpu_ns, &line, num_occurrences,
-                   aggregated_tracing);
-      events_types_per_line[line_id].emplace(event.type);
+      emit_event(event, line_id, plane, num_occurrences);
+    }
+
+    absl::flat_hash_map<std::pair<int64_t, size_t>, int64_t>
+        launch_stream_and_index_to_stream_id;
+    for (size_t index : deferred_fork_event_indices) {
+      CuptiTracerEvent& event = events_[index];
+      const int64_t launch_stream_id =
+          graph_launch_streams_.at(event.correlation_id);
+      const auto& streams =
+          correlation_id_to_fork_streams.at(event.correlation_id);
+      const size_t stream_index =
+          absl::c_lower_bound(streams, event.stream_id) - streams.begin();
+      event.stream_id =
+          launch_stream_and_index_to_stream_id
+              .try_emplace({launch_stream_id, stream_index}, event.stream_id)
+              .first->second;
+      int64_t num_occurrences =
+          aggregated_tracing ? aggregated_event_occurrence_count_[index] : 1;
+      emit_event(event, event.stream_id, device_plane, num_occurrences);
     }
 
     // Handle Environment events separately to create counter lines.
@@ -564,6 +638,7 @@ class PerDeviceCollector {
     size_t num_events = events_.size();
     VLOG(4) << "Flush: num_events: " << num_events;
     events_.clear();
+    graph_launch_streams_.clear();
     aggregated_event_index_map_.clear();
     aggregated_event_occurrence_count_.clear();
     return num_events;
@@ -683,6 +758,8 @@ class PerDeviceCollector {
   uint64_t start_gpu_ns_ = 0;
   absl::Mutex m_;
   std::vector<CuptiTracerEvent> events_ TF_GUARDED_BY(m_);
+  absl::flat_hash_map<uint32_t, int64_t> graph_launch_streams_
+      TF_GUARDED_BY(m_);
   // Maps event name to the index of the event in the events_ vector.
   // It is in use when aggregating events into a single event was requested.
   absl::flat_hash_map<std::string, size_t> aggregated_event_index_map_
@@ -728,6 +805,34 @@ class EventInQueue {
   CallbackAnnotationsAndEvents::EventQueue::Iterator curr_;
   CallbackAnnotationsAndEvents::EventQueue::Iterator last_;
 };
+
+using CudaGraphKeySpace =
+    stream_executor::gpu::CudaGraphAnnotationRegistry::KeySpace;
+
+// A key of CudaGraphAnnotationRegistry.
+struct CommandBufferRegistryKey {
+  uint32_t graph_id;
+  uint64_t node_id;
+  CudaGraphKeySpace space;
+};
+
+// Returns the registry key for a CUPTI record of a CUDA graph node: the
+// template IDs on CUDA 13.4+, otherwise the executable graph IDs (CUDA
+// 13.2-13.3, or a newer build on an older driver/CUPTI). nullopt if none.
+std::optional<CommandBufferRegistryKey> GetCommandBufferRegistryKey(
+    const CuptiTracerEvent& event) {
+  if (event.source_graph_id != 0 && event.source_graph_node_id != 0) {
+    return CommandBufferRegistryKey{event.source_graph_id,
+                                    event.source_graph_node_id,
+                                    CudaGraphKeySpace::kTemplateGraph};
+  }
+  // TODO(b/483450622): Delete once CUDA < 13.4 support is retired.
+  if (event.graph_id != 0 && event.graph_node_id != 0) {
+    return CommandBufferRegistryKey{event.graph_id, event.graph_node_id,
+                                    CudaGraphKeySpace::kPre134ExecGraph};
+  }
+  return std::nullopt;
+}
 
 }  // namespace
 
@@ -827,6 +932,10 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
             {{event.graph_id, event.graph_node_id}, deduped_annotation});
       }
     }
+    if (IsCudaGraphLaunchCallback(event)) {
+      RecordGraphLaunchStream(event.device_id, event.correlation_id,
+                              event.stream_id);
+    }
     // Clear the annotation and nvtx_range of the Callback API events, as they
     // are now in the combined AnnotationMap which will be used by the
     // Activity API events. Also those real string they referenced now will
@@ -841,7 +950,9 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
   }
 
   // If we are not collecting CPU events from Callback API, we can return now.
-  if (!need_callback_events) return;
+  if (!need_callback_events) {
+    return;
+  }
 
   size_t total_dropped_callback_event_count = 0;
   for (auto& annotations_and_events : callback_annotations_and_events) {
@@ -892,8 +1003,19 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
   }
 
+  void RecordGraphLaunchStream(uint32_t device_id, uint32_t correlation_id,
+                               int64_t stream_id) override {
+    if (device_id >= num_gpus_) {
+      return;
+    }
+    per_device_collector_[device_id].RecordGraphLaunchStream(correlation_id,
+                                                             stream_id);
+  }
+
   void AddEvent(CuptiTracerEvent&& event) override {
-    if (event.device_id >= num_gpus_) return;
+    if (event.device_id >= num_gpus_) {
+      return;
+    }
     if (event.source == CuptiTracerEventSource::DriverCallback) {
       num_callback_events_++;
     } else {
@@ -917,24 +1039,47 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       return;
     }
 
-    // For activity events with graph_id and graph_node_id, we need to rewrite
-    // the annotation to reflect the detail framework information which are got
-    // during the callback for cuda graph creation and nodes insertion.
-    if (event.source == CuptiTracerEventSource::Activity &&
-        (event.graph_id != 0 && event.graph_node_id != 0)) {
-      // We need to rewrite the annotation of this inner node event in cuda
-      // graph device plane.
-      auto orig_graph_id_it = cuda_graph_id_map_.find(event.graph_id);
-      if (orig_graph_id_it != cuda_graph_id_map_.end()) {
-        uint32_t orig_graph_id = orig_graph_id_it->second;
-        const auto& node_id_2_orig = cuda_graph_node_id_map_[event.graph_id];
-        auto orig_node_id_it = node_id_2_orig.find(event.graph_node_id);
-        if (orig_node_id_it != node_id_2_orig.end()) {
-          uint64_t orig_node_id = orig_node_id_it->second;
-          auto annotation_it =
-              graph_node_annotations_.find({orig_graph_id, orig_node_id});
-          if (annotation_it != graph_node_annotations_.end()) {
-            event.annotation = annotation_it->second;
+    // Resolve the per-node annotation recorded in CudaGraphAnnotationRegistry
+    // (see GetCommandBufferRegistryKey), else fall back to the callback-based
+    // map. It replaces the launch annotation but keeps its scope_range_id.
+    if (event.source == CuptiTracerEventSource::Activity) {
+      bool resolved_from_registry = false;
+      auto& registry =
+          stream_executor::gpu::CudaGraphAnnotationRegistry::Default();
+      // `empty()` takes no lock, so sessions without command buffer telemetry
+      // skip the lookup.
+      if (!registry.empty()) {
+        registry_was_non_empty_ = true;
+        if (std::optional<CommandBufferRegistryKey> key =
+                GetCommandBufferRegistryKey(event)) {
+          // The string is only valid under the registry's reader lock, so copy
+          // it into collector-owned storage.
+          resolved_from_registry = registry.VisitNodeAnnotation(
+              key->graph_id, key->node_id,
+              [&](absl::string_view annotation) {
+                event.annotation = string_deduper_.Dedup(annotation);
+              },
+              key->space);
+          ++(resolved_from_registry ? num_records_resolved_
+                                    : num_records_missed_with_graph_ids_);
+        }
+      }
+      if (!resolved_from_registry &&
+          (event.graph_id != 0 && event.graph_node_id != 0)) {
+        // Rewrite the annotation of this inner node event in the cuda graph
+        // device plane using callback-collected graph node annotations.
+        auto orig_graph_id_it = cuda_graph_id_map_.find(event.graph_id);
+        if (orig_graph_id_it != cuda_graph_id_map_.end()) {
+          uint32_t orig_graph_id = orig_graph_id_it->second;
+          const auto& node_id_2_orig = cuda_graph_node_id_map_[event.graph_id];
+          auto orig_node_id_it = node_id_2_orig.find(event.graph_node_id);
+          if (orig_node_id_it != node_id_2_orig.end()) {
+            uint64_t orig_node_id = orig_node_id_it->second;
+            auto annotation_it =
+                graph_node_annotations_.find({orig_graph_id, orig_node_id});
+            if (annotation_it != graph_node_annotations_.end()) {
+              event.annotation = annotation_it->second;
+            }
           }
         }
       }
@@ -979,6 +1124,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         !num_events_dropped_message.empty()) {
       space->add_warnings(num_events_dropped_message);
     }
+    ReportCommandBufferAnnotationResolution(space);
     ExportScopeRangeIdTree(space);
     size_t num_events = 0;
     XPlaneBuilder host_plane(
@@ -1003,6 +1149,29 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
     return num_events > 0;
+  }
+
+  // Logs how many CUDA graph node records of the session resolved to a command
+  // buffer node annotation. If the registry had annotations but none
+  // resolved, a version mismatch (e.g. between the CUDA driver, runtime and
+  // CUPTI) or a registry the writer doesn't share is likely, so it also warns
+  // and adds the warning to `space`.
+  void ReportCommandBufferAnnotationResolution(XSpace* space) {
+    VLOG(1) << "Command buffer node annotations: resolved="
+            << num_records_resolved_
+            << " missed_with_graph_ids=" << num_records_missed_with_graph_ids_;
+    if (!registry_was_non_empty_ || num_records_resolved_ > 0 ||
+        num_records_missed_with_graph_ids_ == 0) {
+      return;
+    }
+    std::string message = absl::StrCat(
+        "None of the ", num_records_missed_with_graph_ids_,
+        " CUDA graph node records with graph IDs resolved to a command "
+        "buffer node annotation recorded by "
+        "--xla_gpu_enable_command_buffer_telemetry, so they keep the command "
+        "buffer launch annotation.");
+    LOG(WARNING) << message;
+    space->add_warnings(std::move(message));
   }
 
   std::string ReportDroppedEvents() {
@@ -1039,8 +1208,14 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       cuda_graph_node_id_map_;
   // Map from graph_id to original graph_id
   absl::flat_hash_map<uint32_t, uint32_t> cuda_graph_id_map_;
-  // For marker data strings.
+  // Owns marker data strings and the command buffer node annotations copied
+  // out of `CudaGraphAnnotationRegistry`, which events keep views into.
   StringDeduper string_deduper_;
+  // Command buffer node annotation lookups of the session, for
+  // ReportCommandBufferAnnotationResolution().
+  bool registry_was_non_empty_ = false;
+  uint64_t num_records_resolved_ = 0;
+  uint64_t num_records_missed_with_graph_ids_ = 0;
 
   // process the nvtx marker, a)cache range start event, or b)merge range end
   // with its corresponding start event. If merged, the event be updated with

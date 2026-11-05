@@ -1827,7 +1827,6 @@ tf_cuda_library(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
     ),
-    alwayslink = 1,
 )
 
 custom_op_cc_header_only_library(

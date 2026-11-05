@@ -526,6 +526,8 @@ xla_cc_test(
         ":invoke",
         ":record_ffi",
         "//xla/ffi/api:c_api",
+        "//xla/ffi/api:kernel_api",
+        "//xla/ffi/api:record_api",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",

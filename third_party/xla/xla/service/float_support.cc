@@ -17,16 +17,37 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+namespace {
+
+bool IsPrecisionPreservingTypeTransition(PrimitiveType in_type,
+                                         PrimitiveType out_type,
+                                         PrimitiveType low_precision_type,
+                                         PrimitiveType high_precision_type) {
+  return in_type == out_type ||
+         (in_type == high_precision_type && out_type == low_precision_type) ||
+         (in_type == low_precision_type && out_type == high_precision_type);
+}
+
+bool IsIdentityLowPrecisionReducePrecision(const HloInstruction& hlo,
+                                           PrimitiveType low_precision_type) {
+  return hlo.shape().element_type() == low_precision_type &&
+         primitive_util::HasFloatingPointPrecision(
+             low_precision_type, hlo.exponent_bits(), hlo.mantissa_bits());
+}
+
+}  // namespace
 
 bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                                int64_t operand_index) const {
@@ -34,7 +55,6 @@ bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
@@ -43,6 +63,15 @@ bool FloatSupport::SupportsLowPrecisionOperand(const HloInstruction& hlo,
     case HloOpcode::kConvert:
       CHECK_EQ(operand_index, 0);
       return hlo.operand(0)->shape().element_type() == low_precision_type_;
+    case HloOpcode::kFma:
+      // Promoting fma to a wider float type double-rounds, so existing
+      // low-precision fma ops must not be normalized (unsupported targets
+      // return Unimplemented in codegen), while higher-precision fma ops must
+      // not be demoted.
+      return hlo.operand(operand_index)->shape().element_type() ==
+             low_precision_type_;
+    case HloOpcode::kReducePrecision:
+      return IsIdentityLowPrecisionReducePrecision(hlo, low_precision_type_);
     case HloOpcode::kClz:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kShiftRightArithmetic:
@@ -69,14 +98,16 @@ bool FloatSupport::SupportsLowPrecisionOutput(const HloInstruction& hlo) const {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
     case HloOpcode::kOptimizationBarrier:
       return true;
     case HloOpcode::kConvert:
+    case HloOpcode::kFma:
       return hlo.shape().element_type() == low_precision_type_;
+    case HloOpcode::kReducePrecision:
+      return IsIdentityLowPrecisionReducePrecision(hlo, low_precision_type_);
     case HloOpcode::kClz:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kShiftRightArithmetic:
@@ -115,9 +146,8 @@ bool FloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
   return false;
 }
 
-/* static */
 bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
-    const HloInstruction& hlo, int64_t operand_index) {
+    const HloInstruction& hlo, int64_t operand_index) const {
   switch (hlo.opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kAllGather:
@@ -127,9 +157,7 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kConcatenate:
-    case HloOpcode::kConvert:
     case HloOpcode::kCopy:
-    case HloOpcode::kDomain:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -144,6 +172,13 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kTuple:
     case HloOpcode::kOptimizationBarrier:
       return true;
+    case HloOpcode::kConvert:
+      if (operand_index != 0) {
+        return false;
+      }
+      return IsPrecisionPreservingTypeTransition(
+          hlo.operand(0)->shape().element_type(), hlo.shape().element_type(),
+          low_precision_type_, high_precision_type_);
     case HloOpcode::kBitcast:
       return hlo.shape().element_type() ==
              hlo.operand(0)->shape().element_type();
@@ -157,10 +192,40 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
       return operand_index == 1 || operand_index == 2;
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow: {
-      HloComputation* reduce_comp = hlo.called_computations()[0];
-      for (HloInstruction* inst : reduce_comp->instructions()) {
+      const PrimitiveType op_type =
+          hlo.operand(operand_index)->shape().element_type();
+      const int64_t num_branches = hlo.operand_count() / 2;
+      const int64_t branch_index = operand_index % num_branches;
+      const Shape& out_subshape = hlo.shape().IsTuple()
+                                      ? hlo.shape().tuple_shapes(branch_index)
+                                      : hlo.shape();
+      const HloComputation* to_apply = hlo.called_computations()[0];
+      if (!IsPrecisionPreservingTypeTransition(
+              op_type, out_subshape.element_type(), low_precision_type_,
+              high_precision_type_) ||
+          !IsPrecisionPreservingTypeTransition(
+              op_type,
+              to_apply->parameter_instruction(branch_index)
+                  ->shape()
+                  .element_type(),
+              low_precision_type_, high_precision_type_) ||
+          !IsPrecisionPreservingTypeTransition(
+              op_type,
+              to_apply->parameter_instruction(num_branches + branch_index)
+                  ->shape()
+                  .element_type(),
+              low_precision_type_, high_precision_type_)) {
+        return false;
+      }
+      for (const HloInstruction* inst : to_apply->instructions()) {
         if (inst->opcode() == HloOpcode::kParameter) {
           continue;
+        }
+        if (inst->opcode() == HloOpcode::kConvert &&
+            !IsPrecisionPreservingTypeTransition(
+                op_type, inst->shape().element_type(), low_precision_type_,
+                high_precision_type_)) {
+          return false;
         }
         for (int64_t i = 0; i < inst->operand_count(); ++i) {
           if (!EffectiveOperandPrecisionIsOutputPrecision(*inst, i)) {

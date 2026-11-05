@@ -33,11 +33,11 @@ namespace xla {
 // and also contains the `KernelSource` that implements the kernel itself.
 class KernelDefinitionBase {
  public:
-  explicit KernelDefinitionBase(KernelSpec spec) : spec_(std::move(spec)) {}
+  KernelDefinitionBase() = default;
   virtual ~KernelDefinitionBase() = default;
 
-  const KernelSpec& spec() const { return spec_; }
-  KernelSpec& spec() { return spec_; }
+  virtual const KernelSpec& spec() const = 0;
+  virtual KernelSpec& spec() = 0;
 
   virtual const KernelSource& source() const = 0;
   virtual KernelSource& source() = 0;
@@ -45,9 +45,6 @@ class KernelDefinitionBase {
  protected:
   KernelDefinitionBase(KernelDefinitionBase&&) = default;
   KernelDefinitionBase& operator=(KernelDefinitionBase&&) noexcept = default;
-
- private:
-  KernelSpec spec_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -55,14 +52,16 @@ class KernelDefinitionBase {
 //===----------------------------------------------------------------------===//
 
 // A concrete kernel definition implementation for the given kernel source type.
-template <typename Source>
+template <typename Source, typename Spec = KernelSpec>
 class KernelDefinition final : public KernelDefinitionBase {
   static_assert(std::is_base_of_v<KernelSource, Source>,
                 "Source must be a subclass of KernelSource");
+  static_assert(std::is_base_of_v<KernelSpec, Spec>,
+                "Spec must be a subclass of KernelSpec");
 
  public:
-  KernelDefinition(KernelSpec spec, Source source)
-      : KernelDefinitionBase(std::move(spec)), source_(std::move(source)) {}
+  KernelDefinition(Spec spec, Source source)
+      : spec_(std::move(spec)), source_(std::move(source)) {}
 
   KernelDefinition(KernelDefinition&&) = default;
   KernelDefinition& operator=(KernelDefinition&&) noexcept = default;
@@ -73,7 +72,11 @@ class KernelDefinition final : public KernelDefinitionBase {
   // Moves ownership of the source to the caller.
   Source TakeSource() && { return std::move(source_); }
 
+  const Spec& spec() const final { return spec_; }
+  Spec& spec() final { return spec_; }
+
  private:
+  Spec spec_;
   Source source_;
 };
 

@@ -54,6 +54,10 @@ absl::StatusOr<Tensor> MakeTensorFromPjRtBuffer(
 static bool ShouldReuseTensor(void* opaque_device_memory,
                               const size_t expected_size,
                               const Tensor* existing_tensor) {
+  if (opaque_device_memory == nullptr ||
+      DMAHelper::buffer(existing_tensor) == nullptr) {
+    return false;
+  }
   const PjRtTensorBuffer* input_pjrt_tensor_buffer =
       dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(existing_tensor));
   if (input_pjrt_tensor_buffer != nullptr) {
@@ -73,13 +77,22 @@ absl::Status PjRtTensorBufferUtil::UpdateOrMakeTensorWithPjRtBuffer(
                       pjrt_buffer->AcquireExternalReference());
   const size_t expected_size = GetTensorSize(shape, dtype);
   void* opaque_device_memory = ref->OpaqueDeviceMemoryDataPointer();
-  auto* tensor_buffer = new PjRtTensorBuffer(
-      opaque_device_memory, expected_size, std::move(pjrt_buffer));
   if (ShouldReuseTensor(opaque_device_memory, expected_size, output_tensor)) {
+    TensorBuffer* root_buffer = output_tensor->buf_ != nullptr
+                                    ? output_tensor->buf_->root_buffer()
+                                    : nullptr;
+    auto* tensor_buffer =
+        new PjRtTensorBuffer(opaque_device_memory, expected_size,
+                             std::move(pjrt_buffer), root_buffer);
+    if (output_tensor->buf_ != nullptr) {
+      output_tensor->buf_->Unref();
+    }
     output_tensor->buf_ = tensor_buffer;
     return absl::OkStatus();
   }
 
+  auto* tensor_buffer = new PjRtTensorBuffer(
+      opaque_device_memory, expected_size, std::move(pjrt_buffer));
   Tensor result(dtype, shape, tensor_buffer);
   tensor_buffer->Unref();
   *output_tensor = result;

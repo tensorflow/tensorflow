@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/aot_compatibility/gpu/collective_aot_test_base.h"
+#include "xla/tests/aot_compatibility/gpu/gpu_aot_test_params.h"
 #include "xla/tests/aot_compatibility/test_lib.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/test.h"
@@ -124,6 +125,7 @@ TEST_P(RaggedAllToAllAotTest, SymmetricMemory) {
       false);
   debug_options.set_xla_gpu_allow_ragged_all_to_all_nccl_send_recv_fallback(
       true);
+  debug_options.set_xla_gpu_experimental_nccl_window_symmetric(true);
   EnableNcclSymmetricBuffers(debug_options);
   RunAndExpectRaggedAllToAll(config);
 }

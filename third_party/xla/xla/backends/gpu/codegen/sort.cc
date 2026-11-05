@@ -19,6 +19,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -53,6 +54,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
@@ -764,25 +766,27 @@ AsyncThunkSequence EmitBitonicSort(const HloSortInstruction* sort,
 
               int devices_in_process =
                   ir_emitter_context->gpu_topology().num_devices_per_process();
+              GpuKernelSpec spec{sanitized_kernel_name, launch_dimensions,
+                                 kernel_arguments, std::nullopt, use_pdl};
               return ir_emitter_context->kernel_compiler()
                   ->CompileToTargetBinary(
-                      LlvmKernelSource(std::move(safe_module)))
-                  .Map([sanitized_kernel_name, kernel_arguments,
-                        launch_dimensions, thunk_info = std::move(thunk_info),
-                        use_pdl,
+                      LlvmKernelSource(std::move(safe_module)), spec)
+                  .Map([spec = std::move(spec),
+                        thunk_info = std::move(thunk_info),
                         devices_in_process](std::vector<uint8_t> cubin) mutable
                            -> absl::StatusOr<std::unique_ptr<Thunk>> {
                     ABSL_ASSIGN_OR_RETURN(
                         CustomKernel custom_kernel,
                         kernel::CreateOwnedCubinCustomKernel(
-                            sanitized_kernel_name, std::move(cubin),
-                            kernel_arguments.args().size(),
-                            launch_dimensions.block_counts(),
-                            launch_dimensions.thread_counts_per_block(),
+                            std::string{spec.name()}, std::move(cubin),
+                            spec.kernel_arguments().args().size(),
+                            spec.launch_dimensions().block_counts(),
+                            spec.launch_dimensions().thread_counts_per_block(),
                             /*shared_memory_bytes=*/0));
                     return std::make_unique<CustomKernelThunk>(
                         std::move(thunk_info), std::move(custom_kernel),
-                        kernel_arguments, devices_in_process, use_pdl);
+                        spec.kernel_arguments(), devices_in_process,
+                        spec.use_pdl());
                   });
             }));
 

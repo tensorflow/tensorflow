@@ -63,7 +63,7 @@ class RemoteCallOp : public AsyncOpKernel {
  public:
   explicit RemoteCallOp(OpKernelConstruction* ctx);
 
-  ~RemoteCallOp() override {}
+  ~RemoteCallOp() override = default;
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 

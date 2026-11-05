@@ -23,12 +23,12 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/dense_data_intermediate.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 
 namespace xla::gpu {
@@ -84,9 +84,10 @@ void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
 //   return;
 // }
 //   ```
-absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
-    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
-    const emitters::KernelArguments& kernel_arguments);
+absl::StatusOr<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>
+EmitPadToStaticLLVMIR(const HloCustomCallInstruction* hlo,
+                      IrEmitterContext* ir_emitter_context,
+                      const emitters::KernelArguments& kernel_arguments);
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
 // Output = {static array, dynamic_dim0, dynamic_dim1}
@@ -132,13 +133,14 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
 //   return;
 // }
 //   ```
-absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
-    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
-    const emitters::KernelArguments& kernel_arguments);
+absl::StatusOr<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>
+EmitSliceToDynamicLLVMIR(const HloCustomCallInstruction* hlo,
+                         IrEmitterContext* ir_emitter_context,
+                         const emitters::KernelArguments& kernel_arguments);
 
 // Emit a kernel to increment the global state for Philox RNG
 // algorithm.
-absl::StatusOr<KernelDefinition<LlvmKernelSource>>
+absl::StatusOr<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>
 EmitRngGetAndUpdateStateLLVMIR(
     const HloRngGetAndUpdateStateInstruction* hlo,
     IrEmitterContext* ir_emitter_context,

@@ -170,6 +170,7 @@ cuda_py_strict_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     grpc_enabled = True,
+    shard_count = 4,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",

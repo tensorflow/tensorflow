@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 
 #include <array>
+#include <cmath>
 #include <complex>
 #include <cstdint>
 #include <initializer_list>
@@ -291,6 +292,61 @@ TEST_P(HloEvaluatorBf16Test, DoesClamp) {
 
   auto expected = LiteralUtil::CreateR2<float>({{0, 4}, {2, 4}});
 
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, DoesFmaF32SingleRounding) {
+  auto a = LiteralUtil::CreateR1<float>({2.0f, 0x1.000002p0f});
+  auto b = LiteralUtil::CreateR1<float>({3.0f, 0x1.000002p0f});
+  auto c = LiteralUtil::CreateR1<float>({4.0f, -1.0f});
+  Shape shape = a.shape();
+  HloComputation::Builder builder(TestName());
+  auto c1 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(a)));
+  auto c2 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(b)));
+  auto c3 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(c)));
+  builder.AddInstruction(
+      HloInstruction::CreateTernary(shape, HloOpcode::kFma, c1, c2, c3));
+  m_->AddEntryComputation(builder.Build());
+
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  auto expected = LiteralUtil::CreateR1<float>(
+      {10.0f, std::fma(0x1.000002p0f, 0x1.000002p0f, -1.0f)});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, DoesFmaBf16SingleRounding) {
+  // Case 0: a = b = 131/128 = 1.0234375, c = -1.0.
+  // Exact a*b + c = 777/16384, which rounds to bf16 97/2048 = 0.04736328125.
+  // Unfused bf16(a*b) + c gives 96/2048 = 0.046875.
+  // Case 1: 1.5 * (1 + 2^-7) - 2^-24.
+  // Exact a*b = 1.5 + 2^-7 + 2^-8, which is an exact tie in bf16 between
+  // 0x3fc1 (odd) and 0x3fc2 (even). Subtracting 2^-24 makes the exact sum
+  // strictly less than the tie, so single rounding to bf16 gives 0x3fc1
+  // (1.5 + 2^-7). Naive double -> float -> bf16 double-rounds up to 0x3fc2.
+  auto a =
+      LiteralUtil::CreateR1<bfloat16>({bfloat16(1.0234375f), bfloat16(1.5f)});
+  auto b = LiteralUtil::CreateR1<bfloat16>(
+      {bfloat16(1.0234375f), bfloat16(1.0f + std::ldexp(1.0f, -7))});
+  auto c = LiteralUtil::CreateR1<bfloat16>(
+      {bfloat16(-1.0f), bfloat16(-std::ldexp(1.0f, -24))});
+  Shape shape = a.shape();
+  HloComputation::Builder builder(TestName());
+  auto c1 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(a)));
+  auto c2 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(b)));
+  auto c3 =
+      builder.AddInstruction(HloInstruction::CreateConstant(std::move(c)));
+  builder.AddInstruction(
+      HloInstruction::CreateTernary(shape, HloOpcode::kFma, c1, c2, c3));
+  m_->AddEntryComputation(builder.Build());
+
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  auto expected = LiteralUtil::CreateR1<bfloat16>(
+      {bfloat16(0.04736328125f), bfloat16(1.5f + std::ldexp(1.0f, -7))});
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
@@ -6520,6 +6576,45 @@ ENTRY main {
   EXPECT_EQ(actual.GetFirstElement<int32_t>(), static_cast<int32_t>(3));
 }
 
+// An out-of-contract size operand of set-dimension-size must not crash the
+// evaluator; it is clamped to [0, bound].
+constexpr absl::string_view kSetDimensionSizeHlo = R"(
+HloModule Test
+
+ENTRY main {
+  data = s32[4] parameter(0)
+  size = s32[] parameter(1)
+  ROOT sds = s32[<=4] set-dimension-size(data, size), dimensions={0}
+}
+)";
+
+TEST_F(HloEvaluatorTest, SetDimensionSizeClampsOversizedSize) {
+  TF_ASSERT_OK_AND_ASSIGN(m_,
+                          ParseAndReturnVerifiedModule(kSetDimensionSizeHlo));
+  Literal data_arg = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal size_arg = LiteralUtil::CreateR0<int32_t>(1851888704);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&data_arg, &size_arg}));
+  EXPECT_EQ(result.GetDynamicSize(0), 4);
+}
+
+TEST_F(HloEvaluatorTest, SetDimensionSizeClampsNegativeSize) {
+  TF_ASSERT_OK_AND_ASSIGN(m_,
+                          ParseAndReturnVerifiedModule(kSetDimensionSizeHlo));
+  Literal data_arg = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal size_arg = LiteralUtil::CreateR0<int32_t>(-3);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&data_arg, &size_arg}));
+  EXPECT_EQ(result.GetDynamicSize(0), 0);
+}
+
+TEST_F(HloEvaluatorTest, SetDimensionSizeKeepsSizeEqualToBound) {
+  TF_ASSERT_OK_AND_ASSIGN(m_,
+                          ParseAndReturnVerifiedModule(kSetDimensionSizeHlo));
+  Literal data_arg = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  Literal size_arg = LiteralUtil::CreateR0<int32_t>(4);
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&data_arg, &size_arg}));
+  EXPECT_EQ(result.GetDynamicSize(0), 4);
+}
+
 // Check that we get a useful error if we pass inputs of the wrong shape.
 TEST_F(HloEvaluatorTest, EvaluateWithWrongInputShapes) {
   const absl::string_view hlo_text = R"(
@@ -8932,6 +9027,23 @@ TEST(EvalErrorTest, Payload) {
 
   EXPECT_EQ(internal::ParseEvalErrorDetail(s),
             internal::EvalErrorDetail::kDynamicValueDependence);
+}
+
+TEST_F(HloEvaluatorTest, IdentityReducePrecisionF8E4M3FN) {
+  constexpr absl::string_view kHlo = R"(
+  HloModule IdentityReducePrecisionF8E4M3FN
+
+  ENTRY main {
+    c = f8e4m3fn[4] constant({0.001953125, 1, 256, -448})
+    ROOT rp = f8e4m3fn[4] reduce-precision(c), exponent_bits=4, mantissa_bits=3
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+  Literal expected = LiteralUtil::CreateR1<float8_e4m3fn>(
+      {float8_e4m3fn(0.001953125f), float8_e4m3fn(1.0f), float8_e4m3fn(256.0f),
+       float8_e4m3fn(-448.0f)});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 //===----------------------------------------------------------------------===//

@@ -294,12 +294,12 @@ struct LiftReshapeThroughConcatenation : public OpRewritePattern<ReshapeOp> {
     for (int i = 0; i < output_ty.getRank(); ++i) {
       int64_t next_vol = current_vol * output_ty.getDimSize(i);
       // The concat boundary must be preserved.
-      // This means the volume before 'axis' in input must align with a
-      // dimension boundary or be completely contained within a merged
-      // dimension. For concatenation to be possible in the target, the target
-      // dimension containing the concat boundary must be divisible by the
-      // operand count.
-      if (current_vol <= vol_before_axis && next_vol >= vol_with_axis) {
+      // Lifting is only valid when the concat axis is the slowest-varying
+      // component of the merged output dimension (i.e. current_vol ==
+      // vol_before_axis, allowing for unit dims in between). If current_vol <
+      // vol_before_axis, an outer dimension is merged with the concat axis,
+      // which would turn an interleave into a block concatenation.
+      if (current_vol == vol_before_axis && next_vol >= vol_with_axis) {
         if (output_ty.getDimSize(i) % num_operands == 0) {
           new_axis = i;
           break;

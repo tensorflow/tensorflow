@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
@@ -425,22 +426,15 @@ void replaceManualAxes(sdy::ManualComputationOp manualComputation,
   }
   const auto& [mainMeshName, mainMesh, axisMap] =
       meshNameAndAxisMap->getSecond();
+  MLIRContext* context = manualComputation.getContext();
   AxisRefVector newAxisRefs;
   newAxisRefs.reserve(manualComputation.getManualAxes().size());
-  for (StringAttr manualAxis : manualComputation.getManualAxes()) {
-    addOrMergeFullAxis(manualAxis.getValue(), newAxisRefs, mainMesh, axisMap);
+  for (AxisRefAttr manualAxis : manualComputation.getManualAxes()) {
+    addOrMergeNewAxisRefAttr(manualAxis, newAxisRefs, context, mainMesh,
+                             axisMap);
   }
-  SmallVector<StringAttr> newManualAxes;
-  newManualAxes.reserve(newAxisRefs.size());
-  llvm::transform(
-      newAxisRefs, std::back_inserter(newManualAxes), [](AxisRefAttr axisRef) {
-        CHECK(!axisRef.getSubAxisInfo())
-            << "Manual sub-axis isn't supported. Please "
-               "file a bug with a reproducer.";
-        return StringAttr::get(axisRef.getContext(), axisRef.getName());
-      });
   manualComputation.setManualAxesAttr(
-      sdy::ManualAxesAttr::get(manualComputation.getContext(), newManualAxes));
+      sdy::ManualAxesAttr::get(context, newAxisRefs));
 }
 
 Attribute rewriteReplicaGroupsAttr(

@@ -409,11 +409,11 @@ TEST(DotOperandDimsTest, PermuteToConsecutive) {
 
   auto permutation = dims.PermuteToConsecutive(DotOperandDims::kContracting);
   EXPECT_TRUE(permutation.has_value());
-  EXPECT_THAT(*permutation, ElementsAre(0, 1, 3, 5, 2, 4));
+  EXPECT_THAT(*permutation, ElementsAre(0, 1, 3, 2, 4, 5));
 
-  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 5));
   EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1, 2));
-  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(4, 5));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(3, 4));
 }
 
 TEST(DotOperandDimsTest, PermuteToConsecutiveAlreadyConsecutive) {
@@ -434,11 +434,11 @@ TEST(DotOperandDimsTest, PermuteToConsecutiveUnsorted) {
 
   auto permutation = dims.PermuteToConsecutive(DotOperandDims::kContracting);
   ASSERT_TRUE(permutation.has_value());
-  EXPECT_THAT(*permutation, ElementsAre(0, 1, 2, 5, 4, 3));
+  EXPECT_THAT(*permutation, ElementsAre(0, 1, 2, 4, 3, 5));
 
-  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 5));
   EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1, 2));
-  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(4, 5));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(3, 4));
 }
 
 TEST(DotOperandDimsTest, MapBackwardThroughTranspose) {

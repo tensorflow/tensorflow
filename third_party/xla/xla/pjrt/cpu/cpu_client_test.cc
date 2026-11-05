@@ -16,19 +16,15 @@ limitations under the License.
 #include <array>
 #include <numeric>
 
-#include "absl/base/casts.h"
-#include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/pjrt/maybe_owning_mlir_module.h"
-#include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -37,15 +33,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "absl/types/span.h"
+#include "mlir/Dialect/Func/IR/FuncDialect.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -54,13 +53,19 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_execute_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/strided_gather.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -73,10 +78,14 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 namespace {
@@ -127,9 +136,9 @@ TEST(PjRtCpuClientTest, MemorySpace) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto unpinned_host_memory_space,
         device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
-    device->memory_spaces(),
-        ElementsAre(cpu_device_memory_space, pinned_host_memory_space,
-                    unpinned_host_memory_space);
+    EXPECT_THAT(device->memory_spaces(),
+                ElementsAre(cpu_device_memory_space, pinned_host_memory_space,
+                            unpinned_host_memory_space));
   }
 }
 
@@ -893,6 +902,46 @@ TEST(PjRtCpuClientTest, CreateErrorBuffer) {
   }
 }
 
+TEST(PjRtCpuClientTest, CreateErrorBufferWithCustomLayout) {
+  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtCpuClient(CpuClientOptions()));
+  xla::Shape shape = ShapeUtil::MakeShapeWithDenseLayout(U32, {3, 2}, {0, 1});
+  *shape.mutable_layout()->add_tiles() = Tile({2, 2});
+  Layout default_layout = LayoutUtil::MakeDescendingLayout(2);
+  Layout custom_layout = LayoutUtil::MakeAscendingLayout(2);
+  Layout invalid_layout = LayoutUtil::MakeLayout({0});
+  for (PjRtMemorySpace* memory_space : client->memory_spaces()) {
+    // Without an explicit layout argument, `shape.layout()` is ignored and the
+    // default layout is used.
+    ASSERT_OK_AND_ASSIGN(
+        auto default_layout_buffer,
+        client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
+    EXPECT_EQ(default_layout_buffer->layout()->xla_layout(), default_layout);
+
+    // With an explicit layout argument, the custom layout is used and any
+    // pre-existing layout fields on `shape` are cleared.
+    ASSERT_OK_AND_ASSIGN(
+        auto custom_layout_buffer,
+        client->CreateErrorBuffer(Internal("foobar"), shape, memory_space,
+                                  &custom_layout));
+    EXPECT_THAT(
+        custom_layout_buffer->ToLiteral().Await(),
+        absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+    EXPECT_EQ(custom_layout_buffer->memory_space(), memory_space);
+    EXPECT_EQ(custom_layout_buffer->layout()->xla_layout(), custom_layout);
+
+    // An invalid layout for `shape` is rejected.
+    EXPECT_THAT(client->CreateErrorBuffer(Internal("foobar"), shape,
+                                          memory_space, &invalid_layout),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+    // Tuple shapes are rejected.
+    EXPECT_THAT(client->CreateErrorBuffer(Internal("foobar"),
+                                          ShapeUtil::MakeTupleShape({shape}),
+                                          memory_space),
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+}
+
 TEST(PjRtCpuClientTest, CreateErrorBufferToken) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeTokenShape();
@@ -1259,6 +1308,22 @@ TEST(PjRtCpuClientTest, CopyRawToHost) {
             absl::string_view(raw_data_result, raw_data_size));
 }
 
+TEST(PjRtCpuClientTest, GetExternalDmaInfoIsUnimplemented) {
+  // The CPU backend does not expose its memory as a dma-buf, so the default
+  // PjRtRawBuffer hook (reached through the C function table) must report
+  // Unimplemented.
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  Literal literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(PjRtRawBufferRef raw_buffer,
+                          PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
+
+  EXPECT_THAT(raw_buffer->GetExternalDmaInfo(),
+              StatusIs(absl::StatusCode::kUnimplemented));
+}
+
 TEST(PjRtCpuClientTest, SubByteLiteralToBufferRoundtrip) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetXlaPjrtCpuClient(CpuClientOptions()));
@@ -1556,6 +1621,857 @@ TEST(PjRtCpuClientTest, DonateWithControlDependencyError) {
   EXPECT_THAT(to_literal_status,
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("control dependency failed")));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceSingleChunk) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * unpinned_space,
+      device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+
+  std::vector<PjRtMemorySpace*> memory_spaces = {pinned_space, unpinned_space};
+
+  for (PjRtMemorySpace* memory_space : memory_spaces) {
+    Literal literal =
+        LiteralUtil::CreateR1<int32_t>({10, 11, 12, 13, 14, 15, 16, 17});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> src_buffer,
+        client->BufferFromHostLiteral(literal, memory_space,
+                                      /*device_layout=*/nullptr));
+
+    // Slice 4 elements (16 bytes) starting at element 2 (byte offset 8).
+    StridedGather::Spec spec = {
+        /*element_size=*/16,
+        /*counts=*/{1},
+        /*src_byte_offset=*/8,
+        /*src_byte_size=*/32,
+        /*src_byte_strides=*/{16},
+    };
+    StridedGather gather(spec);
+    ASSERT_EQ(gather.num_chunks(), 1);
+    ASSERT_EQ(gather.chunk_size(), 16);
+
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {4});
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                         src_buffer->CopySlice(gather, dst_shape));
+    EXPECT_EQ(sliced_buffer->on_device_shape(), dst_shape);
+    EXPECT_EQ(sliced_buffer->memory_space(), memory_space);
+
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                         sliced_buffer->ToLiteral().Await());
+    EXPECT_THAT(result_literal->data<int32_t>(),
+                ::testing::ElementsAre(12, 13, 14, 15));
+  }
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceMultiChunkWithTranspose) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * unpinned_space,
+      device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
+
+  std::vector<PjRtMemorySpace*> memory_spaces = {pinned_space, unpinned_space};
+
+  for (PjRtMemorySpace* memory_space : memory_spaces) {
+    Literal literal =
+        LiteralUtil::CreateR2<int32_t>({{10, 11, 12}, {20, 21, 22}});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> src_buffer,
+        client->BufferFromHostLiteral(literal, memory_space,
+                                      /*device_layout=*/nullptr));
+
+    // Slice columns 1 and 2 transposed: counts={2, 2}, strides={4, 12},
+    // offset=4.
+    StridedGather::Spec spec = {
+        /*element_size=*/sizeof(int32_t),
+        /*counts=*/{2, 2},
+        /*src_byte_offset=*/sizeof(int32_t),
+        /*src_byte_size=*/6 * sizeof(int32_t),
+        /*src_byte_strides=*/{sizeof(int32_t), 3 * sizeof(int32_t)},
+    };
+    StridedGather gather(spec);
+    ASSERT_GT(gather.num_chunks(), 1);
+
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {2, 2});
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                         src_buffer->CopySlice(gather, dst_shape));
+    EXPECT_EQ(sliced_buffer->on_device_shape(), dst_shape);
+    EXPECT_EQ(sliced_buffer->memory_space(), memory_space);
+
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                         sliced_buffer->ToLiteral().Await());
+    EXPECT_THAT(result_literal->data<int32_t>(),
+                ::testing::ElementsAre(11, 21, 12, 22));
+  }
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceZeroSizedGather) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal literal = LiteralUtil::CreateR1<int32_t>({10, 11, 12, 13});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{0},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+  ASSERT_EQ(gather.num_chunks(), 0);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {0});
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                       src_buffer->CopySlice(gather, dst_shape));
+  EXPECT_EQ(sliced_buffer->on_device_shape(), dst_shape);
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                       sliced_buffer->ToLiteral().Await());
+  EXPECT_EQ(result_literal->element_count(), 0);
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceDelayedReadiness) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal literal = LiteralUtil::CreateR1<int32_t>({10, 11, 12, 13});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  auto [promise, future] = MakePromise<>();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> blocked_buffer,
+                       src_buffer->DonateWithControlDependency(future));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/8,
+      /*counts=*/{1},
+      /*src_byte_offset=*/4,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{8},
+  };
+  StridedGather gather(spec);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {2});
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                       blocked_buffer->CopySlice(gather, dst_shape));
+
+  Future<> ready_future = sliced_buffer->GetReadyFuture();
+  EXPECT_FALSE(ready_future.IsReady());
+
+  promise.Set();
+  EXPECT_THAT(ready_future.Await(), ::absl_testing::IsOk());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> result_literal,
+                       sliced_buffer->ToLiteral().Await());
+  EXPECT_THAT(result_literal->data<int32_t>(), ::testing::ElementsAre(11, 12));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceControlDependencyError) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal literal = LiteralUtil::CreateR1<int32_t>({10, 11, 12, 13});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> src_buffer,
+      client->BufferFromHostLiteral(literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  auto [promise, future] = MakePromise<>();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> blocked_buffer,
+                       src_buffer->DonateWithControlDependency(future));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/8,
+      /*counts=*/{1},
+      /*src_byte_offset=*/4,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{8},
+  };
+  StridedGather gather(spec);
+
+  Shape dst_shape = ShapeUtil::MakeShape(S32, {2});
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> sliced_buffer,
+                       blocked_buffer->CopySlice(gather, dst_shape));
+
+  Future<> ready_future = sliced_buffer->GetReadyFuture();
+  EXPECT_FALSE(ready_future.IsReady());
+
+  promise.Set(absl::InternalError("control dependency failed"));
+
+  EXPECT_THAT(ready_future.Await(),
+              ::absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  ::testing::HasSubstr("control dependency failed")));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferCopySliceInvalidArgument) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  // Case 1a: src_byte_size exceeds buffer size (32 > 16).
+  {
+    StridedGather::Spec spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/32,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather gather(spec);
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {1});
+    EXPECT_THAT(buffer->CopySlice(gather, dst_shape),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 1b: max accessed byte offset exceeds buffer size (20 > 16).
+  {
+    StridedGather::Spec spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/16,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather gather(spec);
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {1});
+    EXPECT_THAT(buffer->CopySlice(gather, dst_shape),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 2: dst_shape byte size does not match slice size (8 != 4).
+  {
+    StridedGather::Spec spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather gather(spec);
+    Shape mismatched_dst_shape =
+        ShapeUtil::MakeShape(S32, {2});  // 8 bytes != 4 bytes
+    EXPECT_THAT(buffer->CopySlice(gather, mismatched_dst_shape),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 3: CopySlice called on a deleted buffer.
+  {
+    buffer->Delete();
+    StridedGather::Spec spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather gather(spec);
+    Shape dst_shape = ShapeUtil::MakeShape(S32, {1});
+    EXPECT_THAT(buffer->CopySlice(gather, dst_shape),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceSingleChunk) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR1<int32_t>({10, 20, 30, 40});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal = LiteralUtil::CreateR1<int32_t>({99, 100});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2},
+      /*src_byte_offset=*/4,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> updated_buffer,
+                       target_buffer->UpdateSlice(gather, slice_buffer.get()));
+
+  EXPECT_TRUE(target_buffer->IsDeleted());
+  EXPECT_FALSE(slice_buffer->IsDeleted());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       updated_buffer->ToLiteral().Await());
+  EXPECT_EQ(*out_literal, LiteralUtil::CreateR1<int32_t>({10, 99, 100, 40}));
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> slice_out_literal,
+                       slice_buffer->ToLiteral().Await());
+  EXPECT_EQ(*slice_out_literal, LiteralUtil::CreateR1<int32_t>({99, 100}));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceMultiChunk) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR2<int32_t>({
+      {1, 2, 3, 4},
+      {5, 6, 7, 8},
+      {9, 10, 11, 12},
+      {13, 14, 15, 16},
+  });
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal =
+      LiteralUtil::CreateR2<int32_t>({{60, 70}, {100, 110}});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  // Update a 2x2 sub-block at row 1, col 1:
+  // Offsets are: row 1 (16 + 4 = 20) and row 2 (32 + 4 = 36).
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2, 2},
+      /*src_byte_offset=*/20,
+      /*src_byte_size=*/64,
+      /*src_byte_strides=*/{16, 4},
+  };
+  StridedGather gather(spec);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> updated_buffer,
+                       target_buffer->UpdateSlice(gather, slice_buffer.get()));
+
+  EXPECT_TRUE(target_buffer->IsDeleted());
+  EXPECT_FALSE(slice_buffer->IsDeleted());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       updated_buffer->ToLiteral().Await());
+  Literal expected_literal = LiteralUtil::CreateR2<int32_t>({
+      {1, 2, 3, 4},
+      {5, 60, 70, 8},
+      {9, 100, 110, 12},
+      {13, 14, 15, 16},
+  });
+  EXPECT_EQ(*out_literal, expected_literal);
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceZeroSizedGather) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal = LiteralUtil::CreateR1<int32_t>({});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{0},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/12,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> updated_buffer,
+                       target_buffer->UpdateSlice(gather, slice_buffer.get()));
+
+  EXPECT_TRUE(target_buffer->IsDeleted());
+  EXPECT_FALSE(slice_buffer->IsDeleted());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       updated_buffer->ToLiteral().Await());
+  EXPECT_EQ(*out_literal, LiteralUtil::CreateR1<int32_t>({1, 2, 3}));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceDelayedReadiness) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR1<int32_t>({10, 20, 30, 40});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal = LiteralUtil::CreateR1<int32_t>({77, 88});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  auto [target_promise, target_future] = MakePromise<>();
+  auto [slice_promise, slice_future] = MakePromise<>();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> delayed_target,
+      target_buffer->DonateWithControlDependency(target_future));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> delayed_slice,
+                       slice_buffer->DonateWithControlDependency(slice_future));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{2},
+      /*src_byte_offset=*/4,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> updated_buffer,
+      delayed_target->UpdateSlice(gather, delayed_slice.get()));
+
+  Future<> ready_future = updated_buffer->GetReadyFuture();
+  EXPECT_FALSE(ready_future.IsReady());
+
+  slice_promise.Set();
+  EXPECT_FALSE(ready_future.IsReady());
+
+  target_promise.Set();
+  EXPECT_THAT(ready_future.Await(), ::absl_testing::IsOk());
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       updated_buffer->ToLiteral().Await());
+  EXPECT_EQ(*out_literal, LiteralUtil::CreateR1<int32_t>({10, 77, 88, 40}));
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceControlDependencyError) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  StridedGather::Spec spec = {
+      /*element_size=*/4,
+      /*counts=*/{1},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/8,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather gather(spec);
+
+  // Case 1: Target buffer dependency transitions to error.
+  {
+    Literal target_literal = LiteralUtil::CreateR1<int32_t>({1, 2});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> target_buffer,
+        client->BufferFromHostLiteral(target_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+    Literal slice_literal = LiteralUtil::CreateR1<int32_t>({99});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> slice_buffer,
+        client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+
+    auto [promise, future] = MakePromise<>();
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> delayed_target,
+                         target_buffer->DonateWithControlDependency(future));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> updated_buffer,
+        delayed_target->UpdateSlice(gather, slice_buffer.get()));
+
+    promise.Set(absl::InternalError("target dependency failed"));
+    EXPECT_THAT(updated_buffer->GetReadyFuture().Await(),
+                ::absl_testing::StatusIs(
+                    absl::StatusCode::kInternal,
+                    ::testing::HasSubstr("target dependency failed")));
+  }
+
+  // Case 2: Slice buffer dependency transitions to error.
+  {
+    Literal target_literal = LiteralUtil::CreateR1<int32_t>({1, 2});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> target_buffer,
+        client->BufferFromHostLiteral(target_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+    Literal slice_literal = LiteralUtil::CreateR1<int32_t>({99});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> slice_buffer,
+        client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+
+    auto [promise, future] = MakePromise<>();
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> delayed_slice,
+                         slice_buffer->DonateWithControlDependency(future));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> updated_buffer,
+        target_buffer->UpdateSlice(gather, delayed_slice.get()));
+
+    promise.Set(absl::InternalError("slice dependency failed"));
+    EXPECT_THAT(updated_buffer->GetReadyFuture().Await(),
+                ::absl_testing::StatusIs(
+                    absl::StatusCode::kInternal,
+                    ::testing::HasSubstr("slice dependency failed")));
+  }
+}
+
+TEST(PjRtCpuClientTest, PjRtBufferUpdateSliceInvalidArgument) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetPjRtCpuClient(CpuClientOptions()));
+  PjRtDevice* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * pinned_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  Literal target_literal = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> target_buffer,
+      client->BufferFromHostLiteral(target_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  Literal slice_literal = LiteralUtil::CreateR1<int32_t>({99});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> slice_buffer,
+      client->BufferFromHostLiteral(slice_literal, pinned_space,
+                                    /*device_layout=*/nullptr));
+
+  StridedGather::Spec valid_spec = {
+      /*element_size=*/4,
+      /*counts=*/{1},
+      /*src_byte_offset=*/0,
+      /*src_byte_size=*/16,
+      /*src_byte_strides=*/{4},
+  };
+  StridedGather valid_gather(valid_spec);
+
+  // Case 1: slice == nullptr.
+  EXPECT_THAT(target_buffer->UpdateSlice(valid_gather, nullptr),
+              ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Case 2: slice == this.
+  EXPECT_THAT(target_buffer->UpdateSlice(valid_gather, target_buffer.get()),
+              ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+
+  // Case 3a: src_byte_size exceeds target buffer size (32 > 16).
+  {
+    StridedGather::Spec out_of_bounds_spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/32,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather out_of_bounds_gather(out_of_bounds_spec);
+    EXPECT_THAT(
+        target_buffer->UpdateSlice(out_of_bounds_gather, slice_buffer.get()),
+        ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 3b: max accessed byte offset exceeds target buffer size (20 > 16).
+  {
+    StridedGather::Spec out_of_bounds_spec = {
+        /*element_size=*/4,
+        /*counts=*/{1},
+        /*src_byte_offset=*/16,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather out_of_bounds_gather(out_of_bounds_spec);
+    EXPECT_THAT(
+        target_buffer->UpdateSlice(out_of_bounds_gather, slice_buffer.get()),
+        ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 4: slice byte size does not match gather slice size (4 != 8).
+  {
+    StridedGather::Spec mismatched_spec = {
+        /*element_size=*/4,
+        /*counts=*/{2},
+        /*src_byte_offset=*/0,
+        /*src_byte_size=*/16,
+        /*src_byte_strides=*/{4},
+    };
+    StridedGather mismatched_gather(mismatched_spec);
+    EXPECT_THAT(
+        target_buffer->UpdateSlice(mismatched_gather, slice_buffer.get()),
+        ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+
+  // Case 5: Deleted slice buffer. Target buffer must remain usable and NOT
+  // donated.
+  {
+    Literal temp_slice_literal = LiteralUtil::CreateR1<int32_t>({88});
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtBuffer> temp_slice,
+        client->BufferFromHostLiteral(temp_slice_literal, pinned_space,
+                                      /*device_layout=*/nullptr));
+    temp_slice->Delete();
+
+    EXPECT_THAT(target_buffer->UpdateSlice(valid_gather, temp_slice.get()),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+    EXPECT_FALSE(target_buffer->IsDeleted());
+
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                         target_buffer->ToLiteral().Await());
+    EXPECT_EQ(*out_literal, LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4}));
+  }
+
+  // Case 6: Target buffer is deleted.
+  {
+    target_buffer->Delete();
+    EXPECT_THAT(target_buffer->UpdateSlice(valid_gather, slice_buffer.get()),
+                ::absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+}
+
+class CountingThreadPool : public Eigen::ThreadPoolInterface {
+ public:
+  explicit CountingThreadPool(int num_threads)
+      : pool_(tsl::Env::Default(), "CountingPool", num_threads) {}
+
+  void Schedule(std::function<void()> fn) override {
+    schedule_count_.fetch_add(1, std::memory_order_relaxed);
+    pool_.AsEigenThreadPool()->Schedule(std::move(fn));
+  }
+
+  void ScheduleWithHint(std::function<void()> fn, int start, int end) override {
+    schedule_count_.fetch_add(1, std::memory_order_relaxed);
+    pool_.AsEigenThreadPool()->ScheduleWithHint(std::move(fn), start, end);
+  }
+
+  void Cancel() override { pool_.AsEigenThreadPool()->Cancel(); }
+
+  int NumThreads() const override {
+    return pool_.AsEigenThreadPool()->NumThreads();
+  }
+
+  int CurrentThreadId() const override {
+    return pool_.AsEigenThreadPool()->CurrentThreadId();
+  }
+
+  int schedule_count() const {
+    return schedule_count_.load(std::memory_order_relaxed);
+  }
+
+ private:
+  tsl::thread::ThreadPool pool_;
+  std::atomic<int> schedule_count_{0};
+};
+
+TEST(PjRtCpuClientTest, CustomIntraOpThreadPoolInClientOptions) {
+  static constexpr char kProgram[] = R"hlo(
+HloModule ParallelElementwise
+ENTRY main {
+  p0 = f32[65536] parameter(0)
+  m1 = f32[65536] multiply(p0, p0)
+  m2 = f32[65536] multiply(m1, p0)
+  m3 = f32[65536] multiply(m2, p0)
+  m4 = f32[65536] multiply(m3, p0)
+  m5 = f32[65536] multiply(m4, p0)
+  m6 = f32[65536] multiply(m5, p0)
+  m7 = f32[65536] multiply(m6, p0)
+  m8 = f32[65536] multiply(m7, p0)
+  ROOT m9 = f32[65536] add(m8, p0)
+}
+)hlo";
+
+  CountingThreadPool custom_pool(4);
+  Eigen::ThreadPoolDevice custom_device(&custom_pool, custom_pool.NumThreads());
+
+  CpuClientOptions options;
+  options.asynchronous = false;
+  options.intra_op_device = &custom_device;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetXlaPjrtCpuClient(options));
+
+  auto* raw_client = absl::down_cast<PjRtCpuRawClient*>(
+      absl::down_cast<CommonPjRtClient*>(client.get())->raw_client());
+  EXPECT_EQ(raw_client->eigen_intraop_device(), &custom_device);
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {65536});
+  std::vector<float> input_data(65536, 1.0f);
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> input_buffer,
+      client->BufferFromHostBuffer(
+          input_data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          memory_space, /*device_layout=*/nullptr));
+
+  EXPECT_EQ(custom_pool.schedule_count(), 0);
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+      executable->Execute({{input_buffer.get()}}, /*options=*/{}));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out_literal,
+                       result[0][0]->ToLiteral().Await());
+  EXPECT_GT(custom_pool.schedule_count(), 0);
+  EXPECT_FLOAT_EQ(out_literal->Get<float>({0}), 2.0f);
+}
+
+TEST(PjRtCpuClientTest, CustomIntraOpThreadPoolInExecuteContext) {
+  static constexpr char kProgram[] = R"hlo(
+HloModule ParallelElementwise
+ENTRY main {
+  p0 = f32[65536] parameter(0)
+  m1 = f32[65536] multiply(p0, p0)
+  m2 = f32[65536] multiply(m1, p0)
+  m3 = f32[65536] multiply(m2, p0)
+  m4 = f32[65536] multiply(m3, p0)
+  m5 = f32[65536] multiply(m4, p0)
+  m6 = f32[65536] multiply(m5, p0)
+  m7 = f32[65536] multiply(m6, p0)
+  m8 = f32[65536] multiply(m7, p0)
+  ROOT m9 = f32[65536] add(m8, p0)
+}
+)hlo";
+
+  CountingThreadPool client_pool(4);
+  Eigen::ThreadPoolDevice client_device(&client_pool, client_pool.NumThreads());
+  CountingThreadPool override_pool(4);
+  Eigen::ThreadPoolDevice override_device(&override_pool,
+                                          override_pool.NumThreads());
+
+  CpuClientOptions options;
+  options.asynchronous = false;
+  options.intra_op_device = &client_device;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetXlaPjrtCpuClient(options));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {65536});
+  std::vector<float> input_data(65536, 1.0f);
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> input_buffer,
+      client->BufferFromHostBuffer(
+          input_data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          memory_space, /*device_layout=*/nullptr));
+
+  // Execute with an override intra-op thread pool in CpuExecuteContext.
+  CpuExecuteContext execute_context;
+  execute_context.set_intra_op_thread_pool(&override_device);
+  ExecuteOptions execute_options;
+  execute_options.context = &execute_context;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> override_result,
+      executable->Execute({{input_buffer.get()}}, execute_options));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> override_literal,
+                       override_result[0][0]->ToLiteral().Await());
+  EXPECT_GT(override_pool.schedule_count(), 0);
+  EXPECT_EQ(client_pool.schedule_count(), 0);
+  EXPECT_FLOAT_EQ(override_literal->Get<float>({0}), 2.0f);
+
+  // Execute with an unset intra-op thread pool in CpuExecuteContext; execution
+  // should fall back to the client's intra-op device.
+  int override_count_before = override_pool.schedule_count();
+  CpuExecuteContext empty_context;
+  execute_options.context = &empty_context;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> fallback_result,
+      executable->Execute({{input_buffer.get()}}, execute_options));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> fallback_literal,
+                       fallback_result[0][0]->ToLiteral().Await());
+  EXPECT_EQ(override_pool.schedule_count(), override_count_before);
+  EXPECT_GT(client_pool.schedule_count(), 0);
+  EXPECT_FLOAT_EQ(fallback_literal->Get<float>({0}), 2.0f);
+
+  // Execute with a single-threaded Eigen::ThreadPoolDevice (getPool() ==
+  // nullptr); execution should run inline without dereferencing a null pool.
+  int client_count_before = client_pool.schedule_count();
+  Eigen::ThreadPoolDevice single_thread_device(/*pool=*/nullptr,
+                                               /*num_cores=*/1);
+  CpuExecuteContext single_thread_context;
+  single_thread_context.set_intra_op_thread_pool(&single_thread_device);
+  execute_options.context = &single_thread_context;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> single_result,
+      executable->Execute({{input_buffer.get()}}, execute_options));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> single_literal,
+                       single_result[0][0]->ToLiteral().Await());
+  EXPECT_EQ(override_pool.schedule_count(), override_count_before);
+  EXPECT_EQ(client_pool.schedule_count(), client_count_before);
+  EXPECT_FLOAT_EQ(single_literal->Get<float>({0}), 2.0f);
 }
 
 }  // namespace

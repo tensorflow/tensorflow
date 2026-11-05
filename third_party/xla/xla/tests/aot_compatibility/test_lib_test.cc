@@ -299,6 +299,116 @@ TEST(TestLibTest, CompareGPUExecutables_IgnoresBufferAssignmentFields) {
   EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
 }
 
+TEST(TestLibTest, CompareGPUExecutables_IgnoresOnlyCollectiveKernelCubin) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      thunks {
+        collective_kernel_thunk {
+          kernel_name: "collective_kernel"
+          shmem_bytes: 64
+          cubin: "golden_cubin"
+        }
+      }
+    }
+  )pb");
+  auto fresh_cubin = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      thunks {
+        collective_kernel_thunk {
+          kernel_name: "collective_kernel"
+          shmem_bytes: 64
+          cubin: "fresh_cubin_that_should_be_ignored"
+        }
+      }
+    }
+  )pb");
+  EXPECT_OK(
+      AOTInterceptionPjrtClient::CompareGPUExecutables(fresh_cubin, golden));
+
+  // Fields next to the cubin that the runtime acts on are still compared.
+  auto fresh_shmem = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      thunks {
+        collective_kernel_thunk {
+          kernel_name: "collective_kernel"
+          shmem_bytes: 128
+          cubin: "golden_cubin"
+        }
+      }
+    }
+  )pb");
+  EXPECT_THAT(
+      AOTInterceptionPjrtClient::CompareGPUExecutables(fresh_shmem, golden),
+      StatusIs(absl::StatusCode::kInternal, HasSubstr("shmem_bytes")));
+}
+
+TEST(TestLibTest, CompareGPUExecutables_IgnoresHloModule) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        hlo_module {
+          name: "golden_module"
+          frontend_attributes {
+            map { key: "fingerprint_before_lhs" value: "golden_fingerprint" }
+          }
+          computations {
+            name: "golden_computation"
+            instructions { name: "bitcast" opcode: "bitcast" }
+          }
+        }
+      }
+    }
+  )pb");
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        hlo_module {
+          name: "fresh_module"
+          frontend_attributes {
+            map { key: "fingerprint_before_lhs" value: "fresh_fingerprint" }
+          }
+          computations {
+            name: "fresh_computation"
+            instructions { name: "fusion-start" opcode: "async-start" }
+          }
+        }
+      }
+    }
+  )pb");
+  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
+}
+
+// Ignoring the HLO module must not hide a runtime debug option that differs in
+// the module config next to it, and must keep the HLO out of the report.
+TEST(TestLibTest,
+     CompareGPUExecutables_DetectsModuleConfigDifferenceNextToHloModule) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        hlo_module { name: "golden_module" }
+        config { debug_options { xla_gpu_detect_nan: DETECTION_MODE_WARNING } }
+      }
+    }
+  )pb");
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        hlo_module { name: "fresh_module" }
+        config { debug_options { xla_gpu_detect_nan: DETECTION_MODE_FAIL } }
+      }
+    }
+  )pb");
+  EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden),
+              StatusIs(absl::StatusCode::kInternal,
+                       AllOf(HasSubstr("xla_gpu_detect_nan"),
+                             Not(HasSubstr("golden_module")),
+                             Not(HasSubstr("fresh_module")))));
+}
+
 // Where in the executable a copy of the debug options lives. Both copies must
 // be compared, except for the fields the comparator ignores.
 enum class DebugOptionsCopy { kModuleConfig, kCompileOptions };

@@ -264,6 +264,29 @@ class BinaryOpsTest(xla_test.XLATestCase):
             rtol=1e-4,
             atol=1e-6)
 
+  def testUnaryGradOpsWithZeroUpstreamGradient(self):
+    for dtype in self.float_types | self.complex_types:
+      y = np.array([0, np.inf, np.nan, 4], dtype=dtype)
+      dy = np.array([0, 0, 0, 5], dtype=dtype)
+      self._testBinary(
+          gen_math_ops.reciprocal_grad,
+          y,
+          dy,
+          expected=np.array([0, 0, 0, -80], dtype=dtype),
+      )
+      self._testBinary(
+          gen_math_ops.rsqrt_grad,
+          y,
+          dy,
+          expected=np.array([0, 0, 0, -160], dtype=dtype),
+      )
+      self._testBinary(
+          gen_math_ops.sqrt_grad,
+          y,
+          dy,
+          expected=np.array([0, 0, 0, 0.625], dtype=dtype),
+      )
+
   def testIntOps(self):
     for dtype in self.signed_int_types:
       self._testBinary(
@@ -390,6 +413,68 @@ class BinaryOpsTest(xla_test.XLATestCase):
           dtype(4),
           expected=np.array([[16], [81]], dtype=dtype),
           rtol=rtol)
+
+  def testIntegerPowWithConstantExponent(self):
+    for dtype in self.signed_int_types:
+
+      def run_pow(x, exponent, shape=None, dtype=dtype):
+
+        @def_function.function(jit_compile=True)
+        def pow_with_exponent(x):
+          return math_ops.pow(x, constant_op.constant(exponent, dtype=dtype))
+
+        with self.session() as sess:
+          with self.device_scope():
+            px = array_ops.placeholder(
+                dtype, shape=np.shape(x) if shape is None else shape
+            )
+            output = pow_with_exponent(px)
+          return sess.run(output, {px: np.array(x, dtype=dtype)})
+
+      with self.subTest(dtype=dtype):
+        x = [-2, 3, 1, -1]
+        for base in (x, 2):
+          for exponent in (-1, -3, [2, -1, 2, 2]):
+            with self.assertRaisesRegex(
+                errors.InvalidArgumentError,
+                "Integers to negative integer powers are not allowed",
+            ):
+              run_pow(base, exponent)
+
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            r"Incompatible shapes: \[2\] vs\. \[3\]",
+        ):
+          run_pow([2, 3], [-1, -1, -1], shape=[None])
+
+        self.assertAllEqual(run_pow(x, [0, 1, 2, 3]), [1, 3, 1, -1])
+        self.assertAllEqual(run_pow(x, 2), [4, 9, 1, 1])
+        # Like the TF kernels, an empty result doesn't check the exponent.
+        self.assertAllEqual(run_pow(np.zeros([0]), -1), np.zeros([0]))
+        self.assertAllEqual(run_pow(np.zeros([3, 0]), [[-1]]), np.zeros([3, 0]))
+
+        if "GPU" not in self.device and "TPU" not in self.device:
+
+          @def_function.function(jit_compile=True)
+          def pow_dynamic_empty(a, mask):
+            empty = array_ops.boolean_mask(a, mask)
+            return math_ops.pow(empty, constant_op.constant(-1, dtype=dtype))
+
+          with self.session() as sess:
+            with self.device_scope():
+              pa = array_ops.placeholder(dtype, shape=[2])
+              pmask = array_ops.placeholder(dtypes.bool, shape=[2])
+              dyn_out = pow_dynamic_empty(pa, pmask)
+            self.assertAllEqual(
+                sess.run(
+                    dyn_out,
+                    {
+                        pa: np.array([2, 3], dtype=dtype),
+                        pmask: np.array([False, False]),
+                    },
+                ),
+                np.zeros([0], dtype=dtype),
+            )
 
   def testNumericOps(self):
     for dtype in self.numeric_types:
@@ -1950,6 +2035,34 @@ class BinaryOpsTest(xla_test.XLATestCase):
       )
     self.assertAllClose(result, [[1.0, 2.0]] * 3)
 
+  def testDynamicDimensionLongerThanStaticOne(self):
+    # TensorFlow rejects these shapes, but XLA can't check them at run time,
+    # so the dynamic dimension is cut to the static size of the other operand.
+    @def_function.function(jit_compile=True)
+    def f(x, y):
+      y = array_ops.boolean_mask(y, y > 0)
+      return math_ops.subtract(x, y), math_ops.subtract(y, x)
+
+    with self.session() as session:
+      with self.device_scope():
+        x = array_ops.placeholder(dtypes.float32, shape=[4])
+        y = array_ops.placeholder(dtypes.float32, shape=[4096])
+        output = f(x, y)
+      # Run it several times, since writing past an output's buffer may only
+      # corrupt later allocations.
+      for _ in range(10):
+        result = session.run(
+            output,
+            {
+                x: [10.0, 20.0, 30.0, 40.0],
+                y: np.arange(1, 4097, dtype=np.float32),
+            },
+        )
+        self.assertAllClose(
+            result,
+            ([9.0, 18.0, 27.0, 36.0], [-9.0, -18.0, -27.0, -36.0]),
+        )
+
   def testMulGradientOnBoundedDynamicDimension(self):
     # tf.slice(x, [0], [n]), where n is itself only known at runtime, has an
     # output size that's bounded by x's static shape but not statically
@@ -1975,6 +2088,45 @@ class BinaryOpsTest(xla_test.XLATestCase):
           },
       )
     self.assertAllClose(result, [1.0, -2.0, 0.0, 0.0, 0.0])
+
+  def testRealDivRejectsIntTypes(self):
+    jit_real_div = def_function.function(
+        gen_math_ops.real_div, jit_compile=True
+    )
+
+    for dtype in self.int_types:
+      with self.subTest(dtype=dtype):
+        with self.session() as sess, self.device_scope():
+          x = array_ops.placeholder(dtype, shape=[2])
+          y = array_ops.placeholder(dtype, shape=[2])
+          out = gen_math_ops.real_div(x, y)
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              "No OpKernel was registered to support Op 'RealDiv'",
+          ):
+            sess.run(
+                out,
+                feed_dict={
+                    x: np.array([3, 5], dtype=dtype),
+                    y: np.array([2, 2], dtype=dtype),
+                },
+            )
+
+        with self.session() as sess, self.device_scope():
+          x = array_ops.placeholder(dtype, shape=[2])
+          y = array_ops.placeholder(dtype, shape=[2])
+          out = jit_real_div(x, y)
+          with self.assertRaisesRegex(
+              errors.InvalidArgumentError,
+              r"No registered 'RealDiv' OpKernel",
+          ):
+            sess.run(
+                out,
+                feed_dict={
+                    x: np.array([3, 5], dtype=dtype),
+                    y: np.array([2, 2], dtype=dtype),
+                },
+            )
 
 
 if __name__ == "__main__":

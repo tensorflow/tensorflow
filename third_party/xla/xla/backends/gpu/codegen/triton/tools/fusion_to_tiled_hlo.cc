@@ -34,8 +34,8 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/tiling_from_block_parameters.h"
 #include "xla/debug_options_flags.h"
@@ -53,8 +53,8 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using ::xla::gpu::experimental::TiledHloComputation;
-using ::xla::gpu::experimental::TilingSpace;
+using ::xla::gpu::TiledHloComputation;
+using ::xla::gpu::TilingSpace;
 using ::xla::xtile::BlockLevelParameters;
 
 absl::StatusOr<llvm::SmallVector<int64_t>> ParseTileSizes(

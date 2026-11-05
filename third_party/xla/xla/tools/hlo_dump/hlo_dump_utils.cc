@@ -246,6 +246,8 @@ std::string SerializeGraphDataCompressed(const GraphData& data) {
     tsl::core::PutFixed64(&binary_data, anchor_id);
     tsl::core::PutFixed16(&binary_data, key_len);
     binary_data.append(node.key.data(), key_len);
+    tsl::core::PutFixed16(&binary_data, node.execution_thread.size());
+    binary_data.append(node.execution_thread);
   }
 
   tsl::core::PutFixed32(&binary_data, data.edges.size());
@@ -1292,7 +1294,9 @@ PopulateTensorVisualizations(const HloModule& module,
 
   absl::flat_hash_map<std::string, const MismatchDetails*> instr_to_mismatch;
   for (const MismatchDetails& mismatch : mismatches) {
-    instr_to_mismatch[mismatch.target_instruction_name] = &mismatch;
+    if (!mismatch.verified_match) {
+      instr_to_mismatch[mismatch.target_instruction_name] = &mismatch;
+    }
   }
 
   for (const HloComputation* comp : module.computations()) {
@@ -1387,6 +1391,9 @@ PopulateTensorVisualizations(const HloModule& module,
   }
 
   for (const MismatchDetails& mismatch : mismatches) {
+    if (mismatch.verified_match) {
+      continue;
+    }
     auto [it, inserted] =
         visualizations.try_emplace(mismatch.target_instruction_name);
     if (inserted) {
@@ -1740,6 +1747,10 @@ absl::flat_hash_map<TensorKey, TensorAnnotation> PopulateMismatchAnnotations(
           *mismatch.percentage_of_elems_exceeding_both_errors == 0.0) ||
          (mismatch.diff_score.has_value() && *mismatch.diff_score == 0.0));
     ann.background_color = is_zero_both_errors ? "lightgreen" : "pink";
+    if (mismatch.verified_match) {
+      annotations[key] = std::move(ann);
+      continue;
+    }
 
     std::vector<std::string> tooltip_parts;
     tooltip_parts.push_back("<b>Numeric Mismatch:</b>");
@@ -1799,8 +1810,9 @@ GraphData PopulateMismatchGraphData(
     double unverified_diff_score) {
   GraphData graph_data;
 
+  // A fusion or async-start names the box around the computation it calls.
   absl::flat_hash_map<const HloComputation*, const HloInstruction*>
-      comp_to_fusion;
+      comp_to_scope;
   std::vector<const HloInstruction*> all_instructions;
   absl::flat_hash_set<const HloInstruction*> valid_instrs;
 
@@ -1811,7 +1823,9 @@ GraphData PopulateMismatchGraphData(
     for (const HloInstruction* instr : instrs) {
       valid_instrs.insert(instr);
       if (instr->opcode() == HloOpcode::kFusion) {
-        comp_to_fusion[instr->fused_instructions_computation()] = instr;
+        comp_to_scope[instr->fused_instructions_computation()] = instr;
+      } else if (instr->opcode() == HloOpcode::kAsyncStart) {
+        comp_to_scope[instr->async_wrapped_computation()] = instr;
       }
     }
   }
@@ -1864,12 +1878,22 @@ GraphData PopulateMismatchGraphData(
       suppliers.push_back(
           instr->fused_instructions_computation()->root_instruction());
     } else if (instr->opcode() == HloOpcode::kParameter) {
-      auto it = comp_to_fusion.find(instr->parent());
-      if (it != comp_to_fusion.end()) {
-        const HloInstruction* fusion = it->second;
-        if (instr->parameter_number() < fusion->operand_count()) {
-          suppliers.push_back(fusion->operand(instr->parameter_number()));
+      auto it = comp_to_scope.find(instr->parent());
+      if (it != comp_to_scope.end()) {
+        const HloInstruction* caller = it->second;
+        if (caller->opcode() == HloOpcode::kAsyncStart) {
+          // The async-start launches its computation.
+          suppliers.push_back(caller);
+        } else if (instr->parameter_number() < caller->operand_count()) {
+          suppliers.push_back(caller->operand(instr->parameter_number()));
         }
+      }
+    } else if (instr->opcode() == HloOpcode::kAsyncDone) {
+      // The async-done waits on its computation, not directly on the start.
+      suppliers.push_back(
+          instr->async_wrapped_computation()->root_instruction());
+      if (instr->operand(0)->opcode() != HloOpcode::kAsyncStart) {
+        suppliers.push_back(instr->operand(0));
       }
     } else {
       suppliers.assign(instr->operands().begin(), instr->operands().end());
@@ -1913,24 +1937,40 @@ GraphData PopulateMismatchGraphData(
     std::vector<std::string> scopes;
     const HloComputation* cur_comp = instr->parent();
     while (true) {
-      auto it = comp_to_fusion.find(cur_comp);
-      if (it == comp_to_fusion.end()) {
+      auto it = comp_to_scope.find(cur_comp);
+      if (it == comp_to_scope.end()) {
         break;
       }
-      const HloInstruction* fusion = it->second;
-      scopes.push_back(std::string(fusion->name()));
-      cur_comp = fusion->parent();
+      const HloInstruction* scope = it->second;
+      scopes.push_back(std::string(scope->name()));
+      cur_comp = scope->parent();
     }
     std::reverse(scopes.begin(), scopes.end());
     scopes.push_back(std::string(instr->name()));
     std::string key = absl::StrJoin(scopes, "/");
 
-    graph_data.nodes.push_back(GraphNode{/*id=*/id,
-                                         /*x=*/x,
-                                         /*y=*/y,
-                                         /*diff_score=*/score,
-                                         /*key=*/key,
-                                         /*anchor_id=*/id});
+    // Fused computations need not carry a thread, so take their caller's.
+    const HloComputation* comp = instr->parent();
+    // NOLINTNEXTLINE
+    for (auto it = comp_to_scope.find(comp);
+         it != comp_to_scope.end() &&
+         it->second->opcode() == HloOpcode::kFusion;
+         it = comp_to_scope.find(comp)) {
+      comp = it->second->parent();
+    }
+    std::string execution_thread;
+    if (comp->execution_thread() != HloInstruction::kMainExecutionThread) {
+      execution_thread = comp->execution_thread();
+    }
+
+    graph_data.nodes.push_back(
+        GraphNode{/*id=*/id,
+                  /*x=*/x,
+                  /*y=*/y,
+                  /*diff_score=*/score,
+                  /*key=*/key,
+                  /*anchor_id=*/id,
+                  /*execution_thread=*/execution_thread});
 
     for (const HloInstruction* sup : get_suppliers(instr)) {
       if (valid_instrs.contains(sup)) {

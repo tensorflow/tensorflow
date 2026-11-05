@@ -18,10 +18,12 @@ import itertools
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -695,6 +697,38 @@ class MatrixSetDiagTest(test.TestCase):
                 input_mat, vecs, k=diags, align=align)
             self.assertEqual(output.get_shape(), solution.shape)
             self.assertAllEqual(output, solution)
+
+  def testBandWithUnknownDimensions(self):
+    # Shape inference first runs before it has k's value, and with the input's
+    # dimensions not all known, it took a band's diagonals for a single
+    # diagonal's and failed with "Shapes must be equal rank".
+    x = np.arange(1, 17, dtype=np.int32).reshape(4, 4)
+    diagonals = np.array([[90, 91, 92, 93], [80, 81, 82, 83]], dtype=np.int32)
+    for input_shape, diag_shape, x, diagonals in (
+        ([None, 4], [2, None], x, diagonals),
+        (
+            [None, None, 4],
+            [None, 2, None],
+            np.stack([x, -x]),
+            np.stack([diagonals, -diagonals]),
+        ),
+    ):
+      set_band = def_function.function(
+          lambda x, diagonals: array_ops.matrix_set_diag(
+              x, diagonals, k=(-1, 0)
+          ),
+          input_signature=[
+              tensor_spec.TensorSpec(input_shape, dtypes_lib.int32),
+              tensor_spec.TensorSpec(diag_shape, dtypes_lib.int32),
+          ],
+      )
+      self.assertEqual(
+          set_band.get_concrete_function().output_shapes.as_list(), input_shape
+      )
+      self.assertAllEqual(
+          set_band(x, diagonals),
+          array_ops.matrix_set_diag(x, diagonals, k=(-1, 0)),
+      )
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):

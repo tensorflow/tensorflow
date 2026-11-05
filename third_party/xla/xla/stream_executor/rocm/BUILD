@@ -411,7 +411,6 @@ xla_cc_test(
         ":rocm_runtime_abi_version",
         "//xla/stream_executor/abi:executable_abi_version",
         "//xla/stream_executor/abi:executable_abi_version_proto_cc",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
@@ -441,6 +440,16 @@ alias(
 # Backend implementing the SMI queries declared in smi_util.h. Exactly one
 # is compiled in, matching the library :smi resolves to.
 _SMI_BACKEND_SRCS = ["smi_util_amd_smi.cc"] if _USE_AMD_SMI else ["smi_util_rocm_smi.cc"]
+
+# Keeps the label of the backend not compiled in resolvable, for tools that
+# query changed files, such as build_tools/ci/run_clang_tidy.sh.
+exports_files(
+    [
+        "smi_util_amd_smi.cc",
+        "smi_util_rocm_smi.cc",
+    ],
+    visibility = ["//visibility:private"],
+)
 
 cc_library(
     name = "smi_util",
@@ -712,8 +721,6 @@ cc_library(
         "@local_config_rocm//rocm:hipsolver",
     ]) + [
         ":rocm_executor",
-        ":rocm_platform_id",
-        "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = True,
@@ -731,10 +738,7 @@ cc_library(
         "@local_config_rocm//rocm:hipsparse",
     ]) + [
         ":rocm_executor",
-        ":rocm_platform_id",
-        "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:rocm_headers",
-        "@tsl//tsl/platform",
     ],
     alwayslink = True,
 )
@@ -767,8 +771,6 @@ cc_library(
         "@local_config_rocm//rocm:rocsolver",
     ]) + [
         ":rocm_executor",
-        ":rocm_platform_id",
-        "//xla/tsl/platform:env",
         "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = True,
@@ -1328,7 +1330,7 @@ rocm_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep (hip headers needed by hipcc in OSS ROCm builds)
     ],
     alwayslink = 1,
 )
@@ -1347,7 +1349,7 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:make_batch_pointers_kernel",
         "@com_google_absl//absl/base",
-        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep (hip headers needed by hipcc in OSS ROCm builds)
     ],
     alwayslink = 1,
 )
@@ -1369,7 +1371,7 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
         "@com_google_absl//absl/base",
-        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep (hip headers needed by hipcc in OSS ROCm builds)
     ],
     alwayslink = 1,
 )
@@ -1426,6 +1428,7 @@ cc_library(
         "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
+        "//xla/service/gpu:cublas_cudnn",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
@@ -1534,7 +1537,7 @@ rocm_library(
         "//xla/stream_executor/gpu:topk_kernel",
         "//xla/tsl/lib/math:math_util",
         "@com_google_absl//absl/base",
-        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep (hip headers needed by hipcc in OSS ROCm builds)
     ],
     alwayslink = 1,
 )
@@ -1555,7 +1558,7 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:repeat_buffer_kernel",
-        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep (hip headers needed by hipcc in OSS ROCm builds)
     ],
     alwayslink = 1,
 )
@@ -1576,7 +1579,7 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:redzone_allocator_kernel",
-        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep (hip headers needed by hipcc in OSS ROCm builds)
     ],
     alwayslink = 1,
 )
@@ -1600,7 +1603,7 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:gpu_test_kernel_traits",
-        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep (hip headers needed by hipcc in OSS ROCm builds)
     ],
     alwayslink = 1,
 )
@@ -1812,6 +1815,7 @@ cc_library(
         ":rocm_raw_memory_allocation",
         ":rocm_status",
         "//xla/stream_executor:activate_context",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_address_vmm_allocator",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_reservation",

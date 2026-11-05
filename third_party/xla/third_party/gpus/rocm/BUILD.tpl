@@ -17,6 +17,8 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load("@config_rocm_hipcc//rocm:build_defs.bzl", "hipcc_config")
 load("@local_config_rocm//rocm:build_defs.bzl", "rocm_gpu_architectures", "rocm_lib_import", "rocm_version_number")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
@@ -530,10 +532,10 @@ filegroup(
             "%{rocm_root}/lib/rocm_sysdeps/lib/*.so*",
             "%{rocm_root}/lib/rocm_sysdeps/share/**",
         ],
+        allow_empty = True,
         exclude = [
             "%{rocm_root}/lib/rocm_sysdeps/share/terminfo/**",
         ],
-        allow_empty = True,
     ),
 )
 
@@ -572,8 +574,8 @@ cc_library(
     ),
     data = [":system_libs_data"],
     linkopts = ["-ldrm"] if _USE_HOST_SYSDEPS else [],
-    deps = [":system_libs"],
     visibility = ["//visibility:public"],
+    deps = [":system_libs"],
 )
 
 cc_library(
@@ -584,8 +586,8 @@ cc_library(
     ),
     data = [":system_libs_data"],
     linkopts = ["-ldrm_amdgpu"] if _USE_HOST_SYSDEPS else [],
-    deps = [":system_libs"],
     visibility = ["//visibility:public"],
+    deps = [":system_libs"],
 )
 
 cc_library(
@@ -596,8 +598,8 @@ cc_library(
     ),
     data = [":system_libs_data"],
     linkopts = ["-lnuma"] if _USE_HOST_SYSDEPS else [],
-    deps = [":system_libs"],
     visibility = ["//visibility:public"],
+    deps = [":system_libs"],
 )
 
 filegroup(
@@ -639,6 +641,19 @@ platform(
     ],
     exec_properties = {
         "container-image": "docker://%{rocm_rbe_docker_image}",
+        "Pool": "%{rocm_rbe_pool}",
+        "OSFamily": "Linux",
+    },
+)
+
+platform(
+    name = "linux_x64_bb",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+        "@bazel_tools//tools/cpp:clang",
+    ],
+    exec_properties = {
         "Pool": "%{rocm_rbe_pool}",
         "OSFamily": "Linux",
     },

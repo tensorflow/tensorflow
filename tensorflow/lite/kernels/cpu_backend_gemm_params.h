@@ -252,7 +252,7 @@ bool IsValidGemm(const MatrixParams<LhsScalar>& lhs_params,
   valid &= dst_params.cols >= 1;
   valid &= lhs_params.cols == rhs_params.rows;
   valid &= rhs_params.cols == dst_params.cols;
-  valid &= lhs_params.rows == lhs_params.rows;
+  valid &= lhs_params.rows == dst_params.rows;
   return valid;
 }
 

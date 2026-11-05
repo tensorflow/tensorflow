@@ -471,7 +471,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
       (amount + right_padding) % (shard_size * participating_shards));
   HloInstruction* shard_offset = MakePartitionOffsets(
       hlo->shape(), hlo->sharding(), MakePartitioningState().partition_id, &b_,
-      {dim})[dim];
+      S32, {dim})[dim];
   HloInstruction* iota = b_.AddInstruction(HloInstruction::CreateIota(
       ShapeUtil::ChangeElementType(rotated0->shape(), S32), dim));
   HloInstruction* selection_boundary =
@@ -682,7 +682,7 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
   single_element_per_device_shape.set_dimensions(dim, participating_shards);
   HloInstruction* shard_offset = MakePartitionOffsets(
       single_element_per_device_shape, element_sharding,
-      MakePartitioningState().partition_id, &b_, {dim})[dim];
+      MakePartitioningState().partition_id, &b_, S32, {dim})[dim];
 
   HloInstruction* zero_offset = b_.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
@@ -1345,6 +1345,27 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       return instr;
     });
     return absl::OkStatus();
+  }
+
+  if (hlo->custom_call_target() == "compute-on-start") {
+    std::vector<HloInstruction*> call_args;
+    call_args.reserve(hlo->operand_count());
+    for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+      call_args.push_back(GetPartitionedHlo(hlo->operand(i)).hlo());
+    }
+    SetPartitionedHlo(hlo, [&] {
+      auto* custom_call = b_.AddInstruction(hlo->CloneWithNewOperands(
+          MakePartitionedShape(hlo->shape(), hlo->sharding()), call_args));
+      custom_call->set_raw_backend_config_string(
+          hlo->raw_backend_config_string());
+      custom_call->set_frontend_attributes(hlo->frontend_attributes());
+      return custom_call;
+    });
+    return absl::OkStatus();
+  }
+
+  if (hlo->custom_call_target() == "compute-on-done") {
+    return HandleElementwise(hlo);
   }
 
   if (hlo->custom_call_target() == "TopK") {

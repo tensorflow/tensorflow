@@ -132,15 +132,19 @@ OriginalTensorSummaryComparator::Create(
           ShapeUtil::GetLeafCount(instr->shape());
     }
   }
+  // Moved instructions are unchanged themselves but used differently, so they
+  // count as unchanged and are compared too.
   creation_metrics.unchanged_tensor_pair_count =
-      diff_results.diff_result->unchanged_instructions.size();
+      diff_results.diff_result->unchanged_instructions.size() +
+      diff_results.diff_result->moved_instructions.size();
   creation_metrics.changed_tensor_pair_count =
       diff_results.diff_result->changed_instructions.size();
-  for (const auto& instructions :
-       {diff_results.diff_result->unchanged_instructions,
-        diff_results.diff_result->changed_instructions}) {
+  for (const auto* instructions :
+       {&diff_results.diff_result->unchanged_instructions,
+        &diff_results.diff_result->changed_instructions,
+        &diff_results.diff_result->moved_instructions}) {
     // NOLINTNEXTLINE
-    for (const auto& [baseline_inst, target_inst] : instructions) {
+    for (const auto& [baseline_inst, target_inst] : *instructions) {
       // It doesn't make sense to compare tensors with different shapes. So
       // we just ignore such cases.
       if (ShapeUtil::CompatibleIgnoringElementType(baseline_inst->shape(),

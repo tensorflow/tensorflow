@@ -16,8 +16,11 @@ limitations under the License.
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -34,6 +37,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/transforms/offloaded_instruction_wrapper.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
@@ -454,18 +461,12 @@ absl::StatusOr<bool> RemoveDevicePlacementAnnotationsFromHostComputations(
 
 /*static*/ absl::StatusOr<HloCallInstruction*>
 HloHostDeviceTypeCallWrapper::RemoveTupleParameters(HloCallInstruction* call) {
-  std::vector<HloInstruction*> new_call_operands;
   std::vector<int32_t> tuple_operand_indices;
-
-  // Add all non-tuple operands to the new call operands vector.
   for (int64_t call_operand_no = 0; call_operand_no < call->operand_count();
        ++call_operand_no) {
-    HloInstruction* operand_instr = call->mutable_operand(call_operand_no);
-    if (operand_instr->shape().IsTuple()) {
+    if (call->operand(call_operand_no)->shape().IsTuple()) {
       tuple_operand_indices.push_back(call_operand_no);
-      continue;
     }
-    new_call_operands.push_back(operand_instr);
   }
 
   if (tuple_operand_indices.empty()) {
@@ -474,6 +475,15 @@ HloHostDeviceTypeCallWrapper::RemoveTupleParameters(HloCallInstruction* call) {
   }
 
   HloComputation* called_computation = call->called_computation();
+  TF_RET_CHECK(call->operand_count() == called_computation->num_parameters())
+      << "Expected the number of operands of " << call->name()
+      << " to match the number of parameters of " << called_computation->name();
+
+  // The call operand feeding each parameter of the called computation, indexed
+  // by parameter number. Operands of the leaf parameters created below are
+  // appended to it.
+  std::vector<HloInstruction*> param_operands(call->operands().begin(),
+                                              call->operands().end());
 
   for (int32_t tuple_operand_index : tuple_operand_indices) {
     HloInstruction* tuple_operand_instr =
@@ -517,18 +527,47 @@ HloHostDeviceTypeCallWrapper::RemoveTupleParameters(HloCallInstruction* call) {
           ABSL_RETURN_IF_ERROR(
               called_comp_leaf_instr->ReplaceAllUsesWith(leaf_param));
 
-          new_call_operands.push_back(operand_tuple_element);
+          param_operands.push_back(operand_tuple_element);
 
           return absl::OkStatus();
         }));
   }
 
-  // Remove any unused tuple parameter gte instructions.
+  // Remove any unused tuple parameter gte instructions. Dead parameters are
+  // not removed here (no call graph is passed, so HloDCE cannot fix up the
+  // callers), which keeps `param_operands` indexed by parameter number.
   ABSL_RETURN_IF_ERROR(
       HloDCE().RunOnComputation(called_computation, false).status());
-  // Remove the tuple parameters that are no longer used.
+  TF_RET_CHECK(param_operands.size() == called_computation->num_parameters())
+      << "HloDCE unexpectedly changed the number of parameters of "
+      << called_computation->name();
+
+  // Keep only the operands of the parameters that are still used. Besides the
+  // tuple parameters, whose uses were replaced by the leaf parameters above,
+  // this also drops the operands of parameters that were already dead before
+  // this transformation (e.g., a constant argument whose uses inside the called
+  // computation were simplified away). Such parameters are removed below
+  // together with the tuple parameters, so keeping their operands would leave
+  // the call with more operands than the called computation has parameters.
+  std::vector<HloInstruction*> new_call_operands;
+  for (int64_t param_no = 0; param_no < called_computation->num_parameters();
+       ++param_no) {
+    const HloInstruction* param =
+        called_computation->parameter_instruction(param_no);
+    if (!param->IsDead()) {
+      TF_RET_CHECK(!param->shape().IsTuple())
+          << "Expected tuple parameter " << param->ToString() << " in "
+          << called_computation->name() << " to be dead after flattening";
+      new_call_operands.push_back(param_operands[param_no]);
+    }
+  }
+  // Remove the tuple parameters that are no longer used, as well as any other
+  // dead parameter.
   ABSL_RETURN_IF_ERROR(
       called_computation->RemoveUnusedParametersFromAnyComputation());
+  TF_RET_CHECK(new_call_operands.size() == called_computation->num_parameters())
+      << "Call operands are out of sync with the parameters of "
+      << called_computation->name();
 
   HloInstruction* new_call = call->parent()->AddInstruction(
       call->CloneWithNewOperands(call->shape(), new_call_operands));
@@ -632,7 +671,24 @@ absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
 
   ABSL_RETURN_IF_ERROR(
       AnnotateHostComputeOffload().Run(module, execution_threads).status());
-  ABSL_RETURN_IF_ERROR(CallInliner().Run(module, execution_threads).status());
+  std::optional<std::function<CallInliner::InlineOverridePolicy(
+      const CallGraph&, const HloInstruction*)>>
+      override_policy = std::nullopt;
+  if (options_.inline_only_host_computations) {
+    override_policy = [](const CallGraph& /*call_graph*/,
+                         const HloInstruction* instruction) {
+      if (host_offload_utils::ComputeTypeIsHost(instruction) ||
+          absl::c_any_of(instruction->to_apply()->instructions(),
+                         host_offload_utils::ComputeTypeIsHost)) {
+        return CallInliner::InlineOverridePolicy::kAllowInline;
+      }
+      return CallInliner::InlineOverridePolicy::kProhibitInline;
+    };
+  }
+  CallInliner call_inliner(
+      /*single_call_site=*/false, /*composites_to_preserve=*/{},
+      std::move(override_policy));
+  ABSL_RETURN_IF_ERROR(call_inliner.Run(module, execution_threads).status());
   ABSL_RETURN_IF_ERROR(TupleSimplifier().Run(module, execution_threads).status());
   ABSL_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
 
@@ -663,5 +719,28 @@ absl::StatusOr<bool> HloHostDeviceTypeCallWrapper::RunImpl(
 
   return true;
 }
+
+namespace {
+
+class HloHostDeviceTypeCallWrapperFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override {
+    return "hlo_host_device_type_call_wrapper";
+  }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext& context,
+      const HloPassOptions& options) const override {
+    ABSL_ASSIGN_OR_RETURN(
+        const HloHostDeviceTypeCallWrapper::Options& wrapper_options,
+        context.Get<const HloHostDeviceTypeCallWrapper::Options>());
+    return std::make_unique<HloHostDeviceTypeCallWrapper>(wrapper_options);
+  }
+};
+
+const HloPassFactory* const kHloHostDeviceTypeCallWrapperRegistration =
+    RegisterHloPassFactory<HloHostDeviceTypeCallWrapperFactory>();
+
+}  // namespace
 
 }  // namespace xla

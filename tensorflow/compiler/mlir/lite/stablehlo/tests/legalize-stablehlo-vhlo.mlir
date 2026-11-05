@@ -140,3 +140,28 @@ func.func @mixed_no_constant_folding() -> (tensor<f32>) {
   %0 = stablehlo.add %cst_0, %cst_1 : tensor<f32>
   return %0 : tensor<f32>
 }
+
+// -----
+
+// si2 requires VHLO >= 1.2.0.
+
+// CHECK-LABEL: op_with_i2_operand
+func.func @op_with_i2_operand(%arg0: tensor<8xi2>) -> tensor<8xf32> {
+  // CHECK: "vhlo.convert_v1"(%arg0) : (tensor<8xi2>) -> tensor<8xf32>
+  %0 = stablehlo.convert %arg0 : (tensor<8xi2>) -> tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
+
+// -----
+
+// gather/scatter stay at v2 (batching dims) when targeting VHLO >= 1.1.0.
+
+// CHECK-LABEL: gather_legalizes_to_v2
+func.func @gather_legalizes_to_v2(%arg0: tensor<3x4x2xi32>, %arg1: tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32> {
+  // CHECK: "vhlo.gather_v2"
+  %0 = "stablehlo.gather"(%arg0, %arg1) {
+    dimension_numbers = #stablehlo.gather<offset_dims = [2, 3], collapsed_slice_dims = [0], start_index_map = [1, 0], index_vector_dim = 2>,
+    slice_sizes = array<i64: 1, 2, 2>
+  } : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
+  return %0 : tensor<2x3x2x2xi32>
+}

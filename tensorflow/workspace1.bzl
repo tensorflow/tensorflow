@@ -18,7 +18,7 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@com_google_benchmark//:bazel/benchmark_deps.bzl", "benchmark_deps")
 load("@grpc//bazel:grpc_deps.bzl", "grpc_deps")
-load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
+load("@io_bazel_rules_closure//closure:repositories.bzl", "closure_repositories")
 load("@llvm-raw//utils/bazel:linux_uapi.bzl", "linux_uapi_setup")
 load("@rules_cc//cc:extensions.bzl", "compatibility_proxy_repo")
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
@@ -48,6 +48,7 @@ def workspace(with_rules_cc = True):
     Args:
       with_rules_cc: Unused, to be removed soon.
     """
+    _ = with_rules_cc
     linux_uapi_setup(name = "linux_uapi")
     http_archive(
         name = "pyyaml",

@@ -207,7 +207,7 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
 // dimensions.
 std::vector<HloInstruction*> MakePartitionOffsets(
     const Shape& shape, const HloSharding& sharding,
-    HloInstruction* partition_id, SpmdBuilder* b,
+    HloInstruction* partition_id, SpmdBuilder* b, PrimitiveType offset_type,
     absl::Span<const int64_t> dims = {});
 
 // Returns the offsets of the partition in the tile assignment.

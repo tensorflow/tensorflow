@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/coordination/coordination_service_rpc_handler.h"
 
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <optional>
 #include <string>

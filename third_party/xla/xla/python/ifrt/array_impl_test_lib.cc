@@ -1488,6 +1488,49 @@ TEST(ArrayImplTest, MakeErrorArrays) {
   EXPECT_EQ(arrays[1]->user_context()->Id(), UserContextId(100));
 }
 
+TEST(ArrayImplTest, MakeErrorArraysWithCustomLayout) {
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Client> client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList(client->addressable_devices()));
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  Device* device = client->addressable_devices().front();
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const xla::PjRtLayout> default_layout,
+      client->GetDefaultPjRtLayout(dtype, shape.dims(), device, MemoryKind()));
+  xla::Layout xla_layout = default_layout->xla_layout();
+  absl::c_reverse(*xla_layout.mutable_minor_to_major());
+  auto layout = std::make_shared<const xla::PjRtLayout>(std::move(xla_layout));
+
+  ArraySpec array_spec = {
+      /*dtype=*/dtype,
+      /*shape=*/shape,
+      /*sharding=*/
+      ConcreteEvenSharding::Create(std::move(device_list), MemoryKind(), shape,
+                                   /*shard_shape=*/shape,
+                                   /*is_fully_replicated=*/true),
+      /*layout=*/layout,
+  };
+
+  const absl::Status error = absl::InternalError("injected error");
+  UserContextScope user_context_scope(test_util::MakeUserContext(100));
+  ASSERT_OK_AND_ASSIGN(
+      const std::vector<ArrayRef> arrays,
+      client->MakeErrorArrays(error, {array_spec, array_spec}));
+  ASSERT_EQ(arrays.size(), 2);
+
+  for (const ArrayRef& array : arrays) {
+    EXPECT_THAT(array->GetReadyFuture().Await(),
+                StatusIs(_, HasSubstr("injected error")));
+    ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> result_layout,
+                         array->pjrt_layout());
+    ASSERT_NE(result_layout, nullptr);
+    EXPECT_EQ(*result_layout, *layout);
+    EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
+  }
+}
+
 TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
@@ -2008,6 +2051,96 @@ TEST(ArrayImplTest, CopyMixedSourceDevices) {
                     absl::MakeSpan(same_src), absl::MakeSpan(mixed_dst),
                     ArrayCopySemantics::kAlwaysCopy),
                 StatusIs(absl::StatusCode::kInvalidArgument));
+  }
+}
+
+TEST(ArrayImplTest, CopyArraysDifferentDeviceLists) {
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+
+  absl::Span<Device* const> devices = client->addressable_devices();
+  if (devices.size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
+
+  std::vector<std::vector<float>> expected_data(devices.size(),
+                                                std::vector<float>(6));
+  std::vector<ArrayRef> arrays;
+  arrays.reserve(devices.size());
+
+  for (int i = 0; i < devices.size(); ++i) {
+    absl::c_iota(expected_data[i], i * 10);
+    ShardingRef sharding =
+        SingleDeviceSharding::Create(devices[i], MemoryKind());
+    ASSERT_OK_AND_ASSIGN(
+        arrays.emplace_back(),
+        client->MakeArrayFromHostBuffer(
+            expected_data[i].data(), dtype, shape,
+            /*byte_strides=*/std::nullopt, std::move(sharding),
+            /*layout=*/nullptr,
+            Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*on_done_with_host_buffer=*/nullptr));
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> reused,
+      client->CopyArrays(absl::MakeSpan(arrays), /*devices=*/std::nullopt,
+                         /*memory_kind=*/std::nullopt,
+                         ArrayCopySemantics::kReuseInput));
+  ASSERT_EQ(reused.size(), arrays.size());
+  for (int i = 0; i < reused.size(); ++i) {
+    EXPECT_EQ(*reused[i]->sharding().devices(),
+              *arrays[i]->sharding().devices());
+    EXPECT_EQ(reused[i]->sharding().memory_kind(),
+              arrays[i]->sharding().memory_kind());
+
+    std::vector<float> out_data(6);
+    tsl::Future<> future = reused[i]->CopyToHostBuffer(
+        out_data.data(), /*byte_strides=*/std::nullopt,
+        ArrayCopySemantics::kAlwaysCopy);
+    ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAreArray(expected_data[i]));
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> copied,
+      client->CopyArrays(absl::MakeSpan(arrays), /*devices=*/std::nullopt,
+                         MemoryKind("pinned_host"),
+                         ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_EQ(copied.size(), arrays.size());
+  for (int i = 0; i < copied.size(); ++i) {
+    EXPECT_EQ(*copied[i]->sharding().devices(),
+              *arrays[i]->sharding().devices());
+    EXPECT_EQ(copied[i]->sharding().memory_kind(), MemoryKind("pinned_host"));
+
+    std::vector<float> out_data(6);
+    tsl::Future<> future = copied[i]->CopyToHostBuffer(
+        out_data.data(), /*byte_strides=*/std::nullopt,
+        ArrayCopySemantics::kAlwaysCopy);
+    ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAreArray(expected_data[i]));
+  }
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<ArrayRef> donated,
+      client->CopyArrays(absl::MakeSpan(arrays), /*devices=*/std::nullopt,
+                         /*memory_kind=*/std::nullopt,
+                         ArrayCopySemantics::kDonateInput));
+  ASSERT_EQ(donated.size(), arrays.size());
+  for (int i = 0; i < donated.size(); ++i) {
+    EXPECT_EQ(*donated[i]->sharding().devices(),
+              *arrays[i]->sharding().devices());
+    EXPECT_EQ(donated[i]->sharding().memory_kind(),
+              arrays[i]->sharding().memory_kind());
+
+    std::vector<float> out_data(6);
+    tsl::Future<> future = donated[i]->CopyToHostBuffer(
+        out_data.data(), /*byte_strides=*/std::nullopt,
+        ArrayCopySemantics::kAlwaysCopy);
+    ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAreArray(expected_data[i]));
   }
 }
 

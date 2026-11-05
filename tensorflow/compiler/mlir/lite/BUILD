@@ -48,6 +48,7 @@ package_group(
         "//third_party/odml/infra/...",
         "//third_party/odml/litert/...",
         "//third_party/py/ai_edge_jax/...",
+        "//third_party/py/clover/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
     ],
@@ -1133,17 +1134,34 @@ cc_library(
 )
 
 cc_library(
+    name = "resource_constant_fold_utils",
+    hdrs = [
+        "transforms/resource_constant_fold_utils.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "large_constant_fold",
     srcs = [
         "transforms/large_constant_fold_pass.cc",
+        "transforms/resource_elementwise_fold.cc",
     ],
     hdrs = [
         "transforms/large_constant_fold_pass.h",
+        "transforms/resource_elementwise_fold.h",
     ],
     deps = [
         ":attribute_utils",
         ":large_constant_fold_pass_options",
         ":pass",
+        ":resource_constant_fold_utils",
         ":tensorflow_lite_ops",
         ":utils",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib",
@@ -1509,6 +1527,17 @@ cc_library(
 )
 
 cc_library(
+    name = "tfl_carrier",
+    srcs = ["transforms/tfl_carrier.cc"],
+    hdrs = ["transforms/tfl_carrier.h"],
+    deps = [
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_push_transpose_through_ewise_pass",
     srcs = [
         "transforms/push_transpose_through_ewise_pass.cc",
@@ -1559,6 +1588,7 @@ cc_library(
         "transforms/fuse_a4w2_drq_fully_connected_pass.cc",
         "transforms/generated_post_quantize.inc",
         "transforms/generated_quantize.inc",
+        "transforms/lower_blockwise_dequantize_pass.cc",
         "transforms/lower_quant_annotations_helper.cc",
         "transforms/lower_quant_annotations_pass.cc",
         "transforms/modify_io_nodes.cc",
@@ -1587,6 +1617,7 @@ cc_library(
         ":elements_attr_roundtrip_pass",
         ":op_quant_spec_getters_inc",
         ":optimize_broadcast_like_pass_options",
+        ":resource_constant_fold_utils",
         ":shape_and_size_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
@@ -1625,6 +1656,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
@@ -2272,12 +2304,14 @@ cc_library(
         ":convert_type",
         ":low_bit_utils",
         ":string_utils",
+        ":tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

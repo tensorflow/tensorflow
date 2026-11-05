@@ -106,13 +106,7 @@ namespace gpu {
 // pass returns an error -- cudnn will not be able to run it.
 class CudnnFusedConvRewriter : public HloModulePass {
  public:
-  CudnnFusedConvRewriter(const se::CudaComputeCapability& cc,
-                         se::dnn::VersionInfo dnn_version,
-                         se::SemanticVersion toolkit_version)
-      : compute_capability_(cc),
-        dnn_version_(dnn_version),
-        toolkit_version_(toolkit_version) {}
-  CudnnFusedConvRewriter(const se::RocmComputeCapability& cc,
+  CudnnFusedConvRewriter(const se::GpuComputeCapability& cc,
                          se::dnn::VersionInfo dnn_version,
                          se::SemanticVersion toolkit_version)
       : compute_capability_(cc),

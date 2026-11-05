@@ -1649,6 +1649,31 @@ func.func @cholesky(%arg0: tensor<1x2x2xf32>) -> tensor<1x2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @fma
+func.func @fma(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK: mhlo.fma %arg0, %arg1, %arg2 : tensor<3xf32>
+  %0 = mhlo.fma %arg0, %arg1, %arg2 : tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+
+// -----
+
+func.func @fma_invalid_elt(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<3xi32> {
+  // expected-error-re@+1 {{op operand #0 must be ranked tensor of {{.*}}, but got 'tensor<3xi32>'}}
+  %0 = "mhlo.fma"(%arg0, %arg1, %arg2) : (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<3xi32>
+  func.return %0 : tensor<3xi32>
+}
+
+// -----
+
+func.func @fma_mismatch_shape(%arg0: tensor<3xf32>, %arg1: tensor<4xf32>, %arg2: tensor<3xf32>) -> tensor<3xf32> {
+  // expected-error@+1 {{'mhlo.fma' op requires compatible types for all operands and results}}
+  %0 = "mhlo.fma"(%arg0, %arg1, %arg2) : (tensor<3xf32>, tensor<4xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+
+// -----
+
 func.func @cholesky_error_nonsquare(%arg0: tensor<1x2x1xf32>) -> tensor<1x2x1xf32> {
   // @expected-error@+2 {{'mhlo.cholesky' op failed to infer returned types}}
   // expected-error@+1 {{minor dimensions of 'a' must have equal size, got shape 1, 2, 1}}
@@ -6270,14 +6295,6 @@ func.func @einsum_i8xi8_i16(%arg0: tensor<1x2xi8>, %arg1: tensor<2x1xi8>) -> ten
 // CHECK-LABEL: func @part_id
 func.func @part_id() -> tensor<ui32> {
   %1 = "mhlo.partition_id"() : () -> tensor<ui32>
-  return %1 : tensor<ui32>
-}
-
-// -----
-
-// CHECK-LABEL: func @domain
-func.func @domain(%arg0: tensor<ui32>) -> tensor<ui32> {
-  %1 = "mhlo.domain"(%arg0) {kind = #mhlo<kind sharding>, entry_metadata = "", exit_metadata = ""} : (tensor<ui32>) -> tensor<ui32>
   return %1 : tensor<ui32>
 }
 

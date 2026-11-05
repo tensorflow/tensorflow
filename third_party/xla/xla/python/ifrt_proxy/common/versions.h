@@ -63,6 +63,12 @@ enum {
   // `LoadedExecutable::SetDeleteOptions`.
   kLoadedExecutableDeleteOptions = 25,
 
+  // kCancelExecution adds support for `Client::CancelExecution`.
+  kCancelExecution = 26,
+
+  // kClientHashValues adds support for `Client::HashValues`.
+  kClientHashValues = 27,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,

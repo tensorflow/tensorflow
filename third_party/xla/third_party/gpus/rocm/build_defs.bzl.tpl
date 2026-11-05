@@ -14,24 +14,6 @@ def if_rocm(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def rocm_default_copts():
-    """Default options for all ROCm compilations."""
-    return if_rocm(["-x", "rocm"])
-
-def rocm_copts(opts = []):
-    """Gets the appropriate set of copts for (maybe) ROCm compilation.
-
-      If we're doing ROCm compilation, returns copts for our particular ROCm
-      compiler.  If we're not doing ROCm compilation, returns an empty list.
-
-      """
-    return rocm_default_copts() + select({
-        "//conditions:default": [],
-        "@local_config_rocm//rocm:using_hipcc": ([
-            "",
-        ]),
-    }) + if_rocm_is_configured(opts)
-
 def rocm_gpu_architectures():
     """Returns a list of supported GPU architectures."""
     return %{rocm_gpu_architectures}

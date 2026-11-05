@@ -841,6 +841,92 @@ ENTRY e {
   )"));
 }
 
+TEST_F(XTileDialectTest, HloScanWithEpilogueIsLoweredToXTileScanWithLoop) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+scan_fusion {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  scan = (f32[1024], f32[]) scan(p0, p1),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add_computation,
+    backend_config={sizes:[128]}
+  gte = f32[1024] get-tuple-element(scan), index=0
+  c = f32[] constant(1.0)
+  bcast = f32[1024] broadcast(c), dimensions={}
+  ROOT epilogue = f32[1024] add(gte, bcast)
+}
+ENTRY e {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT custom-call = f32[1024] fusion(p0, p1), kind=kCustom,
+    calls=scan_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{}};
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("scan_fusion"), block_level_parameters,
+      R"(
+    CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
+    CHECK: %[[INPUT_TILE:.*]] = xtile.extract %arg0
+    CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan(%[[INPUT_TILE]]) inits(%[[CARRY]])
+    CHECK: %[[EPILOGUE:.*]] = stablehlo.add %[[SCAN_OUT]],
+    CHECK: xtile.insert %[[EPILOGUE]] into %arg2
+    CHECK: scf.yield %[[NEW_CARRY]]
+  )"));
+}
+
+TEST_F(XTileDialectTest,
+       HloScanWithIndependentEpilogueInstructionTiledAlongScanDim) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, add)
+}
+scan_fusion {
+  p0 = f32[150] parameter(0)
+  c0 = f32[] constant(0.0)
+  scan = (f32[150], f32[]) scan(p0, c0),
+    dimensions={0}, num_carries=1, is_associative=true, to_apply=add_computation,
+    backend_config={sizes:[32]}
+  gte = f32[150] get-tuple-element(scan), index=0
+  iota = f32[150] iota(), iota_dimension=0
+  ROOT epilogue = f32[150] add(iota, gte)
+}
+ENTRY e {
+  p0 = f32[150] parameter(0)
+  ROOT custom-call = f32[150] fusion(p0), kind=kCustom,
+    calls=scan_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{}};
+  EXPECT_OK(CreateXTileIrAndFileCheck(
+      *module->GetComputationWithName("scan_fusion"), block_level_parameters,
+      R"(
+    CHECK: scf.for %[[IV:.*]] = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[CARRY:.*]] = %{{.*}})
+    CHECK: xtile.extract %arg0
+    CHECK: %[[SCAN_OUT:.*]], %[[NEW_CARRY:.*]] = xtile.scan({{.*}}) inits(%[[CARRY]])
+    CHECK: stablehlo.iota
+    CHECK: %[[EPILOGUE:.*]] = stablehlo.add %{{.*}}, %[[SCAN_OUT]]
+    CHECK: xtile.insert %[[EPILOGUE]] into %arg1
+    CHECK: scf.yield %[[NEW_CARRY]]
+  )"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

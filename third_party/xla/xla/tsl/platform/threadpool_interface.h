@@ -16,14 +16,17 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
 #define XLA_TSL_PLATFORM_THREADPOOL_INTERFACE_H_
 
+#include "absl/base/macros.h"
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
 namespace tsl {
-namespace thread {
-
 class ThreadPoolInterface : public Eigen::ThreadPoolInterface {};
 
+namespace thread {
+using ThreadPoolInterface ABSL_DEPRECATE_AND_INLINE() =
+    ::tsl::ThreadPoolInterface;
 }  // namespace thread
+
 }  // namespace tsl
 
 #endif  // XLA_TSL_PLATFORM_THREADPOOL_INTERFACE_H_

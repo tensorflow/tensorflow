@@ -297,7 +297,6 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
       std::shared_ptr<InterpreterExecutable> executable,
       std::unique_ptr<HloEvaluatorInterface> hlo_evaluator,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::vector<PjRtDevice*> addressable_devices);
 
   InterpreterExecutable* GetExecutable() const override;
@@ -319,11 +318,6 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
 
   const DeviceAssignment& device_assignment() const override {
     return *device_assignment_;
-  }
-
-  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
-      const override {
-    return addressable_device_logical_ids_;
   }
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
@@ -361,7 +355,6 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
   std::shared_ptr<InterpreterExecutable> executable_ ABSL_GUARDED_BY(mutex_);
   std::unique_ptr<HloEvaluatorInterface> hlo_evaluator_ ABSL_GUARDED_BY(mutex_);
   std::shared_ptr<DeviceAssignment> device_assignment_;
-  std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
   std::vector<PjRtDevice*> addressable_devices_;
 };
 

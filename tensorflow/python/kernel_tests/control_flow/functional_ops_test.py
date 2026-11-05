@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
@@ -72,6 +73,26 @@ class FunctionalOpsTest(test.TestCase):
         elems,
         initializer=10)
     self.assertAllEqual(880, self.evaluate(r))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testScalarElemsRejected(self):
+    # These take the number of iterations from elems.shape[0], which gives
+    # IndexError out of tensor_shape for a scalar. map_fn already reports it,
+    # so they should say the same thing.
+    elems = constant_op.constant(5, name="data")
+    vec = constant_op.constant([1, 2], name="vec")
+    for op in (functional_ops.foldl, functional_ops.foldr, functional_ops.scan):
+      with self.assertRaisesRegex(ValueError, "must be 1\\+ dimensional"):
+        op(lambda a, x: a + x, elems)
+      # a scalar anywhere in elems is a problem, not just the first one
+      with self.assertRaisesRegex(ValueError, "must be 1\\+ dimensional"):
+        op(lambda a, x: a + x[0] + x[1], (vec, elems), initializer=0)
+      with self.assertRaisesRegex(
+          ValueError, "elems must contain at least one Tensor"
+      ):
+        op(lambda a, x: a + x, [])
+    with self.assertRaisesRegex(ValueError, "must be 1\\+ dimensional"):
+      functional_ops.foldl(lambda a, x: a + x, elems, initializer=0)
 
   @test_util.run_in_graph_and_eager_modes
   def testFoldl_SingleInputMultiOutput(self):
@@ -854,6 +875,44 @@ class FunctionalOpsTest(test.TestCase):
     for use_gpu in (True, False):
       self._tfSum(use_gpu, False)
 
+  def testForEager(self):
+    with context.eager_mode():
+
+      @eager_def_function.function
+      def body(i, x):
+        step = math_ops.cast(i, dtypes.float32)
+        return x + step * 0.25
+
+      body_fn = body.get_concrete_function(
+          tensor_spec.TensorSpec(shape=(), dtype=dtypes.int32),
+          tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32),
+      )
+
+      initial = constant_op.constant([0.5, 1.5, -2.0], dtype=dtypes.float32)
+      start = constant_op.constant(0, dtype=dtypes.int32)
+      limit = constant_op.constant(4, dtype=dtypes.int32)
+      delta = constant_op.constant(1, dtype=dtypes.int32)
+
+      with ops.device("/CPU:0"):
+        cpu_out = gen_functional_ops._for(
+            start=start,
+            limit=limit,
+            delta=delta,
+            input=[initial],
+            body=body_fn,
+        )[0]
+
+      with ops.device(test_util.gpu_device_name()):
+        gpu_out = gen_functional_ops._for(
+            start=start,
+            limit=limit,
+            delta=delta,
+            input=[initial],
+            body=body_fn,
+        )[0]
+      self.assertAllClose([2.0, 3.0, -0.5], cpu_out)
+      self.assertAllClose([2.0, 3.0, -0.5], gpu_out)
+
   def testForWithWhile(self):
     for use_gpu in (True, False):
       self._tfSum(use_gpu, True)
@@ -872,9 +931,9 @@ class FunctionalOpsTest(test.TestCase):
     names = []
     for func in g.as_graph_def().library.function:
       names.append(func.signature.name)
-    self.assertTrue("TestBody" in names)
-    self.assertTrue("TestBody_Cond" in names)
-    self.assertTrue("TestBody_Body" in names)
+    self.assertIn("TestBody", names)
+    self.assertIn("TestBody_Cond", names)
+    self.assertIn("TestBody_Body", names)
 
   @test_util.run_deprecated_v1
   def testForCapturedInputs(self):

@@ -564,15 +564,21 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
 
 static bool HasDefaultMantissaBits(Type type, uint32_t mantissa_bits) {
   if (auto float_ty = mlir::dyn_cast<FloatType>(type)) {
-    return float_ty.getFPMantissaWidth() == mantissa_bits;
+    // Significand width includes the implicit extra bit.
+    return float_ty.getFPMantissaWidth() - 1 == mantissa_bits;
   }
   return false;
 }
 
 static bool HasDefaultExponentBits(Type type, uint32_t exponent_bits) {
   if (auto float_ty = mlir::dyn_cast<FloatType>(type)) {
-    return float_ty.getWidth() - float_ty.getFPMantissaWidth() - 1 ==
-           exponent_bits;
+    // getFPMantissaWidth() returns the significand width, which includes the
+    // implicit leading bit.
+    uint32_t mantissa_bits = float_ty.getFPMantissaWidth() - 1;
+    uint32_t sign_bits =
+        llvm::APFloat::semanticsHasSignedRepr(float_ty.getFloatSemantics()) ? 1
+                                                                            : 0;
+    return float_ty.getWidth() - mantissa_bits - sign_bits == exponent_bits;
   }
   return false;
 }
@@ -1004,6 +1010,39 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ClampOp>(
   return mapMhloOpToStdScalarOp<mhlo::MinOp>(loc, resultTypes, argTypes,
                                              ValueRange{maxLbX, op.getMax()},
                                              attributes, b);
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::FmaOp>(
+    Location loc, ArrayRef<Type> /*resultTypes*/, ArrayRef<Type> argTypes,
+    mhlo::FmaOp::Adaptor adaptor, ArrayRef<NamedAttribute> /*attributes*/,
+    OpBuilder* b) {
+  if (!isa<FloatType>(getElementTypeOrSelf(argTypes.front()))) {
+    return nullptr;
+  }
+  Value a = adaptor.getA();
+  Value bVal = adaptor.getB();
+  Value c = adaptor.getC();
+  return ::mlir::math::FmaOp::create(*b, loc, a, bVal, c);
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::MulhiOp>(
+    Location loc, ArrayRef<Type> /*resultTypes*/, ArrayRef<Type> argTypes,
+    mhlo::MulhiOp::Adaptor adaptor, ArrayRef<NamedAttribute> /*attributes*/,
+    OpBuilder* b) {
+  Type originalType = getElementTypeOrSelf(argTypes.front());
+  if (!isa<IntegerType>(originalType)) {
+    return nullptr;
+  }
+  if (originalType.isUnsignedInteger()) {
+    return ::mlir::arith::MulUIExtendedOp::create(*b, loc, adaptor.getLhs(),
+                                                  adaptor.getRhs())
+        .getHigh();
+  }
+  return ::mlir::arith::MulSIExtendedOp::create(*b, loc, adaptor.getLhs(),
+                                                adaptor.getRhs())
+      .getHigh();
 }
 
 template <typename U, typename S>

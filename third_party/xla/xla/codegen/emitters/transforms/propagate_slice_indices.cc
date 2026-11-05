@@ -44,8 +44,6 @@ void PropagateSliceIndicesPass::runOnOperation() {
   }
 
   if (!entry) {
-    getOperation()->emitOpError("No entry function found.");
-    signalPassFailure();
     return;
   }
 

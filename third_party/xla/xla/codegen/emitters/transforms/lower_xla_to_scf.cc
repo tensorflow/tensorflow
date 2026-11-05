@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/util.h"
 
 namespace xla {

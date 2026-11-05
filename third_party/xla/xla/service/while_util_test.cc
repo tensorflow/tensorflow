@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_util.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -31,9 +32,11 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -452,6 +455,51 @@ ENTRY main {
   const HloComputation* cond = module->GetComputationWithName("cond");
   EXPECT_THAT(cond->root_instruction()->operand(1),
               op::Add(op::GetTupleElement(), op::Constant()));
+}
+
+TEST_F(WhileUtilTest, IncrementTripCountS64) {
+  constexpr absl::string_view hlo = R"(
+HloModule main
+
+body {
+  param.0 = (s64[], s64[]) parameter(0)
+  gte.0 = s64[] get-tuple-element(param.0), index=0
+  gte.1 = s64[] get-tuple-element(param.0), index=1
+  one.0 = s64[] constant(1)
+  add.0 = s64[] add(gte.0, one.0)
+  ROOT tuple.0 = (s64[], s64[]) tuple(add.0, gte.1)
+}
+
+cond {
+  param.0 = (s64[], s64[]) parameter(0)
+  gte.0 = s64[] get-tuple-element(param.0), index=0
+  gte.1 = s64[] get-tuple-element(param.0), index=1
+  minus-one.0 = s64[] constant(-1)
+  add.0 = s64[] add(gte.1, minus-one.0)
+  ROOT compare.0 = pred[] compare(gte.0, add.0), direction=LT
+}
+
+ENTRY main {
+  param.0 = (s64[], s64[]) parameter(0)
+  ROOT while = (s64[], s64[]) while(param.0), condition=cond, body=body
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  const HloComputation* main = module->GetComputationWithName("main");
+  const HloInstruction* while_instr = main->root_instruction();
+  constexpr int64_t kLargeIncrement = int64_t{1} << 32;
+  EXPECT_OK(WhileUtil::IncrementWhileLoopTripCount(
+      *while_instr, /*increment=*/kLargeIncrement));
+  EXPECT_OK(module->Verify());
+
+  const HloComputation* cond = module->GetComputationWithName("cond");
+  EXPECT_THAT(
+      cond->root_instruction()->operand(0),
+      ::testing::AllOf(op::Shape("s64[]"),
+                       op::Add(op::GetTupleElement(),
+                               op::Constant(LiteralUtil::CreateR0<int64_t>(
+                                   -kLargeIncrement)))));
 }
 
 TEST_F(WhileUtilTest, IsUpdatedBufferWriteOnly) {

@@ -143,6 +143,7 @@ static absl::StatusOr<Thunk::Kind> ProtoThunkToThunkKind(
     case ThunkProto::ImplCase::kCopyThunk:
       return Thunk::Kind::kCopy;
     case ThunkProto::ImplCase::kCustomCallThunk:
+    case ThunkProto::ImplCase::kOnednnCustomCallThunk:
       return Thunk::Kind::kCustomCall;
     case ThunkProto::ImplCase::kDotThunk:
       return Thunk::Kind::kDot;

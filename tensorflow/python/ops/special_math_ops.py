@@ -1282,7 +1282,26 @@ def _einsum_v2(equation, *inputs, **kwargs):
         f'Valid arguments: name, optimize, greedy.')
 
   with ops.name_scope(name, 'einsum', [equation, inputs]) as name:
-    inputs = list(inputs)
+    # Accept Python lists/tuples as operands, as `tf.matmul` and friends do.
+    if any(not hasattr(x, 'shape') for x in inputs):
+      # Convert sequences with the dtype of the other operands as a hint, so
+      # they are not forced to float32/int32 and mismatch e.g. float64 tensors.
+      dtype = next(
+          (
+              x.dtype.base_dtype
+              for x in inputs
+              if hasattr(getattr(x, 'dtype', None), 'base_dtype')
+          ),
+          next((x.dtype for x in inputs if hasattr(x, 'dtype')), None),
+      )
+      inputs = [
+          operand
+          if hasattr(operand, 'shape')
+          else ops.convert_to_tensor(operand, dtype_hint=dtype)
+          for operand in inputs
+      ]
+    else:
+      inputs = list(inputs)
     input_shapes = []
     for operand in inputs:
       if isinstance(operand.shape, tensor_shape.TensorShape):

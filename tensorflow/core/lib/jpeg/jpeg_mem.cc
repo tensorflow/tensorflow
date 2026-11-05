@@ -22,6 +22,7 @@ limitations under the License.
 #include <string.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -529,10 +530,21 @@ uint8_t* Uncompress(const void* srcdata, int datasize,
   // If there was an error in reading the jpeg data,
   // set the unread pixels to black
   if (argball.height_read_ != argball.height_) {
-    const int first_bad_line = argball.height_read_;
-    uint8_t* start = dstdata + first_bad_line * argball.stride_;
-    const int nbytes = (argball.height_ - first_bad_line) * argball.stride_;
-    memset(static_cast<void*>(start), 0, nbytes);
+    if (argball.height_read_ < 0 || argball.height_read_ > argball.height_ ||
+        argball.stride_ < 0) {
+      return nullptr;
+    }
+    const uint64_t total_bytes = static_cast<uint64_t>(argball.height_) *
+                                 static_cast<uint64_t>(argball.stride_);
+    if (total_bytes > SIZE_MAX) {
+      return nullptr;
+    }
+    const size_t stride = static_cast<size_t>(argball.stride_);
+    const size_t start_offset =
+        static_cast<size_t>(argball.height_read_) * stride;
+    const size_t nbytes =
+        static_cast<size_t>(argball.height_ - argball.height_read_) * stride;
+    memset(static_cast<void*>(dstdata + start_offset), 0, nbytes);
   }
 
   return dstdata;
@@ -639,6 +651,14 @@ bool CompressInternal(const uint8_t* srcdata, int width, int height,
     return false;
   }
 
+  constexpr char kXmpNamespace[] = "http://ns.adobe.com/xap/1.0/";
+  constexpr size_t kXmpNamespaceLen = sizeof(kXmpNamespace) - 1;
+  constexpr size_t kMaxApp1Payload = 65533;
+  if (flags.xmp_metadata.size() > kMaxApp1Payload - kXmpNamespaceLen - 1) {
+    LOG(ERROR) << "XMP metadata too large: " << flags.xmp_metadata.size();
+    return false;
+  }
+
   JOCTET* buffer = nullptr;
 
   // NOTE: for broader use xmp_metadata should be made a Unicode string
@@ -720,24 +740,22 @@ bool CompressInternal(const uint8_t* srcdata, int width, int height,
   if (!flags.xmp_metadata.empty()) {
     // XMP metadata is embedded in the APP1 tag of JPEG and requires this
     // namespace header string (null-terminated)
-    const std::string name_space = "http://ns.adobe.com/xap/1.0/";
-    const int name_space_length = name_space.size();
-    const int metadata_length = flags.xmp_metadata.size();
-    const int packet_length = metadata_length + name_space_length + 1;
+    const size_t metadata_length = flags.xmp_metadata.size();
+    const size_t packet_length = metadata_length + kXmpNamespaceLen + 1;
     std::unique_ptr<JOCTET[]> joctet_packet(new JOCTET[packet_length]);
 
-    for (int i = 0; i < name_space_length; i++) {
+    for (size_t i = 0; i < kXmpNamespaceLen; i++) {
       // Conversion char --> JOCTET
-      joctet_packet[i] = name_space[i];
+      joctet_packet[i] = kXmpNamespace[i];
     }
-    joctet_packet[name_space_length] = 0;  // null-terminate namespace string
+    joctet_packet[kXmpNamespaceLen] = 0;  // null-terminate namespace string
 
-    for (int i = 0; i < metadata_length; i++) {
+    for (size_t i = 0; i < metadata_length; i++) {
       // Conversion char --> JOCTET
-      joctet_packet[i + name_space_length + 1] = flags.xmp_metadata[i];
+      joctet_packet[i + kXmpNamespaceLen + 1] = flags.xmp_metadata[i];
     }
     jpeg_write_marker(&cinfo, JPEG_APP0 + 1, joctet_packet.get(),
-                      packet_length);
+                      static_cast<unsigned int>(packet_length));
   }
 
   // JSAMPLEs per row in image_buffer

@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client_utils.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -555,51 +556,61 @@ absl::Span<PjRtMemorySpace* const> PjRtCApiClient::memory_spaces() const {
 }
 
 namespace {
-std::string GetPluginStablehloVersionOrDefault(PjRtClient* client) {
-  // If the plugin is not set, use the default.
-  if (!client) {
-    return xla::GetDefaultStablehloVersion();
+
+std::optional<absl::flat_hash_map<std::string, xla::PjRtValueType>>
+GetPluginAttributesMap(const PJRT_Api* c_api, const PjRtClient* client) {
+  if (client != nullptr) {
+    if (std::optional<PjRtPluginAttributes> attributes =
+            client->plugin_attributes();
+        attributes.has_value()) {
+      return std::move(attributes->attributes);
+    }
   }
 
-  // If the plugin doesn't have attributes, use the default.
-  auto attributes = client->plugin_attributes();
-  if (!attributes.has_value()) {
-    return xla::GetDefaultStablehloVersion();
+  if (c_api == nullptr || c_api->PJRT_Plugin_Attributes == nullptr) {
+    return std::nullopt;
   }
 
-  // If plugin doesn't report its StableHLO version, use the default.
-  auto attr_map = attributes->attributes;
-  auto version = attr_map.find("stablehlo_current_version");
-  if (version == attr_map.end()) {
-    return xla::GetDefaultStablehloVersion();
+  PJRT_Plugin_Attributes_Args args{};
+  args.struct_size = PJRT_Plugin_Attributes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+
+  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
+      c_api->PJRT_Plugin_Attributes(&args), pjrt::MakeErrorDeleter(c_api));
+
+  if (error != nullptr) {
+    return std::nullopt;
   }
 
-  std::vector<int64_t> v = std::get<std::vector<int64_t>>(version->second);
-  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
+  return pjrt::ConvertFromPjRtNamedValueList(args.attributes,
+                                             args.num_attributes);
 }
 
-std::string GetPluginSdyVersionOrDefault(PjRtClient* client) {
-  // If the plugin is not set, use the default.
-  if (!client) {
-    return xla::GetDefaultSdyVersion();
-  }
+}  // namespace
 
+std::string GetPluginStablehloVersionOrDefault(const PJRT_Api* c_api,
+                                               const PjRtClient* client) {
   // If the plugin doesn't have attributes, use the default.
-  auto attributes = client->plugin_attributes();
-  if (!attributes.has_value()) {
-    return xla::GetDefaultSdyVersion();
+  std::optional<absl::flat_hash_map<std::string, xla::PjRtValueType>> attr_map =
+      GetPluginAttributesMap(c_api, client);
+  if (!attr_map.has_value()) {
+    return xla::GetDefaultStablehloVersion();
   }
-
-  // If plugin doesn't report its Shardy version, use the default.
-  auto attr_map = attributes->attributes;
-  auto version = attr_map.find("sdy_current_version");
-  if (version == attr_map.end()) {
-    return xla::GetDefaultSdyVersion();
-  }
-
-  std::vector<int64_t> v = std::get<std::vector<int64_t>>(version->second);
-  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
+  return GetPluginStablehloVersionOrDefault(*attr_map);
 }
+
+std::string GetPluginSdyVersionOrDefault(const PJRT_Api* c_api,
+                                         const PjRtClient* client) {
+  // If the plugin doesn't have attributes, use the default.
+  std::optional<absl::flat_hash_map<std::string, xla::PjRtValueType>> attr_map =
+      GetPluginAttributesMap(c_api, client);
+  if (!attr_map.has_value()) {
+    return xla::GetDefaultSdyVersion();
+  }
+  return GetPluginSdyVersionOrDefault(*attr_map);
+}
+
+namespace {
 
 // Either MLIR module or HLO program.
 // MLIR inputs have compatibility guarantees, and may be mutated in place for
@@ -607,11 +618,13 @@ std::string GetPluginSdyVersionOrDefault(PjRtClient* client) {
 using ProgramVariant =
     std::variant<xla::MaybeOwningMlirModule, const xla::XlaComputation*>;
 absl::StatusOr<std::pair<std::string, std::string>> SerializeProgram(
-    PjRtClient* client, ProgramVariant program, const CompileOptions& options) {
+    const PJRT_Api* c_api, PjRtClient* client, ProgramVariant program,
+    const CompileOptions& options) {
   tsl::profiler::TraceMe traceme("PjRtCApiClient::SerializeProgram");
 
-  const std::string target_version = GetPluginStablehloVersionOrDefault(client);
-  const std::string sdy_version = GetPluginSdyVersionOrDefault(client);
+  const std::string target_version =
+      GetPluginStablehloVersionOrDefault(c_api, client);
+  const std::string sdy_version = GetPluginSdyVersionOrDefault(c_api, client);
   bool allow_in_place_mlir_modification =
       options.allow_in_place_mlir_modification;
 
@@ -667,8 +680,9 @@ InitializeArgsAndCompile(PjRtCApiClient* api_client, const PJRT_Api* c_api,
   }
 
   // Serialize program.
-  ABSL_ASSIGN_OR_RETURN(const auto code_and_format,
-                   SerializeProgram(api_client, std::move(module), options));
+  ABSL_ASSIGN_OR_RETURN(
+      const auto code_and_format,
+      SerializeProgram(c_api, api_client, std::move(module), options));
   const auto& [code, format] = code_and_format;
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;
@@ -729,7 +743,7 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
   }
 
   ABSL_ASSIGN_OR_RETURN(const auto code_and_format,
-                   SerializeProgram(client, std::move(module), options));
+                   SerializeProgram(c_api, client, std::move(module), options));
   const auto& [code, format] = code_and_format;
   PJRT_Program program;
   program.struct_size = PJRT_Program_STRUCT_SIZE;
@@ -906,7 +920,8 @@ PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateErrorBuffer(
-    absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
+    absl::Status error, const Shape& shape, PjRtMemorySpace* memory,
+    const Layout* layout) {
   if (c_api_->pjrt_api_version.major_version == 0 &&
       c_api_->pjrt_api_version.minor_version < 82) {
     return absl::UnimplementedError(
@@ -923,17 +938,34 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateErrorBuffer(
   args.error_message = error.message().data();
   args.error_message_size = error.message().size();
 
-  args.shape_dims = shape.dimensions().data();
-  args.shape_num_dims = shape.dimensions().size();
+  if (shape.IsArray()) {
+    args.shape_dims = shape.dimensions().data();
+    args.shape_num_dims = shape.dimensions().size();
+  } else if (shape.IsToken()) {
+    args.shape_dims = nullptr;
+    args.shape_num_dims = 0;
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("PjRtCApiClient::CreateErrorBuffer only supports array "
+                     "or token shapes, got ",
+                     shape.ToString()));
+  }
   args.shape_element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+  args.shape_layout = nullptr;
 
   pjrt::BufferMemoryLayoutData c_layout_data;
-  if (shape.has_layout()) {
+  if (layout != nullptr) {
+    if (c_api_->pjrt_api_version.major_version == 0 &&
+        c_api_->pjrt_api_version.minor_version < 117) {
+      return absl::UnimplementedError(
+          "PJRT_Client_CreateErrorBuffer with a custom layout requires PJRT "
+          "C API version 0.117 or higher.");
+    }
     ABSL_ASSIGN_OR_RETURN(c_layout_data,
-                     pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
-    args.shape_layout = &c_layout_data.c_layout;
+                     pjrt::ConvertToBufferMemoryLayoutData(*layout));
+    args.device_layout = &c_layout_data.c_layout;
   } else {
-    args.shape_layout = nullptr;
+    args.device_layout = nullptr;
   }
 
   args.memory = absl::down_cast<PjRtCApiMemorySpace*>(memory)->c_memory();
@@ -1611,7 +1643,7 @@ class PjRtCApiAsyncHostToDeviceTransferManager
   absl::Status TransferLiteralToBuffer(
       int buffer_index, const LiteralSlice& literal,
       absl::AnyInvocable<void() &&> on_done) override {
-    PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args args;
+    PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args args = {};
     args.struct_size =
         PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
@@ -1622,6 +1654,15 @@ class PjRtCApiAsyncHostToDeviceTransferManager
     if (shape.IsArray()) {
       args.shape_dims = shape.dimensions().data();
       args.shape_num_dims = shape.dimensions().size();
+    } else if (shape.IsToken()) {
+      args.shape_dims = nullptr;
+      args.shape_num_dims = 0;
+    } else {
+      return absl::InvalidArgumentError(
+          absl::StrCat("PjRtCApiAsyncHostToDeviceTransferManager::"
+                       "TransferLiteralToBuffer only supports array or "
+                       "token shapes, got ",
+                       shape.ToString()));
     }
     args.shape_element_type =
         pjrt::ConvertToPjRtBufferType(shape.element_type());
@@ -2765,7 +2806,8 @@ absl::StatusOr<std::shared_ptr<HloModule>> PjRtCApiExecutable::GetHloModule()
   if (!proto.ParseFromString(code)) {
     return InvalidArgument("Failed to deserialize HloModuleProtoWithConfig");
   }
-  return HloModule::CreateFromProtoWithConfig(proto);
+  return HloModule::CreateFromProtoWithConfig(proto,
+                                              /*prohibit_empty_literal=*/false);
 }
 
 absl::StatusOr<std::string> PjRtCApiExecutable::SerializeExecutable() const {
@@ -2858,42 +2900,7 @@ PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(
   executable_ =
       std::make_unique<PjRtCApiExecutable>(pjrt_c_api(), args.executable);
   InitDevices();
-  InitAddressableDeviceLogicalIds();
   InitDeviceAssignment();
-}
-
-void PjRtCApiLoadedExecutable::InitAddressableDeviceLogicalIds() {
-  if (pjrt_c_api()->pjrt_api_version.major_version == 0 &&
-      pjrt_c_api()->pjrt_api_version.minor_version < 96) {
-    return;
-  }
-  PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args args;
-  args.struct_size =
-      PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.executable = c_loaded_executable();
-  args.addressable_device_logical_ids = nullptr;
-  args.num_addressable_device_logical_ids = 0;
-
-  const PJRT_Api* api = pjrt_c_api();
-  if (api->PJRT_LoadedExecutable_AddressableDeviceLogicalIds == nullptr) {
-    return;
-  }
-  pjrt::LogFatalIfPjrtError(
-      api->PJRT_LoadedExecutable_AddressableDeviceLogicalIds(&args), api);
-
-  if (args.num_addressable_device_logical_ids == 0 ||
-      args.addressable_device_logical_ids == nullptr) {
-    return;
-  }
-  addressable_device_logical_ids_.reserve(
-      args.num_addressable_device_logical_ids);
-
-  for (size_t i = 0; i < args.num_addressable_device_logical_ids; ++i) {
-    PJRT_LogicalDeviceIds id = args.addressable_device_logical_ids[i];
-    addressable_device_logical_ids_.push_back(
-        LogicalDeviceIds{id.replica, id.partition});
-  }
 }
 
 void PjRtCApiLoadedExecutable::InitDevices() {
@@ -4491,8 +4498,18 @@ PjRtCApiTopologyDescription::MakeCanonicalShapeForMemorySpace(
   args.extension_start = nullptr;
   args.topology = c_topology_;
   args.memory_space_kind_id = memory_space_kind_id;
-  args.dims = shape.dimensions().data();
-  args.num_dims = shape.dimensions().size();
+  if (shape.IsArray()) {
+    args.dims = shape.dimensions().data();
+    args.num_dims = shape.dimensions().size();
+  } else if (shape.IsToken()) {
+    args.dims = nullptr;
+    args.num_dims = 0;
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("MakeCanonicalShapeForMemorySpace only supports array or "
+                     "token shapes, got ",
+                     shape.ToString()));
+  }
   args.element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
 
   pjrt::BufferMemoryLayoutData layout_data;
@@ -4583,6 +4600,91 @@ PjRtCApiTopologyDescription::Subslice(
   return std::make_unique<PjRtCApiTopologyDescription>(c_api_,
                                                        args.subslice_topology,
                                                        /*owned=*/true);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+PjRtCApiTopologyDescription::Subslice(
+    const PjRtDeviceDimensions& chip_bounds) const {
+  ABSL_ASSIGN_OR_RETURN(PjRtDeviceDimensions chips_per_host_bounds,
+                   ChipsPerProcessBounds());
+  if (chip_bounds.size() != chips_per_host_bounds.size()) {
+    return InvalidArgument(
+        "Subslice chip_bounds size %d does not match topology size %d",
+        chip_bounds.size(), chips_per_host_bounds.size());
+  }
+  for (size_t d = 0; d < chip_bounds.size(); ++d) {
+    if (chip_bounds[d] <= 0) {
+      return InvalidArgument("Subslice chip bounds %s must be positive.",
+                             chip_bounds.ToString());
+    }
+  }
+  PjRtDeviceDimensions subslice_chips_per_host_bounds = chip_bounds;
+  std::vector<int32_t> host_bounds_vec(chip_bounds.size(), 1);
+  for (size_t d = 0; d < chip_bounds.size(); ++d) {
+    if (chips_per_host_bounds[d] <= 0) {
+      return InvalidArgument(
+          "ChipsPerProcessBounds dimension %d has non-positive value %d", d,
+          chips_per_host_bounds[d]);
+    }
+    if (chip_bounds[d] <= chips_per_host_bounds[d]) {
+      subslice_chips_per_host_bounds[d] = chip_bounds[d];
+      host_bounds_vec[d] = 1;
+    } else if (chip_bounds[d] % chips_per_host_bounds[d] == 0) {
+      subslice_chips_per_host_bounds[d] = chips_per_host_bounds[d];
+      host_bounds_vec[d] = chip_bounds[d] / chips_per_host_bounds[d];
+    } else {
+      return InvalidArgument(
+          "Subslice chip bounds %s is not a supported slice topology: it "
+          "neither fits within one host nor is a multiple of the full slice "
+          "chips_per_host_bounds %s.",
+          chip_bounds.ToString(), chips_per_host_bounds.ToString());
+    }
+  }
+  PjRtDeviceDimensions subslice_host_bounds(host_bounds_vec);
+  return Subslice(subslice_chips_per_host_bounds, subslice_host_bounds);
+}
+
+absl::StatusOr<PjRtSubsliceBounds>
+PjRtCApiTopologyDescription::ComputeSubsliceForDevices(
+    absl::Span<const int> device_ids) const {
+  if (tpu_topology_extension_ == nullptr ||
+      tpu_topology_extension_->base.struct_size <
+          PJRT_STRUCT_SIZE(PJRT_TpuTopology_Extension,
+                           compute_subslice_for_devices) ||
+      tpu_topology_extension_->compute_subslice_for_devices == nullptr) {
+    return Unimplemented(
+        "ComputeSubsliceForDevices is not supported by the PJRT C API.");
+  }
+  std::vector<int32_t> device_ids_storage(device_ids.begin(), device_ids.end());
+  std::vector<int32_t> origin(kMaxDims);
+  std::vector<int32_t> chips_per_host_bounds(kMaxDims);
+  std::vector<int32_t> host_bounds(kMaxDims);
+  PJRT_TpuTopology_ComputeSubsliceForDevices_Args args;
+  args.struct_size =
+      PJRT_TpuTopology_ComputeSubsliceForDevices_Args_STRUCT_SIZE;
+  args.topology = c_topology_;
+  args.device_ids = device_ids_storage.data();
+  args.num_device_ids = device_ids_storage.size();
+  args.max_dims = kMaxDims;
+  args.origin = origin.data();
+  args.chips_per_host_bounds = chips_per_host_bounds.data();
+  args.host_bounds = host_bounds.data();
+  args.num_dims = 0;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      tpu_topology_extension_->compute_subslice_for_devices(&args), c_api_);
+  if (args.num_dims > kMaxDims) {
+    return Internal(
+        "Plugin returned `num_dims` (%zu) exceeding `max_dims` (%d).",
+        args.num_dims, kMaxDims);
+  }
+  PjRtSubsliceBounds bounds;
+  bounds.origin =
+      PjRtDeviceDimensions(absl::MakeSpan(origin.data(), args.num_dims));
+  bounds.chips_per_host_bounds = PjRtDeviceDimensions(
+      absl::MakeSpan(chips_per_host_bounds.data(), args.num_dims));
+  bounds.host_bounds =
+      PjRtDeviceDimensions(absl::MakeSpan(host_bounds.data(), args.num_dims));
+  return bounds;
 }
 
 bool PjRtCApiTopologyDescription::is_subslice_topology() const {
@@ -4971,12 +5073,6 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
       },
       tsl::profiler::ContextType::kPjrtLibraryCall, traceme_context_id);
 
-  std::string target_version = GetPluginStablehloVersionOrDefault(client);
-  std::string sdy_version = GetPluginSdyVersionOrDefault(client);
-  ABSL_ASSIGN_OR_RETURN(
-      std::string serialized,
-      xla::Serialize(module.mlir_module(), target_version, sdy_version));
-  std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, std::move(module), options,
                                      topology);
 }

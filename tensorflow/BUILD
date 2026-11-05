@@ -1117,6 +1117,7 @@ bzl_library(
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
+        # copybara:uncomment "@local_config_rocm//rocm:hipcc_build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
     ],
 )

@@ -405,5 +405,17 @@ bool IsStandardAssociativeScan(const HloInstruction* instruction) {
   return true;
 }
 
+bool IsScaledConvolution(const HloInstruction& instruction) {
+  return instruction.opcode() == HloOpcode::kConvolution &&
+         (instruction.block_scaling_config().has_lhs() ||
+          instruction.block_scaling_config().has_rhs());
+}
+
+bool IsSparseConvolution(const HloInstruction& instruction) {
+  return instruction.opcode() == HloOpcode::kConvolution &&
+         (instruction.sparsity_config().has_lhs() ||
+          instruction.sparsity_config().has_rhs());
+}
+
 }  // namespace hlo_query
 }  // namespace xla

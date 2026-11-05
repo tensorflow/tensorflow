@@ -19,6 +19,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -111,6 +112,273 @@ class ResizeNearestNeighborOpTestBase(test.TestCase):
               resize_nn, [input_tensor], delta=1 / 8)
 
         self.assertAllClose(grad_cpu, grad_gpu, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradGradNumerical(self):
+    for nptype in self.TYPES:
+      for grads_shape, image_size in (
+          ([1, 5, 4, 2], [2, 3]),
+          ([2, 2, 3, 2], [4, 5]),
+          ([1, 3, 3, 1], [3, 3]),
+          ([1, 1, 1, 1], [2, 3]),
+          ([0, 2, 3, 1], [2, 3]),
+          ([1, 0, 3, 1], [2, 3]),
+          ([1, 2, 0, 1], [2, 3]),
+          ([1, 2, 3, 0], [2, 3]),
+      ):
+        for align_corners, half_pixel_centers in (
+            (False, False),
+            (True, False),
+            (False, True),
+        ):
+          with self.subTest(
+              dtype=nptype,
+              grads_shape=grads_shape,
+              image_size=image_size,
+              align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers,
+          ):
+            input_tensor = constant_op.constant(
+                np.zeros(grads_shape, dtype=nptype)
+            )
+
+            def resize_grad(
+                t,
+                size=image_size,
+                align_corners=align_corners,
+                half_pixel_centers=half_pixel_centers,
+            ):
+              return gen_image_ops.resize_nearest_neighbor_grad(
+                  t,
+                  size,
+                  align_corners=align_corners,
+                  half_pixel_centers=half_pixel_centers,
+              )
+
+            with self.cached_session():
+              analytical, numerical = gradient_checker_v2.compute_gradient(
+                  resize_grad, [input_tensor], delta=1 / 8
+              )
+              self.assertAllEqual(analytical, numerical)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedGradientTape(self):
+    for align_corners, half_pixel_centers in (
+        (False, False),
+        (True, False),
+        (False, True),
+    ):
+      x = constant_op.constant(
+          np.arange(6).reshape([1, 2, 3, 1]), dtype=dtypes.float32
+      )
+      with backprop.GradientTape() as outer_tape:
+        outer_tape.watch(x)
+        with backprop.GradientTape() as inner_tape:
+          inner_tape.watch(x)
+          resized = image_ops.resize_nearest_neighbor(
+              x,
+              [5, 4],
+              align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers,
+          )
+          loss = math_ops.reduce_sum(resized * resized)
+        gradient = inner_tape.gradient(loss, x)
+      second_gradient = outer_tape.gradient(gradient, x)
+      expected = gen_image_ops.resize_nearest_neighbor_grad(
+          2 * array_ops.ones_like(resized),
+          [2, 3],
+          align_corners=align_corners,
+          half_pixel_centers=half_pixel_centers,
+      )
+      self.assertAllEqual(
+          self.evaluate(expected), self.evaluate(second_gradient)
+      )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyResizeGradients(self):
+    for image_shape, size in (
+        ([1, 2, 3, 1], [0, 3]),
+        ([1, 2, 3, 1], [2, 0]),
+        ([1, 0, 3, 1], [0, 2]),
+        ([1, 2, 0, 1], [2, 0]),
+        ([0, 2, 3, 1], [4, 5]),
+        ([1, 2, 3, 0], [4, 5]),
+    ):
+      for align_corners, half_pixel_centers in (
+          (False, False),
+          (True, False),
+          (False, True),
+      ):
+        with self.subTest(
+            image_shape=image_shape,
+            size=size,
+            align_corners=align_corners,
+            half_pixel_centers=half_pixel_centers,
+        ):
+          image = array_ops.zeros(image_shape)
+          with backprop.GradientTape() as outer_tape:
+            outer_tape.watch(image)
+            with backprop.GradientTape() as inner_tape:
+              inner_tape.watch(image)
+              resized = image_ops.resize_nearest_neighbor(
+                  image,
+                  size,
+                  align_corners=align_corners,
+                  half_pixel_centers=half_pixel_centers,
+              )
+              loss = math_ops.reduce_sum(resized * resized)
+            gradient = inner_tape.gradient(loss, image)
+          second_gradient = outer_tape.gradient(gradient, image)
+          self.assertAllEqual(self.evaluate(gradient), np.zeros(image_shape))
+          self.assertAllEqual(
+              self.evaluate(second_gradient), np.zeros(image_shape)
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyInputCannotResizeToNonemptyOutput(self):
+    for image_shape in ([1, 0, 3, 1], [1, 2, 0, 1]):
+      with self.subTest(image_shape=image_shape):
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError, 'input image must be of non-zero'
+        ):
+          self.evaluate(
+              image_ops.resize_nearest_neighbor(
+                  array_ops.zeros(image_shape), [2, 3]
+              )
+          )
+    for size in ([0, 3], [2, 0]):
+      with self.subTest(size=size):
+        grads = array_ops.ones([1, 2, 3, 1])
+        if not context.executing_eagerly():
+          grads = array_ops.placeholder_with_default(grads, shape=[None] * 4)
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError, 'positive for non-empty grads'
+        ):
+          self.evaluate(gen_image_ops.resize_nearest_neighbor_grad(grads, size))
+
+  def testRejectsNegativeResizeSizeDuringTracing(self):
+    for size in ([-1, 10], [10, -1]):
+      with self.subTest(size=size):
+
+        @def_function.function
+        def resize():
+          return image_ops.resize_nearest_neighbor(
+              array_ops.zeros([1, 2, 3, 1]), size
+          )
+
+        with self.assertRaisesRegex(
+            ValueError, 'size elements must be non-negative'
+        ):
+          resize.get_concrete_function()
+
+  def testRejectsNegativeResizeGradSizeDuringTracing(self):
+    for size in ([-1, 10], [10, -1]):
+      with self.subTest(size=size):
+
+        @def_function.function
+        def resize_grad():
+          return gen_image_ops.resize_nearest_neighbor_grad(
+              array_ops.zeros([1, 2, 3, 1]), size
+          )
+
+        with self.assertRaisesRegex(
+            ValueError, "shape_t's elements must be non-negative"
+        ):
+          resize_grad.get_concrete_function()
+
+  def testRejectsEmptySizeForNonemptyGradsDuringTracing(self):
+    for size in ([0, 3], [2, 0]):
+      with self.subTest(size=size):
+
+        @def_function.function
+        def resize_grad():
+          return gen_image_ops.resize_nearest_neighbor_grad(
+              array_ops.ones([1, 2, 3, 1]), size
+          )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "shape_t's elements must be positive for non-empty grads",
+        ):
+          resize_grad.get_concrete_function()
+
+  @test_util.run_deprecated_v1
+  def testGradGradDynamicShape(self):
+    with self.cached_session() as sess:
+      grads = array_ops.placeholder(dtypes.float32, shape=[None] * 4)
+      image_size = array_ops.placeholder(dtypes.int32, shape=[2])
+      incoming_grad = array_ops.placeholder(dtypes.float32, shape=[None] * 4)
+      for align_corners, half_pixel_centers in (
+          (False, False),
+          (True, False),
+          (False, True),
+      ):
+        with test_util.AbstractGradientTape(use_tape=False) as tape:
+          resized_grad = gen_image_ops.resize_nearest_neighbor_grad(
+              grads,
+              image_size,
+              align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers,
+          )
+        gradient, size_gradient = tape.gradient(
+            resized_grad, [grads, image_size], incoming_grad
+        )
+        self.assertIsNone(size_gradient)
+        for grads_shape, size in (
+            ([2, 5, 4, 2], [2, 3]),
+            ([1, 1, 1, 1], [4, 5]),
+            ([0, 2, 3, 1], [2, 3]),
+            ([1, 0, 3, 1], [2, 3]),
+            ([1, 2, 0, 1], [2, 3]),
+            ([1, 2, 3, 0], [2, 3]),
+        ):
+          incoming = np.arange(
+              grads_shape[0] * size[0] * size[1] * grads_shape[3],
+              dtype=np.float32,
+          ).reshape([grads_shape[0], *size, grads_shape[3]])
+          expected = image_ops.resize_nearest_neighbor(
+              incoming,
+              grads_shape[1:3],
+              align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers,
+          )
+          actual = sess.run(
+              gradient,
+              feed_dict={
+                  grads: np.zeros(grads_shape, dtype=np.float32),
+                  image_size: size,
+                  incoming_grad: incoming,
+              },
+          )
+          self.assertAllEqual(self.evaluate(expected), actual)
+
+  @test_util.run_deprecated_v1
+  def testGradGradStaticDimensionsAvoidControlFlow(self):
+    with self.cached_session() as sess:
+      for shape, feed_shape in (
+          ([None, 5, 4, 2], [2, 5, 4, 2]),
+          ([None, 5, 4, 2], [0, 5, 4, 2]),
+          ([None, 0, None, 2], [1, 0, 3, 2]),
+          ([None, None, None, 0], [1, 2, 3, 0]),
+          ([0, None, None, None], [0, 2, 3, 1]),
+      ):
+        grads = array_ops.placeholder(dtypes.float32, shape=shape)
+        with test_util.AbstractGradientTape(use_tape=False) as tape:
+          resized_grad = gen_image_ops.resize_nearest_neighbor_grad(
+              grads, [2, 3]
+          )
+        gradient = tape.gradient(resized_grad, grads)
+        if shape[1] is not None and shape[2] is not None:
+          self.assertEqual(gradient.op.inputs[1].op.type, 'Const')
+        actual = sess.run(
+            gradient,
+            feed_dict={
+                grads: np.zeros(feed_shape, dtype=np.float32),
+            },
+        )
+        self.assertAllEqual(np.ones(feed_shape, dtype=np.float32), actual)
+      for op in grads.graph.get_operations():
+        self.assertNotIn(op.type, ('If', 'StatelessIf', 'Switch', 'Merge'))
 
 
 class ResizeBilinearOpTestBase(test.TestCase, parameterized.TestCase):
@@ -356,6 +624,34 @@ class ResizeBicubicOpTestBase(test.TestCase, parameterized.TestCase):
         grad = tape.gradient(resize_out, [input_tensor])
     self.assertEqual([None], grad)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGradForHalfAndBfloat16(self):
+    # ResizeBicubicGrad has no half or bfloat16 kernel, so these images used to
+    # get a None gradient.
+    in_shape = [1, 4, 6, 1]
+    out_shape = [1, 2, 3, 1]
+    x = np.arange(0, 24).reshape(in_shape)
+    weights = np.arange(0, 6).reshape(out_shape).astype(np.float32)
+
+    def grad_for(dtype):
+      input_tensor = constant_op.constant(x, dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(input_tensor)
+        resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3])
+        loss = math_ops.reduce_sum(resize_out * weights)
+      return tape.gradient(loss, input_tensor)
+
+    expected = self.evaluate(grad_for(dtypes.float32))
+    for dtype in [dtypes.float16, dtypes.bfloat16]:
+      grad = grad_for(dtype)
+      self.assertEqual(grad.dtype, dtype)
+      self.assertAllClose(
+          self.evaluate(math_ops.cast(grad, dtypes.float32)),
+          expected,
+          rtol=1e-2,
+          atol=1e-2,
+      )
+
 
 class ScaleAndTranslateOpTestBase(test.TestCase):
   """Tests scale and translate op."""
@@ -398,6 +694,63 @@ class ScaleAndTranslateOpTestBase(test.TestCase):
                                                         [input_tensor]))
 
             self.assertLess(err, 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradsForNonFloat32Images(self):
+    # ScaleAndTranslateGrad only has a float32 kernel, so the gradient used to
+    # fail for half, bfloat16 and double images.
+    in_shape = [1, 2, 3, 1]
+    out_shape = [1, 4, 6, 1]
+    x = np.arange(0, 6).reshape(in_shape)
+    weights = np.arange(0, 24).reshape(out_shape).astype(np.float32)
+
+    def grad_for(dtype, kernel_type, antialias):
+      input_tensor = constant_op.constant(x, dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(input_tensor)
+        out = image_ops.scale_and_translate(
+            input_tensor,
+            out_shape[1:3],
+            scale=constant_op.constant((0.37, 2.1)),
+            translation=constant_op.constant((1.19, 0.0)),
+            kernel_type=kernel_type,
+            antialias=antialias,
+        )
+        loss = math_ops.reduce_sum(out * weights)
+      return tape.gradient(loss, input_tensor)
+
+    for kernel_type in ['lanczos3', 'gaussian', 'mitchellcubic']:
+      for antialias in [True, False]:
+        expected = self.evaluate(
+            grad_for(dtypes.float32, kernel_type, antialias)
+        )
+        for dtype in [dtypes.float16, dtypes.bfloat16, dtypes.float64]:
+          grad = grad_for(dtype, kernel_type, antialias)
+          self.assertEqual(grad.dtype, dtype)
+          self.assertAllClose(
+              self.evaluate(math_ops.cast(grad, dtypes.float32)),
+              expected,
+              rtol=1e-2,
+              atol=1e-2,
+          )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGradOnUnsupportedType(self):
+    in_shape = [1, 2, 3, 1]
+    out_shape = [1, 4, 6, 1]
+    x = np.arange(0, 6).reshape(in_shape).astype(np.uint8)
+    input_tensor = constant_op.constant(x, shape=in_shape)
+    scale = constant_op.constant((0.37, 2.1))
+    translation = constant_op.constant((1.19, 0.0))
+    with backprop.GradientTape() as tape:
+      tape.watch(input_tensor)
+      tape.watch(scale)
+      out = image_ops.scale_and_translate(
+          input_tensor, out_shape[1:3], scale=scale, translation=translation
+      )
+    grad_image, grad_scale = tape.gradient(out, [input_tensor, scale])
+    self.assertIsNone(grad_image)
+    self.assertIsNone(grad_scale)
 
   def testIdentityGrads(self):
     """Tests that Gradients for 1.0 scale should be ones for some kernels."""

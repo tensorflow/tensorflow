@@ -1,6 +1,6 @@
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -788,7 +788,7 @@ void init_triton_llvm(py::module_ &m) {
+@@ -801,7 +801,7 @@ void init_triton_llvm(py::module_ &m) {
          if (!pluginFile.empty()) {
            // TODO: Add some logging here that we inserted a pass into the LLVM
            // pass pipeline
@@ -25,7 +25,7 @@
 
 --- a/test/Conversion/tritongpu_to_llvm.mlir
 +++ b/test/Conversion/tritongpu_to_llvm.mlir
-@@ -23,7 +23,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
+@@ -36,7 +36,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
    tt.func @umulhi_truncated_input(%seed: i64, %out: !tt.ptr<i32>) {
      // CHECK: %[[X:.*]] = llvm.trunc %arg0 : i64 to i32
      %x = arith.trunci %seed : i64 to i32
@@ -34,7 +34,7 @@
      %high = tt.mulhiui %x, %x : i32
      tt.store %out, %high : !tt.ptr<i32>
      tt.return
-@@ -31,7 +31,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
+@@ -44,7 +44,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
  
    // CHECK-LABEL: llvm.func @umulhi_i64
    tt.func @umulhi_i64(%seed: i64, %out: !tt.ptr<i64>) {
