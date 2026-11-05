@@ -530,15 +530,13 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
       std::move(dim_variables), std::move(symbol_variables), /*rt_vars=*/{},
       constraints);
 
-  if (!tile_constraints.empty()) {
-    for (const auto& [constraint_expr, interval] : tile_constraints) {
-      offset_indexing_map.AddConstraint(
-          constraint_expr.ReplaceDimsAndSymbols(dim_replacements,
-                                                symbol_replacements),
-          interval);
-    }
-    offset_indexing_map.Simplify();
+  for (const auto& [constraint_expr, interval] : tile_constraints) {
+    offset_indexing_map.AddConstraint(
+        constraint_expr.ReplaceDimsAndSymbols(dim_replacements,
+                                              symbol_replacements),
+        interval);
   }
+  offset_indexing_map.Simplify();
 
   return emitters::ApplyIndexing(
       offset_indexing_map, dim_values, symbol_values, b_,
