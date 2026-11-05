@@ -1515,6 +1515,19 @@ pybind_extension(
         # rather than duplicating //tensorflow/core:framework_internal_impl
         # into the common library. See #126374.
         "//tensorflow/c:kernels_experimental",
+        # The Flex delegate is what lets tf.lite.Interpreter run a model
+        # converted with SELECT_TF_OPS. Nothing inside TensorFlow refers to it
+        # by name: InterpreterBuilder calls a weak tflite::AcquireFlexDelegate()
+        # that the delegate's strong definition overrides when both are linked
+        # into the same binary, and the interpreter wrapper only depends on it
+        # under --define=tflite_pip_with_flex=true. It is a root of
+        # :tensorflow_cc, which, as above, does not make it reachable, and it
+        # too used to arrive through pywrap_tensorflow_macro. Since 2.20.0 no
+        # shipped binary has defined it, so every SELECT_TF_OPS model fails to
+        # load with "Select TensorFlow op(s) ... not supported by this
+        # interpreter". Naming it here puts it back into libtensorflow_cc,
+        # next to InterpreterBuilder. See google-ai-edge/LiteRT#6458.
+        "//tensorflow/lite/delegates/flex:delegate",
         "@pybind11",
     ],
 )

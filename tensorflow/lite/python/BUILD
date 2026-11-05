@@ -417,6 +417,22 @@ py_test(
     ],
 )
 
+py_test(
+    name = "flex_delegate_symbol_test",
+    size = "small",
+    srcs = ["flex_delegate_symbol_test.py"],
+    strict_deps = True,
+    # It asks the process for a symbol only the linked Flex delegate defines,
+    # so it has to run against a build that actually linked it rather than
+    # against the source tree.
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:sysconfig",
+    ],
+)
+
 py_library(
     name = "util",
     srcs = ["util.py"],
