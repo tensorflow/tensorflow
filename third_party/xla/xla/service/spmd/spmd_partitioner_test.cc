@@ -20640,6 +20640,27 @@ ENTRY entry {
             expected_replica_groups);
 }
 
+TEST_F(SpmdPartitioningV3Test, MultiTargetDimAdjacentSubAxesAllToAll) {
+  const char* hlo_text = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[16,16,32,16] parameter(0),
+    sharding={mesh['x'=2,'model'=8] [{}, {}, {'x','model':(1)4}, {'model':(4)2}]}
+  ROOT copy = f32[16,16,32,16] copy(p0),
+    sharding={mesh['x'=2,'model'=8] [{'model':(1)4}, {'model':(4)2}, {'x'}, {}]}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, PartitionComputation(hlo_text, 16));
+
+  auto all_to_all = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  ASSERT_NE(all_to_all, nullptr);
+  std::vector<std::vector<int64_t>> expected_replica_groups = {
+      {0, 1, 2, 3, 4, 5, 6, 7}, {8, 9, 10, 11, 12, 13, 14, 15}};
+  EXPECT_EQ(ReplicaGroupsToVecOfVec(all_to_all->replica_groups()),
+            expected_replica_groups);
+}
+
 TEST_F(SpmdPartitioningV3Test, UnreducedParamV3) {
   absl::string_view hlo_string = R"(
 HloModule module
