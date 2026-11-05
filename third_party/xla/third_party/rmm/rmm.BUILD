@@ -37,6 +37,10 @@ cuda_library(
     copts = BASE_COPTS,
     features = ["-use_header_modules"],
     includes = ["cpp/include"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     textual_hdrs = glob([
         "cpp/include/rmm/**/*.h",
         "cpp/include/rmm/**/*.hpp",

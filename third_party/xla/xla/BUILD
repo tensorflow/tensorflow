@@ -1738,7 +1738,8 @@ bzl_library(
         ":native_test_bzl",
         ":platform_native_rule_bzl",
         "//xla/tests:build_defs_bzl",
-        "@rules_cc//cc/common",
+        "@rules_cc//cc/common",  # copybara:comment
+        # copybara:uncomment "@rules_cc//cc/common:cc_info",
         # copybara:uncomment "@rules_python//python:defs_bzl",
         "@bazel_skylib//lib:paths",
         "//xla/tsl:package_groups_bzl",
