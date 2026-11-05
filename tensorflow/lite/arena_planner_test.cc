@@ -1114,5 +1114,31 @@ TEST_F(ArenaPlannerTest, SimpleProfilerTest) {
   EXPECT_EQ(gNumDealloc, 1);
 }
 
+TEST_F(ArenaPlannerTest,
+       ResizedTensorWithinExistingAllocSizeResolvesWhenArenaNotReallocated) {
+  TestGraph graph({0, 1}, {{{0, 1}, {2}, {}}}, {2});
+  (*graph.tensors())[0].bytes = 32;
+  (*graph.tensors())[1].bytes = 32;
+  (*graph.tensors())[2].bytes = 32;
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+
+  ASSERT_FALSE(IsUnallocated(0));
+  ASSERT_FALSE(IsUnallocated(1));
+  ASSERT_FALSE(IsUnallocated(2));
+  const std::ptrdiff_t initial_offset = GetOffset(2);
+
+  // Simulate Subgraph::ResizeTensorImpl on a kTfLiteArenaRw tensor where the
+  // new byte size fits within the existing allocation (allocs_[2].size == 32)
+  // and the arena buffer does not reallocate.
+  (*graph.tensors())[2].bytes = 16;
+  (*graph.tensors())[2].data.raw = nullptr;
+
+  Execute(0, graph.nodes().size() - 1);
+
+  EXPECT_FALSE(IsUnallocated(2));
+  EXPECT_EQ(GetOffset(2), initial_offset);
+}
+
 }  // namespace
 }  // namespace tflite
