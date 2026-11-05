@@ -600,5 +600,89 @@ TEST_F(SVDFOpTest, BlackBoxTestInteger) {
   }
 }
 
+class RankValidationSVDFOpModel : public SingleOpModel {
+ public:
+  RankValidationSVDFOpModel() {
+    AddInput(TensorType_FLOAT32);
+    AddInput(TensorType_FLOAT32);
+    AddInput(TensorType_FLOAT32);
+    AddNullInput();
+    AddVariableInput(TensorData{TensorType_FLOAT32, {2, 10}});
+    AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+                 CreateSVDFOptions(builder_, 1, ActivationFunctionType_NONE)
+                     .Union());
+    BuildInterpreter({
+        {2, 10},
+        {10, 10, 1},
+        {10, 1},
+        {10},
+        {2, 10}
+    }, /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+    /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  }
+};
+
+class HybridTypeConfusionSVDFOpModel : public SingleOpModel {
+ public:
+  explicit HybridTypeConfusionSVDFOpModel(TensorType state_type) {
+    AddInput(TensorType_FLOAT32);
+    AddInput(TensorType_INT8);
+    AddInput(TensorType_INT8);
+    AddNullInput();
+    AddVariableInput(TensorData{state_type, {2, 10}});
+    AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+                 CreateSVDFOptions(builder_, 1, ActivationFunctionType_NONE)
+                     .Union());
+    BuildInterpreter({
+        {2, 10},
+        {1, 10},
+        {1, 10},
+        {1},
+        {2, 10}
+    }, /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+    /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  }
+};
+
+class IntegerTypeConfusionSVDFOpModel : public SingleOpModel {
+ public:
+  explicit IntegerTypeConfusionSVDFOpModel(TensorType state_type) {
+    AddInput(TensorType_INT8);
+    AddInput(TensorType_INT8);
+    AddInput(TensorType_INT16);
+    AddNullInput();
+    AddVariableInput(TensorData{state_type, {2, 10}});
+    AddOutput(TensorType_INT8);
+    SetBuiltinOp(BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+                 CreateSVDFOptions(builder_, 1, ActivationFunctionType_NONE)
+                     .Union());
+    BuildInterpreter({
+        {2, 10},
+        {1, 10},
+        {1, 10},
+        {1},
+        {2, 10}
+    }, /*num_threads=*/1, /*allow_fp32_relax_to_fp16=*/false,
+    /*apply_delegate=*/false, /*allocate_and_delegate=*/false);
+  }
+};
+
+TEST(RankAndTypeValidationTest, Test) {
+  {
+    RankValidationSVDFOpModel m;
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+  }
+  {
+    HybridTypeConfusionSVDFOpModel m(TensorType_INT8);
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+  }
+  {
+    IntegerTypeConfusionSVDFOpModel m(TensorType_INT8);
+    EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+  }
+}
+
 }  // namespace
 }  // namespace tflite
