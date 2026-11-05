@@ -127,7 +127,7 @@ typedef struct TfLiteTensor TfLiteTensor;
 ///   * Outputs: A list of names, each mapped to an output tensor of a signature
 ///
 /// To learn more about signatures in TFLite, refer to:
-/// https://www.tensorflow.org/lite/guide/signatures
+/// https://developers.google.com/edge/litert/conversion/tensorflow/signatures
 ///
 /// Using the TfLiteSignatureRunner, for a particular signature, you can set its
 /// inputs, invoke (i.e. execute) the computation, and retrieve its outputs.
@@ -274,8 +274,9 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetErrorReporter(
 /// TFLite Interpreter via C API. Calling this function ensures that any
 /// `TfLiteInterpreter` created with the specified `options` can execute models
 /// that use the custom operator specified in `registration`.
-/// Please refer https://www.tensorflow.org/lite/guide/ops_custom for custom op
-/// support.
+/// Please refer
+/// https://developers.google.com/edge/litert/conversion/tensorflow/ops_custom
+/// for custom op support.
 /// \note The caller retains ownership of the TfLiteOperator object
 /// and should ensure that it remains valid for the duration of any created
 /// interpreter's lifetime.

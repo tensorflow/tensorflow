@@ -161,7 +161,7 @@ def load_delegate(library, options=None):
 
   Args:
     library: Name of shared library containing the
-      [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates).
+      [TfLiteDelegate](https://developers.google.com/edge/litert/performance/delegates).
     options: Dictionary of options that are required to load the delegate. All
       keys and values in the dictionary should be convertible to str. Consult
       the documentation of the specific delegate for required and legal options.
@@ -419,7 +419,7 @@ class Interpreter:
       model_path: Path to TF-Lite Flatbuffer file.
       model_content: Content of model.
       experimental_delegates: Experimental. Subject to change. List of
-        [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
+        [TfLiteDelegate](https://developers.google.com/edge/litert/performance/delegates)
         objects returned by lite.load_delegate().
       num_threads: Sets the number of threads used by the interpreter and
         available to CPU kernels. If not set, the interpreter will use an
