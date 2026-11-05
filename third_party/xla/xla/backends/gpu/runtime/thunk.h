@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_requests.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_kind.pb.h"
@@ -314,7 +315,9 @@ class Thunk {
         std::vector<se::Stream*> additional_compute_streams = {},
         ExecutionScopedState* execution_scoped_state = nullptr,
         std::optional<absl::Span<const BufferAllocation::Index>>
-            persistent_alloc_indices = std::nullopt);
+            persistent_alloc_indices = std::nullopt,
+        absl::flat_hash_map<LocalityDomainStreamId, se::Stream*>
+            locality_domain_streams = {});
 
     // Constructs execute parameters from an existing parameters but with
     // different buffer allocations.
@@ -360,6 +363,10 @@ class Thunk {
     // Additional compute streams on which thunks can launch operations.
     std::vector<se::Stream*> additional_compute_streams;
 
+    // Backend-pooled leased streams indexed by locality domain.
+    absl::flat_hash_map<LocalityDomainStreamId, se::Stream*>
+        locality_domain_streams;
+
     // Execution scoped state shared between prepare, initialize and execute.
     ExecutionScopedState* execution_scoped_state = nullptr;
 
@@ -399,7 +406,9 @@ class Thunk {
                   bool mock_collectives = false, int64_t execution_id = 0,
                   uint64_t rng_seed = 0,
                   std::optional<absl::Span<const BufferAllocation::Index>>
-                      persistent_alloc_indices = std::nullopt);
+                      persistent_alloc_indices = std::nullopt,
+                  absl::flat_hash_map<LocalityDomainStreamId, se::Stream*>
+                      locality_domain_streams = {});
   };
 
   //===--------------------------------------------------------------------===//

@@ -106,15 +106,23 @@ absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
       }
       return stream;
     }
-    if (execution_stream_id_.is_locality_domain()) {
-      // TODO(keshavb): Select the stream from ExecuteParams once it carries
-      // locality-domain streams.
-      return Unimplemented(
-          "Async execution on locality-domain stream %v is not supported yet",
+    if (execution_stream_id_.is_communication()) {
+      return params.collective_params->async_streams.at(
+          execution_stream_id_.communication_id().value());
+    }
+    auto it = params.locality_domain_streams.find(
+        execution_stream_id_.locality_domain_id());
+    if (it == params.locality_domain_streams.end()) {
+      return InvalidArgument(
+          "No execution stream available for locality-domain stream id: %v",
           execution_stream_id_);
     }
-    return params.collective_params->async_streams.at(
-        execution_stream_id_.communication_id().value());
+    if (it->second == nullptr) {
+      return InvalidArgument(
+          "Null execution stream for locality-domain stream id: %v",
+          execution_stream_id_);
+    }
+    return it->second;
   };
 
   ABSL_ASSIGN_OR_RETURN(se::Stream * async_stream, std::invoke(get_async_stream));

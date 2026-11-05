@@ -274,12 +274,14 @@ CudaStream::CaptureHandle::~CaptureHandle() { EndCapture().IgnoreError(); }
 CudaStream::CudaStream(
     CudaExecutor* executor, CudaEvent completed_event,
     std::optional<std::variant<StreamPriority, int>> priority,
-    CUstream stream_handle, CudaStreamType type)
+    CUstream stream_handle, CudaStreamType type,
+    const GreenContext* green_context)
     : StreamCommon(executor, priority),
       executor_(executor),
       completed_event_(std::move(completed_event)),
       stream_handle_(stream_handle),
       type_(type),
+      green_context_(green_context),
       callback_registry_handle_(
           type == CudaStreamType::kCudaGraphCapture
               ? nullptr
@@ -318,8 +320,9 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
                    CudaEvent::Create(executor,
                                      /*allow_timing=*/false));
 
-  return std::unique_ptr<CudaStream>(new CudaStream(
-      executor, std::move(completed_event), priority, stream_handle, type));
+  return std::unique_ptr<CudaStream>(
+      new CudaStream(executor, std::move(completed_event), priority,
+                     stream_handle, type, green_context));
 }
 
 absl::Status CudaStream::WaitFor(Stream* other) {
