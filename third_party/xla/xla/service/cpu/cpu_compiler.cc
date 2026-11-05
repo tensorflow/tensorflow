@@ -523,9 +523,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       spmd_pipeline.AddPass<sdy::ShardyXLA>();
     } else {
       spmd_pipeline.AddPass<ShardingPropagation>(
-          /*is_spmd=*/true, /*propagate_metadata=*/false,
-          module->config().allow_spmd_sharding_propagation_to_output(),
-          module->config().allow_spmd_sharding_propagation_to_parameters());
+          /*is_spmd=*/true, /*propagate_metadata=*/false);
     }
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, module->config().replica_count());

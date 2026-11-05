@@ -22,10 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -100,27 +98,12 @@ class ShardingPropagation : public HloModulePass {
  public:
   using ComputationMap =
       absl::flat_hash_map<const HloComputation*, HloInstruction*>;
+  // Whether propagation may change entry output and parameter shardings is
+  // read from the module config on every run.
   explicit ShardingPropagation(
       bool is_spmd = false, bool propagate_metadata = false,
-      absl::Span<const bool> allow_spmd_sharding_propagation_to_output =
-          {false},
-      absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters =
-          {false},
       std::unique_ptr<CustomCallShardingHelper> sharding_helper = nullptr)
-      : is_spmd_(is_spmd),
-        propagate_metadata_(propagate_metadata),
-        allow_spmd_sharding_propagation_to_output_(
-            absl::c_any_of(allow_spmd_sharding_propagation_to_output,
-                           [](bool v) { return v; })),
-        allow_spmd_sharding_propagation_to_parameters_(
-            absl::c_any_of(allow_spmd_sharding_propagation_to_parameters,
-                           [](bool v) { return v; })),
-        allow_spmd_sharding_propagation_to_output_vector_(
-            allow_spmd_sharding_propagation_to_output.begin(),
-            allow_spmd_sharding_propagation_to_output.end()),
-        allow_spmd_sharding_propagation_to_parameters_vector_(
-            allow_spmd_sharding_propagation_to_parameters.begin(),
-            allow_spmd_sharding_propagation_to_parameters.end()) {
+      : is_spmd_(is_spmd), propagate_metadata_(propagate_metadata) {
     if (sharding_helper) {
       sharding_helper_ = std::move(sharding_helper);
     } else {
@@ -146,13 +129,15 @@ class ShardingPropagation : public HloModulePass {
   bool InferShardingFromOperands(
       HloInstruction* instruction, const ComputationMap& computation_map,
       int64_t aggressiveness, const CallGraph& call_graph,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      bool allow_spmd_sharding_propagation_to_output);
   bool InferShardingFromUsers(
       HloInstruction* instruction,
       const ShardingPropagation::ComputationMap& computation_map,
       int64_t aggressiveness, bool is_spmd,
       const CustomCallShardingHelper* sharding_helper,
-      const CallGraph& call_graph);
+      const CallGraph& call_graph,
+      bool allow_spmd_sharding_propagation_to_parameters);
 
   absl::StatusOr<bool> RunToFixPoint(
       int64_t aggressiveness, bool propagate_shard_group,
@@ -160,6 +145,8 @@ class ShardingPropagation : public HloModulePass {
       const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
       const CallGraph& call_graph, HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
+      bool allow_spmd_sharding_propagation_to_output,
+      bool allow_spmd_sharding_propagation_to_parameters,
       absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>&
           unspecified_dims,
       absl::flat_hash_map<HloInstruction*, int64_t>&
@@ -187,12 +174,6 @@ class ShardingPropagation : public HloModulePass {
   std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
   bool is_spmd_;
   bool propagate_metadata_;
-  bool allow_spmd_sharding_propagation_to_output_;
-  bool allow_spmd_sharding_propagation_to_parameters_;
-  absl::InlinedVector<bool, 1>
-      allow_spmd_sharding_propagation_to_output_vector_;
-  absl::InlinedVector<bool, 1>
-      allow_spmd_sharding_propagation_to_parameters_vector_;
 };
 
 }  // namespace xla

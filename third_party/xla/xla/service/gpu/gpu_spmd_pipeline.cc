@@ -114,8 +114,7 @@ void AddSPMDPasses(
       (*auto_sharding_func)(spmd_pipeline);
     }
     spmd_pipeline.AddPass<ShardingPropagation>(
-        /*is_spmd=*/true, /*propagate_metadata=*/false,
-        config.allow_spmd_sharding_propagation_to_output());
+        /*is_spmd=*/true, /*propagate_metadata=*/false);
   }
   std::optional<int64_t> oper_size_threshold = std::nullopt;
   if (hlo_module->config()
