@@ -352,7 +352,7 @@ TEST(RamFileBlockCacheTest, MaxStaleness) {
     return n;
   };
   std::vector<char> out;
-  std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
+  std::unique_ptr<NowSecondsEnv> env = std::make_unique<NowSecondsEnv>();
   // Create a cache with max staleness of 2 seconds, and verify that it works as
   // expected.
   tf_gcs_filesystem::RamFileBlockCache cache1(
@@ -459,7 +459,7 @@ TEST(RamFileBlockCacheTest, Prune) {
   };
   std::vector<char> out;
   // Our fake environment is initialized with the current timestamp.
-  std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
+  std::unique_ptr<NowSecondsEnv> env = std::make_unique<NowSecondsEnv>();
   uint64_t now = Env::Default()->NowSeconds();
   env->SetNowSeconds(now);
   tf_gcs_filesystem::RamFileBlockCache cache(
