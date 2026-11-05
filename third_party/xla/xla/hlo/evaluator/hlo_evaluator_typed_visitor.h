@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -547,6 +548,15 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleMaximum(const HloInstruction* maximum) override {
+    if constexpr (std::is_same_v<ReturnT, tsl::float8_e8m0fnu>) {
+      // Unpacked float8_e8m0fnu has 2^-127 as a float32 subnormal, which host
+      // worker threads with FTZ/DAZ enabled would flush to +0.0f (NaN in E8M0).
+      return ElementWiseBinaryOp(
+          maximum, [](ElementwiseT lhs, ElementwiseT rhs) {
+            return absl::bit_cast<ElementwiseT>(std::max(
+                absl::bit_cast<int32_t>(lhs), absl::bit_cast<int32_t>(rhs)));
+          });
+    }
     if constexpr (!is_complex_v<ElementwiseT>) {
       return ElementWiseBinaryOp(
           maximum, [](ElementwiseT lhs, ElementwiseT rhs) {
@@ -565,6 +575,20 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleMinimum(const HloInstruction* minimum) override {
+    if constexpr (std::is_same_v<ReturnT, tsl::float8_e8m0fnu>) {
+      return ElementWiseBinaryOp(
+          minimum, [](ElementwiseT lhs, ElementwiseT rhs) {
+            const int32_t lhs_bits = absl::bit_cast<int32_t>(lhs);
+            const int32_t rhs_bits = absl::bit_cast<int32_t>(rhs);
+            if (lhs_bits > 0x7F800000) {
+              return lhs;
+            }
+            if (rhs_bits > 0x7F800000) {
+              return rhs;
+            }
+            return absl::bit_cast<ElementwiseT>(std::min(lhs_bits, rhs_bits));
+          });
+    }
     if constexpr (!is_complex_v<ElementwiseT>) {
       return ElementWiseBinaryOp(
           minimum, [](ElementwiseT lhs, ElementwiseT rhs) {

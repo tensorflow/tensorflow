@@ -4964,6 +4964,11 @@ ReturnT ApplyBinaryOp(HloOpcode opcode, ReturnT a, ReturnT b) {
       return static_cast<ReturnT>(
           ElementwiseT(ToArithmeticSafeType(lhs) * ToArithmeticSafeType(rhs)));
     case HloOpcode::kMaximum:
+      if constexpr (std::is_same_v<ReturnT, tsl::float8_e8m0fnu>) {
+        return Eigen::numext::isnan(a)
+                   ? a
+                   : (Eigen::numext::isnan(b) ? b : std::max(a, b));
+      }
       if constexpr (!is_complex_v<ElementwiseT>) {
         if constexpr (std::numeric_limits<ElementwiseT>::has_quiet_NaN) {
           if (std::isnan(lhs)) {
@@ -4977,6 +4982,11 @@ ReturnT ApplyBinaryOp(HloOpcode opcode, ReturnT a, ReturnT b) {
       }
       break;
     case HloOpcode::kMinimum:
+      if constexpr (std::is_same_v<ReturnT, tsl::float8_e8m0fnu>) {
+        return Eigen::numext::isnan(a)
+                   ? a
+                   : (Eigen::numext::isnan(b) ? b : std::min(a, b));
+      }
       if constexpr (!is_complex_v<ElementwiseT>) {
         if constexpr (std::numeric_limits<ElementwiseT>::has_quiet_NaN) {
           if (std::isnan(lhs)) {
