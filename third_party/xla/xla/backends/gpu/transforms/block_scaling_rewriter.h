@@ -117,9 +117,6 @@ class CudnnScaledDotHelper {
   // Check if the device and cuDNN version support block scaled dots.
   static bool IsAvailable(const se::DeviceDescription& device_description);
 
-  // Check if the scaled dot fusion is supported by cuDNN.
-  static bool IsSupported(const HloScaledDotInstruction* scaled_dot);
-
   // Check if the scaled dot operation is supported by cuDNN (ignoring layout
   // and operand producer opcodes, for use before layout assignment).
   static bool IsSupportedPreLayout(const HloScaledDotInstruction* scaled_dot);
@@ -127,11 +124,6 @@ class CudnnScaledDotHelper {
   // Check if the scaled dot operation and its physical layouts are supported
   // by cuDNN (for use after layout assignment).
   static bool IsSupportedPostLayout(const HloScaledDotInstruction* scaled_dot);
-
-  // Extract scale tensor swizzling from the block scaled dot fusion into
-  // separate computations.
-  static absl::StatusOr<HloInstruction*> AddScaleSwizzle(
-      HloFusionInstruction* fusion);
 };
 
 // Rewrites supported kScaledDot instructions into a __cudnn$fusion custom
