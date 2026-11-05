@@ -291,6 +291,12 @@ common:asan_shared --config=asan
 common:asan_shared --copt=-shared-libasan
 common:asan_shared --linkopt=-shared-libasan
 
+common:rocm_base --repo_env=LLVM_VERSION=22
+common:rocm_base --@rules_ml_toolchain//common:stdlib=libstdc++
+common:rocm_base --@rules_ml_toolchain//common:static_libcxx=False
+common:rocm_base --@rules_ml_toolchain//common:enable_xla_test_global_symbol_version=True
+common:rocm_base --@rules_ml_toolchain//common:enable_hermetic_libraries=True
+common:rocm_base --repo_env=SYSROOT_DIST=linux_glibc_2_31
 common:rocm_base --copt=-Wno-gnu-offsetof-extensions
 common:rocm_base --define=using_rocm_hipcc=true
 common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
@@ -299,10 +305,6 @@ common:rocm_base --define=using_rocm_hipcc=true
 common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
 common:rocm_base --action_env=HIPCC_COMPILE_FLAGS_APPEND="--offload-compress"
 common:rocm_base --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a,gfx942,gfx950,gfx1030,gfx1100,gfx1101,gfx1200,gfx1201"
-common:rocm_base --@rules_ml_toolchain//common:stdlib=libstdc++
-common:rocm_base --@rules_ml_toolchain//common:static_libcxx=False
-common:rocm_base --cxxopt=-std=c++17
-common:rocm_base --host_cxxopt=-std=c++17
 
 common:rocm_clang_local --config=rocm_base
 common:rocm_clang_local --config=clang_local
@@ -324,11 +326,8 @@ common:rocm_ci --config=rocm
 common:rocm_ci --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 common:rocm_ci_hermetic --dynamic_mode=fully
-common:rocm_ci_hermetic --@rules_ml_toolchain//common:enable_xla_test_global_symbol_version=True
-common:rocm_ci_hermetic --@rules_ml_toolchain//common:enable_hermetic_libraries=True
 common:rocm_ci_hermetic --config=rocm_clang_hermetic
 common:rocm_ci_hermetic --repo_env=TF_ROCM_AMDGPU_TARGETS="gfx908,gfx90a,gfx950"
-common:rocm_ci_hermetic --repo_env=SYSROOT_DIST=linux_glibc_2_31
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.
