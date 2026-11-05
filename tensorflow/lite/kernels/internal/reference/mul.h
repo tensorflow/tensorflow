@@ -119,8 +119,8 @@ inline void BroadcastMul6DSlow(const ArithmeticParams& params,
 template <typename T,
           // For unquantized mul on small integers, explicitly set to true.
           bool enable_for_short_integers = false>
-inline typename std::enable_if<
-    !is_small_integer<T>::value || enable_for_short_integers, void>::type
+inline std::enable_if_t<
+    !is_small_integer<T>::value || enable_for_short_integers, void>
 BroadcastMul6DSlow(const ArithmeticParams& params,
                    const RuntimeShape& unextended_input1_shape,
                    const T* input1_data,

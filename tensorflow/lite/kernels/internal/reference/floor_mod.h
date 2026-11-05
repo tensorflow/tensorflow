@@ -29,8 +29,8 @@ T FloorMod(T input1, T input2) {
       return std::fmod(lhs, rhs);
     }
   };
-  using ModFunc = typename std::conditional<std::is_integral<T>::value,
-                                            std::modulus<T>, FloatMod>::type;
+  using ModFunc =
+      std::conditional_t<std::is_integral_v<T>, std::modulus<T>, FloatMod>;
   ModFunc mod_func;
   T trunc_mod = mod_func(input1, input2);
   return (trunc_mod != 0) && ((input2 < 0) != (trunc_mod < 0))

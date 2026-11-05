@@ -207,7 +207,7 @@ void BroadcastDivSlow(const ArithmeticParams& params,
     T div_result;
     // Guard against signed integer overflow: INT_MIN / -1 is undefined
     // behavior in C++. Saturate to T::max() instead.
-    if (std::is_integral<T>::value && std::is_signed<T>::value &&
+    if (std::is_integral_v<T> && std::is_signed_v<T> &&
         b == static_cast<T>(-1) && a == std::numeric_limits<T>::min()) {
       div_result = std::numeric_limits<T>::max();
     } else {
@@ -236,7 +236,7 @@ inline void Div(const ArithmeticParams& params,
     T div_result;
     // Guard against signed integer overflow: INT_MIN / -1 is undefined
     // behavior in C++. Saturate to T::max() instead.
-    if (std::is_integral<T>::value && std::is_signed<T>::value &&
+    if (std::is_integral_v<T> && std::is_signed_v<T> &&
         input2_data[i] == static_cast<T>(-1) &&
         input1_data[i] == std::numeric_limits<T>::min()) {
       div_result = std::numeric_limits<T>::max();
