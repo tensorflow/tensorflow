@@ -89,7 +89,7 @@ class SliceOpModel : public SingleOpModel {
   }
 
   void SetInput(std::initializer_list<input_type> data) {
-    if constexpr (std::is_same<input_type, int8_t>::value) {
+    if constexpr (std::is_same_v<input_type, int8_t>) {
       if (interpreter_->tensor(input_)->type == kTfLiteInt4) {
         PopulateTensor4bit(input_, 0, data.begin(), data.end());
         return;

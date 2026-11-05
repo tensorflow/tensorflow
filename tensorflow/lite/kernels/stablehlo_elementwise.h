@@ -41,9 +41,9 @@ TfLiteStatus ElementwisePrepare(TfLiteContext* context, TfLiteNode* node);
 template <typename DataType, ComputationType computation_type>
 inline DataType ApplyComputation(DataType input1, DataType input2) {
   if (computation_type == ComputationType::kAnd) {
-    if constexpr (std::is_integral<DataType>::value) {
+    if constexpr (std::is_integral_v<DataType>) {
       return input1 & input2;
-    } else if constexpr (std::is_same<DataType, bool>::value) {
+    } else if constexpr (std::is_same_v<DataType, bool>) {
       return input1 && input2;
     }
   } else if (computation_type == ComputationType::kAdd) {

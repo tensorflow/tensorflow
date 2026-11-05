@@ -126,7 +126,7 @@ void Check(std::initializer_list<int> input_shape,
   switch (test_type) {
     case TestType::kConst: {
       if (SingleOpModel::GetForceUseNnapi() &&
-          !std::is_same<InputType, std::string>::value) {
+          !std::is_same_v<InputType, std::string>) {
         // NNAPI does not support graphs with all constant inputs.
         return;
       }
