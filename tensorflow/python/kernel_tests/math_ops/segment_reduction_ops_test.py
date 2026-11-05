@@ -1442,6 +1442,82 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError("Invalid number of segments"):
           self.evaluate(s)
 
+  def testGradientV2IndicesInvalid1(self):
+    tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 2, 2]
+    tf_indices = [8, 3, 0, 10]
+    with self.session():
+      for tf_op in ops_list:
+        s, _ = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError(r"Index 10 out of range \[0, 10\)"):
+          self.evaluate(s)
+
+  def testGradientV2IndicesInvalid2(self):
+    tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 2, 2]
+    tf_indices = [8, 3, -1, 9]
+    with self.session():
+      for tf_op in ops_list:
+        s, _ = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError(r"Index -1 out of range \[0, 10\)"):
+          self.evaluate(s)
+
+  def testGradientV2SegmentsInvalid1(self):
+    tf_x, _ = self._input(
+        [3, 4], dtype=dtypes_lib.float32)  # expecting 3 segments
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 1, 4]  # 5 segments
+    tf_indices = [8, 3, 0, 9]
+    with self.session():
+      for tf_op in ops_list:
+        s, _ = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError("Invalid number of segments"):
+          self.evaluate(s)
+
+  def testGradientV2SegmentsInvalid2(self):
+    tf_x, _ = self._input([1, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [0, 1, 2, 0]
+    tf_indices = [8, 3, 0, 9]
+    with self.session():
+      for tf_op in ops_list:
+        s, _ = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError(r"Segment id 1 out of range \[0, 1\)"):
+          self.evaluate(s)
+
+  def testGradientV2SegmentsInvalid3(self):
+    tf_x, _ = self._input([2, 4], dtype=dtypes_lib.float32)
+    ops_list = [
+        math_ops.sparse_segment_sum_grad_v2,
+        math_ops.sparse_segment_mean_grad_v2,
+        math_ops.sparse_segment_sqrt_n_grad_v2,
+    ]
+    segment_indices = [-1, 0, 1, 1]
+    tf_indices = [8, 3, 0, 9]
+    with self.session():
+      for tf_op in ops_list:
+        s, _ = tf_op(tf_x, tf_indices, segment_indices, 10)
+        with self.assertRaisesOpError(r"Segment id -1 out of range \[0, 2\)"):
+          self.evaluate(s)
+
   def testGradientEmptyInputWithNonEmptyIndices(self):
     ops_list = [
         math_ops.sparse_segment_sum_grad,
