@@ -37,7 +37,7 @@ void FillRangeOutput(const Array& start_array, const Array& limit_array,
   auto& buffer = output_array->GetMutableBuffer<A>();
   buffer.data.clear();
   int size =
-      (std::is_integral<T>::value
+      (std::is_integral_v<T>
            ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
            : std::ceil(std::abs((limit - start) / delta)));
   for (int i = 0; i < size; ++i) {
