@@ -522,5 +522,38 @@ void ReducedPrecisionAccuracyTest::DoIt(
 INSTANTIATE_TEST_CASE_P(ReducedPrecisionAccuracyTest,
                         ReducedPrecisionAccuracyTest, ::testing::Range(0, 4));
 
+using ReducedPrecisionTest =
+    ClientLibraryTestRunnerMixin<HloInterpreterReferenceMixin<HloTestBase>>;
+
+TEST_F(ReducedPrecisionTest, IdentityReducePrecisionF8E4M3FN) {
+  XlaBuilder builder(TestName());
+  Literal a_literal = LiteralUtil::CreateR1<float8_e4m3fn>(
+      {float8_e4m3fn(0.0f), float8_e4m3fn(0.001953125f), float8_e4m3fn(1.0f),
+       float8_e4m3fn(256.0f), float8_e4m3fn(-448.0f)});
+  auto a = Parameter(&builder, 0, a_literal.shape(), "a");
+  ReducePrecision(a, /*exponent_bits=*/4, /*mantissa_bits=*/3);
+  ComputeAndCompare(&builder, {&a_literal});
+}
+
+TEST_F(ReducedPrecisionTest,
+       ConvertToF8E4M3FNIdentityReducePrecisionRoundTrip) {
+  XlaBuilder builder(TestName());
+  Literal x_literal =
+      LiteralUtil::CreateR1<float>({0.001953125f, 1.0f, 256.0f, -448.0f});
+  Literal y_literal = LiteralUtil::CreateR1<float>({0.0f, 0.04f, 0.0f, 0.0f});
+  auto x = Parameter(&builder, 0, x_literal.shape(), "x");
+  auto y = Parameter(&builder, 1, y_literal.shape(), "y");
+  auto round_trip = [&](XlaOp v) {
+    auto v_f8 = ConvertElementType(v, F8E4M3FN);
+    auto rp_f8 =
+        ReducePrecision(v_f8, /*exponent_bits=*/4, /*mantissa_bits=*/3);
+    return ConvertElementType(rp_f8, F32);
+  };
+  auto step1 = round_trip(Add(x, y));
+  round_trip(Add(step1, y));
+  ComputeAndCompareR1<float>(&builder, {0.001953125f, 1.0f, 256.0f, -448.0f},
+                             {&x_literal, &y_literal});
+}
+
 }  // namespace
 }  // namespace xla

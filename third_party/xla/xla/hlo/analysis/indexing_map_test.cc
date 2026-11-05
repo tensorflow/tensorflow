@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -949,6 +950,36 @@ TEST_F(IndexingMapTest, ConstraintMerge_Mod) {
                           s0 mod 6 in [0, 0],
                           s1 mod 5 in [1, 1]
                         )"));
+}
+
+TEST_F(IndexingMapTest, ConstraintMerge_ModNegativeBoundsNonZeroRemainder) {
+  auto indexing_map = Parse(R"(
+    (d0)[s0] -> (d0, s0),
+    domain:
+    d0 in [0, 3],
+    s0 in [-14, -2],
+    s0 mod 3 in [2, 2]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                          (d0)[s0] -> (d0, s0),
+                          domain:
+                          d0 in [0, 3],
+                          s0 in [-13, -4],
+                          s0 mod 3 in [2, 2]
+                        )"));
+}
+
+TEST_F(IndexingMapTest, ConstraintMerge_ModEmptyInterval) {
+  auto empty_map = Parse(R"(
+    (d0)[s0] -> (d0, s0),
+    domain:
+    d0 in [0, 3],
+    s0 in [-13, -12],
+    s0 mod 3 in [1, 1]
+  )");
+  EXPECT_TRUE(empty_map.Simplify());
+  EXPECT_THAT(ToString(empty_map), MatchIndexingString("KNOWN EMPTY"));
 }
 
 TEST_F(IndexingMapTest, SymbolicMapSimplification_ConstantDims) {

@@ -39,15 +39,12 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-// Skips the chain of transposes and (type-preserving) bitcasts feeding `inst`.
-HloInstruction* SkipTransposesAndBitcasts(HloInstruction* inst) {
-  while (inst->opcode() == HloOpcode::kTranspose ||
+// Returns true for transposes and (type-preserving) bitcasts.
+bool IsTransposeOrBitcast(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kTranspose ||
          (inst->opcode() == HloOpcode::kBitcast &&
           inst->shape().element_type() ==
-              inst->operand(0)->shape().element_type())) {
-    inst = inst->mutable_operand(0);
-  }
-  return inst;
+              inst->operand(0)->shape().element_type());
 }
 
 bool IsSupportedByGemm(const DotOperandDims& dims,
@@ -63,6 +60,37 @@ bool IsSupportedByGemm(const DotOperandDims& dims,
       .ok();
 }
 
+// Folds the transpose/bitcast chain above `operand` into the farthest producer
+// for which the dot stays supported. Candidates are the chain's input and every
+// producer above a transpose: bitcasts are free, so stopping between leading
+// bitcasts gains nothing. Returns whether `operand` and `dims` changed.
+absl::StatusOr<bool> FoldIntoDotOperand(bool requires_minor_contracting_dims,
+                                        HloInstruction*& operand,
+                                        DotOperandDims& dims) {
+  const DotOperandDims consumer_dims = dims;
+  ShapeTracker tracker(operand->shape());
+  bool above_transpose = false;
+  bool changed = false;
+  for (HloInstruction* source = operand; IsTransposeOrBitcast(source);) {
+    ABSL_RETURN_IF_ERROR(tracker.PrependInstruction(source));
+    above_transpose |= source->opcode() == HloOpcode::kTranspose;
+    source = source->mutable_operand(0);
+    if (!above_transpose && IsTransposeOrBitcast(source)) {
+      continue;
+    }
+    ABSL_ASSIGN_OR_RETURN(std::optional<DotOperandDims> source_dims,
+                     consumer_dims.FoldBackward(tracker));
+    if (!source_dims.has_value() ||
+        !IsSupportedByGemm(*source_dims, requires_minor_contracting_dims)) {
+      continue;
+    }
+    dims = *std::move(source_dims);
+    operand = source;
+    changed = true;
+  }
+  return changed;
+}
+
 absl::StatusOr<bool> FoldIntoDot(HloInstruction* dot,
                                  const se::GpuComputeCapability& gpu_version) {
   ABSL_ASSIGN_OR_RETURN((std::array<DotOperandDims, 2> dims),
@@ -73,21 +101,10 @@ absl::StatusOr<bool> FoldIntoDot(HloInstruction* dot,
       DotRequiresMinorContractingDims(*dot, gpu_version);
   bool changed = false;
   for (int64_t i = 0; i < 2; ++i) {
-    HloInstruction* source = SkipTransposesAndBitcasts(operands[i]);
-    if (source == operands[i]) {
-      continue;
-    }
-    ABSL_ASSIGN_OR_RETURN(ShapeTracker tracker,
-                     ShapeTracker::FromProducerConsumer(source, operands[i]));
-    ABSL_ASSIGN_OR_RETURN(std::optional<DotOperandDims> source_dims,
-                     dims[i].FoldBackward(tracker));
-    if (!source_dims.has_value() ||
-        !IsSupportedByGemm(*source_dims, requires_minor_contracting_dims)) {
-      continue;
-    }
-    dims[i] = *std::move(source_dims);
-    operands[i] = source;
-    changed = true;
+    ABSL_ASSIGN_OR_RETURN(bool folded,
+                     FoldIntoDotOperand(requires_minor_contracting_dims,
+                                        operands[i], dims[i]));
+    changed |= folded;
   }
   if (!changed) {
     return false;

@@ -50,3 +50,7 @@ configure the YNNPACK delegate:
 
 *   **`--ynnpack_enable_blockwise_quantization=true|false`** (default: `false`):
     Enable support for blockwise quantization.
+
+*   **`--ynnpack_dispatch_moe_on_host=true|false`** (default: `false`):
+    Bucket the tokens of multi-token MoE ops by expert on the host, so that
+    each expert processes its tokens in one batch (prefill only).

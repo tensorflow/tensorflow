@@ -17,6 +17,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
@@ -42,6 +43,11 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -49,6 +55,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_api.h"
@@ -58,6 +65,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/service/device_assignment.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
@@ -238,6 +246,45 @@ TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
     }
     blocking_counter.Wait();
   }
+}
+
+TEST(PjRtCApiClientTest, ConcurrentAcquireExternalReference) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+  ASSERT_OK(buffer->GetReadyFuture().Await());
+
+  constexpr int kNumThreads = 8;
+  constexpr int kNumIterations = 1000;
+  tsl::thread::ThreadPool thread_pool(
+      tsl::Env::Default(), "ConcurrentAcquireExternalReference", kNumThreads);
+
+  absl::BlockingCounter blocking_counter(kNumThreads);
+  for (int i = 0; i < kNumThreads; ++i) {
+    thread_pool.Schedule([&]() {
+      for (int j = 0; j < kNumIterations; ++j) {
+        if (absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>> ref =
+                buffer->AcquireExternalReference();
+            ref.ok()) {
+          EXPECT_NE((*ref)->OpaqueDeviceMemoryDataPointer(), nullptr);
+        } else {
+          EXPECT_OK(ref);
+        }
+      }
+      blocking_counter.DecrementCount();
+    });
+  }
+  blocking_counter.Wait();
 }
 
 TEST(PjRtCApiClientTest, GetReadyFutureDeletedBuffer) {
@@ -583,6 +630,37 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
           MaybeOwningMlirModule(std::move(context), std::move(module)),
           CompileOptions()));
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile = PJRT_Client_Compile_Orig;
+}
+
+TEST(PjRtClientTest, CompilerCompileWithoutClientUsesStableHloVersion) {
+  const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
+  ASSERT_NE(c_api, nullptr);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       WrapClientAroundCApi(c_api));
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
+  ASSERT_NE(topology, nullptr);
+  PJRT_Api custom_c_api = *c_api;
+  custom_c_api.PJRT_Compile = [](PJRT_Compile_Args* args) -> PJRT_Error* {
+    mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
+    std::string version_string = absl::StrFormat(
+        "%d.%d.%d", version.getMajor(), version.getMinor(), version.getPatch());
+    EXPECT_TRUE(llvm::StringRef(args->program->code, args->program->code_size)
+                    .contains(version_string));
+    return ::pjrt::cpu_plugin::GetCpuPjrtApi()->PJRT_Compile(args);
+  };
+  PjRtCApiCompiler compiler(&custom_c_api);
+  constexpr char kProgram[] = "func.func @main() {return}";
+  auto context = std::make_unique<mlir::MLIRContext>();
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModuleString(kProgram, *context));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      compiler.Compile(
+          CompileOptions(),
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          *topology, /*client=*/nullptr));
+  EXPECT_NE(executable, nullptr);
 }
 
 TEST(PjRtClientTest, CompileWorksInplace) {
@@ -1173,6 +1251,58 @@ TEST(PjRtCApiClientTest, IsCApi) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                        GetCApiClient("cpu"));
   EXPECT_TRUE(client->IsCApi());
+}
+
+TEST(PjRtCApiClientTest, GetHloModulesAllowsTrimmedConstantLiteral) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"(
+HloModule TrimmedConstant
+ENTRY main() -> f32[4] {
+  ROOT %c = f32[4] constant({1, 2, 3, 4})
+})"));
+  HloModuleProtoWithConfig proto = module->ToProtoWithConfig();
+  bool cleared = false;
+  for (HloComputationProto& comp :
+       *proto.mutable_hlo_module()->mutable_computations()) {
+    for (HloInstructionProto& inst : *comp.mutable_instructions()) {
+      if (inst.opcode() == HloOpcodeString(HloOpcode::kConstant)) {
+        inst.clear_literal();
+        cleared = true;
+      }
+    }
+  }
+  ASSERT_TRUE(cleared);
+
+  std::string serialized_proto = proto.SerializeAsString();
+
+  PJRT_Api mock_api = *::pjrt::cpu_plugin::GetCpuPjrtApi();
+  mock_api.PJRT_Executable_Destroy =
+      +[](PJRT_Executable_Destroy_Args* /*args*/) -> PJRT_Error* {
+    return nullptr;
+  };
+  mock_api.PJRT_Executable_OptimizedProgram =
+      +[](PJRT_Executable_OptimizedProgram_Args* args) -> PJRT_Error* {
+    const std::string* serialized_proto =
+        reinterpret_cast<const std::string*>(args->executable);
+    args->program->format = ::pjrt::kHloWithConfigFormat.data();
+    args->program->format_size = ::pjrt::kHloWithConfigFormat.size();
+    args->program->code_size = serialized_proto->size();
+    if (args->program->code != nullptr) {
+      std::memcpy(args->program->code, serialized_proto->data(),
+                  serialized_proto->size());
+    }
+    return nullptr;
+  };
+
+  PjRtCApiExecutable executable(
+      &mock_api, reinterpret_cast<PJRT_Executable*>(&serialized_proto));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<HloModule>> modules,
+                       executable.GetHloModules());
+  ASSERT_EQ(modules.size(), 1);
+  const HloInstruction* root =
+      modules[0]->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kConstant);
+  EXPECT_FALSE(Cast<HloConstantInstruction>(root)->HasLiteral());
 }
 
 }  // namespace

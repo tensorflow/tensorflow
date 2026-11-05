@@ -17,9 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
-#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -29,8 +27,8 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -61,17 +59,16 @@ class VerifyTritonConstraintsTest : public HloHardwareIndependentTestBase {
     HloInstruction* root = module->entry_computation()->root_instruction();
     std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
         HloFusionAdaptor::ForInstruction(root);
-    ABSL_ASSIGN_OR_RETURN(
-        std::unique_ptr<experimental::TilingSpace> tiling_space,
-        experimental::TilingSpace::Create(*fusion_adaptor, &mlir_context_));
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,
+                     TilingSpace::Create(*fusion_adaptor, &mlir_context_));
     ABSL_RETURN_IF_ERROR(tiling_space->AssignTileSizes(tile_sizes));
-    ABSL_ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_comp,
-                     experimental::TiledHloComputation::Tile(
-                         *fusion_adaptor, std::move(tiling_space)));
+    ABSL_ASSIGN_OR_RETURN(
+        TiledHloComputation tiled_comp,
+        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
     tiled_comp.Simplify();
     tiled_comp.SortInstructionsPostOrder();
     Decision decision =
-        experimental::VerifyTritonConstraints(tiled_comp, device_description_);
+        VerifyTritonConstraints(tiled_comp, device_description_);
     if (!decision) {
       return absl::InvalidArgumentError(decision.Explain());
     }
@@ -152,6 +149,37 @@ ENTRY entry_computation {
   EXPECT_OK(CheckTiling(module.get(), {4, 4, 4}));
   // Having any tile larger than 256 is not allowed for dots.
   EXPECT_THAT(CheckTiling(module.get(), {512, 4, 4}),
+              StatusIs(_, HasSubstr("exceeds the maximum MMA dimension size")));
+}
+
+TEST_F(VerifyTritonConstraintsTest, ScaledDotOperandSizeConstraintIsEnforced) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+HloModule m
+
+fused_computation {
+  lhs = f8e4m3fn[128,512] parameter(0)
+  rhs = f8e4m3fn[512,128] parameter(1)
+  lhs_scale = f8e8m0fnu[128,16] parameter(2)
+  rhs_scale = f8e8m0fnu[16,128] parameter(3)
+  ROOT dot = f32[128,128] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry_computation {
+  lhs = f8e4m3fn[128,512] parameter(0)
+  rhs = f8e4m3fn[512,128] parameter(1)
+  lhs_scale = f8e8m0fnu[128,16] parameter(2)
+  rhs_scale = f8e8m0fnu[16,128] parameter(3)
+  ROOT fusion = f32[128,128] fusion(lhs, rhs, lhs_scale, rhs_scale),
+    kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)hlo"));
+
+  EXPECT_OK(CheckTiling(module.get(), {64, 64, 128}));
+  // Having any tile larger than 256 is not allowed for scaled-dots.
+  EXPECT_THAT(CheckTiling(module.get(), {64, 64, 512}),
               StatusIs(_, HasSubstr("exceeds the maximum MMA dimension size")));
 }
 
@@ -324,28 +352,25 @@ class VerifySubsetOfTritonConstraintsTest
 };
 
 TEST_F(VerifySubsetOfTritonConstraintsTest, ValidTilingPasses) {
-  auto space = std::make_unique<experimental::TilingSpace>();
-  space->AppendDimension(
-      nullptr, 0, 1024,
-      experimental::TilingSpace::DimensionSemantics::kParallel);
+  auto space = std::make_unique<TilingSpace>();
+  space->AppendDimension(nullptr, 0, 1024,
+                         TilingSpace::DimensionSemantics::kParallel);
 
-  Decision decision = experimental::VerifySubsetOfTritonConstraints(
-      {64}, *space, device_description_);
+  Decision decision =
+      VerifySubsetOfTritonConstraints({64}, *space, device_description_);
   EXPECT_TRUE(decision.IsAllowed());
 }
 
 TEST_F(VerifySubsetOfTritonConstraintsTest, RejectsExcessiveElements) {
-  auto space = std::make_unique<experimental::TilingSpace>();
-  space->AppendDimension(
-      nullptr, 0, 1024,
-      experimental::TilingSpace::DimensionSemantics::kParallel);
-  space->AppendDimension(
-      nullptr, 1, 2048,
-      experimental::TilingSpace::DimensionSemantics::kParallel);
+  auto space = std::make_unique<TilingSpace>();
+  space->AppendDimension(nullptr, 0, 1024,
+                         TilingSpace::DimensionSemantics::kParallel);
+  space->AppendDimension(nullptr, 1, 2048,
+                         TilingSpace::DimensionSemantics::kParallel);
 
   // Cumulative product 1024 * 2048 = 2097152 exceeds 1048576 elements:
-  Decision decision = experimental::VerifySubsetOfTritonConstraints(
-      {1024, 2048}, *space, device_description_);
+  Decision decision = VerifySubsetOfTritonConstraints({1024, 2048}, *space,
+                                                      device_description_);
   EXPECT_TRUE(decision.IsForbidden());
   EXPECT_THAT(decision.Explain(),
               HasSubstr("Padded tile size product exceeds the maximum number "
@@ -364,24 +389,24 @@ TEST_F(VerifySubsetOfTritonConstraintsTest, RejectsDotTileExceedingMMALimit) {
   )"));
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->root_instruction());
-  ASSERT_OK_AND_ASSIGN(auto space, experimental::TilingSpace::Create(
-                                       *fusion_adaptor, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto space,
+                       TilingSpace::Create(*fusion_adaptor, &mlir_context_));
 
   // Tile sizes [16, 16, 512] has contracting tile 512 > 256 (MMA limit).
-  Decision invalid_decision = experimental::VerifySubsetOfTritonConstraints(
+  Decision invalid_decision = VerifySubsetOfTritonConstraints(
       {16, 16, 512}, *space, device_description_);
   EXPECT_TRUE(invalid_decision.IsForbidden());
   EXPECT_THAT(invalid_decision.Explain(),
               HasSubstr("exceeds the maximum MMA dimension size"));
 
   // Contracting tile 256 (<= 256) passes.
-  Decision valid_decision = experimental::VerifySubsetOfTritonConstraints(
+  Decision valid_decision = VerifySubsetOfTritonConstraints(
       {16, 16, 256}, *space, device_description_);
   EXPECT_TRUE(valid_decision.IsAllowed()) << valid_decision.Explain();
 }
 
 TEST_F(VerifySubsetOfTritonConstraintsTest, MultiOutputFusionEvaluatedPerRoot) {
-  auto space = std::make_unique<experimental::TilingSpace>();
+  auto space = std::make_unique<TilingSpace>();
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule m
     ENTRY e {
@@ -396,14 +421,12 @@ TEST_F(VerifySubsetOfTritonConstraintsTest, MultiOutputFusionEvaluatedPerRoot) {
   const HloInstruction* root1 =
       module->entry_computation()->root_instruction()->operand(1);
 
-  space->AppendDimension(
-      root0, 0, 1000000,
-      experimental::TilingSpace::DimensionSemantics::kParallel);
-  space->AppendDimension(
-      root1, 0, 1000000,
-      experimental::TilingSpace::DimensionSemantics::kParallel);
+  space->AppendDimension(root0, 0, 1000000,
+                         TilingSpace::DimensionSemantics::kParallel);
+  space->AppendDimension(root1, 0, 1000000,
+                         TilingSpace::DimensionSemantics::kParallel);
 
-  Decision decision = experimental::VerifySubsetOfTritonConstraints(
+  Decision decision = VerifySubsetOfTritonConstraints(
       {1000000, 1000000}, *space, device_description_);
   EXPECT_TRUE(decision.IsAllowed()) << decision.Explain();
 }

@@ -49,6 +49,8 @@ class ConvertTest : public ClientLibraryTestRunnerMixin<
  public:
   explicit ConvertTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
+    mutable_debug_options()->add_xla_disable_hlo_passes(
+        "gpu-algebraic-simplifier");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");
     mutable_debug_options()->add_xla_disable_hlo_passes(
         "simplify-fp-conversions");
@@ -2230,6 +2232,90 @@ TYPED_TEST(ConvertTestF16, ConvertF8e8m0fnuF16RoundtripExhaustive4) {
 
   ConvertElementType(ConstantR1<TypeParam>(&builder, all_f16), F8E8M0FNU);
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
+}
+
+std::vector<float> MakeRoundNearestEvenConvertTestInputs() {
+  std::vector<float> values = {
+      0.0f,
+      -0.0f,
+      0.25f,
+      -0.25f,
+      0.5f,
+      -0.5f,
+      0.75f,
+      -0.75f,
+      1.5f,
+      -1.5f,
+      2.5f,
+      -2.5f,
+      3.5f,
+      -3.5f,
+      // Values around 2^23 = 8388608, where float32 spacing reaches 1.0.
+      8388606.5f,
+      -8388606.5f,
+      8388607.0f,
+      -8388607.0f,
+      8388607.5f,
+      -8388607.5f,
+      8388608.0f,
+      -8388608.0f,
+      // Odd integers in +/-(2^23, 2^24) are already exact integers and must
+      // not be rounded to neighboring even values.
+      8388609.0f,
+      -8388609.0f,
+      8388611.0f,
+      -8388611.0f,
+      12582913.0f,
+      -12582913.0f,
+      16777213.0f,
+      -16777213.0f,
+      16777215.0f,
+      -16777215.0f,
+      // Even integers at and above 2^24 and near int32 limits.
+      16777216.0f,
+      -16777216.0f,
+      16777218.0f,
+      -16777218.0f,
+      33554432.0f,
+      -33554432.0f,
+      2147483520.0f,
+      -2147483648.0f,
+  };
+  for (int i = 0; values.size() < 128; ++i) {
+    float odd = 8388609.0f + 2.0f * static_cast<float>(i);
+    values.push_back((i % 2 == 0) ? odd : -odd);
+  }
+  return values;
+}
+
+TEST_F(ConvertTest, RoundNearestEvenToS32) {
+  XlaBuilder builder(TestName());
+  std::vector<float> input_values = MakeRoundNearestEvenConvertTestInputs();
+  XlaOp x = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {static_cast<int64_t>(input_values.size())}),
+      "x");
+  XlaOp rounded = RoundNearestEven(x);
+  ConvertElementType(rounded, S32);
+
+  Literal input = LiteralUtil::CreateR1<float>(input_values);
+  ComputeAndCompare(&builder, {&input}, ErrorSpec{0, 0});
+}
+
+TEST_F(ConvertTest, RoundNearestEvenClampToS32) {
+  XlaBuilder builder(TestName());
+  std::vector<float> input_values = MakeRoundNearestEvenConvertTestInputs();
+  XlaOp x = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {static_cast<int64_t>(input_values.size())}),
+      "x");
+  XlaOp rounded = RoundNearestEven(x);
+  XlaOp clamped = Clamp(ConstantR0<float>(&builder, -33554432.0f), rounded,
+                        ConstantR0<float>(&builder, 33554432.0f));
+  ConvertElementType(clamped, S32);
+
+  Literal input = LiteralUtil::CreateR1<float>(input_values);
+  ComputeAndCompare(&builder, {&input}, ErrorSpec{0, 0});
 }
 
 }  // namespace

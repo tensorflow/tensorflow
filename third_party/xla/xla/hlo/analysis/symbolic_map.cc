@@ -17,11 +17,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <string>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -163,30 +161,11 @@ SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
   CHECK(dim_replacements.empty() || dim_replacements.size() == num_dimensions_);
   CHECK(sym_replacements.empty() || sym_replacements.size() == num_symbols_);
 
-  llvm::SmallVector<SymbolicExpr> all_replacements;
-  all_replacements.reserve(num_dimensions_ + num_symbols_);
-
-  if (!dim_replacements.empty()) {
-    absl::c_copy(dim_replacements, std::back_inserter(all_replacements));
-  } else {
-    for (int i = 0; i < num_dimensions_; ++i) {
-      all_replacements.push_back(CreateSymbolicVariable(i, ctx_));
-    }
-  }
-
-  if (!sym_replacements.empty()) {
-    absl::c_copy(sym_replacements, std::back_inserter(all_replacements));
-  } else {
-    for (int i = 0; i < num_symbols_; ++i) {
-      all_replacements.push_back(
-          CreateSymbolicVariable(num_result_dims + i, ctx_));
-    }
-  }
-
   llvm::SmallVector<SymbolicExpr> new_exprs;
   new_exprs.reserve(exprs_.size());
   for (const auto& expr : exprs_) {
-    new_exprs.push_back(expr.ReplaceVariables(all_replacements));
+    new_exprs.push_back(expr.ReplaceDimsAndSymbols(
+        dim_replacements, sym_replacements, num_dimensions_, num_result_dims));
   }
   return SymbolicMap(ctx_, num_result_dims, num_result_symbols,
                      std::move(new_exprs));
@@ -199,22 +178,15 @@ SymbolicMap SymbolicMap::Compose(const SymbolicMap& other) const {
   int64_t new_dims = other.GetNumDims();
   int64_t new_syms = GetNumSymbols() + other.GetNumSymbols();
 
-  // We need to reindex the dimensions of the other map.
-  auto other_dim_replacements = CreateVariableRange(ctx_, other.GetNumDims());
-  int64_t offset = new_dims;
-  auto this_symbol_replacements =
-      CreateVariableRange(ctx_, GetNumSymbols(), offset);
-  offset += GetNumSymbols();
-  auto other_sym_replacements =
-      CreateVariableRange(ctx_, other.GetNumSymbols(), offset);
-
   // First we reindex other map symbols.
+  llvm::SmallVector<SymbolicExpr> other_sym_replacements = CreateVariableRange(
+      ctx_, other.GetNumSymbols(), /*offset=*/new_dims + GetNumSymbols());
   SymbolicMap updated_other = other.ReplaceDimsAndSymbols(
-      other_dim_replacements, other_sym_replacements, new_dims, new_syms);
+      {}, other_sym_replacements, new_dims, new_syms);
 
   // Then we compose the maps.
-  return ReplaceDimsAndSymbols(updated_other.GetResults(),
-                               this_symbol_replacements, new_dims, new_syms);
+  return ReplaceDimsAndSymbols(updated_other.GetResults(), {}, new_dims,
+                               new_syms);
 }
 
 SymbolicMap SymbolicMap::GetSubMap(
@@ -270,20 +242,8 @@ SymbolicMap SymbolicMap::SetNumDimensions(int num_new_dims) const {
                           << " if dimension " << i << " is used.";
   }
 
-  // SymbolicMap takes responsibility for its own internal state by shifting its
-  // own symbols to preserve the invariance that their id ranges start from
-  // num_dims to num_dims + num_symbols.
-  llvm::DenseMap<SymbolicExpr, SymbolicExpr> sym_replacements;
-  for (int i = 0; i < GetNumSymbols(); ++i) {
-    auto old_sym = CreateSymbolExpr(i, /*num_dims=*/num_dimensions_, ctx_);
-    auto new_sym = CreateSymbolExpr(i, /*num_dims=*/num_new_dims, ctx_);
-    sym_replacements[old_sym] = new_sym;
-  }
-
-  SymbolicMap replaced_map = this->Replace(sym_replacements);
-  return SymbolicMap::Get(
-      ctx_, num_new_dims, GetNumSymbols(),
-      llvm::SmallVector<SymbolicExpr>(replaced_map.GetResults()));
+  // Shift symbols to preserve the invariant that their IDs start at num_dims.
+  return ReplaceDimsAndSymbols({}, {}, num_new_dims, GetNumSymbols());
 }
 
 bool SymbolicMap::operator==(const SymbolicMap& other) const {
@@ -349,11 +309,9 @@ SymbolicMap CompressDims(const SymbolicMap& map,
           CreateSymbolicVariable(current_new_dim_idx++, map.GetContext());
     }
   }
-  auto sym_replacements =
-      CreateVariableRange(map.GetContext(), map.GetNumSymbols(), new_num_dims);
 
-  return map.ReplaceDimsAndSymbols(dim_replacements, sym_replacements,
-                                   new_num_dims, map.GetNumSymbols());
+  return map.ReplaceDimsAndSymbols(dim_replacements, {}, new_num_dims,
+                                   map.GetNumSymbols());
 }
 
 SymbolicMap CompressSymbols(const SymbolicMap& map,
@@ -376,8 +334,6 @@ SymbolicMap CompressSymbols(const SymbolicMap& map,
   int64_t num_dims = map.GetNumDims();
   int64_t new_num_symbols = map.GetNumSymbols() - unused_symbols.count();
 
-  auto dim_replacements = CreateVariableRange(map.GetContext(), num_dims);
-
   llvm::SmallVector<SymbolicExpr> sym_replacements(map.GetNumSymbols());
   int64_t current_new_sym_idx = 0;
   for (int i = 0; i < map.GetNumSymbols(); ++i) {
@@ -388,7 +344,7 @@ SymbolicMap CompressSymbols(const SymbolicMap& map,
   }
   CHECK_EQ(current_new_sym_idx, new_num_symbols);
 
-  return map.ReplaceDimsAndSymbols(dim_replacements, sym_replacements, num_dims,
+  return map.ReplaceDimsAndSymbols({}, sym_replacements, num_dims,
                                    new_num_symbols);
 }
 

@@ -342,6 +342,73 @@ TEST(TestLibTest, CompareGPUExecutables_IgnoresOnlyCollectiveKernelCubin) {
       StatusIs(absl::StatusCode::kInternal, HasSubstr("shmem_bytes")));
 }
 
+TEST(TestLibTest, CompareGPUExecutables_IgnoresHloModule) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        hlo_module {
+          name: "golden_module"
+          frontend_attributes {
+            map { key: "fingerprint_before_lhs" value: "golden_fingerprint" }
+          }
+          computations {
+            name: "golden_computation"
+            instructions { name: "bitcast" opcode: "bitcast" }
+          }
+        }
+      }
+    }
+  )pb");
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        hlo_module {
+          name: "fresh_module"
+          frontend_attributes {
+            map { key: "fingerprint_before_lhs" value: "fresh_fingerprint" }
+          }
+          computations {
+            name: "fresh_computation"
+            instructions { name: "fusion-start" opcode: "async-start" }
+          }
+        }
+      }
+    }
+  )pb");
+  EXPECT_OK(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden));
+}
+
+// Ignoring the HLO module must not hide a runtime debug option that differs in
+// the module config next to it, and must keep the HLO out of the report.
+TEST(TestLibTest,
+     CompareGPUExecutables_DetectsModuleConfigDifferenceNextToHloModule) {
+  auto golden = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        hlo_module { name: "golden_module" }
+        config { debug_options { xla_gpu_detect_nan: DETECTION_MODE_WARNING } }
+      }
+    }
+  )pb");
+  auto fresh = ParseTextProtoOrDie<HumanReadableAotExecutable>(R"pb(
+    gpu_executable {
+      binary: "same_binary"
+      hlo_module_with_config {
+        hlo_module { name: "fresh_module" }
+        config { debug_options { xla_gpu_detect_nan: DETECTION_MODE_FAIL } }
+      }
+    }
+  )pb");
+  EXPECT_THAT(AOTInterceptionPjrtClient::CompareGPUExecutables(fresh, golden),
+              StatusIs(absl::StatusCode::kInternal,
+                       AllOf(HasSubstr("xla_gpu_detect_nan"),
+                             Not(HasSubstr("golden_module")),
+                             Not(HasSubstr("fresh_module")))));
+}
+
 // Where in the executable a copy of the debug options lives. Both copies must
 // be compared, except for the fields the comparator ignores.
 enum class DebugOptionsCopy { kModuleConfig, kCompileOptions };

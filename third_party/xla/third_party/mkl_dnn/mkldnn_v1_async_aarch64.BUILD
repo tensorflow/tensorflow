@@ -14,6 +14,7 @@
 # ==============================================================================
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 exports_files(["LICENSE"])
 

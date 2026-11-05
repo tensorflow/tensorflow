@@ -30,7 +30,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/stream_executor/gpu/blas_lt_matmul_algorithm.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -54,12 +56,19 @@ class CublasLtMatmulThunk : public TracedCommand {
       std::optional<ShapedSlice> aux, std::optional<ShapedSlice> a_scale,
       std::optional<ShapedSlice> b_scale, std::optional<ShapedSlice> c_scale,
       std::optional<ShapedSlice> d_scale, std::optional<ShapedSlice> d_amax,
-      std::optional<const ShapedSlice> workspace);
+      std::optional<const ShapedSlice> workspace,
+      std::optional<se::gpu::BlasLtMatmulAlgorithm> blas_lt_algorithm =
+          std::nullopt,
+      bool require_exact_algorithm = false);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   absl::Status Initialize(const InitializeParams& params) override;
   std::optional<const ShapedSlice> workspace() const { return workspace_; }
+  const std::optional<se::gpu::BlasLtMatmulAlgorithm>& blas_lt_algorithm()
+      const {
+    return blas_lt_algorithm_;
+  }
 
   bool is_grouped() const {
     return std::holds_alternative<se::gpu::GroupedGemmConfig>(gemm_config_);
@@ -70,7 +79,8 @@ class CublasLtMatmulThunk : public TracedCommand {
   absl::StatusOr<ThunkProto> ToProto() const override;
   static absl::StatusOr<std::unique_ptr<Thunk>> FromProto(
       Thunk::ThunkInfo thunk_info, const CublasLtMatmulThunkProto& proto,
-      absl::Span<const BufferAllocation> allocations);
+      absl::Span<const BufferAllocation> allocations,
+      const DebugOptions& runtime_debug_options);
 
  protected:
   absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetCachedMatmulPlan(
@@ -94,6 +104,8 @@ class CublasLtMatmulThunk : public TracedCommand {
   std::optional<ShapedSlice> d_scale_;
   std::optional<ShapedSlice> d_amax_;
   std::optional<ShapedSlice> workspace_;
+  std::optional<se::gpu::BlasLtMatmulAlgorithm> blas_lt_algorithm_;
+  bool require_exact_algorithm_;
 };
 
 }  // namespace gpu

@@ -20,6 +20,7 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tools:source_hash.bzl", "source_hash")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable")
 load(
@@ -27,6 +28,7 @@ load(
     "tf_proto_library",
 )
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/util:memfile_embed_data.bzl", "memfile_embed_data")
 
 # Integrate with PJRT rather than the GPU client directly.
 package(
@@ -220,6 +222,7 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_address_vmm_allocator",
+        "//xla/stream_executor:device_address_vmm_allocator_factory",  # buildcleaner: keep
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:device_interconnect_resource",
@@ -274,12 +277,8 @@ cc_library(
     ]) + if_cuda([
         # keep sorted
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/stream_executor/cuda:cuda_device_address_vmm_allocator",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm([
-        # keep sorted
-        "//xla/stream_executor/rocm:rocm_device_address_vmm_allocator",
     ]) + if_sycl([
         # keep sorted
         "//xla/backends/gpu/runtime:thunk_executor",
@@ -416,8 +415,11 @@ xla_test(
         # TODO(b/552357098): Fix flakiness and re-enable threadmanager_use_executor_impl
         "--threadmanager_use_executor_impl=false",
     ],
+    backend_tags = {
+        "amdgpu_any": ["flaky"],
+    },
     backends = ["gpu"],
-    shard_count = 3,
+    shard_count = 4,
     tags = ["nofixdeps"],
     use_legacy_runtime = True,
     deps = [
@@ -575,10 +577,11 @@ xla_test(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:gpu_memory_space_assignment",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tests:literal_test_util",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:env",
@@ -726,23 +729,55 @@ xla_test(
 xla_test(
     name = "se_gpu_pjrt_client_benchmark_test",
     srcs = ["se_gpu_pjrt_client_benchmark_test.cc"],
+    # The gemma4 execution benchmarks need more memory than a MIG partition has.
+    backend_tags = {"h100": ["full"]},
     backends = ["gpu"],
+    data = [
+        "//xla/tools:benchmarks/hlo/hlo_gemma4_2b_bf16.hlo",
+        "//xla/tools:benchmarks/hlo/nv_maxtext_1n1g_jit_train_step_before_optimization.hlo",
+    ],
     deps = [
         ":se_gpu_pjrt_client",
+        "//xla:literal",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/se:stream_executor_executable",
+        "//xla/service:compiled_module",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -931,18 +966,24 @@ xla_test(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/se:stream_executor_executable",
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:gpu_topology",
         "//xla/service:mock_compiled_module",
         "//xla/service:mock_compiler",
         "//xla/service:platform_util",
+        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -954,6 +995,7 @@ xla_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@riegeli//riegeli/bytes:string_reader",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -1125,8 +1167,9 @@ cc_library(
 xla_test(
     name = "gpu_client_stream_error_test",
     srcs = ["gpu_client_stream_error_test.cc"],
+    # TODO(b/570474829): Switch back to "nvgpu_any" once the test passes on H100.
     backends = [
-        "nvgpu_any",
+        "v100",
     ],
     # Each test case is a separate process since cuda stream errors are sticky.
     shard_count = 4,
@@ -1156,4 +1199,17 @@ xla_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+source_hash(
+    name = "gpu_pjrt_client_hash",
+    out = "gpu_pjrt_client_hash.txt",
+    target = "//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
+)
+
+memfile_embed_data(
+    name = "gpu_pjrt_client_hash_memfile",
+    srcs = [":gpu_pjrt_client_hash"],
+    embedded_dir_name = "gpu_pjrt_client_hash",
+    visibility = internal_visibility([":gpu_pjrt_client_hash_users"]),
 )

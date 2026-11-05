@@ -41,7 +41,6 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
@@ -123,8 +122,7 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
 
   TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
 
-  IrEmitter ir_emitter(nullptr, *hlo, *buffer_assignment, module.get(), {}, {},
-                       {}, &target_machine, false);
+  IrEmitter ir_emitter(*hlo, *buffer_assignment, module.get(), &target_machine);
 
   llvm::IRBuilderBase* b = ir_emitter.b();
   ASSERT_NE(b, nullptr);
@@ -220,7 +218,6 @@ struct IrEmitterWrapper {
   std::unique_ptr<IrEmitter> ir_emitter;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<TargetMachineFeatures> target_machine_features;
-  std::unique_ptr<mlir::MLIRContext> mlir_context;
 };
 
 static absl::StatusOr<std::unique_ptr<IrEmitterWrapper>>
@@ -301,18 +298,12 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   auto target_machine_features =
       std::make_unique<TargetMachineFeatures>(jit_compiler.target_machine());
 
-  std::unique_ptr<mlir::MLIRContext> mlir_context;
   auto ir_emitter = std::make_unique<IrEmitter>(
-      mlir_context.get(), module, *assignment, &llvm_module,
-      absl::flat_hash_map<const HloInstruction*, int64_t>{},
-      absl::flat_hash_map<const HloComputation*, int64_t>{},
-      absl::flat_hash_map<const HloComputation*, bool>{},
-      target_machine_features.get(),
-      /*emit_code_for_msan=*/false);
+      module, *assignment, &llvm_module, target_machine_features.get());
 
-  return std::make_unique<IrEmitterWrapper>(IrEmitterWrapper{
-      std::move(ir_emitter), std::move(assignment),
-      std::move(target_machine_features), std::move(mlir_context)});
+  return std::make_unique<IrEmitterWrapper>(
+      IrEmitterWrapper{std::move(ir_emitter), std::move(assignment),
+                       std::move(target_machine_features)});
 }
 
 TEST_F(IrEmitterTest, SmallConstantsAreEmittedAsGlobalsLargeAreNot) {

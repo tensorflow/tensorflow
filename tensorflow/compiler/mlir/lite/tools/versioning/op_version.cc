@@ -183,6 +183,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(fully_connected_params != nullptr);
 
+      // A weight with N-D blockwise quantization is only understood by
+      // runtimes at version 16 or above, whatever the weight's storage type.
+      if (op_sig.ext_options.fully_connected.is_weight_blockwise_quantized) {
+        return 16;
+      }
+
       // A non-empty `quant_spec` describes numerics that a runtime without
       // explicit support for that spec cannot reproduce. It must be checked
       // before the cases below, because an op carrying a `quant_spec` also
@@ -563,6 +569,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
+      if (op_sig.ext_options.dequantize.is_blockwise_quantized) {
+        return 10;
+      }
       if (IsFloat8Type(op_sig.inputs.at(0).type)) {
         return 9;
       }
@@ -917,6 +926,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_BATCH_MATMUL: {
+      if (op_sig.ext_options.batch_matmul.is_rhs_blockwise_quantized ||
+          (op_sig.inputs.size() >= 2 &&
+           (op_sig.inputs.at(1).type == kTfLiteInt4 ||
+            op_sig.inputs.at(1).type == kTfLiteUInt4 ||
+            op_sig.inputs.at(1).type == kTfLiteInt2))) {
+        return 5;
+      }
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;

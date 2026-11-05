@@ -62,8 +62,8 @@ void ForEach(int first, int last, const std::function<void(int)>& f) {
 // A globbing pattern can only start with these characters:
 static const char kGlobbingChars[] = "*?[\\";
 
-static inline bool IsGlobbingPattern(const std::string& pattern) {
-  return (pattern.find_first_of(kGlobbingChars) != std::string::npos);
+static inline bool IsGlobbingPattern(absl::string_view pattern) {
+  return (pattern.find_first_of(kGlobbingChars) != absl::string_view::npos);
 }
 
 // Make sure that the first entry in `dirs` during glob expansion does not
@@ -170,8 +170,10 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env,
   // To expand the globbing, we do a BFS from `dirs[matching_index-1]`.
   // At every step, we work on a pair `{dir, ix}` such that `dir` is a real
   // directory, `ix < dirs.size() - 1` and `dirs[ix+1]` is a globbing pattern.
-  // To expand the pattern, we select from all the children of `dir` only those
-  // that match against `dirs[ix+1]`.
+  // To expand the pattern, if the basename of `dirs[ix+1]` contains no
+  // globbing characters, we check the joined path directly; otherwise we
+  // select from the children of `dir` only those that match against the
+  // basename of `dirs[ix+1]`.
   // If there are more entries in `dirs` after `dirs[ix+1]` this mean we have
   // more patterns to match. So, we add to the queue only those children that
   // are also directories, paired with `ix+1`.
@@ -194,26 +196,36 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env,
   expand_queue.emplace_back(dirs[matching_index - 1], matching_index - 1);
 
   if (!multithreaded) {
+    std::vector<std::string> children;
     while (!expand_queue.empty()) {
       next_expand_queue.clear();
       for (const auto& queue_item : expand_queue) {
         const std::string& parent = queue_item.first;
-        std::vector<std::string> children;
-        absl::Status s = fs->GetChildren(parent, &children);
-        if (s.code() == absl::StatusCode::kPermissionDenied) {
+        const int index = queue_item.second + 1;
+        const bool is_last_pattern = index == dirs.size() - 1;
+        auto maybe_add_path = [&](std::string path, bool exists = true) {
+          if (is_last_pattern) {
+            if (exists || fs->FileExists(path).ok()) {
+              results->emplace_back(std::move(path));
+            }
+          } else if (fs->IsDirectory(path).ok()) {
+            next_expand_queue.emplace_back(std::move(path), index);
+          }
+        };
+
+        const absl::string_view base_pattern = io::Basename(dirs[index]);
+        if (!IsGlobbingPattern(base_pattern)) {
+          maybe_add_path(io::JoinPath(parent, base_pattern), /*exists=*/false);
           continue;
         }
-        const int index = queue_item.second + 1;
-        const std::string& match_pattern = dirs[index];
+        children.clear();
+        if (fs->GetChildren(parent, &children).code() ==
+            absl::StatusCode::kPermissionDenied) {
+          continue;
+        }
         for (const std::string& child : children) {
-          const std::string path = io::JoinPath(parent, child);
-          if (!fs->Match(path, match_pattern)) {
-            continue;
-          }
-          if (index == dirs.size() - 1) {
-            results->emplace_back(path);
-          } else if (fs->IsDirectory(path).ok()) {
-            next_expand_queue.emplace_back(path, index);
+          if (fs->Match(child, base_pattern)) {
+            maybe_add_path(io::JoinPath(parent, child));
           }
         }
       }

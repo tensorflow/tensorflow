@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/location_exporter.h"
 
 #include <string>
+#include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -32,9 +34,15 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+namespace {
 
-static std::string GetNameFromLocImpl(Location loc) {
-  llvm::SmallVector<llvm::StringRef, 8> loc_names;
+bool IsFrameNameLocation(mlir::Location location);
+
+// Extracts the `;`-separated op name(s) from `loc`. When `is_caller` is true
+// (on the caller side of a `CallSiteLoc`), only explicit op names from inlined
+// call sites are extracted, ignoring source stack frames.
+std::string GetNameFromLocImpl(Location loc, bool is_caller = false) {
+  llvm::SmallVector<std::string, 8> loc_names;
   llvm::SmallVector<Location, 8> locs;
   locs.push_back(loc);
 
@@ -42,6 +50,9 @@ static std::string GetNameFromLocImpl(Location loc) {
     Location curr_loc = locs.pop_back_val();
 
     if (auto name_loc = mlir::dyn_cast<NameLoc>(curr_loc)) {
+      if (is_caller && IsFrameNameLocation(name_loc)) {
+        continue;
+      }
       // Add name in NameLoc. For NameLoc we also account for names due to ops
       // in functions where the op's name is first.
       auto name = name_loc.getName().strref().split('@').first;
@@ -49,11 +60,20 @@ static std::string GetNameFromLocImpl(Location loc) {
       if (name.ends_with(":")) {
         locs.push_back(name_loc.getChildLoc());
       } else {
-        loc_names.push_back(name);
+        loc_names.push_back(name.str());
       }
     } else if (auto call_loc = mlir::dyn_cast<CallSiteLoc>(curr_loc)) {
-      // Use location of the Callee to generate the name.
-      locs.push_back(call_loc.getCallee());
+      // Combine caller and callee op names (ignoring bare caller stack frames).
+      std::string caller =
+          GetNameFromLocImpl(call_loc.getCaller(), /*is_caller=*/true);
+      std::string callee = GetNameFromLocImpl(call_loc.getCallee(), is_caller);
+      if (!caller.empty() && !callee.empty()) {
+        loc_names.push_back(absl::StrCat(caller, "/", callee));
+      } else if (!callee.empty()) {
+        loc_names.push_back(std::move(callee));
+      } else if (!caller.empty()) {
+        loc_names.push_back(std::move(caller));
+      }
     } else if (auto fused_loc = mlir::dyn_cast<FusedLoc>(curr_loc)) {
       // Push all locations in FusedLoc in reverse order, so locations are
       // visited based on order in FusedLoc.
@@ -111,10 +131,11 @@ static void SetSourceFileAndLine(Location loc, xla::OpMetadata& metadata) {
   }
 }
 
-static bool IsFrameNameLocation(mlir::Location location) {
+bool IsFrameNameLocation(mlir::Location location) {
   return isa<mlir::NameLoc>(location) &&
          isa<mlir::FileLineColLoc>(cast<mlir::NameLoc>(location).getChildLoc());
 }
+}  // namespace
 
 xla::OpMetadata CreateOpMetadataFromLocation(
     mlir::Operation* op, mlir::StackFrameIndexBuilder* frame_index_builder) {

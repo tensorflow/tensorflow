@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace m = ::xla::match;
 

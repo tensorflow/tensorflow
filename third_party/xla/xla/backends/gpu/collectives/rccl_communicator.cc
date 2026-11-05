@@ -208,7 +208,7 @@ Future<> RcclCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
   return Execute([send_buffer, recv_buffer, dtype, count, reduction_kind,
                   &executor, this]() -> absl::Status {
     return LaunchAllReduce(send_buffer, recv_buffer, dtype, count,
-                           reduction_kind, executor);
+                           reduction_kind, executor, /*is_rma=*/false);
   });
 }
 
@@ -219,7 +219,7 @@ Future<> RcclCommunicator::Broadcast(se::DeviceAddressBase send_buffer,
   return Execute(
       [send_buffer, recv_buffer, dtype, count, root, &executor, this]() {
         return LaunchBroadcast(send_buffer, recv_buffer, dtype, count, root,
-                               executor);
+                               executor, /*is_rma=*/false);
       });
 }
 
@@ -231,7 +231,7 @@ Future<> RcclCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
   return Execute([send_buffer, recv_buffer, dtype, count, reduction_kind,
                   &executor, this]() {
     return LaunchReduceScatter(send_buffer, recv_buffer, dtype, count,
-                               reduction_kind, executor);
+                               reduction_kind, executor, /*is_rma=*/false);
   });
 }
 
@@ -240,7 +240,8 @@ Future<> RcclCommunicator::AllGather(se::DeviceAddressBase send_buffer,
                                      PrimitiveType dtype, size_t count,
                                      const Executor& executor) {
   return Execute([send_buffer, recv_buffer, dtype, count, &executor, this]() {
-    return LaunchAllGather(send_buffer, recv_buffer, dtype, count, executor);
+    return LaunchAllGather(send_buffer, recv_buffer, dtype, count, executor,
+                           /*is_rma=*/false);
   });
 }
 
@@ -249,7 +250,8 @@ Future<> RcclCommunicator::AllToAll(
     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
   return Execute([send_buffers, recv_buffers, dtype, count, &executor, this]() {
-    return LaunchAllToAll(send_buffers, recv_buffers, dtype, count, executor);
+    return LaunchAllToAll(send_buffers, recv_buffers, dtype, count, executor,
+                          /*is_rma=*/false);
   });
 }
 
@@ -286,7 +288,7 @@ Future<> RcclCommunicator::Recv(se::DeviceAddressBase recv_buffer,
 absl::Status RcclCommunicator::LaunchAllReduce(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
-    const Communicator::Executor& executor) {
+    const Communicator::Executor& executor, bool is_rma) {
   if (cancel_->IsCancelled()) {
     return FailedPrecondition("RcclCommunicator aborted");
   }
@@ -318,7 +320,8 @@ absl::Status RcclCommunicator::LaunchAllReduce(
 
 absl::Status RcclCommunicator::LaunchBroadcast(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
-    PrimitiveType dtype, size_t count, RankId root, const Executor& executor) {
+    PrimitiveType dtype, size_t count, RankId root, const Executor& executor,
+    bool is_rma) {
   if (cancel_->IsCancelled()) {
     return absl::FailedPreconditionError("RcclCommunicator aborted");
   }
@@ -350,7 +353,7 @@ absl::Status RcclCommunicator::LaunchBroadcast(
 absl::Status RcclCommunicator::LaunchReduceScatter(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
-    const Executor& executor) {
+    const Executor& executor, bool is_rma) {
   if (cancel_->IsCancelled()) {
     return absl::FailedPreconditionError("RcclCommunicator aborted");
   }
@@ -382,7 +385,7 @@ absl::Status RcclCommunicator::LaunchReduceScatter(
 
 absl::Status RcclCommunicator::LaunchAllGather(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
-    PrimitiveType dtype, size_t count, const Executor& executor) {
+    PrimitiveType dtype, size_t count, const Executor& executor, bool is_rma) {
   if (cancel_->IsCancelled()) {
     return absl::FailedPreconditionError("RcclCommunicator aborted");
   }
@@ -413,7 +416,7 @@ absl::Status RcclCommunicator::LaunchAllGather(
 absl::Status RcclCommunicator::LaunchAllToAll(
     absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
-    PrimitiveType dtype, size_t count, const Executor& executor) {
+    PrimitiveType dtype, size_t count, const Executor& executor, bool is_rma) {
   if (cancel_->IsCancelled()) {
     return absl::FailedPreconditionError("RcclCommunicator aborted");
   }

@@ -82,13 +82,15 @@ cuda_py_strict_test(
     ],
 )
 
-tf_py_strict_test(
+cuda_py_strict_test(
     name = "batch_scatter_ops_test",
     srcs = ["batch_scatter_ops_test.py"],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
@@ -299,9 +301,11 @@ cuda_py_strict_test(
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/core/protobuf:for_core_protos_py_proto",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
@@ -637,12 +641,14 @@ cuda_py_strict_test(
     srcs = ["scatter_nd_ops_test.py"],
     shard_count = 2,
     deps = [
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker_v2",
@@ -661,7 +667,7 @@ cuda_py_strict_test(
     name = "scatter_ops_test",
     size = "medium",  # NOTE: This is not run by default.
     srcs = ["scatter_ops_test.py"],
-    shard_count = 2,
+    shard_count = 8,
     tags = [
         "no_oss",  # TODO(b/282985589)
         "noasan",
@@ -714,6 +720,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
@@ -779,6 +786,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_gen",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",

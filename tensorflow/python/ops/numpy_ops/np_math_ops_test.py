@@ -706,6 +706,30 @@ class MathTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.average(scalar, axis=0)
 
+  def testSpacesDestinationAxisOutOfBounds(self):  # pylint: disable=invalid-name
+    # NumPy raises AxisError for out-of-bounds destination axes instead of
+    # letting the backend fail with a confusing error.
+    start = np.ones([2, 3])
+    stop = np.ones([2, 3])
+    fns = (np_math_ops.linspace, np_math_ops.logspace, np_math_ops.geomspace)
+    for axis in (3, -4):
+      for fn in fns:
+        with self.subTest(fn=fn.__name__, axis=axis):
+          with self.assertRaisesRegex(
+              ValueError,
+              r'destination: axis %d is out of bounds for array of dimension'
+              % axis,
+          ):
+            fn(start, stop, 3, axis=axis)
+
+    # Valid boundary axes: NumPy allows the destination axis to equal bd (the
+    # broadcast rank of start/stop), which inserts the samples axis last, or
+    # -(bd + 1), which inserts it first.
+    for fn in fns:
+      with self.subTest(fn=fn.__name__):
+        self.assertEqual((2, 3, 3), fn(start, stop, 3, axis=2).shape)
+        self.assertEqual((3, 2, 3), fn(start, stop, 3, axis=-3).shape)
+
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
       np_math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
@@ -922,6 +946,58 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(1, 1000, num=5, endpoint=False)
     run_test(-1, -1000, num=5)
     run_test(-1, -1000, num=5, endpoint=False)
+    # Integer dtypes truncate, so only use sequences of exact powers of ten
+    # here. For anything else (e.g. 3 -> 3e5, where NumPy itself returns 29
+    # for 30) the result depends on the last ulp of the backend's pow.
+    run_test(1, 1000, num=4, dtype=np.int32)
+    run_test(1, 1e6, num=7, dtype=np.int64)
+    run_test(-1, -1000, num=4, dtype=np.int32)
+    run_test([1, 10], [1000, 1e5], num=3)
+
+  def testGeomSpaceEndpointsAreExact(self):
+    for start, stop in ((1.0, 1000.0), (0.001, 7.0), (-2.0, -5e8), (3.0, 1.0)):
+      for num in (1, 2, 4, 9):
+        result = np_math_ops.geomspace(start, stop, num=num)
+        self.assertEqual(float(result[0]), start)
+        if num > 1:
+          self.assertEqual(float(result[-1]), stop)
+        result = np_math_ops.geomspace(start, stop, num=num, endpoint=False)
+        self.assertEqual(float(result[0]), start)
+    # The endpoints are broadcast along the other axes.
+    result = np_math_ops.geomspace([1.0, 2.0], 1000.0, num=4, axis=1)
+    self.assertAllEqual(result[:, 0], [1.0, 2.0])
+    self.assertAllEqual(result[:, -1], [1000.0, 1000.0])
+
+  def testFloatPower(self):
+    # NumPy computes `float_power` in float64 (complex128 for complex inputs)
+    # whatever the input types, so integers can take negative exponents.
+    for x1, x2 in (
+        ([2, 3], 2),
+        (2, -1),
+        ([4, 9], [-0.5, 0.5]),
+        (np.float32(2.0), 3),
+        (np.array([1.5, 2.5], dtype=np.float32), np.float32(2.0)),
+        ([True, False], 2),
+        (np.complex64(1 + 1j), 2),
+    ):
+      self.match(
+          np_math_ops.float_power(x1, x2),
+          np.float_power(x1, x2),
+          msg='float_power({}, {})'.format(x1, x2),
+      )
+
+  def testRad2Deg(self):
+    for x in (
+        1,
+        [1, 2],
+        np.array([1, 2], dtype=np.int32),
+        [0.5, np.pi],
+        np.float32(np.pi),
+        np.array([-np.pi, 0.0], dtype=np.float64),
+    ):
+      self.match(
+          np_math_ops.rad2deg(x), np.rad2deg(x), msg='rad2deg({})'.format(x)
+      )
 
   @parameterized.parameters([
       'T', 'ndim', 'size', 'data', '__pos__', '__round__', 'tolist', 'flatten',
@@ -982,20 +1058,39 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.trace(a, axis1=0, axis2=2)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.trace(a, axis1=-3, axis2=1)
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(
+        ValueError, r'axis1 and axis2 cannot be the same$'
+    ):
       np_math_ops.trace(a, axis1=1, axis2=1)
     # Mixed-sign duplicates normalize to the same axis.
-    with self.assertRaisesRegex(ValueError, 'same axis'):
+    with self.assertRaisesRegex(ValueError, 'cannot be the same'):
       np_math_ops.trace(a, axis1=1, axis2=-1)
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # NumPy raises its "diag requires" error for rank < 2 before any
+    # per-axis checks.
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array(5))
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array([1, 2, 3]))
-    # A rank-1 input has no valid trace axes: the out-of-bounds default
-    # axes (axis1=-2, axis2=-1) must raise, not silently route the input
-    # to the rank>=2-only `math_ops.trace` fast path.
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # NumPy checks the rank first, so explicit axes on a rank-1 input
+    # still raise the "diag requires" error.
+    with self.assertRaisesRegex(ValueError, 'at least two dimensions'):
       np_math_ops.trace(np.array([1.0, 2.0, 3.0]), axis1=-2, axis2=-1)
+
+  def testTracePromotesSmallIntegersAndBool(self):
+    # The sum runs in a wider type, as in NumPy, so it cannot overflow the
+    # input type. This has to hold for every offset and pair of axes.
+    for dtype in (np.int8, np.uint8, np.int16, np.bool_):
+      a = np.ones((300, 300), dtype=dtype)
+      self.match(np_math_ops.trace(a), np.trace(a))
+      self.match(np_math_ops.trace(a, offset=1), np.trace(a, offset=1))
+      self.match(
+          np_math_ops.trace(a, axis1=-2, axis2=-1),
+          np.trace(a, axis1=-2, axis2=-1),
+      )
+      b = np.ones((2, 300, 300), dtype=dtype)
+      self.match(
+          np_math_ops.trace(b, axis1=1, axis2=2), np.trace(b, axis1=1, axis2=2)
+      )
 
   def testIsInf(self):
     x1 = ops.convert_to_tensor(-2147483648)

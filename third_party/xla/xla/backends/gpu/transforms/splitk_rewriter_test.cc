@@ -339,6 +339,32 @@ CHECK-NOT: pad(
                   .value_or(false));
 }
 
+TEST_F(SplitkRewriterTest, PaddingCostPreventsPadding) {
+  // Huge K dimension so that, ignoring padding, the largest splitK wins (see
+  // PaddingIsInserted). K = 32 * 3201 is 16B-aligned only for splitK <= 8.
+  const char* hlo_string = R"(
+  HloModule module
+
+  ENTRY test {
+    lhs = f32[16,102432]{1,0} parameter(0)
+    rhs = f32[102432,128]{1,0} parameter(1)
+    ROOT dot = f32[16,128]{1,0} dot(lhs, rhs),
+                                lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       rewriter_.HloModulePass::Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
+CHECK: f32[16,8,12804]{{.*}} reshape(%lhs)
+CHECK: f32[8,12804,128]{{.*}} reshape(%rhs)
+  )")
+                  .value_or(false));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

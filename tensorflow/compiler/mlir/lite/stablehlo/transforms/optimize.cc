@@ -125,6 +125,13 @@ LogicalResult RemoveReshapeAroundDotGeneral(mhlo::ReshapeOp reshape_after,
   // Extract B, Y1, C from %lhs.
   ArrayRef<int64_t> shape_lhs =
       reshape_before.getOperand().getType().getShape();
+  // %lhs must have its own batch and contracting dims (e.g. not a rank-2
+  // [N, K] reshaped to a rank-4 [N, B, M, K]).
+  if (shape_lhs.size() <
+      static_cast<size_t>(batch_dims_count + contracting_dims_count)) {
+    return rewriter.notifyMatchFailure(
+        reshape_after, "reshape input has fewer dims than batch + contracting");
+  }
   ArrayRef<int64_t> shape_b = shape_lhs.take_front(batch_dims_count);
   ArrayRef<int64_t> shape_c = shape_lhs.take_back(contracting_dims_count);
   ArrayRef<int64_t> shape_y1 =

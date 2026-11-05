@@ -169,7 +169,10 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   bool IsHostMemoryPinned(const void* ptr, uint64_t size) const;
 
-  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+  const gpu::GpuExecutableRunOptions* gpu_run_options() const {
+    return gpu_run_options_.get();
+  }
+  gpu::GpuExecutableRunOptions* mutable_gpu_run_options() {
     return gpu_run_options_.get();
   }
 
@@ -344,6 +347,17 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   void Stop() { async_work_runner_.reset(); }
 
+  // Compiles `computation` for `target_topology` using this client's compiler
+  // backend.
+  // - `topology`: The topology of the client performing the compilation (may be
+  //   nullptr).
+  // - `target_topology`: The topology the compiled executable is promised to
+  //   run on (which may have a different number of hosts or devices than
+  //   `topology`).
+  // - Target topology properties (`num_nodes`, `slice_size`, default memory
+  //   space) come from `target_topology`.
+  // - Local device ordinals are only looked up when
+  //   `topology == &target_topology`.
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
       const XlaComputation& computation, CompileOptions options,
       int process_index,
@@ -351,6 +365,7 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
       const PjRtTopologyDescription* topology,
       const PjRtTopologyDescription& target_topology);
 
+  // Same as above, but compiles `mlir_module`.
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> CrossCompile(
       MaybeOwningMlirModule mlir_module, CompileOptions options,
       int process_index,
@@ -441,7 +456,7 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
  public:
   PjRtStreamExecutorRawLoadedExecutable(
       int replica, int partition, RunId run_id, PjRtDevice* device,
-      std::shared_ptr<DeviceAssignment> device_assignment,
+      std::shared_ptr<const DeviceAssignment> device_assignment,
       std::shared_ptr<LocalExecutable> executable,
       tsl::AsyncValueRef<StreamExecutorExecutable> se_executable,
       PjRtStreamExecutorRawClient* raw_client)
@@ -466,7 +481,7 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
   int partition_;
   RunId run_id_;
   PjRtDevice* device_;
-  std::shared_ptr<DeviceAssignment> device_assignment_;
+  std::shared_ptr<const DeviceAssignment> device_assignment_;
   std::shared_ptr<LocalExecutable> executable_;
   tsl::AsyncValueRef<StreamExecutorExecutable> se_executable_;
   PjRtStreamExecutorRawClient* raw_client_;

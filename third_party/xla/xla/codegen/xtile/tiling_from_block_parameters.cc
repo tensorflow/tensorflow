@@ -21,18 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/codegen/tiling/experimental/tiling_space_utils.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/codegen/xtile/xtile_config.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,11 +42,10 @@ namespace xla::xtile {
 namespace {
 
 using ::xla::xtile::BlockLevelParameters;
-using DimensionSemantics =
-    ::xla::gpu::experimental::TilingSpace::DimensionSemantics;
+using DimensionSemantics = ::xla::gpu::TilingSpace::DimensionSemantics;
 
 absl::StatusOr<llvm::SmallVector<int64_t>> GetParallelTileSizes(
-    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const ::xla::gpu::TilingSpace& tiling_space,
     const BlockLevelParameters& block_level_parameters,
     bool enable_same_shape_multi_output_fusion) {
   TF_RET_CHECK(!block_level_parameters.output_tile_sizes.empty())
@@ -105,7 +101,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetParallelTileSizes(
 }  // namespace
 
 absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
-    const ::xla::gpu::experimental::TilingSpace& tiling_space,
+    const ::xla::gpu::TilingSpace& tiling_space,
     const BlockLevelParameters& block_level_parameters,
     bool enable_same_shape_multi_output_fusion) {
   ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> parallel_tile_sizes,
@@ -134,7 +130,7 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
   tile_sizes.reserve(tiling_space.dimensions().size());
   int parallel_dim_count = 0;
   int sequential_dim_count = 0;
-  for (const xla::gpu::experimental::TilingSpace::DimensionInfo& dim :
+  for (const xla::gpu::TilingSpace::DimensionInfo& dim :
        tiling_space.dimensions()) {
     switch (dim.type) {
       case DimensionSemantics::kParallel:

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
@@ -2089,6 +2090,31 @@ TEST_F(DotMergerTest, MergeRHSPreservesMetadata) {
   EXPECT_FALSE(merged_dot->metadata().op_name().empty());
   // dot1 (size 50) should be sorted before dot0 (size 10), so we expect "op2".
   EXPECT_EQ(merged_dot->metadata().op_name(), "op2");
+}
+
+TEST_F(DotMergerTest, MergePreservesBackendConfig) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    lhs  = f32[200,100] parameter(0)
+    rhs0 = f32[100, 10] parameter(1)
+    rhs1 = f32[100, 50] parameter(2)
+    dot0 = f32[200, 10] dot(lhs, rhs0), lhs_contracting_dims={1}, rhs_contracting_dims={0}, backend_config={"operation_queue_id":"2"}
+    dot1 = f32[200, 50] dot(lhs, rhs1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, backend_config={"operation_queue_id":"2"}
+    ROOT tuple = (f32[200,10], f32[200,50]) tuple(dot0, dot1)
+  })";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
+  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* merged_dot =
+      hlo_query::FindInstruction(module->entry_computation(), HloOpcode::kDot);
+  ASSERT_NE(merged_dot, nullptr);
+  EXPECT_EQ(merged_dot->raw_backend_config_string(),
+            R"({"operation_queue_id":"2"})");
 }
 
 TEST_F(DotMergerTest, NoMergeSubByteUpcast) {

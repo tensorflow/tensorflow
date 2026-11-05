@@ -14,7 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/frontend_attributes.h"
 
+#include <cstdint>
+#include <optional>
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -137,6 +142,26 @@ absl::flat_hash_set<int> NonInvariantOperands(
     }
   }
   return no_invariant_operands;
+}
+
+std::optional<int64_t> GetLatencyMetadataNs(const HloInstruction& instruction) {
+  const std::optional<std::string> latency_str =
+      instruction.get_frontend_attribute(kXlaLatencyMetadata);
+  if (!latency_str.has_value()) {
+    return std::nullopt;
+  }
+  int64_t latency_ns;
+  if (!absl::SimpleAtoi(*latency_str, &latency_ns)) {
+    LOG(WARNING) << "Failed to parse latency_metadata for "
+                 << instruction.name() << ": " << *latency_str;
+    return std::nullopt;
+  }
+  if (latency_ns < 0) {
+    LOG(WARNING) << "Ignoring negative latency_metadata for "
+                 << instruction.name() << ": " << latency_ns;
+    return std::nullopt;
+  }
+  return latency_ns;
 }
 
 }  // namespace xla

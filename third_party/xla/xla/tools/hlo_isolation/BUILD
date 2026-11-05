@@ -111,6 +111,7 @@ xla_cc_test(
     name = "hlo_isolation_test_base_test",
     srcs = ["hlo_isolation_test_base_test.cc"],
     deps = [
+        ":hlo_inf_nan_intent_analyzer",
         ":hlo_isolation_api",
         ":hlo_isolation_proto_cc",
         ":hlo_isolation_test_base",
@@ -181,6 +182,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tools/hlo_dump:hlo_dump_utils",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

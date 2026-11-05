@@ -107,5 +107,25 @@ TEST(WorkerThreadTest, ConsecutiveDrainsOnIdleThread) {
   thread.Drain();  // First drain on empty queue — must not deadlock.
   thread.Drain();  // Second drain on still-empty queue — must not deadlock.
 }
+
+TEST(WorkerThreadTest, IsCurrentThread) {
+  WorkerThread thread1(tsl::Env::Default(), "test1");
+  WorkerThread thread2(tsl::Env::Default(), "test2");
+
+  EXPECT_FALSE(thread1.IsCurrentThread());
+  EXPECT_FALSE(thread2.IsCurrentThread());
+
+  bool on_thread1_in_thread1 = false;
+  bool on_thread2_in_thread1 = true;
+  thread1.Schedule([&]() {
+    on_thread1_in_thread1 = thread1.IsCurrentThread();
+    on_thread2_in_thread1 = thread2.IsCurrentThread();
+  });
+  thread1.Drain();
+
+  EXPECT_TRUE(on_thread1_in_thread1);
+  EXPECT_FALSE(on_thread2_in_thread1);
+  EXPECT_FALSE(thread1.IsCurrentThread());
+}
 }  // namespace
 }  // namespace xla

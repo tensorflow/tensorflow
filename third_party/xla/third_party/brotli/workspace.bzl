@@ -20,14 +20,14 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "org_brotli",
-        sha256 = "e720a6ca29428b803f4ad165371771f5398faba397edf6778837a18599ea13ff",
-        strip_prefix = "brotli-1.1.0",
+        sha256 = "ae0fe7f40f6057cb7c592891c0de6657aaa82a1d09317150ff7eb0f662c5f5d8",
+        strip_prefix = "brotli-7b93874da36fe4420a18fb105321e8c27d5ef078",
         patch_file = [
             # On a version upgrade, this patch can be regenerated with the command:
             # build_tools/dependencies/gen_disable_layering_check_patch.sh.  \
-            #   https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz \
+            #   https://github.com/google/brotli/archive/7b93874da36fe4420a18fb105321e8c27d5ef078.tar.gz \
             #   > third_party/brotli/layering_check.patch
             "//third_party/brotli:layering_check.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/brotli/archive/7b93874da36fe4420a18fb105321e8c27d5ef078.tar.gz"),
     )

@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
+#include "xla/layout.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/device_assignment.h"
@@ -97,33 +98,37 @@ class FakeGpuCommunicator : public GpuCommunicator {
  public:
   absl::Status LaunchAllReduce(se::DeviceAddressBase, se::DeviceAddressBase,
                                PrimitiveType, size_t, ReductionKind,
-                               const Executor&) override {
+                               const Executor&, bool) override {
     return absl::UnimplementedError("unused");
   }
 
   absl::Status LaunchBroadcast(se::DeviceAddressBase, se::DeviceAddressBase,
-                               PrimitiveType, size_t, RankId,
-                               const Executor&) override {
+                               PrimitiveType, size_t, RankId, const Executor&,
+                               bool) override {
     return absl::UnimplementedError("unused");
   }
 
   absl::Status LaunchReduceScatter(se::DeviceAddressBase, se::DeviceAddressBase,
                                    PrimitiveType, size_t, ReductionKind,
-                                   const Executor&) override {
+                                   const Executor&, bool) override {
     return absl::UnimplementedError("unused");
   }
 
   absl::Status LaunchAllGather(se::DeviceAddressBase, se::DeviceAddressBase,
-                               PrimitiveType, size_t,
-                               const Executor&) override {
+                               PrimitiveType, size_t, const Executor&,
+                               bool) override {
     return absl::UnimplementedError("unused");
   }
 
   absl::Status LaunchAllToAll(absl::InlinedVector<se::DeviceAddressBase, 4>,
                               absl::InlinedVector<se::DeviceAddressBase, 4>,
-                              PrimitiveType, size_t, const Executor&) override {
-    return absl::UnimplementedError("unused");
+                              PrimitiveType, size_t, const Executor&,
+                              bool is_rma) override {
+    last_is_rma_ = is_rma;
+    return absl::OkStatus();
   }
+
+  std::optional<bool> last_is_rma() const { return last_is_rma_; }
 
   absl::Status LaunchCollectivePermute(se::DeviceAddressBase,
                                        se::DeviceAddressBase, PrimitiveType,
@@ -191,6 +196,9 @@ class FakeGpuCommunicator : public GpuCommunicator {
   absl::StatusOr<size_t> NumRanks() const override { return size_t{1}; }
   absl::StatusOr<size_t> CurrentRank() override { return size_t{0}; }
   std::string ToString() const override { return "fake gpu communicator"; }
+
+ private:
+  std::optional<bool> last_is_rma_;
 };
 
 // Test-only subclass that bypasses NCCL in RunCollective only. The command
@@ -456,6 +464,51 @@ TEST(AllToAllThunkTest, RecordCommandBufferUpdate) {
   ASSERT_OK_AND_ASSIGN(std::vector<float> output2,
                        ReadDeviceBuffer(*stream, dst2, length));
   EXPECT_THAT(output2, ::testing::Each(0.0f));
+}
+
+TEST(AllToAllThunkTest, RunAllToAllSetsIsRmaFromBufferMemorySpace) {
+  se::StreamExecutor* executor = GpuExecutor();
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  auto make_pair = [](int64_t src_space, int64_t dst_space) {
+    return DeviceBufferPair{
+        /*element_type=*/F32,
+        /*element_count=*/4,
+        /*source_buffer=*/se::DeviceAddressBase(),
+        /*destination_buffer=*/se::DeviceAddressBase(),
+        /*source_memory_space=*/src_space,
+        /*destination_memory_space=*/dst_space,
+    };
+  };
+
+  FakeGpuCommunicator comm;
+
+  // Default memory space buffers must pass `is_rma = false`.
+  std::vector<DeviceBufferPair> default_space_buffers = {
+      make_pair(Layout::kDefaultMemorySpace, Layout::kDefaultMemorySpace)};
+  ASSERT_OK(RunAllToAll(/*has_split_dimension=*/true, default_space_buffers,
+                        *stream, comm));
+  EXPECT_EQ(comm.last_is_rma(), false);
+
+  // Mixed memory spaces must pass `is_rma = false`.
+  std::vector<DeviceBufferPair> mixed_buffers = {
+      make_pair(Layout::kCollectiveMemorySpace, Layout::kCollectiveMemorySpace),
+      make_pair(Layout::kCollectiveMemorySpace, Layout::kDefaultMemorySpace),
+  };
+  ASSERT_OK(
+      RunAllToAll(/*has_split_dimension=*/false, mixed_buffers, *stream, comm));
+  EXPECT_EQ(comm.last_is_rma(), false);
+
+  // Only when all buffers have both source and destination in S(7) should
+  // `is_rma` be `true`.
+  std::vector<DeviceBufferPair> collective_space_buffers = {make_pair(
+      Layout::kCollectiveMemorySpace, Layout::kCollectiveMemorySpace)};
+  ASSERT_OK(RunAllToAll(/*has_split_dimension=*/true, collective_space_buffers,
+                        *stream, comm));
+  EXPECT_EQ(comm.last_is_rma(), true);
+  ASSERT_OK(RunAllToAll(/*has_split_dimension=*/false, collective_space_buffers,
+                        *stream, comm));
+  EXPECT_EQ(comm.last_is_rma(), true);
 }
 
 }  // namespace

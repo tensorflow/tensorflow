@@ -15,6 +15,8 @@
 
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@local_config_sycl//sycl:build_defs.bzl", "sycl_library")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 _CMAKE_COMMON_LIST = {
     "#cmakedefine CCL_PRODUCT_STATUS": "#define CCL_PRODUCT_STATUS",

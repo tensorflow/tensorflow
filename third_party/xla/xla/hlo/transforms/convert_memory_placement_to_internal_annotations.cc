@@ -22,6 +22,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -109,6 +110,12 @@ ConvertCustomCallWithExternalAnnotationToInternalAnnotation(
   }
   return false;
 }
+
+const HloPassFactory* const
+    kConvertMemoryPlacementToInternalAnnotationsRegistration =
+        RegisterHloPassFactory<
+            DefaultHloPassFactory<ConvertMemoryPlacementToInternalAnnotations>>(
+            "convert-memory-placement-to-internal-annotations");
 
 }  // namespace
 

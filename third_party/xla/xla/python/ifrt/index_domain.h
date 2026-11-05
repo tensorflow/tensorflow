@@ -97,6 +97,11 @@ class IndexDomain {
   // not overlap.
   absl::StatusOr<IndexDomain> Intersect(const IndexDomain& other) const;
 
+  // Returns true if `other` is contained within this `IndexDomain`. Returns
+  // an error if `this` and `other` have different numbers of dimensions or
+  // negative shape dimensions.
+  absl::StatusOr<bool> Contains(const IndexDomain& other) const;
+
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const IndexDomain& index_domain) {
     sink.Append(absl::StrCat("IndexDomain(origin=", index_domain.origin_,

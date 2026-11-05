@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 
-#if defined(LIBTPU_ON_GCE)
-
 #include <cstdint>
 
 #include "absl/strings/string_view.h"
@@ -46,4 +44,3 @@ void TpuCompilationMetrics::IncrementCompilationCount(
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // LIBTPU_ON_GCE

@@ -39,6 +39,16 @@ namespace {
 
 using VisitorFunction = absl::FunctionRef<void(const CallGraphNode&)>;
 
+// Returns the program shape of `computation` as a string, without parameter
+// names. Parameter names are not part of the computation signature and often
+// differ between two versions of the same program (e.g. `Arg_0` vs `p0`).
+std::string ProgramShapeSignature(const HloComputation* computation) {
+  ProgramShape program_shape =
+      computation->ComputeProgramShape(/*include_ids=*/false);
+  program_shape.clear_parameter_names();
+  return program_shape.ToString();
+}
+
 // Sort the callees of the caller computation in order of the caller
 // computation's post order instructions.
 std::vector<std::pair<const HloInstruction*, const CallGraphNode*>>
@@ -274,9 +284,8 @@ void ProcessCallGraphNode(const CallGraphNode& left_computation,
         LOG(WARNING) << "Callee node " << callee_node.computation()->name()
                      << " has no caller callsites";
       }
-      std::string opcode_name_shape = absl::StrCat(
-          opcode_and_name,
-          "::", callee->ComputeProgramShape(/*include ids=*/false).ToString());
+      std::string opcode_name_shape =
+          absl::StrCat(opcode_and_name, "::", ProgramShapeSignature(callee));
       unmatched_left_callees[opcode_name_shape].insert(&callee_node);
     }
   }
@@ -292,9 +301,8 @@ void ProcessCallGraphNode(const CallGraphNode& left_computation,
             absl::StrCat(caller_instruction->opcode(),
                          "::", caller_instruction->metadata().op_name());
       }
-      std::string key = absl::StrCat(
-          opcode_and_name,
-          "::", callee->ComputeProgramShape(/*include ids=*/false).ToString());
+      std::string key =
+          absl::StrCat(opcode_and_name, "::", ProgramShapeSignature(callee));
       unmatched_right_callees[key].insert(&callee_node);
     }
   }

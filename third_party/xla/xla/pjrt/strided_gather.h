@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/pjrt/transpose.h"
@@ -126,6 +127,10 @@ class StridedGather {
     return num_chunks() <= 1 && spec_.src_byte_offset == 0 &&
            chunk_size() == spec_.src_byte_size;
   }
+
+  // Validates that all accessed byte ranges in the gather lie within
+  // [0, buffer_size).
+  absl::Status ValidateBounds(int64_t buffer_size) const;
 
   // Returns a range view over the contiguous byte chunks of the source buffer.
   ChunkRange chunks() const ABSL_ATTRIBUTE_LIFETIME_BOUND;

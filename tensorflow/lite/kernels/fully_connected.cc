@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
+#include "tensorflow/lite/kernels/dequantize.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/fully_connected_4bit.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -129,21 +130,29 @@ TfLiteStatus GetCheckedFullyConnectedIndexing(
   return kTfLiteOk;
 }
 
+constexpr int kDimMetadataSizeRandomSparse = 2;
+constexpr int kDimMetadataSizeBlockSparse = 3;
+
 bool SupportedSparsityFormat(const TfLiteSparsity& sparsity) {
+  if (sparsity.dim_metadata == nullptr || sparsity.traversal_order == nullptr ||
+      sparsity.dim_metadata_size < kDimMetadataSizeRandomSparse ||
+      sparsity.dim_metadata_size != sparsity.traversal_order->size) {
+    return false;
+  }
   if (sparsity.dim_metadata[0].format == kTfLiteDimDense &&
       sparsity.dim_metadata[1].format == kTfLiteDimSparseCSR) {
-    return true;
+    return sparsity.dim_metadata[1].array_segments != nullptr &&
+           sparsity.dim_metadata[1].array_segments->size >= 1 &&
+           sparsity.dim_metadata[1].array_indices != nullptr;
   }
 
   return false;
 }
 
-static const int kDimMetadataSizeRandomSparse = 2;
-static const int kDimMetadataSizeBlockSparse = 3;
-
 TfLiteStatus CreateLedgerTensor(const TfLiteSparsity* sparsity,
                                 TfLiteContext* context, TfLiteTensor* ledger) {
   TF_LITE_ENSURE(context, sparsity != nullptr);
+  TF_LITE_ENSURE(context, SupportedSparsityFormat(*sparsity));
   ledger->name = "FC_ledger";
   ledger->type = kTfLiteUInt8;
   ledger->allocation_type = kTfLiteArenaRwPersistent;
@@ -346,6 +355,7 @@ TfLiteStatus UpdateOutputSize(TfLiteContext* context,
                               int batch_size, int num_units, int cols) {
   TfLiteIntArray* output_size_array = nullptr;
   if (params->keep_num_dims) {
+    TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
     TF_LITE_ENSURE_EQ(context, input->dims->data[input->dims->size - 1], cols);
     output_size_array = TfLiteIntArrayCopy(input->dims);
     output_size_array->data[output_size_array->size - 1] = num_units;
@@ -362,12 +372,25 @@ TfLiteStatus PrepareImpl4Bit(TfLiteContext* context, TfLiteNode* node,
                              int lhs_width, int rhs_width, int depth,
                              int batch_size, int cols, int output_depth) {
   const int units = output_depth;
-  const int lhs_layout_cols =
-      (cols + (optimized_4bit::FilterDepth - 1)) & ~(depth - 1);
-  const int rhs_layout_rows = (batch_size + (rhs_width - 1)) & ~(rhs_width - 1);
+  const CheckedInt<int> rounded_cols =
+      CheckedInt<int>(cols) + (optimized_4bit::FilterDepth - 1);
+  const CheckedInt<int> rounded_batch =
+      CheckedInt<int>(batch_size) + (rhs_width - 1);
+  const CheckedInt<int> rounded_units =
+      CheckedInt<int>(units) + (lhs_width - 1);
+  TF_LITE_ENSURE(context, !rounded_cols.Overflow() &&
+                              !rounded_batch.Overflow() &&
+                              !rounded_units.Overflow());
+  const int lhs_layout_cols = rounded_cols.Value() & ~(depth - 1);
+  const int rhs_layout_rows = rounded_batch.Value() & ~(rhs_width - 1);
   const int rhs_layout_cols = lhs_layout_cols;
   const int dst_layout_rows = rhs_layout_rows;
-  const int dst_layout_cols = (units + (lhs_width - 1)) & ~(lhs_width - 1);
+  const int dst_layout_cols = rounded_units.Value() & ~(lhs_width - 1);
+  const CheckedInt<int> checked_weight_size =
+      (CheckedInt<int>(dst_layout_cols) * lhs_layout_cols) / 2;
+  const CheckedInt<int> checked_required_size =
+      checked_weight_size + optimized_4bit::kDefaultAlignmentPadding;
+  TF_LITE_ENSURE(context, !checked_required_size.Overflow());
 
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   TfLiteIntArrayFree(node->temporaries);
@@ -483,6 +506,9 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
   }
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
+  if (params->keep_num_dims) {
+    TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
+  }
 
   // When the second dimension size of the filter tensor is 0, we need to
   // generate the output shape early to avoid dividing by 0.
@@ -592,13 +618,18 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
-    // Check quantized_bias_type is either kTfLiteInt64 or kTfLiteInt32.
+    // Eval picks the int32 or int64 bias path from data->quantized_bias_type.
+    // The option sets it when present (FLOAT32, the schema default, means
+    // unset) and must then match the bias tensor; otherwise the bias tensor's
+    // own type decides, as it did before the option existed.
     if (params->quantized_bias_type != kTfLiteFloat32) {
       TF_LITE_ENSURE(context, params->quantized_bias_type == kTfLiteInt32 ||
                                   params->quantized_bias_type == kTfLiteInt64);
       TF_LITE_ENSURE(context, (bias == nullptr) ||
                                   bias->type == params->quantized_bias_type);
       data->quantized_bias_type = params->quantized_bias_type;
+    } else if (bias != nullptr) {
+      data->quantized_bias_type = bias->type;
     }
   }
 
@@ -613,6 +644,16 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
         filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2));
   const bool is_sparse = filter->sparsity != nullptr;
   if (is_hybrid) {
+    if (filter->quantization.type == kTfLiteAffineQuantization) {
+      const auto* affine_quantization =
+          reinterpret_cast<TfLiteAffineQuantization*>(
+              filter->quantization.params);
+      if (affine_quantization && affine_quantization->scale &&
+          affine_quantization->scale->size > 1) {
+        TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
+        TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size, num_units);
+      }
+    }
     // Use optimized implementation for 4bit
     if (filter->type == kTfLiteInt4 && kernel_type == kGenericOptimized &&
         IsConstantTensor(filter) && batch_size &&
@@ -622,9 +663,6 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
       const int cols = input_size / batch_size;
       if (!data->op_data_4bit) {
         data->op_data_4bit = std::make_unique<optimized_4bit::OpData4Bit>();
-      }
-      if (data->op_data_4bit->batch_size == batch_size) {
-        return kTfLiteOk;
       }
       data->op_data_4bit->batch_size = batch_size;
       for (int packed_rows = optimized_4bit::GetMaxSupportedRows();
@@ -639,6 +677,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
                              optimized_4bit::FilterDepth, batch_size, cols,
                              num_units);
     }
+    data->op_data_4bit.reset();
     TfLiteIntArrayFree(node->temporaries);
     data->compute_row_sums = true;
     if (is_sparse) {
@@ -731,22 +770,42 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
                           filter->dims->data[1]);
 }
 
-// Block size of the activation quantization in the `cint2_fp32_int4_e8m0_drq`
-// contract. The contract fixes it rather than carrying it in the flatbuffer,
-// so a filter whose contracting dimension is not a multiple of it does not
-// describe a valid a4w2 op.
+// Block size of the activation quantization in the a4w2 DRQ contracts. The
+// contracts fix it rather than carrying it in the flatbuffer, so a filter whose
+// contracting dimension is not a multiple of it does not describe a valid a4w2
+// op.
 constexpr int kA4W2BlockSize = 32;
 // Inclusive bounds of the 4 bit activation storage.
 constexpr float kA4W2ActQMin = -8.0f;
 constexpr float kA4W2ActQMax = 7.0f;
 
-// The quantization contracts this kernel implements, as named by the opaque
-// `FullyConnectedOptions.quant_spec` payload.
-enum class QuantSpecKind {
-  // No `quant_spec`; the op uses standard FullyConnected quantization.
-  kNone,
-  // Blockwise 4 bit dynamic range activations against 2 bit centered weights.
-  kA4W2Drq,
+// The a4w2 DRQ contracts this kernel implements, as named by the opaque
+// `FullyConnectedOptions.quant_spec` payload. They share everything except
+// where the 2 bit weight grid sits: a weight code `q` dequantizes to
+// `(q + weight_offset) * per_channel_scale`.
+//
+// The offset is defined by the contract alone. The tensor-level zero point
+// cannot carry it (a per-channel zero point is an integer, so it cannot hold
+// the -0.5 of the centered grid), and `Prepare` requires the stored zero point
+// to be 0 for every contract.
+struct A4W2Contract {
+  const char* name;
+  float weight_offset;
+};
+constexpr A4W2Contract kA4W2Contracts[] = {
+    // Centered int2: the grid sits between the integers, i.e. zero point -0.5,
+    // giving `scale * {-1.5, -0.5, 0.5, 1.5}`.
+    {"cint2_fp32_int4_e8m0_drq", 0.5f},
+    // Plain int2: zero point 0, giving `scale * {-2, -1, 0, 1}`.
+    {"int2_fp32_int4_e8m0_drq", 0.0f},
+};
+
+// The quantization contract named by `FullyConnectedOptions.quant_spec`.
+struct QuantSpec {
+  // The matching entry of `kA4W2Contracts`, or nullptr when the op carries no
+  // `quant_spec` and uses standard FullyConnected quantization.
+  const A4W2Contract* a4w2 = nullptr;
+  float act_dilation = 0.0f;
 };
 
 // Parses `params->quant_spec`.
@@ -758,9 +817,8 @@ enum class QuantSpecKind {
 // error here, not a signal to ignore the field.
 TfLiteStatus ParseQuantSpec(TfLiteContext* context,
                             const TfLiteFullyConnectedParams* params,
-                            QuantSpecKind* kind, float* act_dilation) {
-  *kind = QuantSpecKind::kNone;
-  *act_dilation = 0.0f;
+                            QuantSpec* quant_spec) {
+  *quant_spec = QuantSpec();
   if (params->quant_spec == nullptr || params->quant_spec_size <= 0) {
     return kTfLiteOk;
   }
@@ -776,34 +834,395 @@ TfLiteStatus ParseQuantSpec(TfLiteContext* context,
   const flexbuffers::Map map =
       flexbuffers::GetRoot(buffer, buffer_size).AsMap();
   const flexbuffers::String spec = map["spec"].AsString();
-  if (spec.c_str() != nullptr &&
-      std::strcmp(spec.c_str(), "cint2_fp32_int4_e8m0_drq") == 0) {
-    // `act_dilation` widens the denominator of the activation scale, so a
-    // missing key, a NaN, or a value that drives `kA4W2ActQMax + act_dilation`
-    // to zero or below would yield an infinite or NaN scale rather than an
-    // error.
-    const flexbuffers::Reference dilation = map["act_dilation"];
-    TF_LITE_ENSURE_MSG(
-        context, dilation.IsNumeric(),
-        "cint2_fp32_int4_e8m0_drq requires a numeric 'act_dilation' entry.");
-    const float dilation_value = dilation.AsFloat();
-    TF_LITE_ENSURE_MSG(context,
-                       std::isfinite(dilation_value) && dilation_value >= 0.0f,
-                       "cint2_fp32_int4_e8m0_drq requires a finite, "
-                       "non-negative 'act_dilation'.");
-    *kind = QuantSpecKind::kA4W2Drq;
-    *act_dilation = dilation_value;
-    return kTfLiteOk;
+  const A4W2Contract* contract = nullptr;
+  if (spec.c_str() != nullptr) {
+    for (const A4W2Contract& candidate : kA4W2Contracts) {
+      if (std::strcmp(spec.c_str(), candidate.name) == 0) {
+        contract = &candidate;
+        break;
+      }
+    }
+  }
+  if (contract == nullptr) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "FullyConnected names quantization spec '%s', which this runtime does "
+        "not implement. Refusing to fall back to standard quantization "
+        "semantics.",
+        spec.c_str() != nullptr ? spec.c_str() : "<not a string>");
+    return kTfLiteError;
   }
 
-  TF_LITE_KERNEL_LOG(
-      context,
-      "FullyConnected names quantization spec '%s', which this runtime does "
-      "not implement. Refusing to fall back to standard quantization "
-      "semantics.",
-      spec.c_str() != nullptr ? spec.c_str() : "<not a string>");
-  return kTfLiteError;
+  // `act_dilation` widens the denominator of the activation scale, so a
+  // missing key, a NaN, or a value that drives `kA4W2ActQMax + act_dilation`
+  // to zero or below would yield an infinite or NaN scale rather than an
+  // error.
+  const flexbuffers::Reference dilation = map["act_dilation"];
+  if (!dilation.IsNumeric()) {
+    TF_LITE_KERNEL_LOG(context, "%s requires a numeric 'act_dilation' entry.",
+                       contract->name);
+    return kTfLiteError;
+  }
+  const float dilation_value = dilation.AsFloat();
+  if (!std::isfinite(dilation_value) || dilation_value < 0.0f) {
+    TF_LITE_KERNEL_LOG(context,
+                       "%s requires a finite, non-negative 'act_dilation'.",
+                       contract->name);
+    return kTfLiteError;
+  }
+  quant_spec->a4w2 = contract;
+  quant_spec->act_dilation = dilation_value;
+  return kTfLiteOk;
 }
+
+// FULLY_CONNECTED with a filter carrying N-D blockwise quantization
+// (`kTfLiteBlockwiseQuantizationV2`).
+//
+// The input and output are int8 with per-tensor affine quantization, and the
+// [num_units, accum_depth] filter dequantizes block by block. With block shape
+// `(bn, bk)`, element `(n, k)` belongs to block `(n / bn, k / bk)` and
+// dequantizes as
+//
+//   filter[n, k] = scale[block] * (q[n, k] - zero_point[block])
+//
+// where scale / zero point extents of 1 broadcast, a missing zero point means
+// 0, and the zero point may be fractional (e.g. -0.5 for a centered int2
+// grid). The optional int32 bias carries its own affine scale (per-tensor or
+// per output channel, zero point 0) since no single filter scale exists to
+// derive it from.
+
+namespace {
+
+// Returns true if `tensor` has affine quantization with a single finite,
+// positive scale and a zero point in the int8 range.
+bool HasPerTensorInt8AffineQuantization(const TfLiteTensor* tensor) {
+  if (tensor->quantization.type != kTfLiteAffineQuantization) return false;
+  const auto* affine =
+      static_cast<const TfLiteAffineQuantization*>(tensor->quantization.params);
+  return affine != nullptr && affine->scale != nullptr &&
+         affine->scale->size == 1 && tensor->params.scale > 0.0f &&
+         std::isfinite(tensor->params.scale) &&
+         tensor->params.zero_point >= std::numeric_limits<int8_t>::min() &&
+         tensor->params.zero_point <= std::numeric_limits<int8_t>::max();
+}
+
+// Checks the bias of a FULLY_CONNECTED with a blockwise quantized filter: an
+// int32 tensor of `num_units` elements, quantized per tensor or per output
+// channel with finite, positive scales and zero points of 0.
+TfLiteStatus ValidateBlockwiseFilterBias(TfLiteContext* context,
+                                         const TfLiteTensor* bias,
+                                         int num_units) {
+  TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
+  TF_LITE_ENSURE_EQ(context, NumElements(bias), num_units);
+  TF_LITE_ENSURE_EQ(context, bias->quantization.type,
+                    kTfLiteAffineQuantization);
+  const auto* affine =
+      static_cast<const TfLiteAffineQuantization*>(bias->quantization.params);
+  TF_LITE_ENSURE(context, affine != nullptr && affine->scale != nullptr);
+  const int num_scales = affine->scale->size;
+  TF_LITE_ENSURE(context, num_scales == 1 || num_scales == num_units);
+  if (num_scales > 1) {
+    TF_LITE_ENSURE_EQ(context, affine->quantized_dimension, 0);
+  }
+  for (int i = 0; i < num_scales; ++i) {
+    const float scale = affine->scale->data[i];
+    TF_LITE_ENSURE(context, scale > 0.0f && std::isfinite(scale));
+  }
+  TF_LITE_ENSURE_MSG(context, kTfLiteOk == VerifyQuantizationZeroPoint(bias, 0),
+                     "FullyConnected with a blockwise filter requires a bias "
+                     "zero point of 0.");
+  return kTfLiteOk;
+}
+
+TfLiteStatus PrepareBlockwiseFilter(
+    TfLiteContext* context, TfLiteNode* node,
+    const TfLiteBlockwiseQuantizationV2* filter_blockwise) {
+  auto* params =
+      reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  TF_LITE_ENSURE(context, node->inputs->size == 2 || node->inputs->size == 3);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+  TF_LITE_ENSURE_EQ(context, params->weights_format,
+                    kTfLiteFullyConnectedWeightsFormatDefault);
+  // `CalculateActivationRangeQuantized` gives other activations the full
+  // range, which would silently drop them.
+  TF_LITE_ENSURE_MSG(context,
+                     params->activation == kTfLiteActNone ||
+                         params->activation == kTfLiteActRelu ||
+                         params->activation == kTfLiteActReluN1To1 ||
+                         params->activation == kTfLiteActRelu6,
+                     "FullyConnected with a blockwise filter only supports "
+                     "NONE, RELU, RELU_N1_TO_1 and RELU6 activations.");
+
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* filter;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kWeightsTensor, &filter));
+  const TfLiteTensor* bias =
+      (node->inputs->size == 3)
+          ? GetOptionalInputTensor(context, node, kBiasTensor)
+          : nullptr;
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
+  TF_LITE_ENSURE_MSG(
+      context,
+      filter->type == kTfLiteInt2 || filter->type == kTfLiteInt4 ||
+          filter->type == kTfLiteUInt4 || filter->type == kTfLiteInt8 ||
+          filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt16,
+      "FullyConnected with a blockwise filter requires an INT2, INT4, UINT4, "
+      "INT8, UINT8 or INT16 filter.");
+  TF_LITE_ENSURE_MSG(
+      context, HasPerTensorInt8AffineQuantization(input),
+      "FullyConnected with a blockwise filter requires a per-tensor quantized "
+      "input with a finite, positive scale and an int8 zero point.");
+  TF_LITE_ENSURE_MSG(
+      context, HasPerTensorInt8AffineQuantization(output),
+      "FullyConnected with a blockwise filter requires a per-tensor quantized "
+      "output with a finite, positive scale and an int8 zero point.");
+  TF_LITE_ENSURE_MSG(
+      context, filter->sparsity == nullptr,
+      "FullyConnected with a blockwise filter does not support sparsity.");
+  TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
+  TF_LITE_ENSURE_OK(context, dequantize::ValidateBlockwiseQuantizationV2(
+                                 context, filter, filter_blockwise));
+
+  // The block parameters are read on every invocation, so they must not live
+  // in the arena where a later op could overwrite them. Their data may not be
+  // available yet for persistent tensors, so unlike
+  // `ValidateBlockwiseQuantizationV2Buffers` (run in Eval) this does not check
+  // it. The indices were bounds-checked by `ValidateBlockwiseQuantizationV2`.
+  auto validate_params_tensor = [&](int index) -> TfLiteStatus {
+    const TfLiteTensor* tensor = &context->tensors[index];
+    TF_LITE_ENSURE_MSG(context, IsConstantOrPersistentTensor(tensor),
+                       "FullyConnected blockwise filter scales and zero "
+                       "points must be constant.");
+    size_t required_bytes = 0;
+    TF_LITE_ENSURE_OK(
+        context, BytesRequired(tensor->type, tensor->dims->data,
+                               tensor->dims->size, &required_bytes, context));
+    TF_LITE_ENSURE(context, tensor->bytes >= required_bytes);
+    return kTfLiteOk;
+  };
+  TF_LITE_ENSURE_OK(context, validate_params_tensor(filter_blockwise->scale));
+  if (filter_blockwise->zero_point != kTfLiteOptionalTensor) {
+    TF_LITE_ENSURE_OK(context,
+                      validate_params_tensor(filter_blockwise->zero_point));
+  }
+
+  const int num_units = SizeOfDimension(filter, 0);
+  const int accum_depth = SizeOfDimension(filter, 1);
+  if (bias != nullptr) {
+    TF_LITE_ENSURE_OK(context,
+                      ValidateBlockwiseFilterBias(context, bias, num_units));
+  }
+
+  TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+      context, params->activation, output, &data->output_activation_min,
+      &data->output_activation_max));
+  TF_LITE_ENSURE(context,
+                 data->output_activation_min <= data->output_activation_max);
+
+  TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
+  int batch_size = 1;
+  if (accum_depth == 0) {
+    // Every row of the input is empty, so the rows are counted from the
+    // leading dimensions rather than by dividing by the row size.
+    int64_t rows = 1;
+    for (int i = 0; i < NumDimensions(input) - 1; ++i) {
+      rows *= SizeOfDimension(input, i);
+      TF_LITE_ENSURE(context, rows <= std::numeric_limits<int>::max());
+    }
+    batch_size = static_cast<int>(rows);
+  } else {
+    const int64_t input_size = NumElements(input);
+    TF_LITE_ENSURE_MSG(context, input_size % accum_depth == 0,
+                       "FullyConnected input size is not a multiple of the "
+                       "filter's input size.");
+    TF_LITE_ENSURE(context,
+                   input_size / accum_depth <= std::numeric_limits<int>::max());
+    batch_size = static_cast<int>(input_size / accum_depth);
+  }
+  return UpdateOutputSize(context, params, input, output, batch_size, num_units,
+                          accum_depth);
+}
+
+// Computes the blockwise FULLY_CONNECTED for one weight storage type. The
+// accumulation of each block is exact; it is scaled and summed in double.
+template <typename WeightT>
+void EvalBlockwiseFilterImpl(
+    const int8_t* input_data, int32_t input_zero_point, const WeightT* weights,
+    int batches, int num_units, int accum_depth, int unit_block_size,
+    int depth_block_size, const std::vector<float>& scales,
+    const std::vector<int64_t>& scale_strides,
+    const std::vector<float>& zero_points,
+    const std::vector<int64_t>& zero_point_strides,
+    double input_to_output_scale, const std::vector<double>& bias_over_output,
+    int32_t output_zero_point, int32_t output_activation_min,
+    int32_t output_activation_max, int8_t* output_data) {
+  const int num_depth_blocks =
+      (accum_depth == 0) ? 0 : (1 + (accum_depth - 1) / depth_block_size);
+  std::vector<int32_t> centered_input(accum_depth);
+  std::vector<int64_t> input_block_sums(num_depth_blocks);
+  for (int b = 0; b < batches; ++b) {
+    const int8_t* input_row =
+        input_data + static_cast<int64_t>(b) * accum_depth;
+    for (int kb = 0; kb < num_depth_blocks; ++kb) {
+      const int k_start = kb * depth_block_size;
+      const int k_end =
+          k_start + std::min(depth_block_size, accum_depth - k_start);
+      int64_t sum = 0;
+      for (int k = k_start; k < k_end; ++k) {
+        centered_input[k] =
+            static_cast<int32_t>(input_row[k]) - input_zero_point;
+        sum += centered_input[k];
+      }
+      input_block_sums[kb] = sum;
+    }
+
+    int8_t* output_row = output_data + static_cast<int64_t>(b) * num_units;
+    for (int n = 0; n < num_units; ++n) {
+      const WeightT* weight_row =
+          weights + static_cast<int64_t>(n) * accum_depth;
+      const int unit_block = n / unit_block_size;
+      const int64_t scale_base = unit_block * scale_strides[0];
+      const int64_t zero_point_base = unit_block * zero_point_strides[0];
+      // Accumulator in units of the input scale.
+      double acc = 0.0;
+      for (int kb = 0; kb < num_depth_blocks; ++kb) {
+        const int k_start = kb * depth_block_size;
+        const int k_end =
+            k_start + std::min(depth_block_size, accum_depth - k_start);
+        int64_t dot = 0;
+        for (int k = k_start; k < k_end; ++k) {
+          dot += static_cast<int64_t>(centered_input[k]) *
+                 static_cast<int64_t>(weight_row[k]);
+        }
+        const double scale = scales[scale_base + kb * scale_strides[1]];
+        const double zero_point =
+            zero_points[zero_point_base + kb * zero_point_strides[1]];
+        acc += scale * (static_cast<double>(dot) -
+                        zero_point * static_cast<double>(input_block_sums[kb]));
+      }
+      double real_over_output = acc * input_to_output_scale;
+      if (!bias_over_output.empty()) {
+        real_over_output += bias_over_output[n];
+      }
+      const double rounded =
+          std::round(real_over_output) + static_cast<double>(output_zero_point);
+      if (std::isnan(rounded)) {
+        output_row[n] = 0;
+      } else {
+        const double clamped =
+            std::clamp(rounded, static_cast<double>(output_activation_min),
+                       static_cast<double>(output_activation_max));
+        output_row[n] = static_cast<int8_t>(static_cast<int32_t>(clamped));
+      }
+    }
+  }
+}
+
+// TODO(b/579571054): Cache the unpacked filter, block parameters and bias
+// for constant filters and add an optimized path; this re-unpacks the filter
+// on every invocation.
+TfLiteStatus EvalBlockwiseFilter(
+    TfLiteContext* context, const OpData* data, const TfLiteTensor* input,
+    const TfLiteTensor* filter,
+    const TfLiteBlockwiseQuantizationV2* filter_blockwise,
+    const TfLiteTensor* bias, TfLiteTensor* output) {
+  TF_LITE_ENSURE_OK(context, dequantize::ValidateBlockwiseQuantizationV2(
+                                 context, filter, filter_blockwise));
+  TF_LITE_ENSURE_OK(context, dequantize::ValidateBlockwiseQuantizationV2Buffers(
+                                 context, filter, filter_blockwise));
+  TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
+  const int num_units = SizeOfDimension(filter, 0);
+  const int accum_depth = SizeOfDimension(filter, 1);
+  TF_LITE_ENSURE(context, num_units > 0);
+  const int64_t output_size = NumElements(output);
+  TF_LITE_ENSURE_EQ(context, output_size % num_units, 0);
+  const int batches = static_cast<int>(output_size / num_units);
+  TF_LITE_ENSURE(context, NumElements(input) ==
+                              static_cast<int64_t>(batches) * accum_depth);
+  if (output_size == 0) {
+    return kTfLiteOk;
+  }
+  TF_LITE_ENSURE(context, GetTensorData<int8_t>(output) != nullptr);
+  if (accum_depth > 0) {
+    TF_LITE_ENSURE(context, GetTensorData<int8_t>(input) != nullptr);
+  }
+
+  const TfLiteTensor* scale_tensor = &context->tensors[filter_blockwise->scale];
+  const TfLiteTensor* zero_point_tensor = nullptr;
+  if (filter_blockwise->zero_point != kTfLiteOptionalTensor) {
+    zero_point_tensor = &context->tensors[filter_blockwise->zero_point];
+  }
+  const std::vector<float> scales =
+      dequantize::ReadBlockwiseParamsAsFloat(scale_tensor);
+  std::vector<float> zero_points = {0.0f};
+  if (zero_point_tensor != nullptr) {
+    zero_points = dequantize::ReadBlockwiseParamsAsFloat(zero_point_tensor);
+  }
+  const std::vector<int64_t> scale_strides =
+      dequantize::GetBlockwiseParamsStrides(scale_tensor, /*rank=*/2);
+  const std::vector<int64_t> zero_point_strides =
+      dequantize::GetBlockwiseParamsStrides(zero_point_tensor, /*rank=*/2);
+
+  const double output_scale = static_cast<double>(output->params.scale);
+  std::vector<double> bias_over_output;
+  if (bias != nullptr) {
+    TF_LITE_ENSURE_OK(context,
+                      ValidateBlockwiseFilterBias(context, bias, num_units));
+    const int32_t* bias_data = GetTensorData<int32_t>(bias);
+    TF_LITE_ENSURE(context, bias_data != nullptr);
+    const auto* bias_affine =
+        static_cast<const TfLiteAffineQuantization*>(bias->quantization.params);
+    bias_over_output.resize(num_units);
+    for (int n = 0; n < num_units; ++n) {
+      const float bias_scale =
+          bias_affine->scale->data[bias_affine->scale->size == 1 ? 0 : n];
+      bias_over_output[n] = static_cast<double>(bias_data[n]) *
+                            static_cast<double>(bias_scale) / output_scale;
+    }
+  }
+
+  dequantize::BlockwiseQuantizedValues filter_values;
+  TF_LITE_ENSURE_OK(context, dequantize::GetBlockwiseQuantizedValues(
+                                 context, filter, &filter_values));
+  const int8_t* input_data = GetTensorData<int8_t>(input);
+  const int32_t input_zero_point = input->params.zero_point;
+  const double input_to_output_scale =
+      static_cast<double>(input->params.scale) / output_scale;
+  const int unit_block_size = filter_blockwise->block_shape->data[0];
+  const int depth_block_size = filter_blockwise->block_shape->data[1];
+  auto run = [&](const auto* weights) {
+    EvalBlockwiseFilterImpl(
+        input_data, input_zero_point, weights, batches, num_units, accum_depth,
+        unit_block_size, depth_block_size, scales, scale_strides, zero_points,
+        zero_point_strides, input_to_output_scale, bias_over_output,
+        output->params.zero_point, data->output_activation_min,
+        data->output_activation_max, GetTensorData<int8_t>(output));
+  };
+  // Dispatch on the type rather than on which pointer is set: an empty filter
+  // has null data.
+  switch (filter->type) {
+    case kTfLiteUInt8:
+      run(filter_values.uint8_data);
+      break;
+    case kTfLiteInt16:
+      run(filter_values.int16_data);
+      break;
+    default:
+      run(filter_values.int8_data);
+      break;
+  }
+  return kTfLiteOk;
+}
+
+}  // namespace
 
 template <KernelType kernel_type>
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -828,30 +1247,39 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Validate the quantization contract here rather than in the eval paths:
   // only `EvalHybridDense` knows how to honor one, so a `quant_spec` on any
   // other path would otherwise be silently ignored.
-  QuantSpecKind quant_spec_kind = QuantSpecKind::kNone;
-  float act_dilation = 0.0f;
-  TF_LITE_ENSURE_OK(context, ParseQuantSpec(context, params, &quant_spec_kind,
-                                            &act_dilation));
-  if (quant_spec_kind == QuantSpecKind::kA4W2Drq) {
+  QuantSpec quant_spec;
+  TF_LITE_ENSURE_OK(context, ParseQuantSpec(context, params, &quant_spec));
+  if (const TfLiteBlockwiseQuantizationV2* filter_blockwise =
+          dequantize::GetBlockwiseQuantizationV2(filter);
+      filter_blockwise != nullptr) {
+    TF_LITE_ENSURE_MSG(context, quant_spec.a4w2 == nullptr,
+                       "An a4w2 DRQ quant_spec does not support blockwise "
+                       "quantized filters.");
+    return PrepareBlockwiseFilter(context, node, filter_blockwise);
+  }
+  if (quant_spec.a4w2 != nullptr) {
     TF_LITE_ENSURE_MSG(context, is_hybrid,
-                       "cint2_fp32_int4_e8m0_drq requires float input with a "
+                       "An a4w2 DRQ quant_spec requires float input with a "
                        "quantized filter.");
     // `EvalHybrid` routes a sparse filter to `EvalHybridSparse`, which never
     // reaches `EvalHybridDense` and would therefore run standard sparse hybrid
     // math while ignoring the spec.
     TF_LITE_ENSURE_MSG(
         context, filter->sparsity == nullptr,
-        "cint2_fp32_int4_e8m0_drq does not support sparse filters.");
+        "An a4w2 DRQ quant_spec does not support sparse filters.");
     // `is_hybrid` also admits uint8, int8 and int4 filters. `EvalA4W2DRQ`
     // rejects those too, but only once the graph is already being invoked.
     TF_LITE_ENSURE_MSG(context, filter->type == kTfLiteInt2,
-                       "cint2_fp32_int4_e8m0_drq requires a 2 bit filter.");
+                       "An a4w2 DRQ quant_spec requires a 2 bit filter.");
     TF_LITE_ENSURE_MSG(context, filter->dims->size == 2,
-                       "cint2_fp32_int4_e8m0_drq requires a rank 2 filter.");
+                       "An a4w2 DRQ quant_spec requires a rank 2 filter.");
     TF_LITE_ENSURE_MSG(context, filter->dims->data[1] % kA4W2BlockSize == 0,
-                       "cint2_fp32_int4_e8m0_drq requires the filter's input "
-                       "size to be a multiple "
-                       "of the 32 element activation block size.");
+                       "An a4w2 DRQ quant_spec requires the filter's input "
+                       "size to be a multiple of the 32 element activation "
+                       "block size.");
+    // The weight offset comes from the contract, not from the stored zero
+    // point, which the int2 check below therefore requires to be 0: anything
+    // else means the producer and the contract disagree about the grid.
   }
 
   // Pie and hybrid path supports all kinds of fused activations, otherwise only
@@ -875,7 +1303,10 @@ TfLiteStatus EvalA4W2DRQ(TfLiteContext* context,
                          TfLiteFullyConnectedParams* params,
                          const TfLiteTensor* input, const TfLiteTensor* filter,
                          const TfLiteTensor* bias, TfLiteTensor* output,
-                         float act_dilation) {
+                         const QuantSpec& quant_spec) {
+  TF_LITE_ENSURE(context, quant_spec.a4w2 != nullptr);
+  const float act_dilation = quant_spec.act_dilation;
+  const float weight_offset = quant_spec.a4w2->weight_offset;
   // This kernel is selected by an opaque `quant_spec` string rather than by the
   // tensor types, so nothing upstream has checked that the operands match what
   // the spec describes. Everything the loops below rely on is verified here;
@@ -894,13 +1325,13 @@ TfLiteStatus EvalA4W2DRQ(TfLiteContext* context,
   TF_LITE_ENSURE(context, input_size > 0);
   TF_LITE_ENSURE(context, num_units > 0);
   TF_LITE_ENSURE_MSG(context, input_size % kA4W2BlockSize == 0,
-                     "cint2_fp32_int4_e8m0_drq requires the filter's input "
-                     "size to be a multiple of "
-                     "the 32 element activation block size.");
+                     "An a4w2 DRQ quant_spec requires the filter's input "
+                     "size to be a multiple of the 32 element activation "
+                     "block size.");
 
   const int total_input_size = input->bytes / sizeof(float);
   TF_LITE_ENSURE_MSG(context, total_input_size % input_size == 0,
-                     "cint2_fp32_int4_e8m0_drq requires the input size to be a "
+                     "An a4w2 DRQ quant_spec requires the input size to be a "
                      "whole number of rows.");
   const int batch_size = total_input_size / input_size;
   if (bias != nullptr) {
@@ -935,7 +1366,7 @@ TfLiteStatus EvalA4W2DRQ(TfLiteContext* context,
   TF_LITE_ENSURE(context, affine_quantization->scale != nullptr);
   TF_LITE_ENSURE_MSG(
       context, affine_quantization->scale->size == num_units,
-      "cint2_fp32_int4_e8m0_drq requires one weight scale per output channel.");
+      "An a4w2 DRQ quant_spec requires one weight scale per output channel.");
   const float* per_channel_scale_ptr = affine_quantization->scale->data;
 
   const float* input_ptr = GetTensorData<float>(input);
@@ -981,7 +1412,7 @@ TfLiteStatus EvalA4W2DRQ(TfLiteContext* context,
         float blk_sum = 0.0f;
         for (int k = 0; k < kA4W2BlockSize; ++k) {
           blk_sum += static_cast<float>(a_blk[k]) *
-                     (static_cast<float>(w_blk[k]) + 0.5f);
+                     (static_cast<float>(w_blk[k]) + weight_offset);
         }
         acc += static_cast<double>(s_a) * static_cast<double>(s_w) *
                static_cast<double>(blk_sum);
@@ -1003,13 +1434,11 @@ TfLiteStatus EvalHybridDense(
     TfLiteTensor* input_quantized, TfLiteTensor* scaling_factors,
     TfLiteTensor* accum_scratch, TfLiteTensor* row_sums,
     TfLiteTensor* input_offsets, TfLiteTensor* output) {
-  QuantSpecKind quant_spec_kind = QuantSpecKind::kNone;
-  float act_dilation = 0.0f;
-  TF_LITE_ENSURE_OK(context, ParseQuantSpec(context, params, &quant_spec_kind,
-                                            &act_dilation));
-  if (quant_spec_kind == QuantSpecKind::kA4W2Drq) {
+  QuantSpec quant_spec;
+  TF_LITE_ENSURE_OK(context, ParseQuantSpec(context, params, &quant_spec));
+  if (quant_spec.a4w2 != nullptr) {
     return EvalA4W2DRQ(context, params, input, filter, bias, output,
-                       act_dilation);
+                       quant_spec);
   }
 
   int total_input_size = 1;
@@ -1075,6 +1504,7 @@ TfLiteStatus EvalHybridDense(
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             filter->quantization.params);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->quantized_dimension, 0);
     TF_LITE_ENSURE_EQ(
         context, affine_quantization->scale->size,
         filter->dims->data[affine_quantization->quantized_dimension]);
@@ -1346,17 +1776,27 @@ TfLiteStatus EvalHybridDense4Bit(
   const int rhs_width = data->op_data_4bit->rows_right;
   const int depth = optimized_4bit::FilterDepth;
   const int lhs_width = optimized_4bit::FilterWidth;
-  const int lhs_layout_rows =
-      (output_depth + (lhs_width - 1)) & ~(lhs_width - 1);
-  const int lhs_layout_cols = (cols + (depth - 1)) & ~(depth - 1);
-  const int rhs_layout_rows = (batch_size + (rhs_width - 1)) & ~(rhs_width - 1);
+  const CheckedInt<int> rounded_rows =
+      CheckedInt<int>(output_depth) + (lhs_width - 1);
+  const CheckedInt<int> rounded_cols = CheckedInt<int>(cols) + (depth - 1);
+  const CheckedInt<int> rounded_batch =
+      CheckedInt<int>(batch_size) + (rhs_width - 1);
+  TF_LITE_ENSURE(context, !rounded_rows.Overflow() &&
+                              !rounded_cols.Overflow() &&
+                              !rounded_batch.Overflow());
+  const int lhs_layout_rows = rounded_rows.Value() & ~(lhs_width - 1);
+  const int lhs_layout_cols = rounded_cols.Value() & ~(depth - 1);
+  const int rhs_layout_rows = rounded_batch.Value() & ~(rhs_width - 1);
   const int rhs_layout_cols = lhs_layout_cols;
   const int dst_layout_rows = rhs_layout_rows;
   const int dst_layout_cols = lhs_layout_rows;
   if (data->op_data_4bit->needs_prepack) {
-    const int weight_size = lhs_layout_rows * lhs_layout_cols / 2;
-    const int required_size =
-        optimized_4bit::kDefaultAlignmentPadding + weight_size;
+    const CheckedInt<int> checked_weight_size =
+        (CheckedInt<int>(lhs_layout_rows) * lhs_layout_cols) / 2;
+    const CheckedInt<int> checked_required_size =
+        checked_weight_size + optimized_4bit::kDefaultAlignmentPadding;
+    TF_LITE_ENSURE(context, !checked_required_size.Overflow());
+    const int required_size = checked_required_size.Value();
     data->op_data_4bit->AllocatePackedRegion(required_size);
     const int8_t* weight_ptr = GetTensorData<int8_t>(filter);
     optimized_4bit::api::Prepack(data->op_data_4bit->prepacked_cache,
@@ -1379,6 +1819,7 @@ TfLiteStatus EvalHybridDense4Bit(
     // range down, so the last partial page is also unaffected. Because of this
     // behavior, on average one memory page (usually 4 kiB) per buffer holding 4
     // bit data will not be paged out.
+    const int weight_size = checked_weight_size.Value();
     static const uintptr_t pagesize = sysconf(_SC_PAGESIZE);
     int8_t* up_aligned_ptr = reinterpret_cast<int8_t*>(
         ((reinterpret_cast<uintptr_t>(weight_ptr) + pagesize - 1) / pagesize) *
@@ -1396,6 +1837,8 @@ TfLiteStatus EvalHybridDense4Bit(
       std::fill(filter_scales.begin(), filter_scales.end(),
                 filter_params->scale->data[0]);
     } else {
+      TF_LITE_ENSURE_EQ(context, filter_params->quantized_dimension, 0);
+      TF_LITE_ENSURE_EQ(context, filter_params->scale->size, output_depth);
       for (int i = 0; i < filter_params->scale->size; i++) {
         filter_scales[i] = filter_params->scale->data[i];
       }
@@ -1768,6 +2211,9 @@ bool VerifySparsity(const RuntimeShape& weights_shape,
                     const RuntimeShape& input_shape,
                     const RuntimeShape& output_shape,
                     const TfLiteSparsity* sparsity) {
+  if (sparsity == nullptr || !SupportedSparsityFormat(*sparsity)) {
+    return false;
+  }
   const int weights_dims_count = weights_shape.DimensionsCount();
   const int output_dims_count = output_shape.DimensionsCount();
   const int w0_size = sparsity->dim_metadata[0].dense_size;
@@ -2117,12 +2563,13 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
     op_params.float_activation_max = output_activation_max;
     if (filter->sparsity != nullptr) {
       const auto& sparsity = *filter->sparsity;
-      reference_ops::FullyConnectedSparseWeight(
-          sparsity, op_params, GetTensorShape(input),
-          GetTensorData<float>(input), GetTensorShape(filter),
-          GetTensorData<float>(filter), GetTensorShape(bias),
-          GetTensorData<float>(bias), GetTensorShape(output),
-          GetTensorData<float>(output));
+      TF_LITE_ENSURE_OK(context,
+                        reference_ops::FullyConnectedSparseWeight(
+                            sparsity, op_params, GetTensorShape(input),
+                            GetTensorData<float>(input), GetTensorShape(filter),
+                            GetTensorData<float>(filter), GetTensorShape(bias),
+                            GetTensorData<float>(bias), GetTensorShape(output),
+                            GetTensorData<float>(output)));
     } else {
       reference_ops::FullyConnected(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
@@ -2210,6 +2657,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Do nothing if expected output is empty.
   if (NumElements(output) == 0) {
     return kTfLiteOk;
+  }
+
+  // Blockwise quantized filters only have a reference implementation, which
+  // both kernel types use.
+  if (const TfLiteBlockwiseQuantizationV2* filter_blockwise =
+          dequantize::GetBlockwiseQuantizationV2(filter);
+      filter_blockwise != nullptr) {
+    return EvalBlockwiseFilter(context, data, input, filter, filter_blockwise,
+                               bias, output);
   }
 
   if (filter->dims->data[1] == 0) {

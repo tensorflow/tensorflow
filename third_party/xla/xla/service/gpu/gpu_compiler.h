@@ -130,10 +130,6 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
-  virtual bool IsScaledDotSupportedByBackend(
-      const HloInstruction* instr,
-      const GpuTargetConfig& gpu_target_config) const;
-
   enum class AlgebraicSimplifierMode {
     kLayoutInsensitive,
     kPostFusionSimplification,
@@ -145,7 +141,7 @@ class GpuCompiler : public LLVMCompiler {
 
   static AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
       AlgebraicSimplifierMode mode, const DebugOptions& debug_options,
-      bool is_rocm);
+      bool is_non_cuda_platform);
 
   // Returns the LLVM command line options that we use for compilation.
   // THey need to be set globally whenever we call into LLVM.

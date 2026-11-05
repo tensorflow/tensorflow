@@ -468,15 +468,15 @@ message DebugOptions {
   //     use fixed VMM reservation addresses; other dynamic allocations still
   //     trigger command updates when their addresses change.
   //
-  //   SKIP_PROFILED: For the first few executions, buffers use regular
-  //     dynamically allocated addresses. Preallocated temp buffers are
-  //     automatically selected for remapping while the runtime records which
-  //     other non-constant, non-thread-local command-buffer-referenced
+  //   SKIP_PROFILED: Preallocated temp buffers are automatically selected
+  //     and, as in SKIP_TEMP, allocated through the VMM reservation from the
+  //     first execution. For the first few executions the other buffers use
+  //     regular dynamically allocated addresses while the runtime records
+  //     which non-constant, non-thread-local command-buffer-referenced
   //     allocations keep a stable address. Afterwards, the temp buffers and
   //     stable profile candidates use fixed VMM reservation addresses during
-  //     execution. Temp buffers are allocated through the reservation;
-  //     finalized input and output addresses are aliased into it immediately
-  //     before execution.
+  //     execution; finalized input and output addresses are aliased into the
+  //     reservation immediately before execution.
   //     Remapping enforces address stability, so a mispredicted profile costs
   //     an extra VMM remap instead of correctness. Requires the VMM allocator
   //     and assumes symmetric behavior across ranks.
@@ -748,6 +748,12 @@ message DebugOptions {
   // 2: Enabled on all supported GPUs (Ampere+).
   optional int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
+  // Lets cuDNN compile non-GEMM fusions.
+  // Current levels:
+  // 0: Disabled.
+  // 1: Compile pointwise fusions with cuDNN.
+  optional int32 xla_gpu_cudnn_non_gemm_fusion_level = 510;
+
   // Limit for the number of kernel configurations (plans) to use during
   // autotuning of cuDNN GEMM fusions. The more - the slower the autotuning
   // but potentially higher the performance.
@@ -829,6 +835,10 @@ message DebugOptions {
 
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
+
+  // Records the HLO annotation of each CUDA graph node so profiles can
+  // attribute command buffer work to HLO ops. Requires CUDA 13.2+.
+  optional bool xla_gpu_enable_command_buffer_telemetry = 564;
 
   // Enable radix sort using CUB.
   optional bool xla_gpu_enable_cub_radix_sort = 259;
@@ -1129,7 +1139,8 @@ message DebugOptions {
   optional int32 xla_gpu_experimental_force_split_k = 472;
 
   // Enable GEMM fusion v2 pass for building Triton fusions.
-  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475;
+  // TODO(b/487920266): Remove this flag entirely.
+  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475 [deprecated = true];
 
   // Controls max unroll factor on Blackwell architectures. This is also
   // guarded with a heuristic, but the heuristic is not perfect, so changing
@@ -1385,6 +1396,11 @@ message DebugOptions {
   // missing AOT result, the model will not be compiled or executed, a
   // `NotFound` error will be returned.
   optional bool xla_gpu_require_complete_aot_autotune_results = 284;
+
+  // If true, require that BlasLt matmuls execute the exact algorithm described
+  // by `BlasLtMatmulAlgorithmProto` rather than falling back to the heuristic
+  // algorithm index.
+  optional bool xla_gpu_require_exact_blas_lt_algorithm = 563;
 
   // If true, XLA runtime will retain exclusive ownership of the GPU when
   // running a module, so there are no multi-thread conflicts on the GPU. This
@@ -1893,11 +1909,6 @@ message DebugOptions {
   // overhead. Set to -1 to disable async device-to-device copies.
   optional int64 xla_gpu_async_copy_min_bytes = 522;
 
-  // If true, enable experimental tiling propagation.
-  // TODO(b/514293537): drop the flag.
-  optional bool xla_gpu_experimental_enable_tiling_propagation = 456
-      [deprecated = true];
-
   // Enables and controls expetimental cost model-driven tiling choices for GEMM
   // fusions.
   map<string, string> xla_gpu_experimental_cost_model_gemm_tiling_options = 474;
@@ -1978,7 +1989,15 @@ message DebugOptions {
   // when the cuDNN version changes).
   optional bool xla_autotune_cache_require_strict_codegen_match = 559;
 
-  // Next id: 562
+  // Lowers eligible associative kScan instructions to Triton fusions
+  // (ScanRewriterTriton).
+  optional bool xla_gpu_experimental_enable_triton_scan = 562;
+
+  // If true, enables experimental thread-block specialized horizontal fusion of
+  // independent small-grid GPU kernels.
+  optional bool xla_gpu_experimental_enable_horizontal_fusion = 565;
+
+  // Next id: 566
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -2064,6 +2083,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_enable_dynamic_dot_search_space";
   reserved "xla_gpu_experimental_enable_nan_counter_on_thunks";
   reserved "xla_gpu_experimental_enable_split_k_rewrite";
+  reserved "xla_gpu_experimental_enable_tiling_propagation";
   reserved "xla_gpu_experimental_enable_triton_i4_rewrites";
   reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
   reserved "xla_gpu_experimental_enable_triton_tma";
@@ -2118,8 +2138,8 @@ message DebugOptions {
       234, 235, 238, 239, 241, 242, 243, 249, 263, 264, 266, 270, 271, 275, 276,
       278, 279, 281, 282, 286, 298, 299, 300, 302, 303, 309, 313, 314, 319, 320,
       325, 326, 332, 346, 352, 354, 355, 358, 361, 367, 369, 371, 376, 385, 388,
-      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 458, 464,
-      477, 480;
+      389, 394, 396, 398, 402, 413, 420, 423, 430, 435, 443, 446, 450, 456, 458,
+      464, 477, 480;
 }
 
 // Contains flags which affects the GPU compilation result.

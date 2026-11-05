@@ -209,11 +209,12 @@ struct PJRT_Buffer {
   // Set and cached the first time PJRT_Buffer_DynamicDimensionIndices is
   // called.
   std::optional<std::vector<size_t>> dynamic_dim_indices;
-  // Used to synchronize concurrent setting of cached values.
+  // Used to synchronize concurrent setting of cached values and external
+  // references.
   absl::Mutex mu;
   // Manages, holds, and takes ownership of external references.
   std::vector<std::unique_ptr<xla::PjRtBuffer::ExternalReference>>
-      external_references;
+      external_references ABSL_GUARDED_BY(mu);
 };
 
 struct PJRT_FulfillAliasBufferCallback {

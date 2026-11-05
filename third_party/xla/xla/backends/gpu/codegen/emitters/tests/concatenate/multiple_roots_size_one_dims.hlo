@@ -1,0 +1,41 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize | FileCheck %s
+// RUN: gpu_test_correctness %s
+
+fusion {
+  %p0 = f32[1,2,100] parameter(0)
+  %p1 = f32[1,1,100] parameter(1)
+  %p2 = f32[1,1,100] parameter(2)
+  %c0 = f32[1,2,100] concatenate(%p1, %p2), dimensions={1}
+  %d = f32[1,2,100] divide(%c0, %p0)
+  %two = f32[] constant(2)
+  %btwo = f32[1,1,100] broadcast(%two), dimensions={}
+  %m = f32[1,1,100] multiply(%p1, %btwo)
+  %one = f32[] constant(1)
+  %bone = f32[1,1,100] broadcast(%one), dimensions={}
+  %a = f32[1,1,100] add(%p2, %bone)
+  %c1 = f32[1,2,100] concatenate(%m, %a), dimensions={1}
+  ROOT %t = (f32[1,2,100], f32[1,2,100]) tuple(%d, %c1)
+}
+
+ENTRY main {
+  %p0 = f32[1,2,100] parameter(0)
+  %p1 = f32[1,1,100] parameter(1)
+  %p2 = f32[1,1,100] parameter(2)
+  ROOT %fusion = (f32[1,2,100], f32[1,2,100]) fusion(%p0, %p1, %p2),
+      kind=kInput, calls=fusion
+}
+
+// Regression test: one root has an elementwise epilogue (divide) while the
+// other root is the concatenate itself, and the shapes have size-1 dimensions.
+// The epilogue indexing of both roots must agree, otherwise the emitter fails
+// with "UseConcatenateFusion should have ensured all roots share the same
+// epilogue indexing".
+
+// CHECK-LABEL: func.func @main(
+// CHECK:         xla.loop
+// CHECK:           tensor.insert {{.*}} : tensor<1x2x100xf32>
+// CHECK:           tensor.insert {{.*}} : tensor<1x2x100xf32>
+// CHECK:         xla.loop
+// CHECK:           tensor.insert {{.*}} : tensor<1x2x100xf32>
+// CHECK:           tensor.insert {{.*}} : tensor<1x2x100xf32>
+// CHECK-NOT:     xla.loop

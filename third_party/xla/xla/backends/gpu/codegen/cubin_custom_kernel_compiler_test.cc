@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
@@ -97,8 +98,11 @@ TEST(CubinCustomKernelCompilerTest, CallbackInvoked) {
     ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Thunk> thunk,
         kernel_compiler
-            .Compile(thunk_info, std::move(kernel_source),
-                     absl::StrCat("kernel", i), kernel_arguments, dimensions)
+            .Compile(
+                thunk_info,
+                GpuKernelDefinition{GpuKernelSpec(absl::StrCat("kernel", i),
+                                                  dimensions, kernel_arguments),
+                                    std::move(kernel_source)})
             .Await());
   }
 

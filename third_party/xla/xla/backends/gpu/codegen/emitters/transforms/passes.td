@@ -166,4 +166,57 @@ def PromoteShuffleToDPPPass
   ];
 }
 
+def VirtualizeSubKernelPass
+    : Pass<"xla-gpu-virtualize-sub-kernel", "mlir::ModuleOp"> {
+  let summary = "Virtualizes a lowered LLVM/NVVM sub-kernel for horizontal fusion.";
+
+  let description = [{
+    Transforms a lowered sub-kernel module (in the `llvm` and `nvvm` dialects)
+    into a virtualized sub-kernel ready to be spliced into a horizontal fusion
+    launcher module:
+      1. Strips trailing scratch pointer arguments when the entry function has
+         more arguments than `expected_num_tensor_args`.
+      2. Appends `%rel_bid_i32 : i32` to the entry function signature.
+      3. Replaces `nvvm.read.ptx.sreg.ctaid.{x,y,z}` and `nctaid.{x,y,z}` ops
+         using `%rel_bid_i32` (delinearizing for 2D/3D grids).
+      4. Replaces `nvvm.read.ptx.sreg.tid.{x,y,z}` and `ntid.{x,y,z}` ops
+         (delinearizing from 1D `tid.x` for 2D/3D thread blocks).
+      5. Rewrites 0-operand `nvvm.barrier` ops to partial-CTA
+         `nvvm.barrier id = 0 number_of_threads = %sub_threads` when the
+         sub-kernel uses fewer threads than `max_threads`.
+      6. Packs private `addrspace(3)` globals into 16-byte-aligned byte offsets
+         of external `@global_smem` and records the sub-kernel's total shared
+         memory requirement in `"xla.shared_memory_bytes"` on the module.
+  }];
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::NVVM::NVVMDialect",
+  ];
+
+  let options = [
+    Option<"entry_function_name_", "entry_function_name", "std::string",
+           /*default=*/"\"\"", "Name of the sub-kernel entry function.">,
+    Option<"expected_num_tensor_args_", "expected_num_tensor_args", "int64_t",
+           /*default=*/"-1",
+           "Expected number of tensor pointer arguments (-1 to keep all).">,
+    Option<"block_dim_x_", "block_dim_x", "int64_t", /*default=*/"1",
+           "Sub-kernel grid dimension X.">,
+    Option<"block_dim_y_", "block_dim_y", "int64_t", /*default=*/"1",
+           "Sub-kernel grid dimension Y.">,
+    Option<"block_dim_z_", "block_dim_z", "int64_t", /*default=*/"1",
+           "Sub-kernel grid dimension Z.">,
+    Option<"thread_dim_x_", "thread_dim_x", "int64_t", /*default=*/"1",
+           "Sub-kernel thread dimension X.">,
+    Option<"thread_dim_y_", "thread_dim_y", "int64_t", /*default=*/"1",
+           "Sub-kernel thread dimension Y.">,
+    Option<"thread_dim_z_", "thread_dim_z", "int64_t", /*default=*/"1",
+           "Sub-kernel thread dimension Z.">,
+    Option<"max_threads_", "max_threads", "int64_t", /*default=*/"1",
+           "Outer horizontal kernel thread count per block.">,
+    Option<"warp_size_", "warp_size", "int64_t", /*default=*/"32",
+           "Hardware warp size.">,
+  ];
+}
+
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_

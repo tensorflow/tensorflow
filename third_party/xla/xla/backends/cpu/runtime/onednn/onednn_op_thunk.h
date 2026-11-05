@@ -41,7 +41,7 @@ class OneDnnOpThunk : public Thunk {
 
     std::vector<BufferAllocation::Slice> results_buffers;
     std::vector<Shape> results_shapes;
-    bool is_tuple_result;
+    bool is_tuple_result = false;
   };
 
   // Variant config for supported oneDNN ops.
@@ -54,9 +54,20 @@ class OneDnnOpThunk : public Thunk {
       const std::string& custom_call_target, Info info, OpBuffers buffers,
       OneDnnOpConfig config);
 
+  // Same as `Create`, but keeps `info` verbatim instead of appending the target
+  // to `info.op_name`. Used to restore a thunk from its serialized form, whose
+  // `op_name` was already updated by `Create`.
+  static absl::StatusOr<std::unique_ptr<OneDnnOpThunk>> CreateFromSerialized(
+      const std::string& custom_call_target, Info info, OpBuffers buffers,
+      OneDnnOpConfig config);
+
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
   BufferUses buffer_uses() const final;
+
+  const std::string& target() const { return target_; }
+  const OpBuffers& op_buffers() const { return op_buffers_; }
+  const OneDnnOpConfig& onednn_op_config() const { return config_; }
 
  private:
   OneDnnOpThunk(const std::string& custom_call_target, Info info,

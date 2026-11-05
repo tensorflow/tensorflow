@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/service/decision.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -146,10 +147,16 @@ absl::Status RewriteScaledDot(
           call->shape(), call->mutable_operand(0), call->mutable_operand(1),
           call->mutable_operand(2), call->mutable_operand(3),
           dot_dimension_numbers, precision));
+  scaled_dot->set_metadata(call->metadata());
   ABSL_RETURN_IF_ERROR(call->ReplaceAllUsesWith(scaled_dot));
   ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(call));
   return absl::OkStatus();
 }
+
+const HloPassFactory* const kCompositeRewriterRegistration =
+    RegisterHloPassFactory<DefaultHloPassFactory<CompositeRewriter>>(
+        "composite-rewriter");
+
 }  // namespace
 
 absl::StatusOr<bool> CompositeRewriter::RewriteComputation(

@@ -27,8 +27,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/decision.h"
@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
-namespace gpu::experimental {
+namespace gpu {
 
 namespace {
 
@@ -124,7 +124,8 @@ Decision VerifyTritonConstraints(const TiledHloComputation& tiled_computation,
   // TODO(b/393299275): There is also a lower bound limit for Triton on what
   // is accepted for dimension size (both contracting and free).
   for (const TiledHloInstruction* inst : all_instructions) {
-    if (inst->hlo()->opcode() == HloOpcode::kDot) {
+    if (inst->hlo()->opcode() == HloOpcode::kDot ||
+        inst->hlo()->opcode() == HloOpcode::kScaledDot) {
       for (const TiledHloInstruction* operand : inst->operands()) {
         auto op_tile_sizes_or = operand->tile().GetStaticTileSizes();
         if (!op_tile_sizes_or.ok()) {
@@ -319,6 +320,6 @@ Decision VerifySubsetOfTritonConstraints(
   return Decision::Allow();
 }
 
-}  // namespace gpu::experimental
+}  // namespace gpu
 
 }  // namespace xla

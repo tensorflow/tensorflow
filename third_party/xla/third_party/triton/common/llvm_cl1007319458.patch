@@ -1,0 +1,21 @@
+--- a/test/TritonGPU/pipeline-lower-loop.mlir
++++ b/test/TritonGPU/pipeline-lower-loop.mlir
+@@ -1094,7 +1094,7 @@
+   // CHECK:   %[[MMA_TOK:.*]] = ttng.tc_gen5_mma %{{.*}}, %{{.*}}, %[[ACC_TM_SLICE]][], %[[TRUE]], %[[TRUE]], %[[BAR_SLICE]][%true] {is_async, loop.cluster = 0 : i32, loop.stage = 2 : i32}
+   // CHECK:   ttng.wait_barrier %[[BAR_SLICE]], %[[PHASE]] deps %{{.*}}, %{{.*}} {loop.cluster = 0 : i32, loop.stage = 3 : i32}
+   // CHECK:   scf.if
+-  // CHECK:     %[[ACC_TM_SLICE:.*]] = ttg.memdesc_index %[[ACC_TM]]{{\[}}%[[BUF_IDX_NEXT_CND]]{{\]}}
++  // CHECK:     %[[ACC_TM_SLICE:.*]] = ttg.memdesc_index %[[ACC_TM]]{{\[}}%[[BUF_IDX]]{{\]}}
+   // CHECK:     %[[LOAD_ACC:.*]], %[[USER_TOK:.*]] = ttng.tmem_load %[[ACC_TM_SLICE]][]
+   // CHECK:     "use"(%[[LOAD_ACC]])
+   // CHECK:   }
+@@ -1174,7 +1174,7 @@
+   // CHECK:   %[[MMA_TOK:.*]] = ttng.tc_gen5_mma %{{.*}}, %{{.*}}, %[[ACC_TM_SLICE]][], %[[CND]], %[[TRUE]], %[[BAR_SLICE]][%true] {is_async, loop.cluster = 0 : i32, loop.stage = 2 : i32}
+   // CHECK:   ttng.wait_barrier %[[BAR_SLICE]], %[[PHASE]] deps %{{.*}}, %{{.*}} {loop.cluster = 0 : i32, loop.stage = 3 : i32}
+   // CHECK:   scf.if
+-  // CHECK:     %[[ACC_TM_SLICE:.*]] = ttg.memdesc_index %[[ACC_TM]]{{\[}}%[[BUF_IDX_NEXT_CND]]{{\]}}
++  // CHECK:     %[[ACC_TM_SLICE:.*]] = ttg.memdesc_index %[[ACC_TM]]{{\[}}%[[BUF_IDX]]{{\]}}
+   // CHECK:     %[[LOAD_ACC:.*]], %[[USER_TOK:.*]] = ttng.tmem_load %[[ACC_TM_SLICE]][]
+   // CHECK:     "use"(%[[LOAD_ACC]])
+   // CHECK:   }
+

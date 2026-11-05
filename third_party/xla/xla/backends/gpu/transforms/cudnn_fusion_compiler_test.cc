@@ -21,6 +21,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/substitute.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -35,6 +37,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::absl_testing::StatusIs;
 
 class CudnnFusionCompilerConstTest
     : public HloPjRtGpuTestBase,
@@ -93,7 +97,7 @@ TEST_P(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -157,7 +161,7 @@ TEST_P(CudnnFusionCompilerWgradTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -202,7 +206,7 @@ TEST_F(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -243,7 +247,7 @@ TEST_F(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
 }
@@ -284,9 +288,101 @@ TEST_F(CudnnFusionCompilerConstTest,
 
   ASSERT_OK_AND_ASSIGN(int plan_count,
                        CuDnnFusionCompiler::GetAvailablePlanCount(
-                           stream_executor(),
+                           stream_executor()->AsDnn(),
                            stream_executor()->GetDeviceDescription(), *fusion));
   EXPECT_GT(plan_count, 0);
+}
+
+TEST_F(CudnnFusionCompilerConstTest,
+       GetAvailablePlanCountFromConvolutionFusionWithAmax) {
+  std::string hlo_text = R"(
+  max {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT c = f32[] maximum(a, b)
+  }
+
+  fusion_amax {
+    p0 = f32[4,48,48,64] parameter(0)
+    p1 = f32[64,3,3,64] parameter(1)
+    conv = f32[4,48,48,64] convolution(p0, p1),
+      window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_o01i->b01f,
+      convolution_kind=fprop
+    abs = f32[4,48,48,64] abs(conv)
+    init = f32[] constant(-inf)
+    ROOT amax = f32[] reduce(abs, init), dimensions={0,1,2,3}, to_apply=max
+  }
+
+  ENTRY e {
+    p0 = f32[4,48,48,64] parameter(0)
+    p1 = f32[64,3,3,64] parameter(1)
+    ROOT _ = f32[] fusion(p0, p1), kind=kCustom, calls=fusion_amax,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$fusion",
+        }
+      }
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  const HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  auto* fusion = Cast<HloFusionInstruction>(root);
+
+  ASSERT_OK_AND_ASSIGN(int plan_count,
+                       CuDnnFusionCompiler::GetAvailablePlanCount(
+                           stream_executor()->AsDnn(),
+                           stream_executor()->GetDeviceDescription(), *fusion));
+  EXPECT_GT(plan_count, 0);
+}
+
+TEST_F(CudnnFusionCompilerConstTest,
+       GetAvailablePlanCountRejectsNonAmaxReduce) {
+  // cuDNN reductions are always emitted as AMAX; any other reducer must be
+  // rejected instead of silently computing the wrong value.
+  std::string hlo_text = R"(
+  add {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT c = f32[] add(a, b)
+  }
+
+  fusion_sum {
+    p0 = f32[4,48,48,64] parameter(0)
+    p1 = f32[64,3,3,64] parameter(1)
+    conv = f32[4,48,48,64] convolution(p0, p1),
+      window={size=3x3 pad=1_1x1_1},
+      dim_labels=b01f_o01i->b01f,
+      convolution_kind=fprop
+    init = f32[] constant(0)
+    ROOT sum = f32[] reduce(conv, init), dimensions={0,1,2,3}, to_apply=add
+  }
+
+  ENTRY e {
+    p0 = f32[4,48,48,64] parameter(0)
+    p1 = f32[64,3,3,64] parameter(1)
+    ROOT _ = f32[] fusion(p0, p1), kind=kCustom, calls=fusion_sum,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$fusion",
+        }
+      }
+  })";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  const HloInstruction* root =
+      hlo_module->entry_computation()->root_instruction();
+  auto* fusion = Cast<HloFusionInstruction>(root);
+
+  EXPECT_THAT(CuDnnFusionCompiler::GetAvailablePlanCount(
+                  stream_executor()->AsDnn(),
+                  stream_executor()->GetDeviceDescription(), *fusion),
+              StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 }  // namespace

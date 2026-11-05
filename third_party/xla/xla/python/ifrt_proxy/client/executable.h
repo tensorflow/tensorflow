@@ -54,6 +54,21 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
+// Client-side cancellation handle returned by `LoadedExecutable::Execute()`.
+// It carries the client-generated handle that identifies the in-flight
+// execution on the proxy server; `Client::CancelExecution()` sends it to the
+// server to cancel the corresponding backend execution.
+class CancellationHandle
+    : public xla::ifrt::LoadedExecutable::CancellationHandleObject {
+ public:
+  explicit CancellationHandle(uint64_t handle) : handle_(handle) {}
+
+  uint64_t handle() const { return handle_; }
+
+ private:
+  const uint64_t handle_;
+};
+
 class LoadedExecutable final
     : public RTTIExtends<LoadedExecutable, xla::ifrt::LoadedExecutable> {
  public:

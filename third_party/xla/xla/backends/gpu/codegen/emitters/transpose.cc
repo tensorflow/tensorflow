@@ -110,14 +110,14 @@ constexpr int kMaxVectorizedBytesRocm = 16;
 // at the given indices.
 Value ReadVectorTileFromShmem(
     ImplicitLocOpBuilder& b, Value shmem, ValueRange shmem_indices,
-    Value vector_tile_init, const stream_executor::DeviceDescription& device) {
-  int64_t vector_size =
-      mlir::cast<VectorType>(vector_tile_init.getType()).getDimSize(0);
-  Value vector_tile = vector_tile_init;
+    int64_t vector_size, const stream_executor::DeviceDescription& device) {
   SmallVector<Value> shmem_indices_vec(shmem_indices.begin(),
                                        shmem_indices.end());
   auto elem_type =
       mlir::cast<mlir::RankedTensorType>(shmem.getType()).getElementType();
+  auto vector_tile_type =
+      mlir::VectorType::get({vector_size, vector_size}, elem_type);
+  SmallVector<Value> vector_tile(vector_size * vector_size);
 
   // Disable vectorization for the data types that result in sub-byte vector
   // loads and stores in the optimized LLVM IR.
@@ -137,15 +137,14 @@ Value ReadVectorTileFromShmem(
         // Extract scalar element
         Value elem = mt::ExtractOp::create(b, shmem, elem_indices);
         // Insert into vector tile
-        vector_tile = mv::InsertOp::create(b, elem, vector_tile,
-                                           SmallVector<int64_t>{j, i});
+        vector_tile[j * vector_size + i] = elem;
       }
       // Advance to next row
       shmem_indices_vec.front() = mlir::arith::AddIOp::create(
           b, shmem_indices_vec.front(),
           mlir::arith::ConstantIndexOp::create(b, 1));
     }
-    return vector_tile;
+    return mv::FromElementsOp::create(b, vector_tile_type, vector_tile);
   }
 
   auto vector_type = mlir::VectorType::get({vector_size}, elem_type);
@@ -156,14 +155,13 @@ Value ReadVectorTileFromShmem(
     for (int64_t j = 0; j < vector_size; ++j) {
       Value elem =
           mv::ExtractOp::create(b, loaded_vector, SmallVector<int64_t>{j});
-      vector_tile = mv::InsertOp::create(b, elem, vector_tile,
-                                         SmallVector<int64_t>{j, i});
+      vector_tile[j * vector_size + i] = elem;
     }
     shmem_indices_vec.front() =
         mlir::arith::AddIOp::create(b, shmem_indices_vec.front(),
                                     mlir::arith::ConstantIndexOp::create(b, 1));
   }
-  return vector_tile;
+  return mv::FromElementsOp::create(b, vector_tile_type, vector_tile);
 }
 
 // Offsets each VECTOR_SIZE x VECTOR_SIZE tile in the shared memory by
@@ -803,15 +801,6 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
   return result;
 }
 
-Value GetZeroVector(ImplicitLocOpBuilder& b, PrimitiveType elem_type,
-                    llvm::ArrayRef<int64_t> shape) {
-  auto mlir_elem_type = emitters::PrimitiveTypeToMlirType(elem_type, b);
-  auto accumulator_type = mlir::VectorType::get(shape, mlir_elem_type);
-  return mlir::arith::ConstantOp::create(
-      b, accumulator_type,
-      emitters::GetZeroDenseElementsAttr(accumulator_type));
-}
-
 void PackedTranspose::EmitReadFromShMemMlir(
     mlir::ImplicitLocOpBuilder& builder, FuncOp entry_function,
     const HloFusionInstruction& fusion,
@@ -828,14 +817,6 @@ void PackedTranspose::EmitReadFromShMemMlir(
   auto c0 = mlir::arith::ConstantIndexOp::create(builder, 0);
   SmallVector<Value> grid_and_vector_ids{thread_and_block_ids};
   grid_and_vector_ids.append({c0, c0});
-  absl::flat_hash_map<PrimitiveType, Value> elem_type_to_vector_tile;
-  for (const HloInstruction* transpose : shmem_transposes_) {
-    PrimitiveType elem_type = transpose->shape().element_type();
-    if (!elem_type_to_vector_tile.contains(elem_type)) {
-      elem_type_to_vector_tile[elem_type] =
-          GetZeroVector(builder, elem_type, {vector_size_, vector_size_});
-    }
-  }
   absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>
       transpose_values;
   // The outer loop reads <vector_size x vector_size> tiles.
@@ -851,10 +832,8 @@ void PackedTranspose::EmitReadFromShMemMlir(
              llvm::zip(shmem_transposes_, written.shmem_tensors)) {
           ValueRange shmem_indices = map_results;
           Value vector_tile =
-              elem_type_to_vector_tile[transpose->shape().element_type()];
-          vector_tile =
               ReadVectorTileFromShmem(nested_b, shmem, shmem_indices,
-                                      vector_tile, analysis_.device_info());
+                                      vector_size_, analysis_.device_info());
           transpose_values[transpose] = {vector_tile};
         }
         // The inner loop writes columns of the <vector_size x vector_size>

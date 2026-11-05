@@ -128,6 +128,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:drop_shape_assertions",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_to_vhlo_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_vhlo_quant_custom_calls",
+        "//tensorflow/compiler/mlir/lite/stablehlo:lift_callsite_loc_caller",
         "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_hlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:unfold_splat_constant_pass",
@@ -256,6 +257,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:vhlo_ops",
         "@xla//xla/tsl/platform:env",
     ],
 )

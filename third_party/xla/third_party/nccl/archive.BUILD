@@ -30,6 +30,7 @@ load(
     "@local_config_nccl//:generated_names.bzl",
     "GENERATED_SOURCES",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:defs.bzl", "py_binary")
 
 licenses(["notice"])

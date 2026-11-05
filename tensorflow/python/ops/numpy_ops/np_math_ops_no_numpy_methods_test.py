@@ -54,6 +54,7 @@ _PROMOTING_UNARY_OPS = [
     ('sinc', np_math_ops.sinc, np.sinc),
     ('exp2', np_math_ops.exp2, np.exp2),
     ('deg2rad', np_math_ops.deg2rad, np.deg2rad),
+    ('rad2deg', np_math_ops.rad2deg, np.rad2deg),
     ('fix', np_math_ops.fix, np.fix),
     ('isnan', np_math_ops.isnan, np.isnan),
     ('isfinite', np_math_ops.isfinite, np.isfinite),
@@ -147,6 +148,19 @@ class MathWithoutNumpyMethodsOnTensorTest(test.TestCase):
           atol=1e-6,
           err_msg='logaddexp2({}, {})'.format(x1, x2),
       )
+
+  def testComplexPartsOfBool(self):
+    # `isreal` and `iscomplex` compared the imaginary part of a bool array
+    # against 0, which only works once numpy methods are on `Tensor`.
+    x = np.array([True, False])
+    for arg in (x, x.tolist(), ops.convert_to_tensor(x)):
+      np.testing.assert_array_equal(np_math_ops.isreal(arg), np.isreal(x))
+      np.testing.assert_array_equal(np_math_ops.iscomplex(arg), np.iscomplex(x))
+      # Like the other real dtypes, bool is returned unchanged.
+      for fn in (np_math_ops.conj, np_math_ops.conjugate):
+        actual = np.asarray(fn(arg))
+        self.assertEqual(actual.dtype, np.bool_)
+        np.testing.assert_array_equal(actual, x)
 
   def testFloatInputsAreUnchanged(self):
     arg = np.array([1.5, 2.5, 3.5], dtype=np.float32)

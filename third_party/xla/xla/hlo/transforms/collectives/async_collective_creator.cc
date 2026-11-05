@@ -349,9 +349,14 @@ absl::StatusOr<bool> AsyncCollectiveCreator::RunImpl(
   int64_t collectives_replaced = 0;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    if (computation->IsAsyncComputation()) {
-      // If a computation is called by async-start, all collectives in it will
-      // already be performed asynchronously.
+    if (computation->IsAsyncComputation() ||
+        absl::c_any_of(computation->caller_instructions(HloOpcode::kCall),
+                       [](const HloInstruction* caller) {
+                         return caller->parent()->IsAsyncComputation();
+                       })) {
+      // If a computation is called by async-start (directly or via an
+      // async-wrapped kCall), all collectives in it will already be performed
+      // asynchronously.
       continue;
     }
     std::vector<HloInstruction*> supported_collectives =

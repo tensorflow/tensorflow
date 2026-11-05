@@ -678,7 +678,10 @@ def fftshift(x, axes=None, name=None):
   with _ops.name_scope(name, "fftshift") as name:
     x = _ops.convert_to_tensor(x)
     if axes is None:
-      axes = tuple(range(x.shape.ndims))
+      if x.shape.ndims is not None:
+        axes = tuple(range(x.shape.ndims))
+      else:
+        axes = _math_ops.range(_array_ops.rank(x))
       shift = _array_ops.shape(x) // 2
     elif isinstance(axes, int):
       shift = _array_ops.shape(x)[axes] // 2
@@ -723,7 +726,10 @@ def ifftshift(x, axes=None, name=None):
   with _ops.name_scope(name, "ifftshift") as name:
     x = _ops.convert_to_tensor(x)
     if axes is None:
-      axes = tuple(range(x.shape.ndims))
+      if x.shape.ndims is not None:
+        axes = tuple(range(x.shape.ndims))
+      else:
+        axes = _math_ops.range(_array_ops.rank(x))
       shift = -(_array_ops.shape(x) // 2)
     elif isinstance(axes, int):
       shift = -(_array_ops.shape(x)[axes] // 2)

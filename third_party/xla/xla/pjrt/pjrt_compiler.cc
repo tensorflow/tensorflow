@@ -41,6 +41,37 @@ limitations under the License.
 
 namespace xla {
 
+bool AbslParseFlag(absl::string_view text, CompilerMetadataOnLoad* on_load,
+                   std::string* error) {
+  if (text == "keep") {
+    *on_load = CompilerMetadataOnLoad::kKeep;
+    return true;
+  }
+  if (text == "strip") {
+    *on_load = CompilerMetadataOnLoad::kStrip;
+    return true;
+  }
+  if (text == "strip_and_compress") {
+    *on_load = CompilerMetadataOnLoad::kStripAndCompress;
+    return true;
+  }
+  *error = absl::StrCat("unknown CompilerMetadataOnLoad '", text,
+                        "'; expected keep, strip or strip_and_compress");
+  return false;
+}
+
+std::string AbslUnparseFlag(CompilerMetadataOnLoad on_load) {
+  switch (on_load) {
+    case CompilerMetadataOnLoad::kKeep:
+      return "keep";
+    case CompilerMetadataOnLoad::kStrip:
+      return "strip";
+    case CompilerMetadataOnLoad::kStripAndCompress:
+      return "strip_and_compress";
+  }
+  return absl::StrCat(static_cast<int>(on_load));
+}
+
 PjRtCompilerRegistry& PjRtCompilerRegistry::Global() {
   static absl::NoDestructor<PjRtCompilerRegistry> global_registry;
   return *global_registry;
@@ -299,11 +330,10 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtDeserializeExecutable(
     const PjRtTopologyDescription& topology,
     riegeli::Any<riegeli::Reader*> reader,
     std::optional<CompileOptions> options,
-    bool executable_compatibility_check_on_deserialization) {
+    const DeserializeExecutableOptions& deserialize_options) {
   ABSL_ASSIGN_OR_RETURN(PjRtCompiler * compiler, GetPjRtCompiler(topology));
   return compiler->DeserializeExecutable(
-      topology, std::move(reader), std::move(options),
-      executable_compatibility_check_on_deserialization);
+      topology, std::move(reader), std::move(options), deserialize_options);
 }
 
 absl::Status PjRtPhaseCompiler::RegisterPhase(

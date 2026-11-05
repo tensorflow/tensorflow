@@ -45,6 +45,7 @@ namespace xla::gpu {
 // Thread safe.
 class KernelReuseCache {
  public:
+  // TODO(b/578658607): port to use GpuKernelSpec
   struct Entry {
     std::string kernel_name;
     LaunchDimensions launch_dimensions;

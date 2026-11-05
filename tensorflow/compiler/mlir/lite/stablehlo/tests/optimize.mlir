@@ -99,6 +99,29 @@ func.func @testRemoveReshapeAroundDotGeneral(%arg0: tensor<3x72x1x2048xf32>, %ar
 
 // -----
 
+// The reshape input [N, B*K] has fewer dims than the dot_general's batch and
+// contracting dims, so there is no B x Y1 x C split of it: leave it alone.
+// CHECK-LABEL: testKeepReshapeAroundDotGeneralFromLowerRank
+func.func @testKeepReshapeAroundDotGeneralFromLowerRank(%arg0: tensor<3x256xf32>, %arg1: tensor<3x4x64x32xf32>) -> tensor<3x8x1x16xf32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<3x256xf32>) -> tensor<3x4x1x64xf32>
+  %1 = "mhlo.dot_general"(%0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+        lhs_batching_dimensions = [0, 1],
+        rhs_batching_dimensions = [0, 1],
+        lhs_contracting_dimensions = [3],
+        rhs_contracting_dimensions = [2]
+    >} : (tensor<3x4x1x64xf32>, tensor<3x4x64x32xf32>) -> tensor<3x4x1x32xf32>
+  %2 = "mhlo.reshape"(%1) : (tensor<3x4x1x32xf32>) -> tensor<3x8x1x16xf32>
+  func.return %2 : tensor<3x8x1x16xf32>
+
+// CHECK:      %[[R0:.*]] = mhlo.reshape %arg0
+// CHECK:      %[[DOT:.*]] = "mhlo.dot_general"(%[[R0]], %arg1)
+// CHECK:      %[[R1:.*]] = mhlo.reshape %[[DOT]]
+// CHECK:      return %[[R1]]
+}
+
+// -----
+
 // CHECK-LABEL: testRemoveReshapeAroundDot
 func.func @testRemoveReshapeAroundDot(%arg0: tensor<1x1x512xf32>, %arg1: tensor<512x13x!quant.uniform<i8:f32, 0.00285>>) -> tensor<1x1x13xf32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x1x512xf32>) -> tensor<1x512xf32>

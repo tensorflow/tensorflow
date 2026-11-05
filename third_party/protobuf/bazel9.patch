@@ -1,0 +1,30 @@
+# Copyright 2026 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+diff --git a/MODULE.bazel b/MODULE.bazel
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -152 +152 @@
+-system_python = use_extension("//python/dist:system_python.bzl", "system_python_extension", dev_dependency = True)
++system_python = use_extension("//python/dist:system_python.bzl", "system_python_extension")
+diff --git a/toolchain/cc_toolchain_config.bzl b/toolchain/cc_toolchain_config.bzl
+--- a/toolchain/cc_toolchain_config.bzl
++++ b/toolchain/cc_toolchain_config.bzl
+@@ -11,0 +12 @@
++load("@rules_cc//cc/toolchains:cc_toolchain_config_info.bzl", "CcToolchainConfigInfo")
+diff --git a/python/dist/system_python.bzl b/python/dist/system_python.bzl
+--- a/python/dist/system_python.bzl
++++ b/python/dist/system_python.bzl
+@@ -72,0 +73 @@
++load("@rules_cc//cc:defs.bzl", "cc_library")

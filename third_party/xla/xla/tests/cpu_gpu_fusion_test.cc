@@ -945,6 +945,45 @@ ENTRY entry {
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
 }
 
+TEST_F(CpuGpuFusionTest, ViewReversedDoesNotCorruptSharedBuffer) {
+  const char* const hlo = R"hlo(
+HloModule view_reversed
+
+ENTRY main {
+  a = s32[65536] parameter(0)
+  x_raw = s32[65536] negate(a)
+  x = s32[65536] opt-barrier(x_raw)
+  y_raw = s32[1,65536] reshape(x)
+  y = s32[1,65536] opt-barrier(y_raw)
+  y_rev = s32[1,65536] reverse(y), dimensions={1}
+  y_rev_1d = s32[65536] reshape(y_rev)
+  ROOT out = s32[65536] add(x, y_rev_1d)
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
+}
+
+TEST_F(CpuGpuFusionTest, TemporaryViewReversedDoesNotCorruptSharedBuffer) {
+  const char* const hlo = R"hlo(
+HloModule result_is_temporary
+
+ENTRY main {
+  a = s32[65536] parameter(0)
+  x_raw = s32[65536] negate(a)
+  x = s32[65536] opt-barrier(x_raw)
+  y_raw = s32[1,65536] reshape(x)
+  y = s32[1,65536] opt-barrier(y_raw)
+  y_rev = s32[1,65536] reverse(y), dimensions={1}
+  y_rev_1d = s32[65536] reshape(y_rev)
+  z_raw = s32[65536] add(x, y_rev_1d)
+  z = s32[65536] opt-barrier(z_raw)
+  z_slice = s32[32768] slice(z), slice={[0:65536:2]}
+  ROOT out = s32[32768] negate(z_slice)
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
+}
+
 void BM_ParallelFusion(::testing::benchmark::State& state) {
   // Simple element-wise computation to benchmark parallel task partitioning.
 

@@ -1381,30 +1381,6 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
             HloCostAnalysis::kDefaultPointerSize * 2);
 }
 
-using DomainCostAnalysis = HloHardwareIndependentTestBase;
-TEST_F(DomainCostAnalysis, DomainCost) {
-  HloCostAnalysis analysis;
-
-  HloComputation::Builder builder("domain");
-  auto x = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {123}), "x"));
-  auto y = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {42}), "y"));
-  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({x, y}));
-  auto domain = builder.AddInstruction(
-      HloInstruction::CreateDomain(tuple->shape(), tuple, nullptr, nullptr));
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(builder.Build());
-
-  EXPECT_EQ(hlo_module->entry_computation()->root_instruction(), domain);
-  ASSERT_IS_OK(domain->Accept(&analysis));
-
-  EXPECT_EQ(analysis.flop_count(*domain), 0);
-  EXPECT_EQ(analysis.transcendental_count(*domain), 0);
-  EXPECT_EQ(analysis.bytes_accessed(*domain), 0);
-}
-
 TEST_F(HloCostAnalysisTest, BaseDilatedConvolution) {
   XlaBuilder builder("BaseDilatedConvolution");
   auto input = Parameter(

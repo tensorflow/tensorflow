@@ -40,7 +40,13 @@ bool ConvolutionTypeCanonicalizer::InstructionMatchesPattern(
 absl::StatusOr<HloInstruction*> ConvolutionTypeCanonicalizer::ExpandInstruction(
     HloInstruction* instruction) {
   auto original_shape = instruction->shape();
-  auto new_shape = ShapeUtil::ChangeElementType(original_shape, F32);
+  PrimitiveType accumulator_type =
+      (instruction->operand(0)->shape().element_type() == F64 ||
+       instruction->operand(1)->shape().element_type() == F64)
+          ? F64
+          : F32;
+  auto new_shape =
+      ShapeUtil::ChangeElementType(original_shape, accumulator_type);
   HloInstruction* replacement_instruction =
       instruction->parent()->AddInstruction(
           instruction->CloneWithNewShape(new_shape));

@@ -371,6 +371,16 @@ add {
   ROOT %out = f32[1,291,291] cholesky(f32[1,291,291] %a), lower=true
 }
 
+// CHECK-LABEL:  func private @test_fma
+// CHECK-SAME:  ([[ARG0:%.*]]: tensor<4xf32>, [[ARG1:%.*]]: tensor<4xf32>, [[ARG2:%.*]]: tensor<4xf32>) -> tensor<4xf32>
+%test_fma (a: f32[4], b: f32[4], c: f32[4]) -> f32[4] {
+  %a = f32[4] parameter(0)
+  %b = f32[4] parameter(1)
+  %c = f32[4] parameter(2)
+  // CHECK-NEXT:  mhlo.fma [[ARG0]], [[ARG1]], [[ARG2]] : tensor<4xf32>
+  ROOT %fma0 = f32[4] fma(f32[4] %a, f32[4] %b, f32[4] %c)
+}
+
 
 // CHECK-LABEL:  func private @test_clamp(
 %test_clamp (Arg_0.1: f32[], Arg_1.2: f32[4], Arg_1.3: f32[]) -> f32[4] {
@@ -2094,14 +2104,6 @@ add {
   // CHECK: mhlo.round_nearest_even %[[ARG0]] : tensor<2xf32>
 }
 
-// CHECK-LABEL: func private @domain
-%domain (Arg_0.1: u32[]) -> u32[] {
-  // CHECK: "mhlo.domain"(
-  // CHECK-SAME: {entry_metadata = "{maximal device=1}", exit_metadata = "{}", kind = #mhlo<kind sharding>}
-  %Arg_0.1 = u32[] parameter(0)
-  ROOT %domain.2 = u32[] domain(u32[] %Arg_0.1), domain={kind="sharding", entry={maximal device=1}, exit={}}
-}
-
 // CHECK-LABEL: func private @add_dependency
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<4x4xf32>)
 %add_dependency (Arg_0.1: f32[4,4]) -> f32[4,4] {
@@ -2250,6 +2252,24 @@ add_original_value {
   %gte.0 = f32[] get-tuple-element(%param.1), index=0
   %gte.1 = f32[] get-tuple-element(%param.1), index=1
   ROOT %add = f32[] add(%gte.0, %gte.1)
+}
+
+// CHECK-LABEL: func.func private @test_mulhi_s32
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<4xi32>, %[[ARG1:.*]]: tensor<4xi32>) -> tensor<4xi32>
+%test_mulhi_s32 (lhs: s32[4], rhs: s32[4]) -> s32[4] {
+  %lhs = s32[4] parameter(0)
+  %rhs = s32[4] parameter(1)
+  // CHECK-NEXT: mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xi32>
+  ROOT %mulhi = s32[4] mulhi(s32[4] %lhs, s32[4] %rhs)
+}
+
+// CHECK-LABEL: func.func private @test_mulhi_u32
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<4xui32>, %[[ARG1:.*]]: tensor<4xui32>) -> tensor<4xui32>
+%test_mulhi_u32 (lhs: u32[4], rhs: u32[4]) -> u32[4] {
+  %lhs = u32[4] parameter(0)
+  %rhs = u32[4] parameter(1)
+  // CHECK-NEXT: mhlo.mulhi %[[ARG0]], %[[ARG1]] : tensor<4xui32>
+  ROOT %mulhi = u32[4] mulhi(u32[4] %lhs, u32[4] %rhs)
 }
 
 

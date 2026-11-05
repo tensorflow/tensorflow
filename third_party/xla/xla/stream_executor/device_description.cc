@@ -169,6 +169,7 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
       proto.collective_memory_granularity();
   device_description.confidential_computing_enabled_ =
       proto.confidential_computing_enabled();
+  device_description.locality_domain_count_ = proto.locality_domain_count();
   return device_description;
 }
 
@@ -251,6 +252,7 @@ GpuDeviceInfoProto DeviceDescription::ToProto() const {
   }
   proto.set_collective_memory_granularity(collective_memory_granularity_);
   proto.set_confidential_computing_enabled(confidential_computing_enabled_);
+  proto.set_locality_domain_count(locality_domain_count_);
   return proto;
 }
 
@@ -342,6 +344,7 @@ bool DeviceDescription::EqualsTo(
              other.shared_memory_per_block_optin_ &&
          oversized_shared_memory_per_block_ ==
              other.oversized_shared_memory_per_block_ &&
+         locality_domain_count_ == other.locality_domain_count_ &&
          scalar_unit_description_ == other.scalar_unit_description_ &&
          matrix_unit_description_ == other.matrix_unit_description_ &&
          confidential_computing_enabled_ ==

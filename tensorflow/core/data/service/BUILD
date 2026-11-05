@@ -832,8 +832,11 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
     ],
 )
 

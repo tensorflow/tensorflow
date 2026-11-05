@@ -163,9 +163,6 @@ struct XlaBuilderFriend {
                              const Shape& shape, const ChannelHandle& handle,
                              bool is_host_transfer);
 
-  static XlaOp BuildDomain(XlaBuilder* builder, XlaOp operand, OpSharding entry,
-                           OpSharding exit, const Shape& shape);
-
   static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
                                          const Shape& shape);
 
@@ -849,6 +846,10 @@ class XlaBuilder {
 
   virtual absl::StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
                                                  bool lower);
+
+  // Enqueues a fused multiply-add instruction onto the computation that
+  // computes a * b + c with a single IEEE-754 rounding.
+  XlaOp Fma(XlaOp a, XlaOp b, XlaOp c);
 
   XlaOp Infeed(const Shape& shape, const std::string& config = "");
   XlaOp InfeedWithToken(XlaOp token, const Shape& shape,
@@ -1689,6 +1690,7 @@ class XlaBuilder {
                                bool unit_diagonal,
                                TriangularSolveOptions::Transpose transpose_a);
   friend XlaOp Cholesky(XlaOp a, bool lower);
+  friend XlaOp Fma(XlaOp a, XlaOp b, XlaOp c);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
                       const std::string& config);
   friend void Outfeed(XlaOp operand, const Shape& shape_with_layout,
@@ -3537,6 +3539,10 @@ XlaOp TopK(XlaOp operand, int64_t k, bool largest, bool is_stable = true);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(XlaOp min, XlaOp operand, XlaOp max);
+
+// Enqueues a fused multiply-add instruction onto the computation that computes
+// a * b + c with a single IEEE-754 rounding.
+XlaOp Fma(XlaOp a, XlaOp b, XlaOp c);
 
 // Enqueues a map instruction onto the computation.
 XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,

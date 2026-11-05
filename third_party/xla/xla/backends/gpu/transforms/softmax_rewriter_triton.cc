@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/reduction_dimension_grouper.h"
 #include "xla/backends/gpu/transforms/reduction_splitter.h"
 #include "xla/backends/gpu/transforms/tree_reduction_rewriter.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
-#include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
+#include "xla/codegen/tiling/tiling_space.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -365,8 +365,8 @@ DecideIfShouldFuseAndMaybeSetBlockLevelParameters(
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&tiled_runtime_data_or)) {
-    return FusionDecision::Forbid(absl::StrCat("SymbolicTileAnalysis failed: ",
-                                               fusion_decision->Explain()));
+    return FusionDecision::Forbid(
+        absl::StrCat("Failed to find a tiling: ", fusion_decision->Explain()));
   }
 
   TiledRunTimeData tiled_runtime_data =
@@ -446,8 +446,6 @@ absl::StatusOr<bool> CanTileDiamond(const DiamondDescriptor& diamond) {
   ABSL_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                    MakeFusionForDiamond(diamond));
   mlir::MLIRContext mlir_context;
-  using experimental::TiledHloComputation;
-  using experimental::TilingSpace;
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(normalization_fusion);
   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<TilingSpace> tiling_space,

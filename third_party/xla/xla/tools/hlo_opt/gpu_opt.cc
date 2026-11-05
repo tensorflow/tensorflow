@@ -185,7 +185,7 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::DotAlgorithmRewriter>(gpu_compute_capability);
     RegisterPass<gpu::DotDimensionSorter>();
     RegisterPass<gpu::DotNormalizer>();
-    RegisterPass<gpu::DotOperandConverter>();
+    RegisterPass<gpu::DotOperandConverter>(gpu_compute_capability);
     RegisterPass<gpu::GemmBroadcastFoldingRewriter>();
     RegisterPass<gpu::GemmFusion>(device_description_or_default);
     RegisterPass<gpu::ReduceScatterCreator>();

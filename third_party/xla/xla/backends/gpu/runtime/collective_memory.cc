@@ -61,28 +61,61 @@ CollectiveMemory::CollectiveMemory(
     absl::flat_hash_map<Key, PeerMemory> peer_memories)
     : buffers_(buffers),
       sym_memories_(std::move(sym_memories)),
-      peer_memories_(std::move(peer_memories)) {}
+      peer_memories_(std::move(peer_memories)) {
+  symmetric_memory_ids_.reserve(sym_memories_.size());
+  // Iteration order does not matter because `symmetric_memory_ids_` is sorted
+  // by key below.
+  // NOLINTNEXTLINE(*-custom-deterministic-iteration-order)
+  for (const auto& [key, sym] : sym_memories_) {
+    symmetric_memory_ids_.emplace_back(key, sym->id());
+  }
+  absl::c_sort(symmetric_memory_ids_,
+               [](const SymmetricMemoryId& a, const SymmetricMemoryId& b) {
+                 return a.first < b.first;
+               });
+}
 
 std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
     const GpuCliqueKey& clique, BufferAllocation::Index allocation) const {
-  auto it = sym_memories_.find(std::make_pair(clique, allocation));
-  if (it == sym_memories_.end()) {
-    return std::make_pair(nullptr, 0);
-  }
-  return std::make_pair(it->second.get(), 0);
+  auto [sym, sym_offset] = FindWeakSymmetricMemory(clique, allocation);
+  return std::make_pair(sym.lock().get(), sym_offset);
 }
 
 std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
     const GpuCliqueKey& clique, BufferAllocation::Slice slice) const {
-  auto [sym, sym_offset] = FindSymmetricMemory(clique, slice.index());
-  return std::make_pair(sym, sym_offset + slice.offset());
+  auto [sym, sym_offset] = FindWeakSymmetricMemory(clique, slice);
+  return std::make_pair(sym.lock().get(), sym_offset);
 }
 
 std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
     const GpuCliqueKey& clique, se::DeviceAddressBase addr) const {
+  auto [sym, sym_offset] = FindWeakSymmetricMemory(clique, addr);
+  return std::make_pair(sym.lock().get(), sym_offset);
+}
+
+std::pair<std::weak_ptr<SymmetricMemory>, size_t>
+CollectiveMemory::FindWeakSymmetricMemory(
+    const GpuCliqueKey& clique, BufferAllocation::Index allocation) const {
+  auto it = sym_memories_.find(std::make_pair(clique, allocation));
+  if (it == sym_memories_.end()) {
+    return std::make_pair(std::weak_ptr<SymmetricMemory>(), 0);
+  }
+  return std::make_pair(it->second, 0);
+}
+
+std::pair<std::weak_ptr<SymmetricMemory>, size_t>
+CollectiveMemory::FindWeakSymmetricMemory(const GpuCliqueKey& clique,
+                                          BufferAllocation::Slice slice) const {
+  auto [sym, sym_offset] = FindWeakSymmetricMemory(clique, slice.index());
+  return std::make_pair(std::move(sym), sym_offset + slice.offset());
+}
+
+std::pair<std::weak_ptr<SymmetricMemory>, size_t>
+CollectiveMemory::FindWeakSymmetricMemory(const GpuCliqueKey& clique,
+                                          se::DeviceAddressBase addr) const {
   auto allocation = buffers_.FindAllocationIndex(addr);
   if (!allocation.has_value()) {
-    return std::make_pair(nullptr, 0);
+    return std::make_pair(std::weak_ptr<SymmetricMemory>(), 0);
   }
 
   // Find offset from the base allocation.
@@ -90,8 +123,8 @@ std::pair<SymmetricMemory*, size_t> CollectiveMemory::FindSymmetricMemory(
   size_t offset = tsl::safe_reinterpret_cast<uintptr_t>(addr.opaque()) -
                   tsl::safe_reinterpret_cast<uintptr_t>(base.opaque());
 
-  auto [sym, sym_offset] = FindSymmetricMemory(clique, *allocation);
-  return std::make_pair(sym, sym_offset + offset);
+  auto [sym, sym_offset] = FindWeakSymmetricMemory(clique, *allocation);
+  return std::make_pair(std::move(sym), sym_offset + offset);
 }
 
 std::optional<se::DeviceAddressBase> CollectiveMemory::FindPeerAddress(

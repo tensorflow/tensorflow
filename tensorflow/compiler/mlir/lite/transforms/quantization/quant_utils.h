@@ -63,6 +63,23 @@ LogicalResult InsertQDQ(mlir::Value value, quant::QuantizedType qtype,
                         PatternRewriter& rewriter,
                         mlir::Operation* target_op = nullptr);
 
+// Returns true if `op` is a `tfl.batch_matmul` or a `tfl.fully_connected` that
+// the BATCH_MATMUL / FULLY_CONNECTED kernels can run with a blockwise quantized
+// RHS / filter (operand 1): its LHS / input comes from a per-tensor signed int8
+// `tfl.dequantize`, its result only feeds signed int8 `tfl.quantize` ops, and a
+// `tfl.fully_connected` uses the default weights format and a fused activation
+// the kernel supports.
+bool IsInt8SrqBlockwiseWeightConsumer(mlir::Operation* op);
+
+// Returns the constant elements defining `value`, or nullptr.
+ElementsAttr GetConstantElements(mlir::Value value);
+
+// Returns true if `operand` at `operand_index` of `op` is a constant
+// `tfl.blockwise_dequantize` that can be folded into a `!tfl.blockwise_quant`
+// constant operand of `op` when `op` is SRQ quantized.
+bool CanFoldBlockwiseWeightOperand(mlir::Operation* op, unsigned operand_index,
+                                   mlir::Value operand);
+
 }  // namespace mlir::TFL
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_QUANTIZATION_QUANT_UTILS_H_

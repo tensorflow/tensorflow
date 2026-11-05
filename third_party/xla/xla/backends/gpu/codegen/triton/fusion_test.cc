@@ -87,6 +87,43 @@ ENTRY entry_computation {
               ElementsAre(4, 127));
 }
 
+TEST_F(TritonFusionTest, LaunchConfigAccountsForTilesPerProgram) {
+  for (const auto& [tiles_per_program, expected_blocks] :
+       {std::pair{1, 32}, std::pair{4, 8}, std::pair{3, 11}}) {
+    SCOPED_TRACE(tiles_per_program);
+    const std::string hlo = R"(
+triton_computation {
+  param_0 = f32[125,127] parameter(0)
+  ROOT abs = f32[125,127] abs(param_0)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[125,127] parameter(0)
+  ROOT fusion = f32[125,127] fusion(param_0), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["4","127"]}],
+                                   "num_warps":"4",
+                                   "num_tiles_per_pid":")" +
+                            std::to_string(tiles_per_program) + R"("}}}
+})";
+    ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+    stream_executor::DeviceDescription device_info =
+        TestGpuDeviceInfo::RTXA6000DeviceInfo();
+    auto* root = module->entry_computation()->root_instruction();
+    HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
+
+    std::optional<TritonFusion::LaunchConfig> launch_config =
+        TritonFusion::GetLaunchConfig(&analysis);
+    ASSERT_NE(launch_config, std::nullopt);
+    // The output has ceil(125 / 4) * ceil(127 / 127) = 32 tiles.
+    EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), expected_blocks);
+    EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 128);
+  }
+}
+
 TEST_F(TritonFusionTest,
        TritonFusionWithoutBlockLevelFusionConfig_LaunchConfigIsNullopt) {
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(

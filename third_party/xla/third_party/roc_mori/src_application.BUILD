@@ -36,15 +36,20 @@ cc_library(
         "-fvisibility=hidden",
         "-fvisibility-inlines-hidden",
     ],
-    linkopts = [
-        "-ldl",
-    ],
+    linkstatic = True,
     visibility = ["//visibility:private"],
     deps = [
         "@roc_mori//:ibverbs",
         "@roc_mori//:mori_application_headers",
         "@spdlog",
     ],
+)
+
+filegroup(
+    name = "mori_ibv_shim_objs",
+    srcs = [":mori_ibv_shim"],
+    output_group = "compilation_outputs",
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
@@ -56,7 +61,9 @@ cc_library(
             "bootstrap/torch_bootstrap.cpp",
             _IBV_SHIM_SRC,
         ],
-    ),
+    ) + [
+        ":mori_ibv_shim_objs",
+    ],
     # Hide the GCC 8 std::filesystem code (libstdc++fs.a and inline members):
     # it is ABI-incompatible with the libstdc++.so that other libraries use.
     copts = ["-fvisibility-inlines-hidden"],
@@ -74,7 +81,6 @@ cc_library(
         "@local_config_rocm//rocm:hsakmt",
         # Vendored <infiniband/verbs.h>; libibverbs itself is dlopen()ed by
         # :mori_ibv_shim at runtime.
-        ":mori_ibv_shim",
         "@roc_mori//:ibverbs",
         # System libdrm + libdrm_amdgpu. Required transitively by libhsakmt.a
         # (amdgpu_get_marketing_name, amdgpu_query_gpu_info, amdgpu_*, drmClose).

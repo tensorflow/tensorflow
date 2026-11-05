@@ -24,6 +24,11 @@ load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
+# Internally this loads a macro, but in OSS this is a function
+# buildifier: disable=out-of-order-load
+def register_extension_info(**_kwargs):
+    pass
+
 visibility(DEFAULT_LOAD_VISIBILITY)
 
 def _to_clang_cl_flags(flags):
@@ -247,3 +252,9 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         ],
         **kwargs
     )
+
+# `deps` are passed to the `{name}_lib` cc_library that compiles `src`.
+register_extension_info(
+    extension = cc_ir_header,
+    label_regex_for_dep = "{extension_name}_lib",
+)

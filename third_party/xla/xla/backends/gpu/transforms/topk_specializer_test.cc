@@ -324,7 +324,7 @@ TEST_F(TopkTest, RewriteStableTopKBF16ToUint64) {
   EXPECT_TRUE(filecheck_matched);
 }
 
-TEST_F(TopkTest, RewriteStableTopKDisabledByDefault) {
+TEST_F(TopkTest, RewriteStableTopKDefaultAndDisableFlag) {
   const char* hlo = R"(
     HloModule m
 
@@ -341,18 +341,26 @@ TEST_F(TopkTest, RewriteStableTopKDisabledByDefault) {
       ROOT result = (f32[8,32], s32[8,32]) custom-call(arg), custom_call_target="TopK", called_computations={%compare-gt.1}, backend_config={is_stable = true, order = "TOTAL"}
     }
   )";
-
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo));
-
   if (!device_description().gpu_compute_capability().IsCuda()) {
     GTEST_SKIP() << "RAFT is CUDA-only.";
   }
-
+  // Enabled by default.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   ASSERT_OK_AND_ASSIGN(
       bool changed,
       TopkSpecializer(device_description().gpu_compute_capability())
           .Run(module.get()));
+  EXPECT_TRUE(changed);
+  // Can still be disabled via flag.
+  HloModuleConfig disabled_config = GetModuleConfigForTest();
+  disabled_config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_raft_for_stable_topk(false);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> disabled_module,
+                       ParseAndReturnVerifiedModule(hlo, disabled_config));
+  ASSERT_OK_AND_ASSIGN(
+      changed, TopkSpecializer(device_description().gpu_compute_capability())
+                   .Run(disabled_module.get()));
   EXPECT_FALSE(changed);
 }
 

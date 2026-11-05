@@ -223,9 +223,13 @@ class GpuCommunicator : public Communicator {
   // a collective operation, and all ranks in a clique must call this operation
   // in order to make a progress.
   virtual absl::StatusOr<std::unique_ptr<SymmetricMemory>>
-  CreateSymmetricMemory(se::DeviceAddressBase addr,
-                        bool symmetric_window = false) {
+  CreateSymmetricMemory(se::DeviceAddressBase addr, bool symmetric_window) {
     return Unimplemented("Symmetric memory is not implemented");
+  }
+
+  absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
+      se::DeviceAddressBase addr) {
+    return CreateSymmetricMemory(addr, /*symmetric_window=*/false);
   }
 
   //===--------------------------------------------------------------------===//
@@ -243,13 +247,14 @@ class GpuCommunicator : public Communicator {
                                        se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
                                        ReductionKind reduction_kind,
-                                       const Executor& executor) = 0;
+                                       const Executor& executor,
+                                       bool is_rma) = 0;
 
   virtual absl::Status LaunchBroadcast(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
-                                       RankId root,
-                                       const Executor& executor) = 0;
+                                       RankId root, const Executor& executor,
+                                       bool is_rma) = 0;
 
   // Reduces buffers of length `count` in `send_buffer` using `reduction_kind`
   // and writes the result only to `recv_buffer` on the `root` rank (NCCL
@@ -259,7 +264,7 @@ class GpuCommunicator : public Communicator {
                                     se::DeviceAddressBase recv_buffer,
                                     PrimitiveType dtype, size_t count,
                                     ReductionKind reduction_kind, RankId root,
-                                    const Executor& executor) {
+                                    const Executor& executor, bool is_rma) {
     return Unimplemented("LaunchReduce is not implemented");
   }
 
@@ -267,17 +272,20 @@ class GpuCommunicator : public Communicator {
                                            se::DeviceAddressBase recv_buffer,
                                            PrimitiveType dtype, size_t count,
                                            ReductionKind reduction_kind,
-                                           const Executor& executor) = 0;
+                                           const Executor& executor,
+                                           bool is_rma) = 0;
 
   virtual absl::Status LaunchAllGather(se::DeviceAddressBase send_buffer,
                                        se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
-                                       const Executor& executor) = 0;
+                                       const Executor& executor,
+                                       bool is_rma) = 0;
 
   virtual absl::Status LaunchAllToAll(
       absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
       absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
-      PrimitiveType dtype, size_t count, const Executor& executor) = 0;
+      PrimitiveType dtype, size_t count, const Executor& executor,
+      bool is_rma) = 0;
 
   virtual absl::Status LaunchCollectivePermute(
       se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,

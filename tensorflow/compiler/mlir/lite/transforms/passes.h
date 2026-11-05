@@ -123,11 +123,16 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateFoldStablehloConstantTransformsPass();
 
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateFuseA4W2DRQFullyConnectedPass();
+
+// Rewrites `tfl.blockwise_dequantize` ops on constants into `tfl.dequantize`
+// ops on `!tfl.blockwise_quant` constants, which can be exported.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateLowerBlockwiseDequantizePass();
 
 // Folds f16 <-> f32 casts around a float fully_connected into it, producing a
 // fully_connected with f16 activations and unchanged weights.

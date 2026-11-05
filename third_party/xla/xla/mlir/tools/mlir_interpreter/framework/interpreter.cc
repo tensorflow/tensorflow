@@ -45,7 +45,8 @@ SmallVector<InterpreterValue> Interpret(InterpreterState& state,
   auto fn = detail::GetFunction(op.getName().getStringRef());
   if (!fn) {
     llvm::errs() << "Unsupported op: " << op.getName().getStringRef() << "\n";
-    op.dump();
+    op.print(llvm::errs());
+    llvm::errs() << "\n";
     state.AddFailure("unsupported op");
     return {};
   }

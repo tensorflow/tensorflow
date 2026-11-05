@@ -48,6 +48,7 @@ config_setting(
 cc_library(
     name = "cpp_context_provider",
     srcs = [],
+    tags = ["keep_dep"],
 )
 
 cc_binary(
@@ -126,7 +127,6 @@ cc_ir_header(
     deps = [
         ":cpp_context_provider",
         ":tanh",
-        ":vector_ops",
     ],
 )
 

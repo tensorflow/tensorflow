@@ -93,13 +93,22 @@ typedef struct PJRT_RawBuffer_FunctionTable {
                            void (*allocation_event_callback)(PJRT_Error* status,
                                                              void* user_data),
                            void* allocation_event_user_data);
+  // Returns the dma-buf fd, byte offset and byte size of this buffer, for
+  // external DMA engines. `offset` is measured from the start of the dma-buf,
+  // including for sliced raw buffers. The plugin owns `fd`, and the result is
+  // valid while `raw_buffer` is alive. Only returns a valid result when the
+  // plugin supports external DMA and the buffer is allocated and reachable.
+  // May be nullptr on older plugins (check struct_size).
+  PJRT_NO_DISCARD PJRT_Error* (*get_external_dma_info)(
+      const PJRT_RawBuffer* raw_buffer, int* fd, uint64_t* offset,
+      uint64_t* size);
 } PJRT_RawBuffer_FunctionTable;
 
 struct PJRT_RawBuffer {
   const PJRT_RawBuffer_FunctionTable* vtable;
 };
 
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable, schedule_copy_to);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer_FunctionTable, get_external_dma_info);
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RawBuffer, vtable);
 
 struct PJRT_RawBuffer_CreateRawAliasOfBuffer_Args {

@@ -17,8 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_GPU_INDEXING_PERFORMANCE_MODEL_H_
 
 #include <cstdint>
-#include <functional>
-#include <memory>
 #include <string>
 #include <variant>
 
@@ -27,8 +25,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/tiled_hlo.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -95,11 +94,11 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
 
   // Returns the number of warps for the given tiled HLO computation.
   static int64_t EstimateNumWarps(
-      const experimental::TiledHloComputation& tiled_hlo_computation);
+      const TiledHloComputation& tiled_hlo_computation);
 
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputation(
       const HloFusionAdaptor& fusion_adaptor,
-      const experimental::TiledHloComputation& tiled_hlo_computation,
+      const TiledHloComputation& tiled_hlo_computation,
       const xla::xtile::BlockLevelParameters& block_level_parameters);
 
   // Estimate the run time of the fusion with the given launch dimensions and
@@ -163,6 +162,25 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
 };
 
 namespace internal {
+
+// Checks if all tiles in the computation fit in registers.
+//
+// There is no way to know for sure if emitted computation will not spill
+// registers, so we use a heuristic based on the tile sizes of instructions in
+// the computation. The heuristic can give both false positives and false
+// negatives.
+bool DoesComputationFitInRegisters(
+    const HloFusionAdaptor& fusion_adaptor,
+    const TiledHloComputation& tiled_hlo_computation,
+    const se::DeviceDescription& device_info);
+
+// Checks if the tiles of a symbolic tiled computation fit in registers for the
+// given tile sizes.
+bool DoesTilingFitInRegisters(
+    const HloFusionAdaptor& fusion_adaptor,
+    const TiledHloComputation& symbolic_tiled_computation,
+    absl::Span<const int64_t> tile_sizes,
+    const se::DeviceDescription& device_info);
 
 // Precomputes FLOPs per element for all instructions in the fusion adaptor.
 absl::flat_hash_map<const HloInstruction*, int64_t> PrecomputeFlopsMap(

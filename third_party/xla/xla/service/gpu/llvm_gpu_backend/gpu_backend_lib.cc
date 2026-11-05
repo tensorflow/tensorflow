@@ -305,7 +305,8 @@ absl::Status LinkAndOptimizeModule(
   llvm::StandardInstrumentations si(module->getContext(), false);
   si.registerCallbacks(pic, &mam);
 
-  llvm::PassBuilder pb(target_machine, pto, std::nullopt, &pic);
+  llvm::PassBuilder pb(module->getContext(), target_machine, pto, std::nullopt,
+                       &pic);
   pb.registerModuleAnalyses(mam);
   pb.registerCGSCCAnalyses(cgam);
   pb.registerFunctionAnalyses(fam);

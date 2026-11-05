@@ -291,6 +291,12 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
       const PjRtDeviceDimensions& chips_per_host_bounds,
       const PjRtDeviceDimensions& host_bounds) const override;
 
+  absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> Subslice(
+      const PjRtDeviceDimensions& chip_bounds) const override;
+
+  absl::StatusOr<PjRtSubsliceBounds> ComputeSubsliceForDevices(
+      absl::Span<const int> device_ids) const override;
+
   bool is_subslice_topology() const override;
 
   absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const override;
@@ -1100,6 +1106,12 @@ absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler(
     absl::string_view device_type);
 
 absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler();
+
+std::string GetPluginStablehloVersionOrDefault(const PJRT_Api* c_api,
+                                               const PjRtClient* client);
+
+std::string GetPluginSdyVersionOrDefault(const PJRT_Api* c_api,
+                                         const PjRtClient* client);
 
 }  // namespace xla
 

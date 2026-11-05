@@ -113,6 +113,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kErf:
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
+    case HloOpcode::kFma:
     case HloOpcode::kIsFinite:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -872,8 +873,8 @@ ENTRY triton_computation {
                                                     : ExpectedFailMode::kFail);
 }
 
-constexpr std::array kTestedOpsTernaryElementwise = {HloOpcode::kSelect,
-                                                     HloOpcode::kClamp};
+constexpr std::array kTestedOpsTernaryElementwise = {
+    HloOpcode::kSelect, HloOpcode::kClamp, HloOpcode::kFma};
 
 INSTANTIATE_TEST_SUITE_P(
     TernaryElementwiseTestSuite, TernaryElementwiseTest,
@@ -1176,15 +1177,17 @@ INSTANTIATE_TEST_SUITE_P(ScanTestSuite, ScanTest,
                          AllTestCombinationsForOpcodes(kTestedOpsScan),
                          SupportTestTypeAndOpcodeAndDeviceToString);
 
-// Negative tests for CanTritonHandleScan forbid conditions.
+// Tests for CanTritonHandleScan.
 class ScanSupportTest : public SupportTest {
  public:
-  void ExpectScanNotSupported(absl::string_view entry_hlo,
+  void ExpectScanNotSupported(absl::string_view expected_reason,
+                              absl::string_view entry_hlo,
                               absl::string_view combiner_hlo = R"(
   add {
     Arg_0 = f32[] parameter(0)
     Arg_1 = f32[] parameter(1)
-    ROOT add = f32[] add(Arg_0, Arg_1)
+    add = f32[] add(Arg_0, Arg_1)
+    ROOT t = (f32[], f32[]) tuple(add, add)
   })") {
     ASSERT_OK_AND_ASSIGN(auto module,
                          xla::ParseAndReturnUnverifiedModule(
@@ -1193,13 +1196,45 @@ class ScanSupportTest : public SupportTest {
         module->entry_computation()->root_instruction();
     const HloInstruction* scan =
         root->opcode() == HloOpcode::kScan ? root : root->operand(0);
-    EXPECT_FALSE(IsTritonSupportedInstruction(
-        *scan, se::CudaComputeCapability::Hopper()));
+    CodegenDecision decision = IsTritonSupportedInstruction(
+        *scan, se::CudaComputeCapability::Hopper());
+    EXPECT_FALSE(decision);
+    EXPECT_THAT(decision.Explain(), HasSubstr(expected_reason));
+  }
+
+  // Parses a bf16 scan whose combiner, named `combiner`, is `combiner_hlo`.
+  absl::StatusOr<TestedInstruction> ParseScanWithCombiner(
+      absl::string_view combiner_hlo) {
+    constexpr absl::string_view kEntryHlo = R"(
+  ENTRY triton_computation {
+    param = bf16[127] parameter(0)
+    init = bf16[] constant(0)
+    scan = (bf16[127], bf16[]) scan(param, init), dimensions={0},
+      to_apply=combiner, num_carries=1, is_associative=true
+    ROOT gte = bf16[127] get-tuple-element(scan), index=0
+  })";
+    return ParseTemplateAndGetInstruction(
+        absl::StrCat(combiner_hlo, "\n", kEntryHlo), PRIMITIVE_TYPE_INVALID,
+        HloOpcode::kScan);
+  }
+
+  // Expects that the scan with `combiner_hlo` is forbidden because it is not
+  // additive, and that the emitter rejects it as well.
+  void ExpectNonAdditiveScanNotSupported(absl::string_view combiner_hlo) {
+    ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                         ParseScanWithCombiner(combiner_hlo));
+    CodegenDecision decision = IsTritonSupportedInstruction(
+        ti.Instruction(), se::CudaComputeCapability::Ampere());
+    EXPECT_FALSE(decision);
+    EXPECT_THAT(decision.Explain(),
+                HasSubstr("Only additive scans are supported in Triton."));
+    RunSupportTest(std::move(ti), /*output_tile_sizes=*/{},
+                   se::CudaComputeCapability::Ampere());
   }
 };
 
 TEST_F(ScanSupportTest, ScanMustReturnTuple) {
-  ExpectScanNotSupported(R"(
+  ExpectScanNotSupported("Scan must return a tuple.", R"(
   ENTRY main {
     param = f32[10] parameter(0)
     init = f32[] constant(0)
@@ -1209,7 +1244,7 @@ TEST_F(ScanSupportTest, ScanMustReturnTuple) {
 }
 
 TEST_F(ScanSupportTest, ReverseScanNotSupported) {
-  ExpectScanNotSupported(R"(
+  ExpectScanNotSupported("Reverse scan is not supported in Triton.", R"(
   ENTRY main {
     param = f32[10] parameter(0)
     init = f32[] constant(0)
@@ -1220,7 +1255,8 @@ TEST_F(ScanSupportTest, ReverseScanNotSupported) {
 }
 
 TEST_F(ScanSupportTest, MultiInputScanNotSupported) {
-  ExpectScanNotSupported(R"(
+  ExpectScanNotSupported(
+      "Only single-input, single-carry scans are supported in Triton.", R"(
   ENTRY main {
     p0 = f32[10] parameter(0)
     p1 = f32[10] parameter(1)
@@ -1229,7 +1265,7 @@ TEST_F(ScanSupportTest, MultiInputScanNotSupported) {
       to_apply=add, num_carries=1, is_associative=true
     ROOT gte = f32[10] get-tuple-element(scan), index=0
   })",
-                         R"(
+      R"(
   add {
     Arg_0 = f32[] parameter(0)
     Arg_1 = f32[] parameter(1)
@@ -1241,7 +1277,8 @@ TEST_F(ScanSupportTest, MultiInputScanNotSupported) {
 }
 
 TEST_F(ScanSupportTest, MultiCarryScanNotSupported) {
-  ExpectScanNotSupported(R"(
+  ExpectScanNotSupported(
+      "Only single-input, single-carry scans are supported in Triton.", R"(
   ENTRY main {
     p0 = f32[10] parameter(0)
     init0 = f32[] constant(0)
@@ -1250,7 +1287,7 @@ TEST_F(ScanSupportTest, MultiCarryScanNotSupported) {
       to_apply=add, num_carries=2, is_associative=true
     ROOT gte = f32[10] get-tuple-element(scan), index=0
   })",
-                         R"(
+      R"(
   add {
     Arg_0 = f32[] parameter(0)
     Arg_1 = f32[] parameter(1)
@@ -1262,13 +1299,135 @@ TEST_F(ScanSupportTest, MultiCarryScanNotSupported) {
 }
 
 TEST_F(ScanSupportTest, NonAssociativeScanNotSupported) {
-  ExpectScanNotSupported(R"(
+  ExpectScanNotSupported("Triton requires the scan combiner to be associative.",
+                         R"(
   ENTRY main {
     param = f32[10] parameter(0)
     init = f32[] constant(0)
     scan = (f32[10], f32[]) scan(param, init), dimensions={0}, to_apply=add,
       num_carries=1, is_associative=false
     ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })");
+}
+
+TEST_F(ScanSupportTest, ScanOverNonLastDimensionNotSupported) {
+  ExpectScanNotSupported(
+      "Only scans over the last dimension are supported in Triton.", R"(
+  ENTRY main {
+    param = f32[16,8] parameter(0)
+    init = f32[8] parameter(1)
+    scan = (f32[16,8], f32[8]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true
+    ROOT gte = f32[16,8] get-tuple-element(scan), index=0
+  })",
+      R"(
+  add {
+    Arg_0 = f32[8] parameter(0)
+    Arg_1 = f32[8] parameter(1)
+    add = f32[8] add(Arg_0, Arg_1)
+    ROOT t = (f32[8], f32[8]) tuple(add, add)
+  })");
+}
+
+TEST_F(ScanSupportTest, FloatNormalizedAdditiveScanSupported) {
+  // FloatNormalization produces this combiner for bf16 scans on Ampere.
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseScanWithCombiner(R"(
+  combiner {
+    Arg_0 = bf16[] parameter(0)
+    Arg_1 = bf16[] parameter(1)
+    c0 = f32[] convert(Arg_0)
+    c1 = f32[] convert(Arg_1)
+    add = f32[] add(c0, c1)
+    out = bf16[] convert(add)
+    ROOT t = (bf16[], bf16[]) tuple(out, out)
+  })"));
+  EXPECT_TRUE(IsTritonSupportedInstruction(
+      ti.Instruction(), se::CudaComputeCapability::Ampere()));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{},
+                 se::CudaComputeCapability::Ampere());
+}
+
+TEST_F(ScanSupportTest, NonAdditiveScanNotSupported) {
+  ExpectNonAdditiveScanNotSupported(R"(
+  combiner {
+    Arg_0 = bf16[] parameter(0)
+    Arg_1 = bf16[] parameter(1)
+    max = bf16[] maximum(Arg_0, Arg_1)
+    ROOT t = (bf16[], bf16[]) tuple(max, max)
+  })");
+}
+
+TEST_F(ScanSupportTest, FloatNormalizedNonAdditiveScanNotSupported) {
+  ExpectNonAdditiveScanNotSupported(R"(
+  combiner {
+    Arg_0 = bf16[] parameter(0)
+    Arg_1 = bf16[] parameter(1)
+    c0 = f32[] convert(Arg_0)
+    c1 = f32[] convert(Arg_1)
+    max = f32[] maximum(c0, c1)
+    out = bf16[] convert(max)
+    ROOT t = (bf16[], bf16[]) tuple(out, out)
+  })");
+}
+
+TEST_F(ScanSupportTest, ScanWithCarryDifferentFromOutputNotSupported) {
+  ExpectNonAdditiveScanNotSupported(R"(
+  combiner {
+    Arg_0 = bf16[] parameter(0)
+    Arg_1 = bf16[] parameter(1)
+    sum = bf16[] add(Arg_0, Arg_1)
+    carry = bf16[] add(sum, Arg_0)
+    ROOT t = (bf16[], bf16[]) tuple(sum, carry)
+  })");
+}
+
+TEST_F(ScanSupportTest, ScanWithNonParameterAddOperandNotSupported) {
+  ExpectNonAdditiveScanNotSupported(R"(
+  combiner {
+    Arg_0 = bf16[] parameter(0)
+    Arg_1 = bf16[] parameter(1)
+    square = bf16[] multiply(Arg_0, Arg_0)
+    add = bf16[] add(square, Arg_1)
+    ROOT t = (bf16[], bf16[]) tuple(add, add)
+  })");
+}
+
+TEST_F(ScanSupportTest, ScanWithMixedParameterTypesNotSupported) {
+  // The add operands are converted parameters, so only the type check fails.
+  ExpectScanNotSupported("Only additive scans are supported in Triton.", R"(
+  ENTRY main {
+    param = bf16[10] parameter(0)
+    init = f32[] constant(0)
+    scan = (f32[10], f32[]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true
+    ROOT gte = f32[10] get-tuple-element(scan), index=0
+  })",
+                         R"(
+  add {
+    Arg_0 = bf16[] parameter(0)
+    Arg_1 = f32[] parameter(1)
+    c0 = f32[] convert(Arg_0)
+    c1 = f32[] convert(Arg_1)
+    add = f32[] add(c0, c1)
+    out = f32[] convert(add)
+    ROOT t = (f32[], f32[]) tuple(out, out)
+  })");
+}
+
+TEST_F(ScanSupportTest, ScanWithoutOutputNotSupported) {
+  ExpectScanNotSupported("Only additive scans are supported in Triton.", R"(
+  ENTRY main {
+    param = f32[10] parameter(0)
+    init = f32[] constant(0)
+    ROOT scan = (f32[]) scan(param, init), dimensions={0}, to_apply=add,
+      num_carries=1, is_associative=true
+  })",
+                         R"(
+  add {
+    Arg_0 = f32[] parameter(0)
+    Arg_1 = f32[] parameter(1)
+    add = f32[] add(Arg_0, Arg_1)
+    ROOT t = (f32[]) tuple(add)
   })");
 }
 
@@ -1373,7 +1532,7 @@ ENTRY triton_computation {
 
 TEST_P(ConcatenateDeviceTest, TritonDoesNotSupportUnalignedConcatenate) {
   auto cc = GetParam();
-  // Operand 0 has size 63 along concat dim (1), which is not divisible by 64.
+  // Operand 0 has size 63 along concat dim (1), which is not divisible by 8.
   // Operand 1 has size 128 (aligned).
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
@@ -1385,6 +1544,22 @@ ENTRY triton_computation {
                        ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
                                                       HloOpcode::kConcatenate));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 64, 1}, cc);
+}
+
+TEST_P(ConcatenateDeviceTest, TritonSupportsSub64AlignedConcatenate) {
+  auto cc = GetParam();
+  // Operand 0 has size 24 along concat dim (1), which is divisible by 8 (though
+  // not 64). With a compatible tile size (8 along concat dim), tiling succeeds.
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  p0 = $0[18,24,20] parameter(0)
+  p1 = $0[18,128,20] parameter(1)
+  ROOT concatenate = $0[18,152,20] concatenate(p0, p1), dimensions={1}
+})";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
+                                                      HloOpcode::kConcatenate));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 8, 1}, cc);
 }
 
 INSTANTIATE_TEST_SUITE_P(ConcatenateTestSuite, ConcatenateDeviceTest,
@@ -1413,6 +1588,79 @@ constexpr std::array kTestedOpsConcatenate = {HloOpcode::kConcatenate};
 INSTANTIATE_TEST_SUITE_P(
     ConcatenateTestSuite, ConcatenateTest,
     ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    SupportTestTypeAndDeviceToString);
+
+using DynamicSliceTest = SupportTestWithTypeAndDeviceParam;
+
+TEST_P(DynamicSliceTest, OperandTypes) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = $0[256,256] parameter(0)
+  start_1 = s32[] parameter(1)
+  start_2 = s32[] constant(0)
+  ROOT dynamic_slice_op = $0[32,256] dynamic-slice(operand, start_1, start_2),
+                          dynamic_slice_sizes={32,256}
+})";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                 kHloTestTemplate, data_type,
+                                                 HloOpcode::kDynamicSlice));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 4}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DynamicSliceTestSuite, DynamicSliceTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    SupportTestTypeAndDeviceToString);
+
+using DynamicSliceOffsetTypesTest = SupportTestWithTypeAndDeviceParam;
+
+TEST_P(DynamicSliceOffsetTypesTest, DynamicSlice2D) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = f32[256,256] parameter(0)
+  start_1 = $0[] parameter(1)
+  start_2 = $0[] parameter(2)
+  ROOT dynamic_slice_op = f32[32,64] dynamic-slice(operand, start_1, start_2),
+                          dynamic_slice_sizes={32,64}
+})";
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                 kHloTestTemplate, data_type,
+                                                 HloOpcode::kDynamicSlice));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 4}, cc);
+}
+
+constexpr std::array kTestedOpsDynamicSlice = {HloOpcode::kDynamicSlice};
+
+// Dynamic slices whose offset is computed and shared between several slices.
+TEST_F(SupportTest, DynamicSlicesWithSharedComputedOffset) {
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  p0 = s32[64] parameter(0)
+  p1 = s32[64] parameter(1)
+  p2 = u32[1] parameter(2)
+  convert = s32[1] convert(p2)
+  c16 = s32[1] constant({16})
+  multiply = s32[1] multiply(convert, c16)
+  offset = s32[] bitcast(multiply)
+  ds0 = s32[16] dynamic-slice(p0, offset), dynamic_slice_sizes={16}
+  ds1 = s32[16] dynamic-slice(p1, offset), dynamic_slice_sizes={16}
+  ROOT add = s32[16] add(ds0, ds1)
+})";
+  ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kDynamicSlice));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16},
+                 DefaultDeviceForTesting());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DynamicSliceOffsetTypesTestSuite, DynamicSliceOffsetTypesTest,
+    ::testing::Combine(::testing::Values(S8, S16, S32, S64, U8, U16, U32, U64),
                        ::testing::ValuesIn(AllDevicesToTest())),
     SupportTestTypeAndDeviceToString);
 
@@ -2052,25 +2300,6 @@ INSTANTIATE_TEST_SUITE_P(
     AllTestCombinationsForOpcodes({HloOpcode::kBatchNormGrad}),
     SupportTestTypeAndOpcodeAndDeviceToString);
 
-using DomainTest = SupportTestWithTypeAndOpcodeAndDeviceParam;
-
-TEST_P(DomainTest, Domain) {
-  auto [data_type, opcode, cc] = GetParam();
-  const std::string kHloTestTemplate = R"(
-ENTRY triton_computation {
-  operand = $0[] parameter(0)
-  ROOT domain_op = $0[] domain(operand), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
-})";
-  ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
-}
-
-INSTANTIATE_TEST_SUITE_P(DomainSuite, DomainTest,
-                         AllTestCombinationsForOpcodes({HloOpcode::kDomain}),
-                         SupportTestTypeAndOpcodeAndDeviceToString);
-
 using GetDimensionSizeTest = SupportTestWithDeviceParam;
 
 TEST_P(GetDimensionSizeTest, GetDimensionSize) {
@@ -2545,6 +2774,53 @@ ENTRY triton_computation {
   const HloInstruction* dot = module->entry_computation()->root_instruction();
   EXPECT_FALSE(IsTritonSupportedInstruction(
       *dot, se::GpuComputeCapability(se::CudaComputeCapability::Volta())));
+}
+
+TEST_F(HloHardwareIndependentTestBase, ScaledDotBlock16IsRejectedOnBlackwell) {
+  struct TestCase {
+    absl::string_view lhs;
+    absl::string_view rhs;
+    absl::string_view lhs_scale;
+    absl::string_view rhs_scale;
+    bool allowed_on_blackwell;
+  };
+  constexpr TestCase kCases[] = {
+      {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e4m3fn[128,16]",
+       "f8e8m0fnu[128,8]", /*allowed_on_blackwell=*/false},
+      {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e8m0fnu[128,8]",
+       "f8e4m3fn[128,16]", /*allowed_on_blackwell=*/false},
+      {"f8e4m3fn[128,256]", "f8e4m3fn[128,256]", "f8e8m0fnu[128,16]",
+       "f8e8m0fnu[128,8]", /*allowed_on_blackwell=*/false},
+      {"f4e2m1fn[128,256]", "f4e2m1fn[128,256]", "f8e8m0fnu[128,8]",
+       "f8e8m0fnu[128,8]", /*allowed_on_blackwell=*/true},
+  };
+  for (const TestCase& tc : kCases) {
+    std::string hlo =
+        absl::Substitute(R"hlo(
+      ENTRY e {
+        lhs = $0 parameter(0)
+        rhs = $1 parameter(1)
+        lhs_scale = $2 parameter(2)
+        rhs_scale = $3 parameter(3)
+        ROOT dot = bf16[128,128] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+            lhs_contracting_dims={1}, rhs_contracting_dims={1}
+      })hlo",
+                         tc.lhs, tc.rhs, tc.lhs_scale, tc.rhs_scale);
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                         ParseAndReturnVerifiedModule(hlo));
+    const HloInstruction* dot = module->entry_computation()->root_instruction();
+    CodegenDecision blackwell = IsTritonSupportedInstruction(
+        *dot, se::GpuComputeCapability(se::CudaComputeCapability::Blackwell()));
+    EXPECT_EQ(blackwell.IsAllowed(), tc.allowed_on_blackwell) << hlo;
+    if (!tc.allowed_on_blackwell) {
+      EXPECT_THAT(blackwell.Explain(), HasSubstr("block-16"));
+    }
+    EXPECT_TRUE(
+        IsTritonSupportedInstruction(
+            *dot, se::GpuComputeCapability(se::CudaComputeCapability::Hopper()))
+            .IsAllowed())
+        << hlo;
+  }
 }
 
 // Triton cannot lower F8E4M3FN conversions before sm89.
@@ -3595,7 +3871,6 @@ constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
     HloOpcode::kDynamicReshape,
-    HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kExp2,
     HloOpcode::kGather,
@@ -3632,6 +3907,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsScan.begin(), kTestedOpsScan.end());
   ret.insert(kTestedOpsSlice.begin(), kTestedOpsSlice.end());
   ret.insert(kTestedOpsConcatenate.begin(), kTestedOpsConcatenate.end());
+  ret.insert(kTestedOpsDynamicSlice.begin(), kTestedOpsDynamicSlice.end());
   ret.insert(kTestedOpsTranspose.begin(), kTestedOpsTranspose.end());
   ret.insert(kTestedOpsCollectives.begin(), kTestedOpsCollectives.end());
   ret.insert(kTestedOpsBroadcast.begin(), kTestedOpsBroadcast.end());
@@ -3657,7 +3933,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kConditional);
   ret.emplace(HloOpcode::kConvolution);
   ret.emplace(HloOpcode::kCustomCall);
-  ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
   ret.emplace(HloOpcode::kFft);
   ret.emplace(HloOpcode::kFusion);

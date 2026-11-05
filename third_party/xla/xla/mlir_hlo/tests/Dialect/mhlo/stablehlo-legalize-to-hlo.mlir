@@ -1424,9 +1424,9 @@ func.func @quantized_op_floor(%arg0: tensor<!quant.uniform<i8:f32, 0.00391329082
 
 // -----
 
+// CHECK-LABEL: "op_fma"
 func.func @op_fma(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<3xf32>) -> tensor<3xf32> {
-  // expected-error@+2 {{failed to legalize operation 'stablehlo.fma' that was explicitly marked illegal}}
-  // expected-error@+1 {{FmaOp is not yet supported in MHLO}}
+  // CHECK: "mhlo.fma"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]], [[ARG2:%arg[0-9]+]]) : (tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
   %0 = "stablehlo.fma"(%arg0, %arg1, %arg2) : (tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
   func.return %0 : tensor<3xf32>
 }

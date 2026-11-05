@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_kind.pb.h"
@@ -227,6 +228,9 @@ class Thunk {
 
     // Per-execution custom options.
     const CustomOptions* custom_options = nullptr;
+
+    // Command buffer execution requests configured during prepare.
+    CommandBufferRequests* absl_nonnull command_buffer_requests = nullptr;
   };
 
   //===--------------------------------------------------------------------===//
@@ -285,6 +289,9 @@ class Thunk {
     // each step.
     std::optional<absl::Span<const BufferAllocation::Index>>
         persistent_alloc_indices = std::nullopt;
+
+    // Command buffer execution requests collected during prepare.
+    const CommandBufferRequests* absl_nonnull command_buffer_requests = nullptr;
   };
 
   //===--------------------------------------------------------------------===//

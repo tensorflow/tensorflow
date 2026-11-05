@@ -123,10 +123,15 @@ foreach fromToBinPair = [[TF_AddV2Op, CHLO_BroadcastAddOp],
                          [TF_NextAfterOp, CHLO_BroadcastNextAfterOp],
                          [TF_PolygammaOp, CHLO_BroadcastPolygammaOp],
                          [TF_PowOp, CHLO_BroadcastPowOp],
-                         [TF_RealDivOp, CHLO_BroadcastDivOp],
                          [TF_SubOp, CHLO_BroadcastSubOp],
                          [TF_ZetaOp, CHLO_BroadcastZetaOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
+
+// RealDiv is float/complex only, matching the TF CPU/GPU kernels; integer
+// division must go through Div, FloorDiv or TruncateDiv.
+def : Pat<(TF_RealDivOp AnyTensor:$l, AnyTensor:$r),
+          (CHLO_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
+          [(TF_FpOrComplexTensor $l)]>;
 
 def LowerRightShiftSigned :
   Pat<(TF_RightShiftOp AnyTensor:$l, AnyTensor:$r),

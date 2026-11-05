@@ -53,9 +53,18 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: 'nightly'
+          persist-credentials: false
       - name: Checkout repository
         if: ${{ github.event_name == 'push' }}
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - name: Verify release tag ancestry
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v2') }}
+        shell: bash
+        run: |
+          git fetch --filter=blob:none --depth=50 --no-tags origin 'refs/heads/r2.*:refs/remotes/origin/r2.*'
+          git branch -r --list 'origin/r2.*' --contains "${GITHUB_SHA}" | grep -q .
       - name: Build binary and run C++ tests
         shell: bash
         run: |

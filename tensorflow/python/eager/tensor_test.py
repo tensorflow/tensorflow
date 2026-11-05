@@ -59,6 +59,46 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertIn("tf.Tensor", str(t))
     self.assertIn("tf.Tensor", repr(t))
 
+  def testScalarCacheKeepsSignOfZero(self):
+    # Python scalars are cached by value, and Python considers 0.0 == -0.0.
+    # Whichever zero is converted first must not be returned for the other.
+    for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+      for first, second in ((0.0, -0.0), (-0.0, 0.0)):
+        a = _create_tensor(first, dtype=dtype)
+        b = _create_tensor(second, dtype=dtype)
+        self.assertEqual(np.signbit(first), np.signbit(a.numpy()))
+        self.assertEqual(np.signbit(second), np.signbit(b.numpy()))
+
+    zeros = [
+        complex(0.0, 0.0),
+        complex(0.0, -0.0),
+        complex(-0.0, 0.0),
+        complex(-0.0, -0.0),
+    ]
+    for dtype in (dtypes.complex64, dtypes.complex128):
+      for value in zeros + zeros[::-1]:
+        t = _create_tensor(value, dtype=dtype).numpy()
+        self.assertEqual(np.signbit(value.real), np.signbit(t.real))
+        self.assertEqual(np.signbit(value.imag), np.signbit(t.imag))
+
+    # np.float64 and np.complex128 subclass float and complex, so they go
+    # through the same cache.
+    for value_type, dtype in (
+        (np.float64, dtypes.float64),
+        (np.complex128, dtypes.complex128),
+    ):
+      for first, second in ((0.0, -0.0), (-0.0, 0.0)):
+        a = _create_tensor(value_type(first), dtype=dtype)
+        b = _create_tensor(value_type(second), dtype=dtype)
+        self.assertEqual(np.signbit(first), np.signbit(np.real(a.numpy())))
+        self.assertEqual(np.signbit(second), np.signbit(np.real(b.numpy())))
+
+    # The same cache backs the conversion of Python scalars in binary ops.
+    x = constant_op.constant([1.0, 2.0])
+    self.assertAllEqual([False, False], np.signbit(x * 0.0))
+    self.assertAllEqual([True, True], np.signbit(x * -0.0))
+    self.assertAllEqual([-np.inf, -np.inf], 1.0 / (x * -0.0))
+
   def testBadConstructorArgs(self):
     context.ensure_initialized()
     ctx = context.context()

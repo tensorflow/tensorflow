@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object")
 
 package(default_visibility = [
@@ -49,6 +51,7 @@ cc_library(
 )
 
 # DSP interface used to communicate to the aDSP/cDSP.
+# buildifier: disable=no-hdrs-no-alwayslink
 cc_library(
     name = "adsprpc_interface",
     srcs = ["adsprpc_interface.cc"],
@@ -77,7 +80,7 @@ tflite_cc_shared_object(
     linkopts = [
         "-Wl,-soname=libhexagon_interface.so",
         "-z defs",
-        "-Wl,--version-script,$(location //tensorflow/lite/delegates/hexagon/hexagon_nn:version_scripts.lds)",
+        "-Wl,--version-script,$(execpath //tensorflow/lite/delegates/hexagon/hexagon_nn:version_scripts.lds)",
     ] + select({
         "//tensorflow:android": [
             "-llog",
@@ -95,6 +98,7 @@ tflite_cc_shared_object(
     ],
 )
 
+# buildifier: disable=no-hdrs-no-alwayslink
 cc_library(
     name = "hexagon_interface_so",
     srcs = [":libhexagon_interface.so"],

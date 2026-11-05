@@ -636,6 +636,19 @@ absl::StatusOr<CommandExecutor::SynchronizationMode> GetSynchronizationMode(
   }
 }
 
+// The two options are independent: telemetry only records annotations while
+// command buffers are recorded or updated, and graph nodes appear in a profile
+// only if command buffers also stay enabled during profiling.
+CommandBufferThunkOptions CommandBufferThunkOptionsFrom(
+    const DebugOptions& debug_options) {
+  CommandBufferThunkOptions options;
+  options.enable_command_buffers_during_profiling =
+      debug_options.xla_enable_command_buffers_during_profiling();
+  options.enable_command_buffer_telemetry =
+      debug_options.xla_gpu_enable_command_buffer_telemetry();
+  return options;
+}
+
 absl::StatusOr<std::unique_ptr<CommandBufferThunk>>
 ConvertThunksToCommandBuffer(
     ThunkSequence thunks_to_convert,
@@ -678,7 +691,7 @@ ConvertThunksToCommandBuffer(
       std::move(cmd_executor), std::move(thunk_info), devices_in_process,
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
-      debug_options.xla_enable_command_buffers_during_profiling());
+      CommandBufferThunkOptionsFrom(debug_options));
 }
 
 int64_t CountCommandBufferSize(ThunkSequence& thunks) {

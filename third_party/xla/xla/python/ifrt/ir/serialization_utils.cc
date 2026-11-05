@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/compilation/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/serialized_executable_metadata.pb.h"
 #include "xla/python/ifrt/ir/version.h"

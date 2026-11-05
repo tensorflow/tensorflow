@@ -51,6 +51,14 @@ def TFL_Quint8 : Type<CPred<"llvm::isa<mlir::TF::Quint8Type>($_self)">,
 def TFL_Control: Type<CPred<"llvm::isa<ControlType>($_self)">, "control">,
                  BuildableType<"$_builder.getType<ControlType>()">;
 
+//===----------------------------------------------------------------------===//
+// Type that represents N-D blockwise quantized storage. See
+// `BlockwiseQuantType` in tfl_ops.h.
+//===----------------------------------------------------------------------===//
+def TFL_BlockwiseQuantType :
+    Type<CPred<"llvm::isa<mlir::TFL::BlockwiseQuantType>($_self)">,
+         "blockwise quantized type">;
+
 
 //===----------------------------------------------------------------------===//
 // TensorType attribute definitions.
@@ -1145,7 +1153,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, F16, QI8, QUI8, QI16, QUI16]>:$input,
-    TFL_TensorOf<[F32, F16, QI2, QI4, QI8, QUI8, QI16]>:$filter,
+    TFL_TensorOf<[F32, F16, QI2, QI4, QI8, QUI8, QI16, TFL_BlockwiseQuantType]>:$filter,
     TFL_TensorOfOrNone<[F32, F16, QI32, QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -1234,7 +1242,7 @@ in the batch dimensions and broadcasting.
 
   let arguments = (ins
     TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$x,
-    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$y,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8, TFL_BlockwiseQuantType]>:$y,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
     // Used in post-training dynamic range quantization. If the value is true,
@@ -2464,6 +2472,8 @@ def TFL_MeanOp : TFL_Op<"mean", [
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+
+  let hasFolder = 1;
 }
 
 def TFL_OneHotOp : TFL_Op<"one_hot", [
@@ -3476,6 +3486,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
         /*zero_point=*/bit_width == 8 ? -(1<<(bit_width-1)): 0);
   }
   }];
+
+  let hasFolder = 1;
 }
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
@@ -3596,6 +3608,8 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
   let results = (outs TFL_TensorOf<[F32, I32, QI8]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
+
+  let hasFolder = 1;
 
   let hasCustomAssemblyFormat = 1;
 
@@ -4014,6 +4028,8 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
   );
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
@@ -4043,6 +4059,8 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
   );
 
   let hasOptions = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_SparseToDenseOp : TFL_Op<"sparse_to_dense", [
@@ -4367,11 +4385,17 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
   let description = [{
     Converts quantized array of integers to floating-points according to the
     quantization parameters.
+
+    The input may also be blockwise quantized (`!tfl.blockwise_quant`), in
+    which case each block of the input is dequantized with its own scale and
+    zero point.
   }];
 
-  let arguments = (ins TFL_TensorOf<[QI2, QI4, QUI4, QI8, QUI8, QI16, F16, F8E4M3FN, F8E5M2]>:$input);
+  let arguments = (ins TFL_TensorOf<[QI2, QI4, QUI4, QI8, QUI8, QI16, F16, F8E4M3FN, F8E5M2, TFL_BlockwiseQuantType]>:$input);
 
-  let results = (outs TFL_FpTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, F16]>:$output);
+
+  let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "Value":$input),
@@ -4506,7 +4530,9 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
     ElementsAttr:$value
   );
 
-  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI4, QI16, QUI16, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI4, QI16, QUI16, TFL_Quint8, TFL_BlockwiseQuantType]>:$output);
+
+  let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "TypeAttr":$qtype, "Attribute":$value),
@@ -4563,7 +4589,7 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI4, QUI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, F16, QI4, QUI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
     TensorTypeAttr:$qtype
   );
 

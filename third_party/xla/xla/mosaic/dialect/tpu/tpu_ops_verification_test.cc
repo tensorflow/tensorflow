@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -2136,6 +2137,43 @@ TEST_F(TpuOpsVerificationTest, ReduceOpVerificationWorks) {
   ASSERT_OK(VerifyOp(reduce));
 }
 
+TEST_F(TpuOpsVerificationTest, ReduceIndexOpVerificationWorks) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce_index = Create<ReduceIndexOp>(
+      /*output=*/VectorType::get({1, 200}, builder().getI32Type()),
+      /*input=*/input,
+      /*axis=*/builder().getI32IntegerAttr(0),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax));
+  ASSERT_OK(VerifyOp(reduce_index));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceIndexOpReducedDimNotOne) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce_index = Create<ReduceIndexOp>(
+      /*output=*/VectorType::get({10, 200}, builder().getI32Type()),
+      /*input=*/input,
+      /*axis=*/builder().getI32IntegerAttr(0),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax));
+  ASSERT_THAT(VerifyOp(reduce_index),
+              StatusIs(_, HasSubstr("Expected output dimension 0 to have size "
+                                    "1, but got 10")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceIndexOpNonReducedDimMismatch) {
+  Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
+  auto reduce_index = Create<ReduceIndexOp>(
+      /*output=*/VectorType::get({1, 300}, builder().getI32Type()),
+      /*input=*/input,
+      /*axis=*/builder().getI32IntegerAttr(0),
+      /*kind=*/
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax));
+  ASSERT_THAT(VerifyOp(reduce_index),
+              StatusIs(_, HasSubstr("Expected output dimension 1 to have "
+                                    "size 200, but got 300")));
+}
+
 TEST_F(TpuOpsVerificationTest, ReduceOpInvalidDim) {
   Value input = ConstantF32Vector(/*shape=*/{100, 200}, /*values=*/{1.0f});
   auto reduce = Create<ReduceOp>(
@@ -2233,6 +2271,89 @@ TEST_F(TpuOpsVerificationTest, ReduceOpReductionKindElementType) {
                                                        ReductionKind::kMaxF))),
       StatusIs(_, HasSubstr("maxf and minf reductions require float element "
                             "type")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceFindFirstSetVerificationWorks) {
+  Value src = ConstantI1Vector(/*shape=*/{4, 8}, /*values=*/{true});
+  Type dst = VectorType::get(/*shape=*/{4, 1}, /*type=*/i32());
+
+  ASSERT_OK(VerifyOp(Create<ReduceIndexOp>(
+      dst, src, builder().getI32IntegerAttr(1),
+      ReductionKindAttr::get(builder().getContext(),
+                             ReductionKind::kFindFirstSet))));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceFindFirstSetDimensionOverflowsIndices) {
+  // The not found result equals the dimension size, which must fit in the
+  // output bitwidth as an unsigned integer.
+  const int64_t max_size = std::numeric_limits<uint32_t>::max();
+  Value src_valid =
+      ConstantI1Vector(/*shape=*/{2, max_size}, /*values=*/{true});
+  Type dst = VectorType::get(/*shape=*/{2, 1}, /*type=*/i32());
+
+  ASSERT_OK(VerifyOp(Create<ReduceIndexOp>(
+      dst, src_valid, builder().getI32IntegerAttr(1),
+      ReductionKindAttr::get(builder().getContext(),
+                             ReductionKind::kFindFirstSet))));
+
+  Value src_overflow =
+      ConstantI1Vector(/*shape=*/{2, max_size + 1}, /*values=*/{true});
+  ASSERT_THAT(
+      VerifyOp(Create<ReduceIndexOp>(
+          dst, src_overflow, builder().getI32IntegerAttr(1),
+          ReductionKindAttr::get(builder().getContext(),
+                                 ReductionKind::kFindFirstSet))),
+      StatusIs(_, HasSubstr("Reduction dimension size 4294967296 is too large "
+                            "for find_first_set: the largest result "
+                            "4294967296 does not fit in 32-bit unsigned "
+                            "indices")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceIndexOpArgMaxDimensionOverflowsIndices) {
+  // The largest result is the last index, which must fit in the output
+  // bitwidth as an unsigned integer.
+  const int64_t max_size = int64_t{1} << 16;
+  Value src_valid = ConstantBF16Vector(/*shape=*/{2, max_size}, /*value=*/1.0f);
+  Type dst = VectorType::get(/*shape=*/{2, 1}, /*type=*/builder().getI16Type());
+
+  ASSERT_OK(VerifyOp(Create<ReduceIndexOp>(
+      dst, src_valid, builder().getI32IntegerAttr(1),
+      ReductionKindAttr::get(builder().getContext(), ReductionKind::kArgMax))));
+
+  Value src_overflow =
+      ConstantBF16Vector(/*shape=*/{2, max_size + 1}, /*value=*/1.0f);
+  ASSERT_THAT(
+      VerifyOp(Create<ReduceIndexOp>(
+          dst, src_overflow, builder().getI32IntegerAttr(1),
+          ReductionKindAttr::get(builder().getContext(),
+                                 ReductionKind::kArgMax))),
+      StatusIs(_, HasSubstr("Reduction dimension size 65537 is too large for "
+                            "arg_max: the largest result 65536 does not fit "
+                            "in 16-bit unsigned indices")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceFindFirstSetInvalidInputType) {
+  Value src = ConstantI32Vector(/*shape=*/{8}, /*values=*/{1});
+  Type dst = VectorType::get(/*shape=*/{1}, /*type=*/i32());
+
+  ASSERT_THAT(VerifyOp(Create<ReduceIndexOp>(
+                  dst, src, builder().getI32IntegerAttr(0),
+                  ReductionKindAttr::get(builder().getContext(),
+                                         ReductionKind::kFindFirstSet))),
+              StatusIs(_, HasSubstr("find_first_set requires i1 input and i32 "
+                                    "output element types")));
+}
+
+TEST_F(TpuOpsVerificationTest, ReduceFindFirstSetInvalidOutputType) {
+  Value src = ConstantI1Vector(/*shape=*/{8}, /*values=*/{true});
+  Type dst = VectorType::get(/*shape=*/{1}, /*type=*/builder().getI16Type());
+
+  ASSERT_THAT(VerifyOp(Create<ReduceIndexOp>(
+                  dst, src, builder().getI32IntegerAttr(0),
+                  ReductionKindAttr::get(builder().getContext(),
+                                         ReductionKind::kFindFirstSet))),
+              StatusIs(_, HasSubstr("find_first_set requires i1 input and i32 "
+                                    "output element types")));
 }
 
 TEST_F(TpuOpsVerificationTest, ConvOpVerificationWorks) {
@@ -2747,6 +2868,66 @@ TEST_F(TpuOpsVerificationTest, MemRefPadOpInvalidBounds) {
       VerifyOp(Create<MemRefPadOp>(
           MemRefType::get({24, 128}, i32(), layout, vmem), source)),
       StatusIs(_, HasSubstr("must not exceed the tile-aligned bound (16)")));
+}
+
+TEST_F(TpuOpsVerificationTest, ConcatenateOpValid) {
+  Value lhs = ConstantF32Vector(/*shape=*/{4, 128}, /*values=*/{1.0f});
+  Value rhs = ConstantF32Vector(/*shape=*/{8, 128}, /*values=*/{2.0f});
+  auto concat = Create<ConcatenateOp>(
+      /*output=*/VectorType::get({12, 128}, builder().getF32Type()),
+      /*sources=*/ValueRange{lhs, rhs},
+      /*dimension=*/0);
+  EXPECT_THAT(VerifyOp(concat), absl_testing::IsOk());
+}
+
+TEST_F(TpuOpsVerificationTest, ConcatenateOpRankMismatch) {
+  Value vec_2d = ConstantF32Vector(/*shape=*/{4, 128}, /*values=*/{1.0f});
+  Value vec_1d = ConstantF32Vector(/*shape=*/{4}, /*values=*/{2.0f});
+
+  // rank(operand_1) < rank(operand_0)
+  auto lower_rank = Create<ConcatenateOp>(
+      /*output=*/VectorType::get({8, 128}, builder().getF32Type()),
+      /*sources=*/ValueRange{vec_2d, vec_1d},
+      /*dimension=*/0);
+  EXPECT_THAT(
+      VerifyOp(lower_rank),
+      StatusIs(_, HasSubstr("Expected all operands to have the same rank.")));
+
+  // rank(operand_1) > rank(operand_0)
+  auto higher_rank = Create<ConcatenateOp>(
+      /*output=*/VectorType::get({8}, builder().getF32Type()),
+      /*sources=*/ValueRange{vec_1d, vec_2d},
+      /*dimension=*/0);
+  EXPECT_THAT(
+      VerifyOp(higher_rank),
+      StatusIs(_, HasSubstr("Expected all operands to have the same rank.")));
+
+  // rank(operand_2) < rank(operand_0) with concat dimension >= rank(operand_2)
+  auto lower_rank_dim1 = Create<ConcatenateOp>(
+      /*output=*/VectorType::get({4, 256}, builder().getF32Type()),
+      /*sources=*/ValueRange{vec_2d, vec_2d, vec_1d},
+      /*dimension=*/1);
+  EXPECT_THAT(
+      VerifyOp(lower_rank_dim1),
+      StatusIs(_, HasSubstr("Expected all operands to have the same rank.")));
+
+  // inferReturnTypes also rejects empty and mixed-rank operands.
+  SmallVector<Type> inferred;
+  EXPECT_TRUE(failed(ConcatenateOp::inferReturnTypes(
+      builder().getContext(), std::nullopt, ValueRange{}, DictionaryAttr(),
+      lower_rank->getPropertiesStorage(), RegionRange{}, inferred)));
+  EXPECT_TRUE(failed(ConcatenateOp::inferReturnTypes(
+      builder().getContext(), std::nullopt, ValueRange{vec_2d, vec_1d},
+      DictionaryAttr(), lower_rank->getPropertiesStorage(), RegionRange{},
+      inferred)));
+  EXPECT_TRUE(failed(ConcatenateOp::inferReturnTypes(
+      builder().getContext(), std::nullopt, ValueRange{vec_2d, vec_2d, vec_1d},
+      DictionaryAttr(), lower_rank_dim1->getPropertiesStorage(), RegionRange{},
+      inferred)));
+  EXPECT_TRUE(failed(ConcatenateOp::inferReturnTypes(
+      builder().getContext(), std::nullopt, ValueRange{vec_1d, vec_2d},
+      DictionaryAttr(), higher_rank->getPropertiesStorage(), RegionRange{},
+      inferred)));
 }
 
 }  // namespace

@@ -159,3 +159,12 @@ jobs:
           else
             python3 "$GITHUB_WORKSPACE"/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
+      - name: "Upload Bazel diagnostic logs"
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bazel-logs-${{ matrix.job_info.name }}
+          path: |
+            ${{ matrix.job_info.repo }}/profile.json.gz
+            ${{ matrix.job_info.repo }}/bazel_remote_grpc.log
+          if-no-files-found: ignore

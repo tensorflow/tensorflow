@@ -18,6 +18,7 @@ limitations under the License.
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -69,8 +70,11 @@ class ComplexUnaryOpTest : public ClientLibraryTestRunnerMixin<
                       [](const T& lhs, const S& rhs) { return lhs * rhs; });
   }
 
+  // If `skip_input` is non-null, samples whose input satisfies it are dropped.
   template <typename C>
-  void UnaryTestHelper(XlaOp (*Op)(const XlaOp operand)) {
+  void UnaryTestHelper(
+      XlaOp (*Op)(const XlaOp operand),
+      bool (*skip_input)(const typename C::InputType&) = nullptr) {
     using InputType = typename C::InputType;
     using OutputType = typename C::OutputType;
     using FloatType = typename C::FloatType;
@@ -92,6 +96,13 @@ class ComplexUnaryOpTest : public ClientLibraryTestRunnerMixin<
 
     XlaBuilder builder(TestName());
     auto table = C().get();
+    if (skip_input != nullptr) {
+      table.erase(std::remove_if(table.begin(), table.end(),
+                                 [&](const auto& item) {
+                                   return skip_input(std::get<0>(item));
+                                 }),
+                  table.end());
+    }
     auto inputs_vec = get_column<InputType, 0>(table);
     auto expected_vec = get_column<OutputType, 1>(table);
     auto scales_vec = get_column<FloatType, 2>(table);
@@ -116,7 +127,23 @@ class ComplexUnaryOpTest : public ClientLibraryTestRunnerMixin<
 
   template <typename ComplexT>
   void TestComplexTanhUlps();
+
+  template <typename ComplexT>
+  void TestExpInfRealNonFiniteImag();
 };
+
+// Returns true for exp inputs with an infinite real part and a non-finite
+// imaginary part. MLIR's ComplexToStandard lowering of complex.exp (used by
+// the CPU and GPU backends) returns the C99 Annex G values for these inputs
+// since https://github.com/llvm/llvm-project/pull/232791:
+// exp(-inf + I*y) = 0 + 0*I and exp(+inf + I*y) = inf + NaN*I. Before that
+// change, and in complex_unary_op_samples.h, the result is NaN + NaN*I.
+// ExpTest skips these samples; TestExpInfRealNonFiniteImag checks them and
+// accepts either result.
+template <typename T>
+bool IsInfRealNonFiniteImag(const std::complex<T>& z) {
+  return std::isinf(z.real()) && !std::isfinite(z.imag());
+}
 
 TEST_F(ComplexUnaryOpTest, Log1pTest) {
   UnaryTestHelper<complex_unary_op_samples::Log1p<float>>(
@@ -148,9 +175,43 @@ TEST_F(ComplexUnaryOpTest, AsinhTest) {
 
 TEST_F(ComplexUnaryOpTest, ExpTest) {
   UnaryTestHelper<complex_unary_op_samples::Exp<float>>(
-      [](XlaOp x) { return Exp(x); });
+      [](XlaOp x) { return Exp(x); }, IsInfRealNonFiniteImag<float>);
   UnaryTestHelper<complex_unary_op_samples::Exp<double>>(
-      [](XlaOp x) { return Exp(x); });
+      [](XlaOp x) { return Exp(x); }, IsInfRealNonFiniteImag<double>);
+}
+
+template <typename ComplexT>
+void ComplexUnaryOpTest::TestExpInfRealNonFiniteImag() {
+  using RealT = typename ComplexT::value_type;
+  const RealT inf = std::numeric_limits<RealT>::infinity();
+  const RealT nan = std::numeric_limits<RealT>::quiet_NaN();
+  std::vector<ComplexT> xs = {{-inf, -inf}, {-inf, inf}, {-inf, nan},
+                              {inf, -inf},  {inf, inf},  {inf, nan}};
+  XlaBuilder builder(TestName());
+  Literal input_literal = LiteralUtil::CreateR1<ComplexT>(xs);
+  auto a = Parameter(&builder, 0, input_literal.shape(), "a");
+  Exp(a);
+  std::vector<const Literal*> args = {&input_literal};
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       this->ExecuteAndTransfer(&builder, args));
+  for (int64_t i = 0; i < xs.size(); ++i) {
+    ComplexT act = actual.Get<ComplexT>({i});
+    const bool is_nan_nan = std::isnan(act.real()) && std::isnan(act.imag());
+    const bool is_c99 = xs[i].real() < 0
+                            ? act.real() == 0 && act.imag() == 0
+                            : std::isinf(act.real()) && std::isnan(act.imag());
+    EXPECT_TRUE(is_nan_nan || is_c99)
+        << "exp(" << xs[i] << ") = " << act
+        << ", expected NaN + NaN*I or the C99 Annex G value";
+  }
+}
+
+TEST_F(ComplexUnaryOpTest, ExpInfRealNonFiniteImagC64) {
+  TestExpInfRealNonFiniteImag<complex64>();
+}
+
+TEST_F(ComplexUnaryOpTest, ExpInfRealNonFiniteImagC128) {
+  TestExpInfRealNonFiniteImag<complex128>();
 }
 
 template <typename T>

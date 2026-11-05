@@ -1,0 +1,69 @@
+--- a/bin/triton-llvm-opt.cpp
++++ b/bin/triton-llvm-opt.cpp
+@@ -58,7 +58,7 @@
+ static std::function<Error(Module *)> makeOptimizingPipeline() {
+   return [](Module *m) -> Error {
+     PipelineTuningOptions tuningOptions;
+-    PassBuilder pb(nullptr, tuningOptions);
++    PassBuilder pb(m->getContext(), nullptr, tuningOptions);
+ 
+     LoopAnalysisManager lam;
+     FunctionAnalysisManager fam;
+
+--- a/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
+@@ -368,9 +368,9 @@
+   Builder b(latchBr.getContext());
+   MLIRContext *ctx = b.getContext();
+   auto licmMD = LLVM::LoopLICMAttr::get(ctx, b.getBoolAttr(true), {});
+-  auto loopMD =
+-      LLVM::LoopAnnotationAttr::get(b.getContext(), {}, {}, {}, {}, {}, {},
+-                                    licmMD, {}, {}, {}, {}, {}, {}, {}, {}, {});
++  auto loopMD = LLVM::LoopAnnotationAttr::get(b.getContext(), {}, {}, {}, {},
++                                              {}, {}, licmMD, {}, {}, {}, {},
++                                              {}, {}, {}, {}, {}, {});
+   latchBr.setLoopAnnotationAttr(loopMD);
+ }
+ 
+
+--- a/python/src/ir.cc
++++ b/python/src/ir.cc
+@@ -960,7 +960,7 @@
+              mlir::LLVM::LoopAnnotationAttr la =
+                  mlir::LLVM::LoopAnnotationAttr::get(
+                      self.getBuilder().getContext(), {}, {}, {}, {}, {}, {},
+-                     licmAttr, {}, {}, {}, {}, {}, {}, {}, {}, {});
++                     licmAttr, {}, {}, {}, {}, {}, {}, {}, {}, {}, {});
+              return la;
+            })
+       // Use arith.ConstantOp to create constants
+
+--- a/python/src/llvm.cc
++++ b/python/src/llvm.cc
+@@ -207,11 +207,11 @@
+ 
+   bool isEnabled() const override { return true; }
+ 
+-  bool shouldRunPass(llvm::StringRef passName,
+-                     llvm::StringRef irDescription) const override {
++  bool shouldRunPass(llvm::StringRef passName, llvm::StringRef irDescription,
++                     llvm::StringRef funcName) const override {
+     return passName != "Loop Strength Reduction" &&
+            (!previousGate.isEnabled() ||
+-            previousGate.shouldRunPass(passName, irDescription));
++            previousGate.shouldRunPass(passName, irDescription, funcName));
+   }
+ };
+ 
+@@ -795,8 +795,8 @@
+         if (!arch.empty())
+           targetMachine =
+               createTargetMachine(mod, arch, enable_fp_fusion, features);
+-        PassBuilder pb(/*targetMachine=*/targetMachine.get(), tuningOptions,
+-                       std::nullopt, instrCbPtr);
++        PassBuilder pb(mod->getContext(), /*targetMachine=*/targetMachine.get(),
++                       tuningOptions, std::nullopt, instrCbPtr);
+ 
+         if (!pluginFile.empty()) {
+           // TODO: Add some logging here that we inserted a pass into the LLVM
+

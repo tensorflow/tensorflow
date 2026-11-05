@@ -504,7 +504,7 @@ StreamExecutorGpuCompiler::DeserializeExecutable(
     const PjRtTopologyDescription& topology,
     riegeli::Any<riegeli::Reader*> reader,
     std::optional<CompileOptions>&& options,
-    bool executable_compatibility_check_on_deserialization) {
+    const DeserializeExecutableOptions& deserialize_options) {
   return StreamExecutorExecutable::Deserialize(std::move(reader), topology,
                                                std::move(options));
 }

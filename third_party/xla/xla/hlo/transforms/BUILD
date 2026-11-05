@@ -239,6 +239,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/pass:hlo_pass_registry",
         "//xla/service:memory_annotations_hdr",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -249,6 +250,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:statusor",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(
@@ -704,6 +706,7 @@ cc_library(
     srcs = ["dot_dimension_normalizer.cc"],
     hdrs = ["dot_dimension_normalizer.h"],
     deps = [
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -788,6 +791,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:name_uniquer",
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/container:flat_hash_map",

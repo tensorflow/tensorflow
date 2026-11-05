@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 
 namespace xla {
 namespace gpu {
@@ -618,42 +621,6 @@ INSTANTIATE_TEST_SUITE_P(
               // CHECK-DAG: [[GATHER:%[^ ]+]] = bf16[128,512]{1,0} gather(%rhs, [[START_INDICES]])
               // CHECK: ROOT {{.*}} = bf16[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
             )"},
-        OneHotDotTestCase{"F32WithHighestPrecision",
-                          R"(
-              HloModule m
-              ENTRY entry {
-                indices = s32[128] parameter(0)
-                bcast_indices = s32[128,256] broadcast(indices), dimensions={0}
-                iota = s32[128,256] iota(), iota_dimension=1
-                cmp = pred[128,256] compare(bcast_indices, iota), direction=EQ
-                lhs = f32[128,256] convert(cmp)
-                rhs = f32[256,512] parameter(1)
-                ROOT dot = f32[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
-              }
-            )",
-                          /*expected_changed=*/true,
-                          R"(
-              // CHECK: [[GATHER:%[^ ]+]] = f32[128,512]{1,0} gather(%rhs, {{.*}})
-              // CHECK: ROOT {{.*}} = f32[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
-            )"},
-        OneHotDotTestCase{"F32WithF32Algorithm",
-                          R"(
-              HloModule m
-              ENTRY entry {
-                indices = s32[128] parameter(0)
-                bcast_indices = s32[128,256] broadcast(indices), dimensions={0}
-                iota = s32[128,256] iota(), iota_dimension=1
-                cmp = pred[128,256] compare(bcast_indices, iota), direction=EQ
-                lhs = f32[128,256] convert(cmp)
-                rhs = f32[256,512] parameter(1)
-                ROOT dot = f32[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_f32_f32_f32
-              }
-            )",
-                          /*expected_changed=*/true,
-                          R"(
-              // CHECK: [[GATHER:%[^ ]+]] = f32[128,512]{1,0} gather(%rhs, {{.*}})
-              // CHECK: ROOT {{.*}} = f32[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
-            )"},
         OneHotDotTestCase{"NonTrivialLeadingBroadcastDimFallsBackToFullWeights",
                           R"(
               HloModule m
@@ -674,7 +641,7 @@ INSTANTIATE_TEST_SUITE_P(
               // CHECK: [[GATHER:%[^ ]+]] = bf16[128,512]{1,0} gather(%rhs, {{.*}})
               // CHECK: ROOT {{.*}} = bf16[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
             )"},
-        OneHotDotTestCase{"Negative_F32DefaultPrecision",
+        OneHotDotTestCase{"Fp8x3Bf16OneHotToGather",
                           R"(
               HloModule m
               ENTRY entry {
@@ -682,13 +649,17 @@ INSTANTIATE_TEST_SUITE_P(
                 bcast_indices = s32[128,256] broadcast(indices), dimensions={0}
                 iota = s32[128,256] iota(), iota_dimension=1
                 cmp = pred[128,256] compare(bcast_indices, iota), direction=EQ
-                lhs = f32[128,256] convert(cmp)
-                rhs = f32[256,512] parameter(1)
-                ROOT dot = f32[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+                lhs = bf16[128,256] convert(cmp)
+                rhs = bf16[256,512] parameter(1)
+                ROOT dot = bf16[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_fp8x3
               }
             )",
-                          /*expected_changed=*/false},
-        OneHotDotTestCase{"Negative_F32AsymmetricPrecision",
+                          /*expected_changed=*/true,
+                          R"(
+              // CHECK: [[GATHER:%[^ ]+]] = bf16[128,512]{1,0} gather(%rhs, {{.*}})
+              // CHECK: ROOT {{.*}} = bf16[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
+            )"},
+        OneHotDotTestCase{"Fp8x4Bf16OneHotToGather",
                           R"(
               HloModule m
               ENTRY entry {
@@ -696,26 +667,16 @@ INSTANTIATE_TEST_SUITE_P(
                 bcast_indices = s32[128,256] broadcast(indices), dimensions={0}
                 iota = s32[128,256] iota(), iota_dimension=1
                 cmp = pred[128,256] compare(bcast_indices, iota), direction=EQ
-                lhs = f32[128,256] convert(cmp)
-                rhs = f32[256,512] parameter(1)
-                ROOT dot = f32[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,default}
+                lhs = bf16[128,256] convert(cmp)
+                rhs = bf16[256,512] parameter(1)
+                ROOT dot = bf16[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_fp8x4
               }
             )",
-                          /*expected_changed=*/false},
-        OneHotDotTestCase{"Negative_F32NonF32AlgorithmWithHighestPrecision",
+                          /*expected_changed=*/true,
                           R"(
-              HloModule m
-              ENTRY entry {
-                indices = s32[128] parameter(0)
-                bcast_indices = s32[128,256] broadcast(indices), dimensions={0}
-                iota = s32[128,256] iota(), iota_dimension=1
-                cmp = pred[128,256] compare(bcast_indices, iota), direction=EQ
-                lhs = f32[128,256] convert(cmp)
-                rhs = f32[256,512] parameter(1)
-                ROOT dot = f32[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}, algorithm=dot_bf16_bf16_f32
-              }
-            )",
-                          /*expected_changed=*/false},
+              // CHECK: [[GATHER:%[^ ]+]] = bf16[128,512]{1,0} gather(%rhs, {{.*}})
+              // CHECK: ROOT {{.*}} = bf16[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
+            )"},
         OneHotDotTestCase{"Negative_S8With256Classes",
                           R"(
               HloModule m
@@ -730,7 +691,7 @@ INSTANTIATE_TEST_SUITE_P(
               }
             )",
                           /*expected_changed=*/false},
-        OneHotDotTestCase{"Negative_BatchDimsPresent",
+        OneHotDotTestCase{"BatchedOneHotDotToGather",
                           R"(
               HloModule m
               ENTRY entry {
@@ -740,6 +701,65 @@ INSTANTIATE_TEST_SUITE_P(
                 cmp = pred[4,128,256] compare(bcast_indices, iota), direction=EQ
                 lhs = bf16[4,128,256] convert(cmp)
                 rhs = bf16[4,256,512] parameter(1)
+                ROOT dot = bf16[4,128,512] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+              }
+            )",
+                          /*expected_changed=*/true,
+                          R"(
+              // CHECK-DAG: [[BATCH_IOTA:%[^ ]+]] = s32[4,128,1]{2,1,0} iota(), iota_dimension=0
+              // CHECK-DAG: [[IDX_RESHAPE:%[^ ]+]] = s32[4,128,1]{2,1,0} reshape(%indices)
+              // CHECK-DAG: [[START_INDICES:%[^ ]+]] = s32[4,128,2]{2,1,0} concatenate([[BATCH_IOTA]], [[IDX_RESHAPE]]), dimensions={2}
+              // CHECK-DAG: [[GATHER:%[^ ]+]] = bf16[4,128,512]{2,1,0} gather(%rhs, [[START_INDICES]]), offset_dims={2}, collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=2, slice_sizes={1,1,512}
+              // CHECK: ROOT {{.*}} = bf16[4,128,512]{2,1,0} select({{.*}}, [[GATHER]], {{.*}})
+            )"},
+        OneHotDotTestCase{"BatchedRhsOneHotDotToGather",
+                          R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[4,128] parameter(0)
+                lhs = bf16[4,512,256] parameter(1)
+                bcast_indices = s32[4,128,256] broadcast(indices), dimensions={0,1}
+                iota = s32[4,128,256] iota(), iota_dimension=2
+                cmp = pred[4,128,256] compare(bcast_indices, iota), direction=EQ
+                rhs = bf16[4,128,256] convert(cmp)
+                ROOT dot = bf16[4,512,128] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}
+              }
+            )",
+                          /*expected_changed=*/true,
+                          R"(
+              // CHECK-DAG: [[GATHER:%[^ ]+]] = bf16[4,512,128]{2,1,0} gather(%lhs, {{.*}}), offset_dims={1}, collapsed_slice_dims={0,2}, start_index_map={0,2}, index_vector_dim=2, slice_sizes={1,512,1}
+              // CHECK-DAG: [[MASK:%[^ ]+]] = pred[4,512,128]{2,1,0} broadcast({{.*}}), dimensions={0,2}
+              // CHECK: ROOT {{.*}} = bf16[4,512,128]{2,1,0} select([[MASK]], [[GATHER]], {{.*}})
+            )"},
+        OneHotDotTestCase{"BatchedBroadcastedWeightsPeelsBatchBroadcast",
+                          R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[4,8,128] parameter(0)
+                bcast_indices = s32[4,8,128,256] broadcast(indices), dimensions={0,1,2}
+                iota = s32[4,8,128,256] iota(), iota_dimension=3
+                cmp = pred[4,8,128,256] compare(bcast_indices, iota), direction=EQ
+                lhs = bf16[4,8,128,256] convert(cmp)
+                table = bf16[8,256,512] parameter(1)
+                rhs = bf16[4,8,256,512] broadcast(table), dimensions={1,2,3}
+                ROOT dot = bf16[4,8,128,512] dot(lhs, rhs), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+              }
+            )",
+                          /*expected_changed=*/true,
+                          R"(
+              // CHECK-DAG: [[GATHER:%[^ ]+]] = bf16[4,8,128,512]{3,2,1,0} gather(%table, {{.*}}), offset_dims={3}, collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=3, slice_sizes={1,1,512}
+              // CHECK: ROOT {{.*}} = bf16[4,8,128,512]{3,2,1,0} select({{.*}}, [[GATHER]], {{.*}})
+            )"},
+        OneHotDotTestCase{"Negative_BatchedSubByteIndices",
+                          R"(
+              HloModule m
+              ENTRY entry {
+                indices = s4[4,128] parameter(0)
+                bcast_indices = s4[4,128,4] broadcast(indices), dimensions={0,1}
+                iota = s4[4,128,4] iota(), iota_dimension=2
+                cmp = pred[4,128,4] compare(bcast_indices, iota), direction=EQ
+                lhs = bf16[4,128,4] convert(cmp)
+                rhs = bf16[4,4,512] parameter(1)
                 ROOT dot = bf16[4,128,512] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
               }
             )",
@@ -774,6 +794,108 @@ INSTANTIATE_TEST_SUITE_P(
             )",
                           /*expected_changed=*/false}),
     [](const ::testing::TestParamInfo<OneHotDotTestCase>& info) {
+      return info.param.test_name;
+    });
+
+struct OneHotF32PrecisionTestCase {
+  std::string test_name;
+  absl::string_view dot_attrs;
+  std::optional<int> expected_mantissa_bits;
+  bool default_to_bf16 = false;
+  se::GpuComputeCapability cc =
+      se::GpuComputeCapability(se::CudaComputeCapability::Hopper());
+  bool expected_changed = true;
+};
+
+class OneHotDotF32PrecisionTest
+    : public DotStrengthReductionTest,
+      public ::testing::WithParamInterface<OneHotF32PrecisionTestCase> {};
+
+TEST_P(OneHotDotF32PrecisionTest, RewritesF32WeightsPrecision) {
+  const OneHotF32PrecisionTestCase& tc = GetParam();
+  const std::string hlo = absl::Substitute(
+      R"(
+        HloModule m
+        ENTRY entry {
+          indices = s32[128] parameter(0)
+          bcast_indices = s32[128,256] broadcast(indices), dimensions={0}
+          iota = s32[128,256] iota(), iota_dimension=1
+          cmp = pred[128,256] compare(bcast_indices, iota), direction=EQ
+          lhs = f32[128,256] convert(cmp)
+          rhs = f32[256,512] parameter(1)
+          ROOT dot = f32[128,512] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}$0
+        }
+      )",
+      tc.dot_attrs);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_default_to_alg_dot_bf16_bf16_f32(tc.default_to_bf16);
+  DotStrengthReduction pass{tc.cc, /*enable_one_hot_dot_to_gather=*/true};
+  ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_EQ(changed, tc.expected_changed);
+  CHECK_OK(module->Verify());
+  if (!tc.expected_changed) {
+    return;
+  }
+  const std::string pattern = tc.expected_mantissa_bits.has_value()
+                                  ? absl::Substitute(
+                                        R"(
+                  // CHECK: [[GATHER:%[^ ]+]] = f32[128,512]{1,0} gather(%rhs, {{.*}})
+                  // CHECK: [[REDUCED:%[^ ]+]] = f32[128,512]{1,0} reduce-precision([[GATHER]]), exponent_bits=8, mantissa_bits=$0
+                  // CHECK: ROOT {{.*}} = f32[128,512]{1,0} select({{.*}}, [[REDUCED]], {{.*}})
+                )",
+                                        *tc.expected_mantissa_bits)
+                                  : R"(
+              // CHECK: [[GATHER:%[^ ]+]] = f32[128,512]{1,0} gather(%rhs, {{.*}})
+              // CHECK-NOT: reduce-precision
+              // CHECK: ROOT {{.*}} = f32[128,512]{1,0} select({{.*}}, [[GATHER]], {{.*}})
+            )";
+  ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                       RunFileCheck(module->ToString(), pattern));
+  EXPECT_TRUE(filecheck_result);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    OneHotF32PrecisionTests, OneHotDotF32PrecisionTest,
+    ::testing::Values(
+        OneHotF32PrecisionTestCase{"DefaultTf32", "", 10},
+        OneHotF32PrecisionTestCase{"DefaultBf16", "", 7,
+                                   /*default_to_bf16=*/true},
+        OneHotF32PrecisionTestCase{"HighPrecisionTf32",
+                                   ", operand_precision={high,default}", 10,
+                                   /*default_to_bf16=*/true},
+        OneHotF32PrecisionTestCase{"HighestPrecisionFullF32",
+                                   ", operand_precision={highest,default}",
+                                   std::nullopt},
+        OneHotF32PrecisionTestCase{
+            "PreAmpereFullF32", "", std::nullopt, /*default_to_bf16=*/false,
+            se::GpuComputeCapability(se::CudaComputeCapability::Volta())},
+        OneHotF32PrecisionTestCase{
+            "RocmDefaultFullF32", "", std::nullopt, /*default_to_bf16=*/false,
+            se::GpuComputeCapability(se::RocmComputeCapability("gfx942"))},
+        OneHotF32PrecisionTestCase{
+            "RocmDefaultBf16", "", 7, /*default_to_bf16=*/true,
+            se::GpuComputeCapability(se::RocmComputeCapability("gfx942"))},
+        OneHotF32PrecisionTestCase{"ExplicitF32Alg",
+                                   ", algorithm=dot_f32_f32_f32", std::nullopt},
+        OneHotF32PrecisionTestCase{"ExplicitTf32Alg",
+                                   ", algorithm=dot_tf32_tf32_f32", 10},
+        OneHotF32PrecisionTestCase{"ExplicitBf16AlgOverridesHighest",
+                                   ", operand_precision={highest,highest}, "
+                                   "algorithm=dot_bf16_bf16_f32",
+                                   7},
+        OneHotF32PrecisionTestCase{"ExplicitFp8x3Alg",
+                                   ", algorithm=dot_bf16_bf16_fp8x3", 7},
+        OneHotF32PrecisionTestCase{"ExplicitFp8x4Alg",
+                                   ", algorithm=dot_bf16_bf16_fp8x4", 7},
+        OneHotF32PrecisionTestCase{
+            "UnsupportedAlgSkipped", ", algorithm=dot_bf16_bf16_f32_x3",
+            std::nullopt, /*default_to_bf16=*/false,
+            se::GpuComputeCapability(se::CudaComputeCapability::Hopper()),
+            /*expected_changed=*/false}),
+    [](const ::testing::TestParamInfo<OneHotF32PrecisionTestCase>& info) {
       return info.param.test_name;
     });
 
@@ -838,7 +960,7 @@ INSTANTIATE_TEST_SUITE_P(
                 param = f32[4,2] parameter(1)
                 rhs_bcast = f32[1,4,3,2] broadcast(param), dimensions={1,3}
                 rhs = f32[4,6] reshape(rhs_bcast)
-                ROOT dot = f32[6,6] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_f32_f32_f32
+                ROOT dot = f32[6,6] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_tf32_tf32_f32
               }
             )"},
                       OneHotExecutionTestCase{"SunkBroadcastLhs",
@@ -854,7 +976,7 @@ INSTANTIATE_TEST_SUITE_P(
                 cmp = pred[2,3,4] compare(bcast_indices, iota), direction=EQ
                 rhs_reshape = pred[6,4] reshape(cmp)
                 rhs = f32[6,4] convert(rhs_reshape)
-                ROOT dot = f32[6,6] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f32_f32_f32
+                ROOT dot = f32[6,6] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_f32
               }
             )"},
                       OneHotExecutionTestCase{"RhsOneHot",
@@ -870,10 +992,87 @@ INSTANTIATE_TEST_SUITE_P(
                 rhs = f32[2,3,4] convert(cmp)
                 ROOT dot = f32[2,2,3] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={2}, algorithm=dot_f32_f32_f32
               }
+            )"},
+                      OneHotExecutionTestCase{"BatchedLhsOneHot",
+                                              R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[2,3] parameter(0)
+                param = f32[4,2] parameter(1)
+                neg_param = f32[4,2] negate(param)
+                b0 = f32[1,4,2] reshape(param)
+                b1 = f32[1,4,2] reshape(neg_param)
+                rhs = f32[2,4,2] concatenate(b0, b1), dimensions={0}
+                bcast_indices = s32[2,3,4] broadcast(indices), dimensions={0,1}
+                iota = s32[2,3,4] iota(), iota_dimension=2
+                cmp = pred[2,3,4] compare(bcast_indices, iota), direction=EQ
+                lhs = f32[2,3,4] convert(cmp)
+                ROOT dot = f32[2,3,2] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f32_f32_f32
+              }
+            )"},
+                      OneHotExecutionTestCase{"BatchedRhsOneHot",
+                                              R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[2,3] parameter(0)
+                param = f32[4,2] parameter(1)
+                neg_param = f32[4,2] negate(param)
+                b0 = f32[1,4,2] reshape(param)
+                b1 = f32[1,4,2] reshape(neg_param)
+                cat = f32[2,4,2] concatenate(b0, b1), dimensions={0}
+                lhs = f32[2,2,4] transpose(cat), dimensions={0,2,1}
+                bcast_indices = s32[2,3,4] broadcast(indices), dimensions={0,1}
+                iota = s32[2,3,4] iota(), iota_dimension=2
+                cmp = pred[2,3,4] compare(bcast_indices, iota), direction=EQ
+                rhs = f32[2,3,4] convert(cmp)
+                ROOT dot = f32[2,2,3] dot(lhs, rhs), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, algorithm=dot_f32_f32_f32
+              }
+            )"},
+                      OneHotExecutionTestCase{"BatchedNonLeadingOneHotBatchDim",
+                                              R"(
+              HloModule m
+              ENTRY entry {
+                indices = s32[2,3] parameter(0)
+                indices_t = s32[3,2] transpose(indices), dimensions={1,0}
+                param = f32[4,2] parameter(1)
+                neg_param = f32[4,2] negate(param)
+                b0 = f32[1,4,2] reshape(param)
+                b1 = f32[1,4,2] reshape(neg_param)
+                rhs = f32[2,4,2] concatenate(b0, b1), dimensions={0}
+                bcast_indices = s32[3,2,4] broadcast(indices_t), dimensions={0,1}
+                iota = s32[3,2,4] iota(), iota_dimension=2
+                cmp = pred[3,2,4] compare(bcast_indices, iota), direction=EQ
+                lhs = f32[3,2,4] convert(cmp)
+                ROOT dot = f32[2,3,2] dot(lhs, rhs), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}, algorithm=dot_f32_f32_f32
+              }
             )"}),
     [](const ::testing::TestParamInfo<OneHotExecutionTestCase>& info) {
       return info.param.test_name;
     });
+
+TEST_F(DotStrengthReductionTest, Fp8xNDotShouldNotBeStrengthReduced) {
+  // Without an algorithm this dot of two vectors is strength reduced. FP8xN
+  // dots must survive until DotAlgorithmRewriter decomposes them.
+  constexpr absl::string_view kHlo = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = bf16[32,500] parameter(0)
+  p1 = bf16[32,500] parameter(1)
+  ROOT dot = f32[32] dot(p0, p1), lhs_batch_dims={0},
+    lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}$0
+})";
+  DotStrengthReduction pass{
+      se::GpuComputeCapability(se::CudaComputeCapability::Hopper())};
+  for (absl::string_view algorithm : {"", ", algorithm=dot_bf16_bf16_fp8x3",
+                                      ", algorithm=dot_bf16_bf16_fp8x4"}) {
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<VerifiedHloModule> module,
+        ParseAndReturnVerifiedModule(absl::Substitute(kHlo, algorithm)));
+    ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+    EXPECT_EQ(changed, algorithm.empty()) << algorithm;
+  }
+}
 
 }  // namespace
 }  // namespace gpu

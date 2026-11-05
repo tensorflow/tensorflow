@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 cc_library(
     name = "spirv_llvm_translator",
     srcs = glob([

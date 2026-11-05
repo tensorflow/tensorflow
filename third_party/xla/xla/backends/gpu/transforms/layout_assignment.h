@@ -88,6 +88,9 @@ class GpuLayoutAssignment : public LayoutAssignment {
   absl::Status AddDotBackendConstraints(LayoutConstraints* constraints,
                                         HloDotInstruction* instruction);
 
+  absl::Status AddScaledDotBackendConstraints(
+      LayoutConstraints* constraints, HloScaledDotInstruction* instruction);
+
   const se::GpuComputeCapability gpu_version_;
   const se::DeviceDescription& device_description_;
 };
