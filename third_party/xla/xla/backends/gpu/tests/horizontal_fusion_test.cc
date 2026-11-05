@@ -100,7 +100,7 @@ ENTRY main {
 // CHECK-DAG: %[[F2:.*]] = f32[512]{0} fusion({{.*}}), kind=kLoop, calls=%fused_computation.2
 // CHECK: ROOT {{.*}} = (f32[1024]{0}, f32[128,3]{1,0}, f32[512]{0}) tuple(%[[F0]], %[[F1]], %[[F2]])
 // CHECK: ENTRY %main
-// CHECK: %[[HF:.*]] = (f32[1024]{0}, f32[128,3]{1,0}, f32[512]{0}) fusion({{.*}}), kind=kLoop, calls=%horizontal_fusion_computation
+// CHECK: %[[HF:.*]] = (f32[1024]{0}, f32[128,3]{1,0}, f32[512]{0}) fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation
 )"));
   EXPECT_TRUE(filecheck_matched);
 
@@ -144,7 +144,7 @@ ENTRY main {
 // CHECK-DAG: f32[1024]{0} fusion({{.*}}), kind=kLoop
 // CHECK-DAG: f32[512]{0} fusion({{.*}}), kind=kLoop
 // CHECK: ENTRY %main
-// CHECK: fusion({{.*}}), kind=kLoop, calls=%horizontal_fusion_computation
+// CHECK: fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{1e-5, 1e-5}));
@@ -218,7 +218,7 @@ ENTRY main {
 // CHECK-DAG: %[[F1:.*]] = f32[8]{0} fusion({{.*}}), kind=kInput, calls=%fused_reduce
 // CHECK: ROOT {{.*}} = (f32[512]{0}, f32[8]{0}) tuple(%[[F0]], %[[F1]])
 // CHECK: ENTRY %main
-// CHECK: fusion({{.*}}), kind=kLoop, calls=%horizontal_fusion_computation
+// CHECK: fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation
 )"));
   EXPECT_TRUE(filecheck_matched);
 
@@ -278,7 +278,7 @@ ENTRY main {
 // CHECK-DAG: %[[F1:.*]] = f32[8]{0} fusion({{.*}}), kind=kInput, calls=%fused_reduce
 // CHECK: ROOT {{.*}} = (f32[64,32]{1,0}, f32[8]{0}) tuple(%[[F0]], %[[F1]])
 // CHECK: ENTRY %main
-// CHECK: fusion({{.*}}), kind=kLoop, calls=%horizontal_fusion_computation
+// CHECK: fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation
 )"));
   EXPECT_TRUE(filecheck_matched);
 
@@ -370,7 +370,7 @@ ENTRY main {
 // CHECK: ROOT {{.*}} = (f32[32]{0}, f32[64,32]{1,0}, f32[8]{0}) tuple(%[[F0]], %[[F1]], %[[F2]])
 // CHECK: ENTRY %main
 // CHECK: %[[MID:.*]] = f32[32]{0} fusion({{.*}}), kind=kInput, calls=%producer_reduce
-// CHECK: %[[HF:.*]] = (f32[32]{0}, f32[64,32]{1,0}, f32[8]{0}) fusion(%[[MID]], {{.*}}), kind=kLoop, calls=%horizontal_fusion_computation
+// CHECK: %[[HF:.*]] = (f32[32]{0}, f32[64,32]{1,0}, f32[8]{0}) fusion(%[[MID]], {{.*}}), kind=kCustom, calls=%horizontal_fusion_computation
 )"));
   EXPECT_TRUE(filecheck_matched);
 
@@ -378,5 +378,45 @@ ENTRY main {
       RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-4, 1e-4}));
 }
 
+TEST_F(HorizontalFusionTest, MultiOutputNestedFusionPlusLoop) {
+  constexpr absl::string_view kHloText = R"(
+HloModule mof_plus_loop, is_scheduled=true
+
+fused_mof {
+  p0 = f32[1024]{0} parameter(0)
+  n0 = f32[1024]{0} negate(p0)
+  c0 = f32[1024]{0} cosine(p0)
+  ROOT t = (f32[1024]{0}, f32[1024]{0}) tuple(n0, c0)
+}
+
+fused_single {
+  p1 = f32[512]{0} parameter(0)
+  mul1 = f32[512]{0} multiply(p1, p1)
+  ROOT out1 = f32[512]{0} add(mul1, p1)
+}
+
+ENTRY main {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+
+  f_mof = (f32[1024]{0}, f32[1024]{0}) fusion(p0), kind=kLoop, calls=fused_mof
+  gte0 = f32[1024]{0} get-tuple-element(f_mof), index=0
+  gte1 = f32[1024]{0} get-tuple-element(f_mof), index=1
+  f_single = f32[512]{0} fusion(p1), kind=kLoop, calls=fused_single
+
+  ROOT result = (f32[1024]{0}, f32[1024]{0}, f32[512]{0})
+      tuple(gte0, gte1, f_single)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  HorizontalFusion horizontal_fusion(device_description());
+  ASSERT_THAT(horizontal_fusion.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-5, 1e-5}));
+}
 }  // namespace
 }  // namespace xla::gpu

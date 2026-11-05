@@ -79,8 +79,9 @@ horizontal_comp {
 ENTRY main {
   p0 = f32[1024]{0} parameter(0)
   p1 = f32[2048]{0} parameter(1)
-  ROOT fusion = (f32[1024]{0}, f32[2048]{0}) fusion(p0, p1), kind=kLoop,
-    calls=horizontal_comp
+  ROOT fusion = (f32[1024]{0}, f32[2048]{0}) fusion(p0, p1), kind=kCustom,
+    calls=horizontal_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
 }
 )hlo";
 
@@ -188,8 +189,9 @@ horizontal_comp {
 ENTRY main {
   p0 = f32[64]{0} parameter(0)
   p1 = f32[2048]{0} parameter(1)
-  ROOT fusion = (f32[64]{0}, f32[2048]{0}) fusion(p0, p1), kind=kLoop,
-    calls=horizontal_comp
+  ROOT fusion = (f32[64]{0}, f32[2048]{0}) fusion(p0, p1), kind=kCustom,
+    calls=horizontal_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
 }
 )hlo";
 
@@ -278,8 +280,9 @@ horizontal_comp {
 ENTRY main {
   p0 = f32[64,64]{1,0} parameter(0)
   p1 = f32[64,512]{1,0} parameter(1)
-  ROOT fusion = (f32[64,64]{1,0}, f32[64]{0}) fusion(p0, p1), kind=kLoop,
-    calls=horizontal_comp
+  ROOT fusion = (f32[64,64]{1,0}, f32[64]{0}) fusion(p0, p1), kind=kCustom,
+    calls=horizontal_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
 }
 )hlo";
 
@@ -345,7 +348,8 @@ ENTRY main {
   p0 = f32[64,64]{1,0} parameter(0)
   p1 = f32[128,64]{1,0} parameter(1)
   ROOT fusion = (f32[64,64]{1,0}, f32[64,128]{1,0}) fusion(p0, p1),
-    kind=kLoop, calls=horizontal_comp
+    kind=kCustom, calls=horizontal_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
 }
 )hlo";
 
@@ -382,41 +386,66 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(ThreadBlockSpecializedFusionTest,
-       ExternalTupleFusionOperandNotMisclassifiedAsThreadBlockSpecialized) {
+TEST_F(ThreadBlockSpecializedFusionTest, MultiOutputNestedFusion) {
   constexpr absl::string_view kHlo = R"hlo(
 HloModule m
 
-producer_comp {
-  p0 = f32[16]{0} parameter(0)
-  n0 = f32[16]{0} negate(p0)
-  e0 = f32[16]{0} exponential(p0)
-  ROOT t = (f32[16]{0}, f32[16]{0}) tuple(n0, e0)
+nested_mof {
+  p0 = f32[1024]{0} parameter(0)
+  n0 = f32[1024]{0} negate(p0)
+  e0 = f32[1024]{0} exponential(p0)
+  ROOT t = (f32[1024]{0}, f32[1024]{0}) tuple(n0, e0)
 }
 
-consumer_comp {
-  param = (f32[16]{0}, f32[16]{0}) parameter(0)
-  gte0 = f32[16]{0} get-tuple-element(param), index=0
-  gte1 = f32[16]{0} get-tuple-element(param), index=1
-  ROOT t = (f32[16]{0}, f32[16]{0}) tuple(gte0, gte1)
+nested_single {
+  p0 = f32[2048]{0} parameter(0)
+  ROOT c0 = f32[2048]{0} cosine(p0)
+}
+
+horizontal_comp {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[2048]{0} parameter(1)
+  f0 = (f32[1024]{0}, f32[1024]{0}) fusion(p0), kind=kLoop, calls=nested_mof
+  gte0 = f32[1024]{0} get-tuple-element(f0), index=0
+  gte1 = f32[1024]{0} get-tuple-element(f0), index=1
+  f1 = f32[2048]{0} fusion(p1), kind=kLoop, calls=nested_single
+  ROOT t = (f32[1024]{0}, f32[1024]{0}, f32[2048]{0}) tuple(gte0, gte1, f1)
 }
 
 ENTRY main {
-  p0 = f32[16]{0} parameter(0)
-  prod = (f32[16]{0}, f32[16]{0}) fusion(p0), kind=kLoop, calls=producer_comp
-  ROOT cons = (f32[16]{0}, f32[16]{0}) fusion(prod), kind=kLoop,
-    calls=consumer_comp
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[2048]{0} parameter(1)
+  ROOT fusion = (f32[1024]{0}, f32[1024]{0}, f32[2048]{0}) fusion(p0, p1),
+    kind=kCustom, calls=horizontal_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
 }
 )hlo";
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                        ParseAndReturnVerifiedModule(kHlo));
-  const auto* cons = Cast<HloFusionInstruction>(
+  const auto* fusion = Cast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
-  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*cons, device_info_);
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
   EXPECT_EQ(analysis.emitter_fusion_kind(),
-            HloFusionAnalysis::EmitterFusionKind::kLoop);
-}
+            HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized);
 
+  ThreadBlockSpecializedFusion fusion_emitter(analysis);
+  ASSERT_OK_AND_ASSIGN(
+      ThreadBlockSpecializedFusion::LlvmKernelSourceWrapper llvm_source_wrapper,
+      fusion_emitter.CreateLLVMModule(device_info_, *fusion, "fusion",
+                                      /*buffer_assignment=*/nullptr,
+                                      *mlir_context_));
+  std::string llvm_str;
+  llvm::raw_string_ostream llvm_os(llvm_str);
+  llvm_os << *llvm_source_wrapper.source.module();
+  ASSERT_OK_AND_ASSIGN(bool llvm_check, RunFileCheck(llvm_str, R"(
+    // CHECK-DAG: define void @fusion(
+    // CHECK-DAG: define internal void @fusion_nested_0(ptr %{{.*}}, ptr %{{.*}}, ptr %{{.*}}, i32 %{{.*}})
+    // CHECK-DAG: define internal void @fusion_nested_1(ptr %{{.*}}, ptr %{{.*}}, i32 %{{.*}})
+  )"));
+  EXPECT_TRUE(llvm_check);
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-5, 1e-5}));
+}
 }  // namespace
 }  // namespace xla::gpu

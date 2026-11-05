@@ -1250,7 +1250,8 @@ ENTRY main {
   p1 = f32[2,3]{1,0} parameter(1)
   p2 = f32[2,3]{0,1} parameter(2)
   ROOT fusion = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[2,3]{1,0})
-      fusion(p0, p1, p2), kind=kLoop, calls=horizontal_fusion_computation
+      fusion(p0, p1, p2), kind=kCustom, calls=horizontal_fusion_computation,
+      backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
 }
 )";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,

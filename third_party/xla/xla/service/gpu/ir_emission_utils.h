@@ -135,6 +135,11 @@ inline constexpr absl::string_view kCuDnnFusionKind = "__cudnn$fusion";
 // FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kTensorIrFusionKind = "__tensorir";
 
+// Horizontal fusions that are emitted as a single thread-block-specialized
+// kernel have FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kThreadBlockSpecializedFusionKind =
+    "__thread_block_specialized";
+
 // Multi-phase wrapper fusions emitted as a single thread-block-cluster kernel
 // have FusionBackendConfig.kind equal to this string.
 inline constexpr absl::string_view kPhasedBlockClusterFusionKind =

@@ -86,6 +86,7 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
 
     const HloFusionInstruction* fusion = nullptr;
     LaunchDimensions launch_dims;
+    std::vector<int64_t> outer_root_indices;
   };
 
   // Emits the entry function that conditionally launches nested kernels based

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -92,6 +93,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -250,7 +252,9 @@ ThreadBlockSpecializedFusion::NestedKernelSpec::Create(
       CreateNativeNestedEmitter(analysis);
   CHECK(emitter != nullptr)
       << "Failed to create nested kernel emitter for " << fusion.name();
-  return NestedKernelSpec{&fusion, emitter->launch_dimensions()};
+  int64_t num_outputs = ShapeUtil::GetLeafCount(fusion.shape());
+  return NestedKernelSpec{&fusion, emitter->launch_dimensions(),
+                          std::vector<int64_t>(num_outputs, -1)};
 }
 
 ThreadBlockSpecializedFusion::ThreadBlockSpecializedFusion(
@@ -258,15 +262,39 @@ ThreadBlockSpecializedFusion::ThreadBlockSpecializedFusion(
     : device_info_(analysis.device_info()) {
   uint64_t total_blocks = 0;
   uint64_t max_threads = 0;
-  nested_kernels_.reserve(analysis.fusion_root_count());
-  for (const HloInstructionAdaptor& root : analysis.fusion_roots()) {
-    const auto* nested_fusion = Cast<HloFusionInstruction>(&root.instruction());
-    NestedKernelSpec spec =
-        NestedKernelSpec::Create(*nested_fusion, device_info_);
-    total_blocks += spec.launch_dims.num_blocks();
-    max_threads =
-        std::max(max_threads, spec.launch_dims.num_threads_per_block());
-    nested_kernels_.push_back(std::move(spec));
+  absl::flat_hash_map<const HloInstruction*, size_t> fusion_to_kernel_idx;
+  for (int64_t root_idx = 0; root_idx < analysis.fusion_root_count();
+       ++root_idx) {
+    const HloInstruction* nested_fusion =
+        &analysis.fusion_root(root_idx).instruction();
+    int64_t tuple_idx = 0;
+    if (nested_fusion->opcode() == HloOpcode::kGetTupleElement) {
+      tuple_idx = nested_fusion->tuple_index();
+      nested_fusion = nested_fusion->operand(0);
+    }
+
+    auto [it, inserted] =
+        fusion_to_kernel_idx.try_emplace(nested_fusion, nested_kernels_.size());
+    if (inserted) {
+      NestedKernelSpec spec = NestedKernelSpec::Create(
+          *Cast<HloFusionInstruction>(nested_fusion), device_info_);
+      total_blocks += spec.launch_dims.num_blocks();
+      max_threads =
+          std::max(max_threads, spec.launch_dims.num_threads_per_block());
+      nested_kernels_.push_back(std::move(spec));
+    }
+
+    NestedKernelSpec& spec = nested_kernels_[it->second];
+    CHECK_LT(tuple_idx, static_cast<int64_t>(spec.outer_root_indices.size()));
+    spec.outer_root_indices[tuple_idx] = root_idx;
+  }
+
+  for (const NestedKernelSpec& spec : nested_kernels_) {
+    for (int64_t outer_root_idx : spec.outer_root_indices) {
+      CHECK_GE(outer_root_idx, 0)
+          << "Multi-output nested fusion has unreferenced output in "
+          << spec.fusion->ToString();
+    }
   }
 
   launch_dimensions_ = LaunchDimensions(total_blocks, max_threads);
@@ -352,8 +380,10 @@ absl::Status ThreadBlockSpecializedFusion::EmitLauncherBody(
       call_args.push_back(arg_ptrs[operand->parameter_number()]);
     }
 
-    // Output argument.
-    call_args.push_back(arg_ptrs[fusion.operand_count() + idx]);
+    // Output arguments.
+    for (int64_t outer_root_idx : spec.outer_root_indices) {
+      call_args.push_back(arg_ptrs[fusion.operand_count() + outer_root_idx]);
+    }
 
     // Relative block ID.
     call_args.push_back(rel_bid);
@@ -430,7 +460,8 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
     VirtualizeSubKernelPassOptions virtualize_options;
     virtualize_options.entry_function_name_ = nested_fn_name;
     virtualize_options.expected_num_tensor_args_ =
-        nested_spec.fusion->operand_count() + 1;
+        nested_spec.fusion->operand_count() +
+        nested_spec.outer_root_indices.size();
     const se::BlockDim& block_counts = nested_spec.launch_dims.block_counts();
     virtualize_options.block_dim_x_ = block_counts.x;
     virtualize_options.block_dim_y_ = block_counts.y;
