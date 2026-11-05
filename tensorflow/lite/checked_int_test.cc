@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -519,6 +520,109 @@ TEST(CheckedIntSpecificTest, DivisionMixedSignOverflow) {
   CheckedInt<uint32_t> b(2);
   CheckedInt c = a / b;
   EXPECT_TRUE(c.Overflow());
+}
+
+// Operations on different types overflow iff their exact result does not fit
+// in the common type, like `__builtin_*_overflow`: the operands are not
+// converted to the common type first.
+TEST(CheckedIntSpecificTest, MixedTypesUseTheExactResult) {
+  const CheckedInt<int32_t> minus_one(-1);
+  const CheckedInt<uint32_t> one(1u);
+  const CheckedInt<uint32_t> four(4u);
+
+  const CheckedInt<uint32_t> sum = minus_one + one;
+  EXPECT_FALSE(sum.Overflow());
+  EXPECT_EQ(sum.Value(), 0u);
+
+  const CheckedInt<uint32_t> difference = one - minus_one;
+  EXPECT_FALSE(difference.Overflow());
+  EXPECT_EQ(difference.Value(), 2u);
+
+  EXPECT_TRUE((minus_one * one).Overflow());
+  EXPECT_TRUE((minus_one - one).Overflow());
+
+  const CheckedInt<uint32_t> quotient = minus_one / four;
+  EXPECT_FALSE(quotient.Overflow());
+  EXPECT_EQ(quotient.Value(), 0u);
+
+  const CheckedInt<uint64_t> big = CheckedInt<int64_t>(-5) + uint64_t{7};
+  EXPECT_FALSE(big.Overflow());
+  EXPECT_EQ(big.Value(), 2u);
+
+  EXPECT_TRUE((CheckedInt<int64_t>(std::numeric_limits<int64_t>::lowest()) /
+               int32_t{-1})
+                  .Overflow());
+}
+
+#if defined(__SIZEOF_INT128__)
+// Values around the limits of `T` and of the narrower types.
+template <class T>
+std::vector<T> EdgeValues() {
+  std::vector<T> values;
+  for (__int128 v :
+       {__int128{0}, __int128{1}, __int128{2}, __int128{-1}, __int128{-2},
+        __int128{std::numeric_limits<int32_t>::lowest()},
+        __int128{std::numeric_limits<int32_t>::max()},
+        __int128{std::numeric_limits<uint32_t>::max()},
+        __int128{std::numeric_limits<T>::lowest()},
+        __int128{std::numeric_limits<T>::lowest()} + 1,
+        __int128{std::numeric_limits<T>::max()},
+        __int128{std::numeric_limits<T>::max()} - 1}) {
+    if (v >= __int128{std::numeric_limits<T>::lowest()} &&
+        v <= __int128{std::numeric_limits<T>::max()}) {
+      values.push_back(static_cast<T>(v));
+    }
+  }
+  return values;
+}
+
+template <class A, class B>
+void ExpectExactMixedResults() {
+  using C = std::common_type_t<A, B>;
+  const auto fits = [](__int128 v) {
+    return v >= __int128{std::numeric_limits<C>::lowest()} &&
+           v <= __int128{std::numeric_limits<C>::max()};
+  };
+  for (A a : EdgeValues<A>()) {
+    for (B b : EdgeValues<B>()) {
+      SCOPED_TRACE(testing::Message()
+                   << "a=" << static_cast<int64_t>(a) << " (" << sizeof(A)
+                   << " bytes), b=" << static_cast<int64_t>(b) << " ("
+                   << sizeof(B) << " bytes)");
+      const CheckedInt<A> x(a);
+      const CheckedInt<B> y(b);
+      const __int128 exact[] = {__int128{a} + __int128{b},
+                                __int128{a} - __int128{b},
+                                __int128{a} * __int128{b}};
+      const CheckedInt<C> results[] = {x + y, x - y, x * y};
+      for (int op = 0; op < 3; ++op) {
+        EXPECT_EQ(results[op].Overflow(), !fits(exact[op])) << "op " << op;
+        if (fits(exact[op])) {
+          EXPECT_EQ(results[op].Value(), static_cast<C>(exact[op]))
+              << "op " << op;
+        }
+      }
+    }
+  }
+}
+#endif
+
+// Operands of different signedness, where the signed operand does not fit in
+// the unsigned common type, take dedicated code paths: check them against the
+// exact result around the limits.
+TEST(CheckedIntSpecificTest, MixedSignednessMatchesTheExactResult) {
+#if defined(__SIZEOF_INT128__)
+  ExpectExactMixedResults<int32_t, uint32_t>();
+  ExpectExactMixedResults<uint32_t, int32_t>();
+  ExpectExactMixedResults<int64_t, uint64_t>();
+  ExpectExactMixedResults<uint64_t, int64_t>();
+  ExpectExactMixedResults<int32_t, uint64_t>();
+  ExpectExactMixedResults<uint64_t, int32_t>();
+  ExpectExactMixedResults<int64_t, uint32_t>();
+  ExpectExactMixedResults<uint32_t, int64_t>();
+#else
+  GTEST_SKIP() << "No 128-bit integer type for the reference results.";
+#endif
 }
 
 }  // namespace
