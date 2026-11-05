@@ -328,6 +328,15 @@ TfLiteStatus KVCacheEval(TfLiteContext* context, TfLiteNode* node) {
 
   // Recompute the first slot in case any shifting occurred.
   first_slot = input_first_idx - op_data->first_slot_index;
+  if (first_slot < 0 || first_slot > max_num_entries - num_slots_needed) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Invalid position or slot index for cache: first_slot=%d, "
+        "num_slots_needed=%d, max_num_entries=%d",
+        static_cast<int>(first_slot), static_cast<int>(num_slots_needed),
+        static_cast<int>(max_num_entries));
+    return kTfLiteError;
+  }
   const int64_t bytes_offset_for_cache = first_slot * num_bytes_per_tensor;
 
   // 4. Put the key and value in their respective caches.
