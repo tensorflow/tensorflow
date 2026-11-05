@@ -331,6 +331,7 @@ tf_cc_test(
         ":test_main",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
