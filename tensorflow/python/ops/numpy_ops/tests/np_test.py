@@ -216,8 +216,7 @@ JAX_COMPOUND_OP_RECORDS = [
               inexact=True),
     op_record("hypot", 2, default_dtypes, all_shapes, jtu.rand_default, [],
               inexact=True),
-    op_record("kron", 2, number_dtypes, nonempty_shapes, jtu.rand_default, [],
-              check_incomplete_shape=False),
+    op_record("kron", 2, number_dtypes, nonempty_shapes, jtu.rand_default, []),
     op_record("outer", 2, number_dtypes, all_shapes, jtu.rand_default, []),
     op_record("imag", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
     op_record("iscomplex", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
@@ -511,9 +510,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
                    'tf numpy is implemented to be numpy 1.x compatible')
   def testOp(self, onp_op, lnp_op, rng_factory, shapes, dtypes, check_dtypes,
              tolerance, inexact, check_incomplete_shape):
-    # TODO(b/147769803): Remove this skipping
-    if lnp_op.__name__ == "kron" and shapes == ((2, 3, 4), (2, 3, 4)):
-      self.skipTest("Case disabled because of b/147769803")
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, shapes, dtypes, onp_arrays=False)
     tol = max(jtu.tolerance(dtype, tolerance) for dtype in dtypes)

@@ -256,6 +256,7 @@ cuda_py_strict_test(
         ":np_array_ops",
         ":np_arrays",
         ":np_math_ops",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",

@@ -114,16 +114,17 @@ def subtract(x1, x2):
   return _bin_op(math_ops.subtract, x1, x2)
 
 
+def _mul_or_and(x1, x2):
+  if x1.dtype == dtypes.bool:
+    assert x2.dtype == dtypes.bool
+    return math_ops.logical_and(x1, x2)
+  return math_ops.multiply(x1, x2)
+
+
 @tf_export.tf_export('experimental.numpy.multiply', v1=[])
 @np_utils.np_doc('multiply')
 def multiply(x1, x2):
-  def mul_or_and(x1, x2):
-    if x1.dtype == dtypes.bool:
-      assert x2.dtype == dtypes.bool
-      return math_ops.logical_and(x1, x2)
-    return math_ops.multiply(x1, x2)
-
-  return _bin_op(mul_or_and, x1, x2)
+  return _bin_op(_mul_or_and, x1, x2)
 
 
 @tf_export.tf_export('experimental.numpy.true_divide', v1=[])
@@ -513,13 +514,14 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
   b_rank = b.shape.rank
 
   if a_rank == 0 or b_rank == 0:
-    return a * b
+    return _mul_or_and(a, b)
 
   # outer product of the flattened inputs (bypasses Eigen broadcasting limits)
   a_flat = np_array_ops.reshape(a, [-1, 1])
   b_flat = np_array_ops.reshape(b, [1, -1])
-  outer_prod = a_flat * b_flat
+  outer_prod = _mul_or_and(a_flat, b_flat)
 
+  static_out_shape = None
   if a_rank is not None and b_rank is not None:
     # static rank: build `perm` as a Python list so shapes are inferred at
     # trace time and XLA sees a compile-time constant permutation.
@@ -527,20 +529,32 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
     if a.shape.is_fully_defined() and b.shape.is_fully_defined():
       a_shape = [1] * (nd - a_rank) + a.shape.as_list()
       b_shape = [1] * (nd - b_rank) + b.shape.as_list()
-      combined_shape = a_shape + b_shape
       out_shape = [sa * sb for sa, sb in zip(a_shape, b_shape)]
+      if nd == 1:
+        # for 1D inputs the outer product is already in the final order
+        return np_array_ops.reshape(outer_prod, out_shape)
+      combined_shape = a_shape + b_shape
     else:
-      a_shape = array_ops.shape(a)
-      b_shape = array_ops.shape(b)
+      # partially known shapes: keep every output dim that is known statically
+      a_dims = [1] * (nd - a_rank) + a.shape.as_list()
+      b_dims = [1] * (nd - b_rank) + b.shape.as_list()
+      static_out_shape = [
+          0 if sa == 0 or sb == 0
+          else (None if sa is None or sb is None else sa * sb)
+          for sa, sb in zip(a_dims, b_dims)
+      ]
+      a_shape = array_ops.shape(a, out_type=dtypes.int32)
+      b_shape = array_ops.shape(b, out_type=dtypes.int32)
       if a_rank < nd:
         a_shape = array_ops.concat([[1] * (nd - a_rank), a_shape], axis=0)
       if b_rank < nd:
         b_shape = array_ops.concat([[1] * (nd - b_rank), b_shape], axis=0)
-      combined_shape = array_ops.concat([a_shape, b_shape], axis=0)
       out_shape = a_shape * b_shape
-    if nd == 1:
-      # for 1D inputs the outer product is already in the final order
-      return np_array_ops.reshape(outer_prod, out_shape)
+      if nd == 1:
+        res = np_array_ops.reshape(outer_prod, out_shape)
+        res.set_shape(static_out_shape)
+        return res
+      combined_shape = array_ops.concat([a_shape, b_shape], axis=0)
     perm = [idx for i in range(nd) for idx in (i, i + nd)]
   else:
     # dynamic rank: runtime evaluation for unknown ranks
@@ -549,8 +563,12 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
     nd = math_ops.maximum(a_rank_t, b_rank_t)
     a_pad = array_ops.ones([nd - a_rank_t], dtype=dtypes.int32)
     b_pad = array_ops.ones([nd - b_rank_t], dtype=dtypes.int32)
-    a_shape = array_ops.concat([a_pad, array_ops.shape(a)], axis=0)
-    b_shape = array_ops.concat([b_pad, array_ops.shape(b)], axis=0)
+    a_shape = array_ops.concat(
+        [a_pad, array_ops.shape(a, out_type=dtypes.int32)], axis=0
+    )
+    b_shape = array_ops.concat(
+        [b_pad, array_ops.shape(b, out_type=dtypes.int32)], axis=0
+    )
     combined_shape = array_ops.concat([a_shape, b_shape], axis=0)
     out_shape = a_shape * b_shape
     idx = math_ops.range(nd)
@@ -561,7 +579,10 @@ def kron(a, b):  # pylint: disable=missing-function-docstring
   # memory layout reordering: interleave the a and b axes
   outer_prod = np_array_ops.reshape(outer_prod, combined_shape)
   transposed = np_array_ops.transpose(outer_prod, perm)
-  return np_array_ops.reshape(transposed, out_shape)
+  res = np_array_ops.reshape(transposed, out_shape)
+  if static_out_shape is not None:
+    res.set_shape(static_out_shape)
+  return res
 
 
 @tf_export.tf_export('experimental.numpy.outer', v1=[])
