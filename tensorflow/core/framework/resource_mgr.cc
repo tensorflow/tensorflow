@@ -132,7 +132,7 @@ ResourceMgr::ResourceAndName::ResourceAndName(
   resource = std::move(other.resource);
 }
 
-ResourceMgr::ResourceAndName::~ResourceAndName() {}
+ResourceMgr::ResourceAndName::~ResourceAndName() = default;
 
 ResourceMgr::ResourceAndName& ResourceMgr::ResourceAndName::operator=(
     ResourceAndName&& other) noexcept {

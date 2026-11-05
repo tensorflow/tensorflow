@@ -727,7 +727,7 @@ class RunHandler::Impl {
  public:
   explicit Impl(RunHandlerPool::Impl* pool_impl);
 
-  ~Impl() {}
+  ~Impl() = default;
 
   thread::ThreadPoolInterface* thread_pool_interface() {
     return thread_pool_interface_.get();
@@ -754,7 +754,7 @@ class RunHandler::Impl {
    public:
     explicit ThreadPoolInterfaceWrapper(Impl* run_handler_impl)
         : run_handler_impl_(run_handler_impl) {}
-    ~ThreadPoolInterfaceWrapper() override {}
+    ~ThreadPoolInterfaceWrapper() override = default;
     void Schedule(std::function<void()> fn) override;
     int NumThreads() const override;
     int CurrentThreadId() const override;
@@ -1090,7 +1090,7 @@ RunHandlerPool::RunHandlerPool(int num_inter_op_threads,
                                int num_intra_op_threads)
     : impl_(new Impl(num_inter_op_threads, num_intra_op_threads)) {}
 
-RunHandlerPool::~RunHandlerPool() {}
+RunHandlerPool::~RunHandlerPool() = default;
 
 std::unique_ptr<RunHandler> RunHandlerPool::Get(
     int64_t step_id, int64_t timeout_in_ms,
