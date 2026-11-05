@@ -533,6 +533,7 @@ cc_library(
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_kernel_source",
+        "//xla/codegen/emitters:computation_fingerprint",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/core/host_offloading:host_offloading_executable_proto_cc",

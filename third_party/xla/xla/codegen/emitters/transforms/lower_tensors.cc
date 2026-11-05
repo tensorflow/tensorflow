@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -210,6 +211,13 @@ class RewriteFunctionSignatures : public OpRewritePattern<mlir::func::FuncOp> {
             rewriter, op.getLoc(), operand, op.getArgument(index));
         op.getArgument(index).replaceAllUsesExcept(cast.getResult(0), cast);
         operand = ml::LLVMPointerType::get(op.getContext());
+        // The kernel does not write the buffer, but other kernels may write it
+        // between launches, so its loads are not !invariant.load. Backends
+        // derive what they need (e.g. ld.global.nc) from readonly + noalias.
+        if (op.getArgAttr(index, kXlaInvariantAttr)) {
+          op.setArgAttr(index, ml::LLVMDialect::getReadonlyAttrName(),
+                        rewriter.getUnitAttr());
+        }
       }
     }
 
@@ -1528,31 +1536,6 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       signalPassFailure();
       return;
     }
-
-    getOperation()->walk([this](ml::LoadOp load) {
-      Value addr = load.getAddr();
-      while (auto gep = addr.getDefiningOp<ml::GEPOp>()) {
-        addr = gep.getBase();
-      }
-      while (auto cast = addr.getDefiningOp<UnrealizedConversionCastOp>()) {
-        addr = cast.getOperand(0);
-      }
-      if (addr.getDefiningOp<ml::AddrSpaceCastOp>() ||
-          addr.getDefiningOp<ml::AddressOfOp>() ||
-          addr.getDefiningOp<ml::AllocaOp>()) {
-        // Shared memory, global constant or temporary - no need to annotate
-        // anything.
-        return;
-      }
-      if (auto base = mlir::dyn_cast<mlir::BlockArgument>(addr)) {
-        if (auto func = mlir::dyn_cast<mlir::func::FuncOp>(
-                base.getOwner()->getParentOp())) {
-          if (func.getArgAttr(base.getArgNumber(), "xla.invariant")) {
-            load.setInvariant(true);
-          }
-        }
-      }
-    });
   }
 
  private:

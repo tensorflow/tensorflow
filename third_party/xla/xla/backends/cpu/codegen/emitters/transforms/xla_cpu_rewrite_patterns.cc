@@ -100,7 +100,6 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
                                                  mlir::LLVM::GEPArg(3)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto args_ptr = mlir::LLVM::LoadOp::create(b, ptr, args_gep);
-    args_ptr.setInvariant(true);
 
     // Get a pointer to the `KernelArg` at the given index.
     auto arg_gep = mlir::LLVM::GEPOp::create(
@@ -109,7 +108,6 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
             mlir::LLVM::GEPArg(op.getIndex()), mlir::LLVM::GEPArg(0)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto arg_ptr = mlir::LLVM::LoadOp::create(b, ptr, arg_gep);
-    arg_ptr.setInvariant(true);
 
     if (auto dereferenceable = op->getAttrOfType<mlir::IntegerAttr>(
             mlir::LLVM::LLVMDialect::getDereferenceableAttrName())) {
@@ -169,7 +167,6 @@ struct LowerExtractWorkgroupIdOp
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto workgroup_dim_load =
         mlir::LLVM::LoadOp::create(builder, i64_ty, workgroup_dim_gep);
-    workgroup_dim_load.setInvariant(true);
 
     mlir::Value workgroup_dim = workgroup_dim_load.getResult();
     auto index_ty = builder.getIntegerType(
@@ -464,7 +461,6 @@ class WrapComparatorWithDataArray
               mlir::LLVM::GEPArg(static_cast<int32_t>(idx))},
           mlir::LLVM::GEPNoWrapFlags::inbounds);
       auto param_ptr = mlir::LLVM::LoadOp::create(builder, ptr_type, param_gep);
-      param_ptr.setInvariant(true);
       auto cast = mlir::UnrealizedConversionCastOp::create(
           builder, arg.getType(), param_ptr.getResult());
       call_args.push_back(cast.getResult(0));

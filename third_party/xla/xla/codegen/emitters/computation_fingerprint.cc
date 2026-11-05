@@ -31,7 +31,8 @@ namespace xla::emitters {
 // checking reusability.
 //
 // For example 2 arguments that are aligned to 16 bytes, aliased and also
-// written by the kernel will be represented as "0x16aw,0x16aw".
+// written by the kernel will be represented as "0x16aw,0x16aw". An argument
+// that is not invariant gets an "m" (mutable) suffix.
 //
 // Overlapping arguments are only marked aliased, if at least one of them is
 // written and their buffers are not exactly the same.
@@ -51,6 +52,9 @@ std::string GetArgumentFingerprint(
                          }
                          if (arg.written()) {
                            absl::StrAppend(s, "w");
+                         }
+                         if (!arg.invariant()) {
+                           absl::StrAppend(s, "m");
                          }
                        });
 }

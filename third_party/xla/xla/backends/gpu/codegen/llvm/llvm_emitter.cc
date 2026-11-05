@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/Argument.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -76,12 +77,8 @@ std::vector<llvm_ir::IrArray> IrArraysFor(
        llvm::zip(kernel_arguments.args(), kernel->args())) {
     llvm::Type* ir_type =
         llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_arg.getContext());
-    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
-
-    if (!kernel_argument.written()) {
-      ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
-    }
-    ir_arrays.push_back(ir_array);
+    ir_arrays.push_back(
+        llvm_ir::IrArray(&llvm_arg, ir_type, kernel_argument.shape()));
   }
   return ir_arrays;
 }

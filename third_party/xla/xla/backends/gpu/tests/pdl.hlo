@@ -81,15 +81,16 @@ e {
 // CHECK-LABEL: define ptx_kernel void @triton_gemm(
 // CHECK-NOT: call void @llvm.nvvm.griddepcontrol.wait
 // CHECK-NOT: call void @llvm.nvvm.griddepcontrol.launch.dependents
-// CHECK-LABEL: define ptx_kernel void @a_1(
-// CHECK: invariant.load
+// The consumer only reads the GEMM output, so it can use the read only cache.
+// CHECK-LABEL: define ptx_kernel void @a_1(ptr noalias readonly
 
 // CHECK-SM90-LABEL: define ptx_kernel void @triton_gemm(
 // CHECK-SM90: call void @llvm.nvvm.griddepcontrol.wait
 // CHECK-SM90: call void @llvm.nvvm.wgmma.commit_group.sync.aligned()
 // CHECK-SM90: call void @llvm.nvvm.griddepcontrol.launch.dependents()
-// CHECK-SM90-LABEL: define ptx_kernel void @a_1(
-// CHECK-SM90-NOT: invariant.load
+// With PDL the consumer starts while the GEMM still writes its output, so the
+// input must be neither noalias nor readonly.
+// CHECK-SM90-LABEL: define ptx_kernel void @a_1(ptr align
 
 HloModule m, is_scheduled=true
 
@@ -124,4 +125,48 @@ e {
   x = f16[15, 17] parameter(2)
   a = f16[15, 17] fusion(triton_gemm), kind=kLoop, calls=add
   t = tuple(triton_gemm, a)
+}
+
+// -----
+
+// An in place PDL consumer writes the buffer after waiting, while the GEMM
+// still writes it before the wait, so the merged buffer cannot be noalias.
+// CHECK-LABEL: define ptx_kernel void @triton_gemm(
+// CHECK-LABEL: define ptx_kernel void @a_1(
+// CHECK-SAME: ptr noalias align {{[0-9]+}} dereferenceable(510) %{{.*}}, ptr noalias align {{[0-9]+}} dereferenceable(510) %{{.*}})
+// CHECK-SM90-LABEL: define ptx_kernel void @triton_gemm(
+// CHECK-SM90-LABEL: define ptx_kernel void @a_1(
+// CHECK-SM90-SAME: ptr align {{[0-9]+}} dereferenceable(510) %{{.*}}, ptr align {{[0-9]+}} dereferenceable(510) %{{.*}})
+
+HloModule m_in_place, is_scheduled=true
+
+triton_gemm {
+  lhs = f16[15,19] parameter(0)
+  rhs = f16[19,17] parameter(1)
+  dot = f16[15,17] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
+}
+
+add {
+  a = f16[15, 17] parameter(0)
+  c = f16[15, 17] add(a, a)
+}
+
+e {
+  lhs = f16[15,19] parameter(0)
+  rhs = f16[19,17] parameter(1)
+  triton_gemm = f16[15,17] fusion(lhs, rhs), kind=kCustom,
+    calls=triton_gemm, backend_config={
+      fusion_backend_config:{
+        kind:"__triton_nested_gemm_fusion",
+        block_level_fusion_config:{
+          output_tiles:[{sizes:[64,32]}],
+          num_stages:2,
+          num_warps:8,
+          num_ctas:1
+        }
+      }
+    }
+  ROOT a = f16[15, 17] fusion(triton_gemm), kind=kLoop, calls=add
 }

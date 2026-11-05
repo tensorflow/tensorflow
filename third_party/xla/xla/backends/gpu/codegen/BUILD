@@ -203,6 +203,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

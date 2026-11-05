@@ -80,17 +80,6 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       array->AddNoaliasMetadata(noalias_md);
     }
   }
-
-  if (module_.config()
-          .debug_options()
-          .xla_llvm_enable_invariant_load_metadata()) {
-    // Parameters of the entry computation are never stored to, loading from a
-    // parameter pointer should always return the same result within a loop.
-    if (hlo.opcode() == HloOpcode::kParameter &&
-        hlo.parent() == module_.entry_computation()) {
-      array->MarkInvariantOverWholeProgram(context_);
-    }
-  }
 }
 
 llvm::MDNode* AliasAnalysis::GetAliasDomain() {

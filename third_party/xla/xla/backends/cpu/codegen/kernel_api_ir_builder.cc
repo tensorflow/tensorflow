@@ -308,7 +308,6 @@ KernelApiIrBuilder::GetKernelResultsParameters(
 auto KernelApiIrBuilder::Options::FromHloModuleConfig(
     const HloModuleConfig& config) -> Options {
   return KernelApiIrBuilder::Options{
-      config.debug_options().xla_llvm_enable_invariant_load_metadata(),
       config.debug_options().xla_cpu_prefer_vector_width(),
       config.debug_options()
           .xla_cpu_generate_unique_c_style_kernel_entry_points()};
@@ -403,10 +402,10 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
       ir_argument.AddNoaliasMetadata(noalias);
     }
 
-    // If a buffer slice is not a part of result set, then it must be invariant
-    // (read-only).
+    // A buffer slice that is not part of the result set is read only while
+    // the kernel runs. Other kernels may write it, so its loads are not
+    // invariant over the whole program.
     if (!memory_dependency_analyzer.ResultsOverlapWithSlice(argument.slice)) {
-      ir_argument.MarkInvariantOverWholeProgram(&context_);
       invariant_arguments.insert(i);
     }
 
@@ -535,14 +534,6 @@ llvm_ir::IrArray KernelApiIrBuilder::EmitKernelArgument(
   int64_t pointer_size = data_layout.getTypeStoreSize(builder.getPtrTy());
   int64_t byte_size = ShapeUtil::ByteSizeOf(shape, pointer_size);
   llvm_ir::SetDereferenceableMetadataForLoad(data, byte_size);
-
-  // All buffers pointers passed to host kernels are expected to be invariant
-  // over the whole program. Note the metadata is attached only to loading
-  // buffer pointers, not to loading actual buffers.
-  if (options_.enable_invariant_load_metadata) {
-    data->setMetadata(llvm::LLVMContext::MD_invariant_load,
-                      llvm::MDNode::get(data->getContext(), /*MDs=*/{}));
-  }
 
   return llvm_ir::IrArray(data, llvm_ir::ShapeToIrType(shape, ctx), shape);
 }

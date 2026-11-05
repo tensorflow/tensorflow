@@ -111,6 +111,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
@@ -1695,7 +1696,10 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
 
   auto [status_or_entry, was_cached] =
       ir_emitter_context_->kernel_cache().GetWithStatus(
-          instr->raw_backend_config_string(), generate);
+          absl::StrCat(
+              "(", emitters::GetArgumentFingerprint(kernel_arguments.args()),
+              ")", instr->raw_backend_config_string()),
+          generate);
 
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());

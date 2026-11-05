@@ -223,7 +223,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_hlo_evaluator_use_fast_path(false);
   opts.set_xla_llvm_enable_alias_scope_metadata(true);
   opts.set_xla_llvm_enable_noalias_metadata(true);
-  opts.set_xla_llvm_enable_invariant_load_metadata(true);
   opts.set_xla_llvm_disable_expensive_passes(false);
   opts.set_xla_backend_optimization_level(3);
   opts.set_xla_gpu_autotune_level(4);
@@ -1508,13 +1507,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_llvm_enable_noalias_metadata(),
       "In LLVM-based backends, enable the emission of !noalias metadata in the "
       "generated IR."));
-  flag_list->push_back(tsl::Flag(
-      "xla_llvm_enable_invariant_load_metadata",
-      bool_setter_for(
-          &DebugOptions::set_xla_llvm_enable_invariant_load_metadata),
-      debug_options->xla_llvm_enable_invariant_load_metadata(),
-      "In LLVM-based backends, enable the emission of !invariant.load metadata "
-      "in the generated IR."));
+  flag_list->push_back(tsl::Flag("xla_llvm_enable_invariant_load_metadata",
+                                 noop_flag_setter<bool>, false,
+                                 "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_llvm_disable_expensive_passes",
       bool_setter_for(&DebugOptions::set_xla_llvm_disable_expensive_passes),

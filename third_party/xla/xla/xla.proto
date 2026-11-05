@@ -1569,9 +1569,9 @@ message DebugOptions {
   // generated IR.
   optional bool xla_llvm_enable_noalias_metadata = 71;
 
-  // If true, in LLVM-based backends, emit !invariant.load metadata in
-  // the generated IR.
-  optional bool xla_llvm_enable_invariant_load_metadata = 72;
+  // Deprecated, has no effect. XLA no longer emits !invariant.load metadata.
+  optional bool xla_llvm_enable_invariant_load_metadata = 72
+      [deprecated = true];
 
   // If true, a set of expensive LLVM optimization passes will not be run.
   optional bool xla_llvm_disable_expensive_passes = 73;
