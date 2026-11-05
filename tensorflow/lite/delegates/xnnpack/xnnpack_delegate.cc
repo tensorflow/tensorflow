@@ -854,6 +854,10 @@ class Delegate {
 
   xnn_workspace_t workspace() const { return workspace_.get(); }
 
+  MMapWeightCacheProvider& weight_cache_provider() {
+    return *weight_cache_provider_;
+  }
+
   const ResourceInfo* FindResourceInfo(int local_id) const {
     auto it = local_id_to_resources_.find(local_id);
     return it != local_id_to_resources_.end() ? &it->second : nullptr;
@@ -1491,31 +1495,13 @@ class Subgraph {
     }
     flags |= delegate.runtime_flags();
 
-    if (delegate.weight_cache_provider_->IsActive() &&
-        delegate.weight_cache_provider_->CanStartBuildStep()) {
-      if (!delegate.weight_cache_provider_->StartBuildStep()) {
-        TF_LITE_KERNEL_LOG(
-            context, "XNNPack delegate failed to start cache build step.");
-        return nullptr;
-      }
-    }
+    // `DelegatePrepare` scopes a single weight-cache build step across all
+    // delegated partitions of the TFLite subgraph.
     {
       std::lock_guard<std::mutex> lock(*delegate.workspace_mutex_);
       status = xnn_create_runtime_v4(
           subgraph.get(), delegate.weights_cache(), delegate.workspace(),
           delegate.threadpool(), flags, &runtime_ptr);
-    }
-    if (delegate.weight_cache_provider_->IsActive() &&
-        delegate.weight_cache_provider_->CanStartBuildStep()) {
-      if (!delegate.weight_cache_provider_->StopBuildStep()) {
-        if (runtime_ptr != nullptr) {
-          std::lock_guard<std::mutex> lock(*delegate.workspace_mutex_);
-          xnn_delete_runtime(runtime_ptr);
-        }
-        TF_LITE_KERNEL_LOG(context,
-                           "XNNPack delegate failed to stop cache build step.");
-        return nullptr;
-      }
     }
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
@@ -7804,12 +7790,14 @@ const TfLiteRegistration kSubgraphRegistration = {
 };
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  auto& xnnpack_delegate =
+      *static_cast<::tflite::xnnpack::Delegate*>(delegate->data_);
   std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> moe_ops_to_replace(
       nullptr, TfLiteIntArrayFree);
   TfLiteIntArray* moe_ops_to_replace_raw = nullptr;
-  TfLiteIntArray* ops_to_replace =
-      static_cast<::tflite::xnnpack::Delegate*>(delegate->data_)
-          ->PrepareOpsToDelegate(context, &moe_ops_to_replace_raw);
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> ops_to_replace(
+      xnnpack_delegate.PrepareOpsToDelegate(context, &moe_ops_to_replace_raw),
+      TfLiteIntArrayFree);
   moe_ops_to_replace.reset(moe_ops_to_replace_raw);
   if (ops_to_replace == nullptr) {
     return kTfLiteError;
@@ -7817,10 +7805,26 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 
   TfLiteStatus status = kTfLiteOk;
   if (ops_to_replace->size != 0) {
+    // Scope a single weight-cache build step across all delegated partitions of
+    // this TFLite subgraph so they share one staging buffer and cache-file
+    // update; skip if an outer caller is already managing a build step.
+    MMapWeightCacheProvider& weight_cache =
+        xnnpack_delegate.weight_cache_provider();
+    const bool manage_build_step =
+        weight_cache.CanStartBuildStep() && !weight_cache.IsBuilding();
+    if (manage_build_step && !weight_cache.StartBuildStep()) {
+      TF_LITE_KERNEL_LOG(context,
+                         "XNNPack delegate failed to start cache build step.");
+      return kTfLiteError;
+    }
     status = context->ReplaceNodeSubsetsWithDelegateKernels(
-        context, kSubgraphRegistration, ops_to_replace, delegate);
+        context, kSubgraphRegistration, ops_to_replace.get(), delegate);
+    if (manage_build_step && !weight_cache.StopBuildStep()) {
+      TF_LITE_KERNEL_LOG(context,
+                         "XNNPack delegate failed to stop cache build step.");
+      return kTfLiteError;
+    }
   }
-  TfLiteIntArrayFree(ops_to_replace);
   if (status != kTfLiteOk) {
     return status;
   }
