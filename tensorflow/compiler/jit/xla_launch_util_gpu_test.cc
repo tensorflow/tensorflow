@@ -319,17 +319,33 @@ TEST_F(
                           pjrt_client_->LookupAddressableDevice(
                               xla::LocalDeviceId(device_->parsed_name().id)));
 
-  // First call: LockVariables upgrades the read-only variable's lock from
-  // shared to exclusive because its TensorBuffer is not yet a PjRtTensorBuffer,
-  // and PreparePjRtExecutableArguments persists the PjRtTensorBuffer in-place
-  // even when another Tensor (e.g., SnapshotResourceVariables) shares the
-  // underlying buffer.
+  // Without `upgrade_read_only_for_pjrt_tensor_buffer`, LockVariables keeps the
+  // shared reader lock even though the variable's TensorBuffer is not a
+  // PjRtTensorBuffer.
   {
     var->Ref();
     std::vector<VariableInfo> variables;
     variables.emplace_back(/*index=*/0, "read_only_var", var);
     variables[0].set_read_only();
     TF_ASSERT_OK(LockVariables(absl::MakeSpan(variables)));
+    EXPECT_FALSE(variables[0].lock_held());
+    EXPECT_TRUE(variables[0].shared_lock_held());
+  }
+
+  // First PJRT call: LockVariables upgrades the read-only variable's lock from
+  // shared to exclusive when `upgrade_read_only_for_pjrt_tensor_buffer` is true
+  // because its TensorBuffer is not yet a PjRtTensorBuffer, and
+  // PreparePjRtExecutableArguments persists the PjRtTensorBuffer in-place even
+  // when another Tensor (e.g., SnapshotResourceVariables) shares the underlying
+  // buffer.
+  {
+    var->Ref();
+    std::vector<VariableInfo> variables;
+    variables.emplace_back(/*index=*/0, "read_only_var", var);
+    variables[0].set_read_only();
+    TF_ASSERT_OK(
+        LockVariables(absl::MakeSpan(variables),
+                      /*upgrade_read_only_for_pjrt_tensor_buffer=*/true));
     EXPECT_TRUE(variables[0].lock_held());
     EXPECT_FALSE(variables[0].shared_lock_held());
 
@@ -362,7 +378,9 @@ TEST_F(
     std::vector<VariableInfo> variables;
     variables.emplace_back(/*index=*/0, "read_only_var", var);
     variables[0].set_read_only();
-    TF_ASSERT_OK(LockVariables(absl::MakeSpan(variables)));
+    TF_ASSERT_OK(
+        LockVariables(absl::MakeSpan(variables),
+                      /*upgrade_read_only_for_pjrt_tensor_buffer=*/true));
     EXPECT_FALSE(variables[0].lock_held());
     EXPECT_TRUE(variables[0].shared_lock_held());
   }

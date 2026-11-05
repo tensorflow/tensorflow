@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "xla/tsl/platform/errors.h"
@@ -225,7 +224,8 @@ absl::Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
   return absl::OkStatus();
 }
 
-absl::Status LockVariables(absl::Span<VariableInfo*> variables) {
+absl::Status LockVariables(absl::Span<VariableInfo*> variables,
+                           bool upgrade_read_only_for_pjrt_tensor_buffer) {
   std::vector<int> lock_order(variables.size());
   std::iota(lock_order.begin(), lock_order.end(), 0);
 
@@ -265,14 +265,14 @@ absl::Status LockVariables(absl::Span<VariableInfo*> variables) {
       VLOG(4) << "Acquiring reader lock for variable "
               << reinterpret_cast<void*>(variable);
       mu->lock_shared();
-      const TensorBuffer* buf = variable->is_initialized
-                                    ? DMAHelper::buffer(variable->tensor())
-                                    : nullptr;
+      const TensorBuffer* buf =
+          (upgrade_read_only_for_pjrt_tensor_buffer && variable->is_initialized)
+              ? DMAHelper::buffer(variable->tensor())
+              : nullptr;
       if (buf != nullptr &&
           const_cast<TensorBuffer*>(buf)->root_buffer() == buf &&
           variable->tensor()->TotalBytes() > 0 &&
           AsyncValueTensor::FromTensor(variable->tensor()) == nullptr &&
-          GetXlaOpsCommonFlags()->tf_xla_use_device_api.IsEnabledForGpu() &&
           dynamic_cast<const PjRtTensorBuffer*>(buf) == nullptr) {
         // Upgrade to an exclusive lock so PreparePjRtExecutableArguments can
         // safely update the variable's TensorBuffer to a PjRtTensorBuffer.
@@ -294,13 +294,15 @@ absl::Status LockVariables(absl::Span<VariableInfo*> variables) {
   return absl::OkStatus();
 }
 
-absl::Status LockVariables(absl::Span<VariableInfo> variables) {
+absl::Status LockVariables(absl::Span<VariableInfo> variables,
+                           bool upgrade_read_only_for_pjrt_tensor_buffer) {
   std::vector<VariableInfo*> variable_ptrs;
   variable_ptrs.reserve(variables.size());
   for (auto& var : variables) {
     variable_ptrs.push_back(&var);
   }
-  return LockVariables(absl::MakeSpan(variable_ptrs));
+  return LockVariables(absl::MakeSpan(variable_ptrs),
+                       upgrade_read_only_for_pjrt_tensor_buffer);
 }
 
 absl::Status SnapshotResourceVariables(
