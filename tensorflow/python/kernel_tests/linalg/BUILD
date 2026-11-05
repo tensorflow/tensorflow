@@ -145,7 +145,7 @@ cuda_py_strict_test(
     name = "linalg_ops_test",
     size = "medium",
     srcs = ["linalg_ops_test.py"],
-    shard_count = 8,
+    shard_count = 20,
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python/eager:def_function",
