@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
 
+#include <cmath>
+#include <cstdint>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -41,6 +43,35 @@ namespace TFL {
 namespace {
 
 #define DEBUG_TYPE "canonicalize-boundary-value"
+
+// Checks whether `dense_attr` contains any +/-Inf values. For splats and common
+// float types (f32, f64, f16, bf16), inspects raw values directly to avoid
+// constructing an APFloat for every element on large finite constant tensors,
+// falling back to `getValues<APFloat>()` for other float types.
+bool HasInfiniteElement(DenseElementsAttr dense_attr, FloatType float_type) {
+  if (dense_attr.isSplat()) {
+    return dense_attr.getSplatValue<APFloat>().isInfinity();
+  }
+  if (float_type.isF32()) {
+    return llvm::any_of(dense_attr.getValues<float>(),
+                        [](float val) { return std::isinf(val); });
+  }
+  if (float_type.isF64()) {
+    return llvm::any_of(dense_attr.getValues<double>(),
+                        [](double val) { return std::isinf(val); });
+  }
+  if (float_type.isF16() || float_type.isBF16()) {
+    const uint16_t inf_bits = float_type.isBF16() ? 0x7F80 : 0x7C00;
+    ArrayRef<char> raw_data = dense_attr.getRawData();
+    ArrayRef<uint16_t> words(reinterpret_cast<const uint16_t*>(raw_data.data()),
+                             raw_data.size() / sizeof(uint16_t));
+    return llvm::any_of(words, [inf_bits](uint16_t bits) {
+      return (bits & 0x7FFF) == inf_bits;
+    });
+  }
+  return llvm::any_of(dense_attr.getValues<APFloat>(),
+                      [](const APFloat& val) { return val.isInfinity(); });
+}
 
 // Clamp constant -Inf/Inf to MIN/MAX float value.
 template <typename OpTy>
@@ -70,6 +101,12 @@ struct ClampInfToMinMaxFloat : public OpRewritePattern<OpTy> {
     ShapedType tensor_type = llvm::cast<ShapedType>(type);
     auto float_type = dyn_cast<FloatType>(tensor_type.getElementType());
     if (!float_type) return failure();
+
+    // Fast path for DenseElementsAttr to avoid constructing an APFloat for
+    // every element via getValues<APFloat>() when all elements are finite.
+    if (auto dense_attr = llvm::dyn_cast<DenseElementsAttr>(tensor_attr)) {
+      if (!HasInfiniteElement(dense_attr, float_type)) return failure();
+    }
 
     auto vals_orig = tensor_attr.getValues<APFloat>();
     // If all values are finite, no need to rewrite.
