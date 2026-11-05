@@ -23,7 +23,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status_matchers.h"
-#include "absl/status/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
