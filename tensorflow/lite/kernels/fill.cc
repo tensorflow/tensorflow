@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
 #include <stdint.h>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -109,15 +110,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus FillString(const TfLiteTensor* value, TfLiteTensor* output) {
+TfLiteStatus FillString(TfLiteContext* context, const TfLiteTensor* value,
+                        TfLiteTensor* output) {
   DynamicBuffer buffer;
   const auto string_ref = GetString(value, 0);
-  int n = 1;
-  for (int i = 0; i < output->dims->size; ++i) {
-    n *= output->dims->data[i];
+  const int64_t total_elements = NumElements(output);
+  if (total_elements < 0 ||
+      total_elements > std::numeric_limits<int32_t>::max()) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Fill output total elements (%lld) out of range for string tensor.",
+        total_elements);
+    return kTfLiteError;
   }
-  for (int i = 0; i < n; ++i) {
-    buffer.AddString(string_ref.str, string_ref.len);
+  for (int64_t i = 0; i < total_elements; ++i) {
+    TF_LITE_ENSURE_OK(
+        context, buffer.AddString(string_ref.str, string_ref.len));
   }
   buffer.WriteToTensor(output, /*new_shape=*/nullptr);
   return kTfLiteOk;
@@ -137,8 +145,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   }
   if (value->type == kTfLiteString) {
-    FillString(value, output);
-    return kTfLiteOk;
+    return FillString(context, value, output);
   }
 #define TF_LITE_FILL(data_type)                                               \
   reference_ops::Fill(GetTensorShape(value), GetTensorData<data_type>(value), \
