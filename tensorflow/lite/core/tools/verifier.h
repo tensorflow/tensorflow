@@ -32,7 +32,7 @@ namespace tflite {
 
 class AlwaysTrueResolver : public OpResolver {
  public:
-  AlwaysTrueResolver() {}
+  AlwaysTrueResolver() = default;
   const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
                                    int version) const override {
     static TfLiteRegistration null_registration = {nullptr, nullptr, nullptr,
