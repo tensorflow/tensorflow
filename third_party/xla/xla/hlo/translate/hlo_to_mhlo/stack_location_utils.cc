@@ -92,8 +92,8 @@ mlir::Location GetLocationFromFrameIndex(
   // the shape CallSiteLoc::get(leaf, parents) produces.
   for (const auto& [pending_id, frame] : llvm::reverse(frames)) {
     mlir::Location file_location = GetFileLineColLocOrRange(
-        builder.getContext(), frame.file_name, frame.line, frame.column,
-        frame.end_line, frame.end_column);
+        builder.getContext(), xla::ToStringRef(frame.file_name), frame.line,
+        frame.column, frame.end_line, frame.end_column);
     mlir::Location frame_location = mlir::NameLoc::get(
         builder.getStringAttr(xla::ToStringRef(frame.function_name)),
         file_location);
