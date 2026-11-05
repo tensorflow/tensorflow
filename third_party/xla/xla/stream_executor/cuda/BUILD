@@ -1893,6 +1893,7 @@ cc_library(
         ":multi_gpu_barrier_kernel_cuda",
         ":ragged_all_to_all_device_kernel_cuda",
         ":ragged_all_to_all_kernel_cuda",
+        "//xla/tsl/cuda:nccl",
     ]),
     alwayslink = 1,
 )
@@ -1905,7 +1906,10 @@ cc_library(
 
 cc_library(
     name = "stream_executor_cuda",
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":cuda_platform_id",
         "//xla/stream_executor:dnn",
