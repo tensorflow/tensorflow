@@ -20,7 +20,8 @@ limitations under the License.
 // this file (such as changing struct field order/layout or removing/renumbering
 // enumerators) requires bumping the version macros of ALL FFI extensions that
 // include and use these shared kernel definitions (e.g.,
-// XLA_FFI_Extension_Record in record_c_api.h).
+// XLA_FFI_Extension_Record in record_c_api.h and
+// XLA_FFI_Extension_KernelRegistry in kernel_registry_c_api.h).
 
 #include <stddef.h>
 #include <stdint.h>
@@ -35,7 +36,12 @@ extern "C" {
 // Shared Kernel Types
 //===----------------------------------------------------------------------===//
 
+// Opaque handle to a device kernel registered with the XLA runtime.
+typedef struct XLA_FFI_Kernel XLA_FFI_Kernel;
+
 typedef enum XLA_FFI_SourceFormat {
+  XLA_FFI_SourceFormat_PTX = 0,
+  XLA_FFI_SourceFormat_CUBIN = 1,
   XLA_FFI_SourceFormat_FUNCTION_PTR = 2,
 } XLA_FFI_SourceFormat;
 

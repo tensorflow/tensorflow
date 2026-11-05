@@ -760,6 +760,13 @@ class Binding {
     return {std::move(*this)};
   }
 
+  template <template <ExecutionStage> typename T>
+  Binding<stage, Ts..., internal::CtxTag<T<stage>>> Ctx() && {
+    static_assert(internal::IsStageCompatibleCtx<T<stage>, stage>::value,
+                  "context type is not compatible with the execution stage");
+    return {std::move(*this)};
+  }
+
   Binding<stage, Ts..., internal::CtxTag<Context>> Ctx() && {
     return {std::move(*this)};
   }

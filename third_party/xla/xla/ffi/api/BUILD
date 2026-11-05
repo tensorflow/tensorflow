@@ -56,6 +56,9 @@ filegroup(
         "ffi.h",
         "kernel_api.h",
         "kernel_c_api.h",
+        "kernel_registry_api.h",
+        "kernel_registry_c_api.h",
+        "kernel_registry_ffi.h",
         "record_api.h",
         "record_c_api.h",
         "record_ffi.h",
@@ -68,6 +71,7 @@ filegroup(
         "api.h",
         "collectives_api.h",
         "kernel_api.h",
+        "kernel_registry_api.h",
         "record_api.h",
     ],
 )
@@ -78,6 +82,7 @@ filegroup(
         "c_api.h",
         "collectives_c_api.h",
         "kernel_c_api.h",
+        "kernel_registry_c_api.h",
         "record_c_api.h",
     ],
 )
@@ -116,6 +121,27 @@ cc_library(
     hdrs = ["kernel_api.h"],
     deps = [
         ":c_api",
+    ],
+)
+
+cc_library(
+    name = "kernel_registry_api",
+    hdrs = ["kernel_registry_api.h"],
+    deps = [
+        ":api",
+        ":c_api",
+        ":kernel_api",
+    ],
+)
+
+cc_library(
+    name = "kernel_registry_ffi",
+    hdrs = ["kernel_registry_ffi.h"],
+    deps = [
+        ":api",
+        ":c_api",
+        ":ffi",
+        ":kernel_registry_api",
     ],
 )
 
@@ -192,6 +218,26 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_registry_ffi_test",
+    srcs = ["kernel_registry_ffi_test.cc"],
+    deps = [
+        ":api",
+        ":c_api",
+        ":ffi",
+        ":kernel_api",
+        ":kernel_registry_api",
+        ":kernel_registry_ffi",
+        "//xla/ffi:call_frame",
+        "//xla/ffi:ffi_api",  # buildcleaner: keep
+        "//xla/ffi:invoke",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest",
     ],
 )
 
