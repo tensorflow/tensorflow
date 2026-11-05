@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
+#include <cstddef>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -27,6 +28,33 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
+
+// Builds the interpreter without allocating tensors (allocate_and_delegate =
+// false) so AllocateTensors() can be called explicitly and its failure
+// observed, instead of CHECK-failing inside BuildInterpreter().
+class DynamicAddNOpModel : public SingleOpModel {
+ public:
+  DynamicAddNOpModel(const std::vector<TensorData>& inputs,
+                     const TensorData& output) {
+    int num_inputs = inputs.size();
+    std::vector<std::vector<int>> input_shapes;
+    for (int i = 0; i < num_inputs; ++i) {
+      inputs_.push_back(AddInput(inputs[i]));
+      input_shapes.push_back(GetShape(inputs_[i]));
+    }
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_ADD_N, BuiltinOptions_AddNOptions,
+                 CreateAddNOptions(builder_).Union());
+    BuildInterpreter(input_shapes, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+ private:
+  std::vector<int> inputs_;
+  int output_;
+};
 
 TEST(FloatAddNOpModel, AddMultipleTensors) {
   FloatAddNOpModel m({{TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -62,6 +90,32 @@ TEST(IntegerAddNOpModel, AddMultipleTensors) {
   m.PopulateTensor<int32_t>(m.input(2), {10, -5, 1, -2});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-9, -1, 11, 11}));
+}
+
+TEST(IntegerAddNOpModel, OverflowScratchBuffer) {
+  if (sizeof(size_t) <= 4) {
+    // On 32-bit platforms the >4GB buffer overflows BytesRequired() while the
+    // model is validated, so InterpreterBuilder rejects it before add_n's
+    // Prepare() runs. That is a different (also safe) rejection path, so there
+    // is nothing for this test to observe.
+    GTEST_SKIP() << "Requires a 64-bit address space to reach Prepare().";
+  }
+  // Each input holds 1,073,741,825 elements, which still fits in int32_t, so
+  // CheckedShapeProductToInt() succeeds and it is the scratch multiplication
+  // that has to reject the model: with four inputs thread_count is
+  // min(max(1, 4 / 2), max_num_threads) == 2, and
+  // 2 * 1,073,741,825 = 2,147,483,650 > INT32_MAX. SetNumThreads() pins
+  // max_num_threads so this does not depend on the host's core count.
+  // allocate_and_delegate=false lets us observe the AllocateTensors() failure
+  // instead of BuildInterpreter() CHECK-failing, and Prepare() returns the
+  // error before any large buffer is allocated.
+  DynamicAddNOpModel m({{TensorType_INT32, {1, 1073741825}},
+                        {TensorType_INT32, {1, 1073741825}},
+                        {TensorType_INT32, {1, 1073741825}},
+                        {TensorType_INT32, {1, 1073741825}}},
+                       {TensorType_INT32, {}});
+  m.SetNumThreads(4);
+  EXPECT_NE(m.AllocateTensors(), kTfLiteOk);
 }
 
 }  // namespace
