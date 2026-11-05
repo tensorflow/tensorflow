@@ -29,10 +29,13 @@ limitations under the License.
 namespace tsl {
 
 namespace internal {
-// TODO(ezhulenev): Replace with C++20 concept when available.
+// TODO(ezhulenev): Replace with C++20 concept when available
+// (`std::derived_from<Derived, Base> && std::convertible_to<Derived*, Base*>`).
 // https://en.cppreference.com/w/cpp/concepts/derived_from
 template <typename Derived, typename Base>
-using DerivedFrom = typename std::enable_if_t<std::is_base_of_v<Base, Derived>>;
+using DerivedFrom =
+    typename std::enable_if_t<std::is_base_of_v<Base, Derived> &&
+                              std::is_convertible_v<Derived*, Base*>>;
 }  // namespace internal
 
 inline std::atomic<size_t> total_reference_counted_objects;
@@ -62,6 +65,10 @@ inline void DropNumReferenceCountedObjects() {
 //
 // This class intentionally doesn't have a virtual destructor or anything else
 // that would require a vtable, but subclasses can have one if they choose.
+//
+// If `SubClass` is `const`-qualified (e.g. `ReferenceCounted<const Foo>`),
+// `AddRef()`, `DropRef()`, and `Destroy()` are `const` methods and may be
+// called on `const` values.
 template <typename SubClass>
 class ReferenceCounted {
  public:
@@ -117,6 +124,63 @@ class ReferenceCounted {
 
  private:
   std::atomic<unsigned> ref_count_;
+};
+
+template <typename SubClass>
+class ReferenceCounted<const SubClass> {
+ public:
+  ReferenceCounted() : ReferenceCounted(1) {}
+  explicit ReferenceCounted(unsigned ref_count) : ref_count_(ref_count) {
+    AddNumReferenceCountedObjects();
+  }
+
+  ~ReferenceCounted() {
+    assert(ref_count_.load() == 0 &&
+           "Shouldn't destroy a reference counted object with references!");
+    DropNumReferenceCountedObjects();
+  }
+
+  // Not copyable or movable.
+  ReferenceCounted(const ReferenceCounted&) = delete;
+  ReferenceCounted& operator=(const ReferenceCounted&) = delete;
+
+  // Add a new reference to this object.
+  void AddRef() const {
+    assert(ref_count_.load(std::memory_order_relaxed) >= 1);
+    // It is OK to use std::memory_order_relaxed here as it does not affect the
+    // ownership state of the object.
+    ref_count_.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  // Drop a reference to this object, potentially deallocating it.
+  void DropRef() const {
+    assert(ref_count_.load(std::memory_order_relaxed) > 0);
+
+    // If ref_count_==1, this object is owned only by the caller. Bypass a
+    // locked op in that case.
+    if (ref_count_.load(std::memory_order_acquire) == 1 ||
+        ref_count_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+      // Make assert in ~ReferenceCounted happy
+      assert((ref_count_.store(0, std::memory_order_relaxed), true));
+      static_cast<const SubClass*>(this)->Destroy();
+    }
+  }
+
+  // Return reference count. This should be used for testing and debugging only.
+  uint32_t NumRef() const { return ref_count_.load(); }
+
+  // Return true if reference count is 1.
+  bool IsUnique() const {
+    return ref_count_.load(std::memory_order_acquire) == 1;
+  }
+
+ protected:
+  // Subclasses are allowed to customize this, but the default implementation of
+  // Destroy() just deletes the pointer.
+  void Destroy() const { delete static_cast<const SubClass*>(this); }
+
+ private:
+  mutable std::atomic<unsigned> ref_count_;
 };
 
 // This is a smart pointer that keeps the specified reference counted value
@@ -206,10 +270,12 @@ class ABSL_NULLABILITY_COMPATIBLE RCReference {
     swap(pointer_, other.pointer_);
   }
 
-  bool operator==(const RCReference& ref) const {
+  template <typename R>
+  bool operator==(const RCReference<R>& ref) const {
     return pointer_ == ref.pointer_;
   }
-  bool operator!=(const RCReference& ref) const {
+  template <typename R>
+  bool operator!=(const RCReference<R>& ref) const {
     return pointer_ != ref.pointer_;
   }
 
