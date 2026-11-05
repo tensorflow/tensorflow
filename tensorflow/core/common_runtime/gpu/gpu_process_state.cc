@@ -276,7 +276,7 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(
   }
 
   AllocatorParts& allocator_parts = gpu_allocators_[tf_device_id.value()];
-  if (allocator_parts.counter.get() == nullptr) {
+  if (allocator_parts.counter == nullptr) {
     if (allocator_parts.bfc_allocator == nullptr) {
       return nullptr;
     }
