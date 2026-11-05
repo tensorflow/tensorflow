@@ -279,6 +279,7 @@ limitations under the License.
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
+#include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/early_exit_compilation_result.h"
 #include "xla/service/gpu/export_hlo.h"
 #include "xla/service/gpu/flag_utils.h"
@@ -3007,6 +3008,17 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           alias_info.get(), debug_opts.xla_debug_buffer_assignment_show_max());
   BufferAssignmentProto buffer_assignment_proto =
       res.compile_module_results.buffer_assignment->ToProto();
+
+  // The constants' content usually aliases the literals of `module` (see
+  // `LiteralToXlaFormat`). If the module doesn't get embedded in the
+  // executable, it is destroyed at the end of this function, so the constants
+  // need to own a copy of their content.
+  if (!options.embed_hlo_module) {
+    for (GpuExecutable::ConstantInfo& constant :
+         res.compile_module_results.constants) {
+      constant.content = std::move(constant.content).ToOwned();
+    }
+  }
 
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<GpuExecutable> gpu_executable,
