@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/framework/rendezvous.h"
 
+#include <cstdlib>
+#include <functional>
+#include <string>
+#include <utility>
+
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/cancellation.h"

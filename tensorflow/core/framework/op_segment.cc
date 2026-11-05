@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_segment.h"
 
+#include <string>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
