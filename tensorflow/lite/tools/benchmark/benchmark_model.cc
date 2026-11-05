@@ -28,7 +28,9 @@ limitations under the License.
 
 #include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_listener.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
+#include "tensorflow/lite/tools/benchmark/gpu_memory_profiling_listener.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
@@ -36,6 +38,8 @@ namespace benchmark {
 using tensorflow::StatWithPercentiles;
 
 constexpr int kMemoryCheckIntervalMs = 50;
+constexpr int kGpuMemoryCheckIntervalMs =
+    GpuMemoryProfilingListener::kDefaultSamplingIntervalMs;
 
 #ifdef __linux__
 void GetRssStats(size_t* vsize, size_t* rss, size_t* shared, size_t* code) {
@@ -73,6 +77,10 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
                   BenchmarkParam::Create<bool>(false));
   params.AddParam("memory_footprint_check_interval_ms",
                   BenchmarkParam::Create<int32_t>(kMemoryCheckIntervalMs));
+  params.AddParam("enable_gpu_memory_monitor",
+                  BenchmarkParam::Create<bool>(false));
+  params.AddParam("gpu_memory_monitor_interval_ms",
+                  BenchmarkParam::Create<int32_t>(kGpuMemoryCheckIntervalMs));
   params.AddParam("gpu_invoke_loop_times", BenchmarkParam::Create<int32_t>(1));
   return params;
 }
@@ -175,6 +183,14 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
                           "The interval in millisecond between two consecutive "
                           "memory footprint checks. This is only used when "
                           "--report_peak_memory_footprint is set to true."),
+      CreateFlag<bool>(
+          "enable_gpu_memory_monitor", &params_,
+          "Report opt-in GPU memory usage via an external BenchmarkListener "
+          "without altering default memory metrics."),
+      CreateFlag<int32_t>(
+          "gpu_memory_monitor_interval_ms", &params_,
+          "The interval in milliseconds between two consecutive background "
+          "checks when --enable_gpu_memory_monitor is set to true."),
       CreateFlag<int32_t>(
           "gpu_invoke_loop_times", &params_,
           "Number of GPU delegate invoke loop iterations. If > 0 then reported "
@@ -206,6 +222,10 @@ void BenchmarkModel::LogParams() {
                       "Report the peak memory footprint", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "memory_footprint_check_interval_ms",
                       "Memory footprint check interval (ms)", verbose);
+  LOG_BENCHMARK_PARAM(bool, "enable_gpu_memory_monitor",
+                      "Enable GPU memory monitor", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "gpu_memory_monitor_interval_ms",
+                      "GPU memory monitor check interval (ms)", verbose);
 #ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
   LOG_BENCHMARK_PARAM(int32_t, "gpu_invoke_loop_times",
                       "Number of GPU delegate invoke loop iterations. Latency "
@@ -290,6 +310,19 @@ TfLiteStatus BenchmarkModel::ValidateParams() {
                            kMemoryCheckIntervalMs);
     }
   }
+  if (params_.Get<bool>("enable_gpu_memory_monitor")) {
+    const int32_t gpu_interval =
+        params_.Get<int32_t>("gpu_memory_monitor_interval_ms");
+    if (gpu_interval <= 0) {
+      TFLITE_LOG(WARN) << "--gpu_memory_monitor_interval_ms is set to "
+                       << gpu_interval
+                       << " (ms), This value is invalid, and it will be set to "
+                          "the default value "
+                       << kGpuMemoryCheckIntervalMs << " (ms).";
+      params_.Set<int32_t>("gpu_memory_monitor_interval_ms",
+                           kGpuMemoryCheckIntervalMs);
+    }
+  }
   return kTfLiteOk;
 }
 
@@ -305,10 +338,23 @@ TfLiteStatus BenchmarkModel::Run() {
 
   auto peak_memory_reporter = MayCreateMemoryUsageMonitor();
   if (peak_memory_reporter != nullptr) peak_memory_reporter->Start();
+  std::unique_ptr<BenchmarkListener> gpu_memory_listener =
+      MayCreateGpuMemoryProfilingListener();
   const double model_size_mb = MayGetModelFileSize() / 1e6;
   const auto start_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_start_us = profiling::time::NowMicros();
   TF_LITE_ENSURE_STATUS(Init());
+  struct ScopedListenerRegistration {
+    BenchmarkListeners* listeners;
+    BenchmarkListener* listener;
+    ScopedListenerRegistration(BenchmarkListeners* l, BenchmarkListener* item)
+        : listeners(l), listener(item) {
+      if (listener != nullptr) listeners->AddListener(listener);
+    }
+    ~ScopedListenerRegistration() {
+      if (listener != nullptr) listeners->RemoveListener(listener);
+    }
+  } scoped_gpu_listener(&listeners_, gpu_memory_listener.get());
   const auto init_end_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_end_us = profiling::time::NowMicros();
   int64_t startup_latency_us = initialization_end_us - initialization_start_us;
@@ -395,6 +441,16 @@ BenchmarkModel::MayCreateMemoryUsageMonitor() const {
   return std::make_unique<profiling::memory::MemoryUsageMonitor>(
 
       params_.Get<int32_t>("memory_footprint_check_interval_ms"));
+}
+
+std::unique_ptr<BenchmarkListener>
+BenchmarkModel::MayCreateGpuMemoryProfilingListener() const {
+  if (!params_.Get<bool>("enable_gpu_memory_monitor")) return nullptr;
+
+  auto listener = std::make_unique<GpuMemoryProfilingListener>(
+      params_.Get<int32_t>("gpu_memory_monitor_interval_ms"));
+  listener->Start();
+  return listener;
 }
 
 }  // namespace benchmark
