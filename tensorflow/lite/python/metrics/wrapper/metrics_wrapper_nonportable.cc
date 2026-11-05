@@ -26,7 +26,7 @@ namespace metrics_wrapper {
 MetricsWrapper::MetricsWrapper(std::unique_ptr<MetricsExporter> exporter)
     : exporter_(std::move(exporter)) {}
 
-MetricsWrapper::~MetricsWrapper() {}
+MetricsWrapper::~MetricsWrapper() = default;
 
 MetricsWrapper* MetricsWrapper::CreateMetricsWrapper(
     const std::string& session_id) {
