@@ -1689,6 +1689,38 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "compile_module_to_llvm_ir_test",
+    srcs = ["compile_module_to_llvm_ir_test.cc"],
+    tags = ["gpu"],
+    deps = [
+        ":alias_info",
+        ":compile_module_to_llvm_ir",
+        ":mlir_context_pool",
+        ":target_constants",
+        "//xla:shape_util",
+        "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/gpu/codegen:cubin_custom_kernel_compiler",
+        "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:buffer_value",
+        "//xla/service:gpu_topology",
+        "//xla/service/llvm_ir:llvm_command_line_options",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
 cc_library(
     name = "fusion_dispatch_pipeline",
     srcs = ["fusion_dispatch_pipeline.cc"],

@@ -704,7 +704,8 @@ AsyncThunkSequence EmitBitonicSort(const HloSortInstruction* sort,
 
   std::vector<tsl::Future<std::unique_ptr<Thunk>>> thunks;
   bool emit_iota_operands = true;
-  auto emit_thunk = [&](absl::Span<const int64_t> xor_masks) -> absl::Status {
+  auto emit_thunk = [&](absl::Span<const int64_t> xor_masks)
+      -> tsl::Future<std::unique_ptr<Thunk>> {
     VLOG(2) << absl::StreamFormat(
         "%s uses kernel for xor masks [%s]", op_name,
         absl::StrJoin(xor_masks, ", ", [](std::string* out, int64_t xor_mask) {
@@ -750,47 +751,43 @@ AsyncThunkSequence EmitBitonicSort(const HloSortInstruction* sort,
             sanitized_kernel_name, /*unroll_factor=*/0, std::move(mlir_source),
             std::move(borrowed_context));
 
-    thunks.push_back(
-        std::move(llvm_source_future)
-            .Map([ir_emitter_context, sanitized_kernel_name, kernel_arguments,
-                  launch_dimensions, thunk_info = std::move(thunk_info),
-                  use_pdl](LlvmKernelSource source) mutable
-                     -> Future<std::unique_ptr<Thunk>> {
-              llvm::orc::ThreadSafeModule safe_module =
-                  std::move(source).thread_safe_module();
-              ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
-                  ir_emitter_context->gpu_device_info(), launch_dimensions,
-                  sanitized_kernel_name, ir_emitter_context->data_layout(),
-                  ir_emitter_context->target_triple(),
-                  safe_module.getModuleUnlocked()));
+    return std::move(llvm_source_future)
+        .Map([ir_emitter_context, sanitized_kernel_name, kernel_arguments,
+              launch_dimensions, thunk_info = std::move(thunk_info),
+              use_pdl](LlvmKernelSource source) mutable
+                 -> Future<std::unique_ptr<Thunk>> {
+          llvm::orc::ThreadSafeModule safe_module =
+              std::move(source).thread_safe_module();
+          ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
+              ir_emitter_context->gpu_device_info(), launch_dimensions,
+              sanitized_kernel_name, ir_emitter_context->data_layout(),
+              ir_emitter_context->target_triple(),
+              safe_module.getModuleUnlocked()));
 
-              int devices_in_process =
-                  ir_emitter_context->gpu_topology().num_devices_per_process();
-              GpuKernelSpec spec{sanitized_kernel_name, launch_dimensions,
-                                 kernel_arguments, std::nullopt, use_pdl};
-              return ir_emitter_context->kernel_compiler()
-                  ->CompileToTargetBinary(
-                      LlvmKernelSource(std::move(safe_module)), spec)
-                  .Map([spec = std::move(spec),
-                        thunk_info = std::move(thunk_info),
-                        devices_in_process](std::vector<uint8_t> cubin) mutable
-                           -> absl::StatusOr<std::unique_ptr<Thunk>> {
-                    ABSL_ASSIGN_OR_RETURN(
-                        CustomKernel custom_kernel,
-                        kernel::CreateOwnedCubinCustomKernel(
-                            std::string{spec.name()}, std::move(cubin),
-                            spec.kernel_arguments().args().size(),
-                            spec.launch_dimensions().block_counts(),
-                            spec.launch_dimensions().thread_counts_per_block(),
-                            /*shared_memory_bytes=*/0));
-                    return std::make_unique<CustomKernelThunk>(
-                        std::move(thunk_info), std::move(custom_kernel),
-                        spec.kernel_arguments(), devices_in_process,
-                        spec.use_pdl());
-                  });
-            }));
-
-    return absl::OkStatus();
+          int devices_in_process =
+              ir_emitter_context->gpu_topology().num_devices_per_process();
+          GpuKernelSpec spec{sanitized_kernel_name, launch_dimensions,
+                             kernel_arguments, std::nullopt, use_pdl};
+          return ir_emitter_context->kernel_compiler()
+              ->CompileToTargetBinary(LlvmKernelSource(std::move(safe_module)),
+                                      spec)
+              .Map([spec = std::move(spec), thunk_info = std::move(thunk_info),
+                    devices_in_process](std::vector<uint8_t> cubin) mutable
+                       -> absl::StatusOr<std::unique_ptr<Thunk>> {
+                ABSL_ASSIGN_OR_RETURN(
+                    CustomKernel custom_kernel,
+                    kernel::CreateOwnedCubinCustomKernel(
+                        std::string{spec.name()}, std::move(cubin),
+                        spec.kernel_arguments().args().size(),
+                        spec.launch_dimensions().block_counts(),
+                        spec.launch_dimensions().thread_counts_per_block(),
+                        /*shared_memory_bytes=*/0));
+                return std::make_unique<CustomKernelThunk>(
+                    std::move(thunk_info), std::move(custom_kernel),
+                    spec.kernel_arguments(), devices_in_process,
+                    spec.use_pdl());
+              });
+        });
   };
 
   std::vector<int64_t> xor_masks;
@@ -804,21 +801,21 @@ AsyncThunkSequence EmitBitonicSort(const HloSortInstruction* sort,
       }
       if (xor_mask >= tile_size) {
         if (!xor_masks.empty()) {
-          ABSL_RETURN_IF_ERROR(emit_thunk(xor_masks));
+          thunks.push_back(emit_thunk(xor_masks));
           xor_masks.clear();
         }
-        ABSL_RETURN_IF_ERROR(emit_thunk({xor_mask}));
+        thunks.push_back(emit_thunk({xor_mask}));
       } else {
         xor_masks.push_back(xor_mask);
       }
     }
   }
   if (!xor_masks.empty()) {
-    ABSL_RETURN_IF_ERROR(emit_thunk(xor_masks));
+    thunks.push_back(emit_thunk(xor_masks));
   }
   if (num_stages == 0 &&
       absl::c_any_of(sort->operands(), HloPredicateIsOp<HloOpcode::kIota>)) {
-    ABSL_RETURN_IF_ERROR(emit_thunk({}));
+    thunks.push_back(emit_thunk({}));
   }
   return tsl::JoinFutures(absl::MakeSpan(thunks))
       .Map([](std::vector<std::unique_ptr<Thunk>> thunks) {

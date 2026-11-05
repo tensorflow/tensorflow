@@ -266,23 +266,25 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   Future<ThunkSequence> future_thunks =
       thunk_emitter.EmitHloEntryComputation(hlo_module);
 
+  Future<std::vector<uint8_t>> future_constants_binary;
   llvm::Module* constants_module = thunk_emitter.constants_module();
   const bool has_constants_module =
       !constants_module->empty() || !constants_module->global_empty();
   if (has_constants_module) {
-    ABSL_ASSIGN_OR_RETURN(
-        results.constants_binary,
-        compiler
-            ->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule(),
-                                    /*kernel_spec=*/std::nullopt)
-            .Await());
+    future_constants_binary = compiler->CompileToTargetBinary(
+        thunk_emitter.ConsumeConstantsModule(), /*kernel_spec=*/std::nullopt);
   } else {
     VLOG(2) << "Constants LLVM module is empty; skipping target compilation.";
   }
 
-  ABSL_ASSIGN_OR_RETURN(ThunkSequence thunks, std::move(future_thunks).Await());
+  absl::StatusOr<ThunkSequence> thunks = std::move(future_thunks).Await();
+  if (has_constants_module) {
+    ABSL_ASSIGN_OR_RETURN(results.constants_binary,
+                     std::move(future_constants_binary).Await());
+  }
+  ABSL_RETURN_IF_ERROR(thunks.status());
   results.executable =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, std::move(thunks));
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, std::move(*thunks));
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).

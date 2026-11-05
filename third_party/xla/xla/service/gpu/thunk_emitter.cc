@@ -586,13 +586,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
 
 Future<ThunkSequence> ThunkEmitter::EmitConditional(
     const HloInstruction* instr) {
+  ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                   GetAllocationSlice(instr->operand(0), {}));
   std::vector<Future<ThunkSequence>> branch_thunks;
   branch_thunks.reserve(instr->branch_count());
   for (HloComputation* comp : instr->branch_computations()) {
     branch_thunks.emplace_back(EmitHloComputation(comp));
   }
-  ABSL_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                   GetAllocationSlice(instr->operand(0), {}));
 
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
