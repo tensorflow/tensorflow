@@ -73,7 +73,7 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
       pool_ = std::make_unique<Eigen::ThreadPool>(num_threads);
     }
   }
-  ~EigenThreadPoolWrapper() override {}
+  ~EigenThreadPoolWrapper() override = default;
 
   void Schedule(std::function<void()> fn) override {
     if (pool_) {
