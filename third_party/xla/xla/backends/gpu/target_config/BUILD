@@ -185,8 +185,10 @@ cc_library(
         ":__subpackages__",
     ]),
     deps = [
+        ":target_config",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
+        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -203,6 +205,7 @@ xla_cc_test(
         ":target_config",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
