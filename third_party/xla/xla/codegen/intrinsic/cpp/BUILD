@@ -209,6 +209,77 @@ cc_ir_header(
     ],
 )
 
+cc_library(
+    name = "ynnpack_unary_lib",
+    srcs = ["ynnpack_unary.cc"],
+    hdrs = ["ynnpack_unary.h"],
+    copts = ["-Wno-psabi"],
+    deps = [
+        ":vector_ops",
+        "@XNNPACK//ynnpack/base/simd",
+    ],
+)
+
+cc_ir_header(
+    name = "ynnpack_unary_16_ll",
+    src = "ynnpack_unary.cc",
+    copts = [
+        "-fbuiltin",
+        "-mprefer-vector-width=128",
+    ] + select({
+        ":x86_64": ["-mfma"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":cpp_context_provider",
+        ":vector_ops",
+        ":ynnpack_unary_lib",
+        "@XNNPACK//ynnpack/base/simd",
+    ],
+)
+
+cc_ir_header(
+    name = "ynnpack_unary_32_ll",
+    src = "ynnpack_unary.cc",
+    copts = [
+        "-fbuiltin",
+        "-mprefer-vector-width=256",
+    ] + select({
+        ":x86_64": [
+            "-mavx2",
+            "-mfma",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":cpp_context_provider",
+        ":vector_ops",
+        ":ynnpack_unary_lib",
+        "@XNNPACK//ynnpack/base/simd",
+    ],
+)
+
+cc_ir_header(
+    name = "ynnpack_unary_64_ll",
+    src = "ynnpack_unary.cc",
+    copts = [
+        "-fbuiltin",
+        "-mprefer-vector-width=512",
+    ] + select({
+        ":x86_64": [
+            "-mavx512f",
+            "-mfma",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":cpp_context_provider",
+        ":vector_ops",
+        ":ynnpack_unary_lib",
+        "@XNNPACK//ynnpack/base/simd",
+    ],
+)
+
 xla_cc_test(
     name = "cpp_gen_intrinsics_test",
     srcs = ["cpp_gen_intrinsics_test.cc"],
@@ -308,6 +379,20 @@ xla_cc_test(
         "//xla:types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "ynnpack_unary_test",
+    srcs = ["ynnpack_unary_test.cc"],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":ynnpack_unary_16_ll",
+        ":ynnpack_unary_32_ll",
+        ":ynnpack_unary_64_ll",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
@@ -420,6 +505,9 @@ cc_library(
         ":expm1_32_ll",
         ":expm1_64_ll",
         ":trig_ll",
+        ":ynnpack_unary_16_ll",
+        ":ynnpack_unary_32_ll",
+        ":ynnpack_unary_64_ll",
         "//xla/codegen/intrinsic",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/log",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/exp.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
+#include "xla/codegen/intrinsic/log1p.h"
 #include "xla/codegen/intrinsic/rsqrt.h"
 #include "xla/codegen/intrinsic/tanh.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -124,6 +125,19 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAsin(
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(
     PrimitiveType prim_type, llvm::Value* value) {
   return xla::cpu::EmitErf(module(), *b(), prim_type, value);
+}
+
+// The YNNPACK log1p intrinsic has no F16 variant.
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitLog1p(
+    PrimitiveType prim_type, llvm::Value* value) {
+  if (prim_type == F16 || prim_type == BF16) {
+    return EmitUnaryF32Intrinsic<xla::codegen::intrinsics::Log1p>(
+        module(), b(), prim_type, value);
+  }
+  llvm::Function* log1p =
+      xla::codegen::intrinsics::Log1p::GetOrInsertDeclaration(
+          module(), Type::S(prim_type));
+  return b()->CreateCall(log1p, value);
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitExp(
