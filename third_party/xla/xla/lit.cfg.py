@@ -42,6 +42,7 @@ for env in [
     # Passthrough XLA_FLAGS.
     "XLA_FLAGS",
     "CUDA_VISIBLE_DEVICES",
+    "ROCM_REPO_NAME",
     # Propagate environment variables used by 'bazel coverage'.
     # These are exported by tools/coverage/collect_coverage.sh
     "BULK_COVERAGE_RUN",
