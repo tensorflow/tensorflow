@@ -440,6 +440,7 @@ cc_library(
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:linalg_passes",
     ],
 )
 
