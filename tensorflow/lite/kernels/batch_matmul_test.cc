@@ -47,13 +47,13 @@ using ::testing::ElementsAreArray;
 
 template <typename T>
 tflite::TensorType GetTFLiteType() {
-  if (std::is_same<T, int8_t>::value) {
+  if (std::is_same_v<T, int8_t>) {
     return TensorType_INT8;
   }
-  if (std::is_same<T, int16_t>::value) {
+  if (std::is_same_v<T, int16_t>) {
     return TensorType_INT16;
   }
-  if (std::is_same<T, int32_t>::value) {
+  if (std::is_same_v<T, int32_t>) {
     return TensorType_INT32;
   }
   return TensorType_FLOAT32;

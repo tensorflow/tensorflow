@@ -429,21 +429,21 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
                num_elements);
       break;
     case kTfLiteInt4:
-      if (std::is_same<FromT, float>::value) {
+      if (std::is_same_v<FromT, float>) {
         return castFloatToInt4(reinterpret_cast<const float*>(in), out,
                                num_elements);
       } else {
         TF_LITE_UNSUPPORTED_TYPE(context, out->type, "Cast");
       }
     case kTfLiteInt2:
-      if (std::is_same<FromT, float>::value) {
+      if (std::is_same_v<FromT, float>) {
         return castFloatToInt2(reinterpret_cast<const float*>(in), out,
                                num_elements);
       } else {
         TF_LITE_UNSUPPORTED_TYPE(context, out->type, "Cast");
       }
     case kTfLiteUInt4:
-      if (std::is_same<FromT, float>::value) {
+      if (std::is_same_v<FromT, float>) {
         return castFloatToUint4(reinterpret_cast<const float*>(in), out,
                                 num_elements);
       } else {

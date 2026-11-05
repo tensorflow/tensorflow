@@ -73,8 +73,8 @@ template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
 struct GemmImplUsingGemmlowp<
     LhsScalar, RhsScalar, AccumScalar, DstScalar,
     QuantizationFlavor::kIntegerWithUniformMultiplier> {
-  static_assert(std::is_same<LhsScalar, RhsScalar>::value, "");
-  static_assert(std::is_same<AccumScalar, std::int32_t>::value, "");
+  static_assert(std::is_same_v<LhsScalar, RhsScalar>, "");
+  static_assert(std::is_same_v<AccumScalar, std::int32_t>, "");
   using SrcScalar = LhsScalar;
 
   static void Run(
@@ -130,8 +130,8 @@ template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
           typename DstScalar>
 struct GemmImplUsingGemmlowp<LhsScalar, RhsScalar, AccumScalar, DstScalar,
                              QuantizationFlavor::kIntegerWithPerRowMultiplier> {
-  static_assert(std::is_same<LhsScalar, RhsScalar>::value, "");
-  static_assert(std::is_same<AccumScalar, std::int32_t>::value, "");
+  static_assert(std::is_same_v<LhsScalar, RhsScalar>, "");
+  static_assert(std::is_same_v<AccumScalar, std::int32_t>, "");
   using SrcScalar = LhsScalar;
 
   static void Run(
