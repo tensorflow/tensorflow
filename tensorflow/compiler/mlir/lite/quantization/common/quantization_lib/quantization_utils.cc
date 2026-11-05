@@ -754,7 +754,7 @@ quant::QuantizedType DownCastScale(QuantizedType type,
   SmallVector<double, 4> scales(mins.size());
   SmallVector<int64_t, 4> zero_points(mins.size());
   if (auto q_type = dyn_cast<UniformQuantizedType>(type)) {
-    zero_points.push_back(q_type.getZeroPoint());
+    zero_points.assign(mins.size(), q_type.getZeroPoint());
   } else if (auto q_type = dyn_cast<quant::UniformQuantizedPerAxisType>(type)) {
     zero_points = {q_type.getZeroPoints().begin(),
                    q_type.getZeroPoints().end()};

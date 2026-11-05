@@ -832,17 +832,20 @@ QuantizedType CalculateNewQuantizedType(
   }
 
   double real_min = std::numeric_limits<double>::max();
-  double real_max = std::numeric_limits<double>::min();
+  double real_max = std::numeric_limits<double>::lowest();
   for (auto uniform_qtype : qtypes) {
     auto min_max = ExtractMinMax(uniform_qtype);
     real_min = std::min(real_min, std::get<0>(min_max));
     real_max = std::max(real_max, std::get<1>(min_max));
   }
   auto uniform_qtype = qtypes[0];
-  double q_min = static_cast<double>(uniform_qtype.getStorageTypeMin());
-  double q_max = static_cast<double>(uniform_qtype.getStorageTypeMax());
+  int64_t storage_min = uniform_qtype.getStorageTypeMin();
+  int64_t storage_max = uniform_qtype.getStorageTypeMax();
+  double q_min = static_cast<double>(storage_min);
+  double q_max = static_cast<double>(storage_max);
   double scale = (real_max - real_min) / (q_max - q_min);
-  int64_t zero_point = static_cast<int64_t>(q_min - (real_min / scale));
+  int64_t zero_point = std::clamp<int64_t>(
+      std::llround(q_min - (real_min / scale)), storage_min, storage_max);
 
   return UniformQuantizedType::get(
       uniform_qtype.getFlags(), uniform_qtype.getStorageType(),
