@@ -193,3 +193,44 @@ func.func @main(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK: add
 // CHECK-SAME: metadata_payload="my_tokamax_payload:json_data"
+
+// -----
+
+// Two levels of MLIR inlining: the call sites' names compose outermost first,
+// the op type comes from the inlined op, and all three frames are exported.
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc(#inlined_loc)
+  func.return %0 : !mhlo.token
+}
+#inner_frame = loc("inner_helper"("kernel.py":10:5))
+#mid_frame = loc("mid_helper"("kernel.py":15:3))
+#outer_frame = loc("outer_op"("kernel.py":20:1))
+#callee_loc = loc("pallas_call:"("pallas_call"(#inner_frame)))
+#mid_caller_loc = loc("call:"("first_call/jit(inner_helper)"(#mid_frame)))
+#outer_caller_loc = loc("call:"("jit(outer_op)/jit(mid_helper)"(#outer_frame)))
+#nested_caller_loc = loc(callsite(#mid_caller_loc at #outer_caller_loc))
+#inlined_loc = loc(callsite(#callee_loc at #nested_caller_loc))
+
+// CHECK: after-all
+// CHECK-SAME: metadata={op_type="pallas_call" op_name="jit(outer_op)/jit(mid_helper)/first_call/jit(inner_helper)/pallas_call" stack_frame_id=3}
+
+// -----
+
+// When the call carried no name scope, its location is a bare traceback whose
+// frames must not leak into the op name.
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc(#jax_inlined_unscoped)
+  func.return %0 : !mhlo.token
+}
+#unscoped_callee_frame = loc("inner_fn"("add.py":10:5))
+#unscoped_caller_frame = loc("<module>"("add.py":20:3))
+#unscoped_callee_op = loc("add:"("add"(#unscoped_callee_frame)))
+#unscoped_caller_traceback = loc(callsite(#unscoped_callee_frame at #unscoped_caller_frame))
+#jax_inlined_unscoped = loc(callsite(#unscoped_callee_op at #unscoped_caller_traceback))
+
+// CHECK: after-all
+// CHECK-SAME: metadata={op_type="add" op_name="add" stack_frame_id=3}
