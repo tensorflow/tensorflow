@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_RESOURCE_BASE_H_
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_RESOURCE_BASE_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -182,6 +183,28 @@ class BatchResourceBase : public ResourceBase {
       done_callback = std::move(callback);
     }
 
+    // Registers a callback invoked with `size()` at most once when this task's
+    // outstanding batched-item count should be released (either when the task
+    // enters batch execution or when it finishes without entering a batch).
+    // Must not acquire any scheduler queue lock.
+    void set_release_outstanding_items_fn(std::function<void(size_t)> fn) {
+      release_outstanding_items_fn = std::move(fn);
+    }
+
+    // Extracts and clears the registered release callback, e.g. to transfer
+    // per-subtask accounting when splitting a task.
+    std::function<void(size_t)> take_release_outstanding_items_fn() {
+      return std::exchange(release_outstanding_items_fn, nullptr);
+    }
+
+    // Releases this task's outstanding batched items if not already released.
+    // Requires `inputs` to be populated (`!inputs.empty()`).
+    void ReleaseOutstandingItems() {
+      if (auto fn = std::exchange(release_outstanding_items_fn, nullptr)) {
+        fn(size());
+      }
+    }
+
    protected:
     void FinishTaskImpl(const absl::Status& status) override {
       WithContext wc(this->propagated_context);
@@ -189,6 +212,7 @@ class BatchResourceBase : public ResourceBase {
       if (!status.ok()) {
         this->status->Update(status);
       }
+      ReleaseOutstandingItems();
       if (this->done_callback) {
         this->done_callback();
         // Clear the callback to avoid double deletion.
@@ -208,6 +232,7 @@ class BatchResourceBase : public ResourceBase {
 
    private:
     AsyncOpKernel::DoneCallback done_callback;
+    std::function<void(size_t)> release_outstanding_items_fn;
 
     // Criticality associated with the task.
     ::tsl::criticality::Criticality criticality_val;
@@ -305,6 +330,11 @@ class BatchResourceBase : public ResourceBase {
   // 2) Task sizes from left to right are like
   //    [open_batch_remaining_slot, max_batch_size, max_batch_size, ...,
   //    `size-of-input-task` - `sum-of-previous-elements`].
+  //
+  // On success, ownership of `*input_task_ptr` is transferred to the subtasks
+  // in `*output_tasks`. On error, `*input_task_ptr` and `*output_tasks` are
+  // left unchanged, and the caller retains ownership of `*input_task_ptr` and
+  // is responsible for finishing it.
   //
   // REQUIRES:
   // Caller should make sure size-of-input-task is greater than
