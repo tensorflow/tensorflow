@@ -29,7 +29,7 @@ namespace tflite {
 // are connected via tensors.
 class GraphInfo {
  public:
-  virtual ~GraphInfo() {}
+  virtual ~GraphInfo() = default;
 
   // Total number of tensors in the graph. This should be cached when possible.
   virtual size_t num_tensors() const = 0;
