@@ -1420,6 +1420,7 @@ cc_library(
         ":convert_type",
         ":optimize_pass_options",
         ":pass",
+        ":resource_constant_fold_utils",
         ":tensorflow_lite_ops",
         ":tensorflow_lite_optimize_inc_gen",
         ":utils",
