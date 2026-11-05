@@ -925,21 +925,20 @@ absl::Status IfrtServingExecutable::LoadAndRegisterVariableOnExecutable(
   return absl::OkStatus();
 }
 
-absl::StatusOr<tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>>
-IfrtServingExecutable::LookUpOrCreateExecutable(
-    absl::Span<const tensorflow::Tensor> inputs,
+absl::StatusOr<tsl::Future<
+    std::shared_ptr<const IfrtServingExecutable::CompiledExecutable>>>
+IfrtServingExecutable::GetOrCompile(
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
-    absl::Span<const int> variable_arg_indices,
-    const xla::ifrt::DeviceListRef& device_list) {
-  tsl::Promise<SharedCachedExecutableBundle> promise;
-  tsl::Future<SharedCachedExecutableBundle> future;
+    absl::Span<const int> variable_arg_indices) {
+  using CompiledFuture = tsl::Future<std::shared_ptr<const CompiledExecutable>>;
+  tsl::Promise<std::shared_ptr<const CompiledExecutable>> promise;
+  CompiledFuture future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
-  tsl::Future<SharedCachedExecutableBundle> existing_bundle_future;
   {
-    absl::MutexLock lock(mutex_);
+    absl::MutexLock lock(compile_mutex_);
 
-    const auto it = executable_bundles_.find(KeyView{dtypes_and_shapes});
-    if (it != executable_bundles_.end()) {
+    const auto it = compiled_executables_.find(KeyView{dtypes_and_shapes});
+    if (it != compiled_executables_.end()) {
       return it->second;
     }
 
@@ -959,7 +958,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
       // Build a description of all cached (already compiled) shape sets.
       std::string cached_shapes_str;
       int key_idx = 0;
-      for (const auto& [key, unused_future] : executable_bundles_) {
+      for (const auto& [key, unused_future] : compiled_executables_) {
         absl::StrAppend(&cached_shapes_str, "  compiled[", key_idx++, "]: {");
         for (size_t i = 0; i < key.input_shapes.size(); ++i) {
           absl::StrAppend(&cached_shapes_str,
@@ -974,30 +973,27 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
       // `kXlaCompilationDisabledErrorMarker` so that callers (e.g. model
       // servers) can identify this as a compilation cache miss while
       // compilation is disabled. Note that the failure is intentionally not
-      // cached in `executable_bundles_`, so a retry with compilation enabled
+      // cached in `compiled_executables_`, so a retry with compilation enabled
       // can still compile the executable if it is not frozen.
-      tsl::Future<SharedCachedExecutableBundle> frozen_future(
-          absl::FailedPreconditionError(absl::StrCat(
-              xla_compilation_disabled
-                  ? absl::StrCat(kXlaCompilationDisabledErrorMarker, ": ")
-                  : "",
-              "Cannot compile for new input shapes. Either the executable is "
-              "already frozen: ",
-              is_frozen_,
-              " or XLA compilation disabled by ScopedTpuCompileDisabler: ",
-              xla_compilation_disabled, ". Requested input shapes: {",
-              requested_shapes_str,
-              "}. Number of already compiled shape sets: ",
-              executable_bundles_.size(),
-              cached_shapes_str.empty()
-                  ? ""
-                  : absl::StrCat(". Already compiled:\n", cached_shapes_str))));
-      return frozen_future;
+      return absl::FailedPreconditionError(absl::StrCat(
+          xla_compilation_disabled
+              ? absl::StrCat(kXlaCompilationDisabledErrorMarker, ": ")
+              : "",
+          "Cannot compile for new input shapes. Either the executable is "
+          "already frozen: ",
+          is_frozen_,
+          " or XLA compilation disabled by ScopedTpuCompileDisabler: ",
+          xla_compilation_disabled, ". Requested input shapes: {",
+          requested_shapes_str, "}. Number of already compiled shape sets: ",
+          compiled_executables_.size(),
+          cached_shapes_str.empty()
+              ? ""
+              : absl::StrCat(". Already compiled:\n", cached_shapes_str)));
     }
 
     // Only create promise and future when cache missed.
     std::tie(promise, future) =
-        tsl::MakePromise<SharedCachedExecutableBundle>();
+        tsl::MakePromise<std::shared_ptr<const CompiledExecutable>>();
 
     std::vector<tensorflow::TensorShape> input_shapes;
     input_shapes.reserve(dtypes_and_shapes.size());
@@ -1006,7 +1002,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     }
     Key key = {.input_shapes = std::move(input_shapes)};
 
-    executable_bundles_.emplace(std::move(key), future);
+    compiled_executables_.emplace(std::move(key), future);
     // Clone the module to avoid race condition between Freeze() and
     // compilation.
     module_copy = mlir::OwningOpRef<mlir::ModuleOp>(module_->clone());
@@ -1014,7 +1010,8 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
   LOG(INFO) << "Cache missed. Building executable";
 
-  auto create_bundle = [&]() -> absl::StatusOr<SharedCachedExecutableBundle> {
+  auto compile =
+      [&]() -> absl::StatusOr<std::shared_ptr<const CompiledExecutable>> {
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
         original_compile_metadata_;
 
@@ -1028,12 +1025,66 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     TF_RETURN_IF_ERROR(
         UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
 
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<const CompiledExecutable> compiled,
-        CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
-                                      dtypes_and_shapes, variable_arg_indices));
+    return CreateExecutableSynchronously(std::move(module_copy),
+                                         compile_metadata, dtypes_and_shapes,
+                                         variable_arg_indices);
+  }();
+
+  if (!compile.ok()) {
+    promise.Set(compile.status());
+    return compile.status();
+  }
+  promise.Set(*std::move(compile));
+
+  // Here is an immediate return as promise is already set.
+  return future;
+}
+
+absl::StatusOr<tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>>
+IfrtServingExecutable::LookUpOrCreateExecutable(
+    absl::Span<const tensorflow::Tensor> inputs,
+    absl::Span<const DtypeAndShape> dtypes_and_shapes,
+    absl::Span<const int> variable_arg_indices,
+    const xla::ifrt::DeviceListRef& device_list) {
+  {
+    absl::MutexLock lock(mutex_);
+    const auto it = executable_bundles_.find(KeyView{dtypes_and_shapes});
+    if (it != executable_bundles_.end()) {
+      return it->second;
+    }
+  }
+
+  // Compile (or wait for compilation) before taking `mutex_`, so that the
+  // failure to compile is not cached as a bundle.
+  TF_ASSIGN_OR_RETURN(
+      tsl::Future<std::shared_ptr<const CompiledExecutable>> compiled_future,
+      GetOrCompile(dtypes_and_shapes, variable_arg_indices));
+
+  tsl::Promise<SharedCachedExecutableBundle> promise;
+  tsl::Future<SharedCachedExecutableBundle> future;
+  {
+    absl::MutexLock lock(mutex_);
+    // Another thread may have created the bundle while we were compiling.
+    const auto it = executable_bundles_.find(KeyView{dtypes_and_shapes});
+    if (it != executable_bundles_.end()) {
+      return it->second;
+    }
+
+    std::tie(promise, future) =
+        tsl::MakePromise<SharedCachedExecutableBundle>();
+
+    std::vector<tensorflow::TensorShape> input_shapes;
+    input_shapes.reserve(dtypes_and_shapes.size());
+    for (const auto& dtype_and_shape : dtypes_and_shapes) {
+      input_shapes.push_back(dtype_and_shape.GetShapeForCompilation());
+    }
+    executable_bundles_.emplace(Key{.input_shapes = std::move(input_shapes)},
+                                future);
+  }
+
+  auto create_bundle = [&]() -> absl::StatusOr<SharedCachedExecutableBundle> {
     auto executable_bundle = std::make_shared<CachedExecutableBundle>();
-    executable_bundle->compiled = std::move(compiled);
+    TF_ASSIGN_OR_RETURN(executable_bundle->compiled, compiled_future.Await());
 
     if (UsePortableExecution()) {
       // If core selector is enabled, we load variables on all cores.
@@ -1065,7 +1116,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
 void IfrtServingExecutable::Freeze() {
   LOG(INFO) << "Freezing executable. Program id: " << program_id_;
-  absl::MutexLock lock(mutex_);
+  absl::MutexLock lock(compile_mutex_);
   is_frozen_ = true;
   module_ = nullptr;
 }
