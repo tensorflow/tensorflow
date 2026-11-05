@@ -464,7 +464,7 @@ absl::Status SetAttrTypeList(AbstractOperation* op_, const char* attr_name,
                              const DataType* values, int num_values,
                              ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name,
-                         gtl::ArraySlice<const DataType>(values, num_values));
+                         absl::Span<const const DataType>(values, num_values));
   return op_->SetAttrTypeList(attr_name, values, num_values);
 }
 absl::Status SetAttrBoolList(AbstractOperation* op_, const char* attr_name,
