@@ -856,6 +856,282 @@ class ExportBufferStorage {
   absl::flat_hash_map<KeyT, std::unique_ptr<ExportBuffer>> buffers_;
 };
 
+absl::string_view ToAbslStringView(llvm::StringRef ref) {
+  return absl::string_view(ref.data(), ref.size());
+}
+
+// Returns true if `loc` represents a Python traceback frame NameLoc, i.e., a
+// NameLoc whose name is a non-hierarchical function/node identifier (no `/`)
+// and whose immediate child is a FileLineColLoc (as emitted by JAX's
+// traceback_to_location).
+bool IsFrameNameLoc(mlir::Location loc) {
+  auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc);
+  return name_loc && mlir::isa<mlir::FileLineColLoc>(name_loc.getChildLoc()) &&
+         !name_loc.getName().strref().contains('/');
+}
+
+// Unwraps leading JAX op-type NameLoc wrappers (whose name ends with ':', e.g.
+// "composite:", "pjit:", "dot_general:") so the underlying scope NameLoc is
+// visible.
+mlir::Location StripOpTypeWrappers(mlir::Location loc) {
+  while (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
+    if (IsFrameNameLoc(name_loc)) {
+      break;
+    }
+    llvm::StringRef name = name_loc.getName().strref().split('@').first;
+    if (!name.ends_with(":")) {
+      break;
+    }
+    loc = name_loc.getChildLoc();
+  }
+  return loc;
+}
+
+// Strips JAX's internal `@api.jit def _where` wrapper (`jit(_where)`) when the
+// callee already carries an op name (such as `select_n`), so multiple
+// `jnp.where` calls in the same module scope stay distinct leaf ops rather
+// than grouping into a shared `jit(_where)` sub-scope.
+llvm::StringRef StripInternalJitWrapper(llvm::StringRef caller_scope,
+                                        llvm::StringRef callee_scope) {
+  if (callee_scope.empty()) {
+    return caller_scope;
+  }
+  constexpr llvm::StringLiteral kJitWhere = "jit(_where)";
+  constexpr llvm::StringLiteral kSlashJitWhere = "/jit(_where)";
+  if (caller_scope == kJitWhere) {
+    return llvm::StringRef();
+  }
+  if (caller_scope.ends_with(kSlashJitWhere)) {
+    return caller_scope.drop_back(kSlashJitWhere.size());
+  }
+  return caller_scope;
+}
+
+std::string CombineCallerAndCalleeScopes(llvm::StringRef caller_scope,
+                                         llvm::StringRef callee_scope) {
+  caller_scope = StripInternalJitWrapper(caller_scope, callee_scope);
+  if (caller_scope.empty()) {
+    return std::string(callee_scope);
+  }
+  if (callee_scope.empty() || caller_scope.ends_with(";")) {
+    return std::string(caller_scope);
+  }
+  return absl::StrCat(ToAbslStringView(caller_scope), "/",
+                      ToAbslStringView(callee_scope));
+}
+
+std::string ExtractCallerScope(mlir::Location loc) {
+  loc = StripOpTypeWrappers(loc);
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
+    if (IsFrameNameLoc(name_loc)) {
+      return "";
+    }
+    return std::string(name_loc.getName().strref().split('@').first);
+  }
+  if (auto call_loc = mlir::dyn_cast<mlir::CallSiteLoc>(loc)) {
+    std::string caller_scope = ExtractCallerScope(call_loc.getCaller());
+    std::string callee_scope = ExtractCallerScope(call_loc.getCallee());
+    return CombineCallerAndCalleeScopes(caller_scope, callee_scope);
+  }
+  return "";
+}
+
+llvm::StringRef GetCompositeReplacementName(mlir::Operation* op) {
+  if (op == nullptr) {
+    return llvm::StringRef();
+  }
+  if (auto vhlo_comp = mlir::dyn_cast<mlir::vhlo::CompositeOpV1>(op)) {
+    if (auto name_attr = mlir::dyn_cast_or_null<mlir::vhlo::StringV1Attr>(
+            vhlo_comp.getName())) {
+      return name_attr.getValue();
+    }
+  }
+  if (auto stablehlo_comp = mlir::dyn_cast<mlir::stablehlo::CompositeOp>(op)) {
+    return stablehlo_comp.getName();
+  }
+  if (auto custom_op = mlir::dyn_cast<mlir::TFL::CustomOp>(op)) {
+    return custom_op.getCustomCode();
+  }
+  return op->getName().stripDialect();
+}
+
+std::string EnrichCompositeScope(llvm::StringRef scope,
+                                 llvm::StringRef composite_name) {
+  if (composite_name.empty()) {
+    return std::string(scope);
+  }
+  constexpr llvm::StringLiteral kComposite = "composite";
+  constexpr llvm::StringLiteral kSlashComposite = "/composite";
+  if (scope == kComposite) {
+    return std::string(composite_name);
+  }
+  if (scope.ends_with(kSlashComposite)) {
+    llvm::StringRef prefix = scope.drop_back(kComposite.size());
+    return absl::StrCat(ToAbslStringView(prefix),
+                        ToAbslStringView(composite_name));
+  }
+  return std::string(scope);
+}
+
+void CollectLeafLocNames(mlir::Location loc,
+                         llvm::StringRef inherited_caller_scope,
+                         llvm::StringRef composite_replacement_name,
+                         llvm::SmallVectorImpl<std::string>& out) {
+  mlir::Location unwrapped = StripOpTypeWrappers(loc);
+  if (auto fused_loc = mlir::dyn_cast<mlir::FusedLoc>(unwrapped)) {
+    for (mlir::Location sub_loc : fused_loc.getLocations()) {
+      CollectLeafLocNames(sub_loc, inherited_caller_scope,
+                          composite_replacement_name, out);
+    }
+    return;
+  }
+  if (auto call_loc = mlir::dyn_cast<mlir::CallSiteLoc>(unwrapped)) {
+    std::string local_caller = ExtractCallerScope(call_loc.getCaller());
+    std::string combined_caller =
+        CombineCallerAndCalleeScopes(inherited_caller_scope, local_caller);
+    CollectLeafLocNames(call_loc.getCallee(), combined_caller,
+                        composite_replacement_name, out);
+    return;
+  }
+  llvm::StringRef leaf_name;
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(unwrapped)) {
+    leaf_name = name_loc.getName().strref().split('@').first;
+  }
+  std::string combined =
+      CombineCallerAndCalleeScopes(inherited_caller_scope, leaf_name);
+  out.push_back(EnrichCompositeScope(combined, composite_replacement_name));
+}
+
+// Returns true if any `NameLoc` in `loc` contains `;` (the PyTorch
+// hierarchy-delimiter convention emitted by `litert_torch`), so JAX-specific
+// location cleanup leaves PyTorch locations untouched.
+bool HasSemicolonNameLoc(mlir::Location loc) {
+  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
+    if (name_loc.getName().strref().contains(';')) {
+      return true;
+    }
+    return HasSemicolonNameLoc(name_loc.getChildLoc());
+  }
+  if (auto call_loc = mlir::dyn_cast<mlir::CallSiteLoc>(loc)) {
+    return HasSemicolonNameLoc(call_loc.getCallee()) ||
+           HasSemicolonNameLoc(call_loc.getCaller());
+  }
+  if (auto fused_loc = mlir::dyn_cast<mlir::FusedLoc>(loc)) {
+    for (mlir::Location sub_loc : fused_loc.getLocations()) {
+      if (HasSemicolonNameLoc(sub_loc)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+llvm::StringRef ExtractDirectoryPrefix(llvm::StringRef name) {
+  size_t last_slash = name.rfind('/');
+  if (last_slash == llvm::StringRef::npos || last_slash == 0) {
+    return llvm::StringRef();
+  }
+  return name.substr(0, last_slash);
+}
+
+// Formats an op or value's `mlir::Location` into a FlatBuffer tensor name
+// without mutating any IR `Location` attributes:
+// - Unwraps JAX op-type `NameLoc` wrappers (e.g. `"composite:"`, `"pjit:"`).
+// - Combines caller and callee scopes across inlined `CallSiteLoc`s (stripping
+//   internal `jit(_where)` wrappers).
+// - Enriches trailing `"composite"` leaf scopes with the op's composite name.
+// - Filters cross-scope CSE outlier locations from `FusedLoc`s.
+std::string GetHierarchicalNameFromLoc(mlir::Location loc,
+                                       mlir::Operation* op) {
+  llvm::SmallVector<std::string, 8> leaf_names;
+  CollectLeafLocNames(loc, /*inherited_caller_scope=*/llvm::StringRef(),
+                      GetCompositeReplacementName(op), leaf_names);
+  bool has_nonempty = llvm::any_of(
+      leaf_names, [](const std::string& name) { return !name.empty(); });
+  if (!has_nonempty) {
+    return "";
+  }
+  if (leaf_names.size() > 1 && !HasSemicolonNameLoc(loc)) {
+    llvm::SmallVector<std::pair<llvm::StringRef, int>, 4> dir_counts;
+    llvm::SmallVector<llvm::StringRef, 8> elem_dirs;
+    elem_dirs.reserve(leaf_names.size());
+    for (const std::string& name : leaf_names) {
+      llvm::StringRef dir = ExtractDirectoryPrefix(name);
+      elem_dirs.push_back(dir);
+      if (dir.empty()) {
+        continue;
+      }
+      auto it = llvm::find_if(
+          dir_counts, [&](const auto& entry) { return entry.first == dir; });
+      if (it != dir_counts.end()) {
+        ++it->second;
+      } else {
+        dir_counts.emplace_back(dir, 1);
+      }
+    }
+    if (dir_counts.size() > 1) {
+      llvm::StringRef primary_dir = dir_counts[0].first;
+      int best_count = dir_counts[0].second;
+      for (size_t i = 1; i < dir_counts.size(); ++i) {
+        if (dir_counts[i].second > best_count) {
+          primary_dir = dir_counts[i].first;
+          best_count = dir_counts[i].second;
+        }
+      }
+      llvm::SmallVector<absl::string_view, 8> kept;
+      for (size_t i = 0; i < leaf_names.size(); ++i) {
+        if (elem_dirs[i] == primary_dir) {
+          kept.push_back(leaf_names[i]);
+        }
+      }
+      if (!kept.empty()) {
+        std::string joined = absl::StrJoin(kept, ";");
+        absl::c_replace(joined, ',', '_');
+        return joined;
+      }
+    }
+  }
+  std::string joined = absl::StrJoin(leaf_names, ";");
+  if (!HasSemicolonNameLoc(loc)) {
+    absl::c_replace(joined, ',', '_');
+  }
+  return joined;
+}
+
+bool ShouldPreserveHierarchicalOutputName(mlir::Value operand,
+                                          llvm::StringRef output_name) {
+  if (output_name.contains('/')) {
+    return false;
+  }
+  mlir::Operation* def_op = operand.getDefiningOp();
+  if (def_op == nullptr || HasSemicolonNameLoc(def_op->getLoc())) {
+    return false;
+  }
+  std::string loc_name = GetHierarchicalNameFromLoc(def_op->getLoc(), def_op);
+  return llvm::StringRef(loc_name).trim().contains('/');
+}
+
+class TfliteOpOrArgLocNameMapper : public tensorflow::OpOrArgLocNameMapper {
+ protected:
+  std::string GetName(tensorflow::OpOrVal op_or_val) override {
+    if (auto* op = op_or_val.dyn_cast<mlir::Operation*>()) {
+      std::string name = GetHierarchicalNameFromLoc(op->getLoc(), op);
+      if (!name.empty()) {
+        return name;
+      }
+      return tensorflow::OpOrArgLocNameMapper::GetName(op_or_val);
+    }
+    if (auto val = op_or_val.dyn_cast<mlir::Value>()) {
+      std::string name =
+          GetHierarchicalNameFromLoc(val.getLoc(), val.getDefiningOp());
+      if (!name.empty()) {
+        return name;
+      }
+    }
+    return tensorflow::OpOrArgLocNameMapper::GetName(op_or_val);
+  }
+};
+
 // Translates an MLIR module in TFLite dialect to TFLite FlatBuffer.
 class Translator {
  public:
@@ -1259,6 +1535,11 @@ class Translator {
 
   // Decide if we convert stablehlo ops in flatbuffer
   bool convert_stablehlo_ = true;
+
+  // Decide if hierarchical defining-op location names should be preserved on
+  // entry-function output tensors instead of flat `tf.entry_function` output
+  // placeholders.
+  bool preserve_hierarchical_output_names_ = false;
 
   // Decide if the debug metadata is serialized.
   bool serialize_debug_metadata_ = false;
@@ -3944,7 +4225,12 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
       return;
     }
     for (const auto& it : llvm::enumerate(term->getOperands())) {
-      name_mapper_.InitOpName(it.value(), output_names[it.index()].trim());
+      llvm::StringRef output_name = output_names[it.index()].trim();
+      if (preserve_hierarchical_output_names_ &&
+          ShouldPreserveHierarchicalOutputName(it.value(), output_name)) {
+        continue;
+      }
+      name_mapper_.InitOpName(it.value(), output_name);
     }
   }
 }
@@ -4718,11 +5004,6 @@ constexpr absl::string_view kFlatbufferSizeLimitExceededError =
 absl::Status Translator::Translate(
     ModuleOp module, const tflite::FlatbufferExportOptions& options,
     llvm::raw_pwrite_stream& export_stream) {
-  OpOrArgNameMapper* op_or_arg_name_mapper = options.op_or_arg_name_mapper;
-  OpOrArgLocNameMapper default_op_or_arg_name_mapper;
-  if (!op_or_arg_name_mapper) {
-    op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
-  }
   if (!UpdateEntryFunction(module)) {
     LOG(ERROR) << "No entry function found in the module.";
     return absl::InvalidArgumentError("No entry function found.");
@@ -4746,12 +5027,18 @@ absl::Status Translator::Translate(
   }
 
   auto translate = [&]() {
+    TfliteOpOrArgLocNameMapper default_op_or_arg_name_mapper;
+    OpOrArgNameMapper* op_or_arg_name_mapper =
+        options.op_or_arg_name_mapper ? options.op_or_arg_name_mapper
+                                      : &default_op_or_arg_name_mapper;
     Translator translator(module, export_stream, converter_flags,
                           options.saved_model_tags, op_or_arg_name_mapper,
                           options.metadata, options.custom_option_alignment,
                           options.disable_buffer_deduping,
                           options.attribute_buffer_applier_factories);
     translator.convert_stablehlo_ = options.serialize_stablehlo_ops;
+    translator.preserve_hierarchical_output_names_ =
+        (options.op_or_arg_name_mapper == nullptr);
     return translator.TranslateInternal();
   };
 
