@@ -18,12 +18,12 @@ limitations under the License.
 #include <complex>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace ops {
@@ -127,6 +127,14 @@ TEST(Irfft2dOpTest, InputDimsGreaterThan2) {
   float expected_result[16] = {1., 2., 3., 4., 3., 8., 6.,  3.,
                                5., 2., 7., 6., 7., 3., 23., 5.};
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
+}
+
+TEST(Irfft2dOpTest, OverflowFftLengthTriggersError) {
+  Irfft2dOpModel model({TensorType_COMPLEX64, {1, 1}},
+                       {TensorType_INT32, {2}});
+  model.PopulateTensor<std::complex<float>>(model.input(), {{1.0f, 0.0f}});
+  model.PopulateTensor<int32_t>(model.fft_lengths(), {16384, 131072});
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
 }
 
 }  // namespace
