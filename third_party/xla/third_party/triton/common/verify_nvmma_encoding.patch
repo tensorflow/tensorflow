@@ -3,9 +3,9 @@ memdesc_reshape encoding inference.
 
 --- a/lib/Dialect/TritonGPU/IR/Ops.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Ops.cpp
-@@ -620,8 +620,10 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
+@@ -636,8 +636,10 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
              mmaEncoding.getTransposed(), mmaEncoding.getElementBitWidth(),
-             mmaEncoding.getFp4Padded(), CGALayout);
+             mmaEncoding.getPadding(), CGALayout);
          auto srcLL = toLinearLayout(srcShape, srcEnc);
 -        auto dstLL = toLinearLayout(dstShape, candidateEncoding);
 -        if (reshapeLayout(ctx, srcLL, dstShape) == dstLL) {

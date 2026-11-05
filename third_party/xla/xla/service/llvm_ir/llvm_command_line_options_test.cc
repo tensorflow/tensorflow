@@ -15,17 +15,48 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/CommandLine.h"
 
 namespace xla::llvm_ir {
 namespace {
+
+llvm::cl::opt<int>& GetTestIntOption() {
+  static llvm::cl::opt<int>* option = new llvm::cl::opt<int>(
+      "xla-test-llvm-cl-int-option", llvm::cl::init(0), llvm::cl::Hidden);
+  return *option;
+}
 
 TEST(LLVMCommandLineOptionsLockTest, ApplyLibraryOptions) {
   LLVMCommandLineOptionsLock lock(/*client_options=*/{});
   llvm::LLVMContext context;
   LLVMCommandLineOptionsLock::ApplyLibraryOptions(context);
   EXPECT_TRUE(context.getLibraryOptions().args().empty());
+}
+
+TEST(LLVMCommandLineOptionsLockTest, ReappliesOptionsAfterExternalReset) {
+  llvm::cl::opt<int>& test_option = GetTestIntOption();
+  const std::vector<std::string> client_options = {
+      "-xla-test-llvm-cl-int-option=42"};
+
+  {
+    LLVMCommandLineOptionsLock lock(client_options);
+    EXPECT_EQ(test_option.getValue(), 42);
+  }
+
+  // Simulate an external in-process LLVM user (such as Triton's
+  // ScopedLLVMOptions or LLD) resetting global LLVM command-line options.
+  llvm::cl::ResetAllOptionOccurrences();
+  ASSERT_EQ(test_option.getValue(), 0);
+
+  {
+    LLVMCommandLineOptionsLock lock(client_options);
+    EXPECT_EQ(test_option.getValue(), 42);
+  }
 }
 
 TEST(LLVMCommandLineOptionsReleasableLockTest, Basic) {

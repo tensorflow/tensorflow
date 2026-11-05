@@ -382,9 +382,8 @@ class CollapseExtractOp : public mlir::OpRewritePattern<ExtractOp> {
 
     Value result = new_extract.getResult();
     if (mapping->collapsed_tile_shape != mapping->transposed_tile_shape) {
-      result = triton::ReshapeOp::create(rewriter, op.getLoc(),
-                                         mapping->transposed_tile_shape, result,
-                                         /*allowReorder=*/false);
+      result = triton::ReshapeOp::create(
+          rewriter, op.getLoc(), mapping->transposed_tile_shape, result);
     }
     if (!absl::c_is_sorted(mapping->transposed_to_orig_order)) {
       result = triton::TransOp::create(rewriter, op.getLoc(), result,
@@ -425,8 +424,7 @@ class CollapseInsertOp : public mlir::OpRewritePattern<InsertOp> {
     }
     if (mapping->collapsed_tile_shape != mapping->transposed_tile_shape) {
       new_src = triton::ReshapeOp::create(
-          rewriter, op.getLoc(), mapping->collapsed_tile_shape, new_src,
-          /*allowReorder=*/false);
+          rewriter, op.getLoc(), mapping->collapsed_tile_shape, new_src);
     }
 
     InsertOp new_insert = InsertOp::create(

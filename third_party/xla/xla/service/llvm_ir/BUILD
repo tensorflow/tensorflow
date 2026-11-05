@@ -150,6 +150,7 @@ xla_cc_test(
         ":llvm_command_line_options",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
     ],
 )
 

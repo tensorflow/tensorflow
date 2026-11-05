@@ -1,6 +1,6 @@
 --- a/test/Conversion/warp_specialize_to_llvm.mlir
 +++ b/test/Conversion/warp_specialize_to_llvm.mlir
-@@ -1067,7 +1067,7 @@
+@@ -1067,7 +1067,7 @@ llvm.func @remat_subgraph(%arg0: i32, %arg1: i32) attributes {allocation.offset
    %1 = llvm.getelementptr %0[%arg0] : (!llvm.ptr<3>, i32) -> !llvm.ptr<3>, i32
    %2 = llvm.add %arg0, %arg1 : i32
    %3 = llvm.mul %2, %arg1 : i32
@@ -9,7 +9,7 @@
    ttg.warp_specialize(%1, %4) attributes {allocation.offset = 0 : i32, warpGroupStartIds = array<i32: 4>}
    default {
      ttg.warp_yield
-@@ -1077,16 +1077,16 @@
+@@ -1077,16 +1077,16 @@ llvm.func @remat_subgraph(%arg0: i32, %arg1: i32) attributes {allocation.offset
      // CHECK-NEXT: nvvm.barrier id = [[C1]] aligned = false
      // CHECK-NEXT: [[ADD:%.*]] = llvm.add %arg0, %arg1 : i32
      // CHECK-NEXT: [[MUL:%.*]] = llvm.mul [[ADD]], %arg1 : i32
