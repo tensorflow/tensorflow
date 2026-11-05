@@ -729,6 +729,11 @@ absl::Status BatchResourceBase::RegisterInput(
       batch_components->is_warmup_task = true;
     }
     num_outstanding_batched_items_ += batch_components->size();
+    batch_components->set_release_outstanding_items_fn(
+        [this](size_t task_size) {
+          absl::MutexLock lock(outstanding_batch_mu_);
+          num_outstanding_batched_items_ -= task_size;
+        });
   }
 
   // Capture the metric label strings before Schedule(): once the task is
@@ -738,6 +743,9 @@ absl::Status BatchResourceBase::RegisterInput(
   const std::string op_name = context->op_kernel().name();
 
   absl::Status schedule_status = batcher_queue->Schedule(&batch_components);
+  if (batch_components != nullptr) {
+    batch_components->ReleaseOutstandingItems();
+  }
 
   // Export per-criticality queue utilization metrics for the priority aware
   // batch scheduler. GetPriorityQueueState() returns nullopt when the priority
@@ -1200,6 +1208,11 @@ absl::Status BatchResourceBase::ConcatInputTensors(
       output_task.inputs.push_back(std::move(*moved_tensor_iter));
     }
   }
+  std::function<void(size_t)> release_fn =
+      input_task->take_release_outstanding_items_fn();
+  for (std::unique_ptr<BatchTask>& output_task : *output_tasks) {
+    output_task->set_release_outstanding_items_fn(release_fn);
+  }
   return absl::OkStatus();
 }
 
@@ -1534,9 +1547,11 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
 void BatchResourceBase::ProcessBatchCallBack(
     std::unique_ptr<Batch<BatchTask>> batch,
     std::vector<std::unique_ptr<BatchTask>> unbatched_tasks) {
-  if (!session_metadata().name().empty()) {
-    absl::MutexLock lock(outstanding_batch_mu_);
-    num_outstanding_batched_items_ -= batch->size();
+  for (int i = 0; i < batch->num_tasks(); ++i) {
+    batch->mutable_task(i)->ReleaseOutstandingItems();
+  }
+  for (std::unique_ptr<BatchTask>& task : unbatched_tasks) {
+    task->ReleaseOutstandingItems();
   }
   if (!has_process_batch_function_) {
     ProcessBatch(std::move(batch));
