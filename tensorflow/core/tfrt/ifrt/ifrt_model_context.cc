@@ -17,14 +17,19 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 
 #include <cstdint>
-#include <optional>
+#include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_program.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -33,43 +38,49 @@ tsl::thread::ThreadPool& IfrtModelContext::GetThreadPool() const {
   return thread_pool_;
 }
 
-std::optional<int64_t> IfrtModelContext::LookupProgramId(
-    uint64_t fingerprint, absl::Span<const int> variable_arg_indices) const {
+absl::StatusOr<std::shared_ptr<IfrtProgram>>
+IfrtModelContext::GetOrCreateProgram(
+    uint64_t fingerprint, absl::Span<const int> variable_arg_indices,
+    absl::FunctionRef<absl::StatusOr<std::unique_ptr<IfrtProgram>>()> create) {
   absl::MutexLock lock(mutex_);
-  auto it = compiled_programs_by_module_fingerprint_.find(fingerprint);
-  if (it == compiled_programs_by_module_fingerprint_.end()) {
-    return std::nullopt;
-  }
-  for (const CompiledProgram& program : it->second) {
-    if (absl::MakeConstSpan(program.variable_arg_indices) ==
-        variable_arg_indices) {
-      return program.program_id;
+  auto it = programs_by_module_fingerprint_.find(fingerprint);
+  if (it != programs_by_module_fingerprint_.end()) {
+    for (const ProgramEntry& entry : it->second) {
+      if (absl::MakeConstSpan(entry.variable_arg_indices) ==
+          variable_arg_indices) {
+        return entry.program;
+      }
     }
   }
-  return std::nullopt;
+  if (frozen_) {
+    return nullptr;
+  }
+  // Create under the lock so that concurrent compilations of the same program
+  // do not both create one. Creation does not compile, so this is cheap.
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<IfrtProgram> program, create());
+  std::shared_ptr<IfrtProgram> shared_program = std::move(program);
+  programs_by_module_fingerprint_[fingerprint].push_back(
+      {.variable_arg_indices = std::vector<int>(variable_arg_indices.begin(),
+                                                variable_arg_indices.end()),
+       .program = shared_program});
+  return shared_program;
 }
 
 bool IfrtModelContext::HasProgramWithFingerprint(uint64_t fingerprint) const {
   absl::MutexLock lock(mutex_);
-  return compiled_programs_by_module_fingerprint_.contains(fingerprint);
-}
-
-void IfrtModelContext::RegisterProgramId(
-    uint64_t fingerprint, absl::Span<const int> variable_arg_indices,
-    int64_t program_id) {
-  absl::MutexLock lock(mutex_);
-  compiled_programs_by_module_fingerprint_[fingerprint].push_back(
-      {.variable_arg_indices = std::vector<int>(variable_arg_indices.begin(),
-                                                variable_arg_indices.end()),
-       .program_id = program_id});
+  return programs_by_module_fingerprint_.contains(fingerprint);
 }
 
 absl::Status IfrtModelContext::Freeze() {
   restore_tensor_registry_.Freeze();
+  absl::MutexLock lock(handles_mutex_);
   for (auto& program_handle : handles_) {
     TF_RETURN_IF_ERROR(program_handle.Freeze());
   }
-  frozen_ = true;
+  {
+    absl::MutexLock program_lock(mutex_);
+    frozen_ = true;
+  }
   return absl::OkStatus();
 }
 

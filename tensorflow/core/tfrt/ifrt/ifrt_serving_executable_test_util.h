@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_program.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
@@ -55,6 +56,12 @@ class IfrtServingExecutableTestHelper {
   // IfrtServingExecutable.
   std::unique_ptr<IfrtServingExecutable> MakeExecutable(
       int64_t program_id, std::string mlir_module_path);
+
+  // Creates an IfrtServingExecutable with the given program id over an
+  // existing program, e.g. the program of another executable (see
+  // `IfrtServingExecutable::program()`).
+  std::unique_ptr<IfrtServingExecutable> MakeExecutable(
+      int64_t program_id, std::shared_ptr<IfrtProgram> program);
 
   void SetH2DTransferExecutorFactory(
       std::unique_ptr<H2DTransferExecutorFactory> factory) {

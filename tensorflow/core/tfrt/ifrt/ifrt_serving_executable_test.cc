@@ -888,6 +888,98 @@ INSTANTIATE_TEST_SUITE_P(
             }),
         ::testing::Bool()));
 
+// Registers `value` as a restored variable named `name`, and returns the key
+// tensor that a call site passes in place of the variable.
+absl::StatusOr<tensorflow::Tensor> RegisterVariable(
+    IfrtRestoreTensorRegistry& registry, absl::string_view name,
+    const tensorflow::Tensor& value) {
+  IfrtRestoreTensorRegistry::RestoredTensorInfo restore_tensor_info = {
+      .dtype_and_shape = tsl::Future<DtypeAndShape>(
+          DtypeAndShape{.dtype = value.dtype(), .shape = value.shape()}),
+      .tensor_future = tsl::Future<tensorflow::Tensor>(value)};
+  if (absl::Status status = registry.TryRegister(name, restore_tensor_info);
+      !status.ok()) {
+    return status;
+  }
+  tensorflow::Tensor key_tensor(tensorflow::DT_STRING, {});
+  key_tensor.scalar<tsl::tstring>()() = std::string(name);
+  return key_tensor;
+}
+
+// Executables over one shared program (e.g. structurally identical TPU
+// clusters of different signatures) compile the program once, but each
+// executes with the variables of its own call site.
+TEST_P(IfrtServingExecutableTest, SharedProgramKeepsVariablesOfEachExecutable) {
+  constexpr int64_t kProgramIdA = 111111;
+  constexpr int64_t kProgramIdB = 222222;
+  constexpr int64_t kProgramIdC = 333333;
+  for (int64_t program_id : {kProgramIdA, kProgramIdB, kProgramIdC}) {
+    SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
+  }
+  auto executable_a = helper_->MakeExecutable(
+      kProgramIdA, GetMlirModulePath("executable.mlir"));
+  auto executable_b =
+      helper_->MakeExecutable(kProgramIdB, executable_a->program());
+
+  // Same shapes, different weights.
+  IfrtRestoreTensorRegistry& registry =
+      *helper_->ifrt_restore_tensor_registry();
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::Tensor key_a,
+      RegisterVariable(registry, "w_a",
+                       AsTensor<int32_t>({1, 2, 3}, TensorShape({3, 1}))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::Tensor key_b,
+      RegisterVariable(registry, "w_b",
+                       AsTensor<int32_t>({4, 5, 6}, TensorShape({3, 1}))));
+  auto x = AsTensor<int32_t>({1, 2, 3}, TensorShape({1, 3}));
+  std::vector<tensorflow::Tensor> inputs_a{x, key_a};
+  std::vector<tensorflow::Tensor> inputs_b{x, key_b};
+  const std::vector<int> variable_arg_indices = {1};
+  // 1*1 + 2*2 + 3*3 = 14 and 1*4 + 2*5 + 3*6 = 32.
+  const auto expected_a = AsTensor<int32_t>({14}, TensorShape({1, 1}));
+  const auto expected_b = AsTensor<int32_t>({32}, TensorShape({1, 1}));
+
+  // Iterate over all cores, interleaving the two executables.
+  for (int i = 0; i < helper_->num_cores() + 1; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result_a, Execute(executable_a.get(), absl::MakeSpan(inputs_a),
+                               variable_arg_indices));
+    EXPECT_THAT(result_a, ElementsAre(TensorEq(expected_a)));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result_b, Execute(executable_b.get(), absl::MakeSpan(inputs_b),
+                               variable_arg_indices));
+    EXPECT_THAT(result_b, ElementsAre(TensorEq(expected_b)));
+  }
+
+  // The program is compiled once for both executables.
+  EXPECT_EQ(executable_a->program()->num_compiled(), 1);
+
+  executable_a->Freeze();
+
+  // An executable created after freeze serves the shapes compiled during
+  // warmup without compiling.
+  auto executable_c =
+      helper_->MakeExecutable(kProgramIdC, executable_a->program());
+  TF_ASSERT_OK_AND_ASSIGN(auto result_c,
+                          Execute(executable_c.get(), absl::MakeSpan(inputs_b),
+                                  variable_arg_indices));
+  EXPECT_THAT(result_c, ElementsAre(TensorEq(expected_b)));
+  EXPECT_EQ(executable_a->program()->num_compiled(), 1);
+
+  // But it cannot compile for new shapes.
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::Tensor key_c,
+      RegisterVariable(registry, "w_c",
+                       AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({4, 1}))));
+  auto x2 = AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({1, 4}));
+  std::vector<tensorflow::Tensor> inputs_c{x2, key_c};
+  EXPECT_THAT(Execute(executable_c.get(), absl::MakeSpan(inputs_c),
+                      variable_arg_indices),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_EQ(executable_a->program()->num_compiled(), 1);
+}
+
 constexpr absl::string_view kAliasedInputModule = R"(
 module {
   func.func @main(%arg0: tensor<2x2xf32> {tf.aliasing_output = 0 : i32},

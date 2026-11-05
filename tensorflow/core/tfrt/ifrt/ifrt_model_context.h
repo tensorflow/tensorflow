@@ -27,7 +27,9 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_program.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
@@ -117,23 +120,22 @@ class IfrtModelContext {
         use_undonatable_buffer_converter_(use_undonatable_buffer_converter) {}
 
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
+    absl::MutexLock lock(handles_mutex_);
     handles_.push_back(std::move(handle));
   }
 
-  // Returns the program id already compiled from a submodule with
-  // `fingerprint` whose call site uses the same `variable_arg_indices`, if any.
-  std::optional<int64_t> LookupProgramId(
-      uint64_t fingerprint, absl::Span<const int> variable_arg_indices) const;
+  // Returns the program compiled from a submodule with `fingerprint` for call
+  // sites with `variable_arg_indices`, if there is one. Otherwise, unless the
+  // model is frozen, creates it with `create` and returns it; after freeze, a
+  // call site can only be served by a program compiled during warmup, so
+  // returns nullptr.
+  absl::StatusOr<std::shared_ptr<IfrtProgram>> GetOrCreateProgram(
+      uint64_t fingerprint, absl::Span<const int> variable_arg_indices,
+      absl::FunctionRef<absl::StatusOr<std::unique_ptr<IfrtProgram>>()> create);
 
-  // Returns true if any program was compiled from a submodule with
+  // Returns true if there is a program compiled from a submodule with
   // `fingerprint`, regardless of its `variable_arg_indices`.
   bool HasProgramWithFingerprint(uint64_t fingerprint) const;
-
-  // Records that `program_id` was compiled from a submodule with `fingerprint`
-  // and is called with `variable_arg_indices`.
-  void RegisterProgramId(uint64_t fingerprint,
-                         absl::Span<const int> variable_arg_indices,
-                         int64_t program_id);
 
   std::shared_ptr<xla::ifrt::Client> GetClient() const { return client_; }
 
@@ -275,20 +277,27 @@ class IfrtModelContext {
   // Dedicated work queue for heavy task such as variable tensor restoration.
   tfrt::ConcurrentWorkQueue* checkpoint_loader_queue_ = nullptr;
 
-  std::vector<ServingExecutableRegistry::Handle> handles_;
-  // A compiled program and the `variable_arg_indices` of its call site. The
-  // executable binds loaded variables by these indices, so a program is only
-  // reused by call sites with the same indices.
-  struct CompiledProgram {
+  // Handles may be registered after freeze, concurrently, by client graphs
+  // whose programs were compiled during warmup.
+  absl::Mutex handles_mutex_;
+  std::vector<ServingExecutableRegistry::Handle> handles_
+      ABSL_GUARDED_BY(handles_mutex_);
+  // A program compiled from a submodule, for call sites with
+  // `variable_arg_indices`. The program takes loaded variables at these
+  // indices, so they are part of the compilation and a program is only shared
+  // by call sites with the same indices.
+  struct ProgramEntry {
     std::vector<int> variable_arg_indices;
-    int64_t program_id;
+    std::shared_ptr<IfrtProgram> program;
   };
-  // Submodule fingerprint -> compiled programs, so identical TPU clusters from
-  // different client graphs are compiled once. Client graphs may be compiled
-  // concurrently.
+  // Submodule fingerprint -> programs, so that identical TPU programs from
+  // different call sites (e.g. different client graphs, or structurally
+  // identical clusters of different signatures) are compiled once. Each call
+  // site still gets its own `IfrtServingExecutable`, which binds its own
+  // variables. Client graphs may be compiled concurrently.
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<uint64_t, std::vector<CompiledProgram>>
-      compiled_programs_by_module_fingerprint_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<uint64_t, std::vector<ProgramEntry>>
+      programs_by_module_fingerprint_ ABSL_GUARDED_BY(mutex_);
 
   DefaultSignatureInputConfig default_signature_inputs_;
 
