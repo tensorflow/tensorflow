@@ -443,11 +443,13 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo,
   ABSL_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                    GetDotCanonicalDims(dot_dimensions, dot_shape));
 
-  if (dot_canonical_dims.m == 1 || dot_canonical_dims.n == 1) {
-    // TODO(b/430079105): YNNPACK does not handle vectors in dots. We could
-    // insert dummy extent 1 dimensions to handle this case. We don't expect to
-    // see this because XLA handles these with its own codegen, but if dots get
-    // pulled into fusions, we need to reject them (b/469236467).
+  if (dot_canonical_dims.n == 1 ||
+      dot_shape.lhs_matmul_shape.dimensions().size() != 2 ||
+      dot_shape.rhs_matmul_shape.dimensions().size() != 2) {
+    // TODO(b/430079105): YNNPACK does not handle vectors on the RHS in dots.
+    // We don't expect to see n == 1 because XLA handles these with its own
+    // codegen, but if dots get pulled into fusions, we need to reject them
+    // (b/469236467).
     return false;
   }
 
@@ -460,9 +462,11 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo,
 
   // YNNPACK supports transposing the inputs efficiently if possible (they will
   // fuse with dot packing). The emitter can transpose a non-canonical LHS, but
-  // we don't fuse it yet.
+  // we don't fuse it yet except when m == 1 (where transposing LHS is a
+  // zero-copy alias).
   // TODO(b/575584834): Enable non-canonical LHS once the regression is fixed.
-  if (!(dot_canonical_dims.lhs_canonical || allow_non_canonical_lhs) ||
+  if (!(dot_canonical_dims.lhs_canonical || dot_canonical_dims.m == 1 ||
+        allow_non_canonical_lhs) ||
       dot_canonical_dims.lhs_column_major ||
       dot_canonical_dims.rhs_column_major) {
     return false;

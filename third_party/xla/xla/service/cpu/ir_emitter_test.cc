@@ -62,12 +62,14 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_options.h"
+#include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_function.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/test.h"
@@ -336,6 +338,76 @@ ENTRY main {
   EXPECT_EQ(
       std::distance(llvm_module->global_begin(), llvm_module->global_end()),
       kNumberOfSmallConstants);
+}
+
+TEST_F(IrEmitterTest, LargeM1DotStrategyDependsOnYnnDotEnabled) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule large_m1_dot
+
+    ENTRY main {
+      lhs = f32[1,1024]{1,0} parameter(0)
+      rhs = f32[1024,1024]{1,0} parameter(1)
+      ROOT dot = f32[1,1024]{1,0} dot(lhs, rhs), lhs_contracting_dims={1},
+                                                 rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(dot, nullptr);
+  TargetMachineFeaturesStub target_machine_features(
+      [](int64_t size) { return MinAlign(); });
+
+  HloModuleConfig& config = module->mutable_config();
+  config.mutable_debug_options().clear_xla_cpu_experimental_ynn_fusion_type();
+  config.mutable_debug_options().add_xla_cpu_experimental_ynn_fusion_type(
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  EXPECT_EQ(GetDotImplementationStrategy(config, *dot, target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kEigen);
+
+  config.mutable_debug_options().clear_xla_cpu_experimental_ynn_fusion_type();
+  EXPECT_EQ(GetDotImplementationStrategy(config, *dot, target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kTiledLlvmIrGemv);
+
+  config.mutable_debug_options().add_xla_cpu_experimental_ynn_fusion_type(
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  (*config.mutable_debug_options()
+        .mutable_xla_backend_extra_options())["xla_is_host_offload"] = "true";
+  EXPECT_EQ(GetDotImplementationStrategy(config, *dot, target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kTiledLlvmIrGemv);
+}
+
+TEST_F(IrEmitterTest, LargeM1UnsupportedYnnTypeUsesTiledGemv) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule large_m1_s32_dot
+
+    ENTRY main {
+      lhs = s32[1,1024]{1,0} parameter(0)
+      rhs = s32[1024,1024]{1,0} parameter(1)
+      ROOT dot = s32[1,1024]{1,0} dot(lhs, rhs), lhs_contracting_dims={1},
+                                                 rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(dot, nullptr);
+  TargetMachineFeaturesStub target_machine_features(
+      [](int64_t size) { return MinAlign(); });
+
+  HloModuleConfig ynn_enabled_config = module->config();
+  ynn_enabled_config.mutable_debug_options()
+      .clear_xla_cpu_experimental_ynn_fusion_type();
+  ynn_enabled_config.mutable_debug_options()
+      .add_xla_cpu_experimental_ynn_fusion_type(
+          DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  EXPECT_EQ(GetDotImplementationStrategy(ynn_enabled_config, *dot,
+                                         target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kTiledLlvmIrGemv);
 }
 
 }  // namespace
