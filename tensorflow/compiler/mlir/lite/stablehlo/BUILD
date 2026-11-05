@@ -139,7 +139,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -366,6 +366,31 @@ cc_library(
 )
 
 cc_library(
+    name = "legalize_einsum_to_dot_general",
+    srcs = [
+        "transforms/legalize_einsum_to_dot_general.cc",
+    ],
+    hdrs = [
+        "transforms/stablehlo_passes.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        ":passes_inc_gen",
+        "@com_google_absl//absl/algorithm:container",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "unfold_splat_constant_pass",
     srcs = [
         "transforms/unfold_splat_constant_pass.cc",
@@ -384,7 +409,8 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-        "@xla//xla/mlir_hlo",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
 )
@@ -591,8 +617,9 @@ gentbl_cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
-        "@xla//xla/mlir_hlo:hlo_ops_td_files",
+        "@stablehlo//:stablehlo_ops_td_files",
     ],
 )
 
@@ -636,7 +663,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = True,
 )
@@ -649,8 +676,9 @@ gentbl_cc_library(
     td_file = "transforms/prepare_hlo.td",
     deps = [
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
-        "@xla//xla/mlir_hlo:hlo_ops_td_files",
+        "@stablehlo//:stablehlo_ops_td_files",
     ],
 )
 
@@ -676,12 +704,15 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:pad_util",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:reduce_window",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:slice",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@xla//xla/mlir_hlo",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
     alwayslink = True,
 )
@@ -726,11 +757,9 @@ cc_library(
     ],
     deps = [
         ":hlo_legalize_tf_inc_gen",
-        ":hlo_matchers",
+        ":legacy_mhlo_tf_legalization_utils",
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:reduce",
-        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:util",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow/transforms:lower_tf_lib",
@@ -751,6 +780,37 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:broadcast_utils",
         "@stablehlo//:chlo_ops",
+        "@xla//xla/mlir_hlo",
+    ],
+)
+
+# MHLO versions of the HLO->TF legalization helpers (hlo_matchers, reduce, util),
+# used only by the MHLO-based tf_legalize_hlo above. The HLO->TFL legalization
+# uses the StableHLO versions.
+cc_library(
+    name = "legacy_mhlo_tf_legalization_utils",
+    srcs = [
+        "transforms/legacy_mhlo/hlo_matchers.cc",
+        "transforms/legacy_mhlo/reduce.cc",
+        "transforms/legacy_mhlo/util.cc",
+    ],
+    hdrs = [
+        "transforms/legacy_mhlo/hlo_matchers.h",
+        "transforms/legacy_mhlo/reduce.h",
+        "transforms/legacy_mhlo/util.h",
+    ],
+    copts = [
+        "-Ithird_party",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
         "@xla//xla/mlir_hlo",
     ],
 )
@@ -962,6 +1022,7 @@ tf_cc_binary(
     deps = [
         ":compose_uniform_quantized_type_pass",
         ":drop_shape_assertions",
+        ":legalize_einsum_to_dot_general",
         ":legalize_stablehlo_composite_to_tfl_custom",
         ":legalize_stablehlo_custom_call_to_composite",
         ":legalize_stablehlo_to_vhlo_pass",

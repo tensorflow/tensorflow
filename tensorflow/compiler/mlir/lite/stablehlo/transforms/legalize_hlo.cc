@@ -66,9 +66,9 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/BroadcastUtils.h"  // from @stablehlo
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/hlo_matchers.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legacy_mhlo/hlo_matchers.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legacy_mhlo/reduce.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legacy_mhlo/util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -81,6 +81,22 @@ limitations under the License.
 
 namespace mlir {
 namespace odml {
+
+// This MHLO-based legalization uses the MHLO versions of the helpers.
+using ::mlir::odml::mhlo_legacy::BuildIntArrayConstOp;
+using ::mlir::odml::mhlo_legacy::BuildIntConstOp;
+using ::mlir::odml::mhlo_legacy::GetInversePermutationAndShape;
+using ::mlir::odml::mhlo_legacy::GetInversePermutationArray;
+using ::mlir::odml::mhlo_legacy::GetPermutationAndTransposedShape;
+using ::mlir::odml::mhlo_legacy::GetReformatTypeAndPermutation;
+using ::mlir::odml::mhlo_legacy::InsertTranspose;
+using ::mlir::odml::mhlo_legacy::MatchBinaryReduceFunction;
+using ::mlir::odml::mhlo_legacy::MatchIota;
+using ::mlir::odml::mhlo_legacy::NeedsReformatTypeAndPermutation;
+using ::mlir::odml::mhlo_legacy::NormalizeIndexVector;
+using ::mlir::odml::mhlo_legacy::PermutationAndShape;
+using ::mlir::odml::mhlo_legacy::PopulateReduceArgMinMaxTFPatterns;
+
 namespace {
 
 #define DEBUG_TYPE "tf-legalize-hlo"

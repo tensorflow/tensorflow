@@ -73,6 +73,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateDropShapeAssertionsPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLegalizeVhloQuantCustomCallsPass();
 
+// Legalizes stablehlo.einsum ops to stablehlo.dot_general (+ transpose).
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateLegalizeStablehloEinsumToDotGeneralPass();
+
 #define GEN_PASS_DECL
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
