@@ -625,8 +625,12 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         # NaN, so on GPU builds the test would not exercise the fixed
         # Eigen kernel.
         with GetDeviceScope(self, use_gpu=False):
+          # Two batch elements, which the kernel shards over.
           tensor_in = constant_op.constant(
-              np.repeat(one_channel, repeats=depth, axis=-1))
+              np.repeat(
+                  np.repeat(one_channel, repeats=2, axis=0),
+                  repeats=depth,
+                  axis=-1))
           pooled = self.evaluate(
               nn_ops.max_pool(
                   tensor_in,
@@ -639,7 +643,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                   ksize=[1, 2, 2, 1],
                   strides=[1, 1, 1, 1],
                   padding="VALID"))
-        expected = np.ones([depth], dtype=bool)
+        expected = np.ones([2 * depth], dtype=bool)
         self.assertAllEqual(expected, np.isnan(pooled).reshape(-1), msg=message)
         self.assertAllEqual(
             expected, np.isnan(pooled_v2).reshape(-1), msg=message)
@@ -658,7 +662,9 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
           np.array([[[[1.0], [3.0]], [[2.0], [0.5]]]], dtype=np.float32),
           repeats=depth,
           axis=-1)
-      value[0, 0, 0, 0] = np.nan
+      # Two batch elements, which the kernel shards over.
+      value = np.repeat(value, repeats=2, axis=0)
+      value[:, 0, 0, 0] = np.nan
       with GetDeviceScope(self, use_gpu=False):
         tensor_in = constant_op.constant(value)
         pooled = self.evaluate(
@@ -673,9 +679,10 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
                 ksize=[1, 2, 2, 1],
                 strides=[1, 1, 1, 1],
                 padding="VALID"))
-      for result in (pooled.reshape(-1), pooled_v2.reshape(-1)):
-        self.assertTrue(np.isnan(result[0]), msg="depth=%d" % depth)
-        self.assertAllEqual(result[1:], [3.0] * (depth - 1))
+      for result in (pooled.reshape(2, depth), pooled_v2.reshape(2, depth)):
+        for batch in result:
+          self.assertTrue(np.isnan(batch[0]), msg="depth=%d" % depth)
+          self.assertAllEqual(batch[1:], [3.0] * (depth - 1))
 
   @parameterized.parameters(
       GetTestConfigsDicts(nn_ops.max_pool, nn_ops.max_pool_v2))
