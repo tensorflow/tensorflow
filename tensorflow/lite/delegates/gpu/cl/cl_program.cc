@@ -79,9 +79,6 @@ std::string CompilerOptionToString(const GpuInfo& gpu_info,
                                    CompilerOptions option) {
   switch (option) {
     case CompilerOptions::kAdrenoFullSimd:
-      if (gpu_info.opencl_info.IsCLVK()) {
-        return "";
-      }
       if (gpu_info.IsAdreno()) {
         if (gpu_info.adreno_info.IsAdreno3xx() ||
             gpu_info.adreno_info.IsAdreno4xx()) {
@@ -93,27 +90,16 @@ std::string CompilerOptionToString(const GpuInfo& gpu_info,
         return "unsupported";
       }
     case CompilerOptions::kAdrenoMoreWaves:
-      if (gpu_info.opencl_info.IsCLVK()) {
-        return "";
-      }
-      if (gpu_info.IsAdreno()) {
-        if (!(gpu_info.adreno_info.IsAdreno3xx() ||
-              gpu_info.adreno_info.IsAdreno4xx())) {
-          return "-qcom-accelerate-16-bit=false";
-        } else {
-          return "";
-        }
+      if (gpu_info.IsAdreno() && !(gpu_info.adreno_info.IsAdreno3xx() ||
+                                   gpu_info.adreno_info.IsAdreno4xx())) {
+        return "-qcom-accelerate-16-bit=false";
       } else {
         return "unsupported";
       }
     case CompilerOptions::kClFastRelaxedMath:
       return "-cl-fast-relaxed-math";
     case CompilerOptions::kClRegisterAllocation64:
-      if (gpu_info.opencl_info.supports_register_allocation_arm) {
-        return "-fregister-allocation=64";
-      } else {
-        return "";
-      }
+      return "-fregister-allocation=64";
     case CompilerOptions::kClDisableOptimizations:
       return "-cl-opt-disable";
     case CompilerOptions::kCl20:
