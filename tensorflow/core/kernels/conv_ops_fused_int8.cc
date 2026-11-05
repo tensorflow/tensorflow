@@ -224,7 +224,7 @@ struct LaunchFusedConv2DOpCpuInt8Helper {
         const BiasType* bias_ptr = bias_base;
 
         static_assert(
-            std::is_same<TempT, ScaleType>::value,
+            std::is_same_v<TempT, ScaleType>,
             "Temporary contraction result type must match with scale type.");
 
         // CuDNN 8 introduced many new kernels for sm75+ GPUs. These kernels use

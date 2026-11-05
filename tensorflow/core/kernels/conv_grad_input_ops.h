@@ -156,7 +156,7 @@ struct LaunchConv2DBackpropInputOpImpl {
         &padding_right));
     DCHECK_EQ(dims.spatial_dims[1].output_size, expected_out_cols);
 
-    if (std::is_same<Device, GPUDevice>::value) {
+    if (std::is_same_v<Device, GPUDevice>) {
       int64_t size = 1;
 #define REQUIRES_32BIT(x)                                                   \
   size *= x;                                                                \
@@ -332,8 +332,7 @@ class Conv2DBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     cudnn_use_autotune_ = CudnnUseAutotune();
 
-    if (std::is_same<Device, CPUDevice>::value ||
-        std::is_same<T, int32_t>::value) {
+    if (std::is_same_v<Device, CPUDevice> || std::is_same_v<T, int32_t>) {
       OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
                   absl::InvalidArgumentError(
                       "Conv2DBackpropInputOp [CPU or GPU(int32)] "

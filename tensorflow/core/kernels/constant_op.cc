@@ -249,7 +249,7 @@ class ZerosLikeOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
     const Device& d = ctx->eigen_device<Device>();
-    if (std::is_same<T, Variant>::value) {
+    if (std::is_same_v<T, Variant>) {
       OP_REQUIRES(
           ctx, input.dims() == 0,
           absl::InvalidArgumentError("ZerosLike non-scalar Tensor with "

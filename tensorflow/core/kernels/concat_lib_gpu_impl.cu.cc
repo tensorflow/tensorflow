@@ -126,7 +126,7 @@ void ConcatGPUSlice(
     Eigen::array<IntType, 2> size;
     size[0] = inputs_flat[i]->dimension(0);
     size[1] = inputs_flat[i]->dimension(1);
-    if (std::is_same<IntType, int32_t>::value) {
+    if (std::is_same_v<IntType, int32_t>) {
       To32Bit(*output).slice(offset, size).device(gpu_device) =
           To32Bit(*inputs_flat[i]);
     } else {
