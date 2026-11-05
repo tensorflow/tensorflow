@@ -14083,6 +14083,63 @@ ENTRY main.4 {
 }
 
 TEST_P(SpmdPartitioningTest,
+       GroupedConvWeightGradPartiallyReplicatedBatchSharded) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[8,16,4] parameter(0), sharding={devices=[2,1,1,4]<=[8] last_tile_dim_replicate}
+  %rhs = f32[8,16,4] parameter(1), sharding={devices=[2,1,1,4]<=[8] last_tile_dim_replicate}
+  ROOT %conv = f32[3,1,4] convolution(%lhs, %rhs),
+    window={size=16 pad=1_1}, dim_labels=f0b_i0o->0bf, batch_group_count=4,
+    sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+  // Verify that the contracting dimension is all-reduced across the 2 shards of
+  // axis 0 rather than all-reducing across all 8 devices or all-gathering
+  // activations.
+  HloInstruction* all_reduce_instruction =
+      FindInstruction(module.get(), HloOpcode::kAllReduce);
+  ASSERT_NE(all_reduce_instruction, nullptr);
+
+  EXPECT_EQ(all_reduce_instruction->device_list()->replica_groups().size(), 4);
+  for (const auto& group :
+       all_reduce_instruction->device_list()->replica_groups()) {
+    EXPECT_EQ(group.replica_ids().size(), 2);
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
+       ConvolutionSpatialHaloExchangePartiallyReplicated) {
+  // Test that spatial halo exchange with partially replicated sharding only
+  // all-reduces across the partitioned spatial dimensions, not replicated axes.
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[128,56,56,64] parameter(0), sharding={devices=[1,2,1,1,4]<=[8] last_tile_dim_replicate}
+  %rhs = f32[128,56,56,256] parameter(1), sharding={devices=[1,2,1,1,4]<=[8] last_tile_dim_replicate}
+  ROOT %conv = f32[1,1,64,256] convolution(%lhs, %rhs),
+    window={size=56x56}, dim_labels=f01b_i01o->01bf, sharding={replicated}
+})";
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  HloInstruction* all_reduce_instruction =
+      FindInstruction(module.get(), HloOpcode::kAllReduce);
+  ASSERT_NE(all_reduce_instruction, nullptr);
+
+  EXPECT_EQ(all_reduce_instruction->device_list()->replica_groups().size(), 4);
+  for (const auto& group :
+       all_reduce_instruction->device_list()->replica_groups()) {
+    EXPECT_EQ(group.replica_ids().size(), 2);
+  }
+}
+
+TEST_P(SpmdPartitioningTest,
        PartitionConvWithFeatureGroupCountAlignOuputWithRHS) {
   absl::string_view hlo_string = R"(
 HloModule module
