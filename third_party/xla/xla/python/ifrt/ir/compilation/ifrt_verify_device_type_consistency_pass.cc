@@ -128,7 +128,8 @@ mlir::LogicalResult IfrtVerifyDeviceTypeConsistencyPass::initialize(
   platform_names_ = std::move(*platform_names_or);
   for (const auto& platform_name : platform_names_) {
     if (platform_name != "host" && platform_name != xla::TpuName() &&
-        platform_name != xla::CudaName() && platform_name != xla::CpuName()) {
+        platform_name != xla::CudaName() && platform_name != xla::RocmName() &&
+        platform_name != xla::CpuName()) {
       LOG(ERROR) << "Unsupported platform: " << platform_name;
       return mlir::failure();
     }
@@ -144,6 +145,7 @@ bool IfrtVerifyDeviceTypeConsistencyPass::IsConsistentWithModuleType(
     case ModuleType::kXLA:
       return platform_name == xla::TpuName() ||
              platform_name == xla::CudaName() ||
+             platform_name == xla::RocmName() ||
              platform_name == xla::CpuName();
     default:
       LOG(ERROR) << "Unexpected value for InferredDeviceType.";

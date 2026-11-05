@@ -14,6 +14,7 @@
 // ==============================================================================
 // RUN: ifrt-opt %s -ifrt-precompile-atom-program-preprocessing='platform_names=tpu,tpu compile_options={{"compile_option_overrides": {"test_override": {"executable_build_options": {"use_shardy_partitioner": true}}}}}' -split-input-file -verify-diagnostics | FileCheck %s --check-prefixes=CHECK,CHECK-SDY
 // RUN: ifrt-opt %s -ifrt-precompile-atom-program-preprocessing='platform_names=tpu,tpu compile_options={{"compile_option_overrides": {"test_override": {"executable_build_options": {"use_shardy_partitioner": false}}}}}' -split-input-file -verify-diagnostics | FileCheck %s --check-prefixes=CHECK,CHECK-MHLO
+// RUN: ifrt-opt %s -ifrt-precompile-atom-program-preprocessing='platform_names=rocm,rocm compile_options={{"compile_option_overrides": {"test_override": {"executable_build_options": {"use_shardy_partitioner": true}}}}}' -split-input-file -verify-diagnostics | FileCheck %s --check-prefixes=CHECK,CHECK-SDY
 
 #sharding = #ifrt.sharding_param<2x1 to [0] on 2>
 !array = !ifrt.array<tensor<2x2xi32>, #sharding, [0, 1]>
