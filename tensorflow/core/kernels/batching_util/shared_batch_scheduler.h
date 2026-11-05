@@ -261,10 +261,9 @@ class SharedBatchScheduler
     std::vector<int32_t> allowed_batch_sizes;
 
     // If true, the padding will not be appended.
-    //
-    // Setting `disable_padding` to true is not supported when
-    // `enable_priority_aware_batch_scheduler` is true; `AddQueue` logs a
-    // warning and overrides it to false.
+    // When `enable_priority_aware_batch_scheduler` is true, this option is
+    // ignored by SharedBatchScheduler -- batches are formed with as many
+    // requests as possible up to `max_execution_batch_size`.
     bool disable_padding = false;
 
     // The padding policy to use.
@@ -1094,7 +1093,7 @@ class Queue {
   // starts. When ProcessBatch() dequeues the last batch and makes the queue
   // empty, if 'empty_notification_' is non-null it calls
   // 'empty_notification_->Notify()'.
-  absl::Notification* empty_notification_ TF_GUARDED_BY(mu_) = nullptr;
+  std::shared_ptr<absl::Notification> empty_notification_ TF_GUARDED_BY(mu_);
 
   Queue(const Queue&) = delete;
   void operator=(const Queue&) = delete;
@@ -2053,18 +2052,18 @@ bool Queue<TaskType>::IsEmpty() const {
 
 template <typename TaskType>
 void Queue<TaskType>::CloseAndWaitUntilEmpty() {
-  absl::Notification empty;
+  auto empty = std::make_shared<absl::Notification>();
   {
     mutex_lock l(mu_);
     closed_ = true;
     if (IsEmptyInternal()) {
-      empty.Notify();
+      empty->Notify();
     } else {
       // Arrange for ProcessBatch() to notify when the queue becomes empty.
-      empty_notification_ = &empty;
+      empty_notification_ = empty;
     }
   }
-  empty.WaitForNotification();
+  empty->WaitForNotification();
 }
 
 template <typename TaskType>
