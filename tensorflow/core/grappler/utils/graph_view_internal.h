@@ -873,7 +873,7 @@ inline void AddOrUpdateAttribute(NewNode<GraphViewT>* new_node,
 template <typename GraphViewT>
 inline void RemoveAttribute(NewNode<GraphViewT>* new_node,
                             absl::string_view attr_name) {
-  new_node->node.mutable_attr()->erase(string(attr_name));
+  new_node->node.mutable_attr()->erase(std::string(attr_name));
 }
 
 // Checks if current state of new node is a valid node.
