@@ -2687,12 +2687,13 @@ absl::Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
   // This simplification allows many of the other simplifications here to apply
   // when they otherwise would not have, because e.g. A / broadcast(rsqrt(B))
   // does not match the A / rsqrt(B) rule above.
-  // This rewrite does not preserve Inf/NaN for complex types, so we only use
-  // this rewrite if the type is not complex, or fast math is enabled.
+  // This rewrite introduces an intermediate rounded reciprocal and therefore
+  // does not preserve strict floating-point division semantics. For complex
+  // types, it may also change Inf/NaN behavior. Only apply it when fast math is
+  // enabled.
   // TODO: b/504985408 - This rewrite should apply to any device.
   if (options_.executing_on_cpu() && options_.enable_sink_broadcast() &&
-      (!primitive_util::IsComplexType(divide->shape().element_type()) ||
-       options_.enable_fast_math()) &&
+      options_.enable_fast_math() &&
       Match(divide,
             m::Divide(m::Op(&a), m::Broadcast(m::Op(&b).WithOneUse())))) {
     HloInstruction* bcast = divide->mutable_operand(1);

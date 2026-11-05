@@ -11340,8 +11340,8 @@ TEST_F(AlgebraicSimplifierTest, RecipRsqrt) {
                                              m::Sqrt(m::Parameter(0)))));
 }
 
-// Test that A/broadcast(B) is simplified to A*broadcast(1/B).
-TEST_F(AlgebraicSimplifierTest, DivideByBroadcast) {
+// A / broadcast(B) is not rewritten without fast math.
+TEST_F(AlgebraicSimplifierTest, DivideByBroadcastWithoutFastMath) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m
     test {
@@ -11354,7 +11354,33 @@ TEST_F(AlgebraicSimplifierTest, DivideByBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   AlgebraicSimplifierOptions options = default_options_;
   options.set_executing_on_cpu(true);
+  options.set_enable_fast_math(false);
+
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Divide(m::Parameter(1), m::Broadcast(m::Parameter(0)))));
+}
+
+// A / broadcast(B) is rewritten to A * broadcast(1 / B) with fast math.
+TEST_F(AlgebraicSimplifierTest, DivideByBroadcastWithFastMath) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[8] parameter(1)
+      broadcast_p0 = f32[8] broadcast(p0)
+      ROOT div = f32[8] divide(p1, broadcast_p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_executing_on_cpu(true);
+  options.set_enable_fast_math(true);
+
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(
                   m::Parameter(1), m::Broadcast(m::Divide(m::ConstantScalar(1),
@@ -13065,7 +13091,10 @@ TEST_F(AlgebraicSimplifierTest, ScalarDividePredicate) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_executing_on_cpu(true);
+  options.set_enable_fast_math(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::MultiplyAnyOrder(
