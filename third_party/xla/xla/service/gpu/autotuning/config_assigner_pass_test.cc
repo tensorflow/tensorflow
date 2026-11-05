@@ -695,6 +695,58 @@ TEST_F(AutotunerFlagsTest, DeterministicOpsDisallowAutotuning) {
   EXPECT_FALSE(GetConfigAssignerOptions(debug_options).allow_autotuning);
 }
 
+TEST_F(AutotunerFlagsTest, TritonFusionIsOnlyAutotunedWithTopKAboveOne) {
+  // Triton fusions are autotuned only with top-k > 1 and the block-level
+  // emitter enabled.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+max {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT m = f32[] maximum(a, b)
+}
+
+triton_softmax_computation {
+  p0 = f32[128,256]{1,0} parameter(0)
+  c = f32[] constant(-inf)
+  r = f32[128]{0} reduce(p0, c), dimensions={1}, to_apply=max
+  b = f32[128,256]{1,0} broadcast(r), dimensions={0}
+  ROOT s = f32[128,256]{1,0} subtract(p0, b)
+}
+
+ENTRY main {
+  p0 = f32[128,256]{1,0} parameter(0)
+  ROOT triton_softmax = f32[128,256]{1,0} fusion(p0), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{"output_tiles":[{"sizes":["1","256"]}],
+      "num_warps":"1","num_ctas":1,"num_stages":1}}}
+}
+)"));
+  const HloInstruction& fusion =
+      *module->entry_computation()->root_instruction();
+  const se::GpuComputeCapability gpu_version =
+      stream_executor_->GetDeviceDescription().gpu_compute_capability();
+  DebugOptions debug_options = GetDebugOptionsForTest();
+
+  debug_options.set_xla_gpu_fusion_autotune_top_k_configs(1);
+  EXPECT_FALSE(
+      GetShouldAssignConfigToInstructionFn(debug_options, gpu_version)(fusion));
+
+  debug_options.set_xla_gpu_fusion_autotune_top_k_configs(4);
+  EXPECT_TRUE(
+      GetShouldAssignConfigToInstructionFn(debug_options, gpu_version)(fusion));
+
+  // Without the block-level emitter, no backend could keep the fusion as a
+  // Triton fusion, so it keeps its config.
+  debug_options.clear_xla_gpu_experimental_autotune_backends();
+  debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::NATIVE_EMITTER);
+  EXPECT_FALSE(
+      GetShouldAssignConfigToInstructionFn(debug_options, gpu_version)(fusion));
+}
+
 TEST_F(AutotunerFlagsTest, GetEnabledBackendsRespectsDeterminism) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);

@@ -184,6 +184,26 @@ AutotuneDecision ShouldAssignConfigToGemmFusion(
       "Fusion kind is not supported for GEMM autotuning");
 }
 
+// Generic Triton fusions usually already have a config from the cost model.
+// Autotune them only when top-k > 1, and only with the block-level emitter, the
+// only backend that keeps them as Triton fusions.
+AutotuneDecision ShouldAssignConfigToTritonFusion(
+    bool enable_fusion_autotuner, bool block_level_emitter_enabled,
+    int top_k_configs) {
+  if (!enable_fusion_autotuner) {
+    return AutotuneDecision::Forbid("Fusion autotuner is disabled");
+  }
+  if (!block_level_emitter_enabled) {
+    return AutotuneDecision::Forbid("Block-level emitter backend is disabled");
+  }
+  if (top_k_configs == 1) {
+    return AutotuneDecision::Forbid(
+        "Triton fusions keep the cost model's config when autotuning over a "
+        "single config");
+  }
+  return AutotuneDecision::Allow();
+}
+
 AutotuneDecision ShouldAssignConfigToGenericFusion(
     bool enable_fusion_autotuner, const HloInstruction& instruction) {
   if (!enable_fusion_autotuner) {
@@ -203,7 +223,8 @@ AutotuneDecision ShouldAssignConfigToGenericFusion(
 
 AutotuneDecision ShouldAssignConfigToInstruction(
     bool do_not_autotune_cublas, bool do_not_autotune_cudnn,
-    bool enable_fusion_autotuner, const HloInstruction& instruction) {
+    bool enable_fusion_autotuner, bool block_level_emitter_enabled,
+    int top_k_configs, const HloInstruction& instruction) {
   // 1. Custom calls.
   if (instruction.opcode() == HloOpcode::kCustomCall) {
     return ShouldAssignConfigToCustomCall(do_not_autotune_cublas,
@@ -223,7 +244,13 @@ AutotuneDecision ShouldAssignConfigToInstruction(
         backend_config.kind() == kCustomFusionKind) {
       return ShouldAssignConfigToGemmFusion(instruction);
     }
-    // 3. Generic fusions.
+    // 3. Generic Triton-only fusions. These are expected to only be tuned by
+    // the BlockLevelEmitterBackend.
+    if (backend_config.kind() == kTritonFusionKind) {
+      return ShouldAssignConfigToTritonFusion(
+          enable_fusion_autotuner, block_level_emitter_enabled, top_k_configs);
+    }
+    // 4. Generic fusions.
     return ShouldAssignConfigToGenericFusion(enable_fusion_autotuner,
                                              instruction);
   }
@@ -385,19 +412,29 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
       !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
       !debug_options.xla_gpu_deterministic_ops() &&
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
+  int top_k_configs = debug_options.xla_gpu_fusion_autotune_top_k_configs();
+  // An empty list of autotune backends enables all of them.
+  const auto& autotune_backends =
+      debug_options.xla_gpu_experimental_autotune_backends();
+  bool block_level_emitter_enabled =
+      autotune_backends.empty() ||
+      absl::c_any_of(autotune_backends, [](int backend) {
+        return static_cast<autotuner::Backend>(backend) ==
+               autotuner::Backend::BLOCK_LEVEL_EMITTER;
+      });
 
-  return
-      [do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-       gpu_version](const HloInstruction& instruction) -> bool {
-        AutotuneDecision decision = ShouldAssignConfigToInstruction(
-            do_not_autotune_cublas, do_not_autotune_cudnn,
-            enable_fusion_autotuner, instruction);
-        if (!decision) {
-          VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
-                  << decision.Explain();
-        }
-        return decision.IsAllowed();
-      };
+  return [do_not_autotune_cublas, do_not_autotune_cudnn,
+          enable_fusion_autotuner, block_level_emitter_enabled, top_k_configs,
+          gpu_version](const HloInstruction& instruction) -> bool {
+    AutotuneDecision decision = ShouldAssignConfigToInstruction(
+        do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
+        block_level_emitter_enabled, top_k_configs, instruction);
+    if (!decision) {
+      VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
+              << decision.Explain();
+    }
+    return decision.IsAllowed();
+  };
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
