@@ -94,12 +94,11 @@ class NcclTestBase : public ::testing::Test {
   }
 
   // Initialize `input` tensor at rank `rank`.
-  virtual void InitInput(Tensor* input, const int rank) = 0;
+  virtual void InitInput(Tensor* input, int rank) = 0;
 
   // Initialize `expected` output at `current_rank` out of `num_ranks` ranks.
-  virtual void InitExpected(std::vector<float>* expected,
-                            const int tensor_length, const int current_rank,
-                            const int num_ranks) = 0;
+  virtual void InitExpected(std::vector<float>* expected, int tensor_length,
+                            int current_rank, int num_ranks) = 0;
 
   // Initialize device `di` specific to the collective op.
   virtual void InitDevice(DeviceInstance* di) = 0;

@@ -1050,7 +1050,7 @@ template <typename T, bool conjugate>
 struct SwapDimension1And2InTensor3<GPUDevice, T, conjugate> {
   typedef GPUDevice Device;
   void operator()(const Device& d, const T* in,
-                  const absl::Span<const int64_t>& combined_dims, T* out) {
+                  const absl::Span<const int64_t> combined_dims, T* out) {
     Dimension<3> input_dims = {static_cast<int>(combined_dims[0]),
                                static_cast<int>(combined_dims[1]),
                                static_cast<int>(combined_dims[2])};
@@ -1064,7 +1064,7 @@ template <typename T, bool conjugate>
 struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
   typedef GPUDevice Device;
   void operator()(const Device& d, const T* in,
-                  const absl::Span<const int64_t>& combined_dims, T* out) {
+                  const absl::Span<const int64_t> combined_dims, T* out) {
     Dimension<3> input_dims = {static_cast<int>(combined_dims[0]),
                                static_cast<int>(combined_dims[1]),
                                static_cast<int>(combined_dims[2])};

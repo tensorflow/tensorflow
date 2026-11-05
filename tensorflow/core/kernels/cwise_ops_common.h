@@ -440,13 +440,13 @@ struct BinaryFunctor<CPUDevice, Functor, 2, false> {
     Assign(d, out, in.unaryExpr(Unary(scalar.data())));
   }
 
-  inline Eigen::IndexList<Eigen::DenseIndex, Eigen::type2index<1>> NByOne(
+  Eigen::IndexList<Eigen::DenseIndex, Eigen::type2index<1>> NByOne(
       Eigen::DenseIndex n) {
     Eigen::IndexList<Eigen::DenseIndex, Eigen::type2index<1>> ret;
     ret.set(0, n);
     return ret;
   }
-  inline Eigen::IndexList<Eigen::type2index<1>, Eigen::DenseIndex> OneByM(
+  Eigen::IndexList<Eigen::type2index<1>, Eigen::DenseIndex> OneByM(
       Eigen::DenseIndex m) {
     Eigen::IndexList<Eigen::type2index<1>, Eigen::DenseIndex> ret;
     ret.set(1, m);

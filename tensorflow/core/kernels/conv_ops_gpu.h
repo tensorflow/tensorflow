@@ -126,7 +126,7 @@ AutotuneFusedConv(
     const se::dnn::BatchDescriptor& bias_desc,
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc,
-    const se::dnn::ActivationMode activation_mode, double conv_input_scale,
+    se::dnn::ActivationMode activation_mode, double conv_input_scale,
     double side_input_scale, double leakyrelu_alpha,
     se::DeviceMemory<T> input_ptr, se::DeviceMemory<T> filter_ptr,
     se::DeviceMemory<T> output_ptr, se::DeviceMemory<T> bias_ptr,
