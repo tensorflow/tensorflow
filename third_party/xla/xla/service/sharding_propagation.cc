@@ -44,6 +44,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
@@ -3532,5 +3536,24 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
           << " iterations";
   return any_changed;
 }
+
+namespace {
+
+class ShardingPropagationFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "sharding-propagation"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext&, const HloPassOptions& options) const override {
+    return std::make_unique<ShardingPropagation>(
+        options.Get<bool>("is_spmd").value_or(false),
+        options.Get<bool>("propagate_metadata").value_or(false));
+  }
+};
+
+const HloPassFactory* const kShardingPropagationRegistration =
+    RegisterHloPassFactory<ShardingPropagationFactory>();
+
+}  // namespace
 
 }  // namespace xla
