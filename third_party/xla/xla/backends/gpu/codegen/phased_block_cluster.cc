@@ -36,6 +36,8 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -53,8 +55,10 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/gpu/codegen/emitters/loop.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
@@ -63,12 +67,14 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
-#include "xla/backends/gpu/codegen/thread_block_specialized.h"
+#include "xla/backends/gpu/codegen/nested_kernel_utils.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h"
+#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/future.h"
@@ -88,12 +94,14 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "tsl/platform/platform.h"
 
 namespace xla::gpu {
 
 PhasedBlockClusterFusion::PhasedBlockClusterFusion(
-    const HloFusionAnalysis& analysis)
+    const HloFusionAnalysis& analysis,
+    std::optional<LaunchDimensions> outer_launch_dims)
     : device_info_(analysis.device_info()) {
   uint64_t max_blocks = 0;
   uint64_t max_threads = 0;
@@ -109,12 +117,17 @@ PhasedBlockClusterFusion::PhasedBlockClusterFusion(
     max_threads = std::max(max_threads, dims.num_threads_per_block());
     nested_kernels_.push_back({nested, dims});
   }
-  // CUDA `barrier.cluster` only synchronizes CTAs within one cluster, so launch
-  // a single portable cluster of power-of-2 size in {1, 2, 4, 8}.
-  uint64_t cluster_blocks =
-      absl::bit_ceil(std::min<uint64_t>(max_blocks, kMaxBlocksPerCluster));
-  launch_dimensions_ = LaunchDimensions(cluster_blocks, max_threads);
-  cluster_dim_ = se::ClusterDim(cluster_blocks, 1, 1);
+  if (outer_launch_dims.has_value()) {
+    launch_dimensions_ = *outer_launch_dims;
+    cluster_dim_ = se::ClusterDim(outer_launch_dims->num_blocks(), 1, 1);
+  } else {
+    // CUDA `barrier.cluster` only synchronizes CTAs within one cluster, so
+    // launch a single portable cluster of power-of-2 size in {1, 2, 4, 8}.
+    uint64_t cluster_blocks =
+        absl::bit_ceil(std::min<uint64_t>(max_blocks, kMaxBlocksPerCluster));
+    launch_dimensions_ = LaunchDimensions(cluster_blocks, max_threads);
+    cluster_dim_ = se::ClusterDim(cluster_blocks, 1, 1);
+  }
 }
 
 absl::Status PhasedBlockClusterFusion::EmitLauncherBody(
@@ -335,7 +348,9 @@ PhasedBlockClusterFusion::CreateAndLowerMLIRModule(
     mlir::PassManager pm(&mlir_context);
     pm.enableVerifier(should_verify);
     pm.addPass(createVirtualizeSubKernelPass(opts));
-    ABSL_RETURN_IF_ERROR(RunPassManager(*nested_module, pm));
+    tsl::StatusScopedDiagnosticHandler diagnostic_handler(
+        nested_module->getContext());
+    ABSL_RETURN_IF_ERROR(diagnostic_handler.consumeStatus(pm.run(*nested_module)));
     nested_modules.push_back(std::move(nested_module));
   }
 
@@ -347,6 +362,16 @@ PhasedBlockClusterFusion::CreateAndLowerMLIRModule(
                    emitters::EmitKernelApi(
                        *launcher_module, fusion, buffer_assignment,
                        GetDefaultBufferAlignment(), entry_function_name));
+  // Intermediate output buffers are written by sibling CTAs before
+  // `barrier.cluster` and read in the next phase; marking them
+  // `xla.not_invariant` tells `MergePointersToSameSlicePass` to omit
+  // `llvm.noalias` so LLVM `BasicAA` cannot reorder cross-phase accesses across
+  // the 0-arg barrier.
+  for (size_t i = 0; i + 1 < nested_kernels_.size(); ++i) {
+    entry_func.setArgAttr(fusion.operand_count() + i,
+                          emitters::kXlaNotInvariantAttr,
+                          builder.getUnitAttr());
+  }
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
   emitters::SetIndexDataLayout(*launcher_module, fusion);
   ABSL_RETURN_IF_ERROR(
@@ -362,18 +387,20 @@ PhasedBlockClusterFusion::CreateAndLowerMLIRModule(
       builder.getDenseI32ArrayAttr({static_cast<int32_t>(cluster_dim_.x),
                                     static_cast<int32_t>(cluster_dim_.y),
                                     static_cast<int32_t>(cluster_dim_.z)}));
-  // Intermediate output buffers are written by sibling CTAs before
-  // `barrier.cluster` and read in the next phase; keeping `llvm.noalias` would
-  // let LLVM `BasicAA` reorder cross-phase accesses across the 0-arg barrier.
-  for (size_t i = 0; i + 1 < nested_kernels_.size(); ++i) {
-    launcher_entry.removeArgAttr(fusion.operand_count() + i,
-                                 mlir::LLVM::LLVMDialect::getNoAliasAttrName());
-  }
+  int64_t max_shmem_bytes = 0;
   for (size_t i = 0; i < nested_kernels_.size(); ++i) {
+    if (auto shmem_attr =
+            (*nested_modules[i])
+                ->getAttrOfType<mlir::IntegerAttr>("xla.shared_memory_bytes")) {
+      max_shmem_bytes = std::max(max_shmem_bytes, shmem_attr.getInt());
+    }
     ABSL_RETURN_IF_ERROR(SpliceNestedKernelModuleIntoLauncher(
         *launcher_module, *nested_modules[i],
         GetNestedKernelFunctionName(entry_function_name, i)));
   }
+  (*launcher_module)
+      ->setAttr("xla.shared_memory_bytes",
+                builder.getI64IntegerAttr(max_shmem_bytes));
   return launcher_module;
 }
 

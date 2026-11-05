@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
 
@@ -59,6 +61,7 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
   LaunchDimensions launch_dimensions() const override {
     return launch_dimensions_;
   }
+  std::optional<se::ClusterDim> cluster_dim() const { return cluster_dim_; }
 
   AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
                           const HloFusionInstruction& fusion) const override;
@@ -87,6 +90,8 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
     const HloFusionInstruction* fusion = nullptr;
     LaunchDimensions launch_dims;
     std::vector<int64_t> outer_root_indices;
+    HloFusionAnalysis::EmitterFusionKind emitter_fusion_kind;
+    se::ClusterDim cluster_dim{1, 1, 1};
   };
 
   // Emits the entry function that conditionally launches nested kernels based
@@ -99,17 +104,8 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
   const se::DeviceDescription& device_info_;
   std::vector<NestedKernelSpec> nested_kernels_;
   LaunchDimensions launch_dimensions_;
+  std::optional<se::ClusterDim> cluster_dim_;
 };
-
-std::string GetNestedKernelFunctionName(absl::string_view entry_function_name,
-                                        size_t index);
-absl::Status RunPassManager(mlir::ModuleOp module, mlir::PassManager& pm);
-absl::Status LowerLauncherModuleToLlvmDialect(
-    mlir::ModuleOp launcher_module, const se::DeviceDescription& device_info,
-    bool should_verify);
-absl::Status SpliceNestedKernelModuleIntoLauncher(
-    mlir::ModuleOp launcher_module, mlir::ModuleOp nested_module,
-    absl::string_view nested_fn_name);
 
 }  // namespace xla::gpu
 

@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_PHASED_BLOCK_CLUSTER_H_
 #define XLA_BACKENDS_GPU_CODEGEN_PHASED_BLOCK_CLUSTER_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -26,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Pass/PassManager.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -69,7 +73,9 @@ class PhasedBlockClusterFusion : public KernelFusionInterface {
  public:
   static constexpr uint64_t kMaxBlocksPerCluster = 8;
 
-  explicit PhasedBlockClusterFusion(const HloFusionAnalysis& analysis);
+  explicit PhasedBlockClusterFusion(
+      const HloFusionAnalysis& analysis,
+      std::optional<LaunchDimensions> outer_launch_dims = std::nullopt);
 
   LaunchDimensions launch_dimensions() const override {
     return launch_dimensions_;
