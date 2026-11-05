@@ -334,7 +334,7 @@ class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
   friend class CpuExecutableLoadState;
 
   const PjRtCpuExecutable* executable_;
-  std::shared_ptr<DeviceAssignment> device_assignment_;
+  std::shared_ptr<const DeviceAssignment> device_assignment_;
   size_t num_addressable_devices_;
   LocalDeviceId local_device_id_;
   GlobalDeviceId global_device_id_;
@@ -352,6 +352,9 @@ class CpuExecutableLoadState : public PjRtExecutableLoadState {
   void Delete() override { is_deleted_.store(true); }
   bool IsDeleted() const override { return is_deleted_.load(); }
 
+  absl::StatusOr<std::shared_ptr<const DeviceAssignment>> GetDeviceAssignment(
+      PjRtExecutable* executable, int process_index);
+
   absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
       tsl::AsyncValueRef<PjRtExecutable> executable,
       const ExecuteOptions& options, size_t host_callback_idx,
@@ -361,6 +364,10 @@ class CpuExecutableLoadState : public PjRtExecutableLoadState {
  private:
   PjRtCpuRawClient* raw_client_;
   std::atomic<bool> is_deleted_{false};
+
+  absl::Mutex mu_;
+  std::optional<std::shared_ptr<const DeviceAssignment>> device_assignment_
+      ABSL_GUARDED_BY(mu_);
 };
 
 class PjRtCpuExecutable final : public PjRtExecutable {

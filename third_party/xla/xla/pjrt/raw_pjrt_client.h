@@ -127,7 +127,6 @@ class PjRtExecutableLoadState
     LocalDeviceId local_device_id;
     GlobalDeviceId global_device_id;
     int process_index;
-    std::shared_ptr<DeviceAssignment> device_assignment;
     std::optional<int32_t> slice_id;
     int replica;
     int partition;

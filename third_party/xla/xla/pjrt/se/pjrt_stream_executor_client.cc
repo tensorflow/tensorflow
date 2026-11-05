@@ -674,10 +674,26 @@ PjRtStreamExecutorExecutableLoadState::LoadRawExecutable(
   int partition = device_and_assign.partition;
   VLOG(1) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
+  std::shared_ptr<const DeviceAssignment> device_assignment;
+  if (local_exec->build_options().has_device_assignment()) {
+    device_assignment = std::shared_ptr<const DeviceAssignment>(
+        local_exec, &local_exec->build_options().device_assignment());
+  } else if (se_executable->num_replicas() == 1 &&
+             se_executable->num_partitions() == 1) {
+    auto da = std::make_shared<DeviceAssignment>(1, 1);
+    (*da)(0, 0) = device_and_assign.global_device_id.value();
+    device_assignment = std::move(da);
+  } else {
+    ABSL_ASSIGN_OR_RETURN(
+        DeviceAssignment default_da,
+        raw_client()->client()->backend().computation_placer()->AssignDevices(
+            se_executable->num_replicas(), se_executable->num_partitions()));
+    device_assignment =
+        std::make_shared<DeviceAssignment>(std::move(default_da));
+  }
   return std::make_unique<PjRtStreamExecutorRawLoadedExecutable>(
-      replica, partition, run_id, device,
-      std::move(device_and_assign.device_assignment), std::move(local_exec),
-      std::move(se_executable), raw_client());
+      replica, partition, run_id, device, std::move(device_assignment),
+      std::move(local_exec), std::move(se_executable), raw_client());
 }
 
 absl::Status PjRtStreamExecutorRawClient::TransferToInfeed(

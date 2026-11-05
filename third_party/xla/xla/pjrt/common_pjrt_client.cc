@@ -3542,7 +3542,6 @@ CommonPjRtClient::LookupDeviceAndAssignment(
     const int64_t device_id = (*device_assignment)(replica, partition);
     GlobalDeviceId global_device_id(device_id);
     ABSL_ASSIGN_OR_RETURN(device, LookupDevice(global_device_id));
-    result.device_assignment = device_assignment;
   } else {
     if (device_assignment != nullptr) {
       return InvalidArgument(
@@ -3550,8 +3549,6 @@ CommonPjRtClient::LookupDeviceAndAssignment(
     }
     CHECK_EQ(replica, 0);
     CHECK_EQ(partition, 0);
-    result.device_assignment = std::make_shared<DeviceAssignment>(1, 1);
-    (*result.device_assignment)(0, 0) = device->id();
   }
   CHECK_EQ(device->process_index(), process_index());
   result.device = device;
