@@ -1301,36 +1301,109 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyTautologicalCompare(
   return false;
 }
 
+namespace {
+
+struct UniformCollectiveOperand {
+  Literal scalar_literal;
+  HloInstruction* scalar_constant = nullptr;
+};
+
+std::optional<UniformCollectiveOperand> MatchUniformCollectiveOperand(
+    HloInstruction* collective, const AlgebraicSimplifierOptions& options) {
+  if (!collective->shape().IsArray() || collective->operand_count() != 1 ||
+      collective->HasControlDependencies() ||
+      collective->parent()->IsAsyncComputation()) {
+    return std::nullopt;
+  }
+  if (options.is_layout_sensitive() && collective->shape().has_layout() &&
+      collective->shape().layout().memory_space() == Layout::kHostMemorySpace) {
+    return std::nullopt;
+  }
+
+  HloInstruction* operand = collective->mutable_operand(0);
+  HloInstruction* scalar_constant = nullptr;
+  if (Match(operand, m::Broadcast(m::ConstantScalar(&scalar_constant))) ||
+      Match(operand, m::ConstantScalar(&scalar_constant))) {
+    return UniformCollectiveOperand{scalar_constant->literal().Clone(),
+                                    scalar_constant};
+  }
+  if (operand->opcode() == HloOpcode::kConstant &&
+      !ShapeUtil::IsZeroElementArray(operand->shape()) &&
+      operand->literal().IsAllFirst()) {
+    return UniformCollectiveOperand{
+        LiteralUtil::GetFirstScalarLiteral(operand->literal()), nullptr};
+  }
+  return std::nullopt;
+}
+
+// Emits a scalar constant for R0 outputs in default memory space, and a scalar
+// broadcast otherwise so R1+ reshapes fold in the same visitor pass and VMEM
+// layouts stay on the broadcast rather than the constant.
+std::unique_ptr<HloInstruction> CreateUniformCollectiveReplacement(
+    HloInstruction* collective, UniformCollectiveOperand uniform,
+    const AlgebraicSimplifierOptions& options, AlgebraicSimplifier* simplifier,
+    AlgebraicSimplifierVisitor* visitor) {
+  if (ShapeUtil::IsScalar(collective->shape()) &&
+      (!options.is_layout_sensitive() || !collective->shape().has_layout() ||
+       collective->shape().layout().memory_space() ==
+           Layout::kDefaultMemorySpace)) {
+    std::unique_ptr<HloInstruction> new_const =
+        simplifier->CreateConstantWithLayoutUpdated(
+            std::move(uniform.scalar_literal));
+    if (options.is_layout_sensitive() && collective->shape().has_layout() &&
+        visitor->IsValidLayout(collective->shape())) {
+      *new_const->mutable_shape()->mutable_layout() =
+          collective->shape().layout();
+    }
+    return new_const;
+  }
+
+  HloInstruction* scalar_constant = uniform.scalar_constant;
+  if (scalar_constant == nullptr ||
+      (options.is_layout_sensitive() && scalar_constant->shape().has_layout() &&
+       scalar_constant->shape().layout().memory_space() !=
+           Layout::kDefaultMemorySpace)) {
+    scalar_constant = collective->parent()->AddInstruction(
+        simplifier->CreateConstantWithLayoutUpdated(
+            std::move(uniform.scalar_literal)));
+  }
+  return HloInstruction::CreateBroadcast(collective->shape(), scalar_constant,
+                                         {});
+}
+
+}  // namespace
+
 absl::Status AlgebraicSimplifierVisitor::HandleAllGather(
     HloInstruction* all_gather) {
-  if (all_gather->shape().IsArray() &&
-      Match(all_gather->mutable_operand(0),
-            m::Broadcast(m::ConstantScalar()))) {
-    return ReplaceWithNewInstruction(
-        all_gather,
-        all_gather->mutable_operand(0)->CloneWithNewShape(all_gather->shape()));
+  std::optional<UniformCollectiveOperand> uniform =
+      MatchUniformCollectiveOperand(all_gather, options_);
+  if (!uniform.has_value()) {
+    return absl::OkStatus();
   }
-  return absl::OkStatus();
+  return ReplaceWithNewInstruction(
+      all_gather,
+      CreateUniformCollectiveReplacement(all_gather, std::move(*uniform),
+                                         options_, simplifier_, this));
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleAllToAll(
     HloInstruction* all_to_all) {
-  if (all_to_all->shape().IsArray() &&
-      Match(all_to_all->mutable_operand(0),
-            m::Broadcast(m::ConstantScalar()))) {
-    return ReplaceInstruction(all_to_all, all_to_all->mutable_operand(0));
+  std::optional<UniformCollectiveOperand> uniform =
+      MatchUniformCollectiveOperand(all_to_all, options_);
+  if (!uniform.has_value()) {
+    return absl::OkStatus();
   }
-  return absl::OkStatus();
+  return ReplaceWithNewInstruction(
+      all_to_all,
+      CreateUniformCollectiveReplacement(all_to_all, std::move(*uniform),
+                                         options_, simplifier_, this));
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleAllReduceOrReduceScatter(
     HloInstruction* collective) {
-  if (!collective->shape().IsArray()) {
-    return absl::OkStatus();
-  }
-
-  HloInstruction* operand = collective->mutable_operand(0);
-  if (!Match(operand, m::Broadcast(m::ConstantScalar()))) {
+  std::optional<UniformCollectiveOperand> uniform =
+      MatchUniformCollectiveOperand(collective, options_);
+  if (!uniform.has_value()) {
     return absl::OkStatus();
   }
 
@@ -1340,25 +1413,25 @@ absl::Status AlgebraicSimplifierVisitor::HandleAllReduceOrReduceScatter(
     return absl::OkStatus();
   }
 
-  HloInstruction* constant = operand->mutable_operand(0);
-
   switch (*reduction_kind) {
     case ReductionKind::MIN:
     case ReductionKind::MAX: {
       return ReplaceWithNewInstruction(
           collective,
-          HloInstruction::CreateBroadcast(collective->shape(), constant, {}));
+          CreateUniformCollectiveReplacement(collective, std::move(*uniform),
+                                             options_, simplifier_, this));
     }
     case ReductionKind::SUM: {
-      ABSL_ASSIGN_OR_RETURN(auto count_and_size,
-                       GetReplicaGroupCountAndSize(collective));
+      ABSL_ASSIGN_OR_RETURN(
+          (std::optional<std::pair<int64_t, int64_t>> count_and_size),
+          GetReplicaGroupCountAndSize(collective));
       if (!count_and_size.has_value()) {
         return absl::OkStatus();
       }
       int64_t group_size = count_and_size->second;
 
-      PrimitiveType element_type = constant->shape().element_type();
-      const Literal& literal = constant->literal();
+      PrimitiveType element_type = collective->shape().element_type();
+      const Literal& literal = uniform->scalar_literal;
 
       Literal new_literal;
       primitive_util::ArrayTypeSwitch(
@@ -1377,12 +1450,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleAllReduceOrReduceScatter(
         return absl::OkStatus();
       }
 
-      HloInstruction* new_constant = computation_->AddInstruction(
-          HloInstruction::CreateConstant(std::move(new_literal)));
-
       return ReplaceWithNewInstruction(
-          collective, HloInstruction::CreateBroadcast(collective->shape(),
-                                                      new_constant, {}));
+          collective, CreateUniformCollectiveReplacement(
+                          collective, {std::move(new_literal), nullptr},
+                          options_, simplifier_, this));
     }
     default:
       return absl::OkStatus();

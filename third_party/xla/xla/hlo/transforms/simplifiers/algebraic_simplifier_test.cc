@@ -15480,6 +15480,155 @@ TEST_F(AlgebraicSimplifierTest, ReduceScatterSumOfBroadcastS32) {
               GmockMatch(m::Broadcast(m::Constant())));
 }
 
+TEST_F(AlgebraicSimplifierTest, AllReduceMinChainOfSingleElementConstant) {
+  constexpr absl::string_view kModuleStr = R"hlo(
+    HloModule m
+    min {
+      lhs = pred[] parameter(0)
+      rhs = pred[] parameter(1)
+      ROOT minimum = pred[] minimum(lhs, rhs)
+    }
+    ENTRY test {
+      c = pred[1] constant({1})
+      ar0 = pred[1] all-reduce(c), channel_id=1, replica_groups={{0,1}},
+        use_global_device_ids=true, to_apply=min
+      r = pred[] reshape(ar0)
+      ROOT ar1 = pred[] all-reduce(r), channel_id=2, replica_groups={{0,1}},
+        use_global_device_ids=true, to_apply=min
+    })hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_THAT(AlgebraicSimplifier(default_options_).Run(m.get()),
+              absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_TRUE(ShapeUtil::IsScalar(root->shape()));
+  EXPECT_THAT(root, GmockMatch(m::ConstantScalar(true)));
+}
+
+TEST_F(AlgebraicSimplifierTest, AllGatherAndAllToAllOfUniformConstant) {
+  constexpr absl::string_view kAllGatherHlo = R"hlo(
+    HloModule m
+    ENTRY test {
+      c = f32[1] constant({3.5})
+      ROOT ag = f32[4] all-gather(c), dimensions={0}, replica_groups={{0,1,2,3}}
+    })hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ag_module,
+                       ParseAndReturnVerifiedModule(kAllGatherHlo));
+  EXPECT_THAT(AlgebraicSimplifier(default_options_).Run(ag_module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(ag_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(3.5f))));
+
+  constexpr absl::string_view kAllToAllHlo = R"hlo(
+    HloModule m
+    ENTRY test {
+      c = f32[1] constant({3.5})
+      ROOT a2a = f32[1] all-to-all(c), dimensions={0}, replica_groups={{0}}
+    })hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> a2a_module,
+                       ParseAndReturnVerifiedModule(kAllToAllHlo));
+  EXPECT_THAT(AlgebraicSimplifier(default_options_).Run(a2a_module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(a2a_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(3.5f))));
+}
+
+TEST_F(AlgebraicSimplifierTest, AllReduceAndReduceScatterSumOfConstant) {
+  constexpr absl::string_view kAllReduceSumHlo = R"hlo(
+    HloModule m
+    add {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT a = s32[] add(p0, p1)
+    }
+    ENTRY test {
+      c = s32[] constant(2)
+      ROOT ar = s32[] all-reduce(c), to_apply=add, replica_groups={{0,1,2,3}}
+    })hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ar_module,
+                       ParseAndReturnVerifiedModule(kAllReduceSumHlo));
+  EXPECT_THAT(AlgebraicSimplifier(default_options_).Run(ar_module.get()),
+              absl_testing::IsOkAndHolds(true));
+  const HloInstruction* ar_root =
+      ar_module->entry_computation()->root_instruction();
+  EXPECT_TRUE(ShapeUtil::IsScalar(ar_root->shape()));
+  EXPECT_THAT(ar_root, GmockMatch(m::ConstantScalar(8)));
+
+  constexpr absl::string_view kReduceScatterSumHlo = R"hlo(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT a = f32[] add(p0, p1)
+    }
+    ENTRY test {
+      c = f32[8] constant({1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5})
+      ROOT rs = f32[2] reduce-scatter(c), dimensions={0}, to_apply=add,
+        replica_groups={{0,1,2,3}}
+    })hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> rs_module,
+                       ParseAndReturnVerifiedModule(kReduceScatterSumHlo));
+  EXPECT_THAT(AlgebraicSimplifier(default_options_).Run(rs_module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(rs_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(6.0f))));
+
+  constexpr absl::string_view kVmemScalarAllReduceHlo = R"hlo(
+    HloModule m
+    min {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT minimum = f32[] minimum(lhs, rhs)
+    }
+    ENTRY test {
+      c = f32[] constant(2.5)
+      ROOT ar = f32[]{:S(1)} all-reduce(c), to_apply=min, replica_groups={{0,1}}
+    })hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> vmem_module,
+                       ParseAndReturnVerifiedModule(kVmemScalarAllReduceHlo));
+  AlgebraicSimplifierOptions layout_sensitive_options = default_options_;
+  layout_sensitive_options.set_is_layout_sensitive(true);
+  EXPECT_THAT(
+      AlgebraicSimplifier(layout_sensitive_options).Run(vmem_module.get()),
+      absl_testing::IsOkAndHolds(true));
+  const HloInstruction* vmem_root =
+      vmem_module->entry_computation()->root_instruction();
+  EXPECT_THAT(vmem_root, GmockMatch(m::Broadcast(m::ConstantScalar(2.5f))));
+  EXPECT_EQ(vmem_root->shape().layout().memory_space(), 1);
+  EXPECT_EQ(vmem_root->operand(0)->shape().layout().memory_space(),
+            Layout::kDefaultMemorySpace);
+}
+
+TEST_F(AlgebraicSimplifierTest, UniformCollectiveNegativeCases) {
+  constexpr absl::string_view kNonUniformHlo = R"hlo(
+    HloModule m
+    ENTRY test {
+      c = f32[2] constant({1.0, 2.0})
+      ROOT ag = f32[4] all-gather(c), dimensions={0}, replica_groups={{0,1}}
+    })hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> non_uniform_module,
+                       ParseAndReturnVerifiedModule(kNonUniformHlo));
+  EXPECT_THAT(
+      AlgebraicSimplifier(default_options_).Run(non_uniform_module.get()),
+      absl_testing::IsOkAndHolds(false));
+
+  constexpr absl::string_view kProductAllReduceHlo = R"hlo(
+    HloModule m
+    mul {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT product = f32[] multiply(lhs, rhs)
+    }
+    ENTRY test {
+      c = f32[1] constant({2.0})
+      ROOT ar = f32[1] all-reduce(c), replica_groups={{0,1}}, to_apply=mul
+    })hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> prod_module,
+                       ParseAndReturnVerifiedModule(kProductAllReduceHlo));
+  EXPECT_THAT(AlgebraicSimplifier(default_options_).Run(prod_module.get()),
+              absl_testing::IsOkAndHolds(false));
+}
+
 TEST_F(AlgebraicSimplifierTest, TrivialMin) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m
