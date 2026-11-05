@@ -84,17 +84,6 @@ def TPU_TiledLayoutAttr
       return getNumTrailingDimsWithContiguousTiles(shape) == getRank();
     }
 
-    // Returns the smallest tile that can be used to divide the first tile of
-    // `tiles` into contiguous subtiles.
-    // NOTE: For tiles (T1, T2, ..., Tn), let Ts be the unit subtile. Then,
-    //   (T1, T2, ..., Tn) is equivalent to (T1, Ts, T2, ..., Tn). Furthermore,
-    //   tiles (T2, ..., Tn) permute data within each Ts tile, but never across
-    //   Ts tiles.
-    static ::llvm::SmallVector<int64_t> getUnitSubtile(::llvm::ArrayRef<::xla::Tile> tiles);
-    ::llvm::SmallVector<int64_t> getUnitSubtile() const {
-      return getUnitSubtile(getTiles());
-    }
-
     int64_t getRank() const {
       return getTileStrides().size();
     }
@@ -499,7 +488,6 @@ def TPU_StridedLoadOp : TPU_Op<"strided_load", [DefaultMemRead]> {
     $base `[` $indices `]` attr-dict `:` type($base) `,` type($result)
   }];
   let hasVerifier = 1;
-  let hasFolder = 1;
 }
 
 def TPU_StridedStoreOp : TPU_Op<"strided_store", [DefaultMemWrite]> {
@@ -529,7 +517,6 @@ def TPU_ShuffledLoadOp : TPU_Op<"shuffled_load", [DefaultMemRead]> {
     $base `[` $indices `]` attr-dict `:` type($base) `,` type($result)
   }];
   let hasVerifier = 1;
-  let hasCanonicalizeMethod = 1;
 }
 
 // TODO: b/435258666 - Merge with tpu.vector_store_idx.
@@ -546,7 +533,6 @@ def TPU_ShuffledStoreOp : TPU_Op<"shuffled_store", [DefaultMemWrite]> {
     $base `[` $indices `]` `,` $valueToStore attr-dict `:` type($base) `,` type($valueToStore)
   }];
   let hasVerifier = 1;
-  let hasCanonicalizeMethod = 1;
 }
 
 // tpu.vector_load_idx loads values from arbitrary locations in memory.
@@ -699,7 +685,6 @@ def TPU_ReshapeOp : TPU_Op<"reshape", [Pure]> {
   let results = (outs AnyVectorOfNonZeroRank:$result);
   let assemblyFormat = [{ $source attr-dict `:` type($source) `->` type($result) }];
   let hasVerifier = 1;
-  let hasFolder = 1;
 }
 
 def TPU_BroadcastInSublanesOp : TPU_Op<"broadcast_in_sublanes", [Pure]> {
@@ -767,7 +752,6 @@ def TPU_UnpackSubelementsOp : TPU_Op<"unpack_subelements", [Pure]> {
   let results = (outs AnyVectorOfNonZeroRank:$output);
   let assemblyFormat = [{ $source `,` $index attr-dict `:` type($source) `->` type($output) }];
   let hasVerifier = 1;
-  let hasCanonicalizeMethod = 1;
 }
 
 // unsigned_integers applies to the result type (for the source type the sign
@@ -840,10 +824,6 @@ def TPU_PackSubelementsOp : TPU_Op<"pack_subelements", [Pure, SameTypeOperands]>
   );
   let results = (outs TPU_Vreg:$output);
   let assemblyFormat = [{ $sources attr-dict `:` type($sources) `->` type($output) }];
-  let builders = [
-    OpBuilder<(ins "::mlir::VectorType":$output_type, "::mlir::ArrayRef<::mlir::Value>":$padded_sources, "::mlir::tpu::PackFormat":$pack_format)>,
-    OpBuilder<(ins "::mlir::VectorType":$output_type, "::mlir::ArrayRef<::mlir::Value>":$padded_sources, "::mlir::tpu::PackFormat":$pack_format, "bool":$unsigned_integers)>,
-  ];
   let hasVerifier = 1;
 }
 
@@ -959,7 +939,6 @@ def TPU_DynamicGatherOp : TPU_Op<"dynamic_gather", [Pure, DeclareOpInterfaceMeth
     $source `[` $indices `]` `in` $dimensions attr-dict
     `:` type($source) `,` type($indices) `->` type($output)
   }];
-  let hasCanonicalizeMethod = 1;
   let hasVerifier = 1;
 }
 
@@ -972,7 +951,6 @@ def TPU_FPToSIOp : TPU_Op<"fptosi", [Pure, ElementwiseMappable]> {
   let arguments = (ins AnyFloatLike:$in, TPU_RoundingModeEnum:$rounding_mode);
   let results = (outs AnySignlessIntegerLike:$output);
   let assemblyFormat = [{ $in attr-dict `:` type($in) `->` type($output) }];
-  let hasCanonicalizeMethod = 1;
 }
 
 // Internal operation. All arith.fptoui operations that change the bitwidth
@@ -1004,7 +982,6 @@ def TPU_ExtFOp : TPU_Op<"extf", [Pure, ElementwiseMappable]> {
   let arguments = (ins AnyFloatLike:$in);
   let results = (outs AnyFloatLike:$out);
   let assemblyFormat = [{ $in attr-dict `:` type($in) `->` type($out) }];
-  let hasFolder = 1;
 }
 
 // Internal operation.
@@ -1015,7 +992,6 @@ def TPU_TruncFOp : TPU_Op<"truncf", [Pure, ElementwiseMappable]> {
   );
   let results = (outs AnyFloatLike:$out);
   let assemblyFormat = [{ $in attr-dict `:` type($in) `->` type($out) }];
-  let hasFolder = 1;
 }
 
 // TODO(apaszke): Think hard about precision
@@ -1038,7 +1014,6 @@ def TPU_MatmulOp : TPU_Op<"matmul", [Pure]> {
   let assemblyFormat = [{
     $lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
   }];
-  let hasCanonicalizer = 1;
   let hasVerifier = 1;
 }
 
@@ -1168,7 +1143,6 @@ def TPU_BitcastVregOp : TPU_Op<"bitcast_vreg", [Pure]> {
   let arguments = (ins TPU_Vreg:$input);
   let results = (outs TPU_Vreg:$output);
   let assemblyFormat = [{ $input attr-dict `:` type($input) `->` type($output) }];
-  let hasFolder = 1;
 }
 
 def TPU_WeirdOp : TPU_Op<"weird", [Pure, ElementwiseMappable]> {
@@ -1248,8 +1222,6 @@ def TPU_ReducePrecisionOp : TPU_Op<"reduce_precision", [Pure, ElementwiseMappabl
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($output)
   }];
-
-  let hasFolder = 1;
 }
 
 def TPU_RollVectorsOp : TPU_Op<"roll_vectors", [Pure]> {
@@ -1263,7 +1235,6 @@ def TPU_RollVectorsOp : TPU_Op<"roll_vectors", [Pure]> {
 def TPU_UnrollVectorsOp : TPU_Op<"unroll_vectors", [Pure]> {
   let arguments = (ins AnyVectorOfAnyRank:$input);
   let results = (outs Variadic<AnyVectorOfAnyRank>:$output);
-  let hasCanonicalizeMethod = 1;
   let assemblyFormat = [{
     $input attr-dict `:` type($input) `->` type($output)
   }];
@@ -1338,7 +1309,6 @@ def TPU_AssumeMultipleOp : TPU_Op<"assume_multiple", [Pure, SameOperandsAndResul
   let results = (outs AnyTypeOf<[Index, AnyInteger]>:$result);
   let assemblyFormat = [{$value `,` $multiple attr-dict `:` type($result)}];
   let hasVerifier = 1;
-  let hasFolder = 1;
 }
 
 def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments, ViewLikeOpInterface]> {
@@ -1355,28 +1325,8 @@ def TPU_MemRefSliceOp : TPU_Op<"memref_slice", [Pure, AttrSizedOperandSegments, 
   let extraClassDeclaration = [{
     // ViewLikeOpInterface.
     ::mlir::Value getViewSource() { return getMemRef(); }
-
-    // Returns a message string on error, and nullopt on success.
-    std::optional<std::string> verifyOffsetAndSizeTileAlignment(
-        std::array<int64_t, 2> tc_target_shape,
-        MemRefType source_type_override = nullptr);
-
-    // Given a source shape size, a slice shape size, a source tile size, a
-    // result tile size and optionally a slice offset, the below functions
-    // returns a tri-state boolean (nullopt means "unknown") indicating whether
-    // the result tiles of the slice stride across or within the source tiles.
-    // The result tile should divide the source tile and the offset, if
-    // provided, should be divisible by the result tile size.
-    static std::optional<bool> sliceStridesAcrossSourceTiles(
-        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
-        int64_t result_tile_size, Value offset);
-    static std::optional<bool> sliceStridesWithinSourceTiles(
-        int64_t source_size, int64_t slice_size, int64_t source_tile_size,
-        int64_t result_tile_size, Value offset);
   }];
   let hasVerifier = 1;
-  let hasCanonicalizer = 1;
-  let hasFolder = 1;
 }
 
 def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure, ViewLikeOpInterface]> {
@@ -1413,12 +1363,6 @@ def TPU_SharedMemRefSliceOp : TPU_Op<"shared_memref_slice", [Pure, ViewLikeOpInt
   let extraClassDeclaration = [{
     // ViewLikeOpInterface.
     ::mlir::Value getViewSource() { return getMemRef(); }
-
-    static ::mlir::FailureOr<::mlir::tpu::TiledLayoutAttr> inferResultLayout(
-        ::mlir::MemRefType source_type, ::mlir::ArrayRef<int64_t> target_shape,
-        int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
-        int64_t spmem_word_size_bytes,
-        ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
 }
@@ -1439,7 +1383,6 @@ def TPU_MemRefSqueezeOp : TPU_Op<"memref_squeeze", [Pure, ViewLikeOpInterface]> 
         ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
-  let hasCanonicalizer = 1;
 }
 
 def TPU_MemRefReshapeOp : TPU_Op<"memref_reshape", [Pure, ViewLikeOpInterface]> {
@@ -1505,7 +1448,6 @@ def TPU_MemRefBitcastOp : TPU_Op<"memref_bitcast", [Pure, ViewLikeOpInterface]> 
         ::mlir::function_ref<::mlir::InFlightDiagnostic()> emit_error);
   }];
   let hasVerifier = 1;
-  let hasCanonicalizeMethod = 1;
 }
 
 def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSegments, ViewLikeOpInterface]> {
@@ -1523,10 +1465,6 @@ def TPU_ReinterpretCastOp : TPU_Op<"reinterpret_cast", [Pure, AttrSizedOperandSe
   let assemblyFormat = [{
     $input ($dynamic_offset^)? (`<` $dynamic_sizes^ `>`)? (`[` $dynamic_strides^ `]`)? attr-dict `:` type($input) `->` type($result)
   }];
-  let skipDefaultBuilders = 1;
-  let builders = [
-    OpBuilder<(ins "::mlir::Type":$result_type, "::mlir::Value":$input, CArg<"::mlir::Value", "nullptr">:$dynamic_offset, CArg<"::mlir::ValueRange", "{}">:$dynamic_sizes, CArg<"::mlir::ValueRange", "{}">:$dynamic_strides)>
-  ];
   let extraClassDeclaration = [{
     // ViewLikeOpInterface.
     ::mlir::Value getViewSource() { return getInput(); }
@@ -1563,7 +1501,6 @@ def TPU_EraseLayoutOp : TPU_Op<"erase_memref_layout", [Pure, SameOperandsAndResu
     // ViewLikeOpInterface.
     ::mlir::Value getViewSource() { return getOperand(); }
   }];
-  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
@@ -1724,9 +1661,6 @@ def TPU_EnqueueDMAOp : TPU_Op<"enqueue_dma", [AttrSizedOperandSegments]> {
     attr-dict
   }];
   let hasVerifier = 1;
-  let extraClassDeclaration = [{
-    mlir::tpu::CoreType getTargetCoreType();
-  }];
   let builders = [
     // A backward-compatible builder that sets `subcore_id` to nullptr.
     OpBuilder<(ins "Value":$source, "Value":$source_semaphore, "Value":$target, "Value":$target_semaphore, "Value":$device_id, "Value":$core_id, CArg<"uint32_t", "0">:$priority, CArg<"bool", "false">:$strict_ordering)>,
@@ -2035,7 +1969,6 @@ def TPU_TransposeOp : TPU_Op<"transpose", [Pure]> {
     }
   }];
   let hasVerifier = 1;
-  let hasFolder = 1;
 }
 
 def TPU_LogOp : TPU_Op<"log"> {
@@ -2136,7 +2069,6 @@ def TPU_MemRefMemorySpaceIsOp : TPU_Op<"memref_memory_space_is", [Pure]> {
     $source `,` $memory_space attr-dict `:` type($source)
   }];
 
-  let hasFolder = 1;
   let hasVerifier = 1;
 }
 

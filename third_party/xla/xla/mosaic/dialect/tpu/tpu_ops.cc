@@ -14,30 +14,22 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/CommonFolders.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Math/IR/Math.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
@@ -46,14 +38,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Region.h"
-#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -65,29 +53,6 @@ namespace mlir {
 namespace tpu {
 
 namespace {
-
-llvm::RoundingMode convertTpuRoundingModeToLLVMIR(tpu::RoundingMode mode) {
-  switch (mode) {
-    case tpu::RoundingMode::kToNearestEven:
-      return llvm::RoundingMode::NearestTiesToEven;
-    case tpu::RoundingMode::kTowardsZero:
-      return llvm::RoundingMode::TowardZero;
-  }
-}
-
-// Attempts to convert `sourceValue` to an APFloat value with
-// `targetSemantics` and `roundingMode`, without any information loss.
-static FailureOr<APFloat> convertFloatValue(
-    APFloat sourceValue, const llvm::fltSemantics& targetSemantics,
-    llvm::RoundingMode roundingMode = llvm::RoundingMode::NearestTiesToEven) {
-  bool losesInfo = false;
-  auto status = sourceValue.convert(targetSemantics, roundingMode, &losesInfo);
-  if (losesInfo || status != APFloat::opOK) {
-    return failure();
-  }
-
-  return sourceValue;
-}
 
 std::optional<CoreType> getRefCoreType(TypedValue<MemRefType> value) {
   if (!value) {
@@ -168,25 +133,6 @@ LogicalResult verifyPackOp(OpTy op) {
 
 }  // namespace
 
-LogicalResult UnrollVectorsOp::canonicalize(UnrollVectorsOp op,
-                                            PatternRewriter& rewriter) {
-  RollVectorsOp roll_op = op.getOperand().getDefiningOp<RollVectorsOp>();
-  if (!roll_op) {
-    return failure();
-  }
-  if (roll_op.getNumOperands() != op.getNumResults()) {
-    return failure();
-  }
-  for (auto [v1, v2] :
-       llvm::zip(roll_op.getOperandTypes(), op.getResultTypes())) {
-    if (v1 != v2) {
-      return failure();
-    }
-  }
-  rewriter.replaceOp(op, roll_op.getOperands());
-  return success();
-}
-
 LogicalResult BitcastOp::verify() {
   auto in_ty = getInput().getType();
   auto out_ty = getOutput().getType();
@@ -213,19 +159,6 @@ LogicalResult BitcastOp::verify() {
         "change.");
   }
   return success();
-}
-
-OpFoldResult BitcastVregOp::fold(FoldAdaptor adaptor) {
-  // Bitcast from X -> X is a no-op.
-  if (getType() == getInput().getType()) {
-    return getInput();
-  }
-  // Simplify bitcast chain of X -> Y -> Z to X -> Z.
-  if (auto defining_op = getInput().getDefiningOp<BitcastVregOp>()) {
-    getInputMutable().assign(defining_op.getInput());
-    return getResult();
-  }
-  return nullptr;
 }
 
 LogicalResult MemRefSliceOp::verify() {
@@ -281,211 +214,6 @@ LogicalResult MemRefSliceOp::verify() {
               "as the tiling.";
   }
   return success();
-}
-
-std::optional<bool> MemRefSliceOp::sliceStridesAcrossSourceTiles(
-    const int64_t source_size, const int64_t slice_size,
-    const int64_t source_tile_size, const int64_t result_tile_size,
-    Value offset) {
-  CHECK_EQ(source_tile_size % result_tile_size, 0);
-  DCHECK(offset == nullptr || isGuaranteedDivisible(offset, result_tile_size));
-  const std::optional<int64_t> maybe_cst_offset =
-      offset ? getConstantIntValue(offset) : std::nullopt;
-  if (maybe_cst_offset && slice_size != ShapedType::kDynamic) {
-    // Fully static slice
-    return (*maybe_cst_offset + slice_size - 1) / source_tile_size !=
-           *maybe_cst_offset / source_tile_size;
-  }
-  if (slice_size != ShapedType::kDynamic && slice_size <= result_tile_size) {
-    // We never stride at all
-    return false;
-  }
-  if (source_size != ShapedType::kDynamic && source_size <= source_tile_size) {
-    // Source has only one tile
-    return false;
-  }
-  if (slice_size != ShapedType::kDynamic && slice_size > source_tile_size) {
-    // Slice is too big to be contained in a single source tile
-    return true;
-  }
-  // TODO(apaszke,tlongeri): Should we relax the requirement for the shape to
-  // be divisible by the slice size? We need to consider if accessing the last
-  // partial tile is allowed or not.
-  if (slice_size != ShapedType::kDynamic &&
-      source_tile_size % slice_size == 0 &&
-      source_size != ShapedType::kDynamic && source_size % slice_size == 0 &&
-      offset != nullptr && isGuaranteedDivisible(offset, slice_size)) {
-    // Slice is guaranteed to fit in a single source tile.
-    return false;
-  }
-  return std::nullopt;
-}
-
-std::optional<bool> MemRefSliceOp::sliceStridesWithinSourceTiles(
-    const int64_t source_size, const int64_t slice_size,
-    const int64_t source_tile_size, const int64_t result_tile_size,
-    Value offset) {
-  CHECK_EQ(source_tile_size % result_tile_size, 0);
-  DCHECK(offset == nullptr || isGuaranteedDivisible(offset, result_tile_size));
-  if (source_tile_size == result_tile_size) {
-    // The source tile isn't subdivided into result tiles
-    return false;
-  }
-  if (slice_size != ShapedType::kDynamic) {
-    if (slice_size <= result_tile_size) {
-      // We never stride at all
-      return false;
-    }
-    if (slice_size > 2 * result_tile_size) {
-      // We stride more than once. We've checked that the result tile is smaller
-      // than the source tile, so we must stride within source tiles at least
-      // once.
-      return true;
-    }
-    // We stride exactly once. Is it within or across source tiles?
-    if (offset != nullptr) {
-      if (const std::optional<int64_t> rem =
-              getRemainder(offset, source_tile_size)) {
-        return *rem != source_tile_size - result_tile_size;
-      }
-    }
-  }
-  return std::nullopt;
-}
-
-std::optional<std::string> MemRefSliceOp::verifyOffsetAndSizeTileAlignment(
-    std::array<int64_t, 2> tc_target_shape, MemRefType source_type_override) {
-  mlir::MemRefType source_ty = getMemRef().getType();
-  if (source_type_override) {
-    source_ty = source_type_override;
-  }
-  auto tiled_layout = cast<TiledLayoutAttr>(source_ty.getLayout());
-  if (getResult().getType().getLayout() != tiled_layout) {
-    return std::string("Operand and result layouts must be equal.");
-  }
-  ArrayRef<xla::Tile> tiles = tiled_layout.getTiles();
-  if (tiles.empty()) {
-    return std::nullopt;
-  }
-  const xla::Tile& first_tile = tiles.front();
-  const int64_t tile_rank = first_tile.dimensions().size();
-  const int64_t untiled_dims = source_ty.getRank() - tile_rank;
-  MemRefType result_type = getResult().getType();
-  int64_t dynamic_dim_idx = llvm::count(
-      result_type.getShape().take_front(untiled_dims), ShapedType::kDynamic);
-  const int64_t sublane_count = tc_target_shape[0];
-  const int64_t lane_count = tc_target_shape[1];
-  for (int64_t i = 0; i < tile_rank; ++i) {
-    int64_t tile_dim = first_tile.dimension(i);
-    const int64_t dim = untiled_dims + i;
-    if (!isGuaranteedDivisible(getBaseIdx()[dim], tile_dim)) {
-      return absl::StrCat(
-          "Offsets along tiled dimensions must be aligned to tiles. Failed "
-          "to verify that the index at dimension ",
-          dim, " is divisible by the tile dimension ", tile_dim,
-          ". If it is, use tpu.assume_multiple to suppress this error.");
-    }
-    // We only require alignment to compact 2nd minor for large 2nd minor.
-    if (tile_rank == 2 && i == 0) {
-      int64_t packing = tile_dim / sublane_count;
-      if (tile_dim == sublane_count * packing &&
-          first_tile.dimension(1) == lane_count && packing > 1 &&
-          packing <= sublane_count) {
-        tile_dim = sublane_count;
-      }
-    }
-    bool size_is_aligned;
-    if (result_type.getShape()[dim] == ShapedType::kDynamic) {
-      size_is_aligned =
-          isGuaranteedDivisible(getDynamicSizes()[dynamic_dim_idx++], tile_dim);
-    } else if (result_type.getShape()[dim] == source_ty.getShape()[dim]) {
-      // If the result shape is the same as the source shape, we don't put
-      // any restrictions here. The only way to get such a ref is from a kernel
-      // input (as any prior slice would be rejected), which implies the data
-      // is padded to tiling.
-      size_is_aligned = true;
-    } else {
-      size_is_aligned = result_type.getShape()[dim] % tile_dim == 0;
-    }
-    if (!size_is_aligned) {
-      return absl::StrCat(
-          "Slice sizes along tiled dimensions must be aligned to tiles. "
-          "Failed to verify that the size at dimension ",
-          dim, " is divisible by the tile dimension ", tile_dim,
-          ". If it is, use tpu.assume_multiple to suppress this error.");
-    }
-  }
-  return std::nullopt;
-}
-
-struct MemRefSliceFoldConstantDynamicDim
-    : public OpRewritePattern<MemRefSliceOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MemRefSliceOp op,
-                                PatternRewriter& rewriter) const override {
-    if (llvm::none_of(op.getDynamicSizes(), [](Value dynamic_size) {
-          APInt constant_value;  // Would be nice if we could pass nullptr below
-          return matchPattern(dynamic_size, m_ConstantInt(&constant_value));
-        })) {
-      return failure();
-    }
-    SmallVector<int64_t> new_shape(op.getType().getShape());
-    SmallVector<Value> new_dynamic_sizes;
-    int64_t dynamic_dim_index = 0;
-    for (Value dynamic_size : op.getDynamicSizes()) {
-      // Find the index of the corresponding dynamic dimension in the shape
-      while (new_shape[dynamic_dim_index] != ShapedType::kDynamic) {
-        ++dynamic_dim_index;
-        CHECK(dynamic_dim_index < new_shape.size());
-      }
-      APInt constant_value;
-      if (matchPattern(dynamic_size, m_ConstantInt(&constant_value))) {
-        if (constant_value.getSExtValue() <= 0) {
-          return op.emitWarning() << "Non-positive constant for dynamic size";
-        }
-        new_shape[dynamic_dim_index] = constant_value.getSExtValue();
-      } else {
-        new_dynamic_sizes.push_back(dynamic_size);
-      }
-      ++dynamic_dim_index;
-    }
-    // Update the memref_slice op and create a cast op to convert to the old
-    // type.
-    MemRefType old_type = op.getType();
-    MemRefType new_type = MemRefType::Builder(old_type).setShape(new_shape);
-    rewriter.modifyOpInPlace(op, [&]() {
-      op.getResult().setType(new_type);
-      op.getDynamicSizesMutable().assign(new_dynamic_sizes);
-    });
-    mlir::OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.setInsertionPointAfter(op);
-    auto cast_op = memref::CastOp::create(rewriter, op.getLoc(), old_type, op);
-    rewriter.replaceAllUsesExcept(op, cast_op, cast_op);
-    return success();
-  }
-};
-
-OpFoldResult MemRefSliceOp::fold(FoldAdaptor adaptor) {
-  if (!getDynamicSizes().empty()) {
-    return nullptr;
-  }
-  if (getMemRef().getType() != getType()) {
-    return nullptr;
-  }
-  for (Value idx : getBaseIdx()) {
-    APInt constant_value;
-    if (!matchPattern(idx, m_ConstantInt(&constant_value)) ||
-        constant_value != 0) {
-      return nullptr;
-    }
-  }
-  return getMemRef();
-}
-
-void MemRefSliceOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                                MLIRContext* context) {
-  results.add<MemRefSliceFoldConstantDynamicDim>(context);
 }
 
 LogicalResult SharedMemRefSliceOp::verify() {
@@ -545,122 +273,6 @@ LogicalResult SharedMemRefSliceOp::verify() {
         "shape's minormost dimension.");
   }
   return success();
-}
-
-FailureOr<TiledLayoutAttr> SharedMemRefSliceOp::inferResultLayout(
-    MemRefType source_type, ArrayRef<int64_t> target_shape,
-    int64_t num_sc_tiles, int64_t spmem_stripe_granularity_bytes,
-    int64_t spmem_word_size_bytes,
-    function_ref<InFlightDiagnostic()> emit_error) {
-  if (!source_type.hasStaticShape() ||
-      !ShapedType::isStaticShape(target_shape)) {
-    return emit_error() << "SharedMemRefSliceOp requires static shapes.";
-  }
-  if (spmem_stripe_granularity_bytes % spmem_word_size_bytes != 0) {
-    return emit_error() << "Shared VMEM stripe granularity ("
-                        << spmem_stripe_granularity_bytes
-                        << " bytes) must be a multiple of the VMEM word size ("
-                        << spmem_word_size_bytes << " bytes).";
-  }
-  auto layout_attr = dyn_cast<TiledLayoutAttr>(source_type.getLayout());
-  if (!layout_attr) {
-    return emit_error()
-           << "SharedMemRefSliceOp requires a tiled source layout.";
-  }
-  ArrayRef<xla::Tile> tiles = layout_attr.getTiles();
-  if (tiles.empty()) {
-    return emit_error()
-           << "shared_memref_slice input tiling layout tiles cannot be empty";
-  }
-  ArrayRef<int64_t> source_shape = source_type.getShape();
-  CHECK(!layout_attr.getTileStrides().empty());
-  if (layout_attr.getTileStrides().back() != 1) {
-    return emit_error()
-           << "The last dimension of the MemRef must be contiguous for "
-              "SharedMemRefSliceOp.";
-  }
-
-  int64_t bitwidth = source_type.getElementTypeBitWidth();
-  int64_t word_bitwidth = spmem_word_size_bytes * 8;
-  if (word_bitwidth % bitwidth != 0) {
-    return emit_error() << "Element bitwidth (" << bitwidth
-                        << ") must divide the VMEM word bitwidth ("
-                        << word_bitwidth << ").";
-  }
-  int64_t packing = word_bitwidth / bitwidth;
-  int64_t stripe_elems = spmem_stripe_granularity_bytes * 8 / bitwidth;
-  int64_t stripe_words = spmem_stripe_granularity_bytes / spmem_word_size_bytes;
-
-  // Case 1: 1D DMA-granule tiling (e.g. `#tpu.tiled<(8), [16, 1]>`), where the
-  // single 1D tile already equals `stripe_width` (`target_shape.back()`), so
-  // the tile dimensions stay unchanged and the leading tile strides are scaled
-  // down by `num_sc_tiles`.
-  bool is_1d_stripe_tiling =
-      tiles.size() == 1 &&
-      tiles[0].dimensions() == ArrayRef<int64_t>{stripe_elems};
-  // Case 2: Full-width tiling where `tiles[0]` spans `source_shape.back()`
-  // (either a single unpacked tile or a 2D packed layout with sub-tile
-  // `(packing, 1)`), so `tiles[0]`'s trailing dimension is rewritten to
-  // `target_shape.back()` (`stripe_width`) and tile strides remain unchanged.
-  bool is_packed_tiling =
-      tiles.size() == 2 && tiles[0].dimensions().size() >= 2 &&
-      tiles[1].dimensions() == ArrayRef<int64_t>{packing, 1};
-  bool is_unpacked_tiling = tiles.size() == 1 &&
-                            tiles[0].dimensions().size() >= 2 &&
-                            bitwidth == word_bitwidth;
-  bool is_full_width_tiling =
-      (is_unpacked_tiling || is_packed_tiling) &&
-      tiles[0].dimensions().back() == source_shape.back();
-
-  int64_t stripe_width;
-  if (is_packed_tiling && is_full_width_tiling) {
-    stripe_width = stripe_words;
-  } else if ((is_unpacked_tiling && is_full_width_tiling) ||
-             is_1d_stripe_tiling) {
-    stripe_width = stripe_elems;
-  } else {
-    return emit_error() << "Expected a 1D stripe tile (" << stripe_elems
-                        << ") or a full-width 2D tile with trailing dimension "
-                        << source_shape.back()
-                        << ". 1D TC tilings are not yet supported.";
-  }
-  int64_t expected_source_last_dim = num_sc_tiles * stripe_width;
-
-  if (source_shape.back() != expected_source_last_dim) {
-    return emit_error() << "Source trailing dimension (" << source_shape.back()
-                        << ") must equal " << expected_source_last_dim;
-  }
-  if (target_shape.back() != stripe_width) {
-    return emit_error() << "Target trailing dimension (" << target_shape.back()
-                        << ") must equal " << stripe_width;
-  }
-
-  SmallVector<xla::Tile> new_tiles(tiles.begin(), tiles.end());
-  SmallVector<int64_t> new_tile_strides(layout_attr.getTileStrides());
-  if (is_1d_stripe_tiling) {
-    for (int64_t i = 0; i < new_tile_strides.size() - 1; ++i) {
-      if (ShapedType::isDynamic(new_tile_strides[i])) {
-        continue;
-      }
-      if (new_tile_strides[i] % num_sc_tiles != 0) {
-        return emit_error()
-               << "Tile strides must be divisible by the ratio of source and "
-                  "target trailing dimensions.";
-      }
-      new_tile_strides[i] /= num_sc_tiles;
-    }
-  } else {
-    CHECK(is_full_width_tiling);
-    // The minormost dimension of the memref shape and the first tile are both
-    // scaled down by num_sc_tiles, so the tile strides are unchanged.
-    SmallVector<int64_t> first_tile_dims =
-        llvm::to_vector(tiles[0].dimensions());
-    first_tile_dims.back() = target_shape.back();
-    new_tiles[0] = xla::Tile(first_tile_dims);
-  }
-
-  return TiledLayoutAttr::get(source_type.getContext(), new_tiles,
-                              new_tile_strides);
 }
 
 LogicalResult MemRefSqueezeOp::verify() {
@@ -779,74 +391,6 @@ FailureOr<MemRefLayoutAttrInterface> MemRefSqueezeOp::inferResultLayout(
         AffineMap::getMultiDimIdentityMap(result_rank, ctx)));
   }
   return emit_error() << "Only tiled or identity layouts supported.";
-}
-
-// Rewrites
-//
-//   tpu.memref_squeeze(memref.cast(x))
-//
-// to
-//
-//   memref.cast(tpu.memref_squeeze(x))
-//
-// when the cast widens static dimensions to dynamic.
-struct MemRefSqueezeFoldCast : public OpRewritePattern<MemRefSqueezeOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(MemRefSqueezeOp op,
-                                PatternRewriter& rewriter) const override {
-    auto cast_op = op.getInput().getDefiningOp<memref::CastOp>();
-    if (!cast_op) {
-      return failure();
-    }
-
-    TypedValue<BaseMemRefType> cast_source = cast_op.getSource();
-    auto cast_source_type = cast<MemRefType>(cast_source.getType());
-    auto cast_result_type = cast<MemRefType>(cast_op.getType());
-    if (cast_source_type.getRank() != cast_result_type.getRank()) {
-      return failure();
-    }
-    for (auto [source_dim, result_dim] :
-         llvm::zip(cast_source_type.getShape(), cast_result_type.getShape())) {
-      if (source_dim == result_dim) {
-        continue;
-      }
-      if (ShapedType::isDynamic(source_dim) &&
-          !ShapedType::isDynamic(result_dim)) {
-        // The result type must be more dynamic than the source type.
-        return failure();
-      }
-    }
-
-    MemRefType result_type = op.getType();
-    FAILUREOR_ASSIGN_OR_RETURN(
-        SmallVector<int64_t> squeezed,
-        computeSqueezedDimsChecked(op, cast_result_type.getShape(),
-                                   result_type.getShape()));
-
-    SmallVector<int64_t> new_result_shape;
-    for (auto [i, dim] : llvm::enumerate(cast_source_type.getShape())) {
-      if (!absl::c_contains(squeezed, i)) {
-        new_result_shape.push_back(dim);
-      }
-    }
-    CHECK_EQ(new_result_shape.size(), result_type.getRank());
-    if (result_type.getShape() == ArrayRef<int64_t>(new_result_shape)) {
-      return failure();
-    }
-
-    MemRefType new_result_type =
-        MemRefType::Builder(result_type).setShape(new_result_shape);
-    auto new_squeeze = MemRefSqueezeOp::create(rewriter, op.getLoc(),
-                                               new_result_type, cast_source);
-    rewriter.replaceOpWithNewOp<memref::CastOp>(op, result_type, new_squeeze);
-    return success();
-  }
-};
-
-void MemRefSqueezeOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                                  MLIRContext* context) {
-  results.add<MemRefSqueezeFoldCast>(context);
 }
 
 LogicalResult MemRefReshapeOp::verify() {
@@ -1223,28 +767,6 @@ LogicalResult TransposeOp::verify() {
   return success();
 }
 
-OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
-  if (llvm::is_sorted(getPermutation())) {
-    return getVector();
-  }
-  if (auto cst = dyn_cast_if_present<SplatElementsAttr>(adaptor.getVector())) {
-    return cst.reshape(getType());
-  }
-  if (auto prev_op = getVector().getDefiningOp<TransposeOp>()) {
-    ArrayRef<int64_t> prev_perm = prev_op.getPermutation();
-    ArrayRef<int64_t> curr_perm = getPermutation();
-    CHECK_EQ(prev_perm.size(), curr_perm.size());
-    SmallVector<int64_t> composed_perm(curr_perm.size());
-    for (size_t i = 0; i < curr_perm.size(); ++i) {
-      composed_perm[i] = prev_perm[curr_perm[i]];
-    }
-    if (llvm::is_sorted(composed_perm)) {
-      return prev_op.getVector();
-    }
-  }
-  return nullptr;
-}
-
 LogicalResult MemRefBitcastOp::verify() {
   auto src_ty = getInput().getType();
   auto tgt_ty = getType();
@@ -1356,17 +878,6 @@ mlir::FailureOr<MemRefType> MemRefBitcastOp::inferResultType(
                          input_type.getMemorySpace());
 }
 
-LogicalResult MemRefBitcastOp::canonicalize(MemRefBitcastOp op,
-                                            PatternRewriter& rewriter) {
-  auto src_ty = op.getInput().getType();
-  auto dst_ty = op.getType();
-  if (src_ty == dst_ty) {
-    rewriter.replaceOp(op, op.getInput());
-    return success();
-  }
-  return failure();
-}
-
 template <typename Op>
 LogicalResult verifyStridedOp(Op op, MemRefType memref_ty, VectorType vector_ty,
                               int64_t min_stride) {
@@ -1400,16 +911,6 @@ LogicalResult verifyStridedOp(Op op, MemRefType memref_ty, VectorType vector_ty,
 LogicalResult StridedLoadOp::verify() {
   return verifyStridedOp<StridedLoadOp>(*this, getBase().getType(), getType(),
                                         /*min_stride=*/0);
-}
-
-OpFoldResult StridedLoadOp::fold(FoldAdaptor adaptor) {
-  if (llvm::all_of(getStrides(), [](int32_t s) { return s == 1; })) {
-    OpBuilder builder(*this);
-    return tpu::VectorLoadOp::create(builder, getLoc(), getType(), getBase(),
-                                     getIndices())
-        .getResult();
-  }
-  return nullptr;
 }
 
 LogicalResult StridedStoreOp::verify() {
@@ -1659,24 +1160,6 @@ LogicalResult VectorStoreIdxOp::verify() {
   return verifyStoreOp(*this);
 }
 
-void ReinterpretCastOp::build(OpBuilder& builder, OperationState& state,
-                              Type result_type, Value input,
-                              Value dynamic_offset, ValueRange dynamic_sizes,
-                              ValueRange dynamic_strides) {
-  state.addOperands(input);
-  if (dynamic_offset) {
-    state.addOperands(dynamic_offset);
-  }
-  state.addOperands(dynamic_sizes);
-  state.addOperands(dynamic_strides);
-  state.addAttribute("operandSegmentSizes",
-                     builder.getDenseI32ArrayAttr(
-                         {1, dynamic_offset ? 1 : 0,
-                          static_cast<int32_t>(dynamic_sizes.size()),
-                          static_cast<int32_t>(dynamic_strides.size())}));
-  state.addTypes(result_type);
-}
-
 LogicalResult ReinterpretCastOp::verify() {
   auto source_type = getMemRefType(getInput());
   auto target_type = getType();
@@ -1702,18 +1185,6 @@ LogicalResult ReinterpretCastOp::verify() {
     }
   }
   return success();
-}
-
-OpFoldResult EraseLayoutOp::fold(FoldAdaptor adaptor) {
-  // If the operand has no interesting layout then there's no need to erase it.
-  if (getOperand().getType() == getType()) {
-    return adaptor.getOperand();
-  }
-  if (auto erase_layout_op = getOperand().getDefiningOp<EraseLayoutOp>()) {
-    getOperandMutable().assign(erase_layout_op.getOperand());
-    return getResult();
-  }
-  return OpFoldResult();
 }
 
 LogicalResult EraseLayoutOp::verify() {
@@ -1789,34 +1260,6 @@ LogicalResult IotaOp::verify() {
   }
   return success();
 }
-
-// a + matmul(l, r, 0) == matmul(l, r, a)
-template <typename AddOp>
-class CanonicalizeAddOfMatmul : public OpRewritePattern<AddOp> {
-  using OpRewritePattern<AddOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(AddOp op, PatternRewriter& rewriter) const {
-    auto try_canonicalize = [&](Value maybe_matmul, Value maybe_acc) {
-      auto matmul = dyn_cast_if_present<MatmulOp>(maybe_matmul.getDefiningOp());
-      if (!matmul || !matmul->hasOneUse()) {
-        return failure();
-      }
-      if (auto const_acc = matmul.getAcc().getDefiningOp<arith::ConstantOp>();
-          const_acc &&
-          const_acc.getValue() == rewriter.getZeroAttr(const_acc.getType())) {
-        IRMapping remap;
-        remap.map(matmul.getAcc(), maybe_acc);
-        Operation* new_matmul = rewriter.clone(*matmul, remap);
-        rewriter.replaceOp(op, new_matmul->getResult(0));
-        return success();
-      }
-      return failure();
-    };
-    // We tried try_canonicalize(op.getRhs(), op.getLhs()) and it caused
-    // worrying numerical differences in some of kernels.
-    return try_canonicalize(op.getLhs(), op.getRhs());
-  }
-};
 
 LogicalResult MatmulOp::verify() {
   // Note - this is not yet an exhaustive verification of matmul. Many of the
@@ -2006,12 +1449,6 @@ LogicalResult MatmulOp::verify() {
     }
   }
   return success();
-}
-
-void MatmulOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                           MLIRContext* context) {
-  results.add<CanonicalizeAddOfMatmul<arith::AddFOp>,
-              CanonicalizeAddOfMatmul<arith::AddIOp>>(context);
 }
 
 LogicalResult ConvOp::verify() {
@@ -2541,10 +1978,6 @@ void EnqueueDMAOp::build(OpBuilder& builder, OperationState& state,
   build(builder, state, source, source_semaphore, target, target_semaphore,
         device_id, core_id, /*subcore_id=*/nullptr, priority, strict_ordering);
 }
-mlir::tpu::CoreType EnqueueDMAOp::getTargetCoreType() {
-  return getRefCoreType(getTargetSemaphore())
-      .value_or(GetCoreTypeOfParentOp(**this));
-}
 
 LogicalResult EnqueueDMAOp::verify() {
   MemRefType source_ty = getMemRefType(getSource());
@@ -2791,22 +2224,6 @@ LogicalResult ShuffledLoadOp::verify() {
   return success();
 }
 
-LogicalResult ShuffledLoadOp::canonicalize(ShuffledLoadOp op,
-                                           PatternRewriter& rewriter) {
-  bool can_convert_to_simple_load = true;
-  for (int i = 0; i < op.getSublaneOffsets().size(); ++i) {
-    if (op.getSublaneOffsets()[i] != i) {
-      can_convert_to_simple_load = false;
-      break;
-    };
-  }
-  if (can_convert_to_simple_load) {
-    rewriter.replaceOpWithNewOp<tpu::LoadOp>(
-        op, op.getType(), op.getBase(), op.getIndices(), op.getSublaneMask());
-  }
-  return success();
-}
-
 LogicalResult ShuffledStoreOp::verify() {
   if (getBase().getType().getRank() != getIndices().size()) {
     return emitOpError("Base memref's rank and indices size do not match: ")
@@ -2828,34 +2245,6 @@ LogicalResult ShuffledStoreOp::verify() {
            << getSublaneOffsets().size();
   }
   return success();
-}
-
-LogicalResult ShuffledStoreOp::canonicalize(ShuffledStoreOp op,
-                                            PatternRewriter& rewriter) {
-  bool can_convert_to_simple_store = true;
-  for (int i = 0; i < op.getSublaneOffsets().size(); ++i) {
-    if (op.getSublaneOffsets()[i] != i) {
-      can_convert_to_simple_store = false;
-      break;
-    };
-  }
-  if (can_convert_to_simple_store) {
-    rewriter.replaceOpWithNewOp<tpu::StoreOp>(op, op.getValueToStore(),
-                                              op.getBase(), op.getIndices(),
-                                              op.getSublaneMask(),
-                                              /*mask=*/nullptr);
-  }
-  return success();
-}
-
-LogicalResult FPToSIOp::canonicalize(FPToSIOp op, PatternRewriter& rewriter) {
-  if (auto round_op = op.getIn().getDefiningOp<mlir::math::RoundEvenOp>()) {
-    rewriter.replaceOpWithNewOp<tpu::FPToSIOp>(
-        op, op.getType(), round_op.getOperand(),
-        tpu::RoundingMode::kToNearestEven);
-    return success();
-  }
-  return failure();
 }
 
 LogicalResult ConcatenateOp::verify() {
@@ -3004,71 +2393,6 @@ LogicalResult UnpackSubelementsOp::verify() {
   return success();
 }
 
-LogicalResult UnpackSubelementsOp::canonicalize(UnpackSubelementsOp op,
-                                                PatternRewriter& rewriter) {
-  auto src_elem_ty = op.getSource().getType().getElementType();
-  auto dst_elem_ty = op.getType().getElementType();
-  if (!src_elem_ty.isSignlessInteger() || !dst_elem_ty.isSignlessInteger()) {
-    return failure();
-  }
-  if (!op.getIntegerExtended()) {
-    // Unpack of pack with the same format is reversible if not sign extended.
-    if (auto pack = op.getSource().getDefiningOp<PackSubelementsOp>();
-        pack && pack.getPackFormat() == op.getPackFormat() &&
-        pack.getSources().front().getType() == op.getType()) {
-      Value source = fillPositions(
-          pack.getSources(), pack.getPositions(),
-          getElementTypeBitwidth(op.getType()) /
-              getElementTypeBitwidth(pack.getType()))[op.getIndex()];
-      if (source) {
-        rewriter.replaceAllOpUsesWith(op, source);
-        return success();
-      }
-    }
-    return failure();
-  }
-  // Set `sign_extended` to false if it's used by pack that reduces the source
-  // bitwidth.
-  for (auto user : op->getUsers()) {
-    auto pack = dyn_cast<PackSubelementsOp>(user);
-    if (!pack) {
-      return failure();
-    }
-    auto packed_elem_ty = pack.getType().getElementType();
-    if (!packed_elem_ty.isSignlessInteger() ||
-        getTypeBitwidth(packed_elem_ty) > getTypeBitwidth(src_elem_ty)) {
-      return failure();
-    }
-  }
-  rewriter.modifyOpInPlace(op, [&]() { op.setIntegerExtended(false); });
-  return success();
-}
-
-void PackSubelementsOp::build(OpBuilder& builder, OperationState& state,
-                              const VectorType output_type,
-                              const ArrayRef<Value> padded_sources,
-                              const PackFormat pack_format,
-                              bool unsigned_integers) {
-  SmallVector<Value> sources;
-  SmallVector<int32_t> positions;
-  for (size_t i = 0; i < padded_sources.size(); ++i) {
-    if (padded_sources[i] != nullptr) {
-      sources.push_back(padded_sources[i]);
-      positions.push_back(i);
-    }
-  }
-  build(builder, state, output_type, sources, positions, pack_format,
-        unsigned_integers);
-}
-
-void PackSubelementsOp::build(OpBuilder& builder, OperationState& state,
-                              const VectorType output_type,
-                              const ArrayRef<Value> padded_sources,
-                              const PackFormat pack_format) {
-  build(builder, state, output_type, padded_sources, pack_format,
-        /*unsigned_integers=*/false);
-}
-
 LogicalResult PackSubelementsOp::verify() { return verifyPackOp(*this); }
 
 void PackMaskOp::build(OpBuilder& builder, OperationState& state,
@@ -3177,18 +2501,6 @@ LogicalResult DynamicGatherOp::verify() {
   inferredReturnTypes.push_back(
       VectorType::get(indices_vty.getShape(), source_vty.getElementType()));
   return success();
-}
-
-/*static*/ LogicalResult DynamicGatherOp::canonicalize(
-    DynamicGatherOp op, PatternRewriter& rewriter) {
-  if (llvm::all_of(op.getDimensions(), [&](const int32_t d) {
-        return op.getSource().getType().getDimSize(d) == 1;
-      })) {
-    rewriter.replaceOpWithNewOp<vector::BroadcastOp>(op, op.getType(),
-                                                     op.getSource());
-    return success();
-  }
-  return failure();
 }
 
 LogicalResult AllReduceOp::verify() {
@@ -3453,17 +2765,6 @@ LogicalResult AssumeMultipleOp::verify() {
   return success();
 }
 
-OpFoldResult AssumeMultipleOp::fold(FoldAdaptor adaptor) {
-  if (getMultiple() == 1) {
-    return getValue();
-  }
-  if (auto int_attr = dyn_cast_if_present<IntegerAttr>(adaptor.getValue());
-      int_attr && int_attr.getInt() % getMultiple() == 0) {
-    return getValue();
-  }
-  return nullptr;
-}
-
 LogicalResult SublaneShuffleOp::verify() {
   auto lhs = getLhs();
   auto rhs = getRhs();
@@ -3508,52 +2809,6 @@ LogicalResult SublaneShuffleOp::verify() {
   return success();
 }
 
-OpFoldResult TruncFOp::fold(FoldAdaptor adaptor) {
-  auto resElemType = cast<FloatType>(getElementTypeOrSelf(getType()));
-  const llvm::fltSemantics& targetSemantics = resElemType.getFloatSemantics();
-  return constFoldCastOp<FloatAttr, FloatAttr, FloatAttr::ValueType,
-                         FloatAttr::ValueType, /*PoisonAttr=*/void>(
-      adaptor.getOperands(), getType(),
-      [this, &targetSemantics](const APFloat& a, bool& castStatus) {
-        llvm::RoundingMode llvmRoundingMode =
-            convertTpuRoundingModeToLLVMIR(getRoundingMode());
-        FailureOr<APFloat> result =
-            convertFloatValue(a, targetSemantics, llvmRoundingMode);
-        if (failed(result)) {
-          castStatus = false;
-          return a;
-        }
-        return *result;
-      });
-}
-
-OpFoldResult ExtFOp::fold(FoldAdaptor adaptor) {
-  auto resElemType = cast<FloatType>(getElementTypeOrSelf(getType()));
-  const llvm::fltSemantics& targetSemantics = resElemType.getFloatSemantics();
-  return constFoldCastOp<FloatAttr, FloatAttr, FloatAttr::ValueType,
-                         FloatAttr::ValueType, /*PoisonAttr=*/void>(
-      adaptor.getOperands(), getType(),
-      [&targetSemantics](const APFloat& a, bool& castStatus) {
-        FailureOr<APFloat> result = convertFloatValue(a, targetSemantics);
-        if (failed(result)) {
-          castStatus = false;
-          return a;
-        }
-        return *result;
-      });
-}
-
-OpFoldResult ReducePrecisionOp::fold(FoldAdaptor adaptor) {
-  auto elem_ty = cast<FloatType>(getElementTypeOrSelf(getType()));
-  int32_t mantissa_bits = elem_ty.getFPMantissaWidth() - 1;
-  int32_t exponent_bits = elem_ty.getWidth() - mantissa_bits - 1;
-  if (getExponentBits() == exponent_bits &&
-      getMantissaBits() >= mantissa_bits) {
-    return getInput();
-  }
-  return nullptr;
-}
-
 LogicalResult ReshapeOp::verify() {
   auto src_ty = getSource().getType();
   auto dst_ty = getResult().getType();
@@ -3564,23 +2819,6 @@ LogicalResult ReshapeOp::verify() {
     return emitOpError() << "element count must match";
   }
   return success();
-}
-
-OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
-  // No-op reshape.
-  if (getSource().getType() == getType()) {
-    return getSource();
-  }
-  // Reshape of a reshape is a reshape.
-  if (auto source_reshape = getSource().getDefiningOp<ReshapeOp>()) {
-    setOperand(source_reshape.getSource());
-    return getResult();
-  }
-  // Reshape of a constant is a constant.
-  if (auto cst = dyn_cast_if_present<DenseElementsAttr>(adaptor.getSource())) {
-    return cst.reshape(getType());
-  }
-  return nullptr;
 }
 
 LogicalResult StochasticConvertElementwiseOp::verify() {
@@ -3669,22 +2907,6 @@ LogicalResult MemRefMemorySpaceIsOp::verify() {
     return emitOpError("Comparing to 'any' can never succeed");
   }
   return success();
-}
-
-OpFoldResult MemRefMemorySpaceIsOp::fold(FoldAdaptor adaptor) {
-  auto actual = dyn_cast_if_present<MemorySpaceAttr>(
-      getSource().getType().getMemorySpace());
-  if (!actual || actual.getValue() == MemorySpace::kAny) {
-    return nullptr;  // Not specialized yet.
-  }
-  MemorySpaceAttr expected = getMemorySpace();
-  if (actual.getValue() == expected.getValue() &&
-      expected.getCoreType().has_value() && !actual.getCoreType().has_value()) {
-    return nullptr;  // Core type not canonicalized yet.
-  }
-  return BoolAttr::get(
-      getContext(), HasMemorySpace(getSource().getType(), expected.getValue(),
-                                   expected.getCoreType()));
 }
 
 }  // namespace tpu
