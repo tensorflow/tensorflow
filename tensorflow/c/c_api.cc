@@ -891,7 +891,7 @@ void TF_SetAttrBoolList(TF_OperationDescription* desc, const char* attr_name,
     b[i] = values[i];
   }
   desc->node_builder.Attr(attr_name,
-                          ArraySlice<const bool>(b.get(), num_values));
+                          absl::Span<const const bool>(b.get(), num_values));
 }
 
 void TF_SetAttrType(TF_OperationDescription* desc, const char* attr_name,
