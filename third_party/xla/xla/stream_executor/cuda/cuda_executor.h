@@ -138,6 +138,14 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
+  // If XLA_CUDA_REGISTER_HOST_MEMORY_IN_SHARED_CONTEXT is true, host memory is
+  // registered and unregistered in one context shared by all executors in the
+  // process instead of the executor's primary context. The shared context is
+  // created on the device of the first executor that registers host memory
+  // (see GetHostMemoryRegisterContext in cuda_executor.cc). If it can't be
+  // created, the primary contexts are used. cuMemHostUnregister then doesn't
+  // wait for or block work in any primary context, so callers must make sure
+  // no work on any device still uses the memory before unregistering it.
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
   bool IsHostMemoryPinned(const void* ptr, uint64_t size) override;
