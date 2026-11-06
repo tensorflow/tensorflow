@@ -6854,6 +6854,11 @@ absl::Status HloEvaluator::HandleRaggedDot(const HloInstruction* dot) {
   return finish();
 }
 
+absl::Status HloEvaluator::HandleDotGeneral(const HloInstruction* dot) {
+  return Unimplemented("dot-general evaluation is not supported: %s",
+                       dot->ToString());
+}
+
 absl::Status HloEvaluator::HandleScaledDot(const HloInstruction* dot) {
   auto lhs = dot->operand(0);
   auto rhs = dot->operand(1);

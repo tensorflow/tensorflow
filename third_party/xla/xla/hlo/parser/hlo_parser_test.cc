@@ -7654,6 +7654,39 @@ ENTRY DotBlockScalingConfig {
             sp_before.DebugString());
 }
 
+TEST_F(HloParserTest, DotGeneralRoundTrip) {
+  const char* const hlo_string =
+      R"(HloModule DotGeneralModule, entry_computation_layout={(f8e4m3fn[128,256]{1,0}, f8e4m3fn[64,128]{1,0}, f8e8m0fnu[128,8]{1,0}, f8e8m0fnu[8,128]{1,0}, u8[64,128]{1,0})->f32[128,128]{1,0}}
+
+ENTRY %main (lhs: f8e4m3fn[128,256], rhs: f8e4m3fn[64,128], lhs_scale: f8e8m0fnu[128,8], rhs_scale: f8e8m0fnu[8,128], rhs_indices: u8[64,128]) -> f32[128,128] {
+  %lhs = f8e4m3fn[128,256]{1,0} parameter(0)
+  %rhs = f8e4m3fn[64,128]{1,0} parameter(1)
+  %lhs_scale = f8e8m0fnu[128,8]{1,0} parameter(2)
+  %rhs_scale = f8e8m0fnu[8,128]{1,0} parameter(3)
+  %rhs_indices = u8[64,128]{1,0} parameter(4)
+  ROOT %dot-general = f32[128,128]{1,0} dot-general(%lhs, %rhs, %lhs_scale, %rhs_scale, %rhs_indices), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={high,high}, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1 idx=4}}, block_scaling_config={lhs={scale_idx=2 strides=0x128 steps=0x8 block_sizes=1x32} rhs={scale_idx=3 strides=128x0 steps=8x0}}
+}
+
+)";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kDotGeneral);
+  EXPECT_EQ(root->operand_count(), 5);
+  EXPECT_EQ(root->precision_config().operand_precision_size(), 2);
+  EXPECT_EQ(root->sparsity_config().rhs().idx(), 4);
+  EXPECT_EQ(root->block_scaling_config().lhs().scale_idx(), 2);
+  EXPECT_EQ(root->block_scaling_config().rhs().scale_idx(), 3);
+  EXPECT_THAT(root->block_scaling_config().lhs().block_sizes(),
+              ::testing::ElementsAre(1, 32));
+  EXPECT_EQ(module->ToString(), hlo_string);
+
+  // The proto form carries the same configs.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> from_proto,
+      HloModule::CreateFromProto(module->ToProto(), module->config()));
+  EXPECT_EQ(from_proto->ToString(), hlo_string);
+}
+
 TEST_F(HloParserTest, DesugarParsingTest_DotStart) {
   const char* const hlo = R"(
 HloModule async_dot_example

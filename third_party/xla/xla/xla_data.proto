@@ -903,6 +903,10 @@ message BlockScalingConfig {
     repeated int64 strides = 3;
     // The steps for the block scaling.
     repeated int64 steps = 4;
+    // The block size along each operand dimension. Empty means the block size
+    // is implied by operand_dim / scale_dim. When set, it has one positive
+    // entry per operand dimension; 1 means one scale per index.
+    repeated int64 block_sizes = 5;
   }
   // Block scaling config for the LHS operand.
   TensorBlockScalingConfig lhs = 1;

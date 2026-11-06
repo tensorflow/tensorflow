@@ -500,6 +500,15 @@ class HloInstruction {
       const SparsityConfig& sparsity_config = {},
       const BlockScalingConfig& block_scaling_config = {});
 
+  // Creates a dot-general op. `operands` holds lhs, rhs, then the sparsity
+  // indices, scales and zero points referenced by index from the configs.
+  static std::unique_ptr<HloInstruction> CreateDotGeneral(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const DotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config,
+      const BlockScalingConfig& block_scaling_config);
+
   // Creates a ragged dot op with operands 'lhs', 'rhs', and 'group_sizes', with
   // contracting, batch, ragged, and group dimensions specified in
   // 'dimension_numbers'.

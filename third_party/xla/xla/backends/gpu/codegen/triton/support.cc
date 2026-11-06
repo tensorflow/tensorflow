@@ -1105,6 +1105,7 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kExp2:

@@ -147,6 +147,7 @@ static auto& kUnsupportedOps =
                                    HloOpcode::kCopyDone,
                                    HloOpcode::kCopyStart,
                                    HloOpcode::kCustomCall,
+                                   HloOpcode::kDotGeneral,
                                    HloOpcode::kDynamicReshape,
                                    HloOpcode::kFft,
                                    HloOpcode::kFusion,

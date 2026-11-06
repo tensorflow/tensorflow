@@ -3537,6 +3537,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRng:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kScaledDot:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:

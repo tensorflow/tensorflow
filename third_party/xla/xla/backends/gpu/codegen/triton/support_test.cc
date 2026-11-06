@@ -3870,6 +3870,7 @@ INSTANTIATE_TEST_SUITE_P(ConvolutionTestSuiteCcOnly, ConvolutionTestCcOnly,
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
+    HloOpcode::kDotGeneral,
     HloOpcode::kDynamicReshape,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kExp2,
