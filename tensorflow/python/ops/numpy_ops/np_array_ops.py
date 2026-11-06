@@ -959,19 +959,29 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
     axis = normalized
   # NumPy raises ValueError for negative `repeats` entries before any
   # computation instead of failing in the Tile kernel with an
-  # InvalidArgumentError, with a different message for a scalar and for a
-  # sequence of entries. The check only inspects the Python value, so a
-  # Tensor `repeats` keeps the previous behavior.
-  if not builtins.isinstance(repeats, core_tf_types.Tensor):
+  # InvalidArgumentError, with a distinct message for broadcast (scalar or
+  # size-1) and sequence `repeats`. Only signed-integer Python or NumPy
+  # values are inspected, so floats, strings, unsigned entries, and Tensor
+  # `repeats` keep their backend behavior.
+  np_repeats_check = None
+  if builtins.isinstance(repeats, (int, np.integer)):
+    if repeats < 0:
+      raise ValueError('negative dimensions are not allowed')
+  elif not builtins.isinstance(repeats, core_tf_types.Tensor):
     try:
       np_repeats_check = np.asarray(repeats)
-    except (TypeError, ValueError):
-      # Ragged input: leave it to the backend.
+    except (TypeError, ValueError, NotImplementedError):
+      # Ragged input or symbolic Tensor sequence: leave it to the backend.
       np_repeats_check = None
-    if np_repeats_check is not None and np_repeats_check.dtype != object:
-      if np_repeats_check.ndim == 0 and np_repeats_check < 0:
-        raise ValueError('negative dimensions are not allowed')
-      elif np_repeats_check.ndim > 0 and (np_repeats_check < 0).any():
+    if (
+        np_repeats_check is not None
+        and np_repeats_check.ndim <= 1
+        and np.issubdtype(np_repeats_check.dtype, np.signedinteger)
+    ):
+      if np_repeats_check.size == 1:
+        if np_repeats_check.item() < 0:
+          raise ValueError('negative dimensions are not allowed')
+      elif (np_repeats_check < 0).any():
         raise ValueError('repeats may not contain negative values.')
   original_shape = a._shape_as_list()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
@@ -980,7 +990,11 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
     if not original_shape:
       original_shape = (repeats,)
     else:
-      repeats_np = np.ravel(np.array(repeats))
+      repeats_np = np.ravel(
+          np_repeats_check
+          if np_repeats_check is not None
+          else np.array(repeats)
+      )
       if repeats_np.size == 1:
         repeats_np = repeats_np.item()
         if axis is None:

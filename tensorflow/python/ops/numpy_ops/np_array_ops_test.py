@@ -1290,21 +1290,50 @@ class ArrayMethodsTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.repeat(np_array_ops.array(5), 2, axis=-2)
 
-    # NumPy raises ValueError for negative `repeats` entries before any
-    # computation instead of failing in the Tile kernel, with a distinct
-    # message for a scalar and for a sequence of entries.
-    with self.assertRaisesRegex(
-        ValueError, 'negative dimensions are not allowed'
+    # NumPy raises ValueError for negative Python/NumPy `repeats`, with a
+    # distinct message for broadcast (scalar or size-1) vs. sequence.
+    for bad_repeats in (
+        -1,
+        np.int64(-1),
+        np.array(-1),
+        [-1],
+        np.array([-1]),
     ):
-      np_array_ops.repeat([1, 2], -1)
-    with self.assertRaisesRegex(
-        ValueError, r'repeats may not contain negative values\.'
-    ):
-      np_array_ops.repeat([1, 2], [-1, 2])
+      with self.assertRaisesRegex(
+          ValueError, 'negative dimensions are not allowed'
+      ):
+        np_array_ops.repeat([1, 2], bad_repeats)
+    for bad_repeats in ([-1, 2], np.array([-1, 2])):
+      with self.assertRaisesRegex(
+          ValueError, r'repeats may not contain negative values\.'
+      ):
+        np_array_ops.repeat([1, 2], bad_repeats)
     with self.assertRaisesRegex(
         ValueError, r'repeats may not contain negative values\.'
     ):
       np_array_ops.repeat([[1, 2], [3, 4]], [2, -1], axis=1)
+    with self.assertRaisesRegex(TypeError, 'must be of type integer'):
+      np_array_ops.repeat([1, 2], -1.5)
+    with self.assertRaisesRegex(
+        errors_impl.InvalidArgumentError, 'Expected multiples.*>= 0'
+    ):
+      np_array_ops.repeat([1, 2], constant_op.constant(-1))
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[None], dtype=dtypes.int32),
+            tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
+        ]
+    )
+    def repeat_symbolic_list(x, r):
+      return np_array_ops.repeat(x, [r, r])
+
+    self.assertAllEqual(
+        repeat_symbolic_list(
+            constant_op.constant([1, 2]), constant_op.constant(3)
+        ),
+        [1, 1, 1, 2, 2, 2],
+    )
 
   def testAround(self):
 
