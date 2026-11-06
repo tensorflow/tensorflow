@@ -303,7 +303,9 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
   }
   if (gpu_info.IsMali()) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
-    compiler_options_.push_back(CompilerOptions::kClRegisterAllocation64);
+    if (gpu_info.opencl_info.supports_register_allocation_arm) {
+      compiler_options_.push_back(CompilerOptions::kClRegisterAllocation64);
+    }
   }
   if (conv_params_.IsPrivateMemBroadcast() &&
       (gpu_info.IsCL20OrHigher() || gpu_info.opencl_info.IsCLVK())) {
@@ -314,7 +316,8 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
   if (definition_.src_tensors[0].HasAxis(Axis::DEPTH)) {
     kernel_is_trivial = kernel_is_trivial & conv_params_.z_kernel_is_1;
   }
-  if (gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx() &&
+  if (gpu_info.IsAdreno() && !gpu_info.opencl_info.IsCLVK() &&
+      gpu_info.adreno_info.IsAdreno3xx() &&
       definition_.precision == CalculationsPrecision::F16 &&
       kernel_is_trivial) {
     compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);

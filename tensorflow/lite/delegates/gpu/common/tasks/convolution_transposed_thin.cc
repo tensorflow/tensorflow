@@ -32,7 +32,8 @@ ConvolutionTransposedThin::ConvolutionTransposedThin(
       definition_, DivideRoundUp(attr.weights.shape.i, 4), attr.weights.shape.o,
       int2(attr.weights.shape.w, attr.weights.shape.h));
   if (definition_.precision == CalculationsPrecision::F16 &&
-      gpu_info.IsAdreno() && gpu_info.adreno_info.IsAdreno3xx()) {
+      gpu_info.IsAdreno() && !gpu_info.opencl_info.IsCLVK() &&
+      gpu_info.adreno_info.IsAdreno3xx()) {
     compiler_options_.push_back(CompilerOptions::kAdrenoFullSimd);
   }
 }
