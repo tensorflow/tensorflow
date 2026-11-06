@@ -370,6 +370,7 @@ def xla_test(
             name = name,
             deps = ["@com_google_googletest//:gtest_main"],
             linkstatic = linkstatic,
+            tags = tags + ["manual"],
             # This test is deliberately empty. Its only purpose is to avoid
             # creating an empty test suite, which would be a problem for
             # --build_tag_filters (see above). Therefore we don't want to fail
