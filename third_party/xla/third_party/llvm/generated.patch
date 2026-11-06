@@ -1,92 +1,45 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/builtin_types/float/Makefile b/lldb/test/API/lang/cpp/builtin_types/float/Makefile
---- a/lldb/test/API/lang/cpp/builtin_types/float/Makefile
-+++ b/lldb/test/API/lang/cpp/builtin_types/float/Makefile
-@@ -1,3 +0,0 @@
--CXX_SOURCES := main.cpp
--
--include Makefile.rules
-diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/builtin_types/float/TestFloatTypes.py b/lldb/test/API/lang/cpp/builtin_types/float/TestFloatTypes.py
---- a/lldb/test/API/lang/cpp/builtin_types/float/TestFloatTypes.py
-+++ b/lldb/test/API/lang/cpp/builtin_types/float/TestFloatTypes.py
-@@ -1,43 +0,0 @@
--import lldb
--from lldbsuite.test.decorators import *
--from lldbsuite.test.lldbtest import *
--from lldbsuite.test import lldbutil
--
--
--class TestCase(TestBase):
--    def test(self):
--        """Check the types and values of all float-typed variables.
--        NOTE: TestFloatDisplay.py tests displaying of the various float values
--        and we only test that we can recognize the different types and can
--        extract their values correctly.
--        """
--        self.build_and_run()
--
--        # Check every scalar floating point type both via 'frame variable' (var
--        # path) and via the expression evaluator.
--        self.expect_var_path("the_float", type="float", value="3.5")
--        self.expect_expr("the_float", result_type="float", result_value="3.5")
--
--        self.expect_var_path("the_double", type="double", value="6.25")
--        self.expect_expr("the_double", result_type="double", result_value="6.25")
--
--        self.expect_var_path("the_long_double", type="long double", value="10.75")
--        self.expect_expr(
--            "the_long_double", result_type="long double", result_value="10.75"
--        )
--
--        # Check edge-case values: zero, -1 and a negative value.
--        self.expect_var_path("float_zero", type="float", value="0")
--        self.expect_var_path("float_neg_one", type="float", value="-1")
--        self.expect_var_path("float_neg", type="float", value="-2.5")
--        self.expect_var_path("double_zero", type="double", value="0")
--        self.expect_var_path("double_neg_one", type="double", value="-1")
--        self.expect_var_path("double_neg", type="double", value="-2.5")
--        self.expect_var_path("long_double_zero", type="long double", value="0")
--        self.expect_var_path("long_double_neg_one", type="long double", value="-1")
--
--        self.expect_expr("float_neg", result_type="float", result_value="-2.5")
--        self.expect_expr("double_zero", result_type="double", result_value="0")
--        self.expect_expr(
--            "long_double_neg_one", result_type="long double", result_value="-1"
--        )
-diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/builtin_types/float/main.cpp b/lldb/test/API/lang/cpp/builtin_types/float/main.cpp
---- a/lldb/test/API/lang/cpp/builtin_types/float/main.cpp
-+++ b/lldb/test/API/lang/cpp/builtin_types/float/main.cpp
-@@ -1,19 +0,0 @@
--int main() {
--  // Scalar variables of every floating point type. The values are all exactly
--  // representable so their printed value is unambiguous.
--  float the_float = 3.5f;
--  double the_double = 6.25;
--  long double the_long_double = 10.75;
--
--  // Edge-case values: zero, -1 and a negative value.
--  float float_zero = 0.0f;
--  float float_neg_one = -1.0f;
--  float float_neg = -2.5f;
--  double double_zero = 0.0;
--  double double_neg_one = -1.0;
--  double double_neg = -2.5;
--  long double long_double_zero = 0.0;
--  long double long_double_neg_one = -1.0;
--
--  return 0; // break here
--}
-diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/MLGOUtilsTest.cpp b/llvm/unittests/Analysis/MLGOUtilsTest.cpp
---- a/llvm/unittests/Analysis/MLGOUtilsTest.cpp
-+++ b/llvm/unittests/Analysis/MLGOUtilsTest.cpp
-@@ -109,6 +109,10 @@
-   OptChoice = TestModelChoice::Default;
-   EXPECT_TRUE((isReleaseModelValid<NoopSavedModelImpl>("channel", OptChoice)));
-   EXPECT_TRUE((isReleaseModelValid<MockAOTModel>("", OptChoice)));
-+  // OptChoice lives on the stack, and cl::Option's destructor does not
-+  // unregister it, leaving a pointer to the object in perpetuity, so remove
-+  // it explicitly.
-+  OptChoice.removeArgument();
- }
+diff -ruN --strip-trailing-cr a/libcxx/include/__configuration/attributes.h b/libcxx/include/__configuration/attributes.h
+--- a/libcxx/include/__configuration/attributes.h
++++ b/libcxx/include/__configuration/attributes.h
+@@ -484,10 +484,4 @@
+ #  define _LIBCPP_WARN_UNUSED
+ #endif
  
- TEST(MLGOUtilsTest, CreateReleaseModeModelRunnerModelSelection) {
+-#if defined(_LIBCPP_COMPILER_CLANG_BASED) && !defined(__OPTIMIZE_SIZE__)
+-#  define _LIBCPP_ENABLE_LOOP_VECTORIZATION _Pragma("clang loop vectorize(enable) interleave(enable)")
+-#else
+-#  define _LIBCPP_ENABLE_LOOP_VECTORIZATION
+-#endif
+-
+ #endif // _LIBCPP___CONFIGURATION_ATTRIBUTES_H
+diff -ruN --strip-trailing-cr a/libcxx/include/__numeric/reduce.h b/libcxx/include/__numeric/reduce.h
+--- a/libcxx/include/__numeric/reduce.h
++++ b/libcxx/include/__numeric/reduce.h
+@@ -29,7 +29,6 @@
+ template <class _InputIterator, class _Tp, class _BinaryOp>
+ [[nodiscard]] _LIBCPP_HIDE_FROM_ABI
+ _LIBCPP_CONSTEXPR_SINCE_CXX20 _Tp reduce(_InputIterator __first, _InputIterator __last, _Tp __init, _BinaryOp __b) {
+-  _LIBCPP_ENABLE_LOOP_VECTORIZATION
+   for (; __first != __last; ++__first)
+     __init = __b(std::move(__init), *__first);
+   return __init;
+diff -ruN --strip-trailing-cr a/libcxx/include/__numeric/transform_reduce.h b/libcxx/include/__numeric/transform_reduce.h
+--- a/libcxx/include/__numeric/transform_reduce.h
++++ b/libcxx/include/__numeric/transform_reduce.h
+@@ -28,7 +28,6 @@
+ template <class _InputIterator, class _Tp, class _BinaryOp, class _UnaryOp>
+ [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20
+ _Tp transform_reduce(_InputIterator __first, _InputIterator __last, _Tp __init, _BinaryOp __b, _UnaryOp __u) {
+-  _LIBCPP_ENABLE_LOOP_VECTORIZATION
+   for (; __first != __last; ++__first)
+     __init = __b(std::move(__init), __u(*__first));
+   return __init;
+@@ -42,7 +41,6 @@
+     _Tp __init,
+     _BinaryOp1 __b1,
+     _BinaryOp2 __b2) {
+-  _LIBCPP_ENABLE_LOOP_VECTORIZATION
+   for (; __first1 != __last1; ++__first1, (void)++__first2)
+     __init = __b1(std::move(__init), __b2(*__first1, *__first2));
+   return __init;
