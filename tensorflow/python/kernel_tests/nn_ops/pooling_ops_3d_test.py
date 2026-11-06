@@ -812,6 +812,91 @@ class PoolingTest(test.TestCase):
         )
         self.evaluate(t)
 
+  def testPool3DInvalidKsizeAndStridesOnBatchAndChannel(self):
+    for pool_fn in [nn_ops.avg_pool3d, nn_ops.max_pool3d]:
+      # Channel pooling rejection in NCDHW format (channel is index 1).
+      x_ncdhw = constant_op.constant(1.0, shape=[1, 4, 8, 8, 8], dtype=dtypes.float32)
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError, errors.UnimplementedError),
+          "channel"):
+        pool_fn(x_ncdhw, ksize=[1, 2, 3, 3, 3], strides=[1, 1, 1, 1, 1],
+                padding="VALID", data_format="NCDHW")
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError, errors.UnimplementedError),
+          "channel"):
+        pool_fn(x_ncdhw, ksize=[1, 1, 3, 3, 3], strides=[1, 2, 1, 1, 1],
+                padding="VALID", data_format="NCDHW")
+
+      # Channel pooling rejection in NDHWC format (channel is index 4).
+      x_ndhwc = constant_op.constant(1.0, shape=[1, 8, 8, 8, 4], dtype=dtypes.float32)
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError, errors.UnimplementedError),
+          "channel"):
+        pool_fn(x_ndhwc, ksize=[1, 3, 3, 3, 2], strides=[1, 1, 1, 1, 1],
+                padding="VALID", data_format="NDHWC")
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError, errors.UnimplementedError),
+          "channel"):
+        pool_fn(x_ndhwc, ksize=[1, 1, 1, 1, 1], strides=[1, 1, 1, 1, 2],
+                padding="VALID", data_format="NDHWC")
+
+      # Batch pooling rejection across both formats (batch is index 0).
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError, errors.UnimplementedError),
+          "batch"):
+        pool_fn(x_ncdhw, ksize=[2, 1, 3, 3, 3], strides=[1, 1, 1, 1, 1],
+                padding="VALID", data_format="NCDHW")
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError, errors.UnimplementedError),
+          "batch"):
+        pool_fn(x_ndhwc, ksize=[1, 1, 1, 1, 1], strides=[2, 1, 1, 1, 1],
+                padding="VALID", data_format="NDHWC")
+
+  def testPool3DValidSpatialKsizeAndStrides(self):
+    for pool_fn in [nn_ops.avg_pool3d, nn_ops.max_pool3d]:
+      # Valid 3-element spatial ksize and strides.
+      x_ncdhw = constant_op.constant(1.0, shape=[1, 4, 8, 8, 8], dtype=dtypes.float32)
+      y1 = pool_fn(x_ncdhw, ksize=[2, 2, 2], strides=[2, 2, 2],
+                   padding="VALID", data_format="NCDHW")
+      self.assertEqual(y1.shape, [1, 4, 4, 4, 4])
+
+      x_ndhwc = constant_op.constant(1.0, shape=[1, 8, 8, 8, 4], dtype=dtypes.float32)
+      y2 = pool_fn(x_ndhwc, ksize=[2, 2, 2], strides=[2, 2, 2],
+                   padding="VALID", data_format="NDHWC")
+      self.assertEqual(y2.shape, [1, 4, 4, 4, 4])
+
+      # Valid 5-element ksize and strides with batch=1, channel=1.
+      y3 = pool_fn(x_ncdhw, ksize=[1, 1, 2, 2, 2], strides=[1, 1, 2, 2, 2],
+                   padding="VALID", data_format="NCDHW")
+      self.assertEqual(y3.shape, [1, 4, 4, 4, 4])
+
+      y4 = pool_fn(x_ndhwc, ksize=[1, 2, 2, 2, 1], strides=[1, 2, 2, 2, 1],
+                   padding="VALID", data_format="NDHWC")
+      self.assertEqual(y4.shape, [1, 4, 4, 4, 4])
+
+  def testIssue113181Reproduction(self):
+    x = constant_op.constant(1.0, shape=[1, 4, 8, 8, 8], dtype=dtypes.float32)
+    # ksize has channel=2 -> must raise clean error explaining channel pooling is unsupported.
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError, errors.UnimplementedError),
+        "channel"):
+      nn_ops.avg_pool3d(
+          input=x,
+          ksize=[1, 2, 3, 3, 3],
+          strides=[1, 2, 3, 3, 3],
+          padding="VALID",
+          data_format="NCDHW",
+      )
+    # Valid ksize with channel=1 produces expected output shape without crash.
+    y = nn_ops.avg_pool3d(
+        input=x,
+        ksize=[1, 1, 3, 3, 3],
+        strides=[1, 1, 3, 3, 3],
+        padding="VALID",
+        data_format="NCDHW",
+    )
+    self.assertEqual(y.shape, [1, 4, 2, 2, 2])
+
 
 if __name__ == "__main__":
   test.main()

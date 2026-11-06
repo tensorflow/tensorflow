@@ -162,7 +162,9 @@ class Pooling3DOp : public UnaryOp<T> {
                 (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
                  GetTensorDim(stride_, data_format_, 'C') == 1),
                 absl::UnimplementedError(
-                    "Pooling is not yet supported on the depth dimension."));
+                    "Pooling3D only supports pooling across spatial dimensions "
+                    "(depth, height, width). Pooling across the channel dimension "
+                    "is not supported."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -336,7 +338,9 @@ class MaxPooling3dGradOp : public OpKernel {
                 (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
                  GetTensorDim(stride_, data_format_, 'C') == 1),
                 absl::UnimplementedError(
-                    "Pooling is not yet supported on the depth dimension."));
+                    "Pooling3D only supports pooling across spatial dimensions "
+                    "(depth, height, width). Pooling across the channel dimension "
+                    "is not supported."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -522,7 +526,9 @@ class AvgPooling3dGradOp : public OpKernel {
                 (GetTensorDim(ksize_, data_format_, 'C') == 1 &&
                  GetTensorDim(stride_, data_format_, 'C') == 1),
                 absl::UnimplementedError(
-                    "Pooling is not yet supported on the depth dimension."));
+                    "Pooling3D only supports pooling across spatial dimensions "
+                    "(depth, height, width). Pooling across the channel dimension "
+                    "is not supported."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -727,8 +733,10 @@ class MaxPooling3dGradGradOp : public OpKernel {
     const int32_t ksize_c = GetTensorDim(ksize_, data_format_, 'C');
     const int32_t stride_c = GetTensorDim(stride_, data_format_, 'C');
     OP_REQUIRES(context, ksize_c == 1 && stride_c == 1,
-                absl::UnimplementedError("MaxPooling3dGradGrad is not yet "
-                                         "supported on the depth dimension."));
+                absl::UnimplementedError(
+                    "MaxPooling3dGradGrad only supports pooling across spatial dimensions "
+                    "(depth, height, width). Pooling across the channel dimension "
+                    "is not supported."));
   }
 
   void Compute(OpKernelContext* context) override {
