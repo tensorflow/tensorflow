@@ -964,10 +964,10 @@ def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   # values are inspected, so floats, strings, unsigned entries, and Tensor
   # `repeats` keep their backend behavior.
   np_repeats_check = None
-  if builtins.isinstance(repeats, (int, np.integer)):
+  if isinstance(repeats, (int, np.integer)):
     if repeats < 0:
       raise ValueError('negative dimensions are not allowed')
-  elif not builtins.isinstance(repeats, core_tf_types.Tensor):
+  elif not isinstance(repeats, core_tf_types.Tensor):
     try:
       np_repeats_check = np.asarray(repeats)
     except (TypeError, ValueError, NotImplementedError):
