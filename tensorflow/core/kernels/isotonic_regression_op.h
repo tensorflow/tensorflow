@@ -69,28 +69,29 @@ class L2PavaSegment : public Segment {
   T minimum_;
 };
 
-// Solves a single 1D isotonic regression problem of length `n` using PAVA.
+// Solves a single 1D isotonic regression problem of length `n` using PAVA,
+// reusing the provided `pools` vector to avoid heap allocations.
 template <typename Tin, typename Tout>
 void SolvePava1D(const Tin* input, Tout* solution, int32_t* segments,
-                 int64_t n) {
+                 int64_t n, std::vector<L2PavaSegment<Tout>>* pools) {
   if (n <= 0) return;
-  std::vector<L2PavaSegment<Tout>> pools;
-  pools.reserve(n);
+  pools->clear();
+  pools->reserve(n);
 
   for (int64_t col_index = 0; col_index < n; ++col_index) {
-    pools.push_back(
+    pools->push_back(
         L2PavaSegment<Tout>(static_cast<Tout>(input[col_index]), col_index));
 
     // While the last two pools violate the monotonic constraint, merge them.
-    while (pools.size() > 1 &&
-           pools.rbegin()->minimum() > (pools.rbegin() + 1)->minimum()) {
-      (pools.rbegin() + 1)->merge_with(*pools.rbegin());
-      pools.pop_back();
+    while (pools->size() > 1 &&
+           pools->rbegin()->minimum() > (pools->rbegin() + 1)->minimum()) {
+      (pools->rbegin() + 1)->merge_with(*pools->rbegin());
+      pools->pop_back();
     }
   }
 
   int32_t segment_id = 0;
-  for (const auto& pool : pools) {
+  for (const auto& pool : *pools) {
     const auto pool_minimum = pool.minimum();
     Tout* solution_ptr = solution + pool.col_start();
     int32_t* segments_ptr = segments + pool.col_start();
@@ -102,13 +103,25 @@ void SolvePava1D(const Tin* input, Tout* solution, int32_t* segments,
   }
 }
 
+// Overload for single-call usage that manages its own `pools` vector.
+template <typename Tin, typename Tout>
+void SolvePava1D(const Tin* input, Tout* solution, int32_t* segments,
+                 int64_t n) {
+  std::vector<L2PavaSegment<Tout>> pools;
+  SolvePava1D<Tin, Tout>(input, solution, segments, n, &pools);
+}
+
 // Solves a batch of 1D isotonic regression problems, each of length `n`.
+// Reuses a single `pools` vector across the entire batch to eliminate
+// per-element heap allocations.
 template <typename Tin, typename Tout>
 void SolvePavaBatch(const Tin* input, Tout* solution, int32_t* segments,
                     int64_t batch_size, int64_t n) {
+  std::vector<L2PavaSegment<Tout>> pools;
+  pools.reserve(n);
   for (int64_t b = 0; b < batch_size; ++b) {
     SolvePava1D<Tin, Tout>(input + b * n, solution + b * n,
-                           segments + b * n, n);
+                           segments + b * n, n, &pools);
   }
 }
 

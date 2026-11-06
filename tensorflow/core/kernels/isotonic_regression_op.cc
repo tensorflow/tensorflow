@@ -54,12 +54,15 @@ void solve_pava_batch(const Tin* input_data, FloatTensor* solution,
       batch_size, kCostMultiplier * problem_size,
       [input_data, solution, segments, problem_size](int64_t row_start,
                                                      int64_t row_limit) {
+        std::vector<L2PavaSegment<Tout>> pools;
+        pools.reserve(problem_size);
         for (int row_index = static_cast<int>(row_start);
              row_index < static_cast<int>(row_limit); ++row_index) {
           const Tin* row_in = input_data + row_index * problem_size;
           Tout* row_sol = &(*solution)(row_index, 0);
           int32* row_seg = &(*segments)(row_index, 0);
-          SolvePava1D<Tin, Tout>(row_in, row_sol, row_seg, problem_size);
+          SolvePava1D<Tin, Tout>(row_in, row_sol, row_seg, problem_size,
+                                 &pools);
         }
       });
 }
