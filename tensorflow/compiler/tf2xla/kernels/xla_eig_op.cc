@@ -107,8 +107,8 @@ absl::Status ComputeEigBatch(const InputScalar* input,
 
 void XlaEigCpuCustomCall(void* out, const void** in, const char* opaque,
                          size_t opaque_len, XlaCustomCallStatus* status) {
-  if (opaque_len < sizeof(EigConfig)) {
-    const char* msg = "Invalid config payload for Eig CustomCall";
+  if (opaque_len != sizeof(EigConfig)) {
+    const char* msg = "Invalid config payload size for Eig CustomCall";
     XlaCustomCallStatusSetFailure(status, msg, strlen(msg));
     return;
   }
@@ -220,6 +220,7 @@ class XlaEigOp : public XlaOpKernel {
         xla::ShapeUtil::MakeTupleShape({e_xla_shape, v_xla_shape});
 
     EigConfig config;
+    std::memset(&config, 0, sizeof(config));
     config.batch_size = batch_size;
     config.n = n;
     config.input_dtype = input_dtype;
