@@ -6114,6 +6114,9 @@ xla_cc_test(
 xla_test(
     name = "xla_aot_compile_gpu_test",
     srcs = ["xla_aot_compile_gpu_test.cc"],
+    backend_tags = {
+        "b200": ["full"],
+    },
     backends = [
         "h100",
         "b200",

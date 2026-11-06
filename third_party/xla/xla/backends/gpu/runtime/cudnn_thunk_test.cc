@@ -90,6 +90,7 @@ TEST(CuDnnThunkTest, TestSerializationDeserialization) {
         output_args: false
         output_args: true
         sdpa_dropout_seed: 123456789
+        target_device { core_count: 96 serialized_device_properties: "{}" }
       )pb",
       &cudnn_thunk_proto));
 

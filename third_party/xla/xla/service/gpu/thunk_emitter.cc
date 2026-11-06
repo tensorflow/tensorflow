@@ -109,6 +109,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/topk.h"
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/target_config/cudnn_device_props_json.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
@@ -1164,7 +1165,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCuDnn(
           instr, ir_emitter_context_->GetNextThunkId()),
       kernel_arguments.GetArgumentShapedSlices(),
       kernel_arguments.GetArgumentOutputFlags(),
-      /*should_memzero=*/IsCustomCallTofMHA(*instr), dropout_seed);
+      /*should_memzero=*/IsCustomCallTofMHA(*instr), dropout_seed,
+      GetCudnnGraphTargetDevice(ir_emitter_context_->gpu_device_info()));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPtxCustomCall(

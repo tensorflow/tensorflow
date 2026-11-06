@@ -62,6 +62,7 @@ cc_library(
         ":fusion_emitter",
         "//xla/backends/gpu/runtime:cudnn_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/target_config:cudnn_device_props_json",
         "//xla/codegen/emitters:computation_fingerprint",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/ir:hlo",

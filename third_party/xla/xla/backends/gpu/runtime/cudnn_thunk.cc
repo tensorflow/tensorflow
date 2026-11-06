@@ -47,16 +47,18 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
-                       std::vector<ShapedSlice> args,
-                       std::vector<bool> output_args, bool should_memzero,
-                       std::optional<int64_t> sdpa_dropout_seed)
+CuDnnThunk::CuDnnThunk(
+    std::string fingerprint, ThunkInfo thunk_info,
+    std::vector<ShapedSlice> args, std::vector<bool> output_args,
+    bool should_memzero, std::optional<int64_t> sdpa_dropout_seed,
+    std::optional<se::dnn::DnnGraphTargetDevice> target_device)
     : TracedCommand(Kind::kCuDnn, std::move(thunk_info)),
       fingerprint_(std::move(fingerprint)),
       args_(std::move(args)),
       output_args_(std::move(output_args)),
       should_memzero_(should_memzero),
-      sdpa_dropout_seed_(sdpa_dropout_seed) {}
+      sdpa_dropout_seed_(sdpa_dropout_seed),
+      target_device_(std::move(target_device)) {}
 
 absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
   return graphs_.GetOrCreateAndInitialize(
@@ -83,7 +85,8 @@ absl::StatusOr<std::unique_ptr<se::dnn::DnnGraph>> CuDnnThunk::CreateGraph(
     return Internal("No serialized cuDNN graph with fingerprint '%s'",
                     fingerprint_);
   }
-  return dnn->DeserializeGraph(*params.stream, serialized->second);
+  return dnn->DeserializeGraph(*params.stream, serialized->second,
+                               target_device_);
 }
 
 absl::StatusOr<se::dnn::DnnGraph*> CuDnnThunk::GetGraph(
@@ -178,6 +181,13 @@ absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
     proto.mutable_cudnn_thunk()->set_sdpa_dropout_seed(
         static_cast<int64_t>(*sdpa_dropout_seed_));
   }
+  if (target_device_.has_value()) {
+    CudnnTargetDeviceProto* target_device_proto =
+        proto.mutable_cudnn_thunk()->mutable_target_device();
+    target_device_proto->set_core_count(target_device_->core_count);
+    target_device_proto->set_serialized_device_properties(
+        target_device_->serialized_device_properties);
+  }
   return proto;
 }
 
@@ -199,9 +209,18 @@ absl::StatusOr<std::unique_ptr<CuDnnThunk>> CuDnnThunk::FromProto(
   if (proto.has_sdpa_dropout_seed()) {
     sdpa_dropout_seed = static_cast<uint64_t>(proto.sdpa_dropout_seed());
   }
+  std::optional<se::dnn::DnnGraphTargetDevice> target_device;
+  if (proto.has_target_device()) {
+    const CudnnTargetDeviceProto& target_device_proto = proto.target_device();
+    target_device.emplace();
+    target_device->core_count = target_device_proto.core_count();
+    target_device->serialized_device_properties =
+        target_device_proto.serialized_device_properties();
+  }
   return std::make_unique<CuDnnThunk>(
       proto.fingerprint(), std::move(thunk_info), std::move(args),
-      std::move(output_args), proto.should_memzero(), sdpa_dropout_seed);
+      std::move(output_args), proto.should_memzero(), sdpa_dropout_seed,
+      std::move(target_device));
 }
 
 }  // namespace gpu

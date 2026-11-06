@@ -528,6 +528,7 @@ cc_library(
         "//xla/backends/gpu/runtime:topk",
         "//xla/backends/gpu/runtime:triangular_solve_thunk",
         "//xla/backends/gpu/runtime:while_thunk",
+        "//xla/backends/gpu/target_config:cudnn_device_props_json",
         "//xla/backends/gpu/transforms:dynamic_slice_copy",
         "//xla/backends/gpu/transforms:dynamic_slice_fusion",
         "//xla/codegen:kernel_definition",

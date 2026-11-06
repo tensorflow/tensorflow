@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/backend/device_properties.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "Eigen/Core"
@@ -6895,17 +6896,67 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
   return IsStatusOk(status, /*report_error=*/true);
 }
 
+namespace {
+
+// cuDNN graph deserialization fails if the runtime device has a different SM
+// count than the device the graph was compiled for. To run AOT binaries on a
+// device with more SMs than the compile target (e.g. compile for p199, run on
+// an A100), we pass cuDNN the compile-time device properties.
+bool ShouldUseTargetDeviceProperties(
+    const std::optional<dnn::DnnGraphTargetDevice>& target_device,
+    const DeviceDescription& runtime_desc) {
+  if (!target_device.has_value() ||
+      target_device->serialized_device_properties.empty()) {
+    return false;
+  }
+  // `cudnn_frontend::DeviceProperties` requires cuDNN >= 9.8.
+  if (cudnn_frontend::detail::get_backend_version() < 90800) {
+    return false;
+  }
+  // GpuExecutable already rejects a compute capability mismatch, so we only
+  // need to compare SM counts.
+  return target_device->core_count > 0 &&
+         target_device->core_count < runtime_desc.core_count();
+}
+
+}  // namespace
+
 absl::StatusOr<std::unique_ptr<dnn::DnnGraph>> CudnnSupport::DeserializeGraph(
-    Stream& stream, absl::string_view serialized_data) const {
+    Stream& stream, absl::string_view serialized_data,
+    const std::optional<dnn::DnnGraphTargetDevice>& target_device) const {
   // Deserializing a graph runs a warmup execution by default. Use a private
   // stream for the warmup to avoid race conditions.
   ABSL_ASSIGN_OR_RETURN(CudnnHandle cudnn,
                    cudnn_->GetCompilationHandle(stream.parent()));
   cudnn_frontend::graph::Graph graph;
-  RETURN_IF_CUDNN_FRONTEND_ERROR(graph.deserialize(
-      cudnn.handle(),
-      std::vector<uint8_t>(serialized_data.data(),
-                           serialized_data.data() + serialized_data.size())));
+  std::vector<uint8_t> serialized_bytes(serialized_data.begin(),
+                                        serialized_data.end());
+
+  const DeviceDescription& runtime_desc =
+      stream.parent()->GetDeviceDescription();
+  if (ShouldUseTargetDeviceProperties(target_device, runtime_desc)) {
+    LOG(WARNING) << "Running cuDNN graph compiled for "
+                 << target_device->core_count << " SMs on a device with "
+                 << runtime_desc.core_count() << " SMs.";
+    auto device_props = std::make_shared<cudnn_frontend::DeviceProperties>();
+    std::vector<uint8_t> prop_bytes(
+        target_device->serialized_device_properties.begin(),
+        target_device->serialized_device_properties.end());
+    RETURN_IF_CUDNN_FRONTEND_ERROR(device_props->deserialize(prop_bytes));
+    graph.set_device_properties(device_props);
+    // Deserializing with device properties has known bugs (as of cuDNN 9.23,
+    // some properties aren't populated correctly), so this may still fail. We
+    // try anyway, since without the SM count override deserialization would
+    // always fail.
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph.deserialize(serialized_bytes));
+    // The graph.deserialize with a handle does a warmup, so we also should do
+    // one here.
+    RETURN_IF_CUDNN_FRONTEND_ERROR(graph.warmup(cudnn.handle()));
+    return std::make_unique<CudnnGraph>(std::move(graph));
+  }
+
+  RETURN_IF_CUDNN_FRONTEND_ERROR(
+      graph.deserialize(cudnn.handle(), serialized_bytes));
   return std::make_unique<CudnnGraph>(std::move(graph));
 }
 
