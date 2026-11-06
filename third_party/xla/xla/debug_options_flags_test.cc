@@ -549,6 +549,28 @@ TEST(DebugOptions, AutotuneCacheRequireStrictCodegenMatchFlagsParsing) {
   EXPECT_TRUE(opts.xla_autotune_cache_require_strict_codegen_match());
 }
 
+TEST(DebugOptions,
+     ExperimentalUseAutotuneCacheAlsoForDeterministicOpsDefaultIsFalse) {
+  const DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+  const bool use_cache =
+      opts.xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops();
+  EXPECT_FALSE(use_cache);
+}
+
+TEST(DebugOptions,
+     ExperimentalUseAutotuneCacheAlsoForDeterministicOpsFlagsParsing) {
+  DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flags;
+  MakeDebugOptionsFlags(&flags, &opts);
+  std::vector<std::string> flag_args = {
+      "--xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops="
+      "true"};
+  EXPECT_TRUE(tsl::Flags::Parse(flag_args, flags));
+  const bool use_cache =
+      opts.xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops();
+  EXPECT_TRUE(use_cache);
+}
+
 TEST(DebugOptions, ResetFlagValuesPreservesCudaDataDirFromEnv) {
   // Allocates the process-wide flags before the reset under test.
   (void)GetDebugOptionsFromFlags();

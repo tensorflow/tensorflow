@@ -278,9 +278,15 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
   // The autotune cache is process-wide and keyed without debug options, so it
   // may contain timing-based picks inserted by other (non-deterministic)
   // modules. Using them would make a deterministic compilation depend on what
-  // else was compiled in the process first, so don't use any cache.
-  if (debug_options.xla_gpu_deterministic_ops() ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
+  // else was compiled in the process first, so don't use any cache unless
+  // xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops is
+  // enabled.
+  const bool use_cache_for_deterministic_ops =
+      debug_options
+          .xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops();
+  if ((debug_options.xla_gpu_deterministic_ops() ||
+       debug_options.xla_gpu_exclude_nondeterministic_ops()) &&
+      !use_cache_for_deterministic_ops) {
     return nullptr;
   }
 
@@ -535,7 +541,9 @@ absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
       GetConfigAssignerOptions(debug_options, is_deviceless);
   CodegenOrchestrator::Options orchestrator_options =
       GetCodegenOrchestratorOptions(debug_options);
-  // Null in deterministic mode.
+  // Null in deterministic mode unless
+  // xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops is
+  // enabled.
   std::unique_ptr<AutotunerCacheInterface> cache =
       CreateAutotunerCache(debug_options, *target_config, backends);
 

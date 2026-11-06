@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuning/config_assigner_pass.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -1452,6 +1453,81 @@ TEST_P(DeterministicCacheIsolationTest,
   ASSERT_OK_AND_ASSIGN(auto gpu_backend_config,
                        gemm->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_backend_config.gemm_backend_config().selected_algorithm(), 0);
+}
+
+TEST_P(DeterministicCacheIsolationTest,
+       DeterministicCompileUsesCacheWhenFlagEnabled) {
+  const bool use_new_cache_format = GetParam();
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+
+  // 1. With an empty cache, requiring every config to come from the cache still
+  //    fails even when
+  //    `xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops` is
+  //    enabled.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> empty_cache_module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  DebugOptions& empty_cache_options =
+      empty_cache_module->mutable_config().mutable_debug_options();
+  empty_cache_options.set_xla_gpu_use_new_autotune_cache_format(
+      use_new_cache_format);
+  empty_cache_options.set_xla_gpu_exclude_nondeterministic_ops(true);
+  empty_cache_options.set_xla_gpu_require_complete_aot_autotune_results(true);
+  empty_cache_options
+      .set_xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops(
+          true);
+  EXPECT_THAT(
+      RunPass(empty_cache_module.get(), &thread_pool),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound,
+                             ::testing::HasSubstr("No cached config found")));
+
+  // 2. A non-deterministic compilation autotunes the GEMM and populates the
+  //    process-wide autotune cache.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> autotuned_module,
+                       ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+  autotuned_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_use_new_autotune_cache_format(use_new_cache_format);
+  EXPECT_THAT(RunPass(autotuned_module.get(), &thread_pool),
+              absl_testing::IsOkAndHolds(true));
+  const HloInstruction* autotuned_gemm =
+      autotuned_module->entry_computation()->GetInstructionWithName(
+          "custom-call.1");
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig autotuned_backend_config,
+                       autotuned_gemm->backend_config<GpuBackendConfig>());
+  const int64_t cached_algorithm =
+      autotuned_backend_config.gemm_backend_config().selected_algorithm();
+
+  // 3. With
+  //    `xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops`
+  //    enabled, both `xla_gpu_exclude_nondeterministic_ops` and
+  //    `xla_gpu_deterministic_ops` reuse the cached entry.
+  for (bool use_deterministic_ops_flag : {false, true}) {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> deterministic_module,
+                         ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+    DebugOptions& debug_options =
+        deterministic_module->mutable_config().mutable_debug_options();
+    debug_options.set_xla_gpu_use_new_autotune_cache_format(
+        use_new_cache_format);
+    if (use_deterministic_ops_flag) {
+      debug_options.set_xla_gpu_deterministic_ops(true);
+    } else {
+      debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
+    }
+    debug_options.set_xla_gpu_require_complete_aot_autotune_results(true);
+    debug_options
+        .set_xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops(
+            true);
+    EXPECT_THAT(RunPass(deterministic_module.get(), &thread_pool),
+                absl_testing::IsOkAndHolds(true));
+    const HloInstruction* gemm =
+        deterministic_module->entry_computation()->GetInstructionWithName(
+            "custom-call.1");
+    ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
+                         gemm->backend_config<GpuBackendConfig>());
+    EXPECT_EQ(gpu_backend_config.gemm_backend_config().selected_algorithm(),
+              cached_algorithm);
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(CacheFormats, DeterministicCacheIsolationTest,
