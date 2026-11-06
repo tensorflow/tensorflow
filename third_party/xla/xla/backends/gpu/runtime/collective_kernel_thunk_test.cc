@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/clique_id.h"
@@ -532,9 +533,16 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   ABSL_RETURN_IF_ERROR(clique_requests.RequestClique(
       clique_key, /*device_groups=*/{all_device_groups}));
   CollectiveMemoryRequests memory_requests(buffer_allocations);
-  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests, executor,
-                                      &buffer_allocations};
+  CommandBufferRequests command_buffer_requests;
+  Thunk::PrepareParams prepare_params{
+      /*collective_params=*/&collective_params,
+      /*collective_clique_requests=*/&clique_requests,
+      /*collective_memory_requests=*/&memory_requests,
+      /*executor=*/executor,
+      /*buffer_allocations=*/&buffer_allocations,
+      /*execution_scoped_state=*/nullptr,
+      /*custom_options=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests};
 
   ABSL_RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
   CollectiveCliques collective_cliques;
@@ -545,13 +553,13 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
                                            collective_cliques, memory_requests,
                                            *metadata.collective_memory_cache));
 
-  Thunk::InitializeParams initialize_params;
+  Thunk::InitializeParams initialize_params(&command_buffer_requests);
   initialize_params.executor = executor;
-  initialize_params.stream = stream.get();
+  initialize_params.src = {metadata.kernel_source};
   initialize_params.buffer_allocations = &buffer_allocations;
+  initialize_params.stream = stream.get();
   initialize_params.collective_params = &collective_params;
   initialize_params.collective_cliques = &collective_cliques;
-  initialize_params.src = {metadata.kernel_source};
   initialize_params.collective_memory = &collective_memory;
 
   GpuExecutableRunOptions::DeviceIdMap global_device_id_map = {
@@ -805,9 +813,16 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations1);
-  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests, executor,
-                                      &allocations1};
+  CommandBufferRequests command_buffer_requests;
+  Thunk::PrepareParams prepare_params{
+      /*collective_params=*/&collective_params,
+      /*collective_clique_requests=*/&clique_requests,
+      /*collective_memory_requests=*/&memory_requests,
+      /*executor=*/executor,
+      /*buffer_allocations=*/&allocations1,
+      /*execution_scoped_state=*/nullptr,
+      /*custom_options=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests};
   ASSERT_OK(collective_kernel_thunk->Prepare(prepare_params));
 
   CollectiveMemoryCache collective_memory_cache(/*num_devices=*/2);
@@ -819,13 +834,13 @@ TEST(CollectiveKernelThunkTest, RecordCommandBufferCreateUpdate) {
       AcquireCollectiveMemory(collective_params, collective_cliques,
                               memory_requests, collective_memory_cache));
 
-  Thunk::InitializeParams initialize_params;
+  Thunk::InitializeParams initialize_params(&command_buffer_requests);
   initialize_params.executor = executor;
-  initialize_params.stream = stream.get();
+  initialize_params.src.text = kKernelSource;
   initialize_params.buffer_allocations = &allocations1;
+  initialize_params.stream = stream.get();
   initialize_params.collective_params = &collective_params;
   initialize_params.collective_cliques = &collective_cliques;
-  initialize_params.src.text = kKernelSource;
   initialize_params.collective_memory = &collective_memory;
   ASSERT_OK(collective_kernel_thunk->Initialize(initialize_params));
   ASSERT_OK(stream->BlockHostUntilDone());
