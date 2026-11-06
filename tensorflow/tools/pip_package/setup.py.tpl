@@ -407,6 +407,7 @@ CLASSIFIERS = [
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3.14',
     'Programming Language :: Python :: 3 :: Only',
     'Topic :: Scientific/Engineering',
     'Topic :: Scientific/Engineering :: Mathematics',
@@ -416,10 +417,9 @@ CLASSIFIERS = [
     'Topic :: Software Development :: Libraries :: Python Modules',
 ]
 if cuda_major_version:
-  CLASSIFIERS.extend([
-      f'Environment :: GPU :: NVIDIA CUDA :: {cuda_major_version}',
-      f'Environment :: GPU :: NVIDIA CUDA :: {cuda_major_version} :: {cuda_major_version}.0',
-  ])
+  CLASSIFIERS.append(
+      f'Environment :: GPU :: NVIDIA CUDA :: {cuda_major_version}'
+  )
 
 setup(
     name=project_name,
