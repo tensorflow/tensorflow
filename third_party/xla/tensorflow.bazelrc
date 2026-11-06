@@ -396,6 +396,9 @@ startup --windows_enable_symlinks
 common:windows --enable_runfiles
 common:windows --nobuild_python_zip
 common:windows --dynamic_mode=off
+# Disable the Bazel 8 local repository contents cache on Windows so external
+# repositories keep stable paths without extra directory junctions.
+common:windows --repo_contents_cache=
 
 # Default paths for TF_SYSTEM_LIBS
 common:linux --define=PREFIX=/usr
