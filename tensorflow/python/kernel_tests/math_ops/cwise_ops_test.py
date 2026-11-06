@@ -1411,6 +1411,28 @@ class PolyvalTest(test.TestCase):
                 self.assertTrue(np.all(np.isinf(result)))
 
   @test_util.run_in_graph_and_eager_modes
+  def testPythonNumberCoeffs(self):
+    # Python numbers take the dtype of x, as in `c + p * x`. Integer
+    # coefficients with a float x raised an InvalidArgumentError.
+    for dtype in [np.int32, np.float32, np.float64, np.complex64]:
+      x = np.array([0, 1, 2, 3], dtype=dtype)
+      for coeffs in [[1, 2, 3], [3], [2, -1, 0, 4]]:
+        with self.subTest(dtype=dtype, coeffs=coeffs):
+          tf_val = math_ops.polyval(coeffs, x)
+          self.assertEqual(tf_val.dtype, dtype)
+          self.assertAllClose(np.polyval(coeffs, x), self.evaluate(tf_val))
+    for dtype in [np.float32, np.float64]:
+      x = np.array([0.5, 1.5], dtype=dtype)
+      tf_val = math_ops.polyval([1.0, 2, 3], x)
+      self.assertEqual(tf_val.dtype, dtype)
+      self.assertAllClose(np.polyval([1.0, 2, 3], x), self.evaluate(tf_val))
+    # A float coefficient with an integer x is not truncated to an integer.
+    with self.assertRaises((TypeError, errors.InvalidArgumentError)):
+      self.evaluate(
+          math_ops.polyval([1.5, 2.5], np.array([1, 2], dtype=np.int32))
+      )
+
+  @test_util.run_in_graph_and_eager_modes
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
     coeffs = {}
