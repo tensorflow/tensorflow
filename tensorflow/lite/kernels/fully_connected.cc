@@ -1290,7 +1290,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 params->activation == kTfLiteActReluN1To1 ||
                                 params->activation == kTfLiteActRelu6);
   }
-  if (filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2) {
+  // The hybrid kernels (float input) and the int4 and int2 kernels don't apply
+  // filter zero points.
+  if (is_hybrid || filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2) {
     TF_LITE_ENSURE_MSG(
         context,
         kTfLiteOk == VerifyQuantizationZeroPoint(filter, /*expected_value=*/0),
