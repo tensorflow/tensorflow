@@ -1,6 +1,6 @@
 op {
   graph_op_name: "QuantizeAndDequantizeV4"
-in_arg {
+  in_arg {
     name: "input"
     description: <<END
 Tensor to quantize and then dequantize.
@@ -12,6 +12,9 @@ END
 If `range_given == True`, this specifies the minimum input value that needs to
 be represented, otherwise it is determined from the min value of the `input`
 tensor.
+
+If `axis >= 0`, `input_min` must be a 1-D tensor with shape `[input.shape[axis]]`.
+If `axis == -1` (the default), `input_min` must be a scalar (rank 0).
 END
   }
   in_arg {
@@ -20,6 +23,9 @@ END
 If `range_given == True`, this specifies the maximum input value that needs to
 be represented, otherwise it is determined from the max value of the `input`
 tensor.
+
+If `axis >= 0`, `input_max` must be a 1-D tensor with shape `[input.shape[axis]]`.
+If `axis == -1` (the default), `input_max` must be a scalar (rank 0).
 END
   }
   attr {
