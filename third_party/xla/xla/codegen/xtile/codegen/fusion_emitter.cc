@@ -2420,9 +2420,10 @@ absl::StatusOr<TensorValue> EmitReduceWithNoRegion(
   TensorValue input_value = emitter_ctx.TiledHloToTensorValue(*tiled_input);
   ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> mask_dim_bounds,
                    tiled_input->tile().GetStaticTileSizes());
-  int64_t reduce_dim = reduce_hlo.dimensions()[0];
-  mask_dim_bounds[reduce_dim] =
-      tiled_input->hlo()->shape().dimensions(reduce_dim);
+  for (int64_t reduce_dim : reduce_hlo.dimensions()) {
+    mask_dim_bounds[reduce_dim] =
+        tiled_input->hlo()->shape().dimensions(reduce_dim);
+  }
   TensorValue init_value =
       emitter_ctx.TiledHloToTensorValue(*tiled_hlo.operand(1));
   mlir::Value neutral_value = mlir::tensor::ExtractOp::create(b, init_value);

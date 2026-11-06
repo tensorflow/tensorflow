@@ -1,0 +1,39 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness --abs_error_bound=1e-3 --rel_error_bound=1e-3 %s
+
+// Reduction over several dimensions where a non-leading reduced dimension
+// (151) is padded to a power-of-two tile (256). All reduced dimensions must be
+// masked with the neutral value; exp(0) = 1, so any unmasked padding lane
+// changes the result.
+
+region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  p = f32[2,64,151] parameter(0)
+  e = f32[2,64,151] exponential(p)
+  c = f32[] constant(0)
+  ROOT reduce = f32[64] reduce(e, c), dimensions={0,2}, to_apply=region
+}
+
+ENTRY main {
+  p = f32[2,64,151] parameter(0)
+  ROOT fusion = f32[64] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16"]}],
+          "num_warps":"4",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}
+
+// CHECK:      %[[INPUT:.*]] = xtile.extract {{.*}} -> tensor<2x16x256xf32>
+// CHECK:      %[[EXP:.*]] = tt.extern_elementwise %[[INPUT]]
+// CHECK:      %[[MASKED:.*]] = xtile.mask %[[EXP]] bounds [2, 16, 151]
+// CHECK:      "tt.reduce"(%[[MASKED]]) <{axis = 2 : i32}>
+// CHECK:      "tt.reduce"({{.*}}) <{axis = 0 : i32}>

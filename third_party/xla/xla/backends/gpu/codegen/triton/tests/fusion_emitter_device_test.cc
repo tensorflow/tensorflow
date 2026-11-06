@@ -1031,6 +1031,44 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+// Dimension 2 (151) is padded to a tile of 256. Padding lanes load as 0, so
+// the add makes them 1; they must be masked for every reduced dimension.
+TEST_F(TritonEmitterTest, MultiDimReductionMasksAllPaddedDimensions) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+add {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT r = f32[] add(x, y)
+}
+
+triton_computation {
+  p = f32[2,64,151] parameter(0)
+  one = f32[] constant(1)
+  ones = f32[2,64,151] broadcast(one), dimensions={}
+  a = f32[2,64,151] add(p, ones)
+  zero = f32[] constant(0)
+  ROOT r = f32[64] reduce(a, zero), dimensions={0,2}, to_apply=add
+}
+
+ENTRY main {
+  p = f32[2,64,151] parameter(0)
+  ROOT fusion = f32[64] fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16"]}],
+        "num_warps":"4",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(TritonEmitterTest, TestSoftMaxWithTileElementsNotAllContiguous) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
