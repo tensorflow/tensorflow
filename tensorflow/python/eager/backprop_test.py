@@ -55,6 +55,31 @@ from tensorflow.python.ops import while_loop
 from tensorflow.python.training import training
 
 
+class VariableWithStringDtype:
+  _should_act_as_resource_variable = True
+
+  def __init__(self, variable, dtype_name=None):
+    self.variable = variable
+    self.dtype_name = dtype_name
+
+  @property
+  def dtype(self):
+    if self.dtype_name is None:
+      return self.variable.dtype.name
+    return self.dtype_name
+
+  @property
+  def handle(self):
+    return self.variable.handle
+
+  @property
+  def shape(self):
+    return self.variable.shape
+
+  def __tf_tensor__(self, dtype=None, name=None):
+    return ops.convert_to_tensor(self.variable, dtype=dtype, name=name)
+
+
 class BackpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -1108,30 +1133,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
   )
   @test_util.run_in_graph_and_eager_modes
   def testUnconnectedGradientsVariableWithStringDtype(self, dtype, shape):
-    class VariableWithStringDtype:
-      _should_act_as_resource_variable = True
-
-      def __init__(self, variable, dtype_name=None):
-        self.variable = variable
-        self.dtype_name = dtype_name
-
-      @property
-      def dtype(self):
-        if self.dtype_name is None:
-          return self.variable.dtype.name
-        return self.dtype_name
-
-      @property
-      def handle(self):
-        return self.variable.handle
-
-      @property
-      def shape(self):
-        return self.variable.shape
-
-      def __tf_tensor__(self, dtype=None, name=None):
-        return ops.convert_to_tensor(self.variable, dtype=dtype, name=name)
-
     x = resource_variable_ops.ResourceVariable(
         constant_op.constant(1.0, shape=shape, dtype=dtype)
     )
@@ -1842,6 +1843,32 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
 class JacobianTest(test.TestCase, parameterized.TestCase):
 
+  @parameterized.product(
+      source_dtype=(dtypes.float32, dtypes.float64),
+      use_function=(True, False))
+  @test_util.run_in_graph_and_eager_modes
+  def test_mixed_dtype_variable_with_string_dtype(
+      self, source_dtype, use_function):
+    target_dtype = (dtypes.float64 if source_dtype == dtypes.float32
+                    else dtypes.float32)
+    variable = resource_variable_ops.ResourceVariable(
+        [[1., 2.], [3., 4.]], dtype=source_dtype)
+    self.evaluate(variable.initializer)
+    source = VariableWithStringDtype(variable)
+
+    def f():
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(variable)
+        target = math_ops.square(math_ops.cast(source, target_dtype))
+      return tape.jacobian(target, source, experimental_use_pfor=False)
+
+    if use_function:
+      f = def_function.function(f)
+    jacobian = f()
+    self.assertEqual(source_dtype, jacobian.dtype)
+    self.assertAllEqual(
+        np.diag([2., 4., 6., 8.]).reshape([2, 2, 2, 2]), jacobian)
+
   @parameterized.product(use_function=(True, False), use_pfor=(True, False))
   @test_util.run_in_graph_and_eager_modes
   def test_mixed_dtype_sources(self, use_function, use_pfor):
@@ -2094,6 +2121,31 @@ class JacobianTest(test.TestCase, parameterized.TestCase):
 
 @test_util.run_all_in_graph_and_eager_modes
 class BatchJacobianTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.product(
+      source_dtype=(dtypes.float32, dtypes.float64),
+      use_function=(True, False))
+  def test_mixed_dtype_variable_with_string_dtype(
+      self, source_dtype, use_function):
+    target_dtype = (dtypes.float64 if source_dtype == dtypes.float32
+                    else dtypes.float32)
+    variable = resource_variable_ops.ResourceVariable(
+        [[1., 2.], [3., 4.]], dtype=source_dtype)
+    self.evaluate(variable.initializer)
+    source = VariableWithStringDtype(variable)
+
+    def f():
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(variable)
+        target = math_ops.square(math_ops.cast(source, target_dtype))
+      return tape.batch_jacobian(target, source, experimental_use_pfor=False)
+
+    if use_function:
+      f = def_function.function(f)
+    jacobian = f()
+    self.assertEqual(source_dtype, jacobian.dtype)
+    self.assertAllEqual([[[2., 0.], [0., 4.]], [[6., 0.], [0., 8.]]],
+                        jacobian)
 
   @parameterized.product(
       source_dtype=(dtypes.float32, dtypes.float64),
