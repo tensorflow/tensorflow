@@ -60,3 +60,21 @@ func.func @dynamicActivationsAreNotLowered(%arg0: tensor<4x64xf32>) -> tensor<4x
   // CHECK: "tfl.blockwise_dequantize"
   // CHECK-NOT: "tfl.dequantize"
 }
+
+// -----
+
+// A float16 output: `tfl.dequantize` to f32, then `tfl.cast`.
+// CHECK-LABEL: @float16Output
+func.func @float16Output() -> tensor<2x4xf16> {
+  %w = "tfl.pseudo_const"() {value = dense<[[1, 2, 3, 4], [-1, -2, -3, -4]]> : tensor<2x4xi4>} : () -> tensor<2x4xi4>
+  %scales = "tfl.pseudo_const"() {value = dense<[[1.0], [2.0]]> : tensor<2x1xf16>} : () -> tensor<2x1xf16>
+  %none = "tfl.no_value"() {value} : () -> none
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %none) {block_shape = [1, 4], symmetric = true} : (tensor<2x4xi4>, tensor<2x1xf16>, none) -> tensor<2x4xf16>
+  func.return %w_dq : tensor<2x4xf16>
+
+  // CHECK-NOT: tfl.blockwise_dequantize
+  // CHECK:     %[[Q:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<2x4x!tfl.blockwise_quant<i4 -> f32, block_shape = [1, 4], scales = dense<{{.*}}> : tensor<2x1xf16>>>
+  // CHECK:     %[[DQ:.*]] = "tfl.dequantize"(%[[Q]]) : (tensor<2x4x!tfl.blockwise_quant<{{.*}}>>) -> tensor<2x4xf32>
+  // CHECK:     %[[CAST:.*]] = "tfl.cast"(%[[DQ]]) : (tensor<2x4xf32>) -> tensor<2x4xf16>
+  // CHECK:     return %[[CAST]]
+}

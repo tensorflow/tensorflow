@@ -721,3 +721,49 @@ func.func @FoldSharedBlockwiseFilterOnlyForSrqFullyConnected(%arg0: tensor<2x8xf
   %abs = "tfl.abs"(%w_dq) : (tensor<4x8xf32>) -> tensor<4x8xf32>
   func.return %out_dq, %abs : tensor<2x4xf32>, tensor<4x8xf32>
 }
+
+// -----
+
+// Float16 activations (e.g. `prefer_activation_type=fp32_fp16` graphs): the
+// int8 SRQ kernel doesn't read the expressed type, so a float16 blockwise
+// filter folds like a float32 one.
+// CHECK-LABEL: QuantizeFullyConnectedBlockwiseFilterSRQF16
+func.func @QuantizeFullyConnectedBlockwiseFilterSRQF16(%arg0: tensor<2x8xf16>) -> tensor<2x4xf16> {
+  // CHECK-DAG: %[[Q_W:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<4x8x!tfl.blockwise_quant<i2 -> f16, block_shape = [1, 8], scales = dense<{{.*}}> : tensor<4x1xf16>, zero_points = dense<-5.000000e-01> : tensor<1x1xf32>>>
+  // CHECK-DAG: %[[Q_IN:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<2x8x!quant.uniform<i8:f16, 5.000000e-01:-2>>}>
+  // CHECK: %[[FC:.*]] = "tfl.fully_connected"(%[[Q_IN]], %[[Q_W]], %{{.*}}) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8x!quant.uniform<i8:f16, 5.000000e-01:-2>>, tensor<4x8x!tfl.blockwise_quant<{{.*}}>>, none) -> tensor<2x4x!quant.uniform<i8:f16, 2.500000e-01:1>>
+  // CHECK: %[[DQ_OUT:.*]] = "tfl.dequantize"(%[[FC]])
+  // CHECK: return %[[DQ_OUT]]
+  %w = "tfl.pseudo_const"() {value = dense<[[-2, -1, 0, 1, -2, -1, 0, 1], [1, 0, -1, -2, 1, 0, -1, -2], [0, 1, -2, -1, 0, 1, -2, -1], [-1, -2, 1, 0, -1, -2, 1, 0]]> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<[[0.5], [1.0], [1.5], [0.25]]> : tensor<4x1xf16>} : () -> tensor<4x1xf16>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf16>, tensor<1x1xf32>) -> tensor<4x8xf16>
+  %none = "tfl.no_value"() {value} : () -> none
+  %in_q = "tfl.quantize"(%arg0) <{qtype = tensor<2x8x!quant.uniform<i8:f16, 0.5:-2>>}> : (tensor<2x8xf16>) -> tensor<2x8x!quant.uniform<i8:f16, 0.5:-2>>
+  %in_dq = "tfl.dequantize"(%in_q) : (tensor<2x8x!quant.uniform<i8:f16, 0.5:-2>>) -> tensor<2x8xf16>
+  %fc = "tfl.fully_connected"(%in_dq, %w_dq, %none) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf16>, tensor<4x8xf16>, none) -> tensor<2x4xf16>
+  %out_q = "tfl.quantize"(%fc) <{qtype = tensor<2x4x!quant.uniform<i8:f16, 0.25:1>>}> : (tensor<2x4xf16>) -> tensor<2x4x!quant.uniform<i8:f16, 0.25:1>>
+  %out_dq = "tfl.dequantize"(%out_q) : (tensor<2x4x!quant.uniform<i8:f16, 0.25:1>>) -> tensor<2x4xf16>
+  func.return %out_dq : tensor<2x4xf16>
+}
+
+// -----
+
+// CHECK-LABEL: QuantizeBatchMatMulBlockwiseRhsSRQF16
+func.func @QuantizeBatchMatMulBlockwiseRhsSRQF16(%arg0: tensor<2x2x1x4xf16>) -> tensor<2x2x1x3xf16> {
+  // CHECK: %[[Q_RHS:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<2x4x3x!tfl.blockwise_quant<i2 -> f16, block_shape = [1, 4, 1], scales = dense<{{.*}}> : tensor<2x1x3xf16>, zero_points = dense<-5.000000e-01> : tensor<1x1x1xf32>>>
+  // CHECK: %[[Q_LHS:.*]] = "tfl.quantize"(%arg0) <{qtype = tensor<2x2x1x4x!quant.uniform<i8:f16, 5.000000e-01:-2>>}>
+  // CHECK: %[[BMM:.*]] = "tfl.batch_matmul"(%[[Q_LHS]], %[[Q_RHS]]) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<2x2x1x4x!quant.uniform<i8:f16, 5.000000e-01:-2>>, tensor<2x4x3x!tfl.blockwise_quant<{{.*}}>>) -> tensor<2x2x1x3x!quant.uniform<i8:f16, 2.500000e-01:1>>
+  // CHECK: %[[DQ_OUT:.*]] = "tfl.dequantize"(%[[BMM]])
+  // CHECK: return %[[DQ_OUT]]
+  %w = "tfl.pseudo_const"() {value = dense<[[[-2, -1, 0], [1, -2, -1], [0, 1, -2], [1, 0, 1]], [[1, 0, -1], [0, 1, -2], [-1, -2, 1], [-2, 1, 0]]]> : tensor<2x4x3xi2>} : () -> tensor<2x4x3xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<[[[0.5, 1.0, 1.5]], [[2.0, 0.25, 0.5]]]> : tensor<2x1x3xf16>} : () -> tensor<2x1x3xf16>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1x1xf32>} : () -> tensor<1x1x1xf32>
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 4, 1], symmetric = false} : (tensor<2x4x3xi2>, tensor<2x1x3xf16>, tensor<1x1x1xf32>) -> tensor<2x4x3xf16>
+  %lhs_q = "tfl.quantize"(%arg0) <{qtype = tensor<2x2x1x4x!quant.uniform<i8:f16, 0.5:-2>>}> : (tensor<2x2x1x4xf16>) -> tensor<2x2x1x4x!quant.uniform<i8:f16, 0.5:-2>>
+  %lhs_dq = "tfl.dequantize"(%lhs_q) : (tensor<2x2x1x4x!quant.uniform<i8:f16, 0.5:-2>>) -> tensor<2x2x1x4xf16>
+  %bmm = "tfl.batch_matmul"(%lhs_dq, %w_dq) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<2x2x1x4xf16>, tensor<2x4x3xf16>) -> tensor<2x2x1x3xf16>
+  %out_q = "tfl.quantize"(%bmm) <{qtype = tensor<2x2x1x3x!quant.uniform<i8:f16, 0.25:1>>}> : (tensor<2x2x1x3xf16>) -> tensor<2x2x1x3x!quant.uniform<i8:f16, 0.25:1>>
+  %out_dq = "tfl.dequantize"(%out_q) : (tensor<2x2x1x3x!quant.uniform<i8:f16, 0.25:1>>) -> tensor<2x2x1x3xf16>
+  func.return %out_dq : tensor<2x2x1x3xf16>
+}
