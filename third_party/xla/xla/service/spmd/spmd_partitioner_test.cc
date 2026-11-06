@@ -2149,6 +2149,75 @@ ENTRY entry {
   EXPECT_EQ(root->operand(0)->window().dimensions(0).padding_high(), 0);
 }
 
+TEST_P(SpmdPartitioningTest, ConvolutionBaseDilationStride1ReorderedDims) {
+  {
+    SCOPED_TRACE("non_involutory_4d_01fb_to_b01f");
+    absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[7,7,512,128] parameter(0)
+  %lhs.copy = f32[7,7,512,128] copy(%lhs),
+    sharding={devices=[2,1,1,1]<=[2]}
+  %rhs = f32[3,3,512,512] parameter(1)
+  %rhs.copy = f32[3,3,512,512] copy(%rhs),
+    sharding={replicated}
+  ROOT %conv = f32[128,14,14,512] convolution(%lhs.copy, %rhs.copy),
+    window={size=3x3 pad=1_2x1_2 lhs_dilate=2x2 rhs_reversal=1x1},
+    dim_labels=01fb_01io->b01f,
+    sharding={devices=[1,2,1,1]<=[2]}
+})";
+
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         PartitionComputation(hlo_string, /*num_devices=*/2));
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    auto start_window = op::Multiply(op::Reshape(), op::Constant());
+    auto start_input_element = op::Divide(start_window, op::Constant());
+    auto dynamic_offset_on_output = op::Subtract(
+        start_window, op::Multiply(start_input_element, op::Constant()));
+    EXPECT_THAT(root,
+                AllOf(op::DynamicSlice(AllOf(op::Convolution(_, _),
+                                             op::Shape("f32[128,8,14,512]")),
+                                       op::Constant(), dynamic_offset_on_output,
+                                       op::Constant(), op::Constant()),
+                      op::Shape("f32[128,7,14,512]")));
+  }
+  {
+    SCOPED_TRACE("grouped_3d_b0f_to_bf0");
+    absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[2,8,15] parameter(0)
+  %lhs.copy = f32[2,8,15] copy(%lhs),
+    sharding={devices=[1,2,1]<=[2]}
+  %rhs = f32[3,1,15] parameter(1)
+  %rhs.copy = f32[3,1,15] copy(%rhs),
+    sharding={replicated}
+  ROOT %conv = f32[2,15,14] convolution(%lhs.copy, %rhs.copy),
+    window={size=3 pad=1_0 lhs_dilate=2},
+    dim_labels=b0f_0io->bf0,
+    feature_group_count=15,
+    sharding={devices=[1,1,2]<=[2]}
+})";
+
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         PartitionComputation(hlo_string, /*num_devices=*/2));
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    auto start_window = op::Multiply(op::Reshape(), op::Constant());
+    auto start_input_element = op::Divide(start_window, op::Constant());
+    auto dynamic_offset_on_output = op::Subtract(
+        start_window, op::Multiply(start_input_element, op::Constant()));
+    EXPECT_THAT(root, AllOf(op::DynamicSlice(AllOf(op::Convolution(_, _),
+                                                   op::Shape("f32[2,15,8]")),
+                                             op::Constant(), op::Constant(),
+                                             dynamic_offset_on_output),
+                            op::Shape("f32[2,15,7]")));
+  }
+}
+
 TEST_P(SpmdPartitioningTest, SelectAndScatterNoOverlap) {
   absl::string_view hlo_string = R"(
 HloModule module

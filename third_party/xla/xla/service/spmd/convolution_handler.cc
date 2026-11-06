@@ -859,9 +859,14 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
     CHECK(ShapeUtil::Compatible(shard_shape, sharded_conv->shape()));
     return sharded_conv;
   }
+  std::vector<HloInstruction*> output_slice_indices(
+      output_base_shape.dimensions().size());
+  for (int64_t i = 0; i < output_base_shape.dimensions().size(); ++i) {
+    output_slice_indices[input_to_output_indices[i]] =
+        (*resharded_operand_and_window->dynamic_slice_index_on_output)[i];
+  }
   return b->AddInstruction(HloInstruction::CreateDynamicSlice(
-      shard_shape, sharded_conv,
-      *resharded_operand_and_window->dynamic_slice_index_on_output,
+      shard_shape, sharded_conv, output_slice_indices,
       shard_shape.dimensions()));
 }
 
