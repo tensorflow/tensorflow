@@ -2212,6 +2212,65 @@ TEST_P(QuantizedFullyConnectedOpTest,
               ElementsAre(175, 177, 179, 243, 245, 247));
 }
 
+// A hybrid fully connected op (float input and output) whose quantized weights
+// are defined directly, so that tests control their scales and zero points.
+class HybridRawWeightsFullyConnectedOpModel : public SingleOpModel {
+ public:
+  HybridRawWeightsFullyConnectedOpModel(TfLiteRegistration* registration,
+                                        int units, int batches, int input_size,
+                                        const TensorData& weights) {
+    AddInput({TensorType_FLOAT32, {batches, input_size}});
+    AddInput(weights);
+    AddInput({TensorType_FLOAT32, {units}});
+    AddOutput({TensorType_FLOAT32});
+    SetBuiltinOp(
+        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_NONE)
+            .Union());
+    resolver_ = std::make_unique<SingleOpResolver>(
+        BuiltinOperator_FULLY_CONNECTED, registration);
+    BuildInterpreter({{batches, input_size}, weights.shape, {units}},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/false,
+                     /*allocate_and_delegate=*/false);
+  }
+
+  using SingleOpModel::AllocateTensors;
+};
+
+TEST_P(QuantizedFullyConnectedOpTest, RejectsHybridInt8WeightsWithZeroPoint) {
+  // The hybrid kernels don't apply filter zero points.
+  HybridRawWeightsFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches=*/1, /*input_size=*/4,
+      /*weights=*/
+      {TensorType_INT8, {3, 4}, 0, 0, /*scale=*/0.1f, /*zero_point=*/-7});
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST_P(QuantizedFullyConnectedOpTest,
+       RejectsHybridInt8WeightsWithPerChannelZeroPoints) {
+  // The hybrid kernels don't apply filter zero points.
+  TensorData weights(TensorType_INT8, {3, 4});
+  weights.per_channel_quantization = true;
+  weights.per_channel_quantization_scales = {0.1f, 0.2f, 0.05f};
+  weights.per_channel_quantization_offsets = {5, 0, -12};
+  weights.channel_index = 0;
+  HybridRawWeightsFullyConnectedOpModel m(GetRegistration(), /*units=*/3,
+                                          /*batches=*/1, /*input_size=*/4,
+                                          weights);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
+TEST_P(QuantizedFullyConnectedOpTest, RejectsHybridUint8WeightsWithZeroPoint) {
+  // The hybrid kernels don't apply filter zero points, and read uint8 weights
+  // as int8 values.
+  HybridRawWeightsFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches=*/1, /*input_size=*/4,
+      /*weights=*/
+      {TensorType_UINT8, {3, 4}, 0, 0, /*scale=*/0.1f, /*zero_point=*/3});
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     FloatFullyConnectedOpTest, FloatFullyConnectedOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
@@ -2286,7 +2345,8 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
                               bool bias_tensor_optional = false,
                               int num_threads = 1,
                               bool symmetric_quantize_weights = false,
-                              bool asymmetric_quantize_inputs = false)
+                              bool asymmetric_quantize_inputs = false,
+                              bool allocate_and_delegate = true)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
     for (size_t i = 0; i < input.shape.size(); ++i) {
@@ -2332,8 +2392,11 @@ class SparseFullyConnectedOpModel : public SingleOpModel {
     inputs.push_back((bias_ == kTfLiteOptionalTensor) ? std::vector<int>()
                                                       : GetShape(bias_));
     BuildInterpreter(inputs, num_threads, /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/false);
+                     /*apply_delegate=*/false, allocate_and_delegate);
   }
+
+  using SingleOpModel::AllocateTensors;
+
   void SetBias(const std::vector<T>& data) { PopulateTensor(bias_, data); }
   void SetInput(const std::vector<T>& data) { PopulateTensor(input_, data); }
   std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
@@ -2850,6 +2913,35 @@ TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16PerChannelTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {10.9061, 2, 25.0938, 0, 2, 20.9691}, 1e-3)));
 }
+
+TEST_P(SparseHybridFullyConnectedOpTest, RejectsWeightsWithZeroPoints) {
+  // The hybrid kernels don't apply filter zero points.
+  TensorData weight = {TensorType_INT8,
+                       {3, 16},
+                       0.0,
+                       0.0,
+                       0.0,
+                       0,
+                       true,
+                       {4.0 / 127.0, 1.0 / 127.0, 4.0 / 127.0},
+                       {0, 1, 0}};
+  weight.traversal_order = {0, 1, 2};
+  weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  weight.block_map = {1};
+  weight.block_size = {16};
+  SparseFullyConnectedOpModel<float> m(
+      GetRegistration(),
+      /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 16}, 0, 0, 1}, weight,
+      /*weights_data=*/std::vector<float>(3 * 16, 1.0f),
+      /*output=*/{TensorType_FLOAT32, {}, 0, 0, 1},
+      /*bias_tensor_optional=*/false, /*num_threads=*/1,
+      /*symmetric_quantize_weights=*/false,
+      /*asymmetric_quantize_inputs=*/GetParam().asymmetric_quantize_input,
+      /*allocate_and_delegate=*/false);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteError);
+}
+
 // TODO(b/148391360): Add tests for unsupported sparsity format.
 // TEST_P(SparseFullyConnectedOpTest, TestUnsupportedSparsityFormat)
 
