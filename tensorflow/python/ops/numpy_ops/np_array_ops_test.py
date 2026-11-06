@@ -1752,7 +1752,7 @@ class ArrayMethodsTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'must be >= 1-d'):
       np_array_ops.flipud(np.float64(1.0))
     with self.assertRaisesRegex(ValueError, 'must be >= 2-d'):
-      self.evaluate(np_array_ops.fliplr(np.arange(3)))
+      np_array_ops.fliplr(np.arange(3))
     # The C++ kernel raises at execution time (or shape inference at trace time).
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, ValueError), kernel_err
@@ -1784,8 +1784,8 @@ class ArrayMethodsTest(test.TestCase):
       self.evaluate(flip_unknown_rank_invalid_pos(a))
 
   def testFlipudFliplrMinimumRank(self):  # pylint: disable=invalid-name
-    # NumPy raises ValueError when the input rank is too low for
-    # flipud/fliplr, instead of failing in the C++ kernel with a
+    # Match NumPy by raising ValueError when the input rank is too low for
+    # flipud/fliplr, instead of letting the C++ reverse kernel fail with a
     # confusing axis error.
     with self.assertRaisesRegex(ValueError, 'must be >= 1-d'):
       np_array_ops.flipud(5)
@@ -1800,12 +1800,27 @@ class ArrayMethodsTest(test.TestCase):
         np_array_ops.fliplr([[1, 2, 3], [4, 5, 6]]),
         np.fliplr([[1, 2, 3], [4, 5, 6]]))
     # Unknown-rank inputs keep the previous behavior.
+    kernel_err = (
+        r'(out of (valid )?range'
+        r'|can not have more elements than input tensor has dimensions)'
+    )
     flipud_unknown_rank = def_function.function(
-        lambda x: np_array_ops.flipud(x),
+        np_array_ops.flipud,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
     )
     self.assertAllEqual(
         flipud_unknown_rank(np.arange(3.)), np.flipud(np.arange(3.)))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(flipud_unknown_rank(np.float64(1.0)))
+
+    fliplr_unknown_rank = def_function.function(
+        np_array_ops.fliplr,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float64)],
+    )
+    m = np.arange(6.).reshape(2, 3)
+    self.assertAllEqual(fliplr_unknown_rank(m), np.fliplr(m))
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, kernel_err):
+      self.evaluate(fliplr_unknown_rank(np.arange(3.)))
 
   def testRoll(self):
     np.random.seed(0)

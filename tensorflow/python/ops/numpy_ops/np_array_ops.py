@@ -1793,8 +1793,8 @@ def flipud(m):  # pylint: disable=missing-docstring
   m = asarray(m)
   maybe_rank = m.shape.rank
   if maybe_rank is not None and maybe_rank < 1:
-    # NumPy raises a ValueError instead of failing in the C++ kernel with
-    # a confusing out-of-range axis error.
+    # Match np.flipud: raise a ValueError instead of letting the C++ reverse
+    # kernel fail with a confusing out-of-range axis error.
     raise ValueError('Input must be >= 1-d.')
   return flip(m, 0)
 
@@ -1805,8 +1805,8 @@ def fliplr(m):  # pylint: disable=missing-docstring
   m = asarray(m)
   maybe_rank = m.shape.rank
   if maybe_rank is not None and maybe_rank < 2:
-    # NumPy raises a ValueError instead of failing in the C++ kernel with
-    # a confusing out-of-range axis error.
+    # Match np.fliplr: raise a ValueError instead of letting the C++ reverse
+    # kernel fail with a confusing out-of-range axis error.
     raise ValueError('Input must be >= 2-d.')
   return flip(m, 1)
 
