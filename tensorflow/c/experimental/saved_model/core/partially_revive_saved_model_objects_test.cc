@@ -183,5 +183,67 @@ TEST_F(PartiallyReviveSavedModelObjectsTest,
               ::testing::HasSubstr("not found in revived concrete functions"));
 }
 
+TEST_F(PartiallyReviveSavedModelObjectsTest,
+       FunctionWithMissingFunctionDefIsRejected) {
+  MetaGraphDef metagraph = ParseMetaGraphDef(R"(
+object_graph_def {
+  nodes {
+    children { node_id: 1 local_name: "signatures" }
+    user_object { identifier: "_generic_user_object" }
+  }
+  nodes {
+    user_object { identifier: "signature_map" }
+  }
+  nodes {
+    function { concrete_functions: "missing_func" }
+  }
+}
+)");
+
+  PartiallyRevivedObjects objects;
+  absl::Status status = internal::PartiallyReviveSavedModelObjects(
+      metagraph, context(), /*directory=*/"", &objects);
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(
+      status.message(),
+      ::testing::HasSubstr(
+          "Unable to find FunctionDef with name 'missing_func'"));
+}
+
+TEST_F(PartiallyReviveSavedModelObjectsTest,
+       FunctionWithMissingSavedConcreteFunctionIsRejected) {
+  MetaGraphDef metagraph = ParseMetaGraphDef(R"(
+graph_def {
+  library {
+    function {
+      signature { name: "dangling_func" }
+    }
+  }
+}
+object_graph_def {
+  nodes {
+    children { node_id: 1 local_name: "signatures" }
+    user_object { identifier: "_generic_user_object" }
+  }
+  nodes {
+    user_object { identifier: "signature_map" }
+  }
+  nodes {
+    function { concrete_functions: "dangling_func" }
+  }
+}
+)");
+
+  PartiallyRevivedObjects objects;
+  absl::Status status = internal::PartiallyReviveSavedModelObjects(
+      metagraph, context(), /*directory=*/"", &objects);
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
+  EXPECT_THAT(
+      status.message(),
+      ::testing::HasSubstr(
+          "Unable to find SavedConcreteFunction with name "
+          "'dangling_func'"));
+}
+
 }  // namespace
 }  // namespace tensorflow

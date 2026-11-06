@@ -237,6 +237,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -260,6 +261,7 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/eager:core",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
