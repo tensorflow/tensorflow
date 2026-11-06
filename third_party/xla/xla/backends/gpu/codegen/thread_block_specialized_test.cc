@@ -648,7 +648,7 @@ ENTRY main {
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
   ThreadBlockSpecializedFusion fusion_emitter(analysis);
   // cluster_0 uses 8 blocks x 128 threads; nested_reduce uses 3 blocks x 256
-  // threads (padded to 8 blocks).
+  // threads. Total blocks = RoundUpTo(8 + 3, 8) = 16.
   EXPECT_EQ(fusion_emitter.launch_dimensions().num_blocks(), 16);
   EXPECT_EQ(fusion_emitter.launch_dimensions().num_threads_per_block(), 256);
   EXPECT_THAT(fusion_emitter.cluster_dim(), Optional(se::ClusterDim(8, 1, 1)));
@@ -665,23 +665,20 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
     // CHECK-LABEL: llvm.func @fusion(
     // CHECK-SAME:    nvvm.cluster_dim = array<i32: 8, 1, 1>
-    // CHECK-DAG:     %[[C3:.*]] = llvm.mlir.constant(3 : i32) : i32
     // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
-    // CHECK-DAG:     %[[C16:.*]] = llvm.mlir.constant(16 : i32) : i32
+    // CHECK-DAG:     %[[C11:.*]] = llvm.mlir.constant(11 : i32) : i32
     // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
     // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C8]] : i32
     // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
     // CHECK:       ^[[THEN0]]:
     // CHECK:         llvm.call @fusion_nested_0(
     // CHECK:       ^[[ELSE0]]:
-    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C16]] : i32
+    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C11]] : i32
     // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
     // CHECK:       ^[[THEN1]]:
     // CHECK:         %[[REL_BID:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
-    // CHECK:         %[[BID_OK:.*]] = llvm.icmp "ult" %[[REL_BID]], %[[C3]] : i32
-    // CHECK:         llvm.cond_br %[[BID_OK]], ^[[CALL1:bb[0-9]+]], ^[[JOIN1:bb[0-9]+]]
-    // CHECK:       ^[[CALL1]]:
-    // CHECK:         llvm.call @fusion_nested_1(
+    // CHECK-NOT:     llvm.icmp "ult" %[[REL_BID]]
+    // CHECK:         llvm.call @fusion_nested_1({{.*}}, %[[REL_BID]])
     // CHECK-LABEL: llvm.func internal @fusion_nested_0(
     // CHECK:         llvm.mlir.constant(128 : i32) : i32
     // CHECK:         %[[C128:.*]] = llvm.mlir.constant(128 : i32) : i32
@@ -691,6 +688,150 @@ ENTRY main {
     // CHECK:         nvvm.cluster.wait aligned
     // CHECK:         llvm.icmp "ult" %{{.*}}, %[[C128]] : i32
     // CHECK:         llvm.call @fusion_nested_0_fusion_nested_0_nested_1(
+  )"));
+  EXPECT_TRUE(mlir_check);
+
+  if (HasHopperClusterSupport()) {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kHlo, ErrorSpec{1e-4, 1e-4}));
+  }
+}
+
+TEST_F(ThreadBlockSpecializedFusionTest,
+       TightBlockPackingWithClusteredAndNonClusteredSubKernels) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+c0_phase0 {
+  p0 = f32[1024]{0} parameter(0)
+  ROOT neg = f32[1024]{0} negate(p0)
+}
+
+c0_phase1 {
+  p0 = f32[1024]{0} parameter(0)
+  ROOT rev = f32[1024]{0} reverse(p0), dimensions={0}
+}
+
+cluster_0 {
+  p0 = f32[1024]{0} parameter(0)
+  f0 = f32[1024]{0} fusion(p0), kind=kLoop, calls=c0_phase0
+  f1 = f32[1024]{0} fusion(f0), kind=kLoop, calls=c0_phase1
+  ROOT t = (f32[1024]{0}, f32[1024]{0}) tuple(f0, f1)
+}
+
+c1_phase0 {
+  p0 = f32[512]{0} parameter(0)
+  ROOT exp = f32[512]{0} exponential(p0)
+}
+
+c1_phase1 {
+  p0 = f32[512]{0} parameter(0)
+  ROOT rev = f32[512]{0} reverse(p0), dimensions={0}
+}
+
+cluster_1 {
+  p0 = f32[512]{0} parameter(0)
+  f0 = f32[512]{0} fusion(p0), kind=kLoop, calls=c1_phase0
+  f1 = f32[512]{0} fusion(f0), kind=kLoop, calls=c1_phase1
+  ROOT t = (f32[512]{0}, f32[512]{0}) tuple(f0, f1)
+}
+
+loop_3_blocks {
+  p0 = f32[384]{0} parameter(0)
+  rev = f32[384]{0} reverse(p0), dimensions={0}
+  ROOT abs = f32[384]{0} abs(rev)
+}
+
+loop_4_blocks {
+  p0 = f32[512]{0} parameter(0)
+  rev = f32[512]{0} reverse(p0), dimensions={0}
+  ROOT cos = f32[512]{0} cosine(rev)
+}
+
+horizontal_comp {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  p2 = f32[384]{0} parameter(2)
+  p3 = f32[512]{0} parameter(3)
+  c0 = (f32[1024]{0}, f32[1024]{0}) fusion(p0), kind=kCustom, calls=cluster_0,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+  c0_0 = f32[1024]{0} get-tuple-element(c0), index=0
+  c0_1 = f32[1024]{0} get-tuple-element(c0), index=1
+  l0 = f32[384]{0} fusion(p2), kind=kLoop, calls=loop_3_blocks
+  c1 = (f32[512]{0}, f32[512]{0}) fusion(p1), kind=kCustom, calls=cluster_1,
+    backend_config={"fusion_backend_config":{"kind":"__phased_block_cluster"}}
+  c1_0 = f32[512]{0} get-tuple-element(c1), index=0
+  c1_1 = f32[512]{0} get-tuple-element(c1), index=1
+  l1 = f32[512]{0} fusion(p3), kind=kLoop, calls=loop_4_blocks
+  ROOT t = (f32[1024]{0}, f32[1024]{0}, f32[384]{0}, f32[512]{0}, f32[512]{0},
+            f32[512]{0}) tuple(c0_0, c0_1, l0, c1_0, c1_1, l1)
+}
+
+ENTRY main {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  p2 = f32[384]{0} parameter(2)
+  p3 = f32[512]{0} parameter(3)
+  ROOT fusion = (f32[1024]{0}, f32[1024]{0}, f32[384]{0}, f32[512]{0},
+                 f32[512]{0}, f32[512]{0}) fusion(p0, p1, p2, p3),
+    kind=kCustom, calls=horizontal_comp,
+    backend_config={"fusion_backend_config":{"kind":"__thread_block_specialized"}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info_);
+  ThreadBlockSpecializedFusion fusion_emitter(analysis);
+  // [0..7: cluster_0 (8 blocks)]
+  // [8..15: cluster_1 (4 blocks padded to 8)]
+  // [16..18: loop_3_blocks (3 blocks)]
+  // [19..22: loop_4_blocks (4 blocks)]
+  // [23..23: trailing grid padding to multiple of 8] -> 24 blocks total.
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_blocks(), 24);
+  EXPECT_EQ(fusion_emitter.launch_dimensions().num_threads_per_block(), 128);
+  EXPECT_THAT(fusion_emitter.cluster_dim(), Optional(se::ClusterDim(8, 1, 1)));
+
+  ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+      fusion_emitter.CreateAndLowerMLIRModule(*mlir_context_, *fusion, "fusion",
+                                              /*buffer_assignment=*/nullptr));
+
+  std::string mlir_str;
+  llvm::raw_string_ostream mlir_os(mlir_str);
+  mlir_os << *mlir_module;
+
+  ASSERT_OK_AND_ASSIGN(bool mlir_check, RunFileCheck(mlir_str, R"(
+    // CHECK-LABEL: llvm.func @fusion(
+    // CHECK-SAME:    nvvm.cluster_dim = array<i32: 8, 1, 1>
+    // CHECK-DAG:     %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
+    // CHECK-DAG:     %[[C16:.*]] = llvm.mlir.constant(16 : i32) : i32
+    // CHECK-DAG:     %[[C19:.*]] = llvm.mlir.constant(19 : i32) : i32
+    // CHECK-DAG:     %[[C23:.*]] = llvm.mlir.constant(23 : i32) : i32
+    // CHECK-DAG:     %[[BID:.*]] = nvvm.read.ptx.sreg.ctaid.x : i32
+    // CHECK:         %[[IN_0:.*]] = llvm.icmp "ult" %[[BID]], %[[C8]] : i32
+    // CHECK:         llvm.cond_br %[[IN_0]], ^[[THEN0:bb[0-9]+]], ^[[ELSE0:bb[0-9]+]]
+    // CHECK:       ^[[THEN0]]:
+    // CHECK:         llvm.call @fusion_nested_0(
+    // CHECK:       ^[[ELSE0]]:
+    // CHECK:         %[[IN_1:.*]] = llvm.icmp "ult" %[[BID]], %[[C16]] : i32
+    // CHECK:         llvm.cond_br %[[IN_1]], ^[[THEN1:bb[0-9]+]], ^[[ELSE1:bb[0-9]+]]
+    // CHECK:       ^[[THEN1]]:
+    // CHECK:         %[[REL_BID1:.*]] = llvm.sub %[[BID]], %[[C8]] : i32
+    // CHECK-NEXT:    llvm.call @fusion_nested_1({{.*}}, %[[REL_BID1]])
+    // CHECK:       ^[[ELSE1]]:
+    // CHECK:         %[[IN_2:.*]] = llvm.icmp "ult" %[[BID]], %[[C19]] : i32
+    // CHECK:         llvm.cond_br %[[IN_2]], ^[[THEN2:bb[0-9]+]], ^[[ELSE2:bb[0-9]+]]
+    // CHECK:       ^[[THEN2]]:
+    // CHECK:         %[[REL_BID2:.*]] = llvm.sub %[[BID]], %[[C16]] : i32
+    // CHECK-NEXT:    llvm.call @fusion_nested_2({{.*}}, %[[REL_BID2]])
+    // CHECK:       ^[[ELSE2]]:
+    // CHECK:         %[[IN_3:.*]] = llvm.icmp "ult" %[[BID]], %[[C23]] : i32
+    // CHECK:         llvm.cond_br %[[IN_3]], ^[[THEN3:bb[0-9]+]], ^[[ELSE3:bb[0-9]+]]
+    // CHECK:       ^[[THEN3]]:
+    // CHECK:         %[[REL_BID3:.*]] = llvm.sub %[[BID]], %[[C19]] : i32
+    // CHECK-NEXT:    llvm.call @fusion_nested_3({{.*}}, %[[REL_BID3]])
   )"));
   EXPECT_TRUE(mlir_check);
 

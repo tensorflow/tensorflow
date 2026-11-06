@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -183,6 +184,15 @@ ThreadBlockSpecializedFusion::ThreadBlockSpecializedFusion(
     spec.outer_root_indices[tuple_idx] = root_idx;
   }
 
+  // Place `PhasedBlockClusterFusion` sub-kernels first so each starts on a
+  // cluster boundary and occupies an entire cluster of `max_cluster_dim_x`
+  // CTAs, while non-clustered sub-kernels pack contiguously afterward without
+  // per-kernel padding.
+  absl::c_stable_partition(nested_kernels_, [](const NestedKernelSpec& spec) {
+    return spec.emitter_fusion_kind ==
+           HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster;
+  });
+
   uint64_t total_blocks = 0;
   for (const NestedKernelSpec& spec : nested_kernels_) {
     for (int64_t outer_root_idx : spec.outer_root_indices) {
@@ -190,9 +200,15 @@ ThreadBlockSpecializedFusion::ThreadBlockSpecializedFusion(
           << "Multi-output nested fusion has unreferenced output in "
           << spec.fusion->ToString();
     }
-    total_blocks +=
-        RoundUpTo<uint64_t>(spec.launch_dims.num_blocks(), max_cluster_dim_x);
+    if (spec.emitter_fusion_kind ==
+        HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster) {
+      total_blocks +=
+          RoundUpTo<uint64_t>(spec.launch_dims.num_blocks(), max_cluster_dim_x);
+    } else {
+      total_blocks += spec.launch_dims.num_blocks();
+    }
   }
+  total_blocks = RoundUpTo<uint64_t>(total_blocks, max_cluster_dim_x);
 
   launch_dimensions_ = LaunchDimensions(total_blocks, max_threads);
   if (has_cluster_fusion) {
@@ -256,8 +272,12 @@ absl::Status ThreadBlockSpecializedFusion::EmitLauncherBody(
   for (size_t idx = 0; idx < nested_kernels_.size(); ++idx) {
     const NestedKernelSpec& spec = nested_kernels_[idx];
     int64_t nested_blocks = spec.launch_dims.num_blocks();
-    int64_t padded_blocks = RoundUpTo<int64_t>(nested_blocks, cluster_dim_x);
-    int64_t upper_bound = block_offset + padded_blocks;
+    int64_t allocated_blocks =
+        spec.emitter_fusion_kind ==
+                HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster
+            ? RoundUpTo<int64_t>(nested_blocks, cluster_dim_x)
+            : nested_blocks;
+    int64_t upper_bound = block_offset + allocated_blocks;
     mlir::Value bound_val =
         mlir::arith::ConstantIntOp::create(b, upper_bound, 32);
     mlir::Value in_range = mlir::arith::CmpIOp::create(
@@ -298,16 +318,6 @@ absl::Status ThreadBlockSpecializedFusion::EmitLauncherBody(
     // phases inside `PhasedBlockClusterFusion` guard `bid` and `tid`.
     if (spec.emitter_fusion_kind !=
         HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster) {
-      if (nested_blocks < padded_blocks) {
-        mlir::Value max_nested_bid =
-            mlir::arith::ConstantIntOp::create(b, nested_blocks, 32);
-        mlir::Value bid_active = mlir::arith::CmpIOp::create(
-            b, mlir::arith::CmpIPredicate::ult, rel_bid, max_nested_bid);
-        auto bid_if =
-            mlir::scf::IfOp::create(b, bid_active, /*withElseRegion=*/false);
-        b.setInsertionPointToStart(&bid_if.getThenRegion().front());
-      }
-
       // If the nested kernel has fewer threads per block than the launcher
       // kernel, we only need to launch the threads that are in range.
       int64_t nested_threads = spec.launch_dims.num_threads_per_block();
