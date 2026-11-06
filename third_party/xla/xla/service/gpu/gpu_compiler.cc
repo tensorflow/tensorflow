@@ -2280,7 +2280,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       if (debug_options.xla_gpu_experimental_enable_triton_scan() &&
           gpu_version.cuda_compute_capability() != nullptr) {
         pipeline.AddPass<ScanRewriterTriton>(
-            gpu_target_config.device_description);
+            gpu_target_config.device_description, ShapeSizeBytesFunction(),
+            mlir_context);
       }
     }
 

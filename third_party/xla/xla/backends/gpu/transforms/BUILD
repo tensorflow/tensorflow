@@ -4565,15 +4565,22 @@ cc_library(
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service:instruction_fusion",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu/model:fusion_analysis_cache",
+        "//xla/service/gpu/model:gpu_indexing_performance_model",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -4582,8 +4589,11 @@ xla_cc_test(
     srcs = ["scan_rewriter_triton_test.cc"],
     deps = [
         ":scan_rewriter_triton",
+        "//xla/codegen/xtile:xtile_config_proto_cc",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_cost_analysis",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
@@ -4592,6 +4602,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
