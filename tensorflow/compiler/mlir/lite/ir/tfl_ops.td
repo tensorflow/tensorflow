@@ -1767,11 +1767,14 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let description = [{
     Looks up ids in a list of embedding tensors.
+
+    A `!tfl.blockwise_quant` table is dequantized row by row into a float
+    output.
   }];
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$lookup,
-    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4, QI2]>:$value
+    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4, QI2, TFL_BlockwiseQuantType]>:$value
    );
 
   let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);

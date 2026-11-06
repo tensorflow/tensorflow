@@ -775,6 +775,37 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
   }
 }
 
+TEST(OpVersionTest, VersioningEmbeddingLookupTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_EMBEDDING_LOOKUP,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt32, kTfLiteFloat32}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt4});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt2});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
+  // An N-D blockwise quantized table is version 6 regardless of its type.
+  for (TfLiteType table_type : {kTfLiteInt2, kTfLiteInt4, kTfLiteUInt4,
+                                kTfLiteInt8, kTfLiteUInt8, kTfLiteInt16}) {
+    fake_op_sig = {
+        .op = BuiltinOperator_EMBEDDING_LOOKUP,
+        .inputs = CreateOpSignatureTensorSpecs(
+            std::vector<TfLiteType>{kTfLiteInt32, table_type}),
+        .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+    };
+    fake_op_sig.ext_options.embedding_lookup.is_blockwise_quantized = true;
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
+  }
+}
+
 TEST(OpVersionTest, VersioningDequantizeTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_DEQUANTIZE,

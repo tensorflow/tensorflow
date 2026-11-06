@@ -2275,6 +2275,25 @@ cc_test(
 )
 
 cc_test(
+    name = "embedding_lookup_blockwise_test",
+    size = "small",
+    srcs = ["embedding_lookup_blockwise_test.cc"],
+    deps = [
+        ":kernel_util",
+        ":reference_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
     name = "embedding_lookup_sparse_test",
     size = "small",
     srcs = ["embedding_lookup_sparse_test.cc"],

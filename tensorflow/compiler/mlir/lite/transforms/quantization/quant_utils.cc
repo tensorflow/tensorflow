@@ -284,24 +284,29 @@ ElementsAttr GetConstantElements(mlir::Value value) {
   return nullptr;
 }
 
+bool IsFoldableBlockwiseDequantize(TFL::BlockwiseDequantizeOp bw_deq) {
+  auto output_type = mlir::dyn_cast<RankedTensorType>(bw_deq.getType());
+  if (!output_type || !output_type.getElementType().isF32()) return false;
+  ElementsAttr values = GetConstantElements(bw_deq.getInput());
+  if (!values || !mlir::isa<IntegerType>(values.getElementType())) return false;
+  if (!GetConstantElements(bw_deq.getScales())) return false;
+  if (!mlir::isa<NoneType>(bw_deq.getZeroPoints().getType()) &&
+      !GetConstantElements(bw_deq.getZeroPoints())) {
+    return false;
+  }
+  return true;
+}
+
 bool CanFoldBlockwiseWeightOperand(mlir::Operation* op, unsigned operand_index,
                                    mlir::Value operand) {
   if (operand_index != 1 || !IsInt8SrqBlockwiseWeightConsumer(op)) {
     return false;
   }
   auto bw_deq = operand.getDefiningOp<TFL::BlockwiseDequantizeOp>();
-  if (!bw_deq) return false;
-  auto output_type = mlir::dyn_cast<RankedTensorType>(bw_deq.getType());
-  if (!output_type || !output_type.getElementType().isF32()) return false;
+  if (!bw_deq || !IsFoldableBlockwiseDequantize(bw_deq)) return false;
   // The FULLY_CONNECTED kernel only takes rank 2 filters.
-  if (llvm::isa<TFL::FullyConnectedOp>(op) && output_type.getRank() != 2) {
-    return false;
-  }
-  ElementsAttr values = GetConstantElements(bw_deq.getInput());
-  if (!values || !mlir::isa<IntegerType>(values.getElementType())) return false;
-  if (!GetConstantElements(bw_deq.getScales())) return false;
-  if (!mlir::isa<NoneType>(bw_deq.getZeroPoints().getType()) &&
-      !GetConstantElements(bw_deq.getZeroPoints())) {
+  if (llvm::isa<TFL::FullyConnectedOp>(op) &&
+      mlir::cast<RankedTensorType>(bw_deq.getType()).getRank() != 2) {
     return false;
   }
   return true;
