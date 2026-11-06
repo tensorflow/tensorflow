@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUDA_TEST_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUDA_TEST_H_
 
+#include <functional>
+
+#include "third_party/gpus/cuda/include/driver_types.h"
+
 namespace xla {
 namespace profiler {
 namespace test {
@@ -54,6 +58,25 @@ void CudaGraphCreateAndExecute();
 // Return true if the cuda version is new enough so cuda graph activity trace
 // is supported by its CUPTI.
 bool IsCudaNewEnoughForGraphTraceTest();
+
+// Captures and instantiates a simple CUDA graph before profiling, launches and
+// synchronizes it once before start_profiler(), once between start_profiler()
+// and stop_profiler(), and once after stop_profiler(), returning the
+// cudaError_t from the post-profiler graph launch and stream synchronization.
+cudaError_t ExecuteGraphBeforeDuringAndAfterProfiler(
+    const std::function<void()>& start_profiler,
+    const std::function<void()>& stop_profiler);
+
+// Builds a parent CUDA graph containing a conditional IF node whose body
+// contains a child graph node, then spawns a worker thread that continuously
+// recaptures (cudaStreamBeginCaptureToGraph) and updates
+// (cudaGraphExecChildGraphNodeSetParams) the child node and launches the parent
+// graph while the calling thread executes up to max_profiler_sessions profiling
+// cycles via run_single_profiler_session(). Returns the first non-cudaSuccess
+// error observed by the worker thread, or cudaSuccess if none occurred.
+cudaError_t ExecuteConcurrentConditionalGraphUpdateDuringProfiler(
+    int max_profiler_sessions,
+    const std::function<bool()>& run_single_profiler_session);
 
 }  // namespace test
 }  // namespace profiler
