@@ -1150,9 +1150,10 @@ class TensorArray:
         Required if handle is not provided.
       dynamic_size: (optional) Python bool: If true, writes to the TensorArray
         can grow the TensorArray past its initial size.  Default: False.
-        Under `tf.function(jit_compile=True)` the TensorArray can't grow, so a
-        write past its initial size is dropped or overwrites an earlier
-        element, with no error. Set `size` large enough to hold every write.
+        Under XLA compilation, for example with `jit_compile=True`, the
+        TensorArray can't grow, so a write past its initial size is dropped or
+        overwrites an earlier element, with no error. Set `size` large enough
+        to hold every write.
       clear_after_read: Boolean (optional, default: True).  If True, clear
         TensorArray values after reading them.  This disables read-many
         semantics, but allows early release of memory.
