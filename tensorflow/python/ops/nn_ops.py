@@ -4944,10 +4944,24 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
   with ops.name_scope(name, "AvgPool3D", [input]) as name:
     if data_format is None:
       data_format = "NDHWC"
-    channel_index = 1 if data_format.startswith("NC") else 3
+    channel_index = 1 if data_format.startswith("NC") else 4
 
     ksize = _get_sequence(ksize, 3, channel_index, "ksize")
     strides = _get_sequence(strides, 3, channel_index, "strides")
+
+    if ksize[0] != 1 or strides[0] != 1:
+      raise ValueError(
+          "Pooling is not supported on the batch dimension. "
+          f"Expected batch ksize and strides to be 1, but got "
+          f"ksize={ksize[0]} and strides={strides[0]}."
+      )
+    if ksize[channel_index] != 1 or strides[channel_index] != 1:
+      raise ValueError(
+          "AvgPool3D only supports pooling across spatial dimensions (depth, "
+          "height, width). Pooling across the channel dimension is not "
+          f"supported, but got ksize={ksize[channel_index]} and "
+          f"strides={strides[channel_index]} for channel dimension."
+      )
 
     return gen_nn_ops.avg_pool3d(
         input,
@@ -5371,6 +5385,20 @@ def max_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):
 
     ksize = _get_sequence(ksize, 3, channel_index, "ksize")
     strides = _get_sequence(strides, 3, channel_index, "strides")
+
+    if ksize[0] != 1 or strides[0] != 1:
+      raise ValueError(
+          "Pooling is not supported on the batch dimension. "
+          f"Expected batch ksize and strides to be 1, but got "
+          f"ksize={ksize[0]} and strides={strides[0]}."
+      )
+    if ksize[channel_index] != 1 or strides[channel_index] != 1:
+      raise ValueError(
+          "MaxPool3D only supports pooling across spatial dimensions (depth, "
+          "height, width). Pooling across the channel dimension is not "
+          f"supported, but got ksize={ksize[channel_index]} and "
+          f"strides={strides[channel_index]} for channel dimension."
+      )
 
     return gen_nn_ops.max_pool3d(
         input,
