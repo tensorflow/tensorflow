@@ -160,13 +160,14 @@ TEST_F(CompilabilityCheckUtilTest, CheckNonFunctionalNodes) {
   ASSERT_EQ("", uncompilable_node_info.stack_trace.at(0).function_name);
 }
 
-TEST_F(CompilabilityCheckUtilTest, AllowUniqueOpFilterCoversUniqueWithCounts) {
+TEST_F(CompilabilityCheckUtilTest, AllowUniqueOpFilterCoversAllUniqueOps) {
   GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
   auto opts = builder.opts();
   Node* input = ops::SourceOp("InputFloatOp", opts);
   Node* axis = ops::SourceOp("InputInt32Op", opts);
   std::vector<Node*> nodes = {
       ops::UnaryOp("Unique", input, opts),
+      ops::BinaryOp("UniqueV2", input, axis, opts.WithAttr("Taxis", DT_INT32)),
       ops::UnaryOp("UniqueWithCounts", input, opts),
       ops::BinaryOp("UniqueWithCountsV2", input, axis,
                     opts.WithAttr("Taxis", DT_INT32)),

@@ -495,7 +495,7 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   }
 
   if (!op_filter_.allow_unique_op &&
-      (node.type_string() == "Unique" ||
+      (node.type_string() == "Unique" || node.type_string() == "UniqueV2" ||
        node.type_string() == "UniqueWithCounts" ||
        node.type_string() == "UniqueWithCountsV2")) {
     absl::string_view uncompilable_reason = "Unique op";
