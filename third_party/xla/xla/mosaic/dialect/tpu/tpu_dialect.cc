@@ -303,10 +303,6 @@ int64_t getUntiledRank(ArrayRef<xla::Tile> tiles, const int64_t rank) {
 }
 }  // namespace
 
-int64_t TiledLayoutAttr::getUntiledRank() const {
-  return mlir::tpu::getUntiledRank(getTiles(), getRank());
-}
-
 FailureOr<SmallVector<int64_t>> getExpandedShape(
     const ArrayRef<int64_t> untiled_shape, const ArrayRef<xla::Tile> tiles,
     const bool require_alignment) {
@@ -401,13 +397,6 @@ int64_t TiledLayoutAttr::getNumTrailingDimsWithContiguousTiles(
     }
   }
   return shape.size() - 1 - d;
-}
-
-SmallVector<int64_t> TiledLayoutAttr::getExpandedShape(
-    ArrayRef<int64_t> untiled_shape) const {
-  // getExpandedShape should never fail without require_alignment
-  return *mlir::tpu::getExpandedShape(untiled_shape, getTiles(),
-                                      /*require_alignment=*/false);
 }
 
 FailureOr<SmallVector<int64_t>> getExpandedStrides(

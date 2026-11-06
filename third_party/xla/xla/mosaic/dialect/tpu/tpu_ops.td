@@ -87,9 +87,7 @@ def TPU_TiledLayoutAttr
     int64_t getRank() const {
       return getTileStrides().size();
     }
-    int64_t getUntiledRank() const;
 
-    ::llvm::SmallVector<int64_t> getExpandedShape(::llvm::ArrayRef<int64_t> shape) const;
     ::llvm::SmallVector<int64_t> getExpandedStrides() const;
 
     // Returns true if any of the tile strides are dynamic.
