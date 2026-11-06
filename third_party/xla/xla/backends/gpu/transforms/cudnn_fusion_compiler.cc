@@ -888,6 +888,44 @@ HandleExpMinusOneToCudnnGraph(
   return graph.pointwise(exp_tensor, graph.tensor(1), minus_attrs);
 }
 
+// Use RELU instead of max for max(x,0), which has precompiled kernels.
+absl::StatusOr<std::shared_ptr<graph::Tensor_attributes>>
+HandleMaximumToCudnnGraph(
+    const HloInstruction& hlo, graph::Graph& graph,
+    absl::flat_hash_map<const HloInstruction*,
+                        std::shared_ptr<graph::Tensor_attributes>>
+        hlo_to_cudnn,
+    fe::DataType_t compute_dtype) {
+  CHECK(hlo.opcode() == HloOpcode::kMaximum)
+      << "HLO is not a Maximum operation: " << hlo.ToShortString();
+
+  auto is_zero = [](const HloInstruction* h) {
+    if (h->opcode() == HloOpcode::kBroadcast) {
+      h = h->operand(0);
+    }
+    return h->IsConstant() && h->literal().IsAll(0);
+  };
+
+  const HloInstruction* lhs = hlo.operand(0);
+  const HloInstruction* rhs = hlo.operand(1);
+  const bool lhs_is_zero = is_zero(lhs);
+  const bool rhs_is_zero = is_zero(rhs);
+  // cuDNN has no int8 conv engines with a RELU_FWD epilogue; keep MAX there.
+  if (!primitive_util::IsFloatingPointType(hlo.shape().element_type()) ||
+      // If both operands are non-zero, max is not equivalent to RELU_FWD.
+      (!lhs_is_zero && !rhs_is_zero)) {
+    const auto max_attrs = graph::Pointwise_attributes()
+                               .set_mode(fe::PointwiseMode_t::MAX)
+                               .set_compute_data_type(compute_dtype);
+    return graph.pointwise(hlo_to_cudnn[lhs], hlo_to_cudnn[rhs], max_attrs);
+  }
+
+  return graph.pointwise(hlo_to_cudnn.at(lhs_is_zero ? rhs : lhs),
+                         graph::Pointwise_attributes()
+                             .set_mode(fe::PointwiseMode_t::RELU_FWD)
+                             .set_compute_data_type(compute_dtype));
+}
+
 // Traverses fusion computations and creates cuDNN graphs out of them.
 absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
     const HloFusionInstruction& fusion) {
@@ -1138,6 +1176,10 @@ absl::StatusOr<se::gpu::CudnnGraph> HloFusionToCuDnnGraph(
         ABSL_ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
                          HandleExpMinusOneToCudnnGraph(
                              *hlo, graph, hlo_to_cudnn, compute_dtype.value()));
+      } else if (HloPredicateIsOp<HloOpcode::kMaximum>(hlo)) {
+        ABSL_ASSIGN_OR_RETURN(hlo_to_cudnn[hlo],
+                         HandleMaximumToCudnnGraph(*hlo, graph, hlo_to_cudnn,
+                                                   compute_dtype.value()));
       } else {
         const auto mode = GetElementwiseMode(*hlo);
         if (!mode.has_value()) {
