@@ -66,68 +66,17 @@ inline void DropNumReferenceCountedObjects() {
 // This class intentionally doesn't have a virtual destructor or anything else
 // that would require a vtable, but subclasses can have one if they choose.
 //
-// If `SubClass` is `const`-qualified (e.g. `ReferenceCounted<const Foo>`),
-// `AddRef()`, `DropRef()`, and `Destroy()` are `const` methods and may be
-// called on `const` values.
+// `AddRef()`, `DropRef()` and `Destroy()` are `const` methods (the reference
+// count is not a part of the logical state of the object), so it is possible to
+// manage `const` objects via `RCReference<const T>`, similar to
+// `std::shared_ptr<const T>`.
 template <typename SubClass>
 class ReferenceCounted {
- public:
-  ReferenceCounted() : ReferenceCounted(1) {}
-  explicit ReferenceCounted(unsigned ref_count) : ref_count_(ref_count) {
-    AddNumReferenceCountedObjects();
-  }
+  static_assert(
+      !std::is_const_v<SubClass>,
+      "CRTP parameter of ReferenceCounted must not be const-qualified."
+      " Use `RCReference<const T>` to hold a const object.");
 
-  ~ReferenceCounted() {
-    assert(ref_count_.load() == 0 &&
-           "Shouldn't destroy a reference counted object with references!");
-    DropNumReferenceCountedObjects();
-  }
-
-  // Not copyable or movable.
-  ReferenceCounted(const ReferenceCounted&) = delete;
-  ReferenceCounted& operator=(const ReferenceCounted&) = delete;
-
-  // Add a new reference to this object.
-  void AddRef() {
-    assert(ref_count_.load(std::memory_order_relaxed) >= 1);
-    // It is OK to use std::memory_order_relaxed here as it does not affect the
-    // ownership state of the object.
-    ref_count_.fetch_add(1, std::memory_order_relaxed);
-  }
-
-  // Drop a reference to this object, potentially deallocating it.
-  void DropRef() {
-    assert(ref_count_.load(std::memory_order_relaxed) > 0);
-
-    // If ref_count_==1, this object is owned only by the caller. Bypass a
-    // locked op in that case.
-    if (ref_count_.load(std::memory_order_acquire) == 1 ||
-        ref_count_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-      // Make assert in ~ReferenceCounted happy
-      assert((ref_count_.store(0, std::memory_order_relaxed), true));
-      static_cast<SubClass*>(this)->Destroy();
-    }
-  }
-
-  // Return reference count. This should be used for testing and debugging only.
-  uint32_t NumRef() const { return ref_count_.load(); }
-
-  // Return true if reference count is 1.
-  bool IsUnique() const {
-    return ref_count_.load(std::memory_order_acquire) == 1;
-  }
-
- protected:
-  // Subclasses are allowed to customize this, but the default implementation of
-  // Destroy() just deletes the pointer.
-  void Destroy() { delete static_cast<SubClass*>(this); }
-
- private:
-  std::atomic<unsigned> ref_count_;
-};
-
-template <typename SubClass>
-class ReferenceCounted<const SubClass> {
  public:
   ReferenceCounted() : ReferenceCounted(1) {}
   explicit ReferenceCounted(unsigned ref_count) : ref_count_(ref_count) {
@@ -162,7 +111,10 @@ class ReferenceCounted<const SubClass> {
         ref_count_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
       // Make assert in ~ReferenceCounted happy
       assert((ref_count_.store(0, std::memory_order_relaxed), true));
-      static_cast<const SubClass*>(this)->Destroy();
+      // Destroying an object is allowed regardless of its constness (as with
+      // `delete` of a pointer to const), so we const_cast to support custom
+      // `Destroy()` implementations that are not `const`.
+      const_cast<SubClass*>(static_cast<const SubClass*>(this))->Destroy();
     }
   }
 

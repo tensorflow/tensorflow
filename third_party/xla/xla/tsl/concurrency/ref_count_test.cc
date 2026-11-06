@@ -44,7 +44,7 @@ struct Value : public ReferenceCounted<Value> {
   int32_t value;
 };
 
-struct ConstValue : public ReferenceCounted<const ConstValue> {
+struct ConstValue : public ReferenceCounted<ConstValue> {
   explicit ConstValue(int32_t value, bool* destroyed = nullptr)
       : value(value), destroyed(destroyed) {}
   ~ConstValue() {
@@ -57,13 +57,13 @@ struct ConstValue : public ReferenceCounted<const ConstValue> {
 };
 
 class CustomDestroyConstValue
-    : public ReferenceCounted<const CustomDestroyConstValue> {
+    : public ReferenceCounted<CustomDestroyConstValue> {
  public:
   explicit CustomDestroyConstValue(bool* custom_destroyed)
       : custom_destroyed_(custom_destroyed) {}
 
  private:
-  friend class ReferenceCounted<const CustomDestroyConstValue>;
+  friend class ReferenceCounted<CustomDestroyConstValue>;
 
   void Destroy() const {
     *custom_destroyed_ = true;
@@ -73,10 +73,27 @@ class CustomDestroyConstValue
   bool* custom_destroyed_;
 };
 
+class NonConstCustomDestroyValue
+    : public ReferenceCounted<NonConstCustomDestroyValue> {
+ public:
+  explicit NonConstCustomDestroyValue(bool* custom_destroyed)
+      : custom_destroyed_(custom_destroyed) {}
+
+ private:
+  friend class ReferenceCounted<NonConstCustomDestroyValue>;
+
+  void Destroy() {
+    *custom_destroyed_ = true;
+    ReferenceCounted::Destroy();
+  }
+
+  bool* custom_destroyed_;
+};
+
 static_assert(HasAddRef<Value>::value);
-static_assert(!HasAddRef<const Value>::value);
+static_assert(HasAddRef<const Value>::value);
 static_assert(HasDropRef<Value>::value);
-static_assert(!HasDropRef<const Value>::value);
+static_assert(HasDropRef<const Value>::value);
 
 static_assert(HasAddRef<ConstValue>::value);
 static_assert(HasAddRef<const ConstValue>::value);
@@ -145,6 +162,18 @@ TEST(RefCountTest, ConstRefCountedCustomDestroy) {
     RCReference<const CustomDestroyConstValue> ref =
         MakeRef<const CustomDestroyConstValue>(&custom_destroyed);
     RCReference<const CustomDestroyConstValue> ref2 = FormRef(ref.get());
+    EXPECT_EQ(ref->NumRef(), 2);
+    EXPECT_FALSE(custom_destroyed);
+  }
+  EXPECT_TRUE(custom_destroyed);
+}
+
+TEST(RefCountTest, ConstRefNonConstCustomDestroy) {
+  bool custom_destroyed = false;
+  {
+    RCReference<const NonConstCustomDestroyValue> ref =
+        MakeRef<NonConstCustomDestroyValue>(&custom_destroyed);
+    RCReference<const NonConstCustomDestroyValue> ref2 = ref;
     EXPECT_EQ(ref->NumRef(), 2);
     EXPECT_FALSE(custom_destroyed);
   }
