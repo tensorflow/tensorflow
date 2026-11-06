@@ -22,6 +22,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -80,6 +82,14 @@ void AppendBlobAs(AsmResourceBlob* blob, SmallVectorImpl<double>& out) {
     out.push_back(static_cast<double>(value));
 }
 
+// Appends the elements of a float16 / bfloat16 resource blob to `out`.
+void AppendHalfBlobAs(AsmResourceBlob* blob, const llvm::fltSemantics& sem,
+                      SmallVectorImpl<double>& out) {
+  for (uint16_t bits : blob->getDataAs<uint16_t>()) {
+    out.push_back(APFloat(sem, APInt(16, bits)).convertToDouble());
+  }
+}
+
 LogicalResult ReadNumericElements(ElementsAttr attr,
                                   SmallVectorImpl<double>& out) {
   if (auto dense_fp = mlir::dyn_cast<DenseFPElementsAttr>(attr)) {
@@ -105,6 +115,10 @@ LogicalResult ReadNumericElements(ElementsAttr attr,
     AppendBlobAs<float>(blob, out);
   } else if (element_type.isF64()) {
     AppendBlobAs<double>(blob, out);
+  } else if (element_type.isF16()) {
+    AppendHalfBlobAs(blob, APFloat::IEEEhalf(), out);
+  } else if (element_type.isBF16()) {
+    AppendHalfBlobAs(blob, APFloat::BFloat(), out);
   } else if (element_type.isInteger(8)) {
     AppendBlobAs<int8_t>(blob, out);
   } else if (element_type.isInteger(16)) {

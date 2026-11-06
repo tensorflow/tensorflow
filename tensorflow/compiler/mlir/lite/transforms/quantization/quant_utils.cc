@@ -292,7 +292,14 @@ bool CanFoldBlockwiseWeightOperand(mlir::Operation* op, unsigned operand_index,
   auto bw_deq = operand.getDefiningOp<TFL::BlockwiseDequantizeOp>();
   if (!bw_deq) return false;
   auto output_type = mlir::dyn_cast<RankedTensorType>(bw_deq.getType());
-  if (!output_type || !output_type.getElementType().isF32()) return false;
+  // The int8 SRQ kernel doesn't read the expressed type, so float16 and
+  // bfloat16 graphs (e.g. float16 activations) fold like float32 ones.
+  if (!output_type) return false;
+  Type expressed_type = output_type.getElementType();
+  if (!expressed_type.isF32() && !expressed_type.isF16() &&
+      !expressed_type.isBF16()) {
+    return false;
+  }
   // The FULLY_CONNECTED kernel only takes rank 2 filters.
   if (llvm::isa<TFL::FullyConnectedOp>(op) && output_type.getRank() != 2) {
     return false;
