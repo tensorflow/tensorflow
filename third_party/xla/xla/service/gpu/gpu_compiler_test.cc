@@ -207,8 +207,8 @@ class GpuCompilerTest
   // Must match the fusion-dispatch pipeline check in
   // GpuCompiler::RunPostSchedulingPipelines.
   bool RunsFusionDispatchPipeline() const {
-    return get_cuda_cc().IsAtLeastAmpere() || get_rocm_cc().gfx9_mi200() ||
-           get_rocm_cc().gfx9_mi300_series() || get_rocm_cc().gfx1250();
+    return get_cuda_cc().IsAtLeastAmpere() ||
+           device_description().gpu_compute_capability().IsRocm();
   }
 };
 
@@ -1279,8 +1279,8 @@ TEST_F(
     GpuCompilerTest,
     FusionBlockLevelRewriterRewritesKLoopTransposeWithBitcastIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+, MI200, "
-                    "MI300/350, or gfx1250 to run.";
+    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ or ROCm to "
+                    "run.";
   }
 
   // If this test starts failing, then it's likely that this no longer generates
@@ -1684,8 +1684,7 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
 
 TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "fusion-dispatch requires Ampere+, MI200, MI300/350, or "
-                    "gfx1250 to run.";
+    GTEST_SKIP() << "fusion-dispatch requires Ampere+ or ROCm to run.";
   }
 
   DebugOptions debug_options = GetDebugOptionsForTest();
