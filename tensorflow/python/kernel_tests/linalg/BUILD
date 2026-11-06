@@ -256,7 +256,7 @@ cuda_py_strict_test(
     name = "linear_operator_composition_test",
     size = "medium",
     srcs = ["linear_operator_composition_test.py"],
-    shard_count = 5,
+    shard_count = 20,  # TSAN shards time out at 5, b/582488646
     tags = [
         "optonly",  # times out
     ],
