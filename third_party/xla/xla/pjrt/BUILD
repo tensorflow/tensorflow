@@ -1259,7 +1259,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:denormal",
         "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:setround",
     ],
 )
 
