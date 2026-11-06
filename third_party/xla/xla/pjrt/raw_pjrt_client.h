@@ -335,7 +335,8 @@ class PjRtRawClient {
     return {tsl::AsyncValueRef<T>(std::move(indirect)), std::move(fulfill_cb)};
   }
 
-  virtual tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() {
+  virtual absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
+  MakeLoadState(const LoadOptions& load_options) {
     LOG(FATAL) << "Implement MakeLoadState()";
   }
 
