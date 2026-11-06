@@ -1255,6 +1255,7 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/log:check",
@@ -1262,6 +1263,7 @@ xla_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@cudnn_frontend_archive//:cudnn_frontend",
     ],
 )
 
