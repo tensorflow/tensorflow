@@ -31,8 +31,9 @@ package(
         "//learning/brain/tfrt/tf_tpu:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
+        "//waymo/accelerator/alpine/contrib/waymo:__pkg__",
         "//waymo/ml/deploy:__subpackages__",
-    ]) + ["//waymo/accelerator/alpine/contrib/waymo:__pkg__"],
+    ]),
     licenses = ["notice"],
 )
 
@@ -135,7 +136,6 @@ cc_library(
         "//learning/brain/tfrt/aot:__subpackages__",
         "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
-        "//waymo/accelerator/alpine/contrib/waymo:__pkg__",
     ],
     deps = [
         "//tensorflow/core:lib",
