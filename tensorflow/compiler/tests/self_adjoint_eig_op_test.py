@@ -58,6 +58,8 @@ class SelfAdjointEigOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.parameters(*PARAMS)
   def testSelfAdjointEig(self, n, dtype):
+    if dtype not in self.all_types:
+      return
     for batch_dims in [(), (3,)] + [(3, 2)] * (n < 10):
       self._test(dtype, batch_dims + (n, n))
 
