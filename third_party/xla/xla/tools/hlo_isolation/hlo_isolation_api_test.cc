@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -40,7 +42,9 @@ limitations under the License.
 #include "xla/tools/hlo_dump/hlo_dump_utils.h"
 #include "xla/tools/hlo_isolation/hlo_inf_nan_intent_analyzer.h"
 #include "xla/tools/hlo_isolation/hlo_isolation.pb.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace hlo_isolation {
@@ -713,6 +717,209 @@ ENTRY main {
   EXPECT_DOUBLE_EQ(scores["fus/nested_bad_fus/nested_bad_op"], 100.0);
   EXPECT_DOUBLE_EQ(scores["fus/nested_bad_fus"], 100.0);
   EXPECT_DOUBLE_EQ(scores["fus"], 100.0);
+}
+
+// A main thread offload to SparseCore of a fusion.
+constexpr absl::string_view kSparseCoreHlo = R"hlo(
+HloModule sparse_core
+
+fused {
+  p0 = f32[4] parameter(0)
+  ROOT add = f32[4] add(p0, p0)
+}, execution_thread="sparsecore"
+
+wrapped {
+  p0 = f32[4] parameter(0)
+  ROOT fusion = f32[4] fusion(p0), kind=kLoop, calls=fused
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  start = ((f32[4]), f32[4]) async-start(p0), async_execution_thread="sparsecore", calls=wrapped
+  ROOT done = f32[4] async-done(start)
+}
+)hlo";
+
+// Runs every module to `output`, failing the test if a defused module is
+// built. Counts runs that use the fusion debugger in `fusion_debugger_runs`.
+decltype(ModuleIsolationOptions::run_module_fn) RunWithoutDefusing(
+    Literal output, int* fusion_debugger_runs = nullptr) {
+  auto shared_output = std::make_shared<Literal>(std::move(output));
+  return [shared_output, fusion_debugger_runs](
+             std::unique_ptr<HloModule> m, HloRunnerInterface* r,
+             absl::Span<const Literal> i,
+             const RunModuleOptions& run_opts) -> absl::StatusOr<Literal> {
+    EXPECT_FALSE(absl::StrContains(m->name(), "defused"));
+    if (fusion_debugger_runs != nullptr) {
+      *fusion_debugger_runs += run_opts.use_fusion_debugger;
+    }
+    if (r == FakeReferenceRunner()) {
+      return LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f});
+    }
+    return shared_output->Clone();
+  };
+}
+
+TEST(HloIsolationApiTest, IsSparseCoreModuleLooksForMainThreadOffloads) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> offload,
+                       xla::ParseAndReturnUnverifiedModule(kSparseCoreHlo));
+  EXPECT_TRUE(IsSparseCoreModule(*offload));
+
+  // An offload to another thread, and a SparseCore chain that is only
+  // started from another thread, do not count.
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+inner {
+  p0 = f32[4] parameter(0)
+  ROOT add = f32[4] add(p0, p0)
+}, execution_thread="sparsecore"
+
+wrapped {
+  p0 = f32[4] parameter(0)
+  start = ((f32[4]), f32[4]) async-start(p0), async_execution_thread="sparsecore", calls=inner
+  ROOT done = f32[4] async-done(start)
+}, execution_thread="other"
+
+ENTRY main {
+  p0 = f32[4] parameter(0)
+  start = ((f32[4]), f32[4]) async-start(p0), async_execution_thread="other", calls=wrapped
+  ROOT done = f32[4] async-done(start)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> other,
+                       xla::ParseAndReturnUnverifiedModule(kHlo));
+  EXPECT_FALSE(IsSparseCoreModule(*other));
+}
+
+TEST(HloIsolationApiTest, SparseCoreModuleUsesInterpreterReference) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kSparseCoreHlo));
+  ModuleIsolationOptions options;
+  options.run_module_fn = RunWithoutDefusing(
+      LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f}));
+
+  ASSERT_OK_AND_ASSIGN(HloIsolationTestResult result,
+                       RunIsolationTestOnModule(
+                           *module, nullptr, FakeReferenceRunner(), options));
+  EXPECT_EQ(result.state(), State::SUCCESS);
+  EXPECT_EQ(result.reason(), "STAGE_2_INTERPRETER_SUCCESS");
+}
+
+TEST(HloIsolationApiTest, SparseCoreModuleWithoutReferenceIsSkipped) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kSparseCoreHlo));
+  ModuleIsolationOptions options;
+  options.run_module_fn = RunWithoutDefusing(
+      LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f}));
+
+  ASSERT_OK_AND_ASSIGN(
+      HloIsolationTestResult result,
+      RunIsolationTestOnModule(*module, nullptr, nullptr, options));
+  EXPECT_EQ(result.state(), State::SKIPPED);
+  EXPECT_EQ(result.reason(), "REFERENCE_UNAVAILABLE");
+}
+
+// TODO(b/527142533): Enable & test fusion debugger for SparseCore modules.
+TEST(HloIsolationApiTest, SparseCoreMismatchIsReportedWithoutFusionDebugger) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kSparseCoreHlo));
+  int fusion_debugger_runs = 0;
+  ModuleIsolationOptions options;
+  options.run_module_fn =
+      RunWithoutDefusing(LiteralUtil::CreateR1<float>({1.0f, 1.0f, 1.0f, 1.0f}),
+                         &fusion_debugger_runs);
+  int mismatch_reports = 0;
+  options.on_mismatch_fn = [&](const HloModule&, const Literal&, const Literal&,
+                               const absl::Status&) { ++mismatch_reports; };
+
+  ASSERT_OK_AND_ASSIGN(HloIsolationTestResult result,
+                       RunIsolationTestOnModule(
+                           *module, nullptr, FakeReferenceRunner(), options));
+  EXPECT_EQ(result.state(), State::FAILURE);
+  EXPECT_EQ(result.reason(), "NUMERIC_MISMATCH");
+  EXPECT_EQ(mismatch_reports, 1);
+  EXPECT_EQ(fusion_debugger_runs, 0);
+
+  std::string outputs_dir;
+  ASSERT_TRUE(tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir));
+  std::string html;
+  ASSERT_OK(tsl::ReadFileToString(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(outputs_dir, "failed-module-sparse_core.html"), &html));
+  EXPECT_TRUE(absl::StrContains(html, "window.compressedGraphData"));
+  EXPECT_TRUE(absl::StrContains(html, "Numeric Mismatch:"));
+  EXPECT_TRUE(absl::StrContains(html, "done"));
+}
+
+TEST(HloIsolationApiTest, SparseCoreUnimplementedReferenceIsSkipped) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       xla::ParseAndReturnUnverifiedModule(kSparseCoreHlo));
+  for (const absl::Status& err :
+       {absl::UnimplementedError("Unsupported custom call"),
+        absl::NotFoundError("Custom call target was not registered")}) {
+    ModuleIsolationOptions options;
+    options.run_module_fn =
+        [err](std::unique_ptr<HloModule> m, HloRunnerInterface* r,
+              absl::Span<const Literal>,
+              const RunModuleOptions&) -> absl::StatusOr<Literal> {
+      if (r == FakeReferenceRunner()) {
+        return err;
+      }
+      return LiteralUtil::CreateR1<float>({0.0f, 0.0f, 0.0f, 0.0f});
+    };
+
+    ASSERT_OK_AND_ASSIGN(HloIsolationTestResult result,
+                         RunIsolationTestOnModule(
+                             *module, nullptr, FakeReferenceRunner(), options));
+    EXPECT_EQ(result.state(), State::SKIPPED);
+    EXPECT_EQ(result.reason(), "REFERENCE_UNIMPLEMENTED");
+  }
+}
+
+TEST(HloIsolationApiTest, SparseCoreOffloadSkipReasonChecksWorkRngAndMosaic) {
+  auto skip_reason =
+      [](absl::string_view body) -> absl::StatusOr<std::optional<std::string>> {
+    std::string hlo = absl::StrCat(R"hlo(
+HloModule m
+
+wrapped {
+  x = f32[8] parameter(0)
+)hlo",
+                                   body, R"hlo(
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  p = f32[8] parameter(0)
+  start = ((f32[8]), f32[8]) async-start(p), async_execution_thread="sparsecore", calls=wrapped
+  ROOT done = f32[8] async-done(start)
+}
+)hlo");
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     xla::ParseAndReturnUnverifiedModule(hlo));
+    return SparseCoreOffloadSkipReason(*module);
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::optional<std::string> ok_reason,
+                       skip_reason("  ROOT neg = f32[8] negate(x)"));
+  EXPECT_EQ(ok_reason, std::nullopt);
+
+  ASSERT_OK_AND_ASSIGN(std::optional<std::string> no_work,
+                       skip_reason("  ROOT b = f32[8] bitcast(x)"));
+  EXPECT_EQ(no_work, "NO_WORK_IN_SPARSECORE_OFFLOAD");
+
+  ASSERT_OK_AND_ASSIGN(
+      std::optional<std::string> mosaic,
+      skip_reason(
+          R"(  ROOT k = f32[8] custom-call(x), custom_call_target="tpu_custom_call")"));
+  EXPECT_EQ(mosaic, "CONTAINS_MOSAIC_KERNEL");
+
+  ASSERT_OK_AND_ASSIGN(std::optional<std::string> rng, skip_reason(R"(
+  zero = f32[] constant(0)
+  one = f32[] constant(1)
+  r = f32[8] rng(zero, one), distribution=rng_uniform
+  ROOT add = f32[8] add(x, r))"));
+  EXPECT_EQ(rng, "CONTAINS_RNG");
 }
 
 }  // namespace
