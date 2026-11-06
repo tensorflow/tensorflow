@@ -78,6 +78,7 @@ EOF
 @com_google_absl//
 @com_google_protobuf//
 @internal_platforms_do_not_use//host
+@fpnge//
 @jpegxl//
 @pybind11_abseil//pybind11_abseil
 //external
