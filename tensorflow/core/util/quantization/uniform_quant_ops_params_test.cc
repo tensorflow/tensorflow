@@ -248,31 +248,27 @@ TEST(UniformQuantizedConvolutionParamsTest,
 
 TEST(UniformQuantizedConvolutionParamsTest,
      ValidateOrFillParamsAndValidateShapeEmptyInputSpatialWithKernelSpatial) {
-  UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
   // input_spatial_dimensions is empty, which selects the default-fill branch,
-  // but kernel_spatial_dimensions and output_spatial_dimensions are already
+  // but kernel_spatial_dimensions or output_spatial_dimensions is already
   // populated. The defaults would be appended on top of them, leaving extra
   // dimension numbers that index past the output shape, so this must be
-  // rejected.
-  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
-                                            kernel_spatial_dimensions: 2
-                                            kernel_spatial_dimensions: 3
-                                            output_spatial_dimensions: 2
-                                            output_spatial_dimensions: 3
-                                          )pb",
-                                          &dimension_numbers));
-  UniformQuantizedConvolutionParams params(/*window_strides=*/{},
-                                           /*lhs_dilation=*/{},
-                                           /*rhs_dilation=*/{},
-                                           dimension_numbers,
-                                           /*feature_group_count=*/1,
-                                           /*batch_group_count=*/1,
-                                           /*padding=*/"VALID");
-  EXPECT_THAT(params.ValidateOrFillParamsAndValidateShape(
-                  /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3}),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("must be empty when input_spatial_dimensions "
-                                 "is empty")));
+  // rejected. Each field is set on its own so both sides of the check are
+  // covered.
+  for (const char* text_proto :
+       {"kernel_spatial_dimensions: 2 kernel_spatial_dimensions: 3",
+        "output_spatial_dimensions: 2 output_spatial_dimensions: 3"}) {
+    UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+    ASSERT_TRUE(TextFormat::ParseFromString(text_proto, &dimension_numbers));
+    UniformQuantizedConvolutionParams params(
+        /*window_strides=*/{}, /*lhs_dilation=*/{}, /*rhs_dilation=*/{},
+        dimension_numbers, /*feature_group_count=*/1,
+        /*batch_group_count=*/1, /*padding=*/"VALID");
+    EXPECT_THAT(params.ValidateOrFillParamsAndValidateShape(
+                    /*lhs_shape=*/{2, 2, 3, 4}, /*rhs_shape=*/{3, 2, 2, 3}),
+                StatusIs(absl::StatusCode::kInvalidArgument,
+                         HasSubstr("must be empty when "
+                                   "input_spatial_dimensions is empty")));
+  }
 }
 
 TEST(UniformQuantizedConvolutionParamsTest, CalculateOutputShapeDefaultAttr) {
