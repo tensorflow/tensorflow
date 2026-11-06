@@ -186,5 +186,56 @@ ENTRY %FunctionChangedResetIncorrectly (input: f32[1,2,4], filter: f32[1,2,2], f
   EXPECT_NE(first_conv_replaced->opcode(), HloOpcode::kConvolution);
 }
 
+TEST_F(ConvolutionGroupConverterTest,
+       LargeGroupDimensionsWithoutFilterExpansion) {
+  std::string hlo_string = R"(HloModule LargeGroupDimensions
+ENTRY main {
+  %input0 = f32[1,2,4294967296] parameter(0)
+  %filter0 = f32[1,2147483648,2] parameter(1)
+  %conv0 = f32[1,2,2] convolution(%input0, %filter0),
+      window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=2
+
+  %input1 = f32[1,1,2147483648] parameter(2)
+  %filter1 = f32[1,1,2147483648] parameter(3)
+  %conv1 = f32[1,1,2147483648] convolution(%input1, %filter1),
+      window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=2147483648
+
+  %input2 = f32[1,1,2] parameter(4)
+  %filter2 = f32[1,1,4294967296] parameter(5)
+  %conv2 = f32[1,1,4294967296] convolution(%input2, %filter2),
+      window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=2
+
+  ROOT %out = (f32[1,2,2], f32[1,1,2147483648], f32[1,1,4294967296])
+      tuple(%conv0, %conv1, %conv2)
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto should_expand = [](HloInstruction* conv) { return true; };
+  auto cost_model = [](HloInstruction* conv) { return true; };
+  ConvolutionGroupConverter converter(should_expand, cost_model,
+                                      /*convert_batch_groups_only=*/false,
+                                      /*filter_expansion=*/false);
+  ASSERT_OK_AND_ASSIGN(bool changed, converter.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  // %conv0 (group_size = 2^31 > 1) is converted via spatial dimension reshape.
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kReshape);
+  EXPECT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kConvolution);
+  EXPECT_EQ(root->operand(0)->operand(0)->feature_group_count(), 1);
+
+  // %conv1 (depthwise separable with filter_expansion=false) is unchanged.
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kConvolution);
+  EXPECT_EQ(root->operand(1)->feature_group_count(), 2147483648LL);
+
+  // %conv2 (group_size = 1, depthwise_multiplier = 2^31) is converted via
+  // reversed-window spatial dimension emulation without filter expansion.
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kReshape);
+  const HloInstruction* new_conv2 = root->operand(2)->operand(0);
+  EXPECT_EQ(new_conv2->opcode(), HloOpcode::kConvolution);
+  EXPECT_EQ(new_conv2->window().dimensions(1).size(), 2147483648LL);
+}
+
 }  // namespace
 }  // namespace xla
