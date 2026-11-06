@@ -9,16 +9,33 @@ package(
 )
 
 cc_library(
+    name = "tfl_dynamic_histogram",
+    srcs = ["tfl_dynamic_histogram.cc"],
+    hdrs = ["tfl_dynamic_histogram.h"],
+)
+
+cc_test(
+    name = "tfl_dynamic_histogram_test",
+    srcs = ["tfl_dynamic_histogram_test.cc"],
+    deps = [
+        ":tfl_dynamic_histogram",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "tfl_calibration_utils",
     srcs = ["tfl_calibration_utils.cc"],
     hdrs = ["tfl_calibration_utils.h"],
     deps = [
+        ":tfl_dynamic_histogram",
         ":tfl_tensor_stats_profiler",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:stateful_error_reporter",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:memory_info",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@eigen_archive//:eigen3",
@@ -58,8 +75,11 @@ cc_test(
     deps = [
         ":tfl_calibration_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:stateful_error_reporter",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:memory_info",
-        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )
