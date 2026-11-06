@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cinttypes>
 #include <cmath>
@@ -652,32 +653,6 @@ class Delegate {
     }
 
     static_unpacked_data_.resize(num_subgraphs);
-#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
-    pthreadpool_t threadpool = nullptr;
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-    if (context != nullptr) {
-      threadpool =
-          CpuBackendContext::GetFromContext(context)->get_xnnpack_threadpool();
-    }
-#endif
-    if (threadpool != nullptr) {
-      // Note that by passing a valid threadpool via context, your xnnpack
-      // threadpool will have the same number of threads as
-      // CpuBackendContext::max_num_threads_. If this is not desired behavior,
-      // pass a null threadpool, and then set num_threads through
-      // TfLiteXNNPackDelegateOptions.
-      threadpool_.reset(threadpool);
-      own_threadpool_ = false;
-    } else {
-      own_threadpool_ = true;
-      if (options_.num_threads > 1) {
-        threadpool_.reset(
-            pthreadpool_create(static_cast<size_t>(options_.num_threads)));
-        threadpool = threadpool_.get();
-      }
-    }
-
-#endif
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Created TensorFlow Lite XNNPACK delegate for CPU.");
 
@@ -836,11 +811,27 @@ class Delegate {
 #endif
   }
 
-  pthreadpool_t threadpool() const {
+  pthreadpool_t threadpool(TfLiteContext* context = nullptr) const {
 #if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     return nullptr;
 #else
-    return threadpool_.get();
+    if (context != nullptr) {
+      auto* cpu_backend_context = CpuBackendContext::GetFromContext(context);
+      if (options_.num_threads > 1 &&
+          cpu_backend_context->max_num_threads() <= 1) {
+        cpu_backend_context->SetMaxNumThreads(options_.num_threads);
+      }
+      return cpu_backend_context->get_xnnpack_threadpool();
+    }
+    if (threadpool_ != nullptr) {
+      return threadpool_.get();
+    }
+    if (options_.num_threads > 1) {
+      const_cast<Delegate*>(this)->threadpool_.reset(
+          pthreadpool_create(static_cast<size_t>(options_.num_threads)));
+      return threadpool_.get();
+    }
+    return nullptr;
 #endif
   }
 
@@ -869,14 +860,6 @@ class Delegate {
         std::string(params->shared_name ? params->shared_name : ""));
     auto it = var_handles_.insert({key, var_handles_.size()});
     return it.first->second;
-  }
-
-  void maybe_release_threadpool_ownership() {
-#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
-    if (!own_threadpool_) {
-      threadpool_.release();
-    }
-#endif
   }
 
   const TfLiteXNNPackDelegateOptions& options() const { return options_; }
@@ -932,11 +915,10 @@ class Delegate {
   // Set of indices of tensors with unpacked static sparse weights.
   std::unordered_set<int> static_sparse_weights_;
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
-  // Thread pool with smart-pointer for lifetime management.
+  // Fallback thread pool with smart-pointer for lifetime management if
+  // CpuBackendContext is not used (e.g. standalone tests).
   std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
       nullptr, &pthreadpool_destroy};
-  // Boolean that indicates if threadpool_ was created by xnnpack_delegate.
-  bool own_threadpool_;
 #endif
   std::unique_ptr<xnn_workspace, decltype(&xnn_release_workspace)> workspace_{
       nullptr, &xnn_release_workspace};
@@ -1043,7 +1025,7 @@ class Subgraph {
 
     std::unique_ptr<MoeExpertsDelegateKernel> moe_kernel =
         MoeExpertsDelegateKernel::Create(context, params,
-                                         delegate.threadpool());
+                                         delegate.threadpool(context));
     if (moe_kernel != nullptr) {
       return new Subgraph(delegate, std::move(moe_kernel));
     }
@@ -1503,7 +1485,7 @@ class Subgraph {
       std::lock_guard<std::mutex> lock(*delegate.workspace_mutex_);
       status = xnn_create_runtime_v4(
           subgraph.get(), delegate.weights_cache(), delegate.workspace(),
-          delegate.threadpool(), flags, &runtime_ptr);
+          delegate.threadpool(context), flags, &runtime_ptr);
     }
     if (delegate.weight_cache_provider_->IsActive() &&
         delegate.weight_cache_provider_->CanStartBuildStep()) {
@@ -7989,7 +7971,6 @@ void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate) {
   if (delegate != nullptr) {
     ::tflite::xnnpack::Delegate* data =
         static_cast<::tflite::xnnpack::Delegate*>(delegate->data_);
-    data->maybe_release_threadpool_ownership();
     delete data;
   }
 }
