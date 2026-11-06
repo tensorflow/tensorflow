@@ -476,9 +476,11 @@ def dict_to_cli_options(options_dict: Any) -> List[str]:
 def get_cquery_command_options(build: BuildConfig) -> List[str]:
   """Extracts --config, tag/universe filters, --repo_env, and build flags."""
   options = [f"--config={config}" for config in build.configs]
-  tag_filters = ",".join(build.build_tag_filters)
-  if tag_filters:
-    options.append(f"--build_tag_filters={tag_filters}")
+  if build.build_tag_filters:
+    effective_tag_filters = list(build.build_tag_filters)
+    if "-manual" not in effective_tag_filters:
+      effective_tag_filters.append("-manual")
+    options.append(f"--build_tag_filters={','.join(effective_tag_filters)}")
   universe_scope = ",".join(build.target_patterns)
   if universe_scope:
     options.append(f"--universe_scope={universe_scope}")

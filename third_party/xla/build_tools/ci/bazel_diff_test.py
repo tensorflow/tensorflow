@@ -347,7 +347,7 @@ class BazelDiffTest(parameterized.TestCase):
             "--config=warnings",
             "--config=rbe_linux_cuda_nvcc",
             "--config=hermetic_cuda_umd",
-            "--build_tag_filters=-no_oss,requires-gpu-nvidia,gpu",
+            "--build_tag_filters=-no_oss,requires-gpu-nvidia,gpu,-manual",
             "--universe_scope=//xla/...,//build_tools/...,@tsl//tsl/...,-//xla/stream_executor/sycl/...",
             "--repo_env=TF_CUDA_COMPUTE_CAPABILITIES=7.5",
             "--//xla/tsl:ci_build",
