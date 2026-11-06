@@ -1366,40 +1366,65 @@ def diff(  # pylint: disable=missing-function-docstring
       raise ValueError(
           f'Argument `n` must be a non-negative integer. Received: n={n}'
       )
+    if n == 0:
+      return a
     # NumPy converts and broadcasts `prepend`/`append` against `a` before
     # computing the differences: a scalar is expanded to length 1 along
     # `axis` and all other dimensions of `a`, and an array is concatenated
     # as-is (raising for dimensions that do not match `a` except along
-    # `axis`). tf.concat requires a shared dtype, so both sides are
-    # promoted like NumPy's concatenate would.
-    for first, value in ((True, prepend), (False, append)):
-      if value is _diff_no_value:
-        continue
-      val = np_array_ops.asarray(value)
-      promoted = np_utils.result_type(a, val)
+    # `axis`). Both boundaries are validated before either is combined, and
+    # both sides are promoted once like NumPy's concatenate would, since
+    # `tf.concat` requires a shared dtype.
+    if prepend is not _diff_no_value or append is not _diff_no_value:
+      boundaries = []
+      for first, value in ((True, prepend), (False, append)):
+        if value is _diff_no_value:
+          continue
+        val = np_array_ops.asarray(value)
+        if val.shape.rank not in (None, 0):
+          if val.shape.rank != nd:
+            raise ValueError(
+                'all the input arrays must have same number of dimensions'
+            )
+          for i in range(nd):
+            if (
+                i != axis_normalized
+                and val.shape[i] is not None
+                and a.shape[i] is not None
+                and val.shape[i] != a.shape[i]
+            ):
+              # NumPy raises ValueError from its concatenate instead of
+              # letting the backend fail with InvalidArgumentError.
+              raise ValueError(
+                  'all the input array dimensions except for the '
+                  'concatenation axis must match exactly'
+              )
+        boundaries.append((first, val))
+      promoted = np_utils.result_type(a, *(val for _, val in boundaries))
       if promoted != a.dtype:
         a = math_ops.cast(a, promoted)
-      if val.shape.rank == 0:
-        shape = array_ops.shape(a)
-        target_shape = array_ops.concat(
-            [shape[:axis_normalized], [1], shape[axis_normalized + 1 :]], 0
-        )
-        val = array_ops.broadcast_to(math_ops.cast(val, promoted), target_shape)
-      elif (
-          val.shape.rank is not None
-          and nd is not None
-          and a.shape.is_fully_defined()
-          and val.shape.is_fully_defined()
-      ):
-        for i in range(nd):
-          if i != axis_normalized and val.shape[i] != a.shape[i]:
-            # NumPy raises ValueError from its concatenate instead of
-            # letting the backend fail with InvalidArgumentError.
-            raise ValueError(
-                'all the input array dimensions except for the concatenation '
-                'axis must match exactly'
-            )
-      a = array_ops.concat(([val, a] if first else [a, val]), axis_normalized)
+      target_shape = None
+      combined = [a]
+      for first, val in boundaries:
+        if promoted != val.dtype:
+          val = math_ops.cast(val, promoted)
+        if val.shape.rank == 0:
+          if target_shape is None:
+            if a.shape.is_fully_defined():
+              target_shape = a.shape.as_list()
+              target_shape[axis_normalized] = 1
+            else:
+              shape = array_ops.shape(a)
+              target_shape = array_ops.concat(
+                  [shape[:axis_normalized], [1], shape[axis_normalized + 1 :]],
+                  0,
+              )
+          val = array_ops.broadcast_to(val, target_shape)
+        if first:
+          combined.insert(0, val)
+        else:
+          combined.append(val)
+      a = array_ops.concat(combined, axis_normalized)
     slice1 = [slice(None)] * nd
     slice2 = [slice(None)] * nd
     slice1[axis] = slice(1, None)
