@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 
 namespace tensorflow {
@@ -52,14 +53,12 @@ absl::Status ValidSpatialDimensions(
 
 // Checks that the batch, feature and spatial dimension numbers for one tensor
 // together form a permutation of [0, dims), i.e. every dimension index appears
-// exactly once. The individual range checks above guarantee each index is in
-// [0, dims) and that there are exactly `dims` of them, so here we only need to
-// reject repeated indices.
+// exactly once (defensively re-checking [0, dims) bounds before indexing).
 absl::Status ValidDimensionNumbersPermutation(
     int64_t dims, int64_t batch_dimension, int64_t feature_dimension,
     const protobuf::RepeatedField<int64_t>& spatial_dimensions,
     absl::string_view tensor_name) {
-  std::vector<bool> seen(dims, false);
+  absl::InlinedVector<bool, 8> seen(dims, false);
   const auto mark = [&](int64_t dim) -> absl::Status {
     if (dim < 0 || dim >= dims || seen[dim]) {
       return absl::InvalidArgumentError(absl::StrCat(
