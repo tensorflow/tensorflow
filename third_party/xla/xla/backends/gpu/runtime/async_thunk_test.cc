@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
@@ -162,7 +163,8 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
       /*collective_memory=*/nullptr, additional_streams, &state);
 
   // Initialize and execute all thunks via ThunkExecutor.
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.execution_scoped_state = &state;
   ASSERT_OK(thunk_executor.Initialize(init_params));
@@ -230,7 +232,8 @@ TEST(AsyncThunkTest, MemcpyStreamDispatch) {
   params.device_to_host_stream = d2h_stream.get();
   params.host_to_device_stream = h2d_stream.get();
 
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.execution_scoped_state = &state;
   ASSERT_OK(thunk_executor.Initialize(init_params));
@@ -259,7 +262,8 @@ TEST(AsyncThunkTest, MemcpyStreamNullReturnsError) {
   ASSERT_EQ(params.device_to_host_stream, nullptr);
   ASSERT_EQ(params.host_to_device_stream, nullptr);
 
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.execution_scoped_state = &state;
   ASSERT_OK(d2h_start.Initialize(init_params));
@@ -370,7 +374,8 @@ TEST(AsyncThunkTest, LocalityDomainStreamSelection) {
                         std::move(nested), /*devices_per_host=*/1);
 
   Thunk::ExecutionScopedState state;
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
   init_params.execution_scoped_state = &state;
   ASSERT_OK(start.Initialize(init_params));
@@ -471,7 +476,8 @@ TEST(AsyncThunkTest,
                                 executor->device_ordinal(), &allocator);
   ServiceExecutableRunOptions run_options;
   Thunk::ExecutionScopedState state;
-  Thunk::InitializeParams initialize_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams initialize_params(&command_buffer_requests);
   initialize_params.executor = executor;
   initialize_params.execution_scoped_state = &state;
   ASSERT_OK(thunk_executor.Initialize(initialize_params));

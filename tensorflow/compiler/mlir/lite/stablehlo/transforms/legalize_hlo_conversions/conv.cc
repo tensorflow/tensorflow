@@ -31,10 +31,10 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 
@@ -65,10 +65,10 @@ bool IsWindowReversalSupported(const ConvView& data) {
   return llvm::all_of(data.WindowReversal(), [](bool b) { return !b; });
 }
 
-// Determines if it is OK to leave given mhlo.convolution in the mhlo dialect.
-// Used externally to setup a ConversionTarget with dynamically legal
-// mhlo.convolution. Doubles as matching predicate during legalization.
-bool IsConvLegal(mhlo::ConvolutionOp op) {
+// Determines if it is OK to leave given stablehlo.convolution in the stablehlo
+// dialect. Used externally to setup a ConversionTarget with dynamically legal
+// stablehlo.convolution. Doubles as matching predicate during legalization.
+bool IsConvLegal(stablehlo::ConvolutionOp op) {
   const ConvView data(op);
 
   const bool supported_conv_type = IsStandardConv(data) ||
@@ -85,7 +85,7 @@ bool IsConvLegal(mhlo::ConvolutionOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// mhlo.convolution -> tfl
+// stablehlo.convolution -> tfl
 //===----------------------------------------------------------------------===//
 
 // Bias is a zero tensor of shape [output_channels].
@@ -98,18 +98,18 @@ arith::ConstantOp BuildEmptyBias(OpBuilder& b, Location loc,
   return arith::ConstantOp::create(b, loc, bias_const_data);
 }
 
-class LegalizeConv2D : public OpConversionPattern<mhlo::ConvolutionOp> {
+class LegalizeConv2D : public OpConversionPattern<stablehlo::ConvolutionOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::ConvolutionOp op, OpAdaptor adaptor,
+      stablehlo::ConvolutionOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeConv2D::matchAndRewrite(
-    mhlo::ConvolutionOp op, OpAdaptor adaptor,
+    stablehlo::ConvolutionOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
-  // Parse mhlo.convolution attrs into cc types.
+  // Parse stablehlo.convolution attrs into cc types.
   const ConvView data(op);
 
   if (IsConvLegal(op) || !IsStandardConv(data) ||
@@ -157,18 +157,19 @@ LogicalResult LegalizeConv2D::matchAndRewrite(
   return success();
 }
 
-class LegalizeConvDepthwise : public OpConversionPattern<mhlo::ConvolutionOp> {
+class LegalizeConvDepthwise
+    : public OpConversionPattern<stablehlo::ConvolutionOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::ConvolutionOp op, OpAdaptor adaptor,
+      stablehlo::ConvolutionOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeConvDepthwise::matchAndRewrite(
-    mhlo::ConvolutionOp op, OpAdaptor adaptor,
+    stablehlo::ConvolutionOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
-  // Parse mhlo.convolution attrs into cc types.
+  // Parse stablehlo.convolution attrs into cc types.
   const ConvView data(op);
 
   if (IsConvLegal(op) || !IsDepthwiseConv(data)) {
@@ -225,18 +226,18 @@ LogicalResult LegalizeConvDepthwise::matchAndRewrite(
   return success();
 }
 
-class LegalizeConv3D : public OpConversionPattern<mhlo::ConvolutionOp> {
+class LegalizeConv3D : public OpConversionPattern<stablehlo::ConvolutionOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::ConvolutionOp op, OpAdaptor adaptor,
+      stablehlo::ConvolutionOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeConv3D::matchAndRewrite(
-    mhlo::ConvolutionOp op, OpAdaptor adaptor,
+    stablehlo::ConvolutionOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
-  // Parse mhlo.convolution attrs into cc types.
+  // Parse stablehlo.convolution attrs into cc types.
   const ConvView data(op);
 
   if (IsConvLegal(op) || !IsStandardConv(data) ||
@@ -287,21 +288,21 @@ LogicalResult LegalizeConv3D::matchAndRewrite(
 }
 
 //===----------------------------------------------------------------------===//
-// mhlo.convolution -> TFL::ResizeBilinearOp
+// stablehlo.convolution -> TFL::ResizeBilinearOp
 //===----------------------------------------------------------------------===//
 
-// Convert a 2d mhlo.convolution op to a tfl.resize_bilinear
+// Convert a 2d stablehlo.convolution op to a tfl.resize_bilinear
 class ConvertNonTrivialConvToResizeBilinearOp
-    : public OpConversionPattern<mhlo::ConvolutionOp> {
+    : public OpConversionPattern<stablehlo::ConvolutionOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::ConvolutionOp op, OpAdaptor adaptor,
+      stablehlo::ConvolutionOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult ConvertNonTrivialConvToResizeBilinearOp::matchAndRewrite(
-    mhlo::ConvolutionOp conv_op, OpAdaptor adaptor,
+    stablehlo::ConvolutionOp conv_op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   const ConvView data(conv_op);
   bool align_corners;
@@ -330,21 +331,21 @@ LogicalResult ConvertNonTrivialConvToResizeBilinearOp::matchAndRewrite(
 }
 
 //===----------------------------------------------------------------------===//
-// mhlo.convolution -> TFL::TransposeConv2dOp
+// stablehlo.convolution -> TFL::TransposeConv2dOp
 //===----------------------------------------------------------------------===//
 
-// Convert a 2d mhlo.convolution op to a tfl.transpose_conv2d
+// Convert a 2d stablehlo.convolution op to a tfl.transpose_conv2d
 class ConvertNonTrivialConvToTransposeConvOp
-    : public OpConversionPattern<mhlo::ConvolutionOp> {
+    : public OpConversionPattern<stablehlo::ConvolutionOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::ConvolutionOp op, OpAdaptor adaptor,
+      stablehlo::ConvolutionOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult ConvertNonTrivialConvToTransposeConvOp::matchAndRewrite(
-    mhlo::ConvolutionOp op, OpAdaptor adaptor,
+    stablehlo::ConvolutionOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   const ConvView data(op);
 
@@ -435,10 +436,10 @@ LogicalResult ConvertNonTrivialConvToTransposeConvOp::matchAndRewrite(
 //===----------------------------------------------------------------------===//
 
 class SliceGroupedTransposedConvolution
-    : public OpRewritePattern<mhlo::ConvolutionOp> {
+    : public OpRewritePattern<stablehlo::ConvolutionOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(mhlo::ConvolutionOp op,
+  LogicalResult matchAndRewrite(stablehlo::ConvolutionOp op,
                                 PatternRewriter& rewriter) const final;
 };
 
@@ -448,7 +449,7 @@ class SliceGroupedTransposedConvolution
 // results of the convolutions. This is a workaround because the TFLite runtime
 // doesn't support grouped or depthwise-transposed-conv op natively.
 LogicalResult SliceGroupedTransposedConvolution::matchAndRewrite(
-    mhlo::ConvolutionOp conv_op, PatternRewriter& rewriter) const {
+    stablehlo::ConvolutionOp conv_op, PatternRewriter& rewriter) const {
   const ConvView data(conv_op);
 
   //
@@ -466,7 +467,7 @@ LogicalResult SliceGroupedTransposedConvolution::matchAndRewrite(
   }
 
   // These checks narrow down the support to grouped transpose conv2d.
-  mhlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
+  stablehlo::ConvDimensionNumbersAttr dnums = conv_op.getDimensionNumbers();
   const int64_t input_feature_dimension = dnums.getInputFeatureDimension();
   const int64_t input_channels =
       mlir::cast<ShapedType>(conv_op.getLhs().getType())
@@ -526,10 +527,11 @@ LogicalResult SliceGroupedTransposedConvolution::matchAndRewrite(
     const llvm::SmallVector<int64_t> strides(tensor_shape.size(), 1);
     start_indices[channel_idx] = group_idx * channels_per_group;
     limit_indices[channel_idx] = (group_idx + 1) * channels_per_group;
-    return mhlo::SliceOp::create(rewriter, conv_op.getLoc(), tensor,
-                                 rewriter.getI64TensorAttr(start_indices),
-                                 rewriter.getI64TensorAttr(limit_indices),
-                                 rewriter.getI64TensorAttr(strides));
+    return stablehlo::SliceOp::create(
+        rewriter, conv_op.getLoc(), tensor,
+        rewriter.getDenseI64ArrayAttr(start_indices),
+        rewriter.getDenseI64ArrayAttr(limit_indices),
+        rewriter.getDenseI64ArrayAttr(strides));
   };
 
   // Storage for smaller convolution results
@@ -553,7 +555,7 @@ LogicalResult SliceGroupedTransposedConvolution::matchAndRewrite(
         RankedTensorType::get(new_output_shape, output_type.getElementType());
 
     // Create a Smaller Convolution (Ensure compatibility)
-    auto conv_result = mhlo::ConvolutionOp::create(
+    auto conv_result = stablehlo::ConvolutionOp::create(
         rewriter, conv_op.getLoc(), new_output_type, sliced_input,
         sliced_kernel, conv_op.getWindowStridesAttr(), conv_op.getPaddingAttr(),
         conv_op.getLhsDilationAttr(), conv_op.getRhsDilationAttr(),
@@ -564,9 +566,9 @@ LogicalResult SliceGroupedTransposedConvolution::matchAndRewrite(
     conv_results.push_back(conv_result);
   }
 
-  auto final_output = mhlo::ConcatenateOp::create(
-      rewriter, conv_op.getLoc(), conv_results,
-      rewriter.getI64IntegerAttr(dnums.getOutputFeatureDimension()));
+  auto final_output =
+      stablehlo::ConcatenateOp::create(rewriter, conv_op.getLoc(), conv_results,
+                                       dnums.getOutputFeatureDimension());
   rewriter.replaceOp(conv_op, final_output.getResult());
   return success();
 }
@@ -575,10 +577,10 @@ LogicalResult SliceGroupedTransposedConvolution::matchAndRewrite(
 
 // Convert a 1-D convolution into a 2-D convolution (which TFL supports) so that
 // it can be rewritten by the pattern `Convert2DConvOp`.
-class Conv1DToConv2D : public OpRewritePattern<mhlo::ConvolutionOp> {
+class Conv1DToConv2D : public OpRewritePattern<stablehlo::ConvolutionOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(mhlo::ConvolutionOp op,
+  LogicalResult matchAndRewrite(stablehlo::ConvolutionOp op,
                                 PatternRewriter& rewriter) const final;
 };
 
@@ -623,7 +625,7 @@ std::tuple<llvm::SmallVector<int64_t>, int64_t, Layout> InsertTrivialSpatialDim(
                     Layout(new_dim1, new_dim2, new_spatials));
 }
 
-LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
+LogicalResult Conv1DToConv2D::matchAndRewrite(stablehlo::ConvolutionOp op,
                                               PatternRewriter& rewriter) const {
   const ConvView view(op);
 
@@ -675,8 +677,7 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
   llvm::SmallVector<int64_t, 2> strides_2d;
   strides_2d.push_back(view.Strides()[0]);
   strides_2d.push_back(1);
-  auto strides_2d_attr = DenseIntElementsAttr::get(
-      RankedTensorType::get({2}, rewriter.getI64Type()), strides_2d);
+  auto strides_2d_attr = rewriter.getDenseI64ArrayAttr(strides_2d);
 
   // Padding
   SmallVector<int64_t, 4> padding_2d;
@@ -692,22 +693,18 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
   SmallVector<int64_t, 2> lhs_dilation_2d;
   lhs_dilation_2d.push_back(view.InputDilations()[0]);
   lhs_dilation_2d.push_back(1);
-  auto lhs_dilation_2d_attr = DenseIntElementsAttr::get(
-      RankedTensorType::get({2}, rewriter.getI64Type()), lhs_dilation_2d);
+  auto lhs_dilation_2d_attr = rewriter.getDenseI64ArrayAttr(lhs_dilation_2d);
 
   // RHS dilation
   SmallVector<int64_t, 2> rhs_dilation_2d;
   rhs_dilation_2d.push_back(view.KernelDilations()[0]);
   rhs_dilation_2d.push_back(1);
-  auto rhs_dilation_2d_attr = DenseIntElementsAttr::get(
-      RankedTensorType::get({2}, rewriter.getI64Type()), rhs_dilation_2d);
+  auto rhs_dilation_2d_attr = rewriter.getDenseI64ArrayAttr(rhs_dilation_2d);
 
-  auto window_reversal_2d_attr = DenseIntElementsAttr::get(
-      RankedTensorType::get({2}, rewriter.getIntegerType(1)),
-      SmallVector<bool>({false, false}));
+  auto window_reversal_2d_attr = rewriter.getDenseBoolArrayAttr({false, false});
 
   // New dnums.
-  auto dnums_2d = mhlo::ConvDimensionNumbersAttr::get(
+  auto dnums_2d = stablehlo::ConvDimensionNumbersAttr::get(
       rewriter.getContext(), lhs_new_layout.SpecialDim1(),
       lhs_new_layout.SpecialDim2(), lhs_new_layout.Spatials(),
       rhs_new_layout.SpecialDim1(), rhs_new_layout.SpecialDim2(),
@@ -718,7 +715,7 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
   // Build 2-D convolution with reshaped output.
   //=-----
 
-  auto conv2d_op = mhlo::ConvolutionOp::create(
+  auto conv2d_op = stablehlo::ConvolutionOp::create(
       rewriter, op.getLoc(), out_new_type, new_lhs, new_rhs, strides_2d_attr,
       padding_2d_attr, lhs_dilation_2d_attr, rhs_dilation_2d_attr,
       window_reversal_2d_attr, dnums_2d, op.getFeatureGroupCount(),
@@ -739,7 +736,7 @@ void PopulateLegalizeConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
   patterns.add<LegalizeConv2D, LegalizeConv3D, LegalizeConvDepthwise,
                ConvertNonTrivialConvToResizeBilinearOp,
                ConvertNonTrivialConvToTransposeConvOp>(ctx);
-  target.addDynamicallyLegalOp<mhlo::ConvolutionOp>(IsConvLegal);
+  target.addDynamicallyLegalOp<stablehlo::ConvolutionOp>(IsConvLegal);
 }
 
 void PopulatePrepareConvPatterns(MLIRContext* ctx,

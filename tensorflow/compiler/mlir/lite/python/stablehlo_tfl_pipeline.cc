@@ -233,6 +233,14 @@ void AddPipelinePasses(mlir::OpPassManager& pass_manager,
   // HLO -> TFLite legalization
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::CreateUniformQuantizedStableHloToTflPass());
+  // TODO(markoristic): Temporary. PrepareHlo and the HLO->TFL legalization
+  // consume StableHLO while the preceding passes still produce MHLO. Remove
+  // once the whole pipeline runs on StableHLO.
+  pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  // Fold and simplify StableHLO into the canonical form the legalization
+  // expects (MHLO did this through its folders and canonicalizations).
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::odml::CreateSimplifyHloPass());
   pass_manager.addNestedPass<mlir::func::FuncOp>(
       mlir::odml::CreatePrepareHloPass());
   // This pass must be added right before the legalization because pattern
