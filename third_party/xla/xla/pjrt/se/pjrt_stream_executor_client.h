@@ -375,7 +375,8 @@ class PjRtStreamExecutorRawClient : public PjRtRawClient {
 
   virtual void RecordMemoryStats(LocalDeviceState* local_device_state) {}
 
-  tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() override;
+  absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>> MakeLoadState(
+      const LoadOptions& load_options) override;
 
  private:
   se::DeviceAddressAllocator* allocator_ = nullptr;
