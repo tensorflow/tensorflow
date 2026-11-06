@@ -372,7 +372,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
                     "Pooling is not yet supported on the batch dimension."));
     OP_REQUIRES(context, (depth_window == 1 && depth_stride == 1),
                 absl::UnimplementedError(
-                    "AvgPooling3D only supports pooling across spatial dimensions "
+                    "Pooling3D only supports pooling across spatial dimensions "
                     "(depth, height, width). Pooling across the channel dimension "
                     "is not supported."));
   }
