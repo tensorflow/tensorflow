@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
@@ -729,6 +730,59 @@ ENTRY computation {
       /*limit_on_batch_size=*/8});
   EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
+}
+
+// The convolutions this pass builds take only lhs and rhs, so a block scaled
+// convolution must not be space-to-batched: its scale operand would be dropped.
+TEST_F(SpaceToBatchConverterTest, DoNotStartOnBlockScaledConv) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,258,258,32] parameter(0)
+  %p1 = bf16[3,3,32,32] parameter(1)
+  %p2 = f8e8m0fnu[1,258,258,2] parameter(2)
+  ROOT %convolution = bf16[1,256,256,32] convolution(%p0, %p1, %p2),
+    window={size=3x3}, dim_labels=b01f_01io->b01f,
+    block_scaling_config={lhs={scale_idx=2}}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  EXPECT_THAT(converter.Run(module.get()), IsOkAndHolds(false));
+}
+
+// A block scaled backprop filter convolution fed by a space-to-batched
+// convolution must not be rewritten either; it goes through the batch-to-space
+// fallback and keeps its scale operand.
+TEST_F(SpaceToBatchConverterTest, DoNotPropagateIntoBlockScaledBackpropConv) {
+  std::string hlo_string = R"(
+  HloModule module
+ENTRY computation {
+  %p0 = bf16[1,258,258,32] parameter(0)
+  %p1 = bf16[3,3,32,32] parameter(1)
+  %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+  %p2 = bf16[1,256,256,32] parameter(2)
+  %p3 = f8e8m0fnu[1,256,256,32] parameter(3)
+  ROOT %backprop_filter = bf16[32,1,1,32] convolution(%convolution, %p2, %p3),
+    window={size=256x256}, dim_labels=f01b_i01o->b01f,
+    block_scaling_config={lhs={scale_idx=2}}
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  ASSERT_OK(converter.Run(module.get()).status());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::Convolution());
+  EXPECT_EQ(root->operand_count(), 3);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kParameter);
+  EXPECT_TRUE(root->block_scaling_config().has_lhs());
 }
 
 }  // namespace

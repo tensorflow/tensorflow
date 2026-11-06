@@ -26,14 +26,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/service/platform_util.h"
@@ -115,17 +112,6 @@ std::optional<std::string> Lookup(const NodeKey& key,
       key.graph_id, key.node_id,
       [&](absl::string_view value) { annotation.emplace(value); }, space);
   return annotation;
-}
-
-bool PollUntil(absl::FunctionRef<bool()> done) {
-  const absl::Time deadline = absl::Now() + absl::Seconds(10);
-  while (!done()) {
-    if (absl::Now() > deadline) {
-      return false;
-    }
-    absl::SleepFor(absl::Milliseconds(10));
-  }
-  return true;
 }
 
 void CudaCommandBufferTelemetryTest::SetUp() {

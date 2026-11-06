@@ -49,6 +49,18 @@ class CuDnnFusionCompiler : public HloModulePass {
       const se::DeviceDescription& gpu_device_info,
       const HloFusionInstruction& hlo);
 
+  // Whether `hlo` (a fusion with no gemm/conv/ragged-dot/scaled-dot hero) is
+  // eligible to become a cuDNN fusion: rejects fusions with more than one
+  // concatenate (cuDNN reports execution plans available for these but fails
+  // to lower them), then probes cuDNN for at least one available execution
+  // plan via `GetAvailablePlanCount`. Returns false (not an error) when
+  // ineligible; propagates genuine probe failures (e.g. stream/graph
+  // construction errors) as a non-OK status.
+  static absl::StatusOr<bool> IsSupportedNonGemmFusion(
+      se::StreamExecutor* stream_exec,
+      const se::DeviceDescription& gpu_device_info,
+      const HloFusionInstruction& hlo);
+
   enum class DevicelessFusionSupport {
     // cuDNN's deviceless heuristics advertise at least one execution plan.
     // Not a guarantee: building the plan on the real device (possibly a

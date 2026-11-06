@@ -170,11 +170,10 @@ ENTRY entry {
 })hlo";
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(hlo_text));
-  namespace ge = ::xla::gpu;
   std::unique_ptr<HloFusionAdaptor> fusion_adaptor =
       HloFusionAdaptor::ForInstruction(
           module->entry_computation()->root_instruction());
-  EXPECT_THAT(ge::TilingSpace::Create(*fusion_adaptor, &mlir_context_),
+  EXPECT_THAT(TilingSpace::Create(*fusion_adaptor, &mlir_context_),
               StatusIs(absl::StatusCode::kUnimplemented,
                        testing::HasSubstr("multiple roots")));
   EXPECT_THAT(

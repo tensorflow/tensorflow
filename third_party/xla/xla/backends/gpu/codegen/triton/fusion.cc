@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
@@ -330,22 +331,26 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
               gpu_device_info, launch_dimensions, kernel,
               local_module.getModuleUnlocked()));
 
+          GpuKernelSpec spec{std::move(sanitized_kernel_name),
+                             std::move(launch_dimensions),
+                             kernel_arguments,
+                             triton_wrapper_result.shmem_bytes,
+                             triton_wrapper_result.use_pdl,
+                             triton_wrapper_result.tma_metadata};
+
           return kernel_compiler
-              ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)})
-              .Map([kernel_name = std::move(sanitized_kernel_name),
-                    launch_dims = std::move(launch_dimensions),
-                    tma_metadata = triton_wrapper_result.tma_metadata,
-                    shmem_bytes = triton_wrapper_result.shmem_bytes,
-                    use_pdl = triton_wrapper_result.use_pdl](
+              ->CompileToTargetBinary(LlvmKernelSource{std::move(local_module)},
+                                      spec)
+              .Map([spec = std::move(spec)](
                        const std::vector<uint8_t>& cubin) mutable {
                 return KernelReuseCache::Entry{
-                    std::move(kernel_name),
-                    launch_dims,
+                    std::string{spec.name()},
+                    spec.launch_dimensions(),
                     /*cluster_dim=*/std::nullopt,
-                    shmem_bytes,
+                    static_cast<int64_t>(*spec.scratch_bytes()),
                     std::make_shared<const std::vector<uint8_t>>(cubin),
-                    tma_metadata,
-                    use_pdl};
+                    spec.tma_metadata(),
+                    spec.use_pdl()};
               });
         });
   };

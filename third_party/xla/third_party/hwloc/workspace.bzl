@@ -5,9 +5,9 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "hwloc",
-        urls = tf_mirror_urls("https://download.open-mpi.org/release/hwloc/v2.7/hwloc-2.7.1.tar.gz"),
-        sha256 = "4cb0a781ed980b03ad8c48beb57407aa67c4b908e45722954b9730379bc7f6d5",
-        strip_prefix = "hwloc-2.7.1",
+        urls = tf_mirror_urls("https://download.open-mpi.org/release/hwloc/v2.13/hwloc-2.13.0.tar.gz"),
+        sha256 = "1514a5253f0a5c23bc006d3bdd30a6f6125c9a8dc9b5fa4984913d1fff45315d",
+        strip_prefix = "hwloc-2.13.0",
         build_file = "//third_party/hwloc:hwloc.BUILD",
         system_build_file = "//third_party/hwloc:BUILD.system",
     )

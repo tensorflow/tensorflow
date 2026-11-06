@@ -48,6 +48,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 using ::xla::xtile::BlockLevelFusionConfig;
@@ -243,6 +244,26 @@ TEST_F(NativeEmitterBackendTest,
   // GetSupportedConfigs should return an empty vector as it doesn't support the
   // fusion.
   ASSERT_TRUE(configs.empty());
+}
+
+TEST_F(NativeEmitterBackendTest, RefusesDefaultAndApplyConfigForTritonFusions) {
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kCustomFusionHlo));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  EXPECT_THAT(backend_.GetDefaultConfig(*fusion),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("unsupported instruction")));
+
+  BackendConfig config;
+  config.mutable_native_emitter();
+  EXPECT_THAT(backend_.ApplyConfig(*fusion, config),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("unsupported instruction")));
+  // The Triton config must be left untouched.
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
+                       fusion->backend_config<GpuBackendConfig>());
+  EXPECT_TRUE(gpu_backend_config.fusion_backend_config()
+                  .has_block_level_fusion_config());
 }
 
 TEST_F(NativeEmitterBackendTest, ApplyConfig) {

@@ -16,11 +16,21 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TARGET_CONFIG_GPU_TOPOLOGY_UTILS_H_
 #define XLA_BACKENDS_GPU_TARGET_CONFIG_GPU_TOPOLOGY_UTILS_H_
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
 
 namespace xla::gpu {
+
+// Validates that `gpu_topology` represents a GPU platform or SKU registered in
+// XLA:GPU.
+absl::Status ValidateSupportedGpuTopology(const GpuTopology& gpu_topology);
+
+// Validates that `gpu_topology` represents a GPU platform or SKU registered in
+// XLA:GPU.
+absl::Status ValidateSupportedGpuTopology(
+    const xla::GpuTopologyProto& gpu_topology);
 
 // Returns true if a host with `compiler_topology` can be used to compile for a
 // host with `target_topology`.

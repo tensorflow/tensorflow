@@ -82,6 +82,9 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
             COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION:
           return op::ReplicaId();
         case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
+          if (replica_count == 1) {
+            return op::PartitionId();
+          }
           return op::Add(
               op::Multiply(op::ReplicaId(),
                            op::Constant(LiteralUtil::CreateR0<uint32_t>(
@@ -233,6 +236,64 @@ ENTRY main {
   RunPass(hlo_string, PassAction::kTableLookup,
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
           /*shard_size=*/2, /*shard_dimension=*/1);
+}
+
+TEST_F(ReduceScatterDecomposerTest, TableLookupFlattenedId_SingleReplica) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[4, 8] parameter(0)
+  ROOT rs = f32[4, 4] reduce-scatter(p0), replica_groups={{1, 0}}, channel_id=1, dimensions={1}, to_apply=sum, use_global_device_ids=true
+}
+)";
+  RunPass(hlo_string, PassAction::kTableLookup,
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
+          /*shard_size=*/4, /*shard_dimension=*/1, /*replica_count=*/1);
+}
+
+TEST_F(ReduceScatterDecomposerTest, TrivialFlattenedId_UpdatesLayout) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  ROOT rs = f32[4] reduce-scatter(p0), replica_groups={{0, 1}}, channel_id=1, dimensions={0}, to_apply=sum, use_global_device_ids=true
+}
+)";
+  ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/1,
+                                                /*num_partitions=*/2));
+  int layout_updates = 0;
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ReduceScatterDecomposer(/*update_layout=*/[&](Shape& shape) {
+        shape.mutable_layout()->set_memory_space(1);
+        ++layout_updates;
+      }).Run(module.get()));
+  ASSERT_TRUE(changed);
+  EXPECT_EQ(layout_updates, 3);
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::DynamicSlice(
+                        op::AllReduce(op::Parameter(0)),
+                        op::Multiply(
+                            op::PartitionId(),
+                            op::Constant(LiteralUtil::CreateR0<uint32_t>(4)))));
+  EXPECT_EQ(root->operand(1)->shape().layout().memory_space(), 1);
+  EXPECT_EQ(root->operand(1)->operand(0)->shape().layout().memory_space(), 1);
+  EXPECT_EQ(root->operand(1)->operand(1)->shape().layout().memory_space(), 1);
 }
 
 TEST_F(ReduceScatterDecomposerTest, NoChange) {

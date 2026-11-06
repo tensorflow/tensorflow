@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -52,6 +54,28 @@ limitations under the License.
 namespace xla {
 
 namespace se = ::stream_executor;
+
+bool SupportsCudnnRaggedDotWgrad(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version) {
+  const se::CudaComputeCapability* cuda_cc =
+      gpu_compute_capability.cuda_compute_capability();
+  // RaggedDotRewriter is the only pass that expands ragged-dot into a dense
+  // dot, and downstream cuDNN fusion passes have no fallback if plan creation
+  // fails. cuDNN moe_grouped_matmul_bwd uses a TMA-based cuBLASLt grouped GEMM
+  // kernel. That kernel requires CUDA SM90 through SM119, cuDNN 9.24 or newer,
+  // and cuBLASLt 13.5 from CUDA Toolkit 13.3 or newer.
+  //
+  // The major < kBlackwell_12 check excludes consumer-grade Blackwell GPUs with
+  // SM120 and SM121.
+  // Datacenter Blackwell and Rubin GPUs use major version 10 and satisfy
+  // major < kBlackwell_12.
+  return cuda_cc != nullptr &&
+         cuda_cc->major >= se::CudaComputeCapability::kHopper &&
+         cuda_cc->major < se::CudaComputeCapability::kBlackwell_12 &&
+         cudnn_version >= kMinCudnnVersionForRaggedDotWgradFusion &&
+         toolkit_version >= kMinCudaToolkitVersionForRaggedDotWgradFusion;
+}
 
 namespace {
 
@@ -357,7 +381,8 @@ bool IsBF16Operation(const HloInstruction* ragged_dot) {
 
 bool CanBeHandledByCuDNNFusion(
     const HloInstruction* instruction,
-    stream_executor::dnn::VersionInfo cudnn_version) {
+    const se::GpuComputeCapability& gpu_compute_capability,
+    se::dnn::VersionInfo cudnn_version, se::SemanticVersion toolkit_version) {
   const HloRaggedDotInstruction* ragged_dot =
       DynCast<HloRaggedDotInstruction>(instruction);
   const auto& ragged_dims = ragged_dot->ragged_dot_dimension_numbers();
@@ -370,9 +395,8 @@ bool CanBeHandledByCuDNNFusion(
   RaggedDotMode mode =
       GetRaggedDotMode(lhs_ragged_dim, ragged_dims.dot_dimension_numbers());
   if (mode == RaggedDotMode::kRaggedContracting) {
-    // Wgrad: needs cuDNN's moe_grouped_matmul_bwd, gated separately since it
-    // requires a newer cuDNN than the forward ragged-dot fusion.
-    return cudnn_version >= kMinCudnnVersionForRaggedDotWgradFusion;
+    return SupportsCudnnRaggedDotWgrad(gpu_compute_capability, cudnn_version,
+                                       toolkit_version);
   }
   return mode == RaggedDotMode::kRaggedNonContracting;
 }
@@ -429,7 +453,8 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kRaggedDot) {
         if (ragged_dot_fusion_enabled &&
-            CanBeHandledByCuDNNFusion(instruction, cudnn_version_)) {
+            CanBeHandledByCuDNNFusion(instruction, gpu_compute_capability_,
+                                      cudnn_version_, toolkit_version_)) {
           continue;
         }
         if (has_grouped_gemm && CanBeHandledByGpublasltGroupGemm(

@@ -7443,5 +7443,43 @@ ENTRY main {
   EXPECT_EQ(slice0.offset(), 0);
   EXPECT_GE(buffer0_slice.offset(), slice0.size());
 }
+
+TEST_F(BufferAssignmentTest, PerAllocationHloAccessors) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule PerAllocationHloAccessors, is_scheduled=true
+    ENTRY main {
+      p0 = f32[100] parameter(0)
+      c0 = f32[100] constant(0)
+      add = f32[100] add(p0, c0)
+      log = f32[100] log(add)
+      ROOT slice = f32[1] slice(log), slice={[0:1]}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(
+          module.get(),
+          std::make_unique<SequentialHloOrdering>(module->schedule()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+
+  const HloInstruction* add =
+      module->entry_computation()->GetInstructionWithName("add");
+  const HloValue& add_value =
+      assignment->dataflow_analysis().GetUniqueValueAt(add);
+  const BufferAllocation& alloc = assignment->GetAssignedAllocation(add_value);
+  ASSERT_OK_AND_ASSIGN(const BufferAllocation::Slice expected_slice,
+                       assignment->GetUniqueTopLevelSlice(add));
+
+  EXPECT_TRUE(assignment->assigned_buffers(alloc).contains(&add_value));
+  EXPECT_EQ(assignment->GetAssignedSlice(add_value), expected_slice);
+  EXPECT_FALSE(assignment->PeakMemoryLogicalBuffers(alloc).empty());
+  EXPECT_TRUE(assignment->CrossColorBuffers(alloc).empty());
+  EXPECT_FALSE(assignment->MemoryUsageReport(alloc, "").empty());
+}
 }  // namespace
 }  // namespace xla

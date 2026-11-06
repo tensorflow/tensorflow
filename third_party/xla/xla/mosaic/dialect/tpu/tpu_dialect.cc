@@ -17,10 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
-#include <cstddef>
 #include <cstdint>
-#include <limits>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -37,11 +34,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep.
 #include "llvm/Support/MathExtras.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // IWYU pragma: keep.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -51,13 +45,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep.
-#include "mlir/IR/DialectRegistry.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/Matchers.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
-#include "mlir/IR/ValueRange.h"
-#include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/layout.h"
@@ -81,61 +69,6 @@ llvm::hash_code hash_value(const ::xla::Tile& p) { return absl::HashOf(p); }
 
 namespace mlir::tpu {
 
-namespace {
-
-// Folds div(rem(x, c), c) to 0.
-template <typename DivOp, typename RemOp>
-LogicalResult foldDivOfRem(DivOp div_op, ArrayRef<Attribute> operands,
-                           SmallVectorImpl<OpFoldResult>& results) {
-  CHECK_EQ(operands.size(), 2);
-  auto rem_op = div_op.getLhs().template getDefiningOp<RemOp>();
-  if (!rem_op) {
-    return failure();
-  }
-  Attribute div_cst = operands[1];
-  Attribute rem_cst;
-  matchPattern(rem_op.getRhs(), m_Constant(&rem_cst));
-
-  const bool divisors_match =
-      rem_op.getRhs() == div_op.getRhs() || (div_cst && div_cst == rem_cst);
-  if (!divisors_match) {
-    return failure();
-  }
-  Type type = div_op.getType();
-  if (auto shaped_type = dyn_cast<ShapedType>(type)) {
-    // OpBuilder::getZeroAttr asserts that the type has a static shape. This
-    // can only be triggered by tensor types, which Mosaic does not use.
-    if (!shaped_type.hasStaticShape()) {
-      return failure();
-    }
-  }
-  Attribute zero_attr = Builder(div_op.getContext()).getZeroAttr(type);
-  if (!zero_attr) {
-    return failure();
-  }
-  results.push_back(zero_attr);
-  return success();
-}
-
-struct TpuDialectFoldInterface : public DialectFoldInterface {
-  using DialectFoldInterface::DialectFoldInterface;
-
-  LogicalResult fold(Operation* op, ArrayRef<Attribute> operands,
-                     SmallVectorImpl<OpFoldResult>& results) const final {
-    if (auto div_op = dyn_cast<arith::DivUIOp>(op)) {
-      return foldDivOfRem<arith::DivUIOp, arith::RemUIOp>(div_op, operands,
-                                                          results);
-    }
-    if (auto div_op = dyn_cast<arith::DivSIOp>(op)) {
-      return foldDivOfRem<arith::DivSIOp, arith::RemSIOp>(div_op, operands,
-                                                          results);
-    }
-    return failure();
-  }
-};
-
-}  // namespace
-
 void TPUDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST
@@ -149,19 +82,6 @@ void TPUDialect::initialize() {
 #define GET_OP_LIST
 #include "xla/mosaic/dialect/tpu/tpu_ops.cc.inc"
       >();
-  addInterfaces<TpuDialectFoldInterface>();
-
-  DialectRegistry registry;
-  registry.addExtension(
-      +[](MLIRContext* ctx, arith::ArithDialect* arith_dialect) {
-        arith_dialect->addInterfaces<TpuDialectFoldInterface>();
-      });
-  getContext()->appendDialectRegistry(registry);
-}
-
-Operation* TPUDialect::materializeConstant(OpBuilder& builder, Attribute value,
-                                           Type type, Location loc) {
-  return arith::ConstantOp::materialize(builder, value, type, loc);
 }
 
 /* static */ std::optional<CoreType> TPUDialect::GetCoreTypeAttr(
@@ -194,91 +114,6 @@ LogicalResult TPUDialect::verifyOperationAttribute(Operation* const op,
     }
   }
   return success();
-}
-
-// Rewrites
-//
-//     memref.dim(tpu.memref_slice(..., dynamic_sizes), i)
-//
-// to
-//
-//     dynamic_sizes[dynamicDimIndex(i)]
-//
-// if i is a constant and refers to a dynamic dimension.
-struct MemRefDimOfSlice : public OpRewritePattern<memref::DimOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(memref::DimOp dim_op,
-                                PatternRewriter& rewriter) const override {
-    auto slice_op = dim_op.getSource().getDefiningOp<MemRefSliceOp>();
-    if (!slice_op) {
-      return failure();
-    }
-    const std::optional<int64_t> maybe_dim =
-        getConstantIntValue(dim_op.getDimension());
-    if (!maybe_dim) {
-      return failure();
-    }
-    const int64_t dim = *maybe_dim;
-    MemRefType result_type = slice_op.getType();
-    if (dim < 0 || result_type.getRank() <= dim) {
-      return dim_op.emitWarning("Dimension index is out of bounds");
-    }
-    if (result_type.getDimSize(dim) != ShapedType::kDynamic) {
-      return failure();
-    }
-    const unsigned dynamic_dim_idx = result_type.getDynamicDimIndex(dim);
-    ValueRange dynamic_sizes = slice_op.getDynamicSizes();
-    rewriter.replaceOpWithNewOp<arith::IndexCastOp>(
-        dim_op, dim_op.getType(), dynamic_sizes[dynamic_dim_idx]);
-    return success();
-  }
-};
-
-// Rewrites memref.dim(tpu.memref_squeeze(x)) to memref.dim(x) with the
-// dimension index adjusted to account for squeezed dimensions.
-struct MemRefDimOfSqueeze : public OpRewritePattern<memref::DimOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(memref::DimOp dim_op,
-                                PatternRewriter& rewriter) const override {
-    auto squeeze_op = dim_op.getSource().getDefiningOp<MemRefSqueezeOp>();
-    if (!squeeze_op) {
-      return failure();
-    }
-    const std::optional<int64_t> maybe_dim =
-        getConstantIntValue(dim_op.getDimension());
-    if (!maybe_dim) {
-      return failure();
-    }
-    const int64_t dim = *maybe_dim;
-    MemRefType result_type = squeeze_op.getType();
-    if (dim < 0 || result_type.getRank() <= dim) {
-      return dim_op.emitWarning("Dimension index is out of bounds");
-    }
-    if (result_type.getDimSize(dim) != ShapedType::kDynamic) {
-      return failure();
-    }
-    MemRefType source_type = squeeze_op.getInput().getType();
-    FAILUREOR_ASSIGN_OR_RETURN(
-        SmallVector<int64_t> squeezed,
-        computeSqueezedDimsChecked(squeeze_op, source_type.getShape(),
-                                   result_type.getShape()));
-    int64_t source_dim = dim;
-    for (int64_t squeezed_dim : squeezed) {
-      if (squeezed_dim <= source_dim) {
-        ++source_dim;
-      }
-    }
-    rewriter.replaceOpWithNewOp<memref::DimOp>(dim_op, squeeze_op.getInput(),
-                                               source_dim);
-    return success();
-  }
-};
-
-void TPUDialect::getCanonicalizationPatterns(RewritePatternSet& results) const
-/*override*/ {
-  results.add<MemRefDimOfSlice, MemRefDimOfSqueeze>(getContext());
 }
 
 Operation* GetParentOpWithCoreType(Operation& op) {
@@ -611,28 +446,6 @@ SmallVector<int64_t> TiledLayoutAttr::getExpandedStrides() const {
   return *strides;
 }
 
-SmallVector<int64_t> TiledLayoutAttr::getUnitSubtile(
-    const ArrayRef<xla::Tile> tiles) {
-  assert(!tiles.empty());
-  const int64_t first_tile_rank = tiles.front().dimensions().size();
-  SmallVector<int64_t> unit_subtile(first_tile_rank, 1);
-
-  size_t current_tiled_rank = first_tile_rank;
-  for (const xla::Tile& tile : tiles.drop_front()) {
-    const size_t tile_rank = tile.dimensions().size();
-    // Tiled layout verifier disallows tiles that tile past the first tile.
-    CHECK_LE(tile_rank, current_tiled_rank);
-    for (int64_t i = 0; i < tile_rank; ++i) {
-      const int64_t tiled_dim = current_tiled_rank - tile_rank + i;
-      if (tiled_dim < first_tile_rank) {
-        unit_subtile[tiled_dim] *= tile.dimension(i);
-      }
-    }
-    current_tiled_rank += tile_rank;
-  }
-  return unit_subtile;
-}
-
 bool TiledLayoutAttr::hasDynamicStrides() const {
   return llvm::any_of(getTileStrides(), ShapedType::isDynamic);
 }
@@ -718,241 +531,6 @@ MemRefType getMemRefType(Value value) {
     value = erase_op.getOperand();
   }
   return cast<MemRefType>(value.getType());
-}
-
-std::optional<bool> isDivisible(Value value, int64_t divisor, int64_t fuel);
-
-namespace {
-// Returns true if divisibilities of both lhs and rhs can be proven.
-// Returns false if divisibilities of both lhs and rhs can be disproven.
-// Returns nullopt if any of the two divisibilities is not known.
-std::optional<bool> areAllDivisible(Value lhs, Value rhs, int64_t divisor,
-                                    int64_t fuel) {
-  std::optional<bool> lhs_divisible = isDivisible(lhs, divisor, fuel / 2);
-  // If either is known to be false, the result is false.
-  if (lhs_divisible.has_value() && !*lhs_divisible) {
-    return false;
-  }
-  std::optional<bool> rhs_divisible = isDivisible(rhs, divisor, (fuel + 1) / 2);
-  // If either is known to be false, the result is false.
-  if (rhs_divisible.has_value() && !*rhs_divisible) {
-    return false;
-  }
-
-  // If both are known to be true, the result is true.
-  if (lhs_divisible.has_value() && *lhs_divisible &&
-      rhs_divisible.has_value() && *rhs_divisible) {
-    return true;
-  }
-
-  // Otherwise, the result is unknown.
-  return std::nullopt;
-}
-
-// Returns true if we can prove that at least one of lhs or rhs is divisible.
-// Returns false if we can prove that neither lhs nor rhs is divisible.
-// Returns nullopt if we can't prove that at least one is divisible.
-std::optional<bool> areAnyDivisible(Value lhs, Value rhs, int64_t divisor,
-                                    int64_t fuel) {
-  std::optional<bool> lhs_divisible = isDivisible(lhs, divisor, fuel / 2);
-  // If either is known to be true, the result is true.
-  if (lhs_divisible.has_value() && *lhs_divisible) {
-    return true;
-  }
-  std::optional<bool> rhs_divisible = isDivisible(rhs, divisor, (fuel + 1) / 2);
-
-  // If either is known to be true, the result is true.
-  if (rhs_divisible.has_value() && *rhs_divisible) {
-    return true;
-  }
-
-  // If both are known to be false, the result is false.
-  if (lhs_divisible.has_value() && !*lhs_divisible &&
-      rhs_divisible.has_value() && !*rhs_divisible) {
-    return false;
-  }
-
-  // Otherwise, the result is unknown.
-  return std::nullopt;
-}
-
-// Returns the remainder of the value divided by the divisor, if known.
-std::optional<int64_t> getExplicitRemainder(Value value, int64_t divisor,
-                                            int64_t fuel) {
-  CHECK_GT(divisor, 0);
-  if (divisor == 1) {
-    return 0;
-  }
-  if (fuel <= 0) {
-    return std::nullopt;
-  }
-  if (std::optional<int64_t> cst = getConstantIntValue(value)) {
-    int64_t rem = *cst % divisor;
-    return rem < 0 ? rem + divisor : rem;
-  }
-  if (auto add_op = value.getDefiningOp<arith::AddIOp>()) {
-    std::optional<int64_t> lhs_rem =
-        getRemainder(add_op.getLhs(), divisor, fuel / 2);
-    if (!lhs_rem) {
-      return std::nullopt;
-    }
-    std::optional<int64_t> rhs_rem =
-        getRemainder(add_op.getRhs(), divisor, (fuel + 1) / 2);
-    if (!rhs_rem) {
-      return std::nullopt;
-    }
-    // Remainders are in [0, divisor); subtract first to avoid signed overflow.
-    return *lhs_rem >= divisor - *rhs_rem ? *lhs_rem - (divisor - *rhs_rem)
-                                          : *lhs_rem + *rhs_rem;
-  }
-  return std::nullopt;
-}
-
-// Checks whether `value` is divisible by `divisor` using op-specific
-// structural rules.
-std::optional<bool> isStructurallyDivisible(Value value, int64_t divisor,
-                                            int64_t fuel) {
-  CHECK_GT(divisor, 0);
-  if (divisor == 1) {
-    return true;
-  }
-  if (fuel <= 0) {
-    return std::nullopt;
-  }
-  if (auto block_arg = dyn_cast<BlockArgument>(value)) {
-    auto for_op =
-        dyn_cast_if_present<scf::ForOp>(block_arg.getOwner()->getParentOp());
-    if (for_op && for_op.getInductionVar() == value) {
-      return areAllDivisible(for_op.getLowerBound(), for_op.getStep(), divisor,
-                             fuel);
-    }
-    return std::nullopt;
-  }
-  return llvm::TypeSwitch<Operation*, std::optional<bool>>(
-             value.getDefiningOp())
-      .Case([&](tpu::AssumeMultipleOp assume_op) -> std::optional<bool> {
-        if (assume_op.getMultiple() % divisor == 0) {
-          return true;
-        }
-        return isDivisible(assume_op.getOperand(), divisor, fuel - 1);
-      })
-      .Case([&](arith::MulIOp mul_op) {
-        // Check RHS first, because MLIR canonicalizes constants to the right.
-        for (auto [const_val, other_val] :
-             {std::pair{mul_op.getRhs(), mul_op.getLhs()},
-              std::pair{mul_op.getLhs(), mul_op.getRhs()}}) {
-          std::optional<int64_t> cst = getConstantIntValue(const_val);
-          // Guard against INT64_MIN (e.g. ShapedType::kDynamic), since std::gcd
-          // cannot negate INT64_MIN without signed overflow.
-          if (!cst || *cst == std::numeric_limits<int64_t>::min()) {
-            continue;
-          }
-          if (int64_t gcd = std::gcd(*cst, divisor); gcd > 1) {
-            return isDivisible(other_val, divisor / gcd, fuel - 1);
-          }
-        }
-        return areAnyDivisible(mul_op.getRhs(), mul_op.getLhs(), divisor, fuel);
-      })
-      .Case([&](arith::IndexCastOp cast_op) {
-        return isDivisible(cast_op.getOperand(), divisor, fuel - 1);
-      })
-      .Case<arith::DivUIOp, arith::DivSIOp>(
-          [&](auto div_op) -> std::optional<bool> {
-            // Divisibility of lhs by divisor * rhs is sufficient, not
-            // necessary.
-            std::optional<int64_t> rhs = getConstantIntValue(div_op.getRhs());
-            if (rhs && *rhs > 0 &&
-                divisor <= std::numeric_limits<int64_t>::max() / *rhs &&
-                isGuaranteedDivisible(div_op.getLhs(), divisor * *rhs,
-                                      fuel - 1)) {
-              return true;
-            }
-            return std::nullopt;
-          })
-      .Case([&](arith::SubIOp sub_op) -> std::optional<bool> {
-        std::optional<bool> lhs_div =
-            isDivisible(sub_op.getLhs(), divisor, fuel / 2);
-        if (!lhs_div.has_value()) {
-          return std::nullopt;
-        }
-        std::optional<bool> rhs_div =
-            isDivisible(sub_op.getRhs(), divisor, (fuel + 1) / 2);
-        if (!rhs_div.has_value()) {
-          return std::nullopt;
-        }
-        if (*lhs_div && *rhs_div) {
-          return true;
-        }
-        return *lhs_div != *rhs_div ? std::optional<bool>(false) : std::nullopt;
-      })
-      .Case([&](arith::RemSIOp rem_op) -> std::optional<bool> {
-        if (isGuaranteedDivisible(rem_op.getLhs(), divisor, fuel / 2) &&
-            isGuaranteedDivisible(rem_op.getRhs(), divisor, (fuel + 1) / 2)) {
-          return true;
-        }
-        return std::nullopt;
-      })
-      .Case([&](arith::AndIOp and_op) -> std::optional<bool> {
-        // A mask keeps the low zero bits of either operand which preserves
-        // divisibility by powers of two.
-        if (llvm::isPowerOf2_64(divisor) &&
-            (isGuaranteedDivisible(and_op.getRhs(), divisor, fuel / 2) ||
-             isGuaranteedDivisible(and_op.getLhs(), divisor, (fuel + 1) / 2))) {
-          return true;
-        }
-        return std::nullopt;
-      })
-      .Case<arith::MinSIOp, arith::MinUIOp, arith::MaxSIOp, arith::MaxUIOp>(
-          [&](auto minmax_op) -> std::optional<bool> {
-            std::optional<bool> lhs_div =
-                isDivisible(minmax_op.getLhs(), divisor, fuel / 2);
-            if (!lhs_div.has_value()) {
-              return std::nullopt;
-            }
-            std::optional<bool> rhs_div =
-                isDivisible(minmax_op.getRhs(), divisor, (fuel + 1) / 2);
-            return lhs_div == rhs_div ? lhs_div : std::nullopt;
-          })
-      .Case([&](arith::SelectOp select_op) -> std::optional<bool> {
-        std::optional<bool> true_div =
-            isDivisible(select_op.getTrueValue(), divisor, fuel / 2);
-        if (!true_div.has_value()) {
-          return std::nullopt;
-        }
-        std::optional<bool> false_div =
-            isDivisible(select_op.getFalseValue(), divisor, (fuel + 1) / 2);
-        return true_div == false_div ? true_div : std::nullopt;
-      })
-      .Default(std::nullopt);
-}
-}  // namespace
-
-// Returns the remainder of the value divided by the divisor, if known.
-// If the remainder is unknown, but the value is structurally divisible by the
-// divisor, returns 0. Otherwise, returns nullopt.
-std::optional<int64_t> getRemainder(Value value, int64_t divisor,
-                                    int64_t fuel) {
-  if (auto rem = getExplicitRemainder(value, divisor, fuel)) {
-    return rem;
-  }
-  if (isStructurallyDivisible(value, divisor, fuel) == true) {
-    return 0;
-  }
-  return std::nullopt;
-}
-
-// Returns true if the value is divisible by the divisor.
-// Establishes divisibility by either inferring the remainder value, or
-// through structural analysis.
-std::optional<bool> isDivisible(Value value, int64_t divisor, int64_t fuel) {
-  if (auto rem = getExplicitRemainder(value, divisor, fuel)) {
-    return *rem == 0;
-  }
-  return isStructurallyDivisible(value, divisor, fuel);
-}
-
-bool isGuaranteedDivisible(Value value, int64_t divisor, int64_t fuel) {
-  return isDivisible(value, divisor, fuel).value_or(false);
 }
 
 DotDimensionNumbersAttr defaultDimensionNumbers(Builder& builder,

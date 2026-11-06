@@ -13,11 +13,13 @@
 // limitations under the License.
 // ==============================================================================
 
-// RUN-DISABLED: xla-translate -mlir-hlo-to-hlo-text %s | FileCheck %s
-// RUN: echo 'Test filtered, unfilter once mulhi lowering lands.'
+// RUN: xla-translate -mlir-hlo-to-hlo-text %s | FileCheck %s
 
-func.func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK: s32[4] mulhi
+func.func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>, %arg2: tensor<4xui32>, %arg3: tensor<4xui32>) -> tuple<tensor<4xi32>, tensor<4xui32>> {
+  // CHECK: s32[4] mulhi(
+  // CHECK: u32[4] mulhi(
   %0 = "mhlo.mulhi"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
-  func.return %0 : tensor<4xi32>
+  %1 = "mhlo.mulhi"(%arg2, %arg3) : (tensor<4xui32>, tensor<4xui32>) -> tensor<4xui32>
+  %2 = "mhlo.tuple"(%0, %1) : (tensor<4xi32>, tensor<4xui32>) -> tuple<tensor<4xi32>, tensor<4xui32>>
+  func.return %2 : tuple<tensor<4xi32>, tensor<4xui32>>
 }

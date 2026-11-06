@@ -184,5 +184,191 @@ ENTRY entry {
   CheckCollectivePermuteCSE(hlo_string, expected);
 }
 
+TEST_F(CollectivePermuteCSETest, NestedSliceContained) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4,100] parameter(0)
+  large = f32[4,50] slice(p0), slice={[0:4], [0:50]}
+  c1 = f32[4,50] collective-permute(large), channel_id=1, source_target_pairs={{0,1}}
+  levels = f32[2,100] slice(p0), slice={[1:3], [0:100]}
+  small = f32[1,50] slice(levels), slice={[0:1], [0:50]}
+  c2 = f32[1,50] collective-permute(small), channel_id=2, source_target_pairs={{0,1}}
+  ROOT root = (f32[4,50], f32[1,50]) tuple(c1, c2)
+}
+)";
+  const absl::string_view expected = R"(
+// CHECK: %[[LARGE:.*]] = {{.*}} slice(%{{.*}}), slice={[0:4], [0:50]}
+// CHECK: %[[C1:.*]] = {{.*}} collective-permute(%[[LARGE]])
+// CHECK: %[[SLICE:.*]] = f32[1,50]{{.*}} slice(%[[C1]]), slice={[1:2], [0:50]}
+// CHECK: ROOT {{.*}} tuple(%[[C1]], %[[SLICE]])
+)";
+  CheckCollectivePermuteCSE(hlo_string, expected);
+}
+
+TEST_F(CollectivePermuteCSETest, NestedSlicesSameWindow) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4,100] parameter(0)
+  w1 = f32[1,100] slice(p0), slice={[1:2], [0:100]}
+  c1 = f32[1,100] collective-permute(w1), channel_id=1, source_target_pairs={{0,1}}
+  levels = f32[2,100] slice(p0), slice={[1:3], [0:100]}
+  w2 = f32[1,100] slice(levels), slice={[0:1], [0:100]}
+  c2 = f32[1,100] collective-permute(w2), channel_id=2, source_target_pairs={{0,1}}
+  ROOT root = (f32[1,100], f32[1,100]) tuple(c1, c2)
+}
+)";
+  const absl::string_view expected = R"(
+// CHECK: %[[C1:.*]] = {{.*}} collective-permute(
+// CHECK-NOT: collective-permute(
+// CHECK: ROOT {{.*}} tuple(%[[C1]], %[[C1]])
+)";
+  CheckCollectivePermuteCSE(hlo_string, expected);
+}
+
+TEST_F(CollectivePermuteCSETest, AdjacentWindowsUnionIsWholeArray) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4,100] parameter(0)
+  w1 = f32[3,100] slice(p0), slice={[0:3], [0:100]}
+  w2 = f32[3,100] slice(p0), slice={[1:4], [0:100]}
+  c1 = f32[3,100] collective-permute(w1), channel_id=1, source_target_pairs={{0,1}}
+  c2 = f32[3,100] collective-permute(w2), channel_id=2, source_target_pairs={{0,1}}
+  ROOT root = (f32[3,100], f32[3,100]) tuple(c1, c2)
+}
+)";
+  const absl::string_view expected = R"(
+// CHECK: %[[P0:.*]] = f32[4,100]{{.*}} parameter(0)
+// CHECK: %[[CP:.*]] = f32[4,100]{{.*}} collective-permute(%[[P0]])
+// CHECK-NOT: collective-permute(
+// CHECK-DAG: %[[A:.*]] = f32[3,100]{{.*}} slice(%[[CP]]), slice={[0:3], [0:100]}
+// CHECK-DAG: %[[B:.*]] = f32[3,100]{{.*}} slice(%[[CP]]), slice={[1:4], [0:100]}
+// CHECK: ROOT {{.*}} tuple(%[[A]], %[[B]])
+)";
+  CheckCollectivePermuteCSE(hlo_string, expected);
+}
+
+TEST_F(CollectivePermuteCSETest, AdjacentWindowsUnionIsSlice) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4,100] parameter(0)
+  w1 = f32[1,50] slice(p0), slice={[0:1], [0:50]}
+  w2 = f32[1,50] slice(p0), slice={[1:2], [0:50]}
+  c1 = f32[1,50] collective-permute(w1), channel_id=1, source_target_pairs={{0,1}}
+  c2 = f32[1,50] collective-permute(w2), channel_id=2, source_target_pairs={{0,1}}
+  ROOT root = (f32[1,50], f32[1,50]) tuple(c1, c2)
+}
+)";
+  const absl::string_view expected = R"(
+// CHECK: %[[P0:.*]] = f32[4,100]{{.*}} parameter(0)
+// CHECK: %[[U:.*]] = f32[2,50]{{.*}} slice(%[[P0]]), slice={[0:2], [0:50]}
+// CHECK: %[[CP:.*]] = f32[2,50]{{.*}} collective-permute(%[[U]])
+// CHECK-NOT: collective-permute(
+// CHECK-DAG: %[[A:.*]] = f32[1,50]{{.*}} slice(%[[CP]]), slice={[0:1], [0:50]}
+// CHECK-DAG: %[[B:.*]] = f32[1,50]{{.*}} slice(%[[CP]]), slice={[1:2], [0:50]}
+// CHECK: ROOT {{.*}} tuple(%[[A]], %[[B]])
+)";
+  CheckCollectivePermuteCSE(hlo_string, expected);
+}
+
+TEST_F(CollectivePermuteCSETest, ThreeWindowsUnion) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4,100] parameter(0)
+  w1 = f32[1,100] slice(p0), slice={[0:1], [0:100]}
+  w2 = f32[1,100] slice(p0), slice={[1:2], [0:100]}
+  w3 = f32[3,100] slice(p0), slice={[1:4], [0:100]}
+  c1 = f32[1,100] collective-permute(w1), channel_id=1, source_target_pairs={{0,1}}
+  c2 = f32[1,100] collective-permute(w2), channel_id=2, source_target_pairs={{0,1}}
+  c3 = f32[3,100] collective-permute(w3), channel_id=3, source_target_pairs={{0,1}}
+  ROOT root = (f32[1,100], f32[1,100], f32[3,100]) tuple(c1, c2, c3)
+}
+)";
+  const absl::string_view expected = R"(
+// CHECK: %[[P0:.*]] = f32[4,100]{{.*}} parameter(0)
+// CHECK: %[[CP:.*]] = f32[4,100]{{.*}} collective-permute(%[[P0]])
+// CHECK-NOT: collective-permute(
+// CHECK-DAG: %[[A:.*]] = f32[1,100]{{.*}} slice(%[[CP]]), slice={[0:1], [0:100]}
+// CHECK-DAG: %[[B:.*]] = f32[1,100]{{.*}} slice(%[[CP]]), slice={[1:2], [0:100]}
+// CHECK-DAG: %[[C:.*]] = f32[3,100]{{.*}} slice(%[[CP]]), slice={[1:4], [0:100]}
+// CHECK: ROOT {{.*}} tuple(%[[A]], %[[B]], %[[C]])
+)";
+  CheckCollectivePermuteCSE(hlo_string, expected);
+}
+
+TEST_F(CollectivePermuteCSETest, DisjointWindowsNotMerged) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4,100] parameter(0)
+  w1 = f32[1,100] slice(p0), slice={[0:1], [0:100]}
+  w2 = f32[1,100] slice(p0), slice={[2:3], [0:100]}
+  c1 = f32[1,100] collective-permute(w1), channel_id=1, source_target_pairs={{0,1}}
+  c2 = f32[1,100] collective-permute(w2), channel_id=2, source_target_pairs={{0,1}}
+  ROOT root = (f32[1,100], f32[1,100]) tuple(c1, c2)
+}
+)";
+  CheckCollectivePermuteCSE(hlo_string, std::nullopt);
+}
+
+TEST_F(CollectivePermuteCSETest, WindowsDifferingInTwoDimsNotMerged) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4,100] parameter(0)
+  w1 = f32[1,50] slice(p0), slice={[0:1], [0:50]}
+  w2 = f32[1,50] slice(p0), slice={[1:2], [50:100]}
+  c1 = f32[1,50] collective-permute(w1), channel_id=1, source_target_pairs={{0,1}}
+  c2 = f32[1,50] collective-permute(w2), channel_id=2, source_target_pairs={{0,1}}
+  ROOT root = (f32[1,50], f32[1,50]) tuple(c1, c2)
+}
+)";
+  CheckCollectivePermuteCSE(hlo_string, std::nullopt);
+}
+
+TEST_F(CollectivePermuteCSETest, AdjacentWindowsDifferentPairsNotMerged) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[4,100] parameter(0)
+  w1 = f32[1,100] slice(p0), slice={[0:1], [0:100]}
+  w2 = f32[1,100] slice(p0), slice={[1:2], [0:100]}
+  c1 = f32[1,100] collective-permute(w1), channel_id=1, source_target_pairs={{0,1}}
+  c2 = f32[1,100] collective-permute(w2), channel_id=2, source_target_pairs={{1,0}}
+  ROOT root = (f32[1,100], f32[1,100]) tuple(c1, c2)
+}
+)";
+  CheckCollectivePermuteCSE(hlo_string, std::nullopt);
+}
+
+TEST_F(CollectivePermuteCSETest, StridedSliceChainNotComposed) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[8,100] parameter(0)
+  even = f32[4,100] slice(p0), slice={[0:8:2], [0:100]}
+  w1 = f32[1,100] slice(even), slice={[0:1], [0:100]}
+  w2 = f32[1,100] slice(p0), slice={[1:2], [0:100]}
+  c1 = f32[1,100] collective-permute(w1), channel_id=1, source_target_pairs={{0,1}}
+  c2 = f32[1,100] collective-permute(w2), channel_id=2, source_target_pairs={{0,1}}
+  ROOT root = (f32[1,100], f32[1,100]) tuple(c1, c2)
+}
+)";
+  CheckCollectivePermuteCSE(hlo_string, std::nullopt);
+}
+
 }  // namespace
 }  // namespace xla

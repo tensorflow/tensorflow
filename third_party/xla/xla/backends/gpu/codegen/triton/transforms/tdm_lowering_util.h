@@ -38,9 +38,14 @@ llvm::SmallVector<int64_t> GetSingletonTileDims(
 //   - non-unit tile strides
 //   - tiles the singleton fold cannot turn into a valid TDM box
 //   - tiles whose surviving minor-most dim spans fewer than 2 dwords
+//   - tiles with a singleton dim whose offset is not provably in bounds
 //
 // Singleton (size-1) tile dims are folded into the base pointer (at any
 // position, not just trailing) and dropped from the descriptor.
+// Folded dims are no longer bounds checked by the hardware, so their offsets
+// must be provably within [0, original_shape) (e.g. tiles of a high-padded
+// operand may have offsets past the end of the dimension); otherwise TDM is
+// declined and the masked pointer lowering is used.
 // TDM requires the descriptor's minor-most dim to have global stride 1. After
 // folding, that dim is the minor-most survivor, which keeps stride 1 only if no
 // folded singleton was more-minor than it. A batch-major operand [1, M, K]
@@ -60,7 +65,7 @@ llvm::SmallVector<int64_t> GetSingletonTileDims(
                           llvm::ArrayRef<int64_t> tile_sizes,
                           llvm::ArrayRef<int64_t> tile_strides,
                           llvm::ArrayRef<int64_t> minor_to_major_layout,
-                          int64_t element_bit_width);
+                          ValueRange tile_offsets, int64_t element_bit_width);
 
 // Wraps CanUseTdm, logging the reason when TDM is declined.
 bool TdmAllowed(const ::xla::Decision& decision);

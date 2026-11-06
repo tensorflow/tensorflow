@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/Argument.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -44,11 +45,10 @@ limitations under the License.
 #include "llvm/Support/Alignment.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/llvm/parallel_loop_emitter.h"
-#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
@@ -77,12 +77,8 @@ std::vector<llvm_ir::IrArray> IrArraysFor(
        llvm::zip(kernel_arguments.args(), kernel->args())) {
     llvm::Type* ir_type =
         llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_arg.getContext());
-    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
-
-    if (!kernel_argument.written()) {
-      ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
-    }
-    ir_arrays.push_back(ir_array);
+    ir_arrays.push_back(
+        llvm_ir::IrArray(&llvm_arg, ir_type, kernel_argument.shape()));
   }
   return ir_arrays;
 }
@@ -197,9 +193,10 @@ void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
 
 // Input = {dynamic array(with dynamic dimension meta data at the
 // end)} Output = {static array, dynamic_dim0, dynamic_dim1}
-absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
-    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
-    const emitters::KernelArguments& kernel_arguments) {
+absl::StatusOr<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>
+EmitPadToStaticLLVMIR(const HloCustomCallInstruction* hlo,
+                      IrEmitterContext* ir_emitter_context,
+                      const emitters::KernelArguments& kernel_arguments) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   std::string op_name = std::string(hlo->name());
 
@@ -336,21 +333,17 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitPadToStaticLLVMIR(
                                       launch_dimensions, &b, kUnrollFactor)
                       .EmitLoop(op_name, index_ty));
 
-  ABSL_ASSIGN_OR_RETURN(
-      KernelSpec kernel_spec,
-      emitters::GetKernelSpec(sanitized_kernel_name, *hlo,
-                              &ir_emitter_context->buffer_assignment(),
-                              launch_dimensions.AsWorkDimensions()));
-  return KernelDefinition<LlvmKernelSource>(
-      std::move(kernel_spec),
+  return KernelDefinition<LlvmKernelSource, GpuKernelSpec>(
+      GpuKernelSpec{sanitized_kernel_name, launch_dimensions, kernel_arguments},
       LlvmKernelSource{std::move(llvm_context), std::move(llvm_module)});
 }
 
 // Input = {dynamic array(with dynamic dimension meta data at the
 // end)} Output = {static array, dynamic_dim0, dynamic_dim1}
-absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
-    const HloCustomCallInstruction* hlo, IrEmitterContext* ir_emitter_context,
-    const emitters::KernelArguments& kernel_arguments) {
+absl::StatusOr<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>
+EmitSliceToDynamicLLVMIR(const HloCustomCallInstruction* hlo,
+                         IrEmitterContext* ir_emitter_context,
+                         const emitters::KernelArguments& kernel_arguments) {
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   std::string op_name = std::string(hlo->name());
 
@@ -478,17 +471,12 @@ absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitSliceToDynamicLLVMIR(
                                       launch_dimensions, &b, kUnrollFactor)
                       .EmitLoop(op_name, index_ty));
 
-  ABSL_ASSIGN_OR_RETURN(
-      KernelSpec kernel_spec,
-      emitters::GetKernelSpec(sanitized_kernel_name, *hlo,
-                              &ir_emitter_context->buffer_assignment(),
-                              launch_dimensions.AsWorkDimensions()));
-  return KernelDefinition<LlvmKernelSource>(
-      std::move(kernel_spec),
+  return KernelDefinition<LlvmKernelSource, GpuKernelSpec>(
+      GpuKernelSpec{sanitized_kernel_name, launch_dimensions, kernel_arguments},
       LlvmKernelSource{std::move(llvm_context), std::move(llvm_module)});
 }
 
-absl::StatusOr<KernelDefinition<LlvmKernelSource>>
+absl::StatusOr<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>
 EmitRngGetAndUpdateStateLLVMIR(
     const HloRngGetAndUpdateStateInstruction* hlo,
     IrEmitterContext* ir_emitter_context,
@@ -522,13 +510,8 @@ EmitRngGetAndUpdateStateLLVMIR(
       &b, "rng_state_address");
   b.CreateStore(old_state, output_address);
 
-  ABSL_ASSIGN_OR_RETURN(
-      KernelSpec kernel_spec,
-      emitters::GetKernelSpec(sanitized_kernel_name, *hlo,
-                              &ir_emitter_context->buffer_assignment(),
-                              launch_dimensions.AsWorkDimensions()));
-  return KernelDefinition<LlvmKernelSource>(
-      std::move(kernel_spec),
+  return KernelDefinition<LlvmKernelSource, GpuKernelSpec>(
+      GpuKernelSpec{sanitized_kernel_name, launch_dimensions, kernel_arguments},
       LlvmKernelSource{std::move(llvm_context), std::move(llvm_module)});
 }
 

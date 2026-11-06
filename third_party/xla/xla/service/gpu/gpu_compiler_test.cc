@@ -29,6 +29,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/log_severity.h"
 #include "absl/log/check.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/error_spec.h"
+#include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -68,6 +71,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -79,28 +83,41 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/export_hlo.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_proto_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/xla_debug_info_manager.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/gtl/value_or_die.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -114,16 +131,67 @@ namespace m = ::xla::match;
 
 using ::testing::AssertionResult;
 using ::testing::AtLeast;
+using ::testing::Contains;
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 using ::testing::EndsWith;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
+using ::testing::Pair;
+using ::testing::SizeIs;
 using ::testing::TempDir;
 using ::testing::TestParamInfo;
 using ::testing::Values;
 using ::tsl::gtl::ValueOrDie;
+using ::tsl::proto_testing::EqualsProto;
+
+class GpuCompilerAlgebraicSimplifierTest
+    : public HloHardwareIndependentTestBase {};
+
+TEST_F(GpuCompilerAlgebraicSimplifierTest,
+       ConvolutionCanonicalizationRespectsFastMinMax) {
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule minmax
+
+ENTRY main {
+  p = f32[] parameter(0)
+  negative_infinity = f32[] constant(-inf)
+  positive_infinity = f32[] constant(inf)
+  maximum = f32[] maximum(p, negative_infinity)
+  minimum = f32[] minimum(p, positive_infinity)
+  ROOT result = (f32[], f32[]) tuple(maximum, minimum)
+}
+)hlo";
+  for (bool fast_min_max : {false, true}) {
+    SCOPED_TRACE(fast_min_max);
+    for (bool is_non_cuda_platform : {false, true}) {
+      SCOPED_TRACE(is_non_cuda_platform);
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                           ParseAndReturnVerifiedModule(kHloText));
+      DebugOptions debug_options = GetDebugOptionsForTest();
+      debug_options.set_xla_gpu_enable_fast_min_max(fast_min_max);
+      AlgebraicSimplifier simplifier(GpuCompiler::GetAlgebraicSimplifierOptions(
+          GpuCompiler::AlgebraicSimplifierMode::
+              kGpuConvoluationCanonicalization,
+          debug_options, is_non_cuda_platform));
+      EXPECT_THAT(simplifier.Run(module.get()),
+                  absl_testing::IsOkAndHolds(!fast_min_max));
+      const HloInstruction* root =
+          module->entry_computation()->root_instruction();
+      if (fast_min_max) {
+        EXPECT_THAT(root, GmockMatch(m::Tuple(
+                              m::Maximum(m::Parameter(0), m::Constant()),
+                              m::Minimum(m::Parameter(0), m::Constant()))));
+      } else {
+        EXPECT_THAT(root,
+                    GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(0))));
+      }
+    }
+  }
+}
 
 class GpuCompilerTest
     : public HloInterpreterReferenceMixin<HloPjRtGpuTestBase> {
@@ -136,8 +204,11 @@ class GpuCompilerTest
     return device_description().rocm_compute_capability();
   }
 
+  // Must match the fusion-dispatch pipeline check in
+  // GpuCompiler::RunPostSchedulingPipelines.
   bool RunsFusionDispatchPipeline() const {
-    return get_cuda_cc().IsAtLeastAmpere() || get_rocm_cc().gfx9_mi300_series();
+    return get_cuda_cc().IsAtLeastAmpere() ||
+           device_description().gpu_compute_capability().IsRocm();
   }
 };
 
@@ -267,16 +338,224 @@ ENTRY main {
   ROOT neg = f32[10]{0} negate(p)
 }
 )";
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                       ParseAndReturnVerifiedModule(hlo_text));
-  int module_id = module->unique_id();
+  // Compiles a fresh module with the given `embed_hlo_module` option and
+  // returns whether the module is tracked by the XlaDebugInfoManager while the
+  // executable is alive. We call RunBackend directly because the test runner
+  // doesn't take compile options. It also compiles a copy of the module that
+  // it recreates from `ToProto()`, so the compiled module has a different
+  // unique_id than the one we would check.
+  auto is_tracked_after_compilation =
+      [&](bool embed_hlo_module) -> absl::StatusOr<bool> {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                     ParseAndReturnVerifiedModule(hlo_text));
+    int module_id = module->unique_id();
+    Compiler::CompileOptions compile_options;
+    compile_options.gpu_topology = GetSingleDeviceGpuTopology(
+        /*platform_version=*/"", gpu_target_config());
+    compile_options.embed_hlo_module = embed_hlo_module;
+    ABSL_ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        compiler()->RunBackend(std::move(module),
+                               /*executor=*/nullptr, compile_options));
+    EXPECT_EQ(executable->has_module(), embed_hlo_module);
+    return XlaDebugInfoManager::Get()->TracksModule(module_id);
+  };
+
+  // Regular compilations embed the module and register it, which makes sure
+  // that the check below is meaningful.
+  EXPECT_THAT(is_tracked_after_compilation(/*embed_hlo_module=*/true),
+              absl_testing::IsOkAndHolds(true));
+  // Autotuning compilations don't embed the module and don't register it.
+  EXPECT_THAT(is_tracked_after_compilation(/*embed_hlo_module=*/false),
+              absl_testing::IsOkAndHolds(false));
+}
+
+// Non-scalar constants are not emitted as initializers in the LLVM IR. Instead
+// the executable keeps their content around and copies it to the device on the
+// first execution. This test makes sure that the content stays valid when the
+// HloModule is not embedded in the executable and therefore gets destroyed at
+// the end of the compilation. The content of the f32 constant aliases the
+// module's literal, while the content of the s4 constant is already owned
+// because it gets packed into a new buffer.
+TEST_F(GpuCompilerTest, ConstantsOutliveModuleThatIsNotEmbedded) {
+  constexpr int kNumElements = 1024;
+  constexpr int64_t kSizeInBytes = kNumElements * sizeof(float);
+  constexpr int64_t kS4SizeInBytes = kNumElements / 2;
+  std::vector<float> constant_values(kNumElements);
+  absl::c_iota(constant_values, 1.0f);
+  std::vector<int> s4_constant_values(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
+    s4_constant_values[i] = i % 16 - 8;
+  }
+  const std::string hlo_text = absl::Substitute(
+      R"(
+HloModule test
+
+ENTRY main {
+  p = f32[$0]{0} parameter(0)
+  c = f32[$0]{0} constant({$1})
+  c_s4 = s4[$0]{0} constant({$2})
+  add = f32[$0]{0} add(p, c)
+  convert = f32[$0]{0} convert(c_s4)
+  ROOT result = f32[$0]{0} add(add, convert)
+})",
+      kNumElements, absl::StrJoin(constant_values, ","),
+      absl::StrJoin(s4_constant_values, ","));
+
+  ASSERT_OK_AND_ASSIGN(
+      se::Platform * platform,
+      se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
   Compiler::CompileOptions compile_options;
   compile_options.embed_hlo_module = false;
+  std::unique_ptr<Executable> executable;
+  {
+    // The module is parsed from text (and not cloned from another module), so
+    // no other module shares the constant's literal. The module gets destroyed
+    // at the end of RunBackend.
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text));
+    // Constant folding would turn convert(c_s4) into an f32 constant.
+    module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+        "constant_folding");
+    ASSERT_OK_AND_ASSIGN(
+        module,
+        compiler()->RunHloPasses(std::move(module), executor, compile_options));
+    ASSERT_OK_AND_ASSIGN(
+        executable,
+        compiler()->RunBackend(std::move(module), executor, compile_options));
+  }
+  ASSERT_FALSE(executable->has_module());
+
+  const auto* gpu_executable =
+      absl::down_cast<const GpuExecutable*>(executable.get());
+  ASSERT_THAT(gpu_executable->constants(), SizeIs(2));
+  auto find_content = [&](int64_t size_in_bytes) {
+    for (const GpuExecutable::ConstantInfo& constant :
+         gpu_executable->constants()) {
+      if (constant.content.span().size() == size_in_bytes) {
+        return constant.content.span();
+      }
+    }
+    return absl::Span<const uint8_t>();
+  };
+
+  absl::Span<const uint8_t> content = find_content(kSizeInBytes);
+  ASSERT_EQ(content.size(), kSizeInBytes);
+  EXPECT_THAT(absl::MakeConstSpan(
+                  reinterpret_cast<const float*>(content.data()), kNumElements),
+              ElementsAreArray(constant_values));
+
+  // s4 values are packed two per byte, starting with the low nibble.
+  absl::Span<const uint8_t> s4_content = find_content(kS4SizeInBytes);
+  ASSERT_EQ(s4_content.size(), kS4SizeInBytes);
+  std::vector<uint8_t> expected_s4_content(kS4SizeInBytes);
+  for (int i = 0; i < kS4SizeInBytes; ++i) {
+    expected_s4_content[i] = (s4_constant_values[2 * i] & 0xF) |
+                             ((s4_constant_values[2 * i + 1] & 0xF) << 4);
+  }
+  EXPECT_THAT(s4_content, ElementsAreArray(expected_s4_content));
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  ASSERT_OK_AND_ASSIGN(se::Stream * stream,
+                       allocator.GetStream(executor->device_ordinal()));
+  std::vector<float> input(kNumElements, 1000.0f);
   ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<OpaqueExecutable> executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/false));
-  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(module_id));
+      se::ScopedDeviceAddress<uint8_t> input_buffer,
+      allocator.Allocate(executor->device_ordinal(), kSizeInBytes));
+  ASSERT_OK(stream->Memcpy(input_buffer.ptr(), input.data(), kSizeInBytes));
+
+  std::vector<ExecutionInput> arguments;
+  arguments.emplace_back(ShapeUtil::MakeShape(F32, {kNumElements}));
+  arguments.back().SetUnownedBuffer(
+      /*index=*/{}, MaybeOwningDeviceAddress(/*unowned=*/*input_buffer));
+
+  ExecutableRunOptions run_options;
+  run_options.set_device_ordinal(executor->device_ordinal());
+  run_options.set_stream(stream);
+  run_options.set_allocator(&allocator);
+  ServiceExecutableRunOptions service_run_options(run_options);
+  ASSERT_OK_AND_ASSIGN(ExecutionOutput output,
+                       executable->ExecuteAsyncOnStream(&service_run_options,
+                                                        std::move(arguments)));
+
+  std::vector<float> result(kNumElements);
+  ASSERT_OK(stream->Memcpy(result.data(), output.Result().root_buffer(),
+                           kSizeInBytes));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::vector<float> expected(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
+    expected[i] = input[i] + constant_values[i] + s4_constant_values[i];
+  }
+  EXPECT_THAT(result, ElementsAreArray(expected));
 }
+
+class GpuCompilerConstantContentTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<bool> {};
+
+// With an embedded module the constants keep aliasing the module's literals, so
+// RunBackend doesn't copy them. Without an embedded module the constants own a
+// copy of their content. Unlike ConstantsOutliveModuleThatIsNotEmbedded this
+// test doesn't need ASAN to detect a regression.
+TEST_P(GpuCompilerConstantContentTest,
+       ConstantsAliasLiteralsOnlyIfModuleIsEmbedded) {
+  const bool embed_hlo_module = GetParam();
+  constexpr absl::string_view kHloText = R"(
+HloModule test
+
+ENTRY main {
+  p = f32[4]{0} parameter(0)
+  c = f32[4]{0} constant({1, 2, 3, 4})
+  ROOT add = f32[4]{0} add(p, c)
+})";
+
+  ASSERT_OK_AND_ASSIGN(
+      se::Platform * platform,
+      se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.embed_hlo_module = embed_hlo_module;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(
+      module,
+      compiler()->RunHloPasses(std::move(module), executor, compile_options));
+  const HloInstruction* constant =
+      FindInstruction(module.get(), HloOpcode::kConstant);
+  ASSERT_NE(constant, nullptr);
+  const void* literal_data = constant->literal().untyped_data();
+  // The clone shares the constant's literal with `module`, so the literal stays
+  // alive and its address can't be reused for the constant's content.
+  std::unique_ptr<HloModule> clone = module->Clone();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(module), executor, compile_options));
+  EXPECT_EQ(executable->has_module(), embed_hlo_module);
+
+  const auto* gpu_executable =
+      absl::down_cast<const GpuExecutable*>(executable.get());
+  ASSERT_THAT(gpu_executable->constants(), SizeIs(1));
+  const void* content_data =
+      gpu_executable->constants().front().content.span().data();
+  if (embed_hlo_module) {
+    EXPECT_EQ(content_data, literal_data);
+  } else {
+    EXPECT_NE(content_data, literal_data);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(EmbedHloModule, GpuCompilerConstantContentTest,
+                         ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "Embedded" : "NotEmbedded";
+                         });
 
 TEST_F(GpuCompilerTest, CopyInsertionFusion) {
   const char* hlo_text = R"(
@@ -1000,7 +1279,7 @@ TEST_F(
     GpuCompilerTest,
     FusionBlockLevelRewriterRewritesKLoopTransposeWithBitcastIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ or MI300+ to "
+    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ or ROCm to "
                     "run.";
   }
 
@@ -1148,6 +1427,40 @@ ENTRY main {
   EXPECT_EQ(async_start_thunk->thunks().size(), 1);
   EXPECT_THAT(async_start_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kCublasLtMatmul)));
+}
+
+TEST_F(GpuCompilerTest, SanitizesConstantNamesInParallelExecutionThread) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+f {
+  ROOT c.1 = f32[] constant(41)
+}
+
+ENTRY main {
+  ROOT call = f32[] call(),
+    to_apply=f,
+    frontend_attributes={_xla_stream_annotation="1"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  compile_options.early_exit_with_layouts = false;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(optimized_module),
+                             /*executor=*/nullptr, compile_options));
 }
 
 TEST_F(GpuCompilerTest, StreamAnnotationThunkTestFDO) {
@@ -1371,7 +1684,7 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
 
 TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "fusion-dispatch requires Ampere+ or MI300+ to run.";
+    GTEST_SKIP() << "fusion-dispatch requires Ampere+ or ROCm to run.";
   }
 
   DebugOptions debug_options = GetDebugOptionsForTest();
@@ -3992,5 +4305,141 @@ ENTRY %main (a: f32[4]) -> f32[4] {
   }
 }
 
+namespace {
+
+std::string FingerprintProto(const tsl::protobuf::MessageLite& proto) {
+  return absl::StrCat(tsl::DeterministicProtoHash64(proto));
+}
+
+class RecordingSymbolUploader : public SymbolUploader {
+ public:
+  std::optional<std::string> MaybeUploadUnoptimizedHloModule(
+      HloModule* module,
+      const se::GpuTargetConfigProto& gpu_target_config) override {
+    std::string fingerprint = FingerprintProto(module->ToProto());
+    unoptimized_fingerprints_.push_back(fingerprint);
+    return fingerprint;
+  }
+
+  std::optional<std::string> MaybeUploadOptimizedHloModule(
+      const HloProto& hlo_proto) override {
+    std::string fingerprint = FingerprintProto(hlo_proto);
+    optimized_protos_.push_back(hlo_proto);
+    optimized_fingerprints_.push_back(fingerprint);
+    return fingerprint;
+  }
+
+  void MaybeUploadSymbolMapping(
+      absl::string_view unoptimized_fingerprint,
+      absl::string_view optimized_fingerprint) override {
+    symbol_mappings_.emplace_back(unoptimized_fingerprint,
+                                  optimized_fingerprint);
+  }
+
+  void WaitForUploads() override {}
+
+  const std::vector<std::string>& unoptimized_fingerprints() const {
+    return unoptimized_fingerprints_;
+  }
+  const std::vector<HloProto>& optimized_protos() const {
+    return optimized_protos_;
+  }
+  const std::vector<std::string>& optimized_fingerprints() const {
+    return optimized_fingerprints_;
+  }
+  const std::vector<std::pair<std::string, std::string>>& symbol_mappings()
+      const {
+    return symbol_mappings_;
+  }
+
+ private:
+  std::vector<std::string> unoptimized_fingerprints_;
+  std::vector<HloProto> optimized_protos_;
+  std::vector<std::string> optimized_fingerprints_;
+  std::vector<std::pair<std::string, std::string>> symbol_mappings_;
+};
+
+class ScopedSymbolUploader {
+ public:
+  explicit ScopedSymbolUploader(std::unique_ptr<SymbolUploader> uploader)
+      : previous_(
+            GetGlobalSymbolUploaderRegistry().Register(std::move(uploader))) {}
+
+  ~ScopedSymbolUploader() {
+    GetGlobalSymbolUploaderRegistry().Register(std::move(previous_));
+  }
+
+ private:
+  std::unique_ptr<SymbolUploader> previous_;
+};
+
+TEST_F(GpuCompilerTest,
+       UploadsOptimizedHloWithBufferAssignmentAfterRunBackend) {
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule test
+
+ENTRY main {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+)hlo";
+
+  auto uploader = std::make_unique<RecordingSymbolUploader>();
+  const RecordingSymbolUploader* uploader_ptr = uploader.get();
+  ScopedSymbolUploader scoped_uploader(std::move(uploader));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+  ASSERT_THAT(uploader_ptr->unoptimized_fingerprints(), SizeIs(1));
+  EXPECT_EQ(optimized_module->unoptimized_fingerprint(),
+            uploader_ptr->unoptimized_fingerprints()[0]);
+  EXPECT_THAT(uploader_ptr->optimized_protos(), IsEmpty());
+  EXPECT_THAT(uploader_ptr->optimized_fingerprints(), IsEmpty());
+  EXPECT_THAT(uploader_ptr->symbol_mappings(), IsEmpty());
+  const std::string post_hlo_passes_fingerprint =
+      FingerprintProto(MakeHloProto(*optimized_module));
+
+  std::unique_ptr<HloModule> cloned_module = optimized_module->Clone();
+  EXPECT_EQ(cloned_module->unoptimized_fingerprint(),
+            uploader_ptr->unoptimized_fingerprints()[0]);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(cloned_module), /*executor=*/nullptr,
+                             compile_options));
+  ASSERT_THAT(uploader_ptr->optimized_protos(), SizeIs(1));
+  ASSERT_THAT(uploader_ptr->optimized_fingerprints(), SizeIs(1));
+  EXPECT_TRUE(uploader_ptr->optimized_protos()[0].hlo_module().has_schedule());
+
+  const auto* gpu_executable =
+      absl::down_cast<const GpuExecutable*>(executable.get());
+  EXPECT_THAT(uploader_ptr->optimized_protos()[0].buffer_assignment(),
+              EqualsProto(gpu_executable->buffer_assignment_proto()));
+  EXPECT_NE(uploader_ptr->optimized_fingerprints()[0],
+            post_hlo_passes_fingerprint);
+  EXPECT_THAT(uploader_ptr->symbol_mappings(),
+              ElementsAre(Pair(uploader_ptr->unoptimized_fingerprints()[0],
+                               uploader_ptr->optimized_fingerprints()[0])));
+
+  XlaDebugInfoManager::Get()->StartTracing();
+  std::vector<std::unique_ptr<HloProto>> traced_hlo_protos;
+  XlaDebugInfoManager::Get()->StopTracing(&traced_hlo_protos);
+  std::vector<std::string> profiled_fingerprints;
+  for (const std::unique_ptr<HloProto>& traced_hlo_proto : traced_hlo_protos) {
+    profiled_fingerprints.push_back(FingerprintProto(*traced_hlo_proto));
+  }
+  EXPECT_THAT(profiled_fingerprints,
+              Contains(uploader_ptr->optimized_fingerprints()[0]));
+}
+
+}  // namespace
 }  // namespace gpu
 }  // namespace xla

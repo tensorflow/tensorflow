@@ -629,7 +629,6 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -728,6 +727,7 @@ sycl_library(
     ],
     deps = [
         ":onednn_util",
+        "//xla:xla_data_proto_cc",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:statusor",

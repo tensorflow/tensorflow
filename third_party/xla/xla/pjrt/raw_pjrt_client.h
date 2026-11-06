@@ -127,7 +127,6 @@ class PjRtExecutableLoadState
     LocalDeviceId local_device_id;
     GlobalDeviceId global_device_id;
     int process_index;
-    std::shared_ptr<DeviceAssignment> device_assignment;
     std::optional<int32_t> slice_id;
     int replica;
     int partition;
@@ -135,6 +134,8 @@ class PjRtExecutableLoadState
 
   virtual void Delete() = 0;
   virtual bool IsDeleted() const = 0;
+
+  virtual absl::Status ClearExecutionState() { return absl::OkStatus(); }
 
   virtual absl::Status Preload(PjRtExecutable* executable) {
     return absl::OkStatus();
@@ -334,7 +335,8 @@ class PjRtRawClient {
     return {tsl::AsyncValueRef<T>(std::move(indirect)), std::move(fulfill_cb)};
   }
 
-  virtual tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() {
+  virtual absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
+  MakeLoadState(const LoadOptions& load_options) {
     LOG(FATAL) << "Implement MakeLoadState()";
   }
 

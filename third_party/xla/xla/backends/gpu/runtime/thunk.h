@@ -40,6 +40,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_kind.pb.h"
@@ -211,6 +213,30 @@ class Thunk {
   // work or do any expensive initialization and only pass resource requirements
   // back to executable, i.e. request collective cliques required at run time.
   struct PrepareParams {
+    PrepareParams(se::StreamExecutor* absl_nonnull executor,
+                  const BufferAllocations* absl_nonnull buffer_allocations,
+                  CommandBufferRequests* absl_nonnull command_buffer_requests)
+        : executor(executor),
+          buffer_allocations(buffer_allocations),
+          command_buffer_requests(command_buffer_requests) {}
+
+    PrepareParams(const CollectiveParams* collective_params,
+                  CollectiveCliqueRequests* collective_clique_requests,
+                  CollectiveMemoryRequests* collective_memory_requests,
+                  se::StreamExecutor* absl_nonnull executor,
+                  const BufferAllocations* absl_nonnull buffer_allocations,
+                  ExecutionScopedState* execution_scoped_state,
+                  const CustomOptions* custom_options,
+                  CommandBufferRequests* absl_nonnull command_buffer_requests)
+        : collective_params(collective_params),
+          collective_clique_requests(collective_clique_requests),
+          collective_memory_requests(collective_memory_requests),
+          executor(executor),
+          buffer_allocations(buffer_allocations),
+          execution_scoped_state(execution_scoped_state),
+          custom_options(custom_options),
+          command_buffer_requests(command_buffer_requests) {}
+
     // Parameters for executing collective operations.
     const CollectiveParams* collective_params = nullptr;
     // Clique requests for preparing collective communicators.
@@ -219,14 +245,17 @@ class Thunk {
     CollectiveMemoryRequests* collective_memory_requests = nullptr;
 
     // Stream executor for the thunk.
-    se::StreamExecutor* absl_nonnull executor = nullptr;
+    se::StreamExecutor* absl_nonnull executor;
     // Buffer allocations for the thunk.
-    const BufferAllocations* absl_nonnull buffer_allocations = nullptr;
+    const BufferAllocations* absl_nonnull buffer_allocations;
     // Execution scoped state shared between prepare, initialize and execute.
     ExecutionScopedState* execution_scoped_state = nullptr;
 
     // Per-execution custom options.
     const CustomOptions* custom_options = nullptr;
+
+    // Command buffer execution requests configured during prepare.
+    CommandBufferRequests* absl_nonnull command_buffer_requests;
   };
 
   //===--------------------------------------------------------------------===//
@@ -237,6 +266,50 @@ class Thunk {
   // launch any "work" on device and only initialize thunks for execution, i.e.
   // we pre-load kernels on device and instantiate all command buffers.
   struct InitializeParams {
+    explicit InitializeParams(
+        const CommandBufferRequests* absl_nonnull command_buffer_requests)
+        : command_buffer_requests(command_buffer_requests) {}
+
+    InitializeParams(
+        se::StreamExecutor* executor, ExecutableSource src,
+        const BufferAllocations* buffer_allocations, se::Stream* stream,
+        se::Stream* command_buffer_trace_stream,
+        const CommandBufferRequests* absl_nonnull command_buffer_requests)
+        : executor(executor),
+          src(std::move(src)),
+          buffer_allocations(buffer_allocations),
+          stream(stream),
+          command_buffer_trace_stream(command_buffer_trace_stream),
+          command_buffer_requests(command_buffer_requests) {}
+
+    InitializeParams(
+        se::StreamExecutor* executor, ExecutableSource src,
+        const BufferAllocations* buffer_allocations, se::Stream* stream,
+        se::Stream* command_buffer_trace_stream,
+        CollectiveParams* collective_params,
+        CollectiveCliques* collective_cliques,
+        CollectiveMemory* collective_memory,
+        const CustomOptions* custom_options,
+        const ffi::ExecutionContext* ffi_execution_context,
+        int local_device_count, ExecutionScopedState* execution_scoped_state,
+        std::optional<absl::Span<const BufferAllocation::Index>>
+            persistent_alloc_indices,
+        const CommandBufferRequests* absl_nonnull command_buffer_requests)
+        : executor(executor),
+          src(std::move(src)),
+          buffer_allocations(buffer_allocations),
+          stream(stream),
+          command_buffer_trace_stream(command_buffer_trace_stream),
+          collective_params(collective_params),
+          collective_cliques(collective_cliques),
+          collective_memory(collective_memory),
+          custom_options(custom_options),
+          ffi_execution_context(ffi_execution_context),
+          local_device_count(local_device_count),
+          execution_scoped_state(execution_scoped_state),
+          persistent_alloc_indices(persistent_alloc_indices),
+          command_buffer_requests(command_buffer_requests) {}
+
     se::StreamExecutor* executor = nullptr;
     ExecutableSource src;
 
@@ -285,6 +358,9 @@ class Thunk {
     // each step.
     std::optional<absl::Span<const BufferAllocation::Index>>
         persistent_alloc_indices = std::nullopt;
+
+    // Command buffer execution requests collected during prepare.
+    const CommandBufferRequests* absl_nonnull command_buffer_requests;
   };
 
   //===--------------------------------------------------------------------===//
@@ -307,7 +383,9 @@ class Thunk {
         std::vector<se::Stream*> additional_compute_streams = {},
         ExecutionScopedState* execution_scoped_state = nullptr,
         std::optional<absl::Span<const BufferAllocation::Index>>
-            persistent_alloc_indices = std::nullopt);
+            persistent_alloc_indices = std::nullopt,
+        absl::flat_hash_map<LocalityDomainStreamId, se::Stream*>
+            locality_domain_streams = {});
 
     // Constructs execute parameters from an existing parameters but with
     // different buffer allocations.
@@ -353,6 +431,10 @@ class Thunk {
     // Additional compute streams on which thunks can launch operations.
     std::vector<se::Stream*> additional_compute_streams;
 
+    // Backend-pooled leased streams indexed by locality domain.
+    absl::flat_hash_map<LocalityDomainStreamId, se::Stream*>
+        locality_domain_streams;
+
     // Execution scoped state shared between prepare, initialize and execute.
     ExecutionScopedState* execution_scoped_state = nullptr;
 
@@ -392,7 +474,9 @@ class Thunk {
                   bool mock_collectives = false, int64_t execution_id = 0,
                   uint64_t rng_seed = 0,
                   std::optional<absl::Span<const BufferAllocation::Index>>
-                      persistent_alloc_indices = std::nullopt);
+                      persistent_alloc_indices = std::nullopt,
+                  absl::flat_hash_map<LocalityDomainStreamId, se::Stream*>
+                      locality_domain_streams = {});
   };
 
   //===--------------------------------------------------------------------===//

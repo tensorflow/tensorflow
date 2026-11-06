@@ -84,6 +84,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);
 
   absl::StatusOr<std::vector<EmittedKernel>> ConsumeKernels();
+  std::vector<EmittedKernel> ConsumeComparators() {
+    return std::move(comparators_);
+  }
 
   static std::optional<SortThunk::SortDirection> MatchSortDirection(
       const HloSortInstruction* sort);
@@ -205,6 +208,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitSortThunk(
       const HloInstruction* instruction);
 
+  absl::StatusOr<std::string> EmitSortComparator(
+      const HloComputation* comparator);
+
   absl::StatusOr<ThunkSequence> EmitXnnFusionThunk(
       const HloInstruction* instruction);
 
@@ -258,6 +264,8 @@ class ThunkEmitter {
       token_resources_;
 
   std::vector<EmittedKernel> kernels_;
+  std::vector<EmittedKernel> comparators_;
+  absl::flat_hash_map<const HloComputation*, std::string> comparator_names_;
 
   std::unique_ptr<mlir::MLIRContext> mlir_context_;
   FusionCompiler fusion_compiler_;

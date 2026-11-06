@@ -41,7 +41,6 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
@@ -63,12 +62,14 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_options.h"
+#include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_function.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/test.h"
@@ -123,8 +124,7 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
 
   TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
 
-  IrEmitter ir_emitter(nullptr, *hlo, *buffer_assignment, module.get(), {}, {},
-                       {}, &target_machine, false);
+  IrEmitter ir_emitter(*hlo, *buffer_assignment, module.get(), &target_machine);
 
   llvm::IRBuilderBase* b = ir_emitter.b();
   ASSERT_NE(b, nullptr);
@@ -220,7 +220,6 @@ struct IrEmitterWrapper {
   std::unique_ptr<IrEmitter> ir_emitter;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<TargetMachineFeatures> target_machine_features;
-  std::unique_ptr<mlir::MLIRContext> mlir_context;
 };
 
 static absl::StatusOr<std::unique_ptr<IrEmitterWrapper>>
@@ -301,18 +300,12 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   auto target_machine_features =
       std::make_unique<TargetMachineFeatures>(jit_compiler.target_machine());
 
-  std::unique_ptr<mlir::MLIRContext> mlir_context;
   auto ir_emitter = std::make_unique<IrEmitter>(
-      mlir_context.get(), module, *assignment, &llvm_module,
-      absl::flat_hash_map<const HloInstruction*, int64_t>{},
-      absl::flat_hash_map<const HloComputation*, int64_t>{},
-      absl::flat_hash_map<const HloComputation*, bool>{},
-      target_machine_features.get(),
-      /*emit_code_for_msan=*/false);
+      module, *assignment, &llvm_module, target_machine_features.get());
 
-  return std::make_unique<IrEmitterWrapper>(IrEmitterWrapper{
-      std::move(ir_emitter), std::move(assignment),
-      std::move(target_machine_features), std::move(mlir_context)});
+  return std::make_unique<IrEmitterWrapper>(
+      IrEmitterWrapper{std::move(ir_emitter), std::move(assignment),
+                       std::move(target_machine_features)});
 }
 
 TEST_F(IrEmitterTest, SmallConstantsAreEmittedAsGlobalsLargeAreNot) {
@@ -345,6 +338,76 @@ ENTRY main {
   EXPECT_EQ(
       std::distance(llvm_module->global_begin(), llvm_module->global_end()),
       kNumberOfSmallConstants);
+}
+
+TEST_F(IrEmitterTest, LargeM1DotStrategyDependsOnYnnDotEnabled) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule large_m1_dot
+
+    ENTRY main {
+      lhs = f32[1,1024]{1,0} parameter(0)
+      rhs = f32[1024,1024]{1,0} parameter(1)
+      ROOT dot = f32[1,1024]{1,0} dot(lhs, rhs), lhs_contracting_dims={1},
+                                                 rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(dot, nullptr);
+  TargetMachineFeaturesStub target_machine_features(
+      [](int64_t size) { return MinAlign(); });
+
+  HloModuleConfig& config = module->mutable_config();
+  config.mutable_debug_options().clear_xla_cpu_experimental_ynn_fusion_type();
+  config.mutable_debug_options().add_xla_cpu_experimental_ynn_fusion_type(
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  EXPECT_EQ(GetDotImplementationStrategy(config, *dot, target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kEigen);
+
+  config.mutable_debug_options().clear_xla_cpu_experimental_ynn_fusion_type();
+  EXPECT_EQ(GetDotImplementationStrategy(config, *dot, target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kTiledLlvmIrGemv);
+
+  config.mutable_debug_options().add_xla_cpu_experimental_ynn_fusion_type(
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  (*config.mutable_debug_options()
+        .mutable_xla_backend_extra_options())["xla_is_host_offload"] = "true";
+  EXPECT_EQ(GetDotImplementationStrategy(config, *dot, target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kTiledLlvmIrGemv);
+}
+
+TEST_F(IrEmitterTest, LargeM1UnsupportedYnnTypeUsesTiledGemv) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule large_m1_s32_dot
+
+    ENTRY main {
+      lhs = s32[1,1024]{1,0} parameter(0)
+      rhs = s32[1024,1024]{1,0} parameter(1)
+      ROOT dot = s32[1,1024]{1,0} dot(lhs, rhs), lhs_contracting_dims={1},
+                                                 rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(dot, nullptr);
+  TargetMachineFeaturesStub target_machine_features(
+      [](int64_t size) { return MinAlign(); });
+
+  HloModuleConfig ynn_enabled_config = module->config();
+  ynn_enabled_config.mutable_debug_options()
+      .clear_xla_cpu_experimental_ynn_fusion_type();
+  ynn_enabled_config.mutable_debug_options()
+      .add_xla_cpu_experimental_ynn_fusion_type(
+          DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  EXPECT_EQ(GetDotImplementationStrategy(ynn_enabled_config, *dot,
+                                         target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kTiledLlvmIrGemv);
 }
 
 }  // namespace

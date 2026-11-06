@@ -441,7 +441,6 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -462,13 +461,16 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/framework:function_testlib",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/platform:test_benchmark",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 

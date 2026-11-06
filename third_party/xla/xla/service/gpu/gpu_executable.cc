@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -230,6 +231,62 @@ absl::StatusOr<bool> ShouldCollectiveUseMinimalResource(
   return (sync_collective_count <= async_collective_count ||
           total_sync_coll_size <= total_async_coll_size);
 }
+
+absl::StatusOr<absl::flat_hash_map<LocalityDomainStreamId, StreamPool::Ptr>>
+ProvisionLocalityDomainStreams(
+    absl::Span<const LocalityDomainStreamId> referenced_domains,
+    const ServiceExecutableRunOptions& run_options,
+    se::StreamExecutor* executor, int compiled_locality_domain_count) {
+  absl::flat_hash_map<LocalityDomainStreamId, StreamPool::Ptr> leases;
+  if (referenced_domains.empty()) {
+    return leases;
+  }
+
+  int runtime_locality_domain_count =
+      executor->GetDeviceDescription().locality_domain_count();
+  if (compiled_locality_domain_count <= 0 ||
+      runtime_locality_domain_count <= 0) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Locality-domain compute is not supported: compile/PjRT reports ",
+        compiled_locality_domain_count,
+        " usable locality domains and the runtime executor reports ",
+        runtime_locality_domain_count));
+  }
+
+  for (LocalityDomainStreamId id : referenced_domains) {
+    if (id.value() >= static_cast<uint64_t>(compiled_locality_domain_count) ||
+        id.value() >= static_cast<uint64_t>(runtime_locality_domain_count)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid locality-domain stream id ", id.value(),
+          "; compile/PjRT reports ", compiled_locality_domain_count,
+          " usable locality domains and the runtime executor reports ",
+          runtime_locality_domain_count));
+    }
+  }
+
+  if (!run_options.HasLocalityDomainStreamBorrower()) {
+    return absl::FailedPreconditionError(
+        "Locality-domain compute requires a locality-domain stream borrower");
+  }
+
+  leases.reserve(referenced_domains.size());
+  for (LocalityDomainStreamId id : referenced_domains) {
+    absl::StatusOr<StreamPool::Ptr> owner = run_options.BorrowStream(
+        executor->device_ordinal(), se::StreamPriority::Default,
+        static_cast<int>(id.value()));
+    if (!owner.ok()) {
+      absl::StatusCode code = owner.status().code();
+      if (code == absl::StatusCode::kUnimplemented) {
+        code = absl::StatusCode::kFailedPrecondition;
+      }
+      return absl::Status(
+          code, absl::StrCat("Failed to borrow locality-domain stream ",
+                             id.value(), ": ", owner.status().message()));
+    }
+    leases.emplace(id, std::move(*owner));
+  }
+  return leases;
+}
 }  // namespace
 
 using ::tsl::profiler::ScopedAnnotation;
@@ -246,6 +303,7 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
   comm = std::max(0, comm);
   bool need_d2h_stream = false;
   bool need_h2d_stream = false;
+  absl::flat_hash_set<LocalityDomainStreamId> locality_domains;
 
   // Then traverse all thunks to see if anyone requested more streams. This
   // also sizes sparse collective-domain stream pools from their assigned IDs.
@@ -263,12 +321,18 @@ static GpuExecutable::NumAdditionalStreams GetNumAdditionalStreams(
           } else if (id.memcpy_id() == kMemcpyH2DStreamId) {
             need_h2d_stream = true;
           }
+        } else if (id.is_locality_domain()) {
+          locality_domains.insert(id.locality_domain_id());
         }
       }
     });
   }
 
-  return {compute, comm, need_d2h_stream, need_h2d_stream};
+  std::vector<LocalityDomainStreamId> sorted_locality_domains(
+      locality_domains.begin(), locality_domains.end());
+  absl::c_sort(sorted_locality_domains);
+  return {compute, comm, need_d2h_stream, need_h2d_stream,
+          std::move(sorted_locality_domains)};
 }
 
 GpuExecutable::BorrowedStreams GpuExecutable::BorrowedStreams::Assign(
@@ -485,6 +549,7 @@ GpuExecutable::GpuExecutable(
       binary_(std::move(binary)),
       dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
       gpu_version_(device_description.gpu_compute_capability()),
+      locality_domain_count_(device_description.locality_domain_count()),
       thunk_executor_(std::move(executable)),
       definition_plan_(ThunkExecutor::BuildDefinitionPlan(*thunk_executor_)),
       num_additional_streams_(
@@ -619,9 +684,9 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     std::optional<absl::Span<const BufferAllocation::Index>>
         persistent_alloc_indices,
-    GpuExecutable::NumAdditionalStreams num_additional_streams,
+    const GpuExecutable::NumAdditionalStreams& num_additional_streams,
     CollectiveMemoryCache& collective_memory_cache,
-    bool collective_use_minimal_resource) {
+    bool collective_use_minimal_resource, int compiled_locality_domain_count) {
   const GpuExecutableRunOptions* gpu_run_options =
       run_options->run_options().gpu_executable_run_options();
 
@@ -787,6 +852,17 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         "Using %d additional compute streams.", num_additional_streams.compute);
   }
 
+  ABSL_ASSIGN_OR_RETURN(auto locality_domain_stream_leases,
+                   ProvisionLocalityDomainStreams(
+                       num_additional_streams.locality_domains, *run_options,
+                       executor, compiled_locality_domain_count));
+  absl::flat_hash_map<LocalityDomainStreamId, se::Stream*>
+      locality_domain_streams;
+  locality_domain_streams.reserve(locality_domain_stream_leases.size());
+  for (const auto& [id, lease] : locality_domain_stream_leases) {
+    locality_domain_streams.emplace(id, lease.get());
+  }
+
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
@@ -802,15 +878,19 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
   // A state container for this execution.
   Thunk::ExecutionScopedState execution_scoped_state;
 
+  const int device_ordinal = run_options->device_ordinal() != -1
+                                 ? run_options->device_ordinal()
+                                 : main_stream->parent()->device_ordinal();
   ABSL_ASSIGN_OR_RETURN(CollectiveParams collective_params,
                    CollectiveParams::Create(
                        *run_options, communication_streams.streams,
-                       LocalDeviceId(main_stream->parent()->device_ordinal()),
-                       collective_max_nchannels, p2p_max_nchannels,
-                       collective_use_minimal_resource, nccl_window_symmetric));
+                       LocalDeviceId(device_ordinal), collective_max_nchannels,
+                       p2p_max_nchannels, collective_use_minimal_resource,
+                       nccl_window_symmetric));
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
+  CommandBufferRequests command_buffer_requests;
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
     Thunk::PrepareParams prepare_params{
@@ -820,7 +900,8 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         executor,
         &buffer_allocations,
         &execution_scoped_state,
-        run_options->run_options().custom_options()};
+        run_options->run_options().custom_options(),
+        &command_buffer_requests};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     ABSL_RETURN_IF_ERROR(thunk_executor.Prepare(prepare_params));
@@ -867,8 +948,9 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
         run_options->run_options().custom_options(),
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count(),
-        &execution_scoped_state};
-    initialize_params.persistent_alloc_indices = persistent_alloc_indices;
+        &execution_scoped_state,
+        persistent_alloc_indices,
+        &command_buffer_requests};
 
     tsl::profiler::TraceMe trace_initialize("Thunks::Initialize");
     ABSL_RETURN_IF_ERROR(thunk_executor.Initialize(initialize_params));
@@ -888,7 +970,8 @@ absl::Status GpuExecutable::ExecuteThunksImpl(
       *run_options, buffer_allocations, main_stream,
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       &collective_memory, std::move(compute_streams.streams),
-      &execution_scoped_state, persistent_alloc_indices);
+      &execution_scoped_state, persistent_alloc_indices,
+      std::move(locality_domain_streams));
 
   // device_to_host_stream/host_to_device_stream above come from run_options,
   // which are only populated when running through PJRT. Fall back to a
@@ -1452,7 +1535,7 @@ absl::Status GpuExecutable::ExecuteThunks(
       unique_id, *thunk_executor_, executable_source, run_options,
       buffer_allocations, block_host_until_done, persistent_alloc_indices,
       num_additional_streams_, collective_memory_cache_,
-      collective_use_minimal_resource_);
+      collective_use_minimal_resource_, locality_domain_count_);
 }
 
 int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
@@ -1637,7 +1720,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   params.binary.assign(binary.begin(), binary.end());
   if (debug_module != nullptr) {
     params.debug_module = std::move(debug_module);
-  } else if (proto.has_hlo_module_with_config()) {
+  } else if (proto.has_hlo_module_with_config() &&
+             proto.hlo_module_with_config().has_hlo_module()) {
     ABSL_ASSIGN_OR_RETURN(params.debug_module, HloModule::CreateFromProtoWithConfig(
                                               proto.hlo_module_with_config()));
   }

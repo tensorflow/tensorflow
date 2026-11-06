@@ -72,6 +72,7 @@ class BuildTest(parameterized.TestCase):
       self.assertNotIn("remote_download_toplevel", builds[build_type].options)
     for build_type in (
         build.BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
+        build.BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
         build.BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     ):
       self.assertIs(
@@ -80,6 +81,45 @@ class BuildTest(parameterized.TestCase):
       self.assertIs(
           builds[build_type].options.get("remote_download_minimal"), True
       )
+
+  def test_default_bazel_options_configure_diagnostic_logging(self) -> None:
+    builds = build.Build.all_builds()
+    for target_build in builds.values():
+      self.assertIs(target_build.options.get("show_timestamps"), True)
+      self.assertEqual(target_build.options.get("show_progress_rate_limit"), 5)
+      self.assertEqual(
+          target_build.options.get("experimental_remote_grpc_log"),
+          "bazel_remote_grpc.log",
+      )
+
+  def test_xla_github_actions_ci_builds_enable_bazel_diff(self) -> None:
+    builds = build.Build.all_builds()
+    for build_type in (
+        build.BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS,
+        build.BuildType.XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_CPU_WORKSPACE_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS,
+        build.BuildType.XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS,
+    ):
+      self.assertTrue(builds[build_type].use_bazel_diff)
+      self.assertTrue(builds[build_type].bazel_diff_use_cquery)
+    for build_type in (
+        # Hermetic ROCm is a compile-only RBE build where bazel-diff's two
+        # cquery passes cost more time than incremental target selection saves.
+        build.BuildType.XLA_LINUX_X86_GPU_HERMETIC_ROCM_GITHUB_ACTIONS,
+        build.BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
+        build.BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
+        build.BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+    ):
+      self.assertFalse(builds[build_type].use_bazel_diff)
+    self.assertIn(
+        "-//xla/stream_executor/sycl/...",
+        builds[
+            build.BuildType.XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS
+        ].target_patterns,
+    )
 
   def test_benchmark_presubmit_builds_enable_runfile_links_and_toplevel_downloads(
       self,

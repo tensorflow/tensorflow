@@ -84,12 +84,14 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-NEXT:     arith.addf
 // CHECK-NEXT:     return
 
+// The kernel only reads the buffer, but other kernels may write it, so the
+// argument is readonly and its loads are not invariant.
 // CHECK:        func.func private @tensorarg(%[[ARG0:.*]]: !llvm.ptr
-// CHECK-SAME:        {xla.invariant, xla.slice_index = 0 : i64}, %[[ARG1:.*]]: index) -> f32 {
+// CHECK-SAME:        {llvm.readonly, xla.invariant, xla.slice_index = 0 : i64}, %[[ARG1:.*]]: index) -> f32 {
 // CHECK-DAG:       %[[C2:.*]] = arith.constant 2.000000e+00
 // CHECK-DAG:       %[[IDX:.*]] = arith.index_castui %[[ARG1]] : index to i32
 // CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX]]]
-// CHECK-DAG:       %[[V2:.*]] = llvm.load %[[PTR]] invariant
+// CHECK-DAG:       %[[V2:.*]] = llvm.load %[[PTR]] : !llvm.ptr -> f32
 // CHECK:           %[[RET:.*]] = call @add(%[[C2]], %[[V2]])
 // CHECK:           return %[[RET]]
 

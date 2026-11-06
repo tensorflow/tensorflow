@@ -34,6 +34,10 @@ namespace gpu {
 bool IsCuDnnConvertSupported(PrimitiveType src_type, PrimitiveType dst_type,
                              const se::DeviceDescription& device_info);
 
+// Returns true if hlo is a scalar f32 reduce that cuDNN can run as an AMAX
+// reduction: maximum over abs(x) (through bitcasts) with a zero or -inf init.
+bool IsCudnnAmaxReduce(const HloInstruction& hlo);
+
 // Returns the PrecisionConfig for a cuDNN fusion instruction.
 // Precedence order:
 // 1. Outer GpuBackendConfig (`cudnn_fusion_config.precision_config`), if set.

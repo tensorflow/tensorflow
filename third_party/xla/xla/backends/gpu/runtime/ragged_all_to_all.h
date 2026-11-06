@@ -111,7 +111,7 @@ absl::Status RunDeviceRaggedAllToAllKernel(
     se::DeviceAddressBase output_offsets_buffer, int64_t num_ranks,
     int64_t num_updates_per_replica, int64_t num_row_elements,
     int64_t cta_count, int64_t input_buffer_offset_bytes,
-    int64_t output_buffer_offset_bytes);
+    int64_t output_buffer_offset_bytes, bool cft_granted);
 
 }  // namespace xla::gpu
 

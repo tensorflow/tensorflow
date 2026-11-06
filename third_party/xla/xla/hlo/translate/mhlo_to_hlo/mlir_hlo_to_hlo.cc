@@ -953,17 +953,6 @@ static xla::ResultAccuracy Convert_result_accuracy(
   return result_accuracy;
 }
 
-// Returns an OpSharding proto from the "sharding" attribute of the op. If the
-// op doesn't have a sharding attribute or the sharding attribute is invalid,
-// returns std::nullopt.
-static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
-    mlir::Operation* op) {
-  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(xla::kMhloSharding);
-  if (!shardingAttr) {
-    return std::nullopt;
-  }
-  return xla::ConvertSharding(shardingAttr.getValue());
-}
 
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
 // of the op. An empty FrontendAttributes proto is returned if an op does not
@@ -1047,51 +1036,6 @@ static bool SomeOptionalShardingsAreSet(
                       });
 }
 
-// Extracts argument and result shardings from function.
-static void ExtractShardingsFromFunction(
-    mlir::func::FuncOp function,
-    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* arg_shardings,
-    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings,
-    bool is_entry_function) {
-  arg_shardings->resize(function.getNumArguments(),
-                        std::optional<xla::OpSharding>());
-  auto module = function->getParentOfType<mlir::ModuleOp>();
-  std::optional<mlir::DictionaryAttr> sdy_meshes =
-      xla::sdy::tryGetFrontendAttr<mlir::DictionaryAttr>(
-          module, xla::sdy::kMeshesRoundTripAttr);
-
-  for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
-    if (auto sharding = function.getArgAttrOfType<mlir::StringAttr>(
-            i, xla::kMhloSharding)) {
-      (*arg_shardings)[i] = xla::ConvertSharding(sharding.getValue());
-      // Due to limitations with accurately getting OpShardings from manual
-      // computation bodies with Shardy shardings, only extract OpShardings from
-      // the entry function for now. This is ok since only the entry function
-      // uses the extracted OpShardings to modify layouts/create reshapes, other
-      // functions just use the OpShardings to populate the HloInstructionProto
-      // sharding field.
-    } else if (is_entry_function) {
-      if (auto sharding = xla::ExtractShardyArgShardingFromFrontendAttrs(
-              function, i, sdy_meshes)) {
-        (*arg_shardings)[i] = sharding;
-      }
-    }
-  }
-
-  ret_shardings->resize(function.getNumResults(),
-                        std::optional<xla::OpSharding>());
-  for (int i = 0, end = function.getNumResults(); i < end; ++i) {
-    if (auto sharding = function.getResultAttrOfType<mlir::StringAttr>(
-            i, xla::kMhloSharding)) {
-      (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
-    } else if (is_entry_function) {
-      if (auto sharding = xla::ExtractShardyResultShardingFromFrontendAttrs(
-              function, i, sdy_meshes)) {
-        (*ret_shardings)[i] = sharding;
-      }
-    }
-  }
-}
 
 // Creates a tuple sharding with the given shardings if at least one is present.
 //
@@ -1227,6 +1171,22 @@ class ConvertToHloModule {
     return std::move(*computation.mutable_proto());
   }
 
+  // Returns or creates a cached OpSharding from a StringAttr.
+  std::optional<xla::OpSharding> GetOrCreateOpSharding(
+      mlir::StringAttr sharding_attr) {
+    if (!sharding_attr) {
+      return std::nullopt;
+    }
+    auto it = sharding_cache_.find(sharding_attr);
+    if (it != sharding_cache_.end()) {
+      return it->second;
+    }
+    std::optional<xla::OpSharding> sharding =
+        xla::ConvertSharding(sharding_attr.getValue());
+    sharding_cache_.try_emplace(sharding_attr, sharding);
+    return sharding;
+  }
+
   // Lower a `mlir::Region` to a `XlaComputation`
   LogicalResult LowerRegionAsComputation(
       mlir::Region* region, xla::XlaComputationId& func,
@@ -1358,12 +1318,85 @@ class ConvertToHloModule {
 
   // Conversion options
   MlirToHloConversionOptions options_;
+
+  // Cache of parsed OpSharding protos keyed by interned StringAttr pointer.
+  llvm::DenseMap<mlir::StringAttr, std::optional<xla::OpSharding>>
+      sharding_cache_;
 };
 
 }  // namespace
 }  // namespace mlir
 
 namespace {
+
+// Returns an OpSharding proto from the "sharding" attribute of the op. If the
+// op doesn't have a sharding attribute or the sharding attribute is invalid,
+// returns std::nullopt.
+std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
+    mlir::Operation* op, mlir::ConvertToHloModule* converter = nullptr) {
+  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(xla::kMhloSharding);
+  if (!shardingAttr) {
+    return std::nullopt;
+  }
+  if (converter != nullptr) {
+    return converter->GetOrCreateOpSharding(shardingAttr);
+  }
+  return xla::ConvertSharding(shardingAttr.getValue());
+}
+
+// Extracts argument and result shardings from function.
+void ExtractShardingsFromFunction(
+    mlir::func::FuncOp function,
+    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* arg_shardings,
+    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings,
+    bool is_entry_function, mlir::ConvertToHloModule* converter = nullptr) {
+  arg_shardings->resize(function.getNumArguments(),
+                        std::optional<xla::OpSharding>());
+  auto module = function->getParentOfType<mlir::ModuleOp>();
+  std::optional<mlir::DictionaryAttr> sdy_meshes =
+      xla::sdy::tryGetFrontendAttr<mlir::DictionaryAttr>(
+          module, xla::sdy::kMeshesRoundTripAttr);
+
+  for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
+    if (auto sharding = function.getArgAttrOfType<mlir::StringAttr>(
+            i, xla::kMhloSharding)) {
+      if (converter != nullptr) {
+        (*arg_shardings)[i] = converter->GetOrCreateOpSharding(sharding);
+      } else {
+        (*arg_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+      }
+      // Due to limitations with accurately getting OpShardings from manual
+      // computation bodies with Shardy shardings, only extract OpShardings from
+      // the entry function for now. This is ok since only the entry function
+      // uses the extracted OpShardings to modify layouts/create reshapes, other
+      // functions just use the OpShardings to populate the HloInstructionProto
+      // sharding field.
+    } else if (is_entry_function) {
+      if (auto sharding = xla::ExtractShardyArgShardingFromFrontendAttrs(
+              function, i, sdy_meshes)) {
+        (*arg_shardings)[i] = sharding;
+      }
+    }
+  }
+
+  ret_shardings->resize(function.getNumResults(),
+                        std::optional<xla::OpSharding>());
+  for (int i = 0, end = function.getNumResults(); i < end; ++i) {
+    if (auto sharding = function.getResultAttrOfType<mlir::StringAttr>(
+            i, xla::kMhloSharding)) {
+      if (converter != nullptr) {
+        (*ret_shardings)[i] = converter->GetOrCreateOpSharding(sharding);
+      } else {
+        (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+      }
+    } else if (is_entry_function) {
+      if (auto sharding = xla::ExtractShardyResultShardingFromFrontendAttrs(
+              function, i, sdy_meshes)) {
+        (*ret_shardings)[i] = sharding;
+      }
+    }
+  }
+}
 
 struct OpLoweringContext {
   llvm::DenseMap<mlir::Value, xla::XlaOp>* values;
@@ -5265,7 +5298,7 @@ LogicalResult ConvertToHloModule::LowerConstant(
   }
 
   xla::XlaScopedShardingAssignment scoped_sharding(
-      builder, CreateOpShardingFromAttribute(inst));
+      builder, CreateOpShardingFromAttribute(inst, this));
   auto constant = xla::ConstantLiteral(builder, literal_or.value());
   auto& value_map = *value_lowering;
   value_map[inst->getResult(0)] = constant;
@@ -5526,7 +5559,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     mlir::StackFrameIndexBuilder* stack_frame_indexes_builder) {
   xla::XlaScopedShardingAssignment scoped_sharding(
-      builder, CreateOpShardingFromAttribute(call_op));
+      builder, CreateOpShardingFromAttribute(call_op, this));
 
   auto& value_map = *value_lowering;
   mlir::func::FuncOp callee =
@@ -5654,7 +5687,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     }
   }
   ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings,
-                               entry_function);
+                               entry_function, this);
   xla::XlaComputationId computation;
   if (failed(LowerBasicBlockAsFunction(
           &f.front(), builder.get(), entry_function, false,
@@ -6183,8 +6216,10 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   }
   if (auto spmd_output_sharding = module->getAttrOfType<mlir::StringAttr>(
           xla::kMhloSpmdOutputSharding)) {
-    *hlo_module.mutable_spmd_output_sharding() =
-        *xla::ConvertSharding(spmd_output_sharding.getValue());
+    if (std::optional<xla::OpSharding> sharding =
+            converter.GetOrCreateOpSharding(spmd_output_sharding)) {
+      *hlo_module.mutable_spmd_output_sharding() = *std::move(sharding);
+    }
   }
   if (auto input_output_alias =
           module->getAttrOfType<mlir::ArrayAttr>(xla::kMhloInputOutputAlias)) {
@@ -6200,20 +6235,27 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
           hlo_module.add_spmd_parameters_shardings();
       tuple_sharding->set_type(xla::OpSharding::TUPLE);
       for (const auto& sharding : spmd_parameters_sharding.getValue()) {
-        xla::OpSharding param_sharding = *xla::ConvertSharding(
-            mlir::cast<mlir::StringAttr>(sharding).getValue());
-        if (param_sharding.type() == xla::OpSharding::TUPLE) {
-          for (const auto& element : param_sharding.tuple_shardings()) {
-            *tuple_sharding->add_tuple_shardings() = element;
+        std::optional<xla::OpSharding> param_sharding =
+            converter.GetOrCreateOpSharding(
+                mlir::cast<mlir::StringAttr>(sharding));
+        if (param_sharding) {
+          if (param_sharding->type() == xla::OpSharding::TUPLE) {
+            for (const auto& element : param_sharding->tuple_shardings()) {
+              *tuple_sharding->add_tuple_shardings() = element;
+            }
+          } else {
+            *tuple_sharding->add_tuple_shardings() = *std::move(param_sharding);
           }
-        } else {
-          *tuple_sharding->add_tuple_shardings() = std::move(param_sharding);
         }
       }
     } else {
       for (const auto& sharding : spmd_parameters_sharding.getValue()) {
-        *hlo_module.add_spmd_parameters_shardings() = *xla::ConvertSharding(
-            mlir::cast<mlir::StringAttr>(sharding).getValue());
+        if (std::optional<xla::OpSharding> param_sharding =
+                converter.GetOrCreateOpSharding(
+                    mlir::cast<mlir::StringAttr>(sharding))) {
+          *hlo_module.add_spmd_parameters_shardings() =
+              *std::move(param_sharding);
+        }
       }
     }
   }

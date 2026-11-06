@@ -39,17 +39,17 @@ module {
 
 // CHECK:      func.func private @tensorargs(
 // CHECK-SAME:   %[[ARG0:.*]]: !llvm.ptr {llvm.noalias},
-// CHECK-SAME:   %[[ARG1:.*]]: !llvm.ptr {llvm.noalias, xla.invariant},
+// CHECK-SAME:   %[[ARG1:.*]]: !llvm.ptr {llvm.noalias, llvm.readonly, xla.invariant},
 // CHECK-SAME:   %[[ARG2:.*]]: index) -> f32 {
 // CHECK:        %[[GEP0:.*]] = llvm.getelementptr inbounds %[[ARG0]]
 // CHECK:        llvm.load %[[GEP0]] : !llvm.ptr
 // CHECK:        %[[GEP1:.*]] = llvm.getelementptr inbounds %[[ARG1]]
-// CHECK:        llvm.load %[[GEP1]] invariant : !llvm.ptr
+// CHECK:        llvm.load %[[GEP1]] : !llvm.ptr
 // CHECK:        %[[GEP2:.*]] = llvm.getelementptr inbounds %[[ARG0]]
 
 // CHECK:      func.func @tensorcall
 // CHECK-SAME:   %[[ARG0:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
-// CHECK-SAME:   %[[ARG1:[a-z0-9]+]]: !llvm.ptr {llvm.noalias, xla.invariant},
+// CHECK-SAME:   %[[ARG1:[a-z0-9]+]]: !llvm.ptr {llvm.noalias, llvm.readonly, xla.invariant},
 // CHECK-SAME:   %[[ARG2:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
 // CHECK-SAME:   %[[ARG3:[a-z0-9]+]]: index) -> f32 attributes {xla.entry} {
 // CHECK:        call @tensorargs(%[[ARG0]], %[[ARG1]], %[[ARG3]])
@@ -115,6 +115,114 @@ func.func @not_invariant_suppresses_noalias(
 // CHECK-LABEL: func.func @not_invariant_suppresses_noalias(
 // CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: !llvm.ptr,
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
-// CHECK-SAME:    %[[ARG2:[a-z0-9]+]]: !llvm.ptr {llvm.noalias, xla.invariant},
+// CHECK-SAME:    %[[ARG2:[a-z0-9]+]]: !llvm.ptr {llvm.noalias, llvm.readonly, xla.invariant},
 // CHECK-SAME:    %[[IDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
 // CHECK-NOT:     xla.not_invariant
+
+// -----
+
+// Merged arguments keep only what all of them promise: a not invariant use of
+// the slice leaves the survivor neither readonly nor noalias.
+
+func.func @mixed_invariance(
+    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
+    %arg1: tensor<43xf32> {xla.slice_index = 0, xla.not_invariant},
+    %idx: index) -> f32 attributes {xla.entry} {
+  %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
+  %v1 = tensor.extract %arg1[%idx] : tensor<43xf32>
+  %sum = arith.addf %v0, %v1 : f32
+  func.return %sum : f32
+}
+
+// CHECK-LABEL: func.func @mixed_invariance(
+// CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[IDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
+// CHECK:         llvm.getelementptr inbounds %[[ARG0]]
+// CHECK:         llvm.getelementptr inbounds %[[ARG0]]
+
+// -----
+
+// Kept duplicates of an entry function get the same pointer, so each one is
+// weakened too, regardless of argument order.
+
+func.func @mixed_invariance_reversed(
+    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.not_invariant},
+    %arg1: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
+    %idx: index) -> f32 attributes {xla.entry} {
+  %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
+  %v1 = tensor.extract %arg1[%idx] : tensor<43xf32>
+  %sum = arith.addf %v0, %v1 : f32
+  func.return %sum : f32
+}
+
+// CHECK-LABEL: func.func @mixed_invariance_reversed(
+// CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[IDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
+
+// -----
+
+// Merging an invariant argument with a written slice drops readonly while
+// keeping noalias on both entry arguments.
+
+func.func @invariant_and_written(
+    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
+    %arg1: tensor<43xf32> {xla.slice_index = 0},
+    %idx: index) -> f32 attributes {xla.entry} {
+  %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
+  %v1 = tensor.extract %arg1[%idx] : tensor<43xf32>
+  %sum = arith.addf %v0, %v1 : f32
+  func.return %sum : f32
+}
+
+// CHECK-LABEL: func.func @invariant_and_written(
+// CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
+// CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
+// CHECK-SAME:    %[[IDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
+
+// -----
+
+// On a private function, duplicate slice arguments are erased and the survivor
+// keeps only the promises shared across its duplicates.
+
+module {
+  func.func private @private_mixed(
+      %arg0: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
+      %arg1: tensor<43xf32> {xla.slice_index = 0},
+      %arg2: tensor<43xf32> {xla.slice_index = 1, xla.invariant},
+      %arg3: tensor<43xf32> {xla.slice_index = 1, xla.not_invariant},
+      %idx: index) -> f32 {
+    %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
+    %v1 = tensor.extract %arg1[%idx] : tensor<43xf32>
+    %v2 = tensor.extract %arg2[%idx] : tensor<43xf32>
+    %v3 = tensor.extract %arg3[%idx] : tensor<43xf32>
+    %s0 = arith.addf %v0, %v1 : f32
+    %s1 = arith.addf %v2, %v3 : f32
+    %s2 = arith.addf %s0, %s1 : f32
+    func.return %s2 : f32
+  }
+
+  func.func @call_private_mixed(
+      %arg0: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
+      %arg1: tensor<43xf32> {xla.slice_index = 0},
+      %arg2: tensor<43xf32> {xla.slice_index = 1, xla.invariant},
+      %arg3: tensor<43xf32> {xla.slice_index = 1, xla.not_invariant},
+      %idx: index) -> f32 attributes {xla.entry} {
+    %call = func.call @private_mixed(%arg0, %arg1, %arg2, %arg3, %idx) :
+        (tensor<43xf32>, tensor<43xf32>, tensor<43xf32>, tensor<43xf32>, index) -> f32
+    func.return %call : f32
+  }
+}
+
+// CHECK-LABEL: func.func private @private_mixed(
+// CHECK-SAME:    %[[P0:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
+// CHECK-SAME:    %[[P1:[a-z0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[PIDX:[a-z0-9]+]]: index) -> f32
+// CHECK:       func.func @call_private_mixed(
+// CHECK-SAME:    %[[A0:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
+// CHECK-SAME:    %[[A1:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
+// CHECK-SAME:    %[[A2:[a-z0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[A3:[a-z0-9]+]]: !llvm.ptr,
+// CHECK-SAME:    %[[AIDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
+// CHECK:         call @private_mixed(%[[A0]], %[[A2]], %[[AIDX]])

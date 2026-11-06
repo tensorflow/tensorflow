@@ -254,6 +254,8 @@ class IfrtBackend final : public BackendInterface {
       std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleCancelExecutionRequest(
       std::unique_ptr<IfrtRequest> request);
+  tsl::Future<Response> HandleHashValuesRequest(
+      std::unique_ptr<IfrtRequest> request);
 
   //////////////////////////////////////////////////////////////////////
   // Auxiliary/Helper methods for the handler methods above

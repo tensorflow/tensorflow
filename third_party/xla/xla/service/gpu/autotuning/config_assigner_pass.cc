@@ -84,10 +84,11 @@ using AutotuneDecision = Decision;
 // are the only viable configurations to try.
 AutotuneDecision AllowRegSpillsForGpuInstruction(
     const HloInstruction& instruction, autotuner::Backend backend) {
-  // CUBLASLT_FISSION creates loop fusions for the decomposed prologue and
+  // Fission backends create loop fusions for the decomposed prologue and
   // epilogue of the GEMM fusion. These fusions are allowed to spill as they
   // have limited configs and can still be faster.
-  if (backend == autotuner::Backend::CUBLASLT_FISSION) {
+  if (backend == autotuner::Backend::CUBLASLT_FISSION ||
+      backend == autotuner::Backend::CUDNN_FISSION) {
     return AutotuneDecision::Allow();
   }
   if (instruction.opcode() == HloOpcode::kCustomCall) {
@@ -183,6 +184,26 @@ AutotuneDecision ShouldAssignConfigToGemmFusion(
       "Fusion kind is not supported for GEMM autotuning");
 }
 
+// Generic Triton fusions usually already have a config from the cost model.
+// Autotune them only when top-k > 1, and only with the block-level emitter, the
+// only backend that keeps them as Triton fusions.
+AutotuneDecision ShouldAssignConfigToTritonFusion(
+    bool enable_fusion_autotuner, bool block_level_emitter_enabled,
+    int top_k_configs) {
+  if (!enable_fusion_autotuner) {
+    return AutotuneDecision::Forbid("Fusion autotuner is disabled");
+  }
+  if (!block_level_emitter_enabled) {
+    return AutotuneDecision::Forbid("Block-level emitter backend is disabled");
+  }
+  if (top_k_configs == 1) {
+    return AutotuneDecision::Forbid(
+        "Triton fusions keep the cost model's config when autotuning over a "
+        "single config");
+  }
+  return AutotuneDecision::Allow();
+}
+
 AutotuneDecision ShouldAssignConfigToGenericFusion(
     bool enable_fusion_autotuner, const HloInstruction& instruction) {
   if (!enable_fusion_autotuner) {
@@ -202,7 +223,8 @@ AutotuneDecision ShouldAssignConfigToGenericFusion(
 
 AutotuneDecision ShouldAssignConfigToInstruction(
     bool do_not_autotune_cublas, bool do_not_autotune_cudnn,
-    bool enable_fusion_autotuner, const HloInstruction& instruction) {
+    bool enable_fusion_autotuner, bool block_level_emitter_enabled,
+    int top_k_configs, const HloInstruction& instruction) {
   // 1. Custom calls.
   if (instruction.opcode() == HloOpcode::kCustomCall) {
     return ShouldAssignConfigToCustomCall(do_not_autotune_cublas,
@@ -222,7 +244,13 @@ AutotuneDecision ShouldAssignConfigToInstruction(
         backend_config.kind() == kCustomFusionKind) {
       return ShouldAssignConfigToGemmFusion(instruction);
     }
-    // 3. Generic fusions.
+    // 3. Generic Triton-only fusions. These are expected to only be tuned by
+    // the BlockLevelEmitterBackend.
+    if (backend_config.kind() == kTritonFusionKind) {
+      return ShouldAssignConfigToTritonFusion(
+          enable_fusion_autotuner, block_level_emitter_enabled, top_k_configs);
+    }
+    // 4. Generic fusions.
     return ShouldAssignConfigToGenericFusion(enable_fusion_autotuner,
                                              instruction);
   }
@@ -250,9 +278,15 @@ std::unique_ptr<AutotunerCacheInterface> CreateAutotunerCache(
   // The autotune cache is process-wide and keyed without debug options, so it
   // may contain timing-based picks inserted by other (non-deterministic)
   // modules. Using them would make a deterministic compilation depend on what
-  // else was compiled in the process first, so don't use any cache.
-  if (debug_options.xla_gpu_deterministic_ops() ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
+  // else was compiled in the process first, so don't use any cache unless
+  // xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops is
+  // enabled.
+  const bool use_cache_for_deterministic_ops =
+      debug_options
+          .xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops();
+  if ((debug_options.xla_gpu_deterministic_ops() ||
+       debug_options.xla_gpu_exclude_nondeterministic_ops()) &&
+      !use_cache_for_deterministic_ops) {
     return nullptr;
   }
 
@@ -384,19 +418,29 @@ InstructionFilterFn GetShouldAssignConfigToInstructionFn(
       !debug_options.xla_gpu_exclude_nondeterministic_ops() &&
       !debug_options.xla_gpu_deterministic_ops() &&
       debug_options.xla_gpu_experimental_enable_fusion_autotuner();
+  int top_k_configs = debug_options.xla_gpu_fusion_autotune_top_k_configs();
+  // An empty list of autotune backends enables all of them.
+  const auto& autotune_backends =
+      debug_options.xla_gpu_experimental_autotune_backends();
+  bool block_level_emitter_enabled =
+      autotune_backends.empty() ||
+      absl::c_any_of(autotune_backends, [](int backend) {
+        return static_cast<autotuner::Backend>(backend) ==
+               autotuner::Backend::BLOCK_LEVEL_EMITTER;
+      });
 
-  return
-      [do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
-       gpu_version](const HloInstruction& instruction) -> bool {
-        AutotuneDecision decision = ShouldAssignConfigToInstruction(
-            do_not_autotune_cublas, do_not_autotune_cudnn,
-            enable_fusion_autotuner, instruction);
-        if (!decision) {
-          VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
-                  << decision.Explain();
-        }
-        return decision.IsAllowed();
-      };
+  return [do_not_autotune_cublas, do_not_autotune_cudnn,
+          enable_fusion_autotuner, block_level_emitter_enabled, top_k_configs,
+          gpu_version](const HloInstruction& instruction) -> bool {
+    AutotuneDecision decision = ShouldAssignConfigToInstruction(
+        do_not_autotune_cublas, do_not_autotune_cudnn, enable_fusion_autotuner,
+        block_level_emitter_enabled, top_k_configs, instruction);
+    if (!decision) {
+      VLOG(3) << "Not assigning configs to " << instruction.name() << ": "
+              << decision.Explain();
+    }
+    return decision.IsAllowed();
+  };
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
@@ -413,11 +457,25 @@ ConfigAssignerPass::GetEnabledBackends(
        debug_options.xla_gpu_experimental_autotune_backends()) {
     autotune_backends.push_back(static_cast<autotuner::Backend>(backend));
   }
+  // An empty list means all backends. It happens for DebugOptions that don't
+  // start from DefaultDebugOptionsIgnoringFlags(), e.g. ones serialized before
+  // it populated the list. Populate it like the defaults do, so that the
+  // backends disabled below are removed.
+  if (autotune_backends.empty()) {
+    for (int i = 0; i < autotuner::Backend_descriptor()->value_count(); ++i) {
+      const auto backend = static_cast<autotuner::Backend>(
+          autotuner::Backend_descriptor()->value(i)->number());
+      if (backend != autotuner::Backend::UNSPECIFIED_BACKEND) {
+        autotune_backends.push_back(backend);
+      }
+    }
+  }
 
   std::vector<autotuner::Backend> disabled_autotune_backends;
   if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
     disabled_autotune_backends.push_back(autotuner::Backend::CUBLASLT);
     disabled_autotune_backends.push_back(autotuner::Backend::CUDNN);
+    disabled_autotune_backends.push_back(autotuner::Backend::CUDNN_FISSION);
     disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT);
     disabled_autotune_backends.push_back(autotuner::Backend::MIOPEN);
     disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT_FISSION);
@@ -483,7 +541,9 @@ absl::StatusOr<std::unique_ptr<ConfigAssignerPass>> ConfigAssignerPass::Create(
       GetConfigAssignerOptions(debug_options, is_deviceless);
   CodegenOrchestrator::Options orchestrator_options =
       GetCodegenOrchestratorOptions(debug_options);
-  // Null in deterministic mode.
+  // Null in deterministic mode unless
+  // xla_gpu_experimental_use_autotune_cache_also_for_deterministic_ops is
+  // enabled.
   std::unique_ptr<AutotunerCacheInterface> cache =
       CreateAutotunerCache(debug_options, *target_config, backends);
 

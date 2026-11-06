@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_EXECUTABLE_H_
 #define XLA_PJRT_PJRT_EXECUTABLE_H_
 
+#include <atomic>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -52,6 +54,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -70,7 +73,31 @@ class PjRtClient;
 // Implementations that do not support this are allowed to pass nullptr.
 class MultiSliceConfig {
  public:
+  MultiSliceConfig() = default;
+  MultiSliceConfig(const MultiSliceConfig&) = delete;
+  MultiSliceConfig& operator=(const MultiSliceConfig&) = delete;
   virtual ~MultiSliceConfig();
+
+  // Increments the intrusive reference count.
+  void AddRef() const {
+    assert(ref_count_.load(std::memory_order_relaxed) >= 1);
+    ref_count_.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  // Decrements the intrusive reference count and deletes this object when the
+  // last reference is dropped.
+  void DropRef() const {
+    assert(ref_count_.load(std::memory_order_relaxed) > 0);
+    if (ref_count_.load(std::memory_order_acquire) == 1 ||
+        ref_count_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+      delete this;
+    }
+  }
+
+  // Returns true if the intrusive reference count is 1.
+  bool IsUnique() const {
+    return ref_count_.load(std::memory_order_acquire) == 1;
+  }
 
   // Returns the total number of slices.
   virtual int32_t NumSlices() const = 0;
@@ -83,7 +110,12 @@ class MultiSliceConfig {
 
   // Returns a serialized proto representing MultiSliceConfig.
   virtual std::string Serialize() const = 0;
+
+ private:
+  mutable std::atomic<uint32_t> ref_count_{1};
 };
+
+using MultiSliceConfigRef = tsl::RCReference<const MultiSliceConfig>;
 
 struct CompileOptions {
   // The layouts of the arguments that the computation should expect.
@@ -112,7 +144,19 @@ struct CompileOptions {
   // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
   const MultiSliceConfig* multi_slice_config = nullptr;
+  // Transitional owning reference backing `set_multi_slice_config()` until
+  // `multi_slice_config` switches to `MultiSliceConfigRef`.
+  MultiSliceConfigRef owned_multi_slice_config;
   std::string serialized_multi_slice_config = "";
+
+  void set_multi_slice_config(MultiSliceConfigRef config) {
+    owned_multi_slice_config = std::move(config);
+    multi_slice_config = owned_multi_slice_config.get();
+  }
+
+  const MultiSliceConfig* get_multi_slice_config() const {
+    return multi_slice_config;
+  }
 
   // Key-value string pairs, parsed in order to set miscellaneous options,
   // overriding if appropriate.

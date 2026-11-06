@@ -293,6 +293,16 @@ NB_MODULE(_profiler, m) {
              new (options)
                  tensorflow::ProfileOptions(DefaultPythonProfileOptions());
            })
+      .def("__copy__",
+           [](const tensorflow::ProfileOptions& options) {
+             return tensorflow::ProfileOptions(options);
+           })
+      .def(
+          "__deepcopy__",
+          [](const tensorflow::ProfileOptions& options, nb::handle memo) {
+            return tensorflow::ProfileOptions(options);
+          },
+          nb::arg("memo"))
       .def_prop_rw("include_dataset_ops",
                    &tensorflow::ProfileOptions::include_dataset_ops,
                    &tensorflow::ProfileOptions::set_include_dataset_ops)

@@ -210,7 +210,7 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
   // Create a scoped object to assign sharding to generated XLA ops. Any HLO
   // can have an attribute of "sharding".
   os << "  xla::XlaScopedShardingAssignment sharding(lowering_context.builder, "
-        "CreateOpShardingFromAttribute(op));\n\n";
+        "CreateOpShardingFromAttribute(op, lowering_context.converter));\n\n";
 
   // Create a scoped object to assign frontend attributes to generated XLA ops.
   // Any HLO can have an attribute of "frontend_attributes", which are used to

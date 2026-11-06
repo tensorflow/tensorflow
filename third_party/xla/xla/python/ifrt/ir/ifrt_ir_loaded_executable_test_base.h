@@ -23,35 +23,28 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/OwningOpRef.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/ifrt_ir_test_base.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
 namespace test_util {
 
 // Base class to help create tests that compile and execute IFRT IR.
-class IfrtIrLoadedExecutableTestBase : public testing::Test {
+class IfrtIrLoadedExecutableTestBase : public IfrtIrTestBase {
  public:
-  IfrtIrLoadedExecutableTestBase();
+  IfrtIrLoadedExecutableTestBase() = default;
   void SetUp() override;
 
  protected:
-  // Loads mlir from source string.
-  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromSource(
-      absl::string_view source);
-
   // Compiles an IFRT IR program string for the given device list.
   absl::StatusOr<LoadedExecutableRef> CompileProgram(absl::string_view source,
                                                      DeviceListRef devices);
@@ -96,7 +89,6 @@ class IfrtIrLoadedExecutableTestBase : public testing::Test {
   absl::StatusOr<DeviceListRef> PickDevices(
       int count, std::optional<absl::string_view> platform_name = std::nullopt);
 
-  mlir::MLIRContext mlir_context_;
   std::shared_ptr<Client> client_;
 };
 

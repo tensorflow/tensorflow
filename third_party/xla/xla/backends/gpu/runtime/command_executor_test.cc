@@ -26,10 +26,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/scoped_command_buffer_annotation.h"
 #include "xla/stream_executor/mock_command_buffer.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
@@ -131,7 +134,7 @@ class NestingCmd : public FakeCmd {
 
 TEST(CommandExecutorTest, EmptySequenceDoesNotRequireWarmup) {
   ASSERT_OK_AND_ASSIGN(auto executor, CommandExecutor::Create({}, kSerialize));
-  EXPECT_FALSE(executor.requires_warmup());
+  EXPECT_FALSE(executor.requires_warmup({}));
 }
 
 TEST(CommandExecutorTest, RequiresWarmup) {
@@ -142,7 +145,7 @@ TEST(CommandExecutorTest, RequiresWarmup) {
                               requires_warmup);
     ASSERT_OK_AND_ASSIGN(auto executor, CommandExecutor::Create(
                                             std::move(commands), kSerialize));
-    EXPECT_EQ(executor.requires_warmup(), requires_warmup);
+    EXPECT_EQ(executor.requires_warmup({}), requires_warmup);
   }
 }
 
@@ -153,8 +156,29 @@ TEST(CommandExecutorTest, RequiresWarmupInNestedCommands) {
     commands.Emplace<NestingCmd>(&nested);
     ASSERT_OK_AND_ASSIGN(auto executor, CommandExecutor::Create(
                                             std::move(commands), kSerialize));
-    EXPECT_EQ(executor.requires_warmup(), requires_warmup);
+    EXPECT_EQ(executor.requires_warmup({}), requires_warmup);
   }
+}
+
+TEST(CommandExecutorTest, RequiresWarmupWithCommandBufferRequests) {
+  FakeCmd nested({}, nullptr, false, false, /*requires_warmup=*/true);
+  CommandSequence commands;
+  commands.Emplace<FakeCmd>();
+  const Command* top_cmd = commands[0];
+  commands.Emplace<NestingCmd>(&nested);
+  ASSERT_OK_AND_ASSIGN(
+      auto executor, CommandExecutor::Create(std::move(commands), kSerialize));
+  EXPECT_TRUE(executor.requires_warmup({}));
+
+  CommandBufferRequests requests;
+
+  // Overriding nested command true -> false clears warmup requirement.
+  requests.SetRequiresWarmup(&nested, false);
+  EXPECT_FALSE(executor.requires_warmup(requests));
+
+  // Overriding top-level command false -> true requests warmup again.
+  requests.SetRequiresWarmup(top_cmd, true);
+  EXPECT_TRUE(executor.requires_warmup(requests));
 }
 
 class CommandExecutorUpdateTest : public ::testing::Test {
@@ -365,6 +389,126 @@ TEST_F(CommandExecutorUpdateTest,
   ASSERT_OK(
       executor.RecordUpdate(execute_params, update_params, &command_buffer));
   EXPECT_EQ(update_annotation, "");
+}
+
+//===----------------------------------------------------------------------===//
+// Command buffer annotation tests
+//===----------------------------------------------------------------------===//
+
+// A command for op `op` that appends the command buffer annotation active
+// while it is recorded to `seen`. Records `nested`, if any, while its own
+// annotation is active, as while and conditional commands record their bodies.
+class AnnotationProbeCmd : public Command {
+ public:
+  AnnotationProbeCmd(absl::string_view op, std::vector<std::string>* seen,
+                     const CommandExecutor* nested = nullptr)
+      : Command(Thunk::Kind::kCommand, MakeThunkInfo(op)),
+        seen_(seen),
+        nested_(nested) {}
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction action,
+      se::CommandBuffer* command_buffer) override {
+    seen_->emplace_back(
+        se::ScopedCommandBufferAnnotation::GetCurrentAnnotation());
+    if (nested_ != nullptr) {
+      if (std::holds_alternative<RecordCreate>(action)) {
+        ABSL_RETURN_IF_ERROR(nested_
+                            ->RecordCreate(execute_params, record_params,
+                                           command_buffer, /*dependencies=*/{})
+                            .status());
+      } else {
+        ABSL_RETURN_IF_ERROR(nested_->RecordUpdate(execute_params, record_params,
+                                              command_buffer));
+      }
+    }
+    return nullptr;
+  }
+
+  BufferUses buffer_uses() const override { return {}; }
+
+  // Updated on every record, so that `RecordUpdate` visits it.
+  bool requires_update_on_execute() const override { return true; }
+
+ private:
+  static ThunkInfo MakeThunkInfo(absl::string_view op) {
+    ThunkInfo info;
+    info.profile_annotation = std::string(op);
+    return info;
+  }
+
+  std::vector<std::string>* seen_;
+  const CommandExecutor* nested_;
+};
+
+// Records `executor` with `RecordCreate` and then `RecordUpdate` into a mock
+// command buffer, inside an annotation root that is `enabled` with annotation
+// "root".
+absl::Status RecordCreateAndUpdate(const CommandExecutor& executor,
+                                   bool enabled) {
+  std::vector<se::DeviceAddressBase> buffers(1);
+  BufferAllocations allocations(buffers, /*device_ordinal=*/0,
+                                /*memory_allocator=*/nullptr);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      run_options, allocations, /*stream=*/nullptr,
+      /*command_buffer_trace_stream=*/nullptr,
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr, /*additional_compute_streams=*/{},
+      /*execution_scoped_state=*/nullptr, /*persistent_alloc_indices=*/{});
+
+  CommandStateManager state_manager;
+  ::testing::NiceMock<se::MockCommandBuffer> command_buffer;
+  se::CommandBuffer::State command_buffer_state =
+      se::CommandBuffer::State::kCreate;
+  ON_CALL(command_buffer, state()).WillByDefault([&] {
+    return command_buffer_state;
+  });
+  ON_CALL(command_buffer, mode())
+      .WillByDefault(::testing::Return(se::CommandBuffer::Mode::kPrimary));
+
+  auto root = se::ScopedCommandBufferAnnotation::Root(enabled, "root");
+  Command::RecordParams create_params{state_manager};
+  ABSL_RETURN_IF_ERROR(executor
+                      .RecordCreate(execute_params, create_params,
+                                    &command_buffer, /*dependencies=*/{})
+                      .status());
+  command_buffer_state = se::CommandBuffer::State::kUpdate;
+  Command::RecordParams update_params{state_manager};
+  return executor.RecordUpdate(execute_params, update_params, &command_buffer);
+}
+
+TEST(CommandExecutorAnnotationTest,
+     RecordsCommandsAndNestedExecutorsUnderTheirAnnotations) {
+  std::vector<std::string> seen;
+  CommandSequence inner_commands;
+  inner_commands.Emplace<AnnotationProbeCmd>("inner", &seen);
+  ASSERT_OK_AND_ASSIGN(
+      CommandExecutor inner,
+      CommandExecutor::Create(std::move(inner_commands), kSerialize));
+  CommandSequence commands;
+  commands.Emplace<AnnotationProbeCmd>("outer", &seen, &inner);
+  commands.Emplace<AnnotationProbeCmd>("next", &seen);
+  ASSERT_OK_AND_ASSIGN(
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), kSerialize));
+
+  // With a disabled root, nothing is pushed on either create or update.
+  ASSERT_OK(RecordCreateAndUpdate(executor, /*enabled=*/false));
+  EXPECT_THAT(seen, ::testing::ElementsAre("", "", "", "", "", ""));
+  EXPECT_FALSE(se::ScopedCommandBufferAnnotation::IsActive());
+
+  // With an enabled root, each command and nested executor sees its stacked
+  // frame on create and update, without leaking into sibling commands.
+  seen.clear();
+  ASSERT_OK(RecordCreateAndUpdate(executor, /*enabled=*/true));
+  const std::string outer = "root::Thunk:#hlo_op=outer#";
+  const std::string inner_annotation = outer + "::Thunk:#hlo_op=inner#";
+  const std::string next = "root::Thunk:#hlo_op=next#";
+  EXPECT_THAT(seen, ::testing::ElementsAre(outer, inner_annotation, next, outer,
+                                           inner_annotation, next));
+  EXPECT_EQ(se::ScopedCommandBufferAnnotation::GetCurrentAnnotation(), "");
 }
 
 //===----------------------------------------------------------------------===//

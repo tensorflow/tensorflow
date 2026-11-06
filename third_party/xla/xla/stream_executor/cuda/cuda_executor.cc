@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
@@ -48,6 +49,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -115,6 +118,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/numa.h"
@@ -549,8 +553,7 @@ std::string GetPCIBusID(CUdevice device) {
   return absl::AsciiStrToLower(absl::string_view(raw_pci_bus_id.data()));
 }
 
-bool HostRegister(Context* context, void* location, uint64_t size) {
-  ScopedActivateContext activation(context);
+bool HostRegister(void* location, uint64_t size) {
   // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
   auto status = cuda::ToStatus(
       cuMemHostRegister(location, size, CU_MEMHOSTREGISTER_PORTABLE));
@@ -562,8 +565,7 @@ bool HostRegister(Context* context, void* location, uint64_t size) {
   return true;
 }
 
-bool HostUnregister(Context* context, void* location) {
-  ScopedActivateContext activation(context);
+bool HostUnregister(void* location) {
   auto status = cuda::ToStatus(cuMemHostUnregister(location));
   if (!status.ok()) {
     LOG(ERROR) << "error unregistering host memory at " << location << ": "
@@ -571,6 +573,162 @@ bool HostUnregister(Context* context, void* location) {
     return false;
   }
   return true;
+}
+
+// Pushes a context that is not a StreamExecutor `Context` onto the calling
+// thread's CUDA context stack and pops it again on destruction.
+//
+// Only raw driver calls may run while it is pushed. `ScopedActivateContext`
+// caches the current context in a thread-local and, in an outermost scope,
+// calls cuCtxSetCurrent, which would replace this context at the top of the
+// stack, so the pop would remove the caller's context instead.
+class ScopedPushContext final {
+ public:
+  explicit ScopedPushContext(CUcontext context)
+      : context_(context), status_(cuda::ToStatus(cuCtxPushCurrent(context))) {}
+
+  ScopedPushContext(const ScopedPushContext&) = delete;
+  ScopedPushContext& operator=(const ScopedPushContext&) = delete;
+
+  ~ScopedPushContext() {
+    if (!status_.ok()) {
+      return;
+    }
+    CUcontext popped = nullptr;
+    absl::Status status = cuda::ToStatus(cuCtxPopCurrent(&popped));
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to pop CUDA context " << context_ << ": " << status;
+    } else if (popped != context_) {
+      LOG(ERROR) << "Popped CUDA context " << popped << " instead of "
+                 << context_;
+    }
+  }
+
+  const absl::Status& status() const { return status_; }
+
+ private:
+  CUcontext context_;
+  absl::Status status_;
+};
+
+// If true, host memory is registered in a context shared by all executors (see
+// GetHostMemoryRegisterContext) instead of the primary contexts. Off by
+// default: the shared context costs device memory (a few hundred MiB), and it's
+// only needed to avoid deadlocks when host memory is unregistered while
+// collectives are in flight.
+constexpr absl::string_view kRegisterHostMemoryInSharedContextEnvVar =
+    "XLA_CUDA_REGISTER_HOST_MEMORY_IN_SHARED_CONTEXT";
+
+// Creates a context on `device` that is only used to register host memory.
+//
+// cuMemHostUnregister synchronizes the context the memory was registered in
+// while holding that context's lock: it waits for all of its streams, and no
+// other thread can launch work or enqueue copies in it meanwhile. In the
+// primary context this can deadlock with an in-flight collective whose other
+// side can't be launched until a copy in the primary context is enqueued. This
+// context has no streams, so unregistering memory registered in it waits for
+// nothing and doesn't block any primary context. The memory is registered
+// as portable, so it's still treated as pinned in all contexts.
+absl::StatusOr<CUcontext> CreateHostMemoryRegisterContext(CUdevice device) {
+  // cuCtxCreate takes different arguments in CUDA 12 and 13 headers.
+  // cuCtxCreate_v4 has the same signature in both, but needs a 12.5+ driver.
+  int driver_version = 0;
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuDriverGetVersion(&driver_version)));
+  if (driver_version < 12050) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Creating a CUDA context requires CUDA driver 12.5 or newer, found %d",
+        driver_version));
+  }
+  CUcontext context = nullptr;
+  ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuCtxCreate_v4(
+      &context, /*ctxCreateParams=*/nullptr, /*flags=*/0, device)));
+
+  // No kernels run in this context, so it doesn't need the per-thread local
+  // memory that the default stack size reserves for every resident thread
+  // (about 300 MiB of device memory on GB300). cuCtxSetLimit applies to the
+  // current context, which cuCtxCreate set to the new one.
+  absl::Status limit_status =
+      cuda::ToStatus(cuCtxSetLimit(CU_LIMIT_STACK_SIZE, 0));
+  if (!limit_status.ok()) {
+    LOG(WARNING) << "Failed to set the stack size limit of the host memory "
+                    "registration context: "
+                 << limit_status;
+  }
+
+  // Pop the new context again so the caller's current context is unchanged.
+  CUcontext popped = nullptr;
+  absl::Status pop_status = cuda::ToStatus(cuCtxPopCurrent(&popped));
+  if (!pop_status.ok()) {
+    cuCtxDestroy(context);
+    return pop_status;
+  }
+  return context;
+}
+
+// Returns the context that host memory is registered in, or nullptr to register
+// it in the calling executor's primary context.
+//
+// If kRegisterHostMemoryInSharedContextEnvVar is set, the first call creates
+// the shared context, which all executors then use for the life of the process.
+// One context is enough: the memory is registered as portable, so every context
+// treats it as pinned, and unregistering it only waits for the shared context,
+// whichever context the caller has current. If the shared context can't be
+// created, all executors use their primary contexts.
+//
+// The shared context is created on `device`, the device of the executor making
+// the first call. In PjRt that is always the client's first device, since
+// DmaMap and the pinned host memory allocator register through it. Other
+// callers may get it on whichever device registers first. The device only
+// determines which GPU holds the context's memory, not correctness, and it's
+// never a GPU that this process doesn't use.
+CUcontext GetHostMemoryRegisterContext(CUdevice device) {
+  static const CUcontext context = [device]() -> CUcontext {
+    bool enabled = false;
+    if (absl::Status status =
+            tsl::ReadBoolFromEnvVar(kRegisterHostMemoryInSharedContextEnvVar,
+                                    /*default_val=*/false, &enabled);
+        !status.ok()) {
+      LOG(WARNING) << "Ignoring " << kRegisterHostMemoryInSharedContextEnvVar
+                   << ": " << status;
+      return nullptr;
+    }
+    if (!enabled) {
+      return nullptr;
+    }
+    absl::Time start = absl::Now();
+    absl::StatusOr<CUcontext> context = CreateHostMemoryRegisterContext(device);
+    if (!context.ok()) {
+      LOG(ERROR) << "Failed to create a CUDA context for registering host "
+                    "memory, registering it in the primary contexts instead ("
+                 << kRegisterHostMemoryInSharedContextEnvVar
+                 << " is ignored): " << context.status();
+      return nullptr;
+    }
+    LOG(INFO) << "Created a CUDA context on device " << device
+              << " for registering host memory in " << absl::Now() - start;
+    return *context;
+  }();
+  return context;
+}
+
+// Runs `driver_call` with the host memory registration context (see
+// GetHostMemoryRegisterContext) pushed, if there is one. The caller must have
+// its primary context active, so the calling thread is left in the same state
+// whether or not a shared context is used. Returns false without running
+// `driver_call` if the shared context can't be pushed.
+bool RunInHostMemoryRegisterContext(CUdevice device,
+                                    absl::FunctionRef<bool()> driver_call) {
+  std::optional<ScopedPushContext> shared_context;
+  if (CUcontext context = GetHostMemoryRegisterContext(device);
+      context != nullptr) {
+    shared_context.emplace(context);
+    if (!shared_context->status().ok()) {
+      LOG(ERROR) << "Failed to push the host memory registration context: "
+                 << shared_context->status();
+      return false;
+    }
+  }
+  return driver_call();
 }
 
 absl::StatusOr<bool> IsVmmSupported(CUdevice device) {
@@ -1502,13 +1660,17 @@ bool CudaExecutor::SynchronizeAllActivity() {
 bool CudaExecutor::HostMemoryRegister(void* location, uint64_t size) {
   XLA_VLOG_DEVICE(1, device_ordinal())
       << "Called StreamExecutor::HostMemoryRegister(data=" << location << ")";
-  return HostRegister(cuda_context_, location, size);
+  ScopedActivateContext activation(cuda_context_);
+  return RunInHostMemoryRegisterContext(
+      device_, [&] { return HostRegister(location, size); });
 }
 
 bool CudaExecutor::HostMemoryUnregister(void* location) {
   XLA_VLOG_DEVICE(1, device_ordinal())
       << "Called StreamExecutor::HostUnregister(data=" << location << ")";
-  return HostUnregister(cuda_context_, location);
+  ScopedActivateContext activation(cuda_context_);
+  return RunInHostMemoryRegisterContext(
+      device_, [&] { return HostUnregister(location); });
 }
 
 absl::Status CudaExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
@@ -2155,7 +2317,7 @@ bool CudaExecutor::IsVmmMemory(const DeviceAddressBase& address) {
 absl::StatusOr<MemorySpace> CudaExecutor::GetPointerMemorySpace(
     const void* ptr) {
   CUdeviceptr pointer = reinterpret_cast<CUdeviceptr>(const_cast<void*>(ptr));
-  unsigned int is_managed;
+  unsigned int is_managed = 0;
   ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuPointerGetAttribute(
       &is_managed, CU_POINTER_ATTRIBUTE_IS_MANAGED, pointer)));
 
@@ -2163,7 +2325,7 @@ absl::StatusOr<MemorySpace> CudaExecutor::GetPointerMemorySpace(
     return MemorySpace::kUnified;
   }
 
-  unsigned int value;
+  unsigned int value = 0;
   ABSL_RETURN_IF_ERROR(cuda::ToStatus(cuPointerGetAttribute(
       &value, CU_POINTER_ATTRIBUTE_MEMORY_TYPE, pointer)));
   switch (value) {
@@ -2181,9 +2343,11 @@ bool CudaExecutor::IsHostMemoryPinned(const void* ptr, uint64_t size) {
   if (size == 0) return false;
   CUdeviceptr pointer = reinterpret_cast<CUdeviceptr>(const_cast<void*>(ptr));
 
-  uint64_t start_addr;
-  uint64_t range_size;
-  unsigned int memory_type;
+  // For pageable host memory, cuPointerGetAttributes succeeds but doesn't write
+  // RANGE_START_ADDR and RANGE_SIZE. So don't leave the results uninitialized.
+  uint64_t start_addr = 0;
+  uint64_t range_size = 0;
+  unsigned int memory_type = 0;
   CUpointer_attribute attrs[3] = {CU_POINTER_ATTRIBUTE_MEMORY_TYPE,
                                   CU_POINTER_ATTRIBUTE_RANGE_START_ADDR,
                                   CU_POINTER_ATTRIBUTE_RANGE_SIZE};

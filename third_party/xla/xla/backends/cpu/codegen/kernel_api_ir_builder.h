@@ -54,7 +54,6 @@ void SetModuleMemoryRegionName(llvm::Module& llvm_module,
 class KernelApiIrBuilder {
  public:
   struct Options {
-    bool enable_invariant_load_metadata;
     int32_t prefer_vector_width;
     bool generate_unique_c_style_kernel_entry_points;
 

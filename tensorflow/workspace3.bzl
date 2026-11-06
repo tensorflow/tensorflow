@@ -19,11 +19,22 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls", "tf_vendored
 load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 
 def workspace():
+    """Loads a set of TensorFlow dependencies. To be used in a WORKSPACE file."""
+    tf_http_archive(
+        name = "rules_proto",
+        sha256 = "14a225870ab4e91869652cfd69ef2028277fc1dc4910d65d353b62d6e0ae21f4",
+        strip_prefix = "rules_proto-7.1.0",
+        urls = tf_mirror_urls(
+            "https://github.com/bazelbuild/rules_proto/archive/refs/tags/7.1.0.tar.gz",
+        ),
+    )
+
     tf_vendored(name = "xla", path = "third_party/xla")
     tf_vendored(name = "tsl", path = "third_party/xla/third_party/tsl")
 
     tf_http_archive(
         name = "io_bazel_rules_closure",
+        patch_file = ["//third_party:rules_closure.patch"],
         sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",
         strip_prefix = "rules_closure-308b05b2419edb5c8ee0471b67a40403df940149",
         urls = tf_mirror_urls(
@@ -80,10 +91,10 @@ def workspace():
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
     tf_http_archive(
         name = "rules_ml_toolchain",
-        sha256 = "e22beab7f24f924735d3d5903606ea3c346128cc7076772f7328706dd8ce5da5",
-        strip_prefix = "rules_ml_toolchain-09925f69ffb6e1e765a246073ace69bfb33fbb57",
+        sha256 = "edea971abaf9f4ccdfba1533030ce76c6fcd0dee75a3234c4a5c5141981243ae",
+        strip_prefix = "rules_ml_toolchain-9114bb1c3abf4f1a5889ef8fd7ae5a72b1351db3",
         urls = tf_mirror_urls(
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/09925f69ffb6e1e765a246073ace69bfb33fbb57.tar.gz",
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/9114bb1c3abf4f1a5889ef8fd7ae5a72b1351db3.tar.gz",
         ),
     )
 

@@ -509,6 +509,48 @@ TEST_F(CollectiveTransformationReordererTest,
   EXPECT_THAT(RunFileCheck(module->ToString(), hlo_string), IsOkAndHolds(true));
 }
 
+TEST_F(CollectiveTransformationReordererTest,
+       ReshapeAcrossShardsLargePrefixStrideOverflow) {
+  // 4 * 1073741825 == 2^32 + 4, which wraps to 4 if accumulated in 32-bit int
+  // and falsely matches the incompatible [4, 8, 1073741825] reshape.
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+  ENTRY entry {
+    param = bf16[4,1073741825,2] parameter(0)
+    all-gather = bf16[4,1073741825,8] all-gather(param), dimensions={2},
+      replica_groups={{0,1,2,3}}, channel_id=1
+    ROOT reshape = bf16[4,8,1073741825] reshape(all-gather)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(RunCollectiveTransformationReorderer(module.get()),
+              IsOkAndHolds(false));
+}
+
+TEST_F(CollectiveTransformationReordererTest,
+       ReshapeWithinShardBeforeAllGatherDimLargePrefixStride) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+  ENTRY entry {
+    param = bf16[2,1073741825,4] parameter(0)
+    all-gather = bf16[2,1073741825,32] all-gather(param), dimensions={2},
+      replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    ROOT reshape = bf16[2147483650,32] reshape(all-gather)
+  }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_THAT(RunCollectiveTransformationReorderer(module.get()),
+              IsOkAndHolds(true));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, op::AllGather(op::Reshape(op::Parameter())));
+  EXPECT_THAT(root->dimensions(), ElementsAre(1));
+  EXPECT_THAT(root->shape().dimensions(), ElementsAre(2147483650, 32));
+  EXPECT_THAT(root->operand(0)->shape().dimensions(),
+              ElementsAre(2147483650, 4));
+}
+
 }  // namespace
 
 }  // namespace xla

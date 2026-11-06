@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -249,14 +250,19 @@ class TilingSpace {
       const llvm::SmallVector<SymbolicExpr>& expressions,
       llvm::ArrayRef<std::pair<SymbolicExpr, Interval>> constraints = {}) const;
 
-  // Returns the list of valid tilings for the tiling space. If
-  // `tile_reduction_dimensions` is set, tile sizes for the sequential
-  // dimensions of reduces are enumerated too; otherwise each of them is covered
-  // by a single tile of the dimension size. Scan dimensions that fit into a
-  // single row-local tile (`<= kMaxRowLocalScanDimSize`) are also covered by a
-  // single tile of the dimension size.
+  using TileSizesForDimFn =
+      absl::FunctionRef<absl::StatusOr<std::vector<int64_t>>(
+          const DimensionInfo&)>;
+
+  // Returns the list of valid tilings for the tiling space, using
+  // `get_valid_tile_sizes_for_dim` to obtain the candidate tile sizes for each
+  // dimension.
   absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings(
-      bool tile_reduction_dimensions = false);
+      TileSizesForDimFn get_valid_tile_sizes_for_dim);
+
+  // Overload of `GetValidTilings` that enumerates all power-of-two tile sizes
+  // up to the dimension size for each dimension.
+  absl::StatusOr<std::vector<llvm::SmallVector<int64_t, 4>>> GetValidTilings();
 
  private:
   absl::Status InitializeDimensions(
@@ -348,30 +354,20 @@ int64_t GetResultDimensionOffset(const HloInstruction& hlo,
 llvm::DenseMap<SymbolicExpr, SymbolicExpr> GetTileSizeReplacementMap(
     const TilingSpace& tiling_space);
 
-}  // namespace xla::gpu
+// Returns the power-of-two tile sizes in `[min_tile_size, dim_size)` for one
+// dimension, plus `dim_size` itself.
+absl::StatusOr<std::vector<int64_t>> GetPowerOf2TileSizesInRange(
+    int64_t dim_size, int64_t min_tile_size = 1);
 
-namespace xla::gpu::experimental {
-using ::xla::gpu::GetFirstShape;
-using ::xla::gpu::GetResultDimensionOffset;
-using ::xla::gpu::GetTileSizeReplacementMap;
-using ::xla::gpu::IsIndexWiseVariadic;
-using ::xla::gpu::TilingSpace;
-}  // namespace xla::gpu::experimental
+}  // namespace xla::gpu
 
 namespace xla {
 using ::xla::gpu::GetFirstShape;
+using ::xla::gpu::GetPowerOf2TileSizesInRange;
 using ::xla::gpu::GetResultDimensionOffset;
 using ::xla::gpu::GetTileSizeReplacementMap;
 using ::xla::gpu::IsIndexWiseVariadic;
 using ::xla::gpu::TilingSpace;
 }  // namespace xla
-
-namespace xla::experimental {
-using ::xla::gpu::GetFirstShape;
-using ::xla::gpu::GetResultDimensionOffset;
-using ::xla::gpu::GetTileSizeReplacementMap;
-using ::xla::gpu::IsIndexWiseVariadic;
-using ::xla::gpu::TilingSpace;
-}  // namespace xla::experimental
 
 #endif  // XLA_CODEGEN_TILING_TILING_SPACE_H_

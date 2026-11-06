@@ -310,6 +310,7 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
                         .status());
     ABSL_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
     if (warmup_rz.has_value()) {
+      absl::ReaderMutexLock lock(GetGpuMutex(stream_executor_));
       ABSL_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check,
                        warmup_rz->CheckRedzones());
       if (!rz_check.ok()) {

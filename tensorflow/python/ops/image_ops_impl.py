@@ -1856,39 +1856,44 @@ def _resize_image_with_pad_common(image, target_height, target_width,
 
     image = control_flow_ops.with_dependencies(assert_ops, image)
 
-    def max_(x, y):
-      if _is_tensor(x) or _is_tensor(y):
-        return math_ops.maximum(x, y)
-      else:
-        return max(x, y)
-
     _, height, width, _ = _ImageDimensions(image, rank=4)
 
-    # convert values to float, to ease divisions
-    f_height = math_ops.cast(height, dtype=dtypes.float32)
-    f_width = math_ops.cast(width, dtype=dtypes.float32)
-    f_target_height = math_ops.cast(target_height, dtype=dtypes.float32)
-    f_target_width = math_ops.cast(target_width, dtype=dtypes.float32)
+    # The image is scaled by min(target_width / width, target_height / height)
+    # so that it fits within the target. Compute the resized size and the
+    # padding in exact integer arithmetic: in float32 the scaled size can land
+    # just below a whole number, and the floor below would then drop a row or
+    # column of the image and pad it with zeros instead.
+    i_height = math_ops.cast(height, dtype=dtypes.int64)
+    i_width = math_ops.cast(width, dtype=dtypes.int64)
+    i_target_height = math_ops.cast(target_height, dtype=dtypes.int64)
+    i_target_width = math_ops.cast(target_width, dtype=dtypes.int64)
 
-    # Find the ratio by which the image must be adjusted
-    # to fit within the target
-    ratio = max_(f_width / f_target_width, f_height / f_target_height)
-    resized_height_float = f_height / ratio
-    resized_width_float = f_width / ratio
-    resized_height = math_ops.cast(
-        math_ops.floor(resized_height_float), dtype=dtypes.int32)
-    resized_width = math_ops.cast(
-        math_ops.floor(resized_width_float), dtype=dtypes.int32)
+    scaled_height = i_height * i_target_width
+    scaled_width = i_width * i_target_height
 
-    padding_height = (f_target_height - resized_height_float) / 2
-    padding_width = (f_target_width - resized_width_float) / 2
-    f_padding_height = math_ops.floor(padding_height)
-    f_padding_width = math_ops.floor(padding_width)
-    p_height = max_(0, math_ops.cast(f_padding_height, dtype=dtypes.int32))
-    p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
+    resized_height = math_ops.minimum(i_target_height, scaled_height // i_width)
+    resized_width = math_ops.minimum(i_target_width, scaled_width // i_height)
+
+    # floor((target - scaled size) / 2), where the scaled size need not be a
+    # whole number.
+    zero = constant_op.constant(0, dtype=dtypes.int64)
+    p_height = math_ops.maximum(
+        zero, (scaled_width - scaled_height) // (2 * i_width)
+    )
+    p_width = math_ops.maximum(
+        zero, (scaled_height - scaled_width) // (2 * i_height)
+    )
+    p_height = math_ops.cast(p_height, dtype=dtypes.int32)
+    p_width = math_ops.cast(p_width, dtype=dtypes.int32)
 
     # Resize first, then pad to meet requested dimensions
-    resized = resize_fn(image, [resized_height, resized_width])
+    resized = resize_fn(
+        image,
+        [
+            math_ops.cast(resized_height, dtype=dtypes.int32),
+            math_ops.cast(resized_width, dtype=dtypes.int32),
+        ],
+    )
 
     padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
                                  target_width)
@@ -2581,12 +2586,34 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
     else:
       if image.dtype.is_integer:
         # Converting to float: first cast, then scale. No saturation possible.
+        if image.dtype.max > float(dtype.max):
+          # Large integers overflow half (uint16 max casts to inf), so scale in
+          # float32 and only cast the result, which is in [-1, 1], to `dtype`.
+          scaled = math_ops.multiply(
+              math_ops.cast(image, dtypes.float32), 1.0 / image.dtype.max
+          )
+          return math_ops.cast(scaled, dtype, name=name)
         cast = math_ops.cast(image, dtype)
         scale = 1. / image.dtype.max
         return math_ops.multiply(cast, scale, name=name)
       else:
         # Converting from float: first scale, then cast
         scale = dtype.max + 0.5  # avoid rounding problems in the cast
+        if (
+            float(image.dtype.max) < scale
+            or float(image.dtype.as_numpy_dtype(scale)) >= dtype.max + 1
+        ):
+          # The scale rounds up to dtype.max + 1 or more in the image's type
+          # (e.g. 256 in bfloat16 for uint8, 2**31 in float32 for int32), so
+          # 1.0 would overflow the cast. Scale half and bfloat16 in float32
+          # instead, and keep the scale below dtype.max + 1.
+          if image.dtype.size < 4:
+            image = math_ops.cast(image, dtypes.float32)
+          np_dtype = image.dtype.as_numpy_dtype
+          scale = min(
+              np_dtype(scale),
+              np.nextafter(np_dtype(dtype.max + 1), np_dtype(0)),
+          )
         scaled = math_ops.multiply(image, scale)
         if saturate:
           return math_ops.saturate_cast(scaled, dtype, name=name)
@@ -2819,12 +2846,12 @@ def adjust_hue(image, delta, name=None):
   >>> image = tf.constant(image)
   >>> tf.image.adjust_hue(image, 0.2)
   <tf.Tensor: shape=(3, 2, 3), dtype=int32, numpy=
-  array([[[ 2,  1,  3],
-        [ 5,  4,  6]],
-       [[ 8,  7,  9],
-        [11, 10, 12]],
-       [[14, 13, 15],
-        [17, 16, 18]]], dtype=int32)>
+  array([[[ 2,  0,  2],
+        [ 5,  3,  5]],
+       [[ 8,  6,  8],
+        [11,  9, 11]],
+       [[14, 12, 14],
+        [17, 15, 17]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     if context.executing_eagerly():

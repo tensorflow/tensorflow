@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -153,29 +154,37 @@ class TestLatencyEstimator : public LatencyEstimator {
   static constexpr TimeCost kHighCost = 5000.0;
 };
 
-TEST(LatencyEstimatorTest, GetLatencyFromMetadata) {
+// Adds a custom call to `computation`, with the `latency_metadata` frontend
+// attribute set to `latency_metadata` when provided, and returns the latency
+// `TestLatencyEstimator` derives from it.
+std::optional<LatencyEstimator::TimeCost> SetAndReturnCustomCallLatency(
+    HloComputation* computation,
+    std::optional<absl::string_view> latency_metadata) {
   TestLatencyEstimator estimator;
-  auto hlo_module =
-      VerifiedHloModule("test_module", HloModuleConfig(),
-                        /*verifier_layout_sensitive=*/false,
-                        /*allow_mixed_precision_in_hlo_verifier=*/true,
-                        /*shape_size_function=*/{});
+  HloInstruction* custom_call = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
+                                       "test_target", "test_backend_config"));
+  if (latency_metadata.has_value()) {
+    custom_call->set_frontend_attribute(kXlaLatencyMetadata, *latency_metadata);
+  }
+  return estimator.GetLatencyFromMetadata(*custom_call);
+}
+
+TEST(LatencyEstimatorTest, GetLatencyFromMetadata) {
+  VerifiedHloModule hlo_module("test_module", HloModuleConfig(),
+                               /*verifier_layout_sensitive=*/false,
+                               /*allow_mixed_precision_in_hlo_verifier=*/true,
+                               /*shape_size_function=*/{});
   HloComputation::Builder builder("test_computation");
-  auto* param = builder.AddInstruction(
+  HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p0"));
-  auto* instruction = hlo_module.AddEntryComputation(builder.Build(param));
+  HloComputation* computation =
+      hlo_module.AddEntryComputation(builder.Build(param));
 
   // Test case 1: Metadata present and valid.
   {
-    auto* custom_call = instruction->AddInstruction(
-        HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
-                                         "test_target", "test_backend_config"));
-    FrontendAttributes attributes;
-    (*attributes.mutable_map())["latency_metadata"] = "1000";
-    custom_call->set_frontend_attributes(attributes);
-
     std::optional<LatencyEstimator::TimeCost> latency =
-        estimator.GetLatencyFromMetadata(*custom_call);
+        SetAndReturnCustomCallLatency(computation, "1000");
     ASSERT_TRUE(latency.has_value());
     // 1000 ns * 1 cycle/us / 1000 = 1 cycle.
     EXPECT_NEAR(*latency, 1.0, 1e-6);
@@ -183,25 +192,30 @@ TEST(LatencyEstimatorTest, GetLatencyFromMetadata) {
 
   // Test case 2: Metadata present but invalid.
   {
-    auto* custom_call = instruction->AddInstruction(
-        HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
-                                         "test_target", "test_backend_config"));
-    FrontendAttributes attributes;
-    (*attributes.mutable_map())["latency_metadata"] = "invalid";
-    custom_call->set_frontend_attributes(attributes);
-
     std::optional<LatencyEstimator::TimeCost> latency =
-        estimator.GetLatencyFromMetadata(*custom_call);
+        SetAndReturnCustomCallLatency(computation, "invalid");
     EXPECT_FALSE(latency.has_value());
   }
 
   // Test case 3: Metadata missing.
   {
-    auto* custom_call = instruction->AddInstruction(
-        HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
-                                         "test_target", "test_backend_config"));
     std::optional<LatencyEstimator::TimeCost> latency =
-        estimator.GetLatencyFromMetadata(*custom_call);
+        SetAndReturnCustomCallLatency(computation, std::nullopt);
+    EXPECT_FALSE(latency.has_value());
+  }
+
+  // Test case 4: Metadata present and zero.
+  {
+    std::optional<LatencyEstimator::TimeCost> latency =
+        SetAndReturnCustomCallLatency(computation, "0");
+    ASSERT_TRUE(latency.has_value());
+    EXPECT_EQ(*latency, 0.0);
+  }
+
+  // Test case 5: Metadata present but negative.
+  {
+    std::optional<LatencyEstimator::TimeCost> latency =
+        SetAndReturnCustomCallLatency(computation, "-10");
     EXPECT_FALSE(latency.has_value());
   }
 }
@@ -3713,6 +3727,156 @@ ENTRY AddR2 {
   EXPECT_LT(PositionInVector(new_instruction_sequence, cps),
             PositionInVector(new_instruction_sequence, cpd2));
   XLA_VLOG_LINES(1, hlo_module->ToString());
+}
+
+// Two dependent layers each offload their result to host. Both copy-dones only
+// feed the ROOT tuple, so every other heuristic ties and, without a dedicated
+// tie-breaker, the original order would decide. The input deliberately lists
+// layer1's copy-done before layer0's. Since layer0 (copied by copy-start.0)
+// feeds copy-start.1, the scheduler should complete layer0's offload first, so
+// that its buffer is released as early as possible and the offloads finish in
+// dependency order.
+TEST_F(LatencyHidingSchedulerTest,
+       DependentLayerOffloadDonesOrderedByDependency) {
+  absl::string_view hlo_string = R"(
+HloModule DependentLayerOffload, is_scheduled=true
+ENTRY main {
+  x = f32[16,16]{1,0} parameter(0)
+  w0 = f32[16,16]{1,0} parameter(1)
+  w1 = f32[16,16]{1,0} parameter(2)
+  layer0 = f32[16,16]{1,0} convolution(x, w0), dim_labels=bf_io->bf
+  copy-start.0 = (f32[16,16]{1,0:S(5)}, f32[16,16]{1,0}, u32[]) copy-start(layer0)
+  layer1 = f32[16,16]{1,0} convolution(layer0, w1), dim_labels=bf_io->bf
+  copy-start.1 = (f32[16,16]{1,0:S(5)}, f32[16,16]{1,0}, u32[]) copy-start(layer1)
+  copy-done.1 = f32[16,16]{1,0:S(5)} copy-done(copy-start.1)
+  copy-done.0 = f32[16,16]{1,0:S(5)} copy-done(copy-start.0)
+  ROOT t = (f32[16,16]{1,0:S(5)}, f32[16,16]{1,0:S(5)}) tuple(copy-done.0, copy-done.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  EXPECT_OK(RunScheduler(hlo_module.get(), GetDefaultSchedConfig()));
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  // Each offload overlaps with compute.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "copy-start.0"),
+            GetIndex(new_instruction_sequence, "layer1"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "layer1"),
+            GetIndex(new_instruction_sequence, "copy-done.0"));
+  // The offload of the earlier-produced data (layer0) completes first.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "copy-done.0"),
+            GetIndex(new_instruction_sequence, "copy-done.1"));
+}
+
+// Two independent layers each offload their result to host. There is no data
+// dependency between the offloads, so the dependency tie-breaker must not
+// apply and the copy-dones keep their original relative order, even though
+// layer1 is deeper in the graph than layer0.
+TEST_F(LatencyHidingSchedulerTest,
+       IndependentLayerOffloadDonesKeepOriginalOrder) {
+  absl::string_view hlo_string = R"(
+HloModule IndependentLayerOffload, is_scheduled=true
+ENTRY main {
+  x = f32[16,16]{1,0} parameter(0)
+  w0 = f32[16,16]{1,0} parameter(1)
+  w1 = f32[16,16]{1,0} parameter(2)
+  layer0 = f32[16,16]{1,0} convolution(x, w0), dim_labels=bf_io->bf
+  copy-start.0 = (f32[16,16]{1,0:S(5)}, f32[16,16]{1,0}, u32[]) copy-start(layer0)
+  pre1 = f32[16,16]{1,0} convolution(x, w1), dim_labels=bf_io->bf
+  layer1 = f32[16,16]{1,0} convolution(pre1, w1), dim_labels=bf_io->bf
+  copy-start.1 = (f32[16,16]{1,0:S(5)}, f32[16,16]{1,0}, u32[]) copy-start(layer1)
+  copy-done.1 = f32[16,16]{1,0:S(5)} copy-done(copy-start.1)
+  copy-done.0 = f32[16,16]{1,0:S(5)} copy-done(copy-start.0)
+  ROOT t = (f32[16,16]{1,0:S(5)}, f32[16,16]{1,0:S(5)}) tuple(copy-done.0, copy-done.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  EXPECT_OK(RunScheduler(hlo_module.get(), GetDefaultSchedConfig()));
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  EXPECT_LT(GetIndex(new_instruction_sequence, "copy-done.1"),
+            GetIndex(new_instruction_sequence, "copy-done.0"));
+}
+
+// One offload copies a parameter and the other copies a layer computed from the
+// same parameter. A parameter is available from the start, so it does not
+// order the transfers: the copy-dones keep their original relative order.
+TEST_F(LatencyHidingSchedulerTest, ParameterOffloadDoesNotOrderDones) {
+  absl::string_view hlo_string = R"(
+HloModule ParameterOffload, is_scheduled=true
+ENTRY main {
+  x = f32[16,16]{1,0} parameter(0)
+  w = f32[16,16]{1,0} parameter(1)
+  copy-start.0 = (f32[16,16]{1,0:S(5)}, f32[16,16]{1,0}, u32[]) copy-start(x)
+  layer1 = f32[16,16]{1,0} convolution(x, w), dim_labels=bf_io->bf
+  copy-start.1 = (f32[16,16]{1,0:S(5)}, f32[16,16]{1,0}, u32[]) copy-start(layer1)
+  copy-done.1 = f32[16,16]{1,0:S(5)} copy-done(copy-start.1)
+  copy-done.0 = f32[16,16]{1,0:S(5)} copy-done(copy-start.0)
+  ROOT t = (f32[16,16]{1,0:S(5)}, f32[16,16]{1,0:S(5)}) tuple(copy-done.0, copy-done.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  EXPECT_OK(RunScheduler(hlo_module.get(), GetDefaultSchedConfig()));
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  EXPECT_LT(GetIndex(new_instruction_sequence, "copy-done.1"),
+            GetIndex(new_instruction_sequence, "copy-done.0"));
+}
+
+// Same as DependentLayerOffloadDonesOrderedByDependency, but each offload runs
+// on SparseCore as an async-start/async-update/async-done chain, so each
+// done's operand is an async-update rather than the async-start. The
+// tie-breaker must look through the async-update to the start's data.
+TEST_F(LatencyHidingSchedulerTest,
+       DependentLayerAsyncUpdateDonesOrderedByDependency) {
+  absl::string_view hlo_string = R"(
+HloModule DependentLayerAsyncUpdate, is_scheduled=true
+
+called_computation {
+  ROOT p = f32[16,16]{1,0} parameter(0)
+}
+
+ENTRY main {
+  x = f32[16,16]{1,0} parameter(0)
+  w0 = f32[16,16]{1,0} parameter(1)
+  w1 = f32[16,16]{1,0} parameter(2)
+  layer0 = f32[16,16]{1,0} convolution(x, w0), dim_labels=bf_io->bf
+  call-start.0 = ((f32[16,16]{1,0}), f32[16,16]{1,0}, u32[]) call-start(layer0), async_execution_thread="sparsecore", to_apply=called_computation
+  call-update.0 = ((f32[16,16]{1,0}), f32[16,16]{1,0}, u32[]) call-update(call-start.0)
+  layer1 = f32[16,16]{1,0} convolution(layer0, w1), dim_labels=bf_io->bf
+  call-start.1 = ((f32[16,16]{1,0}), f32[16,16]{1,0}, u32[]) call-start(layer1), async_execution_thread="sparsecore", to_apply=called_computation
+  call-update.1 = ((f32[16,16]{1,0}), f32[16,16]{1,0}, u32[]) call-update(call-start.1)
+  call-done.1 = f32[16,16]{1,0} call-done(call-update.1)
+  call-done.0 = f32[16,16]{1,0} call-done(call-update.0)
+  ROOT t = (f32[16,16]{1,0}, f32[16,16]{1,0}) tuple(call-done.0, call-done.1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  EXPECT_OK(RunScheduler(hlo_module.get(), GetDefaultSchedConfig()));
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  XLA_VLOG_LINES(1, hlo_module->ToString());
+
+  // The offload of the earlier-produced data (layer0) completes first.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "call-done.0"),
+            GetIndex(new_instruction_sequence, "call-done.1"));
 }
 
 TEST_F(LatencyHidingSchedulerTest, ScheduleLoopPeeledSendDoneBeforeWhile) {

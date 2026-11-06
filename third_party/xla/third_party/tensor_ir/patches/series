@@ -2,3 +2,5 @@ tileiras_path_override.patch
 cuda_tile_test_fixes.patch
 unused_variable.patch
 llvm_compat.patch
+deterministic_tile_sort.patch
+llvm_cl1014096632.patch

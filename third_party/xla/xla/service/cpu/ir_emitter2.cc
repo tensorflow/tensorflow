@@ -24,74 +24,30 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/IR/Attributes.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/MDBuilder.h"
-#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Value.h"
-#include "llvm/Linker/Linker.h"
-#include "llvm/Support/CodeGen.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
-#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
-#include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
-#include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
-#include "xla/backends/cpu/codegen/symbol_name_util.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
-#include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
 namespace {
-
-// Explicitly in HLO we mostly see "loop" types for fusions.
-// However, internally we pick a fusion kind to pick the appropriate
-// fusion emitter.
-enum class FusionEmitterKind {
-  kLoop,
-  kScatter,
-};
-
-// This is very crude at the moment. Eventually we will need to either have
-// the fusion indicate what emitter it is meant for (e.g. producing this
-// info via a cost model), or heuristics to estimate which emitter is best
-// for the fusion.
-FusionEmitterKind AnalyzeHloFusion(const HloFusionInstruction* fusion) {
-  if (fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
-    return FusionEmitterKind::kScatter;
-  }
-  return FusionEmitterKind::kLoop;
-}
 
 std::string SortCsv(absl::string_view csv) {
   std::vector<absl::string_view> v =
@@ -114,17 +70,6 @@ IrEmitter2::IrEmitter2(const HloModule& hlo_module, llvm::Module* module,
       kernel_api_ir_builder_(module_->getContext(),
                              KernelApiIrBuilder::Options::FromHloModuleConfig(
                                  hlo_module_.config())) {}
-
-bool IrEmitter2::IsSupportedByFusionEmitter(
-    const HloFusionInstruction* fusion) const {
-  FusionEmitterKind fusion_emitter_kind = AnalyzeHloFusion(fusion);
-  switch (fusion_emitter_kind) {
-    case FusionEmitterKind::kScatter:
-      return kFusionEmitterScatterEnabled;
-    default:
-      return false;
-  }
-}
 
 IrEmitter2::KernelInfo::KernelInfo(KernelPrototype prototype,
                                    const se::BlockDim& block_dims,
@@ -236,9 +181,9 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
       EmitDotOperation(
           *dot, target_array, lhs_array, rhs_array, &addend_array,
           {kernel_prototype.workgroup_id.x, kernel_prototype.workgroup_id.y},
-          /*executable_run_options_value=*/nullptr, &b, hlo_module_.config(),
+          &b, hlo_module_.config(),
           nested_ir_emitter_->target_machine_features(),
-          /*allow_runtime_calls=*/false, /*allow_parallelism=*/false));
+          /*allow_parallelism=*/false));
 
   return kernels_.emplace_back(KernelInfo(
       std::move(kernel_prototype),
@@ -263,57 +208,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
-absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
-    HloComputation* comparator) {
-  std::string comparator_name(comparator->name().data(),
-                              comparator->name().size());
-  if (hlo_module_.config()
-          .debug_options()
-          .xla_cpu_generate_unique_c_style_kernel_entry_points()) {
-    ABSL_ASSIGN_OR_RETURN(comparator_name,
-                     ConvertToCName(absl::StrCat(comparator->parent()->name(),
-                                                 "_", comparator->name())));
-  }
-
-  // Find if we already emitted this comparator.
-  auto info = absl::c_find_if(comparators_, [&](const ComparatorInfo& info) {
-    return info.name == comparator_name;
-  });
-  if (info != comparators_.end()) return *info;
-
-  // Emit computations transitively called from the comparator (e.g. a
-  // reduce's reducer), so that EmitThreadLocalCall can find them later.
-  for (HloInstruction* instr : comparator->instructions()) {
-    bool is_reducer = instr->opcode() == HloOpcode::kReduce ||
-                      instr->opcode() == HloOpcode::kReduceWindow;
-    for (HloComputation* called : instr->called_computations()) {
-      ABSL_RETURN_IF_ERROR(nested_ir_emitter_
-                          ->EmitNestedComputation(
-                              *called, llvm_ir::IrName(instr), is_reducer)
-                          .status());
-    }
-  }
-
-  // We use simple post-order schedule as we are not emitting a "real"
-  // computation that requires buffer assignment.
-  auto schedule = comparator->MakeInstructionPostOrder();
-
-  // Emit LLVM IR for comparator function. We emit it as a top-level computation
-  // to set external linkage and to get a pointer to compiled function later.
-  ABSL_ASSIGN_OR_RETURN(llvm::Function * comparator_function,
-                   nested_ir_emitter_->EmitComputation(
-                       comparator, comparator_name,
-                       /*is_top_level_computation=*/true, schedule,
-                       /*allow_reassociation=*/false));
-
-  // Generate unwind information so that GDB can crawl through the stack frames
-  // created by the JIT compiled code.
-  comparator_function->setUWTableKind(llvm::UWTableKind::Default);
-
-  return comparators_.emplace_back(
-      ComparatorInfo{comparator_function->getName().str()});
-}
-
 //===----------------------------------------------------------------------===//
 // Building HostKernel prototypes.
 //===----------------------------------------------------------------------===//
@@ -322,19 +216,6 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     const HloInstruction* instr) {
   return kernel_api_ir_builder_.EmitKernelPrototype(
       *module_, instr, &nested_ir_emitter_->assignment(), "ir_emitter2");
-}
-
-// This is a convenience function taken from IrEmitter, it uses module_ class
-// field. If there will be more functions that use module_, we should consider
-// refactoring (like we did for compute_function_ and builder_).
-int64_t IrEmitter2::ByteSizeOf(const Shape& shape) const {
-  return llvm_ir::ByteSizeOf(shape, module_->getDataLayout());
-}
-
-void IrEmitter2::AttachInvariantLoadMetadataForLoad(
-    llvm::LoadInst* instr) const {
-  nested_ir_emitter_->AttachInvariantLoadMetadataForLoad(instr,
-                                                         hlo_module_.config());
 }
 
 }  // namespace xla::cpu

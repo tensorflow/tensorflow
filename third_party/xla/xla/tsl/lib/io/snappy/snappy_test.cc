@@ -21,9 +21,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -418,4 +420,37 @@ TEST(SnappyBuffers, TellInputStream) {
   TestTellInputStream(10000, 10000, 2000, 10000, 2);
 }
 
+namespace {
+
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
+using ::testing::HasSubstr;
+
+TEST(SnappyBuffers, UncompressedBlockFitsOutputBufferSucceeds) {
+  if (!SnappyCompressionSupported()) {
+    GTEST_SKIP() << "Snappy compression is unavailable";
+  }
+  const size_t block_size = GetRecord().size();
+  for (size_t capacity : {block_size, block_size + 1}) {
+    SCOPED_TRACE(capacity);
+    EXPECT_THAT(TestMultipleWrites(10000, 10000, 10000, capacity, 2, true),
+                IsOk());
+  }
+}
+
+TEST(SnappyBuffers, UncompressedBlockExceedsOutputBuffer) {
+  if (!SnappyCompressionSupported()) {
+    GTEST_SKIP() << "Snappy compression is unavailable";
+  }
+  const size_t capacity = GetRecord().size() - 1;
+  EXPECT_THAT(
+      TestMultipleWrites(10000, 10000, 10000, capacity),
+      StatusIs(absl::StatusCode::kResourceExhausted,
+               HasSubstr(absl::StrCat("Output buffer(size: ", capacity,
+                                      " bytes) too small. Should be larger "
+                                      "than ",
+                                      GetRecord().size(), " bytes."))));
+}
+
+}  // namespace
 }  // namespace tsl

@@ -356,30 +356,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Module* module_;
 
   Options options_;
-
-  friend class ElementalIrEmitterForTests;
-};
-
-// Allow to instantiate IR emitter in tests.
-class ElementalIrEmitterForTests : public ElementalIrEmitter {
- public:
-  ElementalIrEmitterForTests(llvm::Module* module, llvm::IRBuilderBase* builder)
-      : ElementalIrEmitter(module, builder) {}
-
-  absl::Status TestElementalDot(const HloInstruction* hlo,
-                                const llvm_ir::IrArray::Index& index) {
-    return EmitElementalDot(hlo, generator_map_, index).status();
-  }
-
- private:
-  absl::StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
-      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name, bool is_reducer) override {
-    return absl::UnimplementedError("");
-  }
-  bool fast_min_max() override { return false; }
-
-  HloToElementGeneratorMap generator_map_;
 };
 
 }  // namespace xla

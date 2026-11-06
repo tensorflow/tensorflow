@@ -1068,7 +1068,7 @@ TEST(StreamExecutorGpuClientTest, ExecutionTimeoutHandlers) {
   gpu::GpuExecutableRunOptions* run_options =
       absl::down_cast<PjRtStreamExecutorRawClient*>(
           absl::down_cast<CommonPjRtClient*>(client.get())->raw_client())
-          ->gpu_run_options();
+          ->mutable_gpu_run_options();
   ASSERT_NE(run_options, nullptr);
 
   run_options->set_execution_timeout_handlers([state] {
@@ -2904,6 +2904,41 @@ TEST(StreamExecutorGpuClientTest,
   ASSERT_OK_AND_ASSIGN(ExecutableAndOptionsProto proto,
                        SerializedGpuExecutableFromString(serialized));
   EXPECT_THAT(proto.serialized_executable(), Not(IsEmpty()));
+}
+
+TEST(StreamExecutorGpuClientTest, DeserializeEarlyExitExecutableFails) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  static constexpr absl::string_view kAddProgram = R"hlo(
+    HloModule Add, entry_computation_layout={(f32[], f32[])->f32[]}
+
+    ENTRY %Add (a: f32[], b: f32[]) -> f32[] {
+      %a = f32[] parameter(0)
+      %b = f32[] parameter(1)
+      ROOT %add = f32[] add(f32[] %a, f32[] %b)
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kAddProgram));
+
+  // An early-exit compilation stops after layout assignment and only
+  // serializes the compile options, so there is nothing to deserialize.
+  CompileOptions compile_options;
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_early_exit_with_layouts(true);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      client->Compile(XlaComputation(module->ToProto()), compile_options));
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       executable->SerializeExecutable());
+
+  EXPECT_THAT(client->DeserializeExecutable(serialized, std::nullopt),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("cannot be deserialized")));
+  EXPECT_THAT(
+      client->LoadSerializedExecutable(serialized, std::nullopt, LoadOptions()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("cannot be deserialized")));
 }
 
 TEST(StreamExecutorGpuClientTest, DeserializeExecutableWithOptionsOverrides) {

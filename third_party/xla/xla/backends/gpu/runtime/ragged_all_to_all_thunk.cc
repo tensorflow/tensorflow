@@ -96,14 +96,6 @@ namespace {
 constexpr int64_t kNumRaggedMetadataOperands = 4;
 
 struct RaggedAllToAllCommandState : CommandState {
-  // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
-  // Peers write specific slots in this array to signal this device.
-  se::ScopedDeviceAddress<uint8_t> barrier_signal_buffer;
-
-  // MultiGpuBarrier: Device memory for the current local step counter.
-  // This value is incremented locally by the kernel after every barrier.
-  se::ScopedDeviceAddress<uint8_t> barrier_signal_value;
-
   struct RecordedNodes {
     const se::CommandBuffer::Command* pre_barrier = nullptr;
     const se::CommandBuffer::Command* kernel = nullptr;
@@ -804,15 +796,20 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
                     ? absl::StrCat(state->lsa_size.value())
                     : "null");
 
-        if (ShouldUseSymmetricMemoryKernel(*this, state)) {
+        ABSL_ASSIGN_OR_RETURN(
+            bool peer_access_enabled,
+            params.collective_cliques->peer_access_enabled(state->clique_key));
+        state->kernel_strategy = SelectKernelStrategy(
+            *state, params.local_device_count, peer_access_enabled);
+
+        if (state->kernel_strategy ==
+            RaggedAllToAllKernelStrategy::kSymmetricMemory) {
           ABSL_ASSIGN_OR_RETURN(state->sym_mem_kernel,
                            LoadRaggedAllToAllWithSymmetricMemoryKernel(
                                executor, config_.config.operand_element_type[0],
                                config_.num_row_elements));
-        } else if (is_local(params.local_device_count) ||
-                   (state->lsa_size.has_value() &&
-                    state->lsa_size.value() ==
-                        state->clique_key.num_devices())) {
+        } else if (state->kernel_strategy ==
+                   RaggedAllToAllKernelStrategy::kPeerAccess) {
           using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
 
           ABSL_ASSIGN_OR_RETURN(
@@ -856,11 +853,7 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
   //      was released. NCCL communicator can be destroyed in comm splitting
   //      process, but generally it should not change between executions, so
   //      it's safe to cache the symmetric handler.
-  if ((!state->lsa_size.has_value() ||
-       state->lsa_size.value() != state->clique_key.num_devices() ||
-       !config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel ||
-       state->clique_key.num_devices() < 2) &&
-      is_local(params.local_device_count)) {
+  if (state->kernel_strategy == RaggedAllToAllKernelStrategy::kPeerAccess) {
     // Rendezvous - Exchange output pointers and barrier signal buffers.
     ABSL_ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
@@ -904,68 +897,20 @@ absl::StatusOr<const se::CommandBuffer::Command*> RaggedAllToAllThunk::Record(
                              config_.config.operand_element_type));
 
   RaggedAllToAllStreamState* state = per_device_states_.Find(device_ordinal);
-  if (ShouldUseSymmetricMemoryKernel(*this, state)) {
+  TF_RET_CHECK(state != nullptr)
+      << "RaggedAllToAllThunk::Record: Initialize must be called first";
+
+  if (state->kernel_strategy ==
+      RaggedAllToAllKernelStrategy::kSymmetricMemory) {
     return RecordRaggedAllToAllWithSymmetricMemory(
         *this, execute_params, record_params, record_action, command_buffer,
         state, device_buffers);
   }
 
-  TF_RET_CHECK(IsAllReplicasLocal(
-      execute_params.collective_params->local_device_count,
-      config_.config.replica_groups, config_.config.group_mode))
-      << "RaggedAllToAllThunk: All replicas must be local for the one-shot "
-         "kernel to work";
-
-  ABSL_ASSIGN_OR_RETURN(
-      bool peer_access_enabled,
-      execute_params.collective_cliques->peer_access_enabled(clique_key));
-  TF_RET_CHECK(peer_access_enabled)
-      << "RaggedAllToAllThunk: Peer access must be enabled.";
-
-  absl::Status state_status = absl::OkStatus();
-  se::DeviceAddressAllocator* memory_allocator =
-      execute_params.buffer_allocations->memory_allocator();
-  RaggedAllToAllCommandState* cmd_state =
-      record_params.state.GetOrCreate<RaggedAllToAllCommandState>(
-          this, command_buffer,
-          [&]() -> std::unique_ptr<RaggedAllToAllCommandState> {
-            auto state = std::make_unique<RaggedAllToAllCommandState>();
-
-            auto barrier_signal_buffer = memory_allocator->Allocate(
-                device_ordinal, BarrierSignalBufferBytes());
-            if (!barrier_signal_buffer.ok()) {
-              state_status = barrier_signal_buffer.status();
-              return nullptr;
-            }
-            state->barrier_signal_buffer = std::move(*barrier_signal_buffer);
-
-            auto barrier_signal_value =
-                memory_allocator->Allocate(device_ordinal, sizeof(uint32_t));
-            if (!barrier_signal_value.ok()) {
-              state_status = barrier_signal_value.status();
-              return nullptr;
-            }
-            state->barrier_signal_value = std::move(*barrier_signal_value);
-
-            if (state->barrier_signal_buffer.is_null() ||
-                state->barrier_signal_value.is_null()) {
-              state_status = absl::ResourceExhaustedError(
-                  "Failed to allocate RaggedAllToAll barrier buffers");
-              return nullptr;
-            }
-
-            state_status = ZeroBarrierSignalBuffers(
-                *execute_params.stream, state->barrier_signal_buffer.cref(),
-                state->barrier_signal_value.cref());
-            if (!state_status.ok()) {
-              return nullptr;
-            }
-
-            return state;
-          });
-  ABSL_RETURN_IF_ERROR(state_status);
-  TF_RET_CHECK(cmd_state != nullptr)
-      << "Failed to get or create RaggedAllToAllCommandState";
+  TF_RET_CHECK(state->kernel_strategy ==
+               RaggedAllToAllKernelStrategy::kPeerAccess)
+      << "RaggedAllToAllThunk::Record: requires the symmetric-memory or "
+         "peer-access kernel strategy";
 
   ABSL_ASSIGN_OR_RETURN(
       std::unique_ptr<se::CommandBuffer> nested_cmd,
@@ -976,17 +921,19 @@ absl::StatusOr<const se::CommandBuffer::Command*> RaggedAllToAllThunk::Record(
                 std::holds_alternative<RecordUpdate>(record_action)
                     ? GetInstructionAnnotation(profile_annotation())
                     : std::nullopt;
+            // Re-exchange the output buffer pointers, since a RecordUpdate
+            // may bring buffer addresses that differ from those exchanged in
+            // Initialize. The barrier buffers are reused from Initialize.
             ABSL_ASSIGN_OR_RETURN(
                 std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>
                     participants,
                 RendezvousRaggedAllToAllBuffers(
                     device_ordinal, rank, clique_key, device_buffers,
-                    cmd_state->barrier_signal_buffer.cref()));
-
+                    state->barrier_signal_buffer->address()));
             return RunOneShotRaggedAllToAll(
                 clique_key, *stream, rank,
-                cmd_state->barrier_signal_buffer.cref(),
-                cmd_state->barrier_signal_value.cref(),
+                state->barrier_signal_buffer->address(),
+                state->barrier_signal_value->address(),
                 config_.num_total_updates, config_.num_input_rows,
                 config_.num_row_elements, device_buffers, *participants);
           }));
@@ -1116,9 +1063,6 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
 
-  ABSL_ASSIGN_OR_RETURN(bool peer_access_enabled,
-                   params.collective_cliques->peer_access_enabled(clique_key));
-
   RaggedAllToAllStreamState* state =
       per_device_states_.Find(stream.parent()->device_ordinal());
   TF_RET_CHECK(state != nullptr);
@@ -1174,6 +1118,10 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
             DeviceKernelLaunchCtaCount(core_count, num_active_updates);
         const PrimitiveType element_type = device_buffers[0].element_type;
 
+        const int32_t granted_cft_caps = dev_comm->granted_cft_caps();
+        const bool cft_granted =
+            (granted_cft_caps & GpuDeviceCommunicator::kGpuCftCapUnicast) != 0;
+
         XLA_VLOG_DEVICE(3, state->device_ordinal)
             << "Device kernel: lsa_size=" << lsa_size
             << " num_ranks=" << num_ranks << " gin=" << gin
@@ -1181,7 +1129,9 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
             << " num_updates_per_replica=" << num_updates_per_replica
             << " num_row_elements=" << config_.num_row_elements
             << " element_type="
-            << primitive_util::LowercasePrimitiveTypeName(element_type);
+            << primitive_util::LowercasePrimitiveTypeName(element_type)
+            << " path=" << (gin ? "gin" : "lsa-only") << " granted_cft_caps=0x"
+            << absl::Hex(granted_cft_caps) << " cft_granted=" << cft_granted;
 
         return RunDeviceRaggedAllToAllKernel(
             &stream, element_type, dev_comm, input_sym, output_sym,
@@ -1189,13 +1139,13 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
             device_buffers[4].source_buffer, num_ranks, num_updates_per_replica,
             config_.num_row_elements, cta_count,
             static_cast<int64_t>(input_offset),
-            static_cast<int64_t>(output_offset));
+            static_cast<int64_t>(output_offset), cft_granted);
       }
     }
   }
 
-  if (is_one_shot_kernel_enabled()) {
-    if (ShouldUseSymmetricMemoryKernel(*this, state)) {
+  switch (state->kernel_strategy) {
+    case RaggedAllToAllKernelStrategy::kSymmetricMemory: {
       TF_RET_CHECK(static_cast<bool>(state->sym_mem_kernel))
           << "RaggedAllToAllThunk::RunCollective: symmetric-memory kernel was "
              "not loaded during Initialize";
@@ -1209,10 +1159,10 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
           output_sym_mem, output_sym_offset, config_.num_total_updates,
           config_.num_input_rows, config_.num_row_elements, device_buffers);
     }
-
-    if (state->participants != nullptr && IsOneShotKernelSupported() &&
-        peer_access_enabled &&
-        is_local(params.collective_params->local_device_count)) {
+    case RaggedAllToAllKernelStrategy::kPeerAccess:
+      TF_RET_CHECK(state->participants != nullptr)
+          << "RaggedAllToAllThunk::RunCollective: participants were not "
+             "exchanged during Initialize";
       return RunOneShotRaggedAllToAll(
           clique_key, stream, state->rank,
           state->barrier_signal_buffer
@@ -1221,7 +1171,8 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
               ->address(),  // Local monotonic step counter
           config_.num_total_updates, config_.num_input_rows,
           config_.num_row_elements, device_buffers, *state->participants);
-    }
+    case RaggedAllToAllKernelStrategy::kNone:
+      break;
   }
 
   SymmetricMemory* output_sym_mem = nullptr;
@@ -1489,6 +1440,19 @@ absl::Status RunOneShotRaggedAllToAll(
 bool RaggedAllToAllThunk::is_local(int device_count) const {
   return IsAllReplicasLocal(device_count, config_.config.replica_groups,
                             config_.config.group_mode);
+}
+
+RaggedAllToAllKernelStrategy RaggedAllToAllThunk::SelectKernelStrategy(
+    const RaggedAllToAllStreamState& state, int local_device_count,
+    bool peer_access_enabled) const {
+  if (ShouldUseSymmetricMemoryKernel(*this, &state)) {
+    return RaggedAllToAllKernelStrategy::kSymmetricMemory;
+  }
+  if (is_one_shot_kernel_enabled() && IsOneShotKernelSupported() &&
+      is_local(local_device_count) && peer_access_enabled) {
+    return RaggedAllToAllKernelStrategy::kPeerAccess;
+  }
+  return RaggedAllToAllKernelStrategy::kNone;
 }
 
 }  // namespace gpu

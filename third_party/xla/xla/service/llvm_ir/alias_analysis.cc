@@ -80,17 +80,6 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       array->AddNoaliasMetadata(noalias_md);
     }
   }
-
-  if (module_.config()
-          .debug_options()
-          .xla_llvm_enable_invariant_load_metadata()) {
-    // Parameters of the entry computation are never stored to, loading from a
-    // parameter pointer should always return the same result within a loop.
-    if (hlo.opcode() == HloOpcode::kParameter &&
-        hlo.parent() == module_.entry_computation()) {
-      array->MarkInvariantOverWholeProgram(context_);
-    }
-  }
 }
 
 llvm::MDNode* AliasAnalysis::GetAliasDomain() {
@@ -181,7 +170,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   std::set<BufferAllocation::Slice> buffers;
   for (const HloValue* buffer : worklist) {
     const BufferAllocation::Slice noalias_slice =
-        assignment.GetAssignedAllocation(*buffer).GetSlice(*buffer);
+        assignment.GetAssignedSlice(*buffer);
     // Our buffer must not overlap with the noalias slice.
     if (!buffer_slice.OverlapsWith(noalias_slice)) {
       buffers.insert(noalias_slice);

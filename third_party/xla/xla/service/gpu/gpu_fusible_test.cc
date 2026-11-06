@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/status/status_macros.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -42,6 +44,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::Optional;
 using ::testing::UnorderedElementsAre;
 
 absl::StatusOr<se::DeviceDescription> MakeDeviceDescription() {
@@ -2049,6 +2052,74 @@ ENTRY main {
   EXPECT_FALSE(ContainsSignificantReduce(*root, &cache));
   cache.Invalidate(root->operand(2));
   EXPECT_TRUE(ContainsSignificantReduce(*root->operand(2), &cache));
+}
+
+TEST_F(GpuFusibleTest, GetMinReduceInputElements) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+multi_reduce_computation {
+  p0.1 = f32[128] parameter(0)
+  p1.1 = f32[32] parameter(1)
+  c0.1 = f32[] constant(0)
+  r_large = f32[] reduce(p0.1, c0.1), dimensions={0}, to_apply=scalar_add
+  r_small = f32[] reduce(p1.1, c0.1), dimensions={0}, to_apply=scalar_add
+  ROOT sum = f32[] add(r_large, r_small)
+}
+
+single_reduce_computation {
+  p0.2 = f32[64] parameter(0)
+  c0.2 = f32[] constant(0)
+  ROOT r = f32[] reduce(p0.2, c0.2), dimensions={0}, to_apply=scalar_add
+}
+
+nested_reduce_computation {
+  p0.3 = f32[64] parameter(0)
+  ROOT nested = f32[] fusion(p0.3), kind=kLoop, calls=single_reduce_computation
+}
+
+loop_computation {
+  p0.4 = f32[16] parameter(0)
+  ROOT mul = f32[16] multiply(p0.4, p0.4)
+}
+
+ENTRY main {
+  p16 = f32[16] parameter(0)
+  p32 = f32[32] parameter(1)
+  p64 = f32[64] parameter(2)
+  p128 = f32[128] parameter(3)
+  p0_16 = f32[0,16] parameter(4)
+  c = f32[] constant(0)
+  direct_reduce = f32[] reduce(p16, c), dimensions={0}, to_apply=scalar_add
+  zero_extent_reduce = f32[0] reduce(p0_16, c), dimensions={1}, to_apply=scalar_add
+  multi_reduce_fusion = f32[] fusion(p128, p32), kind=kLoop, calls=multi_reduce_computation
+  nested_reduce_fusion = f32[] fusion(p64), kind=kLoop, calls=nested_reduce_computation
+  loop_fusion = f32[16] fusion(p16), kind=kLoop, calls=loop_computation
+  ROOT tuple = tuple(direct_reduce, zero_extent_reduce, multi_reduce_fusion, nested_reduce_fusion, loop_fusion)
+}
+)")));
+  const HloComputation* entry = module->entry_computation();
+  const HloInstruction* root = entry->root_instruction();
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(0)), Optional(16));
+  EXPECT_EQ(GetMinReduceInputElements(*root->operand(1)), std::nullopt);
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(2)), Optional(32));
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(3)), Optional(64));
+  EXPECT_EQ(GetMinReduceInputElements(*root->operand(4)), std::nullopt);
+  EXPECT_EQ(GetMinReduceInputElements(*root), std::nullopt);
+
+  FusionInfoCache cache(device_description());
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(0), &cache),
+              Optional(16));
+  EXPECT_EQ(GetMinReduceInputElements(*root->operand(1), &cache), std::nullopt);
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(2), &cache),
+              Optional(32));
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(3), &cache),
+              Optional(64));
+  EXPECT_EQ(GetMinReduceInputElements(*root->operand(4), &cache), std::nullopt);
+  EXPECT_EQ(GetMinReduceInputElements(*root, &cache), std::nullopt);
+  cache.Invalidate(root->operand(2));
+  EXPECT_THAT(GetMinReduceInputElements(*root->operand(2), &cache),
+              Optional(32));
 }
 
 }  // namespace

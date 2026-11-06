@@ -35,9 +35,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/ir/compilation/passes.h"
+#include "xla/python/ifrt/ir/compilation/utils.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/ir/utils.h"
 
 namespace xla {
 namespace ifrt {
@@ -80,7 +81,7 @@ mlir::FailureOr<llvm::StringRef> GetModuleType(
 
   // Get module type based on platform name.
   if (platform_name == xla::TpuName() || platform_name == xla::CudaName() ||
-      platform_name == xla::CpuName()) {
+      platform_name == xla::RocmName() || platform_name == xla::CpuName()) {
     return kIfrtModuleTypeXla;
   }
   return call_op->emitOpError()

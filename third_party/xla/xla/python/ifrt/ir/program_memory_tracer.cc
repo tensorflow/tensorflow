@@ -88,5 +88,11 @@ absl::Status ProgramMemoryTracer::GenerateEvents(
   return absl::UnimplementedError("GenerateEvents is not implemented.");
 }
 
+absl::Status ProgramMemoryTracer::TraceAndFreePairwiseInputs(
+    IfrtPairwiseArrayOpInterface op) {
+  return absl::UnimplementedError(
+      "TraceAndFreePairwiseInputs is not implemented.");
+}
+
 }  // namespace ifrt
 }  // namespace xla

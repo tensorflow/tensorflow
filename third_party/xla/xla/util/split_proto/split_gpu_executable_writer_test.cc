@@ -83,6 +83,61 @@ TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutable) {
   EXPECT_THAT(deserializedExecutable, EqualsProto(initialExecutable));
 }
 
+TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutableWithoutHloModule) {
+  auto initial_executable = ParseTextProtoOrDie<GpuExecutableProto>(R"pb(
+    asm_text: "asm_text"
+    binary: "binary_data"
+    module_name: "test_module"
+    constants {
+      symbol_name: "constant_1"
+      content { data: "constant_data" }
+      allocation_index: 0
+    }
+  )pb");
+
+  std::string serialized;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      initial_executable,
+      std::make_unique<riegeli::StringWriter<>>(&serialized)));
+
+  GpuExecutableProto deserialized_executable;
+  ASSERT_OK(
+      ReadSplitProto(std::make_unique<riegeli::StringReader<>>(serialized),
+                     deserialized_executable));
+
+  // The writer must not add fields that weren't in the input. In particular an
+  // empty `hlo_module_with_config.hlo_module` would make readers try to
+  // deserialize a module that doesn't exist (and some readers even treat the
+  // presence of `hlo_module_with_config` alone as "has an embedded module").
+  EXPECT_FALSE(deserialized_executable.has_hlo_module_with_config());
+  EXPECT_THAT(deserialized_executable, EqualsProto(initial_executable));
+}
+
+TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutableWithConfigOnly) {
+  auto initial_executable = ParseTextProtoOrDie<GpuExecutableProto>(R"pb(
+    hlo_module_with_config { config { replica_count: 2 num_partitions: 4 } }
+    asm_text: "asm_text"
+    binary: "binary_data"
+    module_name: "test_module"
+  )pb");
+
+  std::string serialized;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      initial_executable,
+      std::make_unique<riegeli::StringWriter<>>(&serialized)));
+
+  GpuExecutableProto deserialized_executable;
+  ASSERT_OK(
+      ReadSplitProto(std::make_unique<riegeli::StringReader<>>(serialized),
+                     deserialized_executable));
+
+  // The config must be preserved, but the writer must not add an empty
+  // `hlo_module` next to it.
+  EXPECT_FALSE(
+      deserialized_executable.hlo_module_with_config().has_hlo_module());
+  EXPECT_THAT(deserialized_executable, EqualsProto(initial_executable));
+}
+
 TEST(SplitGpuExecutableWriterTest, JsonBackendConfigIsNormalized) {
   GpuExecutableProto proto1;
   *proto1.mutable_hlo_module_with_config()

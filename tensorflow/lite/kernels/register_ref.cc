@@ -290,7 +290,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_EMBEDDING_LOOKUP_SPARSE());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED_REF(),
              /* min_version */ 1,
-             /* max_version */ 15);
+             /* max_version */ 16);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX_REF(),
@@ -320,7 +320,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   // of builtin op code shortage problem.
   AddBuiltin(BuiltinOperator_BROADCAST_TO, Register_BROADCAST_TO(),
              /* min_version = */ 2,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORM_REF());
   AddBuiltin(BuiltinOperator_LSTM, Register_LSTM(), /* min_version */ 1,
@@ -394,7 +394,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 10);
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 9);
+             /* max_version = */ 10);
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU_REF());
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM_REF(),
              /* min_version = */ 1,
@@ -410,7 +410,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_GREATER, Register_GREATER(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -537,7 +537,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_DENSIFY, Register_DENSIFY());
   AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_CONV_3D, Register_CONV_3D_REF());
   AddBuiltin(BuiltinOperator_IMAG, Register_IMAG());
   AddBuiltin(BuiltinOperator_REAL, Register_REAL());

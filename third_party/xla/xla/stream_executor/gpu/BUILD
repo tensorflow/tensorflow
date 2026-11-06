@@ -85,6 +85,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:fingerprint",
     ],
@@ -268,10 +269,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/tsl:internal",
     ]),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@tsl//tsl/platform:status",
-    ] + if_static(
+    deps = ["@com_google_absl//absl/status"] + if_static(
         [":gpu_init_impl"],
     ),
 )
@@ -493,7 +491,9 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform",
         "//xla/tsl/framework:device_id",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -1052,7 +1052,6 @@ xla_cc_test(
         ":elf_section_extraction",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],

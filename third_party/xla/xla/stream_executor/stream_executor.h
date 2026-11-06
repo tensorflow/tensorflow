@@ -105,6 +105,21 @@ class StreamExecutor {
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream() {
     return CreateStream(std::nullopt);
   }
+
+  // Creates a stream scoped to `locality_domain_id`. Backends without
+  // locality-domain execution support return Unimplemented without falling
+  // back to a generic stream.
+  virtual absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInLocalityDomain(
+      int /*locality_domain_id*/,
+      std::optional<std::variant<StreamPriority, int>> /*priority*/) {
+    return absl::UnimplementedError(
+        "Locality-domain streams are not implemented by this executor");
+  }
+  absl::StatusOr<std::unique_ptr<Stream>> CreateStreamInLocalityDomain(
+      int locality_domain_id) {
+    return CreateStreamInLocalityDomain(locality_domain_id, std::nullopt);
+  }
+
   // Creates an EventBasedTimer for the given stream.
   virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
   CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
