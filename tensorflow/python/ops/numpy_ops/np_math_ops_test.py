@@ -789,6 +789,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         np_math_ops.tensordot(onesa, onesb, axes=-1), np.ones([2, 3, 3, 4])
     )
+
   def testCrossAxisOutOfBounds(self):
     x = np_array_ops.array(np.ones([2, 3]))
     with self.assertRaisesRegex(

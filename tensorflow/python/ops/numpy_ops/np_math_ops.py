@@ -365,7 +365,6 @@ def inner(a, b):  # pylint: disable=missing-function-docstring
 @tf_export.tf_export('experimental.numpy.cross', v1=[])
 @np_utils.np_doc('cross')
 def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=missing-docstring
-
   def f(a, b):  # pylint: disable=missing-docstring
     # We can't assign to captured variable `axisa`, so make a new variable
     if axis is None:
