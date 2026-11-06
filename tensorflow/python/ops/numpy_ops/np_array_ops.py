@@ -1377,7 +1377,7 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
             ) from None
     # Other Tensor shapes, including the exact (rank, 2), go to the
     # backend unchanged, as before.
-  elif builtins.isinstance(pad_width, (list, tuple)) and builtins.any(
+  elif isinstance(pad_width, (list, tuple)) and builtins.any(
       isinstance(v, core_tf_types.Tensor) for v in nest.flatten(pad_width)
   ):
     has_tensor = True
