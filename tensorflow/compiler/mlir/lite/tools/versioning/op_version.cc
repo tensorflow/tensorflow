@@ -150,6 +150,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_EMBEDDING_LOOKUP: {
+      // A table with N-D (`block_shape`) blockwise quantization (float zero
+      // points, e.g. centered int2) needs version 6. Tables with 1-D
+      // (`blocksize`) blockwise quantization keep versions 4 / 5 below.
+      if (op_sig.ext_options.embedding_lookup.is_nd_blockwise_quantized) {
+        return 6;
+      }
       if (op_sig.inputs.at(1).type == kTfLiteInt4 ||
           op_sig.ext_options.embedding_lookup.is_per_channel_quantized) {
         return 4;
