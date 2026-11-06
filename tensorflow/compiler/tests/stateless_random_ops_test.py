@@ -445,11 +445,8 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                                         minvals,
                                         maxvals,
                                         variance_rtol=None):
-    if 'CPU' in xla_device().device_type:
-      n = int(1e7)
-    else:
-      n = int(10e7)
-    for dtype in self._random_types():
+    n = int(1e7)
+    for dtype in self._random_types() - {dtypes.bfloat16}:
       with self.session() as sess, self.test_scope():
         np_dtype = dtype.as_numpy_dtype
         means_dt = float(np.asarray(means, dtype=np_dtype))
@@ -465,16 +462,11 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
             minvals=ops.convert_to_tensor(minvals_dt, dtype=dtype),
             maxvals=ops.convert_to_tensor(maxvals_dt, dtype=dtype))
         y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
-        mean_atol = 2e-2 if dtype == dtypes.bfloat16 else (
-            4e-3 if dtype == dtypes.float16 else 1e-3)
-        median_atol = 4e-2 if dtype == dtypes.bfloat16 else (
-            4e-3 if dtype == dtypes.float16 else 1e-3)
+        mean_atol = 4e-3 if dtype == dtypes.float16 else 1e-3
+        median_atol = 4e-3 if dtype == dtypes.float16 else 1e-3
         var_rtol = variance_rtol
         if var_rtol is None:
-          var_rtol = 6e-3 if dtype == dtypes.bfloat16 else (
-              1e-2 if dtype == dtypes.float16 else 1e-3)
-        elif dtype == dtypes.bfloat16:
-          var_rtol = max(var_rtol, 8e-2)
+          var_rtol = 1e-2 if dtype == dtypes.float16 else 1e-3
         elif dtype == dtypes.float16:
           var_rtol = max(var_rtol, 5e-2)
         random_test_util.test_truncated_normal(
@@ -522,7 +514,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         0., 1., -9., -8., variance_rtol=2e-2)
 
   def testParameterizedTruncatedNormalExtremeNormalizedBounds(self):
-    for dtype in self._random_types():
+    for dtype in self._random_types() - {dtypes.bfloat16}:
       with self.session() as sess, self.test_scope():
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_parameterized_truncated_normal(

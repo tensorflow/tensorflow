@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 
 #include <cmath>
+#include <initializer_list>
 
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/lib/math.h"
@@ -133,7 +134,7 @@ xla::XlaOp ParameterizedTruncatedNormal(xla::XlaOp uniform, xla::XlaOp mu,
   xla::XlaOp t_large = lo * xla::Sqrt(tail_one - tail_two * (delta / lo) / lo);
   xla::XlaOp t = xla::Select(xla::Lt(lo, series_start), t_small, t_large);
   for (int i = 0; i < 3; ++i) {
-    // Newton step on log(P(Z > t)) = log_q.
+    // Newton step on log(P(Z > t)) = log(P(Z > lo)) + delta.
     xla::XlaOp rest_t = log_scaled_upper_tail(t);
     xla::XlaOp err = (rest_t - rest_lo - delta) -
                      (t - lo) * (tail_half * t + tail_half * lo);
