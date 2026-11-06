@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -2021,6 +2023,95 @@ TEST(Tensor, TensorDataCordKeepsBufferAlive) {
   // reference to the data.
   EXPECT_EQ(cord.size(), expected.size());
   EXPECT_EQ(std::string(cord), expected);
+}
+
+namespace {
+
+class SizedCpuAllocator final : public Allocator {
+ public:
+  explicit SizedCpuAllocator(size_t bytes) : bytes_(bytes) {}
+  std::string Name() override { return "cpu"; }
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    ++allocs_;
+    return cpu_allocator(tsl::port::kNUMANoAffinity)
+        ->AllocateRaw(alignment, num_bytes);
+  }
+  void DeallocateRaw(void* ptr) override {
+    ++deallocs_;
+    cpu_allocator(tsl::port::kNUMANoAffinity)->DeallocateRaw(ptr);
+  }
+  bool TracksAllocationSizes() const override { return true; }
+  size_t RequestedSize(const void*) const override { return bytes_; }
+  size_t AllocatedSize(const void*) const override { return bytes_; }
+  int64_t AllocationId(const void*) const override { return 42; }
+  int allocs() const { return allocs_; }
+  int deallocs() const { return deallocs_; }
+
+ private:
+  size_t bytes_;
+  int allocs_ = 0;
+  int deallocs_ = 0;
+};
+
+}  // namespace
+
+TEST(TensorFusedBufferTest, BoundarySizesLifetimeAndSubSlice) {
+  for (int64_t n : {int64_t{0}, int64_t{1}, int64_t{1008}, int64_t{1009}}) {
+    Tensor t(DT_FLOAT, TensorShape({n}));
+    EXPECT_TRUE(t.IsAligned());
+    EXPECT_EQ(t.TotalBytes(), static_cast<size_t>(n) * sizeof(float));
+    if (n > 0) {
+      t.flat<float>().setConstant(3.5f);
+      Tensor copy(t);
+      EXPECT_TRUE(t.SharesBufferWith(copy));
+      TensorDescription desc;
+      t.FillDescription(&desc);
+      EXPECT_EQ(desc.allocation_description().allocator_name(),
+                cpu_allocator(tsl::port::kNUMANoAffinity)->Name());
+      EXPECT_EQ(desc.allocation_description().requested_bytes(),
+                n * static_cast<int64_t>(sizeof(float)));
+    }
+  }
+  Tensor subslice;
+  {
+    Tensor root(DT_INT32, TensorShape({4, 8}));
+    root.SubSlice(2).flat<int32_t>().setConstant(77);
+    subslice = root.SubSlice(2);
+  }
+  EXPECT_EQ(subslice.vec<int32_t>()(7), 77);
+}
+
+TEST(TensorFusedBufferTest, SizeTrackingAndStatsBypass) {
+  SizedCpuAllocator tracked_alloc(16 * sizeof(float));
+  {
+    Tensor tracked(&tracked_alloc, DT_FLOAT, TensorShape({16}));
+    TensorDescription desc;
+    tracked.FillDescription(&desc);
+    EXPECT_EQ(desc.allocation_description().allocation_id(), 42);
+  }
+  EXPECT_EQ(tracked_alloc.allocs(), 1);
+  EXPECT_EQ(tracked_alloc.deallocs(), 1);
+
+  Allocator* raw_cpu = cpu_allocator(tsl::port::kNUMANoAffinity);
+  if (raw_cpu == nullptr || raw_cpu->Name() != "cpu" ||
+      raw_cpu->TracksAllocationSizes() || LogMemory::IsEnabled() ||
+      CPUAllocatorStatsEnabled()) {
+    return;
+  }
+  Tensor fused(DT_FLOAT, TensorShape({16}));
+  EnableCPUAllocatorStats();
+  struct StatsDisableGuard {
+    ~StatsDisableGuard() { DisableCPUAllocatorStats(); }
+  } guard;
+  ASSERT_TRUE(raw_cpu->ClearStats());
+  fused = Tensor();
+  absl::optional<AllocatorStats> after_free = raw_cpu->GetStats();
+  ASSERT_TRUE(after_free.has_value());
+  EXPECT_EQ(after_free->bytes_in_use, 0);
+  Tensor stats_tensor(DT_FLOAT, TensorShape({16}));
+  absl::optional<AllocatorStats> during = raw_cpu->GetStats();
+  ASSERT_TRUE(during.has_value());
+  EXPECT_EQ(during->num_allocs, 1);
 }
 
 // Benchmark create and destroy a tensor, with an allocated buffer.
