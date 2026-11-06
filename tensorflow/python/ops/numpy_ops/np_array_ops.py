@@ -1322,12 +1322,15 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
   # for Python/NumPy values; `pad_width` containing a Tensor keeps the
   # previous behavior, except that a bare Tensor also expands its
   # scalar/single-entry/pair/(1, 1)/(rank, 1) forms for a statically-known
-  # rank. A 0-d input skips the backend, so Tensor and ragged values are
-  # also validated against the (0, 2) broadcast target. With an unknown
-  # input rank, the dtype and negative checks still run and only the
-  # broadcast step is skipped.
+  # rank. A 0-d input returns early for Python/NumPy values, so ragged
+  # values are validated against the (0, 2) broadcast target; Tensor values
+  # are broadcast to (0, 2) and validated by the backend at run time. With
+  # an unknown input rank, the dtype and negative checks still run and only
+  # the broadcast step is skipped.
   maybe_rank = array.shape.rank
+  has_tensor = False
   if isinstance(pad_width, core_tf_types.Tensor):
+    has_tensor = True
     # A bare Tensor cannot contain nested tensors, so skip the
     # `nest.flatten` scan of the Python branch below.
     width_shape = pad_width.shape
@@ -1364,7 +1367,9 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
         static_shape = pad_width.shape.as_list()
         if None not in static_shape:
           try:
-            np.broadcast_shapes(static_shape, (0, 2))
+            # `broadcast_shapes` alone would accept rank-reducing cases that
+            # NumPy's `broadcast_to` rejects, so probe the real target.
+            np.broadcast_to(np.zeros(static_shape, np.int32), (0, 2))
           except ValueError:
             raise ValueError(
                 '`pad_width` with shape %s cannot be broadcast to (0, 2) '
@@ -1375,15 +1380,10 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
   elif builtins.isinstance(pad_width, (list, tuple)) and builtins.any(
       isinstance(v, core_tf_types.Tensor) for v in nest.flatten(pad_width)
   ):
+    has_tensor = True
     # Symbolic tensors inside a nested list cannot be converted with
     # `np.asarray` under tracing, and eager tensors would be copied to
-    # the host, so leave `pad_width` to the backend as before. A 0-d
-    # input skips the backend below, so validate the Python nesting
-    # against NumPy's (0, 2) broadcast target instead.
-    if maybe_rank == 0:
-      np.broadcast_to(
-          np.asarray(nest.map_structure(lambda _: 0, pad_width)), (0, 2)
-      )
+    # the host, so leave `pad_width` to the backend as before.
   else:
     # A scalar or Python/NumPy value cannot contain Tensor leaves.
     try:
@@ -1415,11 +1415,18 @@ def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-na
             # leave it to the backend's shape error.
             pass
   if maybe_rank == 0:
-    # NumPy has zero axes to pad on a 0-d input, so every `pad_width`
-    # broadcastable to (0, 2) leaves the array unchanged; the checks
-    # above already raised for non-integral or negative entries, and the
-    # `np.broadcast_to` above raised for non-broadcastable shapes.
-    return array
+    # NumPy has zero axes to pad on a 0-d input, so every Python/NumPy
+    # `pad_width` broadcastable to (0, 2) leaves the array unchanged; the
+    # checks above already raised for non-integral or negative entries and
+    # for shapes that do not broadcast.
+    if not has_tensor:
+      return array
+    # Tensor values can hide their shape from the static checks above (a
+    # list of non-scalar tensors, or unknown dimensions), so broadcast them
+    # to (0, 2) and let the backend validate the result at run time.
+    pad_width = array_ops.broadcast_to(
+        asarray(pad_width, dtype=dtypes.int32), (0, 2)
+    )
   pad_width = asarray(pad_width, dtype=dtypes.int32)
   return array_ops.pad(
       tensor=array,

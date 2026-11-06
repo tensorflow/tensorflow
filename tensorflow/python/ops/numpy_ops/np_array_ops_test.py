@@ -1605,11 +1605,17 @@ class ArrayMethodsTest(test.TestCase):
         np_array_ops.pad(x, np_array_ops.array(1), 'constant'), np_x)
     with self.assertRaisesRegex(ValueError, 'broadcast'):
       np_array_ops.pad(x, np_array_ops.array([[1, 2, 3]]), 'constant')
+    # Non-scalar tensor leaves hide their shape from the structural check,
+    # so the backend reports the mismatch at run time.
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        'broadcast|Incompatible shapes'):
+      np_array_ops.pad(
+          x, [ops.convert_to_tensor([1, 2]),
+              ops.convert_to_tensor([3, 4])], 'constant')
     with self.assertRaisesRegex(ValueError, 'broadcast'):
       np_array_ops.pad(
-          x, [[np_array_ops.array(1), np_array_ops.array(2)],
-              [np_array_ops.array(3), np_array_ops.array(4)],
-              [np_array_ops.array(5), np_array_ops.array(6)]], 'constant')
+          x, np_array_ops.zeros([1, 1, 2], np.int32), 'constant')
     # Ragged values raise like NumPy instead of being left to the backend.
     with self.assertRaisesRegex(ValueError, 'inhomogeneous'):
       np_array_ops.pad(x, [[1], [2, 3]], 'constant')
