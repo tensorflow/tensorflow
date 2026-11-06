@@ -546,17 +546,14 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(
                           tensor_index, alloc_node_[tensor_index],
                           dealloc_node_[tensor_index], &allocs_[tensor_index]));
     }
-    // Check allocs_[].size to prevent from reallocation of persistent tensors.
-    // Only allocate ArenaRwPersistent tensors which own their buffer.
+    // Only allocate ArenaRwPersistent tensors which own their buffer or need reallocation.
     if (tensor.allocation_type == kTfLiteArenaRwPersistent &&
-        allocs_[tensor_index].size == 0) {
-      if (allocs_[tensor_index].size < tensor.bytes) {
-        TF_LITE_ENSURE_STATUS(persistent_arena_.Allocate(
-            context_, tensor_alignment_, tensor.bytes, tensor_index,
-            /*first_node=*/alloc_node_[tensor_index],
-            /*last_node=*/std::numeric_limits<int32_t>::max(),
-            &allocs_[tensor_index]));
-      }
+        allocs_[tensor_index].size < tensor.bytes) {
+      TF_LITE_ENSURE_STATUS(persistent_arena_.Allocate(
+          context_, tensor_alignment_, tensor.bytes, tensor_index,
+          /*first_node=*/alloc_node_[tensor_index],
+          /*last_node=*/std::numeric_limits<int32_t>::max(),
+          &allocs_[tensor_index]));
     }
   }
   last_active_node_ = last_node;
