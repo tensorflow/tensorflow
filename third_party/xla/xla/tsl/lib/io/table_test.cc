@@ -622,6 +622,110 @@ TEST(TableTest, ApproximateOffsetOfCompressed) {
   ASSERT_TRUE(Between(c.ApproximateOffsetOf("xyz"), 4000, 7000));
 }
 
+// A RandomAccessFile over a string that records the largest read requested.
+// ReadBlock allocates a buffer of the requested size before reading, so this
+// is also the largest block buffer allocated.
+class LargestReadStringSource : public RandomAccessFile {
+ public:
+  explicit LargestReadStringSource(absl::string_view contents)
+      : contents_(contents.data(), contents.size()), largest_read_(0) {}
+
+  uint64_t Size() const { return contents_.size(); }
+  uint64_t LargestRead() const { return largest_read_; }
+
+  absl::Status Name(absl::string_view* result) const override {
+    return absl::UnimplementedError(
+        "LargestReadStringSource does not support Name()");
+  }
+
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
+                    char* scratch) const override {
+    if (n > largest_read_) largest_read_ = n;
+    if (offset > contents_.size()) {
+      return absl::InvalidArgumentError("invalid Read offset");
+    }
+    if (n > contents_.size() - offset) n = contents_.size() - offset;
+    memcpy(scratch, &contents_[offset], n);
+    *result = absl::string_view(scratch, n);
+    return absl::OkStatus();
+  }
+
+ private:
+  std::string contents_;
+  mutable uint64_t largest_read_;
+};
+
+static std::string EncodeFooter(uint64_t index_offset, uint64_t index_size) {
+  BlockHandle metaindex_handle;
+  metaindex_handle.set_offset(0);
+  metaindex_handle.set_size(0);
+  BlockHandle index_handle;
+  index_handle.set_offset(index_offset);
+  index_handle.set_size(index_size);
+  Footer footer;
+  footer.set_metaindex_handle(metaindex_handle);
+  footer.set_index_handle(index_handle);
+  std::string encoded;
+  footer.EncodeTo(&encoded);
+  return encoded;
+}
+
+TEST(TableTest, IndexBlockHandlePastEndOfFileIsRejected) {
+  const std::string padding(100, 'x');
+  const uint64_t file_size = padding.size() + Footer::kEncodedLength;
+  const struct {
+    uint64_t offset;
+    uint64_t size;
+  } kHandles[] = {
+      {0, uint64_t{1} << 20},                  // Block larger than the file.
+      {0, file_size - kBlockTrailerSize + 1},  // Trailer ends past the file.
+      {file_size + 1, 0},                      // Offset past the file.
+      {~uint64_t{0} - 1, 2},                   // Offset plus size wraps.
+  };
+  for (const auto& h : kHandles) {
+    LargestReadStringSource source(padding + EncodeFooter(h.offset, h.size));
+    ASSERT_EQ(source.Size(), file_size);
+    Table* table = nullptr;
+    absl::Status s = Table::Open(Options(), &source, source.Size(), &table);
+    EXPECT_TRUE(absl::IsDataLoss(s)) << s;
+    EXPECT_EQ(table, nullptr);
+    EXPECT_LE(source.LargestRead(), source.Size());
+    delete table;
+  }
+}
+
+TEST(TableTest, DataBlockHandlePastEndOfFileIsRejected) {
+  // Build a table with one data block of about 1 MiB, then keep only its index
+  // block and a new footer, so the index entry points past the end of the file.
+  StringSink sink;
+  Options options;
+  options.compression = kNoCompression;
+  TableBuilder builder(options, &sink);
+  builder.Add("k01", std::string(1 << 20, 'x'));
+  ASSERT_TRUE(builder.Finish().ok());
+  const std::string& table_contents = sink.contents();
+  absl::string_view footer_input(
+      table_contents.data() + table_contents.size() - Footer::kEncodedLength,
+      Footer::kEncodedLength);
+  Footer footer;
+  ASSERT_TRUE(footer.DecodeFrom(&footer_input).ok());
+  const BlockHandle& index_handle = footer.index_handle();
+  LargestReadStringSource source(
+      table_contents.substr(index_handle.offset(),
+                            index_handle.size() + kBlockTrailerSize) +
+      EncodeFooter(0, index_handle.size()));
+
+  Table* table = nullptr;
+  ASSERT_TRUE(Table::Open(options, &source, source.Size(), &table).ok());
+  Iterator* iter = table->NewIterator();
+  iter->SeekToFirst();
+  EXPECT_FALSE(iter->Valid());
+  EXPECT_TRUE(absl::IsDataLoss(iter->status())) << iter->status();
+  EXPECT_LE(source.LargestRead(), source.Size());
+  delete iter;
+  delete table;
+}
+
 TEST(TableTest, SeekToFirstKeyDoesNotReadTooMuch) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
