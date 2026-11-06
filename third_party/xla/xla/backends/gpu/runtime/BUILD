@@ -239,6 +239,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "zeroed_outputs",
+    srcs = ["zeroed_outputs.cc"],
+    hdrs = ["zeroed_outputs.h"],
+    deps = [
+        ":command",
+        ":command_state",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:device_address",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 xla_cc_test(
     name = "command_executor_test",
     srcs = ["command_executor_test.cc"],
@@ -1519,6 +1538,7 @@ cc_library(
         ":print_buffer_contents",
         ":thunk",
         ":thunk_proto_cc",
+        ":zeroed_outputs",
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",
@@ -1590,6 +1610,7 @@ xla_test(
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -4058,6 +4079,7 @@ cc_library(
         ":thunk",
         ":thunk_proto_cc",
         ":traced_command",
+        ":zeroed_outputs",
         "//xla:util",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
@@ -5782,6 +5804,7 @@ cc_library(
         ":print_buffer_contents",
         ":thunk",
         ":thunk_proto_cc",
+        ":zeroed_outputs",
         "//xla:util",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
         "//xla/codegen/emitters:kernel_arguments",

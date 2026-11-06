@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/traced_command.h"
+#include "xla/backends/gpu/runtime/zeroed_outputs.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_assignment.pb.h"
 #include "xla/service/shaped_slice.h"
@@ -132,21 +133,42 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
   ABSL_ASSIGN_OR_RETURN(se::dnn::DnnGraph * graph,
                    GetGraph(execute_params.stream->parent()));
   std::vector<se::DeviceAddressBase> operands;
+  std::vector<se::DeviceAddressBase> zeroed_outputs;
   operands.reserve(args_.size());
   for (const ShapedSlice& arg : args_) {
     se::DeviceAddressBase buf =
         execute_params.buffer_allocations->GetDeviceAddress(arg.slice);
     VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
+    if (should_memzero_ && output_args_[operands.size()]) {
+      zeroed_outputs.push_back(buf);
+    }
     operands.push_back(buf);
+  }
+
+  // The outputs are zeroed by memset commands that the graph command depends
+  // on, mirroring what ExecuteOnStream does with stream->MemZero. Rewriting the
+  // dependencies here rather than in each branch keeps the explicit and the
+  // traced path on one mechanism; RecordTracedCommand reads them straight out
+  // of `record_action`, so this must happen before it is moved from.
+  ABSL_ASSIGN_OR_RETURN(ZeroedOutputs zeroed,
+                   RecordZeroedOutputs(this, record_params, record_action,
+                                       command_buffer, zeroed_outputs));
+  if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+    create->dependencies = zeroed.dependencies(create->dependencies);
   }
 
   ABSL_ASSIGN_OR_RETURN(const bool supports_explicit,
                    graph->SupportsExplicitCommandBufferConstruction());
   if (supports_explicit) {
     if (auto* create = std::get_if<RecordCreate>(&record_action)) {
-      return command_buffer->CreateDnnGraphCommand(
-          *graph, *execute_params.stream,
-          absl::Span<se::DeviceAddressBase>(operands), create->dependencies);
+      ABSL_ASSIGN_OR_RETURN(const se::CommandBuffer::Command* command,
+                       command_buffer->CreateDnnGraphCommand(
+                           *graph, *execute_params.stream,
+                           absl::Span<se::DeviceAddressBase>(operands),
+                           create->dependencies));
+      ABSL_RETURN_IF_ERROR(AttachZeroedOutputs(this, record_params, command_buffer,
+                                          command, std::move(zeroed)));
+      return command;
     }
     if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
       ABSL_RETURN_IF_ERROR(command_buffer->UpdateDnnGraphCommand(
@@ -156,13 +178,18 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnThunk::Record(
     }
     return Internal("Invalid record action");
   }
-  return RecordTracedCommand(
-      execute_params, record_params, std::move(record_action), command_buffer,
-      [&](se::Stream* stream) {
-        return graph->Execute(
-            *stream, absl::Span<se::DeviceAddressBase>(operands),
-            execute_params.collective_params->local_device_id.value());
-      });
+  ABSL_ASSIGN_OR_RETURN(
+      const se::CommandBuffer::Command* command,
+      RecordTracedCommand(
+          execute_params, record_params, std::move(record_action),
+          command_buffer, [&](se::Stream* stream) {
+            return graph->Execute(
+                *stream, absl::Span<se::DeviceAddressBase>(operands),
+                execute_params.collective_params->local_device_id.value());
+          }));
+  ABSL_RETURN_IF_ERROR(AttachZeroedOutputs(this, record_params, command_buffer,
+                                      command, std::move(zeroed)));
+  return command;
 }
 
 absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
