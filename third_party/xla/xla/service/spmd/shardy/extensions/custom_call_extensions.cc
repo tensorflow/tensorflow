@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -46,7 +47,9 @@ limitations under the License.
 #include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/service/spmd/shardy/extensions/partial_reduce_custom_call.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 
 namespace xla {
@@ -245,29 +248,8 @@ struct CustomCallShardingRuleOpInterface
               /*mismatchFactorIsBlocked=*/true)
           .build();
     }
-    if (callTargetName == "PartialReduce") {
-      assert(customCall.getNumOperands() == 4 &&
-             customCall.getNumResults() == 2);
-      mlir::sdy::OpShardingRuleBuilder builder(customCall);
-      for (auto [dim, dimSizes] : llvm::enumerate(llvm::zip_equal(
-               mlir::sdy::getTensorShape(customCall.getOperand(0)),
-               mlir::sdy::getTensorShape(customCall.getResult(0))))) {
-        auto [inDimSize, outDimSize] = dimSizes;
-        if (inDimSize == outDimSize) {
-          builder.addFactor(dim, inDimSize);
-        } else {
-          int64_t rDim = dim;
-          builder.addFactor(
-              {rDim, rDim, mlir::sdy::kNullDim, mlir::sdy::kNullDim},
-              {mlir::sdy::kNullDim, mlir::sdy::kNullDim}, inDimSize);
-          builder.addFactor({mlir::sdy::kNullDim, mlir::sdy::kNullDim,
-                             mlir::sdy::kNullDim, mlir::sdy::kNullDim},
-                            {rDim, rDim}, outDimSize,
-                            mlir::sdy::FactorType::kNeedReplication,
-                            /*isBlocked=*/true);
-        }
-      }
-      return builder.build();
+    if (callTargetName == kPartialReduceTargetName) {
+      return createPartialReduceShardingRule(customCall);
     }
     if (callTargetName == "X64Combine") {
       // Replicate and block propagation when `X64Combine` feeds
@@ -309,12 +291,31 @@ using ConvertGlobalToLocalHandler = mlir::LogicalResult (*)(
 struct CustomCallPartitioningOpInterface
     : public mlir::sdy::PartitioningOpInterface::ExternalModel<
           CustomCallPartitioningOpInterface, mlir::stablehlo::CustomCallOp> {
+  std::optional<mlir::LogicalResult> resolvePermutationFactors(
+      mlir::Operation* op, mlir::sdy::OpShardingRuleAttr shardingRule,
+      mlir::IRRewriter& rewriter, const mlir::SymbolTable& symbolTable) const {
+    auto customCall = llvm::cast<mlir::stablehlo::CustomCallOp>(op);
+    if (customCall.getCallTargetName() == kPartialReduceTargetName) {
+      return resolvePartialReduce(customCall, shardingRule, rewriter,
+                                  symbolTable);
+    }
+    return std::nullopt;
+  }
+
   std::optional<mlir::LogicalResult> convertGlobalToLocal(
       mlir::Operation* op, mlir::ValueRange operands,
       mlir::ConversionPatternRewriter& rewriter,
       const mlir::TypeConverter& /*typeConverter*/,
       const mlir::SymbolTable& symbolTable) const {
     auto customCall = llvm::cast<mlir::stablehlo::CustomCallOp>(op);
+    if (customCall.getCallTargetName() == kPartialReduceTargetName) {
+      // Strip stale global `xla_shape` in place and return `std::nullopt` so
+      // Shardy's generic op localizer narrows result types to shard-local
+      // shapes instead of running a replacement `ConvertGlobalToLocalHandler`.
+      rewriter.modifyOpInPlace(
+          customCall, [&]() { customCall->removeAttr(xla::kXlaShape); });
+      return std::nullopt;
+    }
     ConvertGlobalToLocalHandler handler =
         llvm::StringSwitch<ConvertGlobalToLocalHandler>(
             customCall.getCallTargetName())
