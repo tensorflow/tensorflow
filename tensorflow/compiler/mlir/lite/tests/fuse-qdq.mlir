@@ -721,3 +721,56 @@ func.func @FoldSharedBlockwiseFilterOnlyForSrqFullyConnected(%arg0: tensor<2x8xf
   %abs = "tfl.abs"(%w_dq) : (tensor<4x8xf32>) -> tensor<4x8xf32>
   func.return %out_dq, %abs : tensor<2x4xf32>, tensor<4x8xf32>
 }
+
+// -----
+
+// A constant blockwise_dequantize table (here centered int2 with one scale per
+// row) is folded into a blockwise quantized EMBEDDING_LOOKUP table.
+// CHECK-LABEL: FoldBlockwiseTableIntoEmbeddingLookup
+func.func @FoldBlockwiseTableIntoEmbeddingLookup(%arg0: tensor<2xi32>) -> tensor<2x8xf32> {
+  // CHECK-NOT: "tfl.blockwise_dequantize"
+  // CHECK: %[[Q_TABLE:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<4x8x!tfl.blockwise_quant<i2 -> f32, block_shape = [1, 8], scales = dense<{{.*}}> : tensor<4x1xf16>, zero_points = dense<-5.000000e-01> : tensor<1x1xf32>>>
+  // CHECK-NOT: "tfl.blockwise_dequantize"
+  // CHECK: %[[OUT:.*]] = "tfl.embedding_lookup"(%arg0, %[[Q_TABLE]]) : (tensor<2xi32>, tensor<4x8x!tfl.blockwise_quant<{{.*}}>>) -> tensor<2x8xf32>
+  // CHECK: return %[[OUT]]
+  %w = "tfl.pseudo_const"() {value = dense<[[-2, -1, 0, 1, -2, -1, 0, 1], [1, 0, -1, -2, 1, 0, -1, -2], [0, 1, -2, -1, 0, 1, -2, -1], [-1, -2, 1, 0, -1, -2, 1, 0]]> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<[[0.5], [1.0], [1.5], [0.25]]> : tensor<4x1xf16>} : () -> tensor<4x1xf16>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf16>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %out = "tfl.embedding_lookup"(%arg0, %w_dq) : (tensor<2xi32>, tensor<4x8xf32>) -> tensor<2x8xf32>
+  func.return %out : tensor<2x8xf32>
+}
+
+// -----
+
+// A blockwise_dequantize table shared by an EMBEDDING_LOOKUP and a float op is
+// folded for the former and kept for the latter.
+// CHECK-LABEL: FoldSharedBlockwiseTableOnlyForEmbeddingLookup
+func.func @FoldSharedBlockwiseTableOnlyForEmbeddingLookup(%arg0: tensor<2xi32>) -> (tensor<2x8xf32>, tensor<4x8xf32>) {
+  // CHECK-DAG: %[[Q_TABLE:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<4x8x!tfl.blockwise_quant<{{.*}}>>
+  // CHECK-DAG: %[[W_DQ:.*]] = "tfl.blockwise_dequantize"
+  // CHECK-DAG: "tfl.embedding_lookup"(%arg0, %[[Q_TABLE]])
+  // CHECK-DAG: "tfl.abs"(%[[W_DQ]])
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<0.5> : tensor<4x1xf32>} : () -> tensor<4x1xf32>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf32>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %out = "tfl.embedding_lookup"(%arg0, %w_dq) : (tensor<2xi32>, tensor<4x8xf32>) -> tensor<2x8xf32>
+  %abs = "tfl.abs"(%w_dq) : (tensor<4x8xf32>) -> tensor<4x8xf32>
+  func.return %out, %abs : tensor<2x8xf32>, tensor<4x8xf32>
+}
+
+// -----
+
+// A table whose scales are not constant cannot be folded.
+// CHECK-LABEL: NotFoldNonConstantBlockwiseTableIntoEmbeddingLookup
+func.func @NotFoldNonConstantBlockwiseTableIntoEmbeddingLookup(%arg0: tensor<2xi32>, %arg1: tensor<4x1xf32>) -> tensor<2x8xf32> {
+  // CHECK-NOT: !tfl.blockwise_quant
+  // CHECK: %[[W_DQ:.*]] = "tfl.blockwise_dequantize"
+  // CHECK: "tfl.embedding_lookup"(%arg0, %[[W_DQ]])
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %none = "tfl.no_value"() {value} : () -> none
+  %w_dq = "tfl.blockwise_dequantize"(%w, %arg1, %none) {block_shape = [1, 8], symmetric = true} : (tensor<4x8xi2>, tensor<4x1xf32>, none) -> tensor<4x8xf32>
+  %out = "tfl.embedding_lookup"(%arg0, %w_dq) : (tensor<2xi32>, tensor<4x8xf32>) -> tensor<2x8xf32>
+  func.return %out : tensor<2x8xf32>
+}

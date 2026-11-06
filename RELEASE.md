@@ -20,6 +20,7 @@
     * `tfl.dequantize` now supports inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) (DEQUANTIZE op version 10).
     * `tfl.batch_matmul` now supports RHS inputs quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`) alongside INT8 affine LHS and output tensors (BATCH_MATMUL op version 5).
     * `tfl.fully_connected` now supports INT2, INT4, UINT4, INT8, UINT8 and INT16 filters quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`), including fractional zero points, alongside INT8 per-tensor input and output tensors and an optional INT32 bias carrying its own scale (FULLY_CONNECTED op version 16).
+    * `tfl.embedding_lookup` now supports INT2, INT4, UINT4, INT8, UINT8 and INT16 tables quantized with N-D blockwise quantization (`BlockwiseQuantization.block_shape`), including fractional zero points such as a centered INT2 grid, with FLOAT32 or FLOAT16 outputs (EMBEDDING_LOOKUP op version 6). The converter folds constant blockwise dequantized tables into such lookups.
 * `tf.function` / `PolymorphicFunction`:
     * Added `clear_cache()` method to `PolymorphicFunction` to explicitly clear compiled concrete functions and dispatch tables, freeing retained graph memory.
 

@@ -119,39 +119,71 @@ inline TfLiteStatus ValidateBlockwiseQuantizationV2(
   return kTfLiteOk;
 }
 
+// Reads element `index` of a blockwise quantization parameter tensor as a
+// float.
+inline float GetBlockwiseParamAsFloat(const TfLiteTensor* tensor,
+                                      int64_t index) {
+  switch (tensor->type) {
+    case kTfLiteFloat32:
+      return GetTensorData<float>(tensor)[index];
+    case kTfLiteFloat16:
+      return static_cast<float>(Eigen::numext::bit_cast<Eigen::half>(
+          GetTensorData<TfLiteFloat16>(tensor)[index].data));
+    case kTfLiteBFloat16:
+      return static_cast<float>(Eigen::numext::bit_cast<Eigen::bfloat16>(
+          GetTensorData<TfLiteBFloat16>(tensor)[index].data));
+    case kTfLiteInt32:
+      return GetTensorData<int32_t>(tensor)[index];
+    case kTfLiteInt16:
+      return GetTensorData<int16_t>(tensor)[index];
+    case kTfLiteInt8:
+      return GetTensorData<int8_t>(tensor)[index];
+    default:
+      return 0.0f;
+  }
+}
+
 // Reads the elements of a blockwise quantization parameter tensor as floats.
 inline std::vector<float> ReadBlockwiseParamsAsFloat(
     const TfLiteTensor* tensor) {
   const int64_t size = GetTensorShape(tensor).FlatSize();
   std::vector<float> values(size);
   for (int64_t i = 0; i < size; ++i) {
-    switch (tensor->type) {
-      case kTfLiteFloat32:
-        values[i] = GetTensorData<float>(tensor)[i];
-        break;
-      case kTfLiteFloat16:
-        values[i] = static_cast<float>(Eigen::numext::bit_cast<Eigen::half>(
-            GetTensorData<TfLiteFloat16>(tensor)[i].data));
-        break;
-      case kTfLiteBFloat16:
-        values[i] = static_cast<float>(Eigen::numext::bit_cast<Eigen::bfloat16>(
-            GetTensorData<TfLiteBFloat16>(tensor)[i].data));
-        break;
-      case kTfLiteInt32:
-        values[i] = GetTensorData<int32_t>(tensor)[i];
-        break;
-      case kTfLiteInt16:
-        values[i] = GetTensorData<int16_t>(tensor)[i];
-        break;
-      case kTfLiteInt8:
-        values[i] = GetTensorData<int8_t>(tensor)[i];
-        break;
-      default:
-        values[i] = 0.0f;
-        break;
-    }
+    values[i] = GetBlockwiseParamAsFloat(tensor, i);
   }
   return values;
+}
+
+// Returns element `index` (in row-major order) of the raw data `data` of a
+// blockwise quantized tensor of type `kType`, which must be INT2, INT4, UINT4,
+// INT8, UINT8 or INT16. Sub-byte values are packed low bits first. Unlike
+// `GetBlockwiseQuantizedValues`, this does not unpack the whole tensor, so it
+// suits kernels that only read a few slices of a large tensor.
+template <TfLiteType kType>
+inline int32_t GetBlockwiseQuantizedValue(const uint8_t* data, int64_t index) {
+  static_assert(kType == kTfLiteInt2 || kType == kTfLiteInt4 ||
+                kType == kTfLiteUInt4 || kType == kTfLiteInt8 ||
+                kType == kTfLiteUInt8 || kType == kTfLiteInt16);
+  if constexpr (kType == kTfLiteInt2) {
+    const int shift = static_cast<int>(index & 3) * 2;
+    // Move the 2 bits to the top of an int8 and shift back to sign extend.
+    return static_cast<int8_t>(
+               static_cast<uint8_t>(data[index >> 2] << (6 - shift))) >>
+           6;
+  } else if constexpr (kType == kTfLiteInt4) {
+    const int shift = static_cast<int>(index & 1) * 4;
+    return static_cast<int8_t>(
+               static_cast<uint8_t>(data[index >> 1] << (4 - shift))) >>
+           4;
+  } else if constexpr (kType == kTfLiteUInt4) {
+    return (data[index >> 1] >> (static_cast<int>(index & 1) * 4)) & 0x0F;
+  } else if constexpr (kType == kTfLiteInt8) {
+    return reinterpret_cast<const int8_t*>(data)[index];
+  } else if constexpr (kType == kTfLiteUInt8) {
+    return data[index];
+  } else {
+    return reinterpret_cast<const int16_t*>(data)[index];
+  }
 }
 
 // Checks that the scale and zero point tensors of `params` are constant or

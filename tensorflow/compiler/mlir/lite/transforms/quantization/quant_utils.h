@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 
@@ -73,6 +74,11 @@ bool IsInt8SrqBlockwiseWeightConsumer(mlir::Operation* op);
 
 // Returns the constant elements defining `value`, or nullptr.
 ElementsAttr GetConstantElements(mlir::Value value);
+
+// Returns true if `bw_deq` dequantizes a constant integer tensor with constant
+// scales and zero points (if any) into an f32 tensor, i.e. if it can be folded
+// into a `!tfl.blockwise_quant` constant.
+bool IsFoldableBlockwiseDequantize(TFL::BlockwiseDequantizeOp bw_deq);
 
 // Returns true if `operand` at `operand_index` of `op` is a constant
 // `tfl.blockwise_dequantize` that can be folded into a `!tfl.blockwise_quant`
