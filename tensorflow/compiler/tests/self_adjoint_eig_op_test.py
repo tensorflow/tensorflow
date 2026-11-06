@@ -44,12 +44,16 @@ class SelfAdjointEigOpTest(xla_test.XLATestCase, parameterized.TestCase):
         e, v = linalg_ops.self_adjoint_eig(x_tf)
       e_val, v_val = sess.run([e, v], feed_dict={x_tf: x_np})
 
-      v_diff = np.matmul(v_val, np.conj(np.swapaxes(v_val, -1, -2))) - np.eye(n)
+      v_h = np.conj(np.swapaxes(v_val, -1, -2))
+      v_diff = np.matmul(v_val, v_h) - np.eye(n)
       self.assertAlmostEqual(np.mean(np.abs(v_diff)**2), 0.0, delta=1e-6)
       self.assertAlmostEqual(np.mean(np.abs(e_val - e_np)**2), 0.0, delta=1e-6)
+      # V * diag(e) * V^H must reconstruct the input.
+      x_diff = np.matmul(v_val * e_val[..., np.newaxis, :], v_h) - x_np
+      self.assertAlmostEqual(np.mean(np.abs(x_diff)**2), 0.0, delta=1e-6)
 
   SIZES = [1, 2, 5, 10, 32]
-  DTYPES = [np.float32, np.complex64]
+  DTYPES = [np.float32, np.complex64, np.complex128]
   PARAMS = itertools.product(SIZES, DTYPES)
 
   @parameterized.parameters(*PARAMS)
