@@ -15,10 +15,13 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #define EIGEN_USE_THREADS
 
+#include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <vector>
 
@@ -40,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
@@ -742,6 +746,7 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
     OP_REQUIRES(
         context, out_grad_backprop.dims() == 4,
         absl::InvalidArgumentError("out_grad_backprop must be 4-dimensional"));
+    OP_REQUIRES_OK(context, ValidateGpuInputSize(tensor_in));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -1024,6 +1029,9 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
         absl::InvalidArgumentError("tensor_in must be 4-dimensional (2)"));
     OP_REQUIRES(context, tensor_in.NumElements() > 0,
                 absl::InvalidArgumentError("tensor_in must not be empty (2)"));
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
+      OP_REQUIRES_OK(context, ValidateGpuInputSize(tensor_in));
+    }
 
     PoolParameters params{context,
                           ksize_,
@@ -1161,6 +1169,9 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
     const Tensor& tensor_in = context->input(0);
     const Tensor& grad_in = context->input(1);
     const Tensor& argmax = context->input(2);
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
+      OP_REQUIRES_OK(context, ValidateGpuInputSize(tensor_in));
+    }
 
     PoolParameters params{context,
                           ksize_,
@@ -1234,6 +1245,9 @@ class MaxPoolingGradGradWithArgmaxOp : public OpKernel {
     const Tensor& tensor_in = context->input(0);
     const Tensor& grad_in = context->input(1);
     const Tensor& argmax = context->input(2);
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
+      OP_REQUIRES_OK(context, ValidateGpuInputSize(tensor_in));
+    }
 
     PoolParameters params{context,
                           ksize_,
@@ -1263,6 +1277,8 @@ class MaxPoolingGradGradWithArgmaxOp : public OpKernel {
     Tensor* grad_out = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, out_shape, &grad_out));
+
+    if (out_shape.num_elements() == 0) return;
 
     LaunchMaxPoolingGradGradWithArgmax<Device, T>::launch(
         context, params, grad_in, argmax, grad_out, include_batch_in_index_);
@@ -1362,6 +1378,7 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
                   errors::Unimplemented("Explicit padding is not supported ",
                                         "when CUDNN is not enabled."));
 #endif
+      OP_REQUIRES_OK(context, ValidateGpuInputSize(tensor_in));
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
       if (is_int8x4) {
@@ -1424,6 +1441,9 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
+    if (data_format_ == FORMAT_NHWC) {
+      OP_REQUIRES_OK(context, ValidateGpuInputSize(tensor_in));
+    }
 
     std::vector<int32_t> ksize = ksize_;
     std::vector<int32_t> stride = stride_;
@@ -1532,10 +1552,25 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T, int64_t> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
                      Tensor* grad_out, const bool include_batch_in_index) {
-    const int input_size = params.tensor_in_batch * params.tensor_in_rows *
-                           params.tensor_in_cols * params.depth;
-    const int output_size = params.tensor_in_batch * params.out_height *
-                            params.out_width * params.depth;
+    const int64_t input_size_64 = MultiplyWithoutOverflow(
+        MultiplyWithoutOverflow(MultiplyWithoutOverflow(params.tensor_in_batch,
+                                                        params.tensor_in_rows),
+                                params.tensor_in_cols),
+        params.depth);
+    const int64_t output_size_64 = MultiplyWithoutOverflow(
+        MultiplyWithoutOverflow(
+            MultiplyWithoutOverflow(params.tensor_in_batch, params.out_height),
+            params.out_width),
+        params.depth);
+    OP_REQUIRES(context,
+                input_size_64 >= 0 &&
+                    input_size_64 <= std::numeric_limits<int32_t>::max() &&
+                    output_size_64 >= 0 &&
+                    output_size_64 <= std::numeric_limits<int32_t>::max(),
+                absl::InvalidArgumentError("MaxPoolGradWithArgmax: input or "
+                                           "output size exceeds int32 bounds"));
+    const int input_size = input_size_64;
+    const int output_size = output_size_64;
     const int top_offset = params.out_height * params.out_width * params.depth;
     const int bottom_offset =
         params.tensor_in_rows * params.tensor_in_cols * params.depth;
@@ -1555,10 +1590,26 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& grad_in, const Tensor& argmax,
                      Tensor* grad_out, const bool include_batch_in_index) {
-    const int input_size = params.tensor_in_batch * params.tensor_in_rows *
-                           params.tensor_in_cols * params.depth;
-    const int output_size = params.tensor_in_batch * params.out_height *
-                            params.out_width * params.depth;
+    const int64_t input_size_64 = MultiplyWithoutOverflow(
+        MultiplyWithoutOverflow(MultiplyWithoutOverflow(params.tensor_in_batch,
+                                                        params.tensor_in_rows),
+                                params.tensor_in_cols),
+        params.depth);
+    const int64_t output_size_64 = MultiplyWithoutOverflow(
+        MultiplyWithoutOverflow(
+            MultiplyWithoutOverflow(params.tensor_in_batch, params.out_height),
+            params.out_width),
+        params.depth);
+    OP_REQUIRES(
+        context,
+        input_size_64 >= 0 &&
+            input_size_64 <= std::numeric_limits<int32_t>::max() &&
+            output_size_64 >= 0 &&
+            output_size_64 <= std::numeric_limits<int32_t>::max(),
+        absl::InvalidArgumentError("MaxPoolGradGradWithArgmax: input or output "
+                                   "size exceeds int32 bounds"));
+    const int input_size = input_size_64;
+    const int output_size = output_size_64;
     const int top_offset =
         params.tensor_in_rows * params.tensor_in_cols * params.depth;
     const int bottom_offset =
