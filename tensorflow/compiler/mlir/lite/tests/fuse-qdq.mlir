@@ -721,3 +721,108 @@ func.func @FoldSharedBlockwiseFilterOnlyForSrqFullyConnected(%arg0: tensor<2x8xf
   %abs = "tfl.abs"(%w_dq) : (tensor<4x8xf32>) -> tensor<4x8xf32>
   func.return %out_dq, %abs : tensor<2x4xf32>, tensor<4x8xf32>
 }
+
+// -----
+
+// DRQ A8W2: the DRQ fake quant is dropped and the centered int2
+// blockwise_dequantize filter is folded, so the hybrid FULLY_CONNECTED consumes
+// the float input and the blockwise quantized filter directly. The fake quant
+// quantizes each row asymmetrically, so asymmetric_quantize_inputs is set.
+// CHECK-LABEL: FoldFullyConnectedBlockwiseFilterDRQ
+func.func private @XlaCallModule_quant.fake_quant.impl_drq_fc(%arg0: tensor<2x8xf32>) -> tensor<2x8xf32>
+func.func @FoldFullyConnectedBlockwiseFilterDRQ(%arg0: tensor<2x8xf32>) -> tensor<2x4xf32> {
+  // CHECK-NOT: stablehlo.composite
+  // CHECK-DAG: %[[Q_W:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<4x8x!tfl.blockwise_quant<i2 -> f32, block_shape = [1, 8], scales = dense<{{.*}}> : tensor<4x1xf16>, zero_points = dense<-5.000000e-01> : tensor<1x1xf32>>>
+  // CHECK-DAG: %[[B:.*]] = arith.constant dense<{{.*}}> : tensor<4xf32>
+  // CHECK: %[[FC:.*]] = "tfl.fully_connected"(%arg0, %[[Q_W]], %[[B]]) <{asymmetric_quantize_inputs = true, fused_activation_function = "RELU", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8x!tfl.blockwise_quant<{{.*}}>>, tensor<4xf32>) -> tensor<2x4xf32>
+  // CHECK-NOT: tfl.blockwise_dequantize
+  // CHECK: return %[[FC]]
+  %w = "tfl.pseudo_const"() {value = dense<[[-2, -1, 0, 1, -2, -1, 0, 1], [1, 0, -1, -2, 1, 0, -1, -2], [0, 1, -2, -1, 0, 1, -2, -1], [-1, -2, 1, 0, -1, -2, 1, 0]]> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<[[0.5], [1.0], [1.5], [0.25]]> : tensor<4x1xf16>} : () -> tensor<4x1xf16>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf16>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %b = arith.constant dense<[1.0, -2.0, 3.0, -4.0]> : tensor<4xf32>
+  %in_fq = stablehlo.composite "quant.fake_quant" %arg0 {composite_attributes = {dtype = "i8", narrow_range = false, quantization_dimension = 0 : i32, scale = dense<> : tensor<0xf64>, zero_point = dense<> : tensor<0xi64>}, decomposition = @XlaCallModule_quant.fake_quant.impl_drq_fc} : (tensor<2x8xf32>) -> tensor<2x8xf32>
+  %fc = "tfl.fully_connected"(%in_fq, %w_dq, %b) <{fused_activation_function = "RELU", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8xf32>, tensor<4xf32>) -> tensor<2x4xf32>
+  func.return %fc : tensor<2x4xf32>
+}
+
+// -----
+
+// The asymmetric scheme comes from the fake quant, so an explicit
+// asymmetric_quantize_inputs = false on the float op is overridden.
+// CHECK-LABEL: FoldFullyConnectedBlockwiseFilterDRQOverridesSymmetricAttr
+func.func private @XlaCallModule_quant.fake_quant.impl_drq_fc_asym(%arg0: tensor<2x8xf32>) -> tensor<2x8xf32>
+func.func @FoldFullyConnectedBlockwiseFilterDRQOverridesSymmetricAttr(%arg0: tensor<2x8xf32>) -> tensor<2x4xf32> {
+  // CHECK-NOT: stablehlo.composite
+  // CHECK-DAG: %[[Q_W:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<4x8x!tfl.blockwise_quant<{{.*}}>>
+  // CHECK: "tfl.fully_connected"(%arg0, %[[Q_W]], %{{.*}}) <{asymmetric_quantize_inputs = true, {{.*}}}> : (tensor<2x8xf32>, tensor<4x8x!tfl.blockwise_quant<{{.*}}>>, none) -> tensor<2x4xf32>
+  // CHECK-NOT: tfl.blockwise_dequantize
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<0.5> : tensor<4x1xf32>} : () -> tensor<4x1xf32>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %none = "tfl.no_value"() {value} : () -> none
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf32>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %in_fq = stablehlo.composite "quant.fake_quant" %arg0 {composite_attributes = {dtype = "i8", narrow_range = false, quantization_dimension = 0 : i32, scale = dense<> : tensor<0xf64>, zero_point = dense<> : tensor<0xi64>}, decomposition = @XlaCallModule_quant.fake_quant.impl_drq_fc_asym} : (tensor<2x8xf32>) -> tensor<2x8xf32>
+  %fc = "tfl.fully_connected"(%in_fq, %w_dq, %none) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8xf32>, none) -> tensor<2x4xf32>
+  func.return %fc : tensor<2x4xf32>
+}
+
+// -----
+
+// The kernel's asymmetric scheme uses the full int8 range, so a narrow range
+// DRQ fake quant keeps the float blockwise_dequantize filter.
+// CHECK-LABEL: NotFoldFullyConnectedBlockwiseFilterNarrowRangeDRQ
+func.func private @XlaCallModule_quant.fake_quant.impl_drq_fc_narrow(%arg0: tensor<2x8xf32>) -> tensor<2x8xf32>
+func.func @NotFoldFullyConnectedBlockwiseFilterNarrowRangeDRQ(%arg0: tensor<2x8xf32>) -> tensor<2x4xf32> {
+  // CHECK-NOT: !tfl.blockwise_quant
+  // CHECK: "tfl.blockwise_dequantize"
+  // CHECK-NOT: !tfl.blockwise_quant
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<0.5> : tensor<4x1xf32>} : () -> tensor<4x1xf32>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %none = "tfl.no_value"() {value} : () -> none
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf32>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %in_fq = stablehlo.composite "quant.fake_quant" %arg0 {composite_attributes = {dtype = "i8", narrow_range = true, quantization_dimension = 0 : i32, scale = dense<> : tensor<0xf64>, zero_point = dense<> : tensor<0xi64>}, decomposition = @XlaCallModule_quant.fake_quant.impl_drq_fc_narrow} : (tensor<2x8xf32>) -> tensor<2x8xf32>
+  %fc = "tfl.fully_connected"(%in_fq, %w_dq, %none) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8xf32>, none) -> tensor<2x4xf32>
+  func.return %fc : tensor<2x4xf32>
+}
+
+// -----
+
+// The FULLY_CONNECTED kernel does not support TANH with a blockwise filter.
+// CHECK-LABEL: NotFoldFullyConnectedBlockwiseFilterDRQTanh
+func.func private @XlaCallModule_quant.fake_quant.impl_drq_fc_tanh(%arg0: tensor<2x8xf32>) -> tensor<2x8xf32>
+func.func @NotFoldFullyConnectedBlockwiseFilterDRQTanh(%arg0: tensor<2x8xf32>) -> tensor<2x4xf32> {
+  // CHECK-NOT: !tfl.blockwise_quant
+  // CHECK: "tfl.blockwise_dequantize"
+  // CHECK-NOT: !tfl.blockwise_quant
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<0.5> : tensor<4x1xf32>} : () -> tensor<4x1xf32>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %none = "tfl.no_value"() {value} : () -> none
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf32>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %in_fq = stablehlo.composite "quant.fake_quant" %arg0 {composite_attributes = {dtype = "i8", narrow_range = false, quantization_dimension = 0 : i32, scale = dense<> : tensor<0xf64>, zero_point = dense<> : tensor<0xi64>}, decomposition = @XlaCallModule_quant.fake_quant.impl_drq_fc_tanh} : (tensor<2x8xf32>) -> tensor<2x8xf32>
+  %fc = "tfl.fully_connected"(%in_fq, %w_dq, %none) <{fused_activation_function = "TANH", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8xf32>, none) -> tensor<2x4xf32>
+  func.return %fc : tensor<2x4xf32>
+}
+
+// -----
+
+// The kernel quantizes the input rows to int8, so a DRQ FULLY_CONNECTED whose
+// input is fake quantized to int4 keeps the float blockwise_dequantize filter.
+// CHECK-LABEL: NotFoldFullyConnectedBlockwiseFilterInt4DRQ
+func.func private @XlaCallModule_quant.fake_quant.impl_drq_fc_i4(%arg0: tensor<2x8xf32>) -> tensor<2x8xf32>
+func.func @NotFoldFullyConnectedBlockwiseFilterInt4DRQ(%arg0: tensor<2x8xf32>) -> tensor<2x4xf32> {
+  // CHECK-NOT: !tfl.blockwise_quant
+  // CHECK: "tfl.blockwise_dequantize"
+  // CHECK-NOT: !tfl.blockwise_quant
+  %w = "tfl.pseudo_const"() {value = dense<1> : tensor<4x8xi2>} : () -> tensor<4x8xi2>
+  %scales = "tfl.pseudo_const"() {value = dense<0.5> : tensor<4x1xf32>} : () -> tensor<4x1xf32>
+  %zp = "tfl.pseudo_const"() {value = dense<-0.5> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %none = "tfl.no_value"() {value} : () -> none
+  %w_dq = "tfl.blockwise_dequantize"(%w, %scales, %zp) {block_shape = [1, 8], symmetric = false} : (tensor<4x8xi2>, tensor<4x1xf32>, tensor<1x1xf32>) -> tensor<4x8xf32>
+  %in_fq = stablehlo.composite "quant.fake_quant" %arg0 {composite_attributes = {dtype = "i4", narrow_range = false, quantization_dimension = 0 : i32, scale = dense<> : tensor<0xf64>, zero_point = dense<> : tensor<0xi64>}, decomposition = @XlaCallModule_quant.fake_quant.impl_drq_fc_i4} : (tensor<2x8xf32>) -> tensor<2x8xf32>
+  %fc = "tfl.fully_connected"(%in_fq, %w_dq, %none) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<2x8xf32>, tensor<4x8xf32>, none) -> tensor<2x4xf32>
+  func.return %fc : tensor<2x4xf32>
+}

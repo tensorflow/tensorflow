@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -29,6 +30,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 
@@ -71,8 +73,26 @@ LogicalResult InsertQDQ(mlir::Value value, quant::QuantizedType qtype,
 // the kernel supports.
 bool IsInt8SrqBlockwiseWeightConsumer(mlir::Operation* op);
 
+// Returns true if the FULLY_CONNECTED kernel can run `fc` with a blockwise
+// quantized filter as far as its options go: the default weights format and a
+// fused activation the kernel supports.
+bool IsFullyConnectedBlockwiseFilterSupported(TFL::FullyConnectedOp fc);
+
+// Returns true if the FULLY_CONNECTED kernel can run `fc` as a dynamic range
+// (hybrid) op with a blockwise quantized filter: its options are supported (see
+// `IsFullyConnectedBlockwiseFilterSupported`), and its input, result and bias
+// (if any) are float32. `asymmetric_quantize_inputs` is honored by the kernel.
+bool IsDrqBlockwiseFilterConsumer(TFL::FullyConnectedOp fc);
+
 // Returns the constant elements defining `value`, or nullptr.
 ElementsAttr GetConstantElements(mlir::Value value);
+
+// Returns true if `operand` of `op` is a `tfl.blockwise_dequantize` with a
+// float32 result (of rank 2 if `op` is a `tfl.fully_connected`) and constant
+// integer values, scales and zero points (if any), i.e. one that can be folded
+// into a `!tfl.blockwise_quant` constant.
+bool IsConstantBlockwiseDequantizedFilter(mlir::Operation* op,
+                                          mlir::Value operand);
 
 // Returns true if `operand` at `operand_index` of `op` is a constant
 // `tfl.blockwise_dequantize` that can be folded into a `!tfl.blockwise_quant`

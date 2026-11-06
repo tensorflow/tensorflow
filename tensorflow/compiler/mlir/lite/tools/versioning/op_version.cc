@@ -185,7 +185,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
       // A weight with N-D blockwise quantization is only understood by
       // runtimes at version 16 or above, whatever the weight's storage type.
+      // The dynamic range (float32 or float16 input) variant needs version 17.
       if (op_sig.ext_options.fully_connected.is_weight_blockwise_quantized) {
+        if (!op_sig.inputs.empty() &&
+            (op_sig.inputs.at(0).type == kTfLiteFloat32 ||
+             op_sig.inputs.at(0).type == kTfLiteFloat16)) {
+          return 17;
+        }
         return 16;
       }
 

@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Tests FULLY_CONNECTED with an int8 per-tensor quantized input and output and
-// an N-D blockwise quantized filter (`BlockwiseQuantization` with
-// `block_shape`). Models are built as flatbuffers to exercise flatbuffer
-// parsing, delegate fallback, and both kernel variants end to end.
+// Tests FULLY_CONNECTED with an N-D blockwise quantized filter
+// (`BlockwiseQuantization` with `block_shape`), both with an int8 per-tensor
+// quantized input and output (static range) and with a float32 or float16 input
+// and output (dynamic range). Models are built as flatbuffers to exercise
+// flatbuffer parsing, delegate fallback, and both kernel variants end to end.
 
 #include <algorithm>
 #include <array>
@@ -26,6 +27,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -48,6 +50,9 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::FloatEq;
+using ::testing::FloatNear;
+using ::testing::Pointwise;
 
 struct ParamsTensor {
   TensorType type;
@@ -154,10 +159,13 @@ struct BlockwiseFcSpec {
   // Passes a third, omitted (-1) bias input when there is no bias.
   bool omitted_bias_input = false;
   std::vector<int32_t> output_shape;
+  TensorType output_type = TensorType_INT8;
   AffineParams output_quant;
   ActivationFunctionType activation = ActivationFunctionType_NONE;
   bool keep_num_dims = false;
+  bool asymmetric_quantize_inputs = false;
   std::vector<uint8_t> quant_spec;
+  int op_version = 16;
 };
 
 std::vector<uint8_t> BuildBlockwiseFullyConnectedModel(
@@ -169,11 +177,19 @@ std::vector<uint8_t> BuildBlockwiseFullyConnectedModel(
     buffers.push_back(CreateBuffer(builder, builder.CreateVector(data)));
     return static_cast<uint32_t>(buffers.size() - 1);
   };
+  // Float tensors (and a bias without scales) carry no quantization.
   auto make_affine_quant = [&](const std::vector<float>& scales,
-                               const std::vector<int64_t>& zero_points) {
+                               const std::vector<int64_t>& zero_points)
+      -> flatbuffers::Offset<QuantizationParameters> {
+    if (scales.empty()) return 0;
     return CreateQuantizationParameters(builder, /*min=*/0, /*max=*/0,
                                         builder.CreateVector(scales),
                                         builder.CreateVector(zero_points));
+  };
+  auto make_activation_quant = [&](TensorType type, AffineParams quant) {
+    return (type == TensorType_FLOAT32 || type == TensorType_FLOAT16)
+               ? make_affine_quant({}, {})
+               : make_affine_quant({quant.scale}, {quant.zero_point});
   };
 
   // Tensors: input, filter, scales, [zero points], [bias], output.
@@ -181,8 +197,7 @@ std::vector<uint8_t> BuildBlockwiseFullyConnectedModel(
   tensors.push_back(CreateTensor(
       builder, builder.CreateVector(spec.input_shape), spec.input_type,
       /*buffer=*/0, builder.CreateString("input"),
-      make_affine_quant({spec.input_quant.scale},
-                        {spec.input_quant.zero_point})));
+      make_activation_quant(spec.input_type, spec.input_quant)));
   const int32_t scales_index = 2;
   const int32_t zero_points_index = spec.zero_points.has_value() ? 3 : -1;
   auto filter_details = CreateBlockwiseQuantization(
@@ -220,15 +235,13 @@ std::vector<uint8_t> BuildBlockwiseFullyConnectedModel(
   }
   const int32_t output_index = static_cast<int32_t>(tensors.size());
   tensors.push_back(CreateTensor(
-      builder, builder.CreateVector(spec.output_shape), TensorType_INT8,
+      builder, builder.CreateVector(spec.output_shape), spec.output_type,
       /*buffer=*/0, builder.CreateString("output"),
-      make_affine_quant({spec.output_quant.scale},
-                        {spec.output_quant.zero_point})));
+      make_activation_quant(spec.output_type, spec.output_quant)));
 
   auto fc_options = CreateFullyConnectedOptions(
       builder, spec.activation, FullyConnectedOptionsWeightsFormat_DEFAULT,
-      spec.keep_num_dims, /*asymmetric_quantize_inputs=*/false,
-      TensorType_FLOAT32,
+      spec.keep_num_dims, spec.asymmetric_quantize_inputs, TensorType_FLOAT32,
       spec.quant_spec.empty() ? 0 : builder.CreateVector(spec.quant_spec));
   auto op = CreateOperator(
       builder, /*opcode_index=*/0, builder.CreateVector(op_inputs),
@@ -241,7 +254,7 @@ std::vector<uint8_t> BuildBlockwiseFullyConnectedModel(
       builder.CreateVector(std::vector<flatbuffers::Offset<Operator>>{op}));
   auto op_code = CreateOperatorCode(
       builder, /*deprecated_builtin_code=*/BuiltinOperator_FULLY_CONNECTED,
-      /*custom_code=*/0, /*version=*/16, BuiltinOperator_FULLY_CONNECTED);
+      /*custom_code=*/0, spec.op_version, BuiltinOperator_FULLY_CONNECTED);
   auto model =
       CreateModel(builder, /*version=*/3, builder.CreateVector({op_code}),
                   builder.CreateVector({subgraph}),
@@ -299,6 +312,45 @@ class BlockwiseFullyConnectedModel {
     ASSERT_EQ(NumElements(input), static_cast<int64_t>(values.size()));
     if (values.empty()) return;
     std::copy(values.begin(), values.end(), input->data.int8);
+  }
+
+  void SetFloatInput(const std::vector<float>& values) {
+    TfLiteTensor* input = interpreter_->tensor(interpreter_->inputs()[0]);
+    ASSERT_EQ(NumElements(input), static_cast<int64_t>(values.size()));
+    if (values.empty()) return;
+    std::copy(values.begin(), values.end(), input->data.f);
+  }
+
+  void SetHalfInput(const std::vector<float>& values) {
+    TfLiteTensor* input = interpreter_->tensor(interpreter_->inputs()[0]);
+    ASSERT_EQ(input->type, kTfLiteFloat16);
+    ASSERT_EQ(NumElements(input), static_cast<int64_t>(values.size()));
+    TfLiteFloat16* data = input->data.f16;
+    for (size_t i = 0; i < values.size(); ++i) {
+      data[i].data = Eigen::numext::bit_cast<uint16_t>(Eigen::half(values[i]));
+    }
+  }
+
+  // Returns the float16 output widened to float.
+  std::vector<float> GetHalfOutput() const {
+    const TfLiteTensor* output =
+        interpreter_->tensor(interpreter_->outputs()[0]);
+    const int64_t num_elements = NumElements(output);
+    std::vector<float> values(num_elements);
+    const TfLiteFloat16* data = output->data.f16;
+    for (int64_t i = 0; i < num_elements; ++i) {
+      values[i] = static_cast<float>(
+          Eigen::numext::bit_cast<Eigen::half>(data[i].data));
+    }
+    return values;
+  }
+
+  std::vector<float> GetFloatOutput() const {
+    const TfLiteTensor* output =
+        interpreter_->tensor(interpreter_->outputs()[0]);
+    const int64_t num_elements = NumElements(output);
+    if (num_elements == 0) return {};
+    return std::vector<float>(output->data.f, output->data.f + num_elements);
   }
 
   std::vector<int8_t> GetOutput() const {
@@ -854,6 +906,628 @@ TEST(BlockwiseFullyConnectedTest, RejectsA4W2QuantSpec) {
   fbb.Finish();
 
   BlockwiseFcSpec spec = ValidInt2Spec();
+  spec.quant_spec = fbb.GetBuffer();
+  EXPECT_EQ(AllocateSpec(spec), kTfLiteError);
+}
+
+// Dynamic range (hybrid) FULLY_CONNECTED: float32 or float16 input and output,
+// each input row quantized to int8 at runtime (symmetrically by default,
+// asymmetrically with `asymmetric_quantize_inputs`), blockwise quantized
+// filter.
+
+// Quantizes one row like the kernel: scale = max(|x|) / 127 and
+// q = clamp(round(x * (127 / max(|x|))), -127, 127); an all-zero row gets
+// scale 1.
+void QuantizeRowOracle(const float* row, int depth, std::vector<int32_t>* q,
+                       float* scale) {
+  float max_abs = 0.0f;
+  for (int k = 0; k < depth; ++k) max_abs = std::max(max_abs, std::abs(row[k]));
+  q->assign(depth, 0);
+  if (max_abs == 0.0f) {
+    *scale = 1.0f;
+    return;
+  }
+  *scale = max_abs / 127.0f;
+  const float inverse_scale = 127.0f / max_abs;
+  for (int k = 0; k < depth; ++k) {
+    (*q)[k] = static_cast<int32_t>(
+        std::clamp(std::round(row[k] * inverse_scale), -127.0f, 127.0f));
+  }
+}
+
+// Quantizes one row asymmetrically to [-128, 127] like
+// `tensor_utils::PortableAsymmetricQuantizeFloats`, which the kernel uses:
+// `x ~ scale * (q - zero_point)`.
+void AsymmetricQuantizeRowOracle(const float* row, int depth,
+                                 std::vector<int32_t>* q, float* scale,
+                                 int32_t* zero_point) {
+  q->assign(depth, 0);
+  *scale = 1.0f;
+  *zero_point = 0;
+  if (depth == 0) return;
+  const auto [min_it, max_it] = std::minmax_element(row, row + depth);
+  const double rmin = std::min(0.0f, *min_it);
+  const double rmax = std::max(0.0f, *max_it);
+  if (rmin == rmax) return;
+  const double qmin = -128.0;
+  const double qmax = 127.0;
+  const double scale_double = (rmax - rmin) / (qmax - qmin);
+  const double zero_point_from_min = qmin - rmin / scale_double;
+  const double zero_point_from_max = qmax - rmax / scale_double;
+  const double zero_point_double =
+      std::abs(qmin) + std::abs(rmin / scale_double) <
+              std::abs(qmax) + std::abs(rmax / scale_double)
+          ? zero_point_from_min
+          : zero_point_from_max;
+  *zero_point = zero_point_double <= qmin ? -128
+                : zero_point_double >= qmax
+                    ? 127
+                    : static_cast<int32_t>(std::round(zero_point_double));
+  *scale = static_cast<float>(scale_double);
+  const float inverse_scale = 1.0f / *scale;
+  for (int k = 0; k < depth; ++k) {
+    (*q)[k] = std::clamp(
+        static_cast<int32_t>(std::round(*zero_point + row[k] * inverse_scale)),
+        -128, 127);
+  }
+}
+
+// Float oracle of the dynamic range kernel: quantize each input row (per-row
+// asymmetric with `asymmetric`), multiply with the dequantized filter, scale by
+// the row scale, add the bias and clamp. With power-of-two filter scales the
+// accumulation is exact in double, so this matches the kernel bit for bit.
+std::vector<float> ReferenceHybridFullyConnected(
+    const std::vector<float>& input, const std::vector<double>& filter,
+    const std::vector<float>& bias, int batches, int num_units, int depth,
+    float act_min = std::numeric_limits<float>::lowest(),
+    float act_max = std::numeric_limits<float>::max(),
+    bool asymmetric = false) {
+  std::vector<float> output;
+  output.reserve(batches * num_units);
+  std::vector<int32_t> q;
+  for (int b = 0; b < batches; ++b) {
+    float row_scale = 0.0f;
+    int32_t row_zero_point = 0;
+    if (asymmetric) {
+      AsymmetricQuantizeRowOracle(input.data() + b * depth, depth, &q,
+                                  &row_scale, &row_zero_point);
+    } else {
+      QuantizeRowOracle(input.data() + b * depth, depth, &q, &row_scale);
+    }
+    for (int n = 0; n < num_units; ++n) {
+      double acc = 0.0;
+      for (int k = 0; k < depth; ++k) {
+        acc += (q[k] - row_zero_point) * filter[n * depth + k];
+      }
+      double value = acc * static_cast<double>(row_scale);
+      if (!bias.empty()) value += static_cast<double>(bias[n]);
+      output.push_back(
+          std::min(std::max(static_cast<float>(value), act_min), act_max));
+    }
+  }
+  return output;
+}
+
+// Unquantized float FULLY_CONNECTED with the dequantized filter.
+std::vector<float> FloatFullyConnected(const std::vector<float>& input,
+                                       const std::vector<double>& filter,
+                                       const std::vector<float>& bias,
+                                       int batches, int num_units, int depth) {
+  std::vector<float> output;
+  for (int b = 0; b < batches; ++b) {
+    for (int n = 0; n < num_units; ++n) {
+      double acc = bias.empty() ? 0.0 : bias[n];
+      for (int k = 0; k < depth; ++k) {
+        acc += input[b * depth + k] * filter[n * depth + k];
+      }
+      output.push_back(static_cast<float>(acc));
+    }
+  }
+  return output;
+}
+
+// Deterministic float values in [-amplitude, amplitude] that are not on a
+// coarse grid.
+std::vector<float> FloatPattern(int size, float amplitude, int seed) {
+  std::vector<float> values(size);
+  for (int i = 0; i < size; ++i) {
+    values[i] = amplitude * std::sin(0.37f * i + 1.7f * seed);
+  }
+  return values;
+}
+
+BlockwiseFcSpec MakeHybridSpec() {
+  BlockwiseFcSpec spec;
+  spec.input_type = TensorType_FLOAT32;
+  spec.output_type = TensorType_FLOAT32;
+  spec.op_version = 17;
+  return spec;
+}
+
+void ExpectHybridOutput(const BlockwiseFcSpec& spec,
+                        const std::vector<float>& input,
+                        const std::vector<float>& expected,
+                        const std::vector<int>& expected_shape) {
+  for (Resolver resolver : kAllResolvers) {
+    SCOPED_TRACE(static_cast<int>(resolver));
+    BlockwiseFullyConnectedModel m(BuildBlockwiseFullyConnectedModel(spec),
+                                   resolver);
+    ASSERT_TRUE(m.Built());
+    ASSERT_EQ(m.Allocate(), kTfLiteOk);
+    m.SetFloatInput(input);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(expected_shape));
+    EXPECT_THAT(m.GetFloatOutput(), Pointwise(FloatEq(), expected));
+  }
+}
+
+// DRQ A8W2: float activations against a centered int2 filter (zero point -0.5)
+// with one scale per output channel. One input row is all zeros.
+class HybridCenteredInt2PerChannelTest : public ::testing::TestWithParam<bool> {
+};
+
+TEST_P(HybridCenteredInt2PerChannelTest, MatchesReference) {
+  const bool with_bias = GetParam();
+  constexpr int kBatches = 3;
+  constexpr int kUnits = 4;
+  constexpr int kDepth = 16;
+  std::vector<float> input = FloatPattern(kBatches * kDepth, 3.0f, 1);
+  std::fill_n(input.begin() + kDepth, kDepth, 0.0f);
+  const std::vector<int32_t> filter_q = Pattern(kUnits * kDepth, -2, 1, 2);
+  const BlockTable scales = {{0.25f, 0.5f, 1.0f, 0.125f}, {kUnits, 1}};
+  const BlockTable zero_points = {{-0.5f}, {1, 1}};
+
+  BlockwiseFcSpec spec = MakeHybridSpec();
+  spec.input_shape = {kBatches, kDepth};
+  spec.filter_type = TensorType_INT2;
+  spec.filter_shape = {kUnits, kDepth};
+  spec.filter_data = PackInt2(filter_q);
+  spec.block_shape = {1, kDepth};
+  spec.scales = MakeParams(TensorType_FLOAT32, {kUnits, 1}, scales.values);
+  spec.zero_points = MakeParams(TensorType_FLOAT32, {1, 1}, zero_points.values);
+  spec.output_shape = {kBatches, kUnits};
+  std::vector<float> bias;
+  if (with_bias) {
+    bias = {0.75f, -1.25f, 0.1f, 3.0f};
+    spec.bias = BiasSpec{TensorType_FLOAT32, ToBytes(bias), {}, {}};
+  }
+
+  const std::vector<double> filter = DequantizeFilter(
+      filter_q, kUnits, kDepth, 1, kDepth, scales, zero_points);
+  const std::vector<float> expected = ReferenceHybridFullyConnected(
+      input, filter, bias, kBatches, kUnits, kDepth);
+  ExpectHybridOutput(spec, input, expected, {kBatches, kUnits});
+
+  // The all-zero row outputs exactly the bias.
+  for (int n = 0; n < kUnits; ++n) {
+    EXPECT_EQ(expected[kUnits + n], with_bias ? bias[n] : 0.0f);
+  }
+  // Int8 activation quantization stays close to the float computation.
+  EXPECT_THAT(expected,
+              Pointwise(FloatNear(0.3f),
+                        FloatFullyConnected(input, filter, bias, kBatches,
+                                            kUnits, kDepth)));
+}
+
+INSTANTIATE_TEST_SUITE_P(WithAndWithoutBias, HybridCenteredInt2PerChannelTest,
+                         ::testing::Bool());
+
+TEST(HybridBlockwiseFullyConnectedTest,
+     CenteredInt2SubChannelBlocksWithKeepNumDimsAndRelu6) {
+  // Depth blocks of 4 over a depth of 10 leave a partial last block of 2, and
+  // output channel blocks of 2 leave a partial last block of 1. The scales are
+  // float16 and RELU6 clamps the float output.
+  constexpr int kUnits = 3;
+  constexpr int kDepth = 10;
+  const std::vector<float> input = FloatPattern(2 * kDepth, 5.0f, 3);
+  const std::vector<int32_t> filter_q = Pattern(kUnits * kDepth, -2, 1, 4);
+  const BlockTable scales = {{0.5f, 0.25f, 1.0f, 2.0f, 0.125f, 0.5f}, {2, 3}};
+  const BlockTable zero_points = {{-0.5f}, {1, 1}};
+
+  BlockwiseFcSpec spec = MakeHybridSpec();
+  spec.input_shape = {2, 1, kDepth};
+  spec.filter_type = TensorType_INT2;
+  spec.filter_shape = {kUnits, kDepth};
+  spec.filter_data = PackInt2(filter_q);
+  spec.block_shape = {2, 4};
+  spec.scales = MakeF16Params({2, 3}, scales.values);
+  spec.zero_points = MakeParams(TensorType_FLOAT32, {1, 1}, zero_points.values);
+  spec.output_shape = {2, 1, kUnits};
+  spec.keep_num_dims = true;
+  spec.activation = ActivationFunctionType_RELU6;
+
+  const std::vector<double> filter =
+      DequantizeFilter(filter_q, kUnits, kDepth, 2, 4, scales, zero_points);
+  ExpectHybridOutput(spec, input,
+                     ReferenceHybridFullyConnected(input, filter, {}, 2, kUnits,
+                                                   kDepth, 0.0f, 6.0f),
+                     {2, 1, kUnits});
+}
+
+TEST(HybridBlockwiseFullyConnectedTest, Int4And8FiltersWithZeroPoints) {
+  // The dynamic range path is not specific to int2: other storage types with
+  // per-block integer zero points and an omitted zero point tensor work too.
+  constexpr int kUnits = 2;
+  constexpr int kDepth = 8;
+  const std::vector<float> input = FloatPattern(2 * kDepth, 1.5f, 5);
+  const BlockTable scales = {{0.25f, 0.5f, 0.125f, 1.0f}, {kUnits, 2}};
+
+  {
+    SCOPED_TRACE("INT4");
+    const std::vector<int32_t> filter_q = Pattern(kUnits * kDepth, -8, 7, 6);
+    const BlockTable zero_points = {{1, -2, 0, 3}, {kUnits, 2}};
+    BlockwiseFcSpec spec = MakeHybridSpec();
+    spec.input_shape = {2, kDepth};
+    spec.filter_type = TensorType_INT4;
+    spec.filter_shape = {kUnits, kDepth};
+    spec.filter_data = PackNibbles(filter_q);
+    spec.block_shape = {1, 4};
+    spec.scales = MakeParams(TensorType_FLOAT32, {kUnits, 2}, scales.values);
+    spec.zero_points = MakeParams(TensorType_INT8, {kUnits, 2},
+                                  std::vector<int8_t>{1, -2, 0, 3});
+    spec.output_shape = {2, kUnits};
+    const std::vector<double> filter =
+        DequantizeFilter(filter_q, kUnits, kDepth, 1, 4, scales, zero_points);
+    ExpectHybridOutput(
+        spec, input,
+        ReferenceHybridFullyConnected(input, filter, {}, 2, kUnits, kDepth),
+        {2, kUnits});
+  }
+  {
+    SCOPED_TRACE("INT8");
+    const std::vector<int32_t> filter_q =
+        Pattern(kUnits * kDepth, -127, 127, 7);
+    BlockwiseFcSpec spec = MakeHybridSpec();
+    spec.input_shape = {2, kDepth};
+    spec.filter_type = TensorType_INT8;
+    spec.filter_shape = {kUnits, kDepth};
+    spec.filter_data = PackAs<int8_t>(filter_q);
+    spec.block_shape = {1, 4};
+    spec.scales = MakeParams(TensorType_FLOAT32, {kUnits, 2}, scales.values);
+    spec.output_shape = {2, kUnits};
+    spec.activation = ActivationFunctionType_RELU;
+    const std::vector<double> filter = DequantizeFilter(
+        filter_q, kUnits, kDepth, 1, 4, scales, {{0.0f}, {1, 1}});
+    ExpectHybridOutput(spec, input,
+                       ReferenceHybridFullyConnected(input, filter, {}, 2,
+                                                     kUnits, kDepth, 0.0f),
+                       {2, kUnits});
+  }
+}
+
+TEST(HybridBlockwiseFullyConnectedTest, ZeroDepthOutputsBias) {
+  BlockwiseFcSpec spec = MakeHybridSpec();
+  spec.input_shape = {2, 0};
+  spec.filter_type = TensorType_INT2;
+  spec.filter_shape = {2, 0};
+  spec.block_shape = {1, 4};
+  spec.scales = MakeParams(TensorType_FLOAT32, {2, 0}, std::vector<float>{});
+  spec.bias = BiasSpec{
+      TensorType_FLOAT32, ToBytes(std::vector<float>{1.5f, -2.25f}), {}, {}};
+  spec.output_shape = {2, 2};
+
+  for (Resolver resolver : kAllResolvers) {
+    SCOPED_TRACE(static_cast<int>(resolver));
+    BlockwiseFullyConnectedModel m(BuildBlockwiseFullyConnectedModel(spec),
+                                   resolver);
+    ASSERT_TRUE(m.Built());
+    ASSERT_EQ(m.Allocate(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetFloatOutput(),
+                ElementsAreArray({1.5f, -2.25f, 1.5f, -2.25f}));
+  }
+}
+
+// Rounds `value` to the nearest float16.
+float RoundToHalf(float value) {
+  return static_cast<float>(Eigen::half(value));
+}
+
+std::vector<float> RoundToHalf(const std::vector<float>& values) {
+  std::vector<float> rounded;
+  rounded.reserve(values.size());
+  for (float value : values) rounded.push_back(RoundToHalf(value));
+  return rounded;
+}
+
+std::vector<uint8_t> HalfBytes(const std::vector<float>& values) {
+  std::vector<uint16_t> halves;
+  halves.reserve(values.size());
+  for (float value : values) {
+    halves.push_back(Eigen::numext::bit_cast<uint16_t>(Eigen::half(value)));
+  }
+  return ToBytes(halves);
+}
+
+// DRQ A8W2 with float16 activations: the input, output and bias are float16.
+// The kernel widens them to float32, so the result matches the float32
+// reference on the float16-rounded input and bias, rounded to float16 once.
+class HybridHalfCenteredInt2Test
+    : public ::testing::TestWithParam<
+          std::tuple<bool, ActivationFunctionType>> {};
+
+TEST_P(HybridHalfCenteredInt2Test, MatchesReference) {
+  const auto [with_bias, activation] = GetParam();
+  const bool relu6 = activation == ActivationFunctionType_RELU6;
+  const float act_min = relu6 ? 0.0f : std::numeric_limits<float>::lowest();
+  const float act_max = relu6 ? 6.0f : std::numeric_limits<float>::max();
+  constexpr int kBatches = 3;
+  constexpr int kUnits = 4;
+  constexpr int kDepth = 16;
+  std::vector<float> input =
+      RoundToHalf(FloatPattern(kBatches * kDepth, 3.0f, 9));
+  std::fill_n(input.begin() + kDepth, kDepth, 0.0f);
+  const std::vector<int32_t> filter_q = Pattern(kUnits * kDepth, -2, 1, 10);
+  const BlockTable scales = {{0.25f, 0.5f, 1.0f, 0.125f}, {kUnits, 1}};
+  const BlockTable zero_points = {{-0.5f}, {1, 1}};
+
+  BlockwiseFcSpec spec = MakeHybridSpec();
+  spec.input_type = TensorType_FLOAT16;
+  spec.output_type = TensorType_FLOAT16;
+  spec.input_shape = {kBatches, kDepth};
+  spec.filter_type = TensorType_INT2;
+  spec.filter_shape = {kUnits, kDepth};
+  spec.filter_data = PackInt2(filter_q);
+  spec.block_shape = {1, 8};
+  spec.scales = MakeF16Params({kUnits, 1}, scales.values);
+  spec.zero_points = MakeParams(TensorType_FLOAT32, {1, 1}, zero_points.values);
+  spec.output_shape = {kBatches, kUnits};
+  spec.activation = activation;
+  std::vector<float> bias;
+  if (with_bias) {
+    bias = RoundToHalf({0.75f, -1.25f, 0.1f, 3.0f});
+    spec.bias = BiasSpec{TensorType_FLOAT16, HalfBytes(bias), {}, {}};
+  }
+
+  const std::vector<double> filter =
+      DequantizeFilter(filter_q, kUnits, kDepth, 1, 8, scales, zero_points);
+  const std::vector<float> expected = RoundToHalf(ReferenceHybridFullyConnected(
+      input, filter, bias, kBatches, kUnits, kDepth, act_min, act_max));
+  for (Resolver resolver : kAllResolvers) {
+    SCOPED_TRACE(static_cast<int>(resolver));
+    BlockwiseFullyConnectedModel m(BuildBlockwiseFullyConnectedModel(spec),
+                                   resolver);
+    ASSERT_TRUE(m.Built());
+    ASSERT_EQ(m.Allocate(), kTfLiteOk);
+    m.SetHalfInput(input);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({kBatches, kUnits}));
+    EXPECT_THAT(m.GetHalfOutput(), Pointwise(FloatEq(), expected));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    BiasAndActivation, HybridHalfCenteredInt2Test,
+    ::testing::Combine(::testing::Bool(),
+                       ::testing::Values(ActivationFunctionType_NONE,
+                                         ActivationFunctionType_RELU6)));
+
+TEST(HybridBlockwiseFullyConnectedTest, HalfZeroDepthOutputsBias) {
+  BlockwiseFcSpec spec = MakeHybridSpec();
+  spec.input_type = TensorType_FLOAT16;
+  spec.output_type = TensorType_FLOAT16;
+  spec.input_shape = {2, 0};
+  spec.filter_type = TensorType_INT2;
+  spec.filter_shape = {2, 0};
+  spec.block_shape = {1, 4};
+  spec.scales = MakeParams(TensorType_FLOAT32, {2, 0}, std::vector<float>{});
+  spec.bias = BiasSpec{TensorType_FLOAT16, HalfBytes({1.5f, -2.25f}), {}, {}};
+  spec.output_shape = {2, 2};
+  for (Resolver resolver : kAllResolvers) {
+    SCOPED_TRACE(static_cast<int>(resolver));
+    BlockwiseFullyConnectedModel m(BuildBlockwiseFullyConnectedModel(spec),
+                                   resolver);
+    ASSERT_TRUE(m.Built());
+    ASSERT_EQ(m.Allocate(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetHalfOutput(),
+                ElementsAreArray({1.5f, -2.25f, 1.5f, -2.25f}));
+  }
+}
+
+// A valid DRQ A8W2 spec that the rejection tests below break one way each.
+BlockwiseFcSpec ValidHybridInt2Spec() {
+  BlockwiseFcSpec spec = MakeHybridSpec();
+  spec.input_shape = {1, 8};
+  spec.filter_type = TensorType_INT2;
+  spec.filter_shape = {2, 8};
+  spec.filter_data = PackInt2(Pattern(16, -2, 1, 0));
+  spec.block_shape = {1, 8};
+  spec.scales =
+      MakeParams(TensorType_FLOAT32, {2, 1}, std::vector<float>{0.5f, 0.25f});
+  spec.zero_points =
+      MakeParams(TensorType_FLOAT32, {1, 1}, std::vector<float>{-0.5f});
+  spec.output_shape = {1, 2};
+  return spec;
+}
+
+TEST(HybridBlockwiseFullyConnectedTest, ValidSpecAllocates) {
+  EXPECT_EQ(AllocateSpec(ValidHybridInt2Spec()), kTfLiteOk);
+}
+
+TEST(HybridBlockwiseFullyConnectedTest, RejectsMixedInputAndOutputTypes) {
+  BlockwiseFcSpec spec = ValidHybridInt2Spec();
+  spec.output_type = TensorType_INT8;
+  EXPECT_EQ(AllocateSpec(spec), kTfLiteError);
+
+  spec = ValidInt2Spec();
+  spec.output_type = TensorType_FLOAT32;
+  EXPECT_EQ(AllocateSpec(spec), kTfLiteError);
+}
+
+// A float16 op may keep a float32 bias, e.g. when float16 casts around a
+// float32 op are folded into it.
+TEST(HybridBlockwiseFullyConnectedTest, HalfWithFloatBias) {
+  constexpr int kUnits = 2;
+  constexpr int kDepth = 8;
+  const std::vector<float> input = RoundToHalf(FloatPattern(kDepth, 2.0f, 13));
+  const std::vector<int32_t> filter_q = Pattern(kUnits * kDepth, -2, 1, 14);
+  const BlockTable scales = {{0.5f, 0.25f}, {kUnits, 1}};
+  const BlockTable zero_points = {{-0.5f}, {1, 1}};
+  const std::vector<float> bias = {0.1f, -0.3f};
+
+  BlockwiseFcSpec spec = MakeHybridSpec();
+  spec.input_type = TensorType_FLOAT16;
+  spec.output_type = TensorType_FLOAT16;
+  spec.input_shape = {1, kDepth};
+  spec.filter_type = TensorType_INT2;
+  spec.filter_shape = {kUnits, kDepth};
+  spec.filter_data = PackInt2(filter_q);
+  spec.block_shape = {1, kDepth};
+  spec.scales = MakeParams(TensorType_FLOAT32, {kUnits, 1}, scales.values);
+  spec.zero_points = MakeParams(TensorType_FLOAT32, {1, 1}, zero_points.values);
+  spec.bias = BiasSpec{TensorType_FLOAT32, ToBytes(bias), {}, {}};
+  spec.output_shape = {1, kUnits};
+
+  const std::vector<double> filter = DequantizeFilter(
+      filter_q, kUnits, kDepth, 1, kDepth, scales, zero_points);
+  const std::vector<float> expected = RoundToHalf(
+      ReferenceHybridFullyConnected(input, filter, bias, 1, kUnits, kDepth));
+  BlockwiseFullyConnectedModel m(BuildBlockwiseFullyConnectedModel(spec));
+  ASSERT_TRUE(m.Built());
+  ASSERT_EQ(m.Allocate(), kTfLiteOk);
+  m.SetHalfInput(input);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetHalfOutput(), Pointwise(FloatEq(), expected));
+}
+
+TEST(HybridBlockwiseFullyConnectedTest, HalfSpecAllocates) {
+  BlockwiseFcSpec spec = ValidHybridInt2Spec();
+  spec.input_type = TensorType_FLOAT16;
+  spec.output_type = TensorType_FLOAT16;
+  spec.bias = BiasSpec{TensorType_FLOAT16, HalfBytes({1.0f, 2.0f}), {}, {}};
+  EXPECT_EQ(AllocateSpec(spec), kTfLiteOk);
+}
+
+TEST(HybridBlockwiseFullyConnectedTest, RejectsMixedFloatTypes) {
+  // Float16 input with a float32 output.
+  BlockwiseFcSpec spec = ValidHybridInt2Spec();
+  spec.input_type = TensorType_FLOAT16;
+  EXPECT_EQ(AllocateSpec(spec), kTfLiteError);
+
+  // Float32 input and output with a float16 bias.
+  spec = ValidHybridInt2Spec();
+  spec.bias = BiasSpec{TensorType_FLOAT16, HalfBytes({1.0f, 2.0f}), {}, {}};
+  EXPECT_EQ(AllocateSpec(spec), kTfLiteError);
+}
+
+// `asymmetric_quantize_inputs` quantizes each input row asymmetrically with its
+// own zero point, which the blockwise accumulation subtracts. Covers float32
+// and float16, a non-negative row (zero point at the bottom of the range), a
+// mixed-sign row and an all-zero row.
+class HybridAsymmetricInputsTest : public ::testing::TestWithParam<bool> {};
+
+TEST_P(HybridAsymmetricInputsTest, MatchesReference) {
+  const bool half = GetParam();
+  constexpr int kBatches = 3;
+  constexpr int kUnits = 4;
+  constexpr int kDepth = 16;
+  std::vector<float> input = FloatPattern(kBatches * kDepth, 2.0f, 11);
+  // Row 0 is non-negative and shifted, row 1 is all zeros.
+  for (int k = 0; k < kDepth; ++k) input[k] = std::abs(input[k]) + 0.5f;
+  std::fill_n(input.begin() + kDepth, kDepth, 0.0f);
+  if (half) input = RoundToHalf(input);
+  const std::vector<int32_t> filter_q = Pattern(kUnits * kDepth, -2, 1, 12);
+  const BlockTable scales = {
+      {0.25f, 0.5f, 1.0f, 0.125f, 0.5f, 0.25f, 0.125f, 1.0f}, {kUnits, 2}};
+  const BlockTable zero_points = {{-0.5f}, {1, 1}};
+  std::vector<float> bias = {0.75f, -1.25f, 0.5f, 3.0f};
+
+  BlockwiseFcSpec spec = MakeHybridSpec();
+  if (half) {
+    spec.input_type = TensorType_FLOAT16;
+    spec.output_type = TensorType_FLOAT16;
+    spec.bias = BiasSpec{TensorType_FLOAT16, HalfBytes(bias), {}, {}};
+  } else {
+    spec.bias = BiasSpec{TensorType_FLOAT32, ToBytes(bias), {}, {}};
+  }
+  spec.asymmetric_quantize_inputs = true;
+  spec.input_shape = {kBatches, kDepth};
+  spec.filter_type = TensorType_INT2;
+  spec.filter_shape = {kUnits, kDepth};
+  spec.filter_data = PackInt2(filter_q);
+  spec.block_shape = {1, 8};
+  spec.scales = MakeParams(TensorType_FLOAT32, {kUnits, 2}, scales.values);
+  spec.zero_points = MakeParams(TensorType_FLOAT32, {1, 1}, zero_points.values);
+  spec.output_shape = {kBatches, kUnits};
+
+  const std::vector<double> filter =
+      DequantizeFilter(filter_q, kUnits, kDepth, 1, 8, scales, zero_points);
+  std::vector<float> expected = ReferenceHybridFullyConnected(
+      input, filter, bias, kBatches, kUnits, kDepth,
+      std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max(),
+      /*asymmetric=*/true);
+  if (half) expected = RoundToHalf(expected);
+  // The all-zero row outputs exactly the bias.
+  for (int n = 0; n < kUnits; ++n) EXPECT_EQ(expected[kUnits + n], bias[n]);
+  // The asymmetric scheme differs from the symmetric one on these inputs.
+  EXPECT_NE(expected, half
+                          ? RoundToHalf(ReferenceHybridFullyConnected(
+                                input, filter, bias, kBatches, kUnits, kDepth))
+                          : ReferenceHybridFullyConnected(
+                                input, filter, bias, kBatches, kUnits, kDepth));
+
+  for (Resolver resolver : kAllResolvers) {
+    SCOPED_TRACE(static_cast<int>(resolver));
+    BlockwiseFullyConnectedModel m(BuildBlockwiseFullyConnectedModel(spec),
+                                   resolver);
+    ASSERT_TRUE(m.Built());
+    ASSERT_EQ(m.Allocate(), kTfLiteOk);
+    if (half) {
+      m.SetHalfInput(input);
+    } else {
+      m.SetFloatInput(input);
+    }
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(half ? m.GetHalfOutput() : m.GetFloatOutput(),
+                Pointwise(FloatEq(), expected));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(FloatAndHalf, HybridAsymmetricInputsTest,
+                         ::testing::Bool());
+
+TEST(HybridBlockwiseFullyConnectedTest, AsymmetricZeroDepthOutputsBias) {
+  BlockwiseFcSpec spec = MakeHybridSpec();
+  spec.asymmetric_quantize_inputs = true;
+  spec.input_shape = {2, 0};
+  spec.filter_type = TensorType_INT2;
+  spec.filter_shape = {2, 0};
+  spec.block_shape = {1, 4};
+  spec.scales = MakeParams(TensorType_FLOAT32, {2, 0}, std::vector<float>{});
+  spec.bias = BiasSpec{
+      TensorType_FLOAT32, ToBytes(std::vector<float>{1.5f, -2.25f}), {}, {}};
+  spec.output_shape = {2, 2};
+  BlockwiseFullyConnectedModel m(BuildBlockwiseFullyConnectedModel(spec));
+  ASSERT_TRUE(m.Built());
+  ASSERT_EQ(m.Allocate(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetFloatOutput(),
+              ElementsAreArray({1.5f, -2.25f, 1.5f, -2.25f}));
+}
+
+TEST(HybridBlockwiseFullyConnectedTest, RejectsInt32Bias) {
+  BlockwiseFcSpec spec = ValidHybridInt2Spec();
+  spec.bias = BiasSpec{
+      TensorType_INT32, ToBytes(std::vector<int32_t>{1, 2}), {0.25f}, {0}};
+  EXPECT_EQ(AllocateSpec(spec), kTfLiteError);
+}
+
+TEST(HybridBlockwiseFullyConnectedTest, RejectsTanhActivation) {
+  BlockwiseFcSpec spec = ValidHybridInt2Spec();
+  spec.activation = ActivationFunctionType_TANH;
+  EXPECT_EQ(AllocateSpec(spec), kTfLiteError);
+}
+
+TEST(HybridBlockwiseFullyConnectedTest, RejectsA4W2QuantSpec) {
+  flexbuffers::Builder fbb;
+  const size_t map_start = fbb.StartMap();
+  fbb.String("spec", "cint2_fp32_int4_e8m0_drq");
+  fbb.Double("act_dilation", 1.5);
+  fbb.EndMap(map_start);
+  fbb.Finish();
+
+  BlockwiseFcSpec spec = ValidHybridInt2Spec();
   spec.quant_spec = fbb.GetBuffer();
   EXPECT_EQ(AllocateSpec(spec), kTfLiteError);
 }

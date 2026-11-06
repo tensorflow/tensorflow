@@ -83,7 +83,7 @@ void BuiltinOpResolver::RegisterBuiltinOps() {
              Register_EMBEDDING_LOOKUP_SPARSE());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
              /* min_version = */ 1,
-             /* max_version = */ 16);
+             /* max_version = */ 17);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),

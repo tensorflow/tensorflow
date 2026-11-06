@@ -245,15 +245,7 @@ LogicalResult InsertQDQ(mlir::Value value, quant::QuantizedType qtype,
 
 bool IsInt8SrqBlockwiseWeightConsumer(mlir::Operation* op) {
   if (auto fc = llvm::dyn_cast<TFL::FullyConnectedOp>(op)) {
-    if (fc.getWeightsFormat() != "DEFAULT") return false;
-    // The fused activations the FULLY_CONNECTED kernel supports with a
-    // blockwise quantized filter.
-    static constexpr llvm::StringLiteral kSupportedActivations[] = {
-        "NONE", "RELU", "RELU_N1_TO_1", "RELU6"};
-    if (!llvm::is_contained(kSupportedActivations,
-                            fc.getFusedActivationFunction())) {
-      return false;
-    }
+    if (!IsFullyConnectedBlockwiseFilterSupported(fc)) return false;
   } else if (!llvm::isa<TFL::BatchMatMulOp>(op)) {
     return false;
   }
@@ -284,11 +276,28 @@ ElementsAttr GetConstantElements(mlir::Value value) {
   return nullptr;
 }
 
-bool CanFoldBlockwiseWeightOperand(mlir::Operation* op, unsigned operand_index,
-                                   mlir::Value operand) {
-  if (operand_index != 1 || !IsInt8SrqBlockwiseWeightConsumer(op)) {
-    return false;
-  }
+bool IsFullyConnectedBlockwiseFilterSupported(TFL::FullyConnectedOp fc) {
+  if (fc.getWeightsFormat() != "DEFAULT") return false;
+  // The fused activations the FULLY_CONNECTED kernel supports with a
+  // blockwise quantized filter.
+  static constexpr llvm::StringLiteral kSupportedActivations[] = {
+      "NONE", "RELU", "RELU_N1_TO_1", "RELU6"};
+  return llvm::is_contained(kSupportedActivations,
+                            fc.getFusedActivationFunction());
+}
+
+bool IsDrqBlockwiseFilterConsumer(TFL::FullyConnectedOp fc) {
+  if (!IsFullyConnectedBlockwiseFilterSupported(fc)) return false;
+  auto is_f32 = [](mlir::Value value) {
+    return getElementTypeOrSelf(value.getType()).isF32();
+  };
+  if (!is_f32(fc.getInput()) || !is_f32(fc.getResult(0))) return false;
+  mlir::Value bias = fc.getBias();
+  return mlir::isa<NoneType>(bias.getType()) || is_f32(bias);
+}
+
+bool IsConstantBlockwiseDequantizedFilter(mlir::Operation* op,
+                                          mlir::Value operand) {
   auto bw_deq = operand.getDefiningOp<TFL::BlockwiseDequantizeOp>();
   if (!bw_deq) return false;
   auto output_type = mlir::dyn_cast<RankedTensorType>(bw_deq.getType());
@@ -305,6 +314,12 @@ bool CanFoldBlockwiseWeightOperand(mlir::Operation* op, unsigned operand_index,
     return false;
   }
   return true;
+}
+
+bool CanFoldBlockwiseWeightOperand(mlir::Operation* op, unsigned operand_index,
+                                   mlir::Value operand) {
+  return operand_index == 1 && IsInt8SrqBlockwiseWeightConsumer(op) &&
+         IsConstantBlockwiseDequantizedFilter(op, operand);
 }
 
 }  // namespace mlir::TFL
