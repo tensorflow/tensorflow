@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -1931,6 +1932,246 @@ TEST_F(
   for (int arg_i = 0; arg_i < 4; ++arg_i) {
     EXPECT_EQ(seen_ptrs[arg_i], seen_ptrs[4 + arg_i]) << "arg_i=" << arg_i;
   }
+}
+
+class EventLoggingProfiler : public ProfilerInterface {
+ public:
+  explicit EventLoggingProfiler(std::vector<std::string>* events,
+                                const absl::Duration* total_run_time = nullptr)
+      : events_(events), total_run_time_(total_run_time) {}
+
+  void CreateSession() override {
+    events_->push_back("CreateSession");
+    active_session_ = true;
+    session_start_ = absl::Now();
+  }
+
+  void UploadSession() override {
+    if (active_session_) {
+      total_profiled_window_ += absl::Now() - session_start_;
+      active_session_ = false;
+    }
+    if (total_run_time_ != nullptr) {
+      run_time_at_last_upload_ = *total_run_time_;
+    }
+    events_->push_back("UploadSession");
+  }
+
+  bool active_session() const { return active_session_; }
+  absl::Duration total_profiled_window() const {
+    return total_profiled_window_;
+  }
+  absl::Duration run_time_at_last_upload() const {
+    return run_time_at_last_upload_;
+  }
+
+ private:
+  std::vector<std::string>* events_;
+  const absl::Duration* total_run_time_;
+  bool active_session_ = false;
+  absl::Time session_start_ = absl::InfinitePast();
+  absl::Duration total_profiled_window_ = absl::ZeroDuration();
+  absl::Duration run_time_at_last_upload_ = absl::ZeroDuration();
+};
+
+class EventLoggingLoadedExecutable : public NoOpExecutingLoadedExecutable {
+ public:
+  EventLoggingLoadedExecutable(PjRtLoadedExecutable* inner,
+                               std::vector<std::string>* events)
+      : NoOpExecutingLoadedExecutable(inner), events_(events) {}
+
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options,
+      std::optional<std::vector<Future<>>>& returned_futures) const override {
+    events_->push_back("Execute");
+    return NoOpExecutingLoadedExecutable::Execute(argument_handles, options,
+                                                  returned_futures);
+  }
+
+ private:
+  std::vector<std::string>* events_;
+};
+
+// Verifies that `RunningOptions::profiler` starts strictly after argument
+// generation/H2D transfers and `after_arguments_ready_callback` complete and
+// uploads immediately after `Execute` finishes, and that
+// `RunningOptions::total_run_time` excludes input loading and synchronization.
+TEST_F(FunctionalHloRunnerTest,
+       ProfilerSessionAndTotalRunTimeExcludeArgumentLoading) {
+  ScopedFakeArgumentCacheReset cache_reset;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> real_exec,
+      CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
+                             /*num_replicas=*/1));
+
+  std::vector<std::string> events;
+  std::vector<bool> active_during_argument_setup;
+  std::vector<absl::Duration> run_time_during_argument_setup;
+  absl::Duration total_run_time = absl::InfiniteDuration();
+  EventLoggingLoadedExecutable wrapped_exec(real_exec.get(), &events);
+  EventLoggingProfiler profiler(&events, &total_run_time);
+
+  HostLiteralMockPjRtClient mock_client;
+  std::atomic<int> same_space_clones{0};
+  std::atomic<int> cross_space_clones{0};
+  EXPECT_CALL(mock_client, BufferFromHostLiteral)
+      .Times(2)
+      .WillRepeatedly([&](const LiteralSlice& /*literal*/,
+                          PjRtMemorySpace* memory_space,
+                          const Layout* /*device_layout*/) {
+        active_during_argument_setup.push_back(profiler.active_session());
+        run_time_during_argument_setup.push_back(total_run_time);
+        events.push_back("BufferFromHostLiteral");
+        return std::make_unique<CloneTrackingPjRtBuffer>(
+            memory_space, &same_space_clones, &cross_space_clones,
+            /*allow_copy=*/true);
+      });
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomInputs;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+  running_options.num_repeats = 2;
+  running_options.num_repeats_with_profiler = 2;
+  running_options.profiler = &profiler;
+  running_options.total_run_time = &total_run_time;
+  running_options.after_arguments_ready_callback =
+      [&](size_t step) -> absl::Status {
+    active_during_argument_setup.push_back(profiler.active_session());
+    run_time_during_argument_setup.push_back(total_run_time);
+    events.push_back(absl::StrCat("AfterArgumentsReady:", step));
+    return absl::OkStatus();
+  };
+
+  ASSERT_THAT(FunctionalHloRunner::Run(mock_client, &wrapped_exec,
+                                       /*arguments=*/{}, running_options),
+              absl_testing::IsOk());
+
+  EXPECT_THAT(active_during_argument_setup, Each(false));
+  EXPECT_THAT(run_time_during_argument_setup, Each(absl::ZeroDuration()));
+  EXPECT_THAT(events,
+              ElementsAre("BufferFromHostLiteral", "BufferFromHostLiteral",
+                          "AfterArgumentsReady:0", "CreateSession", "Execute",
+                          "Execute", "UploadSession"));
+  EXPECT_GE(total_run_time, absl::ZeroDuration());
+  EXPECT_LE(total_run_time, profiler.total_profiled_window());
+}
+
+// Verifies that when `recreate_buffers_between_repeats` is enabled with
+// multi-repeat profiling, the active profiler session is uploaded/closed before
+// every repeat's buffer recreation so argument generation and transfers never
+// occur inside an active profiler session or `total_run_time`.
+TEST_F(FunctionalHloRunnerTest,
+       RecreateBuffersBetweenRepeatsClosesProfilerBeforeEachArgumentLoad) {
+  ScopedFakeArgumentCacheReset cache_reset;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> real_exec,
+      CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
+                             /*num_replicas=*/1));
+
+  std::vector<std::string> events;
+  std::vector<bool> active_during_argument_setup;
+  std::vector<bool> run_time_unchanged_since_upload;
+  absl::Duration total_run_time = absl::InfiniteDuration();
+  EventLoggingLoadedExecutable wrapped_exec(real_exec.get(), &events);
+  EventLoggingProfiler profiler(&events, &total_run_time);
+
+  HostLiteralMockPjRtClient mock_client;
+  std::atomic<int> same_space_clones{0};
+  std::atomic<int> cross_space_clones{0};
+  EXPECT_CALL(mock_client, BufferFromHostLiteral)
+      .Times(6)
+      .WillRepeatedly([&](const LiteralSlice& /*literal*/,
+                          PjRtMemorySpace* memory_space,
+                          const Layout* /*device_layout*/) {
+        active_during_argument_setup.push_back(profiler.active_session());
+        run_time_unchanged_since_upload.push_back(
+            total_run_time == profiler.run_time_at_last_upload());
+        events.push_back("BufferFromHostLiteral");
+        return std::make_unique<CloneTrackingPjRtBuffer>(
+            memory_space, &same_space_clones, &cross_space_clones,
+            /*allow_copy=*/true);
+      });
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomInputs;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+  running_options.num_repeats = 3;
+  running_options.num_repeats_with_profiler = 3;
+  running_options.recreate_buffers_between_repeats = true;
+  running_options.recreate_profiler_session_between_repeats = false;
+  running_options.profiler = &profiler;
+  running_options.total_run_time = &total_run_time;
+  running_options.after_arguments_ready_callback =
+      [&](size_t step) -> absl::Status {
+    active_during_argument_setup.push_back(profiler.active_session());
+    run_time_unchanged_since_upload.push_back(
+        total_run_time == profiler.run_time_at_last_upload());
+    events.push_back(absl::StrCat("AfterArgumentsReady:", step));
+    return absl::OkStatus();
+  };
+
+  ASSERT_THAT(FunctionalHloRunner::Run(mock_client, &wrapped_exec,
+                                       /*arguments=*/{}, running_options),
+              absl_testing::IsOk());
+
+  EXPECT_THAT(active_during_argument_setup, Each(false));
+  EXPECT_THAT(run_time_unchanged_since_upload, Each(true));
+  EXPECT_THAT(events,
+              ElementsAre("BufferFromHostLiteral", "BufferFromHostLiteral",
+                          "AfterArgumentsReady:0", "CreateSession", "Execute",
+                          "UploadSession", "BufferFromHostLiteral",
+                          "BufferFromHostLiteral", "AfterArgumentsReady:1",
+                          "CreateSession", "Execute", "UploadSession",
+                          "BufferFromHostLiteral", "BufferFromHostLiteral",
+                          "AfterArgumentsReady:2", "CreateSession", "Execute",
+                          "UploadSession"));
+  EXPECT_GE(total_run_time, absl::ZeroDuration());
+  EXPECT_LE(total_run_time, profiler.total_profiled_window());
+}
+
+// Verifies that an error returned by `after_arguments_ready_callback` aborts
+// before profiler session creation or device execution.
+TEST_F(FunctionalHloRunnerTest,
+       AfterArgumentsReadyCallbackErrorAbortsBeforeProfilingAndExecute) {
+  ScopedFakeArgumentCacheReset cache_reset;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> real_exec,
+      CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
+                             /*num_replicas=*/1));
+
+  std::vector<std::string> events;
+  EventLoggingLoadedExecutable wrapped_exec(real_exec.get(), &events);
+  EventLoggingProfiler profiler(&events);
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+  running_options.profiler = &profiler;
+  running_options.after_arguments_ready_callback =
+      [&](size_t step) -> absl::Status {
+    events.push_back(absl::StrCat("AfterArgumentsReady:", step));
+    return absl::AbortedError("peer host failed argument initialization");
+  };
+
+  EXPECT_THAT(FunctionalHloRunner::Run(*real_client, &wrapped_exec,
+                                       /*arguments=*/{}, running_options),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kAborted,
+                  HasSubstr("peer host failed argument initialization")));
+  EXPECT_THAT(events, ElementsAre("AfterArgumentsReady:0"));
 }
 
 // Verifies that `CanCloneArgumentBuffer` checks element types in addition to

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <random>
@@ -253,6 +254,19 @@ struct RunningOptions {
   // Note that the first repeat is a warmup run, and uses less precise
   // profiling method.
   std::vector<ExecutionProfile>* execution_profiles = nullptr;
+  // If not null, stores the cumulative wall-clock duration spent inside
+  // `PjRtLoadedExecutable::Execute` (including awaiting returned execution
+  // futures) across all repeats, excluding input generation, host-to-device
+  // argument transfers, `after_arguments_ready_callback`, profiler
+  // serialization/upload, and output D2H fetches.
+  absl::Duration* total_run_time = nullptr;
+  // Optional callback invoked after local argument buffers are prepared and
+  // ready on device (and strictly before starting profiler capture or timing
+  // `PjRtLoadedExecutable::Execute`), e.g. to synchronize multi-host workers
+  // after argument generation. `step` is the 0-based argument-preparation index
+  // within this `Run` call.
+  std::function<absl::Status(size_t step)> after_arguments_ready_callback =
+      nullptr;
 
   // Should we log the inputs and outputs to stderr?
   bool log_input_output() const {

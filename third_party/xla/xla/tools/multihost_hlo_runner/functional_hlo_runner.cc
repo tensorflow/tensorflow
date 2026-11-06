@@ -599,15 +599,40 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   futures.emplace();
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
+  size_t argument_preparation_step = 0;
 
-  auto refresh_argument_ptrs = [&]() -> absl::Status {
-    if (running_options.recreate_buffers_between_repeats) {
+  auto prepare_arguments_on_device = [&]() -> absl::Status {
+    const size_t current_step = argument_preparation_step++;
+    {
+      XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::CreateArgumentsOnDevice");
       device_buffers.clear();
       argument_ptrs.clear();
       ABSL_ASSIGN_OR_RETURN(device_buffers,
                        create_argument_buffers_on_device(flatten_arguments));
+      absl::Status ready_status;
+      for (const std::vector<std::unique_ptr<PjRtBuffer>>& per_device_buffers :
+           device_buffers) {
+        for (const std::unique_ptr<PjRtBuffer>& buffer : per_device_buffers) {
+          if (buffer != nullptr) {
+            ready_status.Update(buffer->GetReadyFuture().Await());
+          }
+        }
+      }
+      ABSL_RETURN_IF_ERROR(ready_status);
       argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
-      return absl::OkStatus();
+    }
+    if (running_options.after_arguments_ready_callback != nullptr) {
+      XLA_SCOPED_LOGGING_TIMER(
+          "FunctionalHloRunner::AfterArgumentsReadyCallback");
+      ABSL_RETURN_IF_ERROR(
+          running_options.after_arguments_ready_callback(current_step));
+    }
+    return absl::OkStatus();
+  };
+
+  auto refresh_argument_ptrs = [&]() -> absl::Status {
+    if (running_options.recreate_buffers_between_repeats) {
+      return prepare_arguments_on_device();
     }
     switch (parameter_type) {
       case ParameterType::kOneTupleOfArrays:
@@ -627,6 +652,9 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
     return absl::OkStatus();
   };
 
+  if (running_options.total_run_time != nullptr) {
+    *running_options.total_run_time = absl::ZeroDuration();
+  }
   bool has_active_profiler_session = false;
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     const bool is_last_repeat = (repeat == running_options.num_repeats - 1);
@@ -636,19 +664,15 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
                        running_options.num_repeats_with_profiler) &&
         (!running_options.multipass_profiling || is_last_repeat);
 
+    if (repeat == 0 || running_options.recreate_buffers_between_repeats) {
+      VLOG(1) << "Creating argument buffers. repeat = " << repeat;
+      ABSL_RETURN_IF_ERROR(prepare_arguments_on_device());
+    }
+
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
     {
       XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::ExecuteOnDevices");
-
-      if (repeat == 0 || running_options.recreate_buffers_between_repeats) {
-        VLOG(1) << "Creating argument buffers. repeat = " << repeat;
-        device_buffers.clear();
-        argument_ptrs.clear();
-        ABSL_ASSIGN_OR_RETURN(device_buffers,
-                         create_argument_buffers_on_device(flatten_arguments));
-        argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
-      }
       execute_options.launch_id = repeat + 1 + running_options.base_run_id;
       if (running_options.execution_profiles != nullptr) {
         execute_options.execution_profile =
@@ -662,13 +686,17 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
       }
       auto execute_once = [&]() -> absl::Status {
         futures->clear();
+        const absl::Time execute_start = absl::Now();
         ABSL_ASSIGN_OR_RETURN(
             std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
                 new_output_buffers,
             executable->Execute(argument_ptrs, execute_options, futures));
         absl::Status execute_status;
-        for (auto& future : *futures) {
+        for (Future<>& future : *futures) {
           execute_status.Update(future.Await());
+        }
+        if (running_options.total_run_time != nullptr) {
+          *running_options.total_run_time += absl::Now() - execute_start;
         }
         ABSL_RETURN_IF_ERROR(execute_status);
         output_buffers = std::move(new_output_buffers);
@@ -701,9 +729,12 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
       } else {
         ABSL_RETURN_IF_ERROR(execute_once());
       }
+      // Close any active profiler session before recreating argument buffers on
+      // the next repeat so input generation and H2D/ICI buffer loading are
+      // never recorded inside an active profile.
       const bool upload_active_profiler_session =
           running_options.recreate_profiler_session_between_repeats ||
-          is_last_repeat;
+          running_options.recreate_buffers_between_repeats || is_last_repeat;
       if (has_active_profiler_session && upload_active_profiler_session) {
         XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::XProfUpload");
         running_options.profiler->UploadSession();
