@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
@@ -85,6 +86,124 @@ void UpdateOriginalValueForWidenedBranchArgument(
     CopyOriginalValue(argument_tuple, instruction, /*clone=*/true,
                       /*issue_warning=*/true);
   }
+}
+
+// Updates the sharding of an instruction inside a conditional branch (or a
+// user tuple outside) after MoveOperandIntoBranch widened the argument tuple.
+void UpdateShardingForWidenedBranchArgument(
+    HloInstruction* instruction, const HloInstruction* argument_tuple) {
+  if (!instruction->has_sharding()) {
+    return;
+  }
+  const Shape& shape = instruction->shape();
+  int64_t leaf_count = ShapeUtil::GetLeafCount(shape);
+  if (!shape.IsTuple()) {
+    if (instruction->sharding().IsTuple()) {
+      if (auto single = instruction->sharding().ExtractSingleSharding();
+          single.has_value() && single->Validate(shape).ok()) {
+        instruction->set_sharding(*single);
+      } else {
+        instruction->clear_sharding();
+      }
+    } else if (!instruction->sharding().Validate(shape).ok()) {
+      instruction->clear_sharding();
+    }
+    return;
+  }
+  if (leaf_count == 0) {
+    HloSharding empty_sharding = HloSharding::Tuple(shape, {});
+    if (empty_sharding.Validate(shape).ok()) {
+      instruction->set_sharding(empty_sharding);
+    } else {
+      instruction->clear_sharding();
+    }
+    return;
+  }
+  if (instruction->sharding().IsTuple() &&
+      instruction->sharding().tuple_elements().size() == leaf_count &&
+      instruction->sharding().Validate(shape).ok()) {
+    return;
+  }
+  const HloInstruction* tuple_source =
+      argument_tuple != nullptr ? argument_tuple : instruction;
+  if (tuple_source != nullptr && tuple_source->opcode() == HloOpcode::kTuple &&
+      tuple_source->operand_count() == shape.tuple_shapes_size()) {
+    std::vector<HloSharding> element_shardings;
+    bool all_have_sharding = true;
+    int64_t leaf_idx = 0;
+    for (int64_t i = 0; i < tuple_source->operand_count(); ++i) {
+      const HloInstruction* op = tuple_source->operand(i);
+      const Shape& op_shape = shape.tuple_shapes(i);
+      int64_t op_leaves = ShapeUtil::GetLeafCount(op_shape);
+      if (op_leaves == 0) {
+        continue;
+      }
+      if (op->has_sharding()) {
+        if (op->sharding().IsTuple()) {
+          if (op->sharding().tuple_elements().size() == op_leaves) {
+            for (const auto& elem : op->sharding().tuple_elements()) {
+              element_shardings.push_back(elem);
+            }
+          } else {
+            all_have_sharding = false;
+            break;
+          }
+        } else {
+          for (int64_t l = 0; l < op_leaves; ++l) {
+            element_shardings.push_back(op->sharding());
+          }
+        }
+      } else if (instruction->sharding().IsTuple() &&
+                 leaf_idx + op_leaves <=
+                     instruction->sharding().tuple_elements().size()) {
+        for (int64_t l = 0; l < op_leaves; ++l) {
+          element_shardings.push_back(
+              instruction->sharding().tuple_elements()[leaf_idx + l]);
+        }
+      } else if (auto single = instruction->sharding().ExtractSingleSharding();
+                 single.has_value()) {
+        for (int64_t l = 0; l < op_leaves; ++l) {
+          element_shardings.push_back(*single);
+        }
+      } else {
+        all_have_sharding = false;
+        break;
+      }
+      leaf_idx += op_leaves;
+    }
+    if (all_have_sharding && element_shardings.size() == leaf_count) {
+      HloSharding candidate = HloSharding::Tuple(shape, element_shardings);
+      if (candidate.Validate(shape).ok()) {
+        instruction->set_sharding(candidate);
+        return;
+      }
+    }
+  }
+  if (argument_tuple != nullptr && argument_tuple->has_sharding()) {
+    if (argument_tuple->sharding().IsTuple()) {
+      if (argument_tuple->sharding().tuple_elements().size() == leaf_count &&
+          argument_tuple->sharding().Validate(shape).ok()) {
+        instruction->set_sharding(argument_tuple->sharding());
+        return;
+      }
+    } else {
+      HloSharding candidate =
+          HloSharding::Single(shape, argument_tuple->sharding());
+      if (candidate.Validate(shape).ok()) {
+        instruction->set_sharding(candidate);
+        return;
+      }
+    }
+  }
+  if (auto single = instruction->sharding().ExtractSingleSharding();
+      single.has_value()) {
+    HloSharding candidate = HloSharding::Single(shape, *single);
+    if (candidate.Validate(shape).ok()) {
+      instruction->set_sharding(candidate);
+      return;
+    }
+  }
+  instruction->clear_sharding();
 }
 
 HloInstruction* CloneNestedTuples(HloInstruction* tuple) {
@@ -1016,6 +1135,40 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
 
     HloInstruction* new_root =
         computation->AddInstruction(HloInstruction::CreateTuple(operands));
+    if (old_root->has_sharding()) {
+      if (old_root->sharding().IsTuple()) {
+        std::vector<HloSharding> retained_leaves;
+        int64_t current_leaf = 0;
+        for (int j = 0; j < old_root->shape().tuple_shapes_size(); ++j) {
+          int64_t count =
+              ShapeUtil::GetLeafCount(old_root->shape().tuple_shapes(j));
+          if (j != use_index) {
+            for (int64_t l = 0; l < count; ++l) {
+              if (current_leaf + l <
+                  old_root->sharding().tuple_elements().size()) {
+                retained_leaves.push_back(
+                    old_root->sharding().tuple_elements()[current_leaf + l]);
+              }
+            }
+          }
+          current_leaf += count;
+        }
+        if (retained_leaves.size() ==
+            ShapeUtil::GetLeafCount(new_root->shape())) {
+          HloSharding candidate =
+              HloSharding::Tuple(new_root->shape(), retained_leaves);
+          if (candidate.Validate(new_root->shape()).ok()) {
+            new_root->set_sharding(candidate);
+          }
+        }
+      } else {
+        HloSharding candidate =
+            HloSharding::Single(new_root->shape(), old_root->sharding());
+        if (candidate.Validate(new_root->shape()).ok()) {
+          new_root->set_sharding(candidate);
+        }
+      }
+    }
     // The new root returns the values the branch still produces, so its
     // OriginalValue is assembled from its operands.
     new_root->set_original_value(
@@ -1070,6 +1223,7 @@ absl::StatusOr<bool> ConditionalCodeMotion::MoveUserInstructionsIn(
         *new_root->mutable_shape()->add_tuple_shapes() = new_op->shape();
         new_root->set_original_value(
             OriginalValue::CreateFromInstruction(new_root));
+        UpdateShardingForWidenedBranchArgument(new_root, new_root);
         VLOG(2) << "Extending conditional root " << i << " : "
                 << new_root->ToString() << "\n";
       }
@@ -1204,6 +1358,7 @@ class MoveOperandIntoBranch {
       used = false;
       *branch_param->mutable_shape() = *param_shape;
       UpdateOriginalValueForWidenedBranchArgument(branch_param, argument_tuple);
+      UpdateShardingForWidenedBranchArgument(branch_param, argument_tuple);
       const Shape* new_param_shape = nullptr;
       for (auto param_users : gte_users) {
         if (param_users.empty()) {
@@ -1233,6 +1388,7 @@ class MoveOperandIntoBranch {
             *param_user->mutable_shape() = *new_param_shape;
             param_user->set_original_value(
                 OriginalValue::CreateFromInstruction(param_user));
+            UpdateShardingForWidenedBranchArgument(param_user, nullptr);
             VLOG(1) << "branch parameter: " << param_user->ToString();
             used = true;
           } else {
@@ -1240,6 +1396,7 @@ class MoveOperandIntoBranch {
             *param_user->mutable_shape() = *new_param_shape;
             param_user->set_original_value(
                 OriginalValue::CreateFromInstruction(param_user));
+            UpdateShardingForWidenedBranchArgument(param_user, nullptr);
             CHECK_OK(param_user->ReplaceAllUsesWith(branch_param));
           }
         }
@@ -1305,6 +1462,7 @@ class MoveOperandIntoBranch {
       // The operands of the argument tuple changed, so its OriginalValue is
       // reassembled from them.
       user->set_original_value(OriginalValue::CreateFromInstruction(user));
+      UpdateShardingForWidenedBranchArgument(user, user);
       int64_t nesting_index = 1;
       for (auto user_now = user->users()[0];
            nesting_index < matching_tuple_indices.size() &&
@@ -1318,6 +1476,7 @@ class MoveOperandIntoBranch {
         }
         user_now->set_original_value(
             OriginalValue::CreateFromInstruction(user_now));
+        UpdateShardingForWidenedBranchArgument(user_now, user_now);
         VLOG(2) << "Done replacing tuple:" << user->ToString();
         CHECK_EQ(user_now->user_count(), 1);
       }
@@ -1364,6 +1523,7 @@ class MoveOperandIntoBranch {
         VLOG(5) << branch_comp->ToString() << "\n";
         *branch_param->mutable_shape() = *param_shape;
         UpdateOriginalValueForWidenedBranchArgument(branch_param, user);
+        UpdateShardingForWidenedBranchArgument(branch_param, user);
         if (branch_param == branch_comp->root_instruction()) {
           VLOG(2) << "Cloning root user";
           auto new_user =

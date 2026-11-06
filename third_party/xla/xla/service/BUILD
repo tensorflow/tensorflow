@@ -2664,6 +2664,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_sharding",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
