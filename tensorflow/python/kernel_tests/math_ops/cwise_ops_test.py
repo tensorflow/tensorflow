@@ -1426,6 +1426,11 @@ class PolyvalTest(test.TestCase):
       tf_val = math_ops.polyval([1.0, 2, 3], x)
       self.assertEqual(tf_val.dtype, dtype)
       self.assertAllClose(np.polyval([1.0, 2, 3], x), self.evaluate(tf_val))
+    # A float coefficient with an integer x is not truncated to an integer.
+    with self.assertRaises((TypeError, errors.InvalidArgumentError)):
+      self.evaluate(
+          math_ops.polyval([1.5, 2.5], np.array([1, 2], dtype=np.int32))
+      )
 
   @test_util.run_in_graph_and_eager_modes
   def test_coeffs_raise(self):
