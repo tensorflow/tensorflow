@@ -26,3 +26,56 @@ func.func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {tf_entry} {
   %4 = tensor.reshape %3(%0) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
   return %4 : tensor<*xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @integer_pow_loop_ub
+func.func @integer_pow_loop_ub(%arg0: i64, %arg1: i64) -> i64 {
+  %c1_i64 = arith.constant 1 : i64
+  %c0 = arith.constant 0 : index
+  %c6 = arith.constant 6 : index
+  %c1 = arith.constant 1 : index
+  // CHECK: %[[C64:.*]] = arith.constant 64 : index
+  // CHECK: scf.for {{.*}} = {{.*}} to %[[C64]] step {{.*}} iter_args({{.*}}) -> (i64, i64, i64)
+  %0:3 = scf.for %arg2 = %c0 to %c6 step %c1 iter_args(%arg3 = %c1_i64, %arg4 = %arg0, %arg5 = %arg1) -> (i64, i64, i64) {
+    %1 = arith.andi %arg5, %c1_i64 : i64
+    %2 = arith.cmpi eq, %1, %c1_i64 : i64
+    %3 = arith.muli %arg3, %arg4 : i64
+    %4 = arith.select %2, %3, %arg3 : i64
+    %5 = arith.muli %arg4, %arg4 : i64
+    %6 = arith.shrui %arg5, %c1_i64 : i64
+    scf.yield %4, %5, %6 : i64, i64, i64
+  }
+  return %0#0 : i64
+}
+
+// -----
+
+// CHECK-LABEL: func @index_iter_args_loop_unchanged
+func.func @index_iter_args_loop_unchanged(%arg0: index, %arg1: index) -> index {
+  %c0 = arith.constant 0 : index
+  %c6 = arith.constant 6 : index
+  %c1 = arith.constant 1 : index
+  // CHECK: %[[C6:.*]] = arith.constant 6 : index
+  // CHECK: scf.for {{.*}} = {{.*}} to %[[C6]] step {{.*}} iter_args({{.*}}) -> (index, index, index)
+  %0:3 = scf.for %arg2 = %c0 to %c6 step %c1 iter_args(%arg3 = %arg0, %arg4 = %arg0, %arg5 = %arg1) -> (index, index, index) {
+    scf.yield %arg3, %arg4, %arg5 : index, index, index
+  }
+  return %0#0 : index
+}
+
+// -----
+
+// CHECK-LABEL: func @non_pow_integer_loop_unchanged
+func.func @non_pow_integer_loop_unchanged(%arg0: i64, %arg1: i64) -> i64 {
+  %c0 = arith.constant 0 : index
+  %c6 = arith.constant 6 : index
+  %c1 = arith.constant 1 : index
+  // CHECK: %[[C6:.*]] = arith.constant 6 : index
+  // CHECK: scf.for {{.*}} = {{.*}} to %[[C6]] step {{.*}} iter_args({{.*}}) -> (i64, i64, i64)
+  %0:3 = scf.for %arg2 = %c0 to %c6 step %c1 iter_args(%arg3 = %arg0, %arg4 = %arg0, %arg5 = %arg1) -> (i64, i64, i64) {
+    scf.yield %arg3, %arg4, %arg5 : i64, i64, i64
+  }
+  return %0#0 : i64
+}
+
