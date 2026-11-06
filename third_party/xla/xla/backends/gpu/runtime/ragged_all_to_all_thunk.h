@@ -247,7 +247,10 @@ class RaggedAllToAllThunk : public CollectiveThunk {
   GpuDeviceCommunicator::Requirements DeviceKernelLsaDevCommRequirements(
       int core_count) const {
     GpuDeviceCommunicator::Requirements requirements;
-    requirements.lsa_barrier_count = device_kernel_barrier_count(core_count);
+    const int32_t c = device_kernel_barrier_count(core_count);
+    requirements.lsa_barrier_count = c;
+    requirements.cft_caps = GpuDeviceCommunicator::kGpuCftCapUnicast;
+    requirements.cft_barrier_count = c;
     return requirements;
   }
 
@@ -260,6 +263,8 @@ class RaggedAllToAllThunk : public CollectiveThunk {
     requirements.rail_gin_barrier_count = c;
     requirements.gin_signal_count = c;
     requirements.gin_connection_full = true;
+    requirements.cft_caps = GpuDeviceCommunicator::kGpuCftCapUnicast;
+    requirements.cft_barrier_count = c;
     return requirements;
   }
 

@@ -73,6 +73,7 @@ struct NcclCapabilities {
   bool supports_device_comm;
   bool supports_one_sided_comm;
   bool supports_gin;
+  bool supports_cft;
   std::optional<int> lsa_size;
 
   // Reason one-sided comm is not supported, cached at construction. Empty
@@ -413,6 +414,8 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
   // Returns the size of the load/store accessible communication.
   int64_t lsa_size() const final { return dev_comm_.lsaSize; };
 
+  int32_t granted_cft_caps() const final { return granted_cft_caps_; }
+
   std::string ToString() const final;
 
   se::PackedKernelArg PackKernelArg() const final;
@@ -421,12 +424,13 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
   NcclDeviceCommunicator(std::shared_ptr<NcclCommState> parent_comm,
                          se::StreamExecutor* stream_executor,
                          std::shared_ptr<tsl::Executor> executor,
-                         ncclDevComm dev_comm);
+                         ncclDevComm dev_comm, int32_t granted_cft_caps);
 
   std::shared_ptr<NcclCommState> parent_comm_;
   se::StreamExecutor* stream_executor_;
   std::shared_ptr<tsl::Executor> executor_;
   ncclDevComm dev_comm_;
+  int32_t granted_cft_caps_ = 0;
 };
 
 }  // namespace xla::gpu
