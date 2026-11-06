@@ -150,10 +150,7 @@ cc_library(
     copts = [
         "-Wno-psabi",
     ],
-    deps = [
-        ":vector_ops",
-        "@eigen_archive//:eigen3",
-    ],
+    deps = [":vector_ops"],
 )
 
 cc_ir_header(
@@ -169,7 +166,6 @@ cc_ir_header(
         ":cpp_context_provider",
         ":eigen_unary_lib",
         ":vector_ops",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -184,7 +180,6 @@ cc_ir_header(
         ":cpp_context_provider",
         ":eigen_unary_lib",
         ":vector_ops",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -205,7 +200,6 @@ cc_ir_header(
         ":cpp_context_provider",
         ":eigen_unary_lib",
         ":vector_ops",
-        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -215,6 +209,9 @@ xla_cc_test(
     deps = [
         ":_cpp_gen_intrinsics",
         ":eigen_unary_16_ll",
+        ":eigen_unary_32_ll",
+        ":eigen_unary_64_ll",
+        "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/codegen/intrinsic:simple_jit_runner",
         "//xla/codegen/intrinsic:test_matchers",
         "@com_google_absl//absl/strings",
@@ -242,7 +239,6 @@ xla_cc_test(
         ":vector_ops",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:test_matchers",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",

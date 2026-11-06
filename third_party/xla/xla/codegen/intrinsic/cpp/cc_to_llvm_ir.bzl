@@ -52,8 +52,8 @@ def _to_clang_cl_flags(flags):
             out.append("/clang:-flto")
         elif flag.startswith("-D") or flag.startswith("/"):
             out.append(flag)
-        elif flag.startswith("-std="):
-            # The Windows toolchain already passes /std:c++17.
+        elif flag.startswith("-std=") or flag == "-fno-exceptions":
+            # The Windows toolchain already passes /std:c++17 and /EHs- /EHc-.
             continue
         else:
             out.append("/clang:" + flag)
@@ -154,6 +154,10 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-DEIGEN_VECTORIZE_GENERIC",
         "-flax-vector-conversions",  # Jax Mac wheel build server has int64_t != long
         "-fno-builtin",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-fno-stack-protector",
         "-Wno-psabi",
         "-std=c++17",
         "-fno-experimental-sanitize-metadata=all",
