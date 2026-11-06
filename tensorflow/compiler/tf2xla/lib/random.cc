@@ -36,7 +36,9 @@ xla::XlaOp TruncatedNormal(xla::XlaOp uniform) {
 
 // Implements the sampling of truncated normal distribution using the
 // inversed cumulative distribution function (CDF) method as described in
-// https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf.
+// https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf,
+// and log-tail-probability Newton inversion when both bounds lie on one
+// side of the mean.
 xla::XlaOp ParameterizedTruncatedNormal(xla::XlaOp uniform, xla::XlaOp mu,
                                         xla::XlaOp sigma, xla::XlaOp a,
                                         xla::XlaOp b) {

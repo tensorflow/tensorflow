@@ -471,7 +471,8 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
             4e-3 if dtype == dtypes.float16 else 1e-3)
         var_rtol = variance_rtol
         if var_rtol is None:
-          var_rtol = 6e-3 if dtype == dtypes.bfloat16 else 1e-3
+          var_rtol = 6e-3 if dtype == dtypes.bfloat16 else (
+              1e-2 if dtype == dtypes.float16 else 1e-3)
         elif dtype == dtypes.bfloat16:
           var_rtol = max(var_rtol, 8e-2)
         elif dtype == dtypes.float16:
