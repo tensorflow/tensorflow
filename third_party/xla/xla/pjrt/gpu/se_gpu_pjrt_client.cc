@@ -2061,7 +2061,7 @@ std::unique_ptr<PjRtClient> MakeStreamExecutorGpuClient(
     if (device->IsAddressable()) {
       // Use the device id to construct a globally unique memory space id. We do
       // not promise that memory space ids and device ids are the same.
-      const int id = device->id();
+      const int id = device->global_device_id().value();
       auto memory_space =
           std::make_unique<StreamExecutorGpuHbmMemorySpace>(id, device.get());
       device->AttachMemorySpace(memory_space.get(), /*is_default=*/true);

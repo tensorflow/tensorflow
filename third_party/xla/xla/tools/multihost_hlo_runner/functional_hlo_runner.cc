@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/device_assignment.h"
@@ -377,7 +378,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
   CHECK(!output_buffers.empty());
   bool device_0_is_local = false;
   for (PjRtDevice* device : GetLocalDevices(client)) {
-    if (device->id() == 0) {
+    if (device->global_device_id().value() == 0) {
       device_0_is_local = true;
     }
   }
@@ -393,7 +394,8 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
       if (output_buffers[i].empty()) {
         continue;
       }
-      const int device_id = output_buffers[i][0]->device()->id();
+      const int device_id =
+          output_buffers[i][0]->device()->global_device_id().value();
       std::vector<Literal>& output_slice = outputs[device_id];
       if (module_output_mode == ModuleOutputMode::kReturnOutputs ||
           (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
@@ -449,7 +451,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
        (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
         device_0_is_local))) {
     for (const PjRtDevice* device : GetLocalDevices(client)) {
-      int device_id = device->id();
+      int device_id = device->global_device_id().value();
       if (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
           device_id != 0) {
         continue;
@@ -925,11 +927,12 @@ CopyArgumentsToDevice(PjRtClient& client,
     int64_t pending_transfer_bytes = 0;
     std::vector<PjRtBuffer*> pending_buffers;
 
-    // Look up device 0's argument vector by its PjRtDevice::id() (which may
-    // differ from global device ID 0 on multi-host slices).
+    // Look up device 0's argument vector by its PjRtDevice::global_device_id()
+    // (which may differ from global device ID 0 on multi-host slices).
     const std::vector<Literal>* device0_arguments = nullptr;
     if (num_addressable_devices > 0) {
-      auto dev0_it = arguments.find(addressable_devices[0]->id());
+      auto dev0_it =
+          arguments.find(addressable_devices[0]->global_device_id().value());
       if (dev0_it != arguments.end()) {
         device0_arguments = &dev0_it->second;
       }
@@ -937,11 +940,11 @@ CopyArgumentsToDevice(PjRtClient& client,
 
     for (int i = 0; i < num_addressable_devices; ++i) {
       PjRtDevice* curr_device = addressable_devices[i];
-      int curr_device_id = curr_device->id();
+      int curr_device_id = curr_device->global_device_id().value();
       // 'source_device' determines where we get the input literal from.
       PjRtDevice* source_device =
           addressable_devices[clone_device0_arguments ? 0 : i];
-      int source_device_id = source_device->id();
+      int source_device_id = source_device->global_device_id().value();
       auto it = arguments.find(source_device_id);
       if (it == arguments.end()) {
         return InvalidArgument(
@@ -1045,7 +1048,8 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
       argument_shapes = GetArgumentShapes(hlo_module);
     }
 
-    argument_shapes_per_device[device->id()] = std::move(argument_shapes);
+    argument_shapes_per_device[device->global_device_id().value()] =
+        std::move(argument_shapes);
   }
 
   LOG(INFO) << "Starting argument buffer allocation.";
@@ -1059,15 +1063,16 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
     ABSL_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
                      device->default_memory_space());
 
-    CHECK(argument_shapes_per_device.contains(device->id()));
+    const int device_id = device->global_device_id().value();
+    CHECK(argument_shapes_per_device.contains(device_id));
     const std::vector<Shape>& argument_shapes =
-        argument_shapes_per_device.at(device->id());
+        argument_shapes_per_device.at(device_id);
     std::vector<std::unique_ptr<PjRtBuffer>> argument_buffers;
     argument_buffers.reserve(argument_shapes.size());
 
     for (const Shape& shape : argument_shapes) {
       if (running_options.log_input_output()) {
-        LOG(INFO) << "device_id=" << device->id()
+        LOG(INFO) << "device_id=" << device_id
                   << ", input = " << shape.ToString();
       }
 
@@ -1154,8 +1159,8 @@ CreateArgumentsOnDevice(PjRtClient& client,
 
   for (int i = 0; i < num_addressable_devices; ++i) {
     VLOG(3) << "Creating fake arguments for device " << i;
-    LiteralVec& argument_literals =
-        per_device_argument_literals[addressable_devices[i]->id()];
+    LiteralVec& argument_literals = per_device_argument_literals
+        [addressable_devices[i]->global_device_id().value()];
     if (flatten_arguments) {
       ABSL_RETURN_IF_ERROR(EnsureSingleTupleForFlattening(*my_hlo_module));
     }
@@ -1194,8 +1199,9 @@ CreateArgumentsOnDevice(PjRtClient& client,
         } else {
           ABSL_ASSIGN_OR_RETURN(
               argument_literal_j,
-              MakeFakeLiteralWithSameValue(params[j]->shape(),
-                                           addressable_devices[i]->id()));
+              MakeFakeLiteralWithSameValue(
+                  params[j]->shape(),
+                  addressable_devices[i]->global_device_id().value()));
         }
         ShapeUtil::ForEachSubshape(
             argument_literal_j.shape(),
@@ -1666,7 +1672,7 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
     }
 
     for (int i = 0; i < hlo_module_and_arguments.arguments.size(); ++i) {
-      loaded_arguments[client.devices()[i]->id()] =
+      loaded_arguments[client.devices()[i]->global_device_id().value()] =
           std::move(hlo_module_and_arguments.arguments[i]);
     }
     hlo_module = std::move(hlo_module_and_arguments.hlo_module);

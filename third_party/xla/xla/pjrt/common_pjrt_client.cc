@@ -5963,8 +5963,9 @@ void CommonPjRtClient::AttachDevices(
 
   for (const std::unique_ptr<PjRtDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
-    CHECK(id_to_device_.insert({device->id(), device.get()}).second)
-        << "Duplicate device id: " << device->id();
+    CHECK(
+        id_to_device_.insert({device->global_device_id(), device.get()}).second)
+        << "Duplicate device id: " << device->global_device_id();
 
     if (device->IsAddressable()) {
       addressable_devices_.push_back(device.get());

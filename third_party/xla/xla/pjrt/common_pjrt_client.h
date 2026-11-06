@@ -115,7 +115,7 @@ class CommonPjRtClient : public PjRtClient {
 
   absl::StatusOr<PjRtDevice*> LookupDevice(
       GlobalDeviceId global_device_id) const override {
-    auto it = id_to_device_.find(global_device_id.value());
+    auto it = id_to_device_.find(global_device_id);
     if (it != id_to_device_.end()) {
       return it->second;
     }
@@ -791,8 +791,9 @@ class CommonPjRtClient : public PjRtClient {
   std::vector<std::unique_ptr<PjRtDevice>> owned_devices_;
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
-  // Maps Device::id() to the corresponding Device. Includes all devices.
-  absl::flat_hash_map<int, PjRtDevice*> id_to_device_;
+  // Maps PjRtDevice::global_device_id() to the corresponding Device. Includes
+  // all devices.
+  absl::flat_hash_map<GlobalDeviceId, PjRtDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
   int process_index_;

@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/device_assignment.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -358,7 +359,7 @@ class TfPjRtClient : public PjRtClient {
 
   std::unique_ptr<PjRtClient> wrapped_;
 
-  absl::flat_hash_map<int, int> mutex_id_from_device_id_;
+  absl::flat_hash_map<GlobalDeviceId, int> mutex_id_from_device_id_;
 
   // Depending on `sizeof(absl::flat_hash_set<TfPjRtBuffer*>)`, might need to
   // add some padding to the struct.

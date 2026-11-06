@@ -261,7 +261,8 @@ absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
             devices[replica][partition]->client()->platform_name(), replica,
             partition);
       }
-      xla_assignment(replica, partition) = devices[replica][partition]->id();
+      xla_assignment(replica, partition) =
+          devices[replica][partition]->global_device_id().value();
     }
   }
   return xla_assignment;
@@ -1385,7 +1386,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
     for (const PjRtDevice* device : device_->client()->devices()) {
       int task_id = device->process_index();
-      GlobalDeviceId device_id(device->global_device_id().value());
+      GlobalDeviceId device_id = device->global_device_id();
 
       auto it = options.incarnations.find(task_id);
       if (it == options.incarnations.end()) {

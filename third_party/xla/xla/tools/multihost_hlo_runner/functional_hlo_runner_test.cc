@@ -1663,7 +1663,6 @@ class MismatchedGlobalIdPjRtDevice : public PjRtDevice {
   const PjRtDeviceDescription& description() const override {
     return inner_->description();
   }
-  int id() const override { return inner_->id(); }
   GlobalDeviceId global_device_id() const override { return global_id_; }
   LocalDeviceId local_device_id() const override {
     return inner_->local_device_id();
@@ -1833,8 +1832,8 @@ TEST_F(FunctionalHloRunnerTest,
 }
 
 // Verifies that cross-device cloning in `CopyArgumentsToDevice` looks up device
-// 0's host literals by `addressable_devices[0]->id()` rather than
-// `global_device_id()` when the two differ.
+// 0's host literals by `addressable_devices[0]->global_device_id()` rather
+// than local index 0 when `addressable_devices[0]` has a non-zero global ID.
 TEST_F(FunctionalHloRunnerTest,
        ClonesCrossDeviceArgumentsWhenDeviceIdDiffersFromGlobalDeviceId) {
   ScopedFakeArgumentCacheReset cache_reset;
@@ -1847,10 +1846,11 @@ TEST_F(FunctionalHloRunnerTest,
       CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
                              kNumReplicas));
 
-  // Wrap addressable devices so `device->id()` (0, 1) differs from
-  // `device->global_device_id()` (4, 5). `CreateArgumentsOnDevice` keys
-  // `PerDeviceLiteralVecType` by `device->id()`, so `CopyArgumentsToDevice`
-  // must also look up device 0 via `addressable_devices[0]->id()`.
+  // Wrap addressable devices so `device->global_device_id()` is (4, 5) rather
+  // than local index (0, 1). `CreateArgumentsOnDevice` keys
+  // `PerDeviceLiteralVecType` by `device->global_device_id().value()`, so
+  // `CopyArgumentsToDevice` must also look up device 0 via
+  // `addressable_devices[0]->global_device_id().value()`.
   ASSERT_EQ(real_exec->addressable_devices().size(), 2);
   MismatchedGlobalIdPjRtDevice dev0(real_exec->addressable_devices()[0],
                                     GlobalDeviceId(4));
@@ -2004,8 +2004,10 @@ TEST_F(FunctionalHloRunnerTest,
       FunctionalHloRunner::Run(*host_client, executable.get(), /*arguments=*/{},
                                running_options, /*engine=*/nullptr));
   ASSERT_EQ(shared_results.size(), 2);
-  const int dev0_id = executable->addressable_devices()[0]->id();
-  const int dev1_id = executable->addressable_devices()[1]->id();
+  const int dev0_id =
+      executable->addressable_devices()[0]->global_device_id().value();
+  const int dev1_id =
+      executable->addressable_devices()[1]->global_device_id().value();
   ASSERT_EQ(shared_results.at(dev0_id).size(), 3);
   ASSERT_EQ(shared_results.at(dev1_id).size(), 3);
   EXPECT_TRUE(shared_results.at(dev0_id)[0].IsAllFloat(0.0f));
@@ -2030,8 +2032,10 @@ TEST_F(FunctionalHloRunnerTest,
   running_options.module_argument_mode =
       FunctionalHloRunner::ModuleArgumentMode::kUseRandomInputs;
 
-  const int dev0_id = executable->addressable_devices()[0]->id();
-  const int dev1_id = executable->addressable_devices()[1]->id();
+  const int dev0_id =
+      executable->addressable_devices()[0]->global_device_id().value();
+  const int dev1_id =
+      executable->addressable_devices()[1]->global_device_id().value();
   std::minstd_rand0 engine(99);
   ASSERT_OK_AND_ASSIGN(
       FunctionalHloRunner::PerDeviceLiteralVecType distinct_results,

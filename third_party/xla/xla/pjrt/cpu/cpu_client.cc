@@ -505,7 +505,7 @@ std::unique_ptr<CommonPjRtClient> CreatePjRtCpuClient(
         LocalChipId(topology_device.local_device_id),
         topology_device.process_id == process_id, client.get());
     if (device->IsAddressable()) {
-      const int id = device->id();
+      const int id = device->global_device_id().value();
 
       // The first attached memory space is returned as the default by
       // CommonPjRtDevice, so attach the device memory space first.
