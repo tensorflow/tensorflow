@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -261,10 +262,11 @@ TEST(RaftSelectKExecTest, CommandBuffer) {
       /*execution_scoped_state=*/nullptr,
       absl::Span<const BufferAllocation::Index>());
 
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = stream_executor;
-  init_params.stream = stream.get();
   init_params.buffer_allocations = &allocations;
+  init_params.stream = stream.get();
   ASSERT_OK(cmd_buffer_thunk.Initialize(init_params));
 
   auto verify_results = [&]() {

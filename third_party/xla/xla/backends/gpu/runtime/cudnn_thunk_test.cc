@@ -359,8 +359,14 @@ class CuDnnThunkCmdBufTest : public ::testing::Test {
   }
 
   void InitializeThunk(const Thunk::ExecutableSource& source = {}) {
-    ASSERT_OK(thunk_->Initialize({executor_, source, allocations_.get(),
-                                  stream_.get(), trace_stream_.get()}));
+    CommandBufferRequests command_buffer_requests;
+    ASSERT_OK(thunk_->Initialize(
+        {/*executor=*/executor_,
+         /*src=*/source,
+         /*buffer_allocations=*/allocations_.get(),
+         /*stream=*/stream_.get(),
+         /*command_buffer_trace_stream=*/trace_stream_.get(),
+         /*command_buffer_requests=*/&command_buffer_requests}));
   }
 
   std::vector<int32_t> ReadOutput(const se::DeviceAddress<int32_t>& buf) {
@@ -877,7 +883,7 @@ TEST(CuDnnThunkTest, CommandBuffer) {
   ASSERT_OK_AND_ASSIGN(Thunk::ExecutableSource source,
                        ExecutableSourceWithGraph(graph));
   CommandBufferRequests command_buffer_requests;
-  Thunk::InitializeParams initialize_params;
+  Thunk::InitializeParams initialize_params(&command_buffer_requests);
   initialize_params.executor = stream_executor;
   initialize_params.src = source;
   initialize_params.buffer_allocations = &allocations;
@@ -885,7 +891,6 @@ TEST(CuDnnThunkTest, CommandBuffer) {
   initialize_params.command_buffer_trace_stream = stream.get();
   initialize_params.persistent_alloc_indices =
       absl::Span<const BufferAllocation::Index>();
-  initialize_params.command_buffer_requests = &command_buffer_requests;
   ASSERT_OK(thunk.Initialize(initialize_params));
 
   // Execute command buffer thunk and verify that it executed a GEMM.
