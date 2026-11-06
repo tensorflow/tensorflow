@@ -616,6 +616,10 @@ Build(
     test_tag_filters=rocm_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
     subcommand="build",
+    # Do not enable bazel-diff here: this is a compile-only RBE build with high
+    # remote cache hit rates, so running two `bazel cquery` passes for
+    # bazel-diff adds more overhead than it saves.
+    use_bazel_diff=False,
 )
 
 Build(
