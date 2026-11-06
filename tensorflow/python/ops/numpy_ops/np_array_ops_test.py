@@ -1616,6 +1616,13 @@ class ArrayMethodsTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, 'broadcast'):
       np_array_ops.pad(
           x, np_array_ops.zeros([1, 1, 2], np.int32), 'constant')
+    # An exact (0, 2) Tensor is the only `pad_width` shape a 0-d input
+    # needs, and the other modes reach the backend with empty paddings.
+    self.assertAllEqual(
+        np_array_ops.pad(x, np_array_ops.zeros([0, 2], np.int32), 'constant'),
+        np_x)
+    for mode in ('reflect', 'symmetric'):
+      self.assertAllEqual(np_array_ops.pad(x, 1, mode), np.pad(np_x, 1, mode))
     # Ragged values raise like NumPy instead of being left to the backend.
     with self.assertRaisesRegex(ValueError, 'inhomogeneous'):
       np_array_ops.pad(x, [[1], [2, 3]], 'constant')
