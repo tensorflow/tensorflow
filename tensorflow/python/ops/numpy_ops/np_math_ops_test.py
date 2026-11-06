@@ -1080,6 +1080,29 @@ class MathTest(test.TestCase, parameterized.TestCase):
         ),
         np.diff(np.array([1, 2, 3], dtype=np.int32), prepend=1.5),
     )
+    # Non-scalar `prepend`/`append` with mixed dtypes promote both sides.
+    self.match(
+        np_math_ops.diff(
+            np_array_ops.array([1.0, 2.0, 4.0], dtype=np.float32),
+            prepend=[0],
+            append=[5],
+        ),
+        np.diff(
+            np.array([1.0, 2.0, 4.0], dtype=np.float32),
+            prepend=[0],
+            append=[5],
+        ),
+    )
+    # Non-scalar `prepend`/`append` with wrong rank raises ValueError.
+    with self.assertRaisesRegex(
+        ValueError, 'all the input arrays must have same number of dimensions'
+    ):
+      np_math_ops.diff(a, prepend=[0, 0, 0], axis=0)
+    # n=0 returns `a` unchanged even when `prepend`/`append` are provided.
+    self.match(
+        np_math_ops.diff(a, n=0, prepend=3, append=9),
+        np.diff(a, n=0, prepend=3, append=9),
+    )
     # Boolean inputs keep the boolean semantics with a boolean boundary.
     self.match(
         np_math_ops.diff(

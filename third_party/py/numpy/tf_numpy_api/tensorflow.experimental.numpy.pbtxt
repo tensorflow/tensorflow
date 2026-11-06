@@ -338,7 +338,7 @@ tf_module {
   }
   member_method {
     name: "diff"
-    argspec: "args=[\'a\', \'n\', \'axis\'], varargs=None, keywords=None, defaults=[\'1\', \'-1\'], "
+    argspec: "args=[\'a\', \'n\', \'axis\', \'prepend\', \'append\'], varargs=None, keywords=None, defaults=[\'1\', \'-1\', \'<object object instance>\', \'<object object instance>\'], "
   }
   member_method {
     name: "divide"
