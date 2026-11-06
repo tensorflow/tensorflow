@@ -142,6 +142,9 @@ class RpcHelper {
       std::unique_ptr<DestructArrayRequest> req);
 
   ResponseFuture<CompileResponse> Compile(std::unique_ptr<CompileRequest> req);
+  ResponseFuture<DeserializeLoadedExecutableResponse>
+  DeserializeLoadedExecutable(
+      std::unique_ptr<DeserializeLoadedExecutableRequest> req);
 
   ResponseFuture<LoadedExecutableMetadataResponse> LoadedExecutableMetadata(
       std::unique_ptr<LoadedExecutableMetadataRequest> req);

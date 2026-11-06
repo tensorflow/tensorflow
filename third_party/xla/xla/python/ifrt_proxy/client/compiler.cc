@@ -28,6 +28,7 @@
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/host_callback.h"
@@ -255,9 +256,94 @@ tsl::Future<xla::ifrt::LoadedExecutableRef>
 Compiler::DeserializeLoadedExecutable(
     const absl::Cord& serialized,
     std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options) {
-  return absl::UnimplementedError(
-      "IFRT service compiler does not support `DeserializeLoadedExecutable` "
-      "since the underlying serialization format is not stable");
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([size = serialized.size()]() {
+    return tsl::profiler::TraceMeEncode(
+        "IfrtProxyEntrypointCompilerDeserializeLoadedExecutable",
+        {{"serialized_size", size}});
+  });
+
+  // Reject older servers before the upload below. An older server does not
+  // know the request, so it never deletes the uploaded host buffer.
+  if (rpc_helper_->protocol_version() <
+      protocol_version::kDeserializeLoadedExecutable) {
+    return absl::UnimplementedError(
+        absl::StrCat("DeserializeLoadedExecutable requires protocol version ",
+                     protocol_version::kDeserializeLoadedExecutable,
+                     ", but the server has ", rpc_helper_->protocol_version()));
+  }
+
+  auto request = std::make_unique<DeserializeLoadedExecutableRequest>();
+  if (options != nullptr) {
+    // Only `XlaDeserializeExecutableOptions` can be converted into the request.
+    // Other option types may carry state that cannot be sent to the server.
+    auto* xla_options =
+        dyn_cast<xla::ifrt::XlaDeserializeExecutableOptions>(options.get());
+    if (xla_options == nullptr) {
+      return absl::UnimplementedError(
+          "IFRT service compiler supports only "
+          "`XlaDeserializeExecutableOptions` in `DeserializeLoadedExecutable`");
+    }
+    if (!xla_options->loaded_host_callbacks.empty()) {
+      return absl::UnimplementedError(
+          "IFRT service compiler does not support host callbacks in "
+          "`DeserializeLoadedExecutable`");
+    }
+    if (xla_options->devices.has_value()) {
+      for (const xla::ifrt::Device* device :
+           (*xla_options->devices)->devices()) {
+        request->add_device_ids(device->Id().value());
+      }
+    }
+    if (xla_options->compile_options.has_value()) {
+      xla::ifrt::XlaCompileOptions xla_compile_options(
+          *xla_options->compile_options, DeviceListRef());
+      auto serialize_options = std::make_unique<xla::ifrt::SerializeOptions>(
+          rpc_helper_->ifrt_serdes_version());
+      ABSL_ASSIGN_OR_RETURN(
+          *request->mutable_compile_options(),
+          Serialize(xla_compile_options, std::move(serialize_options)));
+    }
+  }
+
+  // Upload the bytes through the host buffer store, which sends them in chunks
+  // and so supports payloads larger than the protobuf message limit. Some
+  // `ClientHostBufferStore` implementations send the chunks before `Store`
+  // returns, and others send them later. The server waits until the bytes
+  // arrive in both cases.
+  const uint64_t host_buffer_handle = rpc_helper_->NextHandle();
+  request->set_serialized_executable_handle(host_buffer_handle);
+
+  // If the asynchronous upload fails, the server request waits forever for the
+  // data. Disconnect, as `Array::MakeArrayFromHostBuffer` does.
+  rpc_helper_->host_buffer_store()
+      ->Store(host_buffer_handle, serialized)
+      .OnReady([rpc_helper = std::weak_ptr<RpcHelper>(rpc_helper_)](
+                   absl::Status status) {
+        if (!status.ok()) {
+          LOG(WARNING) << "Handling error in the upload of a serialized "
+                       << "executable by disconnecting from server (if not "
+                       << "already disconnected), error: " << status;
+          if (auto locked = rpc_helper.lock()) {
+            locked->Disconnect();
+          }
+        }
+      });
+
+  xla::ifrt::UserContextRef user_context =
+      xla::ifrt::UserContextScope::current();
+
+  return rpc_helper_->DeserializeLoadedExecutable(std::move(request))
+      .Map([this, user_context = std::move(user_context)](
+               std::shared_ptr<DeserializeLoadedExecutableResponse> response)
+               -> absl::StatusOr<xla::ifrt::LoadedExecutableRef> {
+        // Share ownership of the whole response, but expose only the nested
+        // `CompileResponse`.
+        std::shared_ptr<CompileResponse> compile_response(
+            response, response->mutable_compile_response());
+        return CreateExecutableFromResponse(
+            /*loaded_host_callbacks=*/{}, std::move(user_context),
+            std::move(compile_response));
+      });
 }
 
 char Compiler::ID = 0;
