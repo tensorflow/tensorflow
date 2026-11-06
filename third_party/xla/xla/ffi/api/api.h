@@ -230,7 +230,8 @@ inline bool operator!=(const XLA_FFI_Metadata& a, const XLA_FFI_Metadata& b) {
 inline bool operator==(const XLA_FFI_Handler_Bundle& a,
                        const XLA_FFI_Handler_Bundle& b) {
   return a.instantiate == b.instantiate && a.prepare == b.prepare &&
-         a.initialize == b.initialize && a.execute == b.execute;
+         a.initialize == b.initialize && a.execute == b.execute &&
+         a.record == b.record;
 }
 
 inline bool operator!=(const XLA_FFI_Handler_Bundle& a,
@@ -265,6 +266,9 @@ enum class Traits : uint32_t {
   //      arguments (e.g. it does *not* do any runtime device memory
   //      allocations);
   //   3. the FFI handler may not query the execution status of the stream.
+  //
+  // Handler bundles that provide a `record` stage implementation are
+  // automatically marked as command-buffer compatible at registration time.
   kCmdBufferCompatible = XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE,
 };
 
@@ -327,7 +331,8 @@ class Ffi {
       XLA_FFI_Handler* execute, XLA_FFI_Handler_Traits traits = 0) {
     return RegisterStaticHandler(
         api, name, platform,
-        XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr, execute}, traits);
+        XLA_FFI_Handler_Bundle{nullptr, nullptr, nullptr, execute, nullptr},
+        traits);
   }
 
   // Registers a custom type so that it can be used with State and UserData
