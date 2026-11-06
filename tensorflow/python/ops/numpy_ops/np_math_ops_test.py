@@ -738,8 +738,11 @@ class MathTest(test.TestCase, parameterized.TestCase):
     # that does not mention `axes`. Validate statically-known ranks up front.
     a = np_array_ops.array(np.ones([2, 3]))
     b = np_array_ops.array(np.ones([3, 4]))
-    # Integer `axes` counts contracted axes, so bounds are the input ranks.
-    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+    # Integer `axes` counts contracted axes, so bounds are the input ranks;
+    # the error message reports the offending input's shape, not the tensor.
+    with self.assertRaisesRegex(
+        ValueError, r'out of bounds for input with shape \(2, 3\)'
+    ):
       np_math_ops.tensordot(a, b, axes=3)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.tensordot(
@@ -754,11 +757,6 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.tensordot(a, b, axes=([0], [-3]))
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_math_ops.tensordot(a, b, axes=(np.int64(2), 0))
-    # The error message reports the offending input's shape, not the tensor.
-    with self.assertRaisesRegex(
-        ValueError, r'out of bounds for input with shape \(2, 3\)'
-    ):
-      np_math_ops.tensordot(a, b, axes=3)
     # Valid axes, negative entries included, must keep working.
     onesa = np_array_ops.array(np.ones([2, 3]))
     onesb = np_array_ops.array(np.ones([3, 4]))
