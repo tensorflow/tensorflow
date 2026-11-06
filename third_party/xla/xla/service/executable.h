@@ -194,11 +194,18 @@ class ExecutionOutput {
   ExecutionOutput& operator=(ExecutionOutput&&) noexcept = default;
 
   ~ExecutionOutput() {
-    // If the ExecutionOutput has not been committed, and if there are aliased
-    // indices, clear them off the ScopedShapedBuffer to prevent them to be
-    // released.
-    for (auto& index : aliased_indices_) {
-      result_.set_buffer(se::ScopedDeviceAddress<uint8_t>(), index);
+    if (!committed_) {
+      // If the ExecutionOutput has not been committed, and if there are aliased
+      // indices, clear them off the ScopedShapedBuffer to prevent them to be
+      // released.
+      for (auto& index : aliased_indices_) {
+        result_.set_buffer(se::ScopedDeviceAddress<uint8_t>(), index);
+      }
+      // Also release the to-be-released buffers without freeing them, as they
+      // are still owned by the caller (since execution failed).
+      for (auto& packet : to_be_released_) {
+        packet.Release();
+      }
     }
   }
 
@@ -214,6 +221,7 @@ class ExecutionOutput {
   // before returning the ExecutionOutput to the caller.
   ExecutionOutput& Commit() {
     aliased_indices_.clear();
+    committed_ = true;
     return *this;
   }
 
@@ -256,6 +264,7 @@ class ExecutionOutput {
   // A shape table is a continuous region in memory that is used to hold the
   // runtime dimension sizes of dynamic output shapes.
   se::ScopedDeviceAddress<uint8_t> output_shape_table_;
+  bool committed_ = false;
 };
 
 // A given platform's compiler will produce an Executable -- this is a uniform
