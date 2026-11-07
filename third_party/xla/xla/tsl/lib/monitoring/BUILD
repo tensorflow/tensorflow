@@ -253,6 +253,7 @@ tsl_cc_test(
         ":sampler",
         ":test_utils",
         ":types",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
