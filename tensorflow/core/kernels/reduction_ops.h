@@ -78,6 +78,7 @@ struct ReduceEigenImpl {
   };
 
 CASTING_SPECIALIZATION(Eigen::internal::SumReducer, bfloat16, float);
+CASTING_SPECIALIZATION(Eigen::internal::SumReducer, Eigen::half, float);
 #undef CASTING_SPECIALIZATION
 
 template <typename Device, typename OUT_T, typename IN_T,
@@ -89,8 +90,10 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
                   const functor::MeanReducer<Scalar>& reducer) {
     static_assert(std::is_same_v<Scalar, typename OUT_T::Scalar>, "");
     Eigen::internal::SumReducer<Scalar> sum_reducer;
+    const auto out_size = out.size();
+    const auto reduction_factor = out_size > 0 ? (in.size() / out_size) : 1;
     out.device(d) = in.reduce(reduction_axes, sum_reducer) /
-                    static_cast<Scalar>(in.size() / out.size());
+                    static_cast<Scalar>(reduction_factor);
   }
 };
 
@@ -121,6 +124,7 @@ CASTING_SPECIALIZATION(int8_t, int64_t);
 CASTING_SPECIALIZATION(int16_t, int64_t);
 CASTING_SPECIALIZATION(int32_t, int64_t);
 CASTING_SPECIALIZATION(bfloat16, float);
+CASTING_SPECIALIZATION(Eigen::half, float);
 #undef CASTING_SPECIALIZATION
 
 // TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
@@ -153,6 +157,23 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
                         .reduce(reduction_axes, sum_reducer)
                         .sqrt()
                         .template cast<bfloat16>();
+  }
+};
+
+template <typename Device, typename OUT_T, typename IN_T,
+          typename ReductionAxes>
+struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
+                       functor::EuclideanNormReducer<Eigen::half>> {
+  void operator()(const Device& d, OUT_T out, IN_T in,
+                  const ReductionAxes& reduction_axes,
+                  const functor::EuclideanNormReducer<Eigen::half>& reducer) {
+    static_assert(std::is_same_v<Eigen::half, typename OUT_T::Scalar>, "");
+    Eigen::internal::SumReducer<float> sum_reducer;
+    auto in_as_float = in.template cast<float>();
+    out.device(d) = (in_as_float * in_as_float.conjugate())
+                        .reduce(reduction_axes, sum_reducer)
+                        .sqrt()
+                        .template cast<Eigen::half>();
   }
 };
 
