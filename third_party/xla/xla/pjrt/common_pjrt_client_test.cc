@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -28,13 +29,18 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"  // IWYU pragma: keep
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/primitive_util.h"
@@ -44,6 +50,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace xla {
 namespace {
@@ -352,6 +359,95 @@ TEST(CommonPjRtClientDelinearizeTest,
     ASSERT_OK(col_major_buffer->ToLiteral(&col_major_literal).Await());
     EXPECT_EQ(col_major_literal, expected.Relayout(col_major_device_layout));
   }
+}
+
+TEST(CommonPjRtClientExecuteTest,
+     MultiOutputBatchingPreservesAliasingMemorySpacesAndAnnotations) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetXlaPjrtCpuClient(CpuClientOptions{}));
+  PjRtDevice* device = client->addressable_devices()[0];
+  ASSERT_OK_AND_ASSIGN(PjRtMemorySpace * default_space,
+                       device->default_memory_space());
+  PjRtMemorySpace* pinned_host_space = nullptr;
+  for (PjRtMemorySpace* ms : device->memory_spaces()) {
+    if (ms->kind() == "pinned_host") {
+      pinned_host_space = ms;
+      break;
+    }
+  }
+  ASSERT_NE(pinned_host_space, nullptr);
+
+  constexpr absl::string_view kProgram = R"hlo(
+    HloModule multi_output_batching, input_output_alias={ {1}: (0, {}, must-alias) }
+
+    ENTRY main {
+      p0 = s32[4]{0} parameter(0)
+      p1 = s32[2]{0} parameter(1)
+      c1 = s32[4]{0} constant({1, 2, 3, 4})
+      c10 = s32[2]{0} constant({10, 20})
+      out1 = s32[4]{0} add(p0, c1)
+      host0 = s32[2]{0:S(5)} copy(p1)
+      c10_host = s32[2]{0:S(5)} copy(c10)
+      out0 = s32[2]{0:S(5)} add(host0, c10_host)
+      out2 = s32[4]{0} multiply(out1, c1)
+      out3 = s32[2]{0:S(5)} subtract(out0, c10_host)
+      ROOT tuple = (s32[2]{0:S(5)}, s32[4]{0}, s32[4]{0}, s32[2]{0:S(5)})
+          tuple(out0, out1, out2, out3)
+    }
+  )hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(computation, CompileOptions{}));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> arg0,
+      client->BufferFromHostLiteral(
+          LiteralUtil::CreateR1<int32_t>({10, 20, 30, 40}), default_space));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> arg1,
+      client->BufferFromHostLiteral(LiteralUtil::CreateR1<int32_t>({5, 6}),
+                                    default_space));
+
+  tsl::profiler::ScopedMemoryDebugAnnotation outer_anno(
+      "outer_op", /*step_id=*/42, "outer_region", /*data_type=*/7,
+      []() { return std::string("outer_shape"); });
+
+  ExecuteOptions execute_options = {};
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<PjRtBuffer>> results,
+                       executable->ExecuteSharded({arg0.get(), arg1.get()},
+                                                  device, execute_options));
+
+  const tsl::profiler::MemoryDebugAnnotation& restored_anno =
+      tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+  EXPECT_EQ(restored_anno.pending_op_name, "outer_op");
+  EXPECT_EQ(restored_anno.pending_step_id, 42);
+  EXPECT_EQ(restored_anno.pending_region_type, "outer_region");
+  EXPECT_EQ(restored_anno.pending_data_type, 7);
+  EXPECT_EQ(restored_anno.pending_shape_func(0), "outer_shape");
+
+  ASSERT_EQ(results.size(), 4);
+  EXPECT_TRUE(arg0->IsDeleted());
+  EXPECT_FALSE(arg1->IsDeleted());
+  EXPECT_EQ(results[0]->memory_space(), pinned_host_space);
+  EXPECT_EQ(results[1]->memory_space(), default_space);
+  EXPECT_EQ(results[2]->memory_space(), default_space);
+  EXPECT_EQ(results[3]->memory_space(), pinned_host_space);
+
+  // Deleting individual outputs leaves remaining outputs in both memory spaces
+  // intact.
+  results[0]->Delete();
+  results[1]->Delete();
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out2,
+                       results[2]->ToLiteral().Await());
+  EXPECT_THAT(out2->data<int32_t>(), ElementsAre(11, 44, 99, 176));
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> out3,
+                       results[3]->ToLiteral().Await());
+  EXPECT_THAT(out3->data<int32_t>(), ElementsAre(5, 6));
 }
 
 // NOLINTBEGIN(misc-include-cleaner): benchmark/benchmark.h is the public
