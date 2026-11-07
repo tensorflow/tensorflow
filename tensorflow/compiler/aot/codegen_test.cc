@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/TargetSelect.h"
