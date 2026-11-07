@@ -46,8 +46,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/variable_freezing_pipeline.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
+// #include
+// "third_party/tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+// #include
+// "third_party/tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 
@@ -305,7 +307,7 @@ void AddPreQuantizationStableHloToTfPasses(
   pass_manager.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   // DCE for private symbols.
   pass_manager.addPass(mlir::createSymbolDCEPass());
-  pass_manager.addPass(mlir::TF::CreateStripNoinlineAttributePass());
+  // pass_manager.addPass(mlir::TF::CreateStripNoinlineAttributePass());
   // Add inline pass.
   pass_manager.addPass(mlir::createInlinerPass());
   // Flatten tuples in entry computations and custom calls.
@@ -375,8 +377,8 @@ void AddPostQuantizationStableHloToTfPasses(
   // legalization; otherwise other passes like `ConvertTFBroadcastTo` will
   // constant fold the newly generated TF broadcast ops and materialize the
   // weights.
-  pass_manager.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateBroadcastFoldPass());
+  // pass_manager.addNestedPass<mlir::func::FuncOp>(
+  //     mlir::TF::CreateBroadcastFoldPass());
 
   // Canonicalization after TF legalization.
   pass_manager.addNestedPass<mlir::func::FuncOp>(
@@ -410,23 +412,24 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateRaiseCustomOpsPass(raise_custom_ops_pass_options));
 
-  mlir::TF::StandardPipelineOptions standard_pipeline_options;
-  standard_pipeline_options.enable_inliner = false;
-  standard_pipeline_options.form_clusters = pass_config.form_clusters;
-  mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
+  // mlir::TF::StandardPipelineOptions standard_pipeline_options;
+  // standard_pipeline_options.enable_inliner = false;
+  // standard_pipeline_options.form_clusters = pass_config.form_clusters;
+  // mlir::TF::CreateTFStandardPipeline(*pass_manager,
+  // standard_pipeline_options);
 
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateDeviceIndexSelectorPass());
+  // pass_manager->addNestedPass<mlir::func::FuncOp>(
+  //     mlir::TF::CreateDeviceIndexSelectorPass());
 
   // Add canonicalize pass to remove no-op session initializer pass.
   pass_manager->addPass(mlir::createCanonicalizerPass());
 
-  if (pass_config.guarantee_all_funcs_one_use) {
-    pass_manager->addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
-  }
-  if (pass_config.shape_inference) {
-    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
-  }
+  // if (pass_config.guarantee_all_funcs_one_use) {
+  //   pass_manager->addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
+  // }
+  // if (pass_config.shape_inference) {
+  //   pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+  // }
 
   // Keep this pass after the shape inference pass, which couldn't do shape
   // inference for non-tf ops.
@@ -436,7 +439,7 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
             pass_config.quant_specs.serialized_quant_stats));
   }
 
-  pass_manager->addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
+  // pass_manager->addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
   // The conversion pipeline has to follow the following orders:
   // 1) Saved model related optimization like decompose resource ops
@@ -447,10 +450,10 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
   // This decomposes resource ops like ResourceGather into read-variable op
   // followed by gather. This is used when the saved model import path is used
   // during which resources don't get frozen in the python layer.
-  pass_manager->addNestedPass<mlir::func::FuncOp>(
-      mlir::TFDevice::CreateDecomposeResourceOpsPass());
+  // pass_manager->addNestedPass<mlir::func::FuncOp>(
+  //     mlir::TFDevice::CreateDecomposeResourceOpsPass());
 
-  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+  // pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 }
 
 // This is the later part of the conversion in isolation. This enables a caller
@@ -493,10 +496,10 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
         lower_static_tensor_list_pass_options));
   }
 
-  if (pass_config.shape_inference) {
-    // Add a shape inference pass to optimize away the unnecessary casts.
-    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
-  }
+  // if (pass_config.shape_inference) {
+  //   // Add a shape inference pass to optimize away the unnecessary casts.
+  //   pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+  // }
 
   // Legalize while early to allow further constant folding.
   // TODO(jpienaar): This may not actually matter as we do canonicalization
@@ -525,12 +528,13 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   // This pass does dead code elimination based on symbol visibility.
   pass_manager->addPass(mlir::createSymbolDCEPass());
 
-  if (!saved_model_dir.empty()) {
-    // This pass 'freezes' tf saved model asset ops and inlines as string values
-    // in a format of the tf constant op.
-    pass_manager->addPass(
-        mlir::tf_saved_model::CreateFreezeAssetsPass(saved_model_dir.str()));
-  }
+  // if (!saved_model_dir.empty()) {
+  //   // This pass 'freezes' tf saved model asset ops and inlines as string
+  //   values
+  //   // in a format of the tf constant op.
+  //   pass_manager->addPass(
+  //       mlir::tf_saved_model::CreateFreezeAssetsPass(saved_model_dir.str()));
+  // }
   // For TF Quantization, convert unsupported ops to Flex ops before other
   // conversion passes.
   if (!converter_flags.tf_quantization_mode().empty()) {
@@ -542,17 +546,18 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
     // Run shape inference after variables are converted to constants.
-    if (pass_config.shape_inference) {
-      pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
-    }
+    // if (pass_config.shape_inference) {
+    //   pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+    // }
 
-    // Force layout supported by TFLite, this will transpose the data
-    // to match 'kTFLiteDataLayout'
-    mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
-    layout_optimization_options.force_data_format = kTFLiteDataLayout.str();
-    layout_optimization_options.skip_fold_transpose_in_ops = true;
-    mlir::TF::CreateLayoutOptimizationPipeline(
-        pass_manager->nest<mlir::func::FuncOp>(), layout_optimization_options);
+    // // Force layout supported by TFLite, this will transpose the data
+    // // to match 'kTFLiteDataLayout'
+    // mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
+    // layout_optimization_options.force_data_format = kTFLiteDataLayout.str();
+    // layout_optimization_options.skip_fold_transpose_in_ops = true;
+    // mlir::TF::CreateLayoutOptimizationPipeline(
+    //     pass_manager->nest<mlir::func::FuncOp>(),
+    //     layout_optimization_options);
 
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
@@ -567,21 +572,21 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
         mlir::TFL::CreatePrepareTFPass(prepare_tf_pass_options));
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::createCanonicalizerPass());
-    if (pass_config.shape_inference) {
-      // Add a shape inference pass to optimize away the unnecessary casts.
-      // This also fixes the unranked shapes due to TF ops constant folding.
-      // TODO(fengliuai): remove this pass if TableGen patterns have a better
-      // to control the shapes for the intermediate results.
-      pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
-    }
+    // if (pass_config.shape_inference) {
+    //   // Add a shape inference pass to optimize away the unnecessary casts.
+    //   // This also fixes the unranked shapes due to TF ops constant folding.
+    //   // TODO(fengliuai): remove this pass if TableGen patterns have a better
+    //   // to control the shapes for the intermediate results.
+    //   pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+    // }
 
     // Inline function calls that left in the graph after folding functional
     // control flow ops (IfOp, CaseOp).
     pass_manager->addPass(mlir::createInlinerPass());
 
     // This pass removes the asset file dependencies in hash table use cases.
-    pass_manager->addNestedPass<mlir::func::FuncOp>(
-        mlir::TF::CreateInitTextFileToImportPass(saved_model_dir.str()));
+    // pass_manager->addNestedPass<mlir::func::FuncOp>(
+    //     mlir::TF::CreateInitTextFileToImportPass(saved_model_dir.str()));
 
     // Add legalize TF pass to TFL dialect.
     mlir::TFL::LegalizeTFPassOptions legalize_tf_pass_options;

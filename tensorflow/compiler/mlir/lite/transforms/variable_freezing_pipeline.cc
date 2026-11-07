@@ -18,16 +18,19 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
 #include "tensorflow/compiler/mlir/lite/transforms/variable_freezing_pipeline_options.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
+// #include
+// "third_party/tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 
 namespace mlir {
 namespace TFL {
 
 void VariableFreezingPipeline::AddPasses() {
-  AddPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass(),
-          [](const VariableFreezingPipelineOptions& options) { return true; });
-  AddPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(true),
-          [](const VariableFreezingPipelineOptions& options) { return true; });
+  // AddPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass(),
+  //         [](const VariableFreezingPipelineOptions& options) { return true;
+  //         });
+  // AddPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(true),
+  //         [](const VariableFreezingPipelineOptions& options) { return true;
+  //         });
   AddPass(mlir::TFL::Create<mlir::TFL::UnfreezeMutableGlobalTensorsPass>(),
           [](const VariableFreezingPipelineOptions& options) { return true; });
 }
