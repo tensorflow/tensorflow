@@ -241,8 +241,9 @@ class MatrixDiagOp : public OpKernel {
             lower_diag_index, " > ", upper_diag_index)));
     OP_REQUIRES(
         context,
-        lower_diag_index == upper_diag_index ||
-            diagonal_shape.dim_size(std::max(diag_rank - 2, 0)) == num_diags,
+        num_diags == 1 ||
+            (diag_rank >= 2 &&
+             diagonal_shape.dim_size(diag_rank - 2) == num_diags),
         absl::InvalidArgumentError(
             "The number of diagonals provided in the input does not "
             "match the lower_diag_index and upper_diag_index range."));
