@@ -16,6 +16,7 @@
 # Tests of TensorFlow NN kernels written using the Python API.
 
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "if_oss")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
@@ -537,6 +538,34 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "flash_attention_op_test",
+    size = "medium",
+    srcs = ["flash_attention_op_test.py"],
+    env = if_oss({"TF_FLASH_ATTENTION_FA2_BUILT": "1"}, {}),
+    shard_count = 4,
+    deps = [
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:linalg_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:nn_ops_gen",
+        "//tensorflow/python/ops:special_math_ops",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -175,6 +175,7 @@ use_repo(
     "coremltools",
     "cython",
     "fft2d",
+    "flash_attention",
     "flatbuffers",
     "gif",
     "hexagon_nn",
