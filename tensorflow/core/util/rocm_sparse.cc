@@ -184,6 +184,11 @@ Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
   return OkStatus();
 }
 
+// hipFloatComplex and hipDoubleComplex are alignas(2 * sizeof(T)), but
+// std::complex<T> only guarantees alignof(T). The wrappers below copy host
+// alpha/beta scalars into alignas(sizeof(Scalar)) stack locals before passing
+// their addresses to hipSPARSE, which relies on HipSparseHandles keeping the
+// default HIPSPARSE_POINTER_MODE_HOST.
 #if TF_ROCM_VERSION < 40200
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmmImpl(
@@ -193,10 +198,13 @@ static inline Status CsrmmImpl(
     const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
     const int* csrSortedColIndA, const Scalar* B, int ldb,
     const Scalar* beta_host, Scalar* C, int ldc) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(op(
-      hipsparse_handle, transA, transB, m, n, k, nnz, AsHipComplex(alpha_host),
-      descrA, AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-      AsHipComplex(B), ldb, AsHipComplex(beta_host), AsHipComplex(C), ldc));
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha_host;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta_host;
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      op(hipsparse_handle, transA, transB, m, n, k, nnz,
+         AsHipComplex(&alpha_aligned), descrA, AsHipComplex(csrSortedValA),
+         csrSortedRowPtrA, csrSortedColIndA, AsHipComplex(B), ldb,
+         AsHipComplex(&beta_aligned), AsHipComplex(C), ldc));
   return OkStatus();
 }
 
@@ -229,27 +237,31 @@ TF_CALL_HIP_LAPACK_TYPES(CSRMM_INSTANCE);
       gpusparseDnMatDescr_t matC, hipsparseSpMMAlg_t alg, size_t* bufferSize) \
       const {                                                                 \
     DCHECK(initialized_);                                                     \
+    alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha;              \
+    alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta;                \
     TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseSpMM_bufferSize(          \
-        *gpusparse_handle_, transA, transB, alpha, matA, matB, beta, matC,    \
-        dtype, alg, bufferSize));                                             \
+        *gpusparse_handle_, transA, transB, &alpha_aligned, matA, matB,       \
+        &beta_aligned, matC, dtype, alg, bufferSize));                        \
     return OkStatus();                                                        \
   }
 
 TF_CALL_HIPSPARSE_DTYPES(SPMM_BUFFERSIZE_INSTANCE);
 
-#define SPMM_INSTANCE(Scalar, dtype)                                          \
-  template <>                                                                 \
-  Status GpuSparse::SpMM<Scalar>(                                             \
-      hipsparseOperation_t transA, hipsparseOperation_t transB,               \
-      const Scalar* alpha, const hipsparseSpMatDescr_t matA,                  \
-      const gpusparseDnMatDescr_t matB, const Scalar* beta,                   \
-      gpusparseDnMatDescr_t matC, hipsparseSpMMAlg_t alg, int8* buffer)       \
-      const {                                                                 \
-    DCHECK(initialized_);                                                     \
-    TF_RETURN_IF_GPUSPARSE_ERROR(                                             \
-        se::wrap::hipsparseSpMM(*gpusparse_handle_, transA, transB, alpha,    \
-                                matA, matB, beta, matC, dtype, alg, buffer)); \
-    return OkStatus();                                                        \
+#define SPMM_INSTANCE(Scalar, dtype)                                    \
+  template <>                                                           \
+  Status GpuSparse::SpMM<Scalar>(                                       \
+      hipsparseOperation_t transA, hipsparseOperation_t transB,         \
+      const Scalar* alpha, const hipsparseSpMatDescr_t matA,            \
+      const gpusparseDnMatDescr_t matB, const Scalar* beta,             \
+      gpusparseDnMatDescr_t matC, hipsparseSpMMAlg_t alg, int8* buffer) \
+      const {                                                           \
+    DCHECK(initialized_);                                               \
+    alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha;        \
+    alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta;          \
+    TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseSpMM(               \
+        *gpusparse_handle_, transA, transB, &alpha_aligned, matA, matB, \
+        &beta_aligned, matC, dtype, alg, buffer));                      \
+    return OkStatus();                                                  \
   }
 
 TF_CALL_HIPSPARSE_DTYPES(SPMM_INSTANCE);
@@ -266,10 +278,12 @@ static inline Status CsrmvImpl(SparseFnT op, OpKernelContext* context,
                                const int* csrSortedRowPtrA,
                                const int* csrSortedColIndA, const Scalar* x,
                                const Scalar* beta_host, Scalar* y) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, transA, m, n, nnz, AsHipComplex(alpha_host), descrA,
-         AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-         AsHipComplex(x), AsHipComplex(beta_host), AsHipComplex(y)));
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha_host;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta_host;
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      hipsparse_handle, transA, m, n, nnz, AsHipComplex(&alpha_aligned), descrA,
+      AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsHipComplex(x), AsHipComplex(&beta_aligned), AsHipComplex(y)));
   return OkStatus();
 }
 
@@ -432,10 +446,12 @@ static inline Status CsrgeamBufferSizeExtImpl(
     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
     const hipsparseMatDescr_t descrC, Scalar* csrSortedValC,
     int* csrSortedRowPtrC, int* csrSortedColIndC, size_t* bufferSize) {
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta;
   TF_RETURN_IF_GPUSPARSE_ERROR(op(
-      sparse_handle, m, n, AsHipComplex(alpha), descrA, nnzA,
+      sparse_handle, m, n, AsHipComplex(&alpha_aligned), descrA, nnzA,
       AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-      AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB),
+      AsHipComplex(&beta_aligned), descrB, nnzB, AsHipComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, bufferSize));
   return OkStatus();
@@ -487,10 +503,12 @@ static inline Status Csrgeam2Impl(
     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
     const hipsparseMatDescr_t descrC, Scalar* csrSortedValC,
     int* csrSortedRowPtrC, int* csrSortedColIndC, void* workspace) {
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta;
   TF_RETURN_IF_GPUSPARSE_ERROR(op(
-      cusparse_handle, m, n, AsHipComplex(alpha), descrA, nnzA,
+      cusparse_handle, m, n, AsHipComplex(&alpha_aligned), descrA, nnzA,
       AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-      AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB),
+      AsHipComplex(&beta_aligned), descrB, nnzB, AsHipComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, workspace));
   return OkStatus();
