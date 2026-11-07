@@ -497,6 +497,20 @@ class FlashAttentionTest(test.TestCase, parameterized.TestCase):
     self._check(dtypes.float16, batch=1, seq_q=4, seq_kv=4, heads=65536,
                 head_dim=8)
 
+  def testBackwardShapeOverflow(self):
+    n = 2**31 - 1 - 256
+    seed = constant_op.constant(0, dtypes.uint64)
+    query = array_ops.zeros([n, n, 1, 0])
+    key = array_ops.zeros([n, 0, 1, 0])
+    value = array_ops.zeros([n, 0, 1, 4])
+    out, stats, out_grad = (
+        array_ops.placeholder_with_default(
+            array_ops.zeros([0] * rank), shape=None)
+        for rank in (4, 3, 4))
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "overflow"):
+      self.evaluate(gen_nn_ops.flash_attention_grad(
+          query, key, value, out, stats, out_grad, seed, seed))
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()
