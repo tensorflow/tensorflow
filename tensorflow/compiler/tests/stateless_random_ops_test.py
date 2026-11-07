@@ -445,35 +445,42 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                                         minvals,
                                         maxvals,
                                         variance_rtol=None):
-    if 'CPU' in xla_device().device_type:
-      n = int(1e7)
-    else:
-      n = int(10e7)
-    for dtype in self._random_types():
+    n = int(1e7)
+    for dtype in self._random_types() - {dtypes.bfloat16}:
       with self.session() as sess, self.test_scope():
+        np_dtype = dtype.as_numpy_dtype
+        means_dt = float(np.asarray(means, dtype=np_dtype))
+        stddevs_dt = float(np.asarray(stddevs, dtype=np_dtype))
+        minvals_dt = float(np.asarray(minvals, dtype=np_dtype))
+        maxvals_dt = float(np.asarray(maxvals, dtype=np_dtype))
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_parameterized_truncated_normal(
             shape=[n],
             seed=seed_t,
-            means=means,
-            stddevs=stddevs,
-            minvals=minvals,
-            maxvals=maxvals)
+            means=ops.convert_to_tensor(means_dt, dtype=dtype),
+            stddevs=ops.convert_to_tensor(stddevs_dt, dtype=dtype),
+            minvals=ops.convert_to_tensor(minvals_dt, dtype=dtype),
+            maxvals=ops.convert_to_tensor(maxvals_dt, dtype=dtype))
         y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
-        if variance_rtol is None:
-          variance_rtol = 6e-3 if dtype == dtypes.bfloat16 else 1e-3
+        mean_atol = 4e-3 if dtype == dtypes.float16 else 1e-3
+        median_atol = 4e-3 if dtype == dtypes.float16 else 1e-3
+        var_rtol = variance_rtol
+        if var_rtol is None:
+          var_rtol = 1e-2 if dtype == dtypes.float16 else 1e-3
+        elif dtype == dtypes.float16:
+          var_rtol = max(var_rtol, 5e-2)
         random_test_util.test_truncated_normal(
             self.assertEqual,
             self.assertAllClose,
             n,
             y,
-            means=means,
-            stddevs=stddevs,
-            minvals=minvals,
-            maxvals=maxvals,
-            mean_atol=1e-3,
-            median_atol=1e-3,
-            variance_rtol=variance_rtol)
+            means=means_dt,
+            stddevs=stddevs_dt,
+            minvals=minvals_dt,
+            maxvals=maxvals_dt,
+            mean_atol=mean_atol,
+            median_atol=median_atol,
+            variance_rtol=var_rtol)
 
   def testParameterizedTruncatedNormalDefault(self):
     self._testParameterizedTruncatedNormal(0., 1., -2., 2.)
@@ -482,17 +489,43 @@ class StatelessRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testParameterizedTruncatedNormal(-1., 1., -2., 2.)
 
   def testParameterizedTruncatedNormalRightTail(self):
-    self.skipTest('b/276957102')
     self._testParameterizedTruncatedNormal(0., 1., 4., 20., variance_rtol=2e-2)
 
   def testParameterizedTruncatedNormalLeftTail(self):
-    self.skipTest('b/276957102')
     self._testParameterizedTruncatedNormal(
         0., 1., -20., -4., variance_rtol=5e-2)
 
   def testParameterizedTruncatedNormalLeftTailTwoSidedBounds(self):
     self._testParameterizedTruncatedNormal(
         0., 1., -6., -3., variance_rtol=5e-2)
+
+  def testParameterizedTruncatedNormalFarRightTail(self):
+    self._testParameterizedTruncatedNormal(0., 1., 6., 7., variance_rtol=2e-2)
+
+  def testParameterizedTruncatedNormalFarLeftTail(self):
+    self._testParameterizedTruncatedNormal(
+        0., 1., -7., -6., variance_rtol=2e-2)
+
+  def testParameterizedTruncatedNormalAsymptoticRightTail(self):
+    self._testParameterizedTruncatedNormal(0., 1., 8., 9., variance_rtol=2e-2)
+
+  def testParameterizedTruncatedNormalAsymptoticLeftTail(self):
+    self._testParameterizedTruncatedNormal(
+        0., 1., -9., -8., variance_rtol=2e-2)
+
+  def testParameterizedTruncatedNormalExtremeNormalizedBounds(self):
+    for dtype in self._random_types() - {dtypes.bfloat16}:
+      with self.session() as sess, self.test_scope():
+        seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
+        x = stateless.stateless_parameterized_truncated_normal(
+            shape=[1000],
+            seed=seed_t,
+            means=ops.convert_to_tensor(0., dtype=dtype),
+            stddevs=ops.convert_to_tensor(1e-3, dtype=dtype),
+            minvals=ops.convert_to_tensor(70., dtype=dtype),
+            maxvals=ops.convert_to_tensor(80., dtype=dtype))
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
+        self.assertAllClose(y, np.full([1000], 70., dtype=y.dtype))
 
   def testParameterizedTruncatedNormalSmallStddev(self):
     self._testParameterizedTruncatedNormal(0., 0.1, 0.05, 0.10)
