@@ -1129,6 +1129,38 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
   return argument_buffers_per_device;
 }
 
+// Sums the host `Literal` byte sizes across all static array leaf subshapes of
+// `module`'s entry computation parameters, using `entry_computation_layout()`
+// when present (matching `MakeFakeArguments`).
+int64_t ComputeModuleParameterHostBytes(const HloModule& module) {
+  int64_t total_bytes = 0;
+  const HloModuleConfig& module_config = module.config();
+  const HloInstruction::InstructionVector& params =
+      module.entry_computation()->parameter_instructions();
+  for (int i = 0; i < params.size(); ++i) {
+    const Shape& param_shape = (module_config.has_entry_computation_layout() &&
+                                module_config.entry_computation_layout()
+                                    .parameter_layout(i)
+                                    .shape()
+                                    .is_static())
+                                   ? module_config.entry_computation_layout()
+                                         .parameter_layout(i)
+                                         .shape()
+                                   : params[i]->shape();
+    ShapeUtil::ForEachSubshape(param_shape, [&](const Shape& subshape,
+                                                const ShapeIndex& /*index*/) {
+      if (subshape.IsArrayExcludingBuffer() && subshape.is_static()) {
+        const int64_t bytes =
+            ShapeUtil::ByteSizeOf(ShapeUtil::DeviceShapeToHostShape(subshape));
+        if (bytes > 0) {
+          total_bytes += bytes;
+        }
+      }
+    });
+  }
+  return total_bytes;
+}
+
 // Creates fake arguments to run the given executable.
 absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 CreateArgumentsOnDevice(PjRtClient& client,
@@ -1164,6 +1196,18 @@ CreateArgumentsOnDevice(PjRtClient& client,
                                      ModuleArgumentMode::kUseRandomInputs ||
                                  running_options.module_argument_mode ==
                                      ModuleArgumentMode::kUseSharedRandomInputs;
+  // Scale the minimum cached tensor size with total module parameter footprint
+  // (up to 16 MiB on multi-GiB models) so small per-layer tensors such as MoE
+  // router gates and quantization/norm scales stay independent across layers
+  // while bulk FFN/attention weights remain cached.
+  constexpr int64_t kMinCachedArgumentBytesFloor = 64LL << 10;  // 64 KiB
+  constexpr int64_t kMaxCachedArgumentBytesFloor = 16LL << 20;  // 16 MiB
+  const int64_t min_cached_argument_bytes =
+      use_random_inputs
+          ? std::clamp<int64_t>(
+                ComputeModuleParameterHostBytes(*my_hlo_module) / 256,
+                kMinCachedArgumentBytesFloor, kMaxCachedArgumentBytesFloor)
+          : kMinCachedArgumentBytesFloor;
   // When engine == nullptr under kUseRandomInputs, MakeFakeArguments creates a
   // fresh default seeded std::minstd_rand0 on each device iteration, producing
   // identical literals across all addressable devices. Share device 0's
@@ -1260,6 +1304,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
       options.engine = engine;
       options.pseudo_random = use_random_inputs;
       options.cache_arguments = use_random_inputs;
+      options.min_cached_argument_bytes = min_cached_argument_bytes;
       if (flatten_arguments) {
         ABSL_ASSIGN_OR_RETURN(LiteralVec tupled_argument_literals,
                          MakeFakeArguments(my_hlo_module, options));

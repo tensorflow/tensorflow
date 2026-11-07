@@ -2434,6 +2434,83 @@ TEST_F(FunctionalHloRunnerTest, CompileDoesNotVerifyFingerprintsIfDisabled) {
   EXPECT_OK(CompileAsFirstOfTwoProcesses(kv_store, preproc_options));
 }
 
+// Verifies that in modules with a large parameter footprint (>= 256 MiB),
+// `CreateArgumentsOnDevice` scales `min_cached_argument_bytes` up so small
+// repeated per-layer weight matrices (such as 256 KiB `bf16[4096,32]` MoE
+// router gates) remain distinct across layers while bulk weights stay cached.
+TEST_F(FunctionalHloRunnerTest,
+       LargeModuleKeepsSmallRouterMatricesDistinctWhileCachingBulkWeights) {
+  ScopedFakeArgumentCacheReset cache_reset;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+
+  // 3 * 96 MiB (`bf16[48,1048576]`) + 3 * 256 KiB (`bf16[4096,32]`) = 288.75
+  // MiB total parameter bytes -> `min_cached_argument_bytes` > 1 MiB.
+  constexpr absl::string_view kLargeModuleWithRoutersStablehlo = R"mlir(
+    module {
+      func.func @main(%w0: tensor<48x1048576xbf16>,
+                      %w1: tensor<48x1048576xbf16>,
+                      %w2: tensor<48x1048576xbf16>,
+                      %r0: tensor<4096x32xbf16>,
+                      %r1: tensor<4096x32xbf16>,
+                      %r2: tensor<4096x32xbf16>) -> tensor<1x1xbf16> {
+        %s0 = stablehlo.slice %w0 [0:1, 0:1]
+            : (tensor<48x1048576xbf16>) -> tensor<1x1xbf16>
+        %s1 = stablehlo.slice %r0 [0:1, 0:1]
+            : (tensor<4096x32xbf16>) -> tensor<1x1xbf16>
+        %out = stablehlo.add %s0, %s1 : tensor<1x1xbf16>
+        func.return %out : tensor<1x1xbf16>
+      }
+    }
+  )mlir";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> real_exec,
+      CompileStablehloModule(*real_client, kLargeModuleWithRoutersStablehlo,
+                             /*num_replicas=*/1));
+  NoOpExecutingLoadedExecutable wrapped_exec(real_exec.get());
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomInputs;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+
+  HostLiteralMockPjRtClient mock_client;
+  std::atomic<int> bulk_h2d{0};
+  std::atomic<int> same_space_clones{0};
+  std::atomic<int> cross_space_clones{0};
+  absl::Mutex router_mu;
+  std::vector<Literal> router_literals;
+  // 2 H2D transfers for the 3 cached 96 MiB bulk weights + 3 H2D transfers for
+  // the 3 distinct 256 KiB router matrices = 5 total H2D calls.
+  EXPECT_CALL(mock_client, BufferFromHostLiteral)
+      .Times(5)
+      .WillRepeatedly([&](const LiteralSlice& literal,
+                          PjRtMemorySpace* memory_space,
+                          const Layout* /*device_layout*/) {
+        if (literal.size_bytes() == 256 * 1024) {
+          absl::MutexLock lock(router_mu);
+          router_literals.push_back(literal.Clone());
+        } else {
+          bulk_h2d.fetch_add(1);
+        }
+        return std::make_unique<CloneTrackingPjRtBuffer>(
+            memory_space, &same_space_clones, &cross_space_clones,
+            /*allow_copy=*/true);
+      });
+
+  ASSERT_THAT(FunctionalHloRunner::Run(mock_client, &wrapped_exec,
+                                       /*arguments=*/{}, running_options),
+              absl_testing::IsOk());
+  EXPECT_EQ(bulk_h2d.load(), 2);
+  EXPECT_EQ(same_space_clones.load(), 1);
+  EXPECT_EQ(cross_space_clones.load(), 0);
+  ASSERT_EQ(router_literals.size(), 3);
+  EXPECT_NE(router_literals[0], router_literals[1]);
+  EXPECT_NE(router_literals[0], router_literals[2]);
+  EXPECT_NE(router_literals[1], router_literals[2]);
+}
+
 }  // namespace
 }  // namespace xla
 

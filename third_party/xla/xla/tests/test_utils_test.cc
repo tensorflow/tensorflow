@@ -58,6 +58,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::AllOf;
+using ::testing::Each;
+using ::testing::Ge;
+using ::testing::Le;
+
 // A test fixture is used because we need a client for our computation builder.
 class TestUtilsTest : public HloTestBase {};
 
@@ -1215,6 +1220,207 @@ ENTRY entry {
   ASSERT_OK(env->DeleteFile(file_seed1));
   ASSERT_OK_AND_ASSIGN(Literal lit_seed1_from_ram, make_with_seed(1));
   EXPECT_EQ(lit_seed1_from_ram, lit_seed1);
+}
+
+constexpr absl::string_view kMixedWeightsAndControlModuleHlo = R"(
+HloModule MixedWeightsAndControlModule
+
+ENTRY entry {
+  w0 = f32[128,256] parameter(0)
+  w1 = f32[128,256] parameter(1)
+  w2 = f32[128,256] parameter(2)
+  d0 = f64[128,128] parameter(3)
+  d1 = f64[128,128] parameter(4)
+  d2 = f64[128,128] parameter(5)
+  q0 = s4[256,256] parameter(6)
+  q1 = s4[256,256] parameter(7)
+  q2 = s4[256,256] parameter(8)
+  idx0 = s32[128,256] parameter(9)
+  idx1 = s32[128,256] parameter(10)
+  idx2 = s32[128,256] parameter(11)
+  mask0 = pred[256,256] parameter(12)
+  mask1 = pred[256,256] parameter(13)
+  mask2 = pred[256,256] parameter(14)
+  router0 = bf16[64,256] parameter(15)
+  router1 = bf16[64,256] parameter(16)
+  router2 = bf16[64,256] parameter(17)
+  slot = s32[] parameter(18)
+  ROOT out = (f32[128,256], f64[128,128], s4[256,256], s32[128,256],
+              pred[256,256], bf16[64,256], s32[])
+      tuple(w0, d0, q0, idx0, mask0, router0, slot)
+}
+)";
+
+// Verifies that >= 16-bit integer index/control tensors, predicate masks, and
+// sub-threshold floating-point tensors are never deduplicated across parameters
+// when `cache_arguments` is true, and that cached tensors jump `options.engine`
+// ahead by the exact transition count `MakeFakeLiteral` consumes so every
+// uncached parameter and the final `engine` state match `cache_arguments =
+// false` bit-for-bit across both cold and warm cache runs.
+void VerifyCachedFakeArgumentsParity(const HloModule* mixed_module,
+                                     bool use_large_range) {
+  std::minstd_rand0 uncached_engine(777);
+  FakeArgumentsOptions uncached_opts;
+  uncached_opts.engine = &uncached_engine;
+  uncached_opts.use_large_range = use_large_range;
+  uncached_opts.cache_arguments = false;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> uncached_args,
+                       MakeFakeArguments(mixed_module, uncached_opts));
+  ASSERT_EQ(uncached_args.size(), 19);
+
+  std::minstd_rand0 cold_engine(777);
+  FakeArgumentsOptions cached_opts;
+  cached_opts.engine = &cold_engine;
+  cached_opts.use_large_range = use_large_range;
+  cached_opts.cache_arguments = true;
+  cached_opts.max_cached_variants_per_shape = 2;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> cold_args,
+                       MakeFakeArguments(mixed_module, cached_opts));
+  ASSERT_EQ(cold_args.size(), 19);
+
+  // Cached bulk shapes generate distinct variants up to
+  // `max_cached_variants_per_shape` (2) and reuse Variant 0 for the third
+  // occurrence.
+  EXPECT_NE(cold_args[0], cold_args[1]);
+  EXPECT_EQ(cold_args[0], cold_args[2]);
+  EXPECT_NE(cold_args[3], cold_args[4]);
+  EXPECT_EQ(cold_args[3], cold_args[5]);
+  EXPECT_NE(cold_args[6], cold_args[7]);
+  EXPECT_EQ(cold_args[6], cold_args[8]);
+
+  // Uncached wide-int, predicate, sub-threshold router, and scalar parameters
+  // stay distinct across occurrences and match `cache_arguments = false`
+  // bit-for-bit, as does the final caller RNG state.
+  EXPECT_NE(cold_args[9], cold_args[10]);
+  EXPECT_NE(cold_args[9], cold_args[11]);
+  EXPECT_NE(cold_args[12], cold_args[13]);
+  EXPECT_NE(cold_args[12], cold_args[14]);
+  EXPECT_NE(cold_args[15], cold_args[16]);
+  EXPECT_NE(cold_args[15], cold_args[17]);
+  EXPECT_EQ(absl::MakeConstSpan(cold_args).subspan(9),
+            absl::MakeConstSpan(uncached_args).subspan(9));
+  EXPECT_EQ(cold_engine, uncached_engine);
+
+  // Warm cache hits must yield identical arguments and final RNG state.
+  std::minstd_rand0 warm_engine(777);
+  cached_opts.engine = &warm_engine;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> warm_args,
+                       MakeFakeArguments(mixed_module, cached_opts));
+  EXPECT_EQ(warm_args, cold_args);
+  EXPECT_EQ(warm_engine, uncached_engine);
+}
+
+TEST_F(TestUtilsTest,
+       CachedFakeArgumentsPreservesWideIntPredAndRngStateDefaultRange) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mixed_module,
+      ParseAndReturnVerifiedModule(kMixedWeightsAndControlModuleHlo));
+  ASSERT_NO_FATAL_FAILURE(VerifyCachedFakeArgumentsParity(
+      mixed_module.get(), /*use_large_range=*/false));
+}
+
+TEST_F(TestUtilsTest,
+       CachedFakeArgumentsPreservesWideIntPredAndRngStateLargeRange) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mixed_module,
+      ParseAndReturnVerifiedModule(kMixedWeightsAndControlModuleHlo));
+  ASSERT_NO_FATAL_FAILURE(VerifyCachedFakeArgumentsParity(
+      mixed_module.get(), /*use_large_range=*/true));
+}
+
+TEST_F(TestUtilsTest,
+       CachedDataflowConstrainedArgumentsPreservesRngStateAndValues) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> mixed_module,
+      ParseAndReturnVerifiedModule(kMixedWeightsAndControlModuleHlo));
+
+  // Verify `MakeDataflowConstrainedArguments` engine alignment and value
+  // bounds, including a collapsed constant interval `[5.0, 5.0]` (`min == max`
+  // -> 0 RNG steps) and a bounded interval `[1.0, 2.0]`.
+  std::minstd_rand0 df_uncached_engine(1234);
+  FakeArgumentsOptions df_uncached_opts;
+  df_uncached_opts.engine = &df_uncached_engine;
+  df_uncached_opts.cache_arguments = false;
+  df_uncached_opts.parameter_ranges = {{0, {5.0, 5.0}}, {3, {1.0, 2.0}}};
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> df_uncached_args,
+      MakeDataflowConstrainedArguments(mixed_module.get(), df_uncached_opts));
+
+  std::minstd_rand0 df_cached_engine(1234);
+  FakeArgumentsOptions df_cached_opts = df_uncached_opts;
+  df_cached_opts.engine = &df_cached_engine;
+  df_cached_opts.cache_arguments = true;
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> df_cached_args,
+      MakeDataflowConstrainedArguments(mixed_module.get(), df_cached_opts));
+  EXPECT_TRUE(df_cached_args[0].IsAllFloat(5.0f));
+  EXPECT_THAT(df_cached_args[3].data<double>(), Each(AllOf(Ge(1.0), Le(2.0))));
+  EXPECT_NE(df_cached_args[3], df_cached_args[4]);
+  EXPECT_EQ(absl::MakeConstSpan(df_cached_args).subspan(9),
+            absl::MakeConstSpan(df_uncached_args).subspan(9));
+  EXPECT_EQ(df_cached_engine, df_uncached_engine);
+}
+
+// Verifies that raising `min_cached_argument_bytes` keeps smaller repeated
+// floating-point matrices (such as per-layer MoE router gates) uncached and
+// bit-identical to `cache_arguments = false` while still caching larger bulk
+// weight tensors.
+TEST_F(TestUtilsTest, CachedFakeArgumentsRespectsMinCachedArgumentBytes) {
+  ClearFakeArgumentCacheForTest();
+  absl::Cleanup cleanup = [&] { ClearFakeArgumentCacheForTest(); };
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule RouterAndBulkWeightsModule
+
+ENTRY entry {
+  r0 = bf16[4096,32] parameter(0)
+  r1 = bf16[4096,32] parameter(1)
+  r2 = bf16[4096,32] parameter(2)
+  w0 = bf16[4096,64] parameter(3)
+  w1 = bf16[4096,64] parameter(4)
+  w2 = bf16[4096,64] parameter(5)
+  ROOT out = (bf16[4096,32], bf16[4096,64]) tuple(r0, w0)
+}
+)"));
+
+  std::minstd_rand0 uncached_engine(2026);
+  FakeArgumentsOptions uncached_opts;
+  uncached_opts.engine = &uncached_engine;
+  uncached_opts.cache_arguments = false;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> uncached_args,
+                       MakeFakeArguments(module.get(), uncached_opts));
+
+  // `bf16[4096,32]` is 256 KiB; `bf16[4096,64]` is 512 KiB.
+  std::minstd_rand0 cached_engine(2026);
+  FakeArgumentsOptions cached_opts;
+  cached_opts.engine = &cached_engine;
+  cached_opts.cache_arguments = true;
+  cached_opts.min_cached_argument_bytes = 512 * 1024;
+  cached_opts.max_cached_variants_per_shape = 2;
+  ASSERT_OK_AND_ASSIGN(std::vector<Literal> cached_args,
+                       MakeFakeArguments(module.get(), cached_opts));
+  ASSERT_EQ(cached_args.size(), 6);
+
+  // Router gates (< 512 KiB) stay distinct across all layers and match
+  // `cache_arguments = false` bit-for-bit.
+  EXPECT_NE(cached_args[0], cached_args[1]);
+  EXPECT_NE(cached_args[0], cached_args[2]);
+  EXPECT_NE(cached_args[1], cached_args[2]);
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(cached_args[i], uncached_args[i]) << "router=" << i;
+  }
+
+  // Bulk weights (>= 512 KiB) reuse Variant 0 for the third occurrence.
+  EXPECT_NE(cached_args[3], cached_args[4]);
+  EXPECT_EQ(cached_args[3], cached_args[5]);
+  EXPECT_EQ(cached_engine, uncached_engine);
 }
 
 }  // namespace
