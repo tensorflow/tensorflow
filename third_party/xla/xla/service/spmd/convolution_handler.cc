@@ -269,11 +269,18 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
 
   auto unsupported_sharding = [&](const HloSharding& lhs_sharding,
                                   const HloSharding& rhs_sharding) {
-    // We currently don't support partitioning input batch or output feature
-    // dimensions.
-    return ShardCountAtDim(lhs_sharding, dnums.input_batch_dimension()) != 1 ||
-           ShardCountAtDim(rhs_sharding,
-                           dnums.kernel_output_feature_dimension()) != 1;
+    if (ShardCountAtDim(lhs_sharding, dnums.input_batch_dimension()) != 1 ||
+        ShardCountAtDim(rhs_sharding,
+                        dnums.kernel_output_feature_dimension()) != 1) {
+      return true;
+    }
+    if (original_hlo->feature_group_count() > 1) {
+      return ShardCountAtDim(lhs_sharding, dnums.input_feature_dimension()) !=
+                 1 ||
+             ShardCountAtDim(rhs_sharding,
+                             dnums.kernel_input_feature_dimension()) != 1;
+    }
+    return false;
   };
 
   if (ShapeSizeInBytes(lhs.base_shape()) < ShapeSizeInBytes(rhs.base_shape())) {
@@ -288,20 +295,6 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
     }
     lhs = lhs.PadWithZero();
     rhs = rhs.Reshard(aligned_rhs_sharding).PadWithZero();
-  }
-
-  if (original_hlo->feature_group_count() > 1 &&
-      (ShardCountAtDim(lhs.sharding(), dnums.input_feature_dimension()) > 1 ||
-       ShardCountAtDim(rhs.sharding(),
-                       dnums.kernel_output_feature_dimension()) > 1)) {
-    return nullptr;
-  }
-
-  if (original_hlo->batch_group_count() > 1 &&
-      (ShardCountAtDim(lhs.sharding(), dnums.input_batch_dimension()) > 1 ||
-       ShardCountAtDim(rhs.sharding(),
-                       dnums.kernel_output_feature_dimension()) > 1)) {
-    return nullptr;
   }
 
   // Reshard RHS so that each shard computes the partial sum of the full
@@ -326,10 +319,14 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
   std::vector<int64_t> lhs_shard_sizes(dnums.input_spatial_dimensions_size());
   std::vector<int64_t> rhs_shard_sizes(dnums.input_spatial_dimensions_size());
 
+  std::vector<int64_t> all_reduce_dims;
   for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     int64_t lhs_dimension = dnums.input_spatial_dimensions(i);
     int64_t rhs_dimension = dnums.kernel_spatial_dimensions(i);
     int64_t shard_count = ShardCountAtDim(rhs.sharding(), rhs_dimension);
+    if (shard_count > 1) {
+      all_reduce_dims.push_back(rhs_dimension);
+    }
     const auto& wd = conv_window.dimensions(i);
     if (wd.base_dilation() != 1 || wd.window_reversal()) {
       return nullptr;
@@ -342,6 +339,16 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
     shard_counts[i] = shard_count;
     lhs_shard_sizes[i] = lhs_shard_size;
     rhs_shard_sizes[i] = rhs_shard_size;
+  }
+
+  if (original_hlo->feature_group_count() == 1 &&
+      ShardCountAtDim(rhs.sharding(), dnums.kernel_input_feature_dimension()) >
+          1) {
+    all_reduce_dims.push_back(dnums.kernel_input_feature_dimension());
+  }
+
+  if (all_reduce_dims.empty()) {
+    return nullptr;
   }
 
   std::vector<OffsetCalculation> left_halo_size_functions(
@@ -516,9 +523,10 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
 
   HloInstruction* result = conv;
   if (!conv->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
-    result = collective_ops_creator.create_all_reduce(
-        b, conv, MakeBinaryAdd(original_hlo->shape().element_type(), module),
-        CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
+    result = lhs.state().partitioner->AllReduceAlongShardingDims(
+        b, conv, rhs.sharding(), lhs.state().next_channel_id, all_reduce_dims,
+        collective_ops_creator,
+        MakeBinaryAdd(original_hlo->shape().element_type(), module));
   }
   // Set sharding on the result as it is created without a sharding.
   result->set_sharding(HloSharding::Replicate());
@@ -587,9 +595,18 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
 
   auto unsupported_sharding = [&](const HloSharding& lhs_sharding,
                                   const HloSharding& rhs_sharding) {
-    return ShardCountAtDim(lhs_sharding, dnums.input_batch_dimension()) != 1 ||
-           ShardCountAtDim(rhs_sharding,
-                           dnums.kernel_output_feature_dimension()) != 1;
+    if (ShardCountAtDim(lhs_sharding, dnums.input_batch_dimension()) != 1 ||
+        ShardCountAtDim(rhs_sharding,
+                        dnums.kernel_output_feature_dimension()) != 1) {
+      return true;
+    }
+    if (original_hlo->feature_group_count() > 1) {
+      return ShardCountAtDim(lhs_sharding, dnums.input_feature_dimension()) !=
+                 1 ||
+             ShardCountAtDim(rhs_sharding,
+                             dnums.kernel_input_feature_dimension()) != 1;
+    }
+    return false;
   };
 
   if (ShapeSizeInBytes(lhs.base_shape()) < ShapeSizeInBytes(rhs.base_shape())) {
@@ -604,20 +621,6 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
     }
     lhs = lhs.PadWithZero();
     rhs = rhs.Reshard(aligned_rhs_sharding).PadWithZero(reversed_rhs_dims);
-  }
-
-  if (original_hlo->feature_group_count() > 1 &&
-      (ShardCountAtDim(lhs.sharding(), dnums.input_feature_dimension()) > 1 ||
-       ShardCountAtDim(rhs.sharding(),
-                       dnums.kernel_output_feature_dimension()) > 1)) {
-    return nullptr;
-  }
-
-  if (original_hlo->batch_group_count() > 1 &&
-      (ShardCountAtDim(lhs.sharding(), dnums.input_batch_dimension()) > 1 ||
-       ShardCountAtDim(rhs.sharding(),
-                       dnums.kernel_output_feature_dimension()) > 1)) {
-    return nullptr;
   }
   // Reshard LHS by exchanging halo such that each shard computes the partial
   // sum of the full shape result, and add AllReduce.
@@ -640,10 +643,14 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
   std::vector<int64_t> shard_counts(dnums.input_spatial_dimensions_size());
   std::vector<int64_t> lhs_shard_sizes(dnums.input_spatial_dimensions_size());
   std::vector<int64_t> rhs_shard_sizes(dnums.input_spatial_dimensions_size());
+  std::vector<int64_t> all_reduce_dims;
   for (int64_t i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
     int64_t lhs_dimension = dnums.input_spatial_dimensions(i);
     int64_t rhs_dimension = dnums.kernel_spatial_dimensions(i);
     int64_t shard_count = ShardCountAtDim(lhs.sharding(), lhs_dimension);
+    if (shard_count > 1) {
+      all_reduce_dims.push_back(lhs_dimension);
+    }
     const auto& wd = window.dimensions(i);
     if (wd.base_dilation() != 1) {
       // TODO(wangtao): support parallel dim if it is replicate here.
@@ -657,6 +664,15 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
     shard_counts[i] = shard_count;
     lhs_shard_sizes[i] = lhs_shard_size;
     rhs_shard_sizes[i] = rhs_shard_size;
+  }
+
+  if (original_hlo->feature_group_count() == 1 &&
+      ShardCountAtDim(lhs.sharding(), dnums.input_feature_dimension()) > 1) {
+    all_reduce_dims.push_back(dnums.input_feature_dimension());
+  }
+
+  if (all_reduce_dims.empty()) {
+    return nullptr;
   }
 
   std::vector<OffsetCalculation> left_halo_size_functions(
@@ -745,9 +761,10 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
                                   rhs, b, new_window));
   HloInstruction* result = conv;
   if (!conv->frontend_attributes().map().contains(sdy::kHasUnreducedAxes)) {
-    result = lhs.state().collective_ops_creator.create_all_reduce(
-        b, conv, MakeBinaryAdd(output_base_shape.element_type(), module),
-        CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
+    result = lhs.state().partitioner->AllReduceAlongShardingDims(
+        b, conv, lhs.sharding(), lhs.state().next_channel_id, all_reduce_dims,
+        lhs.state().collective_ops_creator,
+        MakeBinaryAdd(output_base_shape.element_type(), module));
   }
   // Set sharding on `result` (whether `conv` or `all_reduce`), as `conv` is
   // created without a sharding and `PartitionedHlo::Reshard` requires one.
@@ -842,9 +859,14 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
     CHECK(ShapeUtil::Compatible(shard_shape, sharded_conv->shape()));
     return sharded_conv;
   }
+  std::vector<HloInstruction*> output_slice_indices(
+      output_base_shape.dimensions().size());
+  for (int64_t i = 0; i < output_base_shape.dimensions().size(); ++i) {
+    output_slice_indices[input_to_output_indices[i]] =
+        (*resharded_operand_and_window->dynamic_slice_index_on_output)[i];
+  }
   return b->AddInstruction(HloInstruction::CreateDynamicSlice(
-      shard_shape, sharded_conv,
-      *resharded_operand_and_window->dynamic_slice_index_on_output,
+      shard_shape, sharded_conv, output_slice_indices,
       shard_shape.dimensions()));
 }
 

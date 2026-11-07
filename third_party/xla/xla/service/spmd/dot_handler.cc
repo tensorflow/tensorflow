@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -5042,17 +5043,29 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       }
       // Mask off invalid data in collapsed dimensions.
       for (int64_t dim : dims_to_mask) {
+        int64_t dim_size = reduce_outside->operand(0)->shape().dimensions(dim);
+        HloInstruction* slice_offset = slice_offsets[dim];
+        PrimitiveType index_type =
+            (dim_size >= std::numeric_limits<int32_t>::max() ||
+             padded_shape.dimensions(dim) >=
+                 std::numeric_limits<int32_t>::max() ||
+             slice_offset->shape().element_type() == S64)
+                ? S64
+                : S32;
         auto* iota = body->AddInstruction(HloInstruction::CreateIota(
-            ShapeUtil::ChangeElementType(operand0->shape(), S32), dim));
+            ShapeUtil::ChangeElementType(operand0->shape(), index_type), dim));
+        if (slice_offset->shape().element_type() != index_type) {
+          slice_offset = body->AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::MakeShape(index_type, {}), slice_offset));
+        }
         auto* add = body->AddInstruction(HloInstruction::CreateBinary(
             iota->shape(), HloOpcode::kAdd, iota,
             body->AddInstruction(HloInstruction::CreateBroadcast(
-                iota->shape(), slice_offsets[dim], {}))));
+                iota->shape(), slice_offset, {}))));
         auto* limit = body->AddInstruction(HloInstruction::CreateBroadcast(
             iota->shape(),
-            body->AddInstruction(
-                HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
-                    reduce_outside->operand(0)->shape().dimensions(dim)))),
+            body->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::CreateR0(index_type, dim_size))),
             {}));
         auto* compare = body->AddInstruction(HloInstruction::CreateCompare(
             ShapeUtil::ChangeElementType(iota->shape(), PRED), add, limit,

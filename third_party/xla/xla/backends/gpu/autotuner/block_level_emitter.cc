@@ -118,6 +118,15 @@ absl::StatusOr<std::optional<BlockLevelFusionConfig>> GetPreExistingConfig(
   return std::nullopt;
 }
 
+// Returns whether `instr` is already a generic Triton fusion.
+bool IsTritonFusion(const HloInstruction& instr) {
+  absl::StatusOr<GpuBackendConfig> gpu_backend_config =
+      instr.backend_config<GpuBackendConfig>();
+  return gpu_backend_config.ok() &&
+         gpu_backend_config->fusion_backend_config().kind() ==
+             kTritonFusionKind;
+}
+
 }  // namespace
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -126,9 +135,17 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
 
+  int32_t num_configs = instr.GetModule()
+                            ->config()
+                            .debug_options()
+                            .xla_gpu_fusion_autotune_top_k_configs();
+
   ABSL_ASSIGN_OR_RETURN(std::optional<BlockLevelFusionConfig> pre_existing_config,
                    GetPreExistingConfig(instr));
-  if (pre_existing_config.has_value()) {
+  // A pre-existing config is the only candidate unless exploring more than one
+  // config was requested. Then the candidates are the cost model's top-k
+  // configs, whose top-1 normally is the pre-existing config.
+  if (pre_existing_config.has_value() && num_configs == 1) {
     std::vector<std::unique_ptr<BackendConfig>> configs;
     configs.push_back(Pack(pre_existing_config.value()));
     return configs;
@@ -136,10 +153,6 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
   auto fusion_adaptor =
       HloFusionAdaptor::ForInstruction(Cast<HloFusionInstruction>(&instr));
 
-  int32_t num_configs = instr.GetModule()
-                            ->config()
-                            .debug_options()
-                            .xla_gpu_fusion_autotune_top_k_configs();
   ABSL_ASSIGN_OR_RETURN(
       TopKTiledRunTimeDataOrError tiled_runtime_data,
       indexing_performance_model_
@@ -147,18 +160,20 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
               *fusion_adaptor, num_configs, TilingSearchExecutor(thread_pool_))
           .Await());
 
-  if (std::holds_alternative<FusionDecision>(tiled_runtime_data)) {
-    return std::vector<std::unique_ptr<BackendConfig>>();
-  }
-
-  const auto& tiled_runtime_data_list =
-      std::get<absl::InlinedVector<TiledRunTimeData, 4>>(tiled_runtime_data);
-
   std::vector<std::unique_ptr<BackendConfig>> configs;
-  configs.reserve(num_configs);
-  for (const auto& tiled_runtime_data : tiled_runtime_data_list) {
-    configs.push_back(Pack(
-        tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig()));
+  if (const auto* tiled_runtime_data_list =
+          std::get_if<absl::InlinedVector<TiledRunTimeData, 4>>(
+              &tiled_runtime_data)) {
+    configs.reserve(tiled_runtime_data_list->size());
+    for (const TiledRunTimeData& tiling : *tiled_runtime_data_list) {
+      configs.push_back(
+          Pack(tiling.block_level_parameters.ToBlockLevelFusionConfig()));
+    }
+  }
+  // If not empty, `configs` usually includes the pre-existing config, unless it
+  // didn't come from the cost model (e.g. hand-written).
+  if (configs.empty() && pre_existing_config.has_value()) {
+    configs.push_back(Pack(*pre_existing_config));
   }
   if (stream_executor::gpu::IsTmaAvailableForDevice(
           target_config().device_description)) {
@@ -249,6 +264,7 @@ bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
     return false;
   }
   if (!xla_gpu_experimental_all_fusions_with_triton_ &&
+      !IsTritonFusion(instr) &&
       !absl::c_any_of(
           fusion->fused_instructions_computation()->instructions(),
           HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose,

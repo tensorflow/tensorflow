@@ -138,6 +138,14 @@ message CudnnThunkProto {
   repeated bool output_args = 4;
   optional int64 sdpa_dropout_seed = 3;
   bool should_memzero = 5;
+  CudnnTargetDeviceProto target_device = 6;
+}
+
+// The device a serialized cuDNN graph was compiled for.
+message CudnnTargetDeviceProto {
+  int32 core_count = 1;
+  // Serialized cuDNN DeviceProperties
+  string serialized_device_properties = 2;
 }
 
 message HostSendThunkProto {

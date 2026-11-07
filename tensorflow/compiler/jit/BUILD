@@ -554,7 +554,6 @@ cc_library(
         "//learning/brain/tfrt/tf_tpu:__pkg__",
     ],
     deps = [
-        ":flags",  # buildcleaner: keep
         ":pjrt_tensor_buffer",
         ":variable_info",
         "//tensorflow/core:core_cpu_internal",
@@ -705,6 +704,7 @@ tf_cc_test(
         ":device_executable_persistor",
         ":flags_headers",
         ":pjrt_device_compiler_client",
+        ":pjrt_tensor_buffer",
         ":variable_info",
         ":variable_info_util",
         ":xla_cpu_device",
@@ -717,6 +717,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:session_options",
+        "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:ops_testutil",
@@ -787,6 +788,7 @@ tf_cc_test(
     name = "variable_info_util_test",
     srcs = ["variable_info_util_test.cc"],
     deps = [
+        ":flags",
         ":variable_info",
         ":variable_info_util",
         "//tensorflow/core:core_cpu_internal",
@@ -805,6 +807,9 @@ tf_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -816,6 +821,7 @@ tf_cc_test(
     srcs = ["variable_info_util_test.cc"],
     env = {"TF_XLA_ALLOW_HOST_RESIDENT_VARS": "1"},
     deps = [
+        ":flags",
         ":variable_info",
         ":variable_info_util",
         "//tensorflow/core:core_cpu_internal",
@@ -834,6 +840,9 @@ tf_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )

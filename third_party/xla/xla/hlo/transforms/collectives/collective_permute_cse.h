@@ -58,6 +58,13 @@ namespace xla {
 //
 // becomes one collective-permute of %input, with %cp0 and %cp1 slices of it.
 //
+// When xla_enable_enzyme_comms_opt is enabled, two collective-permutes with the
+// same source-target pairs that read identical slice windows on paired (hi, lo)
+// operands (from 64-bit decomposition such as X64SplitLow/X64SplitHigh, TwoSum
+// outputs, or adjacent tuple elements) are fused into one collective-permute of
+// their concatenation along dimension 0, with each original collective-permute
+// replaced by a slice of the fused result.
+//
 class CollectivePermuteCSE : public HloModulePass {
  public:
   absl::string_view name() const override { return "collective-permute-cse"; }

@@ -1064,6 +1064,52 @@ ENTRY main {
   EXPECT_TRUE(res2.IsInfinite());
 }
 
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_SoftmaxF64_RegisterSpill_ReturnsInfinite) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f64[] parameter(0)
+  Arg_1 = f64[] parameter(1)
+  ROOT add = f64[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f64[16,8000] parameter(0)
+  constant_0 = f64[] constant(0)
+  reduce_0 = f64[16] reduce(param_0, constant_0), dimensions={1}, to_apply=add
+  broadcast = f64[16,8000] broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f64[16,8000] multiply(param_0, broadcast)
+}
+
+ENTRY main {
+  param_0 = f64[16,8000] parameter(0)
+  ROOT triton_softmax = f64[16,8000] fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  // f64 requires 2 registers per element. With a 65536 register limit and 0.4
+  // fraction for boundary tiles (26214 registers), a padded tile of 1 * 8192
+  // elements (16384 registers) fits, while 2 * 8192 elements (32768 registers)
+  // spills.
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData res_fits,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{1, 8000}}}));
+  EXPECT_FALSE(res_fits.IsInfinite());
+
+  ASSERT_OK_AND_ASSIGN(
+      EstimateRunTimeData res_spills,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor,
+          BlockLevelParameters{/*output_tile_sizes=*/{{2, 8000}}}));
+  EXPECT_TRUE(res_spills.IsInfinite());
+}
+
 TEST_F(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_BroadcastReduce_RegisterSpill_ReturnsInfinite) {  // NOLINT(whitespace/line_length)

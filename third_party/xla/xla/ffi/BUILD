@@ -289,6 +289,17 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_registry_ffi",
+    hdrs = ["kernel_registry_ffi.h"],
+    deps = [
+        ":api",
+        ":ffi",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:kernel_registry_api",
+    ],
+)
+
+cc_library(
     name = "record_ffi",
     hdrs = ["record_ffi.h"],
     deps = [
@@ -512,6 +523,27 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "kernel_registry_ffi_test",
+    srcs = ["kernel_registry_ffi_test.cc"],
+    deps = [
+        ":api",
+        ":call_frame",
+        ":ffi",
+        ":ffi_api",  # buildcleaner: keep
+        ":invoke",
+        ":kernel_registry_ffi",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:kernel_api",
+        "//xla/ffi/api:kernel_registry_api",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 

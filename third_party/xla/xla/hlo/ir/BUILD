@@ -30,7 +30,6 @@ cc_library(
         "hlo_instruction_utils.cc",
         "hlo_instructions.cc",
         "hlo_module.cc",
-        "hlo_module_metadata.cc",
         "hlo_opcode.cc",
         "hlo_original_value.cc",
         "hlo_original_value_util.cc",
@@ -50,7 +49,6 @@ cc_library(
         "hlo_instruction_utils.h",
         "hlo_instructions.h",
         "hlo_module.h",
-        "hlo_module_metadata.h",
         "hlo_op_metadata.h",
         "hlo_opcode.h",
         "hlo_original_value.h",
@@ -67,6 +65,7 @@ cc_library(
     ]),
     deps = [
         ":backend_config",
+        ":hlo_module_metadata",
         ":hlo_payload_deduplicator",
         ":hlo_sharding",  # keep: provides implementations for re-exported hlo_sharding.h.
         ":mesh_and_axis",
@@ -102,7 +101,6 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:mapped_ptr_container_sorter",
-        "//xla/service:metrics_proto_cc",
         "//xla/service:name_uniquer",
         "//xla/tsl/lib/gtl:iterator_range",
         "//xla/tsl/lib/gtl:map_util",
@@ -110,7 +108,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:sorted_range",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:config",
@@ -126,6 +123,7 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
@@ -157,6 +155,7 @@ xla_cc_test(
     srcs = ["stack_frames_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_module_metadata",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -173,6 +172,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -292,6 +292,35 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "hlo_module_metadata",
+    srcs = ["hlo_module_metadata.cc"],
+    hdrs = ["hlo_module_metadata.h"],
+    visibility = internal_visibility([
+        ":friends",
+        "//xla:native_custom_call_handler_allowlist",
+    ]),
+    deps = [
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla/service:hlo_proto_cc",
+        "//xla/service:metrics_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

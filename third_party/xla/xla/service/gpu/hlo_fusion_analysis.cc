@@ -191,6 +191,14 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
     return HloFusionAnalysis::EmitterFusionKind::kTensorIr;
   }
 
+  if (fusion_backend_config.kind() == kThreadBlockSpecializedFusionKind) {
+    return HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized;
+  }
+
+  if (fusion_backend_config.kind() == kPhasedBlockClusterFusionKind) {
+    return HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster;
+  }
+
   std::optional<HloInstructionAdaptor> first_reduce_hero;
   for (auto [root, hero] : llvm::zip(fusion_roots, fusion_heroes)) {
     if (IsRealReductionHero(root.instruction(), hero.instruction(),
@@ -238,11 +246,6 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
   }
 
   if (fusion_roots.size() > 1) {
-    if (llvm::all_of(fusion_roots, [](const HloInstructionAdaptor& root) {
-          return root.opcode() == HloOpcode::kFusion;
-        })) {
-      return HloFusionAnalysis::EmitterFusionKind::kThreadBlockSpecialized;
-    }
     return HloFusionAnalysis::EmitterFusionKind::kLoop;
   }
 

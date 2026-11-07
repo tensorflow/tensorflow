@@ -115,7 +115,7 @@ class CommonPjRtClient : public PjRtClient {
 
   absl::StatusOr<PjRtDevice*> LookupDevice(
       GlobalDeviceId global_device_id) const override {
-    auto it = id_to_device_.find(global_device_id.value());
+    auto it = id_to_device_.find(global_device_id);
     if (it != id_to_device_.end()) {
       return it->second;
     }
@@ -256,13 +256,6 @@ class CommonPjRtClient : public PjRtClient {
     return raw_client()->ShouldRetryOnOom(attempts, device, load_state,
                                           std::move(prepare_status));
   }
-
-  virtual absl::StatusOr<PjRtExecutableLoadState::DeviceAndAssignment>
-  LookupDeviceAndAssignment(
-      const ExecuteOptions& options, int replica, int partition,
-      PjRtDevice* device,
-      const std::shared_ptr<DeviceAssignment>& device_assignment,
-      PjRtExecutableLoadState* load_state) const;
 
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
@@ -732,8 +725,7 @@ class CommonPjRtClient : public PjRtClient {
 
   // TODO(parkers): Remove the need for this temporary function once more
   // backend differences are resolved.
-  virtual absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
-  MakeLoadStateAndResolveAddressableDevices(
+  virtual absl::Status ResolveAddressableDevices(
       PjRtExecutable* executable, CompileOptions* compile_options,
       std::vector<PjRtLoadedExecutable::LogicalDeviceIds>&
           addressable_device_logical_ids,
@@ -791,8 +783,9 @@ class CommonPjRtClient : public PjRtClient {
   std::vector<std::unique_ptr<PjRtDevice>> owned_devices_;
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
-  // Maps Device::id() to the corresponding Device. Includes all devices.
-  absl::flat_hash_map<int, PjRtDevice*> id_to_device_;
+  // Maps PjRtDevice::global_device_id() to the corresponding Device. Includes
+  // all devices.
+  absl::flat_hash_map<GlobalDeviceId, PjRtDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
   int process_index_;
@@ -878,6 +871,11 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
 
   bool IsDeleted() const override {
     return load_state_ != nullptr && load_state_->IsDeleted();
+  }
+
+  absl::Status ClearExecutionState() override {
+    return load_state_ != nullptr ? load_state_->ClearExecutionState()
+                                  : absl::OkStatus();
   }
 
   const tsl::RCReference<PjRtExecutableLoadState>& load_state() const {
@@ -1093,7 +1091,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<Result> ExecuteHelperOnSingleDevice(
       absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
       int replica, int partition, const ExecuteOptions& options,
-      bool fill_future, PjRtDevice* device = nullptr,
+      bool fill_future, PjRtDevice* device,
       std::vector<CommonPjRtBuffer::DonatedBufferInfo>* donated_buffer_infos =
           nullptr) const;
 
@@ -1101,7 +1099,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       std::optional<ExecuteLaunchArgs>& launch_args,
       absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
       int replica, int partition, const ExecuteOptions& options,
-      size_t host_callback_idx, PjRtDevice* device = nullptr) const;
+      size_t host_callback_idx, PjRtDevice* device) const;
 
   absl::StatusOr<Result> ExecuteLaunch(
       ExecuteLaunchArgs& launch_args, bool fill_future,

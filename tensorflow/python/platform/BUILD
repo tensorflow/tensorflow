@@ -166,7 +166,6 @@ tf_py_strict_test(
         ":client_testlib",
         ":sysconfig",
         ":test",
-        "//tensorflow:tensorflow_py",
     ],
 )
 

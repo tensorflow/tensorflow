@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/compilation/passes.h"
 #include "xla/python/ifrt/ir/debug.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/utils.h"
 #include "xla/python/ifrt/mlir/fingerprint_utils.h"
@@ -415,22 +416,23 @@ void IfrtToDotPass::runOnOperation() {
               }
               return mlir::success();
             })
-            .Case<CopyArraysOp>([&](auto& op) {
-              for (const auto& [input, output] :
-                   llvm::zip(op.getInputs(), op.getOutputs())) {
-                if (auto it = val_to_node_id.find(input);
-                    it != val_to_node_id.end()) {
-                  val_to_node_id[output] = it->second;
-                }
-              }
-              return mlir::success();
-            })
             .Case<ReshardOp>([&](auto& op) {
               op.emitOpError(
                   "Dot graphs can be generated only after `ReshardOp`s have "
                   "been converted to `CallOp`s.");
               return mlir::failure();
             })
+            .Case<IfrtPairwiseArrayOpInterface>(
+                [&](IfrtPairwiseArrayOpInterface op) {
+                  for (mlir::OpResult output : op.getOutputs()) {
+                    if (auto it =
+                            val_to_node_id.find(op.getInputForOutput(output));
+                        it != val_to_node_id.end()) {
+                      val_to_node_id[output] = it->second;
+                    }
+                  }
+                  return mlir::success();
+                })
             .Case<CallOp>([&](auto& op) {
               op.emitOpError(
                   "Dot graphs can be generated only after atom programs "

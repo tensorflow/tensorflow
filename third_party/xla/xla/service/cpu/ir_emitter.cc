@@ -52,7 +52,6 @@ limitations under the License.
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/FMF.h"
-#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
@@ -68,10 +67,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/elemental_ir_emitter.h"
@@ -79,7 +76,6 @@ limitations under the License.
 #include "xla/service/cpu/ir_function.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -115,9 +111,7 @@ bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string) {
 IrEmitter::IrEmitter(const HloModule& hlo_module,
                      const BufferAssignment& assignment,
                      llvm::Module* llvm_module,
-                     const TargetMachineFeatures* target_machine_features,
-                     absl::flat_hash_map<BufferAllocation::Slice, int64_t>
-                         slice_to_buffer_table_index)
+                     const TargetMachineFeatures* target_machine_features)
     : assignment_(assignment),
       module_(llvm_module),
       main_builder_(llvm_module->getContext()),
@@ -126,8 +120,7 @@ IrEmitter::IrEmitter(const HloModule& hlo_module,
       hlo_module_(hlo_module),
       hlo_module_config_(hlo_module.config()),
       is_top_level_computation_(false),
-      target_machine_features_(*target_machine_features),
-      slice_to_buffer_table_index_(std::move(slice_to_buffer_table_index)) {
+      target_machine_features_(*target_machine_features) {
   b()->setFastMathFlags(llvm_ir::GetCpuFastMathFlags(hlo_module_config_));
   absl::Status s = GatherComputationsByAllocationType(
       &hlo_module, &thread_local_computations_, &global_computations_);
@@ -268,62 +261,8 @@ absl::Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   return absl::OkStatus();
 }
 
-llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
-  llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-  llvm::GlobalVariable* result_global = new llvm::GlobalVariable(
-      /*Module=*/*module_,
-      /*Type=*/initializer->getType(),
-      /*isConstant=*/true,
-      /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-      /*Initializer=*/initializer,
-      /*Name=*/"");
-  result_global->setAlignment(
-      llvm::Align(MinimumAlignmentForShape(literal.shape())));
-  result_global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
-  return result_global;
-}
-
-absl::Status IrEmitter::EmitSmallConstantGlobals() {
-  return EmitConstantGlobals(/*max_size_bytes=*/CpuInstructionFusion::
-                                 GetLargeConstantThresholdBytes());
-}
-
-absl::Status IrEmitter::EmitConstantGlobals(
-    std::optional<size_t> max_size_bytes) {
-  for (const BufferAllocation& allocation : assignment_.Allocations()) {
-    // Large constants don't get fused with other instructions, so we don't
-    // need to emit them as globals.
-    if (!allocation.is_constant() ||
-        (max_size_bytes &&
-         llvm_ir::LiteralForConstantAllocation(assignment_, allocation)
-                 .size_bytes() > *max_size_bytes)) {
-      continue;
-    }
-
-    const Literal& literal =
-        llvm_ir::LiteralForConstantAllocation(assignment_, allocation);
-    llvm::Constant* global_for_const;
-    auto it = emitted_literals_.find(LayoutSensitiveLiteralWrapper{literal});
-    if (it != emitted_literals_.end()) {
-      global_for_const = it->second;
-    } else {
-      global_for_const = EmitGlobalForLiteral(literal);
-      InsertOrDie(&emitted_literals_, LayoutSensitiveLiteralWrapper{literal},
-                  global_for_const);
-    }
-
-    InsertOrDie(&constant_buffer_to_global_, allocation.index(),
-                global_for_const);
-  }
-
-  return absl::OkStatus();
-}
-
 absl::Status IrEmitter::HandleConstant(HloInstruction* constant) {
   VLOG(2) << "HandleConstant: " << constant->ToString();
-  // IrEmitter::EmitConstantGlobals has already taken care of emitting the body
-  // of the constant.
   return EmitTargetAddressForOp(constant);
 }
 
@@ -404,18 +343,6 @@ void IrEmitter::AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
                                                      int64_t buffer_size) {
   if (buffer_size > 0) {
     llvm_ir::SetDereferenceableMetadataForLoad(load, buffer_size);
-  }
-}
-
-void IrEmitter::AttachInvariantLoadMetadataForLoad(llvm::LoadInst* load) const {
-  AttachInvariantLoadMetadataForLoad(load, hlo_module_config_);
-}
-
-/*static*/ void IrEmitter::AttachInvariantLoadMetadataForLoad(
-    llvm::LoadInst* load, const HloModuleConfig& config) {
-  if (config.debug_options().xla_llvm_enable_invariant_load_metadata()) {
-    load->setMetadata(llvm::LLVMContext::MD_invariant_load,
-                      llvm::MDNode::get(load->getContext(), /*MDs=*/{}));
   }
 }
 
@@ -527,7 +454,6 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
       /*supported_types=*/
       {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
-
   // This is a completely un-optimized version of convolution just to
   // have an early version that works. E.g. the input index and
   // padding calculation is not hoisted out of the inner loop.
@@ -2049,27 +1975,16 @@ llvm::Value* IrEmitter::EmitGlobalBufferPointer(
     const BufferAllocation::Slice& slice, const Shape& target_shape) {
   const BufferAllocation& allocation = *slice.allocation();
 
-  const auto explicit_index_it = slice_to_buffer_table_index_.find(slice);
-  bool has_explicit_index =
-      explicit_index_it != slice_to_buffer_table_index_.end();
-
-  CHECK(slice_to_buffer_table_index_.empty() || has_explicit_index)
-      << "All or none of the slices should have an explicit index.";
-
-  int64_t index =
-      has_explicit_index ? explicit_index_it->second : slice.index();
   llvm::Value* tempbuf_address_ptr = llvm_ir::EmitBufferIndexingGEP(
-      GetBufferTableArgument(), b()->getPtrTy(), index, b());
+      GetBufferTableArgument(), b()->getPtrTy(), slice.index(), b());
   llvm::LoadInst* tempbuf_address_base =
       Load(b()->getPtrTy(), tempbuf_address_ptr);
 
-  AttachInvariantLoadMetadataForLoad(tempbuf_address_base);
   AttachAlignmentMetadataForLoad(tempbuf_address_base, allocation.size());
   AttachDereferenceableMetadataForLoad(tempbuf_address_base, allocation.size());
 
   llvm::Value* tempbuf_address_untyped = tempbuf_address_base;
-  // Any explicit buffer pointer should point to the start of the slice.
-  if (!has_explicit_index && slice.offset() > 0) {
+  if (slice.offset() > 0) {
     // Adjust the address to account for the slice offset.
     tempbuf_address_untyped = InBoundsGEP(
         b()->getInt8Ty(), tempbuf_address_base, b()->getInt64(slice.offset()));
@@ -2081,13 +1996,8 @@ llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
                                           const Shape& target_shape) {
   if (slice.allocation()->is_thread_local()) {
     return EmitThreadLocalBufferPointer(slice, target_shape);
-  } else if (const auto itr =
-                 constant_buffer_to_global_.find(slice.allocation()->index());
-             itr != constant_buffer_to_global_.end()) {
-    return itr->second;
-  } else {
-    return EmitGlobalBufferPointer(slice, target_shape);
   }
+  return EmitGlobalBufferPointer(slice, target_shape);
 }
 
 absl::Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
@@ -2337,43 +2247,6 @@ CpuElementalIrEmitter IrEmitter::ElementalIrEmmiterFactory() {
       module_, b(), std::move(thread_local_call_fn),
       use_truncate_f32_to_bf16_conversion,
       hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max());
-}
-
-absl::StatusOr<llvm::Function*> IrEmitter::EmitNestedComputation(
-    const HloComputation& callee, absl::string_view name, bool is_reducer) {
-  // Module must be scheduled to emit thread local computation.
-  if (!hlo_module_.has_schedule()) {
-    return absl::InternalError(
-        "HLO module must be scheduled to emit thread local computation.");
-  }
-
-  if (const auto itr = emitted_functions_.find({&callee, is_reducer});
-      itr != emitted_functions_.end()) {
-    return itr->second;
-  }
-
-  for (HloInstruction* instr : callee.instructions()) {
-    bool nested_is_reducer = instr->opcode() == HloOpcode::kReduce ||
-                             instr->opcode() == HloOpcode::kReduceWindow;
-    for (HloComputation* called_computation : instr->called_computations()) {
-      // reassociation is transitive so we "or" the caller and the callee.
-      ABSL_RETURN_IF_ERROR(EmitNestedComputation(*called_computation,
-                                            llvm_ir::IrName(instr),
-                                            is_reducer || nested_is_reducer)
-                          .status());
-    }
-  }
-
-  if (callee.IsFusionComputation()) {
-    return nullptr;
-  }
-
-  VLOG(2) << "Emit nested computation: " << callee.name();
-  return EmitComputation(
-      const_cast<HloComputation*>(&callee), name, false,
-      hlo_module_.schedule().sequence(&callee).instructions(),
-      /*allow_reassociation=*/is_reducer,
-      /*function_attributes=*/{llvm::Attribute::AlwaysInline});
 }
 
 }  // namespace cpu

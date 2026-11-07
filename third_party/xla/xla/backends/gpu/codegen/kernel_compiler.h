@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,12 +27,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/triton_wrapper_result.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
@@ -44,6 +44,7 @@ limitations under the License.
 namespace xla::gpu {
 struct TritonWrapperResult;
 using BorrowedMlirContext = MlirContextPool::BorrowedObject;
+using GpuKernelDefinition = KernelDefinition<LlvmKernelSource, GpuKernelSpec>;
 
 // Abstract base class for asynchronous kernel compilation.
 //
@@ -70,8 +71,7 @@ class KernelCompiler {
 
   // Compiles the given kernel source asynchronously.
   virtual xla::Future<std::unique_ptr<Thunk>> Compile(
-      Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
-      const GpuKernelSpec& kernel_spec) = 0;
+      Thunk::ThunkInfo thunk_info, GpuKernelDefinition kernel_def) = 0;
 
   virtual xla::Future<LlvmKernelSource> CompileMlirToLlvm(
       const se::DeviceDescription& device, const HloModule& hlo_module,
@@ -88,7 +88,8 @@ class KernelCompiler {
       bool is_xla_fusion) = 0;
 
   virtual xla::Future<std::vector<uint8_t>> CompileToTargetBinary(
-      LlvmKernelSource kernel_source) = 0;
+      LlvmKernelSource kernel_source,
+      std::optional<GpuKernelSpec> kernel_spec) = 0;
 
   // Sets a callback to be called prior to llvm::Module compilation.
   void SetPreOptimizationHook(ModuleHook hook) {

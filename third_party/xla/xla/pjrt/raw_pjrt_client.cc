@@ -15,12 +15,45 @@ limitations under the License.
 
 #include "xla/pjrt/raw_pjrt_client.h"
 
+#include <cstddef>
+#include <optional>
 #include <string>
+#include <utility>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/status_macros.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace xla {
+
+absl::StatusOr<absl::InlinedVector<PjRtRawBufferRef, 4>>
+PjRtRawClient::AllocateRawBuffersForExecute(
+    PjRtMemorySpace* memory_space,
+    absl::Span<const size_t> on_device_bytes_counts, bool retry_on_oom) {
+  const tsl::profiler::MemoryDebugAnnotation outer_anno =
+      tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+  absl::InlinedVector<PjRtRawBufferRef, 4> buffers;
+  buffers.reserve(on_device_bytes_counts.size());
+  for (size_t i = 0; i < on_device_bytes_counts.size(); ++i) {
+    std::optional<tsl::profiler::ScopedMemoryDebugAnnotation> anno;
+    if (outer_anno.pending_shape_func != nullptr) {
+      anno.emplace("dummy", outer_anno.pending_region_type,
+                   outer_anno.pending_data_type, [&outer_anno, i](size_t) {
+                     return outer_anno.pending_shape_func(i);
+                   });
+    }
+    ABSL_ASSIGN_OR_RETURN(
+        PjRtRawBufferRef buffer,
+        AllocateRawBufferForExecute(memory_space, on_device_bytes_counts[i],
+                                    retry_on_oom));
+    buffers.push_back(std::move(buffer));
+  }
+  return buffers;
+}
 
 void PjRtRawClient::ScheduleRemoteSend(
     LocalDeviceId local_device_id, int memory_kind_id,

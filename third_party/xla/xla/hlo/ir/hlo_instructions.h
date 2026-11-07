@@ -29,13 +29,14 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"  // IWYU pragma: export
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -2950,6 +2950,72 @@ class HloDotInstruction : public HloInstruction {
   SparsityConfig sparsity_config_;
 
   // Dot block scaling config.
+  BlockScalingConfig block_scaling_config_;
+};
+
+// A dot with structured sparsity, block scaling, or both. Operands 0 and 1 are
+// lhs and rhs; the remaining operands (sparsity indices, scales, zero points)
+// are referenced by index from `sparsity_config` and `block_scaling_config`.
+class HloDotGeneralInstruction : public HloInstruction {
+ public:
+  explicit HloDotGeneralInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const DotDimensionNumbers& dimension_numbers,
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config,
+      const BlockScalingConfig& block_scaling_config);
+
+  const DotDimensionNumbers& dot_dimension_numbers() const {
+    return dot_dimension_numbers_;
+  }
+  DotDimensionNumbers* mutable_dot_dimension_numbers() {
+    return &dot_dimension_numbers_;
+  }
+
+  const PrecisionConfig& precision_config() const { return precision_config_; }
+  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
+
+  const SparsityConfig& sparsity_config() const { return sparsity_config_; }
+  void set_sparsity_config(const SparsityConfig& sparsity_config) {
+    sparsity_config_ = sparsity_config;
+  }
+
+  const BlockScalingConfig& block_scaling_config() const {
+    return block_scaling_config_;
+  }
+  void set_block_scaling_config(const BlockScalingConfig& config) {
+    block_scaling_config_ = config;
+  }
+
+  void ToProto(HloInstructionProto* proto) const override;
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kDotGeneral;
+  }
+
+  void HashAdditionalAttributes(absl::HashState h) const override {
+    absl::HashState::combine(
+        std::move(h),
+        protobuf_util::ProtobufHashBySerialization(dot_dimension_numbers()),
+        protobuf_util::ProtobufHashBySerialization(precision_config()),
+        protobuf_util::ProtobufHashBySerialization(sparsity_config()),
+        protobuf_util::ProtobufHashBySerialization(block_scaling_config()));
+  }
+
+ private:
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  DotDimensionNumbers dot_dimension_numbers_;
+  PrecisionConfig precision_config_;
+  SparsityConfig sparsity_config_;
   BlockScalingConfig block_scaling_config_;
 };
 

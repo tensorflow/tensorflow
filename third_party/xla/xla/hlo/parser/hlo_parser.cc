@@ -154,6 +154,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
     case HloOpcode::kDot:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
     case HloOpcode::kExp2:
@@ -3705,7 +3706,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       *custom_call_instr->mutable_precision_config() = precision_config;
       return instruction;
     }
-    case HloOpcode::kDot: {
+    case HloOpcode::kDot:
+    case HloOpcode::kDotGeneral: {
       optional<std::vector<int64_t>> lhs_contracting_dims;
       attrs["lhs_contracting_dims"] = {
           /*required=*/false, AttrTy::kBracedInt64List, &lhs_contracting_dims};
@@ -3766,13 +3768,17 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         *precision_config.mutable_operand_precision() = {
             operand_precision->begin(), operand_precision->end()};
       } else {
+        // A dot-general only has precisions for lhs and rhs.
         precision_config.mutable_operand_precision()->Resize(
-            operands.size(), PrecisionConfig::DEFAULT);
+            opcode == HloOpcode::kDotGeneral ? 2 : operands.size(),
+            PrecisionConfig::DEFAULT);
       }
       if (algorithm) {
         precision_config.set_algorithm(*algorithm);
       }
       SparsityConfig sp = parsed_sparsity_config.value_or(SparsityConfig());
+      BlockScalingConfig bs =
+          parsed_block_scaling_config.value_or(BlockScalingConfig());
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferDotOpShape(
                 operands[0]->shape(), operands[1]->shape(), dnum,
@@ -3780,9 +3786,12 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           })) {
         return nullptr;
       }
+      if (opcode == HloOpcode::kDotGeneral) {
+        return builder->AddInstruction(HloInstruction::CreateDotGeneral(
+            *shape, operands, dnum, precision_config, sp, bs));
+      }
       return builder->AddInstruction(HloInstruction::CreateDot(
-          *shape, operands, dnum, precision_config, sp,
-          parsed_block_scaling_config.value_or(BlockScalingConfig())));
+          *shape, operands, dnum, precision_config, sp, bs));
     }
     case HloOpcode::kRaggedDot: {
       optional<std::vector<int64_t>> lhs_contracting_dims;
@@ -7867,6 +7876,14 @@ bool HloParserImpl::ParseTensorBlockScalingConfig(
         for (int64_t s : steps) {
           result->add_steps(s);
         }
+      } else if (attribute == "block_sizes") {
+        std::vector<int64_t> block_sizes;
+        if (!ParseDxD("block_sizes", &block_sizes)) {
+          return Error(lexer_.GetLoc(), "expects block_sizes in form NxMxK");
+        }
+        for (int64_t b : block_sizes) {
+          result->add_block_sizes(b);
+        }
       } else {
         return Error(lexer_.GetLoc(), "unknown attribute");
       }
@@ -9228,6 +9245,7 @@ HloComputation* HloParserImpl::CreateAsyncWrappedComputation(
   // async-wrapped computation later.
   int64_t min_arity = HloOpcodeArity(async_wrapped_opcode).value_or(0);
   if (async_wrapped_opcode == HloOpcode::kDot ||
+      async_wrapped_opcode == HloOpcode::kDotGeneral ||
       async_wrapped_opcode == HloOpcode::kConvolution) {
     min_arity = 2;
   }

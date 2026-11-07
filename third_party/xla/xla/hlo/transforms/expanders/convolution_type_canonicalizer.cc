@@ -27,6 +27,7 @@ namespace xla {
 bool ConvolutionTypeCanonicalizer::InstructionMatchesPattern(
     HloInstruction* instruction) {
   return (instruction->opcode() == HloOpcode::kDot ||
+          instruction->opcode() == HloOpcode::kDotGeneral ||
           instruction->opcode() == HloOpcode::kConvolution ||
           instruction->opcode() == HloOpcode::kRaggedDot ||
           instruction->opcode() == HloOpcode::kScaledDot) &&

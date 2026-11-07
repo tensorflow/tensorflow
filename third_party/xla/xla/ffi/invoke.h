@@ -63,6 +63,7 @@ class CollectiveCliqueRequests;
 class CollectiveMemoryRequests;
 class CollectiveCliques;
 class CollectiveMemory;
+class CommandBufferRequests;
 }  // namespace xla::gpu
 
 //===----------------------------------------------------------------------===//
@@ -91,6 +92,7 @@ struct InvokeContext {
     const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr;
     absl::Span<stream_executor::Stream* const> computation_streams;
     absl::Span<stream_executor::Stream* const> communication_streams;
+    gpu::CommandBufferRequests* command_buffer_requests = nullptr;
   };
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;

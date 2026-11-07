@@ -51,9 +51,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-7eqXGrr59MzfuhUzAwznbG/NDe51oyNMSlxRQZgSQ64=",
-    strip_prefix = "rules_ml_toolchain-9114bb1c3abf4f1a5889ef8fd7ae5a72b1351db3",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/9114bb1c3abf4f1a5889ef8fd7ae5a72b1351db3.tar.gz"],
+    integrity = "sha256-iabvzHBuWgtFvosiilVraTe0mmqP5pGuI09hsTTmCs4=",
+    strip_prefix = "rules_ml_toolchain-4879d24d502642d10ec1e5c744c429beed0f311d",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/4879d24d502642d10ec1e5c744c429beed0f311d.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -316,7 +316,7 @@ nvshmem_redist = use_extension("@rules_ml_toolchain//extensions:nvshmem_redist.b
 use_repo(nvshmem_redist, "nvidia_nvshmem")
 
 toolchain_ext = use_extension("@rules_ml_toolchain//extensions:toolchain.bzl", "toolchain_ext")
-use_repo(toolchain_ext, "llvm18_linux_x86_64", "llvm_linux_aarch64", "llvm_linux_x86_64")
+use_repo(toolchain_ext, "llvm22_linux_x86_64", "llvm_linux_aarch64", "llvm_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 

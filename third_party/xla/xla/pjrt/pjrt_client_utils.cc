@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -56,6 +58,19 @@ absl::StatusOr<std::vector<Shape>> ConvertShapeSpecsToShapes(
   return device_shapes;
 }
 
+std::string GetPluginStablehloVersionOrDefault(
+    const absl::flat_hash_map<std::string, PjRtValueType>& attributes) {
+  // If plugin doesn't report its StableHLO version, use the default.
+  auto version = attributes.find("stablehlo_current_version");
+  if (version == attributes.end()) {
+    return xla::GetDefaultStablehloVersion();
+  }
+
+  const std::vector<int64_t>& v =
+      std::get<std::vector<int64_t>>(version->second);
+  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
+}
+
 std::string GetPluginStablehloVersionOrDefault(const PjRtClient* client) {
   // If the plugin is not set, use the default.
   if (!client) {
@@ -68,11 +83,15 @@ std::string GetPluginStablehloVersionOrDefault(const PjRtClient* client) {
     return xla::GetDefaultStablehloVersion();
   }
 
-  // If plugin doesn't report its StableHLO version, use the default.
-  const auto& attr_map = attributes->attributes;
-  auto version = attr_map.find("stablehlo_current_version");
-  if (version == attr_map.end()) {
-    return xla::GetDefaultStablehloVersion();
+  return GetPluginStablehloVersionOrDefault(attributes->attributes);
+}
+
+std::string GetPluginSdyVersionOrDefault(
+    const absl::flat_hash_map<std::string, PjRtValueType>& attributes) {
+  // If plugin doesn't report its Shardy version, use the default.
+  auto version = attributes.find("sdy_current_version");
+  if (version == attributes.end()) {
+    return xla::GetDefaultSdyVersion();
   }
 
   const std::vector<int64_t>& v =
@@ -92,16 +111,7 @@ std::string GetPluginSdyVersionOrDefault(const PjRtClient* client) {
     return xla::GetDefaultSdyVersion();
   }
 
-  // If plugin doesn't report its Shardy version, use the default.
-  const auto& attr_map = attributes->attributes;
-  auto version = attr_map.find("sdy_current_version");
-  if (version == attr_map.end()) {
-    return xla::GetDefaultSdyVersion();
-  }
-
-  const std::vector<int64_t>& v =
-      std::get<std::vector<int64_t>>(version->second);
-  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
+  return GetPluginSdyVersionOrDefault(attributes->attributes);
 }
 
 }  // namespace xla

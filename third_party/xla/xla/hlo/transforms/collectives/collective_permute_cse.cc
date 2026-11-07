@@ -18,12 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -180,6 +182,184 @@ static HloInstruction* SliceOfWindow(HloComputation* computation,
 static bool IsPlainPermute(const HloInstruction* permute) {
   return permute->operand_count() == 1 && permute->shape().IsArray() &&
          ShapeUtil::Compatible(permute->shape(), permute->operand(0)->shape());
+}
+
+// Recognizes FastTwoSum and Knuth TwoSum (hi, lo) instruction pairs emitted by
+// 64-bit floating-point emulation.
+static bool IsTwoSumPair(const HloInstruction* hi, const HloInstruction* lo) {
+  if (hi->opcode() != HloOpcode::kAdd) {
+    return false;
+  }
+  const HloInstruction* lhs = hi->operand(0);
+  const HloInstruction* rhs = hi->operand(1);
+  // FastTwoSum: hi = add(lhs, rhs), rhs_virtual = subtract(hi, lhs),
+  // lo = subtract(rhs, rhs_virtual).
+  if (lo->opcode() == HloOpcode::kSubtract) {
+    const HloInstruction* rhs_virtual = lo->operand(1);
+    if (lo->operand(0) == rhs &&
+        rhs_virtual->opcode() == HloOpcode::kSubtract &&
+        rhs_virtual->operand(0) == hi && rhs_virtual->operand(1) == lhs) {
+      return true;
+    }
+  }
+  // Knuth TwoSum: hi = add(lhs, rhs), rhs_virtual = subtract(hi, lhs),
+  // lhs_virtual = subtract(hi, rhs_virtual),
+  // lo = add(subtract(lhs, lhs_virtual), subtract(rhs, rhs_virtual)).
+  if (lo->opcode() == HloOpcode::kAdd) {
+    const HloInstruction* lhs_error = lo->operand(0);
+    const HloInstruction* rhs_error = lo->operand(1);
+    if (lhs_error->opcode() == HloOpcode::kSubtract &&
+        rhs_error->opcode() == HloOpcode::kSubtract &&
+        lhs_error->operand(0) == lhs && rhs_error->operand(0) == rhs) {
+      const HloInstruction* lhs_virtual = lhs_error->operand(1);
+      const HloInstruction* rhs_virtual = rhs_error->operand(1);
+      if (rhs_virtual->opcode() == HloOpcode::kSubtract &&
+          rhs_virtual->operand(0) == hi && rhs_virtual->operand(1) == lhs &&
+          lhs_virtual->opcode() == HloOpcode::kSubtract &&
+          lhs_virtual->operand(0) == hi &&
+          lhs_virtual->operand(1) == rhs_virtual) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Recognizes two unit-stride slices of the same array that extract its two
+// halves along dimension 0 (such as the slices left when an earlier pair of
+// (hi, lo) collective-permutes was fused).
+static bool IsPairedHalfSlice(const HloInstruction* a,
+                              const HloInstruction* b) {
+  if (a->opcode() != HloOpcode::kSlice || b->opcode() != HloOpcode::kSlice ||
+      a->operand(0) != b->operand(0) || a->shape().dimensions().empty()) {
+    return false;
+  }
+  const Shape& src_shape = a->operand(0)->shape();
+  if (src_shape.dimensions(0) % 2 != 0) {
+    return false;
+  }
+  int64_t half = src_shape.dimensions(0) / 2;
+  if (std::abs(a->slice_starts(0) - b->slice_starts(0)) != half ||
+      a->slice_limits(0) - a->slice_starts(0) !=
+          b->slice_limits(0) - b->slice_starts(0) ||
+      a->slice_strides(0) != 1 || b->slice_strides(0) != 1) {
+    return false;
+  }
+  for (int64_t d = 1; d < src_shape.dimensions().size(); ++d) {
+    if (a->slice_starts(d) != b->slice_starts(d) ||
+        a->slice_limits(d) != b->slice_limits(d) || a->slice_strides(d) != 1 ||
+        b->slice_strides(d) != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+using PairedRootCache =
+    absl::flat_hash_map<std::pair<const HloInstruction*, const HloInstruction*>,
+                        bool>;
+
+// Returns true if `a` and `b` are paired (hi, lo) operands produced by 64-bit
+// decomposition (X64SplitLow/X64SplitHigh, adjacent tuple elements, TwoSum
+// outputs, or identical structural operations over paired inputs).
+static bool ArePairedRoots(const HloInstruction* a, const HloInstruction* b,
+                           PairedRootCache* cache, int depth = 0) {
+  if (a == b || a == nullptr || b == nullptr || depth > 16 ||
+      !a->shape().IsArray() || !b->shape().IsArray() ||
+      !ShapeUtil::Compatible(a->shape(), b->shape())) {
+    return false;
+  }
+  auto key = a < b ? std::pair(a, b) : std::pair(b, a);
+  if (auto it = cache->find(key); it != cache->end()) {
+    return it->second;
+  }
+  bool res = false;
+  if (IsTwoSumPair(/*hi=*/a, /*lo=*/b) || IsTwoSumPair(/*hi=*/b, /*lo=*/a) ||
+      IsPairedHalfSlice(a, b)) {
+    res = true;
+  } else if (a->opcode() == HloOpcode::kCustomCall &&
+             b->opcode() == HloOpcode::kCustomCall && a->operand_count() == 1 &&
+             b->operand_count() == 1 && a->operand(0) == b->operand(0)) {
+    absl::string_view ta = a->custom_call_target();
+    absl::string_view tb = b->custom_call_target();
+    res = (ta == "X64SplitLow" && tb == "X64SplitHigh") ||
+          (ta == "X64SplitHigh" && tb == "X64SplitLow") ||
+          (ta == "X128SplitLow" && tb == "X128SplitHigh") ||
+          (ta == "X128SplitHigh" && tb == "X128SplitLow");
+  } else if (a->opcode() == HloOpcode::kGetTupleElement &&
+             b->opcode() == HloOpcode::kGetTupleElement &&
+             a->operand(0) == b->operand(0)) {
+    res = std::abs(a->tuple_index() - b->tuple_index()) == 1;
+  } else if (a->opcode() == HloOpcode::kSelect &&
+             b->opcode() == HloOpcode::kSelect &&
+             a->operand(0) == b->operand(0)) {
+    res = ArePairedRoots(a->operand(1), b->operand(1), cache, depth + 1) ||
+          ArePairedRoots(a->operand(2), b->operand(2), cache, depth + 1);
+  } else if (a->opcode() == HloOpcode::kCollectivePermute &&
+             b->opcode() == HloOpcode::kCollectivePermute &&
+             a->operand_count() == 1 && b->operand_count() == 1) {
+    auto pa = a->source_target_pairs();
+    auto pb = b->source_target_pairs();
+    absl::c_sort(pa);
+    absl::c_sort(pb);
+    res = pa == pb &&
+          ArePairedRoots(a->operand(0), b->operand(0), cache, depth + 1);
+  } else if (a->SameOp(*b) && a->operand_count() == b->operand_count()) {
+    switch (a->opcode()) {
+      case HloOpcode::kCopy:
+      case HloOpcode::kNegate:
+      case HloOpcode::kAbs:
+      case HloOpcode::kReshape:
+      case HloOpcode::kBitcast:
+      case HloOpcode::kTranspose:
+      case HloOpcode::kSlice:
+        res = ArePairedRoots(a->operand(0), b->operand(0), cache, depth + 1);
+        break;
+      case HloOpcode::kPad:
+        res = a->operand(1) == b->operand(1) &&
+              ArePairedRoots(a->operand(0), b->operand(0), cache, depth + 1);
+        break;
+      case HloOpcode::kDynamicSlice: {
+        bool same_indices = true;
+        for (int64_t k = 1; k < a->operand_count(); ++k) {
+          if (a->operand(k) != b->operand(k)) {
+            same_indices = false;
+            break;
+          }
+        }
+        res = same_indices &&
+              ArePairedRoots(a->operand(0), b->operand(0), cache, depth + 1);
+        break;
+      }
+      case HloOpcode::kDynamicUpdateSlice: {
+        bool same_indices = true;
+        for (int64_t k = 2; k < a->operand_count(); ++k) {
+          if (a->operand(k) != b->operand(k)) {
+            same_indices = false;
+            break;
+          }
+        }
+        res = same_indices &&
+              (ArePairedRoots(a->operand(0), b->operand(0), cache, depth + 1) ||
+               ArePairedRoots(a->operand(1), b->operand(1), cache, depth + 1));
+        break;
+      }
+      case HloOpcode::kConcatenate: {
+        res = a->operand_count() > 0;
+        for (int64_t k = 0; k < a->operand_count(); ++k) {
+          if (!ArePairedRoots(a->operand(k), b->operand(k), cache, depth + 1)) {
+            res = false;
+            break;
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  (*cache)[key] = res;
+  return res;
 }
 
 absl::StatusOr<bool> CollectivePermuteCSE::RunImpl(
@@ -421,6 +601,118 @@ absl::StatusOr<bool> CollectivePermuteCSE::RunImpl(
           if (small == a) {
             break;
           }
+        }
+      }
+    }
+
+    if (module->config().debug_options().xla_enable_enzyme_comms_opt()) {
+      PairedRootCache paired_root_cache;
+      for (size_t i = 0; i < permutes.size(); ++i) {
+        HloInstruction* a = permutes[i];
+        if (!a || a->user_count() == 0 || !IsPlainPermute(a) ||
+            a->shape().dimensions().empty()) {
+          continue;
+        }
+        auto a_pairs = a->source_target_pairs();
+        absl::c_sort(a_pairs);
+        PermuteWindow wa = ResolveWindow(a->mutable_operand(0));
+        if (!wa.root->shape().IsArray()) {
+          continue;
+        }
+        for (size_t j = i + 1; j < permutes.size(); ++j) {
+          HloInstruction* b = permutes[j];
+          if (!b || b->user_count() == 0 || !IsPlainPermute(b) ||
+              !ShapeUtil::Compatible(a->shape(), b->shape())) {
+            continue;
+          }
+          auto b_pairs = b->source_target_pairs();
+          absl::c_sort(b_pairs);
+          if (a_pairs != b_pairs) {
+            continue;
+          }
+          PermuteWindow wb = ResolveWindow(b->mutable_operand(0));
+          if (wa.root == wb.root || !wb.root->shape().IsArray() ||
+              wa.starts != wb.starts || wa.limits != wb.limits ||
+              !ArePairedRoots(wa.root, wb.root, &paired_root_cache)) {
+            continue;
+          }
+          if (!reachability) {
+            reachability = HloReachabilityMap::Build(computation);
+          }
+          if (reachability->IsReachable(a, b) ||
+              reachability->IsReachable(b, a)) {
+            continue;
+          }
+
+          int64_t d0 = a->shape().dimensions(0);
+          Shape concat_shape = a->shape();
+          concat_shape.set_dimensions(0, 2 * d0);
+          HloInstruction* concat =
+              computation->AddInstruction(HloInstruction::CreateConcatenate(
+                  concat_shape, {a->mutable_operand(0), b->mutable_operand(0)},
+                  /*dimension=*/0));
+          HloInstruction* fused_permute = computation->AddInstruction(
+              a->CloneWithNewOperands(concat_shape, {concat}));
+          fused_permute->set_metadata(a->metadata());
+          for (HloInstruction* old : {a, b}) {
+            for (HloInstruction* pred : old->control_predecessors()) {
+              if (pred != a && pred != b &&
+                  !reachability->IsReachable(a, pred) &&
+                  !reachability->IsReachable(b, pred)) {
+                ABSL_RETURN_IF_ERROR(pred->AddControlDependencyTo(fused_permute));
+              }
+            }
+            for (HloInstruction* succ : old->control_successors()) {
+              if (succ != a && succ != b) {
+                ABSL_RETURN_IF_ERROR(fused_permute->AddControlDependencyTo(succ));
+              }
+            }
+          }
+          for (auto [old, offset0] :
+               {std::pair(a, int64_t{0}), std::pair(b, d0)}) {
+            for (HloInstruction* user : std::vector<HloInstruction*>(
+                     old->users().begin(), old->users().end())) {
+              if (user->opcode() != HloOpcode::kSlice ||
+                  !absl::c_all_of(user->slice_strides(),
+                                  [](int64_t s) { return s == 1; }) ||
+                  !user->control_predecessors().empty() ||
+                  !user->control_successors().empty()) {
+                continue;
+              }
+              std::vector<int64_t> starts(user->slice_starts().begin(),
+                                          user->slice_starts().end());
+              std::vector<int64_t> limits(user->slice_limits().begin(),
+                                          user->slice_limits().end());
+              std::vector<int64_t> strides(starts.size(), 1);
+              starts[0] += offset0;
+              limits[0] += offset0;
+              HloInstruction* replacement =
+                  computation->AddInstruction(HloInstruction::CreateSlice(
+                      user->shape(), fused_permute, starts, limits, strides));
+              ABSL_RETURN_IF_ERROR(user->ReplaceAllUsesWith(replacement));
+              ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(user));
+            }
+            ABSL_RETURN_IF_ERROR(old->DropAllControlDeps());
+            if (old->user_count() != 0) {
+              std::vector<int64_t> starts(old->shape().dimensions().size(), 0);
+              std::vector<int64_t> limits(old->shape().dimensions().begin(),
+                                          old->shape().dimensions().end());
+              std::vector<int64_t> strides(starts.size(), 1);
+              starts[0] = offset0;
+              limits[0] = offset0 + d0;
+              HloInstruction* replacement =
+                  computation->AddInstruction(HloInstruction::CreateSlice(
+                      old->shape(), fused_permute, starts, limits, strides));
+              ABSL_RETURN_IF_ERROR(old->ReplaceAllUsesWith(replacement));
+            }
+            ABSL_RETURN_IF_ERROR(computation->RemoveInstruction(old));
+          }
+          reachability.reset();
+          paired_root_cache.clear();
+          permutes[i] = nullptr;
+          permutes[j] = nullptr;
+          changed = true;
+          break;
         }
       }
     }

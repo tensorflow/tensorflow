@@ -748,7 +748,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     // an insertion race and will be destroyed.
     auto lockable_clique = std::make_shared<LockableGpuClique>(
         clique_key, std::nullopt, std::move(comms), peer_access_enabled,
-        std::move(cancel), /*parent=*/&**parent_clique);
+        std::move(cancel), /*parent_key=*/parent_clique_key);
 
     {  // Cannot contend: this LockableGpuClique is not published yet.
       LockableGpuClique::Lock clique_lock = lockable_clique->Acquire();
@@ -874,6 +874,12 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
               ranks.emplace_back(*r);
             }
 
+            // An abandoned clique is destroyed only after we release
+            // `state.mu`. Destroying communicators can block on peers
+            // , and those peers might be waiting for `state.mu` to
+            // abandon their own cliques.
+            std::shared_ptr<LockableGpuClique> abandoned;
+
             // Returns nullptr if we do not have a clique for `clique_key`.
             auto lockable_clique = [&]() -> LockableGpuClique* {
               absl::MutexLock lock(state.mu);
@@ -932,9 +938,10 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireClique(
                 auto safety_lock = to_lock->Acquire();
 
                 // Only when we know that the clique doesn't have any other
-                // users we can delete it. It will be destroyed when `to_lock`
-                // will get out of scope.
+                // users we can delete it. It will be destroyed when `abandoned`
+                // gets out of scope, after we release `state.mu`.
                 state.cliques.erase(cache_key);
+                abandoned = std::move(to_lock);
 
                 return nullptr;
               }

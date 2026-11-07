@@ -472,10 +472,9 @@ StreamExecutorExecutable::Deserialize(riegeli::Any<riegeli::Reader*> reader,
 
   PjRtPlatformId platform_id = topology.platform_id();
   if (IsEarlyExitCompilation(compile_options)) {
-    return std::make_unique<StreamExecutorExecutable>(
-        platform_id, std::move(compile_options), /*aot_executable=*/nullptr,
-        /*num_replicas=*/1, /*num_partitions=*/1, /*name=*/"",
-        /*fingerprint=*/"", default_memory_space);
+    return InvalidArgument(
+        "Executable compiled with xla_early_exit_with_layouts cannot be "
+        "deserialized.");
   }
 
   std::string str = std::move(*proto.mutable_serialized_executable());

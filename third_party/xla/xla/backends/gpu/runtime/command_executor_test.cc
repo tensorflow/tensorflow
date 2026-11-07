@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
@@ -133,7 +134,7 @@ class NestingCmd : public FakeCmd {
 
 TEST(CommandExecutorTest, EmptySequenceDoesNotRequireWarmup) {
   ASSERT_OK_AND_ASSIGN(auto executor, CommandExecutor::Create({}, kSerialize));
-  EXPECT_FALSE(executor.requires_warmup());
+  EXPECT_FALSE(executor.requires_warmup({}));
 }
 
 TEST(CommandExecutorTest, RequiresWarmup) {
@@ -144,7 +145,7 @@ TEST(CommandExecutorTest, RequiresWarmup) {
                               requires_warmup);
     ASSERT_OK_AND_ASSIGN(auto executor, CommandExecutor::Create(
                                             std::move(commands), kSerialize));
-    EXPECT_EQ(executor.requires_warmup(), requires_warmup);
+    EXPECT_EQ(executor.requires_warmup({}), requires_warmup);
   }
 }
 
@@ -155,8 +156,29 @@ TEST(CommandExecutorTest, RequiresWarmupInNestedCommands) {
     commands.Emplace<NestingCmd>(&nested);
     ASSERT_OK_AND_ASSIGN(auto executor, CommandExecutor::Create(
                                             std::move(commands), kSerialize));
-    EXPECT_EQ(executor.requires_warmup(), requires_warmup);
+    EXPECT_EQ(executor.requires_warmup({}), requires_warmup);
   }
+}
+
+TEST(CommandExecutorTest, RequiresWarmupWithCommandBufferRequests) {
+  FakeCmd nested({}, nullptr, false, false, /*requires_warmup=*/true);
+  CommandSequence commands;
+  commands.Emplace<FakeCmd>();
+  const Command* top_cmd = commands[0];
+  commands.Emplace<NestingCmd>(&nested);
+  ASSERT_OK_AND_ASSIGN(
+      auto executor, CommandExecutor::Create(std::move(commands), kSerialize));
+  EXPECT_TRUE(executor.requires_warmup({}));
+
+  CommandBufferRequests requests;
+
+  // Overriding nested command true -> false clears warmup requirement.
+  requests.SetRequiresWarmup(&nested, false);
+  EXPECT_FALSE(executor.requires_warmup(requests));
+
+  // Overriding top-level command false -> true requests warmup again.
+  requests.SetRequiresWarmup(top_cmd, true);
+  EXPECT_TRUE(executor.requires_warmup(requests));
 }
 
 class CommandExecutorUpdateTest : public ::testing::Test {

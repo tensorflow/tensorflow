@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -84,11 +85,33 @@ void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst) {
   }
 }
 
+namespace {
+
+absl::flat_hash_set<int64_t> NonInvariantSliceIndices(
+    const emitters::KernelArguments& arguments) {
+  absl::flat_hash_set<int64_t> non_invariant;
+  for (const emitters::KernelArgument& arg : arguments.args()) {
+    if (arg.kind() == emitters::KernelArgument::Kind::kManaged &&
+        !arg.invariant()) {
+      non_invariant.insert(arg.slice_index());
+    }
+  }
+  return non_invariant;
+}
+
+}  // namespace
+
 void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
                           llvm::Function& dst) {
+  const absl::flat_hash_set<int64_t> non_invariant_slices =
+      NonInvariantSliceIndices(arguments);
   for (auto&& [arg_idx, kernel_argument] : llvm::enumerate(arguments.args())) {
     llvm::Argument& dst_arg = *dst.getArg(arg_idx);
     dst_arg.setName(absl::StrCat("arg", arg_idx));
+
+    if (!dst_arg.getType()->isPointerTy()) {
+      continue;
+    }
 
     if (!dst_arg.hasByValAttr()) {
       dst.addDereferenceableParamAttr(arg_idx, kernel_argument.slice().size());
@@ -102,9 +125,23 @@ void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
           llvm::Attribute::get(dst_arg.getContext(), llvm::Attribute::Alignment,
                                kernel_argument.alignment()));
     }
-    if (!kernel_argument.aliased()) {
+    // NVPTX derives ld.global.nc from readonly plus noalias; omitting both on
+    // slices marked not invariant prevents inferred readonly from restoring it.
+    bool slice_invariant =
+        kernel_argument.kind() != emitters::KernelArgument::Kind::kManaged ||
+        !non_invariant_slices.contains(kernel_argument.slice_index());
+    if (!kernel_argument.aliased() && slice_invariant) {
       dst.addParamAttr(arg_idx, llvm::Attribute::get(dst_arg.getContext(),
                                                      llvm::Attribute::NoAlias));
+    }
+    if (!kernel_argument.written() && slice_invariant &&
+        !dst_arg.hasByValAttr() &&
+        !dst_arg.hasAttribute(llvm::Attribute::ReadNone) &&
+        !dst_arg.hasAttribute(llvm::Attribute::WriteOnly) &&
+        !dst_arg.hasAttribute(llvm::Attribute::Writable)) {
+      dst.addParamAttr(arg_idx,
+                       llvm::Attribute::get(dst_arg.getContext(),
+                                            llvm::Attribute::ReadOnly));
     }
   }
 }

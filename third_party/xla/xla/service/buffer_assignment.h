@@ -144,6 +144,20 @@ class BufferAllocation {
     return is_entry_computation_parameter_;
   }
 
+  // Whether this entry parameter allocation has an input/output alias in
+  // HloInputOutputAliasConfig (kMustAlias or kMayAlias), so the computation may
+  // write it in place (and BufferAssigner may reuse it for temporaries when
+  // allow_reusing_aliased_entry_params_for_temp is enabled).
+  //
+  // At execution time this allocation is backed either by an exclusively
+  // donated buffer that does not overlap any other parameter subbuffer
+  // (including another leaf of the same tuple parameter), or, when kMayAlias
+  // donation is declined at runtime (for example via
+  // ExecuteOptions::non_donatable_input_indices), by a fresh buffer copy
+  // protected by the runtime before execution. Read only entry parameter
+  // subbuffers (and buffers whose kMayAlias donation was declined) may share
+  // memory with each other. Codegen may rely on this: buffers backing this
+  // allocation may be marked noalias against all other parameter subbuffers.
   bool is_parameter_aliased_with_output() const {
     return is_parameter_aliased_with_output_;
   }

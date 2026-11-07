@@ -505,7 +505,7 @@ std::unique_ptr<CommonPjRtClient> CreatePjRtCpuClient(
         LocalChipId(topology_device.local_device_id),
         topology_device.process_id == process_id, client.get());
     if (device->IsAddressable()) {
-      const int id = device->id();
+      const int id = device->global_device_id().value();
 
       // The first attached memory space is returned as the default by
       // CommonPjRtDevice, so attach the device memory space first.
@@ -1360,8 +1360,35 @@ CreateBufferTable(const BufferAssignment& assignment,
   return std::move(buffer_table);
 }
 
-tsl::RCReference<PjRtExecutableLoadState> PjRtCpuRawClient::MakeLoadState() {
+absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
+PjRtCpuRawClient::MakeLoadState(const LoadOptions& load_options) {
   return tsl::MakeRef<CpuExecutableLoadState>(this);
+}
+
+absl::StatusOr<std::shared_ptr<const DeviceAssignment>>
+CpuExecutableLoadState::GetDeviceAssignment(PjRtExecutable* pjrt_executable,
+                                            int process_index) {
+  absl::MutexLock lock(mu_);
+  if (device_assignment_.has_value()) {
+    return *device_assignment_;
+  }
+  auto* executable = absl::down_cast<PjRtCpuExecutable*>(pjrt_executable);
+  CompileOptions compile_options = executable->compile_options();
+  ABSL_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
+
+  int num_replicas;
+  int num_partitions;
+  std::shared_ptr<DeviceAssignment> device_assignment;
+  ABSL_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+      compile_options.compile_portable_executable,
+      &compile_options.executable_build_options,
+      [executable, process_index](int num_replicas, int num_partitions) {
+        return executable->topology_->GetDefaultDeviceAssignment(
+            process_index, num_replicas, std::nullopt, num_partitions, nullptr);
+      },
+      &num_replicas, &num_partitions, &device_assignment));
+  device_assignment_ = std::move(device_assignment);
+  return *device_assignment_;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
@@ -1372,22 +1399,26 @@ CpuExecutableLoadState::LoadRawExecutable(
   auto result = std::make_unique<CpuPjRtRawLoadedExecutable>(run_id);
   result->executable_ = absl::down_cast<PjRtCpuExecutable*>(&executable.get());
   result->raw_client_ = raw_client_;
+  ABSL_ASSIGN_OR_RETURN(
+      std::shared_ptr<const DeviceAssignment> device_assignment,
+      GetDeviceAssignment(&executable.get(), device_and_assign.process_index));
+  if (device_assignment == nullptr) {
+    auto single_device_assignment = std::make_shared<DeviceAssignment>(1, 1);
+    (*single_device_assignment)(0, 0) =
+        device_and_assign.global_device_id.value();
+    device_assignment = std::move(single_device_assignment);
+  }
   int num_addressable_devices = 0;
-  if (device_and_assign.device_assignment != nullptr) {
-    for (int r = 0; r < device_and_assign.device_assignment->replica_count();
-         ++r) {
-      for (int p = 0;
-           p < device_and_assign.device_assignment->computation_count(); ++p) {
-        GlobalDeviceId device_id((*device_and_assign.device_assignment)(r, p));
-        if (UnpackCpuProcessIndex(device_id) ==
-            device_and_assign.process_index) {
-          ++num_addressable_devices;
-        }
+  for (int r = 0; r < device_assignment->replica_count(); ++r) {
+    for (int p = 0; p < device_assignment->computation_count(); ++p) {
+      GlobalDeviceId device_id((*device_assignment)(r, p));
+      if (UnpackCpuProcessIndex(device_id) == device_and_assign.process_index) {
+        ++num_addressable_devices;
       }
     }
   }
   result->num_addressable_devices_ = num_addressable_devices;
-  result->device_assignment_ = std::move(device_and_assign.device_assignment);
+  result->device_assignment_ = std::move(device_assignment);
   result->local_device_id_ = device_and_assign.local_device_id;
   result->global_device_id_ = device_and_assign.global_device_id;
   return result;

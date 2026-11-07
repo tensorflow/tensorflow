@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -3040,6 +3041,55 @@ TEST_F(ConditionalCodeMotionTest, MoveDusOutForNonSideEffectingCustomCallUser) {
       FindInstruction(module.get(), HloOpcode::kDynamicUpdateSlice);
   ASSERT_NE(dus, nullptr);
   EXPECT_EQ(dus->parent(), module->entry_computation());
+}
+
+TEST_F(ConditionalCodeMotionTest,
+       UpdateShardingForWidenedBranchArgumentHeterogeneousShardings) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape array_shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, array_shape, "p0"));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, array_shape, "p1"));
+  p0->set_sharding(HloSharding::SingleDevice(0));
+  p1->set_sharding(HloSharding::SingleDevice(1));
+
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({p0, p1}));
+  tuple->set_sharding(HloSharding::SingleDevice(0));
+
+  UpdateShardingForWidenedBranchArgument(tuple, tuple);
+
+  ASSERT_TRUE(tuple->has_sharding());
+  EXPECT_TRUE(tuple->sharding().IsTuple());
+  ASSERT_EQ(tuple->sharding().tuple_elements().size(), 2);
+  EXPECT_EQ(tuple->sharding().tuple_elements()[0],
+            HloSharding::SingleDevice(0));
+  EXPECT_EQ(tuple->sharding().tuple_elements()[1],
+            HloSharding::SingleDevice(1));
+  EXPECT_OK(tuple->sharding().Validate(tuple->shape()));
+}
+
+TEST_F(ConditionalCodeMotionTest,
+       UpdateShardingForWidenedBranchArgumentDirectArrayInOneElementTuple) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape array_shape = ShapeUtil::MakeShape(F32, {4});
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, array_shape, "p0"));
+  p0->set_sharding(HloSharding::SingleDevice(0));
+
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({p0}));
+  tuple->set_sharding(HloSharding::SingleDevice(0));
+
+  UpdateShardingForWidenedBranchArgument(tuple, tuple);
+
+  ASSERT_TRUE(tuple->has_sharding());
+  EXPECT_TRUE(tuple->sharding().IsTuple());
+  ASSERT_EQ(tuple->sharding().tuple_elements().size(), 1);
+  EXPECT_EQ(tuple->sharding().tuple_elements()[0],
+            HloSharding::SingleDevice(0));
+  EXPECT_OK(tuple->sharding().Validate(tuple->shape()));
 }
 
 }  // namespace conditional_opt

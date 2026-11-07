@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/scoped_command_buffer_annotation.h"
@@ -225,13 +228,20 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
   ABSL_ASSIGN_OR_RETURN(
       std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
-      GetOrCreateCommandBuffer(params.executor, params.collective_memory));
+      GetOrCreateCommandBuffer(params.executor, params.collective_cliques,
+                               params.collective_memory));
   absl::MutexLock lock(cmd_buffer->mutex);
 
   // If there are no thunks, or command buffer does not require warmup,
   // we can mark warm up as done immediately.
-  if (!thunks_ || !commands_.requires_warmup()) {
-    cmd_buffer->warmup_done = true;
+  if (!cmd_buffer->warmup_done) {
+    if (thunks_ == nullptr) {
+      cmd_buffer->warmup_done = true;
+    } else {
+      TF_RET_CHECK(params.command_buffer_requests != nullptr);
+      cmd_buffer->warmup_done =
+          !commands_.requires_warmup(*params.command_buffer_requests);
+    }
   }
 
   if (!cmd_buffer->warmup_done) {
@@ -342,9 +352,9 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   se::StreamExecutor* executor = params.stream->parent();
-  ABSL_ASSIGN_OR_RETURN(
-      std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
-      GetOrCreateCommandBuffer(executor, params.collective_memory));
+  ABSL_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
+                   GetOrCreateCommandBuffer(executor, params.collective_cliques,
+                                            params.collective_memory));
 
   absl::MutexLock lock(cmd_buffer->mutex);
 
@@ -437,9 +447,45 @@ absl::Status CommandBufferThunk::RecordCommands(
   return absl::OkStatus();
 }
 
+// State tied to each acquired GPU clique. When any tied clique is destroyed,
+// `~CliqueState()` resets `DeviceState::command_buffer` so the captured CUDA
+// graph is destroyed before `ncclCommDestroy`.
+struct CommandBufferThunk::CliqueState {
+  CliqueState(std::weak_ptr<State> state, int device_ordinal,
+              const ExecutorCommandBuffer* cmd_buffer)
+      : state(std::move(state)),
+        device_ordinal(device_ordinal),
+        cmd_buffer(cmd_buffer) {}
+
+  ~CliqueState() {
+    std::shared_ptr<State> locked = state.lock();
+    if (!locked) {
+      return;
+    }
+    absl::StatusOr<DeviceState*> device_state =
+        locked->device_states.GetOrCreate(device_ordinal);
+    if (!device_state.ok()) {
+      return;
+    }
+    std::shared_ptr<ExecutorCommandBuffer> to_destroy;
+    {
+      absl::MutexLock lock((*device_state)->mutex);
+      if ((*device_state)->command_buffer.get() == cmd_buffer) {
+        to_destroy = std::move((*device_state)->command_buffer);
+      }
+    }
+    to_destroy.reset();
+  }
+
+  std::weak_ptr<State> state;
+  int device_ordinal;
+  const ExecutorCommandBuffer* cmd_buffer;
+};
+
 absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
 CommandBufferThunk::GetOrCreateCommandBuffer(
-    se::StreamExecutor* executor, const CollectiveMemory* collective_memory) {
+    se::StreamExecutor* executor, CollectiveCliques* collective_cliques,
+    const CollectiveMemory* collective_memory) {
   ABSL_ASSIGN_OR_RETURN(
       DeviceState * device_state,
       state_->device_states.GetOrCreate(executor->device_ordinal()));
@@ -469,8 +515,19 @@ CommandBufferThunk::GetOrCreateCommandBuffer(
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<se::CommandBuffer> command_buffer,
         executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
-    device_state->command_buffer =
+    auto cmd_buffer =
         std::make_shared<ExecutorCommandBuffer>(std::move(command_buffer));
+    if (collective_cliques != nullptr && !collective_cliques->empty()) {
+      std::vector<std::unique_ptr<CliqueState>> clique_states;
+      clique_states.reserve(collective_cliques->num_cliques());
+      for (size_t i = 0; i < collective_cliques->num_cliques(); ++i) {
+        clique_states.push_back(std::make_unique<CliqueState>(
+            state_, executor->device_ordinal(), cmd_buffer.get()));
+      }
+      ABSL_ASSIGN_OR_RETURN(cmd_buffer->clique_refs,
+                       collective_cliques->TieAll(std::move(clique_states)));
+    }
+    device_state->command_buffer = std::move(cmd_buffer);
     device_state->recorded_symmetric_memory_ids.reset();
   }
   return device_state->command_buffer;
@@ -546,9 +603,13 @@ void CommandBufferThunk::EvictCommandBuffers() {
 
     // Evict all command buffers.
     ptr->device_states.ForEach([&](DeviceState& device_state) {
-      absl::MutexLock state_lock(device_state.mutex);
-      if (device_state.command_buffer != nullptr) {
-        device_state.command_buffer.reset();
+      std::shared_ptr<ExecutorCommandBuffer> to_destroy;
+      {
+        absl::MutexLock state_lock(device_state.mutex);
+        to_destroy = std::move(device_state.command_buffer);
+      }
+      if (to_destroy != nullptr) {
+        to_destroy.reset();
         ++num_evicted;
       }
     });

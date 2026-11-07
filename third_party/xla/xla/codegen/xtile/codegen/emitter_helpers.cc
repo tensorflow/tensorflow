@@ -78,7 +78,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/types.h"
 #include "xla/util.h"
-#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::xtile {
@@ -109,6 +108,18 @@ bool ArePowersOfTwo(ArrayRef<int64_t> values) {
 // Emit a value as Index clamped to [lower, upper].
 Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
                        int64_t lower, int64_t upper) {
+  // `lower` and `upper` may not fit in the type of `value`, e.g. an s8 offset
+  // into a dimension of size 300 has `upper` = 299. The constants are built in
+  // the type of `value` and would be truncated silently, so in that case
+  // extend `value` to 64 bits first. XLA signed integers are signless here and
+  // are sign-extended. Unsigned integers are not supported by the arith ops
+  // below and are rejected by the Triton support checks for runtime variables.
+  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(value.getType());
+      int_type && int_type.isSignless() && int_type.getWidth() < 64 &&
+      (!llvm::isIntN(int_type.getWidth(), lower) ||
+       !llvm::isIntN(int_type.getWidth(), upper))) {
+    value = ma::ExtSIOp::create(b, b.getI64Type(), value);
+  }
   Value clamped_index =
       ma::MaxSIOp::create(b, value, CreateConst(b, value.getType(), lower));
   clamped_index = ma::MinSIOp::create(b, clamped_index,
@@ -237,6 +248,36 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
     result.push_back(value == 0 ? 1 : llvm::PowerOf2Ceil(value));
   }
   return result;
+}
+
+bool IsAdditiveScanCombiner(const HloComputation& combiner) {
+  const HloInstruction* root = combiner.root_instruction();
+  // LowerScan derives the carry from the output, so both tuple elements must
+  // be the same instruction.
+  if (combiner.num_parameters() != 2 || root->opcode() != HloOpcode::kTuple ||
+      root->operand_count() != 2 || root->operand(0) != root->operand(1)) {
+    return false;
+  }
+  const HloInstruction* output = root->operand(0);
+  const HloInstruction* p0 = combiner.parameter_instruction(0);
+  const HloInstruction* p1 = combiner.parameter_instruction(1);
+  PrimitiveType type = output->shape().element_type();
+  if (p0->shape().element_type() != type ||
+      p1->shape().element_type() != type) {
+    return false;
+  }
+  // FloatNormalization promotes low-precision additions by wrapping the
+  // parameters and the add result in kConvert instructions.
+  auto unwrap_convert = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kConvert ? instr->operand(0) : instr;
+  };
+  const HloInstruction* add = unwrap_convert(output);
+  if (add->opcode() != HloOpcode::kAdd) {
+    return false;
+  }
+  const HloInstruction* lhs = unwrap_convert(add->operand(0));
+  const HloInstruction* rhs = unwrap_convert(add->operand(1));
+  return (lhs == p0 && rhs == p1) || (lhs == p1 && rhs == p0);
 }
 
 bool IsTritonDotScaledOperandType(PrimitiveType type) {
@@ -382,7 +423,8 @@ Value EmitClampedRTVar(mlir::ImplicitLocOpBuilder& b,
 
 // Evaluates tiling parameters for the given affine expressions, e.g. offsets.
 absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
-    ArrayRef<SymbolicExpr> exprs) {
+    ArrayRef<SymbolicExpr> exprs,
+    ArrayRef<std::pair<SymbolicExpr, Interval>> tile_constraints) {
   // We expect expressions to use:
   // - some parallel and sequential dimensions of tiling space d0, d1, ..
   // - some runtime variables s0, s1, .., represented as symbols.
@@ -396,8 +438,14 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   const gpu::TilingSpace& tiling_space = tiled_computation_.tiling_space();
   int64_t num_dimensions = tiling_space.num_dimensions();
   int64_t num_parallel_dimensions = tiling_space.num_parallel_dimensions();
-  // Get all dimension and symbol IDs from all of the expressions.
-  UsedParameters used_parameters = GetUsedParameters(exprs, num_dimensions);
+  // Get all dimension and symbol IDs from all of the expressions and
+  // constraints.
+  SmallVector<SymbolicExpr> all_exprs(exprs.begin(), exprs.end());
+  all_exprs.reserve(exprs.size() + tile_constraints.size());
+  for (const auto& [constraint_expr, interval] : tile_constraints) {
+    all_exprs.push_back(constraint_expr);
+  }
+  UsedParameters used_parameters = GetUsedParameters(all_exprs, num_dimensions);
   const llvm::SmallVector<int64_t>& dim_ids = used_parameters.dimension_ids;
   const llvm::SmallVector<int64_t>& symbol_ids = used_parameters.symbol_ids;
 
@@ -482,8 +530,17 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
       std::move(dim_variables), std::move(symbol_variables), /*rt_vars=*/{},
       constraints);
 
-  return emitters::ApplyIndexing(offset_indexing_map, dim_values, symbol_values,
-                                 b_);
+  for (const auto& [constraint_expr, interval] : tile_constraints) {
+    offset_indexing_map.AddConstraint(
+        constraint_expr.ReplaceDimsAndSymbols(dim_replacements,
+                                              symbol_replacements),
+        interval);
+  }
+  offset_indexing_map.Simplify();
+
+  return emitters::ApplyIndexing(
+      offset_indexing_map, dim_values, symbol_values, b_,
+      /*preserve_result_ranges=*/!tile_constraints.empty());
 }
 
 absl::StatusOr<Type> PrimitiveTypeToMlirType(
@@ -856,7 +913,8 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
                    GetStorageTileStrides(logical_tile_strides, logical_shape));
   ABSL_ASSIGN_OR_RETURN(
       SmallVector<Value> logical_offsets,
-      emitter_ctx.EvaluateTilingParameters(tiled_hlo.tile().offsets()));
+      emitter_ctx.EvaluateTilingParameters(tiled_hlo.tile().offsets(),
+                                           tiled_hlo.tile().constraints()));
   ABSL_ASSIGN_OR_RETURN(SmallVector<Value> storage_offsets,
                    GetStorageOffsets(emitter_ctx.b(), logical_shape,
                                      tiled_hlo.tile().offsets(),
@@ -1094,8 +1152,7 @@ absl::StatusOr<Type> GetMlirType(
 absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction& fusion,
     absl::Span<mlir::Type> opaque_args_types,
-    const std::optional<GpuComputeCapability>& gpu_cc,
-    const DefaultTileRequirementsVisitor& /*tile_requirements_visitor*/) {
+    const std::optional<GpuComputeCapability>& gpu_cc) {
   SmallVector<Type> fn_arg_types;
 
   auto hlo_computation = fusion.fused_instructions_computation();

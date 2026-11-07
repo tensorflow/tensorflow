@@ -22,14 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/thread_block_specialized.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -39,7 +42,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -54,6 +59,7 @@ struct FusionBatch {
   std::vector<HloInstruction*> instructions;
   absl::flat_hash_set<const HloInstruction*> unique_operands;
   int64_t total_blocks = 0;
+  int64_t total_outputs = 0;
 };
 
 bool IsZeroCostOp(const HloInstruction* inst) {
@@ -76,8 +82,10 @@ std::optional<LaunchDimensions> GetLaunchDimensions(
     return std::nullopt;
   }
 
-  // Single-output fusions only.
-  if (!fusion->shape().IsArray()) {
+  // Native MLIR fusions only. This is only a first filter. The call to
+  // CreateNativeNestedEmitter below verifies that fusion actually can be
+  // emitted with a native emitter.
+  if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
     return std::nullopt;
   }
 
@@ -89,13 +97,6 @@ std::optional<LaunchDimensions> GetLaunchDimensions(
 
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(*fusion, device_info);
 
-  // Loop fusions only.
-  // TODO(b/579777515): Support other emitter fusion kinds.
-  if (analysis.emitter_fusion_kind() !=
-      HloFusionAnalysis::EmitterFusionKind::kLoop) {
-    return std::nullopt;
-  }
-
   PreBufferAssignmentFusionInfo fusion_info(analysis);
   // Trivial copy and dynamic update slice fusions are not supported.
   if (fusion_info.GetCopyFusion().has_value() ||
@@ -104,14 +105,26 @@ std::optional<LaunchDimensions> GetLaunchDimensions(
     return std::nullopt;
   }
 
-  std::unique_ptr<FusionInterface> emitter = GetFusionEmitter(fusion_info);
-
-  const auto* kernel_emitter =
-      dynamic_cast<const KernelFusionInterface*>(emitter.get());
-  if (kernel_emitter == nullptr) {
+  std::unique_ptr<MlirKernelEmitter> emitter =
+      ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(analysis);
+  if (emitter == nullptr) {
     return std::nullopt;
   }
-  return kernel_emitter->launch_dimensions();
+  LaunchDimensions launch_dims = emitter->launch_dimensions();
+
+  // If a nested kernel has less than max_threads and uses a barrier, we need to
+  // use `bar.sync 0, T_i` in PTX. The instruction has a requirement that T_i
+  // must be a multiple of the warp size.
+  //
+  // Only loop emitter can have a count of threads that is not a multiple of the
+  // warp size, but we also know that loop emitter never uses barriers.
+  if (launch_dims.num_threads_per_block() % WarpSize(device_info) != 0 &&
+      analysis.emitter_fusion_kind() !=
+          HloFusionAnalysis::EmitterFusionKind::kLoop) {
+    return std::nullopt;
+  }
+
+  return launch_dims;
 }
 
 bool TryAddToBatch(FusionBatch& batch, HloInstruction* candidate,
@@ -148,35 +161,111 @@ bool TryAddToBatch(FusionBatch& batch, HloInstruction* candidate,
   unique_operands.insert(candidate->operands().begin(),
                          candidate->operands().end());
 
-  const int64_t num_outputs = batch.instructions.size() + 1;
-  const int64_t total_kernel_args = unique_operands.size() + num_outputs;
-  if (total_kernel_args > kMaxKernelArgs) {
+  const int64_t num_outputs =
+      batch.total_outputs + ShapeUtil::GetLeafCount(candidate->shape());
+  if (unique_operands.size() + num_outputs > kMaxKernelArgs) {
     return false;
   }
 
   batch.instructions.push_back(candidate);
   batch.unique_operands = std::move(unique_operands);
   batch.total_blocks = total_blocks;
+  batch.total_outputs = num_outputs;
   return true;
 }
 
 absl::Status FuseCandidates(HloModule* module, HloComputation* comp,
                             absl::Span<HloInstruction* const> candidates) {
   HloComputation::Builder builder("horizontal_fusion_computation");
-  builder.AddInstruction(HloInstruction::CreateTuple({}));
+  std::vector<HloInstruction*> outer_operands;
+  absl::flat_hash_map<const HloInstruction*, HloInstruction*> operand_to_param;
+  std::vector<HloInstruction*> tuple_elements;
+
+  for (HloInstruction* nested_fusion : candidates) {
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(nested_fusion->operand_count());
+    for (HloInstruction* operand : nested_fusion->mutable_operands()) {
+      auto [it, inserted] = operand_to_param.try_emplace(operand, nullptr);
+      if (inserted) {
+        it->second = builder.AddInstruction(HloInstruction::CreateParameter(
+            outer_operands.size(), operand->shape(),
+            absl::StrCat("param_", outer_operands.size())));
+        outer_operands.push_back(operand);
+      }
+      new_operands.push_back(it->second);
+    }
+
+    HloInstruction* cloned_fusion =
+        builder.AddInstruction(nested_fusion->CloneWithNewOperands(
+            nested_fusion->shape(), new_operands, /*suffix=*/""));
+    if (nested_fusion->shape().IsTuple()) {
+      for (int64_t i = 0; i < nested_fusion->shape().tuple_shapes_size(); ++i) {
+        tuple_elements.push_back(builder.AddInstruction(
+            HloInstruction::CreateGetTupleElement(cloned_fusion, i)));
+      }
+    } else {
+      tuple_elements.push_back(cloned_fusion);
+    }
+  }
+
+  HloInstruction* root_tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple(tuple_elements));
   HloComputation* outer_computation =
-      module->AddEmbeddedComputation(builder.Build());
+      module->AddEmbeddedComputation(builder.Build(root_tuple));
   HloInstruction* outer_fusion = comp->AddInstruction(
-      HloInstruction::CreateFusion(ShapeUtil::MakeNil(),
-                                   HloInstruction::FusionKind::kLoop,
-                                   /*operands=*/{}, outer_computation),
+      HloInstruction::CreateFusion(root_tuple->shape(),
+                                   HloInstruction::FusionKind::kCustom,
+                                   outer_operands, outer_computation),
       "horizontal_fusion");
 
+  GpuBackendConfig gpu_backend_config;
+  gpu_backend_config.mutable_fusion_backend_config()->set_kind(
+      kThreadBlockSpecializedFusionKind);
+  ABSL_RETURN_IF_ERROR(outer_fusion->set_backend_config(gpu_backend_config));
+
+  int64_t output_idx = 0;
   for (HloInstruction* nested_fusion : candidates) {
     HloComputation* comp_i = nested_fusion->fused_instructions_computation();
     ABSL_RETURN_IF_ERROR(outer_fusion->CopyAllControlDepsFrom(nested_fusion));
     ABSL_RETURN_IF_ERROR(nested_fusion->DropAllControlDeps());
-    outer_fusion->FuseInstructionIntoMultiOutput(nested_fusion);
+    if (nested_fusion->shape().IsTuple()) {
+      // Redirect GetTupleElement users to the new outer fusion.
+      for (HloInstruction* user : std::vector<HloInstruction*>(
+               nested_fusion->users().begin(), nested_fusion->users().end())) {
+        if (user->opcode() != HloOpcode::kGetTupleElement) {
+          continue;
+        }
+        user->set_tuple_index(output_idx + user->tuple_index());
+        ABSL_RETURN_IF_ERROR(
+            nested_fusion->ReplaceUseWithDifferentShape(user, outer_fusion));
+      }
+
+      // If there are still users left, then the tuple output was used as a
+      // whole. Replace it with a new tuple create with gtes of the outer
+      // fusion.
+      if (nested_fusion->user_count() > 0 || nested_fusion->IsRoot()) {
+        int64_t num_outputs = nested_fusion->shape().tuple_shapes().size();
+        std::vector<HloInstruction*> new_gtes;
+        new_gtes.reserve(num_outputs);
+        // It's intentional that we create new gtes here instead of reusing the
+        // one created above. Potentially, gte can have scheduling predecessor
+        // annotation that we don't want to inherit.
+        for (int64_t i = 0; i < num_outputs; ++i) {
+          new_gtes.push_back(
+              comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+                  outer_fusion, output_idx + i)));
+        }
+        HloInstruction* new_tuple =
+            comp->AddInstruction(HloInstruction::CreateTuple(new_gtes));
+        ABSL_RETURN_IF_ERROR(nested_fusion->ReplaceAllUsesWith(new_tuple));
+      }
+    } else {
+      HloInstruction* new_gte = comp->AddInstruction(
+          HloInstruction::CreateGetTupleElement(outer_fusion, output_idx));
+      ABSL_RETURN_IF_ERROR(nested_fusion->ReplaceAllUsesWith(new_gte));
+    }
+    output_idx += ShapeUtil::GetLeafCount(nested_fusion->shape());
+
     ABSL_RETURN_IF_ERROR(comp->RemoveInstruction(nested_fusion));
     ABSL_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(comp_i));
   }

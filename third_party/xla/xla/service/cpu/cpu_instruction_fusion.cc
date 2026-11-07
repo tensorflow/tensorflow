@@ -320,6 +320,7 @@ bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kScaledDot:
     case HloOpcode::kScan:
     case HloOpcode::kScatter:

@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/loopback_collectives.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
@@ -272,6 +273,25 @@ TEST_F(GpuExecutableTest, ExecuteWithWatchdogs) {
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo, config));
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
+}
+
+TEST(GpuExecutableRuntimeTest,
+     LocalityDomainStreamsAreExcludedFromGenericStreamCounts) {
+  ThunkSequence thunks;
+  auto start = std::make_unique<AsyncStartThunk>(
+      ThunkInfoWithId(1), LocalityDomainStreamId(0), ThunkSequence{},
+      /*devices_per_host=*/1);
+  std::shared_ptr<AsyncExecution> async_execution = start->async_execution();
+  thunks.push_back(std::move(start));
+  thunks.Emplace<AsyncDoneThunk>(ThunkInfoWithId(2),
+                                 std::move(async_execution));
+
+  GpuExecutable::Params params;
+  params.module_name = "locality_domain_stream_count_test";
+  params.executable = std::make_unique<ThunkExecutor>(std::move(thunks));
+  SetDummyBufferAssignment(params);
+
+  EXPECT_OK(GpuExecutable::Create(std::move(params)));
 }
 
 TEST_F(GpuExecutableTest, OutputInfoToAndFromProto) {

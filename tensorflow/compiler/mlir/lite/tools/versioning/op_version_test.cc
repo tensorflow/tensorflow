@@ -218,6 +218,12 @@ TEST(OpVersionTest, VersioningLessEqualTest) {
 
 TEST(OpVersionTest, VersioningGreaterTest) {
   SimpleVersioningTest(BuiltinOperator_GREATER);
+
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_GREATER,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 
 TEST(OpVersionTest, VersioningGreaterEqualTest) {
@@ -751,6 +757,38 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
       .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 14);
+
+  // An N-D blockwise quantized weight is version 16 regardless of its type.
+  for (TfLiteType weight_type : {kTfLiteInt2, kTfLiteInt4, kTfLiteUInt4,
+                                 kTfLiteInt8, kTfLiteUInt8, kTfLiteInt16}) {
+    fully_connected_params = {};
+    fake_op_sig = {
+        .op = BuiltinOperator_FULLY_CONNECTED,
+        .inputs = CreateOpSignatureTensorSpecs(
+            std::vector<TfLiteType>{kTfLiteInt8, weight_type, kTfLiteInt32}),
+        .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
+        .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+    };
+    fake_op_sig.ext_options.fully_connected.is_weight_blockwise_quantized =
+        true;
+    EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 16);
+
+    // The dynamic range variant (float32 or float16 input and output) is
+    // version 17.
+    for (TfLiteType float_type : {kTfLiteFloat32, kTfLiteFloat16}) {
+      fully_connected_params = {};
+      fake_op_sig = {
+          .op = BuiltinOperator_FULLY_CONNECTED,
+          .inputs = CreateOpSignatureTensorSpecs(
+              std::vector<TfLiteType>{float_type, weight_type, float_type}),
+          .outputs = CreateOpSignatureTensorSpecs(float_type),
+          .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+      };
+      fake_op_sig.ext_options.fully_connected.is_weight_blockwise_quantized =
+          true;
+      EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 17);
+    }
+  }
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {
@@ -1457,6 +1495,13 @@ TEST(OpVersionTest, VersioningBroadcastToTest) {
       .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_BROADCAST_TO,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
 }
 
 TEST(OpVersionTest, VersioningGeluTest) {

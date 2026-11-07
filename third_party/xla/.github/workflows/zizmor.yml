@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv dependencies
-        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Run zizmor
         # Pinned version; bumped on a regular schedule by the XLA zizmor release monitor.

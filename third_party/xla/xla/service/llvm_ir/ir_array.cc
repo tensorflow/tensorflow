@@ -607,8 +607,6 @@ void IrArray::AnnotateLoadStoreInstructionWithMetadata(
     llvm::Instruction* instruction) const {
   CHECK(llvm::isa<llvm::LoadInst>(instruction) ||
         llvm::isa<llvm::StoreInst>(instruction));
-  CHECK(!llvm::isa<llvm::StoreInst>(instruction) || !is_invariant_)
-      << "Trying to create a store to an invariant IRArray.";
 
   for (const auto& kind_md_pair : metadata_) {
     instruction->setMetadata(kind_md_pair.first, kind_md_pair.second);

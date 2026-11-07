@@ -69,6 +69,10 @@ enum {
   // kClientHashValues adds support for `Client::HashValues`.
   kClientHashValues = 27,
 
+  // kDeserializeLoadedExecutable adds support for
+  // `Compiler::DeserializeLoadedExecutable`.
+  kDeserializeLoadedExecutable = 28,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,

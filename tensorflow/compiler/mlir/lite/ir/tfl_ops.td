@@ -1153,7 +1153,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, F16, QI8, QUI8, QI16, QUI16]>:$input,
-    TFL_TensorOf<[F32, F16, QI2, QI4, QI8, QUI8, QI16]>:$filter,
+    TFL_TensorOf<[F32, F16, QI2, QI4, QI8, QUI8, QI16, TFL_BlockwiseQuantType]>:$filter,
     TFL_TensorOfOrNone<[F32, F16, QI32, QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -1242,7 +1242,7 @@ in the batch dimensions and broadcasting.
 
   let arguments = (ins
     TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$x,
-    TFL_TensorOf<[F32, F16, QI8, QI16, I8]>:$y,
+    TFL_TensorOf<[F32, F16, QI8, QI16, I8, TFL_BlockwiseQuantType]>:$y,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
     // Used in post-training dynamic range quantization. If the value is true,
@@ -2053,8 +2053,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
-    TFL_TensorOf<[F32, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
+    ins TFL_TensorOf<[F32, F16, I32, I64, QUI8, QI8, TFL_Quint8]>:$lhs,
+    TFL_TensorOf<[F32, F16, I32, I64, QUI8, QI8, TFL_Quint8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -5758,12 +5758,12 @@ subsequent operation and then be optimized away, however.)
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
+    TFL_TensorOf<[F32, F16, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
     TFL_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+    TFL_TensorOf<[F32, F16, F8E4M3FN, F8E5M2, I32, I1, TFL_I4, I8, QI8, UI8, UI32, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
   );
 
   let extraClassDeclaration = [{

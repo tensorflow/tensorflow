@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -1535,6 +1536,10 @@ class FakeReadyFuturePjRtBuffer : public PjRtBuffer {
 
 class HostLiteralMockPjRtClient : public MockPjRtClient {
  public:
+  HostLiteralMockPjRtClient() {
+    ON_CALL(*this, platform_id).WillByDefault(::testing::Return(CpuId()));
+  }
+
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<PjRtBuffer>>,
               BufferFromHostLiteral,
               (const LiteralSlice& literal, PjRtMemorySpace* memory_space,
@@ -1663,7 +1668,6 @@ class MismatchedGlobalIdPjRtDevice : public PjRtDevice {
   const PjRtDeviceDescription& description() const override {
     return inner_->description();
   }
-  int id() const override { return inner_->id(); }
   GlobalDeviceId global_device_id() const override { return global_id_; }
   LocalDeviceId local_device_id() const override {
     return inner_->local_device_id();
@@ -1783,11 +1787,11 @@ constexpr absl::string_view kDiffCheckStablehlo = R"mlir(
   }
 )mlir";
 
-// Verifies that when `CopyToMemorySpace` is supported, `CopyArgumentsToDevice`
-// transfers only the 2 distinct cached variants on device 0 via
-// `BufferFromHostLiteral`, clones repeated parameters on device 0 within the
-// same memory space, and clones all device 1 parameters across memory spaces
-// from device 0.
+// Verifies that when `CopyToMemorySpace` is supported across multiple devices,
+// `CopyArgumentsToDevice` distributes the 2 distinct host-to-device
+// `BufferFromHostLiteral` transfers round-robin across devices (1 on device 0,
+// 1 on device 1) and uses cross-memory-space `CopyToMemorySpace` for all
+// remaining replicas and repeated layer parameters (`same_space_clones == 0`).
 TEST_F(FunctionalHloRunnerTest,
        ClonesDuplicateAndCrossDeviceLargeArgumentsViaCopyToMemorySpace) {
   ScopedFakeArgumentCacheReset cache_reset;
@@ -1800,6 +1804,12 @@ TEST_F(FunctionalHloRunnerTest,
       CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
                              kNumReplicas));
   NoOpExecutingLoadedExecutable wrapped_exec(real_exec.get());
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * dev0_mem,
+      real_exec->addressable_devices()[0]->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * dev1_mem,
+      real_exec->addressable_devices()[1]->default_memory_space());
 
   FunctionalHloRunner::RunningOptions running_options;
   running_options.module_argument_mode =
@@ -1807,11 +1817,9 @@ TEST_F(FunctionalHloRunnerTest,
   running_options.module_output_mode =
       FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
 
-  // CopyToMemorySpace enabled: only Variant 0 and Variant 1 on device 0 call
-  // BufferFromHostLiteral. Arguments 2 and 3 on device 0 clone within the same
-  // memory space, and all 4 arguments on device 1 clone across memory spaces
-  // from device 0.
   HostLiteralMockPjRtClient mock_client;
+  std::atomic<int> dev0_h2d{0};
+  std::atomic<int> dev1_h2d{0};
   std::atomic<int> same_space_clones{0};
   std::atomic<int> cross_space_clones{0};
   EXPECT_CALL(mock_client, BufferFromHostLiteral)
@@ -1819,6 +1827,11 @@ TEST_F(FunctionalHloRunnerTest,
       .WillRepeatedly([&](const LiteralSlice& /*literal*/,
                           PjRtMemorySpace* memory_space,
                           const Layout* /*device_layout*/) {
+        if (memory_space == dev0_mem) {
+          dev0_h2d.fetch_add(1);
+        } else if (memory_space == dev1_mem) {
+          dev1_h2d.fetch_add(1);
+        }
         return std::make_unique<CloneTrackingPjRtBuffer>(
             memory_space, &same_space_clones, &cross_space_clones,
             /*allow_copy=*/true);
@@ -1828,13 +1841,15 @@ TEST_F(FunctionalHloRunnerTest,
       FunctionalHloRunner::Run(mock_client, &wrapped_exec, /*arguments=*/{},
                                running_options));
   EXPECT_TRUE(results.empty());
-  EXPECT_EQ(same_space_clones.load(), 2);
-  EXPECT_EQ(cross_space_clones.load(), 4);
+  EXPECT_EQ(dev0_h2d.load(), 1);
+  EXPECT_EQ(dev1_h2d.load(), 1);
+  EXPECT_EQ(same_space_clones.load(), 0);
+  EXPECT_EQ(cross_space_clones.load(), 6);
 }
 
-// Verifies that cross-device cloning in `CopyArgumentsToDevice` looks up device
-// 0's host literals by `addressable_devices[0]->id()` rather than
-// `global_device_id()` when the two differ.
+// Verifies that cross-device cloning in `CopyArgumentsToDevice` looks up
+// per-device host literals by `addressable_devices[i]->global_device_id()`
+// rather than the local index when the two differ.
 TEST_F(FunctionalHloRunnerTest,
        ClonesCrossDeviceArgumentsWhenDeviceIdDiffersFromGlobalDeviceId) {
   ScopedFakeArgumentCacheReset cache_reset;
@@ -1847,10 +1862,11 @@ TEST_F(FunctionalHloRunnerTest,
       CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
                              kNumReplicas));
 
-  // Wrap addressable devices so `device->id()` (0, 1) differs from
-  // `device->global_device_id()` (4, 5). `CreateArgumentsOnDevice` keys
-  // `PerDeviceLiteralVecType` by `device->id()`, so `CopyArgumentsToDevice`
-  // must also look up device 0 via `addressable_devices[0]->id()`.
+  // Wrap addressable devices so `device->global_device_id()` is (4, 5) rather
+  // than local index (0, 1). `CreateArgumentsOnDevice` keys
+  // `PerDeviceLiteralVecType` by `device->global_device_id().value()`, so
+  // `CopyArgumentsToDevice` must also look up per-device arguments via
+  // `addressable_devices[i]->global_device_id().value()`.
   ASSERT_EQ(real_exec->addressable_devices().size(), 2);
   MismatchedGlobalIdPjRtDevice dev0(real_exec->addressable_devices()[0],
                                     GlobalDeviceId(4));
@@ -1881,8 +1897,8 @@ TEST_F(FunctionalHloRunnerTest,
       FunctionalHloRunner::Run(mock_client, &wrapped_exec, /*arguments=*/{},
                                running_options));
   EXPECT_TRUE(results.empty());
-  EXPECT_EQ(same_space_clones.load(), 2);
-  EXPECT_EQ(cross_space_clones.load(), 4);
+  EXPECT_EQ(same_space_clones.load(), 0);
+  EXPECT_EQ(cross_space_clones.load(), 6);
 }
 
 // Verifies that when `CopyToMemorySpace` returns `Unimplemented`,
@@ -1901,6 +1917,12 @@ TEST_F(
       CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
                              kNumReplicas));
   NoOpExecutingLoadedExecutable wrapped_exec(real_exec.get());
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * dev0_mem,
+      real_exec->addressable_devices()[0]->default_memory_space());
+  ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * dev1_mem,
+      real_exec->addressable_devices()[1]->default_memory_space());
 
   FunctionalHloRunner::RunningOptions running_options;
   running_options.module_argument_mode =
@@ -1911,13 +1933,18 @@ TEST_F(
   HostLiteralMockPjRtClient mock_client;
   std::atomic<int> same_space_clones{0};
   std::atomic<int> cross_space_clones{0};
-  std::vector<const void*> seen_ptrs;
+  std::vector<const void*> dev0_ptrs;
+  std::vector<const void*> dev1_ptrs;
   EXPECT_CALL(mock_client, BufferFromHostLiteral)
       .Times(4 * kNumReplicas)
       .WillRepeatedly([&](const LiteralSlice& literal,
                           PjRtMemorySpace* memory_space,
                           const Layout* /*device_layout*/) {
-        seen_ptrs.push_back(literal.untyped_data());
+        if (memory_space == dev0_mem) {
+          dev0_ptrs.push_back(literal.untyped_data());
+        } else if (memory_space == dev1_mem) {
+          dev1_ptrs.push_back(literal.untyped_data());
+        }
         return std::make_unique<CloneTrackingPjRtBuffer>(
             memory_space, &same_space_clones, &cross_space_clones,
             /*allow_copy=*/false);
@@ -1927,10 +1954,316 @@ TEST_F(
       FunctionalHloRunner::Run(mock_client, &wrapped_exec, /*arguments=*/{},
                                running_options));
   EXPECT_TRUE(results.empty());
-  ASSERT_EQ(seen_ptrs.size(), 8);
+  ASSERT_EQ(dev0_ptrs.size(), 4);
+  ASSERT_EQ(dev1_ptrs.size(), 4);
   for (int arg_i = 0; arg_i < 4; ++arg_i) {
-    EXPECT_EQ(seen_ptrs[arg_i], seen_ptrs[4 + arg_i]) << "arg_i=" << arg_i;
+    EXPECT_EQ(dev0_ptrs[arg_i], dev1_ptrs[arg_i]) << "arg_i=" << arg_i;
   }
+}
+
+// Verifies that single-device execution skips same-memory-space
+// `CopyToMemorySpace` on TPU (avoiding D2H + H2D host bounce buffers) while
+// preserving same-memory-space cloning on non-TPU backends.
+TEST_F(FunctionalHloRunnerTest,
+       SkipsSameMemorySpaceCloneOnTpuWhileKeepingSingleDeviceCloneOnNonTpu) {
+  ScopedFakeArgumentCacheReset cache_reset;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> real_exec,
+      CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
+                             /*num_replicas=*/1));
+  NoOpExecutingLoadedExecutable wrapped_exec(real_exec.get());
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomInputs;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+
+  // Non-TPU single-device client: clones arg2 and arg3 within the same space.
+  {
+    HostLiteralMockPjRtClient cpu_mock;
+    std::atomic<int> same_space_clones{0};
+    std::atomic<int> cross_space_clones{0};
+    EXPECT_CALL(cpu_mock, BufferFromHostLiteral)
+        .Times(2)
+        .WillRepeatedly([&](const LiteralSlice& /*literal*/,
+                            PjRtMemorySpace* memory_space,
+                            const Layout* /*device_layout*/) {
+          return std::make_unique<CloneTrackingPjRtBuffer>(
+              memory_space, &same_space_clones, &cross_space_clones,
+              /*allow_copy=*/true);
+        });
+    ASSERT_THAT(FunctionalHloRunner::Run(cpu_mock, &wrapped_exec,
+                                         /*arguments=*/{}, running_options),
+                absl_testing::IsOk());
+    EXPECT_EQ(same_space_clones.load(), 2);
+    EXPECT_EQ(cross_space_clones.load(), 0);
+  }
+
+  // TPU single-device client: avoids same-memory-space CopyToMemorySpace and
+  // issues direct H2D transfers from the cached host literals.
+  {
+    HostLiteralMockPjRtClient tpu_mock;
+    ON_CALL(tpu_mock, platform_id).WillByDefault(::testing::Return(TpuId()));
+    std::atomic<int> same_space_clones{0};
+    std::atomic<int> cross_space_clones{0};
+    EXPECT_CALL(tpu_mock, BufferFromHostLiteral)
+        .Times(4)
+        .WillRepeatedly([&](const LiteralSlice& /*literal*/,
+                            PjRtMemorySpace* memory_space,
+                            const Layout* /*device_layout*/) {
+          return std::make_unique<CloneTrackingPjRtBuffer>(
+              memory_space, &same_space_clones, &cross_space_clones,
+              /*allow_copy=*/true);
+        });
+    ASSERT_THAT(FunctionalHloRunner::Run(tpu_mock, &wrapped_exec,
+                                         /*arguments=*/{}, running_options),
+                absl_testing::IsOk());
+    EXPECT_EQ(same_space_clones.load(), 0);
+    EXPECT_EQ(cross_space_clones.load(), 0);
+  }
+}
+
+class EventLoggingProfiler : public ProfilerInterface {
+ public:
+  explicit EventLoggingProfiler(std::vector<std::string>* events,
+                                const absl::Duration* total_run_time = nullptr)
+      : events_(events), total_run_time_(total_run_time) {}
+
+  void CreateSession() override {
+    events_->push_back("CreateSession");
+    active_session_ = true;
+    session_start_ = absl::Now();
+  }
+
+  void UploadSession() override {
+    if (active_session_) {
+      total_profiled_window_ += absl::Now() - session_start_;
+      active_session_ = false;
+    }
+    if (total_run_time_ != nullptr) {
+      run_time_at_last_upload_ = *total_run_time_;
+    }
+    events_->push_back("UploadSession");
+  }
+
+  bool active_session() const { return active_session_; }
+  absl::Duration total_profiled_window() const {
+    return total_profiled_window_;
+  }
+  absl::Duration run_time_at_last_upload() const {
+    return run_time_at_last_upload_;
+  }
+
+ private:
+  std::vector<std::string>* events_;
+  const absl::Duration* total_run_time_;
+  bool active_session_ = false;
+  absl::Time session_start_ = absl::InfinitePast();
+  absl::Duration total_profiled_window_ = absl::ZeroDuration();
+  absl::Duration run_time_at_last_upload_ = absl::ZeroDuration();
+};
+
+class EventLoggingLoadedExecutable : public NoOpExecutingLoadedExecutable {
+ public:
+  EventLoggingLoadedExecutable(PjRtLoadedExecutable* inner,
+                               std::vector<std::string>* events)
+      : NoOpExecutingLoadedExecutable(inner), events_(events) {}
+
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options,
+      std::optional<std::vector<Future<>>>& returned_futures) const override {
+    events_->push_back("Execute");
+    return NoOpExecutingLoadedExecutable::Execute(argument_handles, options,
+                                                  returned_futures);
+  }
+
+ private:
+  std::vector<std::string>* events_;
+};
+
+// Verifies that `RunningOptions::profiler` starts strictly after argument
+// generation/H2D transfers and `after_arguments_ready_callback` complete and
+// uploads immediately after `Execute` finishes, and that
+// `RunningOptions::total_run_time` excludes input loading and synchronization.
+TEST_F(FunctionalHloRunnerTest,
+       ProfilerSessionAndTotalRunTimeExcludeArgumentLoading) {
+  ScopedFakeArgumentCacheReset cache_reset;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> real_exec,
+      CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
+                             /*num_replicas=*/1));
+
+  std::vector<std::string> events;
+  std::vector<bool> active_during_argument_setup;
+  std::vector<absl::Duration> run_time_during_argument_setup;
+  absl::Duration total_run_time = absl::InfiniteDuration();
+  EventLoggingLoadedExecutable wrapped_exec(real_exec.get(), &events);
+  EventLoggingProfiler profiler(&events, &total_run_time);
+
+  HostLiteralMockPjRtClient mock_client;
+  std::atomic<int> same_space_clones{0};
+  std::atomic<int> cross_space_clones{0};
+  EXPECT_CALL(mock_client, BufferFromHostLiteral)
+      .Times(2)
+      .WillRepeatedly([&](const LiteralSlice& /*literal*/,
+                          PjRtMemorySpace* memory_space,
+                          const Layout* /*device_layout*/) {
+        active_during_argument_setup.push_back(profiler.active_session());
+        run_time_during_argument_setup.push_back(total_run_time);
+        events.push_back("BufferFromHostLiteral");
+        return std::make_unique<CloneTrackingPjRtBuffer>(
+            memory_space, &same_space_clones, &cross_space_clones,
+            /*allow_copy=*/true);
+      });
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomInputs;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+  running_options.num_repeats = 2;
+  running_options.num_repeats_with_profiler = 2;
+  running_options.profiler = &profiler;
+  running_options.total_run_time = &total_run_time;
+  running_options.after_arguments_ready_callback =
+      [&](size_t step) -> absl::Status {
+    active_during_argument_setup.push_back(profiler.active_session());
+    run_time_during_argument_setup.push_back(total_run_time);
+    events.push_back(absl::StrCat("AfterArgumentsReady:", step));
+    return absl::OkStatus();
+  };
+
+  ASSERT_THAT(FunctionalHloRunner::Run(mock_client, &wrapped_exec,
+                                       /*arguments=*/{}, running_options),
+              absl_testing::IsOk());
+
+  EXPECT_THAT(active_during_argument_setup, Each(false));
+  EXPECT_THAT(run_time_during_argument_setup, Each(absl::ZeroDuration()));
+  EXPECT_THAT(events,
+              ElementsAre("BufferFromHostLiteral", "BufferFromHostLiteral",
+                          "AfterArgumentsReady:0", "CreateSession", "Execute",
+                          "Execute", "UploadSession"));
+  EXPECT_GE(total_run_time, absl::ZeroDuration());
+  EXPECT_LE(total_run_time, profiler.total_profiled_window());
+}
+
+// Verifies that when `recreate_buffers_between_repeats` is enabled with
+// multi-repeat profiling, the active profiler session is uploaded/closed before
+// every repeat's buffer recreation so argument generation and transfers never
+// occur inside an active profiler session or `total_run_time`.
+TEST_F(FunctionalHloRunnerTest,
+       RecreateBuffersBetweenRepeatsClosesProfilerBeforeEachArgumentLoad) {
+  ScopedFakeArgumentCacheReset cache_reset;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> real_exec,
+      CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
+                             /*num_replicas=*/1));
+
+  std::vector<std::string> events;
+  std::vector<bool> active_during_argument_setup;
+  std::vector<bool> run_time_unchanged_since_upload;
+  absl::Duration total_run_time = absl::InfiniteDuration();
+  EventLoggingLoadedExecutable wrapped_exec(real_exec.get(), &events);
+  EventLoggingProfiler profiler(&events, &total_run_time);
+
+  HostLiteralMockPjRtClient mock_client;
+  std::atomic<int> same_space_clones{0};
+  std::atomic<int> cross_space_clones{0};
+  EXPECT_CALL(mock_client, BufferFromHostLiteral)
+      .Times(6)
+      .WillRepeatedly([&](const LiteralSlice& /*literal*/,
+                          PjRtMemorySpace* memory_space,
+                          const Layout* /*device_layout*/) {
+        active_during_argument_setup.push_back(profiler.active_session());
+        run_time_unchanged_since_upload.push_back(
+            total_run_time == profiler.run_time_at_last_upload());
+        events.push_back("BufferFromHostLiteral");
+        return std::make_unique<CloneTrackingPjRtBuffer>(
+            memory_space, &same_space_clones, &cross_space_clones,
+            /*allow_copy=*/true);
+      });
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomInputs;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+  running_options.num_repeats = 3;
+  running_options.num_repeats_with_profiler = 3;
+  running_options.recreate_buffers_between_repeats = true;
+  running_options.recreate_profiler_session_between_repeats = false;
+  running_options.profiler = &profiler;
+  running_options.total_run_time = &total_run_time;
+  running_options.after_arguments_ready_callback =
+      [&](size_t step) -> absl::Status {
+    active_during_argument_setup.push_back(profiler.active_session());
+    run_time_unchanged_since_upload.push_back(
+        total_run_time == profiler.run_time_at_last_upload());
+    events.push_back(absl::StrCat("AfterArgumentsReady:", step));
+    return absl::OkStatus();
+  };
+
+  ASSERT_THAT(FunctionalHloRunner::Run(mock_client, &wrapped_exec,
+                                       /*arguments=*/{}, running_options),
+              absl_testing::IsOk());
+
+  EXPECT_THAT(active_during_argument_setup, Each(false));
+  EXPECT_THAT(run_time_unchanged_since_upload, Each(true));
+  EXPECT_THAT(events,
+              ElementsAre("BufferFromHostLiteral", "BufferFromHostLiteral",
+                          "AfterArgumentsReady:0", "CreateSession", "Execute",
+                          "UploadSession", "BufferFromHostLiteral",
+                          "BufferFromHostLiteral", "AfterArgumentsReady:1",
+                          "CreateSession", "Execute", "UploadSession",
+                          "BufferFromHostLiteral", "BufferFromHostLiteral",
+                          "AfterArgumentsReady:2", "CreateSession", "Execute",
+                          "UploadSession"));
+  EXPECT_GE(total_run_time, absl::ZeroDuration());
+  EXPECT_LE(total_run_time, profiler.total_profiled_window());
+}
+
+// Verifies that an error returned by `after_arguments_ready_callback` aborts
+// before profiler session creation or device execution.
+TEST_F(FunctionalHloRunnerTest,
+       AfterArgumentsReadyCallbackErrorAbortsBeforeProfilingAndExecute) {
+  ScopedFakeArgumentCacheReset cache_reset;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> real_exec,
+      CompileStablehloModule(*real_client, kFourLargeArgsStablehlo,
+                             /*num_replicas=*/1));
+
+  std::vector<std::string> events;
+  EventLoggingLoadedExecutable wrapped_exec(real_exec.get(), &events);
+  EventLoggingProfiler profiler(&events);
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+  running_options.profiler = &profiler;
+  running_options.after_arguments_ready_callback =
+      [&](size_t step) -> absl::Status {
+    events.push_back(absl::StrCat("AfterArgumentsReady:", step));
+    return absl::AbortedError("peer host failed argument initialization");
+  };
+
+  EXPECT_THAT(FunctionalHloRunner::Run(*real_client, &wrapped_exec,
+                                       /*arguments=*/{}, running_options),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kAborted,
+                  HasSubstr("peer host failed argument initialization")));
+  EXPECT_THAT(events, ElementsAre("AfterArgumentsReady:0"));
 }
 
 // Verifies that `CanCloneArgumentBuffer` checks element types in addition to
@@ -2004,8 +2337,10 @@ TEST_F(FunctionalHloRunnerTest,
       FunctionalHloRunner::Run(*host_client, executable.get(), /*arguments=*/{},
                                running_options, /*engine=*/nullptr));
   ASSERT_EQ(shared_results.size(), 2);
-  const int dev0_id = executable->addressable_devices()[0]->id();
-  const int dev1_id = executable->addressable_devices()[1]->id();
+  const int dev0_id =
+      executable->addressable_devices()[0]->global_device_id().value();
+  const int dev1_id =
+      executable->addressable_devices()[1]->global_device_id().value();
   ASSERT_EQ(shared_results.at(dev0_id).size(), 3);
   ASSERT_EQ(shared_results.at(dev1_id).size(), 3);
   EXPECT_TRUE(shared_results.at(dev0_id)[0].IsAllFloat(0.0f));
@@ -2030,8 +2365,10 @@ TEST_F(FunctionalHloRunnerTest,
   running_options.module_argument_mode =
       FunctionalHloRunner::ModuleArgumentMode::kUseRandomInputs;
 
-  const int dev0_id = executable->addressable_devices()[0]->id();
-  const int dev1_id = executable->addressable_devices()[1]->id();
+  const int dev0_id =
+      executable->addressable_devices()[0]->global_device_id().value();
+  const int dev1_id =
+      executable->addressable_devices()[1]->global_device_id().value();
   std::minstd_rand0 engine(99);
   ASSERT_OK_AND_ASSIGN(
       FunctionalHloRunner::PerDeviceLiteralVecType distinct_results,
@@ -2187,6 +2524,83 @@ TEST_F(FunctionalHloRunnerTest, CompileDoesNotVerifyFingerprintsIfDisabled) {
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   preproc_options.verify_executable_fingerprint_across_processes = false;
   EXPECT_OK(CompileAsFirstOfTwoProcesses(kv_store, preproc_options));
+}
+
+// Verifies that in modules with a large parameter footprint (>= 256 MiB),
+// `CreateArgumentsOnDevice` scales `min_cached_argument_bytes` up so small
+// repeated per-layer weight matrices (such as 256 KiB `bf16[4096,32]` MoE
+// router gates) remain distinct across layers while bulk weights stay cached.
+TEST_F(FunctionalHloRunnerTest,
+       LargeModuleKeepsSmallRouterMatricesDistinctWhileCachingBulkWeights) {
+  ScopedFakeArgumentCacheReset cache_reset;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> real_client,
+                       CreateHostClient(/*cpu_device_count=*/1));
+
+  // 3 * 96 MiB (`bf16[48,1048576]`) + 3 * 256 KiB (`bf16[4096,32]`) = 288.75
+  // MiB total parameter bytes -> `min_cached_argument_bytes` > 1 MiB.
+  constexpr absl::string_view kLargeModuleWithRoutersStablehlo = R"mlir(
+    module {
+      func.func @main(%w0: tensor<48x1048576xbf16>,
+                      %w1: tensor<48x1048576xbf16>,
+                      %w2: tensor<48x1048576xbf16>,
+                      %r0: tensor<4096x32xbf16>,
+                      %r1: tensor<4096x32xbf16>,
+                      %r2: tensor<4096x32xbf16>) -> tensor<1x1xbf16> {
+        %s0 = stablehlo.slice %w0 [0:1, 0:1]
+            : (tensor<48x1048576xbf16>) -> tensor<1x1xbf16>
+        %s1 = stablehlo.slice %r0 [0:1, 0:1]
+            : (tensor<4096x32xbf16>) -> tensor<1x1xbf16>
+        %out = stablehlo.add %s0, %s1 : tensor<1x1xbf16>
+        func.return %out : tensor<1x1xbf16>
+      }
+    }
+  )mlir";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> real_exec,
+      CompileStablehloModule(*real_client, kLargeModuleWithRoutersStablehlo,
+                             /*num_replicas=*/1));
+  NoOpExecutingLoadedExecutable wrapped_exec(real_exec.get());
+
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomInputs;
+  running_options.module_output_mode =
+      FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+
+  HostLiteralMockPjRtClient mock_client;
+  std::atomic<int> bulk_h2d{0};
+  std::atomic<int> same_space_clones{0};
+  std::atomic<int> cross_space_clones{0};
+  absl::Mutex router_mu;
+  std::vector<Literal> router_literals;
+  // 2 H2D transfers for the 3 cached 96 MiB bulk weights + 3 H2D transfers for
+  // the 3 distinct 256 KiB router matrices = 5 total H2D calls.
+  EXPECT_CALL(mock_client, BufferFromHostLiteral)
+      .Times(5)
+      .WillRepeatedly([&](const LiteralSlice& literal,
+                          PjRtMemorySpace* memory_space,
+                          const Layout* /*device_layout*/) {
+        if (literal.size_bytes() == 256 * 1024) {
+          absl::MutexLock lock(router_mu);
+          router_literals.push_back(literal.Clone());
+        } else {
+          bulk_h2d.fetch_add(1);
+        }
+        return std::make_unique<CloneTrackingPjRtBuffer>(
+            memory_space, &same_space_clones, &cross_space_clones,
+            /*allow_copy=*/true);
+      });
+
+  ASSERT_THAT(FunctionalHloRunner::Run(mock_client, &wrapped_exec,
+                                       /*arguments=*/{}, running_options),
+              absl_testing::IsOk());
+  EXPECT_EQ(bulk_h2d.load(), 2);
+  EXPECT_EQ(same_space_clones.load(), 1);
+  EXPECT_EQ(cross_space_clones.load(), 0);
+  ASSERT_EQ(router_literals.size(), 3);
+  EXPECT_NE(router_literals[0], router_literals[1]);
+  EXPECT_NE(router_literals[0], router_literals[2]);
+  EXPECT_NE(router_literals[1], router_literals[2]);
 }
 
 }  // namespace

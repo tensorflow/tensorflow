@@ -196,6 +196,59 @@ absl::Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
   return CheckUnaryShape(copy);
 }
 
+namespace {
+
+// Checks that the block scale of operand `values_idx` has the rank of the
+// operand. Without explicit block sizes each scale dimension must evenly divide
+// the operand's; explicit block sizes must be positive, one per dimension.
+absl::Status VerifyBlockScaleShape(
+    const HloInstruction* hlo, int64_t values_idx,
+    const BlockScalingConfig::TensorBlockScalingConfig& config) {
+  const Shape& values = hlo->operand(values_idx)->shape();
+  const Shape& scale = hlo->operand(config.scale_idx())->shape();
+  if (!values.IsArray()) {
+    return InvalidArgument(
+        "Expected array operand %d for block scaling, got %s in %s", values_idx,
+        ShapeUtil::HumanString(values), hlo->ToString());
+  }
+  const int64_t rank = values.dimensions().size();
+  if (scale.dimensions().size() != rank) {
+    return InvalidArgument(
+        "Block scale %s must have the same rank as operand %d %s in %s",
+        ShapeUtil::HumanString(scale), values_idx,
+        ShapeUtil::HumanString(values), hlo->ToString());
+  }
+  absl::Span<const int64_t> block_sizes = config.block_sizes();
+  if (!block_sizes.empty() && block_sizes.size() != rank) {
+    return InvalidArgument(
+        "Block scaling block_sizes for operand %d must have %d entries, got %d "
+        "in %s",
+        values_idx, rank, block_sizes.size(), hlo->ToString());
+  }
+  for (int64_t d = 0; d < rank; ++d) {
+    const int64_t scale_dim = scale.dimensions(d);
+    const int64_t values_dim = values.dimensions(d);
+    if (block_sizes.empty()) {
+      if (scale_dim <= 0 || values_dim % scale_dim != 0) {
+        return InvalidArgument(
+            "Block scale dimension %d (size %d) must evenly divide operand %d "
+            "dimension %d (size %d) in %s",
+            d, scale_dim, values_idx, d, values_dim, hlo->ToString());
+      }
+      continue;
+    }
+    if (block_sizes[d] <= 0 || scale_dim <= 0) {
+      return InvalidArgument(
+          "Block scaling block size %d and scale size %d for operand %d "
+          "dimension %d must be positive in %s",
+          block_sizes[d], scale_dim, values_idx, d, hlo->ToString());
+    }
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 absl::Status VerifySparsityAndBlockScaling(const HloInstruction* hlo) {
   if (hlo->operand_count() < 2) {
     return InvalidArgument("%s must have at least 2 operands, got %d",
@@ -251,7 +304,27 @@ absl::Status VerifySparsityAndBlockScaling(const HloInstruction* hlo) {
         "block_scaling_config, but %d were referenced",
         hlo->operand_count() - 2, seen_count);
   }
-
+  // Indices are validated above, so the scale operands can be inspected.
+  const BlockScalingConfig& block_scaling = hlo->block_scaling_config();
+  const BlockScalingConfig::TensorBlockScalingConfig* sides[] = {
+      block_scaling.has_lhs() ? &block_scaling.lhs() : nullptr,
+      block_scaling.has_rhs() ? &block_scaling.rhs() : nullptr};
+  for (int64_t values_idx = 0; values_idx < 2; ++values_idx) {
+    if (sides[values_idx] == nullptr) {
+      continue;
+    }
+    const BlockScalingConfig::TensorBlockScalingConfig& config =
+        *sides[values_idx];
+    ABSL_RETURN_IF_ERROR(VerifyBlockScaleShape(hlo, values_idx, config));
+    if (config.has_zero_idx() &&
+        !ShapeUtil::SameDimensions(hlo->operand(config.zero_idx())->shape(),
+                                   hlo->operand(config.scale_idx())->shape())) {
+      return InvalidArgument(
+          "Block scaling zero point and scale for operand %d must have the "
+          "same dimensions in %s",
+          values_idx, hlo->ToString());
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -264,6 +337,29 @@ absl::Status ShapeVerifier::HandleDot(HloInstruction* dot) {
                        /*preferred_element_type=*/dot->shape().element_type(),
                        dot->sparsity_config()));
 
+  return CheckShape(dot, expected);
+}
+
+absl::Status ShapeVerifier::HandleDotGeneral(HloInstruction* dot) {
+  // A plain dot must use kDot; dot-general always carries extra operands.
+  if (dot->operand_count() <= 2) {
+    return InvalidArgument(
+        "dot-general must have sparsity or block scaling operands: %s",
+        dot->ToString());
+  }
+  // Only the lhs and rhs have precisions.
+  if (dot->precision_config().operand_precision_size() != 2) {
+    return InvalidArgument(
+        "dot-general must have exactly 2 operand precisions, got %d: %s",
+        dot->precision_config().operand_precision_size(), dot->ToString());
+  }
+  ABSL_RETURN_IF_ERROR(VerifySparsityAndBlockScaling(dot));
+  ABSL_ASSIGN_OR_RETURN(const Shape expected,
+                   ShapeInference::InferDotOpShape(
+                       dot->operand(0)->shape(), dot->operand(1)->shape(),
+                       dot->dot_dimension_numbers(),
+                       /*preferred_element_type=*/dot->shape().element_type(),
+                       dot->sparsity_config()));
   return CheckShape(dot, expected);
 }
 
@@ -2560,6 +2656,7 @@ absl::Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kScaledDot:
     case HloOpcode::kAllReduce:

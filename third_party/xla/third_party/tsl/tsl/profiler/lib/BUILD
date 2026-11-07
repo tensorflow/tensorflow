@@ -481,6 +481,18 @@ cc_library(
     ],
 )
 
+tsl_cc_test(
+    name = "scoped_memory_debug_annotation_test",
+    size = "small",
+    srcs = ["scoped_memory_debug_annotation_test.cc"],
+    deps = [
+        ":scoped_memory_debug_annotation",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla/tsl/platform:test",
+    ],
+)
+
 cc_library(
     name = "continuous_profiler_orchestrator",
     hdrs = ["continuous_profiler_orchestrator.h"],

@@ -292,6 +292,57 @@ absl::string_view kUnsupportedHlo = R"hlo(
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
   })hlo";
 
+// A "well-behaved" concatenate (all operands have the same size along the
+// concat dimension and all operands are used downstream) is eligible to
+// become a cuDNN fusion. Untagged (kLoop), so CudnnBackend must decide
+// eligibility on its own rather than trusting an upstream tag.
+absl::string_view kWellFormedConcatFusionHlo = R"hlo(
+  fused_computation {
+    p0 = f32[4,8] parameter(0)
+    p1 = f32[4,8] parameter(1)
+    ROOT concat = f32[4,16] concatenate(p0, p1), dimensions={1}
+  }
+
+  ENTRY e {
+    a = f32[4,8] parameter(0)
+    b = f32[4,8] parameter(1)
+    ROOT fusion = f32[4,16] fusion(a, b), kind=kLoop, calls=fused_computation
+  })hlo";
+
+// A fusion already claimed by another custom pass (e.g. a legacy
+// custom-fusion match) must not be reclaimed by CudnnBackend even if it would
+// otherwise look eligible (single, well-formed concatenate).
+absl::string_view kConcatFusionTaggedCustomFusionKindHlo = R"hlo(
+  fused_computation {
+    p0 = f32[4,8] parameter(0)
+    p1 = f32[4,8] parameter(1)
+    ROOT concat = f32[4,16] concatenate(p0, p1), dimensions={1}
+  }
+
+  ENTRY e {
+    a = f32[4,8] parameter(0)
+    b = f32[4,8] parameter(1)
+    ROOT fusion = f32[4,16] fusion(a, b), kind=kCustom, calls=fused_computation,
+      backend_config={"fusion_backend_config": {kind: "__custom_fusion"}}
+  })hlo";
+
+// Two concatenates in one fusion: cuDNN reports plans for it but fails to
+// lower it, so it must be rejected before any cuDNN query.
+absl::string_view kMultiConcatFusionHlo = R"hlo(
+  fused_computation {
+    p0 = f32[4,8] parameter(0)
+    p1 = f32[4,8] parameter(1)
+    c0 = f32[4,16] concatenate(p0, p1), dimensions={1}
+    c1 = f32[4,32] concatenate(c0, c0), dimensions={1}
+    ROOT neg = f32[4,32] negate(c1)
+  }
+
+  ENTRY e {
+    a = f32[4,8] parameter(0)
+    b = f32[4,8] parameter(1)
+    ROOT fusion = f32[4,32] fusion(a, b), kind=kLoop, calls=fused_computation
+  })hlo";
+
 class CudnnBackendTest : public HloHardwareIndependentTestBase {
  protected:
   CudnnBackendTest()
@@ -704,6 +755,62 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCallWithWorkspace) {
   EXPECT_THAT(gpu_config.cudnn_conv_backend_config().algorithm(),
               EqualsProto(config));
   EXPECT_EQ(replaced_instr->shape().tuple_shapes(1).dimensions(0), 1024);
+}
+
+TEST_F(CudnnBackendTest,
+       IsSupportedForUntaggedConcatFusionIsFalseWithFlagDisabledByDefault) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kWellFormedConcatFusionHlo));
+  // debug_options_ leaves xla_gpu_cudnn_non_gemm_fusion_level at its default
+  // (0), so an otherwise-eligible untagged fusion must not be claimed.
+  EXPECT_FALSE(backend_->IsSupported(
+      *hlo_module->entry_computation()->root_instruction()));
+}
+
+TEST_F(CudnnBackendTest,
+       IsSupportedForFusionAlreadyTaggedCustomFusionKindIsFalse) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kConcatFusionTaggedCustomFusionKindHlo));
+  DebugOptions debug_options = debug_options_;
+  debug_options.set_xla_gpu_cudnn_non_gemm_fusion_level(1);
+  CudnnBackend backend(stream_executor_, &debug_options, &compiler_,
+                       &target_config_);
+  EXPECT_FALSE(backend.IsSupported(
+      *hlo_module->entry_computation()->root_instruction()));
+}
+
+TEST_F(CudnnBackendTest,
+       IsSupportedForUntaggedConcatFusionIsFalseWithCudnnTooOld) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kWellFormedConcatFusionHlo));
+  DebugOptions debug_options = debug_options_;
+  debug_options.set_xla_gpu_cudnn_non_gemm_fusion_level(1);
+  Compiler::GpuTargetConfig target_config = target_config_;
+  target_config.device_description.set_dnn_version(
+      stream_executor::SemanticVersion(9, 25, 0));
+  CudnnBackend backend(stream_executor_, &debug_options, &compiler_,
+                       &target_config);
+  EXPECT_FALSE(backend.IsSupported(
+      *hlo_module->entry_computation()->root_instruction()));
+}
+
+TEST_F(CudnnBackendTest, IsSupportedForFusionWithMultipleConcatsIsFalse) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kMultiConcatFusionHlo));
+  DebugOptions debug_options = debug_options_;
+  debug_options.set_xla_gpu_cudnn_non_gemm_fusion_level(1);
+  Compiler::GpuTargetConfig target_config = target_config_;
+  target_config.device_description.set_dnn_version(
+      stream_executor::SemanticVersion(9, 26, 0));
+  target_config.device_description.set_gpu_compute_capability(
+      se::CudaComputeCapability::Blackwell());
+  CudnnBackend backend(stream_executor_, &debug_options, &compiler_,
+                       &target_config);
+  EXPECT_FALSE(backend.IsSupported(
+      *hlo_module->entry_computation()->root_instruction()));
 }
 
 }  // namespace gpu

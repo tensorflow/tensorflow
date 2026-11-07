@@ -29,6 +29,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/log_severity.h"
 #include "absl/log/check.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/error_spec.h"
+#include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -89,14 +92,23 @@ limitations under the License.
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/service/xla_debug_info_manager.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/hlo_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/gtl/value_or_die.h"
@@ -121,6 +133,7 @@ using ::testing::AssertionResult;
 using ::testing::AtLeast;
 using ::testing::Contains;
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 using ::testing::EndsWith;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
@@ -195,7 +208,7 @@ class GpuCompilerTest
   // GpuCompiler::RunPostSchedulingPipelines.
   bool RunsFusionDispatchPipeline() const {
     return get_cuda_cc().IsAtLeastAmpere() ||
-           get_rocm_cc().gfx9_mi300_series() || get_rocm_cc().gfx1250();
+           device_description().gpu_compute_capability().IsRocm();
   }
 };
 
@@ -356,6 +369,193 @@ ENTRY main {
   EXPECT_THAT(is_tracked_after_compilation(/*embed_hlo_module=*/false),
               absl_testing::IsOkAndHolds(false));
 }
+
+// Non-scalar constants are not emitted as initializers in the LLVM IR. Instead
+// the executable keeps their content around and copies it to the device on the
+// first execution. This test makes sure that the content stays valid when the
+// HloModule is not embedded in the executable and therefore gets destroyed at
+// the end of the compilation. The content of the f32 constant aliases the
+// module's literal, while the content of the s4 constant is already owned
+// because it gets packed into a new buffer.
+TEST_F(GpuCompilerTest, ConstantsOutliveModuleThatIsNotEmbedded) {
+  constexpr int kNumElements = 1024;
+  constexpr int64_t kSizeInBytes = kNumElements * sizeof(float);
+  constexpr int64_t kS4SizeInBytes = kNumElements / 2;
+  std::vector<float> constant_values(kNumElements);
+  absl::c_iota(constant_values, 1.0f);
+  std::vector<int> s4_constant_values(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
+    s4_constant_values[i] = i % 16 - 8;
+  }
+  const std::string hlo_text = absl::Substitute(
+      R"(
+HloModule test
+
+ENTRY main {
+  p = f32[$0]{0} parameter(0)
+  c = f32[$0]{0} constant({$1})
+  c_s4 = s4[$0]{0} constant({$2})
+  add = f32[$0]{0} add(p, c)
+  convert = f32[$0]{0} convert(c_s4)
+  ROOT result = f32[$0]{0} add(add, convert)
+})",
+      kNumElements, absl::StrJoin(constant_values, ","),
+      absl::StrJoin(s4_constant_values, ","));
+
+  ASSERT_OK_AND_ASSIGN(
+      se::Platform * platform,
+      se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.embed_hlo_module = false;
+  std::unique_ptr<Executable> executable;
+  {
+    // The module is parsed from text (and not cloned from another module), so
+    // no other module shares the constant's literal. The module gets destroyed
+    // at the end of RunBackend.
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text));
+    // Constant folding would turn convert(c_s4) into an f32 constant.
+    module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
+        "constant_folding");
+    ASSERT_OK_AND_ASSIGN(
+        module,
+        compiler()->RunHloPasses(std::move(module), executor, compile_options));
+    ASSERT_OK_AND_ASSIGN(
+        executable,
+        compiler()->RunBackend(std::move(module), executor, compile_options));
+  }
+  ASSERT_FALSE(executable->has_module());
+
+  const auto* gpu_executable =
+      absl::down_cast<const GpuExecutable*>(executable.get());
+  ASSERT_THAT(gpu_executable->constants(), SizeIs(2));
+  auto find_content = [&](int64_t size_in_bytes) {
+    for (const GpuExecutable::ConstantInfo& constant :
+         gpu_executable->constants()) {
+      if (constant.content.span().size() == size_in_bytes) {
+        return constant.content.span();
+      }
+    }
+    return absl::Span<const uint8_t>();
+  };
+
+  absl::Span<const uint8_t> content = find_content(kSizeInBytes);
+  ASSERT_EQ(content.size(), kSizeInBytes);
+  EXPECT_THAT(absl::MakeConstSpan(
+                  reinterpret_cast<const float*>(content.data()), kNumElements),
+              ElementsAreArray(constant_values));
+
+  // s4 values are packed two per byte, starting with the low nibble.
+  absl::Span<const uint8_t> s4_content = find_content(kS4SizeInBytes);
+  ASSERT_EQ(s4_content.size(), kS4SizeInBytes);
+  std::vector<uint8_t> expected_s4_content(kS4SizeInBytes);
+  for (int i = 0; i < kS4SizeInBytes; ++i) {
+    expected_s4_content[i] = (s4_constant_values[2 * i] & 0xF) |
+                             ((s4_constant_values[2 * i + 1] & 0xF) << 4);
+  }
+  EXPECT_THAT(s4_content, ElementsAreArray(expected_s4_content));
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  ASSERT_OK_AND_ASSIGN(se::Stream * stream,
+                       allocator.GetStream(executor->device_ordinal()));
+  std::vector<float> input(kNumElements, 1000.0f);
+  ASSERT_OK_AND_ASSIGN(
+      se::ScopedDeviceAddress<uint8_t> input_buffer,
+      allocator.Allocate(executor->device_ordinal(), kSizeInBytes));
+  ASSERT_OK(stream->Memcpy(input_buffer.ptr(), input.data(), kSizeInBytes));
+
+  std::vector<ExecutionInput> arguments;
+  arguments.emplace_back(ShapeUtil::MakeShape(F32, {kNumElements}));
+  arguments.back().SetUnownedBuffer(
+      /*index=*/{}, MaybeOwningDeviceAddress(/*unowned=*/*input_buffer));
+
+  ExecutableRunOptions run_options;
+  run_options.set_device_ordinal(executor->device_ordinal());
+  run_options.set_stream(stream);
+  run_options.set_allocator(&allocator);
+  ServiceExecutableRunOptions service_run_options(run_options);
+  ASSERT_OK_AND_ASSIGN(ExecutionOutput output,
+                       executable->ExecuteAsyncOnStream(&service_run_options,
+                                                        std::move(arguments)));
+
+  std::vector<float> result(kNumElements);
+  ASSERT_OK(stream->Memcpy(result.data(), output.Result().root_buffer(),
+                           kSizeInBytes));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::vector<float> expected(kNumElements);
+  for (int i = 0; i < kNumElements; ++i) {
+    expected[i] = input[i] + constant_values[i] + s4_constant_values[i];
+  }
+  EXPECT_THAT(result, ElementsAreArray(expected));
+}
+
+class GpuCompilerConstantContentTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<bool> {};
+
+// With an embedded module the constants keep aliasing the module's literals, so
+// RunBackend doesn't copy them. Without an embedded module the constants own a
+// copy of their content. Unlike ConstantsOutliveModuleThatIsNotEmbedded this
+// test doesn't need ASAN to detect a regression.
+TEST_P(GpuCompilerConstantContentTest,
+       ConstantsAliasLiteralsOnlyIfModuleIsEmbedded) {
+  const bool embed_hlo_module = GetParam();
+  constexpr absl::string_view kHloText = R"(
+HloModule test
+
+ENTRY main {
+  p = f32[4]{0} parameter(0)
+  c = f32[4]{0} constant({1, 2, 3, 4})
+  ROOT add = f32[4]{0} add(p, c)
+})";
+
+  ASSERT_OK_AND_ASSIGN(
+      se::Platform * platform,
+      se::PlatformManager::PlatformWithId(stream_executor_platform_id()));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.embed_hlo_module = embed_hlo_module;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(
+      module,
+      compiler()->RunHloPasses(std::move(module), executor, compile_options));
+  const HloInstruction* constant =
+      FindInstruction(module.get(), HloOpcode::kConstant);
+  ASSERT_NE(constant, nullptr);
+  const void* literal_data = constant->literal().untyped_data();
+  // The clone shares the constant's literal with `module`, so the literal stays
+  // alive and its address can't be reused for the constant's content.
+  std::unique_ptr<HloModule> clone = module->Clone();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(module), executor, compile_options));
+  EXPECT_EQ(executable->has_module(), embed_hlo_module);
+
+  const auto* gpu_executable =
+      absl::down_cast<const GpuExecutable*>(executable.get());
+  ASSERT_THAT(gpu_executable->constants(), SizeIs(1));
+  const void* content_data =
+      gpu_executable->constants().front().content.span().data();
+  if (embed_hlo_module) {
+    EXPECT_EQ(content_data, literal_data);
+  } else {
+    EXPECT_NE(content_data, literal_data);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(EmbedHloModule, GpuCompilerConstantContentTest,
+                         ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "Embedded" : "NotEmbedded";
+                         });
 
 TEST_F(GpuCompilerTest, CopyInsertionFusion) {
   const char* hlo_text = R"(
@@ -1079,8 +1279,8 @@ TEST_F(
     GpuCompilerTest,
     FusionBlockLevelRewriterRewritesKLoopTransposeWithBitcastIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+, MI300+ or "
-                    "gfx1250 to run.";
+    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ or ROCm to "
+                    "run.";
   }
 
   // If this test starts failing, then it's likely that this no longer generates
@@ -1227,6 +1427,40 @@ ENTRY main {
   EXPECT_EQ(async_start_thunk->thunks().size(), 1);
   EXPECT_THAT(async_start_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kCublasLtMatmul)));
+}
+
+TEST_F(GpuCompilerTest, SanitizesConstantNamesInParallelExecutionThread) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+f {
+  ROOT c.1 = f32[] constant(41)
+}
+
+ENTRY main {
+  ROOT call = f32[] call(),
+    to_apply=f,
+    frontend_attributes={_xla_stream_annotation="1"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology =
+      GetSingleDeviceGpuTopology(/*platform_version=*/"", gpu_target_config());
+  compile_options.early_exit_with_layouts = false;
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(optimized_module),
+                             /*executor=*/nullptr, compile_options));
 }
 
 TEST_F(GpuCompilerTest, StreamAnnotationThunkTestFDO) {
@@ -1450,8 +1684,7 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
 
 TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
   if (!RunsFusionDispatchPipeline()) {
-    GTEST_SKIP() << "fusion-dispatch requires Ampere+, MI300+ or gfx1250 to "
-                    "run.";
+    GTEST_SKIP() << "fusion-dispatch requires Ampere+ or ROCm to run.";
   }
 
   DebugOptions debug_options = GetDebugOptionsForTest();

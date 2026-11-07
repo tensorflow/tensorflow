@@ -1744,6 +1744,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
     ],
 )
 
@@ -4924,6 +4926,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/log:check",
@@ -4932,6 +4935,23 @@ tf_kernel_library(
         "@eigen_archive//:eigen3",
         "@local_config_cuda//cuda:cudnn_header",
         "@xla//xla/tsl/framework/fixedpoint",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "maxpooling_op_gpu_test",
+    size = "small",
+    srcs = ["maxpooling_op_gpu_test.cu.cc"],
+    deps = [
+        ":pooling_ops",
+        ":pooling_ops_gpu_hdrs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/util:tensor_format",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -4977,6 +4997,7 @@ cc_library(
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:tensor_format",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@xla//xla/tsl/framework/fixedpoint",
     ],
@@ -8439,13 +8460,10 @@ cc_library(
         "fill_functor.h",
     ],
     deps = [
-        ":meta_support",
-        ":quantization_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
         "@eigen_archive//:eigen3",
-        "@gemmlowp",
     ],
 )
 
@@ -8487,7 +8505,10 @@ cc_library(
 
 cc_library(
     name = "loose_headers",
-    tags = ["avoid_dep"],
+    tags = [
+        "avoid_dep",
+        "nofixdeps",
+    ],
     textual_hdrs = glob(["*.h"]),
     visibility = LOOSE_HEADER_VISIBILITY,
     deps = [

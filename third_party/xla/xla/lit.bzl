@@ -31,7 +31,7 @@ load(
     "prepare_gpu_backend_data",
 )
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
-load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
@@ -433,8 +433,6 @@ def lit_test(
         deps = if_cuda_is_configured([
             "//xla/stream_executor/cuda:all_runtime",
             "//xla/tsl/cuda:nvshmem_stub",
-        ]) + if_nccl([
-            "//xla/tsl/cuda:nccl",
         ]),
         visibility = ["//visibility:private"],
         **kwargs

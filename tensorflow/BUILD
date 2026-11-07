@@ -710,24 +710,30 @@ config_setting(
 
 config_setting(
     name = "macos_x86_64_with_framework_shared_object",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:macos",
+    ],
     define_values = {
         "framework_shared_object": "true",
     },
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "macos_arm64_with_framework_shared_object",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:macos",
+    ],
     define_values = {
         "framework_shared_object": "true",
     },
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin_arm64",
     },
     visibility = ["//visibility:public"],
 )

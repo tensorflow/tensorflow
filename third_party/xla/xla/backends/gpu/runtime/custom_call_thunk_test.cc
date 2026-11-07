@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -270,15 +271,17 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(buffer_allocations);
+  CommandBufferRequests command_buffer_requests;
 
   Thunk::PrepareParams prepare_params{
-      &collective_params,  &clique_requests, &memory_requests, executor,
-      &buffer_allocations, nullptr,          options.get()};
+      &collective_params, &clique_requests,        &memory_requests,
+      executor,           &buffer_allocations,     nullptr,
+      options.get(),      &command_buffer_requests};
 
-  Thunk::InitializeParams initialize_params;
-  initialize_params.custom_options = options.get();
-  initialize_params.stream = stream.get();
+  Thunk::InitializeParams initialize_params(&command_buffer_requests);
   initialize_params.buffer_allocations = &buffer_allocations;
+  initialize_params.stream = stream.get();
+  initialize_params.custom_options = options.get();
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       run_options, buffer_allocations, stream.get(), stream.get(), nullptr,
       nullptr, nullptr);
@@ -337,12 +340,19 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(buffer_allocations);
+  CommandBufferRequests command_buffer_requests;
 
-  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests, executor,
-                                      &buffer_allocations};
+  Thunk::PrepareParams prepare_params{
+      /*collective_params=*/&collective_params,
+      /*collective_clique_requests=*/&clique_requests,
+      /*collective_memory_requests=*/&memory_requests,
+      /*executor=*/executor,
+      /*buffer_allocations=*/&buffer_allocations,
+      /*execution_scoped_state=*/nullptr,
+      /*custom_options=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests};
 
-  Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
+  Thunk::InitializeParams initialize_params(&command_buffer_requests);
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), buffer_allocations, stream.get(),
       stream.get(), nullptr, nullptr, nullptr);
@@ -796,10 +806,11 @@ TEST(CustomCallThunkTest, RecordCommandBuffer) {
   se::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({src, dst}, 0, &allocator);
 
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
-  init_params.stream = stream.get();
   init_params.buffer_allocations = &buffer_allocations;
+  init_params.stream = stream.get();
   ASSERT_OK(thunk->Initialize(init_params));
 
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
@@ -854,10 +865,11 @@ TEST(CustomCallThunkTest, RecordCommandBufferUpdate) {
   se::StreamExecutorAddressAllocator allocator(executor);
 
   BufferAllocations allocs_first({src, dst_first}, 0, &allocator);
-  Thunk::InitializeParams init_params;
+  CommandBufferRequests command_buffer_requests;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = executor;
-  init_params.stream = stream.get();
   init_params.buffer_allocations = &allocs_first;
+  init_params.stream = stream.get();
   ASSERT_OK(thunk->Initialize(init_params));
 
   Thunk::ExecuteParams params_first = Thunk::ExecuteParams::Create(
@@ -1033,10 +1045,11 @@ struct FfiRecordTestSetup {
                                     ->GetDeviceDescription()
                                     .gpu_compute_capability()));
 
-    Thunk::InitializeParams init_params;
+    CommandBufferRequests command_buffer_requests;
+    Thunk::InitializeParams init_params(&command_buffer_requests);
     init_params.executor = executor;
-    init_params.stream = setup->stream.get();
     init_params.buffer_allocations = setup->alloc->buffer_allocations.get();
+    init_params.stream = setup->stream.get();
     ABSL_RETURN_IF_ERROR(setup->thunk->Initialize(init_params));
 
     setup->execute_params = Thunk::ExecuteParams::Create(
@@ -1302,6 +1315,110 @@ TEST(CustomCallThunkTest, RecordCommandBufferMultipleRecordsInSameBuffer) {
                                   sizeof(int32_t)));
   EXPECT_EQ(out_0, 90);
   EXPECT_EQ(out_1, 300);
+}
+
+TEST(CustomCallThunkTest, PrepareSetsCommandBufferRequiresWarmup) {
+  static_assert(
+      ffi::internal::IsStageCompatibleCtx<
+          ffi::CommandBufferRequests, ffi::ExecutionStage::kPrepare>::value);
+  static_assert(
+      !ffi::internal::IsStageCompatibleCtx<
+          ffi::CommandBufferRequests, ffi::ExecutionStage::kInitialize>::value);
+  static_assert(
+      !ffi::internal::IsStageCompatibleCtx<
+          ffi::CommandBufferRequests, ffi::ExecutionStage::kExecute>::value);
+  static_assert(
+      !ffi::internal::IsStageCompatibleCtx<
+          ffi::CommandBufferRequests, ffi::ExecutionStage::kRecord>::value);
+
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+
+  std::optional<bool> request_warmup = std::nullopt;
+  CustomCallThunk::OwnedHandlerBundle bundle;
+  bundle.prepare = ffi::Ffi::BindPrepare().Ctx<ffi::CommandBufferRequests>().To(
+      [&request_warmup](CommandBufferRequests* reqs) -> absl::Status {
+        if (reqs != nullptr && request_warmup.has_value()) {
+          reqs->SetRequiresWarmup(*request_warmup);
+        }
+        return absl::OkStatus();
+      });
+  bundle.execute =
+      ffi::Ffi::BindExecute().To([]() { return absl::OkStatus(); });
+  bundle.record = ffi::Ffi::BindRecord().To([]() { return absl::OkStatus(); });
+
+  ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      CustomCallThunk::Create(
+          Thunk::ThunkInfo(), "prepare_sets_requires_warmup", std::move(bundle),
+          /*operands=*/{},
+          /*results=*/{}, /*attributes=*/{},
+          /*called_computation=*/nullptr,
+          executor->GetDeviceDescription().gpu_compute_capability()));
+  // Before Prepare runs, requires_warmup() defaults to true.
+  EXPECT_TRUE(thunk->requires_warmup());
+
+  BufferAllocations buffer_allocations({}, 0, nullptr);
+
+  // 0. Prepare does not call SetRequiresWarmup -> requires_warmup(thunk)
+  // remains std::nullopt so callers fall back to thunk->requires_warmup().
+  {
+    request_warmup = std::nullopt;
+    Thunk::ExecutionScopedState execution_scoped_state;
+    CommandBufferRequests command_buffer_requests;
+    Thunk::PrepareParams prepare_params{
+        /*collective_params=*/nullptr,
+        /*collective_clique_requests=*/nullptr,
+        /*collective_memory_requests=*/nullptr,
+        /*executor=*/executor,
+        /*buffer_allocations=*/&buffer_allocations,
+        /*execution_scoped_state=*/&execution_scoped_state,
+        /*custom_options=*/nullptr,
+        /*command_buffer_requests=*/&command_buffer_requests};
+
+    EXPECT_THAT(thunk->Prepare(prepare_params), absl_testing::IsOk());
+    EXPECT_EQ(command_buffer_requests.requires_warmup(thunk.get()),
+              std::nullopt);
+  }
+
+  // 1. Prepare sets SetRequiresWarmup(false) -> command_buffer_requests records
+  // requires_warmup == false for this thunk.
+  {
+    request_warmup = false;
+    Thunk::ExecutionScopedState execution_scoped_state;
+    CommandBufferRequests command_buffer_requests;
+    Thunk::PrepareParams prepare_params{
+        /*collective_params=*/nullptr,
+        /*collective_clique_requests=*/nullptr,
+        /*collective_memory_requests=*/nullptr,
+        /*executor=*/executor,
+        /*buffer_allocations=*/&buffer_allocations,
+        /*execution_scoped_state=*/&execution_scoped_state,
+        /*custom_options=*/nullptr,
+        /*command_buffer_requests=*/&command_buffer_requests};
+
+    EXPECT_THAT(thunk->Prepare(prepare_params), absl_testing::IsOk());
+    EXPECT_EQ(command_buffer_requests.requires_warmup(thunk.get()), false);
+  }
+
+  // 2. Next execution: Prepare sets SetRequiresWarmup(true) ->
+  // command_buffer_requests records requires_warmup == true for this thunk.
+  {
+    request_warmup = true;
+    Thunk::ExecutionScopedState execution_scoped_state;
+    CommandBufferRequests command_buffer_requests;
+    Thunk::PrepareParams prepare_params{
+        /*collective_params=*/nullptr,
+        /*collective_clique_requests=*/nullptr,
+        /*collective_memory_requests=*/nullptr,
+        /*executor=*/executor,
+        /*buffer_allocations=*/&buffer_allocations,
+        /*execution_scoped_state=*/&execution_scoped_state,
+        /*custom_options=*/nullptr,
+        /*command_buffer_requests=*/&command_buffer_requests};
+
+    EXPECT_THAT(thunk->Prepare(prepare_params), absl_testing::IsOk());
+    EXPECT_EQ(command_buffer_requests.requires_warmup(thunk.get()), true);
+  }
 }
 
 }  // namespace

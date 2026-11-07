@@ -51,14 +51,10 @@ constexpr llvm::StringRef kGlobalSmemName = "global_smem";
 constexpr int64_t kSharedMemoryAlignment = 16;
 constexpr unsigned kSharedMemoryAddrSpace = 3;
 
-void EnsureExternalGlobalSmem(mlir::ModuleOp module, int64_t alignment) {
+void EnsureExternalGlobalSmem(mlir::ModuleOp module) {
   if (auto existing =
           module.lookupSymbol<mlir::LLVM::GlobalOp>(kGlobalSmemName)) {
-    int64_t current_align =
-        existing.getAlignment().value_or(kSharedMemoryAlignment);
-    if (alignment > current_align) {
-      existing.setAlignment(alignment);
-    }
+    existing.setAlignment(kSharedMemoryAlignment);
     return;
   }
   mlir::ImplicitLocOpBuilder b(module.getLoc(), module.getContext());
@@ -67,7 +63,7 @@ void EnsureExternalGlobalSmem(mlir::ModuleOp module, int64_t alignment) {
   mlir::LLVM::GlobalOp::create(b, array_ty, /*isConstant=*/false,
                                mlir::LLVM::Linkage::External,
                                std::string(kGlobalSmemName), mlir::Attribute{},
-                               /*alignment=*/alignment,
+                               /*alignment=*/kSharedMemoryAlignment,
                                /*addrSpace=*/kSharedMemoryAddrSpace);
 }
 
@@ -84,27 +80,20 @@ int64_t PackSubKernelSharedMemory(mlir::ModuleOp sub_module) {
     return 0;
   }
 
+  EnsureExternalGlobalSmem(sub_module);
+
   mlir::DataLayout data_layout(sub_module);
 
   absl::flat_hash_map<std::string, int64_t> global_offsets;
   int64_t total_bytes = 0;
-  int64_t max_alignment = kSharedMemoryAlignment;
   for (mlir::LLVM::GlobalOp global : shmem_globals) {
-    int64_t alignment = std::max<int64_t>(
-        kSharedMemoryAlignment,
-        data_layout.getTypeABIAlignment(global.getGlobalType()));
-    if (auto align_attr = global.getAlignment()) {
-      alignment = std::max<int64_t>(alignment, *align_attr);
-    }
-    max_alignment = std::max(max_alignment, alignment);
-    total_bytes = RoundUpTo<int64_t>(total_bytes, alignment);
+    total_bytes = RoundUpTo<int64_t>(total_bytes, kSharedMemoryAlignment);
     global_offsets[global.getSymName().str()] = total_bytes;
     int64_t size_bytes = static_cast<int64_t>(
         data_layout.getTypeSize(global.getGlobalType()).getFixedValue());
     total_bytes += size_bytes;
   }
-  total_bytes = RoundUpTo<int64_t>(total_bytes, max_alignment);
-  EnsureExternalGlobalSmem(sub_module, max_alignment);
+  total_bytes = RoundUpTo<int64_t>(total_bytes, kSharedMemoryAlignment);
 
   llvm::SmallVector<mlir::LLVM::AddressOfOp> addr_ops;
   sub_module.walk([&](mlir::LLVM::AddressOfOp addr_op) {
@@ -174,6 +163,13 @@ mlir::LogicalResult VirtualizeIds(mlir::LLVM::LLVMFuncOp func,
       return mlir::WalkResult::advance();
     }
     if (op->getParentOfType<mlir::LLVM::LLVMFuncOp>() != func) {
+      // Nested sub-kernels (e.g. phases of a `PhasedBlockClusterFusion`) have
+      // already been virtualized and may contain 1D `nvvm.read.ptx.sreg.tid.x`
+      // reads, which remain valid when the outer sub-kernel is also 1D in
+      // threads.
+      if (mlir::isa<mlir::NVVM::ThreadIdXOp>(op) && dim_y == 1 && dim_z == 1) {
+        return mlir::WalkResult::advance();
+      }
       op->emitError(
           "Hardware ID and dimension ops in non-entry functions are not "
           "supported in horizontal fusion.");
@@ -400,7 +396,13 @@ class VirtualizeSubKernelPass
             module->getAttrOfType<mlir::IntegerAttr>("ttg.shared")) {
       ttg_shared_bytes = ttg_shared.getInt();
     }
-    int64_t shmem_bytes = std::max(packed_bytes, ttg_shared_bytes);
+    int64_t existing_shmem_bytes = 0;
+    if (auto existing_shmem = module->getAttrOfType<mlir::IntegerAttr>(
+            "xla.shared_memory_bytes")) {
+      existing_shmem_bytes = existing_shmem.getInt();
+    }
+    int64_t shmem_bytes =
+        std::max({packed_bytes, ttg_shared_bytes, existing_shmem_bytes});
     module->setAttr("xla.shared_memory_bytes",
                     b.getI64IntegerAttr(shmem_bytes));
 

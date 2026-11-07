@@ -44,10 +44,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/pass/hlo_pass_context.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_options.h"
+#include "xla/hlo/pass/hlo_pass_registry.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/service/spmd/shard_barrier_partitioner.h"
 #include "xla/shape.h"
@@ -351,6 +356,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kDotGeneral:
     case HloOpcode::kScaledDot:
     case HloOpcode::kScan:
     case HloOpcode::kScatter:
@@ -2105,7 +2111,8 @@ bool ShardingPropagation::InferShardingFromShardGroup(
 bool ShardingPropagation::InferShardingFromOperands(
     HloInstruction* instruction, const ComputationMap& computation_map,
     int64_t aggressiveness, const CallGraph& call_graph,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool allow_spmd_sharding_propagation_to_output) {
   if (!CanPropagateThroughAtAggressiveLevel(*instruction, aggressiveness)) {
     return false;
   }
@@ -2160,7 +2167,7 @@ bool ShardingPropagation::InferShardingFromOperands(
   const bool may_combine_partial_sharding = is_spmd_ && aggressiveness > 0;
   if (!SupportSpatialPartitioning(
           instruction, computation_map, is_spmd_,
-          allow_spmd_sharding_propagation_to_output_,
+          allow_spmd_sharding_propagation_to_output,
           /*allow_spmd_sharding_propagation_to_parameters=*/false,
           sharding_helper_.get())) {
     // If an array shaped HLO doesn't support spatial partitioning but at least
@@ -2735,7 +2742,8 @@ bool ShardingPropagation::InferShardingFromUsers(
     const ShardingPropagation::ComputationMap& computation_map,
     int64_t aggressiveness, bool is_spmd,
     const CustomCallShardingHelper* sharding_helper,
-    const CallGraph& call_graph) {
+    const CallGraph& call_graph,
+    bool allow_spmd_sharding_propagation_to_parameters) {
   if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
     return false;
   }
@@ -2769,7 +2777,7 @@ bool ShardingPropagation::InferShardingFromUsers(
   if (!SupportSpatialPartitioning(
           instruction, computation_map, is_spmd,
           /*allow_spmd_sharding_propagation_to_output=*/false,
-          allow_spmd_sharding_propagation_to_parameters_, sharding_helper)) {
+          allow_spmd_sharding_propagation_to_parameters, sharding_helper)) {
     return false;
   }
   bool improved_sharding = false;
@@ -2857,6 +2865,8 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
     const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
     const CallGraph& call_graph, HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool allow_spmd_sharding_propagation_to_output,
+    bool allow_spmd_sharding_propagation_to_parameters,
     absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>&
         unspecified_dims,
     absl::flat_hash_map<HloInstruction*, int64_t>&
@@ -2997,9 +3007,9 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
           continue;
         }
         already_inferred_from_operands.insert(instruction);
-        if (InferShardingFromOperands(instruction, computation_map,
-                                      aggressiveness, call_graph,
-                                      execution_threads)) {
+        if (InferShardingFromOperands(
+                instruction, computation_map, aggressiveness, call_graph,
+                execution_threads, allow_spmd_sharding_propagation_to_output)) {
           ++inferred_from_operand_counter;
           changed = true;
           VLOG(2) << "Add sharding (forward-pass): " << instruction->ToString();
@@ -3051,9 +3061,10 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
           continue;
         }
         already_inferred_from_users.insert(*it);
-        if (InferShardingFromUsers(*it, computation_map, aggressiveness,
-                                   is_spmd_, sharding_helper_.get(),
-                                   call_graph)) {
+        if (InferShardingFromUsers(
+                *it, computation_map, aggressiveness, is_spmd_,
+                sharding_helper_.get(), call_graph,
+                allow_spmd_sharding_propagation_to_parameters)) {
           ++inferred_from_user_counter;
           changed = true;
           VLOG(2) << "Add sharding (backward-pass): " << (*it)->ToString();
@@ -3136,6 +3147,18 @@ std::vector<HloInstruction*> ShardingPropagation::GetRelatedInstructions(
 absl::StatusOr<bool> ShardingPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  const absl::Span<const bool>
+      allow_spmd_sharding_propagation_to_output_vector =
+          module->config().allow_spmd_sharding_propagation_to_output();
+  const absl::Span<const bool>
+      allow_spmd_sharding_propagation_to_parameters_vector =
+          module->config().allow_spmd_sharding_propagation_to_parameters();
+  const bool allow_spmd_sharding_propagation_to_output = absl::c_linear_search(
+      allow_spmd_sharding_propagation_to_output_vector, true);
+  const bool allow_spmd_sharding_propagation_to_parameters =
+      absl::c_linear_search(
+          allow_spmd_sharding_propagation_to_parameters_vector, true);
+
   LOG_FIRST_N(WARNING, 1)
       << "GSPMD sharding propagation is going to be deprecated and "
          "not supported in the future. Please consider migrating to "
@@ -3169,14 +3192,14 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
       ProcessShardingInstruction(
           module, execution_threads, /*replace_sharding_with_copy=*/true,
           &unspecified_dims,
-          allow_spmd_sharding_propagation_to_output_ ? &saved_root_shardings
-                                                     : nullptr,
-          allow_spmd_sharding_propagation_to_parameters_
+          allow_spmd_sharding_propagation_to_output ? &saved_root_shardings
+                                                    : nullptr,
+          allow_spmd_sharding_propagation_to_parameters
               ? &saved_parameter_shardings
               : nullptr,
           &instruction_to_shard_group_id, &shard_group_id_to_shard_as_group,
           &shard_group_id_to_shard_like_group,
-          allow_spmd_sharding_propagation_to_parameters_vector_));
+          allow_spmd_sharding_propagation_to_parameters_vector));
   any_changed |= changed;
 
   for (const auto& [shard_group_id, shard_as_group] :
@@ -3196,20 +3219,20 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
   }
 
   // Check sizes of the given allow_spmd_sharding_propagation vectors
-  if (allow_spmd_sharding_propagation_to_output_) {
+  if (allow_spmd_sharding_propagation_to_output) {
     CHECK(!module->entry_computation()->root_instruction()->has_sharding() ||
-          allow_spmd_sharding_propagation_to_output_vector_.size() == 1 ||
+          allow_spmd_sharding_propagation_to_output_vector.size() == 1 ||
           module->entry_computation()
                   ->root_instruction()
                   ->sharding()
                   .tuple_elements()
                   .size() ==
-              allow_spmd_sharding_propagation_to_output_vector_.size())
+              allow_spmd_sharding_propagation_to_output_vector.size())
         << "allow-spmd-sharding-propagation-to-output-vector's size can be "
            "either 1 or the number of elements in the root tuple of entry "
            "computation.";
   }
-  if (allow_spmd_sharding_propagation_to_parameters_) {
+  if (allow_spmd_sharding_propagation_to_parameters) {
     auto is_same_sized_tuple = [](HloModule* module, int64_t size) {
       if (module->entry_computation()->num_parameters() != 1) {
         return false;
@@ -3219,7 +3242,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
       return param->shape().IsTuple() &&
              size == param->shape().tuple_shapes().size();
     };
-    auto size = allow_spmd_sharding_propagation_to_parameters_vector_.size();
+    auto size = allow_spmd_sharding_propagation_to_parameters_vector.size();
     CHECK(size == 1 || size == module->entry_computation()->num_parameters() ||
           is_same_sized_tuple(module, size))
         << "allow-spmd-sharding-propagation-to-parameters-vector's size can be "
@@ -3287,7 +3310,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
   }
 
   HloInstruction* entry_root = module->entry_computation()->root_instruction();
-  if (!allow_spmd_sharding_propagation_to_output_ &&
+  if (!allow_spmd_sharding_propagation_to_output &&
       (!entry_root->has_sharding() || !entry_root->sharding().IsUnknown())) {
     // Consider the root instruction of the entry module as one with provided
     // sharding as its sharding have to match with the one expected by the host.
@@ -3308,7 +3331,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
     provided_shardings.insert(entry_root);
   }
 
-  if (!allow_spmd_sharding_propagation_to_parameters_) {
+  if (!allow_spmd_sharding_propagation_to_parameters) {
     for (auto param : module->entry_computation()->parameter_instructions()) {
       if (param->has_sharding() && !param->sharding().IsUnknown()) {
         provided_shardings.insert(param);
@@ -3335,12 +3358,13 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
   for (int64_t aggressiveness = 0; aggressiveness < 4; ++aggressiveness) {
     ABSL_ASSIGN_OR_RETURN(
         bool changed,
-        RunToFixPoint(aggressiveness, /*propagate_shard_group=*/true,
-                      computation_map, provided_shardings, *call_graph, module,
-                      execution_threads, unspecified_dims,
-                      instruction_to_shard_group_id,
-                      shard_group_id_to_shard_as_group,
-                      shard_group_id_to_shard_like_group, iterations));
+        RunToFixPoint(
+            aggressiveness, /*propagate_shard_group=*/true, computation_map,
+            provided_shardings, *call_graph, module, execution_threads,
+            allow_spmd_sharding_propagation_to_output,
+            allow_spmd_sharding_propagation_to_parameters, unspecified_dims,
+            instruction_to_shard_group_id, shard_group_id_to_shard_as_group,
+            shard_group_id_to_shard_like_group, iterations));
     any_changed = any_changed || changed;
   }
 
@@ -3414,12 +3438,13 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
   {
     ABSL_ASSIGN_OR_RETURN(
         bool changed,
-        RunToFixPoint(/*aggressiveness=*/3, /*propagate_shard_group=*/true,
-                      computation_map, provided_shardings, *call_graph, module,
-                      execution_threads, unspecified_dims,
-                      instruction_to_shard_group_id,
-                      shard_group_id_to_shard_as_group,
-                      shard_group_id_to_shard_like_group, iterations));
+        RunToFixPoint(
+            /*aggressiveness=*/3, /*propagate_shard_group=*/true,
+            computation_map, provided_shardings, *call_graph, module,
+            execution_threads, allow_spmd_sharding_propagation_to_output,
+            allow_spmd_sharding_propagation_to_parameters, unspecified_dims,
+            instruction_to_shard_group_id, shard_group_id_to_shard_as_group,
+            shard_group_id_to_shard_like_group, iterations));
     any_changed = any_changed || changed;
   }
 
@@ -3455,11 +3480,11 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
   HloInstruction* root_instruction =
       module->entry_computation()->root_instruction();
   if (saved_root_shardings.size() ==
-          allow_spmd_sharding_propagation_to_output_vector_.size() &&
+          allow_spmd_sharding_propagation_to_output_vector.size() &&
       root_instruction->has_sharding()) {
     HloSharding root_sharding = root_instruction->sharding();
     for (int i = 0; i < saved_root_shardings.size(); ++i) {
-      if (!allow_spmd_sharding_propagation_to_output_vector_[i] &&
+      if (!allow_spmd_sharding_propagation_to_output_vector[i] &&
           !saved_root_shardings[i].IsUnknown()) {
         root_sharding.tuple_elements()[i] = saved_root_shardings[i];
       }
@@ -3467,11 +3492,11 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
     root_instruction->set_sharding(std::move(root_sharding));
   }
   auto params = module->entry_computation()->parameter_instructions();
-  if (allow_spmd_sharding_propagation_to_parameters_) {
-    if (allow_spmd_sharding_propagation_to_parameters_vector_.size() ==
+  if (allow_spmd_sharding_propagation_to_parameters) {
+    if (allow_spmd_sharding_propagation_to_parameters_vector.size() ==
         params.size()) {
       for (int64_t i = 0; i < params.size(); ++i) {
-        if (!allow_spmd_sharding_propagation_to_parameters_vector_[i]) {
+        if (!allow_spmd_sharding_propagation_to_parameters_vector[i]) {
           if (saved_parameter_shardings.contains(i) &&
               !saved_parameter_shardings.at(i).IsUnknown()) {
             params[i]->set_sharding(saved_parameter_shardings.at(i));
@@ -3483,7 +3508,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
     } else if (params.size() == 1 && saved_parameter_shardings.size() == 1 &&
                params[0]->shape().IsTuple() &&
                params[0]->shape().tuple_shapes().size() ==
-                   allow_spmd_sharding_propagation_to_parameters_vector_
+                   allow_spmd_sharding_propagation_to_parameters_vector
                        .size()) {
       // There is a single parameter which is a tuple with many elements.
       HloSharding param_sharding = params[0]->sharding();
@@ -3491,7 +3516,7 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
         HloSharding saved_subsharding =
             saved_parameter_shardings.at(0).GetSubSharding(params[0]->shape(),
                                                            {i});
-        if (!allow_spmd_sharding_propagation_to_parameters_vector_[i] &&
+        if (!allow_spmd_sharding_propagation_to_parameters_vector[i] &&
             !saved_subsharding.IsUnknown()) {
           param_sharding.tuple_elements()[i] = saved_subsharding;
         }
@@ -3501,16 +3526,35 @@ absl::StatusOr<bool> ShardingPropagation::RunImpl(
   }
 
   hlo_sharding_util::ReplicateBoundaryShardingsIfIndivisible(
-      module, allow_spmd_sharding_propagation_to_output_vector_,
-      allow_spmd_sharding_propagation_to_parameters_vector_);
+      module, allow_spmd_sharding_propagation_to_output_vector,
+      allow_spmd_sharding_propagation_to_parameters_vector);
 
   ABSL_RETURN_IF_ERROR(hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
-      module, allow_spmd_sharding_propagation_to_output_vector_,
-      allow_spmd_sharding_propagation_to_parameters_vector_));
+      module, allow_spmd_sharding_propagation_to_output_vector,
+      allow_spmd_sharding_propagation_to_parameters_vector));
 
   VLOG(1) << "Sharding propagation completed after " << iterations
           << " iterations";
   return any_changed;
 }
+
+namespace {
+
+class ShardingPropagationFactory : public HloPassFactory {
+ public:
+  absl::string_view name() const override { return "sharding-propagation"; }
+
+  absl::StatusOr<std::unique_ptr<HloPassInterface>> Create(
+      const HloPassContext&, const HloPassOptions& options) const override {
+    return std::make_unique<ShardingPropagation>(
+        options.Get<bool>("is_spmd").value_or(false),
+        options.Get<bool>("propagate_metadata").value_or(false));
+  }
+};
+
+const HloPassFactory* const kShardingPropagationRegistration =
+    RegisterHloPassFactory<ShardingPropagationFactory>();
+
+}  // namespace
 
 }  // namespace xla

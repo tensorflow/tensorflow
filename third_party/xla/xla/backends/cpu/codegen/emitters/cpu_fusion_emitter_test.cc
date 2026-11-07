@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "llvm/IR/Argument.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -174,6 +177,70 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
                           RunFileCheck(llvm_dump, kExpected));
   EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(CpuFusionEmitterTest,
+       ScatterReorderedOperandsWritesToResultSliceAndHonorsNonInvariant) {
+  constexpr absl::string_view kHlo = R"(
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT sum = s32[] add(lhs, rhs)
+    }
+
+    scatter_computation {
+      indices = s32[2,1] parameter(0)
+      updates = s32[2,1] parameter(1)
+      operand = s32[4] parameter(2)
+      ROOT s = s32[4] scatter(operand, indices, updates),
+        update_window_dims={1},
+        inserted_window_dims={},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1,
+        to_apply=add
+    }
+
+    ENTRY main {
+      p0 = s32[2,1] parameter(0)
+      p1 = s32[2,1] parameter(1)
+      p2 = s32[4] parameter(2)
+      ROOT wrapped_scatter = s32[4] fusion(p0, p1, p2),
+        kind=kLoop, calls=scatter_computation,
+        frontend_attributes={xla.no_invariant_operands="0"}
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                       RunBufferAssignment(*hlo_module));
+  const auto* fusion = Cast<HloFusionInstruction>(
+      hlo_module->entry_computation()->root_instruction());
+  auto mlir_context = FusionCompiler::CreateContext();
+  CpuScatterFusion emitter(*buffer_assignment, fusion, mlir_context.get());
+  ASSERT_OK_AND_ASSIGN(KernelDefinition<MlirKernelSource> kernel_definition,
+                       emitter.EmitKernelDefinition());
+  EXPECT_FALSE(kernel_definition.spec().invariant_arguments().contains(0));
+  EXPECT_TRUE(kernel_definition.spec().invariant_arguments().contains(1));
+  EXPECT_FALSE(kernel_definition.spec().invariant_arguments().contains(2));
+  FusionCompiler compiler(mlir_context.get(),
+                          FusionCompiler::Options{512, 1, true});
+  ASSERT_OK_AND_ASSIGN(
+      LlvmKernelSource llvm_source,
+      compiler.Compile(std::move(kernel_definition).TakeSource()));
+  const llvm::Function* wrapped =
+      llvm_source.module()->getFunction("wrapped_scatter_wrapped");
+  ASSERT_NE(wrapped, nullptr);
+  // Operand 0 is marked not invariant, operand 1 is read only, operand 2 and
+  // arg 3 share the writable result slice, and args 4..6 are the workgroup IDs.
+  ASSERT_EQ(wrapped->arg_size(), 7);
+  EXPECT_FALSE(wrapped->getArg(0)->onlyReadsMemory());
+  EXPECT_FALSE(wrapped->getArg(0)->hasNoAliasAttr());
+  EXPECT_TRUE(wrapped->getArg(1)->onlyReadsMemory());
+  EXPECT_TRUE(wrapped->getArg(1)->hasNoAliasAttr());
+  EXPECT_FALSE(wrapped->getArg(2)->onlyReadsMemory());
+  EXPECT_TRUE(wrapped->getArg(2)->hasNoAliasAttr());
+  EXPECT_FALSE(wrapped->getArg(2)->use_empty());
+  EXPECT_TRUE(wrapped->getArg(3)->use_empty());
 }
 
 TEST_F(CpuFusionEmitterTest, SortComparatorMlirAndLlvm) {

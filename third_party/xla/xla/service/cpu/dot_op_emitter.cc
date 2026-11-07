@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallingConv.h"
@@ -68,6 +69,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/platform.h"
 
@@ -81,6 +83,22 @@ namespace {
 // Returns true if we should call into multi-threaded Eigen routines.
 bool ShouldUseMultiThreadedEigen(const HloModuleConfig& config) {
   return config.debug_options().xla_cpu_multi_thread_eigen();
+}
+
+// Returns true if YNNPACK dot fusion is enabled for `config`.
+bool IsYnnDotEnabled(const HloModuleConfig& config) {
+  const auto& extra_options =
+      config.debug_options().xla_backend_extra_options();
+  auto it = extra_options.find("xla_is_host_offload");
+  if (it != extra_options.end() && it->second == "true") {
+    return false;
+  }
+  const auto& fusion_types =
+      config.debug_options().xla_cpu_experimental_ynn_fusion_type();
+  return absl::c_linear_search(fusion_types,
+                               DebugOptions::LIBRARY_FUSION_TYPE_DOT) ||
+         absl::c_linear_search(
+             fusion_types, DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
 }
 
 // Return whether the given shape is rank 2.
@@ -189,17 +207,42 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
          dot_info.dim_nums.rhs_batch_dimensions_size() == 0)
       << "Dot operations must be non-batch";
 
-  // Any Matrix-Vector product of floating point or integral type, or
-  // a transpose-dot fusion of the same can be lowered to a tiled LLVM
-  // IR implementation.
-  if ((dot_info.result_shape.dimensions().size() <= 1 ||
-       (dot_info.result_shape.dimensions().size() == 2 &&
-        (dot_info.result_shape.dimensions(0) == 1 ||
-         dot_info.result_shape.dimensions(1) == 1))) &&
+  // Matrix-Vector products of floating point or integral type, or a
+  // transpose-dot fusion of the same can be lowered to a tiled LLVM IR
+  // implementation. When YNNPACK dot fusion is enabled, large M=1 GEMV
+  // operations with YNNPACK-supported element types fall through to kEigen so
+  // that YNNPACK can handle them; otherwise keep kTiledLlvmIrGemv because the
+  // Eigen path does not parallelize for M=1.
+  bool is_gemv = dot_info.result_shape.dimensions().size() <= 1 ||
+                 (dot_info.result_shape.dimensions().size() == 2 &&
+                  (dot_info.result_shape.dimensions(0) == 1 ||
+                   dot_info.result_shape.dimensions(1) == 1));
+  if (is_gemv &&
       (primitive_util::IsFloatingPointType(element_type) ||
        primitive_util::IsIntegralType(element_type)) &&
       operands_match_result_type) {
-    return DotImplementationStrategy::kTiledLlvmIrGemv;
+    // Mixed-precision integer dots supported by YNNPACK (e.g. s8/u8 -> s32)
+    // have operands_match_result_type == false and already bypass this block.
+    // Among uniform-precision types reaching here, YNNPACK only supports F32,
+    // F64, and BF16.
+    bool ynn_supported_type =
+        element_type == F32 || element_type == F64 || element_type == BF16;
+    if (!IsYnnDotEnabled(config) || !ynn_supported_type ||
+        !allow_runtime_calls ||
+        dot_info.result_shape.dimensions().size() <= 1 ||
+        !IsAlignedGemm(dot_info, target_machine_features) ||
+        CanEmitTiledLlvmIrGemm(config, dot_info, target_machine_features) ||
+        dot_info.dim_nums.lhs_contracting_dimensions_size() != 1) {
+      return DotImplementationStrategy::kTiledLlvmIrGemv;
+    }
+    int64_t m = dot_info.result_shape.dimensions(0);
+    int64_t k = dot_info.lhs_shape.dimensions(
+        dot_info.dim_nums.lhs_contracting_dimensions(0));
+    int64_t n = dot_info.result_shape.dimensions(1);
+    if (m != 1 || n <= 3 || k <= 128 || k < n ||
+        (m * k * n <= (int64_t{1} << 19))) {
+      return DotImplementationStrategy::kTiledLlvmIrGemv;
+    }
   }
 
   // MatMul smaller than 3x3 should use naive nested loop.

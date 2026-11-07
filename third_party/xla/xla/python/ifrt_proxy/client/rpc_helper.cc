@@ -484,6 +484,7 @@ RPC_FIRE_FORGET(CopyArrays, copy_arrays);
 RPC_FIRE_FORGET(FullyReplicatedShard, fully_replicated_shard);
 RPC(DeleteArray, delete_array);
 RPC(Compile, compile);
+RPC(DeserializeLoadedExecutable, deserialize_loaded_executable);
 RPC(LoadedExecutableMetadata, loaded_executable_metadata);
 RPC(LoadedExecutableMpmdMetadata, loaded_executable_mpmd_metadata);
 RPC(LoadedExecutableCostAnalysis, loaded_executable_cost_analysis);

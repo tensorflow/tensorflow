@@ -546,8 +546,10 @@ class FakeArgumentCache {
 // the current module so repeated parameters cycle through `0 ..
 // max_variants_per_shape - 1`.
 struct FakeArgumentCacheContext {
+  static constexpr int64_t kMinCacheableBytesFloor = 64 * 1024;  // 64 KiB
   uint32_t base_seed_token = 0;
   int max_variants_per_shape = 2;
+  int64_t min_cached_argument_bytes = kMinCacheableBytesFloor;
   absl::flat_hash_map<std::string, int> occurrence_counts;
 };
 
@@ -563,6 +565,9 @@ std::optional<FakeArgumentCacheContext> MaybeCreateCacheContext(
   std::minstd_rand0 copy = *engine;
   cache_ctx.base_seed_token = static_cast<uint32_t>(copy());
   cache_ctx.max_variants_per_shape = options.max_cached_variants_per_shape;
+  cache_ctx.min_cached_argument_bytes =
+      std::max<int64_t>(FakeArgumentCacheContext::kMinCacheableBytesFloor,
+                        options.min_cached_argument_bytes);
   return cache_ctx;
 }
 
@@ -655,17 +660,125 @@ std::string BuildFakeArgumentCacheKey(
       interval_key, base_seed_token);
 }
 
+// Returns true if `type` and its structural constraints represent bulk
+// floating-point or narrow (<= 8-bit) quantized weight/activation data safe to
+// reuse across identically shaped parameters. Predicates, >= 16-bit integer
+// tensors (commonly used for gather/scatter/ragged/MoE routing indices, CSR
+// offsets, and step counters), precision-capped values, and
+// bounded/sorted/unique index arrays are excluded so per-parameter control-flow
+// and data-dependent memory access patterns are not altered by caching.
+bool IsCacheableFakeArgumentType(
+    PrimitiveType type, std::optional<std::pair<int64_t, int64_t>> limit,
+    bool is_sorted, bool no_duplicates,
+    std::optional<int64_t> max_bits_of_precision) {
+  if (is_sorted || no_duplicates || limit.has_value() ||
+      max_bits_of_precision.has_value()) {
+    return false;
+  }
+  return primitive_util::IsFloatingPointType(type) ||
+         (primitive_util::IsIntegralType(type) &&
+          primitive_util::BitWidth(type) <= 8);
+}
+
+// Advances a `std::minstd_rand0` engine by `steps` transitions in O(log(steps))
+// time using binary modular exponentiation, matching `AdvanceMinstdRand0` in
+// `literal_util.cc`.
+std::minstd_rand0 AdvanceMinstdRand0(std::minstd_rand0 engine, uint64_t steps) {
+  if (steps == 0) {
+    return engine;
+  }
+  constexpr uint64_t kModulus = std::minstd_rand0::modulus;
+  constexpr uint64_t kMultiplier = std::minstd_rand0::multiplier;
+  uint64_t state = engine();
+  uint64_t remaining = steps - 1;
+  uint64_t base = kMultiplier;
+  uint64_t factor = 1;
+  while (remaining > 0) {
+    if ((remaining & 1) != 0) {
+      factor = (factor * base) % kModulus;
+    }
+    base = (base * base) % kModulus;
+    remaining >>= 1;
+  }
+  state = (state * factor) % kModulus;
+  return std::minstd_rand0(static_cast<std::minstd_rand0::result_type>(state));
+}
+
+// Computes the exact number of `std::minstd_rand0` transitions that
+// `MakeFakeLiteral` consumes for a cacheable static array `normalized_shape`
+// with at least `kMinCacheableElements` (16,384) elements. Advancing `*engine`
+// by this step count on both cache hits and misses keeps `*engine` bit-for-bit
+// aligned with `cache_arguments = false` for all subsequent uncached
+// parameters.
+uint64_t ComputeCachedFakeLiteralEngineSteps(
+    const Shape& normalized_shape, bool use_large_range,
+    std::optional<ConstraintInterval> interval) {
+  const uint64_t num_elements =
+      static_cast<uint64_t>(ShapeUtil::ElementsIn(normalized_shape));
+  if (num_elements == 0) {
+    return 0;
+  }
+  const PrimitiveType type = normalized_shape.element_type();
+  if (primitive_util::IsFloatingPointType(type)) {
+    const uint64_t steps_per_element = primitive_util::FloatingPointTypeSwitch(
+        [&](auto primitive_type_constant) -> uint64_t {
+          using FloatT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          using GeneratorT =
+              std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
+          constexpr int bit_width =
+              primitive_util::BitWidth(primitive_type_constant);
+          if constexpr (bit_width <= 4) {
+            return 1;
+          } else {
+            if (use_large_range) {
+              return sizeof(FloatT) >= sizeof(double) ? 3 : 2;
+            }
+            GeneratorT min = std::max<GeneratorT>(
+                static_cast<GeneratorT>(-0.1),
+                static_cast<GeneratorT>(std::numeric_limits<FloatT>::lowest()));
+            GeneratorT max = std::min<GeneratorT>(
+                static_cast<GeneratorT>(0.2),
+                static_cast<GeneratorT>(std::numeric_limits<FloatT>::max()));
+            if (interval.has_value() && !interval->IsUnconstrained()) {
+              min = interval->min == ConstraintInterval::kMin
+                        ? min
+                        : static_cast<GeneratorT>(interval->min);
+              max = interval->max == ConstraintInterval::kMax
+                        ? max
+                        : static_cast<GeneratorT>(interval->max);
+              if (interval->max == ConstraintInterval::kMax && min > max) {
+                max = min + static_cast<GeneratorT>(0.3);
+              } else if (interval->min == ConstraintInterval::kMin &&
+                         max < min) {
+                min = max - static_cast<GeneratorT>(0.3);
+              }
+            }
+            if (min == max) {
+              return 0;
+            }
+            return sizeof(FloatT) >= sizeof(double) ? 2 : 1;
+          }
+        },
+        type);
+    return num_elements * steps_per_element;
+  }
+  // Cacheable integral types are <= 8 bits (`span_minus_1 <= 255 < 2^20`),
+  // which consume exactly 1 RNG transition per element.
+  return num_elements;
+}
+
 // Generates or retrieves a cached fake literal for `shape` when `cache_ctx` is
 // non-null.
 //
 // Tuple parameters are decomposed recursively so leaf array subshapes are
-// cached individually. For static arrays of at least 64 KiB, device-specific
-// tiling, tail padding, and sub-byte packing attributes are stripped to form a
-// canonical host shape. Up to `max_variants_per_shape` distinct random variants
-// are retained per unique shape and constraint key. Binary ops on identical
-// parameter shapes such as `subtract(p0, p1)` therefore do not cancel out,
-// while deep models generate at most `max_variants_per_shape` tensors per
-// weight shape.
+// cached individually. For cacheable static arrays of at least
+// `cache_ctx->min_cached_argument_bytes` and `kMinCacheableElements` (16,384)
+// elements, device-specific tiling, tail padding, and sub-byte packing
+// attributes are stripped to form a canonical host shape. Up to
+// `max_variants_per_shape` distinct random variants are retained per unique
+// shape and constraint key, while `*engine` advances by the exact jump-ahead
+// transition count `MakeFakeLiteral` would consume so subsequent uncached
+// parameters receive identical RNG values as `cache_arguments = false`.
 absl::StatusOr<Literal> MakeCachedFakeLiteral(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
@@ -691,10 +804,15 @@ absl::StatusOr<Literal> MakeCachedFakeLiteral(
     return LiteralUtil::MakeTupleOwned(std::move(elements));
   }
 
-  constexpr int64_t kMinCacheableBytes = 64 * 1024;  // 64 KiB
+  // Match `kMinElementsPerPartition` in `literal_util.cc` so every cached array
+  // uses the fixed-step parallel RNG schedule and has a deterministic jump
+  // distance.
+  constexpr int64_t kMinCacheableElements = 16384;
   if (engine == nullptr || cache_ctx == nullptr ||
       cache_ctx->max_variants_per_shape <= 0 ||
-      !shape.IsArrayExcludingBuffer() || !shape.is_static()) {
+      !shape.IsArrayExcludingBuffer() || !shape.is_static() ||
+      !IsCacheableFakeArgumentType(shape.element_type(), limit, is_sorted,
+                                   no_duplicates, max_bits_of_precision)) {
     return MakeFakeLiteral(shape, engine, limit, is_sorted, no_duplicates,
                            use_large_range, max_bits_of_precision,
                            index_alignment, index_known_zeroes,
@@ -702,13 +820,17 @@ absl::StatusOr<Literal> MakeCachedFakeLiteral(
   }
 
   Shape normalized_shape = NormalizeShapeForArgumentCache(shape);
-  if (ShapeUtil::ByteSizeOf(normalized_shape) < kMinCacheableBytes) {
+  if (ShapeUtil::ByteSizeOf(normalized_shape) <
+          cache_ctx->min_cached_argument_bytes ||
+      ShapeUtil::ElementsIn(normalized_shape) < kMinCacheableElements) {
     return MakeFakeLiteral(shape, engine, limit, is_sorted, no_duplicates,
                            use_large_range, max_bits_of_precision,
                            index_alignment, index_known_zeroes,
                            /*float_generator=*/nullptr, interval);
   }
 
+  const uint64_t engine_steps = ComputeCachedFakeLiteralEngineSteps(
+      normalized_shape, use_large_range, interval);
   const std::string base_key = BuildFakeArgumentCacheKey(
       normalized_shape, limit, is_sorted, no_duplicates, use_large_range,
       max_bits_of_precision, index_alignment, index_known_zeroes, interval,
@@ -719,18 +841,16 @@ absl::StatusOr<Literal> MakeCachedFakeLiteral(
 
   if (std::shared_ptr<const Literal> cached =
           FakeArgumentCache::Instance().Lookup(full_key, normalized_shape)) {
-    // Advance `engine` by a fixed 1 step so subsequent uncached small
-    // parameters observe the exact same RNG state on both cache hits and
-    // misses.
-    engine->discard(1);
     ABSL_ASSIGN_OR_RETURN(Literal cloned, CloneArrayLiteralParallel(*cached));
     RestoreOriginalMemorySpace(shape, &cloned);
+    *engine = AdvanceMinstdRand0(*engine, engine_steps);
     return cloned;
   }
 
   // Derive a deterministic per-key leaf RNG engine from the 64-bit fingerprint
-  // of `full_key` so generated contents depend only on the canonical key and
-  // not on parameter ordering within the HLO module.
+  // of `full_key` so generated contents depend only on the canonical key, then
+  // jump `*engine` ahead by `engine_steps` so subsequent uncached parameters
+  // observe the exact same RNG state as `cache_arguments = false`.
   const uint64_t key_fp = tsl::Fingerprint64(full_key);
   const auto leaf_seed = static_cast<std::minstd_rand0::result_type>(
       (key_fp % (std::minstd_rand0::modulus - 1)) + 1);
@@ -741,11 +861,11 @@ absl::StatusOr<Literal> MakeCachedFakeLiteral(
                       no_duplicates, use_large_range, max_bits_of_precision,
                       index_alignment, index_known_zeroes,
                       /*float_generator=*/nullptr, interval));
-  engine->discard(1);
   auto shared_lit = std::make_shared<const Literal>(std::move(generated));
   FakeArgumentCache::Instance().Insert(full_key, shared_lit);
   ABSL_ASSIGN_OR_RETURN(Literal result, CloneArrayLiteralParallel(*shared_lit));
   RestoreOriginalMemorySpace(shape, &result);
+  *engine = AdvanceMinstdRand0(*engine, engine_steps);
   return result;
 }
 

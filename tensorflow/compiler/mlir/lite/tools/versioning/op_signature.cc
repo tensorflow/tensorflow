@@ -136,8 +136,19 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     } break;
 
     case BuiltinOperator_FULLY_CONNECTED: {
-      const Tensor* weight_tensor =
-          subgraph->tensors()->Get(op->inputs()->Get(1));
+      if (op->inputs() == nullptr || op->inputs()->size() < 2 ||
+          subgraph->tensors() == nullptr) {
+        break;
+      }
+      const int32_t weight_index = op->inputs()->Get(1);
+      if (weight_index < 0 ||
+          static_cast<size_t>(weight_index) >= subgraph->tensors()->size()) {
+        break;
+      }
+      const Tensor* weight_tensor = subgraph->tensors()->Get(weight_index);
+      if (weight_tensor == nullptr) {
+        break;
+      }
       op_sig.ext_options.fully_connected.sparse_weight =
           (weight_tensor->sparsity() != nullptr);
       const QuantizationParameters* weight_quant =
@@ -148,6 +159,13 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.ext_options.fully_connected.is_per_channel_quantized =
             IsTensorSizeEqual(weight_quant->scale()->size(),
                               weight_tensor->shape()->Get(0));
+      }
+      if (weight_quant != nullptr) {
+        const BlockwiseQuantization* blockwise =
+            weight_quant->details_as_BlockwiseQuantization();
+        op_sig.ext_options.fully_connected.is_weight_blockwise_quantized =
+            blockwise != nullptr && blockwise->block_shape() != nullptr &&
+            !blockwise->block_shape()->empty();
       }
     } break;
 

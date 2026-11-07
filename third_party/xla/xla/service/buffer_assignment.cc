@@ -1898,6 +1898,15 @@ MemoryUsageReportProto BufferAssignment::GetMemoryUsageReportProto(
   absl::flat_hash_map<int64_t, std::vector<const BufferAllocation*>>
       allocations_by_color;
   for (const BufferAllocation& allocation : allocations_) {
+    // GatherComputationsByAllocationType marks `to_apply` subcomputations of
+    // ops like reduce, sort, map, and custom-call (including `HostExecute`
+    // host-offload computations whose parameters can be full tensors) as
+    // `is_thread_local`. Their BufferAllocations bypass HeapSimulator and are
+    // never materialized in global device memory (matching
+    // ComputeTotalAllocationBytes and backend allocators).
+    if (allocation.is_thread_local()) {
+      continue;
+    }
     allocations_by_color[allocation.color()].push_back(&allocation);
   }
 

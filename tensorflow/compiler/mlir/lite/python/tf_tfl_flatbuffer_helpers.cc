@@ -391,6 +391,7 @@ absl::Status ConvertMlirBytecodeToTFLite(
   quant_specs.qdq_conversion_mode = mlir::TFL::QDQConversionMode::kQDQStrict;
 
   mlir::TFL::PassConfig pass_config(quant_specs);
+  pass_config.model_origin_framework = converter_flags.model_origin_framework();
   pass_config.fold_fp16_resource_casts =
       converter_flags.fold_fp16_resource_casts();
   pass_config.unfold_batch_matmul = converter_flags.unfold_batchmatmul();

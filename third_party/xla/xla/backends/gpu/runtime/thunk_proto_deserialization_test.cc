@@ -700,6 +700,7 @@ TEST(ThunkProtoDeserializationTest, CudnnThunk) {
             slice { buffer_allocation_index: 1 }
             shape { element_type: U8 }
           }
+          target_device { core_count: 96 serialized_device_properties: "{}" }
         }
       )pb");
   std::vector<BufferAllocation> buffer_allocations = {

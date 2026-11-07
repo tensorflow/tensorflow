@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -238,9 +239,15 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
         run_options, *allocs, stream, stream, nullptr, nullptr, nullptr);
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+    CommandBufferRequests command_buffer_requests;
     for (auto& thunk : gemm_thunks) {
-      ABSL_RETURN_IF_ERROR(
-          thunk->Initialize({executor, source, allocs.get(), stream, stream}));
+      ABSL_RETURN_IF_ERROR(thunk->Initialize(
+          {/*executor=*/executor,
+           /*src=*/source,
+           /*buffer_allocations=*/allocs.get(),
+           /*stream=*/stream,
+           /*command_buffer_trace_stream=*/stream,
+           /*command_buffer_requests=*/&command_buffer_requests}));
       ABSL_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     }
     ABSL_RETURN_IF_ERROR(stream->BlockHostUntilDone());
@@ -970,8 +977,14 @@ class CublasLtMatmulThunkCmdBufTest : public ::testing::Test {
         {a_buf_, b_buf_, c_buf_, d_buf_, workspace_buf_}, 0, allocator_.get()));
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+    CommandBufferRequests command_buffer_requests;
     ASSERT_OK(thunk_->Initialize(
-        {executor_, source, allocations_.get(), stream_.get()}));
+        {/*executor=*/executor_,
+         /*src=*/source,
+         /*buffer_allocations=*/allocations_.get(),
+         /*stream=*/stream_.get(),
+         /*command_buffer_trace_stream=*/nullptr,
+         /*command_buffer_requests=*/&command_buffer_requests}));
 
     params_.emplace(Thunk::ExecuteParams::Create(
         run_options_, *allocations_, stream_.get(), trace_stream_.get(),

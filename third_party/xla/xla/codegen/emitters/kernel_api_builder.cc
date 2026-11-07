@@ -71,7 +71,6 @@ namespace xla::emitters {
 
 static constexpr absl::string_view kXlaEntryAttr = "xla.entry";
 static constexpr absl::string_view kXlaSliceIndexAttr = "xla.slice_index";
-static constexpr absl::string_view kXlaInvariantAttr = "xla.invariant";
 static constexpr std::array<int, 3> kIndexingMapWorkItemDims = {0, 1, 2};
 static constexpr std::array<int, 3> kIndexingMapWorkGroupDims = {3, 4, 5};
 
@@ -172,14 +171,13 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
     attrs.push_back(builder.getNamedAttr(
         mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
         builder.getIndexAttr(arg.slice().size())));
-    if (!arg.written()) {
-      if (arg.invariant()) {
-        attrs.push_back(
-            builder.getNamedAttr(kXlaInvariantAttr, builder.getUnitAttr()));
-      } else {
-        attrs.push_back(
-            builder.getNamedAttr(kXlaNotInvariantAttr, builder.getUnitAttr()));
-      }
+    if (arg.aliased() || !arg.invariant()) {
+      attrs.push_back(
+          builder.getNamedAttr(kXlaAliasedAttr, builder.getUnitAttr()));
+    }
+    if (arg.invariant() && !arg.written()) {
+      attrs.push_back(
+          builder.getNamedAttr(kXlaInvariantAttr, builder.getUnitAttr()));
     }
     return builder.getDictionaryAttr(attrs);
   };

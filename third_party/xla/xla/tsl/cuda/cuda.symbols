@@ -18,6 +18,7 @@ cuCtxAttach
 cuCtxCreate
 cuCtxCreate_v2
 cuCtxCreate_v3
+cuCtxCreate_v4
 cuCtxDestroy
 cuCtxDestroy_v2
 cuCtxDetach

@@ -1619,6 +1619,13 @@ class PjRtLoadedExecutable {
   // True if on-device resources associated with the executable are freed.
   virtual bool IsDeleted() const = 0;
 
+  // Releases mutable runtime state (e.g., loaded device/host program handles
+  // and program stacks) without deleting the executable. Blocks until devices
+  // with loaded programs are idle; callers must ensure no other work is
+  // continuously dispatched to those devices. Subsequent Execute() calls lazily
+  // reload the executable on demand.
+  virtual absl::Status ClearExecutionState() { return absl::OkStatus(); }
+
   // These are all forwarding methods for convenience, wrapping the
   // corresponding methods on the wrapped PjRtExecutable.
   virtual int num_replicas() const { return GetExecutable()->num_replicas(); }

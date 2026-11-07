@@ -1118,6 +1118,10 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
             DeviceKernelLaunchCtaCount(core_count, num_active_updates);
         const PrimitiveType element_type = device_buffers[0].element_type;
 
+        const int32_t granted_cft_caps = dev_comm->granted_cft_caps();
+        const bool cft_granted =
+            (granted_cft_caps & GpuDeviceCommunicator::kGpuCftCapUnicast) != 0;
+
         XLA_VLOG_DEVICE(3, state->device_ordinal)
             << "Device kernel: lsa_size=" << lsa_size
             << " num_ranks=" << num_ranks << " gin=" << gin
@@ -1125,7 +1129,9 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
             << " num_updates_per_replica=" << num_updates_per_replica
             << " num_row_elements=" << config_.num_row_elements
             << " element_type="
-            << primitive_util::LowercasePrimitiveTypeName(element_type);
+            << primitive_util::LowercasePrimitiveTypeName(element_type)
+            << " path=" << (gin ? "gin" : "lsa-only") << " granted_cft_caps=0x"
+            << absl::Hex(granted_cft_caps) << " cft_granted=" << cft_granted;
 
         return RunDeviceRaggedAllToAllKernel(
             &stream, element_type, dev_comm, input_sym, output_sym,
@@ -1133,7 +1139,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
             device_buffers[4].source_buffer, num_ranks, num_updates_per_replica,
             config_.num_row_elements, cta_count,
             static_cast<int64_t>(input_offset),
-            static_cast<int64_t>(output_offset));
+            static_cast<int64_t>(output_offset), cft_granted);
       }
     }
   }

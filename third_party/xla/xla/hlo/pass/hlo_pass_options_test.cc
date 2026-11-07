@@ -23,6 +23,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
@@ -33,6 +35,7 @@ namespace xla {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::Eq;
 using ::testing::HasSubstr;
@@ -103,6 +106,50 @@ TEST(HloPassOptionsTest, StringTypeMismatchIsReportedByCheckAllConsumed) {
 TEST(HloPassOptionsDeathTest, InitializerListRejectsDuplicateName) {
   EXPECT_DEATH(HloPassOptions({{"flag", true}, {"flag", false}}),
                "Duplicate pass option 'flag'");
+}
+
+enum class TestMode { kSimple, kFull };
+
+const absl::flat_hash_map<absl::string_view, TestMode>& TestModes() {
+  static const absl::NoDestructor<
+      absl::flat_hash_map<absl::string_view, TestMode>>
+      kModes({{"simple", TestMode::kSimple}, {"full", TestMode::kFull}});
+  return *kModes;
+}
+
+TEST(HloPassOptionsTest, GetEnumMapsValue) {
+  HloPassOptions options = {{"mode", "full"}};
+
+  EXPECT_THAT(options.GetEnum("mode", TestModes()),
+              IsOkAndHolds(TestMode::kFull));
+  EXPECT_THAT(options.CheckAllConsumed(), IsOk());
+}
+
+TEST(HloPassOptionsTest, GetEnumRejectsUnknownValue) {
+  HloPassOptions options = {{"mode", "fast"}};
+
+  EXPECT_THAT(
+      options.GetEnum("mode", TestModes()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Unknown value 'fast' of pass option 'mode'")));
+}
+
+TEST(HloPassOptionsTest, GetEnumRejectsMissingValue) {
+  HloPassOptions options;
+
+  EXPECT_THAT(options.GetEnum("mode", TestModes()),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Missing string pass option 'mode'")));
+}
+
+TEST(HloPassOptionsTest, GetEnumLeavesMistypedValueUnconsumed) {
+  HloPassOptions options = {{"mode", 1}};
+
+  EXPECT_THAT(options.GetEnum("mode", TestModes()),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(options.CheckAllConsumed(),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("'mode' (int64)")));
 }
 
 TEST(HloPassOptionsTest, TypeMismatchIsReportedByCheckAllConsumed) {

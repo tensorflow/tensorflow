@@ -238,6 +238,29 @@ absl::StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
   return ptrs;
 }
 
+absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
+    int device_ordinal, se::StreamPriority priority, int locality_domain_id) {
+  if (locality_domain_id < 0) {
+    return InvalidArgument("Invalid negative locality domain id: %d",
+                           locality_domain_id);
+  }
+
+  ABSL_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                   stream_executor(device_ordinal));
+  absl::MutexLock lock(mu_);
+  auto& domain_pools = locality_domain_stream_pools_[executor];
+  if (!domain_pools.contains(locality_domain_id)) {
+    domain_pools.emplace(
+        locality_domain_id,
+        std::make_unique<StreamPool>(
+            [executor, locality_domain_id](se::StreamPriority stream_priority) {
+              return executor->CreateStreamInLocalityDomain(locality_domain_id,
+                                                            stream_priority);
+            }));
+  }
+  return domain_pools.at(locality_domain_id)->BorrowStream(priority);
+}
+
 Backend::Backend(se::Platform* platform, std::unique_ptr<Compiler> compiler,
                  absl::Span<se::StreamExecutor* const> stream_executors,
                  TransferManager* transfer_manager,

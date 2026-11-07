@@ -115,6 +115,11 @@ xla_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu:alignment",
+        "//xla/backends/cpu/codegen:fusion_compiler",
+        "//xla/backends/cpu/codegen:fusion_emitter",
+        "//xla/codegen:kernel_definition",
+        "//xla/codegen:mlir_kernel_source",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
@@ -134,8 +139,13 @@ xla_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -227,19 +237,6 @@ xla_test(
     ],
 )
 
-xla_cc_test(
-    name = "cpu_literal_caching_test",
-    srcs = ["cpu_literal_caching_test.cc"],
-    deps = [
-        ":cpu_pjrt_codegen_test",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/cpu:cpu_compiler",
-        "//xla/service/cpu:test_header_helper",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
 xla_test(
     name = "cpu_spmd_compile_test",
     srcs = ["cpu_spmd_compile_test.cc"],
@@ -298,14 +295,21 @@ xla_test(
     srcs = ["cpu_while_test.cc"],
     backends = ["cpu"],
     deps = [
+        "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:executable",
         "//xla/service/cpu:cpu_compiler",
-        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/service/cpu:cpu_executable",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",

@@ -124,8 +124,8 @@ Shape ExpandedFilterShape(const Shape& shape, int64_t group_count,
 std::vector<int32_t> GetMaskIds(int64_t group_size, int64_t group_count) {
   std::vector<int32_t> values;
   values.reserve(group_count * group_size);
-  for (int i = 0; i < group_count; ++i) {
-    for (int j = 0; j < group_size; ++j) {
+  for (int64_t i = 0; i < group_count; ++i) {
+    for (int64_t j = 0; j < group_size; ++j) {
       values.push_back(i);
     }
   }
@@ -467,12 +467,6 @@ absl::Status ConvolutionVisitor::HandleConvolution(
   int64_t group_size = filter->shape().dimensions(kernel_input_feature_dim);
   int64_t kernel_output_feature_dim =
       dim_numbers.kernel_output_feature_dimension();
-  auto expanded_filter_shape = ExpandedFilterShape(filter->shape(), group_count,
-                                                   kernel_input_feature_dim);
-  HloInstruction* filter_mask =
-      GetExpandedFilterMask(filter->shape(), kernel_input_feature_dim,
-                            kernel_output_feature_dim, group_count, add);
-  HloInstruction* expanded_filter;
 
   if (group_size == 1) {
     bool depthwise_separable =
@@ -486,6 +480,11 @@ absl::Status ConvolutionVisitor::HandleConvolution(
     // We want to repeat 'filter' in the 'input_feature_dim' dimension
     // 'group_count' times.
     if (!is_cost_viable_(convolution) || filter_expansion_) {
+      auto expanded_filter_shape = ExpandedFilterShape(
+          filter->shape(), group_count, kernel_input_feature_dim);
+      HloInstruction* filter_mask =
+          GetExpandedFilterMask(filter->shape(), kernel_input_feature_dim,
+                                kernel_output_feature_dim, group_count, add);
       Shape reshaped_filter_shape =
           ShapeUtil::DeleteDimension(kernel_input_feature_dim, filter->shape());
       auto reshaped_filter =
@@ -497,7 +496,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
         }
         broadcast_dims.push_back(i);
       }
-      expanded_filter = add(HloInstruction::CreateBroadcast(
+      HloInstruction* expanded_filter = add(HloInstruction::CreateBroadcast(
           expanded_filter_shape, reshaped_filter, broadcast_dims));
 
       auto zero = add(HloInstruction::CreateConstant(

@@ -261,7 +261,8 @@ absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
             devices[replica][partition]->client()->platform_name(), replica,
             partition);
       }
-      xla_assignment(replica, partition) = devices[replica][partition]->id();
+      xla_assignment(replica, partition) =
+          devices[replica][partition]->global_device_id().value();
     }
   }
   return xla_assignment;
@@ -674,10 +675,26 @@ PjRtStreamExecutorExecutableLoadState::LoadRawExecutable(
   int partition = device_and_assign.partition;
   VLOG(1) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
+  std::shared_ptr<const DeviceAssignment> device_assignment;
+  if (local_exec->build_options().has_device_assignment()) {
+    device_assignment = std::shared_ptr<const DeviceAssignment>(
+        local_exec, &local_exec->build_options().device_assignment());
+  } else if (se_executable->num_replicas() == 1 &&
+             se_executable->num_partitions() == 1) {
+    auto da = std::make_shared<DeviceAssignment>(1, 1);
+    (*da)(0, 0) = device_and_assign.global_device_id.value();
+    device_assignment = std::move(da);
+  } else {
+    ABSL_ASSIGN_OR_RETURN(
+        DeviceAssignment default_da,
+        raw_client()->client()->backend().computation_placer()->AssignDevices(
+            se_executable->num_replicas(), se_executable->num_partitions()));
+    device_assignment =
+        std::make_shared<DeviceAssignment>(std::move(default_da));
+  }
   return std::make_unique<PjRtStreamExecutorRawLoadedExecutable>(
-      replica, partition, run_id, device,
-      std::move(device_and_assign.device_assignment), std::move(local_exec),
-      std::move(se_executable), raw_client());
+      replica, partition, run_id, device, std::move(device_assignment),
+      std::move(local_exec), std::move(se_executable), raw_client());
 }
 
 absl::Status PjRtStreamExecutorRawClient::TransferToInfeed(
@@ -1369,7 +1386,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     absl::flat_hash_map<GlobalDeviceId, IncarnationId> device_incarnations;
     for (const PjRtDevice* device : device_->client()->devices()) {
       int task_id = device->process_index();
-      GlobalDeviceId device_id(device->global_device_id().value());
+      GlobalDeviceId device_id = device->global_device_id();
 
       auto it = options.incarnations.find(task_id);
       if (it == options.incarnations.end()) {
@@ -1531,8 +1548,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
       }
     }
 
-    VLOG(1) << "Start calling RunAsync for "
-            << executable->executable()->module().name()
+    VLOG(1) << "Start calling RunAsync for " << executable->executable()->name()
             << ", device=" << device->DebugString()
             << ", run_id=" << run_options.run_id().ToInt();
 
@@ -1577,7 +1593,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     }
 
     VLOG(1) << "Finish calling RunAsync for "
-            << executable->executable()->module().name()
+            << executable->executable()->name()
             << ", device=" << device->DebugString()
             << ", run_id=" << run_options.run_id().ToInt()
             << ", replica=" << replica << ", partition=" << partition
@@ -2119,8 +2135,8 @@ absl::Status PjRtStreamExecutorExecutableLoadState::Preload(
       .status();
 }
 
-tsl::RCReference<PjRtExecutableLoadState>
-PjRtStreamExecutorRawClient::MakeLoadState() {
+absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
+PjRtStreamExecutorRawClient::MakeLoadState(const LoadOptions& load_options) {
   return tsl::MakeRef<PjRtStreamExecutorExecutableLoadState>(this);
 }
 

@@ -16,13 +16,11 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter2.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status_macros.h"
@@ -34,16 +32,12 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -115,79 +109,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
 
   return kernels_.emplace_back(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
-}
-
-// Dot (fusion) host kernel only supports strategies that emit LLVM IR.
-static bool IsDotCodegenStrategy(DotImplementationStrategy strategy) {
-  static std::array<DotImplementationStrategy, 3> kDotCodegenStrategies = {
-      DotImplementationStrategy::kNaiveLlvmIr,
-      DotImplementationStrategy::kTiledLlvmIrGemm,
-      DotImplementationStrategy::kTiledLlvmIrGemv,
-  };
-
-  return absl::c_find(kDotCodegenStrategies, strategy) !=
-         kDotCodegenStrategies.end();
-}
-
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
-    const HloFusionInstruction* fusion) {
-  VLOG(2) << "Emit dot fusion host kernel: " << fusion->name();
-
-  // Dot fusion only supports adding a side input to the dot product.
-  const HloInstruction* add = fusion->fused_expression_root();
-  if (add->opcode() != HloOpcode::kAdd) {
-    return Internal("Dot fusion supports only `add` root instruction");
-  }
-
-  // Check that fusion root has a single dot operand.
-  bool is_dot_operand0 = add->operand(0)->opcode() == HloOpcode::kDot;
-  bool is_dot_operand1 = add->operand(1)->opcode() == HloOpcode::kDot;
-  if (is_dot_operand0 == is_dot_operand1) {
-    return Internal("Dot fusion root instruction must have single dot operand");
-  }
-
-  int64_t dot_op_index = is_dot_operand0 ? 0 : 1;
-  int64_t addend_op_index = 1 - dot_op_index;
-
-  const HloInstruction* dot = add->operand(dot_op_index);
-
-  // Check that we can emit LLVM IR for this dot operation.
-  DotImplementationStrategy strategy = GetDotImplementationStrategy(
-      hlo_module_.config(), *dot, nested_ir_emitter_->target_machine_features(),
-      /*allow_runtime_calls=*/false);
-
-  if (!IsDotCodegenStrategy(strategy)) {
-    return Internal("Unsupported dot implementation strategy");
-  }
-
-  // Indices of fusion parameters that are used as dot operands and result.
-  int64_t dot_lhs_pnum = dot->operand(0)->parameter_number();
-  int64_t dot_rhs_pnum = dot->operand(1)->parameter_number();
-  int64_t addend_pnum = add->operand(addend_op_index)->parameter_number();
-
-  ABSL_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
-                   EmitKernelPrototype(fusion));
-
-  llvm::IRBuilder<> b(module_->getContext());
-  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
-
-  llvm_ir::IrArray lhs_array = kernel_prototype.arguments[dot_lhs_pnum];
-  llvm_ir::IrArray rhs_array = kernel_prototype.arguments[dot_rhs_pnum];
-  llvm_ir::IrArray addend_array = kernel_prototype.arguments[addend_pnum];
-  llvm_ir::IrArray target_array = kernel_prototype.results[0];
-
-  ABSL_ASSIGN_OR_RETURN(
-      DotOpWorkGroupDim num_workgroups,
-      EmitDotOperation(
-          *dot, target_array, lhs_array, rhs_array, &addend_array,
-          {kernel_prototype.workgroup_id.x, kernel_prototype.workgroup_id.y},
-          &b, hlo_module_.config(),
-          nested_ir_emitter_->target_machine_features(),
-          /*allow_parallelism=*/false));
-
-  return kernels_.emplace_back(KernelInfo(
-      std::move(kernel_prototype),
-      se::BlockDim(num_workgroups.x, num_workgroups.y), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(

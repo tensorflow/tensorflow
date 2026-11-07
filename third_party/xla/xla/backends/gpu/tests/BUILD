@@ -278,6 +278,26 @@ xla_test(
 )
 
 xla_test(
+    name = "horizontal_fusion_test",
+    srcs = ["horizontal_fusion_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":gpu_pjrt_codegen_test",
+        "//xla:error_spec",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms:horizontal_fusion",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:hlo_interpreter_reference_mixin",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "swap_conv_operands_test",
     srcs = [
         "swap_conv_operands_test.cc",
@@ -427,6 +447,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:literal_test_util",
@@ -743,6 +764,7 @@ lit_test_suite_for_gpus(
             "triton_async_copy.hlo",
             "triton_calling_convention.hlo",
             "triton_naming.hlo",
+            "triton_scan_bf16.hlo",
             "triton_tdm_elemwise.hlo",
             "vectorization.hlo",
             "zero_clamp_abs_index.hlo",
@@ -1324,6 +1346,10 @@ xla_test(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_absl//absl/log:log_entry",
+        "@com_google_absl//absl/log:log_sink",
+        "@com_google_absl//absl/log:log_sink_registry",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

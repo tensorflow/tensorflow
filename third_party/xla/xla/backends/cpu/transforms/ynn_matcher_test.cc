@@ -58,6 +58,27 @@ TEST_F(YnnE2eTest, DoNotDegroupConvolutionFeatures) {
                     "CHECK: f32[1,4,8,9]{3,2,1,0} convolution");
 }
 
+TEST_F(YnnE2eTest, DisabledYnnKeepsLargeM1DotUnfused) {
+  constexpr absl::string_view kHloText = R"hlo(
+  HloModule large_dot_m1_ynn_disabled
+
+  ENTRY main {
+    %lhs = f32[1,1024] parameter(0)
+    %rhs = f32[1024,1024] parameter(1)
+    %rhs_t = f32[1024,1024] transpose(%rhs), dimensions={1,0}
+    ROOT %out = f32[1,1024] dot(%lhs, %rhs_t), lhs_contracting_dims={1},
+                                               rhs_contracting_dims={0}
+  }
+  )hlo";
+  // When YNNPACK is disabled, large M=1 dots stay unfused (and fold the RHS
+  // transpose into the dot contracting dimension).
+  MatchOptimizedHlo(kHloText, R"(
+    CHECK-NOT: __ynn_fusion
+    CHECK-NOT: transpose(
+    CHECK: f32[1,1024]{1,0} dot({{.*}}, %rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  )");
+}
+
 class YnnReduceTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -302,6 +323,52 @@ TEST_P(YnnDotTest, SingleDot) {
     CHECK: kind=kCustom
     CHECK: "kind":"__ynn_fusion"
   )");
+}
+
+TEST_P(YnnDotTest, SingleDotM1) {
+  constexpr absl::string_view kHloTemplate = R"hlo(
+  HloModule single_dot_m1
+
+  ENTRY main {
+    %lhs = $lhs_dtype[1,1024] parameter(0)
+    %rhs = $rhs_dtype[1024,1024] parameter(1)
+    ROOT %out = $out_dtype[1,1024] dot(%lhs, %rhs), lhs_contracting_dims={1},
+                                                    rhs_contracting_dims={0}
+  }
+  )hlo";
+  DotTestConfig config = GetParam();
+  std::string hlo_text =
+      absl::StrReplaceAll(kHloTemplate, {{"$lhs_dtype", config.lhs_dtype},
+                                         {"$rhs_dtype", config.rhs_dtype},
+                                         {"$out_dtype", config.out_dtype}});
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: dot
+    CHECK: ENTRY
+    CHECK: kind=kCustom
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
+TEST_P(YnnDotTest, SmallUniformDotM1NotFused) {
+  DotTestConfig config = GetParam();
+  if (config.lhs_dtype != config.out_dtype) {
+    GTEST_SKIP() << "Mixed-precision dots do not use kTiledLlvmIrGemv.";
+  }
+  constexpr absl::string_view kHloTemplate = R"hlo(
+  HloModule small_dot_m1
+
+  ENTRY main {
+    %lhs = $lhs_dtype[1,64] parameter(0)
+    %rhs = $rhs_dtype[64,64] parameter(1)
+    ROOT %out = $out_dtype[1,64] dot(%lhs, %rhs), lhs_contracting_dims={1},
+                                                  rhs_contracting_dims={0}
+  }
+  )hlo";
+  std::string hlo_text =
+      absl::StrReplaceAll(kHloTemplate, {{"$lhs_dtype", config.lhs_dtype},
+                                         {"$rhs_dtype", config.rhs_dtype},
+                                         {"$out_dtype", config.out_dtype}});
+  MatchOptimizedHlo(hlo_text, "CHECK-NOT: __ynn_fusion");
 }
 
 TEST_F(YnnReduceTest, ReduceSquared) {

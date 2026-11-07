@@ -82,7 +82,7 @@ ENTRY main {
 // CHECK-DAG: %[[NESTED1:.*]] = f32[512]{0} fusion(%[[P2]]), kind=kLoop, calls=%fused_mul
 // CHECK: ROOT %{{.*}} = (f32[1024]{0}, f32[512]{0}) tuple(%[[NESTED0]], %[[NESTED1]])
 // CHECK: ENTRY %main
-// CHECK: %[[HF:.*]] = (f32[1024]{0}, f32[512]{0}) fusion({{.*}}), kind=kLoop, calls=%horizontal_fusion_computation
+// CHECK: %[[HF:.*]] = (f32[1024]{0}, f32[512]{0}) fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation, backend_config={{.*}}"kind":"__thread_block_specialized"
 // CHECK: ROOT %{{.*}} = (f32[1024]{0}, f32[512]{0}) tuple(%[[HF]]#0, %[[HF]]#1)
 )"));
   EXPECT_TRUE(filecheck_matched);
@@ -273,5 +273,167 @@ ENTRY main {
   EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(HorizontalFusionTest, FusesLoopAndReductionWithWarpAlignedThreads) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+add_f32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+fused_loop {
+  p0 = f32[512]{0} parameter(0)
+  ROOT neg = f32[512]{0} negate(p0)
+}
+
+fused_reduce {
+  p1 = f32[8,512]{1,0} parameter(0)
+  c0 = f32[] constant(0)
+  ROOT red = f32[8]{0} reduce(p1, c0), dimensions={1}, to_apply=add_f32
+}
+
+ENTRY main {
+  p0 = f32[512]{0} parameter(0)
+  p1 = f32[8,512]{1,0} parameter(1)
+  f0 = f32[512]{0} fusion(p0), kind=kLoop, calls=fused_loop
+  f1 = f32[8]{0} fusion(p1), kind=kInput, calls=fused_reduce
+  ROOT out = (f32[512]{0}, f32[8]{0}) tuple(f0, f1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+}
+
+TEST_F(HorizontalFusionTest, FusesMultiOutputNestedFusion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+fused_mof {
+  p0 = f32[1024]{0} parameter(0)
+  n0 = f32[1024]{0} negate(p0)
+  e0 = f32[1024]{0} exponential(p0)
+  ROOT t = (f32[1024]{0}, f32[1024]{0}) tuple(n0, e0)
+}
+
+fused_single {
+  p1 = f32[512]{0} parameter(0)
+  ROOT c0 = f32[512]{0} cosine(p1)
+}
+
+ENTRY main {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = (f32[1024]{0}, f32[1024]{0}) fusion(p0), kind=kLoop, calls=fused_mof
+  gte0 = f32[1024]{0} get-tuple-element(f0), index=0
+  gte1 = f32[1024]{0} get-tuple-element(f0), index=1
+  f1 = f32[512]{0} fusion(p1), kind=kLoop, calls=fused_single
+  ROOT out = (f32[1024]{0}, f32[1024]{0}, f32[512]{0}) tuple(gte0, gte1, f1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: horizontal_fusion_computation
+// CHECK-DAG: %[[MOF:.*]] = (f32[1024]{0}, f32[1024]{0}) fusion({{.*}}), kind=kLoop, calls=%fused_mof
+// CHECK-DAG: %[[SINGLE:.*]] = f32[512]{0} fusion({{.*}}), kind=kLoop, calls=%fused_single
+// CHECK: ROOT %{{.*}} = (f32[1024]{0}, f32[1024]{0}, f32[512]{0}) tuple(%[[MOF]]#0, %[[MOF]]#1, %[[SINGLE]])
+)"));
+  EXPECT_TRUE(filecheck_matched) << module->ToString();
+}
+
+TEST_F(HorizontalFusionTest,
+       FusesMultiOutputNestedFusionWithControlDependentGte) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+fused_mof {
+  p0 = f32[1024]{0} parameter(0)
+  n0 = f32[1024]{0} negate(p0)
+  e0 = f32[1024]{0} exponential(p0)
+  ROOT t = (f32[1024]{0}, f32[1024]{0}) tuple(n0, e0)
+}
+
+fused_single {
+  p1 = f32[512]{0} parameter(0)
+  ROOT c0 = f32[512]{0} cosine(p1)
+}
+
+ENTRY main {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = (f32[1024]{0}, f32[1024]{0}) fusion(p0), kind=kLoop, calls=fused_mof
+  f1 = f32[512]{0} fusion(p1), kind=kLoop, calls=fused_single
+  gte0 = f32[1024]{0} get-tuple-element(f0), index=0
+  gte1 = f32[1024]{0} get-tuple-element(f0), index=1, control-predecessors={f1}
+  ROOT out = (f32[1024]{0}, f32[1024]{0}, f32[512]{0}) tuple(gte0, gte1, f1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* gte1 = root->operand(1);
+  ASSERT_EQ(gte1->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(gte1->control_predecessors(),
+              ::testing::ElementsAre(gte1->operand(0)));
+}
+
+TEST_F(HorizontalFusionTest, FusesMultiOutputNestedFusionUsedAsWholeTuple) {
+  constexpr absl::string_view kHlo = R"(
+HloModule m, is_scheduled=true
+
+fused_mof {
+  p0 = f32[1024]{0} parameter(0)
+  n0 = f32[1024]{0} negate(p0)
+  e0 = f32[1024]{0} exponential(p0)
+  ROOT t = (f32[1024]{0}, f32[1024]{0}) tuple(n0, e0)
+}
+
+fused_single {
+  p1 = f32[512]{0} parameter(0)
+  ROOT c0 = f32[512]{0} cosine(p1)
+}
+
+ENTRY main {
+  p0 = f32[1024]{0} parameter(0)
+  p1 = f32[512]{0} parameter(1)
+  f0 = (f32[1024]{0}, f32[1024]{0}) fusion(p0), kind=kLoop, calls=fused_mof
+  gte1 = f32[1024]{0} get-tuple-element(f0), index=1
+  f1 = f32[512]{0} fusion(p1), kind=kLoop, calls=fused_single
+  ROOT out = ((f32[1024]{0}, f32[1024]{0}), f32[1024]{0}, f32[512]{0}) tuple(f0, gte1, f1)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  HorizontalFusion pass(device_info_);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_OK(module->schedule().Verify());
+
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
+// CHECK: ENTRY %main
+// CHECK: %[[HF:.*]] = (f32[1024]{0}, f32[1024]{0}, f32[512]{0}) fusion({{.*}}), kind=kCustom, calls=%horizontal_fusion_computation
+// CHECK: %[[TUPLE:.*]] = (f32[1024]{0}, f32[1024]{0}) tuple(%[[HF]]#0, %[[HF]]#1)
+// CHECK: ROOT %{{.*}} = ((f32[1024]{0}, f32[1024]{0}), f32[1024]{0}, f32[512]{0}) tuple(%[[TUPLE]], %[[HF]]#1, %[[HF]]#2)
+)"));
+  EXPECT_TRUE(filecheck_matched) << module->ToString();
+}
 }  // namespace
 }  // namespace xla::gpu

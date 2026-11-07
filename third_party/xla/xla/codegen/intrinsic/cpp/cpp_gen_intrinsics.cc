@@ -122,6 +122,19 @@ std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
 
 namespace {
 
+// Strips host target-cpu/target-features (which block AlwaysInliner TTI checks)
+// and SSP/stack-probe attributes (which AlwaysInliner merges into the caller).
+void StripHostFunctionAttributes(llvm::Function* func) {
+  for (llvm::StringRef attr :
+       {"probe-stack", "stack-probe-size", "stack-protector-buffer-size",
+        "target-cpu", "target-features"}) {
+    func->removeFnAttr(attr);
+  }
+  func->removeFnAttr(llvm::Attribute::StackProtect);
+  func->removeFnAttr(llvm::Attribute::StackProtectReq);
+  func->removeFnAttr(llvm::Attribute::StackProtectStrong);
+}
+
 void PrepareForInlining(llvm::Function* func) {
   func->setLinkage(llvm::Function::InternalLinkage);
   if (!func->hasFnAttribute(llvm::Attribute::NoInline)) {
@@ -140,6 +153,7 @@ llvm::Function* CreateDirectAdapter(llvm::Module* module, llvm::Function* body,
 
   llvm::Function* adapter = llvm::Function::Create(
       type, llvm::Function::InternalLinkage, name, module);
+  PrepareForInlining(adapter);
   llvm::IRBuilder<> builder(
       llvm::BasicBlock::Create(module->getContext(), "entry", adapter));
   auto create_slot = [&](llvm::Type* slot_type, llvm::MaybeAlign param_align) {
@@ -310,14 +324,9 @@ void CppGenIntrinsicLibrary::LinkIntoModule(llvm::Module& dst_module) const {
 
   for (const auto& func : lib_functions) {
     llvm::Function* linked_func = dst_module.getFunction(func);
-    if (linked_func && !linked_func->isDeclaration()) {
-      linked_func->setLinkage(llvm::Function::InternalLinkage);
-      if (!linked_func->hasFnAttribute(llvm::Attribute::NoInline)) {
-        linked_func->addFnAttr(llvm::Attribute::AlwaysInline);
-      }
-      linked_func->removeFnAttr("probe-stack");
-      linked_func->removeFnAttr("target-cpu");
-      linked_func->removeFnAttr("target-features");
+    if (linked_func != nullptr && !linked_func->isDeclaration()) {
+      PrepareForInlining(linked_func);
+      StripHostFunctionAttributes(linked_func);
     }
   }
 

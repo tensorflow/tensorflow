@@ -757,6 +757,11 @@ class SocketBulkTransportFactory : public BulkTransportFactory {
   }
 
   void BlockingShutdown() override {
+    listeners_.clear();
+    if (recv_state_) {
+      absl::MutexLock l(recv_state_->mu);
+      recv_state_->waiting_for_connect.clear();
+    }
     std::vector<std::unique_ptr<tsl::Thread>> threads;
     for (auto& t : thread_states_) {
       if (t.use_count() == 1) {

@@ -246,19 +246,27 @@ class GpuOptProvider : public CompiledOptProvider {
 
     llvm::LLVMContext context;
     std::vector<std::unique_ptr<llvm::Module>> modules;
+    absl::Status clone_status;
+    auto clone_into_context = [&](const llvm::Module& module) {
+      absl::StatusOr<std::unique_ptr<llvm::Module>> clone =
+          llvm_ir::CloneModuleToContext(module, context,
+                                        module.getModuleIdentifier());
+      if (!clone.ok()) {
+        clone_status.Update(clone.status());
+        return;
+      }
+      modules.push_back(*std::move(clone));
+    };
     if (optimized) {
-      llvm_compiler->SetPostOptimizationHook([&](const llvm::Module& module) {
-        modules.push_back(gpu::CopyToContext(module, context));
-      });
+      llvm_compiler->SetPostOptimizationHook(clone_into_context);
     } else {
-      llvm_compiler->SetPreOptimizationHook([&](const llvm::Module& module) {
-        modules.push_back(gpu::CopyToContext(module, context));
-      });
+      llvm_compiler->SetPreOptimizationHook(clone_into_context);
     }
 
     ABSL_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,
         compiler->RunBackend(std::move(optimized_module), executor, opts));
+    ABSL_RETURN_IF_ERROR(clone_status);
 
     std::sort(modules.begin(), modules.end(),
               [](const std::unique_ptr<llvm::Module>& m1,

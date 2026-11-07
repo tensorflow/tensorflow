@@ -208,8 +208,9 @@ class MlirKernelFusion final : public KernelFusionInterface {
   static constexpr std::array<int, 3> kIndexingMapBlockIdxDims = {3, 4, 5};
 
  private:
-  xla::Future<KernelDefinition<LlvmKernelSource>> EmitLlvmModule(
+  xla::Future<KernelDefinition<LlvmKernelSource, GpuKernelSpec>> EmitLlvmModule(
       const HloFusionInstruction& fusion, const std::string& kernel_name,
+      const emitters::KernelArguments& args,
       IrEmitterContext& parent_context) const;
   std::unique_ptr<MlirKernelEmitter> emitter_;
 };

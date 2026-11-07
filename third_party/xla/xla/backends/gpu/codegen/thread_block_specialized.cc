@@ -23,6 +23,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -34,8 +38,6 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/IR/ArithAttributes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -51,25 +54,28 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Support/LLVM.h"
 #include "mlir/Target/LLVMIR/Export.h"
+#include "xla/backends/gpu/codegen/emitters/concatenate.h"
 #include "xla/backends/gpu/codegen/emitters/loop.h"
 #include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
+#include "xla/backends/gpu/codegen/emitters/reduction.h"
+#include "xla/backends/gpu/codegen/emitters/scatter.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/backends/gpu/codegen/emitters/transpose.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
+#include "xla/backends/gpu/codegen/nested_kernel_utils.h"
+#include "xla/backends/gpu/codegen/phased_block_cluster.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h"
-#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/future.h"
@@ -86,160 +92,128 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
+#include "xla/util.h"
 #include "tsl/platform/platform.h"
 
 namespace xla::gpu {
-namespace {
 
-constexpr unsigned kSharedMemoryAddrSpace = 3;
-
-std::string GetNestedKernelFunctionName(absl::string_view entry_function_name,
-                                        size_t index) {
-  return absl::StrCat(entry_function_name, "_nested_", index);
+/*static*/
+std::unique_ptr<MlirKernelEmitter>
+ThreadBlockSpecializedFusion::CreateNativeNestedEmitter(
+    const HloFusionAnalysis& nested_analysis) {
+  switch (nested_analysis.emitter_fusion_kind()) {
+    case HloFusionAnalysis::EmitterFusionKind::kLoop:
+      return std::make_unique<LoopFusion>(nested_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kReduction:
+      return CreateReductionFusion(nested_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
+      return CreateTransposeFusion(nested_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kScatter:
+      return CreateScatterFusion(nested_analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
+      return std::make_unique<ConcatenateFusion>(nested_analysis);
+    default:
+      return nullptr;
+  }
 }
-
-absl::Status RunPassManager(mlir::ModuleOp module, mlir::PassManager& pm) {
-  tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
-  return diagnostic_handler.consumeStatus(pm.run(module));
-}
-
-absl::Status LowerLauncherModuleToLlvmDialect(
-    mlir::ModuleOp launcher_module, const se::DeviceDescription& device_info,
-    bool should_verify) {
-  mlir::PassManager pm(launcher_module.getContext());
-  pm.enableVerifier(should_verify);
-  pm.addPass(emitters::createLowerTensorsPass(device_info));
-  pm.addPass(emitters::createMergePointersToSameSlicePass());
-  pm.addPass(createConvertIndexTypePass());
-  pm.addPass(mlir::createSCFToControlFlowPass());
-  pm.addPass(emitters::createLowerToLLVMGPUPass(device_info));
-  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  return RunPassManager(launcher_module, pm);
-}
-
-// Splices a lowered nested kernel module into `launcher_module`, replacing any
-// forward declaration of `nested_fn_name` in `launcher_module` with the
-// `alwaysinline` internal definition from `nested_module`.
-absl::Status SpliceNestedKernelModuleIntoLauncher(
-    mlir::ModuleOp launcher_module, mlir::ModuleOp nested_module,
-    absl::string_view nested_fn_name) {
-  mlir::MLIRContext* ctx = launcher_module.getContext();
-  mlir::OpBuilder builder(ctx);
-
-  auto nested_entry_func =
-      nested_module.lookupSymbol<mlir::LLVM::LLVMFuncOp>(nested_fn_name);
-  TF_RET_CHECK(nested_entry_func != nullptr)
-      << "Nested kernel entry function " << nested_fn_name
-      << " not found in lowered nested module.";
-
-  nested_entry_func.setLinkage(mlir::LLVM::Linkage::Internal);
-  nested_entry_func.setPassthroughAttr(
-      builder.getArrayAttr({builder.getStringAttr("alwaysinline")}));
-  // `@launcher` already carries buffer-assignment `noalias`/`align` attributes
-  // on its parameters. Stripping `noalias` from the `alwaysinline` internal
-  // function avoids conflicting `noalias` attributes when two nested parameters
-  // bind to the same outer buffer.
-  for (unsigned arg_idx = 0; arg_idx < nested_entry_func.getNumArguments();
-       ++arg_idx) {
-    nested_entry_func.removeArgAttr(
-        arg_idx, mlir::LLVM::LLVMDialect::getNoAliasAttrName());
-  }
-
-  // Prefix internal helper functions and non-shmem globals in `nested_module`
-  // so symbols from different nested kernels cannot collide in
-  // `launcher_module`.
-  llvm::SmallVector<mlir::Operation*> ops_to_rename;
-  for (mlir::Operation& op : nested_module.getBody()->getOperations()) {
-    if (&op == nested_entry_func.getOperation()) {
-      continue;
-    }
-    if (auto func = mlir::dyn_cast<mlir::LLVM::LLVMFuncOp>(op)) {
-      if (!func.isExternal()) {
-        ops_to_rename.push_back(&op);
-      }
-    } else if (auto global = mlir::dyn_cast<mlir::LLVM::GlobalOp>(op)) {
-      if (global.getAddrSpace() != kSharedMemoryAddrSpace) {
-        ops_to_rename.push_back(&op);
-      }
-    }
-  }
-
-  for (mlir::Operation* op : ops_to_rename) {
-    mlir::StringAttr old_name = mlir::SymbolTable::getSymbolName(op);
-    std::string new_name = absl::StrCat(nested_fn_name, "_", old_name.str());
-    if (mlir::failed(mlir::SymbolTable::replaceAllSymbolUses(
-            op, builder.getStringAttr(new_name), nested_module))) {
-      return absl::InternalError(
-          absl::StrCat("Failed to rename symbol ", old_name.str()));
-    }
-    mlir::SymbolTable::setSymbolName(op, new_name);
-    if (auto func = mlir::dyn_cast<mlir::LLVM::LLVMFuncOp>(op)) {
-      func.setLinkage(mlir::LLVM::Linkage::Internal);
-    } else if (auto global = mlir::dyn_cast<mlir::LLVM::GlobalOp>(op)) {
-      global.setLinkage(mlir::LLVM::Linkage::Private);
-    }
-  }
-
-  if (auto decl = launcher_module.lookupSymbol<mlir::LLVM::LLVMFuncOp>(
-          nested_fn_name)) {
-    decl.erase();
-  }
-
-  llvm::SmallVector<mlir::Operation*> ops_to_move;
-  for (mlir::Operation& op : nested_module.getBody()->getOperations()) {
-    if (auto global = mlir::dyn_cast<mlir::LLVM::GlobalOp>(op)) {
-      if (global.getAddrSpace() == kSharedMemoryAddrSpace) {
-        continue;
-      }
-    }
-    if (auto func = mlir::dyn_cast<mlir::LLVM::LLVMFuncOp>(op)) {
-      if (func.isExternal() &&
-          launcher_module.lookupSymbol(func.getSymName()) != nullptr) {
-        continue;
-      }
-    }
-    ops_to_move.push_back(&op);
-  }
-
-  for (mlir::Operation* op : ops_to_move) {
-    op->moveBefore(launcher_module.getBody(), launcher_module.getBody()->end());
-  }
-
-  return absl::OkStatus();
-}
-
-}  // namespace
 
 ThreadBlockSpecializedFusion::NestedKernelSpec
 ThreadBlockSpecializedFusion::NestedKernelSpec::Create(
     const HloFusionInstruction& fusion,
     const se::DeviceDescription& device_info) {
   HloFusionAnalysis analysis = HloFusionAnalysis::Create(fusion, device_info);
-  LoopFusion emitter(analysis);
-  return NestedKernelSpec{&fusion, emitter.launch_dimensions()};
+  LaunchDimensions launch_dims;
+  se::ClusterDim cluster_dim{1, 1, 1};
+  if (std::unique_ptr<MlirKernelEmitter> emitter =
+          CreateNativeNestedEmitter(analysis)) {
+    launch_dims = emitter->launch_dimensions();
+  } else if (analysis.emitter_fusion_kind() ==
+             HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster) {
+    PhasedBlockClusterFusion phased_block_cluster_fusion(analysis);
+    launch_dims = phased_block_cluster_fusion.launch_dimensions();
+    cluster_dim = phased_block_cluster_fusion.cluster_dim();
+  } else {
+    LOG(FATAL) << "Failed to create nested kernel emitter for "
+               << fusion.name();
+  }
+  int64_t num_outputs = ShapeUtil::GetLeafCount(fusion.shape());
+  return NestedKernelSpec{&fusion, launch_dims,
+                          std::vector<int64_t>(num_outputs, -1),
+                          analysis.emitter_fusion_kind(), cluster_dim};
 }
 
 ThreadBlockSpecializedFusion::ThreadBlockSpecializedFusion(
     const HloFusionAnalysis& analysis)
     : device_info_(analysis.device_info()) {
-  uint64_t total_blocks = 0;
   uint64_t max_threads = 0;
-  nested_kernels_.reserve(analysis.fusion_root_count());
-  for (const HloInstructionAdaptor& root : analysis.fusion_roots()) {
-    const auto* nested_fusion = Cast<HloFusionInstruction>(&root.instruction());
-    NestedKernelSpec spec =
-        NestedKernelSpec::Create(*nested_fusion, device_info_);
-    total_blocks += spec.launch_dims.num_blocks();
-    max_threads =
-        std::max(max_threads, spec.launch_dims.num_threads_per_block());
-    nested_kernels_.push_back(std::move(spec));
+  uint64_t max_cluster_dim_x = 1;
+  bool has_cluster_fusion = false;
+  absl::flat_hash_map<const HloInstruction*, size_t> fusion_to_kernel_idx;
+  for (int64_t root_idx = 0; root_idx < analysis.fusion_root_count();
+       ++root_idx) {
+    const HloInstruction* nested_fusion =
+        &analysis.fusion_root(root_idx).instruction();
+    int64_t tuple_idx = 0;
+    if (nested_fusion->opcode() == HloOpcode::kGetTupleElement) {
+      tuple_idx = nested_fusion->tuple_index();
+      nested_fusion = nested_fusion->operand(0);
+    }
+
+    auto [it, inserted] =
+        fusion_to_kernel_idx.try_emplace(nested_fusion, nested_kernels_.size());
+    if (inserted) {
+      NestedKernelSpec spec = NestedKernelSpec::Create(
+          *Cast<HloFusionInstruction>(nested_fusion), device_info_);
+      max_threads =
+          std::max(max_threads, spec.launch_dims.num_threads_per_block());
+      max_cluster_dim_x = std::max(max_cluster_dim_x, spec.cluster_dim.x);
+      if (spec.emitter_fusion_kind ==
+          HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster) {
+        has_cluster_fusion = true;
+      }
+      nested_kernels_.push_back(std::move(spec));
+    }
+
+    NestedKernelSpec& spec = nested_kernels_[it->second];
+    CHECK_LT(tuple_idx, static_cast<int64_t>(spec.outer_root_indices.size()));
+    spec.outer_root_indices[tuple_idx] = root_idx;
   }
 
+  // Place `PhasedBlockClusterFusion` sub-kernels first so each starts on a
+  // cluster boundary and occupies an entire cluster of `max_cluster_dim_x`
+  // CTAs, while non-clustered sub-kernels pack contiguously afterward without
+  // per-kernel padding.
+  absl::c_stable_partition(nested_kernels_, [](const NestedKernelSpec& spec) {
+    return spec.emitter_fusion_kind ==
+           HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster;
+  });
+
+  uint64_t total_blocks = 0;
+  for (const NestedKernelSpec& spec : nested_kernels_) {
+    for (int64_t outer_root_idx : spec.outer_root_indices) {
+      CHECK_GE(outer_root_idx, 0)
+          << "Multi-output nested fusion has unreferenced output in "
+          << spec.fusion->ToString();
+    }
+    if (spec.emitter_fusion_kind ==
+        HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster) {
+      total_blocks +=
+          RoundUpTo<uint64_t>(spec.launch_dims.num_blocks(), max_cluster_dim_x);
+    } else {
+      total_blocks += spec.launch_dims.num_blocks();
+    }
+  }
+  total_blocks = RoundUpTo<uint64_t>(total_blocks, max_cluster_dim_x);
+
   launch_dimensions_ = LaunchDimensions(total_blocks, max_threads);
+  if (has_cluster_fusion) {
+    cluster_dim_ = se::ClusterDim(max_cluster_dim_x, 1, 1);
+  }
 }
 
 absl::Status ThreadBlockSpecializedFusion::EmitLauncherBody(
@@ -290,12 +264,20 @@ absl::Status ThreadBlockSpecializedFusion::EmitLauncherBody(
   mlir::Value tid = mlir::arith::IndexCastUIOp::create(b, i32_ty, tid_idx);
 
   int64_t max_threads = launch_dimensions_.num_threads_per_block();
+  int64_t cluster_dim_x =
+      cluster_dim_.has_value() ? static_cast<int64_t>(cluster_dim_->x) : 1;
   int64_t block_offset = 0;
 
   // Emit conditional launcher logic.
   for (size_t idx = 0; idx < nested_kernels_.size(); ++idx) {
     const NestedKernelSpec& spec = nested_kernels_[idx];
-    int64_t upper_bound = block_offset + spec.launch_dims.num_blocks();
+    int64_t nested_blocks = spec.launch_dims.num_blocks();
+    int64_t allocated_blocks =
+        spec.emitter_fusion_kind ==
+                HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster
+            ? RoundUpTo<int64_t>(nested_blocks, cluster_dim_x)
+            : nested_blocks;
+    int64_t upper_bound = block_offset + allocated_blocks;
     mlir::Value bound_val =
         mlir::arith::ConstantIntOp::create(b, upper_bound, 32);
     mlir::Value in_range = mlir::arith::CmpIOp::create(
@@ -322,23 +304,32 @@ absl::Status ThreadBlockSpecializedFusion::EmitLauncherBody(
       call_args.push_back(arg_ptrs[operand->parameter_number()]);
     }
 
-    // Output argument.
-    call_args.push_back(arg_ptrs[fusion.operand_count() + idx]);
+    // Output arguments.
+    for (int64_t outer_root_idx : spec.outer_root_indices) {
+      call_args.push_back(arg_ptrs[fusion.operand_count() + outer_root_idx]);
+    }
 
     // Relative block ID.
     call_args.push_back(rel_bid);
 
-    // If the nested kernel has fewer threads per block than the launcher
-    // kernel, we only need to launch the threads that are in range.
-    int64_t nested_threads = spec.launch_dims.num_threads_per_block();
-    if (nested_threads < max_threads) {
-      mlir::Value max_nested_tid =
-          mlir::arith::ConstantIntOp::create(b, nested_threads, 32);
-      mlir::Value tid_active = mlir::arith::CmpIOp::create(
-          b, mlir::arith::CmpIPredicate::ult, tid, max_nested_tid);
-      auto tid_if =
-          mlir::scf::IfOp::create(b, tid_active, /*withElseRegion=*/false);
-      b.setInsertionPointToStart(&tid_if.getThenRegion().front());
+    // For `PhasedBlockClusterFusion`, all `cluster_dim_x` CTAs and all
+    // `max_threads` threads must enter the nested function so they execute its
+    // aligned `nvvm.cluster.arrive` / `nvvm.cluster.wait` barriers; individual
+    // phases inside `PhasedBlockClusterFusion` guard `bid` and `tid`.
+    if (spec.emitter_fusion_kind !=
+        HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster) {
+      // If the nested kernel has fewer threads per block than the launcher
+      // kernel, we only need to launch the threads that are in range.
+      int64_t nested_threads = spec.launch_dims.num_threads_per_block();
+      if (nested_threads < max_threads) {
+        mlir::Value max_nested_tid =
+            mlir::arith::ConstantIntOp::create(b, nested_threads, 32);
+        mlir::Value tid_active = mlir::arith::CmpIOp::create(
+            b, mlir::arith::CmpIPredicate::ult, tid, max_nested_tid);
+        auto tid_if =
+            mlir::scf::IfOp::create(b, tid_active, /*withElseRegion=*/false);
+        b.setInsertionPointToStart(&tid_if.getThenRegion().front());
+      }
     }
 
     // Emit the nested kernel call.
@@ -371,34 +362,56 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
     should_verify = true;
   }
 
+  int64_t max_shmem_bytes = 0;
   int64_t warp_size = device_info_.threads_per_warp();
   std::vector<mlir::OwningOpRef<mlir::ModuleOp>> nested_modules;
+  std::vector<std::string> nested_fn_names;
   nested_modules.reserve(nested_kernels_.size());
+  nested_fn_names.reserve(nested_kernels_.size());
 
   for (size_t i = 0; i < nested_kernels_.size(); ++i) {
     const NestedKernelSpec& nested_spec = nested_kernels_[i];
     std::string nested_fn_name =
         GetNestedKernelFunctionName(entry_function_name, i);
+    nested_fn_names.push_back(nested_fn_name);
 
     HloFusionAnalysis nested_analysis =
         HloFusionAnalysis::Create(*nested_spec.fusion, device_info_);
-    LoopFusion nested_emitter(nested_analysis);
-    ABSL_ASSIGN_OR_RETURN(
-        MlirKernelSource nested_source,
-        nested_emitter.Emit(&mlir_context, *nested_spec.fusion, nested_fn_name,
-                            /*buffer_assignment=*/nullptr));
-    ABSL_ASSIGN_OR_RETURN(
-        nested_source,
-        CompileMlirToLlvmDialect(device_info_, *fusion.GetModule(),
-                                 nested_fn_name, nested_emitter.unroll_factor(),
-                                 mlir_context, std::move(nested_source)));
-    mlir::OwningOpRef<mlir::ModuleOp> nested_module =
-        std::move(nested_source).TakeModule();
+    mlir::OwningOpRef<mlir::ModuleOp> nested_module;
+
+    if (nested_spec.emitter_fusion_kind ==
+        HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster) {
+      LaunchDimensions outer_cluster_launch_dims(
+          cluster_dim_->x, launch_dimensions_.num_threads_per_block());
+      PhasedBlockClusterFusion nested_emitter(nested_analysis,
+                                              outer_cluster_launch_dims);
+      ABSL_ASSIGN_OR_RETURN(nested_module,
+                       nested_emitter.CreateAndLowerMLIRModule(
+                           mlir_context, *nested_spec.fusion, nested_fn_name,
+                           /*buffer_assignment=*/nullptr));
+    } else {
+      std::unique_ptr<MlirKernelEmitter> nested_emitter =
+          CreateNativeNestedEmitter(nested_analysis);
+      ABSL_ASSIGN_OR_RETURN(MlirKernelSource nested_source,
+                       nested_emitter->Emit(&mlir_context, *nested_spec.fusion,
+                                            nested_fn_name,
+                                            /*buffer_assignment=*/nullptr));
+      ABSL_ASSIGN_OR_RETURN(nested_source,
+                       CompileMlirToLlvmDialect(
+                           device_info_, *fusion.GetModule(), nested_fn_name,
+                           nested_emitter->unroll_factor(), mlir_context,
+                           std::move(nested_source)));
+      nested_module = std::move(nested_source).TakeModule();
+    }
 
     VirtualizeSubKernelPassOptions virtualize_options;
     virtualize_options.entry_function_name_ = nested_fn_name;
     virtualize_options.expected_num_tensor_args_ =
-        nested_spec.fusion->operand_count() + 1;
+        nested_spec.fusion->operand_count() +
+        nested_spec.outer_root_indices.size();
+    virtualize_options.max_threads_ =
+        launch_dimensions_.num_threads_per_block();
+    virtualize_options.warp_size_ = warp_size;
     const se::BlockDim& block_counts = nested_spec.launch_dims.block_counts();
     virtualize_options.block_dim_x_ = block_counts.x;
     virtualize_options.block_dim_y_ = block_counts.y;
@@ -408,14 +421,21 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
     virtualize_options.thread_dim_x_ = thread_counts.x;
     virtualize_options.thread_dim_y_ = thread_counts.y;
     virtualize_options.thread_dim_z_ = thread_counts.z;
-    virtualize_options.max_threads_ =
-        launch_dimensions_.num_threads_per_block();
-    virtualize_options.warp_size_ = warp_size;
 
     mlir::PassManager virtualize_pm(&mlir_context);
     virtualize_pm.enableVerifier(should_verify);
     virtualize_pm.addPass(createVirtualizeSubKernelPass(virtualize_options));
-    ABSL_RETURN_IF_ERROR(RunPassManager(*nested_module, virtualize_pm));
+    tsl::StatusScopedDiagnosticHandler diagnostic_handler(
+        nested_module->getContext());
+    ABSL_RETURN_IF_ERROR(
+        diagnostic_handler.consumeStatus(virtualize_pm.run(*nested_module)));
+
+    if (auto shmem_attr =
+            nested_module->getOperation()->getAttrOfType<mlir::IntegerAttr>(
+                "xla.shared_memory_bytes")) {
+      max_shmem_bytes = std::max(max_shmem_bytes, shmem_attr.getInt());
+    }
+
     nested_modules.push_back(std::move(nested_module));
   }
 
@@ -428,6 +448,22 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
                    emitters::EmitKernelApi(
                        *launcher_module, fusion, buffer_assignment,
                        GetDefaultBufferAlignment(), entry_function_name));
+  // Intermediate output buffers of `PhasedBlockClusterFusion` are written by
+  // sibling CTAs before `barrier.cluster` and read in the next phase; marking
+  // them `xla.aliased` tells `MergePointersToSameSlicePass` to omit
+  // `llvm.noalias` on those parameters (and any aliased parameters sharing the
+  // same `xla.slice_index`) so LLVM `BasicAA` cannot reorder accesses across
+  // the barrier after inlining.
+  for (const NestedKernelSpec& spec : nested_kernels_) {
+    if (spec.emitter_fusion_kind !=
+        HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster) {
+      continue;
+    }
+    for (size_t j = 0; j + 1 < spec.outer_root_indices.size(); ++j) {
+      entry_func.setArgAttr(fusion.operand_count() + spec.outer_root_indices[j],
+                            emitters::kXlaAliasedAttr, builder.getUnitAttr());
+    }
+  }
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
   emitters::SetIndexDataLayout(*launcher_module, fusion);
   ABSL_RETURN_IF_ERROR(
@@ -435,17 +471,31 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
   ABSL_RETURN_IF_ERROR(LowerLauncherModuleToLlvmDialect(
       *launcher_module, device_info_, should_verify));
 
-  for (size_t i = 0; i < nested_kernels_.size(); ++i) {
-    std::string nested_fn_name =
-        GetNestedKernelFunctionName(entry_function_name, i);
-    ABSL_RETURN_IF_ERROR(SpliceNestedKernelModuleIntoLauncher(
-        *launcher_module, *nested_modules[i], nested_fn_name));
+  if (cluster_dim_.has_value()) {
+    auto launcher_entry = launcher_module->lookupSymbol<mlir::LLVM::LLVMFuncOp>(
+        entry_function_name);
+    TF_RET_CHECK(launcher_entry != nullptr);
+    launcher_entry->setAttr(
+        mlir::NVVM::NVVMDialect::getClusterDimAttrName(),
+        builder.getDenseI32ArrayAttr({static_cast<int32_t>(cluster_dim_->x),
+                                      static_cast<int32_t>(cluster_dim_->y),
+                                      static_cast<int32_t>(cluster_dim_->z)}));
   }
+
+  for (size_t i = 0; i < nested_kernels_.size(); ++i) {
+    ABSL_RETURN_IF_ERROR(SpliceNestedKernelModuleIntoLauncher(
+        *launcher_module, *nested_modules[i], nested_fn_names[i]));
+  }
+
+  (*launcher_module)
+      ->setAttr("xla.shared_memory_bytes",
+                builder.getI64IntegerAttr(max_shmem_bytes));
 
   return launcher_module;
 }
 
-absl::StatusOr<LlvmKernelSource> ThreadBlockSpecializedFusion::CreateLLVMModule(
+absl::StatusOr<ThreadBlockSpecializedFusion::LlvmKernelSourceWrapper>
+ThreadBlockSpecializedFusion::CreateLLVMModule(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     absl::string_view entry_function_name,
     const BufferAssignment* buffer_assignment,
@@ -454,6 +504,10 @@ absl::StatusOr<LlvmKernelSource> ThreadBlockSpecializedFusion::CreateLLVMModule(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       CreateAndLowerMLIRModule(mlir_context, fusion, entry_function_name,
                                buffer_assignment));
+  int64_t max_shmem_bytes =
+      (*module)
+          ->getAttrOfType<mlir::IntegerAttr>("xla.shared_memory_bytes")
+          .getInt();
 
   auto llvm_context = std::make_unique<llvm::LLVMContext>();
   std::unique_ptr<llvm::Module> llvm_module =
@@ -462,7 +516,9 @@ absl::StatusOr<LlvmKernelSource> ThreadBlockSpecializedFusion::CreateLLVMModule(
       << "Failed to translate thread-block-specialized fusion MLIR module to "
          "LLVM IR.";
 
-  return LlvmKernelSource(std::move(llvm_context), std::move(llvm_module));
+  return LlvmKernelSourceWrapper{
+      LlvmKernelSource(std::move(llvm_context), std::move(llvm_module)),
+      max_shmem_bytes};
 }
 
 AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
@@ -470,6 +526,16 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
     const HloFusionInstruction& fusion) const {
   VLOG(4) << "ThreadBlockSpecializedFusion: "
           << fusion.fused_instructions_computation()->ToString();
+  if (cluster_dim_.has_value()) {
+    const auto* cuda_cc =
+        ir_emitter_context.gpu_compute_capability().cuda_compute_capability();
+    if (cuda_cc == nullptr || !cuda_cc->IsAtLeastHopper()) {
+      return absl::UnimplementedError(absl::StrCat(
+          "PhasedBlockClusterFusion requires CUDA Hopper (SM90+), got: ",
+          ir_emitter_context.gpu_compute_capability().ToString()));
+    }
+  }
+
   ABSL_ASSIGN_OR_RETURN(
       emitters::KernelArguments args,
       emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
@@ -484,13 +550,13 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
         BorrowedMlirContext borrowed_context =
             ir_emitter_context.BorrowMlirContext();
         ABSL_ASSIGN_OR_RETURN(
-            LlvmKernelSource llvm_source,
+            LlvmKernelSourceWrapper llvm_source_wrapper,
             CreateLLVMModule(
                 ir_emitter_context.gpu_device_info(), fusion, kernel_name,
                 &ir_emitter_context.buffer_assignment(), **borrowed_context));
 
         llvm::orc::ThreadSafeModule safe_module =
-            std::move(llvm_source).thread_safe_module();
+            std::move(llvm_source_wrapper.source).thread_safe_module();
         LaunchDimensions launch_dims = launch_dimensions();
         ABSL_RETURN_IF_ERROR(AnnotateMlirKernelLlvmModule(
             ir_emitter_context.gpu_device_info(), launch_dims, kernel_name,
@@ -502,16 +568,19 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
             IsPdlEnabled(fusion.GetModule()->config().debug_options(),
                          ir_emitter_context.gpu_compute_capability());
 
+        GpuKernelSpec spec{std::move(kernel_name), std::move(launch_dims), args,
+                           std::nullopt, use_pdl};
         return ir_emitter_context.kernel_compiler()
-            ->CompileToTargetBinary(LlvmKernelSource(std::move(safe_module)))
-            .Map([kernel_name = std::move(kernel_name),
-                  launch_dims = std::move(launch_dims),
-                  use_pdl](const std::vector<uint8_t>& cubin) mutable {
+            ->CompileToTargetBinary(LlvmKernelSource(std::move(safe_module)),
+                                    spec)
+            .Map([spec = std::move(spec), cluster_dim = cluster_dim_,
+                  max_shmem_bytes = llvm_source_wrapper.max_shmem_bytes](
+                     const std::vector<uint8_t>& cubin) mutable {
               KernelReuseCache::Entry entry{
-                  std::move(kernel_name), launch_dims,
-                  /*cluster_dim=*/std::nullopt, /*shmem_bytes=*/0,
+                  std::string{spec.name()}, spec.launch_dimensions(),
+                  cluster_dim, max_shmem_bytes,
                   std::make_shared<const std::vector<uint8_t>>(cubin)};
-              entry.use_pdl = use_pdl;
+              entry.use_pdl = spec.use_pdl();
               return entry;
             });
       });
@@ -535,7 +604,7 @@ AsyncThunkSequence ThreadBlockSpecializedFusion::Emit(
                 entry.kernel_name, entry.binary, args.args().size(),
                 entry.launch_dimensions.block_counts(),
                 entry.launch_dimensions.thread_counts_per_block(),
-                entry.shmem_bytes));
+                entry.shmem_bytes, entry.cluster_dim));
 
         return ThunkSequence::Of<CustomKernelThunk>(
             thunk_info, std::move(custom_kernel), args, devices_in_process,

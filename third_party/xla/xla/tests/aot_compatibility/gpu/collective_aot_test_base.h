@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_TESTS_AOT_COMPATIBILITY_GPU_COLLECTIVE_AOT_TEST_BASE_H_
 #define XLA_TESTS_AOT_COMPATIBILITY_GPU_COLLECTIVE_AOT_TEST_BASE_H_
 
-#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -68,19 +67,6 @@ void EnableNcclSymmetricBuffers(DebugOptions& debug_options);
 // CollectiveKernelThunk that xla_gpu_experimental_use_collective_kernels
 // selects by default.
 void DisableCollectiveKernels(DebugOptions& debug_options);
-
-// Test parameters for the two suites every GPU AOT test target instantiates.
-// `target_base` is the target name without the arch suffix, e.g.
-// "p2p_collectives_aot_test_2gpu".
-std::vector<AotTestParam> GpuBackwardsCompatibilityParams(
-    absl::string_view target_base);
-std::vector<AotTestParam> GpuGoldenFileVerificationParams(
-    absl::string_view target_base);
-
-// Names a parameterized case after its golden version, e.g. `v3`.
-// TODO(aliia): Remove once cl/1000070191 moves it into test_lib.
-std::string AotTestParamName(
-    const ::testing::TestParamInfo<AotTestParam>& info);
 
 }  // namespace aot_compatibility
 }  // namespace xla

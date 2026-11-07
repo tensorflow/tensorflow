@@ -15,6 +15,10 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_THREAD_BLOCK_SPECIALIZED_H_
 #define XLA_BACKENDS_GPU_CODEGEN_THREAD_BLOCK_SPECIALIZED_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -26,6 +30,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Pass/PassManager.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/llvm_kernel_source.h"
@@ -35,17 +41,27 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
 
 // Emits a thread-block-specialized wrapper kernel of nested fusions.
 class ThreadBlockSpecializedFusion : public KernelFusionInterface {
  public:
+  struct LlvmKernelSourceWrapper {
+    LlvmKernelSource source;
+    int64_t max_shmem_bytes;
+  };
+
   explicit ThreadBlockSpecializedFusion(const HloFusionAnalysis& analysis);
+
+  static std::unique_ptr<MlirKernelEmitter> CreateNativeNestedEmitter(
+      const HloFusionAnalysis& nested_analysis);
 
   LaunchDimensions launch_dimensions() const override {
     return launch_dimensions_;
   }
+  std::optional<se::ClusterDim> cluster_dim() const { return cluster_dim_; }
 
   AsyncThunkSequence Emit(IrEmitterContext& ir_emitter_context,
                           const HloFusionInstruction& fusion) const override;
@@ -60,7 +76,7 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
       const BufferAssignment* buffer_assignment) const;
 
   // Visible for testing.
-  absl::StatusOr<LlvmKernelSource> CreateLLVMModule(
+  absl::StatusOr<LlvmKernelSourceWrapper> CreateLLVMModule(
       const se::DeviceDescription& device, const HloFusionInstruction& fusion,
       absl::string_view entry_function_name,
       const BufferAssignment* buffer_assignment,
@@ -73,6 +89,9 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
 
     const HloFusionInstruction* fusion = nullptr;
     LaunchDimensions launch_dims;
+    std::vector<int64_t> outer_root_indices;
+    HloFusionAnalysis::EmitterFusionKind emitter_fusion_kind;
+    se::ClusterDim cluster_dim{1, 1, 1};
   };
 
   // Emits the entry function that conditionally launches nested kernels based
@@ -85,6 +104,7 @@ class ThreadBlockSpecializedFusion : public KernelFusionInterface {
   const se::DeviceDescription& device_info_;
   std::vector<NestedKernelSpec> nested_kernels_;
   LaunchDimensions launch_dimensions_;
+  std::optional<se::ClusterDim> cluster_dim_;
 };
 
 }  // namespace xla::gpu

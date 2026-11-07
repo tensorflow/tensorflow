@@ -15,29 +15,41 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/extensions/custom_call_extensions.h"
 
+#include <cassert>
+#include <cstdint>
 #include <optional>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Threading.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/enums.h"
 #include "shardy/dialect/sdy/ir/utils.h"
+#include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/service/spmd/shardy/extensions/partial_reduce_custom_call.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 
 namespace xla {
@@ -140,6 +152,135 @@ mlir::LogicalResult convertInspectShardingToLocal(
   return mlir::success();
 }
 
+// Provides `OpShardingRuleAttr` definitions for post-HLO XLA-internal
+// `stablehlo.custom_call` targets by `call_target_name`.
+struct CustomCallShardingRuleOpInterface
+    : public mlir::sdy::ShardingRuleOpInterface::ExternalModel<
+          CustomCallShardingRuleOpInterface, mlir::stablehlo::CustomCallOp> {
+  mlir::sdy::OpShardingRuleAttr getShardingRule(mlir::Operation* op) const {
+    auto customCall = llvm::cast<mlir::stablehlo::CustomCallOp>(op);
+    llvm::StringRef callTargetName = customCall.getCallTargetName();
+    if (callTargetName == "CompactWyHelper" ||
+        callTargetName == "compute-on-done" ||
+        callTargetName == "InvertDiagBlocksLowerTriangular" ||
+        callTargetName == "InvertDiagBlocksUpperTriangular" ||
+        callTargetName == "X64SplitHigh" || callTargetName == "X64SplitLow" ||
+        callTargetName == "_SPMDInternalOp_MultiPad" ||
+        callTargetName == "_SPMDInternalOp_RotateRight" ||
+        callTargetName == "_SPMDInternalOp_MultiRotate" ||
+        callTargetName == "_SPMDInternalOp_MultiSlice" ||
+        callTargetName == "_SPMDInternalOp_Wrap") {
+      return mlir::sdy::OpShardingRuleBuilder::buildPointwise(customCall);
+    }
+    if (callTargetName == "QrDecompositionBlock") {
+      assert(customCall.getNumOperands() == 1 &&
+             customCall.getNumResults() == 2);
+      // Propagate batch dimensions pointwise and require replication on the
+      // trailing matrix and `tau` dimensions (`QrExpander`).
+      llvm::ArrayRef<int64_t> inShape =
+          mlir::sdy::getTensorShape(customCall.getOperand(0));
+      llvm::ArrayRef<int64_t> outShapeRhs =
+          mlir::sdy::getTensorShape(customCall.getResult(1));
+      int64_t nonBatchDim1 = inShape.size() - 2;
+      int64_t nonBatchDim2 = inShape.size() - 1;
+      return mlir::sdy::OpShardingRuleBuilder(customCall)
+          .addPointwise(inShape.drop_back(2))
+          .addFactor(nonBatchDim1, {nonBatchDim1, mlir::sdy::kNullDim},
+                     inShape[nonBatchDim1],
+                     mlir::sdy::FactorType::kNeedReplication)
+          .addFactor(nonBatchDim2, {nonBatchDim2, mlir::sdy::kNullDim},
+                     inShape[nonBatchDim2],
+                     mlir::sdy::FactorType::kNeedReplication)
+          .addFactor(mlir::sdy::kNullDim, {mlir::sdy::kNullDim, nonBatchDim1},
+                     outShapeRhs[nonBatchDim1],
+                     mlir::sdy::FactorType::kNeedReplication)
+          .build();
+    }
+    if (callTargetName == "LuRealDecompositionBlock" ||
+        callTargetName == "LuComplexDecompositionBlock") {
+      int64_t numOperands = customCall.getNumOperands();
+      assert(numOperands >= 1 && customCall.getNumResults() == numOperands + 2);
+      // Propagate batch dimensions pointwise across `[...batch, M, N]` inputs,
+      // `lu` results, `pivots` (`[...batch, min(M, N)]`), and `permutation`
+      // (`[...batch, M]`), requiring replication on non-batch dimensions.
+      llvm::ArrayRef<int64_t> inShape =
+          mlir::sdy::getTensorShape(customCall.getOperand(0));
+      llvm::ArrayRef<int64_t> pivotsShape =
+          mlir::sdy::getTensorShape(customCall.getResult(numOperands));
+      int64_t nonBatchDim1 = inShape.size() - 2;
+      int64_t nonBatchDim2 = inShape.size() - 1;
+      llvm::SmallVector<int64_t> nonBatchDim1Operands(numOperands,
+                                                      nonBatchDim1);
+      llvm::SmallVector<int64_t> nonBatchDim1Results(numOperands + 2,
+                                                     nonBatchDim1);
+      nonBatchDim1Results[numOperands] = mlir::sdy::kNullDim;
+      llvm::SmallVector<int64_t> nonBatchDim2Operands(numOperands,
+                                                      nonBatchDim2);
+      llvm::SmallVector<int64_t> nonBatchDim2Results(numOperands + 2,
+                                                     nonBatchDim2);
+      nonBatchDim2Results[numOperands] = mlir::sdy::kNullDim;
+      nonBatchDim2Results[numOperands + 1] = mlir::sdy::kNullDim;
+      llvm::SmallVector<int64_t> pivotsOperands(numOperands,
+                                                mlir::sdy::kNullDim);
+      llvm::SmallVector<int64_t> pivotsResults(numOperands + 2,
+                                               mlir::sdy::kNullDim);
+      pivotsResults[numOperands] = nonBatchDim1;
+      return mlir::sdy::OpShardingRuleBuilder(customCall)
+          .addPointwise(inShape.drop_back(2))
+          .addFactor(nonBatchDim1Operands, nonBatchDim1Results,
+                     inShape[nonBatchDim1],
+                     mlir::sdy::FactorType::kNeedReplication)
+          .addFactor(nonBatchDim2Operands, nonBatchDim2Results,
+                     inShape[nonBatchDim2],
+                     mlir::sdy::FactorType::kNeedReplication)
+          .addFactor(pivotsOperands, pivotsResults, pivotsShape[nonBatchDim1],
+                     mlir::sdy::FactorType::kNeedReplication)
+          .build();
+    }
+    if (callTargetName == "TopK") {
+      assert(customCall.getNumOperands() == 1 &&
+             customCall.getNumResults() == 2);
+      return mlir::sdy::OpShardingRuleBuilder(customCall)
+          .addPointwiseWithDiffTypeForMismatch(
+              mlir::sdy::getTensorShape(customCall.getOperand(0)),
+              mlir::sdy::getTensorShape(customCall.getResult(0)),
+              mlir::sdy::FactorType::kNeedReplication,
+              /*mismatchFactorIsBlocked=*/true)
+          .build();
+    }
+    if (callTargetName == kPartialReduceTargetName) {
+      return createPartialReduceShardingRule(customCall);
+    }
+    if (callTargetName == "X64Combine") {
+      // Replicate and block propagation when `X64Combine` feeds
+      // `RngBitGeneratorOp`, whose 1D `ui64` initial state must stay replicated
+      // and cannot be resharded.
+      if (llvm::any_of(customCall->getUsers(), [](mlir::Operation* user) {
+            return llvm::isa<mlir::stablehlo::RngBitGeneratorOp>(user);
+          })) {
+        mlir::sdy::OpShardingRuleBuilder builder(customCall);
+        llvm::ArrayRef<int64_t> shape =
+            mlir::sdy::getTensorShape(customCall.getResult(0));
+        assert(shape.size() == 1);
+        builder.addFactor(0, shape.front(),
+                          mlir::sdy::FactorType::kNeedReplication,
+                          /*isBlocked=*/true);
+        return builder.build();
+      }
+      return mlir::sdy::OpShardingRuleBuilder::buildPointwise(customCall);
+    }
+    // TODO(b/327191011): output unregistered op stats instead.
+    static llvm::once_flag onceFlag;
+    mlir::sdy::emitOpWarningOnce(
+        onceFlag, customCall,
+        llvm::formatv(
+            "custom call @{0} is unknown to SDY sharding rule registry",
+            callTargetName)
+            .str());
+    return mlir::sdy::OpShardingRuleAttr();
+  }
+};
+
 using ConvertGlobalToLocalHandler = mlir::LogicalResult (*)(
     mlir::stablehlo::CustomCallOp, mlir::ValueRange,
     mlir::ConversionPatternRewriter&, const mlir::SymbolTable&);
@@ -150,12 +291,31 @@ using ConvertGlobalToLocalHandler = mlir::LogicalResult (*)(
 struct CustomCallPartitioningOpInterface
     : public mlir::sdy::PartitioningOpInterface::ExternalModel<
           CustomCallPartitioningOpInterface, mlir::stablehlo::CustomCallOp> {
+  std::optional<mlir::LogicalResult> resolvePermutationFactors(
+      mlir::Operation* op, mlir::sdy::OpShardingRuleAttr shardingRule,
+      mlir::IRRewriter& rewriter, const mlir::SymbolTable& symbolTable) const {
+    auto customCall = llvm::cast<mlir::stablehlo::CustomCallOp>(op);
+    if (customCall.getCallTargetName() == kPartialReduceTargetName) {
+      return resolvePartialReduce(customCall, shardingRule, rewriter,
+                                  symbolTable);
+    }
+    return std::nullopt;
+  }
+
   std::optional<mlir::LogicalResult> convertGlobalToLocal(
       mlir::Operation* op, mlir::ValueRange operands,
       mlir::ConversionPatternRewriter& rewriter,
       const mlir::TypeConverter& /*typeConverter*/,
       const mlir::SymbolTable& symbolTable) const {
     auto customCall = llvm::cast<mlir::stablehlo::CustomCallOp>(op);
+    if (customCall.getCallTargetName() == kPartialReduceTargetName) {
+      // Strip stale global `xla_shape` in place and return `std::nullopt` so
+      // Shardy's generic op localizer narrows result types to shard-local
+      // shapes instead of running a replacement `ConvertGlobalToLocalHandler`.
+      rewriter.modifyOpInPlace(
+          customCall, [&]() { customCall->removeAttr(xla::kXlaShape); });
+      return std::nullopt;
+    }
     ConvertGlobalToLocalHandler handler =
         llvm::StringSwitch<ConvertGlobalToLocalHandler>(
             customCall.getCallTargetName())
@@ -171,11 +331,12 @@ struct CustomCallPartitioningOpInterface
 }  // namespace
 
 void registerCustomCallExtensions(mlir::DialectRegistry& registry) {
-  registry.addExtension(
-      +[](mlir::MLIRContext* ctx, mlir::stablehlo::StablehloDialect*) {
-        mlir::stablehlo::CustomCallOp::attachInterface<
-            CustomCallPartitioningOpInterface>(*ctx);
-      });
+  registry.addExtension(+[](mlir::MLIRContext* ctx,
+                            mlir::stablehlo::StablehloDialect*) {
+    mlir::stablehlo::CustomCallOp::attachInterface<
+        CustomCallShardingRuleOpInterface, CustomCallPartitioningOpInterface>(
+        *ctx);
+  });
 }
 
 }  // namespace sdy

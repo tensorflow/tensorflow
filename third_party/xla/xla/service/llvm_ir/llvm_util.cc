@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -39,8 +40,11 @@ limitations under the License.
 #include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
@@ -55,11 +59,15 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/TypeSize.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -335,6 +343,22 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
     }
   }
   return result_type;
+}
+
+absl::StatusOr<std::unique_ptr<llvm::Module>> CloneModuleToContext(
+    const llvm::Module& module, llvm::LLVMContext& context,
+    absl::string_view module_id) {
+  llvm::SmallString<0> bitcode;
+  llvm::raw_svector_ostream stream(bitcode);
+  llvm::WriteBitcodeToFile(module, stream);
+  llvm::Expected<std::unique_ptr<llvm::Module>> clone = llvm::parseBitcodeFile(
+      llvm::MemoryBufferRef(bitcode.str(), module_id), context);
+  if (!clone) {
+    return Internal("Failed to clone LLVM module %s into a new context: %s",
+                    module.getModuleIdentifier(),
+                    llvm::toString(clone.takeError()));
+  }
+  return std::move(*clone);
 }
 
 absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(

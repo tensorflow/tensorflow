@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
+#include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -779,6 +781,84 @@ TEST_F(PjRtExecutionUtilTest,
                           execute_outputs_1[0]->ToLiteral().Await());
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       *literal, xla::LiteralUtil::CreateR2<int32_t>({{10, 14, 18}})));
+}
+
+TEST_F(
+    PjRtExecutionUtilTest,
+    LockVariablesAndPreparePjRtExecutableArgumentsForReadOnlyRawCpuVariable) {
+  auto* var = new Var(DT_INT32);
+  *var->tensor() = Tensor(host_allocator_, DT_INT32, TensorShape({1, 3}));
+  test::FillValues<int32_t>(var->tensor(), {1, 2, 3});
+  var->is_initialized = true;
+  core::ScopedUnref var_ref(var);
+  ASSERT_EQ(
+      dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(var->tensor())),
+      nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::PjRtDevice * pjrt_device,
+                          pjrt_client_->LookupAddressableDevice(
+                              xla::LocalDeviceId(device_->parsed_name().id)));
+
+  // Without `upgrade_read_only_for_pjrt_tensor_buffer`, LockVariables keeps the
+  // shared reader lock.
+  {
+    var->Ref();
+    std::vector<VariableInfo> variables;
+    variables.emplace_back(/*index=*/0, "read_only_var", var);
+    variables[0].set_read_only();
+    TF_ASSERT_OK(LockVariables(absl::MakeSpan(variables)));
+    EXPECT_FALSE(variables[0].lock_held());
+    EXPECT_TRUE(variables[0].shared_lock_held());
+  }
+
+  // First PJRT call with `upgrade_read_only_for_pjrt_tensor_buffer=true`:
+  // LockVariables upgrades to an exclusive lock and
+  // PreparePjRtExecutableArguments attaches a PjRtTensorBuffer in-place.
+  {
+    var->Ref();
+    std::vector<VariableInfo> variables;
+    variables.emplace_back(/*index=*/0, "read_only_var", var);
+    variables[0].set_read_only();
+    TF_ASSERT_OK(
+        LockVariables(absl::MakeSpan(variables),
+                      /*upgrade_read_only_for_pjrt_tensor_buffer=*/true));
+    EXPECT_TRUE(variables[0].lock_held());
+    EXPECT_FALSE(variables[0].shared_lock_held());
+
+    Tensor snapshot_reference = *var->tensor();
+    ASSERT_FALSE(var->tensor()->RefCountIsOne());
+
+    std::vector<xla::PjRtBuffer*> exec_args;
+    std::vector<std::unique_ptr<xla::PjRtBuffer>> owned_args;
+    absl::flat_hash_set<int> non_donatable;
+    TF_ASSERT_OK(PreparePjRtExecutableArguments(
+        /*num_missing_prefix_ctx_inputs=*/0, /*input_mapping=*/{0},
+        /*inputs=*/{}, GetVariableSnapshots(variables), pjrt_client_,
+        pjrt_device, /*use_pjrt_tensor_buffer=*/true, &exec_args, &owned_args,
+        &non_donatable));
+
+    ASSERT_EQ(exec_args.size(), 1);
+    EXPECT_TRUE(owned_args.empty());
+    EXPECT_TRUE(non_donatable.contains(0));
+    const auto* pjrt_tensor_buffer =
+        dynamic_cast<const PjRtTensorBuffer*>(DMAHelper::buffer(var->tensor()));
+    ASSERT_NE(pjrt_tensor_buffer, nullptr);
+    EXPECT_EQ(exec_args[0], pjrt_tensor_buffer->pjrt_buffer());
+  }
+
+  // Subsequent PJRT call: now that the variable's Tensor is backed by a
+  // PjRtTensorBuffer, LockVariables keeps the shared reader lock.
+  {
+    var->Ref();
+    std::vector<VariableInfo> variables;
+    variables.emplace_back(/*index=*/0, "read_only_var", var);
+    variables[0].set_read_only();
+    TF_ASSERT_OK(
+        LockVariables(absl::MakeSpan(variables),
+                      /*upgrade_read_only_for_pjrt_tensor_buffer=*/true));
+    EXPECT_FALSE(variables[0].lock_held());
+    EXPECT_TRUE(variables[0].shared_lock_held());
+  }
 }
 
 }  // namespace

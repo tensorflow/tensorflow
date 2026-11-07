@@ -28,7 +28,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/strings/match.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/debug_options_flags.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -273,6 +275,29 @@ TEST(CudaExecutorTest, IsHostMemoryPinnedWorksWithRegisteredHostMemory) {
 
   ASSERT_TRUE(executor->HostMemoryUnregister(buffer.data()));
   EXPECT_FALSE(executor->IsHostMemoryPinned(buffer.data(), buffer.size()));
+}
+
+// Without XLA_CUDA_REGISTER_HOST_MEMORY_IN_SHARED_CONTEXT, host memory is
+// registered in the primary context (see cuda_executor_shared_context_test).
+TEST(CudaExecutorTest, HostMemoryRegisterUsesPrimaryContextByDefault) {
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
+  CUcontext primary = nullptr;
+  {
+    std::unique_ptr<ActivateContext> activation = executor->Activate();
+    ASSERT_EQ(cuCtxGetCurrent(&primary), CUDA_SUCCESS);
+  }
+
+  std::vector<uint8_t> buffer(64 * 1024);
+  ASSERT_TRUE(executor->HostMemoryRegister(buffer.data(), buffer.size()));
+  CUcontext context = nullptr;
+  EXPECT_EQ(cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT,
+                                  reinterpret_cast<CUdeviceptr>(buffer.data())),
+            CUDA_SUCCESS);
+  EXPECT_EQ(context, primary);
+  ASSERT_TRUE(executor->HostMemoryUnregister(buffer.data()));
 }
 
 TEST(CudaExecutorTest, IsHostMemoryPinnedWorksWithHostMemory) {

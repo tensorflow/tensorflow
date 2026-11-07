@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/map.h"
 #include "xla/hlo/pass/hlo_pipeline.pb.h"
@@ -92,6 +94,18 @@ class HloPassOptions {
   template <typename T>
   std::optional<T> Get(absl::string_view key) const;
 
+  // Returns the value that `values` maps the string option `key` to, and marks
+  // `key` as consumed. Returns InvalidArgumentError if `key` is absent, is not
+  // a string, or is not a key of `values`. Intended for enum options, e.g.:
+  //
+  //   static const absl::NoDestructor<
+  //       absl::flat_hash_map<absl::string_view, Mode>>
+  //       kModes({{"fast", Mode::kFast}, {"exact", Mode::kExact}});
+  //   ABSL_ASSIGN_OR_RETURN(Mode mode, options.GetEnum("mode", *kModes));
+  template <typename Map>
+  absl::StatusOr<typename Map::mapped_type> GetEnum(absl::string_view key,
+                                                    const Map& values) const;
+
   // Returns InvalidArgumentError if any option has not been read via `Get()`,
   // either because no pass reads it or because it was read as another type.
   absl::Status CheckAllConsumed() const;
@@ -135,6 +149,22 @@ std::optional<T> HloPassOptions::Get(absl::string_view key) const {
     consumed_keys_.insert(it->first);
   }
   return result;
+}
+
+template <typename Map>
+absl::StatusOr<typename Map::mapped_type> HloPassOptions::GetEnum(
+    absl::string_view key, const Map& values) const {
+  std::optional<std::string> name = Get<std::string>(key);
+  if (!name.has_value()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Missing string pass option '", key, "'"));
+  }
+  auto it = values.find(*name);
+  if (it == values.end()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unknown value '", *name, "' of pass option '", key, "'"));
+  }
+  return it->second;
 }
 
 }  // namespace xla

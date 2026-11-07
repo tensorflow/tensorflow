@@ -581,6 +581,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::Status HandleDot(const HloInstruction* dot) override;
   absl::Status HandleRaggedDot(const HloInstruction* dot) override;
   absl::Status HandleScaledDot(const HloInstruction* dot) override;
+  absl::Status HandleDotGeneral(const HloInstruction* dot) override;
   absl::Status HandlePad(const HloInstruction* pad) override;
 
   // Unsupported HLOs, note some of them (such as BatchNorm*) are typically

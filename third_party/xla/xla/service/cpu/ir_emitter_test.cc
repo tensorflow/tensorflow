@@ -15,19 +15,13 @@ limitations under the License.
 
 #include "xla/service/cpu/ir_emitter.h"
 
-#include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_map.h"
-#include "absl/status/status_macros.h"
-#include "absl/status/status_matchers.h"  // IWYU pragma: keep
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -37,41 +31,24 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/CodeGen.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetOptions.h"
 #include "xla/backends/cpu/alignment.h"
-#include "xla/backends/cpu/codegen/builtin_definition_generator.h"
-#include "xla/backends/cpu/codegen/cpu_features.h"
-#include "xla/backends/cpu/codegen/execution_engine.h"
-#include "xla/backends/cpu/codegen/ir_compiler.h"
-#include "xla/backends/cpu/codegen/jit_compiler.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/cpu_executable.h"
-#include "xla/service/cpu/cpu_options.h"
+#include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_function.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/xla.pb.h"
 
 namespace xla::cpu {
 namespace {
@@ -213,129 +190,74 @@ TEST_F(IrEmitterTest, CheckNativeConvertSupportOnTargetCPU) {
   ASSERT_TRUE(IsNativeConvertSupportedOnTargetCPU(srf_feature_string));
 }
 
-// Used to keep all dependencies of IrEmitter alive.
-struct IrEmitterWrapper {
-  std::unique_ptr<IrEmitter> ir_emitter;
-  std::unique_ptr<BufferAssignment> buffer_assignment;
-  std::unique_ptr<TargetMachineFeatures> target_machine_features;
-};
+TEST_F(IrEmitterTest, LargeM1DotStrategyDependsOnYnnDotEnabled) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule large_m1_dot
 
-static absl::StatusOr<std::unique_ptr<IrEmitterWrapper>>
-CreateIrEmitterForConstantEmissionTests(HloModule& module,
-                                        llvm::Module& llvm_module) {
-  const DebugOptions& debug_options = module.config().debug_options();
+    ENTRY main {
+      lhs = f32[1,1024]{1,0} parameter(0)
+      rhs = f32[1024,1024]{1,0} parameter(1)
+      ROOT dot = f32[1,1024]{1,0} dot(lhs, rhs), lhs_contracting_dims={1},
+                                                 rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(dot, nullptr);
+  TargetMachineFeaturesStub target_machine_features(
+      [](int64_t size) { return MinAlign(); });
 
-  const HloModuleConfig& config = module.config();
+  HloModuleConfig& config = module->mutable_config();
+  config.mutable_debug_options().clear_xla_cpu_experimental_ynn_fusion_type();
+  config.mutable_debug_options().add_xla_cpu_experimental_ynn_fusion_type(
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  EXPECT_EQ(GetDotImplementationStrategy(config, *dot, target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kEigen);
 
-  // Options for compiling LLVM IR to machine code.
-  IrCompiler::Options ir_compiler_options{
-      /*optimization_level=*/llvm::CodeGenOptLevel::Default,
-      /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
-      /*target_machine_options=*/
-      TargetMachineOptions(module.config().debug_options()),
-      /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
-      /*disable_expensive_passes=*/
-      debug_options.xla_llvm_disable_expensive_passes(),
-      /*slp_vectorizer_disabled=*/options::SlpVectorizerDisabled(config),
-  };
+  config.mutable_debug_options().clear_xla_cpu_experimental_ynn_fusion_type();
+  EXPECT_EQ(GetDotImplementationStrategy(config, *dot, target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kTiledLlvmIrGemv);
 
-  // Definition generator to link with XLA:CPU host runtime symbols.
-  ExecutionEngine::DefinitionGenerator definition_generator =
-      [](const llvm::DataLayout& data_layout) {
-        return std::make_unique<BuiltinDefinitionGenerator>(data_layout);
-      };
-
-  // Options for orchestrating the JIT compilation process.
-  JitCompiler::Options jit_compiler_options{
-      /*num_dylibs=*/1,
-      /*definition_generator=*/std::move(definition_generator),
-  };
-
-  llvm::TargetOptions target_options;
-
-  // Returns a global (per-process) thread pool for XLA CPU compilation tasks.
-  auto compilation_task_runner = [](cpu::JitCompiler::Task task) {
-    static auto* thread_pool =
-        new tsl::thread::ThreadPool(tsl::Env::Default(), "ir-emitter-test", 1);
-
-    thread_pool->Schedule(std::move(task));
-  };
-
-  std::unique_ptr<IrCompiler> ir_compiler =
-      IrCompiler::Create(target_options, std::move(ir_compiler_options),
-                         IrCompiler::CompilationHooks());
-
-  ABSL_ASSIGN_OR_RETURN(
-      JitCompiler jit_compiler,
-      JitCompiler::Create(std::move(jit_compiler_options),
-                          std::move(ir_compiler), compilation_task_runner));
-  auto buffer_size_bytes_function = [](const BufferValue& buffer) {
-    return CpuExecutable::ShapeSizeBytes(buffer.shape());
-  };
-  AliasInfo alias_info;
-  auto scheduler = debug_options.xla_cpu_scheduler_type() ==
-                           DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED
-                       ? std::make_unique<DFSMemoryScheduler>(
-                             &alias_info, buffer_size_bytes_function)
-                       : std::unique_ptr<ModuleSchedulerAlgorithm>(
-                             std::make_unique<BFScheduler>(
-                                 &alias_info, buffer_size_bytes_function));
-
-  ABSL_ASSIGN_OR_RETURN(HloSchedule schedule, ScheduleModule(&module, *scheduler));
-  ABSL_RETURN_IF_ERROR(module.set_schedule(schedule));
-
-  auto memory_alignment = [](LogicalBuffer::Color) { return MinAlign(); };
-  // Run buffer allocation on the HLO graph.
-  BufferAssigner::Options opts;
-  opts.allocate_buffers_for_constants = true;
-  ABSL_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(&module,
-                          std::make_unique<SequentialHloOrdering>(schedule),
-                          buffer_size_bytes_function, &alias_info,
-                          memory_alignment, std::move(opts)));
-
-  auto target_machine_features =
-      std::make_unique<TargetMachineFeatures>(jit_compiler.target_machine());
-
-  auto ir_emitter = std::make_unique<IrEmitter>(
-      module, *assignment, &llvm_module, target_machine_features.get());
-
-  return std::make_unique<IrEmitterWrapper>(
-      IrEmitterWrapper{std::move(ir_emitter), std::move(assignment),
-                       std::move(target_machine_features)});
+  config.mutable_debug_options().add_xla_cpu_experimental_ynn_fusion_type(
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  (*config.mutable_debug_options()
+        .mutable_xla_backend_extra_options())["xla_is_host_offload"] = "true";
+  EXPECT_EQ(GetDotImplementationStrategy(config, *dot, target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kTiledLlvmIrGemv);
 }
 
-TEST_F(IrEmitterTest, SmallConstantsAreEmittedAsGlobalsLargeAreNot) {
-  constexpr size_t kNumberOfSmallConstants = 1;
-  absl::string_view module_string = R"(
-HloModule module
+TEST_F(IrEmitterTest, LargeM1UnsupportedYnnTypeUsesTiledGemv) {
+  constexpr absl::string_view kHloText = R"hlo(
+    HloModule large_m1_s32_dot
 
-ENTRY main {
-  a = f32[1000,1000]{1,0} parameter(0)
-  b = f32[1000,1000]{1,0} constant({...})
-  a_plus_b = f32[1000,1000]{1,0} add(a, b)
-  c = f32[1,1]{1,0} constant({...})
-  broadcast = f32[1000,1000]{1,0} broadcast(c), dimensions={}
-  ROOT result = f32[1000,1000]{1,0} add(a_plus_b, broadcast)
-}
-)";
+    ENTRY main {
+      lhs = s32[1,1024]{1,0} parameter(0)
+      rhs = s32[1024,1024]{1,0} parameter(1)
+      ROOT dot = s32[1,1024]{1,0} dot(lhs, rhs), lhs_contracting_dims={1},
+                                                 rhs_contracting_dims={0}
+    }
+  )hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kHloText));
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(dot, nullptr);
+  TargetMachineFeaturesStub target_machine_features(
+      [](int64_t size) { return MinAlign(); });
 
-  ASSERT_OK_AND_ASSIGN(auto module,
-                       ParseAndReturnUnverifiedModule(module_string));
-
-  auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  auto llvm_module = std::make_unique<llvm::Module>("test", *llvm_context);
-
-  ASSERT_OK_AND_ASSIGN(
-      auto wrapped_ir_emitter,
-      CreateIrEmitterForConstantEmissionTests(*module, *llvm_module));
-
-  ASSERT_OK(wrapped_ir_emitter->ir_emitter->EmitSmallConstantGlobals());
-
-  EXPECT_EQ(
-      std::distance(llvm_module->global_begin(), llvm_module->global_end()),
-      kNumberOfSmallConstants);
+  HloModuleConfig ynn_enabled_config = module->config();
+  ynn_enabled_config.mutable_debug_options()
+      .clear_xla_cpu_experimental_ynn_fusion_type();
+  ynn_enabled_config.mutable_debug_options()
+      .add_xla_cpu_experimental_ynn_fusion_type(
+          DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+  EXPECT_EQ(GetDotImplementationStrategy(ynn_enabled_config, *dot,
+                                         target_machine_features,
+                                         /*allow_runtime_calls=*/true),
+            DotImplementationStrategy::kTiledLlvmIrGemv);
 }
 
 }  // namespace

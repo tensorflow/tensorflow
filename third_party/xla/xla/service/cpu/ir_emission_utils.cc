@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/shape_util.h"
 #include "xla/window_util.h"
@@ -129,6 +130,26 @@ bool CanUseEigenConvolution(
   return LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) &&
          LayoutUtil::IsMonotonicWithDim0Major(kernel_shape.layout()) &&
          LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout());
+}
+
+bool EmitsNoThunks(const HloInstruction& hlo) {
+  switch (hlo.opcode()) {
+    // Their semantics are encoded by buffer assignment.
+    case HloOpcode::kBitcast:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
+    // They only constrain the dataflow graph or the schedule.
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kOptimizationBarrier:
+    // Constants are owned by the executable and resolved through buffer
+    // assignment at run time.
+    case HloOpcode::kConstant:
+      return true;
+    default:
+      return false;
+  }
 }
 
 }  // namespace cpu

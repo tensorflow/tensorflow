@@ -2118,6 +2118,105 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
 }
 
 TEST_P(SharedBatchSchedulerPriorityPolicyTest,
+       PriorityMergedMixedPriorityBatchTimeoutBoundaryRace) {
+  // Verifies that when the clock advances across the batch timeout boundary
+  // during ScheduleBatch(), the open batch is not closed and scheduled without
+  // first merging eligible low-priority tasks under kPriorityMerge.
+  class SteppingClockEnv : public EnvWrapper {
+   public:
+    explicit SteppingClockEnv(test_util::FakeClockEnv* fake_clock_env)
+        : EnvWrapper(fake_clock_env), fake_clock_env_(fake_clock_env) {}
+
+    void SetStepOnNowMicros(int step_micros) {
+      step_micros_.store(step_micros, std::memory_order_relaxed);
+    }
+
+    uint64_t NowMicros() const override {
+      const uint64_t now = fake_clock_env_->NowMicros();
+      const int step = step_micros_.load(std::memory_order_relaxed);
+      if (step > 0) {
+        fake_clock_env_->AdvanceByMicroseconds(step);
+      }
+      return now;
+    }
+
+   private:
+    test_util::FakeClockEnv* const fake_clock_env_;
+    std::atomic<int> step_micros_{0};
+  };
+
+  test_util::FakeClockEnv env(Env::Default());
+  SteppingClockEnv stepping_env(&env);
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  absl::Notification first_batch_processed;
+  int queue_callback_counter = 0;
+  auto queue_callback = [&queue_callback_counter, &first_batch_processed](
+                            std::unique_ptr<Batch<FakeTask>> batch,
+                            std::vector<std::unique_ptr<FakeTask>> tasks) {
+    queue_callback_counter++;
+    EXPECT_TRUE(batch->IsClosed());
+    if (queue_callback_counter == 1) {
+      EXPECT_EQ(2, batch->num_tasks());
+      if (batch->num_tasks() == 2) {
+        EXPECT_EQ(3, batch->task(0).size());  // High pri task
+        EXPECT_EQ(2, batch->task(1).size());  // Low pri task
+      }
+      first_batch_processed.Notify();
+    }
+  };
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<Scheduler> scheduler,
+        CreateSharedBatchScheduler(
+            /*num_batch_threads=*/1, &stepping_env, /*rank_queues=*/false,
+            /*use_global_scheduler=*/false,
+            /*batch_threads_startup_delay_micros=*/999 * 1000));
+    env.BlockUntilThreadsAsleep(1);
+
+    QueueOptions queue_options = CreateQueueOptions(
+        /*max_execution_batch_size=*/10, /*input_batch_size_limit=*/10,
+        /*batch_timeout_micros=*/1 * 1000 * 1000, /*max_enqueued_batches=*/2,
+        /*enable_priority_queue=*/true);
+    queue_options.low_priority_queue_options.max_execution_batch_size = 10;
+    queue_options.low_priority_queue_options.batch_timeout_micros =
+        1 * 1000 * 1000;
+    queue_options.low_priority_queue_options.input_batch_size_limit = 10;
+    queue_options.low_priority_queue_options.max_enqueued_batches = 2;
+    queue_options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Queue> queue,
+        CreateQueue(scheduler, queue_options, queue_callback));
+
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    env.AdvanceByMicroseconds(500 * 1000);
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    // Wake the batch thread at t = 999,998 us, 2 us before the 1 s timeout
+    // measured from the low priority task at t = 0. Each NowMicros() read
+    // then advances the clock by 1 us. PeriodicFunction::RunLoop consumes
+    // one read on wake, so the first schedulability check lands at
+    // 999,999 us and the next read lands on the boundary. Before the fix,
+    // the pad check and the close check straddled the boundary and closed
+    // the batch without the low priority task.
+    stepping_env.SetStepOnNowMicros(1);
+    env.AdvanceByMicroseconds(499 * 1000 + 998);
+    first_batch_processed.WaitForNotification();
+    EXPECT_EQ(queue_callback_counter, 1);
+
+    start_teardown.Notify();
+  }
+
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityPolicyTest,
        PriorityMergedMixedPriorityCompleteBatch) {
   // With the kPriorityMerge strategy, if there are enough of low + high
   // priority inputs to form a complete batch, it will be scheduled immediately.

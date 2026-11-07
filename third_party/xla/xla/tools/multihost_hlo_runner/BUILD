@@ -229,6 +229,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/runtime:device_id",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
         "//xla/service:device_assignment",

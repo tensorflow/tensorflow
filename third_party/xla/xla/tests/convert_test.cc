@@ -2137,24 +2137,96 @@ TEST_F(ConvertTest, ConvertF32F8e8m0fnuRoundtrip) {
       {0x1.7FFFFEp127, 0x1p127},    // Largest number that doesn't overflow
       {0x1.8p127, nan},             // Smallest number that overflows
       {0x1.FFFFFEp127, nan},        // Overflow
-      {0x1p-126, 0x1p-126},         // Smallest F8 normal
-      {0x0.800002p-126, 0x1p-126},  // Smallest number rounding up to normal
+      {0x1p-149, 0x1p-127},         // Smallest positive F32 saturates to min
+      {0x1.FFFFF8p-128, 0x1p-127},  // Largest F32 below 2^-127
+      {0x1p-127, 0x1p-127},         // Smallest E8M0 value (code 0)
+      {0x1.000004p-127, 0x1p-127},  // Just above 2^-127 rounds down to code 0
+      {0x1.4p-127, 0x1p-127},       // 1.25 * 2^-127 rounds down to code 0
+      {0x1.7FFFFCp-127, 0x1p-127},  // Largest F32 rounding down to code 0
+      {0x1.8p-127, 0x1p-126},       // Midpoint rounds up to code 1
+      {0x1p-126, 0x1p-126},         // 2^-126 (code 1)
   };
 
   std::vector<float> inputs;
   std::vector<float> expected_roundtrip;
-  for (auto test_case : test_cases) {
+  for (TestCase test_case : test_cases) {
     inputs.push_back(test_case.input);
     expected_roundtrip.push_back(test_case.expected_roundtrip);
   }
 
-  auto f8 = ConvertElementType(ConstantR1<float>(&builder, inputs), F8E8M0FNU);
+  Literal param0 = LiteralUtil::CreateR1<float>(inputs);
+  XlaOp x = Parameter(&builder, 0, param0.shape(), "input");
+  XlaOp f8 = ConvertElementType(x, F8E8M0FNU);
   ConvertElementType(f8, F32);
-  ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
+  ComputeAndCompareR1<float>(&builder, expected_roundtrip, {&param0},
+                             ErrorSpec(0.));
+}
+
+TEST_F(ConvertTest, ConvertF32LowestBinadeToF8e8m0fnu) {
+  XlaBuilder builder(TestName());
+  const std::vector<float> inputs = {
+      0x1p-149f,        0x1.fffff8p-128f, 0x1p-127f,
+      0x1.000004p-127f, 0x1.4p-127f,      0x1.7ffffcp-127f,
+      0x1.8p-127f,      0x1.800004p-127f, 0x1p-126f,
+  };
+  const std::vector<uint8_t> expected_codes = {0, 0, 0, 0, 0, 0, 1, 1, 1};
+  Literal param0 = LiteralUtil::CreateR1<float>(inputs);
+  XlaOp x = Parameter(&builder, 0, param0.shape(), "input");
+  BitcastConvertType(ConvertElementType(x, F8E8M0FNU), U8);
+  ComputeAndCompareR1<uint8_t>(&builder, expected_codes, {&param0});
+}
+
+TEST_F(ConvertTest, ConvertBf16LowestBinadeToF8e8m0fnu) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    // TPU hardware unpacks bf16 with subnormals flushed to zero.
+    GTEST_SKIP();
+  }
+  XlaBuilder builder(TestName());
+  const std::vector<bfloat16> inputs = {
+      bfloat16(0x1p-133f),   bfloat16(0x1p-127f),    bfloat16(0x1.04p-127f),
+      bfloat16(0x1.4p-127f), bfloat16(0x1.7cp-127f), bfloat16(0x1.8p-127f),
+      bfloat16(0x1p-126f),
+  };
+  const std::vector<uint8_t> expected_codes = {0, 0, 0, 0, 0, 1, 1};
+  Literal param0 = LiteralUtil::CreateR1<bfloat16>(inputs);
+  XlaOp x = Parameter(&builder, 0, param0.shape(), "input");
+  BitcastConvertType(ConvertElementType(x, F8E8M0FNU), U8);
+  ComputeAndCompareR1<uint8_t>(&builder, expected_codes, {&param0});
+}
+
+TEST_F(ConvertTest, ConvertF64ToF8e8m0fnu) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    // TPU emulates f64 as a pair of f32 values and does not support IEEE
+    // binary64 exponent range or single rounding to narrow floats.
+    GTEST_SKIP();
+  }
+  XlaBuilder builder(TestName());
+  const std::vector<double> inputs = {
+      0.0,
+      -0.0,
+      std::numeric_limits<double>::denorm_min(),
+      std::numeric_limits<double>::min(),
+      0x1p-150,
+      0x1.7ffffffffffffp-127,
+      0x1.8p-127,
+      0x1.7ffffffffffffp0,
+      0x1.8p0,
+      0x1.7ffffffffffffp127,
+      0x1.8p127,
+  };
+  const std::vector<uint8_t> expected_codes = {
+      0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x01, 0x7F, 0x80, 0xFE, 0xFF,
+  };
+  Literal param0 = LiteralUtil::CreateR1<double>(inputs);
+  XlaOp x = Parameter(&builder, 0, param0.shape(), "input");
+  BitcastConvertType(ConvertElementType(x, F8E8M0FNU), U8);
+  ComputeAndCompareR1<uint8_t>(&builder, expected_codes, {&param0});
 }
 
 TYPED_TEST(ConvertTestT, ConvertF8e8m0fnuRoundtripExhaustive) {
-  if (test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceTypeIs(test::kTpu) && !std::is_same_v<TypeParam, float>) {
+    // TPU unpacks bf16 with subnormals flushed to zero and emulates f64 as a
+    // pair of f32 values.
     GTEST_SKIP();
   }
   // Convert from FP8 to supported floating point type, then back to FP8.
@@ -2174,17 +2246,10 @@ TYPED_TEST(ConvertTestT, ConvertF8e8m0fnuRoundtripExhaustive) {
 }
 
 TYPED_TEST(ConvertTestT, ConvertF8e8m0fnuRoundtripExhaustive2) {
-  if (test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceTypeIs(test::kTpu) && !std::is_same_v<TypeParam, float>) {
+    // TPU unpacks bf16 with subnormals flushed to zero and emulates f64 as a
+    // pair of f32 values.
     GTEST_SKIP();
-  }
-  if (this->test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
-    // This test is disabled on CPU, as converting 0x1p-127 from double to float
-    // using CVTSD2SS on x64 results in an underflow (even though the result is
-    // representable as denormalized float32).
-    if (std::is_same_v<TypeParam, double>) {
-      GTEST_SKIP() << "Skipping test for double precision floating point that "
-                      "loses denormal value during conversion";
-    }
   }
   // Convert from supported floating point type to FP8.
   XlaBuilder builder(this->TestName());
@@ -2200,7 +2265,9 @@ TYPED_TEST(ConvertTestT, ConvertF8e8m0fnuRoundtripExhaustive2) {
 }
 
 TYPED_TEST(ConvertTestT, ConvertF8e8m0fnuRoundtripExhaustive3) {
-  if (test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceTypeIs(test::kTpu) && !std::is_same_v<TypeParam, float>) {
+    // TPU unpacks bf16 with subnormals flushed to zero and emulates f64 as a
+    // pair of f32 values.
     GTEST_SKIP();
   }
   // Convert from FP8 to supported floating point type.
@@ -2218,7 +2285,8 @@ TYPED_TEST(ConvertTestT, ConvertF8e8m0fnuRoundtripExhaustive3) {
 }
 
 TYPED_TEST(ConvertTestF16, ConvertF8e8m0fnuF16RoundtripExhaustive4) {
-  if (test::DeviceTypeIs(test::kTpu)) {
+  if (test::DeviceTypeIs(test::kTpu) && !std::is_same_v<TypeParam, half>) {
+    // TPU unpacks bf16 with subnormals flushed to zero.
     GTEST_SKIP();
   }
   // Convert from (B)F16 to FP8.

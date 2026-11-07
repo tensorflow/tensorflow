@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // ==============================================================================
-// RUN: ifrt-opt %s -ifrt-verify-device-type-consistency='platform_names=tpu:2,cpu,tpu,cpu,cuda,cuda' -split-input-file -verify-diagnostics | FileCheck %s
+// RUN: ifrt-opt %s -ifrt-verify-device-type-consistency='platform_names=tpu:2,cpu,tpu,cpu,cuda,cuda,rocm:2' -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: @good_call_multiple
 #sharding = #ifrt.sharding_param<2 to [0] on 2>
@@ -44,17 +44,42 @@ module @good_call_multiple{
 
 // -----
 
+// CHECK-LABEL: @good_call_rocm
+#sharding = #ifrt.sharding_param<2 to [0] on 2>
+module @good_call_rocm{
+  func.func @main() -> !ifrt.array<tensor<2xi32>, #sharding, [7,8]>
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @const_hlo() on devices [7,8]
+        : () -> !ifrt.array<tensor<2xi32>, #sharding, [7,8]>
+    %1, %ctrl_1 = ifrt.Call @identity(%0) on devices [7,8]
+        : (!ifrt.array<tensor<2xi32>, #sharding, [7,8]>)
+        -> !ifrt.array<tensor<2xi32>, #sharding, [7,8]>
+    return %1 : !ifrt.array<tensor<2xi32>, #sharding, [7,8]>
+  }
+
+  func.func private @identity(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    return %arg0 : tensor<2xi32>
+  }
+
+  func.func private @const_hlo() -> tensor<2xi32> {
+    %0 = mhlo.constant dense<1> : tensor<2xi32>
+    return %0 : tensor<2xi32>
+  }
+}
+
+// -----
+
 module @out_of_bound_device_id{
   func.func @main() -> !ifrt.array<tensor<2x2xi32>,
                                    #ifrt.sharding_param<2x1 to [0] on 2>,
-                                   [7, 2]>
+                                   [9, 2]>
       attributes {ifrt.function} {
-  // expected-error @+1 {{'ifrt.Call' op cannot find mapping for logical device id 7. Mapping size: 7}}
-    %0, %ctrl_0 = ifrt.Call @hlo() on devices [7,2]
+  // expected-error @+1 {{'ifrt.Call' op cannot find mapping for logical device id 9. Mapping size: 9}}
+    %0, %ctrl_0 = ifrt.Call @hlo() on devices [9,2]
         : () -> !ifrt.array<tensor<2x2xi32>,
-                            #ifrt.sharding_param<2x1 to [0] on 2>, [7,2]>
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [9,2]>
     return %0 : !ifrt.array<tensor<2x2xi32>,
-                            #ifrt.sharding_param<2x1 to [0] on 2>, [7,2]>
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [9,2]>
   }
 
   func.func private @hlo() -> tensor<2x2xi32> {
@@ -97,6 +122,48 @@ module @multiple_tpu_and_gpu{
                             #ifrt.sharding_param<2x1 to [0] on 2>, [0,5]>
     return %0 : !ifrt.array<tensor<2x2xi32>,
                             #ifrt.sharding_param<2x1 to [0] on 2>, [0,5]>
+  }
+
+  func.func private @hlo() -> tensor<2x2xi32> {
+    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
+    return %0 : tensor<2x2xi32>
+  }
+}
+
+// -----
+
+module @multiple_rocm_and_cpu{
+  func.func @main() -> !ifrt.array<tensor<2x2xi32>,
+                                   #ifrt.sharding_param<2x1 to [0] on 2>,
+                                   [7, 2]>
+      attributes {ifrt.function} {
+  // expected-error @+1 {{'ifrt.Call' op requires a single platform type. Expected platform: rocm. Actual platform of logical device 2: cpu}}
+    %0, %ctrl_0 = ifrt.Call @hlo() on devices [7,2]
+        : () -> !ifrt.array<tensor<2x2xi32>,
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [7,2]>
+    return %0 : !ifrt.array<tensor<2x2xi32>,
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [7,2]>
+  }
+
+  func.func private @hlo() -> tensor<2x2xi32> {
+    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
+    return %0 : tensor<2x2xi32>
+  }
+}
+
+// -----
+
+module @multiple_cuda_and_rocm{
+  func.func @main() -> !ifrt.array<tensor<2x2xi32>,
+                                   #ifrt.sharding_param<2x1 to [0] on 2>,
+                                   [5, 7]>
+      attributes {ifrt.function} {
+  // expected-error @+1 {{'ifrt.Call' op requires a single platform type. Expected platform: cuda. Actual platform of logical device 7: rocm}}
+    %0, %ctrl_0 = ifrt.Call @hlo() on devices [5,7]
+        : () -> !ifrt.array<tensor<2x2xi32>,
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [5,7]>
+    return %0 : !ifrt.array<tensor<2x2xi32>,
+                            #ifrt.sharding_param<2x1 to [0] on 2>, [5,7]>
   }
 
   func.func private @hlo() -> tensor<2x2xi32> {

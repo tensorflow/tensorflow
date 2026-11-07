@@ -221,7 +221,9 @@ xla_cc_test(
     deps = [
         ":intrinsic_lib",
         "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/codegen/intrinsic:simple_jit_runner",
+        "//xla/codegen/intrinsic:test_matchers",
         "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

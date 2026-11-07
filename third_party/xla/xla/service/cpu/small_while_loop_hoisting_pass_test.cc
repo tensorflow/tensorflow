@@ -315,8 +315,8 @@ TEST_F(SmallWhileLoopHoistingPassTest, DotAndConvolutionWhileLoopHoisting) {
     absl::string_view op;
     bool expect_hoisted;
   };
-  // Only the matrix-vector product is emitted inline without Eigen and in a
-  // type the legacy emitter supports.
+  // Matrix vector products are emitted as kernels. Larger dots and
+  // convolutions call Eigen.
   const TestCase kTestCases[] = {
       {"f32[256,256]", "f32[256,1]",
        "f32[256,1] dot(lhs, rhs), lhs_contracting_dims={1}, "
@@ -330,6 +330,10 @@ TEST_F(SmallWhileLoopHoistingPassTest, DotAndConvolutionWhileLoopHoisting) {
        "bf16[256,1] dot(lhs, rhs), lhs_contracting_dims={1}, "
        "rhs_contracting_dims={0}",
        false},
+      {"bf16[1,8,8,4]", "bf16[3,3,4,4]",
+       "bf16[1,8,8,4] convolution(lhs, rhs), window={size=3x3 pad=1_1x1_1}, "
+       "dim_labels=b01f_01io->b01f",
+       true},
       {"f32[8,512,256]", "f32[8,256,256]",
        "f32[8,512,256] dot(lhs, rhs), lhs_batch_dims={0}, "
        "lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}",
@@ -437,6 +441,60 @@ TEST_F(SmallWhileLoopHoistingPassTest, LargeDimGemmNotClassifiedAsSmallTiled) {
                                       /*small_buffer_access_size=*/1LL << 50));
     EXPECT_EQ(changed, tc.expect_hoisted);
   }
+}
+
+// A fused dot that would call Eigen outside a fusion would run on one thread
+// inside a hoisted loop kernel.
+TEST_F(SmallWhileLoopHoistingPassTest, NoFusedEigenSizedDotHoisting) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule fused_eigen_sized_dot
+
+    fused_dot {
+      lhs = f32[64,64] parameter(0)
+      rhs = f32[64,64] parameter(1)
+      ROOT dot = f32[64,64] dot(lhs, rhs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    while_body {
+      state = (s32[], f32[64,64]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      x = f32[64,64] get-tuple-element(state), index=1
+      next_i = s32[] add(i, s32[] constant(1))
+      next_x = f32[64,64] fusion(x, x), kind=kLoop, calls=fused_dot
+      ROOT r = (s32[], f32[64,64]) tuple(next_i, next_x)
+    }
+
+    while_condition {
+      state = (s32[], f32[64,64]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(2)), direction=LT
+    }
+
+    ENTRY main {
+      p0 = f32[64,64] parameter(0)
+      init = (s32[], f32[64,64]) tuple(s32[] constant(0), p0)
+      ROOT w = (s32[], f32[64,64]) while(init),
+          condition=while_condition, body=while_body
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kHlo));
+  m->mutable_config().mutable_debug_options().set_xla_cpu_multi_thread_eigen(
+      false);
+
+  const HloInstruction* dot = FindInstruction(m.get(), HloOpcode::kDot);
+  ASSERT_NE(dot, nullptr);
+  EXPECT_EQ(cpu::GetDotImplementationStrategy(m->config(), *dot,
+                                              target_machine_features_,
+                                              /*allow_runtime_calls=*/true),
+            cpu::DotImplementationStrategy::kEigen);
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunSmallWhileLoopHoistingPass(m.get(),
+                                    /*small_buffer_access_size=*/1LL << 20));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

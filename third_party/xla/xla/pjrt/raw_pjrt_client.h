@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -127,7 +128,6 @@ class PjRtExecutableLoadState
     LocalDeviceId local_device_id;
     GlobalDeviceId global_device_id;
     int process_index;
-    std::shared_ptr<DeviceAssignment> device_assignment;
     std::optional<int32_t> slice_id;
     int replica;
     int partition;
@@ -135,6 +135,8 @@ class PjRtExecutableLoadState
 
   virtual void Delete() = 0;
   virtual bool IsDeleted() const = 0;
+
+  virtual absl::Status ClearExecutionState() { return absl::OkStatus(); }
 
   virtual absl::Status Preload(PjRtExecutable* executable) {
     return absl::OkStatus();
@@ -193,6 +195,15 @@ class PjRtRawClient {
     return AllocateRawBuffer(memory_space, on_device_bytes_count, retry_on_oom,
                              {});
   }
+
+  // Allocates a batch of raw buffers in `memory_space` for the execute path.
+  // Per-buffer shape metadata for memory profiling is read from
+  // `ScopedMemoryDebugAnnotation::CurrentAnnotation().pending_shape_func(i)`.
+  // Each returned buffer has an independent lifetime.
+  virtual absl::StatusOr<absl::InlinedVector<PjRtRawBufferRef, 4>>
+  AllocateRawBuffersForExecute(PjRtMemorySpace* memory_space,
+                               absl::Span<const size_t> on_device_bytes_counts,
+                               bool retry_on_oom);
 
   // Creates a raw buffer channel. Returns a tuple containing:
   // 1.  A PjRtRawBufferRef which is an alias for a future
@@ -334,9 +345,8 @@ class PjRtRawClient {
     return {tsl::AsyncValueRef<T>(std::move(indirect)), std::move(fulfill_cb)};
   }
 
-  virtual tsl::RCReference<PjRtExecutableLoadState> MakeLoadState() {
-    LOG(FATAL) << "Implement MakeLoadState()";
-  }
+  virtual absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
+  MakeLoadState(const LoadOptions& load_options) = 0;
 
   virtual std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       LocalDeviceId local_device_id, absl::string_view description) const {

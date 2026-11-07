@@ -24,17 +24,21 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/Version.h"
 #include "stablehlo/reference/Api.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_phase_compiler.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -366,6 +370,45 @@ TEST_F(PhaseCompileExtensionTest, CompileToRelocatableWithNullModule) {
           *topology_description_, /*name=*/"bad",
           /*is_entrypoint=*/false, client_.get()),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(PhaseCompileExtensionTest,
+       CompileToRelocatableWithoutClientUsesStableHloVersion) {
+  const PJRT_Api* c_api =
+      pjrt::phase_compile_sample_plugin::GetSamplePhaseCompilePjrtApi();
+  ASSERT_NE(c_api, nullptr);
+  PJRT_PhaseCompile_Extension custom_extension =
+      pjrt::phase_compile_sample_plugin::CreateSamplePhaseCompileExtension();
+  custom_extension.phase_compile_compile_to_relocatable =
+      [](PJRT_PhaseCompile_CompileToRelocatable_Args* args) -> PJRT_Error* {
+    EXPECT_EQ(args->client, nullptr);
+    mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
+    std::string version_string = absl::StrFormat(
+        "%d.%d.%d", version.getMajor(), version.getMinor(), version.getPatch());
+    EXPECT_TRUE(llvm::StringRef(args->program->code, args->program->code_size)
+                    .contains(version_string));
+    return pjrt::phase_compile_sample_plugin::
+        CreateSamplePhaseCompileExtension()
+            .phase_compile_compile_to_relocatable(args);
+  };
+
+  PJRT_PhaseCompile_Get_Compiler_Args get_compiler_args{};
+  get_compiler_args.struct_size =
+      PJRT_PhaseCompile_Get_Compiler_Args_STRUCT_SIZE;
+  get_compiler_args.extension_start = nullptr;
+  PJRT_Error* error =
+      custom_extension.phase_compile_get_compiler(&get_compiler_args);
+  ASSERT_EQ(error, nullptr);
+
+  xla::PjRtCApiPhaseCompiler phase_compiler(c_api, &custom_extension,
+                                            get_compiler_args.phase_compiler);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::PjRtRelocatable> relocatable,
+      phase_compiler.CompileToRelocatable(
+          xla::CompileOptions(), ParseStablehloModule(), *topology_description_,
+          /*name=*/"aot_relocatable", /*is_entrypoint=*/false,
+          /*client=*/nullptr));
+  EXPECT_EQ(relocatable->name(), "aot_relocatable");
 }
 
 TEST_F(PhaseCompileExtensionTest, SerializeAndDeserializeRelocatable) {

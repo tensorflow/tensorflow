@@ -30,6 +30,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/die_if_null.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
@@ -60,7 +63,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
-#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -1252,7 +1254,7 @@ HloSendInstruction::HloSendInstruction(HloInstruction* operand,
                                        bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kSend,
-          ShapeUtil::MakeTupleShape({CHECK_NOTNULL(operand)->shape(),
+          ShapeUtil::MakeTupleShape({ABSL_DIE_IF_NULL(operand)->shape(),
                                      ShapeUtil::MakeShape(U32, {}),
                                      ShapeUtil::MakeTokenShape()}),
           channel_id, is_host_transfer) {
@@ -2651,7 +2653,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     CHECK(!add_output);
     auto builder = HloComputation::Builder(default_called_computation_name());
     builder.AddInstruction(instruction_to_append->Clone(/*suffix=*/""));
-    auto* new_computation = CHECK_NOTNULL(instruction_to_append->GetModule())
+    auto* new_computation = ABSL_DIE_IF_NULL(instruction_to_append->GetModule())
                                 ->AddEmbeddedComputation(builder.Build());
     AppendComputation(new_computation);
     clone = called_computation_root();
@@ -4631,6 +4633,76 @@ std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_GE(new_operands.size(), 2);
   return std::make_unique<HloDotInstruction>(
+      shape, new_operands, dot_dimension_numbers_, precision_config_,
+      sparsity_config_, block_scaling_config_);
+}
+
+HloDotGeneralInstruction::HloDotGeneralInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config,
+    const SparsityConfig& sparsity_config,
+    const BlockScalingConfig& block_scaling_config)
+    : HloInstruction(HloOpcode::kDotGeneral, shape),
+      dot_dimension_numbers_(dimension_numbers),
+      precision_config_(precision_config),
+      sparsity_config_(sparsity_config),
+      block_scaling_config_(block_scaling_config) {
+  CHECK_GE(operands.size(), 2);
+  AppendOperands(operands);
+}
+
+void HloDotGeneralInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_dot_dimension_numbers() = dot_dimension_numbers_;
+  *proto->mutable_precision_config() = precision_config_;
+  *proto->mutable_sparsity_config() = sparsity_config_;
+  *proto->mutable_block_scaling_config() = block_scaling_config_;
+}
+
+void HloDotGeneralInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append(DotDimensionNumbersToString(dot_dimension_numbers_));
+  });
+  PrintPrecisionConfig(printer, precision_config_);
+  if (sparsity_config_.has_lhs() || sparsity_config_.has_rhs()) {
+    printer.Next([this](Printer* printer) {
+      printer->Append(absl::StrCat(
+          "sparsity_config={", SparsityConfigToString(sparsity_config_), "}"));
+    });
+  }
+  if (block_scaling_config_.has_lhs() || block_scaling_config_.has_rhs()) {
+    printer.Next([this](Printer* printer) {
+      printer->Append(
+          absl::StrCat("block_scaling_config={",
+                       BlockScalingConfigToString(block_scaling_config_), "}"));
+    });
+  }
+}
+
+bool HloDotGeneralInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloDotGeneralInstruction&>(other);
+  return protobuf_util::HaveSameSerialization(
+             dot_dimension_numbers(), casted_other.dot_dimension_numbers()) &&
+         protobuf_util::HaveSameSerialization(
+             precision_config(), casted_other.precision_config()) &&
+         protobuf_util::HaveSameSerialization(sparsity_config(),
+                                              casted_other.sparsity_config()) &&
+         protobuf_util::HaveSameSerialization(
+             block_scaling_config(), casted_other.block_scaling_config());
+}
+
+std::unique_ptr<HloInstruction>
+HloDotGeneralInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_GE(new_operands.size(), 2);
+  return std::make_unique<HloDotGeneralInstruction>(
       shape, new_operands, dot_dimension_numbers_, precision_config_,
       sparsity_config_, block_scaling_config_);
 }

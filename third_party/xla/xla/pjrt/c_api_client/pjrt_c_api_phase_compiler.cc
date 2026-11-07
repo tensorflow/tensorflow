@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/partial_program_utils.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_client_utils.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -246,8 +245,8 @@ PjRtCApiPhaseCompiler::CompileToRelocatable(
   ABSL_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto, options.ToProto());
   std::string options_str = options_proto.SerializeAsString();
 
-  std::string target_version = GetPluginStablehloVersionOrDefault(client);
-  std::string sdy_version = GetPluginSdyVersionOrDefault(client);
+  std::string target_version = GetPluginStablehloVersionOrDefault(api_, client);
+  std::string sdy_version = GetPluginSdyVersionOrDefault(api_, client);
   ABSL_ASSIGN_OR_RETURN(
       std::string code,
       xla::Serialize(module.mlir_module(), target_version, sdy_version,

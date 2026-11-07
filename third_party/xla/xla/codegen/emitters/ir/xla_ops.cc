@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_dialect.cc.inc"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 
@@ -92,31 +93,59 @@ using mlir::ValueRange;
 
 namespace arith = mlir::arith;
 
+std::optional<Interval> AttrToRange(mlir::Attribute attr) {
+  if (!attr) {
+    return std::nullopt;
+  }
+  auto values = llvm::to_vector(
+      mlir::cast<mlir::ArrayAttr>(attr).getAsValueRange<mlir::IntegerAttr>());
+  return {{values[0].getSExtValue(), values[1].getSExtValue()}};
+}
+
+// Returns true if a variable result of `indexing_op` can be folded to
+// `operand` without losing the `xla.range` annotation of `indexing_op`.
+//
+// `xla.range` on an `apply_indexing` op states a range for its result that may
+// be tighter than both the range of `operand` and the range computed from the
+// op's indexing map, e.g. because it was derived from constraints that are
+// known to hold at the op's position. Replacing the result with `operand`
+// would drop that information. Therefore, if the op has `xla.range`, the result
+// is only folded if the range of `operand` is known and contained in
+// `xla.range`. If the range of `operand` is unknown, or is not contained in
+// `xla.range` (also if they only partially overlap), the op is kept. This does
+// not depend on the domain of the op's indexing map, so `xla.range` also acts
+// as a "do not fold" marker.
+//
+// The verifier only allows `xla.range` on single-result ops, so the range
+// always refers to the result that is being folded.
+bool CanFoldVariableResult(ApplyIndexingOp indexing_op, Value operand) {
+  std::optional<Interval> attr_range =
+      AttrToRange(indexing_op->getAttr("xla.range"));
+  if (!attr_range.has_value()) {
+    return true;
+  }
+  std::optional<Interval> operand_range = GetRange(operand);
+  return operand_range.has_value() && attr_range->Contains(*operand_range);
+}
+
 }  // namespace
 
 std::optional<Interval> GetRange(mlir::Value value) {
-  auto attr_to_range = [](mlir::Attribute attr) -> std::optional<Interval> {
-    if (!attr) {
-      return std::nullopt;
-    }
-    auto values = llvm::to_vector(
-        mlir::cast<mlir::ArrayAttr>(attr).getAsValueRange<mlir::IntegerAttr>());
-    return {{values[0].getSExtValue(), values[1].getSExtValue()}};
-  };
-
   if (auto apply = value.getDefiningOp<ApplyIndexingOp>()) {
     Interval range =
         apply.getIndexingMap().GetRangeEvaluator().ComputeExpressionRange(
             apply.getIndexingMap().GetSymbolicMap().GetResult(
                 mlir::cast<mlir::OpResult>(value).getResultNumber()));
-    if (auto attr_range = attr_to_range(apply->getAttr("xla.range"))) {
+    if (auto attr_range = AttrToRange(apply->getAttr("xla.range"))) {
       range = range.Intersect(*attr_range);
     }
     return range;
-  } else if (auto cst = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
+  }
+  if (auto cst = value.getDefiningOp<mlir::arith::ConstantIndexOp>()) {
     return {{cst.value(), cst.value()}};
-  } else if (value.getDefiningOp()) {
-    return attr_to_range(value.getDefiningOp()->getAttr("xla.range"));
+  }
+  if (value.getDefiningOp()) {
+    return AttrToRange(value.getDefiningOp()->getAttr("xla.range"));
   }
 
   auto bbarg = mlir::dyn_cast<mlir::BlockArgument>(value);
@@ -126,7 +155,7 @@ std::optional<Interval> GetRange(mlir::Value value) {
 
   auto parent = bbarg.getParentBlock()->getParentOp();
   if (auto func_op = mlir::dyn_cast<mlir::FunctionOpInterface>(parent)) {
-    return attr_to_range(func_op.getArgAttr(bbarg.getArgNumber(), "xla.range"));
+    return AttrToRange(func_op.getArgAttr(bbarg.getArgNumber(), "xla.range"));
   }
   return GetIVRange(value);
 }
@@ -190,12 +219,18 @@ LogicalResult PureCallOp::verifySymbolUses(
 
 void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
                             ValueRange dims, ValueRange symbols,
-                            const IndexingMap& indexing_map) {
+                            const IndexingMap& indexing_map,
+                            std::optional<Interval> result_range) {
   SmallVector<Value, 4> operands;
   operands.reserve(dims.size() + symbols.size());
   operands.append(dims.begin(), dims.end());
   operands.append(symbols.begin(), symbols.end());
   build(builder, result, operands, indexing_map);
+  if (result_range.has_value()) {
+    result.addAttribute(
+        "xla.range",
+        builder.getIndexArrayAttr({result_range->lower, result_range->upper}));
+  }
 }
 
 void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
@@ -286,6 +321,12 @@ LogicalResult ApplyIndexingOp::verify() {
         "operand count ", getOperands().size(),
         " does not match the sum of dimensions ", symbolic_map.GetNumDims(),
         " and symbols ", symbolic_map.GetNumSymbols(), " in the symbolic map"));
+  }
+  // `xla.range` is a single interval, so it can only describe one result.
+  if ((*this)->hasAttr("xla.range") && getNumResults() != 1) {
+    return emitOpError(absl::StrCat(
+        "'xla.range' is only supported on single-result ops, but the op has ",
+        getNumResults(), " results"));
   }
   return success();
 }
@@ -615,8 +656,11 @@ struct FoldApplyIndexingResults
         continue;
       }
       if (result_expr.GetType() == SymbolicExprType::kVariable) {
-        new_values.push_back(indexing_op.getOperand(result_expr.GetValue()));
-        continue;
+        Value operand = indexing_op.getOperand(result_expr.GetValue());
+        if (CanFoldVariableResult(indexing_op, operand)) {
+          new_values.push_back(operand);
+          continue;
+        }
       }
       new_exprs.push_back(result_expr);
       new_values.push_back(Value{});
@@ -660,7 +704,12 @@ mlir::LogicalResult ApplyIndexingOp::fold(
   mlir::ImplicitLocOpBuilder builder(getLoc(), getContext());
   for (auto expr : map.GetResults()) {
     if (expr.GetType() == SymbolicExprType::kVariable) {
-      results.push_back(getOperand(expr.GetValue()));
+      Value operand = getOperand(expr.GetValue());
+      if (!CanFoldVariableResult(*this, operand)) {
+        results.clear();
+        return failure();
+      }
+      results.push_back(operand);
     } else if (expr.GetType() == SymbolicExprType::kConstant) {
       results.push_back(builder.getIndexAttr(expr.GetValue()));
     } else {

@@ -105,12 +105,12 @@ func.func @main(%arg0: !array, %arg1: !array {ifrt.donated}) -> (!array, !array)
 }
 
 
-def IfrtMergeCopiesAndReshardsPass :
-    Pass<"ifrt-merge-copies-and-reshards", "mlir::func::FuncOp"> {
-  let summary = "Merge copies and reshards into a single op.";
+def IfrtMergeOpsPass :
+    Pass<"ifrt-merge-ops", "mlir::func::FuncOp"> {
+  let summary = "Merge compatible CopyArrays, Reshard, and BitcastArrays ops.";
   let description = [{
-Merges copies and reshards from a source op which flow into the same destination
-op, ignoring control dependencies.
+Merges compatible `ifrt.CopyArrays`, `ifrt.Reshard`, and `ifrt.BitcastArrays`
+ops while respecting dominance order, ignoring control dependencies.
 
 E.g.
 
@@ -287,6 +287,19 @@ The pass dumps:
     Option<"dump_dir", "dump_dir", "std::string", "",
            "The directory to dump the atom programs and the main function to.">,
   ];
+}
+
+def IfrtCopyConstantsPass :
+    Pass<"ifrt-copy-constants", "mlir::ModuleOp"> {
+  let summary = "Copies constants produced in one atom program to their consumers.";
+  let description = [{
+Copies `ConstantLike` ops returned by producer `ifrt.Call` atom programs into
+consumer `ifrt.Call` atom programs, tracing across zero or more `ifrt.Reshard`
+or `ifrt.CopyArrays` ops.
+
+Note: this pass does not clean up dead arguments, results, or transfers left
+behind after copying constants.
+  }];
 }
 
 #endif  // XLA_PYTHON_IFRT_IR_IMPORT_PASSES_TD_

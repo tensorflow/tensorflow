@@ -169,3 +169,9 @@
 *   Changes:
     *   Added support for `Client::HashValues`.
 
+## Version kDeserializeLoadedExecutable
+
+*   Added date: 2026-11-06
+*   Changes:
+    *   Added support for `Compiler::DeserializeLoadedExecutable`.
+

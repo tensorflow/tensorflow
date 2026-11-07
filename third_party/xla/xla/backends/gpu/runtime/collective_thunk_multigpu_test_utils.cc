@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
@@ -144,9 +145,16 @@ absl::Status SetupCollectiveThunksDevice(
       MakeBufferAllocations(state, state.create_buffers);
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(allocations);
-  Thunk::PrepareParams prepare_params{&params, &clique_requests,
-                                      &memory_requests, state.executor,
-                                      &allocations};
+  CommandBufferRequests command_buffer_requests;
+  Thunk::PrepareParams prepare_params{
+      /*collective_params=*/&params,
+      /*collective_clique_requests=*/&clique_requests,
+      /*collective_memory_requests=*/&memory_requests,
+      /*executor=*/state.executor,
+      /*buffer_allocations=*/&allocations,
+      /*execution_scoped_state=*/nullptr,
+      /*custom_options=*/nullptr,
+      /*command_buffer_requests=*/&command_buffer_requests};
   for (CollectiveThunk* thunk : thunks) {
     ABSL_RETURN_IF_ERROR(thunk->Prepare(prepare_params));
   }
@@ -154,11 +162,11 @@ absl::Status SetupCollectiveThunksDevice(
   ABSL_ASSIGN_OR_RETURN(state.collective_cliques,
                    AcquireCollectiveCliques(params, clique_requests));
 
-  Thunk::InitializeParams init_params;
+  Thunk::InitializeParams init_params(&command_buffer_requests);
   init_params.executor = state.executor;
+  init_params.buffer_allocations = &allocations;
   init_params.stream = state.stream.get();
   init_params.command_buffer_trace_stream = state.stream.get();
-  init_params.buffer_allocations = &allocations;
   init_params.collective_params = &params;
   init_params.collective_cliques = &state.collective_cliques;
   init_params.local_device_count = num_devices;

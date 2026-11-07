@@ -224,7 +224,8 @@ LocalExecutable::PrepareRunOptions(ExecutableRunOptions run_options) {
   // *) The thread pool used for XLA CPU ops is from
   //    backend_->eigen_intra_op_thread_pool().
   ServiceExecutableRunOptions service_options(
-      run_options, backend_->StreamBorrowerWithPriority());
+      run_options, backend_->StreamBorrowerWithPriority(),
+      backend_->LocalityDomainStreamBorrowerWithPriority());
   return std::make_pair(service_options, std::move(stream));
 }
 

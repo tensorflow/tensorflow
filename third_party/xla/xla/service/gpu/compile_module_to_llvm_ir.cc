@@ -30,10 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/AsmParser/Parser.h"
-#include "llvm/Bitcode/BitcodeReader.h"
-#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -266,21 +263,25 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   Future<ThunkSequence> future_thunks =
       thunk_emitter.EmitHloEntryComputation(hlo_module);
 
+  Future<std::vector<uint8_t>> future_constants_binary;
   llvm::Module* constants_module = thunk_emitter.constants_module();
   const bool has_constants_module =
       !constants_module->empty() || !constants_module->global_empty();
   if (has_constants_module) {
-    ABSL_ASSIGN_OR_RETURN(
-        results.constants_binary,
-        compiler->CompileToTargetBinary(thunk_emitter.ConsumeConstantsModule())
-            .Await());
+    future_constants_binary = compiler->CompileToTargetBinary(
+        thunk_emitter.ConsumeConstantsModule(), /*kernel_spec=*/std::nullopt);
   } else {
     VLOG(2) << "Constants LLVM module is empty; skipping target compilation.";
   }
 
-  ABSL_ASSIGN_OR_RETURN(ThunkSequence thunks, std::move(future_thunks).Await());
+  absl::StatusOr<ThunkSequence> thunks = std::move(future_thunks).Await();
+  if (has_constants_module) {
+    ABSL_ASSIGN_OR_RETURN(results.constants_binary,
+                     std::move(future_constants_binary).Await());
+  }
+  ABSL_RETURN_IF_ERROR(thunks.status());
   results.executable =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, std::move(thunks));
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, std::move(*thunks));
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).
@@ -306,27 +307,6 @@ void LinkLlvmModulesInPlace(
                                llvm::Linker::Flags::OverrideFromSrc));
   }
   llvm_modules.resize(1);
-}
-
-std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
-                                            llvm::LLVMContext& context) {
-  // We are setting llvm::SmallString's InternalLen to 0, because we want to
-  // allocate its buffer on the heap. We use llvm::SmallString instead of
-  // std::string, because llvm::raw_svector_ostream is a bit faster than
-  // llvm::raw_string_ostream.
-  llvm::SmallString<0> bitcode;
-  llvm::raw_svector_ostream bitcode_ostream(bitcode);
-  llvm::WriteBitcodeToFile(module, bitcode_ostream);
-
-  llvm::Expected<std::unique_ptr<llvm::Module>> new_module =
-      llvm::parseBitcodeFile(
-          llvm::MemoryBufferRef(llvm::StringRef(bitcode.data(), bitcode.size()),
-                                "split_module"),
-          context);
-  CHECK(new_module) << "Failed to parse bitcode "
-                    << llvm::toString(new_module.takeError());
-
-  return std::move(new_module.get());
 }
 
 }  // namespace xla::gpu

@@ -1,0 +1,60 @@
+// RUN: fusion_to_triton %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+// Verifies that when `pad` evaluates `concatenate` on high-padding tiles
+// (tiles 4..7: offset >= 128 for concat size 128), `concatenate` guards the
+// last operand's branch with `offset < 128` and yields a zero tile for
+// out-of-bounds tiles, while narrowing the operand indexing domains to active
+// tiles (`pid in [0, 1]` and `pid in [2, 3]`).
+fusion {
+  p0 = f32[64] parameter(0)
+  p1 = f32[64] parameter(1)
+  concat = f32[128] concatenate(p0, p1), dimensions={0}
+  c0 = f32[] constant(42.0)
+  ROOT pad = f32[256] pad(concat, c0), padding=0_128
+}
+// CHECK-DAG: #[[$OUT_MAP:.+]] = #xla.indexing_map<"(pid) -> (pid * 32), domain: pid in [0, 7]">
+// CHECK-DAG: #[[$LHS_MAP:.+]] = #xla.indexing_map<"(pid) -> (pid * 32), domain: pid in [0, 1]">
+// CHECK-DAG: #[[$RHS_MAP:.+]] = #xla.indexing_map<"(pid) -> (pid * 32 - 64), domain: pid in [2, 3]">
+
+// CHECK:       xtile.entry_func
+// CHECK-SAME:  %[[ARG0:[A-Za-z0-9]+]]: memref<64xf32>,
+// CHECK-SAME:  %[[ARG1:[A-Za-z0-9]+]]: memref<64xf32>,
+// CHECK-SAME:  %[[ARG2:[A-Za-z0-9]+]]: memref<256xf32>,
+// CHECK-SAME:  %[[PID:[A-Za-z0-9]+]]: index
+
+// CHECK-DAG:   %[[C64:.*]] = arith.constant 64 : index
+// CHECK-DAG:   %[[C128:.*]] = arith.constant 128 : index
+// CHECK-DAG:   %[[ZERO_TILE:.*]] = arith.constant dense<0.000000e+00> : tensor<32xf32>
+
+// CHECK:       %[[OFFSET:.*]] = xla.apply_indexing #[[$OUT_MAP]](%[[PID]])
+// CHECK:       %[[CMPI_0:.*]] = arith.cmpi slt, %[[OFFSET]], %[[C64]] : index
+// CHECK:       %[[IF_0:.*]] = scf.if %[[CMPI_0]] -> (tensor<32xf32>) {
+// CHECK:         %[[LHS_OFFSET:.*]] = xla.apply_indexing #[[$LHS_MAP]](%[[PID]])
+// CHECK:         %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]][%[[LHS_OFFSET]]] [32] [1] : memref<64xf32> -> tensor<32xf32>
+// CHECK:         scf.yield %[[EXTRACT_0]] : tensor<32xf32>
+// CHECK:       } else {
+// CHECK:         %[[CMPI_1:.*]] = arith.cmpi slt, %[[OFFSET]], %[[C128]] : index
+// CHECK:         %[[IF_1:.*]] = scf.if %[[CMPI_1]] -> (tensor<32xf32>) {
+// CHECK:           %[[RHS_OFFSET:.*]] = xla.apply_indexing #[[$RHS_MAP]](%[[PID]])
+// CHECK:           %[[EXTRACT_1:.*]] = xtile.extract %[[ARG1]][%[[RHS_OFFSET]]] [32] [1] : memref<64xf32> -> tensor<32xf32>
+// CHECK:           scf.yield %[[EXTRACT_1]] : tensor<32xf32>
+// CHECK:         } else {
+// CHECK:           scf.yield %[[ZERO_TILE]] : tensor<32xf32>
+// CHECK:         }
+// CHECK:         scf.yield %[[IF_1]] : tensor<32xf32>
+// CHECK:       }
+
+ENTRY main {
+  p0 = f32[64] parameter(0)
+  p1 = f32[64] parameter(1)
+  ROOT fusion = f32[256] fusion(p0, p1), kind=kCustom,
+    calls=fusion, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

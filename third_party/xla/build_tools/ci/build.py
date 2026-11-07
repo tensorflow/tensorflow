@@ -616,6 +616,10 @@ Build(
     test_tag_filters=rocm_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
     subcommand="build",
+    # Do not enable bazel-diff here: this is a compile-only RBE build with high
+    # remote cache hit rates, so running two `bazel cquery` passes for
+    # bazel-diff adds more overhead than it saves.
+    use_bazel_diff=False,
 )
 
 Build(
@@ -823,7 +827,7 @@ Build(
     override_module=dict(
         xla=f"{_GITHUB_WORKSPACE}\\openxla\\xla",
     ),
-    options=_DEFAULT_BAZEL_OPTIONS,
+    options={**_DEFAULT_BAZEL_OPTIONS, "remote_download_minimal": True},
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
     subcommand="build",
     startup_options={

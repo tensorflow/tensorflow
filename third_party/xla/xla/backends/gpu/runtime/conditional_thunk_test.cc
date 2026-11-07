@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_buffer_requests.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -244,11 +245,11 @@ TEST(ConditionalThunkTest, PreparePropagatesToCommandBufferBranchExecutors) {
   BufferAllocations allocations(buffers, /*device_ordinal=*/0,
                                 /*memory_allocator=*/nullptr);
 
-  Thunk::PrepareParams prepare_params{/*collective_params=*/nullptr,
-                                      /*collective_clique_requests=*/nullptr,
-                                      /*collective_memory_requests=*/nullptr,
-                                      /*executor=*/executor,
-                                      /*buffer_allocations=*/&allocations};
+  CommandBufferRequests command_buffer_requests;
+  Thunk::PrepareParams prepare_params{
+      /*executor=*/executor,
+      /*buffer_allocations=*/&allocations,
+      /*command_buffer_requests=*/&command_buffer_requests};
   ASSERT_OK(thunk.Prepare(prepare_params));
 
   EXPECT_EQ(branch0_counts.prepares, 1);

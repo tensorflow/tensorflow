@@ -20,6 +20,9 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
@@ -28,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -145,8 +149,11 @@ std::optional<quant::QuantizedType> GetQTypeFromDefiningDequantize(
   if (!dq_op) {
     return std::nullopt;
   }
-  return cast<quant::QuantizedType>(
-      getElementTypeOrSelf(dq_op.getInput().getType()));
+  if (auto qtype = dyn_cast<quant::QuantizedType>(
+          getElementTypeOrSelf(dq_op.getInput().getType()))) {
+    return qtype;
+  }
+  return std::nullopt;
 }
 
 std::optional<quant::QuantizedType> GetQTypeFromConsumingQuantize(
@@ -235,4 +242,84 @@ LogicalResult InsertQDQ(mlir::Value value, quant::QuantizedType qtype,
   });
   return success();
 }
+
+bool IsInt8SrqBlockwiseWeightConsumer(mlir::Operation* op) {
+  if (auto fc = llvm::dyn_cast<TFL::FullyConnectedOp>(op)) {
+    if (!IsFullyConnectedBlockwiseFilterSupported(fc)) return false;
+  } else if (!llvm::isa<TFL::BatchMatMulOp>(op)) {
+    return false;
+  }
+  auto is_signed_i8 = [](mlir::Type type) {
+    auto qtype =
+        mlir::dyn_cast<quant::UniformQuantizedType>(getElementTypeOrSelf(type));
+    return qtype && qtype.isSigned() &&
+           qtype.getStorageTypeIntegralWidth() == 8;
+  };
+  auto lhs_dq = op->getOperand(0).getDefiningOp<DequantizeOp>();
+  if (!lhs_dq || !is_signed_i8(lhs_dq.getInput().getType())) return false;
+  // Only the first result is the matmul output (FULLY_CONNECTED may have an
+  // unused shuffled-input workspace result for other weight formats).
+  mlir::Value result = op->getResult(0);
+  if (result.use_empty()) return false;
+  return llvm::all_of(result.getUsers(), [&](mlir::Operation* user) {
+    auto q = llvm::dyn_cast<QuantizeOp>(user);
+    return q && is_signed_i8(q.getType());
+  });
+}
+
+ElementsAttr GetConstantElements(mlir::Value value) {
+  ElementsAttr attr;
+  if (matchPattern(value, m_Constant(&attr))) return attr;
+  if (auto const_op = value.getDefiningOp<TFL::ConstOp>()) {
+    return const_op.getValue();
+  }
+  return nullptr;
+}
+
+bool IsFullyConnectedBlockwiseFilterSupported(TFL::FullyConnectedOp fc) {
+  if (fc.getWeightsFormat() != "DEFAULT") return false;
+  // The fused activations the FULLY_CONNECTED kernel supports with a
+  // blockwise quantized filter.
+  static constexpr llvm::StringLiteral kSupportedActivations[] = {
+      "NONE", "RELU", "RELU_N1_TO_1", "RELU6"};
+  return llvm::is_contained(kSupportedActivations,
+                            fc.getFusedActivationFunction());
+}
+
+bool IsDrqBlockwiseFilterConsumer(TFL::FullyConnectedOp fc) {
+  if (!IsFullyConnectedBlockwiseFilterSupported(fc)) return false;
+  auto is_f32 = [](mlir::Value value) {
+    return getElementTypeOrSelf(value.getType()).isF32();
+  };
+  if (!is_f32(fc.getInput()) || !is_f32(fc.getResult(0))) return false;
+  mlir::Value bias = fc.getBias();
+  return mlir::isa<NoneType>(bias.getType()) || is_f32(bias);
+}
+
+bool IsConstantBlockwiseDequantizedFilter(mlir::Operation* op,
+                                          mlir::Value operand) {
+  auto bw_deq = operand.getDefiningOp<TFL::BlockwiseDequantizeOp>();
+  if (!bw_deq) return false;
+  auto output_type = mlir::dyn_cast<RankedTensorType>(bw_deq.getType());
+  if (!output_type || !output_type.getElementType().isF32()) return false;
+  // The FULLY_CONNECTED kernel only takes rank 2 filters.
+  if (llvm::isa<TFL::FullyConnectedOp>(op) && output_type.getRank() != 2) {
+    return false;
+  }
+  ElementsAttr values = GetConstantElements(bw_deq.getInput());
+  if (!values || !mlir::isa<IntegerType>(values.getElementType())) return false;
+  if (!GetConstantElements(bw_deq.getScales())) return false;
+  if (!mlir::isa<NoneType>(bw_deq.getZeroPoints().getType()) &&
+      !GetConstantElements(bw_deq.getZeroPoints())) {
+    return false;
+  }
+  return true;
+}
+
+bool CanFoldBlockwiseWeightOperand(mlir::Operation* op, unsigned operand_index,
+                                   mlir::Value operand) {
+  return operand_index == 1 && IsInt8SrqBlockwiseWeightConsumer(op) &&
+         IsConstantBlockwiseDequantizedFilter(op, operand);
+}
+
 }  // namespace mlir::TFL

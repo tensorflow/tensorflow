@@ -81,7 +81,7 @@ mlir::FailureOr<llvm::StringRef> GetModuleType(
 
   // Get module type based on platform name.
   if (platform_name == xla::TpuName() || platform_name == xla::CudaName() ||
-      platform_name == xla::CpuName()) {
+      platform_name == xla::RocmName() || platform_name == xla::CpuName()) {
     return kIfrtModuleTypeXla;
   }
   return call_op->emitOpError()

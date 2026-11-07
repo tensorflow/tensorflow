@@ -222,6 +222,18 @@ class IfrtBackend final : public BackendInterface {
   tsl::Future<Response> HandleCompileRequest(
       std::unique_ptr<IfrtRequest> request);
 
+  tsl::Future<Response> HandleDeserializeLoadedExecutableRequest(
+      std::unique_ptr<IfrtRequest> request);
+
+  // Registers `executable` and `host_callback_queues` with this backend and
+  // fills `compile_resp` with the handles and the metadata of `executable`.
+  // Shared by the compile and the deserialize requests.
+  void PopulateCompileResponse(
+      xla::ifrt::LoadedExecutableRef executable,
+      std::vector<std::shared_ptr<RemoteLoadedHostCallbackQueue>>
+          host_callback_queues,
+      CompileResponse* compile_resp);
+
   tsl::Future<Response> HandleLoadedExecutableMetadataRequest(
       std::unique_ptr<IfrtRequest> request);
   tsl::Future<Response> HandleLoadedExecutableMpmdMetadataRequest(

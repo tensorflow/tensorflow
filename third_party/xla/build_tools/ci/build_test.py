@@ -72,6 +72,7 @@ class BuildTest(parameterized.TestCase):
       self.assertNotIn("remote_download_toplevel", builds[build_type].options)
     for build_type in (
         build.BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
+        build.BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
         build.BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
     ):
       self.assertIs(
@@ -105,6 +106,8 @@ class BuildTest(parameterized.TestCase):
       self.assertTrue(builds[build_type].use_bazel_diff)
       self.assertTrue(builds[build_type].bazel_diff_use_cquery)
     for build_type in (
+        # Hermetic ROCm is a compile-only RBE build where bazel-diff's two
+        # cquery passes cost more time than incremental target selection saves.
         build.BuildType.XLA_LINUX_X86_GPU_HERMETIC_ROCM_GITHUB_ACTIONS,
         build.BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
         build.BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,

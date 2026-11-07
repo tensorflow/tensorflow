@@ -3,6 +3,7 @@ tensorflow/compiler/xla/backends/cpu/package_groups.bzl:
 tensorflow/compiler/xla/internal/package_groups.bzl:
 tensorflow/compiler/xla/megascale/package_groups.bzl:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
+tensorflow/compiler/xla/mosaic/dialect/tpu/tpu_matmul_ops.td:
 tensorflow/compiler/xla/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/cpu/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/gpu/package_groups.bzl:

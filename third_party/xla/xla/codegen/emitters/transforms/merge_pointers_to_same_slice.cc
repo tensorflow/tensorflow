@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialectDecl.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
@@ -82,8 +82,20 @@ struct PackedArgs {
 
   void Pack(mlir::func::FuncOp op) {
     for (auto [idx, arg] : llvm::enumerate(op.getArguments())) {
-      if (replacement_args[idx] != idx) {
-        arg.replaceAllUsesWith(op.getArgument(replacement_args[idx]));
+      int target = replacement_args[idx];
+      if (target == idx) {
+        continue;
+      }
+      arg.replaceAllUsesWith(op.getArgument(target));
+      // The target now serves the uses of `arg` too, so it may only promise
+      // what both promise.
+      IntersectPromises(op, idx, target);
+    }
+    // Duplicates kept in an entry signature receive the same pointer.
+    for (int idx = 0; idx < op.getNumArguments(); ++idx) {
+      int target = replacement_args[idx];
+      if (target != idx && !args_to_erase[idx]) {
+        IntersectPromises(op, target, idx);
       }
     }
 
@@ -93,17 +105,28 @@ struct PackedArgs {
     for (int i = 0; i < op.getNumArguments(); ++i) {
       if (op.getArgAttr(i, "xla.slice_index")) {
         op.removeArgAttr(i, "xla.slice_index");
-        if (!op.getArgAttr(i, kXlaNotInvariantAttr)) {
+        if (!op.getArgAttr(i, kXlaAliasedAttr)) {
           op.setArgAttr(i, mlir::LLVM::LLVMDialect::getNoAliasAttrName(),
                         mlir::UnitAttr::get(op->getContext()));
-        } else {
-          op.removeArgAttr(i, kXlaNotInvariantAttr);
         }
+        op.removeArgAttr(i, kXlaAliasedAttr);
       }
     }
   }
 
   void Pack(mlir::func::CallOp op) { op->eraseOperands(args_to_erase); }
+
+ private:
+  // Weakens the promises of argument `to` to those it shares with `from`.
+  static void IntersectPromises(mlir::func::FuncOp op, int from, int to) {
+    if (!op.getArgAttr(from, kXlaInvariantAttr)) {
+      op.removeArgAttr(to, kXlaInvariantAttr);
+      op.removeArgAttr(to, mlir::LLVM::LLVMDialect::getReadonlyAttrName());
+    }
+    if (op.getArgAttr(from, kXlaAliasedAttr)) {
+      op.setArgAttr(to, kXlaAliasedAttr, mlir::UnitAttr::get(op->getContext()));
+    }
+  }
 };
 
 void MergePointersToSameSlicePass::runOnOperation() {

@@ -188,16 +188,9 @@ std::optional<CollapsedOpData> CollapseContiguousMinorDims(
       }
     }
     if (auto val = llvm::dyn_cast_if_present<Value>(offsets[m1])) {
-      if (auto apply_indexing = val.getDefiningOp<::xla::ApplyIndexingOp>()) {
-        OpResult op_result = mlir::cast<OpResult>(val);
-        unsigned result_idx = op_result.getResultNumber();
-        const ::xla::IndexingMap& indexing_map =
-            apply_indexing.getIndexingMap();
-        ::xla::Interval range =
-            indexing_map.GetRangeEvaluator().ComputeExpressionRange(
-                indexing_map.GetSymbolicMap().GetResult(result_idx));
-        if (range.lower < 0 ||
-            range.upper > std::numeric_limits<int32_t>::max() / shape[m0]) {
+      if (std::optional<::xla::Interval> range = ::xla::GetRange(val)) {
+        if (!range->IsFeasible() || range->lower < 0 ||
+            range->upper > std::numeric_limits<int32_t>::max() / shape[m0]) {
           break;
         }
       }
