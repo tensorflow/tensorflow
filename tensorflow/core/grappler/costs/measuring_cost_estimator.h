@@ -48,7 +48,7 @@ class MeasuringCostEstimator : public CostEstimator {
   // take ownership of cluster.
   explicit MeasuringCostEstimator(Cluster* cluster, int measurement_steps,
                                   int measurement_threads);
-  ~MeasuringCostEstimator() override {}
+  ~MeasuringCostEstimator() override = default;
 
   // Initializes the estimator for the specified grappler item.
   // This implementation always returns OK.
