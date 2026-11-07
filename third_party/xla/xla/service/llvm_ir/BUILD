@@ -220,35 +220,10 @@ cc_library(
 )
 
 cc_library(
-    name = "fused_ir_emitter",
-    srcs = ["fused_ir_emitter.cc"],
-    hdrs = ["fused_ir_emitter.h"],
-    deps = [
-        ":ir_array",
-        ":llvm_util",
-        ":loop_emitter",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:elemental_ir_emitter",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
-    ],
-)
-
-cc_library(
     name = "dynamic_update_slice_util",
     srcs = ["dynamic_update_slice_util.cc"],
     hdrs = ["dynamic_update_slice_util.h"],
     deps = [
-        ":fused_ir_emitter",
         ":ir_array",
         ":llvm_util",
         ":loop_emitter",
@@ -256,7 +231,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

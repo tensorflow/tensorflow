@@ -71,13 +71,10 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
-#include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_function.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
-#include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
@@ -588,9 +585,7 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
   CHECK(ShapeUtil::IsScalar(lhs->shape()) && ShapeUtil::IsScalar(rhs->shape()));
 
-  // This is visually similar to ElementalIrEmitter, though conceptually we're
-  // doing something different here.  ElementalIrEmitter emits scalar operations
-  // while these emit scalar or vector operations depending on the type of the
+  // These emit scalar or vector operations depending on the type of the
   // operands. See CreateShardedVectorType for the actual types in use here.
   switch (root_instruction->opcode()) {
     default:
@@ -1273,63 +1268,6 @@ absl::Status IrEmitter::HandlePad(HloInstruction* pad,
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b());
   return absl::OkStatus();
-}
-
-absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
-  auto* root = fusion->fused_expression_root();
-  if (fusion->IsLoopFusion()) {
-    VLOG(3) << "HandleFusion kLoop";
-    CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory();
-    FusedIrEmitter fused_emitter(elemental_emitter);
-    BindFusionArguments(fusion, &fused_emitter);
-    if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
-      ABSL_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
-      return llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
-          fusion, GetIrArrayFor(fusion), &fused_emitter, b());
-    }
-    ABSL_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
-                                         *fusion->fused_expression_root()));
-    return EmitTargetElementLoop(fusion, "kLoop_fusion", generator,
-                                 std::nullopt);
-  } else if (fusion->IsOutputFusion()) {
-    VLOG(3) << "HandleFusion kOutput";
-    int64_t dot_op_index =
-        root->operand(0)->opcode() == HloOpcode::kDot ? 0 : 1;
-    const HloInstruction* dot = root->operand(dot_op_index);
-    CHECK_EQ(dot->opcode(), HloOpcode::kDot)
-        << dot->ToString() << "  "
-        << fusion->fused_instructions_computation()->ToString();
-
-    int64_t dot_lhs_param_number = dot->operand(0)->parameter_number();
-    int64_t dot_rhs_param_number = dot->operand(1)->parameter_number();
-    int64_t addend_param_number =
-        root->operand(1 - dot_op_index)->parameter_number();
-
-    Shape target_shape = fusion->shape();
-    ABSL_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
-    llvm_ir::IrArray target_array = GetIrArrayFor(fusion);
-
-    llvm_ir::IrArray lhs_array(
-        GetIrArrayFor(fusion->operand(dot_lhs_param_number)));
-    llvm_ir::IrArray rhs_array(
-        GetIrArrayFor(fusion->operand(dot_rhs_param_number)));
-    llvm_ir::IrArray addend_array(
-        GetIrArrayFor(fusion->operand(addend_param_number)));
-
-    ABSL_ASSIGN_OR_RETURN(
-        DotOpWorkGroupDim num_workgroups,
-        EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
-                         &addend_array,
-                         /*work_group_id=*/{b()->getInt64(0), b()->getInt64(0)},
-                         b(), hlo_module_config_, target_machine_features_,
-                         /*allow_parallelism=*/false));
-    DCHECK_EQ(num_workgroups.x, 1);
-    DCHECK_EQ(num_workgroups.y, 1);
-
-    return absl::OkStatus();
-  } else {
-    return Unimplemented("Fusion kind not implemented on CPU");
-  }
 }
 
 absl::Status IrEmitter::HandleCall(HloInstruction* call) {
@@ -2089,17 +2027,8 @@ absl::Status IrEmitter::ElementTypesSameAndSupported(
 }
 
 absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
-  CpuElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (const HloInstruction* operand : hlo->operands()) {
-    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
-      return GetIrArrayFor(operand).EmitReadArrayElement(index, b());
-    };
-  }
-  CpuElementalIrEmitter elemental_emitter = ElementalIrEmmiterFactory();
-  return EmitTargetElementLoop(
-      hlo, "elemental_loop",
-      elemental_emitter.MakeElementGenerator(hlo, operand_to_generator),
-      std::nullopt);
+  return Unimplemented("Unimplemented instruction %s in IrEmitter on CPU.",
+                       HloOpcodeString(hlo->opcode()));
 }
 
 llvm::Value* IrEmitter::EmitScalarReturningThreadLocalCall(
@@ -2218,35 +2147,6 @@ llvm::Value* IrEmitter::GetBufferForGlobalCallReturnValue(
   const BufferAllocation::Slice root_buffer =
       assignment_.GetUniqueTopLevelSlice(root_inst).value();
   return EmitBufferPointer(root_buffer, root_inst->shape());
-}
-
-void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
-                                    FusedIrEmitter* fused_emitter) {
-  for (int i = 0; i < fusion->operand_count(); i++) {
-    const HloInstruction* operand = fusion->operand(i);
-    fused_emitter->BindGenerator(
-        *fusion->fused_parameter(i),
-        [this, operand](llvm_ir::IrArray::Index index) {
-          return GetIrArrayFor(operand).EmitReadArrayElement(index, b());
-        });
-  }
-}
-
-CpuElementalIrEmitter IrEmitter::ElementalIrEmmiterFactory() {
-  auto thread_local_call_fn = [this](const HloComputation& callee,
-                                     absl::Span<llvm::Value* const> parameters,
-                                     absl::string_view name, bool is_reducer) {
-    return EmitThreadLocalCall(callee, parameters, name, is_reducer);
-  };
-
-  bool use_truncate_f32_to_bf16_conversion =
-      !IsNativeConvertSupportedOnTargetCPU(
-          target_machine_features_.get_target_feature_string());
-
-  return CpuElementalIrEmitter(
-      module_, b(), std::move(thread_local_call_fn),
-      use_truncate_f32_to_bf16_conversion,
-      hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max());
 }
 
 }  // namespace cpu

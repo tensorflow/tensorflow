@@ -251,7 +251,7 @@ bool IsSupportedByCudnn(PrecisionConfig::Algorithm algorithm) {
   }
 }
 
-bool IsSupportedByElementalIrEmitter(PrecisionConfig::Algorithm algorithm) {
+bool IsSupportedByElementalDotEmitter(PrecisionConfig::Algorithm algorithm) {
   switch (algorithm) {
     // Probably more can be added.
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:

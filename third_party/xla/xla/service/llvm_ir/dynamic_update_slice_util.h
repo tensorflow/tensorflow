@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 
 // Utilities related to emitting LLVM IR for various HLO ops.
@@ -70,14 +69,6 @@ bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
 absl::Status EmitDynamicUpdateSliceInPlace(
     absl::Span<const IrArray> operand_arrays, const IrArray& output_array,
     absl::string_view name, llvm::IRBuilderBase* b);
-
-// Given a loop-fusion node whose root is a dynamic-update-slice op whose
-// array-to-be-updated and output share the same buffer slice, emits
-// (sequential) code for a fusion node that does the dynamic-update-slice in
-// place.
-absl::Status EmitFusedDynamicUpdateSliceInPlace(
-    HloInstruction* fusion, const IrArray& fusion_output_array,
-    FusedIrEmitter* fused_emitter, llvm::IRBuilderBase* b);
 
 }  // namespace llvm_ir
 }  // namespace xla

@@ -2239,7 +2239,6 @@ cc_library(
     srcs = ["fusion_node_indexing_evaluation.cc"],
     hdrs = ["fusion_node_indexing_evaluation.h"],
     deps = [
-        ":elemental_ir_emitter",
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -4140,68 +4139,6 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/base:core_headers",
-    ],
-)
-
-cc_library(
-    name = "float8_fnuz_ir_emitter",
-    srcs = [
-        "float8_fnuz_ir_emitter.cc",
-    ],
-    hdrs = [
-        "float8_fnuz_ir_emitter.h",
-    ],
-    deps = [
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-    name = "elemental_ir_emitter",
-    srcs = ["elemental_ir_emitter.cc"],
-    hdrs = ["elemental_ir_emitter.h"],
-    deps = [
-        ":algorithm_util",
-        ":float8_fnuz_ir_emitter",
-        "//xla:comparison_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:util",
-        "//xla:window_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/codegen/intrinsic:fptrunc",
-        "//xla/codegen/intrinsic:log1p",
-        "//xla/codegen/intrinsic:type",
-        "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:ir_builder_mixin",
-        "//xla/service/llvm_ir:llvm_loop",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/llvm_ir:loop_emitter",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TransformUtils",
     ],
 )
 

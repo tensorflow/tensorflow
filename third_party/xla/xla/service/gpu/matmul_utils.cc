@@ -1171,7 +1171,7 @@ absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
 }
 
 bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot) {
-  if (!algorithm_util::IsSupportedByElementalIrEmitter(
+  if (!algorithm_util::IsSupportedByElementalDotEmitter(
           dot.precision_config().algorithm())) {
     return false;
   }

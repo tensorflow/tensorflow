@@ -44,11 +44,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_function.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/alias_analysis.h"
-#include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/ir_builder_mixin.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
@@ -71,8 +69,6 @@ bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string);
 // classes are part of the new runtime and will eventually replace IrEmitter.
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
-  class ElementalIrEmitter;
-
  public:
   using GeneratorForOperandIrArrays =
       std::function<std::vector<llvm_ir::IrArray>()>;
@@ -241,7 +237,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleRecvDone(HloInstruction* recv_done) override;
   absl::Status HandlePad(HloInstruction* pad) override;
   absl::Status HandleTuple(HloInstruction* tuple) override;
-  absl::Status HandleFusion(HloInstruction* fusion) override;
   absl::Status HandleCall(HloInstruction* call) override;
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleWhile(HloInstruction* xla_while) override;
@@ -305,10 +300,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Gets a list of IrArrays, one for each of hlo's operands.
   std::vector<llvm_ir::IrArray> GetIrArraysForOperandsOf(
       const HloInstruction* hlo);
-
-  // Bind all argument IrArrays of `fusion` to `fused_emitter`.
-  void BindFusionArguments(const HloInstruction* fusion,
-                           FusedIrEmitter* fused_emitter);
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
@@ -571,8 +562,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Returns the number of bytes within the shape.
   int64_t ByteSizeOf(const Shape& shape) const;
-
-  CpuElementalIrEmitter ElementalIrEmmiterFactory();
 
   const HloModule& hlo_module_;
   const HloModuleConfig& hlo_module_config_;

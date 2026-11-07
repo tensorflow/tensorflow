@@ -540,21 +540,6 @@ cc_library(
 )
 
 cc_library(
-    name = "elemental_math_emitter",
-    srcs = ["elemental_math_emitter.cc"],
-    hdrs = ["elemental_math_emitter.h"],
-    deps = [
-        "//xla:xla_data_proto_cc",
-        "//xla/codegen/intrinsic",
-        "//xla/codegen/intrinsic:erf",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
     name = "ir_emitter2",
     srcs = ["ir_emitter2.cc"],
     hdrs = ["ir_emitter2.h"],
@@ -616,7 +601,6 @@ cc_library(
     deps = [
         ":cpu_options",
         ":dot_op_emitter",
-        ":elemental_ir_emitter",
         ":ir_emission_utils",
         ":ir_function",
         "//xla:shape_util",
@@ -627,12 +611,10 @@ cc_library(
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
-        "//xla/service:elemental_ir_emitter",
         "//xla/service:hlo_module_config",
         "//xla/service:name_uniquer",
         "//xla/service/llvm_ir:alias_analysis",
         "//xla/service/llvm_ir:dynamic_update_slice_util",
-        "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:ir_builder_mixin",
         "//xla/service/llvm_ir:llvm_loop",
@@ -1506,30 +1488,6 @@ cc_library(
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:stacktrace",
         "@tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-cc_library(
-    name = "elemental_ir_emitter",
-    srcs = ["elemental_ir_emitter.cc"],
-    hdrs = ["elemental_ir_emitter.h"],
-    deps = [
-        ":elemental_math_emitter",
-        "//xla:util",
-        "//xla/codegen/intrinsic",
-        "//xla/codegen/intrinsic:exp",
-        "//xla/codegen/intrinsic:rsqrt",
-        "//xla/codegen/intrinsic:tanh",
-        "//xla/codegen/intrinsic/cpp:_intrinsic_declarations",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:elemental_ir_emitter",
-        "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:ir_headers",
     ],
 )
 

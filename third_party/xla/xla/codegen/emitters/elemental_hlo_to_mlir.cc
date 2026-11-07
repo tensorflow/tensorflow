@@ -603,12 +603,12 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDot(
     MLIRContext* mlir_context) {
   VLOG(10) << "EmitDot: " << instr->ToString();
 
-  if (!algorithm_util::IsSupportedByElementalIrEmitter(
+  if (!algorithm_util::IsSupportedByElementalDotEmitter(
           instr->precision_config().algorithm())) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Algorithm not supported by the ElementalIrEmitter: %s",
-                        PrecisionConfig::Algorithm_Name(
-                            instr->precision_config().algorithm())));
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Algorithm not supported by the ElementalDotEmitter: %s",
+        PrecisionConfig::Algorithm_Name(
+            instr->precision_config().algorithm())));
   }
   auto* dot = DynCast<HloDotInstruction>(instr);
   TF_RET_CHECK(dot != nullptr);

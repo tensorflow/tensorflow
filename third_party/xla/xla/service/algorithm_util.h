@@ -89,8 +89,8 @@ bool IsSupportedByCublasOrCublasLt(
 // Checks if we support the given algorithm using cuDNN.
 bool IsSupportedByCudnn(PrecisionConfig::Algorithm algorithm);
 
-// Checks if we support the given algorithm using the elemental IR emitter.
-bool IsSupportedByElementalIrEmitter(PrecisionConfig::Algorithm algorithm);
+// Checks if we support the given algorithm using the elemental dot emitter.
+bool IsSupportedByElementalDotEmitter(PrecisionConfig::Algorithm algorithm);
 
 // Is the given algorithm supported on GPU with the given compute capability and
 // input/output storage types.

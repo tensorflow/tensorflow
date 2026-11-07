@@ -151,7 +151,8 @@ TEST_P(TritonFusionNumericsVerifierTest, Softmax) {
 
 TEST_P(TritonFusionNumericsVerifierTest, DotAlgorithms) {
   if (GetParam() == F64) {
-    // 'Algorithm not supported by the ElementalIrEmitter: ALG_DOT_F64_F64_F64'.
+    // 'Algorithm not supported by the ElementalDotEmitter:
+    // ALG_DOT_F64_F64_F64'.
     GTEST_SKIP() << "Skipping test for F64.";
   }
   constexpr absl::string_view kHlo = R"hlo(
