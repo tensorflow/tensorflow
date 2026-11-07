@@ -14,8 +14,6 @@
 # ==============================================================================
 """Defines functions common to multiple feature column files."""
 
-import six
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -58,7 +56,7 @@ def assert_string_or_int(dtype, prefix):
 
 
 def assert_key_is_string(key):
-  if not isinstance(key, six.string_types):
+  if not isinstance(key, str):
     raise ValueError(
         'key must be a string. Got: type {}. Given key: {}.'.format(
             type(key), key))

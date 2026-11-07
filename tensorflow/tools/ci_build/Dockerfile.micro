@@ -34,7 +34,6 @@ RUN ln -s /usr/bin/clang-12 /usr/bin/clang
 RUN ln -s /usr/bin/clang++-12 /usr/bin/clang++
 RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format
 
-RUN pip install six
 # Install Renode test dependencies
 RUN pip install pyyaml requests psutil robotframework==3.1
 

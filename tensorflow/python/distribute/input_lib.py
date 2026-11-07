@@ -15,10 +15,7 @@
 """Various classes representing distributed inputs."""
 
 import functools
-import sys
 import time
-
-import six
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.data.experimental.ops import batching
@@ -962,14 +959,11 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
               false_fn=apply_legacy_rebatch)
       except errors.InvalidArgumentError as e:
         if "without encountering a batch" in str(e):
-          six.reraise(
-              ValueError,
-              ValueError(
-                  "Call the `batch` method on the input Dataset in order to be "
-                  "able to split your input across {} replicas.\n Please see "
-                  "the tf.distribute.Strategy guide. {}".format(
-                      num_replicas_in_sync, e)),
-              sys.exc_info()[2])
+          raise ValueError(
+              "Call the `batch` method on the input Dataset in order to be "
+              "able to split your input across {} replicas.\n Please see "
+              "the tf.distribute.Strategy guide. {}".format(
+                  num_replicas_in_sync, e)) from e
         else:
           raise
 

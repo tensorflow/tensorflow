@@ -293,14 +293,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "six_archive",
-        build_file = "//third_party:six.BUILD",
-        sha256 = "1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926",
-        strip_prefix = "six-1.16.0",
-        urls = tf_mirror_urls("https://pypi.python.org/packages/source/s/six/six-1.16.0.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "absl_py",
         sha256 = "8a3d0830e4eb4f66c4fa907c06edf6ce1c719ced811a12e26d9d3162f8471758",
         strip_prefix = "abseil-py-2.1.0",

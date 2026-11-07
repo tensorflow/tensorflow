@@ -82,7 +82,6 @@ py_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

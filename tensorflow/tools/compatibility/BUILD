@@ -39,7 +39,6 @@ py_library(
     strict_deps = True,
     deps = [
         "@pypi//google_pasta",
-        "@six_archive//:six",  # buildcleaner: keep
     ],
 )
 
@@ -62,7 +61,6 @@ py_binary(
     strict_deps = True,
     deps = [
         ":tf_upgrade_lib",
-        "@six_archive//:six",
     ],
 )
 
@@ -181,7 +179,6 @@ py_test(
         ":ast_edits",
         ":tf_upgrade_v2_lib",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
-        "@six_archive//:six",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",

@@ -251,7 +251,6 @@ tf_staging/third_party/systemlibs/png.BUILD:
 tf_staging/third_party/systemlibs/protobuf.BUILD:
 tf_staging/third_party/systemlibs/protobuf.bzl:
 tf_staging/third_party/systemlibs/re2.BUILD:
-tf_staging/third_party/systemlibs/six.BUILD:
 tf_staging/third_party/systemlibs/snappy.BUILD:
 tf_staging/third_party/systemlibs/sqlite.BUILD:
 tf_staging/third_party/systemlibs/syslibs_configure.bzl:

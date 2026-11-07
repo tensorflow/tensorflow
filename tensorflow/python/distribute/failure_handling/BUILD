@@ -63,7 +63,6 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:tf_logging",
         "@pypi//requests",
-        "@six_archive//:six",
     ],
 )
 

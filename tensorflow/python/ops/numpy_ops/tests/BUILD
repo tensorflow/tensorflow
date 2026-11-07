@@ -114,7 +114,6 @@ py_library(
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -233,7 +232,6 @@ py_test(
         ":test_util",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/numpy_ops:np_config",

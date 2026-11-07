@@ -623,7 +623,6 @@ py_library(
         ":keras_lib",
         "//third_party/py/numpy",
         "@pypi//scipy",
-        "@six_archive//:six",
     ],
 )
 

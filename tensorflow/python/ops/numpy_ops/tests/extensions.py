@@ -18,10 +18,8 @@ import contextlib
 import copy
 import functools
 import string
-import sys
 import threading
 import numpy as np
-import six
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
@@ -79,7 +77,7 @@ remat = custom_gradient.recompute_grad
 
 
 def most_precise_int_dtype(x):
-  if not isinstance(x, six.integer_types) or isinstance(x, bool):
+  if not isinstance(x, int) or isinstance(x, bool):
     return None
   i = bisect.bisect_right(_int_dtype_lower_bounds, x)
   if i in (0, len(_int_dtype_lower_bounds)):
@@ -2026,14 +2024,11 @@ def vmap(f, in_axes=0, out_axes=0):
     flat_args = nest.flatten(args)
     try:
       f_in_axes = _tree_broadcast(args, in_axes)
-    except ValueError:
-      six.reraise(
-          ValueError,
-          ValueError(
-              "vmap in_axes specification must be a tree prefix of the "
-              r"corresponding value, got specification %s for value tree %s" % (
-                  in_axes, args)),
-          sys.exc_info()[2])
+    except ValueError as e:
+      raise ValueError(
+          "vmap in_axes specification must be a tree prefix of the "
+          r"corresponding value, got specification %s for value tree %s" % (
+              in_axes, args)) from e
     f_in_axes_flat = nest.flatten(f_in_axes)
 
     def tf_f(tf_args):
@@ -2067,14 +2062,11 @@ def vmap(f, in_axes=0, out_axes=0):
     outputs = pfor_ops.vectorized_map(tf_f, tf_args)
     try:
       f_out_axes = _tree_broadcast(outputs, out_axes)
-    except ValueError:
-      six.reraise(
-          ValueError,
-          ValueError(
-              "vmap out_axes specification must be a tree prefix of the "
-              r"corresponding value, got specification %s for value tree %s" % (
-                  out_axes, outputs)),
-          sys.exc_info()[2])
+    except ValueError as e:
+      raise ValueError(
+          "vmap out_axes specification must be a tree prefix of the "
+          r"corresponding value, got specification %s for value tree %s" % (
+              out_axes, outputs)) from e
 
     def map_output(x, axis):
       """Maps output of tf.vectorized_map to the final output."""

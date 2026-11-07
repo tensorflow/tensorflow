@@ -20,8 +20,6 @@ import random
 import string
 import zlib
 
-import six
-
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.platform import test
@@ -358,9 +356,7 @@ class TFRecordWriterZlibTest(TFCompressionTestCase):
 
     output = b""
     for c in buff:
-      if isinstance(c, int):
-        c = six.int2byte(c)
-      output += compressor.compress(c)
+      output += compressor.compress(bytes([c]))
       output += compressor.flush(zlib.Z_FULL_FLUSH)
 
     output += compressor.flush(zlib.Z_FULL_FLUSH)

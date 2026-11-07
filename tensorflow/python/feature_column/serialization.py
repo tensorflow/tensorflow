@@ -14,8 +14,6 @@
 # ==============================================================================
 """FeatureColumn serialization, deserialization logic."""
 
-import six
-
 from tensorflow.python.feature_column import feature_column_v2_types as fc_types
 from tensorflow.python.ops import init_ops
 from tensorflow.python.util import deprecation
@@ -87,7 +85,7 @@ def serialize_feature_column(fc):
   Raises:
     ValueError if called with input that is not string or FeatureColumn.
   """
-  if isinstance(fc, six.string_types):
+  if isinstance(fc, str):
     return fc
   elif isinstance(fc, fc_types.FeatureColumn):
     return {'class_name': fc.__class__.__name__, 'config': fc.get_config()}
@@ -122,7 +120,7 @@ def deserialize_feature_column(config,
     A FeatureColumn corresponding to the input `config`.
   """
   # TODO(b/118939620): Simplify code if Keras utils support object deduping.
-  if isinstance(config, six.string_types):
+  if isinstance(config, str):
     return config
   # A dict from class_name to class for all FeatureColumns in this module.
   # FeatureColumns not part of the module can be passed as custom_objects.
@@ -226,7 +224,7 @@ def _serialize_keras_object(instance):
     config = instance.get_config()
     serialization_config = {}
     for key, item in config.items():
-      if isinstance(item, six.string_types):
+      if isinstance(item, str):
         serialization_config[key] = item
         continue
 
@@ -274,7 +272,7 @@ def _deserialize_keras_object(identifier,
       # the kwargs of the function.
       custom_objects = custom_objects or {}
       return cls(**cls_config)
-  elif isinstance(identifier, six.string_types):
+  elif isinstance(identifier, str):
     object_name = identifier
     if custom_objects and object_name in custom_objects:
       obj = custom_objects.get(object_name)
@@ -322,7 +320,7 @@ def _class_and_config_for_serialized_keras_object(
           module_objects=module_objects,
           custom_objects=custom_objects,
           printable_module_name='config_item')
-    elif (isinstance(item, six.string_types) and
+    elif (isinstance(item, str) and
           tf_inspect.isfunction(_get_registered_object(item, custom_objects))):
       # Handle custom functions here. When saving functions, we only save the
       # function's name as a string. If we find a matching string in the custom

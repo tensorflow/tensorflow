@@ -30,7 +30,6 @@ import collections
 import math
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import utils as fc_utils
@@ -722,7 +721,7 @@ def make_parse_example_spec(feature_columns):
       raise ValueError('All feature_columns must be _FeatureColumn instances. '
                        'Given: {}'.format(column))
     config = column._parse_example_spec  # pylint: disable=protected-access
-    for key, value in six.iteritems(config):
+    for key, value in config.items():
       if key in result and value != result[key]:
         raise ValueError('feature_columns contain different parse_spec for key '
                          '{}. Given {} and {}'.format(key, value, result[key]))
@@ -1562,7 +1561,7 @@ def _crossed_column(keys, hash_bucket_size, hash_key=None):
     raise ValueError(
         'keys must be a list with length > 1. Given: {}'.format(keys))
   for key in keys:
-    if (not isinstance(key, six.string_types) and
+    if (not isinstance(key, str) and
         not isinstance(key, _CategoricalColumn)):
       raise ValueError(
           'Unsupported key type. All keys must be either string, or '
@@ -1632,8 +1631,7 @@ class _EmbeddingColumnLayer(base.Layer):
     return self._embedding_weight_var
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _FeatureColumn(object):
+class _FeatureColumn(metaclass=abc.ABCMeta):
   """Represents a feature column abstraction.
 
   WARNING: Do not subclass this layer unless you know what you are doing:
@@ -2064,7 +2062,7 @@ class _LazyBuilder(object):
       self._feature_tensors[key] = feature_tensor
       return feature_tensor
 
-    if isinstance(key, six.string_types):
+    if isinstance(key, str):
       raise ValueError('Feature {} is not in features dictionary.'.format(key))
 
     if not isinstance(key, _FeatureColumn):
@@ -2646,7 +2644,7 @@ def _check_shape(shape, key):
     shape = [shape]
   shape = tuple(shape)
   for dimension in shape:
-    if not isinstance(dimension, six.integer_types):
+    if not isinstance(dimension, int):
       raise TypeError('shape dimensions must be integer. '
                       'shape: {}, key: {}'.format(shape, key))
     if dimension < 1:
@@ -2948,7 +2946,7 @@ class _CrossedColumn(
   def _transform_feature(self, inputs):
     feature_tensors = []
     for key in _collect_leaf_level_keys(self):
-      if isinstance(key, six.string_types):
+      if isinstance(key, str):
         feature_tensors.append(inputs.get(key))
       elif isinstance(key, _CategoricalColumn):
         ids_and_weights = key._get_sparse_tensors(inputs)  # pylint: disable=protected-access

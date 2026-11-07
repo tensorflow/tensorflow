@@ -16,8 +16,8 @@
 
 import os
 
-import six
-from six.moves.urllib.error import URLError
+import urllib.request
+from urllib.error import URLError
 
 from tensorflow.core.protobuf.tpu import topology_pb2
 from tensorflow.python.client import session
@@ -142,7 +142,7 @@ class TPUClusterResolverTest(test.TestCase):
                                 'Please provide a TPU Name to connect to.*'):
       resolver.TPUClusterResolver(tpu='')
 
-  @mock.patch.object(six.moves.urllib.request, 'urlopen',
+  @mock.patch.object(urllib.request, 'urlopen',
                      mock_running_in_gce_urlopen)
   def testIsRunningInGce(self):
     self.assertTrue(resolver.is_running_in_gce())

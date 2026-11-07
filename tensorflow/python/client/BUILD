@@ -469,7 +469,6 @@ tf_py_strict_test(
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

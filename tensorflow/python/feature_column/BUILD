@@ -71,7 +71,6 @@ py_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@six_archive//:six",
     ],
 )
 
@@ -120,7 +119,6 @@ py_library(
         "//tensorflow/python/util:tf_inspect",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -138,7 +136,6 @@ py_library(
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
         "//tensorflow/tools/docs:doc_controls",
-        "@six_archive//:six",
     ],
 )
 
@@ -280,7 +277,6 @@ py_library(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/util:nest",
-        "@six_archive//:six",
     ],
 )
 

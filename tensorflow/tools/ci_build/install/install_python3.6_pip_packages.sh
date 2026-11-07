@@ -57,15 +57,11 @@ pip3 install --upgrade virtualenv
 
 set -e
 
-# Install six.
+# Install absl-py.
 pip3 install --upgrade absl-py
-pip3 install --upgrade six==1.10.0
 
 # Install protobuf.
 pip3 install --upgrade protobuf==3.16.0
-
-# Remove obsolete version of six, which can sometimes confuse virtualenv.
-rm -rf /usr/lib/python3/dist-packages/six*
 
 # Install numpy, scipy and scikit-learn required by the builds
 

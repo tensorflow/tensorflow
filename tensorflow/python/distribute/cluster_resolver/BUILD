@@ -54,7 +54,6 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 

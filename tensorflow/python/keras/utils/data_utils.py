@@ -31,13 +31,13 @@ import threading
 import time
 import typing
 import urllib
+from urllib.request import urlopen
 import weakref
 import zipfile
 
 import numpy as np
 
 from tensorflow.python.framework import tensor
-from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string

@@ -26,8 +26,7 @@ import unittest
 import weakref
 
 from absl import logging
-import six
-from six.moves import queue as Queue
+import queue as Queue
 
 from tensorflow.python import tf2
 from tensorflow.python.compat import v2_compat
@@ -574,7 +573,8 @@ class MultiProcessRunner(object):
       if not process_status.is_successful:
         process_status.exc_info[1].mpr_result = self._get_mpr_result(
             process_statuses)
-        six.reraise(*process_status.exc_info)
+        raise process_status.exc_info[1].with_traceback(
+            process_status.exc_info[2])
 
   def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
@@ -875,7 +875,7 @@ class _ProcFunc(object):
       # timeout. Raising an error in the subprocess produces stack trace in
       # the log, but the program continues running.
       if not info.is_successful:
-        six.reraise(*info.exc_info)
+        raise info.exc_info[1].with_traceback(info.exc_info[2])
 
       self._close_streaming()
 
@@ -1089,7 +1089,8 @@ class MultiProcessPoolRunner(object):
     for process_status in process_statuses:
       assert isinstance(process_status, _ProcessStatusInfo)
       if not process_status.is_successful:
-        six.reraise(*process_status.exc_info)
+        raise process_status.exc_info[1].with_traceback(
+            process_status.exc_info[2])
       if process_status.return_value is not None:
         return_values.append(process_status.return_value)
 

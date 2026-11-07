@@ -24,7 +24,6 @@ import warnings
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as onp
-import six
 
 from tensorflow.python.framework import errors
 from tensorflow.python.ops.numpy_ops.tests.config import config
@@ -196,7 +195,7 @@ JAX_COMPOUND_OP_RECORDS = [
     op_record("conjugate", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"]),
     op_record("deg2rad", 1, float_dtypes, all_shapes, jtu.rand_default, []),
     op_record("divide", 2, number_dtypes, all_shapes, jtu.rand_nonzero, ["rev"],
-              inexact=six.PY3),
+              inexact=True),
     op_record("divmod", 2, minus(int_dtypes + float_dtypes, [onp.float16]),
               all_shapes, jtu.rand_nonzero, []),
     op_record("exp2", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"],
@@ -378,15 +377,6 @@ if numpy_version >= (1, 15):
       op_record("ptp", 1, minus(number_dtypes, complex_dtypes), nonempty_shapes,
                 jtu.rand_default, []),
   ]
-
-if six.PY2:
-  JAX_OPERATOR_OVERLOADS += [
-    op_record("__div__", 2, number_dtypes, all_shapes, jtu.rand_nonzero, []),
-  ]
-  JAX_RIGHT_OPERATOR_OVERLOADS += [
-    op_record("__rdiv__", 2, number_dtypes, all_shapes, jtu.rand_nonzero, []),
-  ]
-
 
 CombosWithReplacement = itertools.combinations_with_replacement
 
