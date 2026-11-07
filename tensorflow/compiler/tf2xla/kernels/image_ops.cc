@@ -78,6 +78,17 @@ std::array<xla::XlaOp, 3> RGBToHSV(XlaOpKernelContext* ctx, xla::XlaBuilder* b,
                     hue);
   hue = xla::Select(xla::Gt(range, zero), hue, zeros);
   hue = xla::Select(xla::Lt(hue, zero), xla::Add(hue, one), hue);
+
+  xla::PrimitiveType xla_dtype;
+  OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype, &xla_dtype));
+  auto nan_val = xla::NanValue(b, xla_dtype);
+  auto red_is_nan = xla::IsNan(red);
+  auto green_is_nan = xla::IsNan(green);
+  auto blue_is_nan = xla::IsNan(blue);
+  auto rgb_has_nan = xla::Or(xla::Or(red_is_nan, green_is_nan), blue_is_nan);
+  hue = xla::Select(rgb_has_nan, nan_val, hue);
+  saturation = xla::Select(rgb_has_nan, nan_val, saturation);
+  value = xla::Select(rgb_has_nan, nan_val, value);
   return {hue, saturation, value};
 }
 
@@ -104,6 +115,18 @@ std::array<xla::XlaOp, 3> HSVToRGB(xla::XlaBuilder* b,
   auto red = xla::Mul(xla::Add(one_minus_s, xla::Mul(saturation, dr)), value);
   auto green = xla::Mul(xla::Add(one_minus_s, xla::Mul(saturation, dg)), value);
   auto blue = xla::Mul(xla::Add(one_minus_s, xla::Mul(saturation, db)), value);
+
+  xla::PrimitiveType xla_dtype;
+  auto status = DataTypeToPrimitiveType(dtype, &xla_dtype);
+  xla::XlaOp nan_val = status.ok() ? xla::NanValue(b, xla_dtype)
+                                   : xla::NanValue(b, xla::F32);
+  auto hue_nan = xla::IsNan(hue);
+  auto sat_nan = xla::IsNan(saturation);
+  auto val_nan = xla::IsNan(value);
+  auto hsv_has_nan = xla::Or(xla::Or(hue_nan, sat_nan), val_nan);
+  red = xla::Select(hsv_has_nan, nan_val, red);
+  green = xla::Select(hsv_has_nan, nan_val, green);
+  blue = xla::Select(hsv_has_nan, nan_val, blue);
   return {red, green, blue};
 }
 
@@ -276,8 +299,12 @@ class AdjustSaturationOp : public XlaOpKernel {
     auto hsv =
         RGBToHSV(context, b, {red, green, blue}, DT_FLOAT, channel_shape);
 
-    hsv[1] = xla::Clamp(XlaHelpers::Zero(b, DT_FLOAT), xla::Mul(hsv[1], scale),
-                        XlaHelpers::One(b, DT_FLOAT));
+    auto sat_scaled = xla::Mul(hsv[1], scale);
+    auto sat_clamped = xla::Clamp(XlaHelpers::Zero(b, DT_FLOAT), sat_scaled,
+                                  XlaHelpers::One(b, DT_FLOAT));
+    auto sat_nan = xla::Or(xla::IsNan(hsv[1]), xla::IsNan(scale));
+    hsv[1] = xla::Select(
+        sat_nan, xla::NanValue(b, xla::F32), sat_clamped);
 
     auto rgb = HSVToRGB(context->builder(), hsv, DT_FLOAT);
 
@@ -334,10 +361,14 @@ class AdjustHueOp : public XlaOpKernel {
     auto zero = XlaHelpers::Zero(b, DT_FLOAT);
     auto one = XlaHelpers::One(b, DT_FLOAT);
 
+    auto delta_nan = xla::IsNan(delta);
     auto& hue = hsv[0];
-    hue = xla::Rem(xla::Add(hsv[0], delta), one);
-    hue =
-        xla::Select(xla::Lt(hue, zero), xla::Rem(xla::Add(one, hue), one), hue);
+    auto hue_adjusted = xla::Rem(xla::Add(hsv[0], delta), one);
+    hue_adjusted =
+        xla::Select(xla::Lt(hue_adjusted, zero),
+                    xla::Rem(xla::Add(one, hue_adjusted), one), hue_adjusted);
+    hue = xla::Select(xla::Or(xla::IsNan(hsv[0]), delta_nan),
+                      xla::NanValue(b, xla::F32), hue_adjusted);
 
     auto rgb = HSVToRGB(context->builder(), hsv, DT_FLOAT);
 

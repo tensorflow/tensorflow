@@ -100,6 +100,17 @@ class RGBToHSVTest(xla_test.XLATestCase):
         hsv_tf = hsv_op.eval(feed_dict={placeholder: rgb_np})
       self.assertAllCloseAccordingToType(hsv_tf, hsv_np)
 
+  def testRGBToHSVWithNaN(self):
+    # Regression test for GitHub issue #119607:
+    # NaN values in input RGB channels must propagate to HSV outputs.
+    rgb_np = np.array([[[1.0, np.nan, 0.5]]], dtype=np.float32)
+    with self.session():
+      placeholder = array_ops.placeholder(np.float32, shape=rgb_np.shape)
+      with self.test_scope():
+        hsv_op = image_ops.rgb_to_hsv(placeholder)
+      hsv_tf = hsv_op.eval(feed_dict={placeholder: rgb_np})
+      self.assertTrue(np.isnan(hsv_tf).any())
+
 
 class AdjustContrastTest(xla_test.XLATestCase):
 
@@ -221,6 +232,24 @@ class AdjustHueTest(xla_test.XLATestCase):
       y_tf = y.eval({x: x_np})
       self.assertAllEqual(y_tf, y_np)
 
+  def testAdjustHueWithNaNPropagation(self):
+    # Regression test for GitHub issue #119607:
+    # NaN values in input RGB channels must propagate to the output
+    # under XLA rather than being silently clamped and erased.
+    x_shape = [1, 2, 2, 3]
+    x_np = np.linspace(0.0, 1.0, 12, dtype=np.float32).reshape(x_shape)
+    x_np[0, 0, 1, 1] = np.nan  # NaN in green channel of pixel (0, 1)
+
+    with self.session():
+      x = array_ops.placeholder(np.float32, shape=x_shape)
+      with self.test_scope():
+        y = gen_image_ops.adjust_hue(x, 0.25)
+      y_val = y.eval({x: x_np})
+      # Pixel (0, 0) should be finite
+      self.assertFalse(np.isnan(y_val[0, 0, 0]).any())
+      # Pixel (0, 1) had NaN in green, so output must propagate NaN
+      self.assertTrue(np.isnan(y_val[0, 0, 1]).any())
+
   def _adjustHueNp(self, x_np, delta_h):
     self.assertEqual(x_np.shape[-1], 3)
     x_v = x_np.reshape([-1, 3])
@@ -340,6 +369,20 @@ class AdjustSaturationTest(xla_test.XLATestCase):
       y = self._adjust_saturation(x, saturation_factor)
       y_tf = y.eval({x: x_np})
       self.assertAllEqual(y_tf, y_np)
+
+  def testAdjustSaturationWithNaN(self):
+    # Regression test for GitHub issue #119607:
+    # NaN values in input RGB channels must propagate to the output
+    # under XLA rather than being silently clamped and erased.
+    x_shape = [1, 2, 2, 3]
+    x_np = np.linspace(0.0, 1.0, 12, dtype=np.float32).reshape(x_shape)
+    x_np[0, 0, 1, 1] = np.nan
+    with self.session():
+      x = array_ops.placeholder(np.float32, shape=x_shape)
+      y = self._adjust_saturation(x, 1.5)
+      y_tf = y.eval({x: x_np})
+      self.assertTrue(np.isnan(y_tf[0, 0, 1]).any())
+      self.assertFalse(np.isnan(y_tf[0, 0, 0]).any())
 
   def _adjustSaturationNp(self, x_np, scale):
     self.assertEqual(x_np.shape[-1], 3)
