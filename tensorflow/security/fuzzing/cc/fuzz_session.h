@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -34,8 +35,7 @@ limitations under the License.
 #define SINGLE_INPUT_OP_FUZZER(dtype, opName)                             \
   class Fuzz##opName : public FuzzSession<Tensor> {                       \
     void BuildGraph(const Scope& scope) override {                        \
-      auto op_node =                                                      \
-          tensorflow::ops::Placeholder(scope.WithOpName("input"), dtype); \
+      auto op_node = MakePlaceholder(scope, "input", dtype);              \
       tensorflow::ops::opName(scope.WithOpName("output"), op_node);       \
     }                                                                     \
     void FuzzImpl(const Tensor& input_tensor) final {                     \
@@ -46,10 +46,8 @@ limitations under the License.
 #define BINARY_INPUT_OP_FUZZER(dtype1, dtype2, opName)                         \
   class Fuzz##opName : public FuzzSession<Tensor, Tensor> {                    \
     void BuildGraph(const Scope& scope) override {                             \
-      auto op_node1 =                                                          \
-          tensorflow::ops::Placeholder(scope.WithOpName("input1"), dtype1);    \
-      auto op_node2 =                                                          \
-          tensorflow::ops::Placeholder(scope.WithOpName("input2"), dtype2);    \
+      auto op_node1 = MakePlaceholder(scope, "input1", dtype1);                \
+      auto op_node2 = MakePlaceholder(scope, "input2", dtype2);                \
       tensorflow::ops::opName(scope.WithOpName("output"), op_node1, op_node2); \
     }                                                                          \
     void FuzzImpl(const Tensor& input_tensor1,                                 \
@@ -60,6 +58,20 @@ limitations under the License.
 
 namespace tensorflow {
 namespace fuzzing {
+
+// Builds a Placeholder feed node without the removed tensorflow::ops
+// wrapper: the runtime op still exists, so construct it directly via
+// NodeBuilder (same pattern as tensorflow/cc/ops/const_op.h). The node
+// name doubles as the session feed key ("input", "input1", ...).
+inline Output MakePlaceholder(const Scope& scope, const std::string& name,
+                              DataType dtype) {
+  NodeBuilder builder(name, "Placeholder");
+  builder.Attr("dtype", dtype);
+  scope.UpdateBuilder(&builder);
+  Node* node = nullptr;
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &node));
+  return Output(node, 0);
+}
 
 // Used by GFT to map a known domain (vector<T>) to an unknown
 // domain (Tensor of datatype). T and datatype should match/be compatible.

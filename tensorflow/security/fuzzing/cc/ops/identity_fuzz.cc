@@ -30,7 +30,7 @@ namespace fuzzing {
 class FuzzIdentity : public FuzzSession<Tensor> {
   void BuildGraph(const Scope& scope) override {
     auto op_node =
-        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_INT32);
+        MakePlaceholder(scope, "input", DT_INT32);
     tensorflow::ops::Identity(scope.WithOpName("output"), op_node);
   }
   void FuzzImpl(const Tensor& input_tensor) final {
