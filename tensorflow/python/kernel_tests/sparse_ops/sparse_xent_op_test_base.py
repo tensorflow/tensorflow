@@ -316,3 +316,13 @@ class SparseXentOpTestBase(test.TestCase):
   def testScalarHandling(self):
     """This method is structured to be easily overridden by a child class."""
     self._testScalarHandling(expected_regex=".*labels must be 1-D.*")
+
+  def testGradientPrecisionFloat64ZeroSum(self):
+    """Test that float64 gradients preserve finite signal and zero-sum invariant (#126636)."""
+    logits = constant_op.constant([[37.42994775023705, 0.0]], dtype=dtypes.float64)
+    labels = constant_op.constant([0], dtype=dtypes.int32)
+    loss, grad = self._opFwdBwd(labels=labels, logits=logits)
+    expected_grad = np.array([[-5.551115123125776e-17, 5.551115123125776e-17]], dtype=np.float64)
+    self.assertAllClose(grad, expected_grad, rtol=1e-12, atol=1e-25)
+    self.assertNear(float(np.sum(self.evaluate(grad))), 0.0, err=1e-25)
+    self.assertGreater(float(self.evaluate(loss)[0]), 0.0)
