@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for sparse ops."""
 
+import collections
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -267,6 +269,97 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises((errors.InvalidArgumentError, ValueError)):
       result = sparse_ops.map_values(mapping, sp, sp_incomp, kwarg='kwarg')
       self.evaluate(result)
+
+  def testMapValuesSparseTensorValue(self):
+    indices = [[0, 1], [1, 0]]
+    values = np.array([-2.0, 1.0], dtype=np.float32)
+    dense_shape = [2, 3]
+    sp_val = sparse_tensor.SparseTensorValue(indices, values, dense_shape)
+
+    # Single SparseTensorValue argument.
+    result = sparse_ops.map_values(math_ops.abs, sp_val)
+    self.assertIsInstance(result, sparse_tensor.SparseTensor)
+    self.assertAllEqual(indices, self.evaluate(result.indices))
+    self.assertAllEqual([2.0, 1.0], self.evaluate(result.values))
+    self.assertAllEqual(dense_shape, self.evaluate(result.dense_shape))
+
+    # Helper mapping function taking multiple arguments.
+    def mapping(arg1, arg2, kwarg):
+      self.assertEqual(kwarg, 'kwarg')
+      return arg1 + arg2
+
+    # Mixed: SparseTensor and SparseTensorValue.
+    sp = sparse_tensor.SparseTensor(
+        indices, np.array([2.0, 3.0], dtype=np.float32), dense_shape
+    )
+    result_mixed1 = sparse_ops.map_values(
+        mapping, sp, sp_val, kwarg='kwarg'
+    )
+    self.assertIsInstance(result_mixed1, sparse_tensor.SparseTensor)
+    self.assertAllEqual(
+        [0.0, 4.0], self.evaluate(result_mixed1.values)
+    )
+
+    # Mixed: SparseTensorValue and SparseTensor.
+    result_mixed2 = sparse_ops.map_values(
+        mapping, sp_val, sp, kwarg='kwarg'
+    )
+    self.assertIsInstance(result_mixed2, sparse_tensor.SparseTensor)
+    self.assertAllEqual(
+        [0.0, 4.0], self.evaluate(result_mixed2.values)
+    )
+
+    # Both SparseTensorValue.
+    sp_val2 = sparse_tensor.SparseTensorValue(
+        indices, np.array([3.0, 4.0], dtype=np.float32), dense_shape
+    )
+    result_both = sparse_ops.map_values(
+        mapping, sp_val, sp_val2, kwarg='kwarg'
+    )
+    self.assertIsInstance(result_both, sparse_tensor.SparseTensor)
+    self.assertAllEqual(
+        [1.0, 5.0], self.evaluate(result_both.values)
+    )
+
+    # Keyword argument with SparseTensorValue.
+    result_kw = sparse_ops.map_values(
+        mapping, sp_val, arg2=sp_val2, kwarg='kwarg'
+    )
+    self.assertIsInstance(result_kw, sparse_tensor.SparseTensor)
+    self.assertAllEqual(
+        [1.0, 5.0], self.evaluate(result_kw.values)
+    )
+
+    # Containers with SparseTensorValue should preserve container type.
+    dd = collections.defaultdict(list, {'a': sp_val})
+    res_dd = sparse_ops._replace_sparse_with_values(dd, [])
+    self.assertIsInstance(res_dd, collections.defaultdict)
+    self.assertEqual(res_dd.default_factory, list)
+
+    od = collections.OrderedDict([('b', sp_val), ('a', 2)])
+    res_od = sparse_ops._replace_sparse_with_values(od, [])
+    self.assertIsInstance(res_od, collections.OrderedDict)
+    self.assertEqual(list(res_od.keys()), ['b', 'a'])
+
+    # Mismatched shapes with SparseTensorValue should fail.
+    sp_incomp_shape = sparse_tensor.SparseTensorValue(
+        indices, values, [5, 5]
+    )
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      bad_res = sparse_ops.map_values(
+          mapping, sp_val, sp_incomp_shape, kwarg='kwarg'
+      )
+      self.evaluate(bad_res)
+
+    # Mismatched indices with SparseTensorValue should fail.
+    sp_incomp_indices = sparse_tensor.SparseTensorValue(
+        [[0, 0], [1, 2]], values, dense_shape
+    )
+    with self.assertRaises((errors.InvalidArgumentError, ValueError)):
+      bad_res = sparse_ops.map_values(
+          mapping, sp_val, sp_incomp_indices, kwarg='kwarg'
+      )
+      self.evaluate(bad_res)
 
   def testConstantStringToSparse(self):
     # Test case for GitHub issue 40633.

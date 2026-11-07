@@ -21,6 +21,7 @@ See also `tf.sparse.SparseTensor`.
 API docstring: tensorflow.sparse
 """
 
+import collections
 import numbers
 
 import numpy as np
@@ -2996,14 +2997,14 @@ def sparse_transpose(sp_input, perm=None, name=None):
 def map_values(op, *args, **kwargs):
   """Applies `op` to the `.values` tensor of one or more `SparseTensor`s.
 
-  Replaces any `SparseTensor` in `args` or `kwargs` with its `values`
-  tensor (which contains the non-default values for the SparseTensor),
-  and then calls `op`.  Returns a `SparseTensor` that is constructed
-  from the input `SparseTensor`s' `indices`, `dense_shape`, and the
+  Replaces any `SparseTensor` or `SparseTensorValue` in `args` or `kwargs` with
+  its `values` tensor (which contains the non-default values for the
+  SparseTensor), and then calls `op`. Returns a `SparseTensor` that is
+  constructed from the input `SparseTensor`s' `indices`, `dense_shape`, and the
   value returned by the `op`.
 
-  If the input arguments contain multiple `SparseTensor`s, then they must have
-  equal `indices` and dense shapes.
+  If the input arguments contain multiple `SparseTensor`s or
+  `SparseTensorValue`s, then they must have equal `indices` and dense shapes.
 
   Examples:
 
@@ -3040,14 +3041,17 @@ def map_values(op, *args, **kwargs):
     A `SparseTensor` whose `indices` and `dense_shape` matches the `indices`
     and `dense_shape` of all input `SparseTensor`s.
   Raises:
-    ValueError: If args contains no `SparseTensor`, or if the `indices`
-      or `dense_shape`s of the input `SparseTensor`s are not equal.
+    ValueError: If args contains no `SparseTensor` or `SparseTensorValue`,
+      or if the `indices` or `dense_shape`s of the input `SparseTensor`s
+      are not equal.
   """
   sparse_list = []
   inner_args = _replace_sparse_with_values(args, sparse_list)
   inner_kwargs = _replace_sparse_with_values(kwargs, sparse_list)
   if not sparse_list:
-    raise ValueError("No SparseTensor in argument list of map_values")
+    raise ValueError(
+        "No SparseTensor or SparseTensorValue in argument list of map_values"
+    )
 
   with ops.control_dependencies(_assert_sparse_compatible(sparse_list)):
     # Delegate to op, and then compose the result from the transformed values
@@ -3531,20 +3535,43 @@ def _assert_sparse_compatible(sparse_tensors):
   return checks
 
 
-def _replace_sparse_with_values(value, sparse_list):
-  """Replace `SparseTensor`s with their values in `value`
+def _convert_sparse_values(value):
+  if isinstance(value, sparse_tensor.SparseTensorValue):
+    return sparse_tensor.SparseTensor.from_value(value)
+  if isinstance(value, collections.defaultdict):
+    return collections.defaultdict(
+        value.default_factory,
+        ((k, _convert_sparse_values(v)) for k, v in value.items()),
+    )
+  if isinstance(value, dict):
+    return type(value)(
+        (k, _convert_sparse_values(v)) for k, v in value.items()
+    )
+  if isinstance(value, tuple):
+    if hasattr(value, "_fields"):
+      return type(value)(*(_convert_sparse_values(v) for v in value))
+    return type(value)(_convert_sparse_values(v) for v in value)
+  if isinstance(value, list):
+    return type(value)(_convert_sparse_values(v) for v in value)
+  return value
 
-  Each `SparseTensor` in `value` is replaced by its `values` tensor, and
-  collects all `SparseTensor`s in `sparse_list`.
+
+def _replace_sparse_with_values(value, sparse_list):
+  """Replace `SparseTensor`s and `SparseTensorValue`s with their values.
+
+  Each `SparseTensor` or `SparseTensorValue` in `value` is replaced by its
+  `values` tensor, and collects all `SparseTensor`s in `sparse_list`.
 
   Args:
-    value: A structure of `Tensor`s and `SparseTensor`s
+    value: A structure of `Tensor`s, `SparseTensor`s, and `SparseTensorValue`s.
     sparse_list: A list. Output parameter that collects all `SparseTensor`s in
       `value`.
 
   Returns:
-    `value` with each SparseTensor replaced by its `.value` attribute.
+    `value` with each SparseTensor or SparseTensorValue replaced by its
+    `.values` attribute.
   """
+  value = _convert_sparse_values(value)
   flat_vals = nest.flatten(value, expand_composites=False)
   new_vals = []
   for v in flat_vals:
