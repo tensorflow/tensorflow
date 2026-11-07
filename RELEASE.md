@@ -23,6 +23,8 @@
     * `tfl.fully_connected` now supports dynamic range (hybrid) quantization with N-D blockwise quantized filters: FLOAT32 or FLOAT16 input and output, with each input row quantized to INT8 at runtime (symmetrically by default, or asymmetrically with its own zero point when `asymmetric_quantize_inputs` is set), and an optional bias of the input type or FLOAT32 (FULLY_CONNECTED op version 17).
 * `tf.function` / `PolymorphicFunction`:
     * Added `clear_cache()` method to `PolymorphicFunction` to explicitly clear compiled concrete functions and dispatch tables, freeing retained graph memory.
+* `tf.signal`:
+    * Adds `tf.signal.blackman_window` for generating Blackman windows.
 
 ### Bug Fixes and Other Changes
 
