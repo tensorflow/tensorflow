@@ -418,5 +418,85 @@ TEST(ReplaceNodeSubsetsWithDelegateKernels,
   EXPECT_TRUE(kernel_initialized);
 }
 
+TEST(SubgraphInvokeTest, FailsWhenOutputTensorDataIsNull) {
+  Interpreter interpreter;
+  Subgraph& subgraph = interpreter.primary_subgraph();
+  ASSERT_EQ(subgraph.AddTensors(2), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetOutputs({1}), kTfLiteOk);
+
+  TfLiteQuantization quant = {};
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(0, kTfLiteFloat32, "in", {2},
+                                                  quant, /*is_variable=*/false),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(1, kTfLiteFloat32, "out", {2},
+                                                  quant, /*is_variable=*/false),
+            kTfLiteOk);
+
+  TfLiteRegistration* neg_op = tflite::ops::builtin::Register_NEG();
+  ASSERT_EQ(
+      subgraph.AddNodeWithParameters({0}, {1}, {}, nullptr, 0, nullptr, neg_op),
+      kTfLiteOk);
+  ASSERT_EQ(subgraph.AllocateTensors(), kTfLiteOk);
+
+  // If an arena-allocated output tensor has null data.raw before OpInvoke,
+  // Subgraph::Invoke should return kTfLiteError rather than dereferencing null.
+  subgraph.tensor(1)->data.raw = nullptr;
+  EXPECT_EQ(subgraph.Invoke(), kTfLiteError);
+}
+
+TEST(SubgraphInvokeTest, AllowsDynamicOutputTensorAllocatedDuringOpInvoke) {
+  Interpreter interpreter;
+  Subgraph& subgraph = interpreter.primary_subgraph();
+  ASSERT_EQ(subgraph.AddTensors(2), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetOutputs({1}), kTfLiteOk);
+
+  TfLiteQuantization quant = {};
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(0, kTfLiteFloat32, "in", {2},
+                                                  quant, /*is_variable=*/false),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph.SetTensorParametersReadWrite(1, kTfLiteFloat32, "out", {2},
+                                                  quant, /*is_variable=*/false),
+            kTfLiteOk);
+
+  TfLiteRegistration dynamic_op = {};
+  dynamic_op.prepare = [](TfLiteContext* context,
+                          TfLiteNode* node) -> TfLiteStatus {
+    TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+    TfLiteTensorDataFree(output);
+    output->allocation_type = kTfLiteDynamic;
+    return kTfLiteOk;
+  };
+  dynamic_op.invoke = [](TfLiteContext* context,
+                         TfLiteNode* node) -> TfLiteStatus {
+    const TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
+    TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+    TfLiteIntArray* dims = TfLiteIntArrayCopy(input->dims);
+    TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, dims));
+    output->data.f[0] = -input->data.f[0];
+    output->data.f[1] = -input->data.f[1];
+    return kTfLiteOk;
+  };
+
+  ASSERT_EQ(subgraph.AddNodeWithParameters({0}, {1}, {}, nullptr, 0, nullptr,
+                                           &dynamic_op),
+            kTfLiteOk);
+  ASSERT_EQ(subgraph.AllocateTensors(), kTfLiteOk);
+  subgraph.tensor(0)->data.f[0] = 1.5f;
+  subgraph.tensor(0)->data.f[1] = -2.5f;
+
+  // Before Invoke, output is kTfLiteDynamic with bytes > 0 and data.raw ==
+  // null.
+  ASSERT_EQ(subgraph.tensor(1)->allocation_type, kTfLiteDynamic);
+  ASSERT_GT(subgraph.tensor(1)->bytes, 0u);
+  ASSERT_EQ(subgraph.tensor(1)->data.raw, nullptr);
+
+  EXPECT_EQ(subgraph.Invoke(), kTfLiteOk);
+  ASSERT_NE(subgraph.tensor(1)->data.raw, nullptr);
+  EXPECT_FLOAT_EQ(subgraph.tensor(1)->data.f[0], -1.5f);
+  EXPECT_FLOAT_EQ(subgraph.tensor(1)->data.f[1], 2.5f);
+}
+
 }  // namespace
 }  // namespace tflite
