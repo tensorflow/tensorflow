@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
 
+#include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -737,10 +740,19 @@ absl::StatusOr<unsigned int> GraphDefImporter::ArgNumType(
   if (!arg_def.number_attr().empty()) {
     if (auto v = mlir::dyn_cast_or_null<IntegerAttr>(
             attrs.get(arg_def.number_attr()))) {
-      num = v.getValue().getZExtValue();
+      // Reject counts that are negative or do not fit in int32, as the number
+      // attr check on graph nodes in node_def_util.cc does.
+      std::optional<int64_t> repeats = v.getValue().trySExtValue();
+      if (!repeats || *repeats < 0 ||
+          *repeats > std::numeric_limits<int32_t>::max()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Value for number attr ", arg_def.number_attr(),
+                         " is negative or does not fit in int32"));
+      }
+      num = static_cast<unsigned>(*repeats);
     } else {
       return absl::NotFoundError(
-          absl::StrCat("Type attr not found: ", arg_def.number_attr()));
+          absl::StrCat("Number attr not found: ", arg_def.number_attr()));
     }
   }
 
