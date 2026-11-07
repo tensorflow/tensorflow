@@ -141,7 +141,7 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
   def test_conversion_from_constructor_success(self):
     frozen_graph_def = self._constructGraphDef()
 
-    # Check metrics when conversion successed.
+    # Check metrics when conversion succeeded.
     converter = lite.TFLiteConverter(frozen_graph_def, None, None,
                                      [('in_tensor', [2, 16, 16, 3])], ['add'])
     mock_metrics = mock.create_autospec(
