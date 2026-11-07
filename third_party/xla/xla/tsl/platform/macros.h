@@ -25,7 +25,7 @@ limitations under the License.
 #define TF_ATTRIBUTE_NOINLINE ABSL_ATTRIBUTE_NOINLINE
 #define TF_ATTRIBUTE_UNUSED ABSL_ATTRIBUTE_UNUSED
 #define TF_PACKED ABSL_ATTRIBUTE_PACKED
-#define TF_MUST_USE_RESULT ABSL_MUST_USE_RESULT
+#define TF_MUST_USE_RESULT [[nodiscard]]
 
 // Control visibility outside .so
 #if defined(_WIN32)
