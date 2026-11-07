@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_EMITTER_H_
 #define XLA_SERVICE_CPU_IR_EMITTER_H_
 
-#include <stddef.h>
-
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -45,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_function.h"
@@ -88,9 +85,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // llvm_module: the LLVM module to emit IR into.
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
-            const TargetMachineFeatures* target_machine,
-            absl::flat_hash_map<BufferAllocation::Slice, int64_t>
-                slice_to_buffer_table_index = {});
+            const TargetMachineFeatures* target_machine);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -152,9 +147,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     compute_function_.pop();
   }
 
-  // Emit LLVM global variable for a small constant buffer allocation.
-  absl::Status EmitSmallConstantGlobals();
-
   // Emits a call to a thread local function (e.g. to the computation nested
   // within a reduce or a map).  Thread local callees (by definition) only write
   // to and read from thread local allocations.
@@ -209,14 +201,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     return IRBuilderGuard(this, &builder);
   }
 
-  absl::StatusOr<llvm::Function*> EmitNestedComputation(
-      const HloComputation& callee, absl::string_view name, bool is_reducer);
-
  protected:
   friend class IrEmitter2;
-
-  // Emit an LLVM global variable for every constant buffer allocation.
-  absl::Status EmitConstantGlobals(std::optional<size_t> max_size_bytes);
 
   //
   // The following methods implement the DfsHloVisitor interface.
@@ -586,9 +572,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Returns the number of bytes within the shape.
   int64_t ByteSizeOf(const Shape& shape) const;
 
-  // Returns a ConstExpr bitcast.
-  llvm::Constant* EmitGlobalForLiteral(const Literal& literal);
-
   CpuElementalIrEmitter ElementalIrEmmiterFactory();
 
   const HloModule& hlo_module_;
@@ -598,37 +581,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   const TargetMachineFeatures& target_machine_features_;
 
-  struct LayoutSensitiveLiteralWrapper {
-    const Literal& literal;
-
-    template <typename H>
-    friend H AbslHashValue(H h, const LayoutSensitiveLiteralWrapper& wrapper) {
-      return Literal::Hash<H, /*layout_sensitive=*/true>(std::move(h),
-                                                         wrapper.literal);
-    }
-
-    bool operator==(const LayoutSensitiveLiteralWrapper& other) const {
-      return literal.Equal(other.literal, /*layout_sensitive=*/true);
-    }
-
-    // This is needed for InsertOrDie to work.
-    friend std::ostream& operator<<(
-        std::ostream& out, const LayoutSensitiveLiteralWrapper& wrapper) {
-      return out << wrapper.literal;
-    }
-  };
-
-  absl::flat_hash_map<LayoutSensitiveLiteralWrapper, llvm::Constant*>
-      emitted_literals_;
-
-  absl::flat_hash_map<BufferAllocation::Index, llvm::Constant*>
-      constant_buffer_to_global_;
-
   std::vector<const HloComputation*> thread_local_computations_;
   std::vector<const HloComputation*> global_computations_;
-
-  absl::flat_hash_map<BufferAllocation::Slice, int64_t>
-      slice_to_buffer_table_index_;
 
   IrEmitter(const IrEmitter&) = delete;
   IrEmitter& operator=(const IrEmitter&) = delete;

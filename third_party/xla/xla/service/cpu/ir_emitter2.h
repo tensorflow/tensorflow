@@ -25,12 +25,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/shape.h"
@@ -98,10 +95,6 @@ class IrEmitter2 {
 
   // Emits a host kernel for the pad instruction.
   absl::StatusOr<KernelInfo> EmitPadHostKernel(const HloInstruction* pad);
-
-  // Emits a host kernel for the given dot fusion instruction (output fusion).
-  absl::StatusOr<KernelInfo> EmitDotFusionHostKernel(
-      const HloFusionInstruction* fusion);
 
   // Emits a host kernel for the given slice-to-dynamic instruction.
   absl::StatusOr<KernelInfo> EmitSliceToDynamicHostKernel(

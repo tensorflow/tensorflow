@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/ADT/StringRef.h"
 #include "llvm/AsmParser/Parser.h"
@@ -48,6 +49,31 @@ std::vector<const llvm::Instruction*> InstructionOrder(
     order.push_back(&inst);
   }
   return order;
+}
+
+TEST(CloneModuleToContextTest, ClonesIntoDestinationContext) {
+  llvm::LLVMContext src_context;
+  llvm::SMDiagnostic diagnostic;
+  std::unique_ptr<llvm::Module> src =
+      llvm::parseAssemblyString(R"(
+    @g = internal constant i32 7
+    define i32 @f() {
+      %v = load i32, ptr @g
+      ret i32 %v
+    }
+  )",
+                                diagnostic, src_context);
+  ASSERT_NE(src, nullptr) << diagnostic.getMessage().str();
+
+  llvm::LLVMContext dst_context;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<llvm::Module> clone,
+                       CloneModuleToContext(*src, dst_context, "clone"));
+  EXPECT_EQ(clone->getModuleIdentifier(), "clone");
+  EXPECT_EQ(&clone->getContext(), &dst_context);
+  llvm::Function* f = clone->getFunction("f");
+  ASSERT_NE(f, nullptr);
+  EXPECT_EQ(&f->getReturnType()->getContext(), &dst_context);
+  EXPECT_EQ(DumpToString(*f), DumpToString(*src->getFunction("f")));
 }
 
 struct SinkFMulTestCase {

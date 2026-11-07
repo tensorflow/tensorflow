@@ -1714,8 +1714,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:AsmParser",
-        "@llvm-project//llvm:BitReader",
-        "@llvm-project//llvm:BitWriter",
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",

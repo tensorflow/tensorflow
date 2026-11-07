@@ -336,7 +336,7 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   ABSL_ASSIGN_OR_RETURN(std::vector<KernelParameter> results,
                    GetKernelResultsParameters(instr, buffer_assignment));
 
-  ABSL_ASSIGN_OR_RETURN(std::string name, GetKernelName(instr, suffix));
+  ABSL_ASSIGN_OR_RETURN(std::string name, GetKernelName(options_, instr, suffix));
 
   return EmitKernelPrototype(
       module, name, arguments, results,
@@ -449,8 +449,9 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
 }
 
 absl::StatusOr<std::string> KernelApiIrBuilder::GetKernelName(
-    const HloInstruction* instr, absl::string_view suffix) const {
-  if (options_.generate_unique_c_style_kernel_entry_points) {
+    const Options& options, const HloInstruction* instr,
+    absl::string_view suffix) {
+  if (options.generate_unique_c_style_kernel_entry_points) {
     return ConvertToCName(
         absl::StrCat(instr->GetModule()->name(), "_", instr->name(), suffix));
   }

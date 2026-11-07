@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -146,6 +147,14 @@ PrimitiveType PrimitiveTypeFromIrType(
 // Returns the LLVM type which represents the given XLA shape. For example,
 // if "shape" is [5 x [10 x f32]], the function returns [5 x [10 x float]].
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context);
+
+// Copies `module` into `context` through a bitcode round trip, naming the copy
+// `module_id`. Types, constants and metadata belong to one context, so linking
+// or JIT compiling modules together requires them to share it, and LLVM has no
+// direct way to copy a module across contexts.
+absl::StatusOr<std::unique_ptr<llvm::Module>> CloneModuleToContext(
+    const llvm::Module& module, llvm::LLVMContext& context,
+    absl::string_view module_id);
 
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.

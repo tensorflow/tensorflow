@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -113,6 +114,11 @@ class ThunkEmitter {
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitCallThunk(
+      const HloInstruction* instruction);
+
+  // Emits a call marked by SmallWhileLoopHoistingPass as one kernel that runs
+  // the thunks of the called computation.
+  absl::StatusOr<ThunkSequence> EmitSmallCallThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitConcatenateKernelThunk(
@@ -246,6 +252,20 @@ class ThunkEmitter {
       const HloInstruction* instruction, const KernelSpec& kernel_spec,
       std::optional<uint64_t> min_alignment = std::nullopt);
 
+  // Adds a compiled kernel to the executable.
+  void AddKernel(absl::string_view name, llvm::orc::ThreadSafeModule module);
+
+  // Reserves all non small call kernel and comparator names in `module`.
+  absl::Status ReserveKernelNames(const HloModule& module);
+
+  // A small call kernel whose nested kernels are linked into it once all
+  // kernels are compiled.
+  struct SmallCallKernel {
+    std::string name;
+    llvm::orc::ThreadSafeModule module;
+    std::vector<std::string> nested_kernels;
+  };
+
   IrEmitter2& ir_emitter_;
   const BufferAssignment& buffer_assignment_;
 
@@ -266,6 +286,18 @@ class ThunkEmitter {
   std::vector<EmittedKernel> kernels_;
   std::vector<EmittedKernel> comparators_;
   absl::flat_hash_map<const HloComputation*, std::string> comparator_names_;
+
+  // Kernels with a standalone LLVM module, which small calls can link in.
+  absl::flat_hash_set<std::string> linkable_kernels_;
+  absl::flat_hash_set<std::string> reserved_kernel_names_;
+  bool kernel_names_reserved_ = false;
+
+  // In emission order, so nested small calls come before the calls using them.
+  std::vector<SmallCallKernel> small_call_kernels_;
+
+  // Kernels launched by the entry computation thunks. Kernels launched only
+  // from small calls are linked into them and not added on their own.
+  absl::flat_hash_set<std::string> entry_kernels_;
 
   std::unique_ptr<mlir::MLIRContext> mlir_context_;
   FusionCompiler fusion_compiler_;

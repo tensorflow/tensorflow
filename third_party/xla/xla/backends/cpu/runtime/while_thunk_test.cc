@@ -70,7 +70,7 @@ TEST(WhileThunkTest, BufferUses) {
                          std::move(body_sequence)));
 
   EXPECT_EQ(thunk->buffer_uses().size(), 3);
-  EXPECT_EQ(thunk->buffer_uses()[0], BufferUse::Write(pred_slice, pred_shape));
+  EXPECT_EQ(thunk->buffer_uses()[0], BufferUse::Read(pred_slice, pred_shape));
   EXPECT_EQ(thunk->buffer_uses()[1],
             BufferUse::Read(cond_read_slice, read_slice_shape));
   EXPECT_EQ(thunk->buffer_uses()[2],

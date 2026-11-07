@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stdalign.h>
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -292,6 +293,52 @@ TEST_P(NanoRtClientTest, CompileAndRunConditionalComputation) {
 
   ASSERT_TRUE(event.IsConcrete());
   EXPECT_EQ(r0_value, 8.0f);
+}
+
+TEST_P(NanoRtClientTest, HoistedWhileLoopReturningTuple) {
+  constexpr absl::string_view hlo = R"(
+    HloModule tuple_while
+
+    body {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      x = f32[4] get-tuple-element(state), index=1
+      next_i = s32[] add(i, s32[] constant(1))
+      next_x = f32[4] add(x, x)
+      ROOT next = (s32[], f32[4]) tuple(next_i, next_x)
+    }
+
+    cond {
+      state = (s32[], f32[4]) parameter(0)
+      i = s32[] get-tuple-element(state), index=0
+      ROOT lt = pred[] compare(i, s32[] constant(3)), direction=LT
+    }
+
+    ENTRY e {
+      p0 = f32[4] parameter(0)
+      ROOT w = (s32[], f32[4]) while((s32[], f32[4]) tuple(
+          s32[] constant(0), p0)), condition=cond, body=body
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
+
+  alignas(64) std::array<float, 4> in = {1.0f, 2.0f, 3.0f, 4.0f};
+  alignas(64) int32_t out_i = 0;
+  alignas(64) std::array<float, 4> out_x = {0.0f, 0.0f, 0.0f, 0.0f};
+  Arguments arguments = {{in.data(), 4}};
+  Results results = {{&out_i, 1}, {out_x.data(), 4}};
+  NanoRtExecutable::ManagedTemp<64> temp(executable->temp_buffer_size());
+
+  auto event = executable->Execute(arguments, results, temp);
+  tsl::BlockUntilReady(event);
+  ASSERT_TRUE(event.IsConcrete()) << event.GetError();
+  EXPECT_EQ(out_i, 3);
+  EXPECT_EQ(out_x, (std::array<float, 4>{8.0f, 16.0f, 24.0f, 32.0f}));
 }
 
 TEST_P(NanoRtClientTest, CompileAndRunModelWithThreadPool) {

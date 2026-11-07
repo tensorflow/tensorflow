@@ -43,58 +43,90 @@ limitations under the License.
 
 namespace xla::cpu {
 
-// The call thunk emitter compiles the loop with runtime calls disabled, so dots
-// and convolutions that would otherwise call Eigen fall back to a naive loop
-// nest. IrEmitter::HandleDot and HandleConvolution also reject operand types
-// that the thunk emitter supports (e.g. BF16).
-static bool OperandTypesUnsupported(const HloInstruction* instr) {
-  constexpr PrimitiveType kSupportedTypes[] = {
-      PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128};
-  PrimitiveType lhs_type = instr->operand(0)->shape().element_type();
-  return lhs_type != instr->operand(1)->shape().element_type() ||
-         !absl::c_linear_search(kSupportedTypes, lhs_type);
+static bool IsSupportedDotElementType(PrimitiveType type) {
+  switch (type) {
+    case PRED:
+    case S8:
+    case U8:
+    case S16:
+    case U16:
+    case S32:
+    case U32:
+    case S64:
+    case U64:
+    case F16:
+    case F32:
+    case F64:
+    case C64:
+    case C128:
+      return true;
+    default:
+      return false;
+  }
 }
 
+// Hoisted loops are compiled into a single kernel, which only works for
+// instructions that ThunkEmitter lowers to kernels, copies or control flow.
+// Others (library calls, runtime state, I/O) would make ThunkEmitter emit the
+// loop as an ordinary call, so hoisting them gains nothing.
 static bool InstructionIsUnavailable(
     const HloInstruction* instr,
     const TargetMachineFeatures& target_machine_features) {
   switch (instr->opcode()) {
-    // The following instructions are not currently supported by the call thunk
-    // emitter due to how the legacy & thunk emitters interact; specifically,
-    // how the run options are passed.
     case HloOpcode::kCustomCall:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kScatter:
     case HloOpcode::kSort:
     case HloOpcode::kFft:
     case HloOpcode::kPartitionId:
     case HloOpcode::kReplicaId:
+    case HloOpcode::kRngGetAndUpdateState:
       return true;
 
-    // Legacy call emitter does not support custom fusions.
+    // Custom fusions call into oneDNN or YNNPACK.
     case HloOpcode::kFusion:
       return instr->fusion_kind() == HloInstruction::FusionKind::kCustom;
 
     case HloOpcode::kDot:
-      return OperandTypesUnsupported(instr) ||
+      return !IsSupportedDotElementType(instr->shape().element_type()) ||
              GetDotImplementationStrategy(instr->GetModule()->config(), *instr,
                                           target_machine_features,
                                           /*allow_runtime_calls=*/true) ==
                  DotImplementationStrategy::kEigen;
 
+    // Convolutions that cannot use Eigen are wrapped into loop fusions.
     case HloOpcode::kConvolution:
-      return OperandTypesUnsupported(instr) ||
-             PotentiallyImplementedAsEigenConvolution(*instr,
-                                                      target_machine_features);
+      return CanUseEigenConvolution(*instr, target_machine_features);
 
     default:
       return IsCollective(instr);
   }
 }
 
-// Simple DFS check to see if a computation contains any instructions that are
-// "unavailable" for the call thunk emitter.
+// Returns whether `computation`, or a fusion computation nested in it, has a
+// dot that would call Eigen outside a fusion. Fusion emitters lower such dots
+// inline, but inside a hoisted loop they would run on one thread.
+static bool HasEigenDot(const HloComputation& computation,
+                        const TargetMachineFeatures& target_machine_features) {
+  for (const HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() == HloOpcode::kDot &&
+        GetDotImplementationStrategy(instr->GetModule()->config(), *instr,
+                                     target_machine_features,
+                                     /*allow_runtime_calls=*/true) ==
+            DotImplementationStrategy::kEigen) {
+      return true;
+    }
+    for (const HloComputation* called : instr->called_computations()) {
+      if (HasEigenDot(*called, target_machine_features)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Returns whether `instr` or a computation it calls contains an instruction
+// that cannot be part of a hoisted loop kernel.
 static bool ContainsUnavailableInstruction(
     const HloInstruction* instr,
     const TargetMachineFeatures& target_machine_features,
@@ -109,6 +141,12 @@ static bool ContainsUnavailableInstruction(
   }
 
   for (const HloComputation* called_comp : instr->called_computations()) {
+    if (called_comp->IsFusionComputation()) {
+      if (HasEigenDot(*called_comp, target_machine_features)) {
+        return has_unavailable_instr.insert({instr, true}).first->second;
+      }
+      continue;
+    }
     for (const HloInstruction* sub_instr : called_comp->instructions()) {
       if (ContainsUnavailableInstruction(sub_instr, target_machine_features,
                                          has_unavailable_instr)) {
