@@ -163,6 +163,9 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   // pm->addPass(mt::instrument::createTritonInstrumentGlobalSanitizer());
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());
+  // If "gsan" or "consan" is enabled in options.instrumentation_mode, upstream
+  // skips this pass.
+  pm->addPass(mt::gpu::createTritonGPUOptimizeThreadRegions());
   pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mlir::triton::gluon::createGluonInline());
   pm->addPass(

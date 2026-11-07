@@ -305,8 +305,7 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
       hi_lo = mt::TransOp::create(r, loc, hi_lo, trans_attr);
     }
     auto unpacked_type = input_type.clone(r.getI8Type());
-    r.replaceOpWithNewOp<mt::ReshapeOp>(ext_si_op, unpacked_type, hi_lo,
-                                        /*allow_reorder=*/false);
+    r.replaceOpWithNewOp<mt::ReshapeOp>(ext_si_op, unpacked_type, hi_lo);
 
     return success();
   }
@@ -365,8 +364,7 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
       hi_lo = mt::TransOp::create(r, loc, hi_lo, trans_attr);
     }
 
-    r.replaceOpWithNewOp<mt::ReshapeOp>(si_to_fp_op, bf16_type, hi_lo,
-                                        /*allow_reorder=*/false);
+    r.replaceOpWithNewOp<mt::ReshapeOp>(si_to_fp_op, bf16_type, hi_lo);
     return success();
   }
 

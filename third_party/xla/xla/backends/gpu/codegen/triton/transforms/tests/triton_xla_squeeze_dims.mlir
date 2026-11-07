@@ -168,8 +168,8 @@ func.func @expand_reshape(%arg0: tensor<4xf32>) -> tensor<4x1x1xf32> {
 // CHECK-LABEL: func @skip_reshape_with_attr
 func.func @skip_reshape_with_attr(%arg0: tensor<4x1xf32>) -> tensor<4xf32> {
   // CHECK-NOT: triton_xla.squeeze_dims
-  // CHECK: tt.reshape {{.*}} allow_reorder : tensor<4x1xf32> -> tensor<4xf32>
-  %0 = tt.reshape %arg0 allow_reorder : tensor<4x1xf32> -> tensor<4xf32>
+  // CHECK: tt.reshape {{.*}} efficient_layout : tensor<4x1xf32> -> tensor<4xf32>
+  %0 = tt.reshape %arg0 efficient_layout : tensor<4x1xf32> -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
 

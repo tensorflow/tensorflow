@@ -37,6 +37,19 @@ namespace llvm_ir {
 
 namespace {
 
+// Sentinel option registered in LLVM's global command-line registry so XLA can
+// detect when an external library in the same process (e.g. Triton's
+// ScopedLLVMOptions or LLD) resets LLVM's global options via
+// llvm::cl::ResetAllOptionOccurrences(). Must only be accessed while holding
+// LLVMCommandLineOptionsLock::lock_.
+llvm::cl::opt<bool>& GetXlaOptionsInitializedSentinel() {
+  // absl::NoDestructor is not available in OSS XLA.
+  static llvm::cl::opt<bool>* sentinel =
+      new llvm::cl::opt<bool>("xla-llvm-options-initialized",
+                              llvm::cl::init(false), llvm::cl::ReallyHidden);
+  return *sentinel;
+}
+
 // LLVM caches the value of the `-regalloc` option in RegisterRegAlloc's
 // registry the first time any codegen pipeline is built in the process (see
 // TargetPassConfig::getOptimizeRegAlloc), and never refreshes it when the
@@ -67,14 +80,18 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
   auto no_competing_clients =
       [this, &client_options]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
         return num_active_clients_ == 0 ||
-               (client_signature_ == active_client_signature_ &&
+               (GetXlaOptionsInitializedSentinel() &&
+                client_signature_ == active_client_signature_ &&
                 absl::c_equal(client_options, GetActiveClientOptions()));
       };
   lock_.LockWhen(absl::Condition(&no_competing_clients));
 
-  // Check if previous client used a different set of LLVM options,
-  // (re)initialize if that's the case.
-  if (client_signature_ != active_client_signature_) {
+  // Check if previous client used a different set of LLVM options, or if an
+  // external caller reset LLVM's global options since XLA last initialized
+  // them.
+  if (!GetXlaOptionsInitializedSentinel() ||
+      client_signature_ != active_client_signature_ ||
+      !absl::c_equal(client_options, GetActiveClientOptions())) {
     VLOG(1) << "XLA (re)initializing LLVM with options fingerprint: "
             << client_signature_;
     VLOG(1) << "XLA LLVM options:";
@@ -104,6 +121,7 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
     llvm::cl::parseCommandLineOptions(*GetActiveLibraryOptions(), fake_argv);
     llvm::cl::ResetAllOptionOccurrences();
     llvm::cl::ParseCommandLineOptions(fake_argv.size(), fake_argv.data());
+    GetXlaOptionsInitializedSentinel().setValue(true);
     SyncRegisterAllocatorDefault();
 
     active_client_signature_ = client_signature_;

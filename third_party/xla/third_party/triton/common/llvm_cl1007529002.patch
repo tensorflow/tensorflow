@@ -1,0 +1,87 @@
+# Set ignore_denormal_mode on NVIDIA LLVM::AtomicRMWOp fadd lowerings
+# for LLVM commit flipping -nvptx-allow-ftz-atomics default to false (cl/1007529002).
+--- a/test/Conversion/tritongpu_to_llvm.mlir
++++ b/test/Conversion/tritongpu_to_llvm.mlir
+@@ -4651,9 +4651,9 @@
+   // CHECK-LABEL: @scalar_atomic_float_ops
+   // CHECK-NOT: llvm.cond_br
+   // CHECK: atom.global.gpu.relaxed.add.noftz.f16
+-  // CHECK: llvm.atomicrmw fadd {{.*}} syncscope("device") monotonic{{.*}} : !llvm.ptr<1>, f32
++  // CHECK: llvm.atomicrmw ignore_denormal_mode fadd {{.*}} syncscope("device") monotonic{{.*}} : !llvm.ptr<1>, f32
+   // CHECK: llvm.atomicrmw xchg {{.*}} syncscope("device") monotonic{{.*}} : !llvm.ptr<1>, f32
+-  // CHECK: llvm.atomicrmw fadd {{.*}} syncscope("device") monotonic{{.*}} : !llvm.ptr<1>, f64
++  // CHECK: llvm.atomicrmw ignore_denormal_mode fadd {{.*}} syncscope("device") monotonic{{.*}} : !llvm.ptr<1>, f64
+   // CHECK: llvm.atomicrmw xchg {{.*}} syncscope("device") monotonic{{.*}} : !llvm.ptr<1>, f64
+   // PTX-LABEL: .visible .entry scalar_atomic_float_ops(
+   // PTX: atom.global.gpu.relaxed.add.noftz.f16
+
+--- a/test/Conversion/tritongpu_to_llvm_hopper_ptx80.mlir
++++ b/test/Conversion/tritongpu_to_llvm_hopper_ptx80.mlir
+@@ -4,10 +4,10 @@
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 2 : i32, ttg.target = "cuda:90", "ttg.threads-per-warp" = 32 : i32} {
+   tt.func public @atomic_add_f32_nomask(%dest_ptrs: tensor<256x!tt.ptr<f32>, #blocked> {tt.divisibility = 16 : i32, tt.contiguity = 16 : i32}, %data: tensor<256xf32, #blocked>) {
+     // CHECK-LABEL: atomic_add_f32_nomask
+-    // CHECK: llvm.atomicrmw fadd {{.*}} syncscope("device") acq_rel
+-    // CHECK: llvm.atomicrmw fadd {{.*}} syncscope("device") acq_rel
+-    // CHECK: llvm.atomicrmw fadd {{.*}} syncscope("device") acq_rel
+-    // CHECK: llvm.atomicrmw fadd {{.*}} syncscope("device") acq_rel
++    // CHECK: llvm.atomicrmw ignore_denormal_mode fadd {{.*}} syncscope("device") acq_rel
++    // CHECK: llvm.atomicrmw ignore_denormal_mode fadd {{.*}} syncscope("device") acq_rel
++    // CHECK: llvm.atomicrmw ignore_denormal_mode fadd {{.*}} syncscope("device") acq_rel
++    // CHECK: llvm.atomicrmw ignore_denormal_mode fadd {{.*}} syncscope("device") acq_rel
+     %0 = tt.atomic_rmw fadd, acq_rel, gpu, %dest_ptrs, %data : (tensor<256x!tt.ptr<f32>, #blocked>, tensor<256xf32, #blocked>) -> tensor<256xf32, #blocked>
+     tt.return
+   }
+
+--- a/test/TritonNvidiaGPU/bf16-atomics.mlir
++++ b/test/TritonNvidiaGPU/bf16-atomics.mlir
+@@ -24,7 +24,7 @@
+   }
+   // CHECK-LABEL: @unmasked_bf16_add
+   // CHECK-NOT: llvm.cond_br
+-  // CHECK: llvm.atomicrmw fadd
++  // CHECK: llvm.atomicrmw ignore_denormal_mode fadd
+   tt.func private @unmasked_bf16_add(%ptr: tensor<128x!tt.ptr<bf16>, #unique>, %val: tensor<128xbf16, #unique>) -> tensor<128xbf16, #unique> {
+     %old = tt.atomic_rmw fadd, acq_rel, gpu, %ptr, %val : (tensor<128x!tt.ptr<bf16>, #unique>, tensor<128xbf16, #unique>) -> tensor<128xbf16, #unique>
+     tt.return %old : tensor<128xbf16, #unique>
+
+--- a/third_party/nvidia/include/TritonNVIDIAGPUToLLVM/AtomicPTXBuilder.h
++++ b/third_party/nvidia/include/TritonNVIDIAGPUToLLVM/AtomicPTXBuilder.h
+@@ -186,10 +186,12 @@
+   auto ordering = getMemoryOrdering(sem);
+   if (!binOp || !ordering)
+     return failure();
+-  return LLVM::AtomicRMWOp::create(rewriter, loc, *binOp, ptr, vals.front(),
+-                                   *ordering,
+-                                   targetInfo.getAtomicSyncScope(scope))
+-      .getResult();
++  auto op = LLVM::AtomicRMWOp::create(rewriter, loc, *binOp, ptr, vals.front(),
++                                      *ordering,
++                                      targetInfo.getAtomicSyncScope(scope));
++  if (*binOp == LLVM::AtomicBinOp::fadd)
++    op.setIgnoreDenormalMode(true);
++  return op.getResult();
+ }
+ 
+ inline Value emitPtxAtomicCAS(ConversionPatternRewriter &rewriter, Location loc,
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/MemoryOpToLLVM.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/MemoryOpToLLVM.cpp
+@@ -71,10 +71,12 @@
+     auto binOp = matchAtomicOp(rmwOp);
+     if (!binOp)
+       return failure();
+-    return LLVM::AtomicRMWOp::create(rewriter, loc, *binOp, ptr, value,
+-                                     LLVM::AtomicOrdering::monotonic,
+-                                     isCluster ? "cluster" : "block")
+-        .getResult();
++    auto op = LLVM::AtomicRMWOp::create(rewriter, loc, *binOp, ptr, value,
++                                        LLVM::AtomicOrdering::monotonic,
++                                        isCluster ? "cluster" : "block");
++    if (*binOp == LLVM::AtomicBinOp::fadd)
++      op.setIgnoreDenormalMode(true);
++    return op.getResult();
+   }
+   auto addrSpace = isCluster ? PtxAtomicAddrSpace::SharedCluster
+                              : PtxAtomicAddrSpace::Shared;
+

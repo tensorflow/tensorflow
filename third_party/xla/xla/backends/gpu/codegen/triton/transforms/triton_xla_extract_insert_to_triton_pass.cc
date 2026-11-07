@@ -397,8 +397,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
       // Insert a reshape if the result is rank-reduced or still in physical
       // order.
       if (result.getType() != tile_type) {
-        result = ReshapeOp::create(builder, tile_shape, result,
-                                   /*allowReorder=*/false);
+        result = ReshapeOp::create(builder, tile_shape, result);
       }
 
       rewriter.replaceOp(op, result);
@@ -434,8 +433,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
             xtriton::GetInverseLayoutPermutation(operands.layout));
       }
       if (ArrayRef<int64_t>(operands.sizes) != tile_shape) {
-        result = ReshapeOp::create(builder, tile_shape, result,
-                                   /*allowReorder=*/false);
+        result = ReshapeOp::create(builder, tile_shape, result);
       }
 
       rewriter.replaceOp(op, result);
@@ -545,8 +543,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
       // Insert a reshape if the source is rank-reduced or still in logical
       // order.
       if (src.getType() != result_type) {
-        src = ReshapeOp::create(builder, result_type.getShape(), src,
-                                /*allowReorder=*/false);
+        src = ReshapeOp::create(builder, result_type.getShape(), src);
       }
 
       auto ordered_offsets = xtriton::GetMajorToMinorOrder(offsets, dst_layout);
@@ -571,8 +568,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
 
       Value src = op.getSrc();
       if (ArrayRef<int64_t>(operands.sizes) != tile_shape) {
-        src = ReshapeOp::create(builder, operands.sizes, src,
-                                /*allowReorder=*/false);
+        src = ReshapeOp::create(builder, operands.sizes, src);
       }
       if (!xtriton::IsMajorToMinorLayout(operands.layout)) {
         auto transpose_order = llvm::to_vector_of<int32_t>(operands.layout);

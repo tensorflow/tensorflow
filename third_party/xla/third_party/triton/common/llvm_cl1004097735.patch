@@ -1,6 +1,6 @@
 --- a/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
-@@ -369,8 +369,8 @@
+@@ -369,8 +369,8 @@ static void disableLICM(LLVM::BrOp latchBr) {
    MLIRContext *ctx = b.getContext();
    auto licmMD = LLVM::LoopLICMAttr::get(ctx, b.getBoolAttr(true), {});
    auto loopMD =
@@ -14,7 +14,7 @@
 
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -959,7 +959,7 @@
+@@ -968,7 +968,7 @@ void init_triton_ir(py::module_ &m) {
                                           self.getBuilder().getBoolAttr(true));
               mlir::LLVM::LoopAnnotationAttr la =
                   mlir::LLVM::LoopAnnotationAttr::get(
