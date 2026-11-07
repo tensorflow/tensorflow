@@ -1357,8 +1357,74 @@ struct zeta : base<T, Eigen::internal::scalar_zeta_op<T>> {};
 template <typename T>
 struct polygamma : base<T, Eigen::internal::scalar_polygamma_op<T>> {};
 
+// Eigen's vectorized patan2 packet implementation causes intermediate underflow
+// or division by zero when inputs are subnormal, returning NaN for valid,
+// finite subnormal floating-point inputs. In addition, subnormal float32 inputs
+// underflow to zero when evaluated without scaling. Scaling subnormal inputs
+// by an exact power of 2 preserves the exact mathematical ratio y / x, signs,
+// and quadrant while preventing underflow and NaN production.
 template <typename T>
-struct atan2 : base<T, Eigen::internal::scalar_atan2_op<T, T>> {};
+struct tf_scalar_atan2_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& y,
+                                                     const T& x) const {
+    using std::atan2;
+    if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+      const T abs_y = Eigen::numext::abs(y);
+      const T abs_x = Eigen::numext::abs(x);
+      const T normal_min = std::numeric_limits<T>::min();
+      const bool y_subnormal = (abs_y > T(0) && abs_y < normal_min);
+      const bool x_subnormal = (abs_x > T(0) && abs_x < normal_min);
+      if (TF_PREDICT_FALSE(y_subnormal || x_subnormal)) {
+        if constexpr (std::is_same_v<T, float>) {
+          constexpr float kScale = 18446744073709551616.0f;  // 2^64
+          return atan2(y * kScale, x * kScale);
+        } else {
+          constexpr double kScale = 1.3407807929942597e+154;  // 2^512
+          return atan2(y * kScale, x * kScale);
+        }
+      }
+      return atan2(y, x);
+    } else if constexpr (std::is_same_v<T, Eigen::half>) {
+      const float y_f = static_cast<float>(y);
+      const float x_f = static_cast<float>(x);
+      const float abs_y = Eigen::numext::abs(y_f);
+      const float abs_x = Eigen::numext::abs(x_f);
+      const float half_min = 6.103515625e-05f;  // min positive normal half
+      if (TF_PREDICT_FALSE((abs_y > 0.0f && abs_y < half_min) ||
+                           (abs_x > 0.0f && abs_x < half_min))) {
+        constexpr float kScale = 18446744073709551616.0f;  // 2^64
+        return static_cast<Eigen::half>(atan2(y_f * kScale, x_f * kScale));
+      }
+      return static_cast<Eigen::half>(atan2(y_f, x_f));
+    } else if constexpr (std::is_same_v<T, bfloat16>) {
+      const float y_f = static_cast<float>(y);
+      const float x_f = static_cast<float>(x);
+      const float abs_y = Eigen::numext::abs(y_f);
+      const float abs_x = Eigen::numext::abs(x_f);
+      const float bfloat_min = 1.17549435e-38f;  // min positive normal bfloat16
+      if (TF_PREDICT_FALSE((abs_y > 0.0f && abs_y < bfloat_min) ||
+                           (abs_x > 0.0f && abs_x < bfloat_min))) {
+        constexpr float kScale = 18446744073709551616.0f;  // 2^64
+        return static_cast<bfloat16>(atan2(y_f * kScale, x_f * kScale));
+      }
+      return static_cast<bfloat16>(atan2(y_f, x_f));
+    } else {
+      return Eigen::internal::scalar_atan2_op<T, T>()(y, x);
+    }
+  }
+};
+
+template <typename T>
+struct functor_traits<tf_scalar_atan2_op<T>> {
+  enum {
+    Cost = functor_traits<Eigen::internal::scalar_atan2_op<T, T>>::Cost +
+           NumTraits<T>::AddCost,
+    PacketAccess = false,
+  };
+};
+
+template <typename T>
+struct atan2 : base<T, tf_scalar_atan2_op<T>> {};
 
 template <typename T>
 struct squared_difference

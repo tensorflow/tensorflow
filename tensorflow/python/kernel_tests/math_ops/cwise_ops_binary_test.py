@@ -948,6 +948,23 @@ class BinaryOpTest(test.TestCase):
       self._compareCpu(x1, x2, np.arctan2, math_ops.atan2)
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
 
+  def testAtan2SubnormalInputs(self):
+    # Tests that atan2 preserves finite results without producing NaN for
+    # subnormal inputs in all quadrants (fixing #118643).
+    for dtype in [np.float32, np.float64, np.float16]:
+      finfo = np.finfo(dtype)
+      subnormal = finfo.smallest_subnormal
+      normal = finfo.tiny
+      y_vals = [subnormal, subnormal, -subnormal, -subnormal, subnormal, normal]
+      x_vals = [subnormal, -subnormal, subnormal, -subnormal, normal, subnormal]
+      y = np.array(y_vals, dtype=dtype)
+      x = np.array(x_vals, dtype=dtype)
+      with test_util.force_cpu():
+        result = self.evaluate(math_ops.atan2(y, x))
+        expected = np.arctan2(y.astype(np.float64), x.astype(np.float64)).astype(dtype)
+        self.assertFalse(np.any(np.isnan(result)))
+        self.assertAllClose(result, expected, rtol=1e-3, atol=1e-3)
+
   def testPowNegativeExponentCpu(self):
     for dtype in [np.int8, np.int16, np.int32, np.int64]:
       with test_util.force_cpu():
