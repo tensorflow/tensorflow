@@ -380,7 +380,10 @@ py::object TFE_Py_ExecuteCancelable_wrapper(
 
 static py::object TF_ListPhysicalDevices() {
   std::vector<std::string> devices;
-  absl::Status s = tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+  absl::Status s = [&]() {
+    py::gil_scoped_release release;
+    return tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
+  }();
   MaybeRaiseRegisteredFromStatus(s);
   PyObject* result = PyList_New(devices.size());
   int i = 0;
@@ -820,7 +823,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       [](const TFE_ContextOptions* opts) {
         tensorflow::Safe_TF_StatusPtr status =
             tensorflow::make_safe(TF_NewStatus());
-        TFE_Context* context = TFE_NewContext(opts, status.get());
+        TFE_Context* context = [&]() {
+          py::gil_scoped_release release;
+          return TFE_NewContext(opts, status.get());
+        }();
         tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         return tensorflow::PyoOrThrow(tensorflow::OutputTFE_Context(context));
       },
