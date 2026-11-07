@@ -591,6 +591,26 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
+  def test_wrapper_docs_name_input_tensor(self):
+    wrapped_ops = (
+        fft_ops.rfft,
+        fft_ops.irfft,
+        fft_ops.rfft2d,
+        fft_ops.irfft2d,
+        fft_ops.rfft3d,
+        fft_ops.irfft3d,
+        fft_ops.fftnd,
+        fft_ops.ifftnd,
+        fft_ops.rfftnd,
+        fft_ops.irfftnd,
+    )
+    for fn in wrapped_ops:
+      if fn.__doc__ is None:
+        continue
+      self.assertRegex(fn.__doc__, r"(?m)^ +input_tensor:")
+      self.assertNotRegex(fn.__doc__, r"(?m)^ +input:")
+      self.assertNotIn("`input`", fn.__doc__)
+
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):
     with self.cached_session() as sess:
       return sess.run(
