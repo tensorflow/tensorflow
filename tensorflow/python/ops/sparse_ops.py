@@ -2794,14 +2794,20 @@ def sparse_maximum(sp_a, sp_b, name=None):
   The reduction version of this elementwise operation is `tf.sparse.reduce_max`
 
   Args:
-    sp_a: a `SparseTensor` operand whose dtype is real, and indices
-      lexicographically ordered.
-    sp_b: the other `SparseTensor` operand with the same requirements (and the
-      same shape).
+    sp_a: a `SparseTensor` or `SparseTensorValue` operand whose dtype is real,
+      and indices lexicographically ordered.
+    sp_b: the other `SparseTensor` or `SparseTensorValue` operand with the same
+      requirements (and the same shape).
     name: optional name of the operation.
   Returns:
     output: the output SparseTensor.
+
+  Raises:
+    TypeError: If `sp_a` or `sp_b` is not a `SparseTensor` or
+      `SparseTensorValue`.
   """
+  sp_a = _convert_to_sparse_tensor(sp_a)
+  sp_b = _convert_to_sparse_tensor(sp_b)
   with ops.name_scope(
       name, "SparseSparseMaximum",
       [sp_a.indices, sp_a.values, sp_b.indices, sp_b.values]) as name:
@@ -2838,14 +2844,20 @@ def sparse_minimum(sp_a, sp_b, name=None):
     <tf.Tensor: shape=(1,), dtype=int64, numpy=array([7])>
 
   Args:
-    sp_a: a `SparseTensor` operand whose dtype is real, and indices
-      lexicographically ordered.
-    sp_b: the other `SparseTensor` operand with the same requirements (and the
-      same shape).
+    sp_a: a `SparseTensor` or `SparseTensorValue` operand whose dtype is real,
+      and indices lexicographically ordered.
+    sp_b: the other `SparseTensor` or `SparseTensorValue` operand with the same
+      requirements (and the same shape).
     name: optional name of the operation.
   Returns:
     output: the output SparseTensor.
+
+  Raises:
+    TypeError: If `sp_a` or `sp_b` is not a `SparseTensor` or
+      `SparseTensorValue`.
   """
+  sp_a = _convert_to_sparse_tensor(sp_a)
+  sp_b = _convert_to_sparse_tensor(sp_b)
   with ops.name_scope(
       name, "SparseSparseMinimum",
       [sp_a.indices, sp_a.values, sp_b.indices, sp_b.values]) as name:
