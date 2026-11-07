@@ -1416,12 +1416,14 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   auto set_op = [&op](const std::vector<int32_t>& strides,
                       const std::vector<int32_t>& ksizes,
                       const std::string& padding,
-                      const std::string& data_format) {
+                      const std::string& data_format,
+                      const std::vector<int32_t>& explicit_paddings = {}) {
     TF_CHECK_OK(NodeDefBuilder("test", "MaxPool")
                     .Input("input", 0, DT_FLOAT)
                     .Attr("strides", strides)
                     .Attr("ksize", ksizes)
                     .Attr("padding", padding)
+                    .Attr("explicit_paddings", explicit_paddings)
                     .Attr("data_format", data_format)
                     .Finalize(&op.node_def));
   };
@@ -1433,6 +1435,30 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   // all 1 strides, depth 2 filter
   set_op({1, 1, 1, 1}, {1, 1, 1, 2}, "VALID", "NHWC");
   INFER_OK(op, "[1,2,2,2]", "[d0_0,2,2,1]");
+
+  // A window one larger than the input produces an empty spatial dimension.
+  set_op({1, 1, 1, 1}, {1, 2, 2, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,1,2,3]", "[d0_0,0,1,3]");
+  // Integer division also truncates a small negative numerator to zero.
+  set_op({1, 2, 1, 1}, {1, 4, 2, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,1,2,3]", "[d0_0,0,1,3]");
+  // A substantially larger window still has a negative output size.
+  set_op({1, 1, 1, 1}, {1, 3, 2, 1}, "VALID", "NHWC");
+  INFER_ERROR("Negative dimension size", op, "[1,1,2,3]");
+
+  // Explicit padding inferring zero output dimension.
+  set_op({1, 2, 1, 1}, {1, 3, 2, 1}, "EXPLICIT", "NHWC",
+         {0, 0, 0, 1, 0, 0, 0, 0});
+  INFER_OK(op, "[1,1,2,3]", "[d0_0,0,1,3]");
+
+  // Explicit padding with gap >= 2 * stride returns error.
+  set_op({1, 2, 1, 1}, {1, 6, 2, 1}, "EXPLICIT", "NHWC",
+         {0, 0, 0, 1, 0, 0, 0, 0});
+  INFER_ERROR("Negative dimension size", op, "[1,1,2,3]");
+
+  // NCHW format with width smaller than filter produces empty width dimension.
+  set_op({1, 1, 1, 1}, {1, 1, 2, 2}, "VALID", "NCHW");
+  INFER_OK(op, "[1,4,4,1]", "[d0_0,4,3,0]");
 
   // depth 3 stride, 1x1x1 filter, NCHW
   set_op({1, 3, 1, 1}, {1, 1, 1, 1}, "VALID", "NCHW");
@@ -1476,6 +1502,16 @@ TEST(CommonShapeFnsTest, MaxPoolV22DShapeTest) {
   // all 1 strides, depth 2 filter
   set_op({1, 1, 1, 1}, {1, 1, 1, 2}, "VALID", "NHWC");
   INFER_OK(op, "[1,2,2,2];[4];[4]", "[d0_0,2,2,1]");
+
+  // A window one larger than the input produces an empty spatial dimension.
+  set_op({1, 1, 1, 1}, {1, 2, 2, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,1,2,3];[4];[4]", "[d0_0,0,1,3]");
+  // Integer division also truncates a small negative numerator to zero.
+  set_op({1, 2, 1, 1}, {1, 4, 2, 1}, "VALID", "NHWC");
+  INFER_OK(op, "[1,1,2,3];[4];[4]", "[d0_0,0,1,3]");
+  // A substantially larger window still has a negative output size.
+  set_op({1, 1, 1, 1}, {1, 3, 2, 1}, "VALID", "NHWC");
+  INFER_ERROR("Negative dimension size", op, "[1,1,2,3];[4];[4]");
 
   // depth 3 stride, 1x1x1 filter, NCHW
   set_op({1, 3, 1, 1}, {1, 1, 1, 1}, "VALID", "NCHW");
