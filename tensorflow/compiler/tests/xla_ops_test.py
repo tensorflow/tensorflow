@@ -315,6 +315,15 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           expected=np.array([-1, -2, -3], dtype=dtype),
       )
 
+  def testSelfAdjointEigComplexEigenvalues(self):
+    self._assertOpOutputMatchesExpected(
+        lambda a: xla.self_adjoint_eig(
+            a, lower=True, max_iter=100, epsilon=1e-6
+        )[0],
+        args=(np.array([[2, 1j], [-1j, 2]], dtype=np.complex64),),
+        expected=np.array([1, 3], dtype=np.complex64),
+    )
+
   def testPad(self):
     for dtype in self.numeric_types:
 
