@@ -128,7 +128,11 @@ bool IsLayoutSupportedByYnn(const Shape& shape) {
   if (shape.dimensions().empty()) {
     return true;
   }
-  if (shape.dimensions().size() > YNN_MAX_TENSOR_RANK) {
+  // YNNPACK requires all tensor ranks to be strictly less than
+  // YNN_MAX_TENSOR_RANK (8). A tensor with rank >= YNN_MAX_TENSOR_RANK cannot
+  // be represented in YNNPACK subgraphs and triggers assertion failures
+  // during runtime execution.
+  if (shape.dimensions().size() >= YNN_MAX_TENSOR_RANK) {
     // TODO(b/460602165): We should eliminate this limitation.
     return false;
   }
@@ -170,6 +174,10 @@ bool IsBitcastOpSupportedByYnn(const HloInstruction* hlo) {
   const HloInstruction* input = hlo->operand(0);
   if (!IsLayoutSupportedByYnn(hlo->shape()) ||
       !IsLayoutSupportedByYnn(input->shape())) {
+    return false;
+  }
+  if (hlo->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      input->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
     return false;
   }
 
@@ -247,6 +255,10 @@ bool IsBroadcastOpSupportedByYnn(const HloInstruction* hlo) {
       !IsLayoutSupportedByYnn(input->shape())) {
     return false;
   }
+  if (hlo->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      input->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
+    return false;
+  }
 
   // YNNPACK's broadcast operation can insert new dimensions, but not transpose.
   // HLO broadcast is more general. For now, let's only support "simple"
@@ -297,6 +309,10 @@ bool IsSliceOpSupportedByYnn(const HloInstruction* hlo) {
       !IsLayoutSupportedByYnn(input->shape())) {
     return false;
   }
+  if (hlo->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      input->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
+    return false;
+  }
 
   return hlo->shape().element_type() == input->shape().element_type();
 }
@@ -341,6 +357,9 @@ bool IsIotaSupportedByYnn(const HloInstruction* hlo) {
   CHECK_EQ(hlo->opcode(), HloOpcode::kIota);
   PrimitiveType type = hlo->shape().element_type();
   if (type != F32 && type != S32) {
+    return false;
+  }
+  if (hlo->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
     return false;
   }
   return IsLayoutSupportedByYnn(hlo->shape());
@@ -436,6 +455,12 @@ absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo,
     return false;
   }
 
+  if (lhs_shape.dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      rhs_shape.dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      out_shape.dimensions().size() >= YNN_MAX_TENSOR_RANK) {
+    return false;
+  }
+
   // Check shapes.
   ABSL_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
                                                    rhs_shape, out_shape));
@@ -485,6 +510,10 @@ bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo) {
   const HloInstruction* input = hlo->operand(0);
   if (!IsLayoutSupportedByYnn(hlo->shape()) ||
       !IsLayoutSupportedByYnn(input->shape())) {
+    return false;
+  }
+  if (hlo->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      input->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
     return false;
   }
 
@@ -538,8 +567,8 @@ bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo) {
 
     // The ReduceWindow operation is implemented by expanding the input tensor
     // with window dimensions. We need to make sure that the resulting tensor
-    // rank does not exceed YNNPACK limit.
-    if (reduce_window->shape().dimensions().size() + new_axis_count >
+    // rank does not reach or exceed the YNNPACK limit.
+    if (reduce_window->shape().dimensions().size() + new_axis_count >=
         YNN_MAX_TENSOR_RANK) {
       return false;
     }
@@ -635,6 +664,12 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
   if (!IsLayoutSupportedByYnn(lhs_shape) ||
       !IsLayoutSupportedByYnn(rhs_shape) ||
       !IsLayoutSupportedByYnn(out_shape)) {
+    return false;
+  }
+
+  if (lhs_shape.dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      rhs_shape.dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      out_shape.dimensions().size() >= YNN_MAX_TENSOR_RANK) {
     return false;
   }
 

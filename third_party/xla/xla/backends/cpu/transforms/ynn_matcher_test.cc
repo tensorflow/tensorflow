@@ -79,6 +79,21 @@ TEST_F(YnnE2eTest, DisabledYnnKeepsLargeM1DotUnfused) {
   )");
 }
 
+TEST_F(YnnE2eTest, DoNotFuseHighRankTensors) {
+  // Tensors with rank >= YNN_MAX_TENSOR_RANK (8) are not supported by YNNPACK
+  // and must not be fused into __ynn_fusion (fixes #112135).
+  const char* hlo_text = R"(
+  HloModule high_rank_tensor
+
+  ENTRY main {
+    lhs = f32[2,2,2,2,2,2,2,2] parameter(0)
+    rhs = f32[2,2,2,2,2,2,2,2] parameter(1)
+    ROOT add = f32[2,2,2,2,2,2,2,2] add(lhs, rhs)
+  }
+  )";
+  MatchOptimizedHlo(hlo_text, "CHECK-NOT: __ynn_fusion");
+}
+
 class YnnReduceTest : public HloInterpreterReferenceMixin<HloTestBase> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {

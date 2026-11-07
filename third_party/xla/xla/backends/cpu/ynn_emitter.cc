@@ -103,6 +103,13 @@ absl::StatusOr<uint32_t> DefineTensorValue(
                     instr->ToString());
   }
 
+  if (instr->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
+    return Internal(
+        "YNNPACK instruction rank %d exceeds maximum supported rank %d: %s",
+        instr->shape().dimensions().size(), YNN_MAX_TENSOR_RANK,
+        instr->ToString());
+  }
+
   auto dims = YnnDimensions(instr->shape());
   ABSL_ASSIGN_OR_RETURN(auto type, YnnType(instr->shape().element_type()));
 
@@ -161,6 +168,13 @@ absl::StatusOr<uint32_t> DefineConstant(ynn_subgraph_t subgraph,
                     instr->ToString());
   }
 
+  if (instr->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
+    return Internal(
+        "YNNPACK constant rank %d exceeds maximum supported rank %d: %s",
+        instr->shape().dimensions().size(), YNN_MAX_TENSOR_RANK,
+        instr->ToString());
+  }
+
   auto dims = YnnDimensions(instr->shape());
   ABSL_ASSIGN_OR_RETURN(auto type, YnnType(instr->shape().element_type()));
 
@@ -180,6 +194,13 @@ absl::StatusOr<uint32_t> DefineParameter(ynn_subgraph_t subgraph,
                                          const void* data = nullptr) {
   VLOG(3) << absl::StreamFormat("Define tensor value for parameter: %s",
                                 param->ToString());
+
+  if (param->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
+    return Internal(
+        "YNNPACK parameter rank %d exceeds maximum supported rank %d: %s",
+        param->shape().dimensions().size(), YNN_MAX_TENSOR_RANK,
+        param->ToString());
+  }
 
   auto dims = YnnDimensions(param->shape());
   ABSL_ASSIGN_OR_RETURN(auto type, YnnType(param->shape().element_type()));
@@ -263,6 +284,11 @@ absl::StatusOr<uint32_t> DefineBroadcastOp(ynn_subgraph_t subgraph,
 
   auto dimensions = instr->dimensions();
   auto output_dims = instr->shape().dimensions();
+
+  if (output_dims.size() >= YNN_MAX_TENSOR_RANK) {
+    return Internal("Broadcast rank %d exceeds YNNPACK maximum %d: %s",
+                    output_dims.size(), YNN_MAX_TENSOR_RANK, instr->ToString());
+  }
 
   // We need to reshape the input to have 1s in the broadcasted dimensions.
   std::vector<int32_t> new_dims;
@@ -370,6 +396,10 @@ absl::StatusOr<uint32_t> DefineIotaOp(ynn_subgraph_t subgraph,
 
   const Shape& shape = instr->shape();
   int64_t rank = shape.dimensions().size();
+  if (rank >= YNN_MAX_TENSOR_RANK) {
+    return Internal("Iota tensor rank %d exceeds YNNPACK maximum %d: %s",
+                    rank, YNN_MAX_TENSOR_RANK, instr->ToString());
+  }
   int64_t iota_dim = iota->iota_dimension();
 
   PrimitiveType element_type = shape.element_type();
@@ -400,8 +430,9 @@ absl::StatusOr<uint32_t> DefineIotaOp(ynn_subgraph_t subgraph,
 
   if (rank > 1) {
     // Broadcast the 1D iota to the expected rank.
+    // Insert rank - 1 axes around the iota dimension.
     int32_t new_axes[YNN_MAX_TENSOR_RANK];
-    for (int i = 0; i < rank; ++i) {
+    for (int i = 0; i < rank - 1; ++i) {
       new_axes[i] = i < iota_dim ? i : i + 1;
     }
     uint32_t full_rank_id = YNN_INVALID_VALUE_ID;
@@ -478,6 +509,12 @@ absl::StatusOr<uint32_t> DefineReduceOp(ynn_subgraph_t subgraph,
   const HloReduceInstruction* reduce_instr = Cast<HloReduceInstruction>(instr);
   const HloInstruction* input = instr->operand(0);
   const HloInstruction* init = instr->operand(1);
+
+  if (input->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      instr->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
+    return Internal("ReduceWindow rank exceeds YNNPACK maximum %d: %s",
+                    YNN_MAX_TENSOR_RANK, instr->ToString());
+  }
   CHECK_EQ(init->shape().element_type(), instr->shape().element_type());
 
   CHECK_EQ(reduce_instr->to_apply()->num_parameters(), 2);
@@ -515,6 +552,13 @@ absl::StatusOr<uint32_t> DefineDotOp(
   const Shape& lhs_shape = lhs->shape();
   const Shape& rhs_shape = rhs->shape();
   const Shape& out_shape = instr->shape();
+
+  if (lhs_shape.dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      rhs_shape.dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      out_shape.dimensions().size() >= YNN_MAX_TENSOR_RANK) {
+    return Internal("Dot rank exceeds YNNPACK maximum %d: %s",
+                    YNN_MAX_TENSOR_RANK, instr->ToString());
+  }
 
   DotDimensionNumbers dot_dimensions = instr->dot_dimension_numbers();
   ABSL_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
@@ -556,6 +600,12 @@ absl::StatusOr<uint32_t> DefineReduceWindowOp(ynn_subgraph_t subgraph,
 
   const HloInstruction* input = instr->operand(0);
   const HloInstruction* init = instr->operand(1);
+
+  if (input->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK ||
+      instr->shape().dimensions().size() >= YNN_MAX_TENSOR_RANK) {
+    return Internal("ReduceWindow rank exceeds YNNPACK maximum %d: %s",
+                    YNN_MAX_TENSOR_RANK, instr->ToString());
+  }
 
   ABSL_ASSIGN_OR_RETURN(auto input_id, FindTensorValue(tensor_ids, input));
   ABSL_ASSIGN_OR_RETURN(auto init_id, FindTensorValue(tensor_ids, init));
