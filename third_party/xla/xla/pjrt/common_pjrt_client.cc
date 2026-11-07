@@ -871,11 +871,11 @@ CommonPjRtClient::CompileAndLoad(MaybeOwningMlirModule module,
   std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
       addressable_device_logical_ids;
   std::vector<PjRtDevice*> addressable_devices;
-  ABSL_ASSIGN_OR_RETURN(
-      auto load_state,
-      MakeLoadStateAndResolveAddressableDevices(
-          /*executable=*/nullptr, &options, addressable_device_logical_ids,
-          addressable_devices, device_assignment, load_options));
+  ABSL_RETURN_IF_ERROR(ResolveAddressableDevices(
+      /*executable=*/nullptr, &options, addressable_device_logical_ids,
+      addressable_devices, device_assignment, load_options));
+  ABSL_ASSIGN_OR_RETURN(tsl::RCReference<PjRtExecutableLoadState> load_state,
+                   raw_client()->MakeLoadState(load_options));
 
   ABSL_ASSIGN_OR_RETURN(auto info,
                    InferDispatchInfo(topology, module.mlir_module(), options,
@@ -1001,8 +1001,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CommonPjRtClient::Load(
   return loaded_executable;
 }
 
-absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
-CommonPjRtClient::MakeLoadStateAndResolveAddressableDevices(
+absl::Status CommonPjRtClient::ResolveAddressableDevices(
     PjRtExecutable* executable, CompileOptions* compile_options,
     std::vector<PjRtLoadedExecutable::LogicalDeviceIds>&
         addressable_device_logical_ids,
@@ -1039,7 +1038,7 @@ CommonPjRtClient::MakeLoadStateAndResolveAddressableDevices(
     }
   }
 
-  return raw_client()->MakeLoadState(load_options);
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -1103,11 +1102,11 @@ CommonPjRtClient::LoadInternal(
         &num_replicas, &num_partitions, &device_assignment));
   }
 
-  ABSL_ASSIGN_OR_RETURN(
-      auto load_state,
-      MakeLoadStateAndResolveAddressableDevices(
-          executable.get(), &compile_options, addressable_device_logical_ids,
-          addressable_devices, device_assignment, load_options));
+  ABSL_RETURN_IF_ERROR(ResolveAddressableDevices(
+      executable.get(), &compile_options, addressable_device_logical_ids,
+      addressable_devices, device_assignment, load_options));
+  ABSL_ASSIGN_OR_RETURN(tsl::RCReference<PjRtExecutableLoadState> load_state,
+                   raw_client()->MakeLoadState(load_options));
   ABSL_RETURN_IF_ERROR(load_state->Preload(executable.get()));
   const auto& ex_options = compile_options.executable_build_options;
   const bool xla_dump_hlo_unoptimized_snapshots =

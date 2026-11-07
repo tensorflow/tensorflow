@@ -732,8 +732,7 @@ class CommonPjRtClient : public PjRtClient {
 
   // TODO(parkers): Remove the need for this temporary function once more
   // backend differences are resolved.
-  virtual absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
-  MakeLoadStateAndResolveAddressableDevices(
+  virtual absl::Status ResolveAddressableDevices(
       PjRtExecutable* executable, CompileOptions* compile_options,
       std::vector<PjRtLoadedExecutable::LogicalDeviceIds>&
           addressable_device_logical_ids,

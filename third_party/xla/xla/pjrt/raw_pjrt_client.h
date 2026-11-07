@@ -336,9 +336,7 @@ class PjRtRawClient {
   }
 
   virtual absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
-  MakeLoadState(const LoadOptions& load_options) {
-    LOG(FATAL) << "Implement MakeLoadState()";
-  }
+  MakeLoadState(const LoadOptions& load_options) = 0;
 
   virtual std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       LocalDeviceId local_device_id, absl::string_view description) const {
