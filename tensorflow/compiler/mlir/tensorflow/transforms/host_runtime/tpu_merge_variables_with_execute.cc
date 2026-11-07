@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
