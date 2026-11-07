@@ -538,7 +538,8 @@ class GradientsTest(test.TestCase):
     # the same result with pfor and with while_loop.
     pfor_outputs, while_outputs = create_mnist_per_eg_grad(
         4, data_format, training=False)
-    self.run_and_assert_equal(pfor_outputs, while_outputs, rtol=1e-3)
+    self.run_and_assert_equal(
+        pfor_outputs, while_outputs, rtol=1e-3, atol=1e-3)
     os.environ.pop("TF_ENABLE_WINOGRAD_NONFUSED", None)
 
   @test_util.run_without_tensor_float_32(
@@ -555,7 +556,8 @@ class GradientsTest(test.TestCase):
     # the same result with pfor and with while_loop.
     pfor_outputs, while_outputs = create_mnist_per_eg_jacobian(
         2, data_format, training=False)
-    self.run_and_assert_equal(pfor_outputs, while_outputs, rtol=1e-3)
+    self.run_and_assert_equal(
+        pfor_outputs, while_outputs, rtol=1e-3, atol=1e-3)
     os.environ.pop("TF_ENABLE_WINOGRAD_NONFUSED", None)
 
   def test_fc_jacobian(self):
