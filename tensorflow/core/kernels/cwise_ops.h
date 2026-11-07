@@ -49,6 +49,27 @@ struct scalar_arg_op<std::complex<double>> {
     return ::atan2(a.imag(), a.real());
   }
 };
+
+// Workaround for open-source Eigen submodule lacking the upstream IEEE-754
+// compliant hypot fix on GPU. Without this specialization, GPU complex abs
+// outputs NaN for inputs like (inf + nan*j) instead of +inf.
+template <>
+struct scalar_abs_op<std::complex<float>> {
+  typedef typename Eigen::NumTraits<std::complex<float>>::Real result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(
+      const std::complex<float>& a) const {
+    return ::hypotf(a.real(), a.imag());
+  }
+};
+
+template <>
+struct scalar_abs_op<std::complex<double>> {
+  typedef typename Eigen::NumTraits<std::complex<double>>::Real result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE double operator()(
+      const std::complex<double>& a) const {
+    return ::hypot(a.real(), a.imag());
+  }
+};
 #endif
 
 template <typename Scalar, typename Exponent>
