@@ -123,6 +123,65 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
                     "Must provide as many biases as the channel size: ",
                     bias_tensor.shape().DebugString(), " vs. ", channel)));
 
+    // If output is empty, there is nothing to compute.
+    // Allocate the output tensor and return early to avoid oneDNN primitive
+    // descriptor creation failures on zero-sized dimensions.
+    if (batch == 0 || channel == 0) {
+      MklDnnShape output_mkl_shape;
+      output_mkl_shape.SetMklTensor(false);
+      TensorShape output_tf_shape({batch, channel});
+      Tensor* dst_tensor = nullptr;
+      AllocateOutputSetMklShape(ctx, kOutputIndex_Dst, &dst_tensor,
+                                output_tf_shape, output_mkl_shape,
+                                native_format);
+      return;
+    }
+
+    if (k == 0) {
+      MklDnnShape output_mkl_shape;
+      output_mkl_shape.SetMklTensor(false);
+      TensorShape output_tf_shape({batch, channel});
+      Tensor* dst_tensor = nullptr;
+      AllocateOutputSetMklShape(ctx, kOutputIndex_Dst, &dst_tensor,
+                                output_tf_shape, output_mkl_shape,
+                                native_format);
+      if constexpr (!std::is_same_v<Toutput, qint8> &&
+                    !std::is_same_v<Toutput, quint8> &&
+                    !std::is_same_v<Toutput, qint32>) {
+        Toutput* dst_data =
+            const_cast<Toutput*>(dst_tensor->flat<Toutput>().data());
+        const Tbias* bias_data = bias_tensor.flat<Tbias>().data();
+        const U* add_data =
+            fuse_add_ ? ctx->input(input_idx_add_).flat<U>().data() : nullptr;
+        for (int64_t b = 0; b < batch; ++b) {
+          for (int64_t c = 0; c < channel; ++c) {
+            float val = static_cast<float>(bias_data[c]);
+            if (fuse_add_ && add_data != nullptr) {
+              val += static_cast<float>(add_data[b * channel + c]);
+            }
+            if (fused_ops_.size() == 2) {
+              const string& post_op = fused_ops_[1];
+              if (post_op == "Relu") {
+                val = std::max(0.0f, val);
+              } else if (post_op == "Relu6") {
+                val = std::min(6.0f, std::max(0.0f, val));
+              } else if (post_op == "LeakyRelu") {
+                val = val < 0.0f ? leakyrelu_alpha_ * val : val;
+              } else if (post_op == "Elu") {
+                val = val < 0.0f ? std::expm1(val) : val;
+              } else if (post_op == "Tanh") {
+                val = std::tanh(val);
+              } else if (post_op == "Sigmoid") {
+                val = 1.0f / (1.0f + std::exp(-val));
+              }
+            }
+            dst_data[b * channel + c] = static_cast<Toutput>(val);
+          }
+        }
+      }
+      return;
+    }
+
     // For inputs s[batch, k], w[k, channel] and b[channel], the primitive
     // dims should be described like this:
     //   s[batch, k] * w^T[channel, k] + b[channel] = dst[batch, channel]

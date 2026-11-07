@@ -27,6 +27,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test as test_lib
 
 # TODO(yangzihao): Currently matmul autotuning is disabled by default. Use
@@ -71,6 +72,17 @@ class MatMulAddFusionTest(test_lib.TestCase):
     x = constant_op.constant(np.ones([1, 7], dtype=np.float32))
     res = f(x)
     self.assertEqual(tuple(res.shape), (7, 7))
+
+  def testMatMulZeroDimensionWithBiasAdd(self):
+    @def_function.function
+    def f(x, w, b):
+      return nn_ops.bias_add(math_ops.matmul(x, w), b)
+
+    x = constant_op.constant(np.ones([1, 10], dtype=np.float32))
+    w = constant_op.constant(np.zeros([10, 0], dtype=np.float32))
+    b = constant_op.constant(np.zeros([0], dtype=np.float32))
+    res = f(x, w, b)
+    self.assertEqual(tuple(res.shape), (1, 0))
 
 
 @test_util.with_eager_op_as_function

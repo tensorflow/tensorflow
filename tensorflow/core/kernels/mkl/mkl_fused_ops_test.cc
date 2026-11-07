@@ -1047,6 +1047,22 @@ TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndLeakyRelu) {
                           {"BiasAdd", "LeakyRelu"});
 }
 
+TYPED_TEST_P(MklFusedMatMulOpTest, ZeroOutputChannel) {
+  const int batch = 3;
+  const int input_channel = 4;
+  const int output_channel = 0;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel, {"BiasAdd"});
+}
+
+TYPED_TEST_P(MklFusedMatMulOpTest, ZeroBatch) {
+  const int batch = 0;
+  const int input_channel = 4;
+  const int output_channel = 5;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel, {"BiasAdd"});
+}
+
 REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,  //
                             WithBias,              //
                             WithBiasAndRelu,       //
@@ -1055,7 +1071,9 @@ REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,  //
                             WithBiasAndTanh,       //
                             WithBiasAndLeakyRelu,  //
                             WithBiasAndSigmoid,    //
-                            WithBiasAndAdd);
+                            WithBiasAndAdd,        //
+                            ZeroOutputChannel,     //
+                            ZeroBatch);
 
 using MklFusedMatMulDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,
