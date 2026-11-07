@@ -765,6 +765,176 @@ TEST_F(ConstantFoldingTest, MulConvPushDownTest_Conv3D_NCDHW_3x1x1x1Const) {
       /*expect_folded=*/false);
 }
 
+TEST_F(ConstantFoldingTest, MulConvPushDownWithValidControlDependencyOnConst) {
+  // A control dependency from "conv" to the multiplier "c" is moved to the
+  // filter by the rewrite, so the rewrite still applies.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape({1, 4, 4, 1}));
+  Output filter = ops::Const(s.WithOpName("filter"), 2.0f, {1, 1, 1, 1});
+  Output conv =
+      ops::Conv2D(s.WithOpName("conv"), x, filter, {1, 1, 1, 1}, "VALID");
+  Output c = ops::Const(s.WithOpName("c").WithControlDependencies(conv), 3.0f);
+  Output mul = ops::Mul(s.WithOpName("mul"), c, conv);
+
+  GrapplerItem item;
+  item.fetch = {"mul"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  bool found = false;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "mul") {
+      found = true;
+      EXPECT_EQ(node.op(), "Conv2D");
+    }
+  }
+  EXPECT_TRUE(found);
+
+  Tensor x_t(DT_FLOAT, TensorShape({1, 4, 4, 1}));
+  test::FillIota<float>(&x_t, 1.0f);
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
+  auto tensors = EvaluateNodes(output, item.fetch, {{"x", x_t}});
+  ASSERT_EQ(tensors_expected.size(), 1);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-5);
+}
+
+TEST_F(ConstantFoldingTest, MulConvPushDownWithControlDependencyOnMul) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape({1, 4, 4, 1}));
+  Output filter = ops::Const(s.WithOpName("filter"), 2.0f, {1, 1, 1, 1});
+  Output conv =
+      ops::Conv2D(s.WithOpName("conv"), x, filter, {1, 1, 1, 1}, "VALID");
+  Output c = ops::Const(s.WithOpName("c"), 3.0f);
+  ops::Mul mul(s.WithOpName("mul").WithControlDependencies(conv), c, conv);
+
+  GrapplerItem item;
+  item.fetch = {"mul"};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+  // Scope must retain the redundant control edge that the rewrite removes.
+  NodeMap input_nodes(&item.graph);
+  const NodeDef* input_mul = input_nodes.GetNode("mul");
+  ASSERT_NE(input_mul, nullptr);
+  ASSERT_EQ(input_mul->input_size(), 3);
+  EXPECT_EQ(input_mul->input(2), "^conv");
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+  NodeMap output_nodes(&output);
+  const NodeDef* output_mul = output_nodes.GetNode("mul");
+  ASSERT_NE(output_mul, nullptr);
+  EXPECT_EQ(output_mul->op(), "Conv2D");
+  for (const NodeDef& node : output.node()) {
+    for (const std::string& input : node.input()) {
+      EXPECT_NE(output_nodes.GetNode(input), nullptr) << node.name();
+    }
+  }
+
+  Tensor x_t(DT_FLOAT, TensorShape({1, 4, 4, 1}));
+  test::FillIota<float>(&x_t, 1.0f);
+  auto expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
+  auto actual = EvaluateNodes(output, item.fetch, {{"x", x_t}});
+  ASSERT_EQ(expected.size(), 1);
+  ASSERT_EQ(actual.size(), 1);
+  test::ExpectTensorNear<float>(expected[0], actual[0], 1e-5);
+}
+
+TEST_F(ConstantFoldingTest, ConstantPushDownWithMissingAddInput) {
+  using test::function::NDef;
+  for (bool missing_left : {false, true}) {
+    SCOPED_TRACE(missing_left);
+    GrapplerItem item;
+    item.graph = test::function::GDef(
+        {NDef("c", "Const", {},
+              {{"value", test::AsScalar<float>(2.0f)}, {"dtype", DT_FLOAT}}),
+         NDef("child", "Add",
+              {missing_left ? "missing" : "c", missing_left ? "c" : "missing"},
+              {{"T", DT_FLOAT}}),
+         NDef("parent", "Add", {"child", "c"}, {{"T", DT_FLOAT}})},
+        {});
+    item.fetch = {"parent"};
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+    CompareGraphs(item.graph, output);
+  }
+}
+
+TEST_F(ConstantFoldingTest, MulConvPushDownWithMissingConvInput) {
+  using test::function::NDef;
+  for (bool missing_left : {false, true}) {
+    SCOPED_TRACE(missing_left);
+    GrapplerItem item;
+    item.graph = test::function::GDef(
+        {NDef("c", "Const", {},
+              {{"value", test::AsScalar<float>(2.0f)}, {"dtype", DT_FLOAT}}),
+         NDef("child", "Conv2D",
+              {missing_left ? "missing" : "c", missing_left ? "c" : "missing"},
+              {{"T", DT_FLOAT},
+               {"strides", std::vector<int32_t>{1, 1, 1, 1}},
+               {"padding", "VALID"},
+               {"data_format", "NHWC"}}),
+         NDef("parent", "Mul", {"child", "c"}, {{"T", DT_FLOAT}})},
+        {});
+    item.fetch = {"parent"};
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+    CompareGraphs(item.graph, output);
+  }
+}
+
+TEST_F(ConstantFoldingTest, MulConvPushDownDoesNotLeaveDanglingInputs) {
+  // "z" has a control dependency on "conv". Folding "c" into the filter would
+  // rename "conv", so the rewrite must not leave "z" with a control input that
+  // names no node.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape({1, 4, 4, 1}));
+  Output filter = ops::Const(s.WithOpName("filter"), 2.0f, {1, 1, 1, 1});
+  Output conv =
+      ops::Conv2D(s.WithOpName("conv"), x, filter, {1, 1, 1, 1}, "VALID");
+  Output c = ops::Const(s.WithOpName("c"), 3.0f);
+  Output mul = ops::Mul(s.WithOpName("mul"), c, conv);
+  Output z = ops::Neg(s.WithOpName("z").WithControlDependencies(conv), x);
+  Output k = ops::Const(s.WithOpName("k"), 5.0f);
+  Output add = ops::Add(s.WithOpName("add"), k, z);
+
+  GrapplerItem item;
+  item.fetch = {"add", "mul"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  NodeMap node_map(&output);
+  for (const NodeDef& node : output.node()) {
+    for (const std::string& input : node.input()) {
+      EXPECT_NE(node_map.GetNode(input), nullptr)
+          << node.name() << " has an input that names no node: " << input;
+    }
+  }
+
+  Tensor x_t(DT_FLOAT, TensorShape({1, 4, 4, 1}));
+  test::FillIota<float>(&x_t, 1.0f);
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
+  auto tensors = EvaluateNodes(output, item.fetch, {{"x", x_t}});
+  ASSERT_EQ(tensors_expected.size(), 2);
+  ASSERT_EQ(tensors.size(), 2);
+  for (int i = 0; i < 2; ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-5);
+  }
+}
+
 TEST_F(ConstantFoldingTest, NeutralElement) {
   int kConst = 0;
   int kLike = 1;
@@ -2104,6 +2274,126 @@ TEST_F(ConstantFoldingTest, TransposeOnSize1DimsRemoval) {
   AddNode("out1", "Add", {"t1", "t2"}, {}, &want);
 
   CompareGraphs(want, got);
+}
+
+TEST_F(ConstantFoldingTest, TransposeWithValidVectorPermIsRemoved) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output x = ops::Placeholder(scope.WithOpName("x"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({3})));
+  Output perm = ops::Const(scope.WithOpName("perm"), {0}, {1});
+  ops::Transpose t(scope.WithOpName("t"), x, perm);
+  ops::Identity y(scope.WithOpName("y"), t);
+
+  GrapplerItem item;
+  item.fetch = {"y"};
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  bool found = false;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "t") {
+      found = true;
+      EXPECT_EQ(node.op(), "Identity");
+    }
+  }
+  EXPECT_TRUE(found);
+
+  const Tensor x_t = test::AsTensor<float>({1.0f, 2.0f, 3.0f});
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
+  auto tensors = EvaluateNodes(output, item.fetch, {{"x", x_t}});
+  ASSERT_EQ(tensors_expected.size(), 1);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
+TEST_F(ConstantFoldingTest, TransposeWithUnknownRankAndEmptyPermIsNotRemoved) {
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+       NDef("perm", "Const", {},
+            {{"value", test::AsTensor<int32_t>({})}, {"dtype", DT_INT32}}),
+       NDef("t", "Transpose", {"x", "perm"},
+            {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+       NDef("y", "Identity", {"t"}, {{"T", DT_FLOAT}})},
+      {});
+  item.fetch = {"y"};
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+  NodeMap nodes(&output);
+  const NodeDef* transpose = nodes.GetNode("t");
+  ASSERT_NE(transpose, nullptr);
+  EXPECT_EQ(transpose->op(), "Transpose");
+  ASSERT_EQ(transpose->input_size(), 2);
+  EXPECT_EQ(transpose->input(0), "x");
+  EXPECT_EQ(transpose->input(1), "perm");
+}
+
+TEST_F(ConstantFoldingTest, TransposeWithScalarPermIsNotRemoved) {
+  using test::function::NDef;
+  // The Transpose shape function accepts a permutation with fewer than two
+  // elements when the input rank is unknown, so the permutation can be a
+  // scalar here. It must not be read as a vector.
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+       NDef("perm", "Const", {},
+            {{"value", test::AsScalar<int32_t>(0)}, {"dtype", DT_INT32}}),
+       NDef("t", "Transpose", {"x", "perm"},
+            {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+       NDef("y", "Identity", {"t"}, {{"T", DT_FLOAT}})},
+      {});
+  item.fetch = {"y"};
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  bool found = false;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "t") {
+      found = true;
+      EXPECT_EQ(node.op(), "Transpose");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "x");
+      EXPECT_EQ(node.input(1), "perm");
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
+TEST_F(ConstantFoldingTest, TransposeWithNonIntegerPermIsNotRemoved) {
+  using test::function::NDef;
+  // The value of "perm" is a float tensor even though its dtype attr is
+  // int32. It must not be read as an integer tensor.
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+       NDef("perm", "Const", {},
+            {{"value", test::AsTensor<float>({0.0f})}, {"dtype", DT_INT32}}),
+       NDef("t", "Transpose", {"x", "perm"},
+            {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+       NDef("y", "Identity", {"t"}, {{"T", DT_FLOAT}})},
+      {});
+  item.fetch = {"y"};
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  bool found = false;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "t") {
+      found = true;
+      EXPECT_EQ(node.op(), "Transpose");
+    }
+  }
+  EXPECT_TRUE(found);
 }
 
 TEST_F(ConstantFoldingTest, RandomShuffleOnScalarRemoval) {
@@ -4152,6 +4442,72 @@ TEST_F(ConstantFoldingTest, SimplifyCase) {
     auto tensors = EvaluateNodes(optimized_graph, item.fetch, {{"x", kTwo}});
     ASSERT_EQ(tensors.size(), tensors_expected.size());
     test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+  }
+}
+
+// Builds y = Case(index, x) with branches XTimesTwo and NonZero, where index is
+// a Const node whose value is `index_value`.
+GraphDef CaseGraphWithConstIndex(const Tensor& index_value) {
+  using test::function::NDef;
+  AttrValue branches;
+  auto* f = branches.mutable_list()->add_func();
+  f->set_name("XTimesTwo");
+  (*f->mutable_attr())["T"].set_type(DT_FLOAT);
+  auto* g = branches.mutable_list()->add_func();
+  *g = *f;
+  g->set_name("NonZero");
+  return test::function::GDef(
+      {NDef("index", "Const", {},
+            {{"value", index_value}, {"dtype", DT_INT32}}),
+       NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
+       NDef("case", "Case", {"index", "x"},
+            {{"Tin", DataTypeSlice{DT_FLOAT}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
+             {"branches", branches}}),
+       NDef("y", "Identity", {"case"}, {{"T", DT_FLOAT}})},
+      {test::function::XTimesTwo(), test::function::NonZero()});
+}
+
+// The Case shape function does not check the rank of the branch index, and the
+// Case kernel rejects a non-scalar index at run time. Constant folding must
+// leave such a Case node alone.
+TEST_F(ConstantFoldingTest, SimplifyCaseWithNonScalarIndex) {
+  GrapplerItem item;
+  item.graph = CaseGraphWithConstIndex(test::AsTensor<int32_t>({0, 0}));
+  item.fetch = {"y"};
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef optimized_graph;
+  TF_ASSERT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &optimized_graph));
+
+  int case_count = 0;
+  for (const auto& node : optimized_graph.node()) {
+    EXPECT_NE(node.op(), "PartitionedCall");
+    if (node.op() == "Case") ++case_count;
+  }
+  EXPECT_EQ(case_count, 1);
+}
+
+// The value of "index" does not match its int32 dtype attr. Reading an int8
+// value as an int32 scalar would read past the end of its one byte buffer.
+TEST_F(ConstantFoldingTest, SimplifyCaseWithNonInt32IndexValue) {
+  for (const Tensor& index_value :
+       {test::AsScalar<int8_t>(0), test::AsScalar<int64_t>(0)}) {
+    GrapplerItem item;
+    item.graph = CaseGraphWithConstIndex(index_value);
+    item.fetch = {"y"};
+
+    ConstantFolding optimizer(/*cpu_device=*/nullptr);
+    GraphDef optimized_graph;
+    TF_ASSERT_OK(
+        optimizer.Optimize(/*cluster=*/nullptr, item, &optimized_graph));
+
+    int case_count = 0;
+    for (const auto& node : optimized_graph.node()) {
+      EXPECT_NE(node.op(), "PartitionedCall");
+      if (node.op() == "Case") ++case_count;
+    }
+    EXPECT_EQ(case_count, 1);
   }
 }
 

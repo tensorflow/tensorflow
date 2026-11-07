@@ -2204,7 +2204,15 @@ absl::Status ConstantFolding::RemoveShuffleOrTranspose(
   Tensor permutation_tensor;
   if (GetTensorFromConstNode(node->input(1), &permutation_tensor) &&
       properties.HasInputProperties(node->name())) {
+    if (permutation_tensor.dims() != 1 ||
+        (permutation_tensor.dtype() != DT_INT32 &&
+         permutation_tensor.dtype() != DT_INT64)) {
+      return absl::OkStatus();
+    }
     const auto& shape = properties.GetInputProperties(node->name())[0].shape();
+    if (shape.unknown_rank()) {
+      return absl::OkStatus();
+    }
     std::vector<int> permutation;
     for (int j = 0; j < permutation_tensor.NumElements(); ++j) {
       if (permutation_tensor.dtype() == DT_INT64) {
@@ -2573,6 +2581,9 @@ bool ConstantFolding::SimplifyCase(GraphDef* optimized_graph, NodeDef* node) {
   Tensor output_idx_t;
   if (!output_idx_t.FromProto(output_idx_node->attr().at("value").tensor()))
     return false;
+  if (output_idx_t.dims() != 0 || output_idx_t.dtype() != DT_INT32) {
+    return false;
+  }
   int output_idx = output_idx_t.scalar<int>()();
   const auto& func_list = node->attr().at("branches").list();
   if (output_idx < 0 || output_idx >= func_list.func_size()) return false;
@@ -3256,6 +3267,9 @@ bool ConstantFolding::PrepareConstantPushDown(
   // Get leaf nodes.
   ctx->left_leaf = node_map_->GetNode(ctx->op_child->input(0));
   ctx->right_leaf = node_map_->GetNode(ctx->op_child->input(1));
+  if (ctx->left_leaf == nullptr || ctx->right_leaf == nullptr) {
+    return false;
+  }
   ctx->left_leaf_is_const = IsReallyConstant(*ctx->left_leaf);
   ctx->right_leaf_is_const = IsReallyConstant(*ctx->right_leaf);
 
@@ -3600,6 +3614,9 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
   // Identify the nodes to swap.
   NodeDef* conv_left_child = node_map_->GetNode(conv_node->input(0));
   NodeDef* conv_right_child = node_map_->GetNode(conv_node->input(1));
+  if (conv_left_child == nullptr || conv_right_child == nullptr) {
+    return false;
+  }
   const bool conv_left_is_constant = IsReallyConstant(*conv_left_child);
   const bool conv_right_is_constant = IsReallyConstant(*conv_right_child);
   if (!conv_left_is_constant && !conv_right_is_constant) {
@@ -3629,6 +3646,15 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
 
   NodeDef* const_node =
       left_child_is_constant ? mul_left_child : mul_right_child;
+  // The convolution is renamed below, so any other node that reads it would be
+  // left with an input that names no node. The fanout check above leaves only
+  // control dependencies, and a control dependency from the convolution to the
+  // constant is moved below, so give up if there is any other consumer.
+  for (const NodeDef* conv_output : node_map_->GetOutputs(conv_node->name())) {
+    if (conv_output != node && conv_output != const_node) {
+      return false;
+    }
+  }
   const auto& const_props = properties.GetOutputProperties(const_node->name());
   if (const_props.empty()) {
     return false;
@@ -3654,6 +3680,9 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
     MaybeAddControlInput(conv_const_input, const_node, optimized_graph,
                          node_map_.get());
   }
+
+  MaybeRemoveControlInput(conv_node->name(), node, optimized_graph,
+                          node_map_.get());
 
   conv_node->set_name(node->name());
   node->set_name(mul_new_name);
