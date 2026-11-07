@@ -565,6 +565,20 @@ class QuantizedAddOp : public OpKernel {
       }
       OP_REQUIRES(context, vector_num_elements > 0,
                   absl::InvalidArgumentError("Must have some elements to add"));
+      // VectorTensorAddition only writes tensor_num_elements outputs, tiling
+      // the vector along the last dimension. Reject other 2-D broadcasts
+      // (e.g. [N, 1] + [1, M]) instead of leaving part of z uninitialized.
+      const bool x_is_vector = x.NumElements() < y.NumElements();
+      const BCast::Vec& tensor_bcast =
+          x_is_vector ? bcast.y_bcast() : bcast.x_bcast();
+      const BCast::Vec& vector_reshape =
+          x_is_vector ? bcast.x_reshape() : bcast.y_reshape();
+      OP_REQUIRES(context,
+                  tensor_bcast[0] == 1 && tensor_bcast[1] == 1 &&
+                      vector_reshape[0] == 1,
+                  absl::UnimplementedError(absl::StrCat(
+                      "Broadcast between ", x.shape().DebugString(), " and ",
+                      y.shape().DebugString(), " is not supported yet.")));
       VectorTensorAddition<T, Toutput>(
           vector_data, vector_min, vector_max, vector_num_elements, tensor_data,
           tensor_min, tensor_max, tensor_num_elements, min_z_value, max_z_value,
