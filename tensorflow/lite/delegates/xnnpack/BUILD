@@ -243,6 +243,7 @@ cc_library(
         ":flexbuffers_util",
         ":moe_delegate_kernel",
         ":quantization_util",
+        ":sdpa_delegate_kernel",
         ":tflite_with_xnnpack_dynamic_fully_connected",  # buildcleaner: keep
         ":tflite_with_xnnpack_logging",  # buildcleaner: keep
         ":tflite_with_xnnpack_qs8",  # buildcleaner: keep
@@ -295,6 +296,7 @@ cc_library(
         ":flexbuffers_util",
         ":moe_delegate_kernel",
         ":quantization_util",
+        ":sdpa_delegate_kernel",
         ":weight_cache",
         "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
@@ -1389,6 +1391,66 @@ cc_test(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "sdpa_delegate_kernel",
+    srcs = ["sdpa_delegate_kernel.cc"],
+    hdrs = ["sdpa_delegate_kernel.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
+    deps = [
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "@XNNPACK",
+        "@flatbuffers//:runtime_cc",
+        "@pthreadpool",
+    ],
+)
+
+cc_test(
+    name = "sdpa_delegate_kernel_test",
+    srcs = ["sdpa_delegate_kernel_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":sdpa_delegate_kernel",
+        ":test_main",
+        ":xnnpack_delegate",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:interpreter_options_header",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:builtin_ops_gms",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_test(
+    name = "sdpa_delegate_kernel_bench",
+    srcs = ["sdpa_delegate_kernel_bench.cc"],
+    tags = ["manual"],
+    deps = [
+        ":xnnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_benchmark//:benchmark",
+        "@com_google_benchmark//:benchmark_main",
         "@flatbuffers//:runtime_cc",
     ],
 )
