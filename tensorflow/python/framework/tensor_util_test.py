@@ -1511,6 +1511,86 @@ class ConstantValueTest(test.TestCase):
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllEqual(input_, c_val)
 
+  # Every Python-level index or slice produces a `StridedSlice`. These tests run
+  # inside an explicit graph because `constant_value()` short-circuits to
+  # `.numpy()` for eager tensors, and the branch under test is only reachable
+  # during graph construction.
+
+  def testStridedSliceScalarIndex(self):
+    with ops.Graph().as_default():
+      c = constant_op.constant([8, 9, 10])
+      self.assertEqual(8, tensor_util.constant_value(c[0]))
+      self.assertEqual(10, tensor_util.constant_value(c[-1]))
+
+  def testStridedSliceBasicSlices(self):
+    with ops.Graph().as_default():
+      c = constant_op.constant([8, 9, 10, 11])
+      self.assertAllEqual([8, 9], tensor_util.constant_value(c[0:2]))
+      self.assertAllEqual([9, 10, 11], tensor_util.constant_value(c[1:]))
+      self.assertAllEqual([8, 9], tensor_util.constant_value(c[:2]))
+
+  def testStridedSliceWithStrides(self):
+    with ops.Graph().as_default():
+      c = constant_op.constant([8, 9, 10, 11])
+      self.assertAllEqual([8, 10], tensor_util.constant_value(c[::2]))
+      self.assertAllEqual([11, 10, 9, 8], tensor_util.constant_value(c[::-1]))
+
+  def testStridedSliceMultipleAxes(self):
+    with ops.Graph().as_default():
+      m = constant_op.constant([[1, 2, 3], [4, 5, 6]])
+      self.assertAllEqual([4, 5, 6], tensor_util.constant_value(m[1, :]))
+      self.assertAllEqual([1, 4], tensor_util.constant_value(m[:, 0]))
+      self.assertAllEqual([[3, 2, 1]], tensor_util.constant_value(m[0:1, ::-1]))
+      self.assertEqual(6, tensor_util.constant_value(m[-1, -1]))
+
+  def testStridedSliceOfShape(self):
+    # `tf.shape(x)[i]` is the idiomatic way to read a single dimension and the
+    # case that motivated the branch: for a fully defined shape `tf.shape(x)`
+    # is already a `Const` op, and the branch folds a real `Shape` op as well,
+    # so the index should not silently drop the value again.
+    with ops.Graph().as_default():
+      x = array_ops.placeholder(dtypes.float32, shape=[2, 3])
+      s = array_ops.shape(x)
+      self.assertEqual(2, tensor_util.constant_value(s[0]))
+      self.assertEqual(3, tensor_util.constant_value(s[1]))
+      s_op = array_ops.shape_internal(x, optimize=False)
+      self.assertEqual("Shape", s_op.op.type)
+      self.assertEqual(2, tensor_util.constant_value(s_op[0]))
+
+  def testStridedSliceShrinkIgnoresBeginMask(self):
+    # On a shrunk axis the op reads `begin[i]` even when `begin_mask` is set.
+    # Python indexing never sets both bits at once, so this needs a direct op.
+    with ops.Graph().as_default():
+      c = constant_op.constant([8, 9, 10])
+      y = array_ops.strided_slice(
+          c, [2], [3], begin_mask=1, shrink_axis_mask=1)
+      self.assertEqual(10, tensor_util.constant_value(y))
+
+  def testStridedSlicePartial(self):
+    with ops.Graph().as_default():
+      p = array_ops.placeholder(dtypes.int32, shape=[])
+      packed = array_ops_stack.stack([constant_op.constant(7), p])
+      self.assertEqual(
+          7, tensor_util.constant_value(packed[0], partial=True))
+      self.assertIsNone(
+          tensor_util.constant_value(packed[1], partial=True))
+
+  def testStridedSliceNotStaticallyKnownIsNone(self):
+    with ops.Graph().as_default():
+      # Ellipsis and new_axis shift the meaning of the following indices, so the
+      # branch stays conservative there rather than risk a wrong value.
+      m = constant_op.constant([[1, 2], [3, 4]])
+      self.assertIsNone(tensor_util.constant_value(m[..., 0]))
+      self.assertIsNone(
+          tensor_util.constant_value(m[array_ops.newaxis, 0]))
+      # The sliced source is not constant.
+      x = array_ops.placeholder(dtypes.float32, shape=[4])
+      self.assertIsNone(tensor_util.constant_value(x[0:2]))
+      # The index is not constant.
+      c = constant_op.constant([1, 2, 3])
+      i = array_ops.placeholder(dtypes.int32, shape=[])
+      self.assertIsNone(tensor_util.constant_value(c[i]))
+
   def testLiteral(self):
     x = "hi"
     self.assertIs(x, tensor_util.constant_value(x))
