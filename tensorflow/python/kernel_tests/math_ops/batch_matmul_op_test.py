@@ -131,6 +131,24 @@ class BatchMatmulOpTest(test.TestCase):
     CompareEmpty(self, [3, 0, 2], [3, 2, 5])
     CompareEmpty(self, [3, 3, 2], [3, 2, 0])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testLargeContractionBatchedMatmul(self):
+    # Regression test for Issue #129498:
+    # oneDNN batched matmul returned wrong/nondeterministic results on CPU
+    # for batch 2-16 and contraction dimension K >= 20000 due to improper
+    # k-partitioning reduction activation on batched tensors.
+    rng = np.random.default_rng(0)
+    batch = 2
+    m = 5
+    k = 20000
+    n = 2
+    a = rng.standard_normal((batch, m, k)).astype(np.float32)
+    b = rng.standard_normal((batch, k, n)).astype(np.float32)
+    expected = np.matmul(a, b)
+    with ops.device("/cpu:0"):
+      result = self.evaluate(math_ops.matmul(a, b))
+    self.assertAllClose(result, expected, rtol=1e-3, atol=1e-3)
+
 
 def _GetBatchMatmulOpTest(dtype, adjoint_a, adjoint_b, use_static_shape):
 
