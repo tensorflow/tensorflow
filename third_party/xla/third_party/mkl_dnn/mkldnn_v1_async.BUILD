@@ -287,6 +287,7 @@ cc_library(
             "third_party/ittnotify/**/*.c",
         ],
         exclude = [
+            "src/common/logging.cpp",  # Dead code; exports bundled spdlog/fmt symbols.
             "src/cpu/aarch64/**",
             "src/cpu/ppc64/**",
             "src/cpu/rv64/**",
@@ -347,6 +348,7 @@ sycl_library(
             "src/gpu/intel/**/*.cpp",
         ],
         exclude = [
+            "src/common/logging.cpp",  # Dead code; exports bundled spdlog/fmt symbols.
             "src/cpu/aarch64/**",
             "src/cpu/ppc64/**",
             "src/cpu/rv64/**",
