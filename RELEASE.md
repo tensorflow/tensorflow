@@ -58,6 +58,12 @@
     indices and loop-invariant params now handles negative `batch_dims` and
     symbolic `axis` tensors instead of raising shape errors or
     `OperatorNotAllowedInGraphError`.
+*   `tf.transpose` and `tf.raw_ops.ConjugateTranspose`: negative permutation
+    indices are now supported in gradient calculations
+    (`tf.GradientTape.gradient`), Jacobians (`tf.GradientTape.jacobian`,
+    `batch_jacobian`), and loop vectorization (`tf.vectorized_map`, `pfor`).
+    Previously, negative indices caused `InvertPermutation` or `TransposeOp`
+    errors.
 
 ## Thanks to our Contributors
 
