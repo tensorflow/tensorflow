@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/lower_quant_annotations_helper.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimization_region_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tfl_carrier.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
@@ -443,6 +445,23 @@ class PropagateQuantizedTypeToCustomCallOp
 
 std::optional<bool> IsCustomCallLegal(mhlo::CustomCallOp op) {
   auto call_target_name = op.getCallTargetName();
+  // Inside an `odml.optimization_region` with optimize = "none" (body function
+  // stamped `odml.optimization = {optimize = "none"}`, see
+  // transforms/optimization_region_passes.h) a TFL op stays on the opaque
+  // CustomCall carrier through the whole TFL pipeline, so that no pass can
+  // rewrite it, and is materialized by MaterializeOptimizationRegionsPass at
+  // the end. `tfl.quantize` / `tfl.dequantize` are exempt: their legalization
+  // builds the quantized result type (and `tfl.pseudo_qconst` for constant
+  // inputs) from the parameters in backend_config, which the generic
+  // materialization cannot reproduce, so they always take the normal path.
+  if (call_target_name.starts_with("tfl.") &&
+      call_target_name != "tfl.quantize" &&
+      call_target_name != "tfl.dequantize") {
+    if (auto func = op->getParentOfType<func::FuncOp>();
+        func && TFL::IsOptimizeNoneRegion(func)) {
+      return true;
+    }
+  }
   if (call_target_name.starts_with("custom_call.")) {
     auto bc = op.getBackendConfig();
     if (!bc || mlir::isa<mlir::StringAttr>(*bc)) {
