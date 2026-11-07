@@ -83,5 +83,19 @@ TEST_F(RaggedFillEmptyRowsOpTest, FloatValues) {
       test::AsTensor<float>({-1., 2., 4., 6., -1., -1., 8., -1.}));
 }
 
+TEST_F(RaggedFillEmptyRowsOpTest, GradInvalidReverseIndexMap) {
+  TF_ASSERT_OK(NodeDefBuilder("tested_grad_op", "RaggedFillEmptyRowsGrad")
+                   .Input(FakeInput(DT_INT64))  // reverse_index_map
+                   .Input(FakeInput(DT_FLOAT))  // grad_values
+                   .Attr("T", DT_FLOAT)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<int64_t>(TensorShape({2}), {2, 10});  // reverse_index_map
+  AddInputFromArray<float>(TensorShape({4}), {0, 1, 2, 3});  // grad_values
+
+  const auto status = RunOpKernel();
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+}
+
 }  // namespace
 }  // namespace tensorflow
