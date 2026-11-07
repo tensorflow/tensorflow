@@ -188,6 +188,39 @@ class SparseToDenseTest(test.TestCase, parameterized.TestCase):
       output = sparse_ops.sparse_to_dense(indices, shape, 1, 0)
       self.assertIsNone(output.get_shape().ndims)
 
+  def testScalarOutput(self):
+    indices = array_ops.zeros([1, 0], dtype=dtypes.int32)
+    shape = array_ops.constant([], shape=[0], dtype=dtypes.int32)
+    values = array_ops.constant([7.0], dtype=dtypes.float32)
+    dense = sparse_ops.sparse_to_dense(indices, shape, values, 3.0)
+    self.assertEqual(dense.shape, ())
+    self.assertEqual(self.evaluate(dense), 7.0)
+
+  @test_util.run_gpu_only
+  def testGpuOversizeDenseShapeRaisesInvalidArgument(self):
+    # output_shape [1, 46342, 46342] has 2^31 + 97,316 elements,
+    # exceeding INT32_MAX. The host-side validation in ComputeAsync must
+    # reject this before any GPU memory is allocated.
+    indices = array_ops.constant([[0, 0, 1]], dtype=dtypes.int32)
+    shape = array_ops.constant([1, 46342, 46342], dtype=dtypes.int32)
+    values = array_ops.constant([7], dtype=dtypes.int8)
+    default_value = array_ops.constant(3, dtype=dtypes.int8)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "output_shape requires more than INT32_MAX"):
+      self.evaluate(
+          sparse_ops.sparse_to_dense(indices, shape, values, default_value)
+      )
+
+  @test_util.run_gpu_only
+  def testGpuOversizeRowCountScalarOutputRaisesInvalidArgument(self):
+    # indices of shape [2**31, 0] hold zero elements, so only the row-count
+    # (num_elems) check in ComputeAsync can reject them.
+    indices = array_ops.zeros([2**31, 0], dtype=dtypes.int32)
+    shape = array_ops.constant([], shape=[0], dtype=dtypes.int32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "indices has more than INT32_MAX"):
+      self.evaluate(sparse_ops.sparse_to_dense(indices, shape, 7.0, 3.0))
+
 
 if __name__ == "__main__":
   test.main()
