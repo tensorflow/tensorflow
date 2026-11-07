@@ -20,6 +20,7 @@ import sys
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,6 +33,146 @@ from tensorflow.python.platform import test
 
 
 class XentOpTest(xent_op_test_base.XentOpTestBase):
+
+  def _publicGradient(self, logits, labels):
+    logits = ops.convert_to_tensor(logits)
+    with backprop.GradientTape() as tape:
+      tape.watch(logits)
+      loss = nn_ops.softmax_cross_entropy_with_logits_v2(
+          labels=labels, logits=logits)
+    return tape.gradient(loss, logits)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSmallGradientAcrossDtypes(self):
+    for dtype, rtol in ((dtypes.float16, 1e-3), (dtypes.bfloat16, 1e-2),
+                        (dtypes.float32, 1e-6), (dtypes.float64, 1e-14)):
+      nptype = dtype.as_numpy_dtype
+      logit = nptype(37.42994775023705)
+      compute_type = np.float64 if dtype == dtypes.float64 else np.float32
+      tail_probability = nptype(np.exp(-compute_type(logit)))
+      dominant_gradient = (
+          -tail_probability if dtype == dtypes.float64 else nptype(0.0))
+      for batch_size in (0, 1, 4096):
+        for target_class in (0, 1):
+          for broadcast_labels in (False, True):
+            with self.subTest(dtype=dtype, batch_size=batch_size,
+                              target_class=target_class,
+                              broadcast_labels=broadcast_labels):
+              logits = np.zeros((batch_size, 2), dtype=nptype)
+              logits[:, target_class] = logit
+              labels = np.zeros(
+                  (1 if broadcast_labels else batch_size, 2), dtype=nptype)
+              labels[:, target_class] = 1.0
+              expected = np.full_like(logits, tail_probability)
+              expected[:, target_class] = dominant_gradient
+
+              gradient = self.evaluate(self._publicGradient(logits, labels))
+
+              self.assertAllClose(expected, gradient, rtol=rtol, atol=0.0)
+              if tail_probability > 0.0:
+                self.assertTrue(np.all(gradient[:, 1 - target_class] > 0.0))
+              if dtype == dtypes.float64:
+                self.assertTrue(np.all(gradient[:, target_class] < 0.0))
+                self.assertAllClose(gradient[:, 0], -gradient[:, 1], rtol=1e-14,
+                                    atol=1e-15)
+              else:
+                self.assertAllEqual(gradient[:, target_class],
+                                    np.zeros(batch_size, dtype=nptype))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSmallGradientThroughPublicApi(self):
+    with ops.device("/CPU:0"):
+      for dtype in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                    dtypes.float64):
+        with self.subTest(dtype=dtype):
+          logits = constant_op.constant([[37.42994775023705, 0.0]], dtype)
+          labels = constant_op.constant([[1.0, 0.0]], dtype)
+          with backprop.GradientTape() as tape:
+            tape.watch(logits)
+            loss = nn_ops.softmax_cross_entropy_with_logits_v2(
+                labels=labels, logits=logits)
+          gradient = self.evaluate(tape.gradient(loss, logits))
+          nptype = dtype.as_numpy_dtype
+          compute_type = np.float64 if dtype == dtypes.float64 else np.float32
+          tail = nptype(np.exp(-compute_type(nptype(37.42994775023705))))
+          dominant = -tail if dtype == dtypes.float64 else 0.0
+          self.assertAllClose(
+              [[dominant, tail]], gradient,
+              rtol=1e-14 if dtype == dtypes.float64 else 1e-2, atol=0.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDoublePreservesMultiClassTailGradient(self):
+    batch_size = 3
+    logits = np.zeros((batch_size, 10), dtype=np.float64)
+    logits[0, 0] = 40.0
+    logits[1, 9] = 40.0
+    logits[2, 4] = 3.0  # Confident, but its denominator does not round to one.
+    labels = np.zeros_like(logits)
+    labels[np.arange(batch_size), [0, 9, 4]] = 1.0
+
+    gradient = self.evaluate(self._publicGradient(logits, labels))
+    shifted = logits - np.max(logits, axis=1, keepdims=True)
+    probabilities = np.exp(shifted)
+    probabilities /= np.sum(probabilities, axis=1, keepdims=True)
+    expected = probabilities - labels
+    tail = np.exp(-40.0)
+    expected[0, 0] = -9.0 * tail
+    expected[1, 9] = -9.0 * tail
+
+    self.assertAllClose(expected, gradient, rtol=1e-13, atol=1e-15)
+    self.assertLess(gradient[0, 0], 0.0)
+    self.assertLess(gradient[1, 9], 0.0)
+    self.assertAllClose(np.sum(gradient, axis=-1), np.zeros(batch_size),
+                        atol=1e-15)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDoublePreservesNearlyUnitDenominator(self):
+    for num_classes in (2, 3):
+      for tail_logit in (33.0, 35.0, 37.42994775023705, 40.0):
+        for target_class in (0, num_classes - 1):
+          with self.subTest(num_classes=num_classes, tail_logit=tail_logit,
+                            target_class=target_class):
+            logits = np.zeros((1, num_classes), dtype=np.float64)
+            logits[0, target_class] = tail_logit
+            labels = np.zeros_like(logits)
+            labels[0, target_class] = 1.0
+            tail = np.exp(-tail_logit)
+            tail_probability = tail / (1.0 + (num_classes - 1) * tail)
+            expected = np.full_like(logits, tail_probability)
+            expected[0, target_class] = -(num_classes - 1) * tail_probability
+            self.assertAllClose(
+                expected, self._publicGradient(logits, labels),
+                rtol=1e-14, atol=0.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDoublePreservesSoftLabelsAndPositiveZero(self):
+    tail_logit = 37.42994775023705
+    logits = np.array([[tail_logit, 0.0]], dtype=np.float64)
+    labels = np.array([[0.5, 0.5]], dtype=np.float64)
+    gradient = self.evaluate(self._publicGradient(logits, labels))
+    self.assertLess(gradient[0, 0], 0.5)
+    self.assertAllClose(np.sum(gradient, axis=-1), [0.0], atol=1e-15)
+
+    single_gradient = self.evaluate(self._publicGradient(
+        np.array([[0.0]], dtype=np.float64),
+        np.array([[1.0]], dtype=np.float64)))
+    self.assertEqual(single_gradient[0, 0], 0.0)
+    self.assertFalse(np.signbit(single_gradient[0, 0]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDoublePreservesGeneralLabelGradients(self):
+    logits = np.array([[0., 0.], [0., 0.], [0., 0.], [np.inf, 0.],
+                       [np.nan, 0.], [-np.inf, -np.inf]],
+                      dtype=np.float64)
+    labels = np.array([[0., 0.], [2., 0.], [np.nan, 0.], [1., 0.],
+                       [1., 0.], [1., 0.]],
+                      dtype=np.float64)
+    gradient = self.evaluate(self._publicGradient(logits, labels))
+
+    self.assertAllClose([[0.5, 0.5], [-1.5, 0.5]], gradient[:2])
+    self.assertTrue(np.isnan(gradient[2, 0]))
+    self.assertAllClose(0.5, gradient[2, 1])
+    self.assertTrue(np.all(np.isnan(gradient[3:])))
 
   @test_util.run_deprecated_v1
   def testRankTooLarge(self):
