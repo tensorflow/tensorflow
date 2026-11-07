@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -127,6 +128,16 @@ class CumsumTest(xla_test.XLATestCase):
   def testComplex(self):
     x = np.array([[1 + 2j, 3 + 4j], [5 + 6j, 7 + 8j]])
     for dtype in self.complex_types:
+      for axis in (-2, -1, 0, 1):
+        self._compareAll(x.astype(dtype), axis)
+
+  def testIntegerTypes(self):
+    # Every partial sum stays below 128, so int8 does not overflow.
+    x = np.arange(0, 10).reshape([2, 5])
+    for dtype in (np.int8, np.int16, np.uint8, np.uint16, np.uint32,
+                  np.uint64):
+      if dtype not in self.int_types:
+        continue
       for axis in (-2, -1, 0, 1):
         self._compareAll(x.astype(dtype), axis)
 
@@ -308,6 +319,16 @@ class CumprodTest(xla_test.XLATestCase):
       for axis in (-2, -1, 0, 1):
         self._compareAll(x.astype(dtype), axis)
 
+  def testIntegerTypes(self):
+    # Every partial product stays below 128, so int8 does not overflow.
+    x = np.arange(1, 7).reshape([2, 3])
+    for dtype in (np.int8, np.int16, np.uint8, np.uint16, np.uint32,
+                  np.uint64):
+      if dtype not in self.int_types:
+        continue
+      for axis in (-2, -1, 0, 1):
+        self._compareAll(x.astype(dtype), axis)
+
   @test_util.disable_mlir_bridge("Error handling")
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
@@ -328,4 +349,7 @@ class CumprodTest(xla_test.XLATestCase):
 
 
 if __name__ == "__main__":
+  # Without this, an op with no XLA kernel for a type runs on the TF CPU
+  # kernel instead, and the test passes without testing XLA.
+  config.set_soft_device_placement(False)
   test.main()

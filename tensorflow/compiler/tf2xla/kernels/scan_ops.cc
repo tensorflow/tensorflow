@@ -34,9 +34,10 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 8> kSumAndProductTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT32, DT_INT64,
-     DT_COMPLEX64, DT_COMPLEX128}};
+constexpr std::array<DataType, 14> kSumAndProductTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_INT8, DT_INT16, DT_INT32,
+     DT_INT64, DT_UINT8, DT_UINT16, DT_UINT32, DT_UINT64, DT_COMPLEX64,
+     DT_COMPLEX128}};
 
 constexpr std::array<DataType, 4> kLogSumExpTypes = {
     {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE}};
