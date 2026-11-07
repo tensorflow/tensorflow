@@ -46,36 +46,54 @@ namespace odml {
 
 // Pattern matches the following reduction function for ArgMax/ArgMin coming
 // from PyTorch
-// %0 = compare{GT}(%lhs_value, %rhs_value)
-// %1 = select(%0, %lhs_value, %rhs_value)
+// %CMP = compare{GT}(%lhs_value, %rhs_value)
+// {% IF FLOAT %}
+// %1 = select(%CMP, %lhs_value, %rhs_value)
+// {% ELSE %}
+// %1 = minimum_or_maximum(%lhs_value, %rhs_value)
+// {% END IF %}
 // %2 = compare{EQ}(%lhs_value, %rhs_value)
 // %3 = minimum(%lhs_index, %rhs_index)
 // %4 = select(%0, %lhs_index, %rhs_index)
 // %5 = select(%2, %3, %4)
 // return %1, %5
 LogicalResult MatchReduceToArgMinMaxType2(mhlo::ReduceOp reduce_op,
-                                          bool is_argmax) {
+                                          bool is_float, bool is_argmax) {
   Block& body = reduce_op.getBody().front();
   if (body.getNumArguments() != 4) return failure();
 
   mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
   if (!return_op || return_op.getNumOperands() != 2) return failure();
 
-  mhlo::SelectOp value_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-      return_op.getOperand(0).getDefiningOp());
-  if (!value_select || value_select.getOnTrue() != body.getArgument(0) ||
-      value_select.getOnFalse() != body.getArgument(2))
-    return failure();
-
   auto compare_direction_included =
       is_argmax ? mhlo::ComparisonDirection::GE : mhlo::ComparisonDirection::LE;
-  mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-      value_select.getOperand(0).getDefiningOp());
-  if (!value_gt ||
-      value_gt.getComparisonDirection() != compare_direction_included ||
-      value_gt.getLhs() != body.getArgument(0) ||
-      value_gt.getRhs() != body.getArgument(2))
-    return failure();
+
+  auto match_cmp = [&](Operation* cmp) {
+    mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(cmp);
+    if (!value_gt ||
+        value_gt.getComparisonDirection() != compare_direction_included ||
+        value_gt.getLhs() != body.getArgument(0) ||
+        value_gt.getRhs() != body.getArgument(2))
+      return failure();
+    return success();
+  };
+
+  if (is_float) {
+    mhlo::SelectOp value_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
+        return_op.getOperand(0).getDefiningOp());
+    if (!value_select || value_select.getOnTrue() != body.getArgument(0) ||
+        value_select.getOnFalse() != body.getArgument(2))
+      return failure();
+    if (failed(match_cmp(value_select.getOperand(0).getDefiningOp())))
+      return failure();
+  } else {
+    Operation* min_or_max = return_op.getOperand(0).getDefiningOp();
+    if (!min_or_max || (is_argmax && !mlir::isa<mhlo::MaxOp>(min_or_max)) ||
+        (!is_argmax && !mlir::isa<mhlo::MinOp>(min_or_max)) ||
+        min_or_max->getOperand(0) != body.getArgument(0) ||
+        min_or_max->getOperand(1) != body.getArgument(2))
+      return failure();
+  }
 
   mhlo::SelectOp index_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
       return_op.getOperand(1).getDefiningOp());
@@ -92,7 +110,7 @@ LogicalResult MatchReduceToArgMinMaxType2(mhlo::ReduceOp reduce_op,
   if (!index_select_select ||
       index_select_select.getOnTrue() != body.getArgument(1) ||
       index_select_select.getOnFalse() != body.getArgument(3) ||
-      index_select_select.getOperand(0).getDefiningOp() != value_gt)
+      failed(match_cmp(index_select_select.getOperand(0).getDefiningOp())))
     return failure();
 
   mhlo::CompareOp value_eq = llvm::dyn_cast_or_null<mhlo::CompareOp>(
@@ -107,16 +125,21 @@ LogicalResult MatchReduceToArgMinMaxType2(mhlo::ReduceOp reduce_op,
 }
 
 // Pattern matches the following reduction function for ArgMax/ArgMin:
-// %0 = compare{GT}(%lhs_value, %rhs_value)
-// %1 = compare{NE}(%lhs_value, %lhs_value)
-// %2 = or(%0, %1)
-// %3 = select(%2, %lhs_value, %rhs_value)
+// {% IF FLOAT %}
+//   %0 = compare{GT}(%lhs_value, %rhs_value)
+//   %1 = compare{NE}(%lhs_value, %lhs_value)
+//   %CMP_OR = or(%0, %1)
+//   %RET0 = select(%CMP_OR, %lhs_value, %rhs_value)
+// {% ELSE %}
+//   %CMP_OR = compare{GT}(%lhs_value, %rhs_value)
+//   %RET0 = minimum_or_maximum(%lhs_value, %rhs_value)
+// {% END IF %}
 // %4 = compare{EQ}(%lhs_value, %rhs_value)
 // %5 = compare{LT}(%lhs_index, %rhs_index)
 // %6 = and(%4, %5)
-// %7 = or(%2, %6)
+// %7 = or(%CMP_OR, %6)
 // %8 = select(%7, %lhs_index, %rhs_index)
-// return %3, %8
+// return %RET0, %8
 // Also note that %1 may be folded if %lhs_value is of integer types.
 LogicalResult MatchReduceToArgMinMaxType1(mhlo::ReduceOp reduce_op,
                                           bool is_float, bool is_argmax) {
@@ -126,39 +149,55 @@ LogicalResult MatchReduceToArgMinMaxType1(mhlo::ReduceOp reduce_op,
   mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
   if (!return_op || return_op.getNumOperands() != 2) return failure();
 
-  mhlo::SelectOp value_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
-      return_op.getOperand(0).getDefiningOp());
-  if (!value_select || value_select.getOnTrue() != body.getArgument(0) ||
-      value_select.getOnFalse() != body.getArgument(2))
-    return failure();
-
   auto compare_direction =
       is_argmax ? mhlo::ComparisonDirection::GT : mhlo::ComparisonDirection::LT;
-  if (is_float) {
-    mhlo::OrOp value_or = llvm::dyn_cast_or_null<mhlo::OrOp>(
-        value_select.getOperand(0).getDefiningOp());
-    if (!value_or) return failure();
 
-    mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-        value_or.getLhs().getDefiningOp());
+  auto match_cmp_or = [&](Operation* cmp_or) {
+    if (is_float) {
+      mhlo::OrOp value_or = llvm::dyn_cast_or_null<mhlo::OrOp>(cmp_or);
+      if (!value_or) return failure();
+
+      mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+          value_or.getLhs().getDefiningOp());
+      if (!value_gt || value_gt.getComparisonDirection() != compare_direction ||
+          value_gt.getLhs() != body.getArgument(0) ||
+          value_gt.getRhs() != body.getArgument(2))
+        return failure();
+
+      mhlo::CompareOp value_ne = llvm::dyn_cast_or_null<mhlo::CompareOp>(
+          value_or.getRhs().getDefiningOp());
+      if (!value_ne ||
+          value_ne.getComparisonDirection() != mhlo::ComparisonDirection::NE ||
+          value_ne.getLhs() != body.getArgument(0) ||
+          value_ne.getRhs() != body.getArgument(0))
+        return failure();
+      return success();
+    }
+    // is int
+    mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(cmp_or);
     if (!value_gt || value_gt.getComparisonDirection() != compare_direction ||
         value_gt.getLhs() != body.getArgument(0) ||
         value_gt.getRhs() != body.getArgument(2))
       return failure();
+    return success();
+  };
 
-    mhlo::CompareOp value_ne = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-        value_or.getRhs().getDefiningOp());
-    if (!value_ne ||
-        value_ne.getComparisonDirection() != mhlo::ComparisonDirection::NE ||
-        value_ne.getLhs() != body.getArgument(0) ||
-        value_ne.getRhs() != body.getArgument(0))
+  if (is_float) {
+    mhlo::SelectOp value_select = llvm::dyn_cast_or_null<mhlo::SelectOp>(
+        return_op.getOperand(0).getDefiningOp());
+    if (!value_select || value_select.getOnTrue() != body.getArgument(0) ||
+        value_select.getOnFalse() != body.getArgument(2))
+      return failure();
+
+    if (failed(match_cmp_or(value_select.getPred().getDefiningOp())))
       return failure();
   } else {
-    mhlo::CompareOp value_gt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
-        value_select.getOperand(0).getDefiningOp());
-    if (!value_gt || value_gt.getComparisonDirection() != compare_direction ||
-        value_gt.getLhs() != body.getArgument(0) ||
-        value_gt.getRhs() != body.getArgument(2))
+    // minimum or maximum
+    Operation* min_or_max = return_op.getOperand(0).getDefiningOp();
+    if (!min_or_max || (is_argmax && !mlir::isa<mhlo::MaxOp>(min_or_max)) ||
+        (!is_argmax && !mlir::isa<mhlo::MinOp>(min_or_max)) ||
+        min_or_max->getOperand(0) != body.getArgument(0) ||
+        min_or_max->getOperand(1) != body.getArgument(2))
       return failure();
   }
 
@@ -171,7 +210,7 @@ LogicalResult MatchReduceToArgMinMaxType1(mhlo::ReduceOp reduce_op,
   mhlo::OrOp index_or = llvm::dyn_cast_or_null<mhlo::OrOp>(
       index_select.getPred().getDefiningOp());
 
-  if (!index_or || index_or.getLhs() != value_select.getPred())
+  if (!index_or || failed(match_cmp_or(index_or.getLhs().getDefiningOp())))
     return failure();
 
   mhlo::AndOp index_and =
@@ -240,7 +279,7 @@ LogicalResult ConvertReduceOpToArgMinMax<
   // Match the reduction computation.
   const bool is_float = mlir::isa<FloatType>(operand_init.getElementType());
   if (failed(MatchReduceToArgMinMaxType1(reduce_op, is_float, is_argmax)) &&
-      failed(MatchReduceToArgMinMaxType2(reduce_op, is_argmax)))
+      failed(MatchReduceToArgMinMaxType2(reduce_op, is_float, is_argmax)))
     return rewriter.notifyMatchFailure(
         reduce_op, "Unsupported Reduce -> ArgMax/ArgMin pattern");
 
@@ -659,8 +698,10 @@ std::optional<bool> IsReduceOpLegal(mhlo::ReduceOp reduce_op) {
       succeeded(MatchReduceToArgMinMaxType1(reduce_op, false, true)) ||
       succeeded(MatchReduceToArgMinMaxType1(reduce_op, true, false)) ||
       succeeded(MatchReduceToArgMinMaxType1(reduce_op, false, false)) ||
-      succeeded(MatchReduceToArgMinMaxType2(reduce_op, false)) ||
-      succeeded(MatchReduceToArgMinMaxType2(reduce_op, true))) {
+      succeeded(MatchReduceToArgMinMaxType2(reduce_op, true, true)) ||
+      succeeded(MatchReduceToArgMinMaxType2(reduce_op, false, true)) ||
+      succeeded(MatchReduceToArgMinMaxType2(reduce_op, true, false)) ||
+      succeeded(MatchReduceToArgMinMaxType2(reduce_op, false, false))) {
     // If the ReduceOp matches to one of the patterns above, its illegal to
     // have
     // it in the model after the legalization is ran, because it should have
