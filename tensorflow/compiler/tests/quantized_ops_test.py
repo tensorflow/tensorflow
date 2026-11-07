@@ -25,11 +25,77 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import gen_uniform_quant_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
 class QuantizedOpsTest(xla_test.XLATestCase):
+
+  def testUniformQuantizeHalfIntegers(self):
+    values = np.array([-2.5, -1.5, -0.5, 0.5, 1.5, 2.5], np.float32)
+    cases = ((dtypes.qint8, -128, 127), (dtypes.quint8, 0, 255),
+             (dtypes.qint32, -2147483648, 2147483647))
+    for dtype, minimum, maximum in cases:
+      if dtype not in self.quantized_tf_types:
+        continue
+      for zero_point in (0, 13):
+        with self.subTest(dtype=dtype, zero_point=zero_point):
+          with self.session() as session:
+            with self.device_scope():
+              inputs = array_ops.placeholder(dtypes.float32, values.shape)
+              output = gen_uniform_quant_ops.uniform_quantize(
+                  inputs, constant_op.constant(1.0),
+                  constant_op.constant(zero_point, dtypes.int32), dtype,
+                  quantization_min_val=minimum, quantization_max_val=maximum)
+            expected = np.clip(
+                np.floor(values + 0.5).astype(np.int64) + zero_point,
+                minimum, maximum)
+            self.assertAllEqual(session.run(output, {inputs: values}), expected)
+
+  def testUniformQuantizePerChannelHalfIntegers(self):
+    if dtypes.qint8 not in self.quantized_tf_types:
+      self.skipTest("qint8 not supported by backend")
+    values = np.array([[-2.5, -5.0], [-0.5, 1.0], [2.5, 5.0]], np.float32)
+    expected = np.array([[-2, 11], [0, 14], [3, 14]])
+    for axis in (0, 1):
+      axis_values = values.T if axis == 0 else values
+      axis_expected = expected.T if axis == 0 else expected
+      with self.subTest(axis=axis):
+        with self.session() as session:
+          with self.device_scope():
+            inputs = array_ops.placeholder(dtypes.float32, axis_values.shape)
+            output = gen_uniform_quant_ops.uniform_quantize(
+                inputs, constant_op.constant([1.0, 2.0]),
+                constant_op.constant([0, 13], dtypes.int32), dtypes.qint8,
+                quantization_axis=axis, quantization_min_val=-2,
+                quantization_max_val=14)
+          self.assertAllEqual(session.run(output, {inputs: axis_values}),
+                              axis_expected)
+
+  def testUniformQuantizeWideZeroPoint(self):
+    if dtypes.qint32 not in self.quantized_tf_types:
+      self.skipTest("qint32 not supported by backend")
+    values = np.array([-3.0, 0.0, 3.0], np.float32)
+    with self.session() as session:
+      with self.device_scope():
+        inputs = array_ops.placeholder(dtypes.float32, values.shape)
+        output = gen_uniform_quant_ops.uniform_quantize(
+            inputs, constant_op.constant(1.0),
+            constant_op.constant(2147483647, dtypes.int32), dtypes.qint32,
+            quantization_min_val=-2147483648,
+            quantization_max_val=2147483647)
+      self.assertAllEqual(session.run(output, {inputs: values}),
+                          [2147483644, 2147483647, 2147483647])
+      with self.device_scope():
+        inputs = array_ops.placeholder(dtypes.float32, values.shape)
+        output = gen_uniform_quant_ops.uniform_quantize(
+            inputs, constant_op.constant(1.0),
+            constant_op.constant(-2147483648, dtypes.int32), dtypes.qint32,
+            quantization_min_val=-2147483648,
+            quantization_max_val=2147483647)
+      self.assertAllEqual(session.run(output, {inputs: values}),
+                          [-2147483648, -2147483648, -2147483645])
 
   # Verify that quantized types can be clustered by XLA.
   def testQuantizedTypeRoundtrip(self):
