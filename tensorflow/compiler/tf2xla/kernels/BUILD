@@ -106,6 +106,7 @@ cc_library(
         ":image_resize_ops",
         ":in_topk_op",
         ":index_ops",
+        ":isotonic_regression_op",
         ":l2loss_op",
         ":listdiff_op",
         ":lower_upper_bound_ops",
@@ -3316,6 +3317,31 @@ tf_kernel_library(
         "@com_google_absl//absl/strings",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",
+    ],
+)
+
+tf_kernel_library(
+    name = "isotonic_regression_op",
+    srcs = ["isotonic_regression_op.cc"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compilation_device",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
+        "//tensorflow/compiler/tf2xla:xla_resource",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:isotonic_regression_op_header",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/service:custom_call_status",
+        "@xla//xla/service:custom_call_target_registry",
     ],
 )
 
