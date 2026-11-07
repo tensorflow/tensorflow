@@ -33,6 +33,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <new>
 #include <ostream>
 #include <type_traits>
 #include <utility>
@@ -94,6 +95,20 @@ bool TensorBuffer::GetAllocatedBytes(size_t* out_bytes) const {
 }
 
 namespace {
+
+// NOTE(mrry): The default allocator for a Tensor (when none is specified) is
+// the default CPU allocator for NUMA zone 0. Accessing that currently involves
+// acquiring a lock, which guards initialization of the per-NUMA zone
+// allocators, and becomes highly contended.
+//
+// Note also that it would be better if all Tensor allocations required the user
+// to specify an allocator, for purposes of accounting, etc. However, the
+// default allocator is widely used throughout the codebase and in client code.
+Allocator* get_default_cpu_allocator() {
+  static Allocator* default_cpu_allocator =
+      cpu_allocator(tsl::port::kNUMANoAffinity);
+  return default_cpu_allocator;
+}
 
 // An un-templated base class for Buffer.
 class BufferBase : public TensorBuffer {
@@ -176,6 +191,88 @@ bool MemoryLoggingEnabled() {
   return memory_logging_enabled;
 }
 
+// Single-allocation TensorBuffer + aligned payload for small simple-type CPU
+// tensors, avoiding separate TensorBuffer and payload heap allocations.
+template <typename T>
+class FusedBuffer final : public BufferBase {
+ public:
+  static constexpr size_t kHeaderBytes =
+      std::max<size_t>(Allocator::kAllocatorAlignment, EIGEN_MAX_ALIGN_BYTES);
+
+  FusedBuffer(Allocator* a, int64_t n, void* data_ptr)
+      : BufferBase(a, data_ptr), elem_(n) {
+    static_assert(is_simple_type<T>::value, "FusedBuffer requires simple T.");
+    static_assert((kHeaderBytes & (kHeaderBytes - 1)) == 0,
+                  "kHeaderBytes must be a power of two.");
+    static_assert(sizeof(FusedBuffer<T>) <= kHeaderBytes,
+                  "FusedBuffer header exceeds kHeaderBytes.");
+    static_assert(
+        kHeaderBytes >= alignof(FusedBuffer<T>) && kHeaderBytes >= alignof(T),
+        "kHeaderBytes smaller than required alignment.");
+  }
+
+  FusedBuffer(const FusedBuffer&) = delete;
+  FusedBuffer& operator=(const FusedBuffer&) = delete;
+
+  size_t size() const override {
+    return sizeof(T) * static_cast<size_t>(elem_);
+  }
+
+  bool GetAllocatedBytes(size_t* out_bytes) const override { return false; }
+
+  void FillAllocationDescription(AllocationDescription* proto) const override {
+    proto->set_requested_bytes(size());
+    proto->set_allocator_name(alloc_->Name());
+    proto->set_ptr(reinterpret_cast<uintptr_t>(data()));
+  }
+
+  // Uses unsized aligned ::operator delete directly rather than
+  // port::AlignedDelete because RefCounted::Unref() runs `delete this` and
+  // total allocation size is unavailable after ~FusedBuffer() completes.
+  static void operator delete(void* ptr) noexcept {
+    ::operator delete(ptr, std::align_val_t(kHeaderBytes));
+  }
+
+ private:
+  ~FusedBuffer() override = default;
+
+  int64_t elem_;
+};
+
+Allocator* GetPlainDefaultCpuAllocatorOrNull() {
+  static Allocator* const plain_alloc = []() -> Allocator* {
+    Allocator* a = get_default_cpu_allocator();
+    return (a != nullptr && a->Name() == "cpu" && !a->TracksAllocationSizes())
+               ? a
+               : nullptr;
+  }();
+  return plain_alloc;
+}
+
+template <typename T>
+TensorBuffer* AllocateBuffer(Allocator* a, int64_t n) {
+  if constexpr (is_simple_type<T>::value) {
+    static_assert(FusedBuffer<T>::kHeaderBytes < 4096,
+                  "FusedBuffer header must fit within a 4 KiB page.");
+    constexpr size_t kMaxPayloadBytes = 4096 - FusedBuffer<T>::kHeaderBytes;
+    if (TF_PREDICT_TRUE(
+            a != nullptr && a == GetPlainDefaultCpuAllocatorOrNull() &&
+            static_cast<uint64_t>(n) - 1 < (kMaxPayloadBytes / sizeof(T)) &&
+            !CPUAllocatorStatsEnabled() && !MemoryLoggingEnabled())) {
+      const size_t total_bytes =
+          FusedBuffer<T>::kHeaderBytes + sizeof(T) * static_cast<size_t>(n);
+      void* mem = ::operator new(total_bytes,
+                                 std::align_val_t(FusedBuffer<T>::kHeaderBytes),
+                                 std::nothrow);
+      if (TF_PREDICT_TRUE(mem != nullptr)) {
+        return new (mem) FusedBuffer<T>(
+            a, n, static_cast<char*>(mem) + FusedBuffer<T>::kHeaderBytes);
+      }
+    }
+  }
+  return new Buffer<T>(a, n);
+}
+
 // A set of helper functions depending on T.
 template <typename T>
 struct Helper {
@@ -200,7 +297,7 @@ struct Helper {
       LogUnexpectedSize(in.size(), sizeof(T) * n);
       return nullptr;
     }
-    Buffer<T>* buf = new Buffer<T>(a, n);
+    TensorBuffer* buf = AllocateBuffer<T>(a, n);
     char* data = buf->template base<char>();
     if (data == nullptr) {
       buf->Unref();
@@ -686,7 +783,7 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
                << "(amplification guard).";
     return nullptr;
   }
-  Buffer<T>* buf = new Buffer<T>(a, n);
+  TensorBuffer* buf = AllocateBuffer<T>(a, n);
   T* data = buf->template base<T>();
   if (data == nullptr) {
     buf->Unref();
@@ -724,7 +821,7 @@ TensorBuffer* Int4OrInt2FromProtoField(Allocator* a, const TensorProto& in,
                << " elements from " << in_n << " input value(s).";
     return nullptr;
   }
-  Buffer<T>* buf = new Buffer<T>(a, n);
+  TensorBuffer* buf = AllocateBuffer<T>(a, n);
   int8_t* data = buf->template base<int8_t>();
   if (data == nullptr) {
     buf->Unref();
@@ -873,7 +970,7 @@ TensorBuffer* FromProtoField<Eigen::half>(Allocator* a, const TensorProto& in,
                << " elements from " << in_n << " input value(s).";
     return nullptr;
   }
-  Buffer<Eigen::half>* buf = new Buffer<Eigen::half>(a, n);
+  TensorBuffer* buf = AllocateBuffer<Eigen::half>(a, n);
   uint16_t* data = buf->template base<uint16_t>();
   if (data == nullptr) {
     buf->Unref();
@@ -902,7 +999,7 @@ TensorBuffer* FromProtoField<bfloat16>(Allocator* a, const TensorProto& in,
                << " elements from " << in_n << " input value(s).";
     return nullptr;
   }
-  Buffer<bfloat16>* buf = new Buffer<bfloat16>(a, n);
+  TensorBuffer* buf = AllocateBuffer<bfloat16>(a, n);
   uint16_t* data = buf->template base<uint16_t>();
   if (data == nullptr) {
     buf->Unref();
@@ -1096,7 +1193,7 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
   set_dtype(type);
   CHECK_NOTNULL(a);
   if (shape_.num_elements() > 0 || a->AllocatesOpaqueHandle()) {
-    CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
+    CASES(type, buf_ = AllocateBuffer<T>(a, shape.num_elements()));
   }
   if (MemoryLoggingEnabled() && buf_ != nullptr && buf_->data() != nullptr) {
     LogMemory::RecordTensorAllocation("Unknown", LogMemory::UNKNOWN_STEP_ID,
@@ -1128,20 +1225,6 @@ absl::Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
                          "Unexpected type: ", DataType_Name(type))));
   *out_tensor = Tensor(type, shape);
   return absl::OkStatus();
-}
-
-// NOTE(mrry): The default allocator for a Tensor (when none is specified) is
-// the default CPU allocator for NUMA zone 0. Accessing that currently involves
-// acquiring a lock, which guards initialization of the per-NUMA zone
-// allocators, and becomes highly contended.
-//
-// Note also that it would be better if all Tensor allocations required the user
-// to specify an allocator, for purposes of accounting, etc. However, the
-// default allocator is widely used throughout the codebase and in client code.
-static Allocator* get_default_cpu_allocator() {
-  static Allocator* default_cpu_allocator =
-      cpu_allocator(tsl::port::kNUMANoAffinity);
-  return default_cpu_allocator;
 }
 
 Tensor::Tensor(DataType type, const TensorShape& shape)
