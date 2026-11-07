@@ -219,6 +219,124 @@ TEST(CPUAllocatorTest, Sizes) {
   EXPECT_EQ(false, a->TracksAllocationSizes());
 }
 
+TEST(CPUAllocatorTest, AllocationBytesPadding) {
+  // Types smaller than 32 bits (4 bytes) must be padded to a 4-byte boundary
+  // so GPU atomicCAS can safely operate on the enclosing 32-bit word.
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int16_t>(0), 0);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int16_t>(1), 4);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int16_t>(2), 4);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int16_t>(3), 8);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int16_t>(4), 8);
+
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(0), 0);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(1), 4);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(2), 4);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(3), 4);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(4), 4);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(5), 8);
+
+  // Types >= 4 bytes are not padded.
+  EXPECT_EQ(TypedAllocator::AllocationBytes<float>(0), 0);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<float>(1), sizeof(float));
+  EXPECT_EQ(TypedAllocator::AllocationBytes<float>(3), 3 * sizeof(float));
+  EXPECT_EQ(TypedAllocator::AllocationBytes<double>(3), 3 * sizeof(double));
+
+  // Overflow checks on both sides of the boundary for sub-32-bit types.
+  constexpr size_t kMax = std::numeric_limits<size_t>::max();
+  // For int8_t: kMax % 4 == 3, so kMax - 3 is divisible by 4.
+  // kMax - 3 does not overflow when padded.
+  constexpr size_t int8_max_valid = kMax - 3;
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(int8_max_valid),
+            int8_max_valid);
+  // kMax - 2, kMax - 1, and kMax overflow when padded to 4 bytes.
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(int8_max_valid + 1), 0);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(int8_max_valid + 2), 0);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int8_t>(kMax), 0);
+
+  // For int16_t: multiplication or padding overflows at and beyond kMax / 2.
+  constexpr size_t int16_max_mult = kMax / sizeof(int16_t);
+  // (kMax / 2 - 1) * 2 == kMax - 3, which is 4-byte aligned and valid.
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int16_t>(int16_max_mult - 1),
+            kMax - 3);
+  // kMax / 2 * 2 == kMax - 1, which requires 2 pad bytes and overflows.
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int16_t>(int16_max_mult), 0);
+  // Greater than kMax / 2 overflows multiplication.
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int16_t>(int16_max_mult + 1), 0);
+  EXPECT_EQ(TypedAllocator::AllocationBytes<int16_t>(kMax), 0);
+
+  // Verify that TypedAllocator::Allocate<T> returns nullptr on overflow.
+  EXPECT_EQ(
+      TypedAllocator::Allocate<int8_t>(cpu_allocator(), int8_max_valid + 1, {}),
+      nullptr);
+  EXPECT_EQ(TypedAllocator::Allocate<int8_t>(cpu_allocator(), kMax, {}),
+            nullptr);
+  EXPECT_EQ(
+      TypedAllocator::Allocate<int16_t>(cpu_allocator(), int16_max_mult, {}),
+      nullptr);
+  EXPECT_EQ(TypedAllocator::Allocate<int16_t>(cpu_allocator(), kMax, {}),
+            nullptr);
+
+  // Test Allocate and Deallocate directly with a sub-32-bit type.
+  int16_t* ptr_odd = TypedAllocator::Allocate<int16_t>(cpu_allocator(), 3, {});
+  ASSERT_NE(ptr_odd, nullptr);
+  ptr_odd[0] = 10;
+  ptr_odd[1] = 20;
+  ptr_odd[2] = 30;
+  TypedAllocator::Deallocate(cpu_allocator(), ptr_odd, 3);
+
+  int16_t* ptr_even = TypedAllocator::Allocate<int16_t>(cpu_allocator(), 4, {});
+  ASSERT_NE(ptr_even, nullptr);
+  TypedAllocator::Deallocate(cpu_allocator(), ptr_even, 4);
+
+  int8_t* ptr_odd8 = TypedAllocator::Allocate<int8_t>(cpu_allocator(), 5, {});
+  ASSERT_NE(ptr_odd8, nullptr);
+  TypedAllocator::Deallocate(cpu_allocator(), ptr_odd8, 5);
+
+  // Zero-element allocation does not return nullptr due to overflow check.
+  int16_t* ptr_zero = TypedAllocator::Allocate<int16_t>(cpu_allocator(), 0, {});
+  TypedAllocator::Deallocate(cpu_allocator(), ptr_zero, 0);
+
+  // Verify exact byte counts passed to non-opaque (padded) and opaque-handle
+  // (unpadded) allocators on both Allocate and Deallocate.
+  class RecordingAllocator : public Allocator {
+   public:
+    explicit RecordingAllocator(bool opaque) : opaque_(opaque) {}
+    std::string Name() override { return "RecordingAllocator"; }
+    void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+      allocated_bytes = num_bytes;
+      return dummy_;
+    }
+    void DeallocateRaw(void* ptr) override { deallocated_bytes = 0; }
+    void DeallocateRawAlignedDelete(void* ptr, size_t alignment,
+                                    size_t num_bytes) override {
+      deallocated_bytes = num_bytes;
+    }
+    bool AllocatesOpaqueHandle() const override { return opaque_; }
+
+    size_t allocated_bytes = 0;
+    size_t deallocated_bytes = 0;
+
+   private:
+    bool opaque_;
+    alignas(Allocator::kAllocatorAlignment) char
+        dummy_[Allocator::kAllocatorAlignment] = {};
+  };
+
+  RecordingAllocator padded_alloc(/*opaque=*/false);
+  int16_t* padded_ptr =
+      TypedAllocator::Allocate<int16_t>(&padded_alloc, 3, {});
+  EXPECT_EQ(padded_alloc.allocated_bytes, 8);
+  TypedAllocator::Deallocate(&padded_alloc, padded_ptr, 3);
+  EXPECT_EQ(padded_alloc.deallocated_bytes, 8);
+
+  RecordingAllocator opaque_alloc(/*opaque=*/true);
+  int16_t* opaque_ptr =
+      TypedAllocator::Allocate<int16_t>(&opaque_alloc, 3, {});
+  EXPECT_EQ(opaque_alloc.allocated_bytes, 3 * sizeof(int16_t));
+  TypedAllocator::Deallocate(&opaque_alloc, opaque_ptr, 3);
+  EXPECT_EQ(opaque_alloc.deallocated_bytes, 3 * sizeof(int16_t));
+}
+
 TEST(CPUAllocatorTest, ProfilerReporting) {
   // TODO(b/196611863): Make debugging work even without GetAllocatedSize.
   void* p = tsl::port::AlignedMalloc(8, static_cast<std::align_val_t>(1));
