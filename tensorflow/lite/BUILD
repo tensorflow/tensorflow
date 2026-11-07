@@ -1267,6 +1267,19 @@ cc_test(
     ],
 )
 
+# Runs the same tests with the implementation used by compilers that don't
+# provide builtins.
+cc_test(
+    name = "checked_int_without_builtins_test",
+    size = "small",
+    srcs = ["checked_int_test.cc"],
+    local_defines = ["TFLITE_HAS_OVERFLOW_BUILTINS=0"],
+    deps = [
+        ":checked_int",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "array",
     srcs = ["array.cc"],
