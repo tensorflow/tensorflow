@@ -101,6 +101,7 @@ cc_library(
     deps = [
         ":hlo_utils",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_metadata",
         "//xla/service:hlo_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -116,6 +117,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_metadata",
         "//xla/service:hlo_module_config",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",

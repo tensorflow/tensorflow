@@ -70,6 +70,7 @@ cc_library(
         "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_metadata",
         "//xla/hlo/utils:hlo_longest_prefix",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/base:core_headers",

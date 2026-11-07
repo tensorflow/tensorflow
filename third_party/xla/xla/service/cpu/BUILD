@@ -505,6 +505,7 @@ cc_library(
         "//xla/backends/cpu/runtime:thunk_executor",
         "//xla/backends/cpu/runtime:xfeed_manager",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_metadata",
         "//xla/service:buffer_assignment",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_status_internal",
