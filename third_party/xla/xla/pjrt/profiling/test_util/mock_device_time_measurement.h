@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 
@@ -47,17 +48,22 @@ class MockDeviceTimeMeasurement : public DeviceTimeMeasurement {
   // Get the total device duration of the input device type (either GPU or TPU)
   // since the creation of the MockDeviceTimeMeasurement object.
   absl::Duration GetTotalDuration(DeviceType device_type) override {
-    return absl::ZeroDuration();
+    absl::MutexLock lock(&mu_);
+    return device_type_durations_[device_type];
   };
 
   // Get the total device durations of all device types (GPU and TPU)
   // since the creation of the MockDeviceTimeMeasurement object.
   absl::flat_hash_map<DeviceType, absl::Duration> GetTotalDurations() override {
+    absl::MutexLock lock(&mu_);
     return device_type_durations_;
   }
 
   // Record elapsed device time for the given input device type.
-  void Record(absl::Duration elapsed, DeviceType device_type) override {};
+  void Record(absl::Duration elapsed, DeviceType device_type) override {
+    absl::MutexLock lock(&mu_);
+    device_type_durations_[device_type] += elapsed;
+  };
 };
 
 std::unique_ptr<DeviceTimeMeasurement> CreateDeviceTimeMeasurement();
