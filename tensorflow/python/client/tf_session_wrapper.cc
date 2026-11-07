@@ -867,7 +867,8 @@ int64_t PyGraph::add_op(py::object obj) {
   return op_id;
 }
 
-PYBIND11_MODULE(_pywrap_tf_session, m) {
+PYBIND11_MODULE(
+    _pywrap_tf_session, m, pybind11::mod_gil_not_used()) {
   pybind11_protobuf::ImportNativeProtoCasters();
 
   // Numpy initialization code for array checks.
