@@ -893,6 +893,61 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
             )
         )
 
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolV2Qint8NhwcRaisesError(self):
+    x = constant_op.constant(
+        np.zeros([1, 4, 4, 2], dtype=np.int8), dtype=dtypes.qint8)
+    with test_util.use_gpu():
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "qint8 should be used with data_format NCHW_VECT_C"):
+        self.evaluate(
+            gen_nn_ops.max_pool_v2(
+                x,
+                ksize=[1, 2, 2, 1],
+                strides=[1, 2, 2, 1],
+                padding="VALID",
+                data_format="NHWC"))
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("XLA handles NCHW_VECT_C without these kernel errors")
+  def testMaxPoolV2Float32NchwVectCRaisesError(self):
+    x = array_ops.zeros([1, 2, 4, 4, 4], dtypes.float32)
+    with test_util.use_gpu():
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "qint8 should be used with data_format NCHW_VECT_C|"
+          "MaxPool only supports NCHW or NHWC format"):
+        self.evaluate(
+            gen_nn_ops.max_pool_v2(
+                x,
+                ksize=[1, 1, 2, 2],
+                strides=[1, 1, 2, 2],
+                padding="VALID",
+                data_format="NCHW_VECT_C"))
+
+  @test_util.run_gpu_only
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPoolV2NchwVectCBadInputShapeRaisesError(self):
+    shapes = [[1, 1, 4, 4, 32]]
+    if context.executing_eagerly():
+      shapes += [[1, 1, 4, 4, 2], [1, 4, 4, 4]]
+    for shape in shapes:
+      x = constant_op.constant(
+          np.zeros(shape, dtype=np.int8), dtype=dtypes.qint8)
+      with test_util.use_gpu():
+        with self.assertRaisesRegex(
+            errors_impl.InvalidArgumentError,
+            "NCHW_VECT_C requires 5-D input"):
+          self.evaluate(
+              gen_nn_ops.max_pool_v2(
+                  x,
+                  ksize=[1, 1, 2, 2],
+                  strides=[1, 1, 2, 2],
+                  padding="VALID",
+                  data_format="NCHW_VECT_C"))
+
   # Tests for DepthwiseMaxPooling on CPU only.
   @parameterized.parameters(
       GetTestConfigsDicts(
