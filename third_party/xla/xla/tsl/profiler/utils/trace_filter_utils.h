@@ -32,6 +32,7 @@ namespace profiler {
 // values in the range [0, 31].
 enum class TraceMeFilter {
   kTraceMemory = 0,
+  kTraceHostEnqueueCallback = 1,
 };
 
 static uint64_t TraceMeFiltersToMask(
