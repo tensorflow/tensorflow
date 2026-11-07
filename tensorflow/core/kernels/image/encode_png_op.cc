@@ -15,8 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc
 
-#include <memory>
+#include <limits>
 #include <vector>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 #define EIGEN_USE_THREADS
 
