@@ -128,8 +128,23 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
                           functools.partial(reference_min, dtype), dtype,
                           self.REAL_DATA, index_dtype)
 
-  def testReduceMax(self, index_dtype):
+  def testReduceMinNaN(self, index_dtype):
+    for dtype in [np.float32, np.float64]:
+      test_input = np.array(
+          [[7.0, np.nan, -2.5], [11.0, 0.25, 4.0]], dtype=dtype)
+      with self.session() as sess:
+        with self.test_scope():
+          a = array_ops.placeholder(dtype)
+          index = array_ops.placeholder(index_dtype)
+          out = math_ops.reduce_min(a, index)
+          out_all = math_ops.reduce_min(a)
+        res = sess.run(out, {a: test_input, index: [1]})
+        self.assertTrue(np.isnan(res[0]))
+        self.assertAlmostEqual(res[1], 0.25, places=5)
+        res_all = sess.run(out_all, {a: test_input})
+        self.assertTrue(np.isnan(res_all))
 
+  def testReduceMax(self, index_dtype):
     def reference_max(dtype, inp, axis):
       """Wrapper around np.amax that returns -infinity for an empty input."""
       if inp.shape[axis] == 0:
@@ -145,6 +160,22 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       self._testReduction(math_ops.reduce_max,
                           functools.partial(reference_max, dtype), dtype,
                           self.REAL_DATA, index_dtype)
+
+  def testReduceMaxNaN(self, index_dtype):
+    for dtype in [np.float32, np.float64]:
+      test_input = np.array(
+          [[7.0, np.nan, -2.5], [11.0, 0.25, 4.0]], dtype=dtype)
+      with self.session() as sess:
+        with self.test_scope():
+          a = array_ops.placeholder(dtype)
+          index = array_ops.placeholder(index_dtype)
+          out = math_ops.reduce_max(a, index)
+          out_all = math_ops.reduce_max(a)
+        res = sess.run(out, {a: test_input, index: [1]})
+        self.assertTrue(np.isnan(res[0]))
+        self.assertAlmostEqual(res[1], 11.0, places=5)
+        res_all = sess.run(out_all, {a: test_input})
+        self.assertTrue(np.isnan(res_all))
 
   def testReduceMeanF32(self, index_dtype):
     # TODO(phawkins): mean on XLA currently returns 0 instead of NaN when

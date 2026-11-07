@@ -78,7 +78,22 @@ REGISTER_XLA_OP(Name("Prod").CompileTimeConstantInput("reduction_indices"),
 class MinOp : public XlaReductionOp {
  public:
   explicit MinOp(OpKernelConstruction* ctx)
-      : XlaReductionOp(ctx, ctx->input_type(0)) {}
+      : XlaReductionOp(ctx, ctx->input_type(0)) {
+    OP_REQUIRES_OK(ctx, PrimitiveTypeCheck(xla_reduction_type_));
+  }
+
+  static absl::Status PrimitiveTypeCheck(
+      xla::PrimitiveType xla_reduction_type) {
+    if (xla_reduction_type == xla::C64 || xla_reduction_type == xla::C128 ||
+        xla_reduction_type == xla::TUPLE ||
+        xla_reduction_type == xla::OPAQUE_TYPE) {
+      return errors::InvalidArgument(
+          "Unsupported PrimitiveType in MinOp: '",
+          xla::PrimitiveType_Name(xla_reduction_type), "'");
+    } else {
+      return absl::OkStatus();
+    }
+  }
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::MaxValue(builder, xla_reduction_type_);
@@ -86,7 +101,14 @@ class MinOp : public XlaReductionOp {
 
   void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
                     const xla::XlaOp& scalar_rhs) override {
-    xla::Min(scalar_lhs, scalar_rhs);
+    if (xla::primitive_util::IsFloatingPointType(xla_reduction_type_)) {
+      xla::XlaOp is_nan =
+          xla::Or(xla::IsNan(scalar_lhs), xla::IsNan(scalar_rhs));
+      xla::XlaOp min_val = xla::Min(scalar_lhs, scalar_rhs);
+      xla::Select(is_nan, xla::NanValue(builder, xla_reduction_type_), min_val);
+    } else {
+      xla::Min(scalar_lhs, scalar_rhs);
+    }
   }
 };
 
@@ -119,7 +141,14 @@ class MaxOp : public XlaReductionOp {
 
   void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
                     const xla::XlaOp& scalar_rhs) override {
-    xla::Max(scalar_lhs, scalar_rhs);
+    if (xla::primitive_util::IsFloatingPointType(xla_reduction_type_)) {
+      xla::XlaOp is_nan =
+          xla::Or(xla::IsNan(scalar_lhs), xla::IsNan(scalar_rhs));
+      xla::XlaOp max_val = xla::Max(scalar_lhs, scalar_rhs);
+      xla::Select(is_nan, xla::NanValue(builder, xla_reduction_type_), max_val);
+    } else {
+      xla::Max(scalar_lhs, scalar_rhs);
+    }
   }
 };
 
