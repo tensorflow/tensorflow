@@ -3564,39 +3564,6 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
   return res;
 }
 
-absl::StatusOr<PjRtExecutableLoadState::DeviceAndAssignment>
-CommonPjRtClient::LookupDeviceAndAssignment(
-    const ExecuteOptions& options, int replica, int partition,
-    PjRtDevice* device,
-    const std::shared_ptr<DeviceAssignment>& device_assignment,
-    PjRtExecutableLoadState* load_state) const {
-  PjRtExecutableLoadState::DeviceAndAssignment result;
-  if (device == nullptr) {
-    if (device_assignment == nullptr) {
-      return InvalidArgument(
-          "device_assignment_ must be set if device is not provided.");
-    }
-    const int64_t device_id = (*device_assignment)(replica, partition);
-    GlobalDeviceId global_device_id(device_id);
-    ABSL_ASSIGN_OR_RETURN(device, LookupDevice(global_device_id));
-  } else {
-    if (device_assignment != nullptr) {
-      return InvalidArgument(
-          "device_assignment_ must not be set if device is provided.");
-    }
-    CHECK_EQ(replica, 0);
-    CHECK_EQ(partition, 0);
-  }
-  CHECK_EQ(device->process_index(), process_index());
-  result.device = device;
-  result.local_device_id = device->local_device_id();
-  result.global_device_id = device->global_device_id();
-  result.process_index = device->process_index();
-  result.replica = replica;
-  result.partition = partition;
-  return result;
-}
-
 namespace {
 
 class MajorToMinorCopyToDeviceStream : public CopyToDeviceStream {
@@ -3688,14 +3655,23 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
     int replica, int partition, const ExecuteOptions& options,
     size_t host_callback_idx, PjRtDevice* device, int attempt) const {
   tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecutePrepare");
-  ABSL_ASSIGN_OR_RETURN(DeviceAndAssignment device_and_assign,
-                   client()->LookupDeviceAndAssignment(
-                       options, replica, partition, device, device_assignment_,
-                       load_state_.get()));
-  device = device_and_assign.device;
+  CHECK(device != nullptr);
+  CHECK_EQ(device->process_index(), client()->process_index());
   // Fill in device to launch_args so it will be present even if ExecutePrepare
   // fails with OOM.
   launch_args.device = device;
+  DeviceAndAssignment device_and_assign{
+      .device = device,
+      .local_device_id = device->local_device_id(),
+      .global_device_id = device->global_device_id(),
+      .process_index = device->process_index(),
+      .slice_id =
+          options.multi_slice_config != nullptr
+              ? std::make_optional(options.multi_slice_config->SliceId())
+              : std::nullopt,
+      .replica = replica,
+      .partition = partition,
+  };
 
   // Execute takes `extra_deps` and waits for those to be
   // fulfilled before executing the program and returning an available
@@ -4092,13 +4068,12 @@ CommonPjRtLoadedExecutable::ExecuteShardedImpl(
     if (addressable_devices_[i] == device) {
       ABSL_RETURN_IF_ERROR(ValidateHostTransferCallbacks(
           options.send_callbacks, options.recv_callbacks, /*num_devices=*/1));
-      ABSL_ASSIGN_OR_RETURN(
-          auto result,
-          ExecuteHelperOnSingleDevice(
-              argument_handles, run_id,
-              addressable_device_logical_ids_[i].replica,
-              addressable_device_logical_ids_[i].partition, options,
-              fill_future, /*device=*/nullptr, donated_buffer_infos));
+      ABSL_ASSIGN_OR_RETURN(auto result,
+                       ExecuteHelperOnSingleDevice(
+                           argument_handles, run_id,
+                           addressable_device_logical_ids_[i].replica,
+                           addressable_device_logical_ids_[i].partition,
+                           options, fill_future, device, donated_buffer_infos));
       returned_future = std::move(result.future);
       return std::move(result.buffers);
     }
@@ -4230,6 +4205,10 @@ CommonPjRtLoadedExecutable::ExecutePortableImpl(
         "addressable by this client",
         device->global_device_id().value());
   }
+  if (device_assignment_ != nullptr) {
+    return InvalidArgument(
+        "device_assignment_ must not be set if device is provided.");
+  }
 
   ABSL_RETURN_IF_ERROR(ValidateHostTransferCallbacks(
       options.send_callbacks, options.recv_callbacks, /*num_devices=*/1));
@@ -4357,9 +4336,9 @@ CommonPjRtLoadedExecutable::Execute(
       DumpHloUnoptimizedSnapshotIfEnabled(hlo_snapshot,
                                           hlo_module->config().debug_options());
     }
-    auto statusor = ExecuteHelperOnSingleDevice(argument_handles[0], run_id,
-                                                replica, partition, options,
-                                                returned_futures.has_value());
+    auto statusor = ExecuteHelperOnSingleDevice(
+        argument_handles[0], run_id, replica, partition, options,
+        returned_futures.has_value(), addressable_devices_[0]);
 
     if (!statusor.ok()) {
       return std::move(statusor).status();
@@ -4441,9 +4420,9 @@ CommonPjRtLoadedExecutable::Execute(
     // current thread.
     const int replica = addressable_device_logical_ids_[0].replica;
     const int partition = addressable_device_logical_ids_[0].partition;
-    results[0] = ExecuteHelperOnSingleDevice(argument_handles[0], run_id,
-                                             replica, partition, options,
-                                             returned_futures.has_value());
+    results[0] = ExecuteHelperOnSingleDevice(
+        argument_handles[0], run_id, replica, partition, options,
+        returned_futures.has_value(), addressable_devices_[0]);
   } else {
     absl::Mutex mu;
     int preparing = num_addressable_devices;
@@ -4492,8 +4471,7 @@ CommonPjRtLoadedExecutable::Execute(
           std::optional<ExecuteLaunchArgs> launch_args;
           absl::Status launch_status = ExecutePrepareWithOomRetries(
               launch_args, argument_handles[i], run_id, replica, partition,
-              device_options,
-              /*host_callback_idx=*/i);
+              device_options, /*host_callback_idx=*/i, device);
           // Wait for prepare to finish on all cores.
           if (client()->supports_two_phase_launch()) {
             absl::MutexLock lock(mu);

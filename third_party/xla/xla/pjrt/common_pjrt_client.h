@@ -257,13 +257,6 @@ class CommonPjRtClient : public PjRtClient {
                                           std::move(prepare_status));
   }
 
-  virtual absl::StatusOr<PjRtExecutableLoadState::DeviceAndAssignment>
-  LookupDeviceAndAssignment(
-      const ExecuteOptions& options, int replica, int partition,
-      PjRtDevice* device,
-      const std::shared_ptr<DeviceAssignment>& device_assignment,
-      PjRtExecutableLoadState* load_state) const;
-
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
 
@@ -1098,7 +1091,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<Result> ExecuteHelperOnSingleDevice(
       absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
       int replica, int partition, const ExecuteOptions& options,
-      bool fill_future, PjRtDevice* device = nullptr,
+      bool fill_future, PjRtDevice* device,
       std::vector<CommonPjRtBuffer::DonatedBufferInfo>* donated_buffer_infos =
           nullptr) const;
 
@@ -1106,7 +1099,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       std::optional<ExecuteLaunchArgs>& launch_args,
       absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
       int replica, int partition, const ExecuteOptions& options,
-      size_t host_callback_idx, PjRtDevice* device = nullptr) const;
+      size_t host_callback_idx, PjRtDevice* device) const;
 
   absl::StatusOr<Result> ExecuteLaunch(
       ExecuteLaunchArgs& launch_args, bool fill_future,
