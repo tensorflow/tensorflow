@@ -209,9 +209,6 @@ def _tf_library(
                    " --config=$(location " + config + ")" +
                    " --dump_fetch_nodes > $@"),
             tools = [tfcompile_tool],
-            # Run tfcompile on the build host, rather than forge, since it's
-            # typically way faster on the local machine.
-            local = 1,
             tags = tags,
         )
 
