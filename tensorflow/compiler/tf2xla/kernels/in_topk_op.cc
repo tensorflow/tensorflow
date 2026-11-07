@@ -72,33 +72,53 @@ class InTopKOp : public XlaOpKernel {
     xla::XlaOp targets_r1 = context->Input(1);
 
     xla::XlaBuilder* xla_builder = context->builder();
+    xla::PrimitiveType pred_type = context->input_xla_type(0);
+
+    // Number of classes dimension size (supporting both static and dynamic).
+    xla::XlaOp num_classes_s64 = xla::ConvertElementType(
+        xla::GetDimensionSize(predictions_r2, 1), xla::S64);
     xla::XlaOp iota_r1 =
         xla::Iota(xla_builder, targets_type_, predictions_shape.dim_size(1));
     xla::XlaOp iota_r2 = xla::Broadcast(iota_r1, {batch_size});
+    xla::XlaOp iota_s64_r2 = xla::ConvertElementType(iota_r2, xla::S64);
 
-    xla::XlaOp eq_r2 = xla::Eq(targets_r1, iota_r2, {0});
-    // The masked reduction below treats an out-of-range target as zero, which
-    // can otherwise produce a false hit. Check bounds per target, rather than
-    // reducing the class-match matrix again.
+    // Dynamic class dimension validity mask.
+    xla::XlaOp valid_class_mask_r2 =
+        xla::Lt(iota_s64_r2, xla::Broadcast(num_classes_s64, {batch_size}));
+
+    // InTopK requires all prediction scores in the example's row to be finite
+    // (matching the CPU and GPU eager implementations). If any prediction in
+    // the row is non-finite (NaN or Inf), the ordering is indeterminate and
+    // False must be returned.
+    xla::XlaOp is_finite_r2 = xla::IsFinite(predictions_r2);
+    xla::XlaOp valid_finite_r2 = xla::Select(
+        valid_class_mask_r2, is_finite_r2,
+        xla::Broadcast(xla::ConstantR0<bool>(xla_builder, true),
+                       predictions_shape.dim_sizes()));
+    xla::XlaOp all_finite_r1 = xla::Reduce(
+        valid_finite_r2, xla::ConstantR0<bool>(xla_builder, true),
+        xla::CreateScalarAndComputation(xla::PRED, xla_builder), {1});
+
+    // Check bounds per target to reject out-of-range targets (negative or
+    // >= num_classes).
     xla::XlaOp targets_s64 = xla::ConvertElementType(targets_r1, xla::S64);
-    // This folds to a constant for static dimensions, while using the actual
-    // class count instead of the static bound for a dynamic dimension.
-    xla::XlaOp num_classes_s64 = xla::ConvertElementType(
-        xla::GetDimensionSize(predictions_r2, 1), xla::S64);
     xla::XlaOp valid_target_r1 =
         xla::And(xla::Ge(targets_s64, xla::ConstantR0<int64_t>(xla_builder, 0)),
                  xla::Lt(targets_s64, num_classes_s64));
-    xla::XlaOp zero_r0_f32 = xla::Zero(xla_builder, xla::F32);
-    xla::XlaOp zero_r2_f32 = xla::ZerosLike(predictions_r2);
-    xla::XlaOp select_r2 = xla::Select(eq_r2, predictions_r2, zero_r2_f32);
+
+    xla::XlaOp eq_r2 = xla::Eq(targets_r1, iota_r2, {0});
+    xla::XlaOp zero_r0_pred = xla::Zero(xla_builder, pred_type);
+    xla::XlaOp zero_r2_pred = xla::ZerosLike(predictions_r2);
+    xla::XlaOp select_r2 = xla::Select(eq_r2, predictions_r2, zero_r2_pred);
     xla::XlaOp targets_values_r1 = xla::Reduce(
-        select_r2, zero_r0_f32,
-        xla::CreateScalarAddComputation(xla::F32, xla_builder), {1});
+        select_r2, zero_r0_pred,
+        xla::CreateScalarAddComputation(pred_type, xla_builder), {1});
 
     // Calculate in each row of `predictions`, how many values are larger than
     // the value of target class. Then return the result whether the count < k,
     // which indicates the target is in topk.
     xla::XlaOp gt_r2 = xla::Gt(predictions_r2, targets_values_r1, {0});
+    gt_r2 = xla::And(gt_r2, valid_class_mask_r2);
     xla::XlaOp zero_r0 = xla::Zero(xla_builder, xla::S32);
     xla::XlaOp zero_r2 = xla::Broadcast(zero_r0, predictions_shape.dim_sizes());
     xla::XlaOp one_r0 = xla::One(xla_builder, xla::S32);
@@ -110,7 +130,7 @@ class InTopKOp : public XlaOpKernel {
 
     xla::XlaOp result = xla::And(
         xla::And(xla::Lt(num_gt_r1, xla::ConstantR0<int32_t>(xla_builder, k)),
-                 xla::IsFinite(targets_values_r1)),
+                 all_finite_r1),
         valid_target_r1);
 
     context->SetOutput(0, result);
