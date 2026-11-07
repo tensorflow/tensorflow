@@ -36,7 +36,7 @@ class LoopOptimizer : public GraphOptimizer {
   explicit LoopOptimizer(RewriterConfig::Toggle opt_level,
                          DeviceBase* cpu_device);
 
-  ~LoopOptimizer() override {}
+  ~LoopOptimizer() override = default;
 
   std::string name() const override { return "loop_optimizer"; };
 

@@ -34,7 +34,7 @@ class Remapper : public GraphOptimizer {
         cpu_layout_conversion_(cpu_layout_conversion),
         xla_auto_clustering_on_(xla_auto_clustering_on) {}
 
-  ~Remapper() override {}
+  ~Remapper() override = default;
 
   std::string name() const override { return "remapper"; };
 

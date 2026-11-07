@@ -26,8 +26,8 @@ namespace grappler {
 // * Optimize gradient computations.
 class ModelPruner : public GraphOptimizer {
  public:
-  ModelPruner() {}
-  ~ModelPruner() override {}
+  ModelPruner() = default;
+  ~ModelPruner() override = default;
 
   std::string name() const override { return "model_pruner"; };
 
