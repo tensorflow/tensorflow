@@ -15,33 +15,14 @@ limitations under the License.
 
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 
-#include <cstdint>
-#include <functional>
 #include <tuple>
-#include <utility>
-#include <vector>
 
 #include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/status/status_macros.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/service/llvm_ir/ir_array.h"
-#include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/llvm_ir/loop_emitter.h"
-#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -109,95 +90,6 @@ bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
   return assignment.HasAllocationAt(operand, index) &&
          assignment.HasAllocationAt(fusion, {}) &&
          assignment.SharesSliceAtIndex(fusion, {}, operand, index);
-}
-
-// Emits a sequential loop.
-using IndexGenerator = std::function<absl::StatusOr<llvm::Value*>(int64_t)>;
-
-static absl::Status EmitDynamicUpdateSliceInPlaceImpl(
-    const Shape& update_shape, const IndexGenerator& start_indices_generator,
-    bool is_signed, ElementGenerator update_array_generator,
-    const IrArray& output_array, absl::string_view name,
-    llvm::IRBuilderBase* b) {
-  const Shape& output_shape = output_array.GetShape();
-
-  // Read start indices from start_indices_generator.
-  const int64_t rank = output_shape.dimensions().size();
-  std::vector<llvm::Value*> start_multi_index(rank);
-  for (int64_t i = 0; i < rank; ++i) {
-    ABSL_ASSIGN_OR_RETURN(start_multi_index[i], start_indices_generator(i));
-    llvm::Value* output_dim_size = llvm::ConstantInt::get(
-        start_multi_index[i]->getType(), output_shape.dimensions(i));
-    llvm::Value* update_dim_size = llvm::ConstantInt::get(
-        start_multi_index[i]->getType(), update_shape.dimensions(i));
-
-    // Clamp the start index so that the update region fits in the operand.
-    // start_index = clamp(start_index, 0, output_dim_size - update_dim_size)
-    llvm::Value* max_bound = b->CreateSub(output_dim_size, update_dim_size);
-    llvm::Value* zero =
-        llvm::ConstantInt::get(start_multi_index[i]->getType(), 0);
-    start_multi_index[i] =
-        b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SGE
-                                                : llvm::ICmpInst::ICMP_UGE,
-                                      zero, start_multi_index[i]),
-                        zero, start_multi_index[i]);
-
-    start_multi_index[i] =
-        b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SLE
-                                                : llvm::ICmpInst::ICMP_ULE,
-                                      max_bound, start_multi_index[i]),
-                        max_bound, start_multi_index[i]);
-  }
-
-  auto loop_body_emitter =
-      [&](const IrArray::Index& update_index) -> absl::Status {
-    // Calculate output_index, where we'll write the value from update.  For
-    // each dimension,
-    //
-    //   output_index[dim] = start_index[dim] + update_index[dim]
-    //
-    std::vector<llvm::Value*> output_multi_index(rank);
-    for (int64_t i = 0; i < rank; ++i) {
-      llvm::Value* start_index0 = b->CreateIntCast(
-          start_multi_index[i], update_index[i]->getType(), is_signed);
-      output_multi_index[i] = b->CreateAdd(start_index0, update_index[i]);
-    }
-
-    // Do output[output_index] = update[update_index].
-    IrArray::Index output_index(output_multi_index, output_shape,
-                                b->getInt64Ty());
-    ABSL_ASSIGN_OR_RETURN(llvm::Value * update_data,
-                     update_array_generator(update_index));
-    output_array.EmitWriteArrayElement(output_index, update_data, b);
-    return absl::OkStatus();
-  };
-  return LoopEmitter(loop_body_emitter, update_shape, b).EmitLoop(name);
-}
-
-absl::Status EmitDynamicUpdateSliceInPlace(
-    absl::Span<const IrArray> operand_arrays, const IrArray& output_array,
-    absl::string_view name, llvm::IRBuilderBase* b) {
-  VLOG(2) << "EmitDynamicUpdateSliceInPlace for " << name;
-
-  // No need to use operand_arrays[0], the input array of the
-  // dynamic-update-slice, because we know it aliases the op's output.
-  IrArray update_array = operand_arrays[1];
-  IrArray start_indices_array = operand_arrays[2];
-  Shape output_shape = output_array.GetShape();
-  Shape update_shape = update_array.GetShape();
-
-  IndexGenerator start_indices_generator = [&](int64_t index) {
-    return operand_arrays[2 + index].EmitReadArrayElement(
-        IrArray::Index(b->getInt64Ty()), b);
-  };
-  ElementGenerator update_array_generator = [&](const IrArray::Index& index) {
-    return update_array.EmitReadArrayElement(index, b);
-  };
-
-  bool is_signed = ShapeUtil::ElementIsSigned(start_indices_array.GetShape());
-  return EmitDynamicUpdateSliceInPlaceImpl(
-      update_shape, start_indices_generator, is_signed, update_array_generator,
-      output_array, name, b);
 }
 
 }  // namespace llvm_ir

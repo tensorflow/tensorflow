@@ -406,9 +406,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kCollectivePermute:
       return EmitCollectivePermuteThunk(instruction);
 
-    case HloOpcode::kPad:
-      return EmitPadKernelThunk(instruction);
-
     case HloOpcode::kConcatenate:
       return EmitConcatenateKernelThunk(instruction);
 
@@ -823,16 +820,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyThunk(
   return ThunkSequence::Of<CopyThunk>(ThunkInfo(instruction), source_buffer,
                                       source->shape(), destination_buffer,
                                       instruction->shape());
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
-    const HloInstruction* instruction) {
-  const HloPadInstruction* padInstr = Cast<HloPadInstruction>(instruction);
-  ABSL_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitPadHostKernel(padInstr));
-  ABSL_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(padInstr));
-
-  return MakeKernelThunkSequence(padInstr, buffers, kernel,
-                                 /*min_alignment=*/MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(

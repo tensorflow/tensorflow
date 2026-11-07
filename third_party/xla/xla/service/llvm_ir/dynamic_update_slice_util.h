@@ -15,24 +15,12 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
 #define XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
-#include <functional>
-#include <vector>
 
-#include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/llvm_ir/ir_array.h"
-
-// Utilities related to emitting LLVM IR for various HLO ops.
 
 namespace xla {
 namespace llvm_ir {
-
-using GeneratorForOperandIrArrays =
-    std::function<std::vector<llvm_ir::IrArray>()>;
 
 // Determines whether the given instruction might be implemented as an
 // in-place dynamic-update-slice after we have a buffer assignment.
@@ -58,17 +46,9 @@ bool MayBeImplementedAsInPlaceDynamicUpdateSlice(const HloInstruction* instr);
 bool CanUpdateDynamicSliceInPlace(HloInstruction* dynamic_update_slice,
                                   const BufferAssignment& assignment);
 
-// Checks if the given fusion node is amenable to being implemented by
-// EmitFusedDynamicUpdateSliceInPlace.
+// Checks if the given fusion node is amenable to being implemented in-place.
 bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
                                            const BufferAssignment& assignment);
-
-// Emits IR for running the given dynamic-update-slice op in-place -- that is,
-// where the input and output buffers share the same slice, so we can simply
-// modify the input/output buffer without touching any of the other elements.
-absl::Status EmitDynamicUpdateSliceInPlace(
-    absl::Span<const IrArray> operand_arrays, const IrArray& output_array,
-    absl::string_view name, llvm::IRBuilderBase* b);
 
 }  // namespace llvm_ir
 }  // namespace xla

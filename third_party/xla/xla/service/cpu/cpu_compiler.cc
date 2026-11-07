@@ -192,7 +192,6 @@ limitations under the License.
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/cpu/export_hlo.h"
 #include "xla/service/cpu/fusion_wrapper.h"
-#include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/metrics.h"
 #include "xla/service/cpu/parallel_task_assignment.h"
@@ -1683,17 +1682,9 @@ CpuCompiler::CompileCpuExecutable(
   // be renamed to NestedIrEmitter and be used only for emitting nested (aka
   // thread local or embedded) computations (reductions, maps, etc.).
 
-  // (Nested) IrEmitter is responsible for building LLVM module with functions
-  // for all HLO computations. In thunk execution mode we only build LLVM
-  // functions for embedded computations (e.g. reduction computations) and all
-  // high-level operations (fusions, elementwise, etc.) are lowered to kernel
-  // functions (which are also LLVM functions, but use a HostKernel ABI).
-  IrEmitter nested_ir_emitter(*module, *assignment, llvm_module.get(),
-                              &target_machine_features);
-
   // IR emitter is responsible for building LLVM module with host kernels for
   // corresponding HLO instructions (fusions, elemental instructions, etc.).
-  IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
+  IrEmitter2 ir_emitter2(*module, llvm_module.get(), assignment.get());
 
   // Thunk emitter is responsible for building a Thunk sequence that will
   // resolved kernels in the compiled LLVM module and execute them together

@@ -224,22 +224,11 @@ cc_library(
     srcs = ["dynamic_update_slice_util.cc"],
     hdrs = ["dynamic_update_slice_util.h"],
     deps = [
-        ":ir_array",
-        ":llvm_util",
-        ":loop_emitter",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:ir_headers",
     ],
 )
 
