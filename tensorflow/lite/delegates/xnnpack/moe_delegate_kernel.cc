@@ -57,6 +57,7 @@ struct MoeExpertsAttributes {
   enum class Activation {
     kGelu,
     kGeluTanh,
+    kSilu,
   };
 
   int num_experts = 0;
@@ -626,6 +627,8 @@ class MoeExpertsDelegateKernel::Impl {
         attr->activation = MoeExpertsAttributes::Activation::kGelu;
       } else if (act == "gelu_tanh") {
         attr->activation = MoeExpertsAttributes::Activation::kGeluTanh;
+      } else if (act == "silu" || act == "swish") {
+        attr->activation = MoeExpertsAttributes::Activation::kSilu;
       } else {
         TF_LITE_KERNEL_LOG(context, "%s node #%d unsupported activation='%s'",
                            kMoeCustomOp, node_index, act.c_str());
@@ -688,7 +691,12 @@ class MoeExpertsDelegateKernel::Impl {
     return 0.5f * x * (1.0f + std::tanh(inner));
   }
 
+  static float Silu(float x) { return x / (1.0f + std::exp(-x)); }
+
   float Activate(float x) const {
+    if (attr_.activation == MoeExpertsAttributes::Activation::kSilu) {
+      return Silu(x);
+    }
     return (attr_.activation == MoeExpertsAttributes::Activation::kGeluTanh)
                ? GeluTanh(x)
                : Gelu(x);
