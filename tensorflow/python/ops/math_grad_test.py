@@ -149,6 +149,21 @@ class MinOrMaxGradientTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
 
+  def testMinMaxGradientNaNPropagation(self):
+    """Regression test for #118673: reduce_max/reduce_min gradient with NaN."""
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x_vals = np.array([1.0, np.nan, 2.0], dtype=dtype.as_numpy_dtype)
+      for reduce_op in [math_ops.reduce_max, math_ops.reduce_min]:
+        with backprop.GradientTape() as tape:
+          x = constant_op.constant(x_vals)
+          tape.watch(x)
+          y = reduce_op(x)
+        grad = tape.gradient(y, x)
+        self.assertTrue(
+            np.all(np.isnan(self.evaluate(grad))),
+            msg=f"Expected all NaN gradient for {reduce_op.__name__} with NaN input",
+        )
+
 
 class MaximumOrMinimumGradientTest(test.TestCase):
 
@@ -167,6 +182,24 @@ class MaximumOrMinimumGradientTest(test.TestCase):
     with self.cached_session():
       error = gradient_checker.compute_gradient_error(inputs, [4], outputs, [4])
       self.assertLess(error, 1e-4)
+
+  def testMaximumMinimumGradientNaNPropagation(self):
+    """Verify NaN gradient propagation for maximum and minimum."""
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x_vals = np.array([1.0, np.nan], dtype=dtype.as_numpy_dtype)
+      y_vals = np.array([2.0, 3.0], dtype=dtype.as_numpy_dtype)
+      for elementwise_op in [math_ops.maximum, math_ops.minimum]:
+        with backprop.GradientTape() as tape:
+          x = constant_op.constant(x_vals)
+          y = constant_op.constant(y_vals)
+          tape.watch([x, y])
+          z = elementwise_op(x, y)
+        gx, _ = tape.gradient(z, [x, y])
+        gx_val = self.evaluate(gx)
+        self.assertTrue(
+            np.isnan(gx_val[1]),
+            msg=f"Expected NaN gradient for input with NaN in {elementwise_op.__name__}",
+        )
 
 
 class ProdGradientTest(test.TestCase):
