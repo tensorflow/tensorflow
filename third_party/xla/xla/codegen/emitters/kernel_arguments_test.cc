@@ -751,5 +751,35 @@ TEST_F(KernelArgumentsTest, NonInvariantOperandChangesFingerprint) {
                                       rw_args1.args()));
 }
 
+TEST_F(KernelArgumentsTest, PartiallyOverlappingSlicesMarkBothAliased) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ROOT s = f32[4] slice(p0), slice={[0:4]}
+    }
+  )"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* param0 = root->operand(0);
+  BufferAllocation alloc(/*index=*/0, /*size=*/32, /*color=*/0);
+  auto slice_provider =
+      [&](const HloInstruction& instruction,
+          const ShapeIndex& index) -> absl::StatusOr<BufferAllocation::Slice> {
+    if (&instruction == param0) {
+      return BufferAllocation::Slice(&alloc, 0, 32);
+    }
+    return BufferAllocation::Slice(&alloc, 8, 16);
+  };
+  ASSERT_OK_AND_ASSIGN(
+      KernelArguments args,
+      KernelArguments::Create(slice_provider, gpu::GetDefaultBufferAlignment(),
+                              root));
+  ASSERT_THAT(args.args(), SizeIs(2));
+  EXPECT_FALSE(args.args()[0].written());
+  EXPECT_TRUE(args.args()[0].aliased());
+  EXPECT_TRUE(args.args()[1].written());
+  EXPECT_TRUE(args.args()[1].aliased());
+}
+
 }  // namespace
 }  // namespace xla::emitters

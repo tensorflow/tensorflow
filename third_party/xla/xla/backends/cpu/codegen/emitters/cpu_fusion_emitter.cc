@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -38,16 +37,13 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/Types.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
@@ -55,12 +51,12 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/cpu/alignment.h"
-#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
-#include "xla/codegen/emitters/type_util.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
@@ -87,7 +83,6 @@ namespace cpu {
 namespace {
 
 using llvm::SmallVector;
-using mlir::func::FuncOp;
 
 bool Needs64Bits(const Shape& shape) {
   return shape.IsArray() ? !IsInt32(ShapeUtil::ElementsIn(shape))
@@ -180,56 +175,12 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
     return Internal("Fusion module name shouldn't be empty.");
   }
 
-  absl::string_view module_name(fusion_module.getName().value());
-  mlir::OpBuilder builder(context);
-  auto loc = mlir::NameLoc::get(builder.getStringAttr(module_name));
-  ABSL_ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> arguments,
-                   KernelApiIrBuilder::GetKernelArgumentsParameters(
-                       &fusion, &buffer_assignment));
-  ABSL_ASSIGN_OR_RETURN(std::vector<KernelApiIrBuilder::KernelParameter> results,
-                   KernelApiIrBuilder::GetKernelResultsParameters(
-                       &fusion, &buffer_assignment));
-
-  // TBD: Annotate tensors with the buffer indices. This way, the buffer
-  // propagation pass can clean them up later.
-  auto get_arg_attrs = [&](int index, BufferAllocation::Slice& slice,
-                           bool is_result) -> absl::StatusOr<mlir::Attribute> {
-    SmallVector<mlir::NamedAttribute> attrs;
-    attrs.push_back(builder.getNamedAttr(
-        "xla.slice_index",
-        builder.getIndexAttr(index + (is_result ? arguments.size() : 0))));
-    attrs.push_back(builder.getNamedAttr(
-        mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
-        builder.getIndexAttr(slice.size())));
-    attrs.push_back(
-        builder.getNamedAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
-                             builder.getIndexAttr(MinAlign())));
-    return builder.getDictionaryAttr(attrs);
-  };
-
-  // First argument is the thread id.
-  SmallVector<mlir::Attribute> arg_attrs;
-  SmallVector<mlir::Type> param_types;
-
-  for (const auto& [index, arg] : llvm::enumerate(arguments)) {
-    param_types.push_back(emitters::TensorShapeToMlirType(arg.shape, builder));
-    ABSL_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
-                     get_arg_attrs(index - 1, arg.slice, /*is_result=*/false));
-  }
-
-  auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
-  param_types.append(result_types.begin(), result_types.end());
-  for (const auto& [index, result] : llvm::enumerate(results)) {
-    ABSL_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
-                     get_arg_attrs(index, result.slice, /*is_result=*/true));
-  }
-
-  builder.setInsertionPointToStart(fusion_module.getBody());
-  auto entry_func = FuncOp::create(
-      builder, loc, entry_function_name,
-      mlir::FunctionType::get(context, param_types, result_types));
-  entry_func.setArgAttrsAttr(mlir::ArrayAttr::get(context, arg_attrs));
-  entry_func->setAttr("xla.entry", mlir::UnitAttr::get(context));
+  emitters::KernelArguments::BufferAlignment alignment{MinAlign(), MinAlign(),
+                                                       MinAlign()};
+  ABSL_ASSIGN_OR_RETURN(
+      mlir::func::FuncOp entry_func,
+      emitters::EmitKernelApi(fusion_module, fusion, &buffer_assignment,
+                              alignment, entry_function_name));
   // TODO(willfroom): Remove backend kind.
   SetBackendKind(context, entry_func, xla::BackendKind::kCpu);
 

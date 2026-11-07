@@ -450,10 +450,10 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
                        GetDefaultBufferAlignment(), entry_function_name));
   // Intermediate output buffers of `PhasedBlockClusterFusion` are written by
   // sibling CTAs before `barrier.cluster` and read in the next phase; marking
-  // them `xla.not_invariant` tells `MergePointersToSameSlicePass` to omit
+  // them `xla.aliased` tells `MergePointersToSameSlicePass` to omit
   // `llvm.noalias` on those parameters (and any aliased parameters sharing the
-  // same `xla.slice_index`) so LLVM `BasicAA` cannot reorder cross-phase
-  // accesses across the barrier after inlining.
+  // same `xla.slice_index`) so LLVM `BasicAA` cannot reorder accesses across
+  // the barrier after inlining.
   for (const NestedKernelSpec& spec : nested_kernels_) {
     if (spec.emitter_fusion_kind !=
         HloFusionAnalysis::EmitterFusionKind::kPhasedBlockCluster) {
@@ -461,8 +461,7 @@ ThreadBlockSpecializedFusion::CreateAndLowerMLIRModule(
     }
     for (size_t j = 0; j + 1 < spec.outer_root_indices.size(); ++j) {
       entry_func.setArgAttr(fusion.operand_count() + spec.outer_root_indices[j],
-                            emitters::kXlaNotInvariantAttr,
-                            builder.getUnitAttr());
+                            emitters::kXlaAliasedAttr, builder.getUnitAttr());
     }
   }
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);

@@ -363,13 +363,11 @@ PhasedBlockClusterFusion::CreateAndLowerMLIRModule(
                        *launcher_module, fusion, buffer_assignment,
                        GetDefaultBufferAlignment(), entry_function_name));
   // Intermediate output buffers are written by sibling CTAs before
-  // `barrier.cluster` and read in the next phase; marking them
-  // `xla.not_invariant` tells `MergePointersToSameSlicePass` to omit
-  // `llvm.noalias` so LLVM `BasicAA` cannot reorder cross-phase accesses across
-  // the 0-arg barrier.
+  // `barrier.cluster` and read in the next phase; marking them `xla.aliased`
+  // tells `MergePointersToSameSlicePass` to omit `llvm.noalias` so LLVM
+  // `BasicAA` cannot reorder accesses across the barrier.
   for (size_t i = 0; i + 1 < nested_kernels_.size(); ++i) {
-    entry_func.setArgAttr(fusion.operand_count() + i,
-                          emitters::kXlaNotInvariantAttr,
+    entry_func.setArgAttr(fusion.operand_count() + i, emitters::kXlaAliasedAttr,
                           builder.getUnitAttr());
   }
   SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);

@@ -45,8 +45,14 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
   BufferAllocation::Slice buffer_slice;
   if (hlo.opcode() == HloOpcode::kParameter &&
       hlo.parent() == module_.entry_computation()) {
-    // Entry computation parameters may alias with each other but may not alias
-    // with our temporary buffers.
+    // Entry computation parameters may alias each other when neither is written
+    // in place, and may not alias temporary buffers. An output aliased
+    // parameter allocation is backed at execution time either by an exclusively
+    // donated buffer or by a fresh buffer copy protected by the runtime, so
+    // instructions assigned to that allocation do not alias other parameter
+    // subbuffers even though entry kParameter instructions map to
+    // kParameterAllocation here; see
+    // BufferAllocation::is_parameter_aliased_with_output.
     buffer_slice = BufferAllocation::Slice(kParameterAllocation, 0, 0);
   } else {
     auto unique_slice = assignment_.GetUniqueSlice(&hlo, index);

@@ -97,10 +97,10 @@ func.func private @private_entry_func(
 
 // -----
 
-// Verify that xla.not_invariant suppresses llvm.noalias on that argument.
+// Verify that xla.aliased suppresses llvm.noalias on that argument.
 
-func.func @not_invariant_suppresses_noalias(
-    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.not_invariant},
+func.func @aliased_suppresses_noalias(
+    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.aliased},
     %arg1: tensor<43xf32> {xla.slice_index = 1},
     %arg2: tensor<43xf32> {xla.slice_index = 2, xla.invariant},
     %idx: index) -> f32 attributes {xla.entry} {
@@ -112,21 +112,21 @@ func.func @not_invariant_suppresses_noalias(
   func.return %sum2 : f32
 }
 
-// CHECK-LABEL: func.func @not_invariant_suppresses_noalias(
+// CHECK-LABEL: func.func @aliased_suppresses_noalias(
 // CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: !llvm.ptr,
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: !llvm.ptr {llvm.noalias},
 // CHECK-SAME:    %[[ARG2:[a-z0-9]+]]: !llvm.ptr {llvm.noalias, llvm.readonly, xla.invariant},
 // CHECK-SAME:    %[[IDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
-// CHECK-NOT:     xla.not_invariant
+// CHECK-NOT:     xla.aliased
 
 // -----
 
-// Merged arguments keep only what all of them promise: a not invariant use of
-// the slice leaves the survivor neither readonly nor noalias.
+// Merged arguments keep only what all of them promise: an aliased non invariant
+// use of the slice leaves the survivor neither readonly nor noalias.
 
 func.func @mixed_invariance(
     %arg0: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
-    %arg1: tensor<43xf32> {xla.slice_index = 0, xla.not_invariant},
+    %arg1: tensor<43xf32> {xla.slice_index = 0, xla.aliased},
     %idx: index) -> f32 attributes {xla.entry} {
   %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
   %v1 = tensor.extract %arg1[%idx] : tensor<43xf32>
@@ -147,7 +147,7 @@ func.func @mixed_invariance(
 // weakened too, regardless of argument order.
 
 func.func @mixed_invariance_reversed(
-    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.not_invariant},
+    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.aliased},
     %arg1: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
     %idx: index) -> f32 attributes {xla.entry} {
   %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
@@ -160,7 +160,6 @@ func.func @mixed_invariance_reversed(
 // CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: !llvm.ptr,
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: !llvm.ptr,
 // CHECK-SAME:    %[[IDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
-
 // -----
 
 // Merging an invariant argument with a written slice drops readonly while
@@ -191,7 +190,7 @@ module {
       %arg0: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
       %arg1: tensor<43xf32> {xla.slice_index = 0},
       %arg2: tensor<43xf32> {xla.slice_index = 1, xla.invariant},
-      %arg3: tensor<43xf32> {xla.slice_index = 1, xla.not_invariant},
+      %arg3: tensor<43xf32> {xla.slice_index = 1, xla.aliased},
       %idx: index) -> f32 {
     %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
     %v1 = tensor.extract %arg1[%idx] : tensor<43xf32>
@@ -207,7 +206,7 @@ module {
       %arg0: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
       %arg1: tensor<43xf32> {xla.slice_index = 0},
       %arg2: tensor<43xf32> {xla.slice_index = 1, xla.invariant},
-      %arg3: tensor<43xf32> {xla.slice_index = 1, xla.not_invariant},
+      %arg3: tensor<43xf32> {xla.slice_index = 1, xla.aliased},
       %idx: index) -> f32 attributes {xla.entry} {
     %call = func.call @private_mixed(%arg0, %arg1, %arg2, %arg3, %idx) :
         (tensor<43xf32>, tensor<43xf32>, tensor<43xf32>, tensor<43xf32>, index) -> f32
@@ -226,3 +225,28 @@ module {
 // CHECK-SAME:    %[[A3:[a-z0-9]+]]: !llvm.ptr,
 // CHECK-SAME:    %[[AIDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
 // CHECK:         call @private_mixed(%[[A0]], %[[A2]], %[[AIDX]])
+
+// -----
+
+// xla.aliased suppresses llvm.noalias while keeping llvm.readonly on an
+// invariant argument, and propagates across merged duplicate slice arguments.
+
+func.func @aliased_readonly(
+    %arg0: tensor<43xf32> {xla.slice_index = 0, xla.invariant},
+    %arg1: tensor<43xf32> {xla.slice_index = 0, xla.invariant, xla.aliased},
+    %arg2: tensor<43xf32> {xla.slice_index = 1, xla.invariant},
+    %idx: index) -> f32 attributes {xla.entry} {
+  %v0 = tensor.extract %arg0[%idx] : tensor<43xf32>
+  %v1 = tensor.extract %arg1[%idx] : tensor<43xf32>
+  %v2 = tensor.extract %arg2[%idx] : tensor<43xf32>
+  %s0 = arith.addf %v0, %v1 : f32
+  %s1 = arith.addf %s0, %v2 : f32
+  func.return %s1 : f32
+}
+
+// CHECK-LABEL: func.func @aliased_readonly(
+// CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: !llvm.ptr {llvm.readonly, xla.invariant},
+// CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: !llvm.ptr {llvm.readonly, xla.invariant},
+// CHECK-SAME:    %[[ARG2:[a-z0-9]+]]: !llvm.ptr {llvm.noalias, llvm.readonly, xla.invariant},
+// CHECK-SAME:    %[[IDX:[a-z0-9]+]]: index) -> f32 attributes {xla.entry}
+// CHECK-NOT:     xla.aliased

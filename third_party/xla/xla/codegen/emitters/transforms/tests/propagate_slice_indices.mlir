@@ -59,14 +59,14 @@ module {
     func.return %s : f32
   }
 
-  func.func @entry(%arg0: tensor<8xf32> {xla.invariant, xla.slice_index = 0},
-                   %arg1: tensor<8xf32> {xla.not_invariant, xla.slice_index = 1}) -> tensor<8xf32>
+  func.func @entry(%arg0: tensor<8xf32> {xla.aliased, xla.invariant, xla.slice_index = 0},
+                   %arg1: tensor<8xf32> {xla.aliased, xla.slice_index = 1}) -> tensor<8xf32>
                    attributes { xla.entry } {
     func.return %arg1 : tensor<8xf32>
   }
 }
 
 // CHECK-LABEL: func.func private @sub(
-// CHECK-SAME:    %{{.*}}: tensor<8xf32> {xla.invariant, xla.slice_index = 0 : i64},
-// CHECK-SAME:    %{{.*}}: tensor<8xf32> {xla.not_invariant, xla.slice_index = 1 : i64},
+// CHECK-SAME:    %{{.*}}: tensor<8xf32> {xla.aliased, xla.invariant, xla.slice_index = 0 : i64},
+// CHECK-SAME:    %{{.*}}: tensor<8xf32> {xla.aliased, xla.slice_index = 1 : i64},
 // CHECK-SAME:    %{{.*}}: index)
