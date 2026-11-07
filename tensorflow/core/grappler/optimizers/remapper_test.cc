@@ -1633,8 +1633,11 @@ TEST_F(RemapperTest, FuseMklLayerNorm) {
 
 class FuseMklLayerNormPattern : public RemapperTest {
  public:
+  // `epsilon` is the constant added to the variance. The fused op must use it:
+  // _MklLayerNorm has a default of 0.001, which is what this test used to pass
+  // by accident.
   template <DataType DTYPE>
-  void RunTest() {
+  void RunTest(float epsilon = 0.001f) {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
     using ::tensorflow::ops::Placeholder;
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1652,7 +1655,7 @@ class FuseMklLayerNormPattern : public RemapperTest {
     auto s_diff = ops::SquaredDifference(s.WithOpName("s_diff"), mean, add);
     auto variance =
         ops::Mean(s.WithOpName("variance"), s_diff, r_indices, attrs);
-    auto e_const = ops::Const(s.WithOpName("e_const"), {0.001f}, {});
+    auto e_const = ops::Const(s.WithOpName("e_const"), {epsilon}, {});
     auto add_1 = ops::AddV2(s.WithOpName("add_1"), e_const, variance);
     auto rsqrt = ops::Rsqrt(s.WithOpName("rsqrt"), add_1);
     auto mul = ops::Mul(s.WithOpName("mul"), sub, rsqrt);
@@ -1686,6 +1689,8 @@ class FuseMklLayerNormPattern : public RemapperTest {
         EXPECT_EQ(node.input(0), "b_add");
         EXPECT_EQ(node.input(1), "g_const");
         EXPECT_EQ(node.input(2), "b_const");
+        ASSERT_EQ(node.attr().count("epsilon"), 1);
+        EXPECT_FLOAT_EQ(node.attr().at("epsilon").f(), epsilon);
         found++;
       }
     }
@@ -1700,6 +1705,8 @@ class FuseMklLayerNormPattern : public RemapperTest {
 };
 
 TEST_F(FuseMklLayerNormPattern, F32) { RunTest<DT_FLOAT>(); }
+TEST_F(FuseMklLayerNormPattern, F32_Epsilon1e5) { RunTest<DT_FLOAT>(1e-5f); }
+TEST_F(FuseMklLayerNormPattern, F32_Epsilon1e12) { RunTest<DT_FLOAT>(1e-12f); }
 
 class RemapperTensorToHashBucketTest : public RemapperTest {
  public:
