@@ -585,6 +585,31 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
             (ValueError, errors.InvalidArgumentError), err_msg):
           image_ops.adjust_hue(x, delta=1.5)
 
+  def testAdjustHueNaNPropagation(self):
+    with self.cached_session():
+      # Test that NaN in input pixel channels propagates to output rather than
+      # being suppressed.
+      x_data = [[[float("nan"), 0.5, 0.5], [0.5, 0.5, 0.5]]]
+      delta = 0.5
+      y = image_ops.adjust_hue(
+          constant_op.constant(x_data, dtype=dtypes.float32), delta)
+      y_val = self.evaluate(y)
+      # First pixel contains NaN -> output channels must be NaN
+      self.assertTrue(np.isnan(y_val[0, 0, 0]))
+      self.assertTrue(np.isnan(y_val[0, 0, 1]))
+      self.assertTrue(np.isnan(y_val[0, 0, 2]))
+      # Second pixel has valid values -> output channels must be finite
+      self.assertFalse(np.isnan(y_val[0, 1, 0]))
+      self.assertFalse(np.isnan(y_val[0, 1, 1]))
+      self.assertFalse(np.isnan(y_val[0, 1, 2]))
+
+      # Test that NaN delta propagates NaNs across all pixels.
+      x_valid = [[[0.2, 0.4, 0.6], [0.1, 0.3, 0.5]]]
+      y_nan_delta = image_ops.adjust_hue(
+          constant_op.constant(x_valid, dtype=dtypes.float32), float("nan"))
+      y_nan_val = self.evaluate(y_nan_delta)
+      self.assertTrue(np.all(np.isnan(y_nan_val)))
+
 
 class FlipImageBenchmark(test.Benchmark):
 
@@ -1060,6 +1085,31 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
         y_baseline = self._adjustSaturationNp(x_np, scale)
         y_fused = self.evaluate(image_ops.adjust_saturation(x_np, scale))
         self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
+
+  def testAdjustSaturationNaNPropagation(self):
+    with self.cached_session():
+      # Test that NaN in input pixel channels propagates to output rather than
+      # being suppressed.
+      x_data = [[[float("nan"), 0.5, 0.5], [0.5, 0.5, 0.5]]]
+      scale = 0.5
+      y = image_ops.adjust_saturation(
+          constant_op.constant(x_data, dtype=dtypes.float32), scale)
+      y_val = self.evaluate(y)
+      # First pixel contains NaN -> output channels must be NaN
+      self.assertTrue(np.isnan(y_val[0, 0, 0]))
+      self.assertTrue(np.isnan(y_val[0, 0, 1]))
+      self.assertTrue(np.isnan(y_val[0, 0, 2]))
+      # Second pixel has valid values -> output channels must be finite
+      self.assertFalse(np.isnan(y_val[0, 1, 0]))
+      self.assertFalse(np.isnan(y_val[0, 1, 1]))
+      self.assertFalse(np.isnan(y_val[0, 1, 2]))
+
+      # Test that NaN scale propagates NaNs across all pixels.
+      x_valid = [[[0.2, 0.4, 0.6], [0.1, 0.3, 0.5]]]
+      y_nan_scale = image_ops.adjust_saturation(
+          constant_op.constant(x_valid, dtype=dtypes.float32), float("nan"))
+      y_nan_val = self.evaluate(y_nan_scale)
+      self.assertTrue(np.all(np.isnan(y_nan_val)))
 
 
 class FlipTransposeRotateTest(test_util.TensorFlowTestCase,

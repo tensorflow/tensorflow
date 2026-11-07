@@ -39,6 +39,14 @@ typedef struct HsvTuple {
 inline __device__ HsvTuple rgb2hsv_cuda(const float r, const float g,
                                         const float b) {
   HsvTuple tuple;
+  if (Eigen::numext::isnan(r) || Eigen::numext::isnan(g) ||
+      Eigen::numext::isnan(b)) {
+    const float nan_val = Eigen::NumTraits<float>::quiet_NaN();
+    tuple.h = nan_val;
+    tuple.s = nan_val;
+    tuple.v = nan_val;
+    return tuple;
+  }
   const float M = fmaxf(r, fmaxf(g, b));
   const float m = fminf(r, fminf(g, b));
   const float chroma = M - m;
@@ -77,6 +85,14 @@ inline __device__ HsvTuple rgb2hsv_cuda(const float r, const float g,
 inline __device__ RgbTuple hsv2rgb_cuda(const float h, const float s,
                                         const float v) {
   RgbTuple tuple;
+  if (Eigen::numext::isnan(h) || Eigen::numext::isnan(s) ||
+      Eigen::numext::isnan(v)) {
+    const float nan_val = Eigen::NumTraits<float>::quiet_NaN();
+    tuple.r = nan_val;
+    tuple.g = nan_val;
+    tuple.b = nan_val;
+    return tuple;
+  }
   const float new_h = h * 6.0f;
   const float chroma = v * s;
   const float x = chroma * (1.0f - fabsf(fmodf(new_h, 2.0f) - 1.0f));
@@ -121,20 +137,32 @@ __global__ void adjust_hsv_nhwc(
     // hue adjustment
     if (AdjustHue) {
       const float delta = *hue_delta;
-      new_h = fmodf(hsv.h + delta, 1.0f);
-      if (new_h < 0.0f) {
-        new_h = fmodf(1.0f + new_h, 1.0f);
+      if (Eigen::numext::isnan(delta)) {
+        new_h = Eigen::NumTraits<float>::quiet_NaN();
+      } else {
+        new_h = fmodf(hsv.h + delta, 1.0f);
+        if (new_h < 0.0f) {
+          new_h = fmodf(1.0f + new_h, 1.0f);
+        }
       }
     }
     // saturation adjustment
     if (AdjustSaturation && saturation_scale != nullptr) {
       const float scale = *saturation_scale;
-      new_s = fminf(1.0f, fmaxf(0.0f, hsv.s * scale));
+      if (Eigen::numext::isnan(scale)) {
+        new_s = Eigen::NumTraits<float>::quiet_NaN();
+      } else {
+        new_s = fminf(1.0f, fmaxf(0.0f, hsv.s * scale));
+      }
     }
     // value adjustment
     if (AdjustV && value_scale != nullptr) {
       const float scale = *value_scale;
-      new_v = hsv.v * scale;
+      if (Eigen::numext::isnan(scale)) {
+        new_v = Eigen::NumTraits<float>::quiet_NaN();
+      } else {
+        new_v = hsv.v * scale;
+      }
     }
     const RgbTuple rgb = hsv2rgb_cuda(new_h, new_s, new_v);
     output[idx] = static_cast<T>(rgb.r);
