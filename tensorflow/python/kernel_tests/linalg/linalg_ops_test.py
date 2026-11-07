@@ -555,6 +555,20 @@ class _LUReconstruct(object):
       self.assertAllEqual(x_.shape, y.shape)
     self.assertAllClose(x_, y_, atol=0., rtol=1e-3)
 
+  def test_batch_int64_perm(self):
+    x_ = np.array([
+        [[3, 4], [1, 2]],
+        [[7, 8], [3, 4]],
+    ], dtype=self.dtype)
+    x = array_ops.placeholder_with_default(
+        x_, shape=x_.shape if self.use_static_shape else None)
+
+    y = linalg.lu_reconstruct(
+        *linalg.lu(x, output_idx_type=dtypes.int64), validate_args=True)
+    y_ = self.evaluate(y)
+
+    self.assertAllClose(x_, y_, atol=0., rtol=1e-3)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class LUReconstructStatic(test.TestCase, _LUReconstruct):
@@ -597,6 +611,22 @@ class _LUMatrixInverse(object):
 
     if self.use_static_shape:
       self.assertAllEqual(x_.shape, y.shape)
+    self.assertAllClose(np.linalg.inv(x_), y_, atol=0., rtol=1e-3)
+
+  def test_batch_int64_perm(self):
+    x_ = np.array([
+        [[1, 2], [3, 4]],
+        [[7, 8], [3, 4]],
+        [[0.25, 0.5], [0.75, -2.]],
+    ],
+                  dtype=self.dtype)
+    x = array_ops.placeholder_with_default(
+        x_, shape=x_.shape if self.use_static_shape else None)
+
+    y = linalg.lu_matrix_inverse(
+        *linalg.lu(x, output_idx_type=dtypes.int64), validate_args=True)
+    y_ = self.evaluate(y)
+
     self.assertAllClose(np.linalg.inv(x_), y_, atol=0., rtol=1e-3)
 
 
@@ -653,6 +683,26 @@ class _LUSolve(object):
     expected_ = np.linalg.solve(x_, rhs_[np.newaxis])
     if self.use_static_shape:
       self.assertAllEqual(expected_.shape, y.shape)
+    self.assertAllClose(expected_, y_, atol=0., rtol=1e-3)
+
+  def test_batch_broadcast_int64_perm(self):
+    x_ = np.array([
+        [[1, 2], [3, 4]],
+        [[7, 8], [3, 4]],
+        [[0.25, 0.5], [0.75, -2.]],
+    ],
+                  dtype=self.dtype)
+    x = array_ops.placeholder_with_default(
+        x_, shape=x_.shape if self.use_static_shape else None)
+    rhs_ = np.array([[1, 1]], dtype=self.dtype).T
+    rhs = array_ops.placeholder_with_default(
+        rhs_, shape=rhs_.shape if self.use_static_shape else None)
+
+    lower_upper, perm = linalg.lu(x, output_idx_type=dtypes.int64)
+    y = linalg.lu_solve(lower_upper, perm, rhs, validate_args=True)
+    y_ = self.evaluate(y)
+
+    expected_ = np.linalg.solve(x_, rhs_[np.newaxis])
     self.assertAllClose(expected_, y_, atol=0., rtol=1e-3)
 
 

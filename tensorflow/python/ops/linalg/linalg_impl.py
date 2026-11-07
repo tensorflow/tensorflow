@@ -1086,7 +1086,8 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
       broadcast_perm = array_ops.reshape(broadcast_perm, [-1, d])
       broadcast_batch_size = math_ops.reduce_prod(broadcast_batch_shape)
       broadcast_batch_indices = array_ops.broadcast_to(
-          math_ops.range(broadcast_batch_size)[:, array_ops.newaxis],
+          math_ops.range(
+              broadcast_batch_size, dtype=perm.dtype)[:, array_ops.newaxis],
           [broadcast_batch_size, d])
       broadcast_perm = array_ops_stack.stack(
           [broadcast_batch_indices, broadcast_perm], axis=-1)
@@ -1230,7 +1231,8 @@ def lu_reconstruct(lower_upper, perm, validate_args=False, name=None):
       perm = array_ops.reshape(perm, [batch_size, d])
       perm = map_fn.map_fn(array_ops.invert_permutation, perm)
       batch_indices = array_ops.broadcast_to(
-          math_ops.range(batch_size)[:, array_ops.newaxis], [batch_size, d])
+          math_ops.range(batch_size, dtype=perm.dtype)[:, array_ops.newaxis],
+          [batch_size, d])
       x = array_ops.gather_nd(
           x, array_ops_stack.stack([batch_indices, perm], axis=-1))
       x = array_ops.reshape(x, shape)
