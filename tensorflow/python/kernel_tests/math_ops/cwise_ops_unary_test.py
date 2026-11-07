@@ -733,6 +733,60 @@ class UnaryOpTest(test.TestCase):
         )
 
   @test_util.run_in_graph_and_eager_modes
+  def testComplexLogVectorizedLargeMagnitude(self):
+    """Regression test for #118034: log(z) must not return NaN for |z| > sqrt(FLT_MAX).
+
+    Eigen's vectorized complex scalar_log_op computes |z|^2 = re^2 + im^2 in
+    packet operations without pre-scaling. When |z| > sqrt(FLT_MAX) (~1.84e19
+    for complex64, or ~1.34e154 for complex128), this overflows to +inf, causing
+    tensors with >= 4 elements to return NaN instead of the correct finite result.
+    """
+    for dtype, large_val in [(np.complex64, 1e20), (np.complex128, 1e160)]:
+      for length in [1, 2, 4, 8, 16]:
+        z_vals = np.array([1.0 + 0.0j] * length, dtype=dtype)
+        z_vals[0] = large_val + 0.0j
+        if length > 2:
+          z_vals[2] = large_val + 1.0j
+
+        result = self.evaluate(math_ops.log(constant_op.constant(z_vals)))
+        expected = np.log(z_vals)
+
+        self.assertFalse(
+            np.any(np.isnan(result)),
+            msg=f"log(z) produced NaN for dtype={dtype.__name__}, length={length}: {result}",
+        )
+        self.assertAllClose(
+            result,
+            expected,
+            rtol=1e-5 if dtype == np.complex64 else 1e-12,
+            msg=f"log(z) incorrect for dtype={dtype.__name__}, length={length}",
+        )
+
+  @test_util.run_in_graph_and_eager_modes
+  def testComplexLog1pVectorizedLargeMagnitude(self):
+    """Regression test: log1p(z) must not return NaN for |1+z| > sqrt(FLT_MAX)."""
+    for dtype, large_val in [(np.complex64, 1e20), (np.complex128, 1e160)]:
+      for length in [1, 2, 4, 8, 16]:
+        z_vals = np.array([1.0 + 0.0j] * length, dtype=dtype)
+        z_vals[0] = large_val + 0.0j
+        if length > 2:
+          z_vals[2] = large_val + 1.0j
+
+        result = self.evaluate(math_ops.log1p(constant_op.constant(z_vals)))
+        expected = np.log1p(z_vals)
+
+        self.assertFalse(
+            np.any(np.isnan(result)),
+            msg=f"log1p(z) produced NaN for dtype={dtype.__name__}, length={length}: {result}",
+        )
+        self.assertAllClose(
+            result,
+            expected,
+            rtol=1e-5 if dtype == np.complex64 else 1e-12,
+            msg=f"log1p(z) incorrect for dtype={dtype.__name__}, length={length}",
+        )
+
+  @test_util.run_in_graph_and_eager_modes
   def testDigamma(self):
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
