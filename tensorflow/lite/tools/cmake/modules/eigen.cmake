@@ -23,12 +23,12 @@ OverridableFetchContent_Declare(
   eigen
   GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
   # Sync with tensorflow/third_party/eigen3/workspace.bzl
-  GIT_TAG ea13a98decd497a8c5588fb5de71b57bcf10d864
+  GIT_TAG b1f8b0c3b8db9c3711349144acf951226700ddb4
   # Download a pinned archive from the TensorFlow mirror by default instead of
   # cloning gitlab.com, which is frequently rate limited on CI. Set
   # OVERRIDABLE_FETCH_CONTENT_USE_GIT=ON to clone GIT_REPOSITORY instead.
-  URL https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/ea13a98decd497a8c5588fb5de71b57bcf10d864/eigen-ea13a98decd497a8c5588fb5de71b57bcf10d864.tar.gz
-  URL_HASH SHA256=35c6126e246585d9cf6600b65471582c2701aae64b784a6fd19168a90cfc841e
+  URL https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/b1f8b0c3b8db9c3711349144acf951226700ddb4/eigen-b1f8b0c3b8db9c3711349144acf951226700ddb4.tar.gz
+  URL_HASH SHA256=f4ec04c0a006fc213065c266eda6543078b8c71e60ffd65fc45a79daf447f049
   # It's not currently (cmake 3.17) possible to shallow clone with a GIT TAG
   # as cmake attempts to git checkout the commit hash after the clone
   # which doesn't work as it's a shallow clone hence a different commit hash.
