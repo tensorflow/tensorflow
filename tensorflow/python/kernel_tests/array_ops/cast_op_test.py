@@ -217,6 +217,18 @@ class SparseTensorCastTest(test.TestCase):
                         np.array([1, 2, 3], np.float32))
     self.assertAllEqual(st_cast.dense_shape, [3])
 
+  def testCastSparseTensorValue(self):
+    indices = np.array([[0], [1], [2]], np.int64)
+    values = np.array([1, 2, 3], np.int64)
+    shape = np.array([3], np.int64)
+    st_val = sparse_tensor.SparseTensorValue(indices, values, shape)
+    st_cast = math_ops.cast(st_val, dtypes.float32)
+
+    self.assertIsInstance(st_cast, sparse_tensor.SparseTensor)
+    self.assertAllEqual(st_cast.indices, [[0], [1], [2]])
+    self.assertAllEqual(st_cast.values, np.array([1, 2, 3], np.float32))
+    self.assertAllEqual(st_cast.dense_shape, [3])
+
 
 class SaturateCastTest(test.TestCase):
 

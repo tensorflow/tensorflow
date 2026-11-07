@@ -1033,7 +1033,8 @@ def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
 
   The operation casts `x` (in case of `Tensor`) or `x.values`
-  (in case of `SparseTensor` or `IndexedSlices`) to `dtype`.
+  (in case of `SparseTensor`, `SparseTensorValue`, or `IndexedSlices`) to
+  `dtype`.
 
   For example:
 
@@ -1065,10 +1066,10 @@ def cast(x, dtype, name=None):
   `tf.cast` for any non-tensor inputs.
 
   Args:
-    x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
-      be `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`,
-      `int64`, `float16`, `float32`, `float64`, `complex64`, `complex128`,
-      `bfloat16`.
+    x: A `Tensor`, `SparseTensor`, `SparseTensorValue`, or `IndexedSlices` of
+      numeric type. It could be `uint8`, `uint16`, `uint32`, `uint64`, `int8`,
+      `int16`, `int32`, `int64`, `float16`, `float32`, `float64`, `complex64`,
+      `complex128`, `bfloat16`.
     dtype: The destination type. The list of supported dtypes is the same as
       `x`.
     name: A name for the operation (optional).
@@ -1086,6 +1087,8 @@ def cast(x, dtype, name=None):
       isinstance(x, tensor_lib.Tensor) or _pywrap_utils.IsResourceVariable(x)
   ) and base_type == x.dtype:
     return x
+  if isinstance(x, sparse_tensor.SparseTensorValue):
+    x = sparse_tensor.SparseTensor.from_value(x)
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
