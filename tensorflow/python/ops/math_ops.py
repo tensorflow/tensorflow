@@ -2701,6 +2701,18 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   @end_compatibility
   """
   keepdims = _check_keepdims(keepdims)
+  input_tensor = ops.convert_to_tensor(input_tensor)
+  if input_tensor.dtype == dtypes.float16:
+    # Explicit promotion to float32 protects reductions with large element counts
+    # (e.g. N >= 65536) where float16(N) overflows to Inf, and avoids severe
+    # precision loss and intermediate overflow during accumulation.
+    reduced = gen_math_ops.mean(
+        cast(input_tensor, dtypes.float32),
+        _ReductionDims(input_tensor, axis),
+        keepdims,
+        name=name,
+    )
+    return _may_reduce_to_scalar(keepdims, axis, cast(reduced, dtypes.float16))
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops.mean(
