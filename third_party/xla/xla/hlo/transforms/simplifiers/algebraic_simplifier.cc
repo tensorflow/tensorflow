@@ -9957,88 +9957,15 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     }
   }
 
-  // If the pad puts a single non-identity value in each window that we're
-  // reducing, then this is a broadcast.
-  HloInstruction* pad_operand = pad->mutable_operand(0);
-  auto is_effective_broadcast = [&] {
-    if (window_util::HasStride(window)) {
-      VLOG(10) << "Window has stride.";
-      return false;
-    }
-    if (!window_util::HasSymmetricPadding(pad_config)) {
-      VLOG(10) << "Window has uneven padding.";
-      return false;
-    }
-    if (HasInteriorPadding(pad_config)) {
-      VLOG(10) << "Window has interior padding.";
-      return false;
-    }
-    for (int64_t i = 0; i < pad_config.dimensions().size(); ++i) {
-      const auto& pad_dimension = pad_config.dimensions(i);
-      if ((pad_dimension.edge_padding_low() != 0 ||
-           pad_dimension.edge_padding_high() != 0) &&
-          pad_operand->shape().dimensions(i) != 1) {
-        VLOG(10) << "Found non-trivial dimension being padded: " << i;
-        return false;
-      }
-    }
-    VLOG(10) << "Found to be padding trivial dimensions only.";
-
-    for (int64_t i = 0; i < window.dimensions().size(); ++i) {
-      const auto& pad_dimension = pad_config.dimensions(i);
-      const WindowDimension& window_dimension = window.dimensions(i);
-      bool dimension_has_padding = (pad_dimension.edge_padding_low() != 0 ||
-                                    pad_dimension.edge_padding_high() != 0);
-      if (dimension_has_padding &&
-          window_dimension.size() < pad_dimension.edge_padding_low() + 1) {
-        VLOG(10) << "Found window did not cover single unpadded element in "
-                    "dimension: "
-                 << i;
-        return false;
-      }
-      if (pad_operand->shape().dimensions(i) != 1 &&
-          window_dimension.size() != 1) {
-        VLOG(10) << "Found window covers more than one element in non-trivial "
-                    "dimension: "
-                 << i;
-        return false;
-      }
-    }
-    VLOG(10) << "Found window covers a single unpadded element.";
-    return true;
-  };
-
-  HloInstruction* new_reduce_window_operand;
-  if (convert != nullptr) {
-    Shape changed_shape = ShapeUtil::ChangeElementType(
-        pad_operand->shape(), convert->shape().element_type());
-    simplifier_->UpdateLayout(&changed_shape);
-    new_reduce_window_operand = hlo->AddInstruction(
-        HloInstruction::CreateConvert(changed_shape, pad_operand));
-  } else {
-    new_reduce_window_operand = pad_operand;
-  }
-
-  if (is_effective_broadcast()) {
-    VLOG(10) << "Replacing pad/reduce-window with broadcast.";
-    auto fadd = [hlo](std::unique_ptr<HloInstruction> x) {
-      return hlo->AddInstruction(std::move(x));
-    };
-    return ReplaceWithNewInstruction(
-        reduce_window, HloInstruction::CreateBroadcastSequence(
-                           /*output_shape=*/reduce_window->shape(),
-                           /*operand=*/new_reduce_window_operand, fadd));
-  }
-
-  // Carry out the folding of the pad into reduce_window.
-  VLOG(10) << "Folding pad into reduce-window.";
-  Window new_window = window;
   const int64_t rank = reduce_window->shape().dimensions().size();
   TF_RET_CHECK(pad_config.dimensions().size() == rank);
   TF_RET_CHECK(window.dimensions().size() == rank);
+
+  Window new_window = window;
   for (int64_t i = 0; i < rank; ++i) {
-    const auto& pad_dim = pad_config.dimensions(i);
-    auto& window_dim = *new_window.mutable_dimensions(i);
+    const PaddingConfig::PaddingConfigDimension& pad_dim =
+        pad_config.dimensions(i);
+    WindowDimension& window_dim = *new_window.mutable_dimensions(i);
     window_dim.set_padding_low(window_dim.padding_low() +
                                window_dim.base_dilation() *
                                    pad_dim.edge_padding_low());
@@ -10051,6 +9978,76 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     }
   }
 
+  HloInstruction* pad_operand = pad->mutable_operand(0);
+
+  // If the candidate window reduces a single unpadded element surrounded by
+  // identity padding in every output window, then this is a broadcast.
+  auto is_effective_broadcast = [&](const Window& candidate_window,
+                                    const Shape& candidate_shape) {
+    if (!candidate_shape.is_static() || !reduce_window->shape().is_static()) {
+      return false;
+    }
+    for (int64_t i = 0; i < rank; ++i) {
+      const WindowDimension& window_dim = candidate_window.dimensions(i);
+      const int64_t operand_dim = candidate_shape.dimensions(i);
+      const int64_t output_dim = reduce_window->shape().dimensions(i);
+      if (operand_dim != 1) {
+        if (!window_util::IsTrivialWindowDimension(window_dim) ||
+            output_dim != operand_dim) {
+          VLOG(10) << "Dimension not equal to 1 is not trivial: " << i;
+          return false;
+        }
+        continue;
+      }
+      if (output_dim == 0) {
+        continue;
+      }
+      if (window_dim.padding_low() < 0 || window_dim.padding_high() < 0 ||
+          window_dim.window_dilation() != 1) {
+        VLOG(10) << "Size 1 dimension has cropping or window dilation: " << i;
+        return false;
+      }
+      auto [last_window_start, overflow] =
+          OverflowSafeMultiply(output_dim - 1, window_dim.stride());
+      if (overflow || window_dim.padding_low() >= window_dim.size() ||
+          last_window_start > window_dim.padding_low()) {
+        VLOG(10) << "Found window did not cover single unpadded element in "
+                    "dimension: "
+                 << i;
+        return false;
+      }
+    }
+    VLOG(10) << "Found window covers a single unpadded element.";
+    return true;
+  };
+
+  const bool combined_bcast =
+      is_effective_broadcast(new_window, pad_operand->shape());
+  const bool rw_bcast =
+      !combined_bcast && is_effective_broadcast(window, operand->shape());
+  HloInstruction* new_reduce_window_operand = rw_bcast ? operand : pad_operand;
+  if (!rw_bcast && convert != nullptr) {
+    Shape changed_shape = ShapeUtil::ChangeElementType(
+        pad_operand->shape(), convert->shape().element_type());
+    simplifier_->UpdateLayout(&changed_shape);
+    new_reduce_window_operand = hlo->AddInstruction(
+        HloInstruction::CreateConvert(changed_shape, pad_operand));
+  }
+
+  if (combined_bcast || rw_bcast) {
+    VLOG(10) << "Replacing pad/reduce-window with broadcast.";
+    auto fadd = [this, hlo](std::unique_ptr<HloInstruction> x) {
+      simplifier_->UpdateLayout(x->mutable_shape());
+      return hlo->AddInstruction(std::move(x));
+    };
+    return ReplaceWithNewInstruction(
+        reduce_window, HloInstruction::CreateBroadcastSequence(
+                           /*output_shape=*/reduce_window->shape(),
+                           /*operand=*/new_reduce_window_operand, fadd));
+  }
+
+  // Carry out the folding of the pad into reduce_window.
+  VLOG(10) << "Folding pad into reduce-window.";
   return ReplaceWithNewInstruction(
       reduce_window, HloInstruction::CreateReduceWindow(
                          /*shape=*/reduce_window->shape(),

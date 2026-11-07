@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -2096,6 +2097,66 @@ TEST_F(ReduceWindowHloTest, VariadicWithNonTrivialWindows) {
     }
   )";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-4, 1e-4}));
+}
+
+TEST_F(ReduceWindowHloTest, PadFollowedByPaddedReduceWindow) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+add {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT r = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  x = s32[1,1]{1,0} parameter(0)
+  zero = s32[] constant(0)
+  p = s32[5,1]{1,0} pad(x, zero), padding=2_2x0_0
+  ROOT rw = s32[5,1]{1,0} reduce-window(p, zero), window={size=3x1 pad=2_0x0_0}, to_apply=add
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
+}
+
+TEST_F(ReduceWindowHloTest, PadFollowedByDilatedReduceWindow) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+add {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT r = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  x = s32[1]{0} parameter(0)
+  zero = s32[] constant(0)
+  p = s32[7]{0} pad(x, zero), padding=3_3
+  ROOT rw = s32[1]{0} reduce-window(p, zero), window={size=4 rhs_dilate=2}, to_apply=add
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
+}
+
+TEST_F(ReduceWindowHloTest, PadFollowedByAlreadyBroadcastReduceWindow) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+
+add {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT r = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  x = s32[1,1]{1,0} parameter(0)
+  zero = s32[] constant(0)
+  p = s32[5,1]{1,0} pad(x, zero), padding=2_2x0_0
+  ROOT rw = s32[5,4]{1,0} reduce-window(p, zero), window={size=1x4 pad=0_0x3_3}, to_apply=add
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
 }
 
 }  // namespace

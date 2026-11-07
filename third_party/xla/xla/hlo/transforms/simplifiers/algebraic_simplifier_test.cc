@@ -9776,6 +9776,154 @@ INSTANTIATE_TEST_SUITE_P(
     PadReduceWindowEffectiveBroadcastTest,
     ::testing::ValuesIn(PadReduceWindowEffectiveBroadcastCases()));
 
+TEST_F(AlgebraicSimplifierTest,
+       PadReduceWindowWithWindowPaddingNotEffectiveBroadcast) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+add {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT r = s32[] add(p0, p1)
+}
+ENTRY main {
+  x = s32[1,1] parameter(0)
+  zero = s32[] constant(0)
+  p = s32[5,1] pad(x, zero), padding=2_2x0_0
+  ROOT rw = s32[5,1] reduce-window(p, zero), window={size=3x1 pad=2_0x0_0}, to_apply=add
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root,
+              GmockMatch(m::ReduceWindow(m::Parameter(0), m::Constant())));
+  EXPECT_EQ(root->window().dimensions(0).padding_low(), 4);
+  EXPECT_EQ(root->window().dimensions(0).padding_high(), 2);
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       PadReduceWindowWithPaddedLargerDimNotEffectiveBroadcast) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+add {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT r = s32[] add(p0, p1)
+}
+ENTRY main {
+  x = s32[5,1] parameter(0)
+  zero = s32[] constant(0)
+  p = s32[5,5] pad(x, zero), padding=0_0x2_2
+  ROOT rw = s32[7,1] reduce-window(p, zero), window={size=1x5 pad=1_1x0_0}, to_apply=add
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::ReduceWindow(m::Parameter(0), m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       PadReduceWindowWithWindowDilationNotEffectiveBroadcast) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+add {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT r = s32[] add(p0, p1)
+}
+ENTRY main {
+  x = s32[1] parameter(0)
+  zero = s32[] constant(0)
+  p = s32[7] pad(x, zero), padding=3_3
+  ROOT rw = s32[1] reduce-window(p, zero), window={size=4 rhs_dilate=2}, to_apply=add
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::ReduceWindow(m::Parameter(0), m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       PadReduceWindowAsymmetricCoveredEffectiveBroadcast) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+add {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT r = s32[] add(p0, p1)
+}
+ENTRY main {
+  x = s32[1] parameter(0)
+  zero = s32[] constant(0)
+  p = s32[4] pad(x, zero), padding=1_2
+  ROOT rw = s32[2] reduce-window(p, zero), window={size=3}, to_apply=add
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       PadReduceWindowAlreadyEffectiveBroadcastWithoutFoldingPad) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+add {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT r = s32[] add(p0, p1)
+}
+ENTRY main {
+  x = s32[1,1] parameter(0)
+  zero = s32[] constant(0)
+  p = s32[5,1] pad(x, zero), padding=2_2x0_0
+  ROOT rw = s32[5,4] reduce-window(p, zero), window={size=1x4 pad=0_0x3_3}, to_apply=add
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(
+                  m::Reshape(m::Pad(m::Parameter(0), m::Constant())))));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       PadAndReduceWindowOrthogonalEffectiveBroadcastDims) {
+  constexpr absl::string_view kHlo = R"hlo(
+HloModule m
+add {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT r = s32[] add(p0, p1)
+}
+ENTRY main {
+  x = s32[1,1] parameter(0)
+  zero = s32[] constant(0)
+  p = s32[5,1] pad(x, zero), padding=2_2x0_0
+  ROOT rw = s32[3,4] reduce-window(p, zero), window={size=3x4 pad=0_0x3_3}, to_apply=add
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
+}
+
 class BatchDotStrengthReductionTest
     : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<
