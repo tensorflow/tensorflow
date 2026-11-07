@@ -433,9 +433,9 @@ class _EagerTensorBase(
       raise RuntimeError(
           "tf.Tensor does not support DLPack export with a non-None stream"
       )
-    if dl_device is not None:
+    if dl_device is not None and dl_device != self.__dlpack_device__():
       raise RuntimeError(
-          "tf.Tensor does not support DLPack export with a non-None dl_device"
+          "tf.Tensor does not support DLPack export to a different dl_device"
       )
     if copy:
       raise RuntimeError(
