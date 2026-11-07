@@ -220,6 +220,9 @@ DebugOptions HloHardwareIndependentTestBase::GetDebugOptionsForTest() const {
   // b/475785091: Tests are run with heap checker, which makes multi-threaded
   // autotuning slow which leads to occasional timeouts.
   debug_options.set_xla_gpu_force_compilation_parallelism(1);
+  // Disable GPU autotuning by default, can be enabled in specific tests, which
+  // care about autotuning or performance.
+  debug_options.set_xla_gpu_autotune_level(0);
   return debug_options;
 }
 
