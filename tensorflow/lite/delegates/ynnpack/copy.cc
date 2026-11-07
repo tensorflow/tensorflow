@@ -333,8 +333,10 @@ TfLiteStatus IsReshapeSupported(const TfLiteRegistration* registration,
   TF_LITE_ENSURE_MSG(context, tflite::NumElements(&input) > 0,
                      "0-size tensors are not supported");
 
-  TF_LITE_ENSURE(context, IsTensorSupported(input));
-  TF_LITE_ENSURE(context, IsTensorSupported(output));
+  TF_LITE_ENSURE(context,
+                 IsTensorSupported(input) || input.type == kTfLiteBool);
+  TF_LITE_ENSURE(context,
+                 IsTensorSupported(output) || output.type == kTfLiteBool);
 
   TF_LITE_ENSURE_EQ(context, input.type, output.type);
   TF_LITE_ENSURE(context, QuantizationParamsEqual(input, output));
