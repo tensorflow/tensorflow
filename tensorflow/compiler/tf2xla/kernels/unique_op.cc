@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/tf2xla/lib/scatter.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -146,6 +147,12 @@ class UniqueOpBase : public XlaOpKernel {
     absl::StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.value();
+    // The code below ignores the runtime size of a dynamic dimension and treats
+    // its padding as data, which would silently inflate the counts.
+    OP_REQUIRES(ctx, ctx->num_outputs() <= 2 || !input_shape.is_dynamic(),
+                errors::Unimplemented(
+                    "UniqueWithCounts does not support inputs with a dynamic "
+                    "shape when compiled with XLA"));
     axis = axis < 0 ? axis + input_shape.dimensions().size() : axis;
     OP_REQUIRES(ctx, 0 <= axis && axis < input_shape.dimensions().size(),
                 errors::InvalidArgument("axis has to be between [0, ",
@@ -162,7 +169,9 @@ class UniqueOpBase : public XlaOpKernel {
       auto result_data = xla::Reshape(aux, aux_shape.dimensions());
       result_data = MoveAxis(result_data, 0, axis, aux_shape);
       ctx->SetOutput(0, result_data);
-      ctx->SetOutput(1, xla::Iota(ctx->builder(), xla::S32, leading_size));
+      for (int i = 1; i < ctx->num_outputs(); ++i) {
+        ctx->SetOutput(i, xla::Iota(ctx->builder(), idx_type_, leading_size));
+      }
       return;
     }
     std::vector<xla::XlaOp> sort_keys;
@@ -245,6 +254,18 @@ class UniqueOpBase : public XlaOpKernel {
         1);
     idx = xla::ConvertElementType(idx, idx_type_);
     ctx->SetOutput(1, idx);
+    if (ctx->num_outputs() > 2) {
+      // imask holds the output position of each element, and is non-decreasing
+      // because elements are grouped by first occurrence at this point.
+      absl::StatusOr<xla::XlaOp> count = XlaScatter(
+          xla::Broadcast(xla::Zero(ctx->builder(), idx_type_), {leading_size}),
+          /*updates=*/xla::One(ctx->builder(), idx_type_), imask,
+          /*indices_are_vectors=*/false, /*indices_are_sorted=*/true,
+          [](xla::XlaOp x, xla::XlaOp y, xla::XlaBuilder*) { return x + y; },
+          ctx->builder());
+      OP_REQUIRES_OK(ctx, count.status());
+      ctx->SetOutput(2, xla::SetDimensionSize(*count, dynamic_size, 0));
+    }
   }
 
  private:
@@ -261,6 +282,7 @@ class UniqueOp : public UniqueOpBase {
 };
 
 REGISTER_XLA_OP(Name("Unique"), UniqueOp);
+REGISTER_XLA_OP(Name("UniqueWithCounts"), UniqueOp);
 
 class UniqueV2Op : public UniqueOpBase {
  public:
@@ -283,6 +305,8 @@ class UniqueV2Op : public UniqueOpBase {
 };
 
 REGISTER_XLA_OP(Name("UniqueV2").CompileTimeConstantInput("axis"), UniqueV2Op);
+REGISTER_XLA_OP(Name("UniqueWithCountsV2").CompileTimeConstantInput("axis"),
+                UniqueV2Op);
 
 }  // namespace
 }  // namespace tensorflow
