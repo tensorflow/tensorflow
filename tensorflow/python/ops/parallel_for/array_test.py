@@ -44,6 +44,7 @@ class ArrayTest(PForTestCase):
       x_i = array_ops.gather(x, i)
       for y in [x, x2, x_i]:
         for axis in [0, 2, -1]:
+          axis_t = array_ops.identity(math_ops.cast(axis, dtypes.int32))
           outputs.append(array_ops.gather(y, 2, axis=axis))
           outputs.append(
               array_ops.gather(y, math_ops.cast(2, dtypes.int64), axis=axis))
@@ -53,12 +54,17 @@ class ArrayTest(PForTestCase):
               array_ops.gather(y, math_ops.cast(i, dtypes.int64), axis=axis))
           outputs.append(array_ops.gather(y, [i], axis=axis))
           outputs.append(array_ops.gather(y, [i, 2], axis=axis))
+          outputs.append(array_ops.gather(y, [i, 2], axis=axis_t))
           outputs.append(array_ops.gather(y, [[2, i], [i, 1]], axis=axis))
+          outputs.append(array_ops.gather(y, [[2, i], [i, 1]], axis=axis_t))
 
         outputs.append(array_ops.gather(y, [0, 1, 2], axis=1, batch_dims=1))
         outputs.append(array_ops.gather(y, [i, 1, 2], axis=2, batch_dims=1))
+        outputs.append(array_ops.gather(y, [i, 1, 2], axis=2, batch_dims=-1))
         outputs.append(array_ops.gather(y, [[2, i], [i, 1], [2, 1]],
                                         axis=-1, batch_dims=1))
+        outputs.append(array_ops.gather(y, [[2, i], [i, 1], [2, 1]],
+                                        axis=-1, batch_dims=-1))
         outputs.append(
             array_ops.gather(y, [[0, 1, 2]] * 3, axis=2, batch_dims=2))
         outputs.append(array_ops.gather(y, [0, 1, 2], axis=1, batch_dims=-1))
@@ -68,6 +74,31 @@ class ArrayTest(PForTestCase):
       return outputs
 
     self._test_loop_fn(loop_fn, 3)
+
+  def test_gather_negative_batch_dims_stacked_indices(self):
+    params = random_ops.random_uniform([2, 5, 3])
+    indices = random_ops.random_uniform(
+        [4, 2, 1], maxval=3, dtype=dtypes.int32
+    )
+
+    def loop_fn(i):
+      idx = array_ops.gather(indices, i)
+      return array_ops.gather(params, idx, axis=2, batch_dims=-1)
+
+    self._test_loop_fn(loop_fn, 4)
+
+  def test_gather_symbolic_axis(self):
+    x = random_ops.random_uniform([3, 4, 5])
+    indices = random_ops.random_uniform([3, 2], maxval=3, dtype=dtypes.int32)
+
+    for axis_val in [0, 1, 2, -1, -2]:
+      axis_t = array_ops.identity(math_ops.cast(axis_val, dtypes.int32))
+
+      def loop_fn(i, a=axis_t):
+        idx = array_ops.gather(indices, i)
+        return array_ops.gather(x, idx, axis=a)
+
+      self._test_loop_fn(loop_fn, 3)
 
   def test_gather_nd(self):
     x = random_ops.random_uniform([3, 3, 3])

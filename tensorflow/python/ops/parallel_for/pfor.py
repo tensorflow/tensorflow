@@ -2607,7 +2607,8 @@ def _convert_gather(pfor_input: _PforInput):
     if axis_value is not None:
       axis = axis_value
   if indices_stacked and not param_stacked:
-    if indices is pfor_input.pfor.all_indices and axis == 0:
+    if (indices is pfor_input.pfor.all_indices and
+        isinstance(axis, int) and axis == 0):
       param_shape0 = tensor_shape.dimension_value(param.shape[0])
       indices_shape0 = tensor_shape.dimension_value(indices.shape[0])
       if param_shape0 is not None and indices_shape0 == param_shape0:
@@ -2618,9 +2619,15 @@ def _convert_gather(pfor_input: _PforInput):
 
     if batch_dims != 0:
       # Convert `batch_dims` to its positive equivalent if necessary.
+      # Note: indices is stacked, so its rank is 1 higher than in loop body.
       batch_dims_pos = batch_dims
       if batch_dims < 0:
-        batch_dims_pos += array_ops.rank(indices)
+        indices_rank = (
+            indices.shape.rank
+            if indices.shape.rank is not None
+            else array_ops.rank(indices)
+        )
+        batch_dims_pos += indices_rank - 1
       # In order to maintain
       #   indices.shape[:batch_dims] == params.shape[:batch_dims]
       # with stacked indices, we move the first dimension of `indices` to the
@@ -2632,6 +2639,7 @@ def _convert_gather(pfor_input: _PforInput):
           [0],
           math_ops.range(batch_dims_pos + 1, array_ops.rank(indices))], axis=0)
       indices = array_ops.transpose(indices, order)
+      batch_dims = batch_dims_pos
 
     output = array_ops.gather(
         param,
@@ -2640,7 +2648,24 @@ def _convert_gather(pfor_input: _PforInput):
         axis=axis,
         batch_dims=batch_dims,
     )
-    if axis != 0:
+    if isinstance(axis, int) and axis >= 0:
+      if axis != 0:
+        order = array_ops.concat(
+            [[axis],
+             math_ops.range(axis),
+             math_ops.range(axis + 1, array_ops.rank(output))],
+            axis=0)
+        output = array_ops.transpose(output, order)
+    elif isinstance(axis, int) and param.shape.rank is not None:
+      norm_axis = axis + param.shape.rank
+      if norm_axis != 0:
+        order = array_ops.concat(
+            [[norm_axis],
+             math_ops.range(norm_axis),
+             math_ops.range(norm_axis + 1, array_ops.rank(output))],
+            axis=0)
+        output = array_ops.transpose(output, order)
+    else:
       axis = smart_cond.smart_cond(axis < 0,
                                    lambda: axis + array_ops.rank(param),
                                    lambda: ops.convert_to_tensor(axis))
