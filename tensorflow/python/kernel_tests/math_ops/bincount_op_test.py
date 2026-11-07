@@ -570,7 +570,7 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError,
          errors.ResourceExhaustedError),
-        r"Encountered overflow|OOM|Resource exhausted|allocate",
+        r"Encountered overflow|OOM|Resource exhausted|allocate|must be at most",
     ):
       self.evaluate(
           gen_math_ops.dense_bincount(
