@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/training_ops.h"
 
 #include <algorithm>  // NOLINT
+#include <cstdint>
+#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -42,6 +44,42 @@ inline T sgn(const T x) {
   T zero(0);
   T one(1);
   return (x == zero ? zero : (x < zero ? -one : one));
+}
+
+// Validates that var.dim_size(0) and indices.dim_size(0) fit in Tindex (needed
+// to safely narrow to `const Tindex N = indices.dim_size(0)` and to prevent
+// the param_row * col_size multiplication from overflowing Tindex in the CUDA
+// kernels). On GPU, also guards var.NumElements() and grad.NumElements()
+// against the 32-bit GPU launch limit.
+template <typename Device, typename Tindex>
+absl::Status ValidateSparseApplyIndexRange(const Tensor& var,
+                                           const Tensor& grad,
+                                           const Tensor& indices) {
+  constexpr int64_t kMaxIndex =
+      static_cast<int64_t>(std::numeric_limits<Tindex>::max());
+  if (var.dim_size(0) > kMaxIndex || indices.dim_size(0) > kMaxIndex) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "var.dim_size(0) (", var.dim_size(0), ") or indices.dim_size(0) (",
+        indices.dim_size(0), ") exceeds the range of Tindex (", kMaxIndex,
+        "); use int64 indices for large tensors"));
+  }
+  if (!std::is_same<Device, CPUDevice>::value) {
+    if (var.NumElements() > kMaxIndex) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "var has ", var.NumElements(),
+          " elements which exceeds the range of Tindex (", kMaxIndex,
+          "); use int64 indices for large tensors"));
+    }
+    constexpr int64_t kMaxGpuLaunch =
+        static_cast<int64_t>(std::numeric_limits<int32_t>::max());
+    if (grad.NumElements() > kMaxGpuLaunch) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "grad has ", grad.NumElements(),
+          " elements which exceeds the 32-bit GPU launch limit (",
+          kMaxGpuLaunch, ")"));
+    }
+  }
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -1273,11 +1311,13 @@ class SparseApplyAdadeltaOp : public OpKernel {
                   absl::InvalidArgumentError(absl::StrCat(
                       "var and grad must match in dimension ", d)));
     }
-    const Tindex N = indices.dim_size(0);
     OP_REQUIRES(
-        ctx, grad.dim_size(0) == N,
+        ctx, grad.dim_size(0) == indices.dim_size(0),
         absl::InvalidArgumentError(
             "grad must be the same size as indices in the first dimension."));
+    OP_REQUIRES_OK(ctx, ValidateSparseApplyIndexRange<Device, Tindex>(
+                            var, grad, indices));
+    const Tindex N = static_cast<Tindex>(indices.dim_size(0));
 
     if (N > 0) {
       const Tindex first_dim_size = var.dim_size(0);
@@ -1955,11 +1995,12 @@ class SparseApplyAdagradOp : public OpKernel {
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
-    const Tindex N = indices.dim_size(0);
     OP_REQUIRES(
-        ctx, grad.dim_size(0) == N,
+        ctx, grad.dim_size(0) == indices.dim_size(0),
         absl::InvalidArgumentError(
             "grad must be the same size as indices in the first dimension."));
+    OP_REQUIRES_OK(ctx, ValidateSparseApplyIndexRange<Device, Tindex>(
+                            var, grad, indices));
 
     OP_REQUIRES(ctx, inner_dim > 0,
                 absl::InvalidArgumentError(
@@ -2094,11 +2135,12 @@ class SparseApplyAdagradV2Op : public OpKernel {
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
-    const Tindex N = indices.dim_size(0);
     OP_REQUIRES(
-        ctx, grad.dim_size(0) == N,
+        ctx, grad.dim_size(0) == indices.dim_size(0),
         absl::InvalidArgumentError(
             "grad must be the same size as indices in the first dimension."));
+    OP_REQUIRES_OK(ctx, ValidateSparseApplyIndexRange<Device, Tindex>(
+                            var, grad, indices));
 
     OP_REQUIRES(ctx, inner_dim > 0,
                 absl::InvalidArgumentError(
@@ -2250,11 +2292,12 @@ class SparseApplyProximalAdagradOp : public OpKernel {
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
-    const Tindex N = indices.dim_size(0);
     OP_REQUIRES(
-        ctx, grad.dim_size(0) == N,
+        ctx, grad.dim_size(0) == indices.dim_size(0),
         absl::InvalidArgumentError(
             "grad must be the same size as indices in the first dimension."));
+    OP_REQUIRES_OK(ctx, ValidateSparseApplyIndexRange<Device, Tindex>(
+                            var, grad, indices));
 
     OP_REQUIRES(ctx, inner_dim > 0,
                 absl::InvalidArgumentError(
@@ -2950,11 +2993,12 @@ class SparseApplyFtrlOp : public OpKernel {
                       "var and grad must match in dimension ", d)));
       inner_dim *= grad.dim_size(d);
     }
-    const Tindex N = indices.dim_size(0);
     OP_REQUIRES(
-        ctx, grad.dim_size(0) == N,
+        ctx, grad.dim_size(0) == indices.dim_size(0),
         absl::InvalidArgumentError(
             "grad must be the same size as indices in the first dimension."));
+    OP_REQUIRES_OK(ctx, ValidateSparseApplyIndexRange<Device, Tindex>(
+                            var, grad, indices));
 
     OP_REQUIRES(ctx, inner_dim > 0,
                 absl::InvalidArgumentError(
@@ -3497,11 +3541,12 @@ class SparseApplyKerasMomentumOp : public OpKernel {
                   absl::InvalidArgumentError(absl::StrCat(
                       "var and grad must match in dimension ", d)));
     }
-    const Tindex N = indices.dim_size(0);
     OP_REQUIRES(
-        ctx, grad.dim_size(0) == N,
+        ctx, grad.dim_size(0) == indices.dim_size(0),
         absl::InvalidArgumentError(
             "grad must be the same size as indices in the first dimension."));
+    OP_REQUIRES_OK(ctx, ValidateSparseApplyIndexRange<Device, Tindex>(
+                            var, grad, indices));
 
     const Tensor& momentum = ctx->input(5);
     OP_REQUIRES(
