@@ -115,9 +115,6 @@ mlir::Attribute convertGeneric(mlir::Attribute vifrt_attr,
   if (auto attr = llvm::dyn_cast<VifrtDevicesV1Attr>(vifrt_attr)) {
     return IfrtDevicesAttr::get(attr.getContext(), attr.getIds());
   }
-  if (auto attr = llvm::dyn_cast<VifrtShardingParamV1Attr>(vifrt_attr)) {
-    return IfrtShardingParamAttr::get(attr.getContext(), attr.getSharding());
-  }
   if (auto attr = llvm::dyn_cast<VifrtShardingParamV2Attr>(vifrt_attr)) {
     return IfrtShardingParamAttr::get(attr.getContext(), attr.getSharding());
   }

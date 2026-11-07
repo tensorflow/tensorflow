@@ -125,18 +125,9 @@ class ShardingParam {
 
   static mlir::FailureOr<ShardingParam> Parse(mlir::AsmParser& ods_parser);
 
-  // Parses V1 of ShardingParam. This method is meant to be used in the VIFRT
-  // dialect to parse versioned ShardingParams.
-  static mlir::FailureOr<ShardingParam> ParseV1(mlir::AsmParser& ods_parser);
-
   // Parses V2 of ShardingParam. This method is meant to be used in the VIFRT
   // dialect to parse versioned ShardingParams.
   static mlir::FailureOr<ShardingParam> ParseV2(mlir::AsmParser& ods_parser);
-
-  // Prints V1 of ShardingParam. This method is meant to be used in the VIFRT
-  // dialect to print versioned ShardingParams.
-  static void PrintV1(mlir::AsmPrinter& ods_printer,
-                      const ShardingParam& sharding);
 
   // Prints V2 of ShardingParam. This method is meant to be used in the VIFRT
   // dialect to print versioned ShardingParams.

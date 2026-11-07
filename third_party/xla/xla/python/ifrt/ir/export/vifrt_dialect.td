@@ -77,19 +77,6 @@ def Vifrt_UnspecifiedShardingAttrV1
   let assemblyFormat = "";
 }
 
-def Vifrt_ShardingParameterV1 :
-    AttrOrTypeParameter<"::xla::ifrt::ShardingParam", ""> {
-  let parser = "::xla::ifrt::ShardingParam::ParseV1($_parser)";
-  let printer = "::xla::ifrt::ShardingParam::PrintV1($_printer, $_self)";
-}
-
-def Vifrt_ShardingParamAttrV1 : Vifrt_AttrDef<"VifrtShardingParamV1", "0.1.0",
-    "0.2.0"> {
-  let mnemonic = "sharding_param_v1";
-  let parameters = (ins Vifrt_ShardingParameterV1:$sharding);
-  let assemblyFormat = "`<` $sharding `>`";
-}
-
 def Vifrt_ShardingParameterV2 :
     AttrOrTypeParameter<"::xla::ifrt::ShardingParam", ""> {
   let parser = "::xla::ifrt::ShardingParam::ParseV2($_parser)";

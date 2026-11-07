@@ -122,7 +122,6 @@ cc_library(
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/python/ifrt/ir:version",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
