@@ -352,7 +352,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> CloneModuleToContext(
   llvm::raw_svector_ostream stream(bitcode);
   llvm::WriteBitcodeToFile(module, stream);
   llvm::Expected<std::unique_ptr<llvm::Module>> clone = llvm::parseBitcodeFile(
-      llvm::MemoryBufferRef(bitcode.str(), module_id), context);
+      llvm::MemoryBufferRef(bitcode.str(), AsStringRef(module_id)), context);
   if (!clone) {
     return Internal("Failed to clone LLVM module %s into a new context: %s",
                     module.getModuleIdentifier(),
