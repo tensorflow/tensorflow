@@ -13,6 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #include "tensorflow/core/kernels/image/non_max_suppression_op.h"
