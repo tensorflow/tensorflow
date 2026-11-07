@@ -1040,6 +1040,23 @@ class SparseCrossV2OpTest(BaseSparseCrossOpTest):
       sparse_ops.sparse_cross(['non_tensor_scalar'])
 
   @test_util.run_in_graph_and_eager_modes
+  def test_sparse_cross_with_sparse_tensor_value(self):
+    sp_val = sparse_tensor.SparseTensorValue(
+        indices=numpy.array([[0, 0], [1, 0]], dtype=numpy.int64),
+        values=numpy.array([b'a', b'b'], dtype=object),
+        dense_shape=numpy.array([2, 1], dtype=numpy.int64),
+    )
+    dense = constant_op.constant([[b'c'], [b'd']], dtype=dtypes.string)
+    res = sparse_ops.sparse_cross([sp_val, dense])
+    self.assertIsInstance(res, sparse_tensor.SparseTensor)
+    evaluated = self.evaluate(res)
+    self.assertAllEqual(
+        numpy.array([[0, 0], [1, 0]], dtype=numpy.int64), evaluated.indices
+    )
+    self.assertAllEqual([b'a_X_c', b'b_X_d'], evaluated.values)
+    self.assertAllEqual([2, 1], evaluated.dense_shape)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_cpp_kernel_invalid_dtype(self):
     # Tests direct op kernel construction rejects invalid types.
     with self.assertRaisesRegex(
@@ -1316,6 +1333,28 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
         TypeError, r'All inputs must be Tensor or SparseTensor\.'
     ):
       sparse_ops.sparse_cross_hashed(['non_tensor_scalar'])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_cross_hashed_with_sparse_tensor_value(self):
+    sp_val_1 = sparse_tensor.SparseTensorValue(
+        indices=numpy.array([[0, 0], [1, 0]], dtype=numpy.int64),
+        values=numpy.array([1, 2], dtype=numpy.int64),
+        dense_shape=numpy.array([2, 1], dtype=numpy.int64),
+    )
+    sp_val_2 = sparse_tensor.SparseTensorValue(
+        indices=numpy.array([[0, 0], [1, 0]], dtype=numpy.int64),
+        values=numpy.array([3, 4], dtype=numpy.int64),
+        dense_shape=numpy.array([2, 1], dtype=numpy.int64),
+    )
+    res = sparse_ops.sparse_cross_hashed([sp_val_1, sp_val_2], num_buckets=100)
+    self.assertIsInstance(res, sparse_tensor.SparseTensor)
+    sp_1 = sparse_tensor.SparseTensor.from_value(sp_val_1)
+    sp_2 = sparse_tensor.SparseTensor.from_value(sp_val_2)
+    expected = sparse_ops.sparse_cross_hashed([sp_1, sp_2], num_buckets=100)
+    eval_res, eval_exp = self.evaluate([res, expected])
+    self.assertAllEqual(eval_exp.indices, eval_res.indices)
+    self.assertAllEqual(eval_exp.values, eval_res.values)
+    self.assertAllEqual(eval_exp.dense_shape, eval_res.dense_shape)
 
   @test_util.run_in_graph_and_eager_modes
   def test_cpp_kernel_invalid_dtype_hashed(self):
