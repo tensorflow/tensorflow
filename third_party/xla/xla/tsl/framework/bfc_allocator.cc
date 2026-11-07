@@ -805,28 +805,30 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                               const void* chunk_ptr, int64_t req_bytes,
                               int64_t alloc_bytes) {
   tsl::profiler::TraceMe::InstantActivity(
-      [this, traceme_name, chunk_ptr, req_bytes, alloc_bytes]()
-          ABSL_NO_THREAD_SAFETY_ANALYSIS {
-            int64_t bytes_available =
-                memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
-            const auto& annotation =
-                tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
-            return tsl::profiler::TraceMeEncode(
-                traceme_name, {{"allocator_name", name_},
-                               {"bytes_reserved", stats_.bytes_reserved},
-                               {"bytes_allocated", stats_.bytes_in_use},
-                               {"bytes_available", bytes_available},
-                               {"fragmentation", GetFragmentation()},
-                               {"peak_bytes_in_use", stats_.peak_bytes_in_use},
-                               {"requested_bytes", req_bytes},
-                               {"allocation_bytes", alloc_bytes},
-                               {"addr", absl::bit_cast<uintptr_t>(chunk_ptr)},
-                               {"tf_op", annotation.pending_op_name},
-                               {"id", annotation.pending_step_id},
-                               {"region_type", annotation.pending_region_type},
-                               {"data_type", annotation.pending_data_type},
-                               {"shape", annotation.pending_shape_func()}});
-          },
+      [this, traceme_name, chunk_ptr, req_bytes,
+       alloc_bytes]() ABSL_NO_THREAD_SAFETY_ANALYSIS {
+        int64_t bytes_available =
+            memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
+        const auto& annotation =
+            tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+        return tsl::profiler::TraceMeEncode(
+            traceme_name, {{"allocator_name", name_},
+                           {"bytes_reserved", stats_.bytes_reserved},
+                           {"bytes_allocated", stats_.bytes_in_use},
+                           {"bytes_available", bytes_available},
+                           {"fragmentation", GetFragmentation()},
+                           {"peak_bytes_in_use", stats_.peak_bytes_in_use},
+                           {"requested_bytes", req_bytes},
+                           {"allocation_bytes", alloc_bytes},
+                           {"addr", absl::bit_cast<uintptr_t>(chunk_ptr)},
+                           {"tf_op", annotation.pending_op_name},
+                           {"id", annotation.pending_step_id},
+                           {"region_type", annotation.pending_region_type},
+                           {"data_type", annotation.pending_data_type},
+                           {"shape", annotation.pending_shape_func != nullptr
+                                         ? annotation.pending_shape_func(0)
+                                         : std::string()}});
+      },
       /*level=*/tsl::profiler::TraceMeLevel::kInfo,
       /*filter_mask=*/kDefaultMemoryFilterMask);
 }
