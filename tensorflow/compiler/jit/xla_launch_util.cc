@@ -409,6 +409,47 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
           << output.on_device_shape().ToString();
   CHECK_EQ(ctx->num_outputs(), compilation_result->outputs.size());
 
+  // Fail cleanly if any output requires crossing the XLA/TF boundary with a
+  // TensorList / DT_VARIANT, before performing stream operations or tensor
+  // allocation.
+  for (const XlaOutputDescription& descr : compilation_result->outputs) {
+    if (descr.type == DT_VARIANT || descr.is_tensor_list) {
+      return xla::Unimplemented(
+          "Support for TensorList crossing the XLA/TF boundary "
+          "is not implemented");
+    }
+  }
+
+  // Clear aliased output buffers on any error exit to prevent
+  // ScopedShapedBuffer's destructor from deallocating buffers that are owned
+  // by input tensors. If execution inputs were donated to XLA, the input
+  // tensor and ScopedShapedBuffer both temporarily hold ownership of the
+  // buffer. If PopulateOutputs fails before taking back ownership in
+  // GetOrCreateTensorForOutput, ScopedShapedBuffer's destructor would attempt
+  // to deallocate the input buffer, leading to double-free or BFCAllocator
+  // invalid chunk handle assertion aborts.
+  bool populate_done = false;
+  auto cleanup_aliased_buffers = absl::MakeCleanup([&]() {
+    if (!populate_done) {
+      input_output_alias.ForEachAlias(
+          [&](const xla::ShapeIndex& output_index,
+              const xla::HloInputOutputAliasConfig::Alias& alias) {
+            xla::ShapeIndex idx = output_index;
+            if (!input_output_alias.shape().IsTuple() &&
+                output.on_host_shape().IsTuple() && idx.empty()) {
+              idx = xla::ShapeIndex({0});
+            }
+            if (idx.empty() && output.on_host_shape().IsTuple()) {
+              idx = xla::ShapeIndex({0});
+            }
+            if (xla::ShapeUtil::IndexIsValid(output.on_device_shape(), idx)) {
+              output.set_buffer(stream_executor::ScopedDeviceAddress<uint8_t>(),
+                                idx);
+            }
+          });
+    }
+  });
+
   // If the on-host-shape isn't a tuple, create a new single-element tuple
   // buffer with a nullptr root index table. This allows the code below to treat
   // output as a tuple unconditionally.
@@ -427,14 +468,6 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
   if (use_multiple_streams_ && stream) {
     TF_ASSIGN_OR_RETURN(definition_event, stream->parent()->CreateEvent());
     TF_RETURN_IF_ERROR(stream->RecordEvent(definition_event.get()));
-  }
-
-  for (const XlaOutputDescription& descr : compilation_result->outputs) {
-    if (descr.type == DT_VARIANT) {
-      return xla::Unimplemented(
-          "Support for TensorList crossing the XLA/TF boundary "
-          "is not implemented");
-    }
   }
 
   std::vector<TensorShape> output_tensor_shapes;
@@ -540,6 +573,7 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
     *var->tensor() = output_tensor;
     ++output_num;
   }
+  populate_done = true;
   return absl::OkStatus();
 }
 

@@ -440,9 +440,22 @@ absl::Status CompileToLocalExecutable(
   XlaCompiler::CompileOptions compile_options =
       GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
 
-  return xla_device_compiler->CompileIfNeeded(
+  TF_RETURN_IF_ERROR(xla_device_compiler->CompileIfNeeded(
       options, function, args, compile_options, compile_mode, profiler,
-      compilation_result, executable);
+      compilation_result, executable));
+
+  if (*compilation_result != nullptr) {
+    for (size_t i = 0; i < (*compilation_result)->outputs.size(); ++i) {
+      const auto& output = (*compilation_result)->outputs[i];
+      if (output.type == DT_VARIANT || output.is_tensor_list) {
+        return absl::UnimplementedError(
+            absl::StrCat("Support for TensorList crossing the XLA/TF boundary "
+                         "is not implemented (output index ",
+                         i, ")"));
+      }
+    }
+  }
+  return absl::OkStatus();
 }
 
 absl::Status GetUpdatedVariables(

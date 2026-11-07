@@ -353,6 +353,20 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
   TF_RET_CHECK(cache_value.executable == nullptr);
   TF_RET_CHECK(out_compilation_result->computation != nullptr);
 
+  // Validate that no cluster output crosses the XLA/TF boundary as DT_VARIANT
+  // or TensorList, which is not supported by TensorFlow and would cause
+  // runtime failure and allocator corruption if executed.
+  for (size_t i = 0; i < out_compilation_result->outputs.size(); ++i) {
+    const auto& output = out_compilation_result->outputs[i];
+    if (output.type == DT_VARIANT || output.is_tensor_list) {
+      cache_value.compilation_status = absl::UnimplementedError(
+          absl::StrCat("Support for TensorList crossing the XLA/TF boundary "
+                       "is not implemented (output index ",
+                       i, ")"));
+      return cache_value.compilation_status;
+    }
+  }
+
   auto loaded_executable = persistor_->TryToLoadExecutable(
       DeviceCompilationClusterSignature::Hash()(sig), sig.HumanString(),
       options, *out_compilation_result, compiler_client_.get());
