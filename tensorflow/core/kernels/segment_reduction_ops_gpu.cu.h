@@ -1362,6 +1362,118 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
                       done);
     const Toffsets ninner = static_cast<Toffsets>(ninner64);
 
+    // The CPU functor bounds-checks every `indices` value against `noutput`
+    // and every `segment_ids` value against `nsegments` before using them to
+    // read/write `input`/`output`, returning an InvalidArgumentError on
+    // failure. Perform device-side bounds checking matching the V1 GPU functor
+    // and CPU behavior to prevent invalid memory accesses on GPU.
+    const int64_t noutput = dense_output_shape.dim_size(0);
+    if (nouter > 0) {
+      se::Stream* stream = context->op_device_context()->stream();
+      OP_REQUIRES_ASYNC(context, stream != nullptr,
+                        absl::InternalError("No GPU stream available."), done);
+
+      // Fast check, matching the CPU functor: `segment_vec` is assumed
+      // sorted in non-decreasing order, so its last element is the maximum
+      // segment id. A single element is enough to validate `nsegments`
+      // against the well-formed/sorted case and produce the same
+      // "Invalid number of segments" message the CPU functor uses for it.
+      ScratchSpace<Tsegmentids> last_segment_id_host(context, 1,
+                                                     /*on_host=*/true);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          stream->Memcpy(
+              last_segment_id_host.mutable_data(),
+              stream_executor::DeviceAddressBase(
+                  const_cast<Tsegmentids*>(segment_vec.data()) + (nouter - 1),
+                  sizeof(Tsegmentids)),
+              sizeof(Tsegmentids)),
+          done);
+      OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
+      OP_REQUIRES_ASYNC(
+          context, *last_segment_id_host.data() + 1 <= nsegments,
+          absl::InvalidArgumentError("Invalid number of segments"), done);
+
+      // Full per-element validation, matching the CPU functor: catches
+      // malformed input that isn't actually sorted (so the fast check above
+      // can't tell it's invalid from the last element alone). Runs as a
+      // device-side scan; `bad_positions` only ever carries 2 int32s back to
+      // the host, regardless of `nouter`.
+      Tensor bad_positions;
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          context->allocate_temp(DT_INT32, TensorShape({2}), &bad_positions),
+          done);
+      int32_t* const bad_positions_ptr = bad_positions.flat<int32_t>().data();
+      int32_t* const bad_index_pos_ptr = bad_positions_ptr;
+      int32_t* const bad_segment_pos_ptr = bad_positions_ptr + 1;
+      stream_executor::DeviceAddressBase bad_positions_device(
+          bad_positions_ptr, 2 * sizeof(int32_t));
+      OP_REQUIRES_OK_ASYNC(context,
+                           stream->Memset32(&bad_positions_device,
+                                            std::numeric_limits<int32_t>::max(),
+                                            2 * sizeof(int32_t)),
+                           done);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          LaunchSparseSegmentGradBoundsCheckKernel(
+              device, static_cast<Tindices>(nouter),
+              static_cast<Tindices>(noutput),
+              static_cast<Tsegmentids>(nsegments), indices_vec.data(),
+              segment_vec.data(), bad_index_pos_ptr, bad_segment_pos_ptr),
+          done);
+      ScratchSpace<int32_t> bad_positions_host(context, 2, /*on_host=*/true);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          stream->Memcpy(bad_positions_host.mutable_data(),
+                         bad_positions_device, 2 * sizeof(int32_t)),
+          done);
+      OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
+      const int32_t bad_index_pos = bad_positions_host.data()[0];
+      const int32_t bad_segment_pos = bad_positions_host.data()[1];
+
+      if (bad_index_pos != std::numeric_limits<int32_t>::max()) {
+        ScratchSpace<Tindices> bad_index_host(context, 1, /*on_host=*/true);
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            stream->Memcpy(
+                bad_index_host.mutable_data(),
+                stream_executor::DeviceAddressBase(
+                    const_cast<Tindices*>(indices_vec.data()) + bad_index_pos,
+                    sizeof(Tindices)),
+                sizeof(Tindices)),
+            done);
+        OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
+        OP_REQUIRES_ASYNC(
+            context, false,
+            absl::InvalidArgumentError(
+                absl::StrCat("Index ", *bad_index_host.data(),
+                             " out of range [0, ", noutput, ").")),
+            done);
+      }
+      if (bad_segment_pos != std::numeric_limits<int32_t>::max()) {
+        ScratchSpace<Tsegmentids> bad_segment_host(context, 1,
+                                                   /*on_host=*/true);
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            stream->Memcpy(
+                bad_segment_host.mutable_data(),
+                stream_executor::DeviceAddressBase(
+                    const_cast<Tsegmentids*>(segment_vec.data()) +
+                        bad_segment_pos,
+                    sizeof(Tsegmentids)),
+                sizeof(Tsegmentids)),
+            done);
+        OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
+        OP_REQUIRES_ASYNC(
+            context, false,
+            absl::InvalidArgumentError(
+                absl::StrCat("Segment id ", *bad_segment_host.data(),
+                             " out of range [0, ", nsegments, ").")),
+            done);
+      }
+    }
+
     // Cast indices to 32-bit to save memory bandwidth (the cost of the cast is
     // worth it because the vector is used multiple times).
     // Note that we can currently assume int32 is safe because the op's dense
