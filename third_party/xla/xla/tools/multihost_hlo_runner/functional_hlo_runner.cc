@@ -793,74 +793,89 @@ bool CanCloneArgumentBuffer(
 // redundant host-to-device DMA transfers and host-side layout relinearization.
 //
 // Search order:
-//   1. When `device_idx > 0`, first check parameter `arg_i` on device 0 (the
-//      common SPMD / `clone_device0_arguments` case), then any other parameter
-//      on device 0 with identical shape, layout, memory-space kind, and bytes.
-//   2. Next, check earlier parameters (`0 .. arg_i - 1`) on the same device
-//      that reside in the exact same `dst_memory_space`.
+//   1. Earlier parameters (`0 .. arg_i - 1`) on peer devices (`peer_idx !=
+//      device_idx`) residing in a different `PjRtMemorySpace`. Rotating the
+//      starting peer offset by `arg_i` forms a 1-to-1 ring across devices for
+//      repeated layer weights while reading from buffers created in earlier
+//      parameter iterations rather than chaining off in-flight copies at
+//      `arg_i`.
+//   2. Parameter `arg_i` on peer devices (`peer_idx != device_idx`) residing in
+//      a different `PjRtMemorySpace`, covering the primary-to-replica fan-out
+//      when a distinct tensor variant is first loaded at `arg_i`.
+//   3. When `allow_same_memory_space_clone` is true (disabled on TPU, where
+//      intra-chip `CopyToMemorySpace` bounces through host DRAM via D2H + H2D),
+//      earlier parameters (`0 .. arg_i - 1`) on `device_idx` residing in the
+//      same `dst_memory_space`.
 //
 // Returns `nullptr` if no matching source buffer exists or if the backend does
 // not implement `CopyToMemorySpace` for the target memory space.
 std::unique_ptr<PjRtBuffer> TryCloneArgumentBuffer(
-    int device_idx, int arg_i, const Literal& dst_literal,
+    size_t device_idx, size_t arg_i, const Literal& dst_literal,
     const Layout& dst_layout, PjRtMemorySpace* dst_memory_space,
-    const std::vector<Literal>* device0_arguments,
-    const std::vector<Literal>& curr_device_arguments,
+    absl::Span<const std::vector<Literal>* const> per_device_arguments,
     absl::Span<const std::vector<std::unique_ptr<PjRtBuffer>>> argument_buffers,
-    absl::Span<const Layout> executable_parameter_layouts) {
-  if (device_idx > 0 && device0_arguments != nullptr) {
-    bool copy_failed = false;
-    auto try_clone_from_device0 =
-        [&](int dev0_arg_i) -> std::unique_ptr<PjRtBuffer> {
-      if (dev0_arg_i >= device0_arguments->size() ||
-          dev0_arg_i >= argument_buffers[0].size()) {
-        return nullptr;
+    absl::Span<const Layout> executable_parameter_layouts,
+    bool allow_same_memory_space_clone) {
+  const size_t num_devices = argument_buffers.size();
+  if (num_devices > 1) {
+    const size_t peer_count = num_devices - 1;
+    const size_t base_offset = (arg_i % peer_count) + 1;
+    for (size_t prev_i = 0; prev_i < arg_i; ++prev_i) {
+      for (size_t step = 0; step < peer_count; ++step) {
+        const size_t offset = ((base_offset - 1 + step) % peer_count) + 1;
+        const size_t peer_idx = (device_idx + offset) % num_devices;
+        PjRtBuffer* src_buf = argument_buffers[peer_idx][prev_i].get();
+        if (src_buf == nullptr || src_buf->memory_space() == dst_memory_space ||
+            !CanCloneArgumentBuffer((*per_device_arguments[peer_idx])[prev_i],
+                                    prev_i, src_buf, dst_literal, dst_layout,
+                                    dst_memory_space,
+                                    executable_parameter_layouts)) {
+          continue;
+        }
+        absl::StatusOr<std::unique_ptr<PjRtBuffer>> cloned =
+            src_buf->CopyToMemorySpace(dst_memory_space);
+        if (!cloned.ok()) {
+          return nullptr;
+        }
+        return *std::move(cloned);
       }
-      PjRtBuffer* src_buf = argument_buffers[0][dev0_arg_i].get();
-      if (!CanCloneArgumentBuffer((*device0_arguments)[dev0_arg_i], dev0_arg_i,
-                                  src_buf, dst_literal, dst_layout,
+    }
+    for (size_t offset = 1; offset < num_devices; ++offset) {
+      const size_t peer_idx = (device_idx + offset) % num_devices;
+      PjRtBuffer* src_buf = argument_buffers[peer_idx][arg_i].get();
+      if (src_buf == nullptr || src_buf->memory_space() == dst_memory_space ||
+          !CanCloneArgumentBuffer((*per_device_arguments[peer_idx])[arg_i],
+                                  arg_i, src_buf, dst_literal, dst_layout,
                                   dst_memory_space,
                                   executable_parameter_layouts)) {
-        return nullptr;
+        continue;
       }
       absl::StatusOr<std::unique_ptr<PjRtBuffer>> cloned =
           src_buf->CopyToMemorySpace(dst_memory_space);
-      if (cloned.ok()) {
-        return *std::move(cloned);
+      if (!cloned.ok()) {
+        return nullptr;
       }
-      copy_failed = true;
-      return nullptr;
-    };
-    if (std::unique_ptr<PjRtBuffer> cloned = try_clone_from_device0(arg_i)) {
-      return cloned;
-    }
-    for (int dev0_arg_i = 0;
-         !copy_failed && dev0_arg_i < argument_buffers[0].size();
-         ++dev0_arg_i) {
-      if (dev0_arg_i == arg_i) {
-        continue;
-      }
-      if (std::unique_ptr<PjRtBuffer> cloned =
-              try_clone_from_device0(dev0_arg_i)) {
-        return cloned;
-      }
+      return *std::move(cloned);
     }
   }
 
-  for (int prev_i = 0; prev_i < arg_i; ++prev_i) {
-    PjRtBuffer* src_buf = argument_buffers[device_idx][prev_i].get();
-    if (src_buf == nullptr || src_buf->memory_space() != dst_memory_space ||
-        !CanCloneArgumentBuffer(curr_device_arguments[prev_i], prev_i, src_buf,
-                                dst_literal, dst_layout, dst_memory_space,
-                                executable_parameter_layouts)) {
-      continue;
-    }
-    if (absl::StatusOr<std::unique_ptr<PjRtBuffer>> cloned =
-            src_buf->CopyToMemorySpace(dst_memory_space);
-        cloned.ok()) {
+  if (allow_same_memory_space_clone) {
+    for (size_t prev_i = 0; prev_i < arg_i; ++prev_i) {
+      PjRtBuffer* src_buf = argument_buffers[device_idx][prev_i].get();
+      if (src_buf == nullptr || src_buf->memory_space() != dst_memory_space ||
+          !CanCloneArgumentBuffer((*per_device_arguments[device_idx])[prev_i],
+                                  prev_i, src_buf, dst_literal, dst_layout,
+                                  dst_memory_space,
+                                  executable_parameter_layouts)) {
+        continue;
+      }
+      absl::StatusOr<std::unique_ptr<PjRtBuffer>> cloned =
+          src_buf->CopyToMemorySpace(dst_memory_space);
+      if (!cloned.ok()) {
+        return nullptr;
+      }
       return *std::move(cloned);
     }
-    break;
   }
   return nullptr;
 }
@@ -953,44 +968,65 @@ CopyArgumentsToDevice(PjRtClient& client,
   HloModule* module = hlo_modules.front().get();
 
   absl::Status status = [&]() -> absl::Status {
+    if (num_addressable_devices == 0) {
+      return absl::OkStatus();
+    }
     constexpr int64_t kMinDeviceCloneBytes = 64 * 1024;      // 64 KiB
     constexpr int64_t kMaxPendingTransferBytes = 2LL << 30;  // 2 GiB
     int64_t pending_transfer_bytes = 0;
     std::vector<PjRtBuffer*> pending_buffers;
 
-    // Look up device 0's argument vector by its PjRtDevice::global_device_id()
-    // (which may differ from global device ID 0 on multi-host slices).
-    const std::vector<Literal>* device0_arguments = nullptr;
-    if (num_addressable_devices > 0) {
-      auto dev0_it =
-          arguments.find(addressable_devices[0]->global_device_id().value());
-      if (dev0_it != arguments.end()) {
-        device0_arguments = &dev0_it->second;
-      }
-    }
+    // On TPU, `CopyToMemorySpace` within the same `PjRtMemorySpace` has no
+    // intra-chip HBM-to-HBM path and bounces through host DRAM (`D2H + H2D`),
+    // which is strictly slower than transferring directly from the host
+    // `Literal` while polluting device DMA queues. Cross-device TPU copies use
+    // direct ICI.
+    const bool allow_same_memory_space_clone =
+        (client.platform_id() != TpuId());
 
-    for (int i = 0; i < num_addressable_devices; ++i) {
+    std::vector<const std::vector<Literal>*> per_device_arguments(
+        num_addressable_devices, nullptr);
+    for (size_t i = 0; i < num_addressable_devices; ++i) {
       PjRtDevice* curr_device = addressable_devices[i];
-      int curr_device_id = curr_device->global_device_id().value();
-      // 'source_device' determines where we get the input literal from.
+      // 'source_device' determines where we get the input literal from; look up
+      // by `PjRtDevice::global_device_id()` (which may differ from the local
+      // device index on multi-host slices).
       PjRtDevice* source_device =
           addressable_devices[clone_device0_arguments ? 0 : i];
-      int source_device_id = source_device->global_device_id().value();
-      auto it = arguments.find(source_device_id);
+      auto it = arguments.find(source_device->global_device_id().value());
       if (it == arguments.end()) {
         return InvalidArgument(
             "The provided argument map does not contain arguments "
             "for device: %d",
-            curr_device_id);
+            curr_device->id());
       }
+      per_device_arguments[i] = &it->second;
+    }
 
-      const std::vector<Literal>& curr_device_arguments = it->second;
+    const size_t num_args = per_device_arguments[0]->size();
+    for (size_t i = 0; i < num_addressable_devices; ++i) {
+      if (per_device_arguments[i]->size() != num_args) {
+        return InvalidArgument(
+            "Argument count mismatch on device %d: expected %v, got %v.",
+            addressable_devices[i]->id(), num_args,
+            per_device_arguments[i]->size());
+      }
+      argument_buffers[i].resize(num_args);
+    }
 
-      argument_buffers[i].reserve(curr_device_arguments.size());
-      for (int arg_i = 0; arg_i < curr_device_arguments.size(); ++arg_i) {
-        const Literal& literal = curr_device_arguments[arg_i];
+    // Iterate outer over parameters and rotate the starting primary device
+    // whenever an uncloned host-to-device transfer is issued so PCIe H2D
+    // bandwidth and outbound cross-device ICI fan-out are distributed evenly
+    // across local devices rather than bottlenecked on device 0.
+    size_t next_primary_device = 0;
+    for (size_t arg_i = 0; arg_i < num_args; ++arg_i) {
+      const size_t start_dev = next_primary_device % num_addressable_devices;
+      for (size_t step = 0; step < num_addressable_devices; ++step) {
+        const size_t i = (start_dev + step) % num_addressable_devices;
+        PjRtDevice* curr_device = addressable_devices[i];
+        const Literal& literal = (*per_device_arguments[i])[arg_i];
         if (log_input) {
-          LOG(INFO) << "device_id=" << curr_device_id
+          LOG(INFO) << "device_id=" << curr_device->id()
                     << ", input = " << literal.ToString();
         }
         std::unique_ptr<PjRtBuffer> argument_buffer;
@@ -999,19 +1035,22 @@ CopyArgumentsToDevice(PjRtClient& client,
             literal.size_bytes() >= kMinDeviceCloneBytes &&
             arg_i < executable_parameter_layouts.size()) {
           ABSL_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
-                           argument_memory_space(module, curr_device, arg_i));
+                           argument_memory_space(module, curr_device,
+                                                 static_cast<int>(arg_i)));
           argument_buffer = TryCloneArgumentBuffer(
               i, arg_i, literal, executable_parameter_layouts[arg_i],
-              memory_space, device0_arguments, curr_device_arguments,
-              argument_buffers, executable_parameter_layouts);
+              memory_space, per_device_arguments, argument_buffers,
+              executable_parameter_layouts, allow_same_memory_space_clone);
         }
         if (argument_buffer == nullptr) {
           ABSL_ASSIGN_OR_RETURN(
               argument_buffer,
-              buffer_from_host_literal(module, curr_device, arg_i, literal));
+              buffer_from_host_literal(module, curr_device,
+                                       static_cast<int>(arg_i), literal));
+          ++next_primary_device;
         }
         PjRtBuffer* created_ptr = argument_buffer.get();
-        argument_buffers[i].push_back(std::move(argument_buffer));
+        argument_buffers[i][arg_i] = std::move(argument_buffer);
         pending_buffers.push_back(created_ptr);
         if (literal.shape().IsArrayExcludingBuffer()) {
           pending_transfer_bytes += std::max<int64_t>(0, literal.size_bytes());
@@ -1038,7 +1077,9 @@ CopyArgumentsToDevice(PjRtClient& client,
   // frame).
   for (const auto& device_argument_buffers : argument_buffers) {
     for (const auto& device_buffer : device_argument_buffers) {
-      status.Update(device_buffer->GetReadyFuture().Await());
+      if (device_buffer != nullptr) {
+        status.Update(device_buffer->GetReadyFuture().Await());
+      }
     }
   }
   ABSL_RETURN_IF_ERROR(status);
