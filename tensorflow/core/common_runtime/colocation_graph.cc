@@ -1096,7 +1096,7 @@ absl::Status ColocationGraph::ColocateNodeToGroup(
                   << "' with nodes in colocation group '" << colocation_group
                   << "' because soft placement is on and an attempt at doing "
                      "so resulted in the following error: "
-                  << AttachDef(s, *node).ToString();
+                  << AttachDef(s, *node);
       }
     }
   }

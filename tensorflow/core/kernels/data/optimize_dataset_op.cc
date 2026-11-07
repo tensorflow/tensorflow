@@ -89,7 +89,7 @@ void MakeDatasetHelper(OpKernelContext* ctx,
   if (absl::IsDeadlineExceeded(s)) {
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
     // long which should not prevent further computation.
-    LOG(WARNING) << s.ToString();
+    LOG(WARNING) << s;
 
     *output = input;
     input->Ref();
