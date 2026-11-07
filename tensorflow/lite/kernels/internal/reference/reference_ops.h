@@ -533,12 +533,25 @@ inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
   TFLITE_DCHECK_LE(ret.indices_nd, params_shape.DimensionsCount());
   const int params_dims = params_shape.DimensionsCount();
   for (int i = 0; i < indices_dims - 1; ++i) {
-    ret.n_slices *= indices_shape.Dims(i);
+    int64_t new_n_slices =
+        static_cast<int64_t>(ret.n_slices) * indices_shape.Dims(i);
+    if (new_n_slices > std::numeric_limits<int>::max() || new_n_slices < 0) {
+      ret.n_slices = -1;
+      return ret;
+    }
+    ret.n_slices = static_cast<int>(new_n_slices);
   }
   if (ret.n_slices == 0) return ret;
 
   for (int i = ret.indices_nd; i < params_dims; ++i) {
-    ret.slice_size *= params_shape.Dims(i);
+    int64_t new_slice_size =
+        static_cast<int64_t>(ret.slice_size) * params_shape.Dims(i);
+    if (new_slice_size > std::numeric_limits<int>::max() ||
+        new_slice_size < 0) {
+      ret.slice_size = -1;
+      return ret;
+    }
+    ret.slice_size = static_cast<int>(new_slice_size);
   }
 
   int remain_flat_size = params_shape.FlatSize();
@@ -567,7 +580,7 @@ inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
   const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
   if (res.n_slices == 0) return kTfLiteOk;
 
-  if (indices_data == nullptr ||
+  if (indices_data == nullptr || res.slice_size < 0 || res.n_slices < 0 ||
       (res.slice_size > 0 &&
        (params_data == nullptr || output_data == nullptr))) {
     return kTfLiteError;
@@ -583,7 +596,7 @@ inline TfLiteStatus GatherNd(const RuntimeShape& params_shape,
       }
       from_pos += static_cast<int64_t>(coord) * res.dims_to_count[j];
     }
-    if (from_pos < 0 || from_pos + res.slice_size > flat_size) {
+    if (from_pos < 0 || from_pos > flat_size - res.slice_size) {
       return kTfLiteError;
     }
     std::memcpy(output_data + i * res.slice_size, params_data + from_pos,
@@ -615,7 +628,7 @@ inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
   }
 
   if (indices_data == nullptr || params_data == nullptr ||
-      output_data == nullptr) {
+      output_data == nullptr || res.slice_size < 0 || res.n_slices < 0) {
     return kTfLiteError;
   }
 
@@ -632,7 +645,7 @@ inline TfLiteStatus GatherNdString(const RuntimeShape& params_shape,
       }
       from_pos += static_cast<int64_t>(coord) * res.dims_to_count[j];
     }
-    if (from_pos < 0 || from_pos + res.slice_size > max_pos) {
+    if (from_pos < 0 || from_pos > max_pos - res.slice_size) {
       return kTfLiteError;
     }
     for (int j = 0; j < res.slice_size; ++j) {
