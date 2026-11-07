@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "absl/container/inlined_vector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -511,6 +512,16 @@ TEST(TensorShapeTest, AsEigenDSizesWithPadding) {
 }
 
 TEST(TensorShapeTest, AsProto) {
+  TensorShape s0({});
+  TensorShapeProto sp0 = s0.AsProto();
+  EXPECT_FALSE(sp0.unknown_rank());
+  EXPECT_EQ(sp0.dim_size(), 0);
+
+  TensorShape s1({7});
+  TensorShapeProto sp1 = s1.AsProto();
+  ASSERT_EQ(sp1.dim_size(), 1);
+  EXPECT_EQ(sp1.dim(0).size(), 7);
+
   TensorShape s({10, 5});
   TensorShapeProto sp;
   s.AsProto(&sp);
@@ -520,6 +531,101 @@ TEST(TensorShapeTest, AsProto) {
 
   TensorShapeProto sp2 = s.AsProto();
   EXPECT_EQ(sp.DebugString(), sp2.DebugString());
+
+  TensorShape s6({2, 3, 4, 5, 6, 7});
+  TensorShapeProto sp6 = s6.AsProto();
+  EXPECT_FALSE(sp6.unknown_rank());
+  ASSERT_EQ(sp6.dim_size(), 6);
+  for (int i = 0; i < 6; ++i) {
+    EXPECT_EQ(sp6.dim(i).size(), i + 2);
+  }
+
+  PartialTensorShape p6({-1, 2, 3, -1, 5, 6});
+  TensorShapeProto p6_proto = p6.AsProto();
+  EXPECT_FALSE(p6_proto.unknown_rank());
+  ASSERT_EQ(p6_proto.dim_size(), 6);
+  EXPECT_EQ(p6_proto.dim(0).size(), -1);
+  EXPECT_EQ(p6_proto.dim(5).size(), 6);
+
+  s0.AsProto(&p6_proto);
+  EXPECT_FALSE(p6_proto.unknown_rank());
+  EXPECT_EQ(p6_proto.dim_size(), 0);
+
+  s1.AsProto(&p6_proto);
+  EXPECT_FALSE(p6_proto.unknown_rank());
+  ASSERT_EQ(p6_proto.dim_size(), 1);
+  EXPECT_EQ(p6_proto.dim(0).size(), 7);
+
+  PartialTensorShape unknown;
+  TensorShapeProto unknown_proto = unknown.AsProto();
+  EXPECT_TRUE(unknown_proto.unknown_rank());
+  EXPECT_EQ(unknown_proto.dim_size(), 0);
+
+  p6.AsProto(&p6_proto);
+  ASSERT_EQ(p6_proto.dim_size(), 6);
+  unknown.AsProto(&p6_proto);
+  EXPECT_TRUE(p6_proto.unknown_rank());
+  EXPECT_EQ(p6_proto.dim_size(), 0);
+
+  auto proto_dims = [](const TensorShapeProto& proto) {
+    absl::InlinedVector<int64_t, 4UL> dims;
+    for (const TensorShapeProto::Dim& dim : proto.dim()) {
+      dims.push_back(dim.size());
+    }
+    return dims;
+  };
+
+  // REP32.
+  TensorShape s32({70000, 2});
+  EXPECT_EQ(proto_dims(s32.AsProto()),
+            (absl::InlinedVector<int64_t, 4UL>{70000, 2}));
+  PartialTensorShape p32({70000, -1});
+  EXPECT_EQ(proto_dims(p32.AsProto()),
+            (absl::InlinedVector<int64_t, 4UL>{70000, -1}));
+
+  // REP_OUT_OF_LINE.
+  TensorShape s64({1, 2, 1LL << 34});
+  EXPECT_EQ(proto_dims(s64.AsProto()),
+            (absl::InlinedVector<int64_t, 4UL>{1, 2, 1LL << 34}));
+  PartialTensorShape p64({-1, 1LL << 34, 1, 2, 3, 4, 5});
+  TensorShapeProto p64_proto = p64.AsProto();
+  EXPECT_FALSE(p64_proto.unknown_rank());
+  EXPECT_EQ(proto_dims(p64_proto),
+            (absl::InlinedVector<int64_t, 4UL>{-1, 1LL << 34, 1, 2, 3, 4, 5}));
+}
+
+TEST(TensorShapeTest, DimSizes) {
+  TensorShape empty;
+  EXPECT_TRUE(empty.dim_sizes().empty());
+
+  TensorShape s2({10, 5});
+  EXPECT_EQ(s2.dim_sizes(), (absl::InlinedVector<int64_t, 4UL>{10, 5}));
+
+  TensorShape s6({2, 3, 4, 5, 6, 7});
+  EXPECT_EQ(s6.dim_sizes(),
+            (absl::InlinedVector<int64_t, 4UL>{2, 3, 4, 5, 6, 7}));
+
+  PartialTensorShape unknown;
+  EXPECT_TRUE(unknown.unknown_rank());
+  EXPECT_TRUE(unknown.dim_sizes().empty());
+
+  PartialTensorShape p6({-1, 2, 3, -1, 5, 6});
+  EXPECT_EQ(p6.dim_sizes(),
+            (absl::InlinedVector<int64_t, 4UL>{-1, 2, 3, -1, 5, 6}));
+
+  // REP32.
+  TensorShape s32({70000, 2});
+  EXPECT_EQ(s32.dim_sizes(), (absl::InlinedVector<int64_t, 4UL>{70000, 2}));
+  PartialTensorShape p32({70000, -1});
+  EXPECT_EQ(p32.dim_sizes(), (absl::InlinedVector<int64_t, 4UL>{70000, -1}));
+
+  // REP_OUT_OF_LINE.
+  TensorShape s64({1, 2, 1LL << 34});
+  EXPECT_EQ(s64.dim_sizes(),
+            (absl::InlinedVector<int64_t, 4UL>{1, 2, 1LL << 34}));
+  PartialTensorShape p64({-1, 1LL << 34, 1, 2, 3, 4, 5});
+  EXPECT_EQ(p64.dim_sizes(),
+            (absl::InlinedVector<int64_t, 4UL>{-1, 1LL << 34, 1, 2, 3, 4, 5}));
 }
 
 // -----------------------------------------------------------------------
@@ -1088,6 +1194,28 @@ void BM_TensorShape_SetDim(::testing::benchmark::State& state) {
   }
 }
 BENCHMARK(BM_TensorShape_SetDim)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
+
+void BM_TensorShape_AsProto(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
+  const TensorShape shape(MakeSizes(arg));
+  for (auto s : state) {
+    TensorShapeProto proto = shape.AsProto();
+    tensorflow::testing::DoNotOptimize(proto);
+  }
+}
+BENCHMARK(BM_TensorShape_AsProto)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
+
+void BM_TensorShape_DimSizes(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
+  const TensorShape shape(MakeSizes(arg));
+  for (auto s : state) {
+    absl::InlinedVector<int64_t, 4UL> dims = shape.dim_sizes();
+    tensorflow::testing::DoNotOptimize(dims);
+  }
+}
+BENCHMARK(BM_TensorShape_DimSizes)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
 
 }  // namespace
 }  // namespace tensorflow
