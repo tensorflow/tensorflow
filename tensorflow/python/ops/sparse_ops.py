@@ -3282,12 +3282,14 @@ def sparse_bincount(values,
   N=-1 are supported.
 
   Args:
-    values: A Tensor, RaggedTensor, or SparseTensor whose values should be
-      counted. These tensors must have a rank of 2 if `axis=-1`.
-    weights: If non-None, must be the same shape as `arr`. If `arr` is a
-      SparseTensor, `weights` must be a SparseTensor with the same dense shape
-      and same indices as `arr`. For each value in `value`, the bin will be
-      incremented by the corresponding weight instead of 1.
+    values: A Tensor, RaggedTensor, SparseTensor, or SparseTensorValue whose
+      values should be counted. These tensors must have a rank of 2 if
+      `axis=-1`.
+    weights: If non-None, must be the same shape as `values`. If `values` is a
+      SparseTensor or SparseTensorValue, `weights` must be a SparseTensor or
+      SparseTensorValue with the same dense shape and same indices as `values`.
+      For each value in `values`, the bin will be incremented by the
+      corresponding weight instead of 1.
     axis: The axis to slice over. Axes at and below `axis` will be flattened
       before bin counting. Currently, only `0`, and `-1` are supported. If None,
       all axes will be flattened (identical to passing `0`).
@@ -3416,7 +3418,9 @@ def sparse_bincount(values,
 
   """
   with ops.name_scope(name, "count", [values, weights]):
-    if not isinstance(values, sparse_tensor.SparseTensor):
+    if isinstance(values, sparse_tensor.SparseTensorValue):
+      values = sparse_tensor.SparseTensor.from_value(values)
+    elif not isinstance(values, sparse_tensor.SparseTensor):
       values = tensor_conversion.convert_to_tensor_v2_with_dispatch(
           values, name="values")
     if weights is not None:
@@ -3424,7 +3428,9 @@ def sparse_bincount(values,
       # mismatch between `values` and `weights`, `weights` can be a RaggedTensor
       # (or potentially some other kind of CompositeTensor) where conversion
       # to a dense tensor fails.
-      if not isinstance(weights, composite_tensor.CompositeTensor):
+      if isinstance(weights, sparse_tensor.SparseTensorValue):
+        weights = sparse_tensor.SparseTensor.from_value(weights)
+      elif not isinstance(weights, composite_tensor.CompositeTensor):
         weights = tensor_conversion.convert_to_tensor_v2_with_dispatch(
             weights, name="weights")
 
@@ -3476,10 +3482,20 @@ def sparse_bincount(values,
 
 def validate_sparse_weights(values, weights, dtype=None):
   """Validates the passed weight tensor or creates an empty one."""
+  if isinstance(values, sparse_tensor.SparseTensorValue):
+    values = sparse_tensor.SparseTensor.from_value(values)
+  elif not isinstance(values, sparse_tensor.SparseTensor):
+    raise ValueError(
+        "Argument `values` must be a SparseTensor or SparseTensorValue. "
+        f"Received values={values} of type: {type(values).__name__}")
+
   if weights is None:
     if dtype:
       return array_ops.constant([], dtype=dtype)
     return array_ops.constant([], dtype=values.values.dtype)
+
+  if isinstance(weights, sparse_tensor.SparseTensorValue):
+    weights = sparse_tensor.SparseTensor.from_value(weights)
 
   if not isinstance(weights, sparse_tensor.SparseTensor):
     raise ValueError(
