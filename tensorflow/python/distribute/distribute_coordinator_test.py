@@ -22,8 +22,6 @@ import sys
 import threading
 import time
 
-import six
-
 # pylint: disable=g-import-not-at-top
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -57,7 +55,7 @@ original_sys_exit = sys.exit
 
 
 def _bytes_to_str(maybe_bytes):
-  if isinstance(maybe_bytes, six.string_types):
+  if isinstance(maybe_bytes, str):
     return maybe_bytes
   else:
     return str(maybe_bytes, "utf-8")

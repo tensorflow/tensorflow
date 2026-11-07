@@ -21,7 +21,6 @@ import multiprocessing.pool
 import threading
 
 import numpy as np
-import six
 
 from tensorflow.python.client import device_lib
 from tensorflow.python.distribute import collective_util
@@ -72,7 +71,7 @@ def validate_destinations(destinations):
       destinations,
       (value_lib.DistributedValues, tensor_lib.Tensor,
        indexed_slices.IndexedSlices, ps_values.AggregatingVariable,
-       six.string_types, tpu_values.TPUMirroredVariable
+       str, tpu_values.TPUMirroredVariable
       )) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")
@@ -170,12 +169,12 @@ def get_devices_from(destinations, canonicalize_devices=True):
   if isinstance(destinations, value_lib.DistributedValues):
     return destinations._devices  # pylint: disable=protected-access
   if canonicalize_devices:
-    if isinstance(destinations, six.string_types):
+    if isinstance(destinations, str):
       return (device_util.resolve(destinations),)
     return (device_util.resolve(destinations.device),)
 
   # Let placer canonicalize and resolve destination devices.
-  if isinstance(destinations, six.string_types):
+  if isinstance(destinations, str):
     return (device_util.canonicalize_without_job_and_task(destinations),)
   return (device_util.canonicalize_without_job_and_task(destinations.device),)
 

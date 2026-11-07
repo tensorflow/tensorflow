@@ -34,8 +34,7 @@ pip3 install --upgrade setuptools==39.1.0
 
 pip3 install virtualenv
 
-# Install six and future.
-pip3 install --upgrade six==1.12.0
+# Install future.
 pip3 install "future>=0.17.1"
 
 # Install absl-py.
@@ -52,9 +51,6 @@ pip3 install --upgrade markdown==2.6.8
 
 # Install protobuf.
 pip3 install --upgrade protobuf==3.16.0
-
-# Remove obsolete version of six, which can sometimes confuse virtualenv.
-rm -rf /usr/lib/python3/dist-packages/six*
 
 # numpy needs to be installed from source to fix segfaults. See:
 # https://github.com/tensorflow/tensorflow/issues/6968

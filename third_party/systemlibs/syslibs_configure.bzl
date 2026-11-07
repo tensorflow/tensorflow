@@ -34,7 +34,6 @@ VALID_LIBS = [
     "pasta",
     "png",
     "pybind11",
-    "six_archive",
     "snappy",
     "tblib_archive",
     "termcolor_archive",

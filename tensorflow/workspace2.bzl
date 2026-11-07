@@ -108,7 +108,6 @@ load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/py/absl_py:workspace.bzl", absl_py = "repo")
 load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
-load("//third_party/six:workspace.bzl", six = "repo")
 load("//third_party/skcms:workspace.bzl", skcms = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/sqlite:workspace.bzl", sqlite = "repo")
@@ -363,7 +362,6 @@ def _tf_repositories():
     png()
     sqlite()
     gif()
-    six()
     absl_py()
 
     maybe(

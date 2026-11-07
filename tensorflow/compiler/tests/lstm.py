@@ -20,8 +20,6 @@ activations are clipped, inspired by the GNMT machine translation model.
 The GNMT paper has more details: https://arxiv.org/abs/1609.08144
 """
 
-from six.moves import range
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

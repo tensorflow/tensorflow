@@ -22,7 +22,6 @@ import sys
 import tempfile
 
 import numpy as np
-import six as _six
 
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -83,14 +82,14 @@ except AttributeError:
 
 def _to_bytes(s):
   """Encode s if it is a sequence of chars."""
-  if isinstance(s, _six.text_type):
+  if isinstance(s, str):
     return s.encode("utf-8", errors="surrogateescape")
   return s
 
 
 def _to_string(s):
   """Decode s if it is a sequence of bytes."""
-  if isinstance(s, _six.binary_type):
+  if isinstance(s, bytes):
     return s.decode("utf-8")
   return s
 

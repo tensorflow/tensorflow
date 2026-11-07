@@ -73,7 +73,6 @@ py_library(
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -193,7 +192,6 @@ py_library(
         "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
-        "@six_archive//:six",
     ],
 )
 
@@ -276,7 +274,6 @@ py_test(
         "//tensorflow/python/training:coordinator",
         "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training:session_manager",
-        "@six_archive//:six",
     ],
 )
 
@@ -622,7 +619,6 @@ py_library(
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
-        "@six_archive//:six",
     ],
 )
 
@@ -1156,7 +1152,6 @@ py_library(
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl:app",
-        "@six_archive//:six",
     ],
 )
 
@@ -1265,7 +1260,6 @@ py_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 
@@ -2311,7 +2305,6 @@ py_library(
         "@absl_py//absl/logging",
         "@pypi//dill",  # build_cleaner: keep
         "@pypi//tblib",  # build_cleaner: keep
-        "@six_archive//:six",
     ],
 )
 

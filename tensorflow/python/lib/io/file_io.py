@@ -28,8 +28,6 @@ import os
 from posixpath import join as urljoin
 import uuid
 
-import six
-
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import _pywrap_file_io
 from tensorflow.python.util import compat
@@ -477,7 +475,7 @@ def get_matching_files_v2(pattern):
     errors.OpError: If there are filesystem / directory listing errors.
     errors.NotFoundError: If pattern to be matched is an invalid directory.
   """
-  if isinstance(pattern, six.string_types):
+  if isinstance(pattern, str):
     return [
         # Convert the filenames to string from bytes.
         compat.as_str_any(matching_filename)

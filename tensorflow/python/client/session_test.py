@@ -22,7 +22,6 @@ import time
 import warnings
 
 import numpy as np
-import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.lib.core import error_codes_pb2
@@ -1675,10 +1674,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       e = constant_op.constant(44.0, name=b'e')
       f = constant_op.constant(45.0, name=r'f')
 
-      self.assertIsInstance(c.name, six.text_type)
-      self.assertIsInstance(d.name, six.text_type)
-      self.assertIsInstance(e.name, six.text_type)
-      self.assertIsInstance(f.name, six.text_type)
+      self.assertIsInstance(c.name, str)
+      self.assertIsInstance(d.name, str)
+      self.assertIsInstance(e.name, str)
+      self.assertIsInstance(f.name, str)
 
       self.assertEqual(42.0, sess.run('c:0'))
       self.assertEqual(42.0, sess.run(u'c:0'))
