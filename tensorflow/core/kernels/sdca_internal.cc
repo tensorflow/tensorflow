@@ -448,6 +448,19 @@ absl::Status Examples::CreateSparseFeatureRepresentation(
             example_indices, "] vs [", feature_indices, "]");
         return;
       }
+      // When values are present they are indexed in lockstep with
+      // feature_indices below, so a values tensor shorter than feature_indices
+      // would be read out of bounds.
+      if (sparse_feature_values_inputs.size() > i &&
+          sparse_feature_values_inputs[i].flat<float>().size() !=
+              feature_indices.size()) {
+        mutex_lock l(mu);
+        result = errors::InvalidArgument(
+            "Found mismatched feature_indices and feature_values sizes [",
+            feature_indices.size(), "] vs [",
+            sparse_feature_values_inputs[i].flat<float>().size(), "]");
+        return;
+      }
 
       // Parse features for each example. Features for a particular example
       // are at the offsets (start_id, end_id]
