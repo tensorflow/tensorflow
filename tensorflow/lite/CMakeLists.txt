@@ -249,7 +249,14 @@ if(CMAKE_SYSTEM_NAME MATCHES "Android")
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
-if(CMAKE_SYSTEM_NAME MATCHES "Windows" AND BUILD_SHARED_LIBS)
+# simple_memory_arena_debug_dump.cc is the strong override of the
+# TFLITE_ATTRIBUTE_WEAK DumpArenaInfo() in simple_memory_arena.cc. PE/COFF has
+# no weak symbols, so core/macros.h defines TFLITE_ATTRIBUTE_WEAK away on
+# Windows and both definitions become strong: linking the two objects together
+# fails with LNK2005. That holds for a static libtensorflow-lite as well, as
+# soon as something whole-archives it (e.g. LiteRT's LiteRt.dll), so this is
+# not conditional on BUILD_SHARED_LIBS.
+if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*simple_memory_arena_debug_dump\\.cc$")
 endif()
 
