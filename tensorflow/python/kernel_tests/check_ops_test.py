@@ -1195,6 +1195,16 @@ class AssertRankTest(test.TestCase):
           array_ops.identity(tensor).eval(feed_dict={tensor: [1, 2]})
 
   @test_util.run_in_graph_and_eager_modes
+  def test_rank_sparse_tensor_value(self):
+    spv = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0], [1, 2]], values=[1.0, 2.0], dense_shape=[3, 4])
+    with ops.control_dependencies([check_ops.assert_rank(spv, 2)]):
+      out = sparse_tensor.SparseTensor.from_value(spv)
+    self.evaluate(out)
+    with self.assertRaisesRegex(ValueError, "rank"):
+      check_ops.assert_rank(spv, 1)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_scalar_static(self):
     tensor = constant_op.constant([1, 2], name="my_tensor")
     with self.assertRaisesRegex(ValueError, "Rank must be a scalar"):
@@ -1302,6 +1312,16 @@ class AssertRankInTest(test.TestCase):
           array_ops.identity(tensor_rank1).eval(feed_dict={
               tensor_rank1: (42.0, 43.0)
           })
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_rank_sparse_tensor_value(self):
+    spv = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0], [1, 2]], values=[1.0, 2.0], dense_shape=[3, 4])
+    with ops.control_dependencies([check_ops.assert_rank_in(spv, (1, 2, 3))]):
+      out = sparse_tensor.SparseTensor.from_value(spv)
+    self.evaluate(out)
+    with self.assertRaisesRegex(ValueError, "rank"):
+      check_ops.assert_rank_in(spv, (0, 1))
 
   @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_scalar_static(self):
@@ -1436,6 +1456,22 @@ class AssertRankAtLeastTest(test.TestCase):
           [check_ops.assert_rank_at_least(tensor, desired_rank)]):
         with self.assertRaisesOpError("my_tensor.*rank"):
           array_ops.identity(tensor).eval(feed_dict={tensor: [1, 2]})
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_rank_sparse_tensor(self):
+    sp = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1.0, 2.0], dense_shape=[3, 4])
+    spv = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0], [1, 2]], values=[1.0, 2.0], dense_shape=[3, 4])
+    for target in (sp, spv):
+      with ops.control_dependencies(
+          [check_ops.assert_rank_at_least(target, 2)]):
+        self.evaluate(sparse_tensor.SparseTensor.from_value(spv))
+      with ops.control_dependencies(
+          [check_ops.assert_rank_at_least(target, 1)]):
+        self.evaluate(sparse_tensor.SparseTensor.from_value(spv))
+      with self.assertRaisesRegex(ValueError, "rank at least 3"):
+        check_ops.assert_rank_at_least(target, 3)
 
 
 class AssertNonNegativeTest(test.TestCase):
@@ -1573,6 +1609,25 @@ class AssertTypeTest(test.TestCase):
         constant_op.constant([500], dtypes.int64))
     with self.assertRaisesRegex(TypeError, "must be of type.*float32"):
       check_ops.assert_type(sparse_float16, dtypes.float32)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparsetensorvalue_doesnt_raise_when_correct_type(self):
+    spv = sparse_tensor.SparseTensorValue(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    with ops.control_dependencies([check_ops.assert_type(spv, dtypes.float32)]):
+      out = sparse_tensor.SparseTensor.from_value(spv)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparsetensorvalue_raises_when_wrong_type(self):
+    spv = sparse_tensor.SparseTensorValue(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float16),
+        constant_op.constant([500], dtypes.int64))
+    with self.assertRaisesRegex(TypeError, "must be of type.*float32"):
+      check_ops.assert_type(spv, dtypes.float32)
 
   @test_util.run_in_graph_and_eager_modes
   def test_raggedtensor_raises_when_wrong_type(self):
@@ -1983,6 +2038,40 @@ class AssertShapesSparseTensorTest(test.TestCase):
       self.evaluate(out)
 
   @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_with_ellipsis_success(self):
+    sparse_float = sparse_tensor.SparseTensor(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    assertion = check_ops.assert_shapes([(sparse_float, (..., 500))])
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(sparse_float)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_value_success(self):
+    spv = sparse_tensor.SparseTensorValue(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    assertion = check_ops.assert_shapes([(spv, [500])])
+    with ops.control_dependencies([assertion]):
+      out = sparse_tensor.SparseTensor.from_value(spv)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_value_fail(self):
+    spv = sparse_tensor.SparseTensorValue(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    with self.assertRaisesRegex(ValueError, r"dimension 0 must have size 499"):
+      assertion = check_ops.assert_shapes([(spv, [499])])
+      with ops.control_dependencies([assertion]):
+        out = sparse_tensor.SparseTensor.from_value(spv)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_assert_shapes_sparse_tensor_partially_specified_target_success(self):
     sparse_int = sparse_tensor.SparseTensor(
         constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
@@ -2202,6 +2291,15 @@ class FloatDTypeTest(test.TestCase):
                                                     dtypes.float32))
     self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
                       [sparse_float], dtypes.int32)
+
+    spv = sparse_tensor.SparseTensorValue(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype([spv], dtypes.float32))
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [spv], dtypes.int32)
     self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
                       [const_float, None, sparse_float], dtypes.float64)
 
