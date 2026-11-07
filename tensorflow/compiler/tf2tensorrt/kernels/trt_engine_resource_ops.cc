@@ -48,9 +48,8 @@ class CreateTRTResourceHandle : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    tensorflow::profiler::TraceMe activity(
-        "CreateTRTResourceHandle::Compute",
-        tensorflow::profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("CreateTRTResourceHandle::Compute",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     {
       mutex_lock l(mutex_);
       if (!initialized_) {
@@ -93,9 +92,8 @@ class InitializeTRTResource : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    tensorflow::profiler::TraceMe activity(
-        "InitializeTRTResource::Compute",
-        tensorflow::profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("InitializeTRTResource::Compute",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     ResourceHandle handle = HandleFromInput(ctx, 0);
     core::RefCountPtr<TRTEngineCacheResource> resource;
     OP_REQUIRES_OK(
@@ -195,9 +193,8 @@ class SerializeTRTResource : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    tensorflow::profiler::TraceMe activity(
-        "SerializeTRTResource::Compute",
-        tensorflow::profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("SerializeTRTResource::Compute",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     const string& resource_name = ctx->input(0).scalar<tstring>()();
     const string& filename = ctx->input(1).scalar<tstring>()();
     OP_REQUIRES(ctx, !filename.empty(),
