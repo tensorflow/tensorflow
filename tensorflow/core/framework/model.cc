@@ -216,16 +216,16 @@ std::string RemoveArrayIndices(absl::string_view s) {
     if (pos == absl::string_view::npos) {
       break;
     }
-    res.append(s.data() + start_pos, pos - start_pos + 1);
+    res.append(s, start_pos, pos - start_pos + 1);
     start_pos = pos + 1;
     pos = s.find(']', start_pos);
     if (pos == absl::string_view::npos) {
       break;
     }
-    res.append(s.data() + pos, 1);
+    res.append(s, pos, 1);
     start_pos = pos + 1;
   } while (true);
-  res.append(s.data() + start_pos, s.length() - start_pos);
+  res.append(s, start_pos);
   return res;
 }
 
