@@ -215,7 +215,7 @@ class BandedTriangularSolveOpCpu : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
   }
 
-  ~BandedTriangularSolveOpCpu() override {}
+  ~BandedTriangularSolveOpCpu() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in0 = ctx->input(0);

@@ -144,7 +144,7 @@ class BaseMatrixTriangularSolveOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
   }
 
-  ~BaseMatrixTriangularSolveOp() override {}
+  ~BaseMatrixTriangularSolveOp() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in0 = ctx->input(0);
@@ -217,7 +217,7 @@ class MatrixTriangularSolveOp
   explicit MatrixTriangularSolveOp(OpKernelConstruction* context)
       : BaseMatrixTriangularSolveOp<Device, Scalar>(context) {}
 
-  ~MatrixTriangularSolveOp() override {}
+  ~MatrixTriangularSolveOp() override = default;
 
  private:
   void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,

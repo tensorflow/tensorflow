@@ -927,7 +927,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
       BufferIntervalCompare buffer_interval_compare = nullptr,
       SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type =
           SliceTimePermutationIterator::Ty::kAll);
-  ~GlobalDecreasingSizeBestFitHeap() override {}
+  ~GlobalDecreasingSizeBestFitHeap() override = default;
 
   void Alloc(const BufferType* buffer, int64_t size) override;
   void Free(const BufferType* buffer, int64_t size) override;
@@ -1135,7 +1135,7 @@ class ConstrainedGlobalDecreasingSizeBestFitHeap
                                                   buffer_interval_compare),
         size_limit_per_heap_(size_limit_per_heap),
         packing_strategy_(packing_strategy) {}
-  ~ConstrainedGlobalDecreasingSizeBestFitHeap() override {}
+  ~ConstrainedGlobalDecreasingSizeBestFitHeap() override = default;
 
   absl::StatusOr<Result> Finish() override;
 
@@ -1177,7 +1177,7 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
       std::unique_ptr<std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>>>
           algorithms)
       : algorithms_(std::move(*algorithms)) {}
-  ~ChooseBestHeapAlgorithm() override {}
+  ~ChooseBestHeapAlgorithm() override = default;
 
   void Alloc(const BufferType* buffer, int64_t size) override {
     for (auto& algorithm : algorithms_) {
