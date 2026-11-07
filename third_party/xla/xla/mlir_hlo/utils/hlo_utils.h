@@ -109,6 +109,22 @@ int64_t getArgumentIndex(func::FuncOp op, Value value);
 /// Computes the memory usage of the given allocations.
 std::pair<size_t, size_t> computeMemory(const std::vector<Value>& allocs);
 
+inline void copyDiscardableAttrs(Operation* src, Operation* dst) {
+  dst->setDiscardableAttrs(src->getDiscardableAttrDictionary());
+}
+
+inline void copyDiscardableAttrs(Value src, Value dst) {
+  copyDiscardableAttrs(src.getDefiningOp(), dst.getDefiningOp());
+}
+
+inline void copyDiscardableAttrs(Operation* src, Value dst) {
+  copyDiscardableAttrs(src, dst.getDefiningOp());
+}
+
+inline void copyDiscardableAttrs(Value src, Operation* dst) {
+  copyDiscardableAttrs(src.getDefiningOp(), dst);
+}
+
 }  // namespace hlo
 }  // namespace mlir
 
