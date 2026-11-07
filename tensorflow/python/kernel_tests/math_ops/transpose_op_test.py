@@ -621,6 +621,22 @@ class TransposeTest(test.TestCase):
         .get_shape()
         .dims,
     )
+    # 2D negative and mixed permutations (real and complex).
+    x_2d = np.arange(0.0, 6.0).reshape([2, 3]).astype(np.float32)
+    for p in ([-1, -2], [-2, -1], [0, -1], [-1, 0]):
+      self._compareCpu(x_2d, p)
+
+    z_2d = (
+        np.arange(0.0, 6.0).reshape([2, 3])
+        + 1j * np.arange(6.0, 12.0).reshape([2, 3])
+    ).astype(np.complex64)
+    for p in ([-1, -2], [-2, -1], [0, -1], [-1, 0]):
+      self._compareCpu(z_2d, p, conjugate=True)
+
+    # 3D negative and mixed permutations.
+    x_3d = np.arange(0.0, 24.0).reshape([2, 3, 4]).astype(np.float64)
+    for p in ([-1, -2, -3], [-1, 0, 1], [0, -1, -2], [-2, -1, 0]):
+      self._compareCpu(x_3d, p)
 
 
 if __name__ == "__main__":

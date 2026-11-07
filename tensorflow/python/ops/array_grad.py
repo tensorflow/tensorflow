@@ -1007,6 +1007,8 @@ def _SqueezeGrad(op: ops.Operation, grad):
 def _TransposeGrad(op: ops.Operation, grad):
   """Returns unshuffle(grad)."""
   p = op.inputs[1]
+  rank = array_ops.size(p, out_type=p.dtype)
+  p = array_ops.where_v2(p < 0, p + rank, p)
   return [array_ops.transpose(grad, array_ops.invert_permutation(p)), None]
 
 
@@ -1014,6 +1016,8 @@ def _TransposeGrad(op: ops.Operation, grad):
 def _ConjugateTransposeGrad(op: ops.Operation, grad):
   """Returns conj(unshuffle(grad))."""
   p = op.inputs[1]
+  rank = array_ops.size(p, out_type=p.dtype)
+  p = array_ops.where_v2(p < 0, p + rank, p)
   return [
       array_ops.transpose(
           grad, array_ops.invert_permutation(p), conjugate=True

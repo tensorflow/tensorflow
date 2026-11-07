@@ -2563,6 +2563,8 @@ def _convert_reverse(pfor_input: _PforInput):
 def _convert_transpose(pfor_input: _PforInput, _, op_func):
   t = pfor_input.stacked_input(0)
   perm = pfor_input.unstacked_input(1)
+  rank = array_ops.size(perm, out_type=perm.dtype)
+  perm = array_ops.where_v2(perm < 0, perm + rank, perm)
   new_perm = array_ops.concat([[0], perm + 1], axis=0)
   return wrap(op_func(t, new_perm), True)
 

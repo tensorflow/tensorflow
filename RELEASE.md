@@ -47,6 +47,12 @@
 *   `tf.vectorized_map`, `tf.GradientTape.jacobian` and `batch_jacobian`:
     `tf.roll` with a negative axis no longer rolls along the wrong dimension,
     which could mix values between batch elements or return a wrong Jacobian.
+*   `tf.transpose` and `tf.raw_ops.ConjugateTranspose`: negative permutation
+    indices are now supported in gradient calculations
+    (`tf.GradientTape.gradient`), Jacobians (`tf.GradientTape.jacobian`,
+    `batch_jacobian`), and loop vectorization (`tf.vectorized_map`, `pfor`).
+    Previously, negative indices caused `InvertPermutation` or `TransposeOp`
+    errors.
 
 ## Thanks to our Contributors
 
