@@ -113,6 +113,21 @@ class LinearOperatorInversionTest(
     self.assertIsInstance(
         solved_result, linalg.LinearOperatorComposition)
 
+  def test_solve_operator_matches_solve_tensor(self):
+    operator_inv = LinearOperatorInversion(
+        linalg.LinearOperatorFullMatrix([[1., 2.], [3., 4.]]))
+    rhs = [[5., 6.], [7., 8.]]
+    rhs_operator = linalg.LinearOperatorFullMatrix(rhs)
+    for adjoint in [False, True]:
+      for adjoint_arg in [False, True]:
+        self.assertAllClose(
+            self.evaluate(operator_inv.solve(
+                rhs_operator, adjoint=adjoint,
+                adjoint_arg=adjoint_arg).to_dense()),
+            self.evaluate(operator_inv.solve(
+                rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)),
+            msg=f"adjoint={adjoint}, adjoint_arg={adjoint_arg}")
+
   def test_inverse_of_inverse(self):
     # The matrix values do not effect auto-setting of the flags.
     matrix = [[1., 0.], [1., 1.]]
