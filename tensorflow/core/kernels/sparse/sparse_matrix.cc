@@ -63,7 +63,7 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
   // Anchoring at 0 and rejecting any decrease keeps every entry non-negative,
   // so carry the previous value in a register and drop the redundant < 0 test.
   if (batch_ptr[0] != 0) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "CSRSparseMatrix::Validate: batch_pointers[0] = ", batch_ptr[0],
         " but should be 0"));
   }
@@ -71,7 +71,7 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
   for (int64_t b = 0; b < batch_size; ++b) {
     const int32_t next_batch = batch_ptr[b + 1];
     if (next_batch < prev_batch) {
-      return errors::InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: batch_pointers must be non-decreasing, "
           "saw ",
           prev_batch, " -> ", next_batch, " at batch ", b));
@@ -79,7 +79,7 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
     prev_batch = next_batch;
   }
   if (batch_ptr[batch_size] != total_nnz) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "CSRSparseMatrix::Validate: batch_pointers[batch_size] = ",
         batch_ptr[batch_size], " but should equal nnz = ", total_nnz));
   }
@@ -90,7 +90,7 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
     const int64_t base = b * (num_rows + 1);
     const int32_t batch_nnz = batch_ptr[b + 1] - batch_ptr[b];
     if (row_ptr[base] != 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrCat("CSRSparseMatrix::Validate: row_pointers for batch ", b,
                        " should start at 0, saw ", row_ptr[base]));
     }
@@ -98,7 +98,7 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
     for (int64_t r = 0; r < num_rows; ++r) {
       const int32_t next_row = row_ptr[base + r + 1];
       if (next_row < prev_row) {
-        return errors::InvalidArgument(absl::StrCat(
+        return absl::InvalidArgumentError(absl::StrCat(
             "CSRSparseMatrix::Validate: row_pointers must be non-decreasing, "
             "saw ",
             prev_row, " -> ", next_row, " in batch ", b));
@@ -108,7 +108,7 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
     // prev_row already holds row_ptr[base + num_rows] (or 0 when num_rows ==
     // 0), so compare it directly instead of reloading from memory.
     if (prev_row != batch_nnz) {
-      return errors::InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "CSRSparseMatrix::Validate: last row_pointer for batch ", b, " = ",
           prev_row, " but should equal the batch nnz = ", batch_nnz));
     }
@@ -118,7 +118,7 @@ absl::Status CSRSparseMatrix::ValidateComponentValues(
   // compare folds the negative and >= num_cols cases into one branch.
   for (int64_t i = 0; i < total_nnz; ++i) {
     if (static_cast<uint64_t>(col_ind[i]) >= static_cast<uint64_t>(num_cols)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           absl::StrCat("CSRSparseMatrix::Validate: column index ", col_ind[i],
                        " is outside of the valid range [0, ", num_cols, ")"));
     }
