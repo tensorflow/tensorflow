@@ -399,10 +399,13 @@ static inline Status CsrmmImpl(
   //     const float* csrSortedValA, const int* csrSortedRowPtrA,
   //     const int* csrSortedColIndA, const float* B, int ldb, const float*
   //     beta, float* C, int ldc);
-  TF_RETURN_IF_GPUSPARSE_ERROR(op(
-      cusparse_handle, transA, transB, m, n, k, nnz, AsCudaComplex(alpha_host),
-      descrA, AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-      AsCudaComplex(B), ldb, AsCudaComplex(beta_host), AsCudaComplex(C), ldc));
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha_host;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta_host;
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      op(cusparse_handle, transA, transB, m, n, k, nnz,
+         AsCudaComplex(&alpha_aligned), descrA, AsCudaComplex(csrSortedValA),
+         csrSortedRowPtrA, csrSortedColIndA, AsCudaComplex(B), ldb,
+         AsCudaComplex(&beta_aligned), AsCudaComplex(C), ldc));
   return OkStatus();
 }
 
@@ -435,9 +438,11 @@ TF_CALL_LAPACK_TYPES(CSRMM_INSTANCE);
       gpusparseDnMatDescr_t matC, cusparseSpMMAlg_t alg, size_t* bufferSize) \
       const {                                                                \
     DCHECK(initialized_);                                                    \
+    alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha;             \
+    alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta;               \
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMM_bufferSize(                    \
-        *gpusparse_handle_, transA, transB, alpha, matA, matB, beta, matC,   \
-        dtype, alg, bufferSize));                                            \
+        *gpusparse_handle_, transA, transB, &alpha_aligned, matA, matB,      \
+        &beta_aligned, matC, dtype, alg, bufferSize));                       \
     return OkStatus();                                                       \
   }
 
@@ -451,9 +456,11 @@ TF_CALL_CUSPARSE_DTYPES(SPMM_BUFFERSIZE_INSTANCE);
       const gpusparseDnMatDescr_t matB, const Scalar* beta,                    \
       gpusparseDnMatDescr_t matC, cusparseSpMMAlg_t alg, int8* buffer) const { \
     DCHECK(initialized_);                                                      \
-    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMM(*gpusparse_handle_, transA,      \
-                                              transB, alpha, matA, matB, beta, \
-                                              matC, dtype, alg, buffer));      \
+    alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha;               \
+    alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta;                 \
+    TF_RETURN_IF_GPUSPARSE_ERROR(                                              \
+        cusparseSpMM(*gpusparse_handle_, transA, transB, &alpha_aligned, matA, \
+                     matB, &beta_aligned, matC, dtype, alg, buffer));          \
     return OkStatus();                                                         \
   }
 
@@ -470,10 +477,12 @@ static inline Status CsrmvImpl(
     const cusparseMatDescr_t descrA, const Scalar* csrSortedValA,
     const int* csrSortedRowPtrA, const int* csrSortedColIndA, const Scalar* x,
     const Scalar* beta_host, Scalar* y) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(cusparse_handle, transA, m, n, nnz, AsCudaComplex(alpha_host), descrA,
-         AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-         AsCudaComplex(x), AsCudaComplex(beta_host), AsCudaComplex(y)));
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha_host;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta_host;
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      cusparse_handle, transA, m, n, nnz, AsCudaComplex(&alpha_aligned), descrA,
+      AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsCudaComplex(x), AsCudaComplex(&beta_aligned), AsCudaComplex(y)));
   return OkStatus();
 }
 
@@ -523,11 +532,14 @@ static inline Status CsrmvExImpl(cudaDataType_t dtype, OpKernelContext* context,
   // CUSPARSE_ALG_MERGE_PATH algo only supports non-transpose matrix.
   DCHECK(transA == CUSPARSE_OPERATION_NON_TRANSPOSE);
 
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha_host;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta_host;
   size_t bufferSize;
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsrmvEx_bufferSize(
-      cusparse_handle, CUSPARSE_ALG_MERGE_PATH, transA, m, n, nnz, alpha_host,
-      dtype, descrA, csrSortedValA, dtype, csrSortedRowPtrA, csrSortedColIndA,
-      x, dtype, beta_host, dtype, y, dtype, dtype, &bufferSize));
+      cusparse_handle, CUSPARSE_ALG_MERGE_PATH, transA, m, n, nnz,
+      &alpha_aligned, dtype, descrA, csrSortedValA, dtype, csrSortedRowPtrA,
+      csrSortedColIndA, x, dtype, &beta_aligned, dtype, y, dtype, dtype,
+      &bufferSize));
 
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -535,10 +547,11 @@ static inline Status CsrmvExImpl(cudaDataType_t dtype, OpKernelContext* context,
   auto pBuffer = buffer.flat<int8>();
   DCHECK(pBuffer.data() != nullptr);
 
-  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsrmvEx(
-      cusparse_handle, CUSPARSE_ALG_MERGE_PATH, transA, m, n, nnz, alpha_host,
-      dtype, descrA, csrSortedValA, dtype, csrSortedRowPtrA, csrSortedColIndA,
-      x, dtype, beta_host, dtype, y, dtype, dtype, pBuffer.data()));
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      cusparseCsrmvEx(cusparse_handle, CUSPARSE_ALG_MERGE_PATH, transA, m, n,
+                      nnz, &alpha_aligned, dtype, descrA, csrSortedValA, dtype,
+                      csrSortedRowPtrA, csrSortedColIndA, x, dtype,
+                      &beta_aligned, dtype, y, dtype, dtype, pBuffer.data()));
 
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyMatDescr(descrA));
   return OkStatus();
@@ -571,10 +584,12 @@ static inline absl::Status SpMVImpl(
   cusparseSpMVAlg_t algo = CUSPARSE_CSRMV_ALG1;
 #endif
 
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha_host;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta_host;
   size_t bufferSize;
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      cusparseSpMV_bufferSize(cusparse_handle, transA, alpha_host, matA, vecX,
-                              beta_host, vecY, dtype, algo, &bufferSize));
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMV_bufferSize(
+      cusparse_handle, transA, &alpha_aligned, matA, vecX, &beta_aligned, vecY,
+      dtype, algo, &bufferSize));
 
   Tensor buffer;
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -582,9 +597,9 @@ static inline absl::Status SpMVImpl(
   auto pBuffer = buffer.flat<int8_t>();
   DCHECK(pBuffer.data() != nullptr);
 
-  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMV(cusparse_handle, transA, alpha_host,
-                                            matA, vecX, beta_host, vecY, dtype,
-                                            algo, pBuffer.data()));
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      cusparseSpMV(cusparse_handle, transA, &alpha_aligned, matA, vecX,
+                   &beta_aligned, vecY, dtype, algo, pBuffer.data()));
 
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecY));
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecX));
@@ -640,10 +655,12 @@ static inline absl::Status Csrgeam2Impl(
     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
     const cusparseMatDescr_t descrC, Scalar* csrSortedValC,
     int* csrSortedRowPtrC, int* csrSortedColIndC, void* workspace) {
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta;
   TF_RETURN_IF_GPUSPARSE_ERROR(op(
-      cusparse_handle, m, n, AsCudaComplex(alpha), descrA, nnzA,
+      cusparse_handle, m, n, AsCudaComplex(&alpha_aligned), descrA, nnzA,
       AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-      AsCudaComplex(beta), descrB, nnzB, AsCudaComplex(csrSortedValB),
+      AsCudaComplex(&beta_aligned), descrB, nnzB, AsCudaComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsCudaComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, workspace));
   return absl::OkStatus();
@@ -680,10 +697,12 @@ static inline absl::Status CsrgeamBufferSizeExtImpl(
     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
     const cusparseMatDescr_t descrC, Scalar* csrSortedValC,
     int* csrSortedRowPtrC, int* csrSortedColIndC, size_t* bufferSize) {
+  alignas(sizeof(Scalar)) const Scalar alpha_aligned = *alpha;
+  alignas(sizeof(Scalar)) const Scalar beta_aligned = *beta;
   TF_RETURN_IF_GPUSPARSE_ERROR(op(
-      sparse_handle, m, n, AsCudaComplex(alpha), descrA, nnzA,
+      sparse_handle, m, n, AsCudaComplex(&alpha_aligned), descrA, nnzA,
       AsCudaComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
-      AsCudaComplex(beta), descrB, nnzB, AsCudaComplex(csrSortedValB),
+      AsCudaComplex(&beta_aligned), descrB, nnzB, AsCudaComplex(csrSortedValB),
       csrSortedRowPtrB, csrSortedColIndB, descrC, AsCudaComplex(csrSortedValC),
       csrSortedRowPtrC, csrSortedColIndC, bufferSize));
   return absl::OkStatus();
@@ -772,7 +791,7 @@ TF_CALL_LAPACK_TYPES(CSRGEMM_INSTANCE);
 
 template <typename T>
 static const T* one_ptr() {
-  static const T one = static_cast<T>(1);
+  alignas(sizeof(T)) static const T one = static_cast<T>(1);
   return &one;
 }
 
@@ -868,10 +887,10 @@ TF_CALL_LAPACK_TYPES(CSRGEMM_INSTANCE);
   Status GpuSparse::SpGEMM_workEstimation<Scalar>(                         \
       GpuSparseConstSpMatDescr & matA, GpuSparseConstSpMatDescr & matB,    \
       GpuSparseSpMatDescr & matC, GpuSparseSpGEMMDescr & spgemmDescr,      \
-      size_t * bufferSize1, void* externalBuffer1) {                       \
+      size_t* bufferSize1, void* externalBuffer1) {                        \
     DCHECK(initialized_);                                                  \
-    Scalar alpha = static_cast<Scalar>(1.0);                               \
-    Scalar beta = static_cast<Scalar>(0.0);                                \
+    alignas(sizeof(Scalar)) Scalar alpha = static_cast<Scalar>(1.0);       \
+    alignas(sizeof(Scalar)) Scalar beta = static_cast<Scalar>(0.0);        \
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_workEstimation(            \
         *gpusparse_handle_, CUSPARSE_OPERATION_NON_TRANSPOSE,              \
         CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA.get(), matB.get(),  \
@@ -886,10 +905,10 @@ TF_CALL_CUSPARSE_DTYPES(SPGEMM_WORKESTIMATION_INSTANCE);
   Status GpuSparse::SpGEMM_compute<Scalar>(                                \
       GpuSparseConstSpMatDescr & matA, GpuSparseConstSpMatDescr & matB,    \
       GpuSparseSpMatDescr & matC, GpuSparseSpGEMMDescr & spgemmDescr,      \
-      size_t * bufferSize2, void* externalBuffer2) {                       \
+      size_t* bufferSize2, void* externalBuffer2) {                        \
     DCHECK(initialized_);                                                  \
-    Scalar alpha = static_cast<Scalar>(1.0);                               \
-    Scalar beta = static_cast<Scalar>(0.0);                                \
+    alignas(sizeof(Scalar)) Scalar alpha = static_cast<Scalar>(1.0);       \
+    alignas(sizeof(Scalar)) Scalar beta = static_cast<Scalar>(0.0);        \
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_compute(                   \
         *gpusparse_handle_, CUSPARSE_OPERATION_NON_TRANSPOSE,              \
         CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA.get(), matB.get(),  \
@@ -905,8 +924,8 @@ TF_CALL_CUSPARSE_DTYPES(SPGEMM_COMPUTE_INSTANCE);
       GpuSparseConstSpMatDescr & matA, GpuSparseConstSpMatDescr & matB,      \
       GpuSparseSpMatDescr & matC, GpuSparseSpGEMMDescr & spgemmDescr) {      \
     DCHECK(initialized_);                                                    \
-    Scalar alpha = static_cast<Scalar>(1.0);                                 \
-    Scalar beta = static_cast<Scalar>(0.0);                                  \
+    alignas(sizeof(Scalar)) Scalar alpha = static_cast<Scalar>(1.0);         \
+    alignas(sizeof(Scalar)) Scalar beta = static_cast<Scalar>(0.0);          \
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpGEMM_copy(                        \
         *gpusparse_handle_, CUSPARSE_OPERATION_NON_TRANSPOSE,                \
         CUSPARSE_OPERATION_NON_TRANSPOSE, &alpha, matA.get(), matB.get(),    \

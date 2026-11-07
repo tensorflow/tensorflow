@@ -137,6 +137,34 @@ class CSRSparseMatrixTest(test.TestCase):
       a_sm_t_dense = self.evaluate(a_sm_t_dense)
       self.assertAllClose(expected, a_sm_t_dense)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseMatrixAddComplex(self):
+    # Complex SparseMatrixAdd GPU kernels are registered only for CUDA.
+    if not self._gpu_available or test.is_built_with_rocm():
+      return
+    indices = np.array([[0, 0], [1, 1]], dtype=np.int64)
+    for dtype in (np.complex64, np.complex128):
+      a_dense = np.array([[1 + 1j, 0], [0, 3 - 2j]], dtype=dtype)
+      b_dense = np.array([[2 - 1j, 0], [0, 4 + 5j]], dtype=dtype)
+      alpha = dtype(2 + 1j)
+      beta = dtype(3 - 1j)
+      a = sparse_csr_matrix_ops.dense_to_csr_sparse_matrix(
+          dense_input=a_dense, indices=indices
+      )
+      b = sparse_csr_matrix_ops.dense_to_csr_sparse_matrix(
+          dense_input=b_dense, indices=indices
+      )
+      c = sparse_csr_matrix_ops.sparse_matrix_add(
+          a=a, b=b, alpha=alpha, beta=beta
+      )
+      result = sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
+          sparse_input=c, type=dtypes.as_dtype(dtype)
+      )
+      self.assertAllClose(
+          alpha * a_dense + beta * b_dense,
+          self.evaluate(result),
+      )
+
 
 class SparseMatrixMatmulTest(test.TestCase):
 
@@ -150,7 +178,7 @@ class SparseMatrixMatmulTest(test.TestCase):
     sparsify = lambda m: m * (m > 0)
     dense_shape_a = [5, 13, 7] if transpose_a or adjoint_a else [5, 7, 13]
     dense_shape_b = [5, 15, 13] if transpose_b or adjoint_b else [5, 13, 15]
-    dtypes_to_test = [np.float32, np.complex64]
+    dtypes_to_test = [np.float32, np.complex64, np.complex128]
     for dtype in dtypes_to_test:
       a_mats = sparsify((np.random.randn(*dense_shape_a) +
                          1.j * np.random.randn(*dense_shape_a))).astype(dtype)
@@ -191,7 +219,7 @@ class SparseMatrixMatmulTest(test.TestCase):
     sparsify = lambda m: m * (m > 0)
     dense_shape_a = [5, 13, 7] if transpose_a or adjoint_a else [5, 7, 13]
     dense_shape_b = [5, 15, 13] if transpose_b or adjoint_b else [5, 13, 15]
-    dtypes_to_test = [np.float32, np.complex64]
+    dtypes_to_test = [np.float32, np.complex64, np.complex128]
     for dtype in dtypes_to_test:
       a_mats = sparsify((np.random.randn(*dense_shape_a) +
                          1.j * np.random.randn(*dense_shape_a))).astype(dtype)
@@ -229,7 +257,7 @@ class SparseMatrixMatmulTest(test.TestCase):
     sparsify = lambda m: m * (m > 0)
     dense_shape_a = [5, 13, 7] if transpose_a or adjoint_a else [5, 7, 13]
     dense_shape_b = [5, 15, 13] if transpose_b or adjoint_b else [5, 13, 15]
-    dtypes_to_test = [np.float32, np.complex64]
+    dtypes_to_test = [np.float32, np.complex64, np.complex128]
     for dtype in dtypes_to_test:
       a_mats = (np.random.randn(*dense_shape_a) +
                 1.j * np.random.randn(*dense_shape_a)).astype(dtype)

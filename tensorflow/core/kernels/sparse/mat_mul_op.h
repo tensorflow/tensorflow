@@ -789,8 +789,8 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       // Create alpha and beta scalars; alpha = 1.0, beta = 0.0
       // TODO(ebrevdo,rmlarsen): Add support for non-trivial alpha and beta.
-      const T alpha = 1;
-      const T beta = 0;
+      alignas(sizeof(T)) const T alpha = 1;
+      alignas(sizeof(T)) const T beta = 0;
 
       // A is (m, k), Bt is (ldb, k) and Ct is (ldc, n)
       const int k = b.dimension(0);
@@ -967,8 +967,8 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
 
       // Create alpha and beta scalars; alpha = 1.0, beta = 0.0
       // TODO(rmlarsen,ebrevdo): Add support for general alpha, beta.
-      const T alpha = 1;
-      const T beta = 0;
+      alignas(sizeof(T)) const T alpha = 1;
+      alignas(sizeof(T)) const T beta = 0;
 
 #if GOOGLE_CUDA && CUDA_VERSION < 10020
       gpusparseMatDescr_t descrA;

@@ -586,11 +586,15 @@ class CSRSparseMatrixOpsTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(expected_c_value, c_value)
 
   @parameterized.product(
-      dtype=[np.float32, np.complex64],
+      dtype=[np.float32, np.complex64, np.complex128],
       transpose=[(False, False), (False, True), (True, False), (True, True)],
       adjoint=[(False, False), (False, True), (True, False), (True, True)],
-      shapes=[([53, 127, 65], [53, 65, 1]), ([53, 127, 1], [53, 1, 65]),
-              ([53, 127, 65], [53, 65, 127])])
+      shapes=[
+          ([53, 127, 65], [53, 65, 1]),
+          ([53, 127, 1], [53, 1, 65]),
+          ([53, 127, 65], [53, 65, 127]),
+      ],
+  )
   @test_util.run_in_graph_and_eager_modes
   def testLargeBatchSparseMatrixMatMul(self, dtype, transpose, adjoint, shapes):
     sparsify = lambda m: m * (m > 0)
