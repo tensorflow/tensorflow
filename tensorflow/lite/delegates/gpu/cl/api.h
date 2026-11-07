@@ -91,7 +91,7 @@ class InferenceEnvironment {
   // this call will fail and model must be regenerated(with
   // BuildSerializedModel).
   virtual absl::Status NewInferenceBuilder(
-      const absl::Span<const uint8_t> serialized_model,
+      absl::Span<const uint8_t> serialized_model,
       std::unique_ptr<InferenceBuilder>* builder) = 0;
 
   virtual absl::Status NewInferenceBuilder(

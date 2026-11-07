@@ -104,9 +104,9 @@ class InferenceContext {
   const std::vector<ValueId>& GetInputIds() const { return input_ids_; }
   const std::vector<ValueId>& GetOutputIds() const { return output_ids_; }
 
-  absl::Status RestoreDeserialized(
-      const absl::Span<const uint8_t> serialized_model, Environment* env,
-      CreateGpuModelInfo* create_info = nullptr);
+  absl::Status RestoreDeserialized(absl::Span<const uint8_t> serialized_model,
+                                   Environment* env,
+                                   CreateGpuModelInfo* create_info = nullptr);
 
   // Can be used only with ids from external_mutable_tensors in create_info
   // Must be called after initialization and before execution
@@ -213,7 +213,7 @@ class InferenceContext {
   GpuInfo gpu_info_;
 };
 
-absl::Status GetInOutRefs(const absl::Span<const uint8_t> serialized_model,
+absl::Status GetInOutRefs(absl::Span<const uint8_t> serialized_model,
                           std::vector<int64_t>* in_refs,
                           std::vector<int64_t>* out_refs);
 

@@ -56,7 +56,7 @@ class Buffer : public GPUObject {
   // Writes data to a buffer. Data should point to a region that
   // has exact size in bytes as size_in_bytes(constructor parameter).
   template <typename T>
-  absl::Status WriteData(CLCommandQueue* queue, const absl::Span<T> data);
+  absl::Status WriteData(CLCommandQueue* queue, absl::Span<T> data);
 
   // Reads data from Buffer into CPU memory.
   template <typename T>
