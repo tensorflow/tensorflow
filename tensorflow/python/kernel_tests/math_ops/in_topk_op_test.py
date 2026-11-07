@@ -91,6 +91,62 @@ class InTopKTest(test.TestCase):
     k = constant_op.constant(3)
     self._validateInTopK(predictions, target, k, [False, True])
 
+  def testInTopKUnrelatedNaNInPredictions(self):
+    # Regression test for GitHub issue #118376:
+    # When any prediction in the row is NaN, the ordering is indeterminate,
+    # so InTopK must return False even if the target itself is finite.
+    predictions = constant_op.constant([[0.5, float("nan"), 0.7, 0.6]], dtype=dtypes.float32)
+    target = constant_op.constant([2], dtype=dtypes.int32)
+
+    # Standard eager / graph execution
+    self._validateInTopK(predictions, target, 1, [False])
+
+    # XLA-compiled execution
+    @def_function.function(jit_compile=True)
+    def jit_in_top_k(p, t):
+      return nn_ops.in_top_k(p, t, 1)
+
+    self.assertAllEqual(self.evaluate(jit_in_top_k(predictions, target)), [False])
+
+  def testInTopKUnrelatedInfInPredictions(self):
+    # When any prediction in the row is Inf, InTopK must return False.
+    predictions = constant_op.constant([[0.5, float("inf"), 0.7, 0.6]], dtype=dtypes.float32)
+    target = constant_op.constant([2], dtype=dtypes.int32)
+    self._validateInTopK(predictions, target, 2, [False])
+
+    @def_function.function(jit_compile=True)
+    def jit_in_top_k(p, t):
+      return nn_ops.in_top_k(p, t, 2)
+
+    self.assertAllEqual(self.evaluate(jit_in_top_k(predictions, target)), [False])
+
+  def testXlaInTopKNaNParity(self):
+    # Comprehensive cross-backend test verifying exact eager/XLA parity across
+    # batches with mixed finite and non-finite rows.
+    predictions = constant_op.constant([
+        [0.5, float("nan"), 0.7, 0.6],   # row 0: unrelated NaN -> False
+        [0.1, 0.2, 0.3, 0.4],             # row 1: finite, target 3 is top-1 -> True
+        [0.1, 0.2, 0.3, 0.4],             # row 2: finite, target 0 is not top-1 -> False
+        [float("nan"), 0.2, 0.3, 0.4],   # row 3: target 0 is NaN -> False
+        [0.1, float("inf"), 0.3, 0.4],   # row 4: unrelated Inf -> False
+    ], dtype=dtypes.float32)
+    expected = [False, True, False, False, False]
+
+    for dtype in (dtypes.int32, dtypes.int64):
+      targets = constant_op.constant([2, 3, 0, 0, 3], dtype=dtype)
+
+      # Eager
+      eager_res = nn_ops.in_top_k(predictions, targets, 1)
+      self.assertAllEqual(self.evaluate(eager_res), expected)
+
+      # XLA JIT
+      @def_function.function(jit_compile=True)
+      def compiled_fn(p, t):
+        return nn_ops.in_top_k(p, t, 1)
+
+      xla_res = compiled_fn(predictions, targets)
+      self.assertAllEqual(self.evaluate(xla_res), expected)
+
 
 if __name__ == "__main__":
   test.main()
