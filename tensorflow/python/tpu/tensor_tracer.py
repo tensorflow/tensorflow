@@ -154,7 +154,7 @@ def set_parameters(tensor_tracer_params=None):
             for other models, but outfeed must be handled by the user.
           - norm: Collects norm of each traced tensor and writes them into a
             text file pointed by 'trace_dir' flag. (Default mode).
-          - nan-inf: Checks the existince of NaNs and Infs in the tensor, and
+          - nan-inf: Checks the existence of NaNs and Infs in the tensor, and
             writes a boolean value to a text file pointed by 'trace_dir' flag.
             Note that 'norm' mode can also capture this information with more
             numerical info.
@@ -1125,7 +1125,7 @@ class TensorTracer:
         self._outmost_context)
 
   def _should_trace_in_control_flow(self):
-    """Returns false incase it is not safe to trace ops in tf.cond or tf.while_loop."""
+    """Returns false in case it is not safe to trace ops in tf.cond or tf.while_loop."""
     # As different from the other trace modes, TRACE_MODE_OPTIONAL_SUMMARY
     # forces the execution of the traced tensors. We should not trace the ops
     # that may not be executed due to control flow.
@@ -1339,7 +1339,7 @@ class TensorTracer:
         there is a cycle in the graph), topological_order_or_cycle (list of ops
         in topological order or list of ops creating a cycle).
       ops_in_exec_path: Set of ops in the execution path.
-      tensor_trace_points: Collection of programatic tensor trace points.
+      tensor_trace_points: Collection of programmatic tensor trace points.
       report_handler: An instance of tensor_tracer_report.TTReportHandle.
     Returns:
       List of tensors to be traced.
