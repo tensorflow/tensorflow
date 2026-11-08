@@ -155,8 +155,8 @@ def linspace_nd(start, stop, num, name=None, axis=0):
   Args:
     start: A `Tensor`. Must be one of the following types: `bfloat16`,
       `float32`, `float64`. N-D tensor. First entry in the range.
-    stop: A `Tensor`. Must have the same type and shape as `start`. N-D tensor.
-      Last entry in the range.
+    stop: A `Tensor`. Must have a type compatible with `start` and shape that
+      can broadcast with `start`. N-D tensor. Last entry in the range.
     num: A `Tensor`. Must be one of the following types: `int32`, `int64`. 0-D
       tensor. Number of values to generate.
     name: A name for the operation (optional).
@@ -164,7 +164,7 @@ def linspace_nd(start, stop, num, name=None, axis=0):
       non-zero only when N-D tensors are provided).
 
   Returns:
-    A `Tensor`. Has the same type as `start`.
+    A `Tensor`. Has the common inferred type of `start` and `stop`.
 
   Raises:
     InvalidArgumentError: If `axis` is specified to non-zero when 1-D tensor
@@ -172,9 +172,34 @@ def linspace_nd(start, stop, num, name=None, axis=0):
   """
 
   with ops.name_scope(name, "linspace", [start, stop]):
-    start = ops.convert_to_tensor(start, name="start")
-    # stop must be convertible to the same dtype as start
-    stop = ops.convert_to_tensor(stop, name="stop", dtype=start.dtype)
+    start_hint = getattr(stop, "dtype", None)
+    start = ops.convert_to_tensor(start, dtype_hint=start_hint, name="start")
+    stop = ops.convert_to_tensor(stop, dtype_hint=start.dtype, name="stop")
+    if start.dtype != stop.dtype:
+      dtype_hierarchy = [
+          dtypes.int8,
+          dtypes.int16,
+          dtypes.int32,
+          dtypes.int64,
+          dtypes.uint16,
+          dtypes.uint32,
+          dtypes.uint64,
+          dtypes.float16,
+          dtypes.bfloat16,
+          dtypes.float32,
+          dtypes.float64,
+          dtypes.complex64,
+          dtypes.complex128,
+      ]
+      if start.dtype in dtype_hierarchy and stop.dtype in dtype_hierarchy:
+        inferred_dtype = max(
+            [start.dtype, stop.dtype], key=dtype_hierarchy.index
+        )
+        start = cast(start, inferred_dtype)
+        stop = cast(stop, inferred_dtype)
+      else:
+        # Re-trigger standard conversion to raise the proper error message.
+        stop = ops.convert_to_tensor(stop, name="stop", dtype=start.dtype)
     num_int = array_ops.convert_to_int_tensor(num, name="num")
     num = cast(num_int, dtype=start.dtype)
 
