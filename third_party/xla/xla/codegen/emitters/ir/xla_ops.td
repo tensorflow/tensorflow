@@ -208,6 +208,26 @@ def XLA_LinearExtractOp : XLA_Op<"linear_extract",
   let hasVerifier = 1;
 }
 
+def XLA_LinearInsertOp : XLA_Op<"linear_insert",
+    [Pure,
+     TypesMatchWith<"result type matches tensor type", "tensor", "result",
+                    "$_self">,
+     TypesMatchWith<"value type matches tensor element type",
+                    "tensor", "value",
+                    "mlir::cast<mlir::ShapedType>($_self).getElementType()">]> {
+  let summary = "Inserts an element at a 1D physical element index.";
+  let description = [{
+    Inserts `$value` at 1D physical memory offset `$index` into `$tensor`
+    without applying its static layout strides and returns the updated tensor.
+  }];
+  let arguments = (ins AnyType:$value, AnyRankedTensor:$tensor, Index:$index);
+  let results = (outs AnyRankedTensor:$result);
+  let assemblyFormat = [{
+    $value `into` $tensor `[` $index `]` attr-dict `:` type($tensor)
+  }];
+  let hasVerifier = 1;
+}
+
 def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
   let summary = "Applies indexing map to a list of SSA values";
   let description = [{
@@ -362,6 +382,27 @@ def GetDynamicDimSizeOp : XLA_Op<"get_dynamic_dim_size", [
   let results = (outs I32:$result);
 
   let assemblyFormat = "$tensor $dim attr-dict `:` type($tensor)";
+  let hasVerifier = 1;
+}
+
+def SetDynamicDimSizeOp : XLA_Op<"set_dynamic_dim_size", [
+    Pure,
+    TypesMatchWith<"result type matches tensor type", "tensor", "result",
+                   "$_self">
+  ]> {
+  let summary = "Stores the dynamic size of a dimension into the metadata "
+                "suffix of a tensor.";
+  let description = [{
+    Stores `$size` into dynamic dimension slot `$dim` in the tail metadata array
+    of `$tensor` and returns the updated tensor. The `dim` argument can be
+    larger than `tensor`'s rank after passes such as `flatten_tensors` change
+    the view to 1D.
+  }];
+  let arguments = (ins AnyStaticShapeTensor:$tensor, I32:$size, I64Attr:$dim);
+  let results = (outs AnyStaticShapeTensor:$result);
+
+  let assemblyFormat = "$size `into` $tensor `[` $dim `]` attr-dict `:` type($tensor)";
+  let hasVerifier = 1;
 }
 
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_OPS

@@ -1609,3 +1609,171 @@ func.func @get_dynamic_dim_size_unaligned_odd(%arg0: tensor<3xi8>) -> i32 {
 // CHECK: llvm.mlir.constant(3 : i64) : i64
 // CHECK: llvm.load %{{.*}} <alignment = 1> : !llvm.ptr -> i32
 
+// -----
+
+func.func @set_dynamic_dim_size(%arg0: tensor<512xf32>, %size: i32) -> tensor<512xf32> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[1] : tensor<512xf32>
+  func.return %0 : tensor<512xf32>
+}
+// CHECK-LABEL: @set_dynamic_dim_size
+// CHECK: llvm.mlir.constant(2052 : i64) : i64
+// CHECK: llvm.store %{{.*}}, %{{.*}} <alignment = 4> : i32, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_unaligned_sub_byte(%arg0: tensor<5xi4>, %size: i32) -> tensor<5xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<5xi4>
+  func.return %0 : tensor<5xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_unaligned_sub_byte
+// CHECK-SAME:    (%[[ARG0:.*]]: !llvm.ptr, %[[SIZE:.*]]: i32)
+// CHECK-CPU:     llvm.mlir.constant(3 : i64) : i64
+// CHECK-CPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+// CHECK-GPU-DAG: %[[MASK:.*]] = llvm.mlir.constant(16777215 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT24:.*]] = llvm.mlir.constant(24 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT8:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT16:.*]] = llvm.mlir.constant(16 : i32) : i32
+// CHECK-GPU-DAG: %[[TAIL_OFF:.*]] = llvm.mlir.constant(4 : i64) : i64
+// CHECK-GPU-DAG: %[[TOP_OFF:.*]] = llvm.mlir.constant(6 : i64) : i64
+// CHECK-GPU:     %[[SHL:.*]] = llvm.shl %[[SIZE]], %[[SHIFT24]] : i32
+// CHECK-GPU:     %[[INIT:.*]] = llvm.load %[[ARG0]] : !llvm.ptr -> i32
+// CHECK-GPU:     scf.while (%[[CUR:.*]] = %[[INIT]]) : (i32) -> i32 {
+// CHECK-GPU:       %[[KEPT:.*]] = llvm.and %[[CUR]], %[[MASK]] : i32
+// CHECK-GPU:       %[[NEW:.*]] = llvm.or %[[KEPT]], %[[SHL]] : i32
+// CHECK-GPU:       llvm.cmpxchg %[[ARG0]], %[[CUR]], %[[NEW]] monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:       scf.condition
+// CHECK-GPU:     }
+// CHECK-GPU:     %[[TAIL_INT:.*]] = llvm.add %{{.*}}, %[[TAIL_OFF]] : i64
+// CHECK-GPU:     %[[TAIL_PTR:.*]] = llvm.inttoptr %[[TAIL_INT]] : i64 to !llvm.ptr
+// CHECK-GPU:     %[[HIGH_SHIFTED:.*]] = llvm.lshr %[[SIZE]], %[[SHIFT8]] : i32
+// CHECK-GPU:     %[[LOW_I16:.*]] = llvm.trunc %[[HIGH_SHIFTED]] : i32 to i16
+// CHECK-GPU:     llvm.store %[[LOW_I16]], %[[TAIL_PTR]] <alignment = 2> : i16, !llvm.ptr
+// CHECK-GPU:     %[[TOP_SHIFTED:.*]] = llvm.lshr %[[HIGH_SHIFTED]], %[[SHIFT16]] : i32
+// CHECK-GPU:     %[[TOP_I8:.*]] = llvm.trunc %[[TOP_SHIFTED]] : i32 to i8
+// CHECK-GPU:     %[[TOP_INT:.*]] = llvm.add %{{.*}}, %[[TOP_OFF]] : i64
+// CHECK-GPU:     %[[TOP_PTR:.*]] = llvm.inttoptr %[[TOP_INT]] : i64 to !llvm.ptr
+// CHECK-GPU:     llvm.store %[[TOP_I8]], %[[TOP_PTR]] <alignment = 1> : i8, !llvm.ptr
+// CHECK-GFX908-MI100-LABEL: @set_dynamic_dim_size_unaligned_sub_byte
+// CHECK-GFX908-MI100: llvm.cmpxchg {{.*}} syncscope("agent-one-as") monotonic monotonic : !llvm.ptr, i32
+
+// -----
+
+func.func @set_dynamic_dim_size_unaligned_sub_byte_misalign1(%arg0: tensor<9xi4>, %size: i32) -> tensor<9xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<9xi4>
+  func.return %0 : tensor<9xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_unaligned_sub_byte_misalign1
+// CHECK-CPU:     llvm.mlir.constant(5 : i64) : i64
+// CHECK-CPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+// CHECK-GPU-DAG: %[[WORD_OFF:.*]] = llvm.mlir.constant(4 : i64) : i64
+// CHECK-GPU-DAG: %[[MASK:.*]] = llvm.mlir.constant(255 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT8:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-GPU-DAG: %[[TAIL_OFF:.*]] = llvm.mlir.constant(8 : i64) : i64
+// CHECK-GPU-DAG: %[[SHIFT24:.*]] = llvm.mlir.constant(24 : i32) : i32
+// CHECK-GPU:     llvm.add %{{.*}}, %[[WORD_OFF]] : i64
+// CHECK-GPU:     llvm.cmpxchg {{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:     llvm.add %{{.*}}, %[[TAIL_OFF]] : i64
+// CHECK-GPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i8, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_unaligned_sub_byte_misalign2(%arg0: tensor<3xi4>, %size: i32) -> tensor<3xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<3xi4>
+  func.return %0 : tensor<3xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_unaligned_sub_byte_misalign2
+// CHECK-CPU:     llvm.mlir.constant(2 : i64) : i64
+// CHECK-CPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+// CHECK-GPU-DAG: %[[MASK:.*]] = llvm.mlir.constant(65535 : i32) : i32
+// CHECK-GPU-DAG: %[[SHIFT16:.*]] = llvm.mlir.constant(16 : i32) : i32
+// CHECK-GPU-DAG: %[[TAIL_OFF:.*]] = llvm.mlir.constant(4 : i64) : i64
+// CHECK-GPU:     llvm.cmpxchg {{.*}} monotonic monotonic : !llvm.ptr, i32
+// CHECK-GPU:     llvm.add %{{.*}}, %[[TAIL_OFF]] : i64
+// CHECK-GPU:     llvm.store %{{.*}}, %{{.*}} <alignment = 2> : i16, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_sub_byte_dim1(%arg0: tensor<5xi4>, %size: i32) -> tensor<5xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[1] : tensor<5xi4>
+  func.return %0 : tensor<5xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_sub_byte_dim1
+// CHECK-NOT:     llvm.cmpxchg
+// CHECK:         llvm.mlir.constant(7 : i64) : i64
+// CHECK:         llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_aligned_sub_byte(%arg0: tensor<8xi4>, %size: i32) -> tensor<8xi4> {
+  %0 = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<8xi4>
+  func.return %0 : tensor<8xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_aligned_sub_byte
+// CHECK-NOT:     llvm.cmpxchg
+// CHECK:         llvm.mlir.constant(4 : i64) : i64
+// CHECK:         llvm.store %{{.*}}, %{{.*}} <alignment = 4> : i32, !llvm.ptr
+
+// -----
+
+func.func @set_dynamic_dim_size_before_sub_byte_insert(
+    %arg0: tensor<5xi4>, %size: i32, %val: i4, %idx: index, %cond0: i1,
+    %cond1: i1) -> tensor<5xi4> {
+  %with_dim = scf.if %cond0 -> (tensor<5xi4>) {
+    %updated = xla.set_dynamic_dim_size %size into %arg0[0] : tensor<5xi4>
+    scf.yield %updated : tensor<5xi4>
+  } else {
+    scf.yield %arg0 : tensor<5xi4>
+  }
+  %res = scf.if %cond1 -> (tensor<5xi4>) {
+    %ins = tensor.insert %val into %with_dim[%idx] : tensor<5xi4>
+    scf.yield %ins : tensor<5xi4>
+  } else {
+    scf.yield %with_dim : tensor<5xi4>
+  }
+  func.return %res : tensor<5xi4>
+}
+// CHECK-LABEL: @set_dynamic_dim_size_before_sub_byte_insert
+// CHECK: scf.if %{{.*}} {
+// CHECK-GPU:   llvm.cmpxchg
+// CHECK-CPU:   llvm.store %{{.*}}, %{{.*}} <alignment = 1> : i32, !llvm.ptr
+// CHECK: }
+// CHECK: scf.if %{{.*}} {
+// CHECK-GPU: llvm.cmpxchg
+// CHECK-CPU: llvm.store
+// CHECK: return
+
+// -----
+
+func.func @get_destination_buffer_through_cast(
+    %arg0: tensor<2x4xf32>, %val: f32, %idx: index) -> tensor<2x4xf32> {
+  %flat = builtin.unrealized_conversion_cast %arg0 : tensor<2x4xf32> to tensor<8xf32>
+  %ins = tensor.insert %val into %flat[%idx] : tensor<8xf32>
+  %res = builtin.unrealized_conversion_cast %ins : tensor<8xf32> to tensor<2x4xf32>
+  func.return %res : tensor<2x4xf32>
+}
+// CHECK-LABEL: func.func @get_destination_buffer_through_cast(
+// CHECK-SAME:    %[[ARG0:.*]]: !llvm.ptr,
+// CHECK:         %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x f32>
+// CHECK:         llvm.store %{{.*}}, %[[GEP]] : f32, !llvm.ptr
+// CHECK:         return
+
+// -----
+
+func.func @get_destination_buffer_through_atomic_rmw(
+    %arg0: tensor<8xf32>, %val: f32, %idx: index) -> tensor<8xf32> {
+  %rmw = xla.atomic_rmw %arg0[%idx] : tensor<8xf32> {
+    ^bb0(%cur: f32):
+      %add = arith.addf %cur, %val : f32
+      xla.yield %add : f32
+  }
+  %ins = tensor.insert %val into %rmw[%idx] : tensor<8xf32>
+  func.return %ins : tensor<8xf32>
+}
+// CHECK-LABEL: func.func @get_destination_buffer_through_atomic_rmw(
+// CHECK-SAME:    %[[ARG0:.*]]: !llvm.ptr,
+// CHECK-GPU:     llvm.atomicrmw ignore_denormal_mode fadd
+// CHECK-CPU:     llvm.cmpxchg
+// CHECK:         %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<8 x f32>
+// CHECK:         llvm.store %{{.*}}, %[[GEP]] : f32, !llvm.ptr
+// CHECK:         return
+

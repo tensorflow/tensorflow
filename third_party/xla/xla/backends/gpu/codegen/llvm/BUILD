@@ -16,7 +16,6 @@
 # LLVM codegen for GPU.
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package_group(
     name = "friends",
@@ -36,10 +35,6 @@ cc_library(
     srcs = ["llvm_emitter.cc"],
     hdrs = ["llvm_emitter.h"],
     deps = [
-        ":parallel_loop_emitter",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/codegen:kernel_definition",
@@ -48,50 +43,17 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:dense_data_intermediate",
         "//xla/service/gpu:gpu_constants",
-        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:kernel_support_library",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/llvm_ir:loop_emitter",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
-    ],
-)
-
-cc_library(
-    name = "parallel_loop_emitter",
-    srcs = ["parallel_loop_emitter.cc"],
-    hdrs = ["parallel_loop_emitter.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla:shape_util",
-        "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:target_util",
-        "//xla/service/llvm_ir:ir_array",
-        "//xla/service/llvm_ir:kernel_support_library",
-        "//xla/service/llvm_ir:llvm_loop",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/service/llvm_ir:loop_emitter",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:logging",
     ],
 )

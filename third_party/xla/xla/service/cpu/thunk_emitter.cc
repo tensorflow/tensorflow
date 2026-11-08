@@ -46,11 +46,11 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/computation_kernel_arguments.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/emitters/pad_to_static_kernel_emitter.h"
+#include "xla/backends/cpu/codegen/emitters/slice_to_dynamic_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
-#include "xla/backends/cpu/codegen/slice_to_dynamic_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/codegen/thunk_sequence_kernel_emitter.h"
@@ -1262,13 +1262,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadToStaticThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
     const HloInstruction* instruction) {
-  SliceToDynamicKernelEmitter emitter(instruction, &buffer_assignment_,
-                                      &target_machine_features_);
-  ABSL_ASSIGN_OR_RETURN(KernelDefinition kernel_definition,
+  SliceToDynamicKernelEmitter emitter(
+      *mlir_context_, instruction, &buffer_assignment_,
+      hlo_module_config_.debug_options()
+          .xla_cpu_generate_unique_c_style_kernel_entry_points());
+  ABSL_ASSIGN_OR_RETURN(KernelDefinition<MlirKernelSource> mlir_kernel,
                    emitter.EmitKernelDefinition());
-  KernelSpec kernel_spec = kernel_definition.spec();
-  AddKernel(kernel_spec.name(),
-            std::move(kernel_definition).TakeSource().thread_safe_module());
+  KernelSpec kernel_spec = mlir_kernel.spec();
+  ABSL_ASSIGN_OR_RETURN(
+      LlvmKernelSource llvm_source,
+      fusion_compiler_.Compile(std::move(mlir_kernel).TakeSource()));
+  AddKernel(kernel_spec.name(), std::move(llvm_source).thread_safe_module());
   return MakeKernelThunkSequence(instruction, std::move(kernel_spec),
                                  /*min_alignment=*/MinAlign());
 }

@@ -13,26 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_CODEGEN_SLICE_TO_DYNAMIC_KERNEL_EMITTER_H_
-#define XLA_BACKENDS_CPU_CODEGEN_SLICE_TO_DYNAMIC_KERNEL_EMITTER_H_
+#ifndef XLA_BACKENDS_CPU_CODEGEN_EMITTERS_SLICE_TO_DYNAMIC_KERNEL_EMITTER_H_
+#define XLA_BACKENDS_CPU_CODEGEN_EMITTERS_SLICE_TO_DYNAMIC_KERNEL_EMITTER_H_
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/kernel_emitter.h"
-#include "xla/codegen/llvm_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
 
-// Emits a host kernel for a SliceToDynamic custom call instruction.
+// Emits an MLIR kernel for a SliceToDynamic custom call on CPU.
 class SliceToDynamicKernelEmitter final
-    : public KernelEmitter<LlvmKernelSource> {
+    : public KernelEmitter<MlirKernelSource> {
  public:
-  SliceToDynamicKernelEmitter(const HloInstruction* instr,
+  SliceToDynamicKernelEmitter(mlir::MLIRContext& mlir_context,
+                              const HloInstruction* instr,
                               const BufferAssignment* buffer_assignment,
-                              const TargetMachineFeatures* target_machine);
+                              bool use_unique_c_name = false);
 
   absl::string_view name() const final {
     return "slice_to_dynamic_kernel_emitter";
@@ -41,11 +42,12 @@ class SliceToDynamicKernelEmitter final
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 
  private:
+  mlir::MLIRContext& mlir_context_;
   const HloInstruction* instr_;
   const BufferAssignment* buffer_assignment_;
-  const TargetMachineFeatures* target_machine_;
+  bool use_unique_c_name_;
 };
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_CODEGEN_SLICE_TO_DYNAMIC_KERNEL_EMITTER_H_
+#endif  // XLA_BACKENDS_CPU_CODEGEN_EMITTERS_SLICE_TO_DYNAMIC_KERNEL_EMITTER_H_

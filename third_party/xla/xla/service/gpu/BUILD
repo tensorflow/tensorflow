@@ -479,6 +479,7 @@ cc_library(
         "//xla/backends/gpu/codegen:gpu_kernel_spec",
         "//xla/backends/gpu/codegen:kernel_compiler",
         "//xla/backends/gpu/codegen:pad_to_static",
+        "//xla/backends/gpu/codegen:slice_to_dynamic",
         "//xla/backends/gpu/codegen:sort",
         "//xla/backends/gpu/codegen/kernels:custom_kernel",
         "//xla/backends/gpu/codegen/kernels:ptx_custom_kernel",

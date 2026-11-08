@@ -824,6 +824,49 @@ struct RewriteLinearExtractOp : OpRewritePattern<LinearExtractOp> {
   }
 };
 
+struct RewriteLinearInsertOp : OpRewritePattern<LinearInsertOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LinearInsertOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor = op.getTensor();
+    auto tensor_type = tensor.getType();
+    Value flat_tensor = Flatten(tensor, rewriter);
+    auto insert_op = InsertOp::create(rewriter, op.getLoc(), op.getValue(),
+                                      flat_tensor, op.getIndex());
+    if (tensor_type.getRank() < 2) {
+      rewriter.replaceOp(op, insert_op.getResult());
+    } else {
+      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+          op, tensor_type, insert_op.getResult());
+    }
+    return mlir::success();
+  }
+};
+
+struct RewriteSetDynamicDimSizeOp : OpRewritePattern<SetDynamicDimSizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SetDynamicDimSizeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor = op.getTensor();
+    auto tensor_type = tensor.getType();
+    if (tensor_type.getRank() < 2) {
+      return rewriter.notifyMatchFailure(op, "the tensor is already flat");
+    }
+
+    auto tensor_1D =
+        UnrealizedConversionCastOp::create(
+            rewriter, op.getLoc(), GetFlattenedType(tensor_type), tensor)
+            .getResult(0);
+    auto new_op = SetDynamicDimSizeOp::create(rewriter, op.getLoc(), tensor_1D,
+                                              op.getSize(), op.getDim());
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, tensor_type,
+                                                            new_op.getResult());
+    return mlir::success();
+  }
+};
+
 class FlattenTensorsPass
     : public impl::FlattenTensorsPassBase<FlattenTensorsPass> {
  public:
@@ -844,7 +887,9 @@ class FlattenTensorsPass
         RewriteIf,
         RewriteIndexSwitch,
         RewriteLinearExtractOp,
+        RewriteLinearInsertOp,
         RewritePureCall,
+        RewriteSetDynamicDimSizeOp,
         RewriteSyncThreads,
         RewriteTensorExtract,
         RewriteTensorInsert,

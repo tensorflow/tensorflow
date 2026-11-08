@@ -194,5 +194,26 @@ TEST_F(CpuDynShapeTest, ExecuteDynamicEntryParameterZeroDynamicSize) {
   EXPECT_EQ(result, LiteralUtil::CreateR0<int32_t>(0));
 }
 
+TEST_F(CpuDynShapeTest, CompileSliceToDynamicIr) {
+  constexpr absl::string_view kHlo = R"hlo(
+    HloModule SliceToDynamicIr
+    ENTRY main {
+      param = f16[5]{0} parameter(0)
+      dyn_size = s32[] parameter(1)
+      ROOT res = f16[<=5]{0} custom-call(param, dyn_size),
+        custom_call_target="SliceToDynamic"
+    }
+  )hlo";
+  CompileAndVerifyIr(kHlo, R"(
+    CHECK: define ptr @res(ptr{{.*}})
+    CHECK: define internal void @res_wrapped(
+    CHECK:   add i64 %{{.*}}, 10
+    CHECK:   store i32 %{{.*}}, ptr %{{.*}}, align 1
+    CHECK:   store half
+    CHECK: xla_cpu_emitter__slice_to_dynamic_kernel_emitter__hlo_opcode__custom-call
+  )",
+                     /*match_optimized_ir=*/false);
+}
+
 }  // namespace
 }  // namespace xla::cpu
