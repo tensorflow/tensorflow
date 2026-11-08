@@ -606,6 +606,35 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
     operator = linalg.LinearOperatorCirculant(spectrum)
     self.assertTrue(operator.is_self_adjoint)
 
+  def test_solve_with_spectrum_precision_different_from_operator_dtype(self):
+    # The spectrum dtype may differ from input_output_dtype.
+    for spectrum_dtype, input_output_dtype in [
+        (dtypes.float64, dtypes.complex64),
+        (dtypes.complex128, dtypes.complex64),
+        (dtypes.float32, dtypes.float64),
+    ]:
+      with self.subTest(spectrum_dtype=spectrum_dtype,
+                        input_output_dtype=input_output_dtype):
+        # Real and Hermitian, so the operator is real and symmetric.
+        spectrum = math_ops.cast([6., 4., 4.], spectrum_dtype)
+        operator = linalg.LinearOperatorCirculant(
+            spectrum, input_output_dtype=input_output_dtype)
+        x = math_ops.cast([[1., 2.], [3., 4.], [5., 6.]], input_output_dtype)
+
+        solution = operator.solve(x)
+        solution_adjoint = operator.solve(x, adjoint=True)
+        self.assertEqual(solution.dtype, input_output_dtype)
+        self.assertEqual(solution_adjoint.dtype, input_output_dtype)
+
+        matrix, x_val, solution, solution_adjoint, round_trip = self.evaluate([
+            operator.to_dense(), x, solution, solution_adjoint,
+            operator.solve(operator.matmul(x))
+        ])
+        self.assertAllClose(np.linalg.solve(matrix, x_val), solution)
+        self.assertAllClose(
+            np.linalg.solve(matrix.conj().T, x_val), solution_adjoint)
+        self.assertAllClose(x_val, round_trip)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorCirculant2DBaseTest(object):
