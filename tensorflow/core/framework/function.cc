@@ -102,7 +102,22 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
       return absl::NotFoundError(
           absl::StrCat("number attr not found: ", arg_def.number_attr()));
     }
-    num = v->i();
+    const int64_t repeats = v->i();
+    // Apply the same bounds checks as AddArgToSig() in node_def_util.cc,
+    // which guards this same number_attr field on the Graph::AddNode() path.
+    // Without them, a negative or overly large `repeats` (attacker-
+    // controlled via a crafted FunctionDef, e.g. in a SavedModel's
+    // GraphDef.library()) converts to a huge size_t in the dtypes->resize()
+    // call below, crashing the process.
+    if (static_cast<int64_t>(static_cast<int32_t>(repeats)) != repeats) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Number of outputs is too big: ", repeats));
+    }
+    if (repeats < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Value for number_attr() ", repeats, " < 0"));
+    }
+    num = static_cast<int>(repeats);
   }
 
   DataType dtype;

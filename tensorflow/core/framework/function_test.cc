@@ -678,6 +678,53 @@ TEST(InstantiateErrors, Unbounded_Attr) {
       "Failed to bind all placeholders");
 }
 
+// A node in the function body whose number_attr-governed input count (e.g.
+// AddN's "N") is negative should be rejected during instantiation, not read
+// out as a negative size later (ArgNumType() in function.cc used to pass
+// this straight to DataTypeVector::resize() with no check).
+TEST(InstantiateErrors, NegativeNumberAttrIsRejected) {
+  auto fdef = FDH::Create(
+      "NegativeN",
+      // Inputs
+      {"x: float", "y: float"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"}, "AddN", {"x", "y"}, {{"T", DT_FLOAT}, {"N", -1}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
+           "Value for number_attr() -1 < 0");
+}
+
+// Same as above, but for a number_attr value too large to fit in an int32
+// (ArgNumType() previously accepted any int64_t value unchecked).
+TEST(InstantiateErrors, TooLargeNumberAttrIsRejected) {
+  auto fdef = FDH::Create(
+      "TooLargeN",
+      // Inputs
+      {"x: float", "y: float"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {{{"a"},
+        "AddN",
+        {"x", "y"},
+        {{"T", DT_FLOAT}, {"N", static_cast<int64_t>(1) << 32}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
+           "Number of outputs is too big");
+}
+
 TEST(InstantiateErrors, DupArgs) {
   auto fdef = FDH::Define("test", {"x:float", "x:float"}, {}, {}, {});
   InstantiationResult result;
