@@ -302,7 +302,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     # Thus we must fix a common order to tables and ensure they have unique
     # names.
 
-    # Set table order here to the order of the first occurence of the table in a
+    # Set table order here to the order of the first occurrence of the table in a
     # feature provided by the user. The order of this struct must be fixed
     # to provide the user with deterministic behavior over multiple
     # instantiations.
@@ -1474,7 +1474,7 @@ class TPUEmbedding(autotrackable.AutoTrackable):
   def _update_output_shapes(self, incoming_output_shapes: List[TensorShape]):
     """Update the existing output shapes based on the new output shapes.
 
-    The existing output shapes always have higher piority than the new incoming
+    The existing output shapes always have higher priority than the new incoming
     output shapes.
     Args:
       incoming_output_shapes: nested structure of TensorShape to override the

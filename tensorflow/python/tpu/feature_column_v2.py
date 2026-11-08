@@ -107,7 +107,7 @@ def embedding_column_v2(categorical_column,
     learning_rate_fn: A function that takes global step and returns learning
       rate for the embedding table. If you intend to use the same learning rate
       for multiple embedding tables, please ensure that you pass the exact same
-      python function to all calls of embedding_column, otherwise performence
+      python function to all calls of embedding_column, otherwise performance
       may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
       Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core".
@@ -273,7 +273,7 @@ def shared_embedding_columns_v2(categorical_columns,
       rate for the embedding table. If you intend to use the same learning rate
       for multiple embedding tables, please ensure that you pass the exact same
       python function to all calls of shared_embedding_columns, otherwise
-      performence may suffer.
+      performance may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
       Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core". If
       specifying "tpu_tensor_core", a tensor_core_shape must be supplied.
