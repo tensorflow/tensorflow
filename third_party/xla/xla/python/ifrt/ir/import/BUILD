@@ -28,6 +28,7 @@ cc_library(
     srcs = [
         # go/keep-sorted start
         "ifrt_add_control_dependencies.cc",
+        "ifrt_call_dedup_pass.cc",
         "ifrt_copy_constants_pass.cc",
         "ifrt_dce_pass.cc",
         "ifrt_dump_atom_programs_pass.cc",

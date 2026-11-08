@@ -302,6 +302,26 @@ behind after copying constants.
   }];
 }
 
+def IfrtCallDedupPass :
+    Pass<"ifrt-call-dedup", "mlir::ModuleOp"> {
+  let summary = "Deduplicates operands and results of `ifrt.Call` ops.";
+  let description = [{
+Processes `ifrt.Call` ops in IFRT functions in program order to:
+1. Redirect uses of duplicate non-donated, non-aliased input block arguments
+   (with matching callee argument types and normalized argument attributes)
+   inside the callee `func.func` to the first matching block argument. If the
+   callee (or its enclosing outlined `ModuleOp`) is non-private or has other
+   symbol uses (e.g., another `ifrt.Call` or a `func.call`), it is cloned as a
+   private symbol before mutating its arguments.
+2. Redirect caller uses of duplicate `ifrt.Call` outputs (returning the same
+   SSA value in the callee with identical `!ifrt.array` types and normalized
+   result attributes) to the first matching output, excluding outputs aliased
+   to a call input or donated/aliased to a downstream consumer.
+
+Dead arguments and results are left to be erased by `IfrtDcePass`.
+  }];
+}
+
 def IfrtDcePass : Pass<"ifrt-dce", "mlir::ModuleOp"> {
   let summary = "Eliminates unused CallOp arguments/results, simplifies atom "
                 "program regions, and erases dead "
