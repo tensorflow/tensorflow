@@ -74,6 +74,9 @@
     indices and loop-invariant params now handles negative `batch_dims` and
     symbolic `axis` tensors instead of raising shape errors or
     `OperatorNotAllowedInGraphError`.
+*   `tf.linspace`: `start` and `stop` are now promoted to a common dtype when
+    given mixed types (such as an integer `start` with a float `stop`, or mixed
+    precisions), matching `np.linspace` and `tf.range`.
 
 ## Thanks to our Contributors
 
