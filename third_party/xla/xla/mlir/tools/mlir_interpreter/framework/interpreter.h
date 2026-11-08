@@ -154,7 +154,9 @@ class InterpreterScope {
         return it;
       }
     }
-    if (!parent_scope_ && optional) return nullptr;
+    if (!parent_scope_ && optional) {
+      return nullptr;
+    }
     assert(parent_scope_ && "side channel not found");
     return parent_scope_->GetSideChannel<T>(optional);
   }

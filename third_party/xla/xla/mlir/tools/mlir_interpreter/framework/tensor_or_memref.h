@@ -152,7 +152,9 @@ struct BufferView {
     };
 
     Iterator begin() const {
-      if (view_->GetNumElements() == 0) return end();
+      if (view_->GetNumElements() == 0) {
+        return end();
+      }
       return {
           view_,
           llvm::SmallVector<int64_t>(
@@ -331,20 +333,30 @@ struct TensorOrMemref {
   }
 
   bool operator==(const TensorOrMemref& other) const {
-    if (buffer->Deallocated() || other.buffer->Deallocated()) return false;
-    if (other.view.sizes != view.sizes) return false;
-    if (other.view.num_vector_dims != view.num_vector_dims) return false;
+    if (buffer->Deallocated() || other.buffer->Deallocated()) {
+      return false;
+    }
+    if (other.view.sizes != view.sizes) {
+      return false;
+    }
+    if (other.view.num_vector_dims != view.num_vector_dims) {
+      return false;
+    }
     for (const auto& indices : view.Indices(true)) {
       // Treat NaNs as equal.
       if constexpr (std::is_floating_point_v<T>) {
         bool thisnan = isnan(at(indices));
         bool othernan = isnan(other.at(indices));
         if (thisnan || othernan) {
-          if (thisnan && othernan) continue;
+          if (thisnan && othernan) {
+            continue;
+          }
           return false;
         }
       }
-      if (!IsEqual(at(indices), other.at(indices))) return false;
+      if (!IsEqual(at(indices), other.at(indices))) {
+        return false;
+      }
     }
     return true;
   }
