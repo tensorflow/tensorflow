@@ -95,7 +95,7 @@ std::vector<std::string> GetSourceFileListFromOpRegOffsets(
                                   source_file_list.end());
 }
 
-// Generates Python wapper functions for the registered ops given ApiDefs in
+// Generates Python wrapper functions for the registered ops given ApiDefs in
 // `api_def_dirs` and write the result to `out_path` or print to stdout if
 // `out_path` is empty.
 //

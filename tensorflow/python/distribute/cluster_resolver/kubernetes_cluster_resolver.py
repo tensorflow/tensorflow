@@ -31,7 +31,7 @@ class ExecutableLocation(enum.Enum):
 
   `WITHIN_CLUSTER` means that the TensorFlow code you are running is running
   in a pod within the cluster itself.
-  `OFF_CLUSTER` means any other enviroment outside the cluster.
+  `OFF_CLUSTER` means any other environment outside the cluster.
   """
 
   WITHIN_CLUSTER = 0

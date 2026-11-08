@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Converts the canoncialized parameters to the expected types (in place).
+// Converts the canonicalized parameters to the expected types (in place).
 //
 //   * Input parameters (i.e., parameters that expect tensor values) are
 //     converted to tensors (or lists of tensors) using

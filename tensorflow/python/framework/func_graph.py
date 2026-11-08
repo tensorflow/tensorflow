@@ -708,7 +708,7 @@ class FuncGraph(ops.Graph):
 
     Returns:
       A nested structure with the same structure as the side input. Tensors
-        are replaced with placehoders, and non-tensors remain the same.
+        are replaced with placeholders, and non-tensors remain the same.
     """
     if context.executing_eagerly():
       return func()

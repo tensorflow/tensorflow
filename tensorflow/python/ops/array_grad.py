@@ -703,7 +703,7 @@ def _GatherGrad(op: ops.Operation, grad):
 
 
 def _GetBatchIndices(params_shape, indices, batch_dims):
-  """Addds the batch offsets to the given indices and returns the results."""
+  """Adds the batch offsets to the given indices and returns the results."""
   batch_indices = indices
   indices_dtype = indices.dtype.base_dtype
   casted_params_shape = math_ops.cast(params_shape, indices_dtype)

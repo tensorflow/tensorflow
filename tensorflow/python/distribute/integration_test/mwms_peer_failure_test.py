@@ -64,7 +64,7 @@ class PeerFailureTest(test.TestCase):
   # initial values are broadcasted from the first worker.
   #
   # We use a multiprocessing.Manager().dict() object to track the attempts of
-  # each worker. We take different actions in different attempts to simuate the
+  # each worker. We take different actions in different attempts to simulate the
   # events in real world. E.g. some tests make a worker fail on the first
   # attempt only, and asserts that it should recovery.
 
