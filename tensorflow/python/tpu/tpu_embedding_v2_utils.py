@@ -471,11 +471,11 @@ class SGD(_Optimizer):
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
       clipvalue: Controls clipping of the gradient. Set to either a single
-        positive scalar value to get clipping or a tiple of scalar values (min,
+        positive scalar value to get clipping or a tuple of scalar values (min,
         max) to set a separate maximum or minimum. If one of the two entries is
         None, then there will be no clipping that direction. Note if this is
         set, you may see a decrease in performance as  gradient accumulation
-        will be enabled (it is normally off for SGD as it has no affect on
+        will be enabled (it is normally off for SGD as it has no effect on
         accuracy). See
         'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for more
         information on gradient accumulation and its impact on tpu embeddings.
@@ -1067,7 +1067,7 @@ class Adam(_Optimizer):
         variable. When set to None (the default), uses the built-in variable
         creation.
       clipvalue: Controls clipping of the gradient. Set to either a single
-        positive scalar value to get clipping or a tiple of scalar values (min,
+        positive scalar value to get clipping or a tuple of scalar values (min,
         max) to set a separate maximum or minimum. If one of the two entries is
         None, then there will be no clipping that direction.
       low_dimensional_packing_status: Status of the low-dimensional embedding
@@ -1347,7 +1347,7 @@ class QuantizationConfig:
     """Simulated quantizaiton configuration.
 
     Args:
-      num_buckets: The number of quantization buckets, must be atleast 2.
+      num_buckets: The number of quantization buckets, must be at least 2.
       lower: The lower bound for the quantization range.
       upper: The upper bound for the quantization range.
 
@@ -1754,7 +1754,7 @@ def get_list_of_hosts(strategy: tpu_strategy.TPUStrategy) -> List[Text]:
   """
 
   list_of_hosts = []
-  # Elsewehere we assume that the list of hosts is sorted.
+  # Elsewhere we assume that the list of hosts is sorted.
   for tpu_device in _sort_device_spec_strings(strategy.extended.worker_devices):
     host = device_util.get_host_for_device(tpu_device)
     if host not in list_of_hosts:
