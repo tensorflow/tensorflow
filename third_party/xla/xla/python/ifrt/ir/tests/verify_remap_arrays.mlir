@@ -99,6 +99,25 @@ func.func @requires_at_least_one_input() attributes {ifrt.function} {
 
 // -----
 
+func.func @error_zero_inputs_and_outputs() attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.RemapArrays' op requires at least one input array}}
+  %ctrl_0 = ifrt.RemapArrays() mappings = [] : () -> ()
+  return
+}
+
+// -----
+
+!array = !ifrt.array<tensor<2x4xi32>,
+                     #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+func.func @requires_at_least_one_output(%arg0: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.RemapArrays' op requires at least one output array}}
+  %ctrl_0 = ifrt.RemapArrays(%arg0) mappings = [] : (!array) -> ()
+  return
+}
+
+// -----
+
 !array0 = !ifrt.array<tensor<2x4xi32>,
                       #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
 !array1 = !ifrt.array<tensor<2x4xi32>,

@@ -302,4 +302,24 @@ behind after copying constants.
   }];
 }
 
+def IfrtDcePass : Pass<"ifrt-dce", "mlir::ModuleOp"> {
+  let summary = "Eliminates unused CallOp arguments/results, simplifies atom "
+                "program regions, and erases dead "
+                "Call/Reshard/CopyArrays/BitcastArrays/RemapArrays ops.";
+  let description = [{
+Walks IFRT functions in reverse order to:
+1. Erase unused outputs (or the entire op when all array outputs are unused,
+   forwarding `control_inputs` to `control_output` users) from
+   `IfrtPairwiseArrayOpInterface` ops (`ifrt.Reshard`, `ifrt.CopyArrays`,
+   `ifrt.BitcastArrays`) and from `ifrt.RemapArrays` ops (pruning unused
+   `ifrt.RemapArrays` inputs as a result of erasing unused outputs and
+   remapping `mappings` indices).
+2. Erase unused `ifrt.Call` results and corresponding callee `func.return`
+   operands, simplify callee regions, erase unused callee block arguments and
+   `ifrt.Call` inputs (remapping `io_aliases`, `donated_input_indices`,
+   `arg_attrs`, and `res_attrs`), and erase dead empty `ifrt.Call` ops along
+   with unused private callees.
+  }];
+}
+
 #endif  // XLA_PYTHON_IFRT_IR_IMPORT_PASSES_TD_
