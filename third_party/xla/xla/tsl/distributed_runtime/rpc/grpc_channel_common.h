@@ -40,7 +40,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
       : num_channels_per_target_(
             num_channels_per_target > 0 ? num_channels_per_target : 1) {}
 
-  ~GenericCachingChannelCache() override {}
+  ~GenericCachingChannelCache() override = default;
 
   SharedGrpcChannelPtr FindWorkerChannel(const std::string& target) override {
     {

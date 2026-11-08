@@ -22,7 +22,7 @@ namespace tsl {
 // RPCs with a polling loop.
 class AsyncServiceInterface {
  public:
-  virtual ~AsyncServiceInterface() {}
+  virtual ~AsyncServiceInterface() = default;
 
   // A blocking method that should be called to handle incoming RPCs.
   // This method will block until the service shuts down.

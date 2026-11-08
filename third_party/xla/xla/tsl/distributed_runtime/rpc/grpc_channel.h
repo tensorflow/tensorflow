@@ -58,7 +58,7 @@ class GrpcChannelSpec {
 
 class GrpcChannelCache {
  public:
-  virtual ~GrpcChannelCache() {}
+  virtual ~GrpcChannelCache() = default;
 
   // Populates *workers with names of all workers which this object
   // was created to handle.  Worker names are in the format

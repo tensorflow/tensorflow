@@ -76,7 +76,7 @@ namespace tsl {
 template <class Service>
 class GrpcCallTag {
  public:
-  virtual ~GrpcCallTag() {}
+  virtual ~GrpcCallTag() = default;
 
   // Calls the callback associated with this tag.
   virtual void OnCompleted(Service* service, bool ok) = 0;
@@ -86,7 +86,7 @@ class GrpcCallTag {
 template <class Service>
 class UntypedCall : public core::RefCounted {
  public:
-  ~UntypedCall() override {}
+  ~UntypedCall() override = default;
 
   // The implementation of this method should use `service` to handle
   // an incoming request, and (perhaps asynchronously) send the
@@ -162,7 +162,7 @@ class Call : public UntypedCall<Service> {
   Call(HandleRequestFunction handle_request_function)
       : handle_request_function_(handle_request_function), responder_(&ctx_) {}
 
-  ~Call() override {}
+  ~Call() override = default;
 
   void RequestReceived(Service* service, bool ok) override {
     if (ok) {
