@@ -74,6 +74,10 @@
     indices and loop-invariant params now handles negative `batch_dims` and
     symbolic `axis` tensors instead of raising shape errors or
     `OperatorNotAllowedInGraphError`.
+*   `tf.repeat` and `get_positive_axis`:
+    `axis` now accepts NumPy integer scalar types (e.g. `np.int32`, `np.int64`)
+    in addition to Python `int`, matching NumPy and other TensorFlow ops, while
+    correctly rejecting `bool`.
 
 ## Thanks to our Contributors
 
