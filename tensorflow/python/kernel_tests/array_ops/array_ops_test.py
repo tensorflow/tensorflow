@@ -2818,6 +2818,24 @@ class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(v_tf, v_np)
     self.assertAllEqual(v_tf_fn, v_np)
 
+  @parameterized.parameters(
+      ([[1, 2], [3, 4]], [1, 2], np.int32(0)),
+      ([[1, 2], [3, 4]], [1, 2], np.int64(1)),
+      ([[1, 2], [3, 4]], 2, np.int32(-1)),
+      ([[1, 2], [3, 4]], 2, np.int64(-2)),
+  )
+  def testRepeatNumpyIntegerAxis(self, array, repeats, axis):
+    array = np.array(array)
+    v_tf = array_ops.repeat(constant_op.constant(array), repeats, axis)
+    v_np = np.repeat(array, repeats, int(axis))
+    self.assertAllEqual(v_tf, v_np)
+
+  def testRepeatInvalidAxisType(self):
+    x = constant_op.constant([[1, 2], [3, 4]])
+    for invalid_axis in (True, False, 1.5, "0"):
+      with self.assertRaisesRegex(TypeError, "must be an int"):
+        array_ops.repeat(x, 2, axis=invalid_axis)
+
   def testHighRankStringTensorToNumpyDoesNotSegfault(self):
     # Regression test for #124973. Converting a rank > NPY_MAXDIMS tensor
     # to numpy hit the unguarded slow path in TF_TensorToPyArray and
