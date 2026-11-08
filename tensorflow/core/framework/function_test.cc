@@ -698,7 +698,7 @@ TEST(InstantiateErrors, NegativeNumberAttrIsRejected) {
 
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
-           "Value for number_attr() -1 < 0");
+           "Value for attr 'N' is negative: -1");
 }
 
 // Same as above, but for a number_attr value too large to fit in an int32
@@ -722,7 +722,7 @@ TEST(InstantiateErrors, TooLargeNumberAttrIsRejected) {
 
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
-           "Number of outputs is too big");
+           "Value for attr 'N' is too big: 4294967296");
 }
 
 TEST(InstantiateErrors, DupArgs) {

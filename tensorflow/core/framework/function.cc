@@ -110,12 +110,14 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
     // GraphDef.library()) converts to a huge size_t in the dtypes->resize()
     // call below, crashing the process.
     if (static_cast<int64_t>(static_cast<int32_t>(repeats)) != repeats) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Number of outputs is too big: ", repeats));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Value for attr '", arg_def.number_attr(), "' is too big: ",
+          repeats));
     }
     if (repeats < 0) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Value for number_attr() ", repeats, " < 0"));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Value for attr '", arg_def.number_attr(), "' is negative: ",
+          repeats));
     }
     num = static_cast<int>(repeats);
   }
