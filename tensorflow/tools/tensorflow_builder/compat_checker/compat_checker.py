@@ -124,7 +124,7 @@ class ConfigCompatChecker:
     """Class that stores specifications related to a single requirement.
 
     `_Reqs` represents a single version or dependency requirement specified in
-    the `.ini` config file. It is meant ot be used inside `ConfigCompatChecker`
+    the `.ini` config file. It is meant to be used inside `ConfigCompatChecker`
     to help organize and identify version and dependency compatibility for a
     given configuration (e.g. gcc version) required by the client.
     """
@@ -376,7 +376,7 @@ class ConfigCompatChecker:
     if not parser.sections():
       err_msg = "[Error] Empty config file. "
       err_msg += "(file = %s, " % str(self.req_file)
-      err_msg += "parser sectons = %s)" % str(parser.sections())
+      err_msg += "parser sections = %s)" % str(parser.sections())
       self.error_msg.append(err_msg)
       logging.error(err_msg)
       curr_status = False
@@ -562,10 +562,10 @@ class ConfigCompatChecker:
     Args:
       item: String that needs to be separated into a list by a given separator.
             List item is also accepted but will take no effect.
-      separator: String with which the `item` will be splited.
+      separator: String with which the `item` will be split.
 
     Returns:
-      List that is a splited version of a given input string.
+      List that is a split version of a given input string.
         e.g. Input: `1.0, 2.0, 3.0` with `, ` separator
              Output: [1.0, 2.0, 3.0]
     """
@@ -604,22 +604,22 @@ class ConfigCompatChecker:
     filtered = []
     warn_msg = []
 
-    splited = line.split("\n")
+    split_lines = line.split("\n")
 
     # If arg `line` is empty, then requirement might be missing. Add
     # to warning as this issue will be caught in _Reqs() initialization.
-    if not line and len(splited) < 1:
+    if not line and len(split_lines) < 1:
       warn_msg = "[Warning] Empty line detected while filtering lines."
       logging.warning(warn_msg)
       self.warning_msg.append(warn_msg)
 
     # In general, first line in requirement definition will include `[`
     # in the config file (.ini). Remove it.
-    if splited[0] == "[":
-      filtered = splited[1:]
-    elif "[" in splited[0]:
-      splited = splited[0].replace("[", "")
-      filtered = splited
+    if split_lines[0] == "[":
+      filtered = split_lines[1:]
+    elif "[" in split_lines[0]:
+      split_lines = split_lines[0].replace("[", "")
+      filtered = split_lines
     # If `[` is missing, then it could be a formatting issue with
     # config file (.ini.). Add to warning.
     else:
