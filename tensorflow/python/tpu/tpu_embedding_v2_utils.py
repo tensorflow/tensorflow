@@ -473,7 +473,7 @@ class SGD(_Optimizer):
       clipvalue: Controls clipping of the gradient. Set to either a single
         positive scalar value to get clipping or a tuple of scalar values (min,
         max) to set a separate maximum or minimum. If one of the two entries is
-        None, then there will be no clipping that direction. Note if this is
+        None, then there will be no clipping in that direction. Note if this is
         set, you may see a decrease in performance as  gradient accumulation
         will be enabled (it is normally off for SGD as it has no effect on
         accuracy). See
@@ -598,7 +598,7 @@ class Adagrad(_Optimizer):
       clipvalue: Controls clipping of the gradient. Set to either a single
         positive scalar value to get clipping or a tuple of scalar values (min,
         max) to set a separate maximum or minimum. If one of the two entries is
-        None, then there will be no clipping that direction.
+        None, then there will be no clipping in that direction.
       low_dimensional_packing_status: Status of the low-dimensional embedding
         packing optimization controls whether to optimize the packing of
         1-dimensional, 2-dimensional, and 4-dimensional embedding tables in
@@ -736,7 +736,7 @@ class AdagradMomentum(_Optimizer):
       clipvalue: Controls clipping of the gradient. Set to either a single
         positive scalar value to get clipping or a tuple of scalar values (min,
         max) to set a separate maximum or minimum. If one of the two entries is
-        None, then there will be no clipping that direction.
+        None, then there will be no clipping in that direction.
       low_dimensional_packing_status: Status of the low-dimensional embedding
         packing optimization controls whether to optimize the packing of
         1-dimensional, 2-dimensional, and 4-dimensional embedding tables in
@@ -892,7 +892,7 @@ class FTRL(_Optimizer):
       clipvalue: Controls clipping of the gradient. Set to either a single
         positive scalar value to get clipping or a tuple of scalar values (min,
         max) to set a separate maximum or minimum. If one of the two entries is
-        None, then there will be no clipping that direction.
+        None, then there will be no clipping in that direction.
       multiply_linear_by_learning_rate: If set to True, a modified formula is
         used for FTRL that treats the "linear" accumulator as being
         pre-multiplied by the learning rate (i.e., the accumulator named
@@ -1069,7 +1069,7 @@ class Adam(_Optimizer):
       clipvalue: Controls clipping of the gradient. Set to either a single
         positive scalar value to get clipping or a tuple of scalar values (min,
         max) to set a separate maximum or minimum. If one of the two entries is
-        None, then there will be no clipping that direction.
+        None, then there will be no clipping in that direction.
       low_dimensional_packing_status: Status of the low-dimensional embedding
         packing optimization controls whether to optimize the packing of
         1-dimensional, 2-dimensional, and 4-dimensional embedding tables in
@@ -1344,7 +1344,7 @@ class QuantizationConfig:
   """
 
   def __init__(self, num_buckets: int, lower: float, upper: float):
-    """Simulated quantizaiton configuration.
+    """Simulated quantization configuration.
 
     Args:
       num_buckets: The number of quantization buckets, must be at least 2.
