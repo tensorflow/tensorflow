@@ -451,7 +451,7 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
   def testUnsortedSegmentMeanLargeSegmentReducedPrecision(self):
     for dtype in [dtypes_lib.bfloat16, dtypes_lib.float16]:
       for segment_ids_dtype in [dtypes_lib.int32, dtypes_lib.int64]:
-        for n in [512, 1024]:
+        for n in [512, 1024, 4096]:
           with self.cached_session():
             values = array_ops.concat(
                 [constant_op.constant([256.0], dtype=dtype),
