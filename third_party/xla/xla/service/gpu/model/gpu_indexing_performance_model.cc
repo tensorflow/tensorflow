@@ -176,6 +176,13 @@ int64_t GetPaddedTileSize(absl::Span<int64_t const> tile_sizes) {
   return result;
 }
 
+int64_t GetStaticPaddedTileSize(const TiledHloInstruction& tiled_hlo) {
+  absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
+      tiled_hlo.tile(0).GetStaticTileSizes();
+  CHECK_OK(tile_sizes);
+  return GetPaddedTileSize(*tile_sizes);
+}
+
 // Evaluates the symbolic tile sizes of `tiled_hlo` for `variable_values`, the
 // values of all tiling space variables.
 llvm::SmallVector<int64_t> EvaluateTileSizes(
@@ -185,6 +192,29 @@ llvm::SmallVector<int64_t> EvaluateTileSizes(
                              [&](const DimTile& dim_tile) {
                                return dim_tile.size.Evaluate(variable_values);
                              });
+}
+
+// Constructs the values of all tiling space variables for `tiling_space` and
+// concrete `tile_sizes`.
+llvm::SmallVector<int64_t> GetTilingSpaceVariableValues(
+    const TilingSpace& tiling_space, absl::Span<const int64_t> tile_sizes) {
+  // The tiling space variables are tile IDs and tile sizes of all dimensions,
+  // followed by runtime variables. The tile sizes of a concrete tiling are
+  // constants, so any valid tile ID and runtime variable value gives the same
+  // result. 0 is valid for both.
+  const int64_t num_dimensions = tiling_space.num_dimensions();
+  llvm::SmallVector<int64_t> variable_values(
+      2 * num_dimensions + tiling_space.num_rt_vars(), 0);
+  // `tile_sizes` has no entries for replica dimensions, which have tile size 1
+  // (see `TilingSpace::AssignTileSizes`).
+  int64_t tile_size_index = 0;
+  for (const TilingSpace::DimensionInfo& dim : tiling_space.dimensions()) {
+    variable_values[num_dimensions + dim.id.value()] =
+        dim.type == TilingSpace::DimensionSemantics::kReplica
+            ? 1
+            : tile_sizes[tile_size_index++];
+  }
+  return variable_values;
 }
 
 // This is a conservative estimate to make sure that we don't get a tile that
@@ -407,57 +437,6 @@ bool AllInstructionsFitInRegisters(
   return all_fit;
 }
 
-}  // namespace
-
-namespace internal {
-
-bool DoesComputationFitInRegisters(
-    const HloFusionAdaptor& fusion_adaptor,
-    const TiledHloComputation& tiled_hlo_computation,
-    const se::DeviceDescription& device_info) {
-  return AllInstructionsFitInRegisters(
-      fusion_adaptor, tiled_hlo_computation, device_info,
-      [](const TiledHloInstruction& tiled_hlo) {
-        absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
-            tiled_hlo.tile(0).GetStaticTileSizes();
-        CHECK_OK(tile_sizes);
-        return GetPaddedTileSize(*tile_sizes);
-      });
-}
-
-bool DoesTilingFitInRegisters(
-    const HloFusionAdaptor& fusion_adaptor,
-    const TiledHloComputation& symbolic_tiled_computation,
-    absl::Span<const int64_t> tile_sizes,
-    const se::DeviceDescription& device_info) {
-  const TilingSpace& tiling_space = symbolic_tiled_computation.tiling_space();
-  // The tiling space variables are tile IDs and tile sizes of all dimensions,
-  // followed by runtime variables. The tile sizes of a concrete tiling are
-  // constants, so any valid tile ID and runtime variable value gives the same
-  // result. 0 is valid for both.
-  const int64_t num_dimensions = tiling_space.num_dimensions();
-  llvm::SmallVector<int64_t> variable_values(
-      2 * num_dimensions + tiling_space.num_rt_vars(), 0);
-  // `tile_sizes` has no entries for replica dimensions, which have tile size 1
-  // (see `TilingSpace::AssignTileSizes`).
-  int64_t tile_size_index = 0;
-  for (const TilingSpace::DimensionInfo& dim : tiling_space.dimensions()) {
-    variable_values[num_dimensions + dim.id.value()] =
-        dim.type == TilingSpace::DimensionSemantics::kReplica
-            ? 1
-            : tile_sizes[tile_size_index++];
-  }
-  return AllInstructionsFitInRegisters(
-      fusion_adaptor, symbolic_tiled_computation, device_info,
-      [&](const TiledHloInstruction& tiled_hlo) {
-        return GetPaddedTileSize(EvaluateTileSizes(tiled_hlo, variable_values));
-      });
-}
-
-}  // namespace internal
-
-namespace {
-
 // Returns the number of warps to use based on the largest tile size in the
 // computation.
 //
@@ -538,6 +517,125 @@ int64_t GetLiveTileSizeForNumWarps(const HloFusionAdaptor& fusion_adaptor,
   return CeilOfRatio(padded_tile_size * element_bytes, kBytesPerRegister);
 }
 
+int64_t EstimateSharedMemoryUsagePerBlockImpl(
+    const TiledHloComputation& tiled_hlo_computation,
+    const se::DeviceDescription& device_info,
+    absl::FunctionRef<int64_t(const TiledHloInstruction&)>
+        get_padded_tile_size) {
+  // For transposes, we consider the largest tile size that needs to be
+  // materialized in shared memory.
+  int64_t transpose_shmem_per_block = 0;
+
+  // For reductions, we assume each warp will store its partial output tile in
+  // shared memory.
+  //
+  // If the reduced tile size is no larger than the warp size, we assume the
+  // reduction is performed entirely in registers and does not need shared
+  // memory.
+  const int64_t warp_size = WarpSize(device_info);
+  int64_t largest_live_tile_size = 1;
+  int64_t reduce_shmem_bytes_per_warp = 0;
+
+  ForEachInstructionInTiledHloComputation(
+      tiled_hlo_computation, /*num_blocks_at_root=*/0,
+      [&](const TiledHloInstruction* instruction,
+          const RegionExecutionInfo& /*info_cur_hlo*/, bool /*in_dot_region*/) {
+        const int64_t padded_tile_size = get_padded_tile_size(*instruction);
+        largest_live_tile_size =
+            std::max(largest_live_tile_size, padded_tile_size);
+
+        if (instruction->operands().empty()) {
+          return;
+        }
+
+        const HloInstruction* hlo = instruction->hlo();
+        const int64_t tile_bytes =
+            padded_tile_size * ShapeUtil::ByteSizeOfPrimitiveType(
+                                   GetFirstShape(hlo).element_type());
+
+        switch (hlo->opcode()) {
+          case HloOpcode::kTranspose: {
+            transpose_shmem_per_block =
+                std::max(transpose_shmem_per_block, tile_bytes);
+            break;
+          }
+          case HloOpcode::kReduce: {
+            const int64_t operand_tile_size =
+                get_padded_tile_size(*instruction->operand(0));
+            const int64_t reduced_tile_size =
+                operand_tile_size / std::max<int64_t>(1, padded_tile_size);
+            if (reduced_tile_size > warp_size) {
+              reduce_shmem_bytes_per_warp =
+                  std::max(reduce_shmem_bytes_per_warp, tile_bytes);
+            }
+            break;
+          }
+          default:
+            return;
+        }
+      });
+
+  const int64_t reduce_shmem_per_block =
+      reduce_shmem_bytes_per_warp * GetNumWarps(largest_live_tile_size);
+
+  return std::max(transpose_shmem_per_block, reduce_shmem_per_block);
+}
+
+}  // namespace
+
+namespace internal {
+
+bool DoesComputationFitInRegisters(
+    const HloFusionAdaptor& fusion_adaptor,
+    const TiledHloComputation& tiled_hlo_computation,
+    const se::DeviceDescription& device_info) {
+  return AllInstructionsFitInRegisters(fusion_adaptor, tiled_hlo_computation,
+                                       device_info, GetStaticPaddedTileSize);
+}
+
+bool DoesTilingFitInRegisters(
+    const HloFusionAdaptor& fusion_adaptor,
+    const TiledHloComputation& symbolic_tiled_computation,
+    absl::Span<const int64_t> tile_sizes,
+    const se::DeviceDescription& device_info) {
+  llvm::SmallVector<int64_t> variable_values = GetTilingSpaceVariableValues(
+      symbolic_tiled_computation.tiling_space(), tile_sizes);
+  return AllInstructionsFitInRegisters(
+      fusion_adaptor, symbolic_tiled_computation, device_info,
+      [&](const TiledHloInstruction& tiled_hlo) {
+        return GetPaddedTileSize(EvaluateTileSizes(tiled_hlo, variable_values));
+      });
+}
+
+int64_t EstimateSharedMemoryUsagePerBlock(
+    const TiledHloComputation& tiled_hlo_computation,
+    const se::DeviceDescription& device_info) {
+  return EstimateSharedMemoryUsagePerBlockImpl(
+      tiled_hlo_computation, device_info, GetStaticPaddedTileSize);
+}
+
+bool DoesTilingFitInSharedMemory(
+    const TiledHloComputation& symbolic_tiled_computation,
+    absl::Span<const int64_t> tile_sizes,
+    const se::DeviceDescription& device_info) {
+  llvm::SmallVector<int64_t> variable_values = GetTilingSpaceVariableValues(
+      symbolic_tiled_computation.tiling_space(), tile_sizes);
+  const int64_t shared_memory_usage = EstimateSharedMemoryUsagePerBlockImpl(
+      symbolic_tiled_computation, device_info,
+      [&](const TiledHloInstruction& tiled_hlo) {
+        return GetPaddedTileSize(EvaluateTileSizes(tiled_hlo, variable_values));
+      });
+
+  // Having at least 2 blocks per SM allows for hiding latency of block-level
+  // synchronization barriers.
+  constexpr double kFractionOfSharedMemoryAvailable = 0.5;
+
+  return shared_memory_usage <= kFractionOfSharedMemoryAvailable *
+                                    device_info.shared_memory_per_core();
+}
+}  // namespace internal
+
+namespace {
 // Holds dot launch resource footprints and compute/runtime estimates.
 struct DotEstimates {
   absl::Duration compute_time = absl::ZeroDuration();
@@ -775,6 +873,12 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
     write_time /= hbm_bandwidth_derate;
   }
 
+  const int64_t estimated_shared_memory_per_block =
+      dot_estimates.exec_time > absl::ZeroDuration()
+          ? dot_estimates.shared_memory_per_block_bytes
+          : internal::EstimateSharedMemoryUsagePerBlock(tiled_hlo_computation,
+                                                        device_info);
+
   return EstimateRunTimeData{
       /*flops=*/flops + dot_flops,
       /*bytes_read=*/bytes_read,
@@ -784,8 +888,7 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
       /*compute_time=*/compute_time,
       /*exec_time=*/exec_time,
       /*l2_bytes_read=*/dot_l2_bytes_read,
-      /*shared_memory_per_block_bytes=*/
-      dot_estimates.shared_memory_per_block_bytes,
+      /*shared_memory_per_block_bytes=*/estimated_shared_memory_per_block,
       /*registers_per_thread=*/dot_estimates.registers_per_thread};
 }
 
@@ -1169,6 +1272,14 @@ tsl::Future<TopKTiledRunTimeDataOrError> TryFindTopKBestTilingsWithTilingSpace(
                                             *symbolic_tiled_computation,
                                             padded_tile_sizes, device_info)) {
       VLOG(3) << "Pre-filtering candidate exceeding register limit: "
+              << absl::StrJoin(padded_tile_sizes, ",");
+      continue;
+    }
+
+    if (symbolic_tiled_computation.ok() &&
+        !internal::DoesTilingFitInSharedMemory(
+            *symbolic_tiled_computation, padded_tile_sizes, device_info)) {
+      VLOG(3) << "Pre-filtering candidate exceeding shared memory limit: "
               << absl::StrJoin(padded_tile_sizes, ",");
       continue;
     }

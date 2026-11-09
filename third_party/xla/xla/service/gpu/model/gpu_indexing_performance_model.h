@@ -184,6 +184,19 @@ bool DoesTilingFitInRegisters(
     absl::Span<const int64_t> tile_sizes,
     const se::DeviceDescription& device_info);
 
+// Estimates the shared memory usage in bytes per block for a tiled HLO
+// computation.
+int64_t EstimateSharedMemoryUsagePerBlock(
+    const TiledHloComputation& tiled_hlo_computation,
+    const se::DeviceDescription& device_info);
+
+// Checks if the tiles of a symbolic tiled computation fit in shared memory for
+// the given tile sizes.
+bool DoesTilingFitInSharedMemory(
+    const TiledHloComputation& symbolic_tiled_computation,
+    absl::Span<const int64_t> tile_sizes,
+    const se::DeviceDescription& device_info);
+
 // Precomputes FLOPs per element for all instructions in the fusion adaptor.
 absl::flat_hash_map<const HloInstruction*, int64_t> PrecomputeFlopsMap(
     const HloFusionAdaptor& fusion_adaptor,
