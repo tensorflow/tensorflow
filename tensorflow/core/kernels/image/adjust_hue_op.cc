@@ -93,14 +93,6 @@ namespace internal {
 // of [0, 6] instead of the normal [0, 1]
 static void rgb_to_hv_range(float r, float g, float b, float* h, float* v_min,
                             float* v_max) {
-  if (Eigen::numext::isnan(r) || Eigen::numext::isnan(g) ||
-      Eigen::numext::isnan(b)) {
-    const float nan_val = Eigen::NumTraits<float>::quiet_NaN();
-    *h = nan_val;
-    *v_min = nan_val;
-    *v_max = nan_val;
-    return;
-  }
   float v_mid;
   int h_category;
   // According to the figures in:
@@ -238,11 +230,19 @@ class AdjustHueOp<CPUDevice, float> : public AdjustHueOpBase {
                                                int64_t end_channel) {
             const float* p = input_data.data() + start_channel * kChannelSize;
             float* q = output_data.data() + start_channel * kChannelSize;
-            const bool is_delta_nan = Eigen::numext::isnan(delta_h);
             const float nan_val = Eigen::NumTraits<float>::quiet_NaN();
-            for (int i = start_channel; i < end_channel; i++) {
-              if (is_delta_nan || Eigen::numext::isnan(p[0]) ||
-                  Eigen::numext::isnan(p[1]) || Eigen::numext::isnan(p[2])) {
+            if (!Eigen::numext::isfinite(delta_h)) {
+              for (int64_t i = start_channel; i < end_channel; ++i) {
+                q[0] = nan_val;
+                q[1] = nan_val;
+                q[2] = nan_val;
+                q += kChannelSize;
+              }
+              return;
+            }
+            for (int64_t i = start_channel; i < end_channel; ++i) {
+              if (Eigen::numext::isnan(p[0]) || Eigen::numext::isnan(p[1]) ||
+                  Eigen::numext::isnan(p[2])) {
                 q[0] = nan_val;
                 q[1] = nan_val;
                 q[2] = nan_val;
