@@ -18,6 +18,7 @@ limitations under the License.
 
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <complex>
 #include <functional>
 #include <limits>
 #include <type_traits>
@@ -979,6 +980,93 @@ struct functor_traits<igamma_op<Scalar>> {
   };
 };
 
+template <typename RealType>
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType>
+safe_complex_log_scalar(RealType re, RealType im) {
+  constexpr RealType kHalfMax =
+      (std::numeric_limits<RealType>::max)() * RealType(0.5);
+  constexpr RealType kLn2 =
+      RealType(0.693147180559945309417232121458176568L);
+  const RealType phase = std::atan2(im, re);
+  if (TF_PREDICT_FALSE(std::isfinite(re) && std::isfinite(im) &&
+                       (std::abs(re) > kHalfMax || std::abs(im) > kHalfMax))) {
+    const RealType mag = std::hypot(re * RealType(0.5), im * RealType(0.5));
+    return std::complex<RealType>(std::log(mag) + kLn2, phase);
+  }
+  const RealType mag = std::hypot(re, im);
+  if (TF_PREDICT_FALSE(mag < (std::numeric_limits<RealType>::min)() &&
+                       mag != RealType(0))) {
+    constexpr RealType kEps = std::numeric_limits<RealType>::epsilon();
+    const RealType scaled_mag = std::hypot(re / kEps, im / kEps);
+    return std::complex<RealType>(std::log(scaled_mag) + std::log(kEps), phase);
+  }
+  return std::complex<RealType>(std::log(mag), phase);
+}
+
+template <typename RealType>
+struct safe_complex_log_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
+      const std::complex<RealType>& z) const {
+    return safe_complex_log_scalar(z.real(), z.imag());
+  }
+
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    if constexpr (std::is_same_v<Packet, std::complex<RealType>>) {
+      return (*this)(x);
+    } else {
+      const Packet res = plog(x);
+      using RealPacket = typename unpacket_traits<Packet>::as_real;
+      const RealPacket rv = preinterpret<RealPacket>(res);
+      if (TF_PREDICT_TRUE(!predux_any(pisnan(rv)))) {
+        return res;
+      }
+      constexpr int kPacketSize = unpacket_traits<Packet>::size;
+      std::complex<RealType> inputs[kPacketSize];
+      std::complex<RealType> outputs[kPacketSize];
+      pstoreu(inputs, x);
+      for (int i = 0; i < kPacketSize; ++i) {
+        outputs[i] = (*this)(inputs[i]);
+      }
+      return ploadu<Packet>(outputs);
+    }
+  }
+};
+
+template <typename RealType>
+struct functor_traits<safe_complex_log_op<RealType>> {
+  enum {
+    Cost = functor_traits<scalar_log_op<std::complex<RealType>>>::Cost,
+    PacketAccess = packet_traits<std::complex<RealType>>::HasLog,
+  };
+};
+
+template <typename RealType>
+struct safe_complex_log1p_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
+      const std::complex<RealType>& z) const {
+    const RealType re = z.real();
+    const RealType im = z.imag();
+    if (std::abs(re) < RealType(0.5) && std::abs(im) < RealType(0.5)) {
+      if (im == RealType(0)) {
+        return std::complex<RealType>(std::log1p(re), im);
+      }
+      const RealType norm_m1 = RealType(2) * re + (re * re + im * im);
+      return std::complex<RealType>(RealType(0.5) * std::log1p(norm_m1),
+                                    std::atan2(im, RealType(1) + re));
+    }
+    return safe_complex_log_scalar(re + RealType(1), im);
+  }
+};
+
+template <typename RealType>
+struct functor_traits<safe_complex_log1p_op<RealType>> {
+  enum {
+    Cost = functor_traits<scalar_log1p_op<std::complex<RealType>>>::Cost,
+    PacketAccess = false,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -1088,75 +1176,24 @@ struct expm1 : base<T, Eigen::internal::scalar_expm1_op<T>> {};
 template <typename T>
 struct log : base<T, Eigen::internal::scalar_log_op<T>> {};
 
-// Specialization of log for complex types to avoid intermediate overflow in |z|^2.
-// Eigen's vectorized scalar_log_op for complex types computes |z|^2 = re^2 + im^2
-// in packet operations without pre-scaling. When |z| > sqrt(FLT_MAX) (~1.84e19 for
-// complex64, or ~1.34e154 for complex128), re^2 or im^2 overflows to +inf,
-// causing vectorized tensors of length >= 4 to produce NaN instead of the
-// correct finite result.
-// Defining safe_complex_log_op evaluates elementwise using std::hypot to avoid
-// intermediate overflow and std::atan2 for the principal phase angle, matching
-// scalar execution semantics and XLA (jit_compile=True).
-template <typename RealType>
-struct safe_complex_log_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
-      const std::complex<RealType>& z) const {
-    const RealType re = z.real();
-    const RealType im = z.imag();
-    if (TF_PREDICT_FALSE(re == RealType(0) && im == RealType(0))) {
-      return std::complex<RealType>(-std::numeric_limits<RealType>::infinity(),
-                                    RealType(0));
-    }
-    // std::hypot avoids intermediate overflow when |z| > sqrt(max_val).
-    const RealType mag = std::hypot(re, im);
-    const RealType phase = std::atan2(im, re);
-    return std::complex<RealType>(std::log(mag), phase);
-  }
-};
+template <>
+struct log<complex64>
+    : base<complex64, Eigen::internal::safe_complex_log_op<float>> {};
 
 template <>
-struct log<complex64> : base<complex64, safe_complex_log_op<float>> {};
-
-template <>
-struct log<complex128> : base<complex128, safe_complex_log_op<double>> {};
+struct log<complex128>
+    : base<complex128, Eigen::internal::safe_complex_log_op<double>> {};
 
 template <typename T>
 struct log1p : base<T, Eigen::internal::scalar_log1p_op<T>> {};
 
-// Specialization of log1p for complex types to avoid intermediate overflow.
-// Computes log(1 + z) using std::log1p for small magnitudes to preserve precision,
-// and std::hypot for large magnitudes to avoid intermediate overflow when |1 + z| > sqrt(max_val).
-template <typename RealType>
-struct safe_complex_log1p_op {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<RealType> operator()(
-      const std::complex<RealType>& z) const {
-    const RealType re = z.real();
-    const RealType im = z.imag();
-    const RealType re_plus_1 = re + RealType(1);
-    if (TF_PREDICT_FALSE(re == RealType(-1) && im == RealType(0))) {
-      return std::complex<RealType>(-std::numeric_limits<RealType>::infinity(),
-                                    RealType(0));
-    }
-    // For small inputs (|re| < 0.5 and |im| < 0.5), use log1p(2*re + re^2 + im^2)
-    // to preserve accuracy near zero.
-    if (std::abs(re) < RealType(0.5) && std::abs(im) < RealType(0.5)) {
-      const RealType norm_m1 = RealType(2) * re + re * re + im * im;
-      const RealType mag_log = RealType(0.5) * std::log1p(norm_m1);
-      const RealType phase = std::atan2(im, re_plus_1);
-      return std::complex<RealType>(mag_log, phase);
-    }
-    // For general and large inputs, std::hypot avoids overflow when |1 + z| > sqrt(max_val).
-    const RealType mag = std::hypot(re_plus_1, im);
-    const RealType phase = std::atan2(im, re_plus_1);
-    return std::complex<RealType>(std::log(mag), phase);
-  }
-};
+template <>
+struct log1p<complex64>
+    : base<complex64, Eigen::internal::safe_complex_log1p_op<float>> {};
 
 template <>
-struct log1p<complex64> : base<complex64, safe_complex_log1p_op<float>> {};
-
-template <>
-struct log1p<complex128> : base<complex128, safe_complex_log1p_op<double>> {};
+struct log1p<complex128>
+    : base<complex128, Eigen::internal::safe_complex_log1p_op<double>> {};
 
 template <typename T>
 struct sign : base<T, Eigen::internal::scalar_sign_op<T>> {};
