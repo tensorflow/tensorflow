@@ -63,7 +63,8 @@ TEST(RocmCollectorTest, TestAddKernelEventAndExport) {
 
   RocmTraceCollectorImpl collector(options, kStartWallTimeNs, kStartGpuTimeNs);
 
-  constexpr uint32_t kCorrelationId = 42;
+  // Above 2^32: correlation ids are 64-bit and must not be truncated.
+  constexpr uint64_t kCorrelationId = (uint64_t{1} << 32) + 42;
   constexpr uint64_t kStartTimeNs = 3000;
   constexpr uint64_t kEndTimeNs = 4000;
 

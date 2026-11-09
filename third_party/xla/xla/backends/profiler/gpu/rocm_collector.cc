@@ -796,7 +796,7 @@ std::vector<RocmTracerEvent> RocmTraceCollectorImpl::ApiActivityInfoExchange() {
     if (activity_iter.second.empty()) {
       continue;
     }
-    const uint32_t corr_id = activity_iter.first;
+    const uint64_t corr_id = activity_iter.first;
 
     const RocmTracerEvent* api_event = nullptr;
     if (auto it = api_events_map_.find(corr_id); it != api_events_map_.end()) {
