@@ -3002,6 +3002,102 @@ ENTRY %main (param: f32[4,8]) -> f32[4,8] {
   ASSERT_NE(async_done, nullptr);
   EXPECT_TRUE(LayoutUtil::Equal(async_done->shape().layout(),
                                 LayoutUtil::MakeLayout({0, 1})));
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(m.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest, AsyncDoneEntryRootLayoutMismatch) {
+  const char* hlo = R"hlo(
+HloModule AsyncDoneEntryRootLayoutMismatch,
+  entry_computation_layout={(f32[2,3]{0,1})->f32[2,3]{1,0}}
+
+body {
+  body_param = f32[2,3]{0,1} parameter(0)
+  ROOT op = f32[2,3]{0,1} custom-call(body_param),
+    custom_call_target="test",
+    operand_layout_constraints={f32[2,3]{0,1}}
+}
+
+ENTRY main {
+  main_param = f32[2,3]{0,1} parameter(0)
+  start = ((f32[2,3]{0,1}), f32[2,3]{0,1}, s32[])
+    async-start(main_param), calls=body
+  ROOT done = f32[2,3]{1,0} async-done(start)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  LayoutAssignment assignment(module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  const HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  const HloInstruction* wrapped_root = body->root_instruction();
+  ASSERT_EQ(wrapped_root->opcode(), HloOpcode::kCustomCall);
+  ExpectLayoutIs(wrapped_root->shape(), {0, 1});
+  ExpectLayoutIs(wrapped_root->operand(0)->shape(), {0, 1});
+
+  const HloComputation* entry = module->entry_computation();
+  const HloInstruction* entry_root = entry->root_instruction();
+  ASSERT_EQ(entry_root->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(entry_root->operand(0)->opcode(), HloOpcode::kAsyncDone);
+  ExpectLayoutIs(entry_root->shape(), {1, 0});
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest, AsyncDoneCallerOperandLayoutMismatch) {
+  const char* hlo = R"hlo(
+HloModule AsyncDoneCallerOperandLayoutMismatch,
+  entry_computation_layout={(f32[2,3]{0,1})->f32[2,3]{1,0}}
+
+body {
+  body_param = f32[2,3]{0,1} parameter(0)
+  ROOT op = f32[2,3]{0,1} custom-call(body_param),
+    custom_call_target="test",
+    operand_layout_constraints={f32[2,3]{0,1}}
+}
+
+ENTRY main {
+  main_param = f32[2,3]{0,1} parameter(0)
+  start = ((f32[2,3]{0,1}), f32[2,3]{0,1}, s32[])
+    async-start(main_param), calls=body
+  done = f32[2,3]{0,1} async-done(start)
+  ROOT consumer = f32[2,3]{1,0} custom-call(done),
+    custom_call_target="consumer",
+    operand_layout_constraints={f32[2,3]{1,0}}
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  LayoutAssignment assignment(module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  const HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  const HloInstruction* wrapped_root = body->root_instruction();
+  ASSERT_EQ(wrapped_root->opcode(), HloOpcode::kCustomCall);
+  ExpectLayoutIs(wrapped_root->shape(), {0, 1});
+  ExpectLayoutIs(wrapped_root->operand(0)->shape(), {0, 1});
+
+  const HloInstruction* consumer =
+      module->entry_computation()->root_instruction();
+  ASSERT_EQ(consumer->opcode(), HloOpcode::kCustomCall);
+  const HloInstruction* copy = consumer->operand(0);
+  ASSERT_EQ(copy->opcode(), HloOpcode::kCopy);
+  ExpectLayoutIs(copy->shape(), {1, 0});
+  const HloInstruction* done = copy->operand(0);
+  ASSERT_EQ(done->opcode(), HloOpcode::kAsyncDone);
+  ExpectLayoutIs(done->shape(), {0, 1});
+  EXPECT_EQ(done->operand(0)->opcode(), HloOpcode::kAsyncStart);
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(LayoutAssignmentTest, AsyncStartDoneTupleMandatoryConstraints) {
@@ -3051,6 +3147,10 @@ ENTRY %main (param: (f32[4,8], f32[8,16])) -> (f32[4,8], f32[8,16]) {
   EXPECT_TRUE(LayoutUtil::Equal(
       ShapeUtil::GetSubshape(async_done->shape(), {1}).layout(),
       LayoutUtil::MakeLayout({1, 0})));
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(m.get()).status());
 }
 
 TEST_F(LayoutAssignmentTest,
@@ -3098,6 +3198,10 @@ ENTRY main {
 
   ExpectLayoutIs(op->operand(0)->shape(), {0, 1});
   ExpectLayoutIs(op->shape(), {0, 1});
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(LayoutAssignmentTest,
@@ -3159,6 +3263,10 @@ ENTRY main {
   ExpectLayoutIs(ShapeUtil::GetSubshape(op->operand(1)->shape(), {1, 0}),
                  {0, 1});
   ExpectLayoutIs(op->shape(), {1, 0});
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(LayoutAssignmentTest,
@@ -3215,6 +3323,10 @@ ENTRY main {
   ExpectLayoutIs(ShapeUtil::GetSubshape(op->operand(0)->shape(), {1, 0}),
                  {1, 0});
   ExpectLayoutIs(op->shape(), {0, 1});
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(LayoutAssignmentTest, PropagateCallerConstraintIntoUnconstrainedCallee) {
@@ -3350,7 +3462,8 @@ ENTRY %main (branch_pred: pred[], x: f32[8,64], y: f32[8,64]) -> f32[8,64] {
 TEST_F(LayoutAssignmentTest,
        PropagateAsyncStartConstraintIntoUnconstrainedWrappedComputation) {
   const char* module_str = R"hlo(
-HloModule PropagateAsyncStartConstraintIntoUnconstrainedWrappedComputation
+HloModule PropagateAsyncStartConstraintIntoUnconstrainedWrappedComputation,
+  entry_computation_layout={(f32[4,8]{0,1})->f32[4,8]{0,1}}
 
 %async_comp (p0: f32[4,8]) -> f32[4,8] {
   %p0 = f32[4,8] parameter(0)
@@ -3366,14 +3479,7 @@ ENTRY %main (param: f32[4,8]) -> f32[4,8] {
 
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                        ParseAndReturnVerifiedModule(module_str));
-  ComputationLayout computation_layout(
-      m->entry_computation()->ComputeProgramShape());
-  *computation_layout.mutable_parameter_layout(0) =
-      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {0, 1}));
-  *computation_layout.mutable_result_layout() =
-      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 8}, {0, 1}));
-
-  AssignLayouts(m.get(), &computation_layout);
+  AssignLayouts(m.get(), m->mutable_entry_computation_layout());
 
   const HloInstruction* async_param = FindInstruction(m.get(), "p0");
   ASSERT_NE(async_param, nullptr);
@@ -3382,6 +3488,375 @@ ENTRY %main (param: f32[4,8]) -> f32[4,8] {
   const HloInstruction* async_neg = FindInstruction(m.get(), "neg");
   ASSERT_NE(async_neg, nullptr);
   ExpectLayoutIs(async_neg->shape(), {0, 1});
+
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(m.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest,
+       PropagateAsyncDoneComputationConstraintIntoUnconstrainedBody) {
+  const char* module_str = R"hlo(
+HloModule PropagateAsyncDoneComputationConstraintIntoUnconstrainedWrappedComputation,
+  entry_computation_layout={()->f32[4,8]{0,1}}
+
+%async_comp (p0: f32[4,8]) -> f32[4,8] {
+  %p0 = f32[4,8] parameter(0)
+  ROOT %neg = f32[4,8] negate(%p0)
+}
+
+ENTRY %main () -> f32[4,8] {
+  %arg = f32[4,8] constant(1)
+  %async_start = ((f32[4,8]), f32[4,8], u32[]) async-start(%arg), calls=%async_comp
+  ROOT %async_done = f32[4,8] async-done(%async_start)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  AssignLayouts(m.get(), m->mutable_entry_computation_layout());
+
+  const HloInstruction* async_param = FindInstruction(m.get(), "p0");
+  ASSERT_NE(async_param, nullptr);
+  ExpectLayoutIs(async_param->shape(), {0, 1});
+
+  const HloInstruction* async_neg = FindInstruction(m.get(), "neg");
+  ASSERT_NE(async_neg, nullptr);
+  ExpectLayoutIs(async_neg->shape(), {0, 1});
+
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(m.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest,
+       PropagateAsyncDoneUseConstraintIntoUnconstrainedWrappedComputation) {
+  const char* module_str = R"hlo(
+HloModule PropagateAsyncDoneUseConstraintIntoUnconstrainedWrappedComputation,
+  entry_computation_layout={()->f32[4,8]{0,1}}
+
+%async_comp (p0: f32[4,8]) -> f32[4,8] {
+  %p0 = f32[4,8] parameter(0)
+  ROOT %neg = f32[4,8] negate(%p0)
+}
+
+ENTRY %main () -> f32[4,8] {
+  %arg = f32[4,8] constant(1)
+  %async_start = ((f32[4,8]), f32[4,8], u32[]) async-start(%arg), calls=%async_comp
+  %async_done = f32[4,8] async-done(%async_start)
+  ROOT %custom-call = f32[4,8]{0,1} custom-call(%async_done),
+    custom_call_target="some_target", operand_layout_constraints={f32[4,8]{0,1}}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(module_str));
+  AssignLayouts(m.get(), m->mutable_entry_computation_layout());
+
+  const HloInstruction* async_param = FindInstruction(m.get(), "p0");
+  ASSERT_NE(async_param, nullptr);
+  ExpectLayoutIs(async_param->shape(), {0, 1});
+
+  const HloInstruction* async_neg = FindInstruction(m.get(), "neg");
+  ASSERT_NE(async_neg, nullptr);
+  ExpectLayoutIs(async_neg->shape(), {0, 1});
+
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(m.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest,
+       AsyncStartPropagatesLayoutsToReorderedAndRepeatedParameterUses) {
+  const char* hlo = R"hlo(
+HloModule AsyncStartPropagatesLayoutsToReorderedAndRepeatedParameterUses,
+  entry_computation_layout={(f32[2,3]{0,1}, f32[2,3]{1,0})->f32[2,3]{0,1}}
+
+body {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  ROOT op = f32[2,3] custom-call(p1, p0, p1), custom_call_target="test"
+}
+
+ENTRY main {
+  main_param0 = f32[2,3]{0,1} parameter(0)
+  main_param1 = f32[2,3]{1,0} parameter(1)
+  start = ((f32[2,3], f32[2,3]), f32[2,3], s32[])
+    async-start(main_param0, main_param1), calls=body
+  ROOT done = f32[2,3] async-done(start)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  LayoutAssignment assignment(module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  const HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  const HloInstruction* wrapped_root = body->root_instruction();
+  ASSERT_EQ(wrapped_root->opcode(), HloOpcode::kCustomCall);
+  ASSERT_EQ(wrapped_root->operand_count(), 3);
+  ExpectLayoutIs(wrapped_root->operand(0)->shape(), {1, 0});
+  ExpectLayoutIs(wrapped_root->operand(1)->shape(), {0, 1});
+  ExpectLayoutIs(wrapped_root->operand(2)->shape(), {1, 0});
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCopy), nullptr);
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest,
+       AsyncRootOverridesHigherPriorityParameterConstraint) {
+  const char* hlo = R"hlo(
+HloModule AsyncRootOverridesHigherPriorityParameterConstraint,
+  entry_computation_layout={(f32[2,3]{0,1})->f32[2,3]{0,1}}
+
+body {
+  p = f32[2,3] parameter(0)
+  ROOT op = f32[2,3]{0,1} custom-call(p), custom_call_target="test",
+    operand_layout_constraints={f32[2,3]{0,1}}
+}
+
+ENTRY main {
+  input = f32[2,3]{0,1} parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) async-start(input), calls=body
+  ROOT done = f32[2,3] async-done(start)
+}
+)hlo";
+
+  // Use a subclass of layout assignment to set up a situation where the
+  // parameter of body has a non-mandatory but high priority constraint that
+  // conflicts with the root. The root constraints should override these
+  // parameter constraints.
+  class ConflictingParameterLayoutAssignment : public LayoutAssignment {
+   public:
+    using LayoutAssignment::LayoutAssignment;
+
+   protected:
+    absl::Status AddBackendConstraints(
+        LayoutConstraints* constraints) override {
+      HloComputation* computation = constraints->computation();
+      if (!computation->IsAsyncComputation()) {
+        return absl::OkStatus();
+      }
+      return SetInstructionLayout(
+          LayoutUtil::MakeLayout({1, 0}), computation->parameter_instruction(0),
+          /*mandatory=*/false, /*dfs=*/true, /*allow_alias=*/false,
+          /*priority=*/10000);
+    }
+  };
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ConflictingParameterLayoutAssignment assignment(
+      module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  // Parameter gets the root's required operand layout.
+  const HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  ExpectLayoutIs(body->parameter_instruction(0)->shape(), {0, 1});
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCopy), nullptr);
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest, AsyncStartPropagatesRank1LayoutToParameter) {
+  // Operand constraints on rank 1 operands are not propagated back to their
+  // defining buffers, so the caller's tiled layout must reach the async
+  // parameter directly.
+  const char* hlo = R"hlo(
+HloModule AsyncStartPropagatesRank1LayoutToParameter,
+  entry_computation_layout={(f32[256]{0:T(128)})->f32[256]{0:T(128)}}
+
+body {
+  p = f32[256] parameter(0)
+  ROOT op = f32[256] negate(p)
+}
+
+ENTRY main {
+  input = f32[256]{0:T(128)} parameter(0)
+  start = ((f32[256]), f32[256], s32[]) async-start(input), calls=body
+  ROOT done = f32[256] async-done(start)
+}
+)hlo";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  LayoutAssignment assignment(module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  const HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  const HloInstruction* input =
+      module->entry_computation()->parameter_instruction(0);
+  EXPECT_EQ(body->parameter_instruction(0)->shape().layout(),
+            input->shape().layout());
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCopy), nullptr);
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest, AsyncParameterConstraintDoesNotPropagateToRoot) {
+  const char* hlo = R"hlo(
+HloModule AsyncParameterConstraintDoesNotPropagateToRoot,
+  entry_computation_layout={(f32[2,3]{0,1})->f32[2,3]{0,1}}
+
+body {
+  p = f32[2,3] parameter(0)
+  ROOT op = f32[2,3] negate(p)
+}
+
+ENTRY main {
+  input = f32[2,3]{0,1} parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) async-start(input), calls=body
+  ROOT done = f32[2,3] async-done(start)
+}
+)hlo";
+
+  // Give the async parameter a non-mandatory constraint that conflicts with
+  // the caller. Parameters follow the root, so this constraint must not reach
+  // the root and block the caller's constraints from shaping the body.
+  class NonMandatoryParameterLayoutAssignment : public LayoutAssignment {
+   public:
+    using LayoutAssignment::LayoutAssignment;
+
+   protected:
+    absl::Status AddBackendConstraints(
+        LayoutConstraints* constraints) override {
+      HloComputation* computation = constraints->computation();
+      if (!computation->IsAsyncComputation()) {
+        return absl::OkStatus();
+      }
+      return SetInstructionLayout(LayoutUtil::MakeLayout({1, 0}),
+                                  computation->parameter_instruction(0),
+                                  /*mandatory=*/false, /*dfs=*/true,
+                                  /*allow_alias=*/false);
+    }
+  };
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  NonMandatoryParameterLayoutAssignment assignment(
+      module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  const HloComputation* body = module->GetComputationWithName("body");
+  ASSERT_NE(body, nullptr);
+  ExpectLayoutIs(body->parameter_instruction(0)->shape(), {0, 1});
+  ExpectLayoutIs(body->root_instruction()->shape(), {0, 1});
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCopy), nullptr);
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest, AsyncComputationWithWhileRoot) {
+  const char* hlo = R"hlo(
+HloModule AsyncComputationWithWhileRoot,
+  entry_computation_layout={(f32[2,3]{0,1})->f32[2,3]{1,0}}
+
+loop_body {
+  state = f32[2,3] parameter(0)
+  ROOT op = f32[2,3]{1,0} custom-call(state), custom_call_target="test",
+    operand_layout_constraints={f32[2,3]{0,1}}
+}
+
+loop_cond {
+  cond_state = f32[2,3] parameter(0)
+  ROOT stop = pred[] constant(false)
+}
+
+async_comp {
+  p = f32[2,3] parameter(0)
+  ROOT loop = f32[2,3] while(p), condition=loop_cond, body=loop_body
+}
+
+ENTRY main {
+  input = f32[2,3]{0,1} parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) async-start(input), calls=async_comp
+  ROOT done = f32[2,3] async-done(start)
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  LayoutAssignment assignment(module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  const HloInstruction* loop = FindInstruction(module.get(), "loop");
+  ASSERT_NE(loop, nullptr);
+  ASSERT_EQ(loop->opcode(), HloOpcode::kWhile);
+  const HloComputation* body = loop->while_body();
+  EXPECT_TRUE(
+      LayoutUtil::LayoutsInShapesEqual(body->parameter_instruction(0)->shape(),
+                                       body->root_instruction()->shape()));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(
+      body->root_instruction()->shape(), loop->shape()));
+  EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(
+      loop->while_condition()->parameter_instruction(0)->shape(),
+      loop->shape()));
+
+  const HloInstruction* op = FindInstruction(module.get(), "op");
+  ASSERT_NE(op, nullptr);
+  ASSERT_EQ(op->opcode(), HloOpcode::kCustomCall);
+  ExpectLayoutIs(op->operand(0)->shape(), {0, 1});
+  ExpectLayoutIs(op->shape(), {1, 0});
+
+  const HloComputation* entry = module->entry_computation();
+  ExpectLayoutIs(entry->parameter_instruction(0)->shape(), {0, 1});
+  ExpectLayoutIs(entry->root_instruction()->shape(), {1, 0});
+
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  ASSERT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(LayoutAssignmentTest,
+       MandatoryOperandConstraintOverridesHigherPriorityNonMandatory) {
+  const char* hlo = R"hlo(
+HloModule MandatoryOperandConstraintOverridesHigherPriorityNonMandatory,
+  entry_computation_layout={(f32[2,3]{0,1})->f32[2,3]{1,0}}
+
+ENTRY main {
+  p = f32[2,3] parameter(0)
+  ROOT op = f32[2,3]{1,0} custom-call(p), custom_call_target="test",
+    operand_layout_constraints={f32[2,3]{1,0}}
+}
+)hlo";
+
+  // Put a high-priority, non-mandatory constraint on the custom call operand.
+  // The mandatory custom call constraint added afterwards at a lower priority
+  // must replace it.
+  class HighPriorityOperandLayoutAssignment : public LayoutAssignment {
+   public:
+    using LayoutAssignment::LayoutAssignment;
+
+   protected:
+    absl::Status AddBackendConstraints(
+        LayoutConstraints* constraints) override {
+      return SetArrayOperandLayout(
+          LayoutUtil::MakeLayout({0, 1}),
+          constraints->computation()->root_instruction(), /*operand_no=*/0,
+          /*mandatory=*/false, /*dfs=*/true, /*priority=*/10000);
+    }
+  };
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HighPriorityOperandLayoutAssignment assignment(
+      module->mutable_entry_computation_layout());
+  ASSERT_OK(assignment.Run(module.get()).status());
+
+  const HloInstruction* op = FindInstruction(module.get(), "op");
+  ASSERT_NE(op, nullptr);
+  ExpectLayoutIs(op->operand(0)->shape(), {1, 0});
 }
 
 TEST_F(LayoutAssignmentTest,
