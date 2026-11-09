@@ -1050,7 +1050,7 @@ absl::Status SparseSegmentReductionFunctor<T, Index, SegmentId>::operator()(
 // violation (not necessarily the first in `i` order) otherwise.
 template <typename Index, typename SegmentId>
 __global__ void SparseSegmentGradBoundsCheckKernel(
-    Index nouter, Index noutput, SegmentId nsegments,
+    Index nouter, Index noutput, int64_t nsegments,
     const Index* __restrict__ indices_vec,      // [nouter]
     const SegmentId* __restrict__ segment_vec,  // [nouter]
     int32_t* __restrict__ bad_index_pos,        // [1]
@@ -1067,7 +1067,7 @@ __global__ void SparseSegmentGradBoundsCheckKernel(
 
 template <typename Index, typename SegmentId>
 absl::Status LaunchSparseSegmentGradBoundsCheckKernel(
-    const GPUDevice& d, Index nouter, Index noutput, SegmentId nsegments,
+    const GPUDevice& d, Index nouter, Index noutput, int64_t nsegments,
     const Index* indices_vec, const SegmentId* segment_vec,
     int32_t* bad_index_pos, int32_t* bad_segment_pos) {
   TF_ASSIGN_OR_RETURN(
@@ -1373,32 +1373,6 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
       OP_REQUIRES_ASYNC(context, stream != nullptr,
                         absl::InternalError("No GPU stream available."), done);
 
-      // Fast check, matching the CPU functor: `segment_vec` is assumed
-      // sorted in non-decreasing order, so its last element is the maximum
-      // segment id. A single element is enough to validate `nsegments`
-      // against the well-formed/sorted case and produce the same
-      // "Invalid number of segments" message the CPU functor uses for it.
-      ScratchSpace<Tsegmentids> last_segment_id_host(context, 1,
-                                                     /*on_host=*/true);
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          stream->Memcpy(
-              last_segment_id_host.mutable_data(),
-              stream_executor::DeviceAddressBase(
-                  const_cast<Tsegmentids*>(segment_vec.data()) + (nouter - 1),
-                  sizeof(Tsegmentids)),
-              sizeof(Tsegmentids)),
-          done);
-      OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
-      OP_REQUIRES_ASYNC(
-          context, *last_segment_id_host.data() + 1 <= nsegments,
-          absl::InvalidArgumentError("Invalid number of segments"), done);
-
-      // Full per-element validation, matching the CPU functor: catches
-      // malformed input that isn't actually sorted (so the fast check above
-      // can't tell it's invalid from the last element alone). Runs as a
-      // device-side scan; `bad_positions` only ever carries 2 int32s back to
-      // the host, regardless of `nouter`.
       Tensor bad_positions;
       OP_REQUIRES_OK_ASYNC(
           context,
@@ -1418,17 +1392,33 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
           context,
           LaunchSparseSegmentGradBoundsCheckKernel(
               device, static_cast<Tindices>(nouter),
-              static_cast<Tindices>(noutput),
-              static_cast<Tsegmentids>(nsegments), indices_vec.data(),
+              static_cast<Tindices>(noutput), nsegments, indices_vec.data(),
               segment_vec.data(), bad_index_pos_ptr, bad_segment_pos_ptr),
           done);
+
+      ScratchSpace<Tsegmentids> last_segment_id_host(context, 1,
+                                                     /*on_host=*/true);
       ScratchSpace<int32_t> bad_positions_host(context, 2, /*on_host=*/true);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          stream->Memcpy(
+              last_segment_id_host.mutable_data(),
+              stream_executor::DeviceAddressBase(
+                  const_cast<Tsegmentids*>(segment_vec.data()) + (nouter - 1),
+                  sizeof(Tsegmentids)),
+              sizeof(Tsegmentids)),
+          done);
       OP_REQUIRES_OK_ASYNC(
           context,
           stream->Memcpy(bad_positions_host.mutable_data(),
                          bad_positions_device, 2 * sizeof(int32_t)),
           done);
       OP_REQUIRES_OK_ASYNC(context, stream->BlockHostUntilDone(), done);
+
+      OP_REQUIRES_ASYNC(
+          context, *last_segment_id_host.data() < nsegments,
+          absl::InvalidArgumentError("Invalid number of segments"), done);
+
       const int32_t bad_index_pos = bad_positions_host.data()[0];
       const int32_t bad_segment_pos = bad_positions_host.data()[1];
 
