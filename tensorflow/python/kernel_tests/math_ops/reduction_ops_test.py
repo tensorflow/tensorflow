@@ -585,19 +585,21 @@ class MeanReductionTest(BaseReductionTest):
     # Regression test for GitHub issue #115732:
     # When N >= 65536, float16(N) overflows to Inf, which previously caused
     # reduce_mean to divide by Inf and return 0.0 on CPU.
-    np.random.seed(42)
-    x_np = np.random.randn(65536).astype(np.float16)
+    rng = np.random.default_rng(42)
+    x_np = rng.uniform(0.5, 1.5, size=65536).astype(np.float16)
     expected = float(np.mean(x_np.astype(np.float64)))
-    x_tf = constant_op.constant(x_np)
-    res = self.evaluate(math_ops.reduce_mean(x_tf))
+    with ops.device("/cpu:0"):
+      x_tf = constant_op.constant(x_np)
+      res = self.evaluate(math_ops.reduce_mean(x_tf))
     self.assertNotEqual(float(res), 0.0)
-    self.assertAllClose(float(res), expected, atol=1e-2, rtol=1e-2)
+    self.assertAllClose(float(res), expected, atol=1e-3, rtol=1e-3)
 
     # 2D matrix reduction across the 65536-length axis
     x2d = np.ones((65536, 2), dtype=np.float16)
-    res2d = self.evaluate(
-        math_ops.reduce_mean(constant_op.constant(x2d), axis=0)
-    )
+    with ops.device("/cpu:0"):
+      res2d = self.evaluate(
+          math_ops.reduce_mean(constant_op.constant(x2d), axis=0)
+      )
     self.assertAllClose(res2d, [1.0, 1.0], atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
