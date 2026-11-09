@@ -655,6 +655,21 @@ def compute_impacted_targets(
 
   if head_sha == "HEAD":
     head_sha = original_head
+  else:
+    merge_first_parent = change_detector.get_merge_commit_first_parent(
+        original_head, head_sha, cwd=workspace_dir
+    )
+    if merge_first_parent:
+      logging.info(
+          "Checked-out HEAD %s merges %s into %s; diffing against first"
+          " parent %s",
+          original_head,
+          head_sha,
+          merge_first_parent,
+          merge_first_parent,
+      )
+      base_sha = merge_first_parent
+      head_sha = original_head
 
   change_detector.ensure_base_fetched(base_sha, head_sha, cwd=workspace_dir)
 

@@ -807,6 +807,11 @@ class ComputeImpactedTargetsCheckoutTest(parameterized.TestCase):
             stdout="merge_commit_sha\n",
         ),
         subprocess.CompletedProcess(
+            args=["git", "cat-file", "-p", "merge_commit_sha"],
+            returncode=1,
+            stdout="",
+        ),
+        subprocess.CompletedProcess(
             args=["git", "checkout", "-f", "merge_commit_sha"],
             returncode=0,
             stdout="",
@@ -883,8 +888,88 @@ class ComputeImpactedTargetsCheckoutTest(parameterized.TestCase):
         self.mock_git_best_effort.call_args_list,
         [
             mock.call(["rev-parse", "HEAD"], cwd="/workspace"),
+            mock.call(["cat-file", "-p", "merge_commit_sha"], cwd="/workspace"),
+            mock.call(["checkout", "-f", "merge_commit_sha"], cwd="/workspace"),
+        ],
+    )
+
+  def test_compute_impacted_targets_pr_merge_commit_diffs_against_first_parent(
+      self,
+  ):
+    self.mock_git_best_effort.side_effect = [
+        subprocess.CompletedProcess(
+            args=["git", "rev-parse", "HEAD"],
+            returncode=0,
+            stdout="merge_commit_sha\n",
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "cat-file", "-p", "merge_commit_sha"],
+            returncode=0,
+            stdout=(
+                "tree 1111111111111111111111111111111111111111\n"
+                "parent main_first_parent_sha\n"
+                "parent pr_head_sha\n"
+                "author GitHub <noreply@github.com> 1700000000 +0000\n"
+                "\n"
+                "Merge pr_head_sha into main_first_parent_sha\n"
+            ),
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "checkout", "-f", "merge_commit_sha"],
+            returncode=0,
+            stdout="",
+        ),
+    ]
+    self.mock_changed_files.return_value = ["xla/service/cpu/cpu_compiler.cc"]
+    self.mock_diff_base.return_value = "main_first_parent_sha"
+    self.mock_subprocess_run.side_effect = [
+        subprocess.CompletedProcess(
+            args=["git", "checkout", "-f", "main_first_parent_sha"],
+            returncode=0,
+            stdout="",
+        ),
+        subprocess.CompletedProcess(
+            args=["git", "checkout", "-f", "merge_commit_sha"],
+            returncode=0,
+            stdout="",
+        ),
+    ]
+    self.mock_download_jar.return_value = "/tmp/bazel-diff.jar"
+    self.mock_get_impacted.side_effect = _write_impacted_targets
+
+    decision = bazel_diff.compute_impacted_targets(
+        _FakeBuildConfig(),
+        "stale_base_sha",
+        "pr_head_sha",
+        workspace_dir="/workspace",
+    )
+
+    self.assertEqual(
+        decision.decision, bazel_diff.BazelDiffDecisionType.IMPACTED
+    )
+    self.assertEqual(
+        decision.impacted_targets, ("//xla/service/cpu:cpu_compiler_test",)
+    )
+    self.mock_changed_files.assert_called_once_with(
+        "main_first_parent_sha", "merge_commit_sha", cwd="/workspace"
+    )
+    self.mock_diff_base.assert_called_once_with(
+        "main_first_parent_sha", "merge_commit_sha", cwd="/workspace"
+    )
+    self.assertEqual(
+        self.mock_subprocess_run.call_args_list,
+        [
             mock.call(
-                ["checkout", "-f", "merge_commit_sha"], cwd="/workspace"
+                ["git", "checkout", "-f", "main_first_parent_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
+            ),
+            mock.call(
+                ["git", "checkout", "-f", "merge_commit_sha"],
+                cwd="/workspace",
+                check=True,
+                capture_output=True,
             ),
         ],
     )
