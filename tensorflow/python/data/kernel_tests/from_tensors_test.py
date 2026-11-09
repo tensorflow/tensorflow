@@ -180,6 +180,20 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=[element])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsAttrsKeywordOnly(self):
+    if attr is None:
+      self.skipTest("attr module is not available.")
+
+    @attr.s(kw_only=True)
+    class Foo:
+      x = attr.ib()
+      y = attr.ib()
+
+    element = Foo(x=1, y=2)
+    dataset = dataset_ops.Dataset.from_tensors(element)
+    self.assertDatasetProduces(dataset, expected_output=[element])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsDataclass(self):
     mt = MaskedTensor(mask=True, value=np.array([1]))
     dataset = dataset_ops.Dataset.from_tensors(mt)

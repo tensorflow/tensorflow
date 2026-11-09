@@ -1444,6 +1444,28 @@ class TracingCompilationTest(test.TestCase, parameterized.TestCase):
     defined([[a, b], c])
     self.assertLen(function_cache, 2)
 
+  def testAttrsClassKeywordOnlyFields(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s(kw_only=True)
+    class TestClass:
+      a = attr.ib()
+      b = attr.ib()
+
+    function_cache = function_cache_lib.FunctionCache()
+
+    @compiled_fn(function_cache=function_cache)
+    def defined(x):
+      return TestClass(a=x.a + 1.0, b=x.b + 1.0)
+
+    result = defined(
+        TestClass(a=constant_op.constant(1.0), b=constant_op.constant(2.0))
+    )
+    self.assertIsInstance(result, TestClass)
+    self.assertAllEqual([result.a, result.b], [2.0, 3.0])
+    self.assertLen(function_cache, 1)
+
   def testCacheKeyAttrsClass(self):
     if attr is None:
       self.skipTest('attr module is unavailable.')
