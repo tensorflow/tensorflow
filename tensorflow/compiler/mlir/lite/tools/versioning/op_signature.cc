@@ -282,6 +282,13 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
             IsTensorSizeEqual(table_quant->scale()->size(),
                               table_tensor->shape()->Get(0));
       }
+      if (table_quant != nullptr) {
+        const BlockwiseQuantization* blockwise =
+            table_quant->details_as_BlockwiseQuantization();
+        op_sig.ext_options.embedding_lookup.is_blockwise_quantized =
+            blockwise != nullptr && blockwise->block_shape() != nullptr &&
+            !blockwise->block_shape()->empty();
+      }
     } break;
 
     case BuiltinOperator_BATCH_MATMUL: {

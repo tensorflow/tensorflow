@@ -87,6 +87,11 @@ bool IsDrqBlockwiseFilterConsumer(TFL::FullyConnectedOp fc);
 // Returns the constant elements defining `value`, or nullptr.
 ElementsAttr GetConstantElements(mlir::Value value);
 
+// Returns true if `bw_deq` dequantizes a constant integer tensor with constant
+// scales and zero points (if any) into an f32 tensor, i.e. if it can be folded
+// into a `!tfl.blockwise_quant` constant.
+bool IsFoldableBlockwiseDequantize(TFL::BlockwiseDequantizeOp bw_deq);
+
 // Returns true if `operand` of `op` is a `tfl.blockwise_dequantize` with a
 // float32 result (of rank 2 if `op` is a `tfl.fully_connected`) and constant
 // integer values, scales and zero points (if any), i.e. one that can be folded

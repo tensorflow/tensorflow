@@ -607,6 +607,38 @@ class FuseDrqBlockwiseFullyConnected
   }
 };
 
+// Folds a constant `tfl.blockwise_dequantize` table of a `tfl.embedding_lookup`
+// into a `!tfl.blockwise_quant` constant, so that the EMBEDDING_LOOKUP kernel
+// only dequantizes the looked up rows (as for a hybrid lookup of an affine
+// quantized table) rather than the whole table being dequantized:
+//
+//   %table = tfl.blockwise_dequantize(%q, %scales, %zero_points)
+//   %out = tfl.embedding_lookup(%ids, %table)
+//
+// becomes
+//
+//   %table = tfl.pseudo_qconst() {qtype = !tfl.blockwise_quant<...>}
+//   %out = tfl.embedding_lookup(%ids, %table)
+class FoldBlockwiseTableIntoEmbeddingLookup
+    : public OpRewritePattern<TFL::EmbeddingLookupOp> {
+  using OpRewritePattern<TFL::EmbeddingLookupOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::EmbeddingLookupOp op,
+                                PatternRewriter& rewriter) const override {
+    auto bw_deq = op.getValue().getDefiningOp<TFL::BlockwiseDequantizeOp>();
+    if (!bw_deq || !IsFoldableBlockwiseDequantize(bw_deq)) {
+      return rewriter.notifyMatchFailure(
+          op, "table is not a foldable constant tfl.blockwise_dequantize");
+    }
+    if (!getElementTypeOrSelf(op.getType()).isF32()) {
+      return rewriter.notifyMatchFailure(op, "expects an f32 output");
+    }
+    mlir::Value table = FoldBlockwiseWeightToQConst(bw_deq, rewriter);
+    rewriter.modifyOpInPlace(op, [&]() { op.getValueMutable().assign(table); });
+    return success();
+  }
+};
+
 class FuseQDQ : public OpRewritePattern<mlir::TFL::DequantizeOp> {
   using OpRewritePattern<mlir::TFL::DequantizeOp>::OpRewritePattern;
 
@@ -712,7 +744,8 @@ void FuseQDQPass::runOnOperation() {
   RewritePatternSet patterns(ctx);
   patterns.add<FuseQDQ, FuseDrqBlockwiseFullyConnected, PushForwardDrqFQ,
                RemoveUnusedFQ, RemoveUnusedCustomCallFQ,
-               FixFullyConnectedKeepNumDims, QuantizeConstPattern,
+               FixFullyConnectedKeepNumDims,
+               FoldBlockwiseTableIntoEmbeddingLookup, QuantizeConstPattern,
                FuseDqQToRequant, FuseQQToRequant, RemoveNoOpQ>(ctx);
 
   // Configure the greedy pattern rewrite driver.
