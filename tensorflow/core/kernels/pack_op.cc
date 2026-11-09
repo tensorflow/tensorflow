@@ -16,8 +16,10 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 #include <limits>
+#include <type_traits>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
@@ -129,31 +131,60 @@ class PackOp : public OpKernel {
     const int64_t axis_dim = output_shape.dim_size(axis);
 
     const int64_t output_size = output->NumElements();
-    auto output_flat = output->shaped<T, 2>({before_dim, after_dim * axis_dim});
 
     // Except for shapes, pack is a special case of concat, so we reuse the
     // same computational kernels.
-    ConstMatrixVector inputs_flat;
-    inputs_flat.reserve(num);
-    for (int i = 0; i < num; ++i) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    if constexpr (std::is_same_v<Device, GPUDevice>) {
+      auto output_flat =
+          output->shaped<T, 2>({before_dim, after_dim * axis_dim});
+      ConstMatrixVector inputs_flat;
+      inputs_flat.reserve(num);
+      for (int i = 0; i < num; ++i) {
+        const Tensor& input = c->input(i);
+        OP_REQUIRES(c, first_input.shape().IsSameSize(input.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Shapes of all inputs must match: values[0].shape = ",
+                        first_input.shape().DebugString(), " != values[", i,
+                        "].shape = ", input.shape().DebugString())));
+
+        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+            input.shaped<T, 2>({before_dim, after_dim})));
+      }
+      if (output_size > 0) {
+        ConcatGPU<T>(c, inputs_flat, output, &output_flat);
+      }
+      return;
+    }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    absl::InlinedVector<ConcatSlice<T>, 64> slices(num);
+    slices[0] = ConcatSlice<T>{static_cast<const T*>(first_input.data()),
+                               static_cast<ptrdiff_t>(after_dim)};
+    const int first_num_dims = first_input.dims();
+    const int64_t first_num_elements = first_input.NumElements();
+    for (int i = 1; i < num; ++i) {
       const Tensor& input = c->input(i);
-      OP_REQUIRES(c, first_input.shape().IsSameSize(input.shape()),
+      // Check inline `dims()` and `NumElements()` directly for scalars and
+      // 1-D vectors to avoid per-input out-of-line `TensorShape::IsSameSize`
+      // calls on small `Pack` invocations.
+      const bool same_shape =
+          (first_num_dims <= 1)
+              ? (input.dims() == first_num_dims &&
+                 (first_num_dims == 0 ||
+                  input.NumElements() == first_num_elements))
+              : (input.NumElements() == first_num_elements &&
+                 first_input.shape().IsSameSize(input.shape()));
+      OP_REQUIRES(c, same_shape,
                   absl::InvalidArgumentError(absl::StrCat(
                       "Shapes of all inputs must match: values[0].shape = ",
                       first_input.shape().DebugString(), " != values[", i,
                       "].shape = ", input.shape().DebugString())));
-
-      inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
-          input.shaped<T, 2>({before_dim, after_dim})));
+      slices[i] = ConcatSlice<T>{static_cast<const T*>(input.data()),
+                                 static_cast<ptrdiff_t>(after_dim)};
     }
     if (output_size > 0) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      if (std::is_same_v<Device, GPUDevice>) {
-        ConcatGPU<T>(c, inputs_flat, output, &output_flat);
-        return;
-      }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+      ConcatCPUSlices<T>(c->device(), slices, before_dim, after_dim * axis_dim,
+                         static_cast<T*>(output->data()));
     }
   }
 
