@@ -253,12 +253,9 @@ def _MinOrMaxGrad(op: ops.Operation, grad):
 
   result = math_ops.divide(indicators, num_selected) * grad
   if grad.dtype.is_floating:
-    is_nan = math_ops.is_nan(y)
-    nan_tensor = array_ops.fill(
-        input_shape, math_ops.cast(float("nan"), grad.dtype)
+    result = array_ops.where_v2(
+        math_ops.is_nan(y), math_ops.cast(float("nan"), grad.dtype), result
     )
-    is_nan_broadcast = array_ops.broadcast_to(is_nan, input_shape)
-    result = array_ops.where_v2(is_nan_broadcast, nan_tensor, result)
 
   return [result, None]
 
@@ -482,11 +479,8 @@ def _SegmentMinOrMaxGrad(op: ops.Operation, grad):
   gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
   res = array_ops.where_v2(is_selected, gathered_grads, zeros)
   if grad.dtype.is_floating:
-    is_nan = math_ops.is_nan(gathered_outputs)
-    nan_tensor = array_ops.fill(
-        array_ops.shape(res), math_ops.cast(float("nan"), grad.dtype)
-    )
-    res = array_ops.where_v2(is_nan, nan_tensor, res)
+    nan_val = math_ops.cast(float("nan"), grad.dtype)
+    res = array_ops.where_v2(math_ops.is_nan(gathered_outputs), nan_val, res)
   return res, None
 
 
@@ -604,12 +598,9 @@ def _UnsortedSegmentMinOrMaxGrad(op: ops.Operation, grad):
   zeros = array_ops.zeros_like(gathered_grads)
   res = array_ops.where_v2(is_selected, gathered_grads, zeros)
   if grad.dtype.is_floating:
-    is_nan = math_ops.is_nan(gathered_outputs)
-    is_nan = math_ops.logical_and(is_nan, is_positive)
-    nan_tensor = array_ops.fill(
-        array_ops.shape(res), math_ops.cast(float("nan"), grad.dtype)
-    )
-    res = array_ops.where_v2(is_nan, nan_tensor, res)
+    is_nan = math_ops.logical_and(math_ops.is_nan(gathered_outputs), is_positive)
+    nan_val = math_ops.cast(float("nan"), grad.dtype)
+    res = array_ops.where_v2(is_nan, nan_val, res)
   return res, None, None
 
 
@@ -1677,11 +1668,9 @@ def _MaximumMinimumGradInputOnly(op: ops.Operation, grad, selector_op):
   xmask = selector_op(x, y)
   xgrad = array_ops.where_v2(xmask, grad, zeros)
   if grad.dtype.is_floating:
-    is_nan_x = math_ops.is_nan(x)
-    nan_tensor = array_ops.fill(
-        array_ops.shape(xgrad), math_ops.cast(float("nan"), grad.dtype)
-    )
-    xgrad = array_ops.where_v2(is_nan_x, nan_tensor, xgrad)
+    is_nan = math_ops.is_nan(op.outputs[0])
+    nan_val = math_ops.cast(float("nan"), grad.dtype)
+    xgrad = array_ops.where_v2(is_nan, nan_val, xgrad)
   ygrad = None  # Return None for ygrad since the config allows that.
   return (xgrad, ygrad)
 
@@ -1705,22 +1694,17 @@ def _MaximumMinimumGrad(op: ops.Operation, grad, selector_op):
     gx = None
   else:
     gx = array_ops.where_v2(xmask, grad, zeros)
-    if grad.dtype.is_floating:
-      is_nan_x = math_ops.is_nan(x)
-      nan_tensor_x = array_ops.fill(
-          array_ops.shape(gx), math_ops.cast(float("nan"), grad.dtype)
-      )
-      gx = array_ops.where_v2(is_nan_x, nan_tensor_x, gx)
   if 1 in skip_input_indices:
     gy = None
   else:
     gy = array_ops.where_v2(xmask, zeros, grad)
-    if grad.dtype.is_floating:
-      is_nan_y = math_ops.is_nan(y)
-      nan_tensor_y = array_ops.fill(
-          array_ops.shape(gy), math_ops.cast(float("nan"), grad.dtype)
-      )
-      gy = array_ops.where_v2(is_nan_y, nan_tensor_y, gy)
+  if grad.dtype.is_floating:
+    is_nan = math_ops.is_nan(op.outputs[0])
+    nan_val = math_ops.cast(float("nan"), grad.dtype)
+    if gx is not None:
+      gx = array_ops.where_v2(is_nan, nan_val, gx)
+    if gy is not None:
+      gy = array_ops.where_v2(is_nan, nan_val, gy)
   return _ReduceGradientArgs(x, y, gx, gy)
 
 

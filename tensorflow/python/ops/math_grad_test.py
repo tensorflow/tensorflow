@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -149,6 +150,7 @@ class MinOrMaxGradientTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
 
+  @test_util.run_in_graph_and_eager_modes
   def testMinMaxGradientNaNPropagation(self):
     """Regression test for #118673: reduce_max/reduce_min gradient with NaN."""
     for dtype in [dtypes.float32, dtypes.float64]:
@@ -159,10 +161,18 @@ class MinOrMaxGradientTest(test.TestCase):
           tape.watch(x)
           y = reduce_op(x)
         grad = tape.gradient(y, x)
-        self.assertTrue(
-            np.all(np.isnan(self.evaluate(grad))),
-            msg=f"Expected all NaN gradient for {reduce_op.__name__} with NaN input",
-        )
+        self.assertTrue(np.all(np.isnan(self.evaluate(grad))))
+
+        @def_function.function(jit_compile=True)
+        def jit_grad(x_tensor):
+          with backprop.GradientTape() as tape:
+            tape.watch(x_tensor)
+            out = reduce_op(x_tensor)
+          return tape.gradient(out, x_tensor)
+
+        x_const = constant_op.constant(x_vals)
+        jit_res = self.evaluate(jit_grad(x_const))
+        self.assertTrue(np.all(np.isnan(jit_res)))
 
 
 class MaximumOrMinimumGradientTest(test.TestCase):
@@ -183,6 +193,7 @@ class MaximumOrMinimumGradientTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(inputs, [4], outputs, [4])
       self.assertLess(error, 1e-4)
 
+  @test_util.run_in_graph_and_eager_modes
   def testMaximumMinimumGradientNaNPropagation(self):
     """Verify NaN gradient propagation for maximum and minimum."""
     for dtype in [dtypes.float32, dtypes.float64]:
@@ -194,12 +205,43 @@ class MaximumOrMinimumGradientTest(test.TestCase):
           y = constant_op.constant(y_vals)
           tape.watch([x, y])
           z = elementwise_op(x, y)
-        gx, _ = tape.gradient(z, [x, y])
-        gx_val = self.evaluate(gx)
-        self.assertTrue(
-            np.isnan(gx_val[1]),
-            msg=f"Expected NaN gradient for input with NaN in {elementwise_op.__name__}",
+        gx, gy = tape.gradient(z, [x, y])
+        gx_val, gy_val = self.evaluate([gx, gy])
+        self.assertTrue(np.isnan(gx_val[1]))
+        self.assertTrue(np.isnan(gy_val[1]))
+
+        # Test scalar second input for _MaximumMinimumGradInputOnly
+        with backprop.GradientTape() as tape:
+          x = constant_op.constant(x_vals)
+          tape.watch(x)
+          z_scalar = elementwise_op(x, constant_op.constant(2.0, dtype=dtype))
+        gx_scalar = self.evaluate(tape.gradient(z_scalar, x))
+        self.assertTrue(np.isnan(gx_scalar[1]))
+
+        # Scalar second input containing NaN
+        with backprop.GradientTape() as tape:
+          x_clean = constant_op.constant([1.0, 2.0], dtype=dtype)
+          tape.watch(x_clean)
+          z_nan_scalar = elementwise_op(
+              x_clean, constant_op.constant(float("nan"), dtype=dtype)
+          )
+        gx_nan = self.evaluate(tape.gradient(z_nan_scalar, x_clean))
+        self.assertTrue(np.all(np.isnan(gx_nan)))
+
+        @def_function.function(jit_compile=True)
+        def jit_max_min(a, b):
+          with backprop.GradientTape() as tape:
+            tape.watch([a, b])
+            out = elementwise_op(a, b)
+          return tape.gradient(out, [a, b])
+
+        jx, jy = self.evaluate(
+            jit_max_min(
+                constant_op.constant(x_vals), constant_op.constant(y_vals)
+            )
         )
+        self.assertTrue(np.isnan(jx[1]))
+        self.assertTrue(np.isnan(jy[1]))
 
 
 class ProdGradientTest(test.TestCase):
@@ -468,6 +510,48 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(inputs, [1], segment_max,
                                                       [1])
       self.assertLess(error, 1e-4)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSegmentMinMaxNaNPropagation(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      data_np = np.array([1.0, np.nan, 3.0], dtype=dtype.as_numpy_dtype)
+      seg_ids = constant_op.constant([0, 0, 1], dtype=dtypes.int64)
+      for seg_op in [math_ops.segment_min, math_ops.segment_max]:
+        with backprop.GradientTape() as tape:
+          data = constant_op.constant(data_np)
+          tape.watch(data)
+          out = seg_op(data, seg_ids)
+        grad = tape.gradient(out, data)
+        grad_val = self.evaluate(grad)
+        # Segment 0 contains NaN, so its elements must receive NaN gradient
+        self.assertTrue(np.isnan(grad_val[0]))
+        self.assertTrue(np.isnan(grad_val[1]))
+        # Segment 1 does not contain NaN, so element 2 is finite
+        self.assertFalse(np.isnan(grad_val[2]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUnsortedSegmentMinMaxNaNPropagation(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      data_np = np.array([1.0, np.nan, 3.0, 4.0], dtype=dtype.as_numpy_dtype)
+      # Negative segment ID -1 drops the fourth element
+      seg_ids = constant_op.constant([0, 0, 1, -1], dtype=dtypes.int64)
+      for seg_op in [
+          math_ops.unsorted_segment_min,
+          math_ops.unsorted_segment_max,
+      ]:
+        with backprop.GradientTape() as tape:
+          data = constant_op.constant(data_np)
+          tape.watch(data)
+          out = seg_op(data, seg_ids, num_segments=2)
+        grad = tape.gradient(out, data)
+        grad_val = self.evaluate(grad)
+        # Segment 0 contains NaN -> NaN grad
+        self.assertTrue(np.isnan(grad_val[0]))
+        self.assertTrue(np.isnan(grad_val[1]))
+        # Segment 1 is finite -> finite grad
+        self.assertFalse(np.isnan(grad_val[2]))
+        # Negative segment ID is ignored -> zero grad
+        self.assertEqual(grad_val[3], 0.0)
 
 
 @test_util.run_all_in_graph_and_eager_modes
