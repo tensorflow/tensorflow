@@ -4524,6 +4524,12 @@ static absl::Status ValidateGatherDimensionNumbers(
           "%d->%d.",
           start_indices_shape.size(), i, start_indices_batching_dim_i);
     }
+    if (start_indices_batching_dim_i == dim_numbers.index_vector_dim()) {
+      return InvalidArgument(
+          "Invalid start_indices_batching_dims; index_vector_dim=%d is not "
+          "allowed as a batching dimension, got: %d->%d.",
+          dim_numbers.index_vector_dim(), i, start_indices_batching_dim_i);
+    }
   }
 
   std::vector<int64_t> sorted_start_indices_batching_dims(
@@ -4833,6 +4839,13 @@ absl::Status ValidateScatterDimensionNumbers(
           "Invalid scatter_indices_batching_dims set in scatter op; valid "
           "range is [0, %d), got: %d.",
           scatter_indices_shape.size(), scatter_indices_batching_dim);
+    }
+    if (scatter_indices_batching_dim == dim_numbers.index_vector_dim()) {
+      return InvalidArgument(
+          "Invalid scatter_indices_batching_dims set in scatter op; "
+          "index_vector_dim=%d is not allowed as a batching dimension, got: "
+          "%d.",
+          dim_numbers.index_vector_dim(), scatter_indices_batching_dim);
     }
   }
   std::vector<int64_t> sorted_scatter_indices_batching_dims(
