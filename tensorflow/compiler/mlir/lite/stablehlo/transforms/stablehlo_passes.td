@@ -74,8 +74,8 @@ def UniformQuantizedStableHloToTflPass
 }
 
 def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "ModuleOp"> {
-  let summary = "Legalize from MHLO to the TF dialect";
-  let dependentDialects = ["TF::TensorFlowDialect"];
+  let summary = "Legalize from StableHLO to the TF dialect";
+  let dependentDialects = ["TF::TensorFlowDialect", "mlir::stablehlo::StablehloDialect"];
   let constructor = "mlir::odml::CreateLegalizeHloToTfPass()";
 }
 
@@ -139,14 +139,14 @@ def LegalizeChloToTflPass
 
 def PrepareHloPass
     : Pass<"prepare-hlo", "mlir::func::FuncOp"> {
-  let summary = "Prepare mhlo for mhlo->tfl legalization.";
+  let summary = "Prepare StableHLO for StableHLO->tfl legalization.";
   let constructor = "mlir::odml::CreatePrepareHloPass()";
   let description = [{
-    Apply generic mhlo->mhlo rewrites to make the graph more amenable for
+    Apply generic StableHLO->StableHLO rewrites to make the graph more amenable for
     legalizing to tfl.
   }];
   let dependentDialects = [
-    "mlir::mhlo::MhloDialect",
+    "mlir::stablehlo::StablehloDialect",
     "func::FuncDialect",
     "TFL::TensorFlowLiteDialect"
   ];

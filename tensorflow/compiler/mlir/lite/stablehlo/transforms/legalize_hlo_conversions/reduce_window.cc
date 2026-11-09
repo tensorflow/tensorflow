@@ -36,11 +36,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/op_util_common.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/reduce_window_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 namespace {
@@ -58,7 +58,7 @@ bool AreDilationsSupported(const ReduceWindowView& op) {
 bool IsRankSupported(const ReduceWindowView& op) { return op.Rank() == 4; }
 
 std::optional<std::tuple<ReduceWindowView, Layout>> GetViewIfAttrsSupported(
-    mhlo::ReduceWindowOp op) {
+    stablehlo::ReduceWindowOp op) {
   const ReduceWindowView view(op);
 
   if (!IsRankSupported(view)) {
@@ -88,11 +88,11 @@ std::optional<std::tuple<ReduceWindowView, Layout>> GetViewIfAttrsSupported(
   return std::tuple(view, layout);
 }
 
-std::optional<bool> IsReduceWindowLegal(mhlo::ReduceWindowOp op) {
+std::optional<bool> IsReduceWindowLegal(stablehlo::ReduceWindowOp op) {
   return std::nullopt;
 }
 
-std::optional<bool> IsDivideLegal(mhlo::DivOp op) { return std::nullopt; }
+std::optional<bool> IsDivideLegal(stablehlo::DivOp op) { return std::nullopt; }
 
 Layout TFLNativePoolingLayout(int64_t rank) {
   return Layout(0, rank - 1, llvm::to_vector(llvm::seq<int64_t>(1, rank - 1)));
@@ -123,10 +123,8 @@ llvm::SmallVector<int64_t> Permute(llvm::ArrayRef<int64_t> data,
 
 Value TransposeTensor(OpBuilder& b, Value tensor,
                       llvm::SmallVector<int64_t> perm) {
-  const int64_t perm_size = perm.size();
-  auto perm_attr_type = RankedTensorType::get({perm_size}, b.getI64Type());
-  auto perm_attr = DenseIntElementsAttr::get(perm_attr_type, perm);
-  return mhlo::TransposeOp::create(b, tensor.getLoc(), tensor, perm_attr);
+  auto perm_attr = b.getDenseI64ArrayAttr(perm);
+  return stablehlo::TransposeOp::create(b, tensor.getLoc(), tensor, perm_attr);
 }
 
 DenseIntElementsAttr BuildDenseI64(OpBuilder& b, ArrayRef<int64_t> shape,
@@ -141,7 +139,7 @@ DenseIntElementsAttr BuildDenseI64(OpBuilder& b, ArrayRef<int64_t> data) {
 }
 
 std::optional<std::tuple<Value, Value>> GetInputAndInitIfValid(
-    mhlo::ReduceWindowOp op) {
+    stablehlo::ReduceWindowOp op) {
   if (op->getNumResults() != 1) {
     return std::nullopt;
   }
@@ -203,15 +201,16 @@ TFLPoolAttrsT BuildTFLPoolAttrs(OpBuilder& b, const ReduceWindowView& view,
 // relayout reduce_window to channel last
 //===------------------------------------------------------------------------===
 
-class RelayoutReduceWindow : public OpRewritePattern<mhlo::ReduceWindowOp> {
+class RelayoutReduceWindow
+    : public OpRewritePattern<stablehlo::ReduceWindowOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(mhlo::ReduceWindowOp op,
+  LogicalResult matchAndRewrite(stablehlo::ReduceWindowOp op,
                                 PatternRewriter& rewriter) const final;
 };
 
 LogicalResult RelayoutReduceWindow::matchAndRewrite(
-    mhlo::ReduceWindowOp op, PatternRewriter& rewriter) const {
+    stablehlo::ReduceWindowOp op, PatternRewriter& rewriter) const {
   //
   // check and parse attributes
   //=-----
@@ -268,12 +267,13 @@ LogicalResult RelayoutReduceWindow::matchAndRewrite(
   // permute window dims
   llvm::SmallVector<int64_t> new_window_dims =
       Permute(view.WindowDims(), perm_for_inputs);
-  auto new_window_dims_attr = BuildDenseI64(rewriter, new_window_dims);
+  auto new_window_dims_attr = rewriter.getDenseI64ArrayAttr(new_window_dims);
 
   // permute window strides
   llvm::SmallVector<int64_t> new_window_strides =
       Permute(view.WindowStrides(), perm_for_inputs);
-  auto new_window_strides_attr = BuildDenseI64(rewriter, new_window_strides);
+  auto new_window_strides_attr =
+      rewriter.getDenseI64ArrayAttr(new_window_strides);
 
   //
   // permute params and build new op
@@ -289,11 +289,11 @@ LogicalResult RelayoutReduceWindow::matchAndRewrite(
 
   // transpose input and build new reduce_window
   auto new_input = TransposeTensor(rewriter, input, perm_for_inputs);
-  auto new_rw = mhlo::ReduceWindowOp::create(
+  auto new_rw = stablehlo::ReduceWindowOp::create(
       rewriter, op.getLoc(), new_out_type, new_input, init_val,
       new_window_dims_attr, new_window_strides_attr,
-      BuildDenseI64(rewriter, view.BaseDilations()),
-      BuildDenseI64(rewriter, view.WindowDilations()), new_paddings_attr);
+      rewriter.getDenseI64ArrayAttr(view.BaseDilations()),
+      rewriter.getDenseI64ArrayAttr(view.WindowDilations()), new_paddings_attr);
   IRMapping ir_map;
   op.getBody().cloneInto(&new_rw.getBody(), ir_map);
 
@@ -306,20 +306,20 @@ LogicalResult RelayoutReduceWindow::matchAndRewrite(
 }
 
 //===------------------------------------------------------------------------===
-// mhlo.reduce_window -> tfl.cum_sum
+// stablehlo.reduce_window -> tfl.cum_sum
 //===------------------------------------------------------------------------===
 
-class LegalizeCumSum : public OpConversionPattern<mhlo::ReduceWindowOp> {
+class LegalizeCumSum : public OpConversionPattern<stablehlo::ReduceWindowOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      mhlo::ReduceWindowOp op, OpAdaptor adaptor,
+      stablehlo::ReduceWindowOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeCumSum::matchAndRewrite(
-    mhlo::ReduceWindowOp op, OpAdaptor adaptor,
+    stablehlo::ReduceWindowOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   //
   // check singular params and trivial attrs
@@ -332,7 +332,7 @@ LogicalResult LegalizeCumSum::matchAndRewrite(
   }
   auto [input, init] = opt_input_init.value();
 
-  if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(op.getBody()))) {
+  if (failed(MatchBinaryReduceFunction<stablehlo::AddOp>(op.getBody()))) {
     return rewriter.notifyMatchFailure(op, "Requires scalar add in region.");
   }
 
@@ -426,7 +426,7 @@ LogicalResult LegalizeCumSum::matchAndRewrite(
 }
 
 //===------------------------------------------------------------------------===
-// mhlo.reduce_window -> tfl.max_pool
+// stablehlo.reduce_window -> tfl.max_pool
 //===------------------------------------------------------------------------===
 
 bool isFloatMinusInfinity(Value value) {
@@ -441,15 +441,16 @@ bool isFloatMinusInfinity(Value value) {
   return element.isInfinity() && element.isNegative();
 }
 
-class LegalizeMaxPool : public OpConversionPattern<mhlo::ReduceWindowOp> {
+class LegalizeMaxPool : public OpConversionPattern<stablehlo::ReduceWindowOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      mhlo::ReduceWindowOp op, OpAdaptor adaptor,
+      stablehlo::ReduceWindowOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 
  private:
-  TFL::PadV2Op BuildExplicitPadOp(mhlo::ReduceWindowOp op, const Layout& layout,
+  TFL::PadV2Op BuildExplicitPadOp(stablehlo::ReduceWindowOp op,
+                                  const Layout& layout,
                                   const ShapedType& input_type,
                                   const ShapedType& output_type, Value input,
                                   Value init, const ReduceWindowView& view,
@@ -457,9 +458,9 @@ class LegalizeMaxPool : public OpConversionPattern<mhlo::ReduceWindowOp> {
 };
 
 TFL::PadV2Op LegalizeMaxPool::BuildExplicitPadOp(
-    mhlo::ReduceWindowOp op, const Layout& layout, const ShapedType& input_type,
-    const ShapedType& output_type, Value input, Value init,
-    const ReduceWindowView& view, PatternRewriter& rewriter) const {
+    stablehlo::ReduceWindowOp op, const Layout& layout,
+    const ShapedType& input_type, const ShapedType& output_type, Value input,
+    Value init, const ReduceWindowView& view, PatternRewriter& rewriter) const {
   // The following works for rank=4 (see IsRankSupported()).
   std::vector<int64_t> shape = {layout.Rank(), layout.NumSpatials()};
 
@@ -495,7 +496,7 @@ TFL::PadV2Op LegalizeMaxPool::BuildExplicitPadOp(
 }
 
 LogicalResult LegalizeMaxPool::matchAndRewrite(
-    mhlo::ReduceWindowOp op, OpAdaptor adaptor,
+    stablehlo::ReduceWindowOp op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   //
   // parse and validate lhs reduce window
@@ -511,7 +512,7 @@ LogicalResult LegalizeMaxPool::matchAndRewrite(
   }
 
   // Check that the reduce-window is a max-reduce-window.
-  if (failed(MatchBinaryReduceFunction<mhlo::MaxOp>(op.getBody()))) {
+  if (failed(MatchBinaryReduceFunction<stablehlo::MaxOp>(op.getBody()))) {
     return rewriter.notifyMatchFailure(op, "Must be a max pool.");
   }
 
@@ -564,13 +565,14 @@ LogicalResult LegalizeMaxPool::matchAndRewrite(
 }
 
 //===------------------------------------------------------------------------===
-// mhlo.div(mhlo.reduce_window, cst | mhlo.reduce_window) -> tfl.avg_pool
+// stablehlo.div(stablehlo.reduce_window, cst | stablehlo.reduce_window) ->
+// tfl.avg_pool
 //===------------------------------------------------------------------------===
 
-void ReplaceWithAvgPool(mhlo::DivOp op, Value rw_lhs_input,
+void ReplaceWithAvgPool(stablehlo::DivOp op, Value rw_lhs_input,
                         const ReduceWindowView& lhs_view,
                         llvm::StringRef padding, PatternRewriter& rewriter,
-                        mhlo::TransposeOp opt_final_tpose) {
+                        stablehlo::TransposeOp opt_final_tpose) {
   Type out_type =
       opt_final_tpose ? opt_final_tpose.getOperand().getType() : op.getType();
 
@@ -580,9 +582,10 @@ void ReplaceWithAvgPool(mhlo::DivOp op, Value rw_lhs_input,
       rewriter, op->getLoc(), out_type, rw_lhs_input, fh, fw, p, sh, sw, faf);
 
   if (opt_final_tpose) {
-    final_op = mhlo::TransposeOp::create(rewriter, final_op.getLoc(), final_op,
-                                         opt_final_tpose.getPermutation())
-                   .getResult();
+    final_op =
+        stablehlo::TransposeOp::create(rewriter, final_op.getLoc(), final_op,
+                                       opt_final_tpose.getPermutation())
+            .getResult();
   }
 
   rewriter.replaceOp(op, final_op);
@@ -600,18 +603,18 @@ Value RecursivelyWalkUp(Value op) {
   return op;
 }
 
-class LegalizeAvgPool : public OpConversionPattern<mhlo::DivOp> {
+class LegalizeAvgPool : public OpConversionPattern<stablehlo::DivOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   explicit LegalizeAvgPool(MLIRContext* context)
-      : OpConversionPattern<mhlo::DivOp>(context, 10) {}
+      : OpConversionPattern<stablehlo::DivOp>(context, 10) {}
   LogicalResult matchAndRewrite(
-      mhlo::DivOp op, OpAdaptor adaptor,
+      stablehlo::DivOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;
 };
 
 LogicalResult LegalizeAvgPool::matchAndRewrite(
-    mhlo::DivOp div_op, OpAdaptor adaptor,
+    stablehlo::DivOp div_op, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   //
   // parse and validate lhs reduce window
@@ -619,14 +622,15 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
 
   auto div_lhs = div_op.getLhs();
   // If div's input is transposed, save it to chain on the new pool op.
-  mhlo::TransposeOp opt_final_tpose;
+  stablehlo::TransposeOp opt_final_tpose;
   if (auto div_lhs_op = div_lhs.getDefiningOp()) {
-    opt_final_tpose = llvm::dyn_cast_or_null<mhlo::TransposeOp>(div_lhs_op);
+    opt_final_tpose =
+        llvm::dyn_cast_or_null<stablehlo::TransposeOp>(div_lhs_op);
   }
 
-  auto rw_lhs_val = RecursivelyWalkUp<mhlo::TransposeOp>(div_lhs);
-  auto rw_lhs =
-      llvm::dyn_cast_or_null<mhlo::ReduceWindowOp>(rw_lhs_val.getDefiningOp());
+  auto rw_lhs_val = RecursivelyWalkUp<stablehlo::TransposeOp>(div_lhs);
+  auto rw_lhs = llvm::dyn_cast_or_null<stablehlo::ReduceWindowOp>(
+      rw_lhs_val.getDefiningOp());
   if (!rw_lhs) {
     return rewriter.notifyMatchFailure(
         div_op, "Could not match lhs of div on reduce window.");
@@ -643,7 +647,7 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
   }
 
   // Check that the reduce-window is a sum-reduce-window.
-  if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw_lhs.getBody()))) {
+  if (failed(MatchBinaryReduceFunction<stablehlo::AddOp>(rw_lhs.getBody()))) {
     return rewriter.notifyMatchFailure(div_op,
                                        "Failed to match rw lhs binary func.");
   }
@@ -688,8 +692,9 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
 
   {
     DenseFPElementsAttr divisor;
-    auto div_rhs = RecursivelyWalkUp<mhlo::BroadcastInDimOp, mhlo::TransposeOp>(
-        div_op.getRhs());
+    auto div_rhs =
+        RecursivelyWalkUp<stablehlo::BroadcastInDimOp, stablehlo::TransposeOp>(
+            div_op.getRhs());
     if (matchPattern(div_rhs, m_Constant(&divisor))) {
       if (!divisor.isSplat()) {
         return failure();
@@ -718,10 +723,11 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
   //=-----
 
   {
-    Value divisor = RecursivelyWalkUp<mhlo::BroadcastInDimOp, mhlo::ReshapeOp,
-                                      mhlo::TransposeOp>(div_op.getRhs());
+    Value divisor =
+        RecursivelyWalkUp<stablehlo::BroadcastInDimOp, stablehlo::ReshapeOp,
+                          stablehlo::TransposeOp>(div_op.getRhs());
     auto rw_rhs =
-        dyn_cast_or_null<mhlo::ReduceWindowOp>(divisor.getDefiningOp());
+        dyn_cast_or_null<stablehlo::ReduceWindowOp>(divisor.getDefiningOp());
     if (!rw_rhs) {
       return rewriter.notifyMatchFailure(
           div_op, "Rhs of div op is not a reduce window.");
@@ -738,7 +744,7 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
     }
 
     // Check that RHS is a sum-reduce-window.
-    if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw_rhs.getBody()))) {
+    if (failed(MatchBinaryReduceFunction<stablehlo::AddOp>(rw_rhs.getBody()))) {
       return rewriter.notifyMatchFailure(
           div_op, "Rhs rw body function is not an add op.");
     }
@@ -756,8 +762,9 @@ LogicalResult LegalizeAvgPool::matchAndRewrite(
                                          "Rhs rw init vals is not zero.");
     }
 
-    rw_rhs_input = RecursivelyWalkUp<mhlo::BroadcastInDimOp, mhlo::TransposeOp>(
-        rw_rhs_input);
+    rw_rhs_input =
+        RecursivelyWalkUp<stablehlo::BroadcastInDimOp, stablehlo::TransposeOp>(
+            rw_rhs_input);
     DenseFPElementsAttr rhs_input_data;
     if (!matchPattern(rw_rhs_input, m_Constant(&rhs_input_data)) ||
         !rhs_input_data.isSplat() ||
@@ -788,8 +795,8 @@ void PopulateLegalizeReduceWindowPatterns(MLIRContext* ctx,
                                           RewritePatternSet& patterns,
                                           ConversionTarget& target) {
   patterns.add<LegalizeAvgPool, LegalizeMaxPool, LegalizeCumSum>(ctx);
-  target.addDynamicallyLegalOp<mhlo::ReduceWindowOp>(IsReduceWindowLegal);
-  target.addDynamicallyLegalOp<mhlo::DivOp>(IsDivideLegal);
+  target.addDynamicallyLegalOp<stablehlo::ReduceWindowOp>(IsReduceWindowLegal);
+  target.addDynamicallyLegalOp<stablehlo::DivOp>(IsDivideLegal);
 }
 
 void PopulatePrepareReduceWindowPatterns(MLIRContext* ctx,
