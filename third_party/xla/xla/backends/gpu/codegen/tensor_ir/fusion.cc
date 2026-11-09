@@ -17,17 +17,18 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "cuda_tile/Dialect/CudaTile/IR/Dialect.h"
+#include "tensor_ir/Artifact/TensorIRArtifact.h"
 #include "tensor_ir/Compiler/Compiler.h"
 #include "tensor_ir/Dialect/TensorIR.h"
 #include "tensor_ir/Dialect/TensorIRAttrs.h"
 #include "tensor_ir/Options/Options.h"
 #include "tensor_ir/Options/OptionsEnums.h"
+#include "tensor_ir/Support/Status.h"
 #include "tensor_ir/Utils/ComputeCapability.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -60,17 +61,87 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/mlir/utils/error_util.h"
+#include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/tools/hlo_decomposer.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
 namespace {
+
+using ::tensor_ir::rt::TensorIRArtifact;
+
+// Runs `compiler.compile()` while dumping the fusion HLO, TensorIR MLIR,
+// lowered CudaTile MLIR, and TileIR bytecode for whichever stages succeed.
+mlir::nv_tensor_ir::StatusOr<std::unique_ptr<TensorIRArtifact>>
+CompileWithDumping(mlir::nv_tensor_ir::ICompiler& compiler,
+                   const HloFusionInstruction& fusion, mlir::ModuleOp module,
+                   mlir::nv_tensor_ir::CompilerInvocation compile_options,
+                   mlir::nv_tensor_ir::SmTarget sm_target) {
+  const HloModule& hlo_module = *fusion.GetModule();
+  DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(fusion.name(), ".hlo"),
+                          ExtractInstructionIntoNewModule(fusion)->ToString());
+  DumpToFileInDirOrStdout(hlo_module, "",
+                          absl::StrCat(fusion.name(), ".tensor_ir.mlir"),
+                          absl::StrCat("// ", compile_options.toString(), "\n",
+                                       llvm_ir::DumpToString(module)));
+
+  tsl::Env* env = tsl::Env::Default();
+  if (std::string temp_base; env->LocalTempFilename(&temp_base)) {
+    compile_options.debug.dumpCudaTileIRPath =
+        absl::StrCat(temp_base, ".cuda_tile.mlir");
+    compile_options.debug.dumpTileIRBCPath =
+        DumpingToStdout(hlo_module.config().debug_options())
+            ? ""
+            : absl::StrCat(temp_base, ".tilebc");
+  }
+
+  mlir::nv_tensor_ir::StatusOr<std::unique_ptr<TensorIRArtifact>> artifact =
+      compiler.compile(module, compile_options);
+
+  if (!compile_options.debug.dumpCudaTileIRPath.empty()) {
+    if (std::string cuda_tile_ir;
+        tsl::ReadFileToString(env, compile_options.debug.dumpCudaTileIRPath,
+                              &cuda_tile_ir)
+            .ok()) {
+      std::string cuda_tile_filename = FilenameFor(
+          hlo_module, "", absl::StrCat(fusion.name(), ".cuda_tile.mlir"));
+      std::string tilebc_filename =
+          FilenameFor(hlo_module, "", absl::StrCat(fusion.name(), ".tilebc"));
+      std::string header = absl::StrCat(
+          "// cuda-tile-translate --mlir-to-cudatilebc ", cuda_tile_filename,
+          " -o ", tilebc_filename, "\n// tileiras --gpu-name=sm_",
+          sm_target.getComputeCapabilityVersion(),
+          " --output-file=", tilebc_filename, ".cubin ", tilebc_filename, "\n");
+      DumpToFileInDirOrStdout(hlo_module, "",
+                              absl::StrCat(fusion.name(), ".cuda_tile.mlir"),
+                              absl::StrCat(header, cuda_tile_ir));
+    }
+    env->DeleteFile(compile_options.debug.dumpCudaTileIRPath).IgnoreError();
+  }
+
+  if (!compile_options.debug.dumpTileIRBCPath.empty()) {
+    if (std::string tile_ir_bc;
+        tsl::ReadFileToString(env, compile_options.debug.dumpTileIRBCPath,
+                              &tile_ir_bc)
+            .ok()) {
+      DumpToFileInDir(hlo_module, "", absl::StrCat(fusion.name(), ".tilebc"),
+                      tile_ir_bc);
+    }
+    env->DeleteFile(compile_options.debug.dumpTileIRBCPath).IgnoreError();
+  }
+
+  return artifact;
+}
 
 // Imports, lowers and compiles the fusion to a cubin.
 absl::StatusOr<KernelReuseCache::Entry> CompileFusion(
@@ -184,14 +255,22 @@ absl::StatusOr<KernelReuseCache::Entry> CompileFusion(
   std::unique_ptr<mlir::nv_tensor_ir::ICompiler> compiler =
       mlir::nv_tensor_ir::ICompiler::create(
           mlir::nv_tensor_ir::CompilerBackend::CudaTile);
-  auto artifact_or = compiler->compile(module, compile_options);
-  if (!artifact_or.ok()) {
+  const HloModule& hlo_module = *fusion.GetModule();
+  const bool should_dump =
+      DumpingEnabledForHloModule(hlo_module) &&
+      DumpingEnabledForEmitter("tensor-ir-fusion",
+                               hlo_module.config().debug_options());
+  mlir::nv_tensor_ir::StatusOr<std::unique_ptr<TensorIRArtifact>> artifact =
+      should_dump ? CompileWithDumping(*compiler, fusion, module,
+                                       std::move(compile_options), *sm_target)
+                  : compiler->compile(module, compile_options);
+  if (!artifact.ok()) {
     return absl::InternalError(
         absl::StrCat("TensorIrFusion: failed to compile fusion ", fusion.name(),
-                     ": ", artifact_or.status().message()));
+                     ": ", artifact.status().message()));
   }
 
-  return tensor_ir::MakeKernelCacheEntry(**artifact_or);
+  return tensor_ir::MakeKernelCacheEntry(**artifact);
 }
 
 }  // namespace
