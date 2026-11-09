@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <ctype.h>
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -105,18 +106,17 @@ absl::Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
     const int64_t repeats = v->i();
     // Apply the same bounds checks as AddArgToSig() in node_def_util.cc,
     // which guards this same number_attr field on the Graph::AddNode() path.
-    // Without them, a negative or overly large `repeats` (attacker-
-    // controlled via a crafted FunctionDef, e.g. in a SavedModel's
-    // GraphDef.library()) converts to a huge size_t in the dtypes->resize()
-    // call below, crashing the process.
-    if (static_cast<int64_t>(static_cast<int32_t>(repeats)) != repeats) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Value for attr '", arg_def.number_attr(), "' is too big: ",
-          repeats));
-    }
+    // Without them, a negative or out-of-int32-range `repeats` either
+    // truncates when narrowed to `int` or converts a negative `int` to a
+    // huge `size_t` in `dtypes->resize()` below, crashing the process.
     if (repeats < 0) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Value for attr '", arg_def.number_attr(), "' is negative: ",
+          repeats));
+    }
+    if (static_cast<int64_t>(static_cast<int32_t>(repeats)) != repeats) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Value for attr '", arg_def.number_attr(), "' is too big: ",
           repeats));
     }
     num = static_cast<int>(repeats);

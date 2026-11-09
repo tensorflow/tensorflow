@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -698,7 +699,7 @@ TEST(InstantiateErrors, NegativeNumberAttrIsRejected) {
 
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
-           "Value for attr 'N' is negative: -1");
+           "INVALID_ARGUMENT: Value for attr 'N' is negative: -1");
 }
 
 // Same as above, but for a number_attr value too large to fit in an int32
@@ -722,7 +723,7 @@ TEST(InstantiateErrors, TooLargeNumberAttrIsRejected) {
 
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
-           "Value for attr 'N' is too big: 4294967296");
+           "INVALID_ARGUMENT: Value for attr 'N' is too big: 4294967296");
 }
 
 TEST(InstantiateErrors, DupArgs) {
