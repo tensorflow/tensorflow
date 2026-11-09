@@ -23,6 +23,10 @@ limitations under the License.
 #include <limits>
 #include <type_traits>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#endif
+
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/macros.h"
 
@@ -31,6 +35,13 @@ namespace tflite {
 #if !(defined(TFLITE_HAS_OVERFLOW_BUILTINS)) && \
     (defined(__GNUC__) || defined(__clang__))
 #define TFLITE_HAS_OVERFLOW_BUILTINS 1
+#endif
+
+#if defined(_MSC_VER) && !defined(__clang__) && _MSC_VER >= 1940 && \
+    (defined(_M_X64) || defined(_M_IX86))
+#define TFLITE_CHECKED_INT_MSVC_INTRINSICS 1
+#else
+#define TFLITE_CHECKED_INT_MSVC_INTRINSICS 0
 #endif
 
 // TFLITE_CHECKED_INT_MERGE_OVERFLOW is used to combine the overflow flag in the
@@ -58,6 +69,12 @@ constexpr uint64_t lo(const uint64_t x) { return x & 0xffffffff; }
 
 // Upper and lower halves of the 128-bit product of `a` and `b`.
 inline uint64_t MulWide(uint64_t a, uint64_t b, uint64_t* high) noexcept {
+#if defined(_MSC_VER) && !defined(__clang__) && defined(_M_X64)
+  return _umul128(a, b, high);
+#elif defined(_MSC_VER) && !defined(__clang__) && defined(_M_ARM64)
+  *high = __umulh(a, b);
+  return a * b;
+#else
   const uint64_t hia = hi(a);
   const uint64_t loa = lo(a);
   const uint64_t hib = hi(b);
@@ -69,6 +86,7 @@ inline uint64_t MulWide(uint64_t a, uint64_t b, uint64_t* high) noexcept {
   const uint64_t cross = hi(lo_lo) + lo(hi_lo) + lo_hi;
   *high = hi_hi + hi(hi_lo) + hi(cross);
   return a * b;
+#endif
 }
 
 // Representation of operands using a 64 bit magnitude and a sign.
@@ -166,6 +184,49 @@ bool AddOverflow(R a, R b, R* res) noexcept {
 #endif
 }
 
+#if TFLITE_CHECKED_INT_MSVC_INTRINSICS
+template <>
+inline bool AddOverflow(int32_t a, int32_t b, int32_t* res) noexcept {
+  return _add_overflow_i32(0, a, b, res);
+}
+
+template <>
+inline bool AddOverflow(uint32_t a, uint32_t b, uint32_t* res) noexcept {
+  return _addcarry_u32(0, a, b, res);
+}
+
+// `long` and `unsigned long` are 32-bit types distinct from `int32_t` and
+// `uint32_t` with MSVC.
+template <>
+inline bool AddOverflow(long a, long b, long* res) noexcept {
+  int32_t r;
+  const bool overflow = AddOverflow<int32_t>(a, b, &r);
+  *res = r;
+  return overflow;
+}
+
+template <>
+inline bool AddOverflow(unsigned long a, unsigned long b,
+                        unsigned long* res) noexcept {
+  uint32_t r;
+  const bool overflow = AddOverflow<uint32_t>(a, b, &r);
+  *res = r;
+  return overflow;
+}
+
+#if defined(_M_X64)
+template <>
+inline bool AddOverflow(int64_t a, int64_t b, int64_t* res) noexcept {
+  return _add_overflow_i64(0, a, b, res);
+}
+
+template <>
+inline bool AddOverflow(uint64_t a, uint64_t b, uint64_t* res) noexcept {
+  return _addcarry_u64(0, a, b, res);
+}
+#endif  // defined(_M_X64)
+#endif  // TFLITE_CHECKED_INT_MSVC_INTRINSICS
+
 // Defined below; used by the overload for operands of different types.
 template <class R>
 bool SubOverflow(R a, R b, R* res) noexcept;
@@ -216,6 +277,49 @@ bool SubOverflow(R a, R b, R* res) noexcept {
   }
 #endif
 }
+
+#if TFLITE_CHECKED_INT_MSVC_INTRINSICS
+template <>
+inline bool SubOverflow(int32_t a, int32_t b, int32_t* res) noexcept {
+  return _sub_overflow_i32(0, a, b, res);
+}
+
+template <>
+inline bool SubOverflow(uint32_t a, uint32_t b, uint32_t* res) noexcept {
+  return _subborrow_u32(0, a, b, res);
+}
+
+// `long` and `unsigned long` are 32-bit types distinct from `int32_t` and
+// `uint32_t` with MSVC.
+template <>
+inline bool SubOverflow(long a, long b, long* res) noexcept {
+  int32_t r;
+  const bool overflow = SubOverflow<int32_t>(a, b, &r);
+  *res = r;
+  return overflow;
+}
+
+template <>
+inline bool SubOverflow(unsigned long a, unsigned long b,
+                        unsigned long* res) noexcept {
+  uint32_t r;
+  const bool overflow = SubOverflow<uint32_t>(a, b, &r);
+  *res = r;
+  return overflow;
+}
+
+#if defined(_M_X64)
+template <>
+inline bool SubOverflow(int64_t a, int64_t b, int64_t* res) noexcept {
+  return _sub_overflow_i64(0, a, b, res);
+}
+
+template <>
+inline bool SubOverflow(uint64_t a, uint64_t b, uint64_t* res) noexcept {
+  return _subborrow_u64(0, a, b, res);
+}
+#endif  // defined(_M_X64)
+#endif  // TFLITE_CHECKED_INT_MSVC_INTRINSICS
 
 template <class A, class B, class R>
 bool SubOverflow(A a, B b, R* res) noexcept {
@@ -287,6 +391,47 @@ bool MulOverflow(R a, R b, R* res) noexcept {
   }
 #endif
 }
+
+// `uint32_t` multiplication keeps the generic 64-bit product, which is faster
+// than `_mul_full_overflow_u32` with cl.
+#if TFLITE_CHECKED_INT_MSVC_INTRINSICS
+template <>
+inline bool MulOverflow(int32_t a, int32_t b, int32_t* res) noexcept {
+  return _mul_overflow_i32(a, b, res);
+}
+
+// `long` and `unsigned long` are 32-bit types distinct from `int32_t` and
+// `uint32_t` with MSVC.
+template <>
+inline bool MulOverflow(long a, long b, long* res) noexcept {
+  int32_t r;
+  const bool overflow = MulOverflow<int32_t>(a, b, &r);
+  *res = r;
+  return overflow;
+}
+
+template <>
+inline bool MulOverflow(unsigned long a, unsigned long b,
+                        unsigned long* res) noexcept {
+  uint32_t r;
+  const bool overflow = MulOverflow<uint32_t>(a, b, &r);
+  *res = r;
+  return overflow;
+}
+
+#if defined(_M_X64)
+template <>
+inline bool MulOverflow(int64_t a, int64_t b, int64_t* res) noexcept {
+  return _mul_overflow_i64(a, b, res);
+}
+
+template <>
+inline bool MulOverflow(uint64_t a, uint64_t b, uint64_t* res) noexcept {
+  uint64_t high;
+  return _mul_full_overflow_u64(a, b, res, &high);
+}
+#endif  // defined(_M_X64)
+#endif  // TFLITE_CHECKED_INT_MSVC_INTRINSICS
 
 template <class A, class B, class R>
 bool MulOverflow(A a, B b, R* res) noexcept {
@@ -627,6 +772,7 @@ CheckedInt<std::common_type_t<T, U>> operator/(
 }
 
 #undef TFLITE_CHECKED_INT_MERGE_OVERFLOW
+#undef TFLITE_CHECKED_INT_MSVC_INTRINSICS
 
 }  // namespace tflite
 
