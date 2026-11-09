@@ -102,9 +102,7 @@ class CudnnGraph : public dnn::DnnGraph {
 };
 
 // Minimum cuDNN runtime for deviceless cuDNN graph compilation.
-// Technically older versions support deviceless compilation, but they have
-// various bugs.
-inline constexpr SemanticVersion kMinDevicelessCudnnVersion{9, 23, 0};
+inline constexpr SemanticVersion kMinDevicelessCudnnVersion{9, 15, 0};
 
 // Returns whether the loaded cuDNN runtime is at least
 // kMinDevicelessCudnnVersion. CudnnGraph::Prepare refuses deviceless
