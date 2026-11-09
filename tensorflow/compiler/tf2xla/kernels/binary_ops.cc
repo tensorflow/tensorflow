@@ -127,32 +127,40 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   if (DataTypeIsFloating(dtype)) {
-    if (dtype == DataType::DT_BFLOAT16) {
-      // The result of a BF16 division may produce the Ceil of what was
-      // computed by F32 division, so avoid end user confusion by doing the
-      // intermediate divide in F32.
-      return xla::ConvertElementType(
-          xla::Floor(xla::Div(xla::ConvertElementType(x, xla::F32),
-                              xla::ConvertElementType(y, xla::F32))),
-          xla::BF16);
-    } else if (dtype == DataType::DT_HALF) {
-      return xla::ConvertElementType(
-          xla::Floor(xla::Div(xla::ConvertElementType(x, xla::F32),
-                              xla::ConvertElementType(y, xla::F32))),
-          xla::F16);
-    } else if (dtype == DataType::DT_FLOAT) {
-      // Single-precision division x / y may produce an intermediate quotient that
-      // rounds up when |x / y| exceeds 2^24 due to reciprocal multiplication,
-      // causing floor(x / y) to evaluate to ceil(x / y) and violating the division
-      // identity floordiv(x, y) * y + floormod(x, y) == x. Compute in F64 to
-      // match eager mode precision.
-      return xla::ConvertElementType(
-          xla::Floor(xla::Div(xla::ConvertElementType(x, xla::F64),
-                              xla::ConvertElementType(y, xla::F64))),
-          xla::F32);
-    } else {
-      return xla::Floor(xla::Div(x, y));
+    DataType compute_dtype = dtype;
+    xla::PrimitiveType target_type = xla::F32;
+    bool needs_cast = (dtype == DataType::DT_BFLOAT16 ||
+                       dtype == DataType::DT_HALF);
+    if (needs_cast) {
+      target_type = (dtype == DataType::DT_BFLOAT16) ? xla::BF16 : xla::F16;
+      compute_dtype = DataType::DT_FLOAT;
+      x = xla::ConvertElementType(x, xla::F32);
+      y = xla::ConvertElementType(y, xla::F32);
     }
+    auto zero = XlaHelpers::Zero(b, compute_dtype);
+    auto q = xla::Floor(xla::Div(x, y));
+    auto trunc_mod = xla::Rem(x, y);
+    auto trunc_mod_not_zero = xla::Ne(trunc_mod, zero);
+    auto do_plus =
+        xla::And(xla::Ne(xla::Lt(trunc_mod, zero), xla::Lt(y, zero)),
+                 trunc_mod_not_zero);
+    auto r = xla::Select(do_plus, xla::Add(trunc_mod, y), trunc_mod);
+
+    // When constant-divisor reciprocal optimization introduces overshoot or
+    // undershoot, refine q using the division identity residual err = q*y+r-x.
+    auto recon0 = xla::Add(xla::Mul(q, y), r);
+    auto err = xla::Sub(recon0, x);
+    auto step = xla::RoundNearestEven(xla::Div(err, y));
+    auto q_refined = xla::Sub(q, step);
+
+    auto is_finite = xla::And(xla::IsFinite(x),
+                              xla::And(xla::IsFinite(y), xla::Ne(y, zero)));
+    auto res = xla::Select(is_finite, q_refined, q);
+
+    if (needs_cast) {
+      return xla::ConvertElementType(res, target_type);
+    }
+    return res;
   }
   if (DataTypeIsUnsigned(dtype)) {
     return xla::Div(x, y);
@@ -202,34 +210,6 @@ XLA_MAKE_BINARY(Xdivy, XdivyImpl(lhs, rhs, broadcast_helper));
 static xla::XlaOp FloorModImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
-  if (DataTypeIsFloating(dtype)) {
-    if (dtype == DataType::DT_FLOAT) {
-      // Compute remainder in F64 to preserve precision and maintain
-      // the division identity floordiv(x, y) * y + floormod(x, y) == x.
-      auto x_f64 = xla::ConvertElementType(x, xla::F64);
-      auto y_f64 = xla::ConvertElementType(y, xla::F64);
-      auto zero_f64 = XlaHelpers::Zero(b, DT_DOUBLE);
-      auto trunc_mod_f64 = xla::Rem(x_f64, y_f64);
-      auto trunc_mod_not_zero = xla::Ne(trunc_mod_f64, zero_f64);
-      auto do_plus = xla::And(
-          xla::Ne(xla::Lt(trunc_mod_f64, zero_f64), xla::Lt(y_f64, zero_f64)),
-          trunc_mod_not_zero);
-      auto res_f64 = xla::Select(do_plus, xla::Add(trunc_mod_f64, y_f64), trunc_mod_f64);
-      return xla::ConvertElementType(res_f64, xla::F32);
-    } else if (dtype == DataType::DT_BFLOAT16 || dtype == DataType::DT_HALF) {
-      auto x_f32 = xla::ConvertElementType(x, xla::F32);
-      auto y_f32 = xla::ConvertElementType(y, xla::F32);
-      auto zero_f32 = XlaHelpers::Zero(b, DT_FLOAT);
-      auto trunc_mod_f32 = xla::Rem(x_f32, y_f32);
-      auto trunc_mod_not_zero = xla::Ne(trunc_mod_f32, zero_f32);
-      auto do_plus = xla::And(
-          xla::Ne(xla::Lt(trunc_mod_f32, zero_f32), xla::Lt(y_f32, zero_f32)),
-          trunc_mod_not_zero);
-      auto res_f32 = xla::Select(do_plus, xla::Add(trunc_mod_f32, y_f32), trunc_mod_f32);
-      return xla::ConvertElementType(
-          res_f32, dtype == DataType::DT_BFLOAT16 ? xla::BF16 : xla::F16);
-    }
-  }
   auto zero = XlaHelpers::Zero(b, dtype);
   auto trunc_mod = xla::Rem(x, y);
   auto trunc_mod_not_zero = xla::Ne(trunc_mod, zero);

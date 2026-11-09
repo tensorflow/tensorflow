@@ -145,13 +145,32 @@ def LowerRightShiftUnsigned :
        (BinBroadcastDimensions $l, $r)),
       [(UnsignedIntTensor $r)]>;
 
-// Performs a substitution of FloorDiv, pseudo code below:
+// Performs a substitution of FloorDiv for float tensors, pseudo code below:
 //
-//  return floor(div(x, y))
+//  T q = floor(div(x, y));
+//  T r = floormod(x, y);
+//  T err = (q * y + r) - x;
+//  T step = round(div(err, y));
+//  return is_finite(q) ? q - step : q;
 def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
-          (StableHLO_FloorOp
-           (CHLO_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r))),
-          [(IEEEFloatTensor $l)]>;
+      (StableHLO_SelectOp
+       (StableHLO_IsFiniteOp
+        (StableHLO_FloorOp:$q
+         (CHLO_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)))),
+       (CHLO_BroadcastSubOp
+        $q,
+        (StableHLO_RoundNearestEvenOp
+         (CHLO_BroadcastDivOp
+          (CHLO_BroadcastSubOp
+           (CHLO_BroadcastAddOp
+            (CHLO_BroadcastMulOp $q, $r, (BinBroadcastDimensions $q, $r)),
+            (TF_FloorModOp $l, $r),
+            (BinBroadcastDimensions $q, $l)),
+           $l, (BinBroadcastDimensions $q, $l)),
+          $r, (BinBroadcastDimensions $q, $r))),
+        (BinBroadcastDimensions $q, $r)),
+       $q),
+      [(IEEEFloatTensor $l)]>;
 
 // Performs a substitution of FloorDiv for integer tensors, which required
 // additional correction for a negative numerator / denominator. Equivalent

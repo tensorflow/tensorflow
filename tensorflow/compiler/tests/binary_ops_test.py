@@ -857,35 +857,41 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
   def testFloorDivModIdentityLargeMagnitudes(self):
     """Regression test for #118642: floordiv(x, y) * y + floormod(x, y) == x."""
-    for dtype in [np.float32, np.float64]:
-      test_cases = [
-          (1e8, 7.0),
-          (1e10, 3.0),
-          (1e10, 7.0),
-          (1e10, 0.007),
-          (-1e10, 3.0),
-          (1e10, -3.0),
-          (-1e10, -3.0),
-      ]
+    for dtype in self.float_types:
+      if dtype in (np.float32, np.float64):
+        test_cases = [
+            (1e8, 7.0),
+            (1e10, 3.0),
+            (1e10, 7.0),
+            (1e10, 0.007),
+            (-1e10, 3.0),
+            (1e10, -3.0),
+            (-1e10, -3.0),
+            (55.0, 55.0),
+            (49.0, 49.0),
+        ]
+      else:
+        test_cases = [
+            (55.0, 55.0),
+            (49.0, 49.0),
+            (100.0, 3.0),
+            (1000.0, 7.0),
+            (-1000.0, 7.0),
+            (1000.0, -7.0),
+            (-1000.0, -7.0),
+        ]
       for x_val, y_val in test_cases:
         x_np = np.array([x_val], dtype=dtype)
         y_np = np.array([y_val], dtype=dtype)
         with self.session() as session:
           with self.test_scope():
             x_tf = array_ops.placeholder(dtype, shape=[1])
-            y_tf = array_ops.placeholder(dtype, shape=[1])
+            y_tf = constant_op.constant(y_np)
             div_tf = math_ops.floordiv(x_tf, y_tf)
             mod_tf = math_ops.floormod(x_tf, y_tf)
             recon_tf = div_tf * y_tf + mod_tf
-          div_val, mod_val, recon_val = session.run(
-              [div_tf, mod_tf, recon_tf], {x_tf: x_np, y_tf: y_np}
-          )
-          self.assertAllClose(
-              recon_val,
-              x_np,
-              rtol=1e-5 if dtype == np.float32 else 1e-12,
-              msg=f"Division identity violated for x={x_val}, y={y_val}",
-          )
+          recon_val = session.run(recon_tf, {x_tf: x_np})
+          self.assertAllEqual(recon_val, x_np)
 
   def testLogicalOps(self):
     self._testBinary(
