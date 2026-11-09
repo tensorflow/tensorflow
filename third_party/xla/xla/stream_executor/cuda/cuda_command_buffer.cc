@@ -895,6 +895,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
   const auto& cuda_kernel = static_cast<const CudaKernel&>(kernel);
   ABSL_RETURN_IF_ERROR(cuda_kernel.UpdateMaxDynamicSharedMemoryBytes(
       args.number_of_shared_bytes()));
+  ABSL_RETURN_IF_ERROR(cuda_kernel.UpdateNonPortableClusterSize(cluster_dims));
 
   std::unique_ptr<KernelArgsPackedArrayBase> repacked;
   const KernelArgsPackedArrayBase* packed_args = &args;
@@ -996,6 +997,7 @@ absl::Status CudaCommandBuffer::UpdateKernelNode(
   const auto& cuda_kernel = static_cast<const CudaKernel&>(kernel);
   ABSL_RETURN_IF_ERROR(cuda_kernel.UpdateMaxDynamicSharedMemoryBytes(
       args.number_of_shared_bytes()));
+  ABSL_RETURN_IF_ERROR(cuda_kernel.UpdateNonPortableClusterSize(cluster_dims));
 
   std::unique_ptr<KernelArgsPackedArrayBase> repacked;
   const KernelArgsPackedArrayBase* packed_args = &args;

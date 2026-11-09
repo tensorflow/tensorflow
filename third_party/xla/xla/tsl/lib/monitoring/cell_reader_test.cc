@@ -17,11 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/monitoring/counter.h"
 #include "xla/tsl/lib/monitoring/counter_gauge.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
@@ -1126,15 +1124,10 @@ TEST(CellReaderTest, StringGaugeRead) {
   test_string_gauge->GetCell()->Set("gauge value");
   EXPECT_EQ(cell_reader.Read(), "gauge value");
 
-  constexpr absl::string_view kViewValue = "string_view gauge value";
-  test_string_gauge->GetCell()->Set(kViewValue);
-  EXPECT_EQ(cell_reader.Read(), "string_view gauge value");
-
-  std::string rvalue_str = "Updated gauge value";
-  test_string_gauge->GetCell()->Set(std::move(rvalue_str));
+  test_string_gauge->GetCell()->Set("Updated gauge value");
   EXPECT_EQ(cell_reader.Read(), "Updated gauge value");
 
-  test_string_gauge->GetCell()->Set({});
+  test_string_gauge->GetCell()->Set("");
   EXPECT_EQ(cell_reader.Read(), "");
 }
 

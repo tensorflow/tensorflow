@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"

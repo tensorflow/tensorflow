@@ -501,6 +501,43 @@ int64_t GetNumWarps(int64_t largest_live_tile_size) {
   return 8;
 }
 
+// Returns the size of the `tiled_hlo` tile that is used to pick the number of
+// warps.
+//
+// Fusion operand and root tiles count in full. Non-root broadcasts and
+// constants are skipped because they materialize as part of their users'
+// tiles. A non-root iota counts only its extent along `iota_dimension`, from
+// which it is broadcast. Other intermediates are scaled by
+// `min(element_bytes, 4) / 4`, a discount for narrow types such as `pred`.
+int64_t GetLiveTileSizeForNumWarps(const HloFusionAdaptor& fusion_adaptor,
+                                   const TiledHloInstruction* tiled_hlo,
+                                   bool is_root) {
+  const HloInstruction* hlo = tiled_hlo->hlo();
+  absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
+      tiled_hlo->tile(0).GetStaticTileSizes();
+  CHECK_OK(tile_sizes);
+  if (is_root || !fusion_adaptor.ContainsInstruction(hlo)) {
+    return GetPaddedTileSize(*tile_sizes);
+  }
+  if (HloPredicateIsOp<HloOpcode::kBroadcast, HloOpcode::kConstant>(hlo)) {
+    return 1;
+  }
+  int64_t padded_tile_size =
+      hlo->opcode() == HloOpcode::kIota
+          ? llvm::PowerOf2Ceil(
+                (*tile_sizes)[Cast<HloIotaInstruction>(hlo)->iota_dimension()])
+          : GetPaddedTileSize(*tile_sizes);
+  // Tuple-shaped instructions (e.g. variadic reduce) are not scaled.
+  if (!hlo->shape().IsArray()) {
+    return padded_tile_size;
+  }
+  constexpr int64_t kBytesPerRegister = 4;
+  int64_t element_bytes = std::min<int64_t>(
+      ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type()),
+      kBytesPerRegister);
+  return CeilOfRatio(padded_tile_size * element_bytes, kBytesPerRegister);
+}
+
 // Holds dot launch resource footprints and compute/runtime estimates.
 struct DotEstimates {
   absl::Duration compute_time = absl::ZeroDuration();
@@ -837,7 +874,7 @@ absl::StatusOr<std::optional<TiledRunTimeData>> EstimateTiledRunTimeDataImpl(
       BlockLevelParametersForTiling(tiled_hlo_computation);
   block_level_parameters.num_warps =
       GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
-          tiled_hlo_computation);
+          fusion_adaptor, tiled_hlo_computation);
 
   ABSL_ASSIGN_OR_RETURN(
       EstimateRunTimeData estimate_run_time_data,
@@ -1317,19 +1354,20 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
 
 /*static*/
 int64_t GpuPerformanceModelWithIndexingAnalysis::EstimateNumWarps(
+    const HloFusionAdaptor& fusion_adaptor,
     const TiledHloComputation& tiled_hlo_computation) {
   // Decide on the number of warps to use based on the largest live tile size
   // at any given point within the computation.
   int64_t largest_live_tile_size = 1;
+  const auto roots = tiled_hlo_computation.roots();
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation, /*num_blocks_at_root=*/1,
       [&](const TiledHloInstruction* tiled_hlo,
           const RegionExecutionInfo& /*info_cur_hlo*/, bool /*in_dot_region*/) {
-        absl::StatusOr<llvm::SmallVector<int64_t>> tile_sizes =
-            tiled_hlo->tile(0).GetStaticTileSizes();
-        CHECK_OK(tile_sizes);
-        largest_live_tile_size =
-            std::max(largest_live_tile_size, GetPaddedTileSize(*tile_sizes));
+        bool is_root = absl::c_linear_search(roots, tiled_hlo);
+        largest_live_tile_size = std::max(
+            largest_live_tile_size,
+            GetLiveTileSizeForNumWarps(fusion_adaptor, tiled_hlo, is_root));
       });
   return GetNumWarps(largest_live_tile_size);
 }
