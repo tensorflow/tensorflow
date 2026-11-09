@@ -158,6 +158,12 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
   return _array_ops.pad(input_tensor, paddings)
 
 
+def _rename_input_arg_doc(doc):
+  """Renames input to input_tensor in generated op docstrings."""
+  doc = doc.replace("`input`", "`input_tensor`")
+  return re.sub(r"(?m)^( +)input:", r"\1input_tensor:", doc)
+
+
 def _rfft_wrapper(fft_fn, fft_rank, default_name):
   """Wrapper around gen_spectral_ops.rfft* that infers fft_length argument."""
 
@@ -190,6 +196,7 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
   if fft_fn.__doc__ is not None:
     _rfft.__doc__ = re.sub("    Tcomplex.*?\n", "", fft_fn.__doc__)
+    _rfft.__doc__ = _rename_input_arg_doc(_rfft.__doc__)
   return _rfft
 
 
@@ -224,11 +231,8 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
 
   if ifft_fn.__doc__ is not None:
-    _irfft.__doc__ = re.sub(
-        "`input`",
-        "`input_tensor`",
-        re.sub("    Treal.*?\n", "", ifft_fn.__doc__),
-    )
+    _irfft.__doc__ = re.sub("    Treal.*?\n", "", ifft_fn.__doc__)
+    _irfft.__doc__ = _rename_input_arg_doc(_irfft.__doc__)
   return _irfft
 
 
@@ -271,6 +275,7 @@ def _fftn_wrapper(fft_n, default_name):
 
   if fft_n.__doc__ is not None:
     _fftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", fft_n.__doc__)
+    _fftn.__doc__ = _rename_input_arg_doc(_fftn.__doc__)
   return _fftn
 
 
@@ -313,6 +318,7 @@ def _ifftn_wrapper(ifft_n, default_name):
 
   if ifft_n.__doc__ is not None:
     _ifftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", ifft_n.__doc__)
+    _ifftn.__doc__ = _rename_input_arg_doc(_ifftn.__doc__)
   return _ifftn
 
 
@@ -372,6 +378,7 @@ def _rfftn_wrapper(rfft_n, default_name):
 
   if rfft_n.__doc__ is not None:
     _rfftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", rfft_n.__doc__)
+    _rfftn.__doc__ = _rename_input_arg_doc(_rfftn.__doc__)
   return _rfftn
 
 
@@ -426,11 +433,8 @@ def _irfftn_wrapper(irfft_n, default_name):
       )
 
   if irfft_n.__doc__ is not None:
-    _irfftn.__doc__ = re.sub(
-        "`input`",
-        "`input_tensor`",
-        re.sub(r"    Treal.*?\n", "", irfft_n.__doc__),
-    )
+    _irfftn.__doc__ = re.sub(r"    Treal.*?\n", "", irfft_n.__doc__)
+    _irfftn.__doc__ = _rename_input_arg_doc(_irfftn.__doc__)
   return _irfftn
 
 
