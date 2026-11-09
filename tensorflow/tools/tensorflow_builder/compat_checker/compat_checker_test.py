@@ -113,6 +113,32 @@ class CompatCheckerTest(unittest.TestCase):
     # always fail.
     self.assertFalse(self.compat_checker.check_compatibility())
 
+  def testFilterLineKeepsAllLinesWhenBracketPrefixesFirstLine(self):
+    """Multi-line spec with `[` on the first line keeps every line."""
+    self.compat_checker = compat_checker.ConfigCompatChecker(
+        {}, self.test_file)
+    self.assertEqual(
+        self.compat_checker.filter_line("[requirement\ndep1\ndep2]"),
+        ["requirement", "dep1", "dep2"])
+
+  def testFilterLineSingleLineSpecReturnsString(self):
+    """Single-line spec still returns a plain string without brackets."""
+    self.compat_checker = compat_checker.ConfigCompatChecker(
+        {}, self.test_file)
+    self.assertEqual(
+        self.compat_checker.filter_line("[1.0, 2.0, 3.0]"), "1.0, 2.0, 3.0")
+
+  def testFilterLineEmptyLineWarnsWithoutCrashing(self):
+    """Empty input records the empty-line warning and returns []."""
+    self.compat_checker = compat_checker.ConfigCompatChecker(
+        {}, self.test_file)
+    before = len(self.compat_checker.warning_msg)
+    self.assertEqual(self.compat_checker.filter_line(""), [])
+    new_warnings = self.compat_checker.warning_msg[before:]
+    self.assertTrue(
+        any("Empty line" in w for w in new_warnings),
+        "missing empty-line warning, got: %s" % (new_warnings,))
+
 
 if __name__ == "__main__":
   unittest.main()

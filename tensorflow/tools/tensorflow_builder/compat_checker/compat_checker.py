@@ -599,7 +599,8 @@ class ConfigCompatChecker:
             config file.
 
     Returns:
-      String that is a compatibility specification line without `[` and `]`.
+      Compatibility specification line(s) without `[` and `]`: a string
+      for a single-line spec, a list of lines otherwise.
     """
     filtered = []
     warn_msg = []
@@ -608,7 +609,7 @@ class ConfigCompatChecker:
 
     # If arg `line` is empty, then requirement might be missing. Add
     # to warning as this issue will be caught in _Reqs() initialization.
-    if not line and len(split_lines) < 1:
+    if not line:
       warn_msg = "[Warning] Empty line detected while filtering lines."
       logging.warning(warn_msg)
       self.warning_msg.append(warn_msg)
@@ -618,8 +619,13 @@ class ConfigCompatChecker:
     if split_lines[0] == "[":
       filtered = split_lines[1:]
     elif "[" in split_lines[0]:
-      split_lines = split_lines[0].replace("[", "")
-      filtered = split_lines
+      split_lines[0] = split_lines[0].replace("[", "")
+      # Single-line specs stay a string, as convert_to_list expects.
+      # Multi-line specs keep every line.
+      if len(split_lines) == 1:
+        filtered = split_lines[0]
+      else:
+        filtered = split_lines
     # If `[` is missing, then it could be a formatting issue with
     # config file (.ini.). Add to warning.
     else:
@@ -630,9 +636,9 @@ class ConfigCompatChecker:
 
     # In general, last line in requirement definition will include `]`
     # in the config file (.ini). Remove it.
-    if filtered[-1] == "]":
+    if filtered and filtered[-1] == "]":
       filtered = filtered[:-1]
-    elif "]" in filtered[-1]:
+    elif filtered and "]" in filtered[-1]:
       filtered[-1] = filtered[-1].replace("]", "")
     # If `]` is missing, then it could be a formatting issue with
     # config file (.ini.). Add to warning.
