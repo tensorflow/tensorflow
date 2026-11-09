@@ -12,11 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+#include <limits>
+#include <tuple>
+#include <vector>
+
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
@@ -136,5 +147,105 @@ TEST_F(UniformQuantizeOpsTest, PerChannelQuint8Quantize) {
   std::vector<quint8> expected{80, 62, 0, 0, 20, 17};
   TestUniformQuantize<float, quint8>(input, shape, qparams, expected);
 }
+
+class UniformQuantizeInvalidScaleTest
+    : public OpsTestBase,
+      public ::testing::WithParamInterface<std::tuple<DataType, int, float>> {};
+
+TEST_P(UniformQuantizeInvalidScaleTest, RejectsInvalidScale) {
+  const auto [output_type, axis, scale] = GetParam();
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantize")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_FLOAT)
+                   .Attr("Tout", output_type)
+                   .Attr("quantization_axis", axis)
+                   .Attr("quantization_min_val", 0)
+                   .Attr("quantization_max_val", 127)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2}), {0.0f, 2.0f});
+  if (axis == -1) {
+    AddInputFromArray<float>(TensorShape({}), {scale});
+    AddInputFromArray<int32_t>(TensorShape({}), {0});
+  } else {
+    // A valid first channel must not hide an invalid later channel.
+    AddInputFromArray<float>(TensorShape({2}), {0.5f, scale});
+    AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  }
+
+  const auto status = RunOpKernel();
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.message(),
+            "scales must be positive, finite, and not subnormal.");
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ScalarAndPerChannel, UniformQuantizeInvalidScaleTest,
+    ::testing::Combine(
+        ::testing::Values(DT_QINT8, DT_QUINT8, DT_QINT32),
+        ::testing::Values(-1, 0),
+        ::testing::Values(1e-45f, 1e-39f, 3e-39f, 0.0f, -0.0f, -1.0f,
+                          std::numeric_limits<float>::infinity(),
+                          -std::numeric_limits<float>::infinity(),
+                          std::numeric_limits<float>::quiet_NaN())));
+
+TEST_F(UniformQuantizeOpsTest, PerTensorQint32ValidScale) {
+  std::vector<float> input{-2.0f, 0.0f, 2.0f};
+  std::vector<int64_t> shape{3};
+  QParams qparams(-1, -127, 127, {0.5f}, {3});
+  std::vector<qint32> expected{-1, 3, 7};
+  TestUniformQuantize<float, qint32>(input, shape, qparams, expected);
+}
+
+TEST_F(UniformQuantizeOpsTest, PerChannelQint32ValidScales) {
+  std::vector<float> input{-2.0f, 0.0f, 2.0f, -2.0f, 0.0f, 2.0f};
+  std::vector<int64_t> shape{2, 3};
+  QParams qparams(0, -127, 127, {0.5f, 1.0f}, {3, 4});
+  std::vector<qint32> expected{-1, 3, 7, 2, 4, 6};
+  TestUniformQuantize<float, qint32>(input, shape, qparams, expected);
+}
+
+TEST_F(UniformQuantizeOpsTest, SmallNormalValidScale) {
+  std::vector<float> input{0.0f};
+  std::vector<int64_t> shape{1};
+  QParams qparams(-1, -127, 127, {std::numeric_limits<float>::min()}, {3});
+  std::vector<qint8> expected{3};
+  TestUniformQuantize<float, qint8>(input, shape, qparams, expected);
+}
+
+class UniformQuantizeEmptyInputScaleTest
+    : public OpsTestBase,
+      public ::testing::WithParamInterface<std::tuple<DataType, float>> {};
+
+TEST_P(UniformQuantizeEmptyInputScaleTest, RejectsInvalidScale) {
+  const auto [output_type, scale] = GetParam();
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantize")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tin", DT_FLOAT)
+                   .Attr("Tout", output_type)
+                   .Attr("quantization_axis", -1)
+                   .Attr("quantization_min_val", 0)
+                   .Attr("quantization_max_val", 127)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  // Scale validity does not depend on whether there are values to quantize.
+  AddInputFromArray<float>(TensorShape({0}), std::vector<float>{});
+  AddInputFromArray<float>(TensorShape({}), {scale});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
+
+  const auto status = RunOpKernel();
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.message(),
+            "scales must be positive, finite, and not subnormal.");
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ScalarScales, UniformQuantizeEmptyInputScaleTest,
+    ::testing::Combine(::testing::Values(DT_QINT8, DT_QUINT8, DT_QINT32),
+                       ::testing::Values(1e-45f, 1e-39f, 3e-39f)));
 
 }  // namespace tensorflow

@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/tsl/platform/errors.h"
+#include <cmath>
+#include <cstdint>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/math_utils.h"
 #include "tensorflow/core/kernels/uniform_quant_ops/tensor_utils.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -106,6 +109,18 @@ class UniformQuantizeOp : public OpKernel {
     OP_REQUIRES_OK(context, (QuantizationAxisAndShapeValid(
                                 input.shape(), scales.shape(),
                                 zero_points.shape(), quantization_axis_)));
+
+    // AffineQuantize requires a finite reciprocal. A positive normal scale has
+    // one. A positive subnormal scale can have an infinite reciprocal, or be
+    // read as zero when denormals are flushed, so it is rejected in every
+    // floating-point mode.
+    const auto scales_data = scales.flat<float>();
+    for (int64_t i = 0; i < scales_data.size(); ++i) {
+      const float scale = scales_data(i);
+      OP_REQUIRES(context, scale > 0.0f && std::isnormal(scale),
+                  InvalidArgument(
+                      "scales must be positive, finite, and not subnormal."));
+    }
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
