@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
 
+#include <cstdint>
 #include <utility>
 
 #include "absl/memory/memory.h"
@@ -239,9 +240,16 @@ inline bool IsCancellableConstPermTransposeNodePair(
   // seq(0, ..., num_elements - 1) if they are cancellable.
   const auto& fanout_tensor_data = fanout_tensor.unaligned_flat<int32_t>();
   const auto& fanin_tensor_data = fanin_tensor.unaligned_flat<int32_t>();
-  const int num_elements = fanout_tensor.NumElements();
-  for (int i = 0; i < num_elements; ++i) {
-    if (fanout_tensor_data(fanin_tensor_data(i)) != i) {
+  const int64_t num_elements = fanout_tensor.NumElements();
+  for (int64_t i = 0; i < num_elements; ++i) {
+    // The permutations come from Const nodes in the input graph and have not
+    // been validated, so an index outside [0, num_elements) means the pair is
+    // not cancellable rather than an index into fanout_tensor_data.
+    const int32_t index = fanin_tensor_data(i);
+    if (index < 0 || index >= num_elements) {
+      return false;
+    }
+    if (fanout_tensor_data(index) != i) {
       return false;
     }
   }
