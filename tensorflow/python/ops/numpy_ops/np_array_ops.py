@@ -1098,6 +1098,27 @@ def expand_dims(a, axis):
   a = asarray(a)
 
   maybe_rank = a.shape.rank
+  if isinstance(axis, (tuple, list)):
+    # Like np.expand_dims, negative axes count from the end of the output,
+    # whose rank is the input rank plus the number of new axes.
+    if maybe_rank is None:
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) can only be a tuple or '
+          'list for input of known rank.'
+      )
+    out_rank = maybe_rank + len(axis)
+    normalized = [ax + out_rank if ax < 0 else ax for ax in axis]
+    if builtins.any(ax < 0 or ax >= out_rank for ax in normalized):
+      raise ValueError(
+          f'Argument `axis` (received axis={axis}) is out of bounds '
+          f'for output of rank {out_rank}.'
+      )
+    if len(set(normalized)) != len(normalized):
+      raise ValueError('repeated axis in `axis` argument')
+    for ax in sorted(normalized):
+      a = array_ops.expand_dims(a, axis=ax)
+    return a
+
   if maybe_rank is not None and isinstance(axis, (int, np.integer)):
     # Match np.expand_dims behavior: raise a ValueError at trace time for
     # an out-of-bounds axis instead of letting the underlying op produce an

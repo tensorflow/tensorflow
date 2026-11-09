@@ -1424,6 +1424,30 @@ class ArrayMethodsTest(test.TestCase):
       np_array_ops.expand_dims(a, 3)
     with self.assertRaisesRegex(ValueError, 'out of bounds'):
       np_array_ops.expand_dims(a, -4)
+    # A tuple or list of axes, as in np.expand_dims.
+    run_test(a, (0, 2))
+    run_test(a, (-1, 0))
+    run_test(a, [0, 2])
+    run_test(a, ())
+    run_test([1, 2], (0, 2))
+    run_test(3, (0, 1))
+    with self.assertRaisesRegex(ValueError, 'out of bounds'):
+      np_array_ops.expand_dims(a, (0, 4))
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.expand_dims(a, (0, 0))
+    with self.assertRaisesRegex(ValueError, 'repeated axis'):
+      np_array_ops.expand_dims(a, (0, -4))
+
+  def testExpandDimsTupleAxisUnknownRank(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)]
+    )
+    def f(x):
+      return np_array_ops.expand_dims(x, (0, 1))
+
+    with self.assertRaisesRegex(ValueError, 'known rank'):
+      f.get_concrete_function()
 
   def testSqueeze(self):
 
