@@ -46,30 +46,322 @@ namespace tflite {
   (static_cast<bool>(TFLITE_EXPECT_FALSE((OPERAND_OVERFLOW) || (OP_OVERFLOW))))
 #endif
 
-template <class I>
-struct Widen;
+namespace checked_int_internal {
 
-#define TFLITE_DEFINE_WIDEN_TRAIT(BASE, WIDE) \
-  template <>                                 \
-  struct Widen<BASE> {                        \
-    using type = WIDE;                        \
-  }
+template <class R>
+using Widen = std::conditional_t<std::is_signed_v<R>, int64_t, uint64_t>;
 
-TFLITE_DEFINE_WIDEN_TRAIT(int8_t, int16_t);
-TFLITE_DEFINE_WIDEN_TRAIT(int16_t, int32_t);
-TFLITE_DEFINE_WIDEN_TRAIT(int32_t, int64_t);
+// Extracts the 32 high bits of `x`.
+constexpr uint64_t hi(const uint64_t x) { return x >> 32; }
+// Extracts the 32 low bits of `x`.
+constexpr uint64_t lo(const uint64_t x) { return x & 0xffffffff; }
 
-TFLITE_DEFINE_WIDEN_TRAIT(uint8_t, uint16_t);
-TFLITE_DEFINE_WIDEN_TRAIT(uint16_t, uint32_t);
-TFLITE_DEFINE_WIDEN_TRAIT(uint32_t, uint64_t);
+// Upper and lower halves of the 128-bit product of `a` and `b`.
+inline uint64_t MulWide(uint64_t a, uint64_t b, uint64_t* high) noexcept {
+  const uint64_t hia = hi(a);
+  const uint64_t loa = lo(a);
+  const uint64_t hib = hi(b);
+  const uint64_t lob = lo(b);
+  const uint64_t lo_lo = loa * lob;
+  const uint64_t hi_lo = hia * lob;
+  const uint64_t lo_hi = loa * hib;
+  const uint64_t hi_hi = hia * hib;
+  const uint64_t cross = hi(lo_lo) + lo(hi_lo) + lo_hi;
+  *high = hi_hi + hi(hi_lo) + hi(cross);
+  return a * b;
+}
 
-#undef TFLITE_DEFINE_WIDEN_TRAIT
-
-template <class T, class = void>
-struct CanWiden : std::false_type {};
+// Representation of operands using a 64 bit magnitude and a sign.
+//
+// The overloads for operands of different types overflow iff the exact result
+// of the operation does not fit in `R`.
+struct SignMagnitude {
+  bool negative;
+  uint64_t magnitude;
+};
 
 template <class T>
-struct CanWiden<T, std::void_t<decltype(Widen<T>())>> : std::true_type {};
+SignMagnitude ToSignMagnitude(T value) noexcept {
+  if constexpr (std::is_signed_v<T>) {
+    if (value < 0) {
+      return {true, uint64_t{0} - static_cast<uint64_t>(value)};
+    }
+  }
+  return {false, static_cast<uint64_t>(value)};
+}
+
+// Stores the exact result `+/-magnitude` modulo 2^N in `*res` and returns
+// whether it does not fit in `R`. `wide` means that the magnitude is at least
+// 2^64.
+template <class R>
+bool FromSignMagnitude(bool negative, uint64_t magnitude, bool wide,
+                       R* res) noexcept {
+  *res = static_cast<R>(negative ? uint64_t{0} - magnitude : magnitude);
+  if (wide) {
+    return true;
+  }
+  if (negative) {
+    if constexpr (std::is_signed_v<R>) {
+      return magnitude >
+             static_cast<uint64_t>(std::numeric_limits<R>::max()) + 1;
+    } else {
+      return magnitude != 0;
+    }
+  }
+  return magnitude > static_cast<uint64_t>(std::numeric_limits<R>::max());
+}
+
+template <class R>
+bool AddSignMagnitude(SignMagnitude x, SignMagnitude y, R* res) noexcept {
+  if (x.negative == y.negative) {
+    const uint64_t magnitude = x.magnitude + y.magnitude;
+    return FromSignMagnitude(x.negative, magnitude, magnitude < x.magnitude,
+                             res);
+  }
+  if (x.magnitude >= y.magnitude) {
+    return FromSignMagnitude(x.negative, x.magnitude - y.magnitude,
+                             /*wide=*/false, res);
+  }
+  return FromSignMagnitude(y.negative, y.magnitude - x.magnitude,
+                           /*wide=*/false, res);
+}
+
+// Whether every value of `T` is representable in `R`.
+template <class T, class R>
+inline constexpr bool kFitsIn =
+    std::is_signed_v<T> == std::is_signed_v<R>
+        ? sizeof(T) <= sizeof(R)
+        : std::is_unsigned_v<T> && sizeof(T) < sizeof(R);
+
+// Whether `T` is signed and its conversion to the unsigned `R` only changes
+// negative values, by adding 2^N (N being the width of `R`).
+template <class T, class R>
+inline constexpr bool kWrapsInto =
+    std::is_signed_v<T> && std::is_unsigned_v<R> && sizeof(T) <= sizeof(R);
+
+template <class R>
+bool AddOverflow(R a, R b, R* res) noexcept {
+#if TFLITE_HAS_OVERFLOW_BUILTINS
+  return __builtin_add_overflow(a, b, res);
+#else
+  if constexpr (sizeof(R) < sizeof(int64_t)) {
+    using W = Widen<R>;
+    const W wide = static_cast<W>(a) + static_cast<W>(b);
+    *res = static_cast<R>(wide);
+    return wide < static_cast<W>(std::numeric_limits<R>::lowest()) ||
+           wide > static_cast<W>(std::numeric_limits<R>::max());
+  } else if constexpr (std::is_unsigned_v<R>) {
+    *res = a + b;
+    return *res < a;
+  } else {
+    // Signed overflow is undefined behaviour: compute in unsigned and check
+    // whether the sign of the result differs from the sign of both operands.
+    using UR = std::make_unsigned_t<R>;
+    const UR ua = static_cast<UR>(a);
+    const UR ub = static_cast<UR>(b);
+    const UR ures = ua + ub;
+    *res = static_cast<R>(ures);
+    return static_cast<R>((ua ^ ures) & (ub ^ ures)) < 0;
+  }
+#endif
+}
+
+// Defined below; used by the overload for operands of different types.
+template <class R>
+bool SubOverflow(R a, R b, R* res) noexcept;
+
+template <class A, class B, class R>
+bool AddOverflow(A a, B b, R* res) noexcept {
+  if constexpr (kFitsIn<A, R> && kFitsIn<B, R>) {
+    return AddOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else if constexpr (kFitsIn<A, R> && kWrapsInto<B, R>) {
+    if (b < 0) {
+      return SubOverflow<R>(static_cast<R>(a), R{0} - static_cast<R>(b), res);
+    }
+    return AddOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else if constexpr (kWrapsInto<A, R> && kFitsIn<B, R>) {
+    return AddOverflow(b, a, res);
+  } else {
+#if TFLITE_HAS_OVERFLOW_BUILTINS
+    return __builtin_add_overflow(a, b, res);
+#else
+    return AddSignMagnitude(ToSignMagnitude(a), ToSignMagnitude(b), res);
+#endif
+  }
+}
+
+template <class R>
+bool SubOverflow(R a, R b, R* res) noexcept {
+#if TFLITE_HAS_OVERFLOW_BUILTINS
+  return __builtin_sub_overflow(a, b, res);
+#else
+  if constexpr (std::is_unsigned_v<R>) {
+    *res = static_cast<R>(a - b);
+    return a < b;
+  } else if constexpr (sizeof(R) < sizeof(int64_t)) {
+    using W = Widen<R>;
+    const W wide = static_cast<W>(a) - static_cast<W>(b);
+    *res = static_cast<R>(wide);
+    return wide < static_cast<W>(std::numeric_limits<R>::lowest()) ||
+           wide > static_cast<W>(std::numeric_limits<R>::max());
+  } else {
+    // Overflow iff the operands have different signs and the sign of the
+    // result differs from the sign of `a`.
+    using UR = std::make_unsigned_t<R>;
+    const UR ua = static_cast<UR>(a);
+    const UR ub = static_cast<UR>(b);
+    const UR ures = ua - ub;
+    *res = static_cast<R>(ures);
+    return static_cast<R>((ua ^ ub) & (ua ^ ures)) < 0;
+  }
+#endif
+}
+
+template <class A, class B, class R>
+bool SubOverflow(A a, B b, R* res) noexcept {
+  if constexpr (kFitsIn<A, R> && kFitsIn<B, R>) {
+    return SubOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else if constexpr (kFitsIn<A, R> && kWrapsInto<B, R>) {
+    if (b < 0) {
+      return AddOverflow<R>(static_cast<R>(a), R{0} - static_cast<R>(b), res);
+    }
+    return SubOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else if constexpr (kWrapsInto<A, R> && kFitsIn<B, R>) {
+    if (a < 0) {
+      // A negative `a` minus a non-negative `b` is negative.
+      *res = static_cast<R>(a) - static_cast<R>(b);
+      return true;
+    }
+    return SubOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else {
+#if TFLITE_HAS_OVERFLOW_BUILTINS
+    return __builtin_sub_overflow(a, b, res);
+#else
+    SignMagnitude y = ToSignMagnitude(b);
+    y.negative = !y.negative && y.magnitude != 0;
+    return AddSignMagnitude(ToSignMagnitude(a), y, res);
+#endif
+  }
+}
+
+template <class R>
+bool MulOverflow(R a, R b, R* res) noexcept {
+#if TFLITE_HAS_OVERFLOW_BUILTINS
+  return __builtin_mul_overflow(a, b, res);
+#else
+  if constexpr (sizeof(R) < sizeof(int64_t)) {
+    using W = Widen<R>;
+    const W wide = static_cast<W>(a) * static_cast<W>(b);
+    *res = static_cast<R>(wide);
+    return wide < static_cast<W>(std::numeric_limits<R>::lowest()) ||
+           wide > static_cast<W>(std::numeric_limits<R>::max());
+  } else {
+    static_assert(sizeof(R) == sizeof(uint64_t));
+    const uint64_t ua = static_cast<uint64_t>(a);
+    const uint64_t ub = static_cast<uint64_t>(b);
+    uint64_t upper_64;
+    const uint64_t lower_64 = MulWide(ua, ub, &upper_64);
+    *res = static_cast<R>(lower_64);
+    if constexpr (std::is_signed_v<R>) {
+      // It took a while to understand this.
+      //
+      // If a < 0, then ua = a + 2^64.
+      // So ua * ub = (a + 2^64) * ub
+      //            = a * ub + ub * 2^64
+      //                       ~~~~~~~~~
+      // This means that the upper_64 that we compute above has an extra ub
+      // added to it that we need to remove.
+      //
+      // The same applies for b.
+      if (a < 0) {
+        upper_64 -= ub;
+      }
+      if (b < 0) {
+        upper_64 -= ua;
+      }
+      return upper_64 !=
+             static_cast<uint64_t>(static_cast<int64_t>(lower_64) >> 63);
+    } else {
+      return upper_64 != 0;
+    }
+  }
+#endif
+}
+
+template <class A, class B, class R>
+bool MulOverflow(A a, B b, R* res) noexcept {
+  if constexpr (kFitsIn<A, R> && kFitsIn<B, R>) {
+    return MulOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else if constexpr (kFitsIn<A, R> && kWrapsInto<B, R>) {
+    if (b < 0) {
+      // The product is negative unless `a` is 0.
+      *res = static_cast<R>(a) * static_cast<R>(b);
+      return a != 0;
+    }
+    return MulOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else if constexpr (kWrapsInto<A, R> && kFitsIn<B, R>) {
+    return MulOverflow(b, a, res);
+  } else {
+#if TFLITE_HAS_OVERFLOW_BUILTINS
+    return __builtin_mul_overflow(a, b, res);
+#else
+    const SignMagnitude x = ToSignMagnitude(a);
+    const SignMagnitude y = ToSignMagnitude(b);
+    uint64_t high;
+    const uint64_t magnitude = MulWide(x.magnitude, y.magnitude, &high);
+    return FromSignMagnitude(x.negative != y.negative, magnitude, high != 0,
+                             res);
+#endif
+  }
+}
+
+template <class R>
+bool DivOverflow(R a, R b, R* res) noexcept {
+  bool invalid = b == 0;
+  if constexpr (std::is_signed_v<R>) {
+    invalid = invalid || (a == std::numeric_limits<R>::lowest() && b == -1);
+  }
+  R val = std::numeric_limits<R>::max();
+  if (!TFLITE_EXPECT_FALSE(invalid)) {
+    val = static_cast<R>(a / b);
+  }
+  *res = val;
+  return invalid;
+}
+
+template <class A, class B, class R>
+bool DivOverflow(A a, B b, R* res) noexcept {
+  if constexpr (kFitsIn<A, R> && kFitsIn<B, R>) {
+    return DivOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else if constexpr (kFitsIn<A, R> && kWrapsInto<B, R>) {
+    if (b < 0) {
+      const R q = static_cast<R>(a) / (R{0} - static_cast<R>(b));
+      *res = R{0} - q;
+      return q != 0;
+    }
+    return DivOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else if constexpr (kWrapsInto<A, R> && kFitsIn<B, R>) {
+    // Division by zero is left to the same-type primitive.
+    if (a < 0 && b != 0) {
+      const R q = (R{0} - static_cast<R>(a)) / static_cast<R>(b);
+      *res = R{0} - q;
+      return q != 0;
+    }
+    return DivOverflow<R>(static_cast<R>(a), static_cast<R>(b), res);
+  } else {
+    const SignMagnitude x = ToSignMagnitude(a);
+    const SignMagnitude y = ToSignMagnitude(b);
+    if (y.magnitude == 0) {
+      *res = std::numeric_limits<R>::max();
+      return true;
+    }
+    return FromSignMagnitude(x.negative != y.negative,
+                             x.magnitude / y.magnitude,
+                             /*wide=*/false, res);
+  }
+}
+
+}  // namespace checked_int_internal
 
 // Wraps an integer value and allows checking if standard arithmetic operations
 // used to generate that value have over/underflowed.
@@ -295,38 +587,9 @@ template <class T, class U>
 CheckedInt<std::common_type_t<T, U>> operator+(
     const CheckedInt<T>& a, const CheckedInt<U>& b) noexcept {
   CheckedInt<std::common_type_t<T, U>> res;
-#if TFLITE_HAS_OVERFLOW_BUILTINS
   res.overflow_ = TFLITE_CHECKED_INT_MERGE_OVERFLOW(
       TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_, b.overflow_),
-      __builtin_add_overflow(a.value_, b.value_, &res.value_));
-#else
-  if constexpr (std::is_same_v<T, U>) {
-    if constexpr (std::is_unsigned_v<T>) {
-      res.value_ = a.value_ + b.value_;
-      res.overflow_ = a.overflow_ || b.overflow_ || a.value_ > res.value_;
-    } else {  // is_signed_v<T>
-      // Signed overflow is undefined behaviour. We can only have an overflow
-      // if the signs are the same. Because two's-complement arithmetic works
-      // the same for signed and unsigned, we compute as unsigned and check if
-      // the sign bit has changed.
-      using Unsigned = std::make_unsigned_t<T>;
-      const Unsigned ua = static_cast<Unsigned>(a.value_);
-      const Unsigned ub = static_cast<Unsigned>(b.value_);
-      const Unsigned tmp = ua + ub;
-      constexpr Unsigned mask = static_cast<Unsigned>(1)
-                                << (sizeof(Unsigned) * 8 - 1);
-      const bool same_sign = ~(ua ^ ub) & mask;
-      const bool sign_changed = (tmp ^ ua) & mask;
-      res.value_ = static_cast<T>(tmp);
-      res.overflow_ = a.overflow_ || b.overflow_ || (same_sign && sign_changed);
-    }
-  } else {
-    // Convert elements to the common type first to check for implicit
-    // conversion overflows.
-    return CheckedInt<std::common_type_t<T, U>>(a) +
-           CheckedInt<std::common_type_t<T, U>>(b);
-  }
-#endif
+      checked_int_internal::AddOverflow(a.value_, b.value_, &res.value_));
   return res;
 }
 
@@ -334,38 +597,9 @@ template <class T, class U>
 CheckedInt<std::common_type_t<T, U>> operator-(
     const CheckedInt<T>& a, const CheckedInt<U>& b) noexcept {
   CheckedInt<std::common_type_t<T, U>> res;
-#if TFLITE_HAS_OVERFLOW_BUILTINS
   res.overflow_ = TFLITE_CHECKED_INT_MERGE_OVERFLOW(
       TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_, b.overflow_),
-      __builtin_sub_overflow(a.value_, b.value_, &res.value_));
-#else
-  if constexpr (std::is_same_v<T, U>) {
-    if constexpr (std::is_unsigned_v<T>) {
-      res.value_ = a.value_ - b.value_;
-      res.overflow_ = a.overflow_ || b.overflow_ || a.value_ < res.value_;
-    } else {  // is_signed_v<T>
-      // Signed overflow is undefined behaviour. We can only have an overflow
-      // if the sign opposite of b is the same as the sign of a. Because
-      // two's-complement arithmetic works the same for signed and unsigned,
-      // we compute as unsigned and check if the sign bit has changed.
-      using Unsigned = std::make_unsigned_t<T>;
-      const Unsigned ua = static_cast<Unsigned>(a.value_);
-      const Unsigned ub = static_cast<Unsigned>(b.value_);
-      const Unsigned tmp = ua - ub;
-      constexpr Unsigned mask = static_cast<Unsigned>(1)
-                                << (sizeof(Unsigned) * 8 - 1);
-      const bool same_sign = ~(ua ^ ~ub) & mask;
-      const bool sign_changed = (tmp ^ ua) & mask;
-      res.value_ = static_cast<T>(tmp);
-      res.overflow_ = a.overflow_ || b.overflow_ || (same_sign && sign_changed);
-    }
-  } else {
-    // Convert elements to the common type first to check for implicit
-    // conversion overflows.
-    return CheckedInt<std::common_type_t<T, U>>(a) -
-           CheckedInt<std::common_type_t<T, U>>(b);
-  }
-#endif
+      checked_int_internal::SubOverflow(a.value_, b.value_, &res.value_));
   return res;
 }
 
@@ -373,103 +607,23 @@ template <class T, class U>
 CheckedInt<std::common_type_t<T, U>> operator*(
     const CheckedInt<T>& a, const CheckedInt<U>& b) noexcept {
   CheckedInt<std::common_type_t<T, U>> res;
-#if TFLITE_HAS_OVERFLOW_BUILTINS
   res.overflow_ = TFLITE_CHECKED_INT_MERGE_OVERFLOW(
       TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_, b.overflow_),
-      __builtin_mul_overflow(a.value_, b.value_, &res.value_));
-#else
-  if constexpr (std::is_same_v<T, U>) {
-    using C = decltype(res.value_);
-    if constexpr (CanWiden<C>::value) {
-      using W = typename Widen<C>::type;
-      const W wa = static_cast<W>(a.value_);
-      const W wb = static_cast<W>(b.value_);
-      const W tmp = wa * wb;
-      res = tmp;
-      res.overflow_ |= a.overflow_ || b.overflow_;
-    } else {
-      static_assert(sizeof(C) == sizeof(uint64_t));
-      const uint64_t ua = static_cast<uint64_t>(a.value_);
-      const uint64_t ub = static_cast<uint64_t>(b.value_);
-#define hi(x) (x >> 32)
-#define lo(x) (x & 0xffffffff)
-      const uint64_t hia = hi(ua);
-      const uint64_t loa = lo(ua);
-      const uint64_t hib = hi(ub);
-      const uint64_t lob = lo(ub);
-
-      const uint64_t lo_lo = loa * lob;
-      const uint64_t hi_lo = hia * lob;
-      const uint64_t lo_hi = loa * hib;
-      const uint64_t hi_hi = hia * hib;
-
-      const uint64_t cross = hi(lo_lo) + lo(hi_lo) + lo_hi;
-      uint64_t upper_64 = hi_hi + hi(hi_lo) + hi(cross);
-#undef hi
-#undef lo
-      if constexpr (std::is_signed_v<C>) {
-        // It took a while to understand this.
-        //
-        // If a < 0, then ua = a + 2^64.
-        // So ua * ub = (a + 2^64) * ub
-        //            = a * ub + ub * 2^64
-        //                       ~~~~~~~~~
-        // This means that the upper_64 that we compute above has an extra ub
-        // added to it that we need to remove.
-        //
-        // The same is applied to b below.
-        if (a.value_ < 0) {
-          upper_64 -= ub;
-        }
-        if (b.value_ < 0) {
-          upper_64 -= ua;
-        }
-        const uint64_t lower_64 = ua * ub;
-        const uint64_t sign_ext =
-            static_cast<uint64_t>(static_cast<int64_t>(lower_64) >> 63);
-        res.overflow_ = a.overflow_ || b.overflow_ || (upper_64 != sign_ext);
-      } else {
-        res.overflow_ = a.overflow_ || b.overflow_ || (upper_64 != 0);
-      }
-      res.value_ = a.value_ * b.value_;
-    }
-  } else {
-    return CheckedInt<std::common_type_t<T, U>>(a) *
-           CheckedInt<std::common_type_t<T, U>>(b);
-  }
-#endif
+      checked_int_internal::MulOverflow(a.value_, b.value_, &res.value_));
   return res;
 }
 
 template <class T, class U>
 CheckedInt<std::common_type_t<T, U>> operator/(
     const CheckedInt<T>& a, const CheckedInt<U>& b) noexcept {
-  using C = std::common_type_t<T, U>;
-  using limits = std::numeric_limits<C>;
-  if constexpr (std::is_same_v<T, U>) {
-    if constexpr (std::is_signed_v<C>) {
-      const bool invalid =
-          b.value_ == 0 || (a.value_ == limits::lowest() && b.value_ == -1);
-      C val = limits::max();
-      if (!TFLITE_EXPECT_FALSE(invalid)) {
-        val = static_cast<C>(a.value_ / b.value_);
-      }
-      return {/*val=*/val,
-              /*overflow=*/TFLITE_CHECKED_INT_MERGE_OVERFLOW(
-                  TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_, b.overflow_),
-                  invalid)};
-    } else {
-      if (TFLITE_EXPECT_FALSE(b.value_ == 0)) {
-        return {/*val=*/limits::max(), /*overflow=*/true};
-      }
-      return {/*val=*/static_cast<C>(a.value_ / b.value_),
-              /*overflow=*/TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_,
-                                                             b.overflow_)};
-    }
+  CheckedInt<std::common_type_t<T, U>> res;
+  if (TFLITE_EXPECT_FALSE(
+          checked_int_internal::DivOverflow(a.value_, b.value_, &res.value_))) {
+    res.overflow_ = true;
   } else {
-    return CheckedInt<std::common_type_t<T, U>>(a) /
-           CheckedInt<std::common_type_t<T, U>>(b);
+    res.overflow_ = TFLITE_CHECKED_INT_MERGE_OVERFLOW(a.overflow_, b.overflow_);
   }
+  return res;
 }
 
 #undef TFLITE_CHECKED_INT_MERGE_OVERFLOW
