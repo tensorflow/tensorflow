@@ -1385,12 +1385,17 @@ absl::StatusOr<PjRtDeviceEventRef> CommonPjRtClient::LinearizeIntoImpl(
                 HostBufferSemantics::kImmutableOnlyDuringCall,
             device_shape, byte_strides.value_or(absl::Span<const int64_t>()),
             raw_buffer));
+    constexpr int64_t kMaxInlineAsyncLinearizeBytes = 512 * 1024;
+    const int64_t on_device_bytes = raw_buffer->GetOnDeviceSizeInBytes();
     // TODO(parkers): IsCpuId because the linearization pool shares with the
     // execute pool on cpu, so we have potential deadlocks.
     if (host_buffer_semantics ==
             HostBufferSemantics::kImmutableOnlyDuringCall ||
         IsCpuId(platform_id()) ||
-        memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) {
+        memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId ||
+        (on_device_bytes > 0 &&
+         on_device_bytes <= kMaxInlineAsyncLinearizeBytes &&
+         linearized.IsAvailable() && !linearized.IsError())) {
       if (!linearized.IsAvailable()) {
         tsl::BlockUntilReady(linearized.GetAsyncValue());
       }
