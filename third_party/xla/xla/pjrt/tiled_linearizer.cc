@@ -128,10 +128,10 @@ Shape X128ComponentShape(const Shape& shape) {
   return ComponentShape<128>(shape);
 }
 
-// The value here is bit_cast<uint32_t>(NAN), to more easily catch errors
-// related to ops depending on pad values that they should not depend on. To be
-// BF16 compatible, the value is still NaN when unpacked into two BF16 values.
-constexpr uint32_t kPadValue = 0x7fc07fc0;
+// All-ones bit-pattern is a quiet NaN for IEEE/OCP float types with NaN
+// (F32, F16, BF16, F8E5M2, F8E4M3FN, etc.), so a single repeated byte works
+// across packed element widths.
+constexpr uint8_t kPadByte = 0xff;
 
 // TensorCore lane count as constexpr used for template specialization.
 template <int64_t kTcLaneCount>
@@ -514,7 +514,6 @@ absl::InlinedVector<int64_t, 2> GetResolvedTopLevelTiling(
           ? 0
           : device_layout.dynamic_shape_metadata_prefix_bytes();
   TF_RET_CHECK(prefix_size % sizeof(uint32_t) == 0);
-  int64_t prefix_u32_size = prefix_size / sizeof(uint32_t);
   TF_RET_CHECK(dest.size() >= prefix_size);
   int64_t size_in_bytes = dest.size() - prefix_size;
   TF_RET_CHECK(size_in_bytes % sizeof(uint32_t) == 0);
@@ -577,8 +576,12 @@ absl::InlinedVector<int64_t, 2> GetResolvedTopLevelTiling(
     permutation.push_back(*it);
   }
 
-  absl::InlinedVector<int64_t, 2> output_tiling_vec =
-      GetResolvedTopLevelTiling(device_shape);
+  // For 1D outputs, callers may omit trailing tile padding in `dest`, so leave
+  // `output_tiling_vec` empty and pad up to `dst.size()` below.
+  absl::InlinedVector<int64_t, 2> output_tiling_vec;
+  if (dims.size() > 1) {
+    output_tiling_vec = GetResolvedTopLevelTiling(device_shape);
+  }
 
   const auto tiles = device_shape.layout().tiles();
   const int bits_per_pack = device_layout.element_size_in_bits() != 0
@@ -589,6 +592,7 @@ absl::InlinedVector<int64_t, 2> GetResolvedTopLevelTiling(
       packing_factor > 1 &&
       (tiles.size() > 1 ||
        (!tiles.empty() && tiles[0].dimensions().size() > 1));
+  const uint8_t pad_byte = set_padding_to_nan ? kPadByte : uint8_t{0};
 
   TransposePlan::Options options;
   options.elem_size_in_bytes = transpose_byte_width;
@@ -601,6 +605,7 @@ absl::InlinedVector<int64_t, 2> GetResolvedTopLevelTiling(
     options.dest_bits_per_element = bits_per_pack;
   }
   options.num_threads = parallelism_options.max_parallelism;
+  options.tile_padding = pad_byte;
   std::shared_ptr<TransposePlan> plan;
   {
     absl::MutexLock lock(linearizer_cache->mu);
@@ -615,39 +620,38 @@ absl::InlinedVector<int64_t, 2> GetResolvedTopLevelTiling(
     elements_in_the_packed_data *= 8 / bits_per_pack;
   }
 
-  const size_t written_bytes =
-      options.dest_bits_per_element.has_value()
-          ? CeilOfRatio<size_t>(static_cast<size_t>(Product(dims)) *
-                                    *options.dest_bits_per_element,
-                                CHAR_BIT)
-          : static_cast<size_t>(Product(dims)) * transpose_byte_width;
-  TF_RET_CHECK(elements_in_the_packed_data * sizeof(uint32_t) >= written_bytes);
-  const bool has_padding =
-      written_bytes < elements_in_the_packed_data * sizeof(uint32_t);
-  const uint32_t pad_u32 = set_padding_to_nan ? kPadValue : uint32_t{0};
+  if (prefix_size > 0) {
+    std::memset(dest.data(), pad_byte, prefix_size);
+  }
 
   std::optional<Buffer> scratch;
   absl::Span<uint8_t> dst;
   if (has_subtile_packing && bits_per_pack < 8) {
-    if (prefix_u32_size > 0) {
-      std::fill_n(tsl::safe_reinterpret_cast<uint32_t*>(dest.data()),
-                  prefix_u32_size, pad_u32);
-    }
-    scratch.emplace(
-        elements_in_the_packed_data,
-        /*value=*/has_padding ? std::make_optional(pad_u32) : std::nullopt,
-        &tensorflow::tpu::DefaultAllocator);
+    scratch.emplace(elements_in_the_packed_data, /*value=*/std::nullopt,
+                    &tensorflow::tpu::DefaultAllocator);
     dst = scratch->mutable_data<uint8_t>();
   } else {
-    auto dest_u32 =
-        absl::MakeSpan(tsl::safe_reinterpret_cast<uint32_t*>(dest.data()),
-                       elements_in_the_packed_data + prefix_u32_size);
-    if (has_padding) {
-      absl::c_fill(dest_u32, pad_u32);
-    } else if (prefix_u32_size > 0) {
-      std::fill_n(dest_u32.data(), prefix_u32_size, pad_u32);
-    }
     dst = dest.subspan(prefix_size);
+  }
+
+  // `TransposePlan` writes and pads the tiled output `[0, tiled_bytes)`. Fill
+  // any trailing padding in `dst` beyond that, such as
+  // `tail_padding_alignment_in_elements` or 1D padding.
+  size_t tiled_elems = 1;
+  const size_t untiled_dims = dims.size() - output_tiling_vec.size();
+  for (size_t i = 0; i < dims.size(); ++i) {
+    const int64_t tile =
+        i < untiled_dims ? 1 : output_tiling_vec[i - untiled_dims];
+    tiled_elems *= RoundUpTo<int64_t>(dims[permutation[i]], tile);
+  }
+  const size_t tiled_bytes =
+      options.dest_bits_per_element.has_value()
+          ? CeilOfRatio<size_t>(tiled_elems * *options.dest_bits_per_element,
+                                CHAR_BIT)
+          : tiled_elems * transpose_byte_width;
+  TF_RET_CHECK(dst.size() >= tiled_bytes);
+  if (dst.size() > tiled_bytes) {
+    std::memset(dst.data() + tiled_bytes, pad_byte, dst.size() - tiled_bytes);
   }
   if (plan->Parallelism() <= 1) {
     plan->Execute(data, dst.data());

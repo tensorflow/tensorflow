@@ -217,8 +217,6 @@ class PipelinedChunkedTransfer {
         host_ptr_(host_ptr),
         total_chunks_(total_chunks),
         is_h2d_(std::holds_alternative<const void*>(host_ptr_)),
-        zero_h2d_slot_(is_h2d_ &&
-                       plan_->InputNumElems() < plan_->OutputNumElems()),
         slot_bytes_(slot_bytes),
         context_id_(context_id),
         context_(tsl::ContextKind::kThread),
@@ -333,9 +331,6 @@ class PipelinedChunkedTransfer {
           tsl::profiler::ContextType::kPjRt, context_id_);
       CHECK_LE(bytes, slot_bytes_);
       if (is_h2d_) {
-        if (zero_h2d_slot_) {
-          std::memset(slot, 0, bytes);
-        }
         plan_->ExecuteChunk(chunk_id, std::get<const void*>(host_ptr_), slot,
                             /*input_is_global=*/true,
                             /*output_is_global=*/false);
@@ -386,7 +381,6 @@ class PipelinedChunkedTransfer {
   const HostPtr host_ptr_;
   const int total_chunks_;
   const bool is_h2d_;
-  const bool zero_h2d_slot_;
   const size_t slot_bytes_;
   const uint64_t context_id_;
   const tsl::Context context_;

@@ -184,6 +184,7 @@ TiledLinearizer::CreateChunkedTransposePlan(
     options.input_striding = TransposePlan::Striding{input_strides};
     options.output_tiling = TransposePlan::Tiling{device_tiling};
     options.chunk_contiguity = TransposePlan::ChunkContiguity::kOutput;
+    options.tile_padding = uint8_t{0};
   } else {
     DCHECK(!host_byte_strides.has_value());
     DCHECK_EQ(packing_factor, 1);

@@ -1169,7 +1169,7 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
                   /*is_h2d=*/true, expected_literal.shape(), strides,
                   strided_device_shape);
           CHECK_NE(plan, nullptr);
-          std::vector<uint8_t> out(strided_dev_bytes, 0);
+          std::vector<uint8_t> out(strided_dev_bytes, 0xAB);
           for (int i = 0; i < plan->Parallelism(); ++i) {
             plan->ExecuteChunk(i, src,
                                out.data() + plan->OutputChunkOffsetBytes(i),
@@ -1248,25 +1248,17 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
                   lin_plan->OutputChunkSizeBytes(num_chunks - 1),
               array_bytes);
 
-    // Pre-fill `actual` with non-zero garbage and zero each chunk slot when
-    // `InputNumElems() < OutputNumElems()`, matching
-    // `PipelinedChunkedTransfer`.
     std::vector<uint8_t> actual(array_bytes, 0xAB);
-    const bool zero_h2d_slot =
-        lin_plan->InputNumElems() < lin_plan->OutputNumElems();
-    if (zero_h2d_slot) {
+    if (lin_plan->InputNumElems() < lin_plan->OutputNumElems()) {
       ++partial_tile_cases;
     }
     for (int i = 0; i < num_chunks; ++i) {
       uint8_t* slot = actual.data() + lin_plan->OutputChunkOffsetBytes(i);
-      if (zero_h2d_slot) {
-        std::memset(slot, 0, lin_plan->OutputChunkSizeBytes(i));
-      }
       lin_plan->ExecuteChunk(i, src_literal.untyped_data(), slot,
                              /*input_is_global=*/true,
                              /*output_is_global=*/false);
     }
-    std::vector<uint8_t> expected_plan(array_bytes, 0);
+    std::vector<uint8_t> expected_plan(array_bytes, 0xCD);
     lin_plan->Execute(src_literal.untyped_data(), expected_plan.data());
     EXPECT_EQ(actual, expected_plan);
 
@@ -1277,6 +1269,7 @@ TEST(PjRtClientTest, ChunkedLinearizeAndDelinearizeRoundTrip) {
       std::vector<Aligned64> expected_lin(
           (array_bytes + sizeof(Aligned64) - 1) / sizeof(Aligned64));
       uint8_t* expected_ptr = expected_lin[0].bytes;
+      std::memset(expected_ptr, 0xCD, array_bytes);
       ASSERT_OK(common_client->Linearize(
           absl::MakeSpan(expected_ptr, array_bytes), src_literal.untyped_data(),
           /*byte_strides=*/{}, device_shape, /*dynamic_sizes=*/{},
