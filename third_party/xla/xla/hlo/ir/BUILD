@@ -418,6 +418,31 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_computation_utils",
+    srcs = ["hlo_computation_utils.cc"],
+    hdrs = ["hlo_computation_utils.h"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_computation_utils_test",
+    srcs = ["hlo_computation_utils_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_computation_utils",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_instruction_utils",
     hdrs = ["hlo_instruction_utils.h"],
     deps = [

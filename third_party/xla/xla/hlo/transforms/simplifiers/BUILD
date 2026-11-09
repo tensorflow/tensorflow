@@ -338,6 +338,7 @@ cc_library(
     deps = [
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_computation_utils",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_registry",
         "//xla/tsl/platform:logging",
@@ -1245,6 +1246,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_computation_utils",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_registry",
         "//xla/service:slow_operation_alarm",
