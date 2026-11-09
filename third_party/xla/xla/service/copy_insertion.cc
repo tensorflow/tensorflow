@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -777,6 +778,38 @@ absl::Status AddCopiesForInPlaceOperation(HloInstruction* in_place_op,
   return absl::OkStatus();
 }
 
+// Orders the other readers of the operand of `copy` before `copy`, the copy
+// added for an operand of `in_place_op`, if they are already predecessors of
+// `in_place_op`. Such readers must run before `in_place_op` anyway, so the new
+// control dependencies do not constrain the schedule beyond what `in_place_op`
+// already requires, but they let RemoveUnnecessaryCopies prove that `copy` is
+// redundant. Without them, chains of "read, then update in place" steps on the
+// same buffer (e.g. gather + scatter updates of an embedding table across
+// unrolled training steps) keep every copy, since eliding each copy requires
+// the reader of the next step to be ordered before the next copy.
+//
+// Readers that are copies are skipped: removing either of two copies of the
+// same operand feeding in-place ops would make both ops write the same buffer.
+// `reachability` may be stale; it is only used to find paths that already
+// exist, and instructions missing from it are skipped.
+absl::Status OrderPredecessorReadersBeforeCopy(
+    HloInstruction* copy, const HloInstruction* in_place_op,
+    const HloReachabilityMap& reachability) {
+  for (HloInstruction* reader : copy->operand(0)->users()) {
+    // Asynchronous ops keep reading their operands until the matching done,
+    // so ordering the start before `copy` would not order the read.
+    if (reader != copy && reader != in_place_op &&
+        reader->opcode() != HloOpcode::kCopy &&
+        !HloDataflowAnalysis::IsAsynchronousOperationStart(reader->opcode()) &&
+        reachability.IsPresent(reader) &&
+        reachability.IsReachable(reader, in_place_op)) {
+      VLOG(3) << "Ordering " << reader->name() << " before " << copy->name();
+      ABSL_RETURN_IF_ERROR(reader->AddControlDependencyTo(copy));
+    }
+  }
+  return absl::OkStatus();
+}
+
 // Conservatively adds copies before root instruction of entry computation and
 // each aliased parameter to resolve interference of aliased input and output
 // buffer. We later rely on RemoveUnnecessaryCopies to drop the unnecessary
@@ -887,6 +920,7 @@ absl::Status StripControlDependenciesFrom(HloInstruction* instruction) {
 
   return absl::OkStatus();
 }
+
 }  // namespace
 
 // We add copies for all phi indices of the true and false computation
@@ -1932,6 +1966,39 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   return absl::OkStatus();
 }
 
+absl::Status CopyInsertion::OrderPredecessorReadersBeforeInPlaceCopies(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    if (computation->IsAsyncComputation()) {
+      continue;
+    }
+    // Built on first use.
+    std::unique_ptr<HloReachabilityMap> reachability;
+    for (HloInstruction* instruction : computation->instructions()) {
+      for (const auto& [operand_index, output_index] :
+           alias_info_->GetInPlaceInputOutputPairs(instruction)) {
+        if (!operand_index.operand_index.empty()) {
+          continue;
+        }
+        HloInstruction* copy =
+            instruction->mutable_operand(operand_index.operand_number);
+        if (copy->opcode() != HloOpcode::kCopy ||
+            copy->operand(0)->user_count() < 2) {
+          continue;
+        }
+        if (reachability == nullptr) {
+          reachability = HloReachabilityMap::Build(computation);
+        }
+        ABSL_RETURN_IF_ERROR(OrderPredecessorReadersBeforeCopy(copy, instruction,
+                                                          *reachability));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> CopyInsertion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1978,6 +2045,12 @@ absl::StatusOr<bool> CopyInsertion::RunImpl(
   HloDCE dce;
   ABSL_RETURN_IF_ERROR(tuple_simplifier.Run(module, execution_threads).status());
   ABSL_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
+  // Done after tuple simplification so that the orderings only rely on paths
+  // that copy removal also sees.
+  if (order_predecessor_readers_before_in_place_copies_) {
+    ABSL_RETURN_IF_ERROR(
+        OrderPredecessorReadersBeforeInPlaceCopies(module, execution_threads));
+  }
   DumpHloModuleDuringPassIfEnabled(
       name(), "after adding copies to resolve interference", *module);
 
