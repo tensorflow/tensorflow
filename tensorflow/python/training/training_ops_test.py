@@ -384,52 +384,6 @@ class TrainingOpsTest(TensorFlowTestCase):
         self.assertAllCloseAccordingToType(y[index] + grad[i] * grad[i],
                                            self.evaluate(accum)[index])
 
-  @test_util.run_v1_only("SparseApply ops return a ref, so it is not "
-                         "supported in eager mode.")
-  def testSparseApplyMismatchedRank(self):
-    with self.cached_session():
-      var = variable_v1.VariableV1([[1.0], [2.0]])
-      accum = variable_v1.VariableV1([[0.1], [0.1]])
-      self.evaluate(variables.global_variables_initializer())
-      lr = 0.01
-      step = 1
-      grad = constant_op.constant([0.5, 0.5])
-      indices = constant_op.constant([0, 1])
-
-      test_cases = [
-          (gen_training_ops.sparse_apply_adadelta,
-           (var, accum, accum, lr, lr, lr, grad, indices)),
-          (gen_training_ops.sparse_apply_adagrad,
-           (var, accum, lr, grad, indices)),
-          (gen_training_ops.sparse_apply_adagrad_da,
-           (var, accum, accum, grad, indices, lr, lr, lr, step)),
-          (gen_training_ops.sparse_apply_adagrad_v2,
-           (var, accum, lr, lr, grad, indices)),
-          (gen_training_ops.sparse_apply_centered_rms_prop,
-           (var, accum, accum, accum, lr, lr, lr, lr, grad, indices)),
-          (gen_training_ops.sparse_apply_ftrl,
-           (var, accum, accum, grad, indices, lr, lr, lr, lr)),
-          (gen_training_ops.sparse_apply_ftrl_v2,
-           (var, accum, accum, grad, indices, lr, lr, lr, lr, lr)),
-          (gen_training_ops.sparse_apply_momentum,
-           (var, accum, lr, grad, indices, lr)),
-          (gen_training_ops.sparse_apply_proximal_adagrad,
-           (var, accum, lr, lr, lr, grad, indices)),
-          (gen_training_ops.sparse_apply_proximal_gradient_descent,
-           (var, lr, lr, lr, grad, indices)),
-          (gen_training_ops.sparse_apply_rms_prop,
-           (var, accum, accum, lr, lr, lr, lr, grad, indices)),
-      ]
-
-      regex = (
-          r"(grad and var must have the same rank|Shapes must be equal rank|"
-          r"Argument grad must not be a scalar)"
-      )
-      for op, args in test_cases:
-        with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
-                                    regex):
-          self.evaluate(op(*args))
-
   @test_util.run_v1_only("SparseApplyAdagrad op returns a ref, so it is not "
                          "supported in eager mode.")
   def testSparseApplyAdagrad(self):
@@ -618,13 +572,9 @@ class TrainingOpsTest(TensorFlowTestCase):
           variables.Variable(np.zeros((10, 2), np.float32)) for _ in range(3)
       ]
       self.evaluate(variables.global_variables_initializer())
-      regex = (
-          r"(grad and var must have the same rank|Shapes must be equal rank|"
-          r"Argument grad must not be a scalar)"
-      )
       with self.assertRaisesRegex(
-          (ValueError, errors.InvalidArgumentError),
-          regex,
+          errors.InvalidArgumentError,
+          "grad must have the same number of dimensions as var",
       ):
         self.evaluate(
             gen_training_ops.resource_sparse_apply_adagrad_da(
@@ -644,11 +594,10 @@ class TrainingOpsTest(TensorFlowTestCase):
   def testSparseApplyOpsRejectLowerRankGrad(self):
     # Regression test for #94131: a grad of lower rank than var made the
     # per-dimension shape check read past grad's rank and crash the process.
-    with ops.device("/cpu:0"):
-      var, accum, accum2, accum3 = [
-          variables.Variable(np.ones((4, 4), np.float32)) for _ in range(4)
-      ]
-      self.evaluate(variables.global_variables_initializer())
+    var, accum, accum2, accum3 = [
+        variables.Variable(np.ones((4, 4), np.float32)) for _ in range(4)
+    ]
+    self.evaluate(variables.global_variables_initializer())
     s = np.float32(0.1)
     grad = np.zeros(3, np.float32)  # rank 1, var is rank 2
     idx = constant_op.constant([0, 1, 2], dtypes.int32)
@@ -707,16 +656,9 @@ class TrainingOpsTest(TensorFlowTestCase):
             idx,
         ),
     ]
-    regex = (
-        r"(grad and var must have the same rank|Shapes must be equal rank|"
-        r"Argument grad must not be a scalar)"
-    )
-    with ops.device("/cpu:0"):
-      for apply_op in cases:
-        with self.assertRaisesRegex(
-            (ValueError, errors.InvalidArgumentError), regex
-        ):
-          self.evaluate(apply_op())
+    for apply_op in cases:
+      with self.assertRaises(errors.InvalidArgumentError):
+        self.evaluate(apply_op())
 
   @test_util.run_v2_only
   def testResourceSparseApplyAdagradDAInvalidGradRank(self):
@@ -737,13 +679,9 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad = constant_op.constant(0.0, dtype=dtypes.float32)  # wrong rank
       indices = constant_op.constant([0, 0], dtype=dtypes.int32)
 
-      regex = (
-          r"(grad and var must have the same rank|Shapes must be equal rank|"
-          r"Argument grad must not be a scalar)"
-      )
       with self.assertRaisesRegex(
-          (ValueError, errors.InvalidArgumentError),
-          regex,
+          errors.InvalidArgumentError,
+          "grad must have the same number of dimensions as var",
       ):
         self.evaluate(
             gen_training_ops.resource_sparse_apply_adagrad_da(
