@@ -35,7 +35,6 @@ cc_library(
         "hlo_original_value_util.cc",
         "hlo_schedule.cc",
         "replica_group.cc",
-        "stack_frames.cc",
     ],
     hdrs = [
         "dfs_hlo_visitor.h",
@@ -57,7 +56,6 @@ cc_library(
         "hlo_schedule.h",
         "hlo_sharding.h",
         "replica_group.h",
-        "stack_frames.h",
     ],
     visibility = internal_visibility([
         ":friends",
@@ -71,6 +69,7 @@ cc_library(
         ":mesh_and_axis",
         ":named_sharding",
         ":ptrvec",
+        ":stack_frames",
         ":tile_assignment",
         "//xla:array",
         "//xla:comparison_util",
@@ -150,12 +149,30 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "stack_frames",
+    srcs = ["stack_frames.cc"],
+    hdrs = ["stack_frames.h"],
+    visibility = internal_visibility([
+        ":friends",
+        "//xla:native_custom_call_handler_allowlist",
+    ]),
+    deps = [
+        ":hlo_module_metadata",
+        "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_cc_test(
     name = "stack_frames_test",
     srcs = ["stack_frames_test.cc"],
     deps = [
-        ":hlo",
         ":hlo_module_metadata",
+        ":stack_frames",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -189,6 +206,7 @@ xla_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     deps = [
         ":hlo",
+        ":stack_frames",
         "//xla:comparison_util",
         "//xla:frontend_attributes",
         "//xla:literal_util",
@@ -328,6 +346,7 @@ xla_cc_test(
     srcs = ["hlo_module_test.cc"],
     deps = [
         ":hlo",
+        ":stack_frames",
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",

@@ -937,6 +937,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_metadata",
+        "//xla/hlo/ir:stack_frames",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_context",
         "//xla/hlo/pass:hlo_pass_options",

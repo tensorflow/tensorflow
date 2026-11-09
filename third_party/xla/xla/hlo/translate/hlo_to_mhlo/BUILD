@@ -118,6 +118,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_metadata",
+        "//xla/hlo/ir:stack_frames",
         "//xla/service:hlo_module_config",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
