@@ -39,6 +39,10 @@ bazel_dep(name = "zlib", version = "1.3.2")
 # Only for compatibility, not directly used
 bazel_dep(name = "c-ares", version = "1.34.6.bcr.3", repo_name = None)
 bazel_dep(name = "eigen", version = "4.0.0-20241125.bcr.3", repo_name = None)
+# Fix transitive dependency graph error breaking `bazel mod show_repo --all_repos`:
+# grpc 1.81.0 -> envoy_api 0.0.0-20251216-6ef568c imports
+# com_google_googleapis_imports, which our googleapis doesn't generate.
+bazel_dep(name = "envoy_api", version = "0.0.0-20260130-84e8436", repo_name = None)
 bazel_dep(name = "grpc-java", version = "1.75.0", repo_name = None)
 bazel_dep(name = "libpfm", version = "4.13.0", repo_name = None)
 
