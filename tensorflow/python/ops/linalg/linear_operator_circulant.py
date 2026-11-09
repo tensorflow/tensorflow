@@ -658,6 +658,8 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     if adjoint:
       spectrum = math_ops.conj(spectrum)
 
+    rhs = math_ops.cast(rhs, spectrum.dtype)
+
     rhs, spectrum = self._broadcast_batch_dims(rhs, spectrum)
 
     rhs_vb = self._vectorize_then_blockify(rhs)
