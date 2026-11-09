@@ -744,6 +744,9 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_args",
+        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
