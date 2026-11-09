@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
@@ -27,7 +28,7 @@ namespace internal {
 // A SavedModel may store the name of the initialization op to run in the
 // in the SignatureDef (v2) or a collection (v1). If an init_op collection
 // exists, then the collection must contain exactly one op.
-absl::Status GetInitOp(const std::string& export_dir,
+absl::Status GetInitOp(absl::string_view export_dir,
                        const MetaGraphDef& meta_graph_def,
                        std::string* init_op_name);
 
