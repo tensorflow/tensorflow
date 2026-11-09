@@ -1876,42 +1876,77 @@ TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
 TEST_F(RemapperFuseMatMulWithBiasTest, DoNotFuseZeroDim) {
   using ::tensorflow::ops::Placeholder;
 
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto check_no_fusion = [](const std::vector<int64_t>& lhs_dims,
+                            const std::vector<int64_t>& rhs_dims,
+                            const std::vector<int64_t>& bias_dims,
+                            bool with_relu = false,
+                            bool is_conv2d = false) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  auto lhs_shape = ops::Placeholder::Shape({8, 32});
-  auto rhs_shape = ops::Placeholder::Shape({32, 0});
-  auto bias_shape = ops::Placeholder::Shape({0});
+    Output lhs, rhs, bias, contract;
+    if (is_conv2d) {
+      lhs = Placeholder(s.WithOpName("lhs"), DT_FLOAT,
+                        ops::Placeholder::Shape(TensorShape(lhs_dims)));
+      rhs = Placeholder(s.WithOpName("rhs"), DT_FLOAT,
+                        ops::Placeholder::Shape(TensorShape(rhs_dims)));
+      contract = ops::Conv2D(s.WithOpName("conv2d"), lhs, rhs, {1, 1, 1, 1},
+                             "VALID");
+    } else {
+      lhs = Placeholder(s.WithOpName("lhs"), DT_FLOAT,
+                        ops::Placeholder::Shape(TensorShape(lhs_dims)));
+      rhs = Placeholder(s.WithOpName("rhs"), DT_FLOAT,
+                        ops::Placeholder::Shape(TensorShape(rhs_dims)));
+      contract = ops::MatMul(s.WithOpName("matmul"), lhs, rhs);
+    }
+    bias = Placeholder(s.WithOpName("bias"), DT_FLOAT,
+                       ops::Placeholder::Shape(TensorShape(bias_dims)));
 
-  auto lhs = Placeholder(s.WithOpName("lhs"), DT_FLOAT, lhs_shape);
-  auto rhs = Placeholder(s.WithOpName("rhs"), DT_FLOAT, rhs_shape);
-  auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
+    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), contract, bias);
+    Output root = bias_add;
+    if (with_relu) {
+      root = ops::Relu(s.WithOpName("relu"), bias_add);
+    }
+    auto fetch = ops::Identity(s.WithOpName("fetch"), root);
 
-  auto matmul = ops::MatMul(s.WithOpName("matmul"), lhs, rhs);
-  auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), matmul, bias);
-  auto fetch = ops::Identity(s.WithOpName("fetch"), bias_add);
+    auto lhs_t = GenerateTensorWithSetRandom<DT_FLOAT>(TensorShape(lhs_dims));
+    auto rhs_t = GenerateTensorWithSetRandom<DT_FLOAT>(TensorShape(rhs_dims));
+    auto bias_t = GenerateTensorWithSetRandom<DT_FLOAT>(TensorShape(bias_dims));
 
-  auto lhs_t = GenerateTensorWithSetRandom<DT_FLOAT>({8, 32});
-  auto rhs_t = GenerateTensorWithSetRandom<DT_FLOAT>({32, 0});
-  auto bias_t = GenerateTensorWithSetRandom<DT_FLOAT>({0});
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
 
-  GrapplerItem item;
-  item.fetch = {"fetch"};
-  item.feed = {{"lhs", lhs_t}, {"rhs", rhs_t}, {"bias", bias_t}};
-  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+    const std::string device = "/device:CPU:0";
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device(device);
+    }
 
-  const std::string device = "/device:CPU:0";
-  for (int i = 0; i < item.graph.node_size(); ++i) {
-    item.graph.mutable_node(i)->set_device(device);
-  }
+    Remapper optimizer(RewriterConfig::AGGRESSIVE);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  Remapper optimizer(RewriterConfig::ON);
-  GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+    // Contraction and bias_add should NOT be fused when any dimension is 0.
+    for (const NodeDef& node : output.node()) {
+      EXPECT_NE(node.op(), "_FusedMatMul");
+      EXPECT_NE(node.op(), "_FusedConv2D");
+      if (node.name() == "bias_add") {
+        EXPECT_EQ(node.op(), "BiasAdd");
+      }
+    }
+  };
 
-  // Should NOT be fused into _FusedMatMul because matrix dimensions are 0.
-  for (const NodeDef& node : output.node()) {
-    EXPECT_NE(node.op(), "_FusedMatMul");
-  }
+  // Case 1: zero output channel (Dense(0) weight [32, 0], bias [0])
+  check_no_fusion({8, 32}, {32, 0}, {0});
+  // Case 2: zero batch size with non-empty bias
+  check_no_fusion({0, 32}, {32, 64}, {64});
+  // Case 3: zero contraction reduction dimension (k == 0) with non-empty bias
+  check_no_fusion({8, 0}, {0, 64}, {64});
+  // Case 4: zero dimension with fused activation (Relu)
+  check_no_fusion({8, 32}, {32, 0}, {0}, /*with_relu=*/true);
+  // Case 5: Conv2D with zero filter channel
+  check_no_fusion({2, 5, 5, 3}, {1, 1, 3, 0}, {0}, /*with_relu=*/false,
+                  /*is_conv2d=*/true);
 }
 
 // TODO(b/161005848): Fix flaky test.

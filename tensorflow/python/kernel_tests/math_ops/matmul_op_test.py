@@ -78,11 +78,46 @@ class MatMulAddFusionTest(test_lib.TestCase):
     def f(x, w, b):
       return nn_ops.bias_add(math_ops.matmul(x, w), b)
 
+    @def_function.function
+    def f_relu(x, w, b):
+      return nn_ops.relu(nn_ops.bias_add(math_ops.matmul(x, w), b))
+
+    # Case 1: [1, 10] * [10, 0] + [0] (zero output channel)
     x = constant_op.constant(np.ones([1, 10], dtype=np.float32))
     w = constant_op.constant(np.zeros([10, 0], dtype=np.float32))
     b = constant_op.constant(np.zeros([0], dtype=np.float32))
     res = f(x, w, b)
     self.assertEqual(tuple(res.shape), (1, 0))
+    self.assertAllClose(res, np.zeros([1, 0], dtype=np.float32))
+
+    # Case 2: [2, 0] * [0, 3] + [3] (k == 0 reduction dimension with Relu)
+    x_k0 = constant_op.constant(np.zeros([2, 0], dtype=np.float32))
+    w_k0 = constant_op.constant(np.zeros([0, 3], dtype=np.float32))
+    b_k0 = constant_op.constant(np.array([-1.0, 2.0, -3.0], dtype=np.float32))
+    res_k0 = f(x_k0, w_k0, b_k0)
+    self.assertEqual(tuple(res_k0.shape), (2, 3))
+    self.assertAllClose(res_k0, np.broadcast_to(b_k0.numpy(), [2, 3]))
+
+    res_relu = f_relu(x_k0, w_k0, b_k0)
+    self.assertEqual(tuple(res_relu.shape), (2, 3))
+    self.assertAllClose(
+        res_relu, np.broadcast_to(np.maximum(0.0, b_k0.numpy()), [2, 3])
+    )
+
+    # Case 3: Dynamic shape input_signature exercising runtime fused kernel
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[None, 10], dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=[10, None], dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=[None], dtype=dtypes.float32),
+        ]
+    )
+    def f_dynamic(x_in, w_in, b_in):
+      return nn_ops.bias_add(math_ops.matmul(x_in, w_in), b_in)
+
+    res_dynamic = f_dynamic(x, w, b)
+    self.assertEqual(tuple(res_dynamic.shape), (1, 0))
+    self.assertAllClose(res_dynamic, np.zeros([1, 0], dtype=np.float32))
 
 
 @test_util.with_eager_op_as_function

@@ -413,7 +413,9 @@ bool IsCpuCompatibleConv2D(const RemapperContext& ctx, const NodeDef* conv2d) {
   if (ctx.graph_properties.HasInputProperties(conv2d->name())) {
     const auto& input_props =
         ctx.graph_properties.GetInputProperties(conv2d->name());
-    if (input_props.size() >= 2 && HasZeroDimension(input_props[1].shape())) {
+    if (input_props.size() >= 2 &&
+        (HasZeroDimension(input_props[0].shape()) ||
+         HasZeroDimension(input_props[1].shape()))) {
       return false;
     }
   }
@@ -1042,10 +1044,9 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
     return false;
   }
 
-  if (!IsConv2D(*conv2d_node_def) || !NodeIsOnCpu(conv2d_node_def) ||
+  if (!IsConv2D(*conv2d_node_def) ||
       !HaveSameDataType(node_def, conv2d_node_def) ||
-      !IsCpuCompatibleDataType(conv2d_node_def) ||
-      !IsCpuCompatibleDataFormat(ctx, conv2d_node_def) ||
+      !IsCpuCompatibleConv2D(ctx, conv2d_node_def) ||
       HasControlFaninOrFanout(*conv2d_node_view) ||
       !HasAtMostOneFanoutAtPort0(*conv2d_node_view) ||
       IsInPreserveSet(ctx, conv2d_node_def))
@@ -5036,17 +5037,38 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
     return true;
   };
 
+  const auto is_cpu_contraction_fusion_candidate = [&]() -> bool {
+    if (!NodeIsOnCpu(node_def)) return false;
+    if (IsBiasAdd(*node_def) || IsFusedBatchNorm(*node_def)) return true;
+    if (IsSupportedActivation(*node_def, cluster) &&
+        node_view->NumRegularFanins() >= 1) {
+      const auto* fanin_0_node_def =
+          node_view->GetRegularFanin(0).node_view()->node();
+      if (IsBiasAdd(*fanin_0_node_def) || IsAdd(*fanin_0_node_def) ||
+          IsFusedBatchNorm(*fanin_0_node_def)) {
+        return true;
+      }
+    }
+    if (IsMKLEnabled() &&
+        IsMatchedMatMulBiasAddAndGeluExact(
+            const_cast<RemapperContext&>(ctx), node_index)) {
+      return true;
+    }
+    return false;
+  };
+
   if (IsMKLEnabled())
     return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
            IsContractionWithAdd(ctx, node_index) ||
-           is_act_biasadd_conv_candidate() || IsBiasAdd(*node_def) ||
-           IsTranspose(*node_def);
+           is_act_biasadd_conv_candidate() ||
+           is_cpu_contraction_fusion_candidate() || IsTranspose(*node_def);
 
   return is_act_biasadd_conv_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate() ||
          is_batch_norm_grad_fusion_candidate() ||
          is_matmul_gelu_exact_fusion_candidate() ||
-         is_act_biasadd_matmul_candidate();
+         is_act_biasadd_matmul_candidate() ||
+         is_cpu_contraction_fusion_candidate();
 }
 
 inline bool IsXlaCpuGlobalJitOn() {

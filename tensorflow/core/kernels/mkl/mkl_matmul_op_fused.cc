@@ -123,13 +123,26 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
                     "Must provide as many biases as the channel size: ",
                     bias_tensor.shape().DebugString(), " vs. ", channel)));
 
-    // If output is empty, there is nothing to compute.
-    // Allocate the output tensor and return early to avoid oneDNN primitive
-    // descriptor creation failures on zero-sized dimensions.
+    const TensorShape output_tf_shape({batch, channel});
+    const Tensor* add_tensor_ptr = nullptr;
+    MklDnnShape add_mkl_shape;
+    if (this->fuse_add_) {
+      add_tensor_ptr = &MklGetInput(ctx, this->input_idx_add_);
+      GetMklShape(ctx, this->input_idx_add_, &add_mkl_shape, native_format);
+      const TensorShape add_tf_shape = add_mkl_shape.IsMklTensor()
+                                           ? add_mkl_shape.GetTfShape()
+                                           : add_tensor_ptr->shape();
+      OP_REQUIRES(
+          ctx, add_tf_shape == output_tf_shape,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Add tensor shape must match output shape ",
+              output_tf_shape.DebugString(), ", got ",
+              add_tf_shape.DebugString())));
+    }
+
     if (batch == 0 || channel == 0) {
       MklDnnShape output_mkl_shape;
       output_mkl_shape.SetMklTensor(false);
-      TensorShape output_tf_shape({batch, channel});
       Tensor* dst_tensor = nullptr;
       AllocateOutputSetMklShape(ctx, kOutputIndex_Dst, &dst_tensor,
                                 output_tf_shape, output_mkl_shape,
@@ -138,48 +151,81 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
     }
 
     if (k == 0) {
-      MklDnnShape output_mkl_shape;
-      output_mkl_shape.SetMklTensor(false);
-      TensorShape output_tf_shape({batch, channel});
-      Tensor* dst_tensor = nullptr;
-      AllocateOutputSetMklShape(ctx, kOutputIndex_Dst, &dst_tensor,
-                                output_tf_shape, output_mkl_shape,
-                                native_format);
-      if constexpr (!std::is_same_v<Toutput, qint8> &&
-                    !std::is_same_v<Toutput, quint8> &&
-                    !std::is_same_v<Toutput, qint32>) {
-        Toutput* dst_data =
-            const_cast<Toutput*>(dst_tensor->flat<Toutput>().data());
+      if constexpr (std::is_same_v<T2, qint8>) {
+        OP_REQUIRES(
+            ctx, false,
+            absl::UnimplementedError(
+                "QuantizedFusedMatMulOp does not support zero reduction "
+                "dimension (k == 0)."));
+        return;
+      } else {
+        Tensor add_tf_tensor;
+        const U* add_data = nullptr;
+        if (this->fuse_add_) {
+          if (add_mkl_shape.IsMklTensor()) {
+            OP_REQUIRES_OK(ctx,
+                           ConvertMklToTF<U>(ctx, *add_tensor_ptr,
+                                             add_mkl_shape, &add_tf_tensor));
+          } else {
+            add_tf_tensor = *add_tensor_ptr;
+          }
+          add_data = add_tf_tensor.flat<U>().data();
+        }
+
+        MklDnnShape output_mkl_shape;
+        output_mkl_shape.SetMklTensor(false);
+        Tensor* dst_tensor = nullptr;
+        AllocateOutputSetMklShape(ctx, kOutputIndex_Dst, &dst_tensor,
+                                  output_tf_shape, output_mkl_shape,
+                                  native_format);
+        if (!ctx->status().ok() || dst_tensor == nullptr) return;
+
+        Toutput* dst_data = dst_tensor->flat<Toutput>().data();
         const Tbias* bias_data = bias_tensor.flat<Tbias>().data();
-        const U* add_data =
-            fuse_add_ ? ctx->input(input_idx_add_).flat<U>().data() : nullptr;
+
+        // Check if there is a fused activation post op.
+        string post_act;
+        for (size_t i = 1; i < fused_ops_.size(); ++i) {
+          if (fused_ops_[i] != "Add") {
+            post_act = fused_ops_[i];
+            break;
+          }
+        }
+
         for (int64_t b = 0; b < batch; ++b) {
           for (int64_t c = 0; c < channel; ++c) {
             float val = static_cast<float>(bias_data[c]);
-            if (fuse_add_ && add_data != nullptr) {
+            if (add_data != nullptr) {
               val += static_cast<float>(add_data[b * channel + c]);
             }
-            if (fused_ops_.size() == 2) {
-              const string& post_op = fused_ops_[1];
-              if (post_op == "Relu") {
+            if (!std::isnan(val) && !post_act.empty()) {
+              if (post_act == "Relu") {
                 val = std::max(0.0f, val);
-              } else if (post_op == "Relu6") {
+              } else if (post_act == "Relu6") {
                 val = std::min(6.0f, std::max(0.0f, val));
-              } else if (post_op == "LeakyRelu") {
-                val = val < 0.0f ? leakyrelu_alpha_ * val : val;
-              } else if (post_op == "Elu") {
+              } else if (post_act == "LeakyRelu") {
+                val = val < 0.0f ? this->leakyrelu_alpha_ * val : val;
+              } else if (post_act == "Elu") {
                 val = val < 0.0f ? std::expm1(val) : val;
-              } else if (post_op == "Tanh") {
+              } else if (post_act == "Tanh") {
                 val = std::tanh(val);
-              } else if (post_op == "Sigmoid") {
+              } else if (post_act == "Sigmoid") {
                 val = 1.0f / (1.0f + std::exp(-val));
+              } else if (post_act == "GeluApproximate") {
+                constexpr float kSqrt2OverPi = 0.7978845608028654f;
+                val = 0.5f * val *
+                      (1.0f + std::tanh(kSqrt2OverPi *
+                                        (val + 0.044715f * val * val * val)));
+              } else if (post_act == "GeluExact") {
+                constexpr float kInvSqrt2 = 0.7071067811865475f;
+                val = 0.5f * val * (1.0f + std::erf(val * kInvSqrt2));
               }
             }
             dst_data[b * channel + c] = static_cast<Toutput>(val);
           }
         }
+        return;
       }
-      return;
     }
 
     // For inputs s[batch, k], w[k, channel] and b[channel], the primitive
@@ -608,6 +654,7 @@ class QuantizedFusedMatMulOp
 
   void Compute(OpKernelContext* ctx) override {
     MklFusedMatMulOp<Device, T1, T2, Tbias, Toutput, U, true>::Compute(ctx);
+    if (!ctx->status().ok()) return;
     // Compute additional outputs
     if (std::is_same<Toutput, qint8>::value ||
         std::is_same<Toutput, quint8>::value ||
