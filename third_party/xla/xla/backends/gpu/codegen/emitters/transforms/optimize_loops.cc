@@ -48,6 +48,7 @@ bool IsExpensiveToUnroll(mlir::Operation* op) {
   return mlir::isa<
       // clang-format off
       // go/keep-sorted start
+      SyncThreadsOp,
       mlir::func::CallOp,
       mlir::math::AcosOp,
       mlir::math::AcoshOp,

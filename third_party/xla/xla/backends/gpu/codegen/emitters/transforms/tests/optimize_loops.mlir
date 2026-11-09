@@ -143,3 +143,25 @@ module {
 // CHECK: scf.for {{.*}} step %[[C8]]
 // CHECK-MAX16-LABEL: @unroll_up_to_max
 // CHECK-MAX16-NOT: scf.for
+
+// -----
+
+module {
+  func.func @do_not_unroll_sync_threads(%arg0: tensor<64xf32>) -> tensor<64xf32> {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c4 = arith.constant 4 : index
+    %ret = scf.for %i = %c0 to %c4 step %c1 iter_args (%t = %arg0) -> (tensor<64xf32>) {
+      %synced = xla_gpu.sync_threads %t : tensor<64xf32>
+      scf.yield %synced : tensor<64xf32>
+    }
+    return %ret : tensor<64xf32>
+  }
+}
+
+// CHECK-LABEL: @do_not_unroll_sync_threads
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: scf.for {{.*}} step %[[C1]]
+// CHECK-MAX16-LABEL: @do_not_unroll_sync_threads
+// CHECK-MAX16: %[[C1:.*]] = arith.constant 1 : index
+// CHECK-MAX16: scf.for {{.*}} step %[[C1]]

@@ -21,18 +21,6 @@ compare {
 // CHECK:         getelementptr inbounds [64 x float], ptr addrspacecast (ptr addrspace(3) @shared_0 to ptr), i32 0, i32 %[[BASE_CACHE]]
 // CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
-// CHECK:         xor i32 %[[BASE_CACHE]], 1
-// CHECK:         call i8 @compare_lt(float %{{.*}}, float %{{.*}})
-// CHECK:         xor i32 %{{.*}}, 1
-// CHECK:         call i8 @compare_lt(float %{{.*}}, float %{{.*}})
-// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
-// CHECK-GCN:     call void @llvm.amdgcn.s.barrier
-// CHECK:         xor i32 %{{.*}}, 3
-// CHECK:         call i8 @compare_lt(float %{{.*}}, float %{{.*}})
-// CHECK:         xor i32 %{{.*}}, 3
-// CHECK:         call i8 @compare_lt(float %{{.*}}, float %{{.*}})
-// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
-// CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         call i8 @compare_lt(float %{{.*}}, float %{{.*}})
 // CHECK:         call i8 @compare_lt(float %{{.*}}, float %{{.*}})
 // CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
@@ -139,8 +127,68 @@ ENTRY main {
   ROOT sort = f64[3072] sort(param0), dimensions={0}, to_apply=compare
 }
 
-// The sort dimension fits in a single partial tile, so only the bounds checked
-// compare loop is emitted: 78 xor masks with 2 comparisons each.
+// The sort dimension fits in a single partial tile, so only the rolled bounds
+// checked compare loop body is emitted (2 comparisons per step): 1 rolled flip
+// step and 1 rolled inner merge step = 2 steps (4 calls).
 // CHECK-LABEL: @sort(
-// CHECK-COUNT-156: call i8 @compare_lt(
-// CHECK-NOT:       call i8 @compare_lt(
+// CHECK-COUNT-4: call i8 @compare_lt(
+// CHECK-NOT:     call i8 @compare_lt(
+
+// -----
+
+HloModule TestModule, is_scheduled=true
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY main {
+  param0 = f32[16384] parameter(0)
+  ROOT sort = f32[16384] sort(param0), dimensions={0}, to_apply=compare
+}
+
+// 14 stages with tile_size 4096 launches 6 kernels (initial 12 intra-tile
+// stages, global step 8191, trailing 12 intra-tile steps, global step 16383,
+// global step 4096, and trailing 12 intra-tile steps). The second trailing
+// intra-tile kernel reuses @sort__2, leaving 5 unique kernels.
+// CHECK-NOT:      @sort__5(
+// CHECK-LABEL:    @sort__4(
+// CHECK-LABEL:    @sort__3(
+// CHECK-LABEL:    @sort__2(
+// CHECK-COUNT-24: call i8 @compare_lt
+// CHECK-LABEL:    @sort__1(
+// CHECK-LABEL:    @sort(
+// CHECK-COUNT-58: call i8 @compare_lt
+// CHECK-NOT:      call i8 @compare_lt
+// CHECK-NOT:      @sort__5(
+
+// -----
+
+HloModule TestModule, is_scheduled=true
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY main {
+  param0 = f32[12800] parameter(0)
+  ROOT sort = f32[12800] sort(param0), dimensions={0}, to_apply=compare
+}
+
+// Non-power-of-2 multi-tile sort splits once on is_last_tile: full tiles run
+// the unrolled fast path (24 calls in @sort__2, 58 calls in @sort) and roll the
+// trailing partial tile (2 calls in @sort__2, 4 calls in @sort).
+// CHECK-LABEL:    @sort__4(
+// CHECK-LABEL:    @sort__3(
+// CHECK-LABEL:    @sort__2(
+// CHECK-COUNT-26: call i8 @compare_lt
+// CHECK-NOT:      call i8 @compare_lt
+// CHECK-LABEL:    @sort__1(
+// CHECK-LABEL:    @sort(
+// CHECK-COUNT-62: call i8 @compare_lt
+// CHECK-NOT:      call i8 @compare_lt
+// CHECK:          ret void
