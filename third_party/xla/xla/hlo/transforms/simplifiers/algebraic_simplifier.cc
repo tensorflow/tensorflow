@@ -1308,11 +1308,37 @@ struct UniformCollectiveOperand {
   HloInstruction* scalar_constant = nullptr;
 };
 
+// Returns true if `computation` is a branch of a `kConditional` instruction
+// (or nested inside one). Different replicas or partitions may take different
+// branches of a `kConditional` at runtime (e.g. when the branch index depends
+// on `replica-id` or `partition-id`), so a constant collective operand inside a
+// branch is not guaranteed to be uniform across all participating devices, and
+// folding the collective in only one branch can deadlock the others.
+bool IsInConditionalBranch(const HloComputation* computation) {
+  absl::InlinedVector<const HloComputation*, 4> worklist = {computation};
+  absl::flat_hash_set<const HloComputation*> visited;
+  while (!worklist.empty()) {
+    const HloComputation* current = worklist.back();
+    worklist.pop_back();
+    for (const HloInstruction* caller : current->caller_instructions()) {
+      if (caller->opcode() == HloOpcode::kConditional) {
+        return true;
+      }
+      const HloComputation* parent = caller->parent();
+      if (parent != nullptr && visited.insert(parent).second) {
+        worklist.push_back(parent);
+      }
+    }
+  }
+  return false;
+}
+
 std::optional<UniformCollectiveOperand> MatchUniformCollectiveOperand(
     HloInstruction* collective, const AlgebraicSimplifierOptions& options) {
   if (!collective->shape().IsArray() || collective->operand_count() != 1 ||
       collective->HasControlDependencies() ||
-      collective->parent()->IsAsyncComputation()) {
+      collective->parent()->IsAsyncComputation() ||
+      IsInConditionalBranch(collective->parent())) {
     return std::nullopt;
   }
   if (options.is_layout_sensitive() && collective->shape().has_layout() &&

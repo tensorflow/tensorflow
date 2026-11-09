@@ -15804,6 +15804,29 @@ TEST_F(AlgebraicSimplifierTest, UniformCollectiveNegativeCases) {
                        ParseAndReturnVerifiedModule(kProductAllReduceHlo));
   EXPECT_THAT(AlgebraicSimplifier(default_options_).Run(prod_module.get()),
               absl_testing::IsOkAndHolds(false));
+
+  constexpr absl::string_view kConditionalBranchCollectiveHlo = R"hlo(
+    HloModule m
+    branch0 {
+      param0 = () parameter(0)
+      c0 = f32[1] constant({0.0})
+      ROOT ag0 = f32[2] all-gather(c0), dimensions={0}, replica_groups={{0,1}}
+    }
+    branch1 {
+      param1 = () parameter(0)
+      c1 = f32[1] constant({1.0})
+      ROOT ag1 = f32[2] all-gather(c1), dimensions={0}, replica_groups={{0,1}}
+    }
+    ENTRY test {
+      p = pred[] parameter(0)
+      empty = () tuple()
+      ROOT cond = f32[2] conditional(p, empty, empty), true_computation=branch0, false_computation=branch1
+    })hlo";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> cond_module,
+      ParseAndReturnVerifiedModule(kConditionalBranchCollectiveHlo));
+  EXPECT_THAT(AlgebraicSimplifier(default_options_).Run(cond_module.get()),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(AlgebraicSimplifierTest, TrivialMin) {
