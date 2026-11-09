@@ -173,24 +173,6 @@ def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
             auto_configure_fail("Invalid AMDGPU target: %s" % amdgpu_target)
     return amdgpu_targets
 
-def _lib_name(lib, version = "", static = False):
-    """Constructs the name of a library on Linux.
-
-    Args:
-      lib: The name of the library, such as "hip"
-      version: The version of the library.
-      static: True the library is static or False if it is a shared object.
-
-    Returns:
-      The platform-specific name of the library.
-    """
-    if static:
-        return "lib%s.a" % lib
-    else:
-        if version:
-            version = ".%s" % version
-        return "lib%s.so%s" % (lib, version)
-
 def find_rocm_config(repository_ctx, rocm_path):
     """Returns ROCm config dictionary from running find_rocm_config.py
 
@@ -290,26 +272,16 @@ def _create_dummy_repository(repository_ctx):
             "%{rocm_version_number}": "0",
             "%{single_gpu_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_SINGLE_GPU_POOL, _DEFAULT_TF_ROCM_RBE_SINGLE_GPU_POOL),
             "%{multi_gpu_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_MULTI_GPU_POOL, _DEFAULT_TF_ROCM_RBE_MULTI_GPU_POOL),
+            # There is no ROCm installation to point at; the globs in rocm/BUILD
+            # match nothing and none of the targets are meant to be built.
+            "%{rocm_root}": _remove_root_dir(_DISTRIBUTION_PATH, "rocm"),
+            "%{rocm_toolkit_path}": "/opt/rocm",
+            "%{rocm_lib_paths}": "",
+            "%{rocm_rbe_docker_image}": repository_ctx.os.environ.get(_TF_ROCM_RBE_DOCKER_IMAGE, _DEFAULT_TF_ROCM_RBE_DOCKER_IMAGE),
+            "%{rocm_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_POOL, _DEFAULT_TF_ROCM_RBE_POOL),
         },
     )
-    _tpl(
-        repository_ctx,
-        "rocm:BUILD",
-        {
-            "%{hip_lib}": _lib_name("hip"),
-            "%{rocblas_lib}": _lib_name("rocblas"),
-            "%{hipblas_lib}": _lib_name("hipblas"),
-            "%{miopen_lib}": _lib_name("miopen"),
-            "%{rccl_lib}": _lib_name("rccl"),
-            "%{hiprand_lib}": _lib_name("hiprand"),
-            "%{hipsparse_lib}": _lib_name("hipsparse"),
-            "%{roctracer_lib}": _lib_name("roctracer64"),
-            "%{rocsolver_lib}": _lib_name("rocsolver"),
-            "%{hipsolver_lib}": _lib_name("hipsolver"),
-            "%{hipblaslt_lib}": _lib_name("hipblaslt"),
-            "%{rocm_headers}": "",
-        },
-    )
+    _tpl(repository_ctx, "rocm:BUILD")
 
     # Create dummy files for the ROCm toolkit since they are still required by
     # tensorflow/compiler/xla/stream_executor/rocm:rocm_rpath
@@ -334,6 +306,18 @@ def _create_dummy_repository(repository_ctx):
         _DUMMY_CROSSTOOL_BZL_FILE,
     )
     repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
+
+def _rocm_lib_paths(repository_ctx):
+    """Returns the host library directories of a multi-path ROCm installation.
+
+    The directories of TF_ROCM_MULTIPLE_PATHS are merged into a single tree of
+    symlinks, so binaries need an rpath pointing back at the original installs.
+    Returns an empty string if TF_ROCM_MULTIPLE_PATHS is not set.
+    """
+    multiple_paths = repository_ctx.os.environ.get(_TF_ROCM_MULTIPLE_PATHS)
+    if not multiple_paths:
+        return ""
+    return ":".join([path + "/lib" for path in multiple_paths.split(":")])
 
 def _remove_root_dir(path, root_dir):
     if path.startswith(root_dir + "/"):
@@ -423,7 +407,8 @@ def _create_local_rocm_repository(repository_ctx):
 
     bash_bin = get_bash_bin(repository_ctx)
 
-    # Set up BUILD file for rocm/
+    # Set up BUILD file for rocm/. The BUILD file itself is copied verbatim; all
+    # values detected here are exposed to it through rocm_info().
     repository_ctx.template(
         "rocm/build_defs.bzl",
         tpl_paths["rocm:build_defs.bzl"],
@@ -435,21 +420,18 @@ def _create_local_rocm_repository(repository_ctx):
             "%{multi_gpu_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_MULTI_GPU_POOL, _DEFAULT_TF_ROCM_RBE_MULTI_GPU_POOL),
             "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
             "%{rocm_version_number}": str(rocm_version_number),
+            "%{rocm_root}": rocm_toolkit_path,
+            "%{rocm_toolkit_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path)),
+            "%{rocm_lib_paths}": _rocm_lib_paths(repository_ctx),
+            "%{rocm_rbe_docker_image}": repository_ctx.os.environ.get(_TF_ROCM_RBE_DOCKER_IMAGE, _DEFAULT_TF_ROCM_RBE_DOCKER_IMAGE),
+            "%{rocm_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_POOL, _DEFAULT_TF_ROCM_RBE_POOL),
         },
     )
-
-    repository_dict = {
-        "%{rocm_root}": rocm_toolkit_path,
-        "%{rocm_toolkit_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path)),
-        "%{rocm_rbe_docker_image}": repository_ctx.os.environ.get(_TF_ROCM_RBE_DOCKER_IMAGE, _DEFAULT_TF_ROCM_RBE_DOCKER_IMAGE),
-        "%{rocm_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_POOL, _DEFAULT_TF_ROCM_RBE_POOL),
-        "%{rocm_repo_name}": repository_ctx.name,
-    }
 
     repository_ctx.template(
         "rocm/BUILD",
         tpl_paths["rocm:BUILD"],
-        repository_dict,
+        {},
     )
 
     # Only expand template variables in the BUILD file
