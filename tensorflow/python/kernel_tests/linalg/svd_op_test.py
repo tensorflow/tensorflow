@@ -133,34 +133,35 @@ class SvdOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def testNonFiniteInputsConsistentNaNs(self):
-    # Regression test for GitHub issue #63852: SVD with non-finite inputs
-    # must consistently return NaNs across both real and complex data types
-    # rather than populating zeros for complex types.
     for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+      is_complex = dtype in (np.complex64, np.complex128)
+      bad_matrices = [
+          np.array([[np.inf, -np.inf]], dtype=dtype),
+          np.array([[np.nan, 1.0], [0.0, 1.0]], dtype=dtype),
+      ]
+      if is_complex:
+        bad_matrices.append(
+            np.array([[complex(1.0, np.nan), 1.0], [0.0, 1.0]], dtype=dtype)
+        )
       for compute_uv in [True, False]:
         for full_matrices in [True, False]:
-          for bad_matrix in [
-              np.array([[np.inf, -np.inf]], dtype=dtype),
-              np.array([[np.nan, 1.0], [0.0, 1.0]], dtype=dtype),
-          ]:
+          for bad_matrix in bad_matrices:
             result = linalg_ops.svd(
-                bad_matrix, compute_uv=compute_uv, full_matrices=full_matrices)
+                bad_matrix,
+                compute_uv=compute_uv,
+                full_matrices=full_matrices,
+            )
             if compute_uv:
               s, u, v = self.evaluate(result)
-              self.assertTrue(
-                  np.all(np.isnan(s)),
-                  f"Expected all NaNs in singular values for {dtype}, got {s}")
-              self.assertTrue(
-                  np.all(np.isnan(u)),
-                  f"Expected all NaNs in u for {dtype}, got {u}")
-              self.assertTrue(
-                  np.all(np.isnan(v)),
-                  f"Expected all NaNs in v for {dtype}, got {v}")
+              self.assertTrue(np.all(np.isnan(s)))
+              self.assertTrue(np.all(np.isnan(np.real(u))))
+              self.assertTrue(np.all(np.isnan(np.real(v))))
+              if is_complex:
+                self.assertTrue(np.all(np.isnan(np.imag(u))))
+                self.assertTrue(np.all(np.isnan(np.imag(v))))
             else:
               s = self.evaluate(result)
-              self.assertTrue(
-                  np.all(np.isnan(s)),
-                  f"Expected all NaNs in singular values for {dtype}, got {s}")
+              self.assertTrue(np.all(np.isnan(s)))
 
 
 def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,

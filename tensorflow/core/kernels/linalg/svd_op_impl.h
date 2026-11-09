@@ -35,45 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-namespace functor {
-
-// Helper to provide quiet NaN values for both real and complex types.
-// For complex types, std::numeric_limits<std::complex<T>>::quiet_NaN()
-// is not specialized in the C++ standard library and returns T{} (0, 0),
-// which incorrectly populates outputs with zeros rather than NaNs when
-// decomposition fails or encounters non-finite inputs.
-template <typename T>
-struct SvdQuietNan {
-  static T Value() {
-    return Eigen::NumTraits<T>::quiet_NaN();
-  }
-};
-
-template <typename T>
-struct SvdQuietNan<std::complex<T>> {
-  static std::complex<T> Value() {
-    const T nan_val = Eigen::NumTraits<T>::quiet_NaN();
-    return std::complex<T>(nan_val, nan_val);
-  }
-};
-
-template <typename T>
-struct SvdMatrixCheck {
-  template <typename MatrixType>
-  static bool AllFinite(const MatrixType& m) {
-    return m.allFinite();
-  }
-};
-
-template <typename T>
-struct SvdMatrixCheck<std::complex<T>> {
-  template <typename MatrixType>
-  static bool AllFinite(const MatrixType& m) {
-    return m.real().allFinite() && m.imag().allFinite();
-  }
-};
-
-}  // namespace functor
 
 template <class Scalar>
 class SvdOp : public LinearAlgebraOp<Scalar> {
@@ -121,6 +82,7 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
   using MatrixMaps = typename Base::MatrixMaps;
   using ConstMatrixMap = typename Base::ConstMatrixMap;
   using ConstMatrixMaps = typename Base::ConstMatrixMaps;
+  using RealScalar = typename Base::RealScalar;
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
@@ -146,29 +108,14 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
       return;
     }
 
-    const Scalar nan_val = functor::SvdQuietNan<Scalar>::Value();
-
-    // Fast-path check for non-finite entries (NaN or +/-Inf). When inputs
-    // contain non-finite coefficients, SVD cannot converge to finite singular
-    // values, and calling BDCSVD would emit internal convergence warnings.
-    // Immediately populate outputs with quiet NaNs to ensure consistent
-    // IEEE-754 semantics across both real and complex dtypes without polluting
-    // stderr.
-    if (!functor::SvdMatrixCheck<Scalar>::AllFinite(inputs[0])) {
-      VLOG(2) << "SvdOp: Input matrix contains non-finite values (NaN/Inf). "
-                 "Returning quiet NaN outputs.";
-      outputs->at(0).fill(nan_val);
-      if (compute_uv_) {
-        outputs->at(1).fill(nan_val);
-        outputs->at(2).fill(nan_val);
-      }
-      return;
-    }
-
     Eigen::BDCSVD<Matrix> svd(inputs[0], options);
     if (svd.info() != Eigen::Success) {
-      VLOG(2) << "Eigen::BDCSVD failed with error code " << svd.info()
-              << ". Returning quiet NaN outputs.";
+      LOG(ERROR) << "Eigen::BDCSVD failed with error code " << svd.info();
+      const RealScalar real_nan = std::numeric_limits<RealScalar>::quiet_NaN();
+      Scalar nan_val(real_nan);
+      if constexpr (Eigen::NumTraits<Scalar>::IsComplex) {
+        nan_val = Scalar(real_nan, real_nan);
+      }
       outputs->at(0).fill(nan_val);
       if (compute_uv_) {
         outputs->at(1).fill(nan_val);
