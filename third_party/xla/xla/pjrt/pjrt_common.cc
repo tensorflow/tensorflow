@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/proto/pjrt_value_type.pb.h"
 
 template<typename T>
@@ -75,6 +76,25 @@ xla::PjRtValueTypeProto PjRtValueTypeToProto(const xla::PjRtValueType& value) {
       },
       value);
   return value_proto;
+}
+
+absl::string_view PjRtValueTypeCaseName(
+    PjRtValueTypeProto::ValueCase value_case) {
+  switch (value_case) {
+    case PjRtValueTypeProto::kBoolValue:
+      return "bool";
+    case PjRtValueTypeProto::kFloatValue:
+      return "float";
+    case PjRtValueTypeProto::kIntValue:
+      return "int64_t";
+    case PjRtValueTypeProto::kIntVector:
+      return "std::vector<int64_t>";
+    case PjRtValueTypeProto::kStringValue:
+      return "string";
+    case PjRtValueTypeProto::VALUE_NOT_SET:
+      return "unset";
+  }
+  return "unknown";
 }
 
 }  // namespace xla
