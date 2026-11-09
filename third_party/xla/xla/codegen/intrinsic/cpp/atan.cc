@@ -16,7 +16,7 @@ limitations under the License.
 #if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
     defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 
-#include "xla/codegen/intrinsic/cpp/eigen_unary.h"
+#include "xla/codegen/intrinsic/cpp/atan.h"
 
 #include <type_traits>
 
@@ -26,11 +26,8 @@ namespace xla::codegen {
 
 namespace {
 
-// Direct scalar/vector rational approximation matching Eigen's generic_atan
-// coefficients in GenericPacketMathTrig.h. Under -DEIGEN_VECTORIZE_GENERIC,
-// Eigen's clang PacketMath backend defines only a single packet size
-// (EIGEN_GENERIC_VECTOR_SIZE_BYTES), so calling Eigen for narrower sub-packet
-// vectors or scalars would fall back to libm atan/atanf/copysign calls.
+// Coefficients match Eigen's generic_atan; written directly so every width,
+// including scalar, lowers without libm calls.
 template <typename T>
 inline T Atan(const T x_in) {
   using Scalar = ElementType<T>;

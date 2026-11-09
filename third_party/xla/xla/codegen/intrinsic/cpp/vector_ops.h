@@ -24,8 +24,6 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
-#include "Eigen/Core"
-
 namespace xla {
 namespace codegen {
 #if defined(__FLT16_MANT_DIG__)
@@ -271,49 +269,6 @@ inline std::pair<T, T> TwoSum(T a, T b) {
   T e = (a - (s - v)) + (b - v);
   return {s, e};
 }
-
-// ===--------------------------------------------------------------------===//
-// Eigen Array type mapping
-// ===--------------------------------------------------------------------===//
-template <typename VecType>
-struct ArrayMap;
-
-#if defined(__FLT16_MANT_DIG__)
-template <>
-struct ArrayMap<Vec8h> {
-  using type = Eigen::Array<Eigen::half, 8, 1>;
-};
-template <>
-struct ArrayMap<Vec16h> {
-  using type = Eigen::Array<Eigen::half, 16, 1>;
-};
-#endif
-
-template <>
-struct ArrayMap<Vec4f> {
-  using type = Eigen::Array<float, 4, 1>;
-};
-template <>
-struct ArrayMap<Vec8f> {
-  using type = Eigen::Array<float, 8, 1>;
-};
-template <>
-struct ArrayMap<Vec16f> {
-  using type = Eigen::Array<float, 16, 1>;
-};
-
-template <>
-struct ArrayMap<Vec2d> {
-  using type = Eigen::Array<double, 2, 1>;
-};
-template <>
-struct ArrayMap<Vec4d> {
-  using type = Eigen::Array<double, 4, 1>;
-};
-template <>
-struct ArrayMap<Vec8d> {
-  using type = Eigen::Array<double, 8, 1>;
-};
 
 // Computes the absolute value of a scalar or vector using bitwise operations.
 template <typename FloatVec>

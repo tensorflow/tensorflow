@@ -151,7 +151,6 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-g0",
         "-DNDEBUG",
         "-mprefer-vector-width=512",
-        "-DEIGEN_VECTORIZE_GENERIC",
         "-flax-vector-conversions",  # Jax Mac wheel build server has int64_t != long
         "-fno-builtin",
         "-fno-exceptions",

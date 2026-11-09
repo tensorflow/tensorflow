@@ -44,53 +44,16 @@ limitations under the License.
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "xla/codegen/intrinsic/cpp/atan_ll.h"
 #include "xla/codegen/intrinsic/cpp/custom_cpp_intrinsics_ll.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_16_ll.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_32_ll.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_64_ll.h"
-#include "xla/codegen/intrinsic/cpp/expm1_32_ll.h"
-#include "xla/codegen/intrinsic/cpp/expm1_64_ll.h"
+#include "xla/codegen/intrinsic/cpp/expm1_ll.h"
 #include "xla/codegen/intrinsic/cpp/trig_ll.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla::codegen {
 
-namespace {
-
-const std::string& SelectIrString(const intrinsics::IntrinsicOptions& options,
-                                  const std::string& ir_32,
-                                  const std::string& ir_64) {
-  if (options.Contains("+avx512f") && (options.prefer_vector_width >= 512 ||
-                                       options.prefer_vector_width == 0)) {
-    return ir_64;
-  }
-  return ir_32;
-}
-
-}  // namespace
-
-const std::string& GetCppGenIrString(
-    const intrinsics::IntrinsicOptions& options) {
-  if (options.Contains("+avx512f") && (options.prefer_vector_width >= 512 ||
-                                       options.prefer_vector_width == 0)) {
-    return ::llvm_ir::kEigenUnary64LlIr;
-  }
-  if (options.Contains("+avx")) {
-    return ::llvm_ir::kEigenUnary32LlIr;
-  }
-  return ::llvm_ir::kEigenUnary16LlIr;
-}
-
-// Availability ignores prefer_vector_width because all IR variants share the
-// same translation unit and compiler guards.
-bool AreEigenIntrinsicsAvailable(absl::string_view features) {
-  intrinsics::IntrinsicOptions options;
-  options.features = std::string(features);
-  return !GetCppGenIrString(options).empty();
-}
-
-bool AreCppGenIntrinsicsAvailable() { return !::llvm_ir::kExpm132LlIr.empty(); }
+bool AreCppGenIntrinsicsAvailable() { return !::llvm_ir::kExpm1LlIr.empty(); }
 
 std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
     const intrinsics::IntrinsicOptions& options) {
@@ -101,14 +64,11 @@ std::vector<CppGenIntrinsicLibrary> GetCppGenLibraries(
       options.device_type != intrinsics::DeviceType::kSystemZCpu) {
     return libraries;
   }
-  const std::string& eigen_ir = GetCppGenIrString(options);
-  if (!eigen_ir.empty()) {
-    libraries.emplace_back(eigen_ir, "eigen");
+  if (!::llvm_ir::kAtanLlIr.empty()) {
+    libraries.emplace_back(::llvm_ir::kAtanLlIr, "atan");
   }
-  const std::string& expm1_ir =
-      SelectIrString(options, ::llvm_ir::kExpm132LlIr, ::llvm_ir::kExpm164LlIr);
-  if (!expm1_ir.empty()) {
-    libraries.emplace_back(expm1_ir, "expm1");
+  if (!::llvm_ir::kExpm1LlIr.empty()) {
+    libraries.emplace_back(::llvm_ir::kExpm1LlIr, "expm1");
   }
   if (!::llvm_ir::kCustomCppIntrinsicsLlIr.empty()) {
     libraries.emplace_back(::llvm_ir::kCustomCppIntrinsicsLlIr,

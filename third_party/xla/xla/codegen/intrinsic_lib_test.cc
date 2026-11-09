@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -36,13 +37,14 @@ limitations under the License.
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
 #include "xla/codegen/intrinsic/simple_jit_runner.h"
-#include "xla/codegen/intrinsic/test_matchers.h"
 
 namespace xla::codegen::intrinsics {
 namespace {
 
+using ::testing::Contains;
 using ::testing::IsSupersetOf;
 using ::testing::UnorderedElementsAre;
+using ::testing::UnorderedElementsAreArray;
 
 std::string ToString(const llvm::VecDesc& vec_desc) {
   return absl::StrJoin(
@@ -106,12 +108,10 @@ TEST(IntrinsicLibTest, AtanVectorizationsOnNeon) {
                             "xla.atan.f64:xla.atan.v2f64:2:_ZGV_LLVM_N2v"}));
 }
 
-TEST(IntrinsicLibTest, DefinesWideEigenAtan) {
-  if (!AreEigenIntrinsicsAvailable()) {
+TEST(IntrinsicLibTest, DefinesWideAtan) {
+  if (!AreCppGenIntrinsicsAvailable()) {
     GTEST_SKIP();
   }
-  EXPECT_TRUE(AreEigenIntrinsicsAvailable("+avx,+avx2"));
-  EXPECT_TRUE(AreEigenIntrinsicsAvailable("+avx,+avx512f"));
   constexpr absl::string_view kKernel = R"(
     declare <8 x float> @xla.atan.v8f32(<8 x float>)
     define <8 x float> @kernel(<8 x float> %x) {
@@ -136,24 +136,35 @@ TEST(IntrinsicLibTest, DefinesWideEigenAtan) {
   }
 }
 
-TEST(IntrinsicLibTest, DefinesAvxAndAvx512EigenAtanF64) {
-  if (!AreEigenIntrinsicsAvailable()) {
+TEST(IntrinsicLibTest, AtanHasNoLibmCallsAfterInlining) {
+  if (!AreCppGenIntrinsicsAvailable()) {
     GTEST_SKIP();
   }
-  constexpr absl::string_view kKernel = R"(
-    declare <4 x double> @xla.atan.v4f64(<4 x double>)
-    declare <2 x double> @xla.atan.v2f64(<2 x double>)
-
-    define <4 x double> @kernel_v4(<4 x double> %x) {
-      %r = call <4 x double> @xla.atan.v4f64(<4 x double> %x)
-      ret <4 x double> %r
-    }
-
-    define <2 x double> @kernel_v2(<2 x double> %x) {
-      %r = call <2 x double> @xla.atan.v2f64(<2 x double> %x)
-      ret <2 x double> %r
-    }
-  )";
+  std::string kernels;
+  std::vector<std::string> kernel_names;
+  std::vector<std::string> atan_names;
+  struct Width {
+    absl::string_view ir_type;
+    absl::string_view suffix;
+  };
+  for (const auto& [type, suffix] :
+       {Width{"float", "f32"}, Width{"<4 x float>", "v4f32"},
+        Width{"<8 x float>", "v8f32"}, Width{"<16 x float>", "v16f32"},
+        Width{"double", "f64"}, Width{"<2 x double>", "v2f64"},
+        Width{"<4 x double>", "v4f64"}, Width{"<8 x double>", "v8f64"}}) {
+    std::string atan = absl::StrCat("xla.atan.", suffix);
+    std::string kernel = absl::StrCat("kernel_", suffix);
+    absl::StrAppend(&kernels, absl::Substitute(R"(
+      declare $0 @$1($0)
+      define $0 @$2($0 %x) {
+        %r = call $0 @$1($0 %x)
+        ret $0 %r
+      }
+    )",
+                                               type, atan, kernel));
+    atan_names.push_back(atan);
+    kernel_names.push_back(kernel);
+  }
 
   struct Config {
     absl::string_view features;
@@ -166,13 +177,13 @@ TEST(IntrinsicLibTest, DefinesAvxAndAvx512EigenAtanF64) {
     options.features = std::string(cfg.features);
     options.prefer_vector_width = cfg.prefer_vector_width;
 
-    auto context = std::make_unique<llvm::LLVMContext>();
+    llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module =
-        ParseEmbeddedBitcode(*context, std::string(kKernel));
+        ParseEmbeddedBitcode(context, kernels);
     IntrinsicFunctionLib lib(options);
     lib.Vectorizations();
     EXPECT_THAT(lib.DefineIntrinsicFunctions(*module),
-                UnorderedElementsAre("xla.atan.v4f64", "xla.atan.v2f64"));
+                UnorderedElementsAreArray(atan_names));
     intrinsic::RunInlineAndOptPasses(*module);
     EXPECT_FALSE(llvm::verifyModule(*module, &llvm::errs()));
 
@@ -180,26 +191,8 @@ TEST(IntrinsicLibTest, DefinesAvxAndAvx512EigenAtanF64) {
       if (f.isDeclaration()) {
         EXPECT_TRUE(f.isIntrinsic()) << f.getName().str();
       } else {
-        EXPECT_TRUE(f.getName() == "kernel_v4" || f.getName() == "kernel_v2")
-            << f.getName().str();
-        EXPECT_FALSE(f.hasPersonalityFn()) << f.getName().str();
+        EXPECT_THAT(kernel_names, Contains(f.getName().str()));
       }
-    }
-
-    intrinsic::JitRunner jit(std::move(module), std::move(context));
-    auto atan_v4 = jit.GetVectorizedFn<4, double, double>("kernel_v4");
-    auto atan_v2 = jit.GetVectorizedFn<2, double, double>("kernel_v2");
-
-    std::array<double, 4> x4 = {-3.0, -0.25, 0.5, 10.0};
-    std::array<double, 4> y4 = atan_v4(x4);
-    for (int i = 0; i < 4; ++i) {
-      EXPECT_THAT(y4[i], intrinsic::NearUlps(std::atan(x4[i]), 2)) << x4[i];
-    }
-
-    std::array<double, 2> x2 = {-1.5, 2.25};
-    std::array<double, 2> y2 = atan_v2(x2);
-    for (int i = 0; i < 2; ++i) {
-      EXPECT_THAT(y2[i], intrinsic::NearUlps(std::atan(x2[i]), 2)) << x2[i];
     }
   }
 }

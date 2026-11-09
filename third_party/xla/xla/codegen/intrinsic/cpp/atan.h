@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_CODEGEN_INTRINSIC_CPP_EIGEN_UNARY_H_
-#define XLA_CODEGEN_INTRINSIC_CPP_EIGEN_UNARY_H_
+#ifndef XLA_CODEGEN_INTRINSIC_CPP_ATAN_H_
+#define XLA_CODEGEN_INTRINSIC_CPP_ATAN_H_
 
 #include "xla/codegen/intrinsic/cpp/vector_ops.h"
 
@@ -33,4 +33,4 @@ Vec8d atan_v8f64(Vec8d x) asm("xla.atan.v8f64");
 
 }  // namespace xla::codegen
 
-#endif  // XLA_CODEGEN_INTRINSIC_CPP_EIGEN_UNARY_H_
+#endif  // XLA_CODEGEN_INTRINSIC_CPP_ATAN_H_

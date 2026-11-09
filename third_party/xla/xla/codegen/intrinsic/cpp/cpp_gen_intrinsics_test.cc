@@ -43,9 +43,7 @@ limitations under the License.
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_16_ll.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_32_ll.h"
-#include "xla/codegen/intrinsic/cpp/eigen_unary_64_ll.h"
+#include "xla/codegen/intrinsic/cpp/atan_ll.h"
 #include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
 #include "xla/codegen/intrinsic/simple_jit_runner.h"
 #include "xla/codegen/intrinsic/test_matchers.h"
@@ -77,7 +75,7 @@ void StripHostAttrs(llvm::Module& module) {
 TEST(CppGenIntrinsicsTest, AtanV8F32HasDirectSignature) {
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary16LlIr);
+      ParseEmbeddedBitcode(context, llvm_ir::kAtanLlIr);
   llvm::FunctionType* type = UnaryType(VecF32(context, 8));
 
   llvm::Function* fn = GetCppGenFunction(module.get(), "xla.atan.v8f32", type);
@@ -89,7 +87,7 @@ TEST(CppGenIntrinsicsTest, AtanV8F32HasDirectSignature) {
 TEST(CppGenIntrinsicsTest, AtanV8F32IsIdempotent) {
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary16LlIr);
+      ParseEmbeddedBitcode(context, llvm_ir::kAtanLlIr);
   llvm::FunctionType* type = UnaryType(VecF32(context, 8));
 
   llvm::Function* first =
@@ -103,7 +101,7 @@ TEST(CppGenIntrinsicsTest, AtanV8F32IsIdempotent) {
 TEST(CppGenIntrinsicsTest, DirectSignaturesAreUntouched) {
   llvm::LLVMContext context;
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary16LlIr);
+      ParseEmbeddedBitcode(context, llvm_ir::kAtanLlIr);
 
   llvm::Function* scalar = GetCppGenFunction(
       module.get(), "xla.atan.f32", UnaryType(llvm::Type::getFloatTy(context)));
@@ -119,7 +117,7 @@ TEST(CppGenIntrinsicsTest, DirectSignaturesAreUntouched) {
 TEST(CppGenIntrinsicsTest, AtanV8F32ComputesThroughJit) {
   auto context = std::make_unique<llvm::LLVMContext>();
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(*context, llvm_ir::kEigenUnary16LlIr);
+      ParseEmbeddedBitcode(*context, llvm_ir::kAtanLlIr);
   StripHostAttrs(*module);
 
   llvm::Function* fn = GetCppGenFunction(module.get(), "xla.atan.v8f32",
@@ -137,18 +135,17 @@ TEST(CppGenIntrinsicsTest, AtanV8F32ComputesThroughJit) {
   }
 }
 
-// Eigen's vector atan is up to 2 ulp off, e.g. float atan(0.5).
+// xla.atan is up to 2 ulp off, e.g. float atan(0.5).
 constexpr int kAtanUlps = 2;
 
-// Applies xla.atan from `ir_bitcode`, obtained through the same
+// Applies xla.atan from the library IR, obtained through the same
 // GetCppGenFunction path kernels use, to `xs` in <N x T> chunks.
 template <typename T, size_t N>
-std::vector<T> AtanFromIr(const std::string& ir_bitcode,
-                          const std::vector<T>& xs,
+std::vector<T> AtanFromIr(const std::vector<T>& xs,
                           bool flush_denormals = false) {
   auto context = std::make_unique<llvm::LLVMContext>();
   std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(*context, ir_bitcode);
+      ParseEmbeddedBitcode(*context, llvm_ir::kAtanLlIr);
   StripHostAttrs(*module);
   std::string name =
       absl::StrCat("xla.atan.v", N, sizeof(T) == 4 ? "f32" : "f64");
@@ -176,17 +173,11 @@ std::vector<T> AtanFromIr(const std::string& ir_bitcode,
 }
 
 template <typename T, size_t N>
-void ExpectAtanNearStd(const std::string& ir_bitcode,
-                       const std::vector<T>& xs) {
-  std::vector<T> ys = AtanFromIr<T, N>(ir_bitcode, xs);
+void ExpectAtanNearStd(const std::vector<T>& xs) {
+  std::vector<T> ys = AtanFromIr<T, N>(xs);
   for (size_t i = 0; i < xs.size(); ++i) {
     EXPECT_THAT(ys[i], NearUlps(std::atan(xs[i]), kAtanUlps)) << xs[i];
   }
-}
-
-template <typename T, size_t N>
-void ExpectAtan16NearStd(const std::vector<T>& xs) {
-  ExpectAtanNearStd<T, N>(llvm_ir::kEigenUnary16LlIr, xs);
 }
 
 // x86-64 SysV without AVX-512 and AArch64 pass 512-bit vectors indirectly, so
@@ -196,7 +187,7 @@ TEST(CppGenIntrinsicsTest, WideAtanIsAdaptedFromLibraryIr) {
   {
     llvm::LLVMContext context;
     std::unique_ptr<llvm::Module> module =
-        ParseEmbeddedBitcode(context, llvm_ir::kEigenUnary16LlIr);
+        ParseEmbeddedBitcode(context, llvm_ir::kAtanLlIr);
     if (!module->getTargetTriple().isOSWindows()) {
       for (const char* name : {"xla.atan.v16f32", "xla.atan.v8f64"}) {
         EXPECT_TRUE(
@@ -205,41 +196,28 @@ TEST(CppGenIntrinsicsTest, WideAtanIsAdaptedFromLibraryIr) {
       }
     }
   }
-  ExpectAtan16NearStd<float, 16>({0.0f, 0.5f, -1.0f, 1.5f, -2.0f, 3.0f, 0.1f,
-                                  -0.25f, 10.0f, -40.0f, 1e-4f, -0.9f, 7.0f,
-                                  -1e3f, 0.75f, -5.5f});
-  ExpectAtan16NearStd<double, 8>({0.0, 0.5, -1.0, 1.5, -2.0, 3.0, 1e-4, -1e3});
+  ExpectAtanNearStd<float, 16>({0.0f, 0.5f, -1.0f, 1.5f, -2.0f, 3.0f, 0.1f,
+                                -0.25f, 10.0f, -40.0f, 1e-4f, -0.9f, 7.0f,
+                                -1e3f, 0.75f, -5.5f});
+  ExpectAtanNearStd<double, 8>({0.0, 0.5, -1.0, 1.5, -2.0, 3.0, 1e-4, -1e3});
 }
 
-TEST(CppGenIntrinsicsTest, EigenIntrinsicsAreAvailable) {
-  EXPECT_TRUE(AreEigenIntrinsicsAvailable());
+TEST(CppGenIntrinsicsTest, CppGenIntrinsicsAreAvailable) {
   EXPECT_TRUE(AreCppGenIntrinsicsAvailable());
 }
 
-TEST(CppGenIntrinsicsTest, AtanV2F64FromLibraryIr) {
-  ExpectAtan16NearStd<double, 2>({0.5, -3.0, 1.0, -0.1, 1e-4, 1e3});
-}
-
-TEST(CppGenIntrinsicsTest, SubPacketAtanFromWideLibraryIr) {
+TEST(CppGenIntrinsicsTest, NarrowAtanFromLibraryIr) {
   const std::vector<float> xs_f32 = {0.0f,  0.5f,   -1.0f, 1.5f,
                                      -2.0f, 3.0f,   1e-4f, -0.25f,
                                      10.0f, -40.0f, 0.75f, -5.5f};
-  const std::vector<double> xs_f64 = {0.0,  0.5, -1.0, 1.5,
-                                      -2.0, 3.0, 1e-4, -1e3};
-
-  ExpectAtanNearStd<float, 4>(llvm_ir::kEigenUnary32LlIr, xs_f32);
-  ExpectAtanNearStd<float, 8>(llvm_ir::kEigenUnary32LlIr, xs_f32);
-  ExpectAtanNearStd<double, 2>(llvm_ir::kEigenUnary32LlIr, xs_f64);
-  ExpectAtanNearStd<double, 4>(llvm_ir::kEigenUnary32LlIr, xs_f64);
-
-  ExpectAtanNearStd<float, 4>(llvm_ir::kEigenUnary64LlIr, xs_f32);
-  ExpectAtanNearStd<float, 8>(llvm_ir::kEigenUnary64LlIr, xs_f32);
-  ExpectAtanNearStd<double, 2>(llvm_ir::kEigenUnary64LlIr, xs_f64);
-  ExpectAtanNearStd<double, 4>(llvm_ir::kEigenUnary64LlIr, xs_f64);
+  ExpectAtanNearStd<float, 4>(xs_f32);
+  ExpectAtanNearStd<float, 8>(xs_f32);
+  ExpectAtanNearStd<double, 2>({0.5, -3.0, 1.0, -0.1, 1e-4, 1e3});
+  ExpectAtanNearStd<double, 4>({0.0, 0.5, -1.0, 1.5, -2.0, 3.0, 1e-4, -1e3});
 }
 
 template <typename T, size_t N>
-void ExpectAtanEdgeCases(const std::string& ir_bitcode, bool flush_denormals) {
+void ExpectAtanEdgeCases(bool flush_denormals) {
   using Limits = std::numeric_limits<T>;
   const T kShortcut = T(1e-3);
   const std::vector<T> xs = {T(0),
@@ -256,7 +234,7 @@ void ExpectAtanEdgeCases(const std::string& ir_bitcode, bool flush_denormals) {
                              -std::nextafter(kShortcut, T(1)),
                              T(0.5),
                              T(-3)};
-  std::vector<T> ys = AtanFromIr<T, N>(ir_bitcode, xs, flush_denormals);
+  std::vector<T> ys = AtanFromIr<T, N>(xs, flush_denormals);
   for (size_t i = 0; i < xs.size(); ++i) {
     T x = xs[i];
     T y = ys[i];
@@ -273,14 +251,10 @@ void ExpectAtanEdgeCases(const std::string& ir_bitcode, bool flush_denormals) {
 }
 
 TEST(CppGenIntrinsicsTest, AtanEdgeCasesFromLibraryIr) {
-  for (const std::string* ir :
-       {&llvm_ir::kEigenUnary16LlIr, &llvm_ir::kEigenUnary32LlIr,
-        &llvm_ir::kEigenUnary64LlIr}) {
-    for (bool flush_denormals : {false, true}) {
-      SCOPED_TRACE(absl::StrCat("flush_denormals=", flush_denormals));
-      ExpectAtanEdgeCases<float, 4>(*ir, flush_denormals);
-      ExpectAtanEdgeCases<double, 2>(*ir, flush_denormals);
-    }
+  for (bool flush_denormals : {false, true}) {
+    SCOPED_TRACE(absl::StrCat("flush_denormals=", flush_denormals));
+    ExpectAtanEdgeCases<float, 4>(flush_denormals);
+    ExpectAtanEdgeCases<double, 2>(flush_denormals);
   }
 }
 
