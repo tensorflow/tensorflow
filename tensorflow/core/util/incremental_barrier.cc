@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/bind_front.h"
+#include "absl/log/check.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

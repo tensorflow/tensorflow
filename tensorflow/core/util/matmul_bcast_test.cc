@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/util/matmul_bcast.h"
 
+#include <string>
+
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"

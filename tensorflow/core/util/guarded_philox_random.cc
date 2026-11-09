@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/util/guarded_philox_random.h"
 
+#include <cstdint>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/util/determinism.h"
 
