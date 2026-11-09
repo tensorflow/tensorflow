@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <utility>
@@ -24,9 +25,14 @@ limitations under the License.
 
 #if defined(_WIN32)
 #include <windows.h>
+#undef DeleteFile
 #endif  // _WIN32
 
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -41,6 +47,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_statistics.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -1968,6 +1977,174 @@ TEST(TensorBundleTest, LargeVariableLoadingTest) {
     Expect<float>(&reader, "foo_001", Constant_100x100<float>(1));
     Expect<float>(&reader, "foo_002", Constant_100x100<float>(2));
     Expect<float>(&reader, "foo_003", Constant_100x100<float>(3));
+  }
+}
+
+TEST(TensorBundleTest, MultiThreadedRestoreAcceptsValidTensor) {
+  // The 24 byte entry splits evenly into the 8 reader sections.
+  const std::string prefix = Prefix("valid_mt");
+  {
+    BundleWriter writer(Env::Default(), prefix);
+    TF_ASSERT_OK(writer.Add("key", Constant_2x3<float>(1.0)));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  BundleReader reader(Env::Default(), prefix,
+                      /* enable_multi_threading_for_testing = */ true);
+  TF_ASSERT_OK(reader.status());
+  Tensor val(DT_FLOAT, TensorShape({2, 3}));
+  TF_ASSERT_OK(reader.Lookup("key", &val));
+  test::ExpectTensorEqual<float>(val, Constant_2x3<float>(1.0));
+}
+
+TEST(TensorBundleTest, MultiThreadedRestoreSmallTensors) {
+  // With 8 reader threads, sizes that are not multiples of 8 leave trailing
+  // sections that start at or past the end of the entry.
+  for (const int num_bytes : {1, 2, 7, 9, 17}) {
+    const std::string prefix = Prefix(absl::StrCat("small_mt_", num_bytes));
+    Tensor expected(DT_UINT8, TensorShape({num_bytes}));
+    for (int i = 0; i < num_bytes; ++i) {
+      expected.flat<uint8_t>()(i) = static_cast<uint8_t>(i + 1);
+    }
+    {
+      BundleWriter writer(Env::Default(), prefix);
+      TF_ASSERT_OK(writer.Add("key", expected));
+      TF_ASSERT_OK(writer.Finish());
+    }
+    BundleReader reader(Env::Default(), prefix,
+                        /* enable_multi_threading_for_testing = */ true);
+    TF_ASSERT_OK(reader.status());
+    Expect<uint8_t>(&reader, "key", expected);
+  }
+}
+
+// Reports a failed read of a data shard as DataLoss and leaves the result
+// empty, like a file system whose reads do not go through the scratch buffer.
+class FailedReadFile : public RandomAccessFile {
+ public:
+  explicit FailedReadFile(std::unique_ptr<RandomAccessFile> target)
+      : target_(std::move(target)) {}
+
+  absl::Status Read(uint64_t offset, absl::string_view& result,
+                    absl::Span<char> scratch) const override {
+    absl::Status status = target_->Read(offset, result, scratch);
+    if (status.ok()) return status;
+    result = absl::string_view();
+    return absl::DataLossError(absl::StrCat("Failed read: ", status.message()));
+  }
+
+ private:
+  std::unique_ptr<RandomAccessFile> target_;
+};
+
+class FailedReadFileSystem : public FileSystem {
+ public:
+  explicit FailedReadFileSystem(FileSystem* target) : target_(target) {}
+
+  absl::Status NewRandomAccessFile(
+      const std::string& fname,
+      std::unique_ptr<RandomAccessFile>* result) override {
+    std::unique_ptr<RandomAccessFile> file;
+    TF_RETURN_IF_ERROR(target_->NewRandomAccessFile(fname, &file));
+    if (fname.find(".data-") == std::string::npos) {
+      *result = std::move(file);
+    } else {
+      *result = std::make_unique<FailedReadFile>(std::move(file));
+    }
+    return absl::OkStatus();
+  }
+  absl::Status NewWritableFile(const std::string& fname,
+                               std::unique_ptr<WritableFile>* result) override {
+    return target_->NewWritableFile(fname, result);
+  }
+  absl::Status NewAppendableFile(
+      const std::string& fname,
+      std::unique_ptr<WritableFile>* result) override {
+    return target_->NewAppendableFile(fname, result);
+  }
+  absl::Status FileExists(absl::string_view fname) override {
+    return target_->FileExists(fname);
+  }
+  absl::Status GetChildren(const std::string& dir,
+                           std::vector<std::string>* result) override {
+    return target_->GetChildren(dir, result);
+  }
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                std::vector<std::string>* results) override {
+    return target_->GetMatchingPaths(pattern, results);
+  }
+  absl::Status Stat(const std::string& fname, FileStatistics* stat) override {
+    return target_->Stat(fname, stat);
+  }
+  absl::Status DeleteFile(const std::string& fname) override {
+    return target_->DeleteFile(fname);
+  }
+  absl::Status CreateDir(const std::string& dirname) override {
+    return target_->CreateDir(dirname);
+  }
+  absl::Status DeleteDir(const std::string& dirname) override {
+    return target_->DeleteDir(dirname);
+  }
+  absl::Status GetFileSize(const std::string& fname,
+                           uint64_t* file_size) override {
+    return target_->GetFileSize(fname, file_size);
+  }
+  absl::Status RenameFile(const std::string& src,
+                          const std::string& target) override {
+    return target_->RenameFile(src, target);
+  }
+
+ private:
+  FileSystem* target_;
+};
+
+class FailedReadEnv : public EnvWrapper {
+ public:
+  FailedReadEnv(Env* env, FileSystem* target) : EnvWrapper(env), fs_(target) {}
+
+  absl::Status GetFileSystemForFile(absl::string_view fname,
+                                    FileSystem** result) override {
+    *result = &fs_;
+    return absl::OkStatus();
+  }
+
+ private:
+  FailedReadFileSystem fs_;
+};
+
+TEST(TensorBundleTest, MultiThreadedRestoreTruncatedShard) {
+  Env* env = Env::Default();
+  const std::string prefix = Prefix("truncated_mt");
+  {
+    BundleWriter writer(env, prefix);
+    TF_ASSERT_OK(writer.Add("key", Constant_2x3<float>(1.0)));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  // Truncates the data file by one byte, so that the last section hits EOF.
+  const std::string datafile = DataFilename(prefix, 0, 1);
+  std::string data;
+  TF_ASSERT_OK(ReadFileToString(env, datafile, &data));
+  ASSERT_FALSE(data.empty());
+  TF_ASSERT_OK(WriteStringToFile(
+      env, datafile, absl::string_view(data.data(), data.size() - 1)));
+
+  Tensor val(DT_FLOAT, TensorShape({2, 3}));
+  {
+    BundleReader reader(env, prefix,
+                        /* enable_multi_threading_for_testing = */ true);
+    TF_ASSERT_OK(reader.status());
+    EXPECT_TRUE(absl::IsOutOfRange(reader.Lookup("key", &val)));
+  }
+  {
+    // The failed read must be reported without copying from its empty result.
+    FileSystem* local_fs = nullptr;
+    TF_ASSERT_OK(env->GetFileSystemForFile(prefix, &local_fs));
+    FailedReadEnv failed_read_env(env, local_fs);
+    BundleReader reader(&failed_read_env, prefix,
+                        /* enable_multi_threading_for_testing = */ true);
+    TF_ASSERT_OK(reader.status());
+    const absl::Status status = reader.Lookup("key", &val);
+    EXPECT_TRUE(absl::IsDataLoss(status)) << status;
+    EXPECT_TRUE(absl::StrContains(status.message(), "Failed read")) << status;
   }
 }
 
