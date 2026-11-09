@@ -1103,8 +1103,8 @@ def expand_dims(a, axis):
     # whose rank is the input rank plus the number of new axes.
     if maybe_rank is None:
       raise ValueError(
-          f'Argument `axis` (received axis={axis}) can only be a tuple or '
-          'list for input of known rank.'
+          f'Argument `axis` (received axis={axis}) as a tuple or list '
+          'is only supported for inputs with a known rank.'
       )
     out_rank = maybe_rank + len(axis)
     normalized = [ax + out_rank if ax < 0 else ax for ax in axis]
