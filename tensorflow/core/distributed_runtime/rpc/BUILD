@@ -548,11 +548,9 @@ tf_cuda_cc_test(
         "no_oss",  # b/62956105: port conflicts.
     ],
     deps = [
-        ":grpc_channel",
         ":grpc_server_lib",
         ":grpc_session",
         ":grpc_testlib",
-        ":rpc_rendezvous_mgr",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -561,11 +559,10 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:dense_update_ops",
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:variable_ops",
-        "//tensorflow/core/protobuf:master_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
