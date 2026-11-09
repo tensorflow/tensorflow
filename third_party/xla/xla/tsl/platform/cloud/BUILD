@@ -344,6 +344,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/status:status_macros",
+        "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:str_util",
     ],
 )
