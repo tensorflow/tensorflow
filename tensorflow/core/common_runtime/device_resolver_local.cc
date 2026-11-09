@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/platform/errors.h"
 
