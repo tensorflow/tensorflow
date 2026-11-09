@@ -3466,6 +3466,51 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
                                        image_ops.ResizeMethod.BILINEAR)
         _ = self.evaluate(v)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testImageResizeAntialiasUpsample(self):
+    img = np.array([[[1.0], [2.0]], [[3.0], [4.0]]], dtype=np.float32)
+    img = img[np.newaxis, ...]
+    up_no_anti = self.evaluate(
+        image_ops.resize_images_v2(
+            img,
+            [10, 10],
+            method=image_ops.ResizeMethod.BILINEAR,
+            antialias=False,
+        )
+    )
+    up_anti = self.evaluate(
+        image_ops.resize_images_v2(
+            img,
+            [10, 10],
+            method=image_ops.ResizeMethod.BILINEAR,
+            antialias=True,
+        )
+    )
+    self.assertAllClose(up_no_anti, up_anti, atol=1e-05)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testImageResizeAntialiasDownsample(self):
+    checkerboard = (np.indices((8, 8)).sum(axis=0) % 2).astype(np.float32)
+    checkerboard = checkerboard[np.newaxis, ..., np.newaxis]
+    down_no_anti = self.evaluate(
+        image_ops.resize_images_v2(
+            checkerboard,
+            [3, 3],
+            method=image_ops.ResizeMethod.BILINEAR,
+            antialias=False,
+        )
+    )
+    down_anti = self.evaluate(
+        image_ops.resize_images_v2(
+            checkerboard,
+            [3, 3],
+            method=image_ops.ResizeMethod.BILINEAR,
+            antialias=True,
+        )
+    )
+    self.assertAllClose(down_anti, np.full((1, 3, 3, 1), 0.5), atol=0.05)
+    self.assertNotAllClose(down_no_anti, np.full((1, 3, 3, 1), 0.5), atol=0.05)
+
 
 class ResizeImagesTest(test_util.TensorFlowTestCase,
                        parameterized.TestCase):
