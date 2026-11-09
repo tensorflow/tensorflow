@@ -6868,6 +6868,27 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+absl::Status SpmdPartitioningVisitor::HandleRngGetAndUpdateState(
+    HloInstruction* hlo) {
+  if (hlo->sharding().IsSingleDevice()) {
+    return HandleSingleDevice(hlo);
+  }
+
+  // Tile sharding on rng-get-and-update-state does not make sense, so only
+  // replicated one is supported.
+  TF_RET_CHECK(hlo->sharding().IsReplicated());
+
+  // A replicated rng-get-and-update-state can be achieved by just replicating
+  // the instruction (since the RNG key is initialized to the compile time
+  // constant value).
+  auto clone = b_.AddInstruction(hlo->CloneWithNewOperands(hlo->shape(), {}));
+  clone->set_sharding(hlo->sharding());
+  SetPartitionedHlo(hlo,
+                    PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
+                        .Reshard(hlo->sharding()));
+  return absl::OkStatus();
+}
+
 absl::Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
   if (hlo->sharding().IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
@@ -8010,6 +8031,7 @@ absl::Status SpmdPartitioner::PreprocessSharding(
        module->MakeComputationPostOrder(execution_threads)) {
     for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
       if (hlo->HasSideEffectNoRecurse() && hlo->opcode() != HloOpcode::kRng &&
+          hlo->opcode() != HloOpcode::kRngGetAndUpdateState &&
           (hlo->opcode() != HloOpcode::kCustomCall ||
            GetCustomCallPartitioner(hlo->custom_call_target()) == nullptr)) {
         if (hlo->opcode() == HloOpcode::kCustomCall) {

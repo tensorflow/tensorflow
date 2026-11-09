@@ -17,39 +17,14 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <utility>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/call_graph.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 
 namespace xla {
 namespace spmd {
-
-class StatefulRngSpmdPartitioningVisitor
-    : public spmd::SpmdPartitioningVisitor {
- public:
-  StatefulRngSpmdPartitioningVisitor(
-      HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
-      const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
-      int64_t* next_channel_id, spmd::SpmdLogger* logger,
-      spmd::SpmdPartitionerOptions options, spmd::SpmdPartitioner* partitioner,
-      const CallGraph& call_graph)
-      : spmd::SpmdPartitioningVisitor(computation, num_partitions, num_replicas,
-                                      collective_ops_creator, next_channel_id,
-                                      logger, std::move(options), partitioner,
-                                      call_graph) {}
-  absl::Status HandleRngGetAndUpdateState(HloInstruction* hlo) override;
-};
 
 class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
  public:
@@ -84,21 +59,6 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
                                       enable_partial_windowed_einsums,
                                       total_bytes_windowed_einsum_threshold,
                                       max_windowed_einsum_iteration)) {}
-
- protected:
-  std::unique_ptr<spmd::SpmdPartitioningVisitor> CreateVisitor(
-      HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
-      const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
-      int64_t* next_channel_id, spmd::SpmdLogger* logger,
-      spmd::SpmdPartitionerOptions options,
-      const CallGraph& call_graph) override;
-
-  absl::Status PreprocessSharding(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  bool CanSideEffectingHaveReplicatedSharding(
-      const HloInstruction* hlo) override;
 
  private:
   static spmd::SpmdPartitionerOptions GetSpmdPartitionerOptions(

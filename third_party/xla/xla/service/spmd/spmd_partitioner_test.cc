@@ -21932,6 +21932,19 @@ ENTRY entry {
                     op::Shape("f32[4,4]")));
 }
 
+TEST_P(SpmdPartitioningTest, RngGetAndUpdateState) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  ROOT state = u64[2] rng-get-and-update-state(), delta=1
+})";
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       PartitionComputation(hlo_string, /*num_devices=*/2));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::RngGetAndUpdateState(), op::Shape("u64[2]")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
