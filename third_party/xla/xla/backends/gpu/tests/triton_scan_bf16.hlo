@@ -1,16 +1,19 @@
-// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../target_config/specs/a100_pcie_80.txtpb --xla_gpu_experimental_enable_triton_scan=true | FileCheck %s --check-prefix=CHECK-A100 %}
+// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../target_config/specs/a100_pcie_80.txtpb --xla_gpu_experimental_enable_triton_scan=true | FileCheck %s --check-prefix=CHECK-HLO %}
 // RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb --xla_gpu_experimental_enable_triton_scan=true | FileCheck %s %}
+// RUN: %if IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb --xla_gpu_experimental_enable_triton_scan=true | FileCheck %s --check-prefix=CHECK-HLO %}
+// RUN: %if IS_ROCM %{ hlo-opt %s --platform=gpu --stage=llvm --xla_gpu_target_config_filename=%S/../target_config/specs/%{GPU}.txtpb --xla_gpu_experimental_enable_triton_scan=true | FileCheck %s --check-prefix=CHECK-GCN %}
 
 // Checks that a bf16 cumulative sum compiles to a Triton scan kernel. Before
-// Hopper, FloatNormalization wraps the bf16 add of the combiner in converts
-// after ScanRewriterTriton has created the Triton scan fusion.
+// Hopper and on ROCm, FloatNormalization wraps the bf16 add of the combiner in
+// converts after ScanRewriterTriton has created the Triton scan fusion.
 
-// CHECK-A100: %[[SUM:.*]] = f32[] add(
-// CHECK-A100: bf16[] convert(%[[SUM]])
-// CHECK-A100: scan(
-// CHECK-A100: fusion({{.*}}"kind":"__triton"
+// CHECK-HLO: %[[SUM:.*]] = f32[] add(
+// CHECK-HLO: bf16[] convert(%[[SUM]])
+// CHECK-HLO: scan(
+// CHECK-HLO: fusion({{.*}}"kind":"__triton"
 
 // CHECK: .visible .entry triton_scan(
+// CHECK-GCN: define amdgpu_kernel void @triton_scan(
 
 HloModule cumsum
 

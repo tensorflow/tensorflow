@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 
-#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <string>
