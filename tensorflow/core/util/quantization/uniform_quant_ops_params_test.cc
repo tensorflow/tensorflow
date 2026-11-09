@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/util/quantization/uniform_quant_ops_params.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
@@ -342,6 +344,27 @@ TEST(UniformQuantizedConvolutionParamsTest, CalculateSameOptionPadding) {
       params.ValidateOrFillParamsAndValidateShape(lhs_shape, rhs_shape));
 
   EXPECT_THAT(params.padding_list(), ElementsAreArray({1, 2, 1, 1}));
+}
+
+TEST(UniformQuantizedConvolutionParamsTest,
+     ValidateOrFillParamsAndValidateShapeEmptyRhsInputFeature) {
+  // The default rhs input feature dimension is dimension 1.
+  for (const int64_t lhs_feature_count : {1, 0}) {
+    SCOPED_TRACE(lhs_feature_count);
+    UniformQuantizedConvolutionDimensionNumbersAttr dimension_numbers;
+    UniformQuantizedConvolutionParams params(/*window_strides=*/{},
+                                             /*lhs_dilation=*/{},
+                                             /*rhs_dilation=*/{},
+                                             dimension_numbers,
+                                             /*feature_group_count=*/1,
+                                             /*batch_group_count=*/1,
+                                             /*padding=*/"VALID");
+    EXPECT_FALSE(params
+                     .ValidateOrFillParamsAndValidateShape(
+                         /*lhs_shape=*/{1, lhs_feature_count, 1},
+                         /*rhs_shape=*/{1, 0, 1})
+                     .ok());
+  }
 }
 
 }  // namespace

@@ -231,6 +231,11 @@ UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
   }
   const int64_t rhs_input_feature_count =
       rhs_shape.dim_size(dimension_numbers_.kernel_input_feature_dimension());
+  if (rhs_input_feature_count <= 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "rhs input feature dimension size must be positive, given: ",
+        rhs_input_feature_count));
+  }
   if (lhs_feature_count % rhs_input_feature_count) {
     return absl::InvalidArgumentError(absl::StrCat(
         "rhs input feature dimension must divide lhs feature dimension "

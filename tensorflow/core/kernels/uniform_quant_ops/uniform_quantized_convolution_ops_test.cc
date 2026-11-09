@@ -1566,4 +1566,33 @@ TEST_F(UniformQuantizedConvolutionTest,
   test::ExpectClose(expected, *GetOutput(0), /*atol=*/11, /*rtol=*/0.02);
 }
 
+TEST_F(UniformQuantizedConvolutionTest, HybridEmptyRhsInputFeatureIsInvalid) {
+  TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantizedConvolutionHybrid")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_INT32))
+                   .Attr("Tlhs", DT_FLOAT)
+                   .Attr("Trhs", DT_QINT8)
+                   .Attr("Tout", DT_FLOAT)
+                   .Attr("rhs_quantization_min_val", kInt8Min)
+                   .Attr("rhs_quantization_max_val", kInt8Max)
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  // lhs tensor.
+  AddInputFromArray<float>(TensorShape({1, 1, 1}), {1});
+  // rhs (quantized) tensor with an empty input feature dimension.
+  AddInputFromArray<qint8>(TensorShape({1, 0, 1}), {});
+  // rhs scales and zero_points.
+  AddInputFromArray<float>(TensorShape({}), {1.0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
+
+  const auto status = RunOpKernel();
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.message(),
+            "rhs input feature dimension size must be positive, given: 0");
+}
+
 }  // namespace tensorflow
