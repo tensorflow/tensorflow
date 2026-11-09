@@ -37,7 +37,7 @@ def unshuffle_from_sc_to_cpu(
 ) -> tensor.Tensor:
   """Unshuffles the sparse core sharded embedding tables to unsharded.
 
-  This converts an input tensor respresenting stacked and sharded embedding
+  This converts an input tensor representing stacked and sharded embedding
   table into a specific embedding table variable by using the provided
   metadata about the said table within the stacked, sharded embedding table.
   Args:

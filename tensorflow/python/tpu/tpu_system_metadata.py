@@ -39,19 +39,23 @@ _LOCAL_MASTERS = ('', 'local')
 
 @tf_export('tpu.experimental.TPUSystemMetadata')
 class TPUSystemMetadata(
-    collections.namedtuple('TPUSystemMetadata', [
-        'num_cores',
-        'num_hosts',
-        'num_of_cores_per_host',
-        'topology',
-        'devices',
-    ])):
+    collections.namedtuple(
+        'TPUSystemMetadata',
+        [
+            'num_cores',
+            'num_hosts',
+            'num_of_cores_per_host',
+            'topology',
+            'devices',
+        ],
+    )
+):
   """Describes some metadata about the TPU system.
 
   Attributes:
-    num_cores: interger. Total number of TPU cores in the TPU system.
-    num_hosts: interger. Total number of hosts (TPU workers) in the TPU system.
-    num_of_cores_per_host: interger. Number of TPU cores per host (TPU worker).
+    num_cores: integer. Total number of TPU cores in the TPU system.
+    num_hosts: integer. Total number of hosts (TPU workers) in the TPU system.
+    num_of_cores_per_host: integer. Number of TPU cores per host (TPU worker).
     topology: an instance of `tf.tpu.experimental.Topology`, which describes the
       physical topology of TPU system.
     devices: a tuple of strings, which describes all the TPU devices in the

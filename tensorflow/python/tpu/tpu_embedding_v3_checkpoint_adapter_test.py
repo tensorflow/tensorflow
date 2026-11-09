@@ -77,7 +77,7 @@ class TpuEmbeddingV3CheckpointAdapterTest(test.TestCase):
     ] * array_ops.ones((20, 4))
     adapter.initialize_reshard_callbacks({"some_feature": layout})
     callback = adapter.get_reshard_callback("some_feature")
-    # Check partition index 1 (second parition)
+    # Check partition index 1 (second partition)
     self.assertAllEqual(
         callback.reshard([t], "128 8 8,12:0,8"),
         tf_constant([
