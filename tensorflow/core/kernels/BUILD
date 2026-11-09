@@ -2645,7 +2645,6 @@ tf_kernel_library(
     prefix = "ctc",
     deps = [
         ":loose_headers",
-        ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:bounds_check",
@@ -2654,6 +2653,7 @@ tf_kernel_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ] + if_cuda_or_rocm([
         ":gpu_utils",
         ":conv_ops_gpu_hdrs",

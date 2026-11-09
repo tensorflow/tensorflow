@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -362,8 +363,8 @@ class CTCLossOpGPU : public OpKernel {
                       num_classes, ", saw: ", label_val)));
     }
 
-    absl::Span<const int32_t> labels_lengths_data(labels_lengths.data(),
-                                                  batch_size);
+    absl::Span<const int32_t> labels_lengths_data =
+        absl::MakeConstSpan(labels_lengths).first(batch_size);
     absl::Span<const int32_t> input_lengths_data(
         seq_len->flat<int32_t>().data(), batch_size);
 

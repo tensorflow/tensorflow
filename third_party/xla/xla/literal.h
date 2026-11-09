@@ -437,7 +437,7 @@ class LiteralBase {
       absl::Span<const int64_t> minor_to_major =
           subshape.layout().minor_to_major();
       DimensionVector elem_index(subshape.dimensions().size());
-      absl::Span<int64_t> elem_index_span(elem_index.data(), elem_index.size());
+      absl::Span<int64_t> elem_index_span = absl::MakeSpan(elem_index);
       int64_t bytes_hashed = 0;
       while (bytes_hashed < bytes_to_hash) {
         int64_t offset =
