@@ -1103,6 +1103,118 @@ ENTRY main {
   EXPECT_FALSE(done->HasSideEffect());
 }
 
+TEST_F(HloInstructionTest, AsyncChainStartThroughRebuiltContextTuple) {
+  // Two async dynamic slices (`small` of shape f32[2,4] and `big` of shape
+  // f32[4,4]) read the same input buffer `buf`. Before entering the while loop,
+  // `big`'s async context tuple `ctx` is rebuilt from individual elements:
+  //   - Element 0 (`ops`, the input operand subtuple) takes `buf` through
+  //     `small`'s operand slot `{0, 0}`, which aliases the same `buf`.
+  //   - Elements 1 and 2 (`big_out` and `big_flag`) come from `big`.
+  // Both HloVerifier (via TraceAsyncDataflow) and HloAsyncInstruction chain
+  // queries must pair `done` inside the while body with `big`, and `small_done`
+  // (separated by an opt-barrier to exercise the non-direct forward walk) with
+  // `small`.
+  constexpr absl::string_view kHlo = R"(
+HloModule test
+
+slice_big {
+  p0 = f32[8,4] parameter(0)
+  i0 = s32[] parameter(1)
+  z0 = s32[] parameter(2)
+  ROOT ds = f32[4,4] dynamic-slice(p0, i0, z0), dynamic_slice_sizes={4,4}
+}
+
+slice_small {
+  p0 = f32[8,4] parameter(0)
+  i0 = s32[] parameter(1)
+  z0 = s32[] parameter(2)
+  ROOT ds = f32[2,4] dynamic-slice(p0, i0, z0), dynamic_slice_sizes={2,4}
+}
+
+body {
+  p = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  state = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) get-tuple-element(p), index=1
+  state_ops = (f32[8,4], s32[], s32[]) get-tuple-element(state), index=0
+  body_buf = f32[8,4] get-tuple-element(state_ops), index=0
+  done = f32[4,4] async-done(state)
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  next = s32[] add(i, one)
+  next_big = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) async-start(body_buf, next, zero), calls=slice_big
+  ROOT t = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) tuple(next, next_big)
+}
+
+cond {
+  p = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  n = s32[] constant(4)
+  ROOT lt = pred[] compare(i, n), direction=LT
+}
+
+ENTRY main {
+  buf = f32[8,4] parameter(0)
+  zero = s32[] constant(0)
+  two = s32[] constant(2)
+  small = ((f32[8,4], s32[], s32[]), f32[2,4], s32[]) async-start(buf, two, zero), calls=slice_small
+  big = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) async-start(buf, zero, zero), calls=slice_big
+  small_ops = (f32[8,4], s32[], s32[]) get-tuple-element(small), index=0
+  small_buf = f32[8,4] get-tuple-element(small_ops), index=0
+  big_ops = (f32[8,4], s32[], s32[]) get-tuple-element(big), index=0
+  big_i = s32[] get-tuple-element(big_ops), index=1
+  big_z = s32[] get-tuple-element(big_ops), index=2
+  ops = (f32[8,4], s32[], s32[]) tuple(small_buf, big_i, big_z)
+  big_out = f32[4,4] get-tuple-element(big), index=1
+  big_flag = s32[] get-tuple-element(big), index=2
+  ctx = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) tuple(ops, big_out, big_flag)
+  init = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) tuple(zero, ctx)
+  w = (s32[], ((f32[8,4], s32[], s32[]), f32[4,4], s32[])) while(init), condition=cond, body=body
+  epi_state = ((f32[8,4], s32[], s32[]), f32[4,4], s32[]) get-tuple-element(w), index=1
+  epi_done = f32[4,4] async-done(epi_state)
+  small_barrier = ((f32[8,4], s32[], s32[]), f32[2,4], s32[]) opt-barrier(small)
+  small_done = f32[2,4] async-done(small_barrier)
+  ROOT r = (f32[2,4], f32[4,4]) tuple(small_done, epi_done)
+}
+)";
+
+  // ParseAndReturnVerifiedModule runs HloVerifier, checking that HloParser and
+  // ShapeVerifier::CheckAsyncDoneOperands also resolve `done` and `epi_done` to
+  // `slice_big` (f32[4,4]) rather than `slice_small` (f32[2,4]).
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo));
+  auto* small =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "small"));
+  auto* small_done =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "small_done"));
+  auto* big = Cast<HloAsyncInstruction>(FindInstruction(module.get(), "big"));
+  auto* next_big =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "next_big"));
+  auto* done = Cast<HloAsyncInstruction>(FindInstruction(module.get(), "done"));
+  auto* epi_done =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "epi_done"));
+
+  // 1. Backward walk from `done` inside the while body traces `state -> p ->
+  //    init -> ctx`: it must skip the shared operand in `ctx` element 0 and
+  //    resolve to the prologue `big` (`slice_big`, {4,4}), never `small`.
+  EXPECT_EQ(done->async_chain_start(), big);
+  EXPECT_EQ(done->async_wrapped_computation(),
+            big->async_wrapped_computation());
+  ASSERT_NE(done->async_wrapped_instruction(), nullptr);
+  EXPECT_EQ(done->async_wrapped_instruction(),
+            big->async_wrapped_instruction());
+
+  // 2. Backward walk from the post loop epilogue `epi_done` in ENTRY traces
+  //    `w#1 -> body ROOT t#1 -> next_big`.
+  EXPECT_EQ(epi_done->async_chain_start(), next_big);
+  EXPECT_EQ(epi_done->async_wrapped_computation(),
+            next_big->async_wrapped_computation());
+
+  // 3. Forward walk from `small` across `small_barrier` in ENTRY must pair
+  //    `small` with `small_done` and not get diverted into `w` along `{0, 0}`.
+  EXPECT_EQ(small->async_chain_done(), small_done);
+  EXPECT_EQ(small_done->async_chain_start(), small);
+}
+
 TEST_F(HloInstructionTest, AsyncPredicates) {
   const char* const kHlo = R"(
 HloModule async_predicates_test

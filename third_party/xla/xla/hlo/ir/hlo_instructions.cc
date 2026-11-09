@@ -325,9 +325,25 @@ HloAsyncInstruction* FindAsyncChainDataflow(
         return nullptr;
       }
       if (index.empty()) {
-        for (int64_t idx = 0; idx < instr->operand_count(); ++idx) {
+        // Reaching a kTuple with an empty ShapeIndex means `instr` rebuilds the
+        // async context tuple `((operands...), output, sync_state...)` itself.
+        // Element 0 only forwards the input operands, which sibling async ops
+        // can share after tuple simplification or buffer assignment:
+        //
+        //   small = ((f32[8,4]), f32[2,4], s32[]) async-start(buf), ...
+        //   big   = ((f32[8,4]), f32[4,4], s32[]) async-start(buf), ...
+        //   ops   = (f32[8,4]) tuple(gte(gte(small, 0), 0))  // shared `buf`
+        //   ctx   = ((f32[8,4]), f32[4,4], s32[])
+        //             tuple(ops, gte(big, 1), gte(big, 2))
+        //   done  = f32[4,4] async-done(ctx)
+        //
+        // Visiting operand 0 first would follow `ops` into `small` and bind
+        // `done` to the wrong computation. Visit elements 1..n-1 (the output
+        // and sync state uniquely produced by `big`) before element 0.
+        const int64_t n = instr->operand_count();
+        for (int64_t i = 1; i <= n; ++i) {
           HloAsyncInstruction* res = FindAsyncChainDataflow(
-              instr->mutable_operand(idx), is_target, index, visited);
+              instr->mutable_operand(i % n), is_target, index, visited);
           if (res != nullptr) {
             return res;
           }
