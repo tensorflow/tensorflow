@@ -74,11 +74,12 @@ class Relu6GradOp : public XlaOpKernel {
     const auto six = xla::Broadcast(
         XlaHelpers::IntegerLiteral(b, input_type(0), 6), shape.dim_sizes());
     const auto feature = ctx->Input(1);
-    const auto is_nan = xla::IsNan(feature);
-    auto normal_out = xla::Select(
+    auto out = xla::Select(
         xla::And(xla::Lt(feature, six), xla::Gt(feature, zero)),
         ctx->Input(0), zero);
-    auto out = xla::Select(is_nan, feature, normal_out);
+    if (DataTypeIsFloating(input_type(1))) {
+      out = xla::Select(xla::Ne(feature, feature), feature, out);
+    }
     ctx->SetOutput(0, out);
   }
 };
@@ -89,17 +90,16 @@ class LeakyReluGradOp : public XlaOpKernel {
   explicit LeakyReluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("alpha", &alpha_));
   }
-  // Return input feature if input feature is NaN, gradients if input feature > 0,
-  // otherwise gradients * alpha.
+  // Return input feature if input feature is NaN, gradients if input
+  // feature > 0, otherwise gradients * alpha.
   void Compile(XlaOpKernelContext* ctx) override {
     auto gradients = ctx->Input("gradients");
     auto features = ctx->Input("features");
-    auto is_nan = xla::IsNan(features);
+    auto is_nan = xla::Ne(features, features);
     auto normal_grad =
         xla::Select(xla::Gt(features, xla::ScalarLike(features, 0)), gradients,
                     gradients * xla::ScalarLike(gradients, alpha_));
-    auto output = xla::Select(is_nan, features, normal_grad);
-    ctx->SetOutput(0, output);
+    ctx->SetOutput(0, xla::Select(is_nan, features, normal_grad));
   }
   float alpha_;
 };

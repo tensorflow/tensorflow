@@ -57,19 +57,17 @@ class EluOp : public XlaOpKernel {
 class EluGradOp : public XlaOpKernel {
  public:
   explicit EluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  // Return the activation if activation is NaN, incoming gradient if
-  // activation > 0, otherwise return incoming gradient * (1 + activation).
+  // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
+  // otherwise return lhs * (1 + rhs).
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
     const auto zero = XlaHelpers::Zero(b, input_type(0));
     const auto one = XlaHelpers::One(b, input_type(0));
     const auto grad = ctx->Input(0);
     const auto activation = ctx->Input(1);
-    const auto is_nan = xla::IsNan(activation);
     const auto exp_grad = xla::Mul(grad, xla::Add(activation, one));
     const auto pred = xla::Gt(activation, zero);
-    ctx->SetOutput(0, xla::Select(is_nan, activation,
-                                  xla::Select(pred, grad, exp_grad)));
+    ctx->SetOutput(0, xla::Select(pred, grad, exp_grad));
   }
 };
 

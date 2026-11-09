@@ -117,12 +117,9 @@ struct LeakyRelu {
   };
   void operator()(LeakyReluArgs args) {
     // Note that alpha might be > 1 or < 0, so we don't use cwiseMax here.
-    // Propagate NaN if features is NaN.
     args.activations.device(args.d) =
-        (args.features.isnan())
-            .select(args.features,
-                    (args.features > static_cast<T>(0))
-                        .select(args.features, args.features * args.alpha));
+        (args.features > static_cast<T>(0))
+            .select(args.features, args.features * args.alpha);
   }
 };
 
@@ -157,12 +154,8 @@ struct Elu {
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
     // Use expm1 (exp(x) - 1) to avoid catastrophic cancellation for small x.
-    // Propagate NaN explicitly to preserve IEEE-754 semantics.
     activations.device(d) =
-        (features.isnan())
-            .select(features,
-                    (features < static_cast<T>(0))
-                        .select(features.expm1(), features));
+        (features < static_cast<T>(0)).select(features.expm1(), features);
   }
 };
 

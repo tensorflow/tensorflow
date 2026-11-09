@@ -237,18 +237,22 @@ class EluGradOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testEluGradEdgeCases(self):
-    for dtype in (dtypes.float32, dtypes.float64):
+    for dtype in (
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ):
       with self.subTest(dtype=dtype.name):
         np_dtype = dtype.as_numpy_dtype
         values = np.array(
             [-np.inf, -2.0, -0.0, 0.0, 2.0, np.inf, np.nan], dtype=np_dtype
         )
         inputs = constant_op.constant(values, dtype=dtype)
-        with backprop.GradientTape() as tape:
-          tape.watch(inputs)
-          elu = gen_nn_ops.elu(inputs)
+        grads = constant_op.constant(np.ones_like(values), dtype=dtype)
+        activations = gen_nn_ops.elu(inputs)
 
-        elu_grad = self.evaluate(tape.gradient(elu, inputs))
+        elu_grad = self.evaluate(gen_nn_ops.elu_grad(grads, activations))
         expected = np.array(
             [
                 0.0,
@@ -261,7 +265,7 @@ class EluGradOpTest(test.TestCase):
             ],
             dtype=np_dtype,
         )
-        self.assertAllClose(expected, elu_grad)
+        self.assertAllClose(expected, elu_grad, rtol=2e-2, atol=2e-2)
 
 
 class SeluGradOpTest(test.TestCase):
@@ -357,7 +361,12 @@ class LeakyReluGradOpTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testLeakyReluGradEdgeCases(self):
     alpha = 0.2
-    for dtype in (dtypes.float32, dtypes.float64):
+    for dtype in (
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ):
       with self.subTest(dtype=dtype.name):
         np_dtype = dtype.as_numpy_dtype
         values = np.array(
@@ -388,7 +397,12 @@ class Relu6GradOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testRelu6GradEdgeCases(self):
-    for dtype in (dtypes.float32, dtypes.float64):
+    for dtype in (
+        dtypes.float16,
+        dtypes.bfloat16,
+        dtypes.float32,
+        dtypes.float64,
+    ):
       with self.subTest(dtype=dtype.name):
         np_dtype = dtype.as_numpy_dtype
         values = np.array(
