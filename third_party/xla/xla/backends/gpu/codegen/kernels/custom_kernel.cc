@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -52,11 +53,16 @@ CustomKernel::CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
       cluster_dims_(cluster_dims),
       shared_memory_bytes_(shared_memory_bytes) {}
 
-absl::string_view CustomKernel::name() const { return name_; }
+CustomKernel::CustomKernel(const GpuKernelSpec& spec,
+                           se::KernelLoaderSpec kernel_spec)
+    : name_(spec.name()),
+      kernel_spec_(std::move(kernel_spec)),
+      block_dims_(spec.launch_dimensions().block_counts()),
+      thread_dims_(spec.launch_dimensions().thread_counts_per_block()),
+      cluster_dims_(spec.cluster_dim()),
+      shared_memory_bytes_(spec.shmem_bytes()) {}
 
-const se::KernelLoaderSpec& CustomKernel::kernel_spec() const {
-  return kernel_spec_;
-}
+absl::string_view CustomKernel::name() const { return name_; }
 
 se::BlockDim CustomKernel::block_dims() const { return block_dims_; }
 

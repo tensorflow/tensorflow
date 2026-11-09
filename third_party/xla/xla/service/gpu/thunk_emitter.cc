@@ -1701,28 +1701,25 @@ Future<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
           absl::StrCat(
               "(", emitters::GetArgumentFingerprint(kernel_arguments.args()),
               ")", instr->raw_backend_config_string()),
-          generate);
+          kernel_arguments, generate);
 
   Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
   return status_or_entry.Map(
-      [info = std::move(info), kernel_arguments = std::move(kernel_arguments),
+      [info = std::move(info),
        call_zeroed_outputs = std::move(call_zeroed_outputs),
        devices_in_process =
            ir_emitter_context_->gpu_topology().num_devices_per_process()](
-          const KernelReuseCache::Entry& entry) mutable
+          const KernelReuseCache::Kernel& entry) mutable
           -> absl::StatusOr<ThunkSequence> {
         ABSL_ASSIGN_OR_RETURN(
             CustomKernel custom_kernel,
-            kernel::CreateSharedCubinCustomKernel(
-                entry.kernel_name, entry.binary, kernel_arguments.args().size(),
-                entry.launch_dimensions.block_counts(),
-                entry.launch_dimensions.thread_counts_per_block(),
-                entry.shmem_bytes));
+            kernel::CreateSharedCubinCustomKernel(entry.spec, entry.binary));
         return ThunkSequence::Of<CustomKernelThunk>(
             std::move(info), std::move(custom_kernel),
-            std::move(kernel_arguments), devices_in_process, entry.use_pdl,
-            call_zeroed_outputs, entry.tma_metadata);
+            entry.spec.kernel_arguments(), devices_in_process,
+            entry.spec.use_pdl(), call_zeroed_outputs,
+            entry.spec.tma_metadata());
       });
 }
 

@@ -115,23 +115,23 @@ absl::StatusOr<EmitArgs> EmitCollectiveFusion(
   TritonFusion::EmitThunk make_thunk =
       [info = std::move(info), buffers = std::move(buffers), config,
        fusion_instr, scratch_memory_type, devices_in_process,
-       &gpu_topology](TritonFusion::EmitResult result) mutable
+       &gpu_topology](const KernelReuseCache::Kernel& result) mutable
       -> absl::StatusOr<ThunkSequence> {
     ABSL_ASSIGN_OR_RETURN(CollectiveKernelSpec kernel_spec,
                      CreateCollectiveKernelSpec(gpu_topology, fusion_instr,
-                                                result.entry.launch_dimensions,
+                                                result.spec.launch_dimensions(),
                                                 scratch_memory_type));
     // `CollectiveKernelThunk` owns its cubin, so we have to copy it out of the
     // shared buffer here.
     std::optional<std::vector<uint8_t>> cubin;
-    if (result.entry.binary != nullptr && !result.entry.binary->empty()) {
-      cubin = *result.entry.binary;
+    if (result.binary != nullptr && !result.binary->empty()) {
+      cubin = *result.binary;
     }
     return ThunkSequence::Of<CollectiveKernelThunk>(
         std::move(info), config, std::move(kernel_spec), std::move(buffers),
-        /*is_collective_kernel_enabled=*/true, result.entry.kernel_name,
-        result.entry.launch_dimensions, devices_in_process,
-        result.entry.shmem_bytes, std::move(cubin), result.entry.use_pdl);
+        /*is_collective_kernel_enabled=*/true, result.spec.name(),
+        result.spec.launch_dimensions(), devices_in_process,
+        result.spec.shmem_bytes(), std::move(cubin), result.spec.use_pdl());
   };
   ABSL_ASSIGN_OR_RETURN(std::vector<Shape> unmanaged_arguments,
                    GetCollectiveUnmanagedKernelArguments(fusion_instr));
@@ -210,20 +210,14 @@ AsyncThunkSequence TritonFusion::Emit(
         [thunk_info = std::move(thunk_info),
          devices_in_process =
              ir_emitter_context.gpu_topology().num_devices_per_process()](
-            EmitResult result) -> absl::StatusOr<ThunkSequence> {
-      ABSL_ASSIGN_OR_RETURN(
-          CustomKernel custom_kernel,
-          kernel::CreateSharedCubinCustomKernel(
-              std::move(result.entry.kernel_name),
-              std::move(result.entry.binary),
-              result.kernel_arguments.args().size(),
-              result.entry.launch_dimensions.block_counts(),
-              result.entry.launch_dimensions.thread_counts_per_block(),
-              result.entry.shmem_bytes));
+            KernelReuseCache::Kernel result) -> absl::StatusOr<ThunkSequence> {
+      ABSL_ASSIGN_OR_RETURN(CustomKernel custom_kernel,
+                       kernel::CreateSharedCubinCustomKernel(
+                           result.spec, std::move(result.binary)));
       return ThunkSequence::Of<CustomKernelThunk>(
-          thunk_info, std::move(custom_kernel), result.kernel_arguments,
-          devices_in_process, result.entry.use_pdl, std::vector<int64_t>{},
-          std::move(result.entry.tma_metadata));
+          thunk_info, std::move(custom_kernel), result.spec.kernel_arguments(),
+          devices_in_process, result.spec.use_pdl(), std::vector<int64_t>{},
+          std::move(result.spec.tma_metadata()));
     };
     emit_args = {
         std::move(make_thunk),
@@ -235,7 +229,7 @@ AsyncThunkSequence TritonFusion::Emit(
       .Map(std::move(emit_args.emit_thunk));
 }
 
-xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
+xla::Future<KernelReuseCache::Kernel> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     const HloInstruction* instr_override,
     absl::Span<const Shape> unmanaged_arguments) const {
@@ -355,15 +349,10 @@ xla::Future<TritonFusion::EmitResult> TritonFusion::Emit(
         });
   };
 
-  auto [status_or_entry, was_cached] =
-      ir_emitter_context.kernel_cache().GetWithStatus(
-          hlo_computation, kernel_arguments.args(),
-          /*discriminator=*/"TritonFusion", generate);
-  return status_or_entry.Map([kernel_arguments = std::move(kernel_arguments)](
-                                 const KernelReuseCache::Entry& entry) mutable
-                                 -> absl::StatusOr<EmitResult> {
-    return EmitResult{entry, std::move(kernel_arguments)};
-  });
+  return ir_emitter_context.kernel_cache()
+      .GetWithStatus(hlo_computation, kernel_arguments,
+                     /*discriminator=*/"TritonFusion", generate)
+      .first;
 }
 
 namespace {

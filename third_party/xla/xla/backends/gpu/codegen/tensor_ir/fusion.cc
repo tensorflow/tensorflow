@@ -241,7 +241,7 @@ AsyncThunkSequence TensorIrFusion::Emit(
       "TensorIrFusion:", absl::StrJoin(tensor_ir_config.tile_size(), ","), ":",
       tensor_ir_config.reduction_tile_size());
   auto [future_entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
-      computation, kernel_arguments.args(), discriminator,
+      computation, kernel_arguments, discriminator,
       [&]() -> xla::Future<KernelReuseCache::Entry> {
         return CompileFusion(ir_emitter_context, fusion, tensor_ir_config,
                              kernel_arguments);
@@ -250,24 +250,19 @@ AsyncThunkSequence TensorIrFusion::Emit(
       &fusion, ir_emitter_context.GetNextThunkId());
   return future_entry.Map(
       [fusion_name = std::string(fusion.name()),
-       thunk_info = std::move(thunk_info),
-       kernel_arguments = std::move(kernel_arguments), cached = cached,
+       thunk_info = std::move(thunk_info), cached = cached,
        devices_in_process =
            ir_emitter_context.gpu_topology().num_devices_per_process()](
-          const KernelReuseCache::Entry& entry) mutable
+          KernelReuseCache::Kernel entry) mutable
           -> absl::StatusOr<ThunkSequence> {
         if (cached) {
-          VLOG(3) << "Reuse: " << fusion_name << " -> " << entry.kernel_name;
+          VLOG(3) << "Reuse: " << fusion_name << " -> " << entry.spec.name();
         }
         ABSL_ASSIGN_OR_RETURN(
             CustomKernel custom_kernel,
-            kernel::CreateSharedCubinCustomKernel(
-                entry.kernel_name, entry.binary, kernel_arguments.args().size(),
-                entry.launch_dimensions.block_counts(),
-                entry.launch_dimensions.thread_counts_per_block(),
-                entry.shmem_bytes));
+            kernel::CreateSharedCubinCustomKernel(entry.spec, entry.binary));
         return ThunkSequence::Of<CustomKernelThunk>(
-            thunk_info, std::move(custom_kernel), kernel_arguments,
+            thunk_info, std::move(custom_kernel), entry.spec.kernel_arguments(),
             devices_in_process);
       });
 }

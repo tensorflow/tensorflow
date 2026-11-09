@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -59,10 +60,8 @@ absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
 //
 // `cubin` must not be null.
 absl::StatusOr<CustomKernel> CreateSharedCubinCustomKernel(
-    std::string kernel_name, std::shared_ptr<const std::vector<uint8_t>> cubin,
-    int num_args, se::BlockDim block_dim, se::ThreadDim thread_dim,
-    size_t shared_memory_bytes,
-    std::optional<se::ClusterDim> cluster_dim = std::nullopt);
+    const GpuKernelSpec& spec,
+    std::shared_ptr<const std::vector<uint8_t>> cubin);
 
 }  // namespace xla::gpu::kernel
 #endif  // XLA_BACKENDS_GPU_CODEGEN_KERNELS_PTX_CUSTOM_KERNEL_H_

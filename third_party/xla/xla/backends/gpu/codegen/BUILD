@@ -538,6 +538,7 @@ cc_library(
         "//xla/codegen:kernel_spec",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/service/gpu:launch_dimensions",
+        "//xla/stream_executor:launch_dim",
         "//xla/stream_executor/gpu:tma_metadata",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:string_view",

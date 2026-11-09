@@ -20,8 +20,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.pb.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -41,17 +43,28 @@ namespace se = ::stream_executor;  // NOLINT
 // TODO(b/578658607) port to use GpuKernelSpec.
 class CustomKernel {
  public:
+  [[deprecated("Provide GpuKernelSpec")]]
   CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
                se::BlockDim block_dims, se::ThreadDim thread_dims,
                size_t shared_memory_bytes);
 
+  [[deprecated("Provide GpuKernelSpec")]]
   CustomKernel(std::string name, se::KernelLoaderSpec kernel_spec,
                se::BlockDim block_dims, se::ThreadDim thread_dims,
                se::ClusterDim cluster_dims, size_t shared_memory_bytes);
 
+  CustomKernel(const GpuKernelSpec& spec, se::KernelLoaderSpec kernel_spec);
+
   absl::string_view name() const;
 
-  const se::KernelLoaderSpec& kernel_spec() const;
+  ABSL_DEPRECATE_AND_INLINE()
+  const se::KernelLoaderSpec& kernel_spec() const {
+    return kernel_loader_spec();
+  }
+
+  const se::KernelLoaderSpec& kernel_loader_spec() const {
+    return kernel_spec_;
+  }
 
   se::BlockDim block_dims() const;
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
 
@@ -38,10 +39,15 @@ class GpuKernelSpec final : public KernelSpec {
                 const emitters::KernelArguments& kernel_arguments,
                 std::optional<size_t> scratch_bytes = std::nullopt,
                 bool use_pdl = false,
-                stream_executor::gpu::TmaMetadata tma_metadata = {});
+                stream_executor::gpu::TmaMetadata tma_metadata = {},
+                std::optional<se::ClusterDim> cluster_dim = std::nullopt);
 
   const LaunchDimensions& launch_dimensions() const {
     return launch_dimensions_;
+  }
+
+  const std::optional<se::ClusterDim>& cluster_dim() const {
+    return cluster_dim_;
   }
 
   const emitters::KernelArguments& kernel_arguments() const {
@@ -54,11 +60,14 @@ class GpuKernelSpec final : public KernelSpec {
     return tma_metadata_;
   }
 
+  size_t shmem_bytes() const { return scratch_bytes().value_or(0); }
+
  private:
   LaunchDimensions launch_dimensions_;
   emitters::KernelArguments kernel_arguments_;
   bool use_pdl_;
   stream_executor::gpu::TmaMetadata tma_metadata_;
+  std::optional<se::ClusterDim> cluster_dim_;
 };
 
 }  // namespace xla::gpu
