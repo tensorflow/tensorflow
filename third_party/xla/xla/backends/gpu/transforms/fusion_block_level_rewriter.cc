@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/mlir_context_pool.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
@@ -257,6 +258,12 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     // would silently discard that assignment.
     VLOG(2) << "Not rewriting fusion " << fusion_instruction->name()
             << " because it is assigned to the TensorIR emitter.";
+    return false;
+  }
+  if (fusion_backend_config.kind() == kPhasedBlockClusterFusionKind ||
+      (fusion_instruction->parent()->IsFusionComputation() &&
+       IsGpuFusionKind(*fusion_instruction->parent()->FusionInstruction(),
+                       kPhasedBlockClusterFusionKind))) {
     return false;
   }
   if (fusion_backend_config.has_block_level_fusion_config()) {

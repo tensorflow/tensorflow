@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/conv_canonicalizer.h"
 #include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/multi_output_fusion.h"
+#include "xla/backends/gpu/transforms/multi_phase_fusion.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
 #include "xla/backends/gpu/transforms/ragged_dot_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/sort_iota_fusion.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/layout_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
@@ -113,6 +115,13 @@ HloPassPipeline FusionPipeline(
       /*is_layout_sensitive=*/true, /*ignore_control_dependencies=*/false,
       /*should_eliminate_computation=*/&HloComputation::IsFusionComputation);
   fusion.AddPass<HloDCE>();
+
+  const se::CudaComputeCapability* cuda_cc =
+      gpu_device_info.gpu_compute_capability().cuda_compute_capability();
+  if (debug_options.xla_gpu_experimental_multi_phase_fusion() &&
+      cuda_cc != nullptr && cuda_cc->IsAtLeastHopper()) {
+    fusion.AddPass<MultiPhaseFusion>(gpu_device_info);
+  }
 
   return fusion;
 }

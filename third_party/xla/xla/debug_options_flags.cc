@@ -616,6 +616,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_raft_for_stable_topk(true);
   opts.set_xla_gpu_experimental_enable_tensor_ir(false);
   opts.set_xla_gpu_experimental_enable_triton_scan(true);
+  opts.set_xla_gpu_experimental_multi_phase_fusion(false);
   opts.set_xla_gpu_async_copy_min_bytes(-1);
 
   // Disable float checks.
@@ -3809,6 +3810,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_enable_triton_scan(),
       "If true, lowers eligible associative kScan instructions to Triton "
       "fusions (ScanRewriterTriton)."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_multi_phase_fusion",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_multi_phase_fusion),
+      debug_options->xla_gpu_experimental_multi_phase_fusion(),
+      "If true, fuses dependent small fusions into nested fusions. Nested "
+      "fusions are emitted as a sequence of phases of a single kernel. Phases "
+      "exchange data via HBM or caches and synchronize with block cluster "
+      "barriers."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_ragged_all_to_all_use_device_kernel",
       bool_setter_for(

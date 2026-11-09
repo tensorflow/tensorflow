@@ -2006,7 +2006,12 @@ message DebugOptions {
   // independent small-grid GPU kernels.
   optional bool xla_gpu_experimental_enable_horizontal_fusion = 565;
 
-  // Next id: 567
+  // If true, fuses dependent small fusions into nested fusions. Nested fusions
+  // are emitted as a sequence of phases of a single kernel. Phases exchange
+  // data via HBM or caches and synchronize with block cluster barriers.
+  optional bool xla_gpu_experimental_multi_phase_fusion = 567;
+
+  // Next id: 568
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
