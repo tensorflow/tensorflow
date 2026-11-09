@@ -165,7 +165,8 @@ std::optional<LatencyEstimator::TimeCost> SetAndReturnCustomCallLatency(
       HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
                                        "test_target", "test_backend_config"));
   if (latency_metadata.has_value()) {
-    custom_call->set_frontend_attribute(kXlaLatencyMetadata, *latency_metadata);
+    custom_call->set_frontend_attribute(frontend::kXlaLatencyMetadata,
+                                        *latency_metadata);
   }
   return estimator.GetLatencyFromMetadata(*custom_call);
 }

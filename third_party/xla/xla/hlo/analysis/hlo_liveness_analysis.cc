@@ -34,10 +34,8 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -320,7 +318,7 @@ void HloLivenessAnalysis::RunAnalysis() {
   for (auto* computation : module_.computations()) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->HasSideEffectNoRecurse() ||
-          HasDisableWhileLoopDceAttr(instruction)) {
+          frontend::HasDisableWhileLoopDceAttr(instruction)) {
         // Mark live at all indices if the instruction has side effects or if
         // dead code elimination is explicitly disabled via frontend attribute
         // (e.g., on special while loops).

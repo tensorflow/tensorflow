@@ -44,6 +44,7 @@ cc_library(
         "//xla/backends/gpu/runtime:collective_thunk",
         "//xla/backends/gpu/runtime:custom_kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/xtile:block_level_parameters",
         "//xla/hlo/ir:hlo",

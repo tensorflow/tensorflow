@@ -34,8 +34,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::emitters {
 
@@ -202,7 +200,7 @@ absl::StatusOr<KernelArguments> KernelArguments::CreateInternal(
     absl::Span<const Shape> unmanaged_arguments,
     absl::Span<const int32_t> interleaved_output_indices) {
   absl::flat_hash_set<int> no_invariant_operands =
-      NonInvariantOperands(*hlo_instruction);
+      frontend::NonInvariantOperands(*hlo_instruction);
 
   std::vector<KernelArgument> operand_arguments;
   operand_arguments.reserve(hlo_instruction->operand_count());

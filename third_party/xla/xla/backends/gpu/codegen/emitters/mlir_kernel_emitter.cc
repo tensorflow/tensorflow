@@ -539,8 +539,9 @@ xla::Future<LlvmKernelSource> MlirKernelFusion::CreateLLVMModule(
                    emitter_->Emit(mlir_context, fusion, entry_function_name,
                                   buffer_assignment));
 
-  if (DoesPdlLaunch(fusion)) {
-    source.module()->setAttr(kXlaPdlLaunch, mlir::UnitAttr::get(mlir_context));
+  if (frontend::DoesPdlLaunch(fusion)) {
+    source.module()->setAttr(frontend::kXlaPdlLaunch,
+                             mlir::UnitAttr::get(mlir_context));
   }
 
   return kernel_compiler->CompileMlirToLlvm(

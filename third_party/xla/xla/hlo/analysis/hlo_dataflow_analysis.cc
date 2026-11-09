@@ -100,19 +100,20 @@ bool HasDisjointReadWriteRegions(const HloInstruction* instruction) {
   if (instruction == nullptr) {
     return false;
   }
-  if (HasDisjointReadWriteRegionsAttr(instruction)) {
+  if (frontend::HasDisjointReadWriteRegionsAttr(instruction)) {
     return true;
   }
   if (instruction->IsAsynchronous()) {
     const HloInstruction* wrapped = instruction->async_wrapped_instruction();
-    if (wrapped != nullptr && HasDisjointReadWriteRegionsAttr(wrapped)) {
+    if (wrapped != nullptr &&
+        frontend::HasDisjointReadWriteRegionsAttr(wrapped)) {
       return true;
     }
   }
   if (instruction->parent() != nullptr) {
     for (const HloInstruction* caller :
          instruction->parent()->caller_instructions(HloOpcode::kWhile)) {
-      if (HasDisjointReadWriteRegionsAttr(caller)) {
+      if (frontend::HasDisjointReadWriteRegionsAttr(caller)) {
         return true;
       }
     }

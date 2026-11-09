@@ -791,7 +791,7 @@ WhileUtil::GetCopyDisabledWhileLoopComputations(const HloModule* module) {
   for (const HloComputation* comp : module->computations()) {
     for (const HloInstruction* instr : comp->instructions()) {
       if (instr->opcode() == HloOpcode::kWhile &&
-          HasDisableWhileLoopCopiesAttr(instr)) {
+          frontend::HasDisableWhileLoopCopiesAttr(instr)) {
         worklist.push_back(instr->while_body());
         worklist.push_back(instr->while_condition());
       }

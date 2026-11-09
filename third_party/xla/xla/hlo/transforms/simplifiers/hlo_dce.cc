@@ -51,8 +51,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -67,7 +66,7 @@ const absl::string_view kDceSideEffectFrontendAttribute =
 bool IsRemovableWhile(const HloInstruction* instruction,
                       bool remove_cross_partition_collective_ops) {
   if (instruction->opcode() != HloOpcode::kWhile ||
-      HasDisableWhileLoopDceAttr(instruction)) {
+      frontend::HasDisableWhileLoopDceAttr(instruction)) {
     return false;
   }
 
@@ -230,7 +229,7 @@ bool CanRemoveInstruction(
     const std::function<std::vector<HloInstruction*>(const HloComputation*)>&
         computation_callers) {
   if (instruction->parent() == nullptr || !instruction->IsDead() ||
-      HasDisableWhileLoopDceAttr(instruction)) {
+      frontend::HasDisableWhileLoopDceAttr(instruction)) {
     return false;
   }
 

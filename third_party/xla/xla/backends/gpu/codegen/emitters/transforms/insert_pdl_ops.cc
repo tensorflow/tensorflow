@@ -47,7 +47,7 @@ class InsertPDLPass : public impl::InsertPDLPassBase<InsertPDLPass> {
  public:
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
-    const bool do_pdl_launch = module->hasAttr(kXlaPdlLaunch);
+    const bool do_pdl_launch = module->hasAttr(frontend::kXlaPdlLaunch);
 
     module.walk([&](mlir::FunctionOpInterface func) {
       if (func.getFunctionBody().empty()) {

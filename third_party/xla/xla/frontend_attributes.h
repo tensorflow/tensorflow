@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
+namespace frontend {
 
 // Attribute which indicates that an in-place instruction has disjoint read
 // and write regions w.r.t aliased input/output buffers.
@@ -76,6 +77,8 @@ inline constexpr char kXlaPreserveTupleIndices[] = "xla_preserve_tuple_indices";
 // Returns 'true' if while loop DCE / tuple pruning should be disabled for
 // 'instruction'.
 bool HasDisableWhileLoopDceAttr(const HloInstruction* instruction);
+
+}  // namespace frontend
 }  // namespace xla
 
 #endif  // XLA_FRONTEND_ATTRIBUTES_H_

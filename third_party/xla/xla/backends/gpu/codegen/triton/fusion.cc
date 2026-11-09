@@ -39,6 +39,7 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
 #include "xla/backends/gpu/codegen/kernel_compiler.h"
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/xtile/block_level_parameters.h"
 #include "xla/frontend_attributes.h"
 #include "xla/future.h"
@@ -69,6 +71,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -183,9 +186,9 @@ xla::Future<TritonWrapperResult> TritonFusion::GenerateTritonKernelAndWrapper(
                          block_level_parameters, **borrowed_context));
 
   // Forward PDL launch annotation from HLO to MLIR.
-  if (DoesPdlLaunch(fusion)) {
+  if (frontend::DoesPdlLaunch(fusion)) {
     kernel_source.module()->setAttr(
-        kXlaPdlLaunch, mlir::UnitAttr::get(borrowed_context->get()));
+        frontend::kXlaPdlLaunch, mlir::UnitAttr::get(borrowed_context->get()));
   }
   return compiler->CompileTritonToLlvm(
       impl_fn_name, *fusion.GetModule(), device_info, block_level_parameters,

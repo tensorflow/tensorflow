@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -65,8 +66,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -160,7 +160,7 @@ bool IsWhileLoopCopyDisabled(const HloInstruction* instruction,
     for (const CallSite& callsite : node.caller_callsites()) {
       const HloInstruction* caller = callsite.instruction();
       if (caller != nullptr && caller->opcode() == HloOpcode::kWhile &&
-          HasDisableWhileLoopCopiesAttr(caller)) {
+          frontend::HasDisableWhileLoopCopiesAttr(caller)) {
         return true;
       }
       if (caller != nullptr && caller->parent() != nullptr) {
@@ -452,7 +452,7 @@ bool IsAsyncOperationStateDefinition(const HloInstruction* instruction) {
 
 bool IsAsyncPipelinedWhileTupleIndex(const HloInstruction* while_instr,
                                      const ShapeIndex& index) {
-  if (!HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
+  if (!frontend::HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
     return false;
   }
   int64_t tuple_idx = index[0];
@@ -541,7 +541,7 @@ bool IsAsyncPipelinedWhileTupleIndex(const HloInstruction* while_instr,
 
 bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
                                       const ShapeIndex& index) {
-  if (!HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
+  if (!frontend::HasDisableWhileLoopCopiesAttr(while_instr) || index.empty()) {
     return false;
   }
   int64_t tuple_idx = index[0];
@@ -580,7 +580,7 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
     single_reader = single_reader->users()[0];
   }
   if (single_reader->user_count() != 1 &&
-      !HasDisjointReadWriteRegionsAttr(while_instr)) {
+      !frontend::HasDisjointReadWriteRegionsAttr(while_instr)) {
     return false;
   }
 
@@ -598,8 +598,8 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
   while (curr != nullptr && curr != single_reader && curr != param_gte) {
     const HloInstruction* next = nullptr;
     if (curr->opcode() == HloOpcode::kDynamicUpdateSlice) {
-      if (!HasDisjointReadWriteRegionsAttr(curr) &&
-          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+      if (!frontend::HasDisjointReadWriteRegionsAttr(curr) &&
+          !frontend::HasDisjointReadWriteRegionsAttr(while_instr)) {
         return false;
       }
       next = curr->operand(0);
@@ -614,9 +614,9 @@ bool IsDisjointInPlaceWhileTupleIndex(const HloInstruction* while_instr,
       if (async_start == nullptr || async_start->operand_count() == 0) {
         return false;
       }
-      if (!HasDisjointReadWriteRegionsAttr(curr) &&
-          !HasDisjointReadWriteRegionsAttr(async_start) &&
-          !HasDisjointReadWriteRegionsAttr(while_instr)) {
+      if (!frontend::HasDisjointReadWriteRegionsAttr(curr) &&
+          !frontend::HasDisjointReadWriteRegionsAttr(async_start) &&
+          !frontend::HasDisjointReadWriteRegionsAttr(while_instr)) {
         return false;
       }
       next = async_start->operand(0);
@@ -639,7 +639,7 @@ bool HasWhileWithDisabledCopies(const HloModule& module) {
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile &&
-          HasDisableWhileLoopCopiesAttr(instruction)) {
+          frontend::HasDisableWhileLoopCopiesAttr(instruction)) {
         return true;
       }
     }
@@ -660,7 +660,7 @@ absl::Status AddCopiesForWhile(const HloDataflowAnalysis& dataflow,
   IndicesToCopyForWhile(dataflow, xla_while, &indices_to_copy);
 
   // LINT.IfChange(disabled_copies_buffer_reads)
-  if (HasDisableWhileLoopCopiesAttr(xla_while)) {
+  if (frontend::HasDisableWhileLoopCopiesAttr(xla_while)) {
     VLOG(2) << "While loop copy insertion partially disabled via frontend "
                "attribute for "
             << xla_while->name();
@@ -1361,7 +1361,7 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
   bool disable_loop_copies = false;
   for (const HloInstruction* caller :
        while_body->caller_instructions(HloOpcode::kWhile)) {
-    if (HasDisableWhileLoopCopiesAttr(caller)) {
+    if (frontend::HasDisableWhileLoopCopiesAttr(caller)) {
       disable_loop_copies = true;
       break;
     }
@@ -1485,7 +1485,7 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
       unique_user->opcode() == HloOpcode::kTuple &&
       unique_user->users().size() == 1 &&
       unique_user->users().front()->opcode() == HloOpcode::kWhile) {
-    if (HasDisableWhileLoopCopiesAttr(unique_user->users().front())) {
+    if (frontend::HasDisableWhileLoopCopiesAttr(unique_user->users().front())) {
       return absl::OkStatus();
     }
     HloInstruction* operand = chain_start->mutable_operand(0);
@@ -1630,19 +1630,19 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
             for (const HloInstruction* caller :
                  instruction->parent()->caller_instructions(
                      HloOpcode::kWhile)) {
-              if (HasDisjointReadWriteRegionsAttr(caller)) {
+              if (frontend::HasDisjointReadWriteRegionsAttr(caller)) {
                 has_disjoint_loop = true;
                 break;
               }
             }
           }
           if (has_disjoint_loop ||
-              (HasDisjointReadWriteRegionsAttr(instruction) &&
+              (frontend::HasDisjointReadWriteRegionsAttr(instruction) &&
                absl::c_all_of(
                    instruction->operand(operand_index_in_this_intr)->users(),
                    [&instruction](const HloInstruction* user) {
                      return user == instruction ||
-                            HasDisjointReadWriteRegionsAttr(user);
+                            frontend::HasDisjointReadWriteRegionsAttr(user);
                    }))) {
             continue;
           }

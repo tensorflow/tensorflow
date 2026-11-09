@@ -32,7 +32,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -496,7 +495,8 @@ bool LatencyEstimator::IsP2pPair(const HloGraphNode& from,
 std::optional<LatencyEstimator::TimeCost>
 LatencyEstimator::GetLatencyFromMetadata(
     const HloInstruction& instruction) const {
-  const std::optional<int64_t> latency_ns = GetLatencyMetadataNs(instruction);
+  const std::optional<int64_t> latency_ns =
+      frontend::GetLatencyMetadataNs(instruction);
   if (!latency_ns.has_value()) {
     return std::nullopt;
   }

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+namespace frontend {
 namespace {
 
 bool IsTrueVal(absl::string_view val) {
@@ -40,8 +41,7 @@ bool IsTrueVal(absl::string_view val) {
 
 void SetDisjointReadWriteRegionsAttr(HloInstruction* instruction) {
   if (instruction != nullptr) {
-    instruction->set_frontend_attribute(xla::kXlaDisjointReadWriteRegions,
-                                        "true");
+    instruction->set_frontend_attribute(kXlaDisjointReadWriteRegions, "true");
   }
 }
 
@@ -164,4 +164,5 @@ std::optional<int64_t> GetLatencyMetadataNs(const HloInstruction& instruction) {
   return latency_ns;
 }
 
+}  // namespace frontend
 }  // namespace xla

@@ -92,7 +92,7 @@ absl::StatusOr<bool> PdlLaunchAnnotationPass::RunImpl(
     const auto& instructions = module->schedule().sequence(comp).instructions();
 
     for (auto [i, hlo] : llvm::enumerate(instructions)) {
-      if (DoesPdlLaunch(*hlo) || !IsTritonGemm(*hlo)) {
+      if (frontend::DoesPdlLaunch(*hlo) || !IsTritonGemm(*hlo)) {
         continue;
       }
 
@@ -103,11 +103,11 @@ absl::StatusOr<bool> PdlLaunchAnnotationPass::RunImpl(
       }
       HloInstruction& successor = **maybe_successor;
 
-      hlo->set_frontend_attribute(kXlaPdlLaunch, "true");
+      hlo->set_frontend_attribute(frontend::kXlaPdlLaunch, "true");
       changed = true;
 
       const absl::flat_hash_set<int> existing_no_invariant_operands =
-          NonInvariantOperands(successor);
+          frontend::NonInvariantOperands(successor);
       std::vector<int> new_no_invariant_operands;
       for (int op_idx = 0; op_idx < successor.operand_count(); ++op_idx) {
         if (existing_no_invariant_operands.contains(op_idx) ||
@@ -118,7 +118,7 @@ absl::StatusOr<bool> PdlLaunchAnnotationPass::RunImpl(
       if (new_no_invariant_operands.size() >
           existing_no_invariant_operands.size()) {
         successor.set_frontend_attribute(
-            kXlaNoInvariantOperands,
+            frontend::kXlaNoInvariantOperands,
             absl::StrJoin(new_no_invariant_operands, ","));
         changed = true;
       }

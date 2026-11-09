@@ -33,12 +33,11 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialectDecl.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -62,8 +62,6 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -412,7 +410,7 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
   KernelSpec::Buffers argument_buffers;
   absl::flat_hash_set<int64_t> invariant_arguments;
   absl::flat_hash_set<int> no_invariant_operands =
-      NonInvariantOperands(hlo_instruction);
+      frontend::NonInvariantOperands(hlo_instruction);
   int64_t operand_index = 0;
   for (HloInstruction* operand : hlo_instruction.operands()) {
     for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
