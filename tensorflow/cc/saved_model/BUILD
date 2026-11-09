@@ -128,7 +128,6 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":loader_lite",
-        "@com_google_absl//absl/strings:string_view",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -149,7 +148,7 @@ cc_library(
 cc_library(
     name = "loader_lite",
     hdrs = ["loader.h"],
-    deps = ["@com_google_absl//absl/strings:string_view"] + if_static([
+    deps = if_static([
         ":loader_lite_impl",
     ]) + if_not_mobile([
         "//tensorflow/core:core_cpu",
@@ -167,10 +166,8 @@ cc_library(
         ":fingerprinting",
         ":loader_util",
         ":reader",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
     ] + if_not_mobile([
         ":metrics",
         ":util",
@@ -215,12 +212,7 @@ cc_library(
     name = "loader_util",
     srcs = ["loader_util.cc"],
     hdrs = ["loader_util.h"],
-    deps = [
-        ":constants",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-    ] + if_not_mobile([
+    deps = [":constants"] + if_not_mobile([
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -270,9 +262,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -295,8 +284,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

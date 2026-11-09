@@ -27,7 +27,6 @@ limitations under the License.
 
 #include <functional>
 #include <string>
-#include <type_traits>
 
 #include "absl/base/no_destructor.h"
 #include "xla/tsl/platform/macros.h"
@@ -44,9 +43,7 @@ class GaugeCell {
   GaugeCell() {}
   ~GaugeCell() {}
 
-  template <typename V = T,
-            std::enable_if_t<std::is_assignable_v<T&, V>, int> = 0>
-  void Set(V&& value) {}
+  void Set(const T& value) {}
   T value() const { return T(); }
 
  private:
@@ -141,9 +138,7 @@ class GaugeCell {
   ~GaugeCell() {}
 
   // Atomically sets the value.
-  template <typename V = T,
-            std::enable_if_t<std::is_assignable_v<T&, V>, int> = 0>
-  void Set(V&& value) ABSL_LOCKS_EXCLUDED(mu_);
+  void Set(const T& value) ABSL_LOCKS_EXCLUDED(mu_);
 
   // Retrieves the current value.
   T value() const ABSL_LOCKS_EXCLUDED(mu_);
@@ -320,10 +315,9 @@ class Gauge {
 //  Implementation details follow. API readers may skip.
 ////
 template <typename T>
-template <typename V, std::enable_if_t<std::is_assignable_v<T&, V>, int>>
-void GaugeCell<T>::Set(V&& value) ABSL_LOCKS_EXCLUDED(mu_) {
+void GaugeCell<T>::Set(const T& value) {
   absl::MutexLock l(mu_);
-  value_ = std::forward<V>(value);
+  value_ = value;
 }
 
 template <typename T>
