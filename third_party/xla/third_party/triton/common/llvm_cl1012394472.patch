@@ -10,7 +10,7 @@
  #include "mlir/Support/LLVM.h"
  #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
  #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
-@@ -506,7 +507,7 @@
+@@ -515,7 +516,7 @@ void init_triton_ir(py::module_ &m) {
                                   Location loc) { self.addArgument(ty, loc); })
        .def("get_num_arguments", &Block::getNumArguments)
        .def("get_argument", &Block::getArgument)
@@ -19,7 +19,7 @@
        .def("move_before",
             [](Block &self, Block &dst) { self.moveBefore(&dst); })
        .def("insert_before", &Block::insertBefore)
-@@ -591,7 +592,7 @@
+@@ -600,7 +601,7 @@ void init_triton_ir(py::module_ &m) {
              return self.getBody(idx);
            },
            ret::reference)
@@ -28,7 +28,7 @@
        .def("__str__",
             [](OpState &self) -> std::string {
               std::string str;
-@@ -703,7 +704,7 @@
+@@ -712,7 +713,7 @@ void init_triton_ir(py::module_ &m) {
    // dynamic_attr is used to transfer ownership of the MLIR context to the
    // module
    py::class_<ModuleOp, OpState>(m, "module", py::dynamic_attr())

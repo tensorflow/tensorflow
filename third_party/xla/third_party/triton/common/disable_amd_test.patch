@@ -4,7 +4,7 @@ would not be able to get run on presubmit anyway.
 
 --- a/python/test/unit/language/test_compile_only.py
 +++ b/python/test/unit/language/test_compile_only.py
-@@ -472,6 +472,8 @@ def test_signature_ordering():
+@@ -518,6 +518,8 @@ def test_signature_ordering():
      triton.compile(src=src, target=target)
  
  

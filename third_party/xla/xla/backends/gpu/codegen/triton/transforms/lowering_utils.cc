@@ -220,11 +220,8 @@ mlir::LogicalResult LowerReshape::matchAndRewrite(
     return mlir::success();
   }
 
-  // Conservatively prevent Triton from reordering elements within the tile.
-  // TODO(b/353637689): see if this restriction can be lifted.
-  bool allow_reorder = false;
   rewriter.replaceOpWithNewOp<ttir::ReshapeOp>(op, op.getResult().getType(),
-                                               op.getOperand(), allow_reorder);
+                                               op.getOperand());
   return mlir::success();
 }
 

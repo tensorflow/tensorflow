@@ -1,6 +1,6 @@
 --- a/bin/triton-llvm-opt.cpp
 +++ b/bin/triton-llvm-opt.cpp
-@@ -58,7 +58,7 @@
+@@ -56,7 +56,7 @@ namespace {
  static std::function<Error(Module *)> makeOptimizingPipeline() {
    return [](Module *m) -> Error {
      PipelineTuningOptions tuningOptions;
@@ -12,7 +12,7 @@
 
 --- a/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
-@@ -368,9 +368,9 @@
+@@ -368,9 +368,9 @@ static void disableLICM(LLVM::BrOp latchBr) {
    Builder b(latchBr.getContext());
    MLIRContext *ctx = b.getContext();
    auto licmMD = LLVM::LoopLICMAttr::get(ctx, b.getBoolAttr(true), {});
@@ -28,7 +28,7 @@
 
 --- a/python/src/ir.cc
 +++ b/python/src/ir.cc
-@@ -960,7 +960,7 @@
+@@ -969,7 +969,7 @@ void init_triton_ir(py::module_ &m) {
               mlir::LLVM::LoopAnnotationAttr la =
                   mlir::LLVM::LoopAnnotationAttr::get(
                       self.getBuilder().getContext(), {}, {}, {}, {}, {}, {},
@@ -40,7 +40,7 @@
 
 --- a/python/src/llvm.cc
 +++ b/python/src/llvm.cc
-@@ -207,11 +207,11 @@
+@@ -256,11 +256,11 @@ public:
  
    bool isEnabled() const override { return true; }
  
@@ -55,7 +55,7 @@
    }
  };
  
-@@ -795,8 +795,8 @@
+@@ -738,8 +738,8 @@ void init_triton_llvm(py::module_ &m) {
          if (!arch.empty())
            targetMachine =
                createTargetMachine(mod, arch, enable_fp_fusion, features);

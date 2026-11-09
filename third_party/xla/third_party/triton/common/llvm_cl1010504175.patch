@@ -10,7 +10,7 @@ ahead of LLVM commit 4d787f35aaba (PR #233398 / r643334) for cl/1010504175.
  #include "mlir/Transforms/Passes.h"
  #include "mlir/Transforms/RegionUtils.h"
  #include "nvidia/hopper/include/Transforms/Passes.h"
-@@ -156,13 +158,15 @@
+@@ -156,13 +158,15 @@ struct DataPartitionScheme {
        }
        assert(opPartitionDims.contains(op) && "missing partition dim");
        LDBG(" dim " << opPartitionDims.at(op) << " " << operand);
@@ -28,7 +28,7 @@ ahead of LLVM commit 4d787f35aaba (PR #233398 / r643334) for cl/1010504175.
          LDBG(" along dim ");
          for (auto &dim : op.second) {
            LDBG(dim << " ");
-@@ -173,8 +177,10 @@
+@@ -173,8 +177,10 @@ struct DataPartitionScheme {
  
      if (!opsToSkip.empty()) {
        LDBG(" ops to skip\n");
@@ -40,4 +40,5 @@ ahead of LLVM commit 4d787f35aaba (PR #233398 / r643334) for cl/1010504175.
 +      }
        LDBG("\n");
      }
+ 
 
