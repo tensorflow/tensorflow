@@ -106,46 +106,66 @@ class SparseXentTotalSumGenerator {
   const Index max_depth_;
 };
 
-// Generator for calculation of the sparse Xent loss.
-// For the true label class, loss is computed using log1p(sum_other / exp_label)
-// to prevent loss of precision when exp_label dominates.
+// Generator to extract the shifted logit (logits - max_logits) at the true
+// label class before backprop is overwritten in-place by exp().
 template <typename T, typename Index>
-class SparseXentLossGenerator {
+class SparseXentShiftedLabelGenerator {
  public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseXentLossGenerator(
-      typename TTypes<const T, 2>::Tensor32Bit exp_logits,
-      typename TTypes<const T, 1>::Tensor32Bit sum_other,
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseXentShiftedLabelGenerator(
+      typename TTypes<const T, 2>::Tensor32Bit shifted_logits,
       typename TTypes<const Index, 1>::Tensor32Bit labels,
       const Index max_depth)
-      : exp_logits_(exp_logits),
-        sum_other_(sum_other),
+      : shifted_logits_(shifted_logits),
         labels_(labels),
         max_depth_(max_depth) {}
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<int, 2>& coords) const {
+  operator()(const Eigen::array<int, 1>& coords) const {
     const int batch = coords[0];
-    const int depth = coords[1];
-    const Index label = tensorflow::internal::SubtleMustCopy(labels_(batch));
+    const Index label =
+        tensorflow::internal::SubtleMustCopy(labels_(batch));
     if (TF_PREDICT_FALSE(!FastBoundsCheck(label, max_depth_))) {
       return Eigen::NumTraits<T>::quiet_NaN();
     }
-    if (TF_PREDICT_FALSE(label == depth)) {
-      const T exp_label = exp_logits_(coords);
-      if (TF_PREDICT_TRUE(exp_label > T(0.0))) {
-        return Eigen::numext::log1p(sum_other_(batch) / exp_label);
-      } else {
-        return -Eigen::NumTraits<T>::infinity();
-      }
-    }
-    return T(0.0);
+    const Eigen::array<int, 2> label_coords = {
+        batch, static_cast<int>(label)};
+    return shifted_logits_(label_coords);
   }
 
  private:
-  typename TTypes<const T, 2>::Tensor32Bit exp_logits_;
-  typename TTypes<const T, 1>::Tensor32Bit sum_other_;
+  typename TTypes<const T, 2>::Tensor32Bit shifted_logits_;
   typename TTypes<const Index, 1>::Tensor32Bit labels_;
   const Index max_depth_;
+};
+
+// Generator for calculation of the sparse Xent loss.
+// Uses log1p(sum_other) when the label class achieves max_logits
+// (shifted_label == 0), and log(sum_exp_logits) - shifted_label otherwise.
+template <typename T, typename Index>
+class SparseXentLossGenerator {
+ public:
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseXentLossGenerator(
+      typename TTypes<const T, 1>::Tensor32Bit shifted_label,
+      typename TTypes<const T, 1>::Tensor32Bit sum_other,
+      typename TTypes<const T, 1>::Tensor32Bit sum_exp_logits)
+      : shifted_label_(shifted_label),
+        sum_other_(sum_other),
+        sum_exp_logits_(sum_exp_logits) {}
+
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
+  operator()(const Eigen::array<int, 1>& coords) const {
+    const int batch = coords[0];
+    const T shifted_logit = shifted_label_(batch);
+    if (shifted_logit == T(0.0)) {
+      return Eigen::numext::log1p(sum_other_(batch));
+    }
+    return Eigen::numext::log(sum_exp_logits_(batch)) - shifted_logit;
+  }
+
+ private:
+  typename TTypes<const T, 1>::Tensor32Bit shifted_label_;
+  typename TTypes<const T, 1>::Tensor32Bit sum_other_;
+  typename TTypes<const T, 1>::Tensor32Bit sum_exp_logits_;
 };
 
 // Generator for calculation of the sparse Xent gradient.
@@ -267,6 +287,12 @@ struct SparseXentEigenImpl {
         To32Bit(logits) -
         To32Bit(scratch).reshape(batch_by_one).broadcast(one_by_class);
 
+    // loss = shifted_logit at label (saved before backprop is overwritten).
+    generator::SparseXentShiftedLabelGenerator<T, Index> shifted_label_gen(
+        sparse_xent_helpers::To32BitConst<T>(backprop), To32Bit(labels),
+        num_classes /* max_depth */);
+    To32Bit(loss).device(d) = To32Bit(loss).generate(shifted_label_gen);
+
     // backprop = exp(logits - max_logits).
     To32Bit(backprop).device(d) = To32Bit(backprop).exp();
 
@@ -277,21 +303,20 @@ struct SparseXentEigenImpl {
     To32Bit(scratch_other).device(d) =
         To32Bit(backprop).generate(non_label_exp_gen).sum(along_class);
 
-    // scratch = total sum(exp(logits - max_logits)) = exp_label + scratch_other.
+    // scratch = total sum(exp(logits - max_logits)) = exp_label + sum_other.
     generator::SparseXentTotalSumGenerator<T, Index> total_sum_gen(
         sparse_xent_helpers::To32BitConst<T>(backprop),
         sparse_xent_helpers::To32BitConst<T>(scratch_other), To32Bit(labels),
         num_classes /* max_depth */);
-    To32Bit(scratch).device(d) =
-        To32Bit(scratch).generate(total_sum_gen);
+    To32Bit(scratch).device(d) = To32Bit(scratch).generate(total_sum_gen);
 
-    // loss = log1p(sum_other / exp_label) at label, summed along classes.
+    // loss = log1p(sum_other) if shifted_label == 0, else
+    //        log(sum_exp_logits) - shifted_label.
     generator::SparseXentLossGenerator<T, Index> sparse_xent_loss_gen(
-        sparse_xent_helpers::To32BitConst<T>(backprop),
-        sparse_xent_helpers::To32BitConst<T>(scratch_other), To32Bit(labels),
-        num_classes /* max_depth */);
-    To32Bit(loss).device(d) =
-        To32Bit(backprop).generate(sparse_xent_loss_gen).sum(along_class);
+        sparse_xent_helpers::To32BitConst<T>(loss),
+        sparse_xent_helpers::To32BitConst<T>(scratch_other),
+        sparse_xent_helpers::To32BitConst<T>(scratch));
+    To32Bit(loss).device(d) = To32Bit(loss).generate(sparse_xent_loss_gen);
 
     // backprop:
     //   depth == label: -sum_other / sum_exp_logits

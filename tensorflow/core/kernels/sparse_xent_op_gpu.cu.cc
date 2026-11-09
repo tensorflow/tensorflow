@@ -74,17 +74,22 @@ struct SparseXentFunctor<GPUDevice, T, Index> {
 // Instantiate the GPU implementation for float.
 #define REGISTER(Index)                                                       \
   template struct functor::SparseXentFunctor<GPUDevice, float, Index>;        \
+  template class generator::SparseXentShiftedLabelGenerator<float, Index>;    \
   template class generator::NonLabelExpGenerator<float, Index>;               \
   template class generator::SparseXentTotalSumGenerator<float, Index>;        \
   template class generator::SparseXentLossGenerator<float, Index>;            \
   template class generator::SparseXentGradGenerator<float, Index>;            \
   template struct functor::SparseXentFunctor<GPUDevice, Eigen::half, Index>;  \
+  template class generator::SparseXentShiftedLabelGenerator<Eigen::half,      \
+                                                            Index>;           \
   template class generator::NonLabelExpGenerator<Eigen::half, Index>;         \
   template class generator::SparseXentTotalSumGenerator<Eigen::half, Index>;  \
   template class generator::SparseXentLossGenerator<Eigen::half, Index>;      \
   template class generator::SparseXentGradGenerator<Eigen::half, Index>;      \
   template struct functor::SparseXentFunctor<GPUDevice, Eigen::bfloat16,      \
                                              Index>;                          \
+  template class generator::SparseXentShiftedLabelGenerator<Eigen::bfloat16,  \
+                                                            Index>;           \
   template class generator::NonLabelExpGenerator<Eigen::bfloat16, Index>;     \
   template class generator::SparseXentTotalSumGenerator<Eigen::bfloat16,      \
                                                          Index>;              \
