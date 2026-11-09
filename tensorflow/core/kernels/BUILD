@@ -5768,6 +5768,7 @@ tf_cc_test(
         ":ops_util",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
