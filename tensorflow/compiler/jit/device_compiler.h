@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_DEVICE_COMPILER_H_
 #define TENSORFLOW_COMPILER_JIT_DEVICE_COMPILER_H_
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/device_compilation_cache.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"

@@ -409,6 +409,53 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
           << output.on_device_shape().ToString();
   CHECK_EQ(ctx->num_outputs(), compilation_result->outputs.size());
 
+  // Clear aliased output buffers that still point to input or variable
+  // tensor memory on any error exit so ~ScopedShapedBuffer() does not
+  // free buffers owned by caller inputs while still freeing fresh
+  // copy-protected output buffers.
+  bool populate_done = false;
+  auto cleanup_aliased_buffers = absl::MakeCleanup([&]() {
+    if (populate_done) return;
+    input_output_alias.ForEachAlias(
+        [&](const xla::ShapeIndex& output_index,
+            const xla::HloInputOutputAliasConfig::Alias& alias) {
+          xla::ShapeIndex idx = output_index;
+          if (!input_output_alias.shape().IsTuple() &&
+              output.on_host_shape().IsTuple() && idx.empty()) {
+            idx = xla::ShapeIndex({0});
+          }
+          if (!xla::ShapeUtil::IndexIsValid(
+                  output.on_device_shape(), idx) ||
+              output.buffer(idx).is_null()) {
+            return;
+          }
+          if (alias.parameter_number < 0 ||
+              alias.parameter_number >=
+                  static_cast<int64_t>(
+                      compilation_result->input_mapping.size())) {
+            return;
+          }
+          int arg_num =
+              compilation_result->input_mapping[alias.parameter_number];
+          const Tensor* input_tensor = nullptr;
+          if (auto it = resource_vars.find(arg_num);
+              it != resource_vars.end()) {
+            input_tensor = it->second;
+          } else {
+            int ctx_idx = arg_num - missing_ctx_input_prefix;
+            if (ctx_idx >= 0 && ctx_idx < ctx->num_inputs()) {
+              input_tensor = &ctx->input(ctx_idx);
+            }
+          }
+          if (input_tensor != nullptr &&
+              XlaTensor::DeviceMemoryFromTensor(*input_tensor).opaque() ==
+                  output.buffer(idx).opaque()) {
+            output.set_buffer(
+                stream_executor::ScopedDeviceAddress<uint8_t>(), idx);
+          }
+        });
+  });
+
   // Fail cleanly if any output requires crossing the XLA/TF boundary with a
   // TensorList / DT_VARIANT, before performing stream operations or tensor
   // allocation.
@@ -419,36 +466,6 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
           "is not implemented");
     }
   }
-
-  // Clear aliased output buffers on any error exit to prevent
-  // ScopedShapedBuffer's destructor from deallocating buffers that are owned
-  // by input tensors. If execution inputs were donated to XLA, the input
-  // tensor and ScopedShapedBuffer both temporarily hold ownership of the
-  // buffer. If PopulateOutputs fails before taking back ownership in
-  // GetOrCreateTensorForOutput, ScopedShapedBuffer's destructor would attempt
-  // to deallocate the input buffer, leading to double-free or BFCAllocator
-  // invalid chunk handle assertion aborts.
-  bool populate_done = false;
-  auto cleanup_aliased_buffers = absl::MakeCleanup([&]() {
-    if (!populate_done) {
-      input_output_alias.ForEachAlias(
-          [&](const xla::ShapeIndex& output_index,
-              const xla::HloInputOutputAliasConfig::Alias& alias) {
-            xla::ShapeIndex idx = output_index;
-            if (!input_output_alias.shape().IsTuple() &&
-                output.on_host_shape().IsTuple() && idx.empty()) {
-              idx = xla::ShapeIndex({0});
-            }
-            if (idx.empty() && output.on_host_shape().IsTuple()) {
-              idx = xla::ShapeIndex({0});
-            }
-            if (xla::ShapeUtil::IndexIsValid(output.on_device_shape(), idx)) {
-              output.set_buffer(stream_executor::ScopedDeviceAddress<uint8_t>(),
-                                idx);
-            }
-          });
-    }
-  });
 
   // If the on-host-shape isn't a tuple, create a new single-element tuple
   // buffer with a nullptr root index table. This allows the code below to treat

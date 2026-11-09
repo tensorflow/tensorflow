@@ -575,11 +575,10 @@ class FunctionTest(xla_test.XLATestCase):
         return y
 
       x = constant_op.constant(2.0)
-      with backprop.GradientTape() as tape:
+      with backprop.GradientTape():
         with self.assertRaisesRegex(errors.UnimplementedError,
                                     'TensorList crossing the XLA/TF boundary'):
-          y = f(x)
-          tape.gradient(y, v)
+          f(x)
 
   @test_util.disable_mlir_bridge('TODO(b/162281863): MLIR bridge errors out'
                                  ' lowering TensorListConcatV2')
