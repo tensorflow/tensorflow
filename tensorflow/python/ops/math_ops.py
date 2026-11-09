@@ -1188,24 +1188,44 @@ def saturate_cast(value, dtype, name=None):
       # since we only expect to hit this error in cases of bloat16.
       promoted_type = float
 
-    min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
-    promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
-    if promoted[0] < promoted[1]:
-      min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
+    if in_dtype.is_integer:
+      # Compare as Python integers, which are exact. Going through float rounds
+      # the int64 and uint64 limits up to a value the input dtype cannot hold,
+      # and converting that back is platform dependent: on x86 it yields
+      # INT64_MIN, which would clamp every value to it. The same goes for int()
+      # on bfloat16, which converts through a C long, so float limits go through
+      # float first.
+      if out_real_dtype.is_integer:
+        out_min, out_max = int(out_real_dtype.min), int(out_real_dtype.max)
+      else:
+        out_min = int(float(out_real_dtype.min))
+        out_max = int(float(out_real_dtype.max))
+      min_limit = np_dtype(max(int(in_dtype.min), out_min))
+      max_limit = np_dtype(min(int(in_dtype.max), out_max))
+    else:
+      min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
+      promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
+      if promoted[0] < promoted[1]:
+        min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
 
-    max_limit = np_dtype(
-        np.minimum(float(in_dtype.max), float(out_real_dtype.max))
-    )
-    promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
-    if promoted[0] > promoted[1]:
-      max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
+      max_limit = np_dtype(
+          np.minimum(float(in_dtype.max), float(out_real_dtype.max))
+      )
+      promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
+      if promoted[0] > promoted[1]:
+        max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
 
-    value = gen_math_ops._clip_by_value(
-        value,
-        ops.convert_to_tensor(min_limit, dtype=in_dtype),
-        ops.convert_to_tensor(max_limit, dtype=in_dtype),
-        name="clamp",
-    )
+    min_limit = ops.convert_to_tensor(min_limit, dtype=in_dtype)
+    max_limit = ops.convert_to_tensor(max_limit, dtype=in_dtype)
+    if in_dtype in (dtypes.uint32, dtypes.uint64):
+      # ClipByValue has no kernels for these dtypes.
+      value = gen_math_ops.minimum(
+          gen_math_ops.maximum(value, min_limit), max_limit, name="clamp"
+      )
+    else:
+      value = gen_math_ops._clip_by_value(
+          value, min_limit, max_limit, name="clamp"
+      )
     return cast(value, dtype, name=name)
 
 
