@@ -33,9 +33,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/dequantize.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -76,7 +78,25 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &value));
   TF_LITE_ENSURE(context, NumDimensions(value) >= 2);
 
-  if (value->quantization.type == kTfLiteAffineQuantization) {
+  if (const TfLiteBlockwiseQuantizationV2* blockwise =
+          dequantize::GetBlockwiseQuantizationV2(value);
+      blockwise != nullptr) {
+    // N-D blockwise quantization with float zero points (e.g. a centered int2
+    // table: one block per row, zero point -0.5).
+    TF_LITE_ENSURE_MSG(context,
+                       value->type == kTfLiteInt2 ||
+                           value->type == kTfLiteInt4 ||
+                           value->type == kTfLiteInt8,
+                       "Embedding Lookup: N-D blockwise quantization requires "
+                       "an INT2, INT4 or INT8 table.");
+    TF_LITE_ENSURE_EQ(context, NumDimensions(value), 2);
+    TF_LITE_ENSURE_OK(context, dequantize::ValidateBlockwiseQuantizationV2(
+                                   context, value, blockwise));
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+    TF_LITE_ENSURE(context, output->type == kTfLiteFloat32 ||
+                                output->type == kTfLiteFloat16);
+  } else if (value->quantization.type == kTfLiteAffineQuantization) {
     const auto qparams = static_cast<const TfLiteAffineQuantization*>(
         value->quantization.params);
     TF_LITE_ENSURE(context, qparams->scale != nullptr);
@@ -290,6 +310,92 @@ TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
+// Looks up rows of a table with N-D blockwise quantization
+// (`kTfLiteBlockwiseQuantizationV2`): element `(r, c)` dequantizes as
+// `scale[b] * (q[r, c] - zero_point[b])` with `b = (r / block_shape[0],
+// c / block_shape[1])`, where scale / zero point extents of 1 broadcast and the
+// zero point may be fractional (-0.5 for a centered int2 grid). Only the
+// looked-up rows are unpacked.
+TfLiteStatus EvalBlockwiseV2(TfLiteContext* context, const TfLiteTensor* lookup,
+                             const TfLiteTensor* value,
+                             const TfLiteBlockwiseQuantizationV2* blockwise,
+                             TfLiteTensor* output) {
+  TF_LITE_ENSURE_OK(context, dequantize::ValidateBlockwiseQuantizationV2(
+                                 context, value, blockwise));
+  TF_LITE_ENSURE_OK(context, dequantize::ValidateBlockwiseQuantizationV2Buffers(
+                                 context, value, blockwise));
+  const int row_size = SizeOfDimension(value, 0);
+  const int col_size = SizeOfDimension(value, 1);
+  const TfLiteTensor* scale_tensor = &context->tensors[blockwise->scale];
+  const TfLiteTensor* zero_point_tensor = nullptr;
+  if (blockwise->zero_point != kTfLiteOptionalTensor) {
+    zero_point_tensor = &context->tensors[blockwise->zero_point];
+  }
+  const std::vector<float> scales =
+      dequantize::ReadBlockwiseParamsAsFloat(scale_tensor);
+  std::vector<float> zero_points = {0.0f};
+  if (zero_point_tensor != nullptr) {
+    zero_points = dequantize::ReadBlockwiseParamsAsFloat(zero_point_tensor);
+  }
+  const std::vector<int64_t> scale_strides =
+      dequantize::GetBlockwiseParamsStrides(scale_tensor, /*rank=*/2);
+  const std::vector<int64_t> zero_point_strides =
+      dequantize::GetBlockwiseParamsStrides(zero_point_tensor, /*rank=*/2);
+  const int row_block = blockwise->block_shape->data[0];
+  const int col_block = blockwise->block_shape->data[1];
+
+  const int8_t* value_ptr = GetTensorData<int8_t>(value);
+  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
+  std::vector<float> q_row(col_size);
+  for (int i = 0; i < SizeOfDimension(lookup, 0); ++i) {
+    const int32_t idx = lookup_data[i];
+    TF_LITE_ENSURE_OK(context, ValidateLookupIndex(context, idx, row_size));
+    CheckedInt<size_t> value_offset = CheckedInt<size_t>(idx) * col_size;
+    CheckedInt<size_t> out_offset = CheckedInt<size_t>(i) * col_size;
+    if (value_offset.Overflow() || out_offset.Overflow()) {
+      TF_LITE_KERNEL_LOG(context, "Embedding Lookup: offset overflow.");
+      return kTfLiteError;
+    }
+    // The raw integer values of the row, as floats.
+    if (value->type == kTfLiteInt8) {
+      for (int c = 0; c < col_size; ++c) {
+        q_row[c] = value_ptr[value_offset.Value() + c];
+      }
+    } else {
+      for (int c = 0; c < col_size; ++c) {
+        const size_t e = value_offset.Value() + c;
+        const uint8_t byte = static_cast<uint8_t>(
+            value_ptr[value->type == kTfLiteInt2 ? (e >> 2) : (e >> 1)]);
+        int8_t q;
+        if (value->type == kTfLiteInt2) {
+          const uint8_t bits = (byte >> ((e & 3) * 2)) & 0x03;
+          q = static_cast<int8_t>(static_cast<int8_t>(bits << 6) >> 6);
+        } else {
+          const uint8_t bits = (e & 1) ? (byte >> 4) : (byte & 0x0F);
+          q = static_cast<int8_t>(static_cast<int8_t>(bits << 4) >> 4);
+        }
+        q_row[c] = q;
+      }
+    }
+    const int64_t row_block_index = idx / row_block;
+    for (int c = 0; c < col_size; ++c) {
+      const int64_t col_block_index = c / col_block;
+      const float scale = scales[row_block_index * scale_strides[0] +
+                                 col_block_index * scale_strides[1]];
+      const float zero_point =
+          zero_points[row_block_index * zero_point_strides[0] +
+                      col_block_index * zero_point_strides[1]];
+      const float v = scale * (q_row[c] - zero_point);
+      if (output->type == kTfLiteFloat16) {
+        GetTensorData<half>(output)[out_offset.Value() + c] = half(v);
+      } else {
+        GetTensorData<float>(output)[out_offset.Value() + c] = v;
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* lookup, const TfLiteTensor* value,
                         TfLiteTensor* output) {
@@ -371,6 +477,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 1, &value));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  if (const TfLiteBlockwiseQuantizationV2* blockwise =
+          dequantize::GetBlockwiseQuantizationV2(value);
+      blockwise != nullptr) {
+    return EvalBlockwiseV2(context, lookup, value, blockwise, output);
+  }
   if (value->quantization.type == kTfLiteBlockwiseQuantization) {
     return EvalBlockwise(context, node, lookup, value, output);
   } else if (value->type != output->type && (output->type == kTfLiteFloat32 ||

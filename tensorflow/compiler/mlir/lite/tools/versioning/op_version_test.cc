@@ -791,6 +791,20 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
   }
 }
 
+TEST(OpVersionTest, VersioningEmbeddingLookupNdBlockwiseTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_EMBEDDING_LOOKUP,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt32, kTfLiteInt2}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+  // An N-D (`block_shape`) blockwise quantized table (e.g. centered int2) is
+  // version 6.
+  fake_op_sig.ext_options.embedding_lookup.is_nd_blockwise_quantized = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
+}
+
 TEST(OpVersionTest, VersioningDequantizeTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_DEQUANTIZE,

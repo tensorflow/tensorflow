@@ -83,6 +83,11 @@ struct OpSignature {
     } add;
     struct {
       bool is_per_channel_quantized = false;
+      // The table is quantized with `BlockwiseQuantization` with a non-empty
+      // `block_shape` (N-D blocks with float scale and zero point tensors), as
+      // opposed to the 1-D `blocksize` blockwise quantization of INT4 / INT2
+      // tables (versions 4 / 5).
+      bool is_nd_blockwise_quantized = false;
     } embedding_lookup;
     struct {
       // RHS (input 1) is quantized with `BlockwiseQuantization` with a
