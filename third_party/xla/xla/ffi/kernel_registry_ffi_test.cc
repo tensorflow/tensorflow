@@ -45,7 +45,7 @@ struct CanRegister : std::false_type {};
 
 template <typename T>
 struct CanRegister<T, std::void_t<decltype(std::declval<T>().Register(
-                          "k", nullptr, 0, SourceFormat::kPtx))>>
+                          "k", nullptr, 0, SourceFormat::kPtx, false))>>
     : std::true_type {};
 
 template <typename T, typename = void>
@@ -106,6 +106,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
               "internal_kernel");
     EXPECT_EQ(args->kernel_spec->size, 6u);
     EXPECT_EQ(args->kernel_spec->format, XLA_FFI_SourceFormat_CUBIN);
+    EXPECT_EQ(args->uses_pdl, 0);
     state->registered = true;
     args->kernel = kExpectedKernel;
     return nullptr;
@@ -142,7 +143,8 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
   auto init_fn = [&](InitializeKernelRegistry kernel_registry) -> absl::Status {
     ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Kernel* kernel,
                      kernel_registry.Register("internal_kernel", "cubin!", 6,
-                                              SourceFormat::kCubin));
+                                              SourceFormat::kCubin,
+                                              /*uses_pdl=*/false));
     EXPECT_EQ(kernel, kExpectedKernel);
     registered_kernel = kernel;
     return absl::OkStatus();
@@ -157,7 +159,8 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
   auto prepare_fn = [&](PrepareKernelRegistry kernel_registry) -> absl::Status {
     ABSL_ASSIGN_OR_RETURN(const XLA_FFI_Kernel* kernel,
                      kernel_registry.Register("internal_kernel", "cubin!", 6,
-                                              SourceFormat::kCubin));
+                                              SourceFormat::kCubin,
+                                              /*uses_pdl=*/false));
     EXPECT_EQ(kernel, kExpectedKernel);
     return absl::OkStatus();
   };

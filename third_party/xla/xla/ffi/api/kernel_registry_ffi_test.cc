@@ -45,7 +45,7 @@ struct CanRegister : std::false_type {};
 
 template <typename T>
 struct CanRegister<T, std::void_t<decltype(std::declval<T>().Register(
-                          "k", nullptr, 0, SourceFormat::kPtx))>>
+                          "k", nullptr, 0, SourceFormat::kPtx, false))>>
     : std::true_type {};
 
 template <typename T, typename = void>
@@ -109,6 +109,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
                          args->kernel_spec->size),
         "dummy_ptx");
     EXPECT_EQ(args->kernel_spec->format, XLA_FFI_SourceFormat_PTX);
+    EXPECT_EQ(args->uses_pdl, 1);
     state->registered = true;
     args->kernel = kExpectedKernel;
     return nullptr;
@@ -151,11 +152,13 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
   const XLA_FFI_Kernel* registered_kernel = nullptr;
   auto init_fn = [&](InitializeKernelRegistry kernel_registry) -> Error {
     auto null_data_res =
-        kernel_registry.Register("my_kernel", nullptr, 0, SourceFormat::kPtx);
+        kernel_registry.Register("my_kernel", nullptr, 0, SourceFormat::kPtx,
+                                 /*uses_pdl=*/true);
     EXPECT_TRUE(null_data_res.has_error());
 
     auto kernel = kernel_registry.Register("my_kernel", "dummy_ptx", 9,
-                                           SourceFormat::kPtx);
+                                           SourceFormat::kPtx,
+                                           /*uses_pdl=*/true);
     if (kernel.has_error()) {
       return kernel.error();
     }
@@ -199,7 +202,8 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
 TEST(KernelRegistryFfiTest, KernelRegistryUnimplemented) {
   auto fn = [&](InitializeKernelRegistry kernel_registry) -> Error {
     auto kernel = kernel_registry.Register("my_kernel", "dummy_ptx", 9,
-                                           SourceFormat::kPtx);
+                                           SourceFormat::kPtx,
+                                           /*uses_pdl=*/true);
     EXPECT_TRUE(kernel.has_error());
     EXPECT_EQ(*kernel.error().errc(), ErrorCode::kUnimplemented);
     return Error::Success();

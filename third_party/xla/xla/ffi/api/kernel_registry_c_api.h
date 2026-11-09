@@ -56,14 +56,15 @@ typedef struct XLA_FFI_KernelRegistryState XLA_FFI_KernelRegistryState;
 
 // Arguments for registering a device kernel with the XLA runtime.
 // `kernel_spec` describes the kernel name, binary payload (PTX or CUBIN), size,
-// and format. On success, `kernel` is populated with an opaque handle owned by
-// the XLA runtime that stays valid for the lifetime of the executable.
+// and format. `uses_pdl` is a flag (0 = off, non-zero = on) that says whether
+// the kernel is launched with Programmatic Dependent Launch (PDL).
 struct XLA_FFI_KernelRegistry_Register_Args {
   size_t struct_size;
   XLA_FFI_InternalExtension* extension_start;
 
   XLA_FFI_KernelRegistryState* state;
   const XLA_FFI_KernelSpec* kernel_spec;
+  int32_t uses_pdl;
   const XLA_FFI_Kernel* kernel;  // out
 };
 
@@ -73,10 +74,13 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Register_Args, kernel);
 // an opaque `XLA_FFI_Kernel*` handle in `args->kernel`.
 // Valid stages: Prepare, Initialize.
 // Lifetime:
+// - `kernel_spec` (including `name` and `data`) is only read during the call
+//   and does not need to outlive it.
 // - The returned `XLA_FFI_Kernel*` is owned by the XLA executable and remains
 //   valid until the executable is destroyed.
-// - Repeated registrations with the same `(name, data, size, format)` reuse the
-//   same `XLA_FFI_Kernel*` handle and load the module at most once per device.
+// - Repeated registrations of the same kernel (same name, binary contents,
+//   format, and `uses_pdl`) reuse the same `XLA_FFI_Kernel*` handle and load
+//   the module at most once per device.
 typedef XLA_FFI_Error* XLA_FFI_KernelRegistry_Register(
     XLA_FFI_KernelRegistry_Register_Args* args);
 
@@ -94,7 +98,8 @@ struct XLA_FFI_KernelRegistry_Launch_Args {
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Launch_Args, launch_params);
 
 // Launches a previously registered `XLA_FFI_Kernel*` on the current execution
-// stream using `args->launch_params`.
+// stream using `args->launch_params`. `launch_params->uses_pdl` must match and
+// will be removed in the future.
 // Valid stages: Execute.
 // Lifetime:
 // - `launch_params` and its `args` array are copied before `launch_kernel`
@@ -125,7 +130,7 @@ typedef XLA_FFI_Error* XLA_FFI_KernelRegistry_Launch(
 //   ABSL_ASSIGN_OR_RETURN(
 //       state->kernel,
 //       registry.Register("my_kernel", kPtxData, kPtxSize,
-//                         ffi::SourceFormat::kPtx));
+//                         ffi::SourceFormat::kPtx, /*uses_pdl=*/false));
 //   return absl::OkStatus();
 // }
 //

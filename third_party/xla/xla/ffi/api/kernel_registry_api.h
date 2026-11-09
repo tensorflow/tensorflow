@@ -58,7 +58,7 @@ class KernelRegistryBase {
                              s == ExecutionStage::kInitialize>* = nullptr>
   StatusOr<const XLA_FFI_Kernel*> Register(std::string_view name,
                                            const void* data, size_t size,
-                                           SourceFormat format) {
+                                           SourceFormat format, bool uses_pdl) {
     if (data == nullptr) {
       return ErrorPolicy::FromErrorCode(
           XLA_FFI_Error_Code_INVALID_ARGUMENT,
@@ -84,6 +84,7 @@ class KernelRegistryBase {
     args.extension_start = nullptr;
     args.state = extension_->state;
     args.kernel_spec = &kernel_spec;
+    args.uses_pdl = static_cast<int32_t>(uses_pdl);
     args.kernel = nullptr;
 
     if (XLA_FFI_Error* err = extension_->api->register_kernel(&args)) {
