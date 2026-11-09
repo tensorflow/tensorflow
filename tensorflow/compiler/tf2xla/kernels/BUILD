@@ -3381,7 +3381,6 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@xla//xla:shape_util",
         "@xla//xla:util",
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/hlo/builder:xla_builder",

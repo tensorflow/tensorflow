@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -25,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -147,14 +145,17 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     std::vector<xla::XlaOp> slices;
     slices.reserve(kernel_size);
 
+    std::vector<int64_t> start_indices(num_dims, 0);
+    std::vector<int64_t> limit_indices(num_dims, 0);
+    std::vector<int64_t> slice_strides(num_dims, 1);
+    limit_indices[batch_dim] = input_shape.dim_size(batch_dim);
+    limit_indices[feature_dim] = depth;
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
+      slice_strides[dim] = strides_[dim];
+    }
+
     for (int64_t patch_idx = 0; patch_idx < kernel_size; ++patch_idx) {
-      std::vector<int64_t> start_indices(num_dims, 0);
-      std::vector<int64_t> limit_indices(num_dims);
-      std::vector<int64_t> slice_strides(num_dims, 1);
-
-      limit_indices[batch_dim] = input_shape.dim_size(batch_dim);
-      limit_indices[feature_dim] = depth;
-
       int64_t temp = patch_idx;
       for (int i = num_spatial_dims - 1; i >= 0; --i) {
         const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
@@ -162,19 +163,19 @@ class ExtractImagePatchesOp : public XlaOpKernel {
         const int64_t patch_offset = temp % ksize;
         temp /= ksize;
 
-        const int64_t start = patch_offset * dilations_[dim];
-        start_indices[dim] = start;
         if (output_sizes[i] > 0) {
+          const int64_t start = patch_offset * dilations_[dim];
+          start_indices[dim] = start;
           limit_indices[dim] =
               start + (output_sizes[i] - 1) * strides_[dim] + 1;
         } else {
-          limit_indices[dim] = start;
+          start_indices[dim] = 0;
+          limit_indices[dim] = 0;
         }
-        slice_strides[dim] = strides_[dim];
       }
 
-      slices.push_back(
-          xla::Slice(padded_input, start_indices, limit_indices, slice_strides));
+      slices.push_back(xla::Slice(padded_input, start_indices, limit_indices,
+                                  slice_strides));
     }
 
     if (slices.size() == 1) {

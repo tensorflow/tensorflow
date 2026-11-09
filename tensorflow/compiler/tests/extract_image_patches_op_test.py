@@ -141,10 +141,36 @@ class ExtractImagePatches(xla_test.XLATestCase):
         patches=patches)
 
   def testSamePaddingNaNDoesNotSpuriouslyPropagate(self):
-    """Test that NaN values in input do not spuriously propagate under SAME padding (#119356)."""
-    image = np.array([[[[0.0], [-0.0], [float("nan")]],
-                       [[1.0], [-1.0], [2.0]],
-                       [[3.0], [4.0], [-5.0]]]], dtype=np.float32)
+    """Test that NaN values do not spuriously propagate under SAME padding."""
+    nan = float("nan")
+    image = np.array(
+        [[
+            [[0.0], [-0.0], [nan]],
+            [[1.0], [-1.0], [2.0]],
+            [[3.0], [4.0], [-5.0]],
+        ]],
+        dtype=np.float32,
+    )
+    expected_patches = np.array(
+        [[
+            [
+                [0.0, -0.0, 1.0, -1.0],
+                [-0.0, nan, -1.0, 2.0],
+                [nan, 0.0, 2.0, 0.0],
+            ],
+            [
+                [1.0, -1.0, 3.0, 4.0],
+                [-1.0, 2.0, 4.0, -5.0],
+                [2.0, 0.0, -5.0, 0.0],
+            ],
+            [
+                [3.0, 4.0, 0.0, 0.0],
+                [4.0, -5.0, 0.0, 0.0],
+                [-5.0, 0.0, 0.0, 0.0],
+            ],
+        ]],
+        dtype=np.float32,
+    )
     with self.session():
       image_placeholder = array_ops.placeholder(dtypes.float32)
       with self.test_scope():
@@ -154,30 +180,55 @@ class ExtractImagePatches(xla_test.XLATestCase):
             strides=[1, 1, 1, 1],
             rates=[1, 1, 1, 1],
             padding="SAME",
-            name="im2col")
+            name="im2col",
+        )
       feed_dict = {image_placeholder: image}
       actual_patches = out_tensor.eval(feed_dict=feed_dict)
-      # Check finite sum matches the expected sum (8.0).
-      finite_mask = ~np.isnan(actual_patches)
-      self.assertEqual(np.sum(actual_patches[finite_mask]), 8.0)
-      self.assertEqual(actual_patches.shape, (1, 3, 3, 4))
+      self.assertAllEqual(expected_patches, actual_patches)
 
   def testIntegerTypesSupported(self):
-    """Test that integer dtypes are supported with ExtractImagePatches under XLA."""
-    image = np.array([[[[1], [2]], [[3], [4]]]], dtype=np.int32)
-    expected_patches = np.array([[[[1, 2, 3, 4], [2, 0, 4, 0]],
-                                  [[3, 4, 0, 0], [4, 0, 0, 0]]]], dtype=np.int32)
+    """Test that integer and bool dtypes are supported under XLA."""
+    for dtype in self.int_types | {np.bool_}:
+      image = np.array([[[[1], [2]], [[3], [4]]]], dtype=dtype)
+      expected_patches = np.array(
+          [[[[1, 2, 3, 4], [2, 0, 4, 0]], [[3, 4, 0, 0], [4, 0, 0, 0]]]],
+          dtype=dtype,
+      )
+      with self.session():
+        image_placeholder = array_ops.placeholder(dtypes.as_dtype(dtype))
+        with self.test_scope():
+          out_tensor = array_ops.extract_image_patches(
+              image_placeholder,
+              ksizes=[1, 2, 2, 1],
+              strides=[1, 1, 1, 1],
+              rates=[1, 1, 1, 1],
+              padding="SAME",
+          )
+        feed_dict = {image_placeholder: image}
+        self.assertAllEqual(
+            expected_patches, out_tensor.eval(feed_dict=feed_dict)
+        )
+
+  def testEmptySpatialOutput(self):
+    """Test that zero-sized spatial output dimensions succeed under XLA."""
     with self.session():
-      image_placeholder = array_ops.placeholder(dtypes.int32)
-      with self.test_scope():
-        out_tensor = array_ops.extract_image_patches(
-            image_placeholder,
-            ksizes=[1, 2, 2, 1],
-            strides=[1, 1, 1, 1],
-            rates=[1, 1, 1, 1],
-            padding="SAME")
-      feed_dict = {image_placeholder: image}
-      self.assertAllEqual(expected_patches, out_tensor.eval(feed_dict=feed_dict))
+      for in_shape, ksizes, padding, expected_shape in [
+          ((1, 1, 1, 2), [1, 3, 3, 1], "VALID", (1, 0, 0, 18)),
+          ((1, 0, 2, 2), [1, 2, 2, 1], "SAME", (1, 0, 1, 8)),
+      ]:
+        image_placeholder = array_ops.placeholder(dtypes.float32)
+        with self.test_scope():
+          out_tensor = array_ops.extract_image_patches(
+              image_placeholder,
+              ksizes=ksizes,
+              strides=[1, 2, 2, 1],
+              rates=[1, 1, 1, 1],
+              padding=padding,
+          )
+        feed_dict = {image_placeholder: np.zeros(in_shape, dtype=np.float32)}
+        self.assertEqual(
+            out_tensor.eval(feed_dict=feed_dict).shape, expected_shape
+        )
 
   def testInvalidKernelSize(self):
     """Test that zero kernel size is rejected by shape inference."""
