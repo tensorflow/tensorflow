@@ -785,6 +785,8 @@ lit_test_suite_for_gpus(
             "reduction_vectorization_sm_all.hlo",
             "triton_async_copy.hlo",
             "pdl.hlo",
+            # TODO: re-enable once mi200.txtpb sets registers_per_block_limit.
+            "triton_scan_bf16.hlo",
         ],
         "mi300": [
             "memory_bandwidth_fusion.hlo",
@@ -802,12 +804,17 @@ lit_test_suite_for_gpus(
             "memory_bandwidth_fusion.hlo",
             "vectorization.hlo",
             "pdl.hlo",
+            # TODO: re-enable once mi450.txtpb sets registers_per_block_limit.
+            "triton_scan_bf16.hlo",
         ],
         "gfx1250_strict": [
             # TODO: re-enable once gfx1250-strict memory_bandwidth is finalized.
             "memory_bandwidth_fusion.hlo",
             "vectorization.hlo",
             "pdl.hlo",
+            # TODO: re-enable once gfx1250_strict.txtpb sets
+            # registers_per_block_limit.
+            "triton_scan_bf16.hlo",
         ],
     },
     gpus = [
