@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.pb.h"
@@ -1844,6 +1845,188 @@ ENTRY main {
 
   EXPECT_NE(param_buffer.index(), neg_1_buffer.index());
   EXPECT_EQ(param_buffer.index(), neg_2_buffer.index());
+}
+
+TEST_F(BufferAssignmentTest,
+       TempBufferColorMergesDefaultAndTargetColorTempAllocations) {
+  const char* const hlo_text = R"(
+    HloModule test, is_scheduled=true
+
+    ENTRY main {
+      p0 = f32[100]{0} parameter(0)
+      p1 = f32[200]{0} parameter(1)
+      temp_s7 = f32[100]{0:S(7)} negate(p0)
+      use_s7 = f32[10]{0} slice(temp_s7), slice={[0:10]}
+      temp_s0 = f32[200]{0} negate(p1)
+      use_s0 = f32[10]{0} slice(temp_s0), slice={[0:10]}
+      ROOT out = (f32[10]{0}, f32[10]{0}) tuple(use_s7, use_s0)
+    }
+  )";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  constexpr int64_t kAlignment = 1;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.temp_buffer_color = Layout::kCollectiveMemorySpace;
+  opts.can_use_allocation = BufferAssigner::AllowCrossColorReuse(
+      Layout::kDefaultMemorySpace, Layout::kCollectiveMemorySpace);
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers,
+      BufferAssigner::Run(
+          module.get(),
+          std::make_unique<SequentialHloOrdering>(module->schedule()),
+          &BufferSizeBytes, &alias_info_,
+          /*color_alignment=*/[](LogicalBuffer::Color) { return kAlignment; },
+          std::move(opts)));
+
+  HloInstruction* temp_s7 = FindInstruction(module.get(), "temp_s7");
+  HloInstruction* temp_s0 = FindInstruction(module.get(), "temp_s0");
+
+  const BufferAllocation& temp_s7_alloc = GetAllocation(*buffers, temp_s7, {});
+  const BufferAllocation& temp_s0_alloc = GetAllocation(*buffers, temp_s0, {});
+
+  EXPECT_TRUE(temp_s7_alloc.IsPreallocatedTempBuffer());
+  EXPECT_TRUE(temp_s0_alloc.IsPreallocatedTempBuffer());
+  EXPECT_EQ(temp_s7_alloc.color(), Layout::kCollectiveMemorySpace);
+  EXPECT_EQ(temp_s0_alloc.color(), Layout::kCollectiveMemorySpace);
+  EXPECT_EQ(temp_s7_alloc.index(), temp_s0_alloc.index());
+  EXPECT_EQ(temp_s7_alloc.size(),
+            BufferSizeBytes(
+                buffers->dataflow_analysis().GetUniqueValueAt(temp_s0, {})));
+}
+
+TEST_F(BufferAssignmentTest,
+       TempBufferColorRecolorsSingleDefaultTempAllocation) {
+  const char* const hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[3]{0} parameter(0)
+  a = f32[3]{0} negate(p0)
+  ROOT out = f32[1]{0} slice(a), slice={[0:1]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.temp_buffer_color = Layout::kCollectiveMemorySpace;
+  // Non-sequential ordering skips heap simulation, so `a` gets its own S(0)
+  // temp allocation. It is the only temp allocation, so CombineTempAllocations
+  // never merges anything into it and must still recolor it.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          /*color_alignment=*/[](LogicalBuffer::Color) { return 1; },
+          std::move(opts)));
+
+  HloInstruction* a = FindInstruction(module.get(), "a");
+  const BufferAllocation& a_alloc = GetAllocation(*buffers, a, {});
+
+  EXPECT_TRUE(a_alloc.IsPreallocatedTempBuffer());
+  EXPECT_EQ(a_alloc.color(), Layout::kCollectiveMemorySpace);
+  int64_t num_temp_allocations = absl::c_count_if(
+      buffers->Allocations(), [](const BufferAllocation& allocation) {
+        return allocation.IsPreallocatedTempBuffer();
+      });
+  EXPECT_EQ(num_temp_allocations, 1);
+}
+
+TEST_F(BufferAssignmentTest,
+       TempBufferColorAlignsMergedDefaultTempAllocationsToTargetColor) {
+  const char* const hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p0 = f32[3]{0} parameter(0)
+  a = f32[3]{0} negate(p0)
+  b = f32[3]{0} exponential(p0)
+  sum = f32[3]{0} add(a, b)
+  ROOT out = f32[1]{0} slice(sum), slice={[0:1]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.temp_buffer_color = Layout::kCollectiveMemorySpace;
+  // Non-sequential ordering assigns `a` (12B) and `b` (12B) to separate S(0)
+  // temp allocations that CombineTempAllocations recolors to
+  // kCollectiveMemorySpace and merges end-to-end using kCollectiveMemorySpace
+  // alignment.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color color) -> int64_t {
+            return color == Layout::kCollectiveMemorySpace ? 64 : 1;
+          },
+          std::move(opts)));
+
+  HloInstruction* a = FindInstruction(module.get(), "a");
+  HloInstruction* b = FindInstruction(module.get(), "b");
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice a_slice,
+                       buffers->GetUniqueSlice(a, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice b_slice,
+                       buffers->GetUniqueSlice(b, {}));
+
+  EXPECT_EQ(a_slice.allocation()->index(), b_slice.allocation()->index());
+  EXPECT_EQ(a_slice.allocation()->color(), Layout::kCollectiveMemorySpace);
+  EXPECT_EQ(a_slice.offset() % 64, 0);
+  EXPECT_EQ(b_slice.offset() % 64, 0);
+}
+
+TEST_F(BufferAssignmentTest,
+       TempBufferColorAlignsSequentialDefaultTempAllocationsToTargetColor) {
+  const char* const hlo_text = R"(
+HloModule test, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[3]{0} parameter(0)
+  a = f32[3]{0} negate(p0)
+  b = f32[3]{0} exponential(p0)
+  sum = f32[3]{0} add(a, b)
+  ROOT out = f32[1]{0} slice(sum), slice={[0:1]}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.temp_buffer_color = Layout::kCollectiveMemorySpace;
+  // Sequential ordering packs `a` (12B) and `b` (12B) into a single
+  // HeapSimulator allocation using `temp_buffer_color` (kCollectiveMemorySpace)
+  // alignment.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> buffers,
+      BufferAssigner::Run(
+          module.get(),
+          std::make_unique<SequentialHloOrdering>(module->schedule()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color color) -> int64_t {
+            return color == Layout::kCollectiveMemorySpace ? 64 : 1;
+          },
+          std::move(opts)));
+
+  HloInstruction* a = FindInstruction(module.get(), "a");
+  HloInstruction* b = FindInstruction(module.get(), "b");
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice a_slice,
+                       buffers->GetUniqueSlice(a, {}));
+  ASSERT_OK_AND_ASSIGN(BufferAllocation::Slice b_slice,
+                       buffers->GetUniqueSlice(b, {}));
+
+  EXPECT_EQ(a_slice.allocation()->index(), b_slice.allocation()->index());
+  EXPECT_EQ(a_slice.allocation()->color(), Layout::kCollectiveMemorySpace);
+  EXPECT_NE(a_slice.offset(), b_slice.offset());
+  EXPECT_EQ(a_slice.offset() % 64, 0);
+  EXPECT_EQ(b_slice.offset() % 64, 0);
 }
 
 TEST_F(BufferAssignmentTest, CanUseAllocationReusesCrossColorTempAllocation) {

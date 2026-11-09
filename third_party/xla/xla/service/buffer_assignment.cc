@@ -1266,6 +1266,9 @@ absl::Status BufferAssignment::CombineTempAllocations(
   // to the same color.
   for (auto it = first_temp_it; it != allocations_.end(); ++it) {
     BufferAllocation& temp_allocation = *it;
+    if (temp_buffer_color.has_value() && temp_allocation.color() == 0) {
+      temp_allocation.set_color(temp_buffer_color.value());
+    }
     BufferValue::Color color = temp_allocation.color();
     int64_t page = temp_allocation.page_id();
     bool has_fixed_offset = false;
@@ -1354,12 +1357,6 @@ absl::Status BufferAssignment::CombineTempAllocations(
         combined_allocation->cross_color_buffers_.end(),
         temp_allocation.cross_color_buffers_.begin(),
         temp_allocation.cross_color_buffers_.end());
-
-    if (temp_buffer_color.has_value()) {
-      if (combined_allocation->color() == 0) {
-        combined_allocation->set_color(temp_buffer_color.value());
-      }
-    }
   }
   // Replace all existing temporary allocations with the new combined
   // allocations.
@@ -2879,7 +2876,11 @@ BufferAssigner::SplitBuffersByColor(
     const flat_hash_set<const HloValue*>& buffers) const {
   flat_hash_map<LogicalBuffer::Color, flat_hash_set<const HloValue*>> color_map;
   for (auto buffer : buffers) {
-    color_map[buffer->color()].insert(buffer);
+    LogicalBuffer::Color color = buffer->color();
+    if (opts_.temp_buffer_color.has_value() && color == 0) {
+      color = *opts_.temp_buffer_color;
+    }
+    color_map[color].insert(buffer);
   }
   return color_map;
 }
@@ -3049,7 +3050,9 @@ absl::StatusOr<int64_t> BufferAssigner::ReuseCompatibleTempHeaps(
         return false;
       }
       return values->contains(buffer_value) &&
-             buffer_value->color() == buffer_color &&
+             (buffer_value->color() == buffer_color ||
+              (opts_.temp_buffer_color == buffer_color &&
+               buffer_value->color() == 0)) &&
              live_ranges.contains(buffer_value);
     };
 
@@ -3599,7 +3602,9 @@ absl::Status BufferAssigner::AssignBuffersFromHeapSimulator(
     }
     for (const auto& [value, chunk] : heap_result.chunk_map) {
       TF_RET_CHECK(
-          opts_.can_use_allocation(value->color(), allocation->color()))
+          opts_.can_use_allocation(value->color(), allocation->color()) ||
+          (opts_.temp_buffer_color == allocation->color() &&
+           value->color() == 0))
           << "Buffer color " << value->color() << " for buffer " << *value
           << " cannot use temp allocation color " << allocation->color() << ".";
       ABSL_RETURN_IF_ERROR(assignment->AddAssignment(allocation, *value,
@@ -3704,6 +3709,8 @@ absl::Status BufferAssigner::RunAssignBuffersWithFallback(
     const std::vector<const HloComputation*>& global_computations,
     const std::vector<const HloComputation*>& thread_local_computations,
     BufferAssignment* assignment) {
+  TF_RET_CHECK(!opts_.temp_buffer_color.has_value() ||
+               *opts_.temp_buffer_color == 0);
   // 1. Backup preset assignments for potential fallback. Because the primary
   // assignment run consumes opts_.preset_assignments, we create an identical
   // clone to restore if fallback occurs.

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
@@ -126,6 +127,16 @@ bool UseCache(const DebugOptions& options) {
   return !options.xla_gpu_kernel_cache_file().empty();
 }
 
+// TODO(b/583669354): Pass the gpu_allocator_config as a parameter.
+bool IsGpuAllocatorPreallocationEnabled() {
+  const char* preallocate = std::getenv("XLA_PYTHON_CLIENT_PREALLOCATE");
+  if (preallocate == nullptr) {
+    return true;
+  }
+  absl::string_view value(preallocate);
+  return value != "false" && value != "False" && value != "0";
+}
+
 }  // namespace
 
 absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
@@ -155,17 +166,34 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
 }
 
 absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
-    const HloModule* module, const GpuAliasInfo* alias_info,
+    const HloModule* module, const GpuTopology& gpu_topology,
+    const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function) {
   ScopedAnnotation annotation(Phase("XlaBufferAssignment", module));
 
   const DebugOptions& options = module->config().debug_options();
 
-  std::optional<BufferValue::Color> color =
-      options.xla_gpu_temp_buffer_use_separate_color()
-          ? std::optional<BufferValue::Color>(
-                (int)MemorySpaceColor::kTempBuffer)
-          : std::nullopt;
+  const int64_t num_module_devices =
+      module->config().num_partitions() * module->config().replica_count();
+  const bool is_fully_sharded =
+      gpu_topology.number_of_devices() > 1 &&
+      num_module_devices == gpu_topology.number_of_devices();
+
+  // Collective memory only shares the preallocated BFC pool with default
+  // memory when spatial partitioning is enabled and the allocator preallocates.
+  const bool use_collective_color =
+      options.xla_gpu_temp_buffer_use_collective_color() && is_fully_sharded &&
+      options.xla_gpu_enable_allocator_spatial_partitioning() &&
+      IsGpuAllocatorPreallocationEnabled() &&
+      options.xla_gpu_command_buffer_update_mode() ==
+          DebugOptions::ALWAYS_UPDATE;
+
+  std::optional<BufferValue::Color> color;
+  if (use_collective_color) {
+    color = static_cast<BufferValue::Color>(MemorySpaceColor::kCollective);
+  } else if (options.xla_gpu_temp_buffer_use_separate_color()) {
+    color = static_cast<BufferValue::Color>(MemorySpaceColor::kTempBuffer);
+  }
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
@@ -225,7 +253,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   CompileModuleResults results = InitializeResults(hlo_module);
 
   ABSL_ASSIGN_OR_RETURN(results.buffer_assignment,
-                   RunBufferAssignment(hlo_module, alias_info,
+                   RunBufferAssignment(hlo_module, gpu_topology, alias_info,
                                        std::move(buffer_size_bytes_function)));
   ABSL_ASSIGN_OR_RETURN(results.output_info,
                    GetOutputInfo(*hlo_module, *results.buffer_assignment));

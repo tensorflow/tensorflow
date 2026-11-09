@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/log_severity.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/scoped_mock_log.h"
@@ -132,6 +133,7 @@ namespace m = ::xla::match;
 using ::testing::AssertionResult;
 using ::testing::AtLeast;
 using ::testing::Contains;
+using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::EndsWith;
@@ -210,6 +212,9 @@ class GpuCompilerTest
     return get_cuda_cc().IsAtLeastAmpere() ||
            device_description().gpu_compute_capability().IsRocm();
   }
+
+  void ExpectTempBufferColor(const HloModuleConfig& config,
+                             int num_devices_per_host, int64_t expected_color);
 };
 
 absl::StatusOr<std::string> ReadNonEmptyFile(absl::string_view file_path) {
@@ -4438,6 +4443,138 @@ ENTRY main {
   }
   EXPECT_THAT(profiled_fingerprints,
               Contains(uploader_ptr->optimized_fingerprints()[0]));
+}
+
+void GpuCompilerTest::ExpectTempBufferColor(const HloModuleConfig& config,
+                                            int num_devices_per_host,
+                                            int64_t expected_color) {
+  constexpr absl::string_view kHloText = R"hlo(
+HloModule m
+
+ENTRY main {
+  a = f32[256,64]{1,0} parameter(0)
+  b = f32[64,256]{1,0} parameter(1)
+  temp = f32[256,256]{1,0} dot(a, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = f32[256,64]{1,0} dot(temp, a),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.gpu_topology = GpuTopology(
+      /*platform_version=*/"", /*num_partitions=*/1,
+      /*num_hosts_per_partition=*/1,
+      /*num_devices_per_host=*/num_devices_per_host, gpu_target_config());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler()->RunHloPasses(std::move(module), /*executor=*/nullptr,
+                               compile_options));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      compiler()->RunBackend(std::move(optimized_module), /*executor=*/nullptr,
+                             compile_options));
+
+  const auto* gpu_executable =
+      absl::down_cast<const GpuExecutable*>(executable.get());
+  std::vector<int64_t> temp_colors;
+  for (const BufferAllocation* allocation : gpu_executable->GetAllocations()) {
+    if (allocation->IsPreallocatedTempBuffer()) {
+      temp_colors.push_back(allocation->color());
+    }
+  }
+  EXPECT_THAT(temp_colors, Not(IsEmpty()));
+  EXPECT_THAT(temp_colors, Each(expected_color));
+}
+
+TEST_F(GpuCompilerTest,
+       MultiDeviceTopologyAllocatesTempBufferInCollectiveMemorySpace) {
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  config.mutable_debug_options().set_xla_gpu_temp_buffer_use_collective_color(
+      true);
+  ExpectTempBufferColor(config, /*num_devices_per_host=*/2,
+                        Layout::kCollectiveMemorySpace);
+}
+
+TEST_F(GpuCompilerTest,
+       SingleDeviceTopologyAllocatesTempBufferInDefaultMemorySpace) {
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/1);
+  config.mutable_debug_options().set_xla_gpu_temp_buffer_use_collective_color(
+      true);
+  ExpectTempBufferColor(config, /*num_devices_per_host=*/1,
+                        Layout::kDefaultMemorySpace);
+}
+
+TEST_F(GpuCompilerTest,
+       PartiallyShardedModuleAllocatesTempBufferInDefaultMemorySpace) {
+  // The module uses 2 of the 4 devices in the topology, so it is not fully
+  // sharded and its temp buffer must stay in the default memory space.
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  config.mutable_debug_options().set_xla_gpu_temp_buffer_use_collective_color(
+      true);
+  ExpectTempBufferColor(config, /*num_devices_per_host=*/4,
+                        Layout::kDefaultMemorySpace);
+}
+
+TEST_F(GpuCompilerTest,
+       DisabledSpatialPartitioningAllocatesTempBufferInDefaultMemorySpace) {
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  DebugOptions& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_gpu_temp_buffer_use_collective_color(true);
+  debug_options.set_xla_gpu_enable_allocator_spatial_partitioning(false);
+  ExpectTempBufferColor(config, /*num_devices_per_host=*/2,
+                        Layout::kDefaultMemorySpace);
+}
+
+TEST_F(
+    GpuCompilerTest,
+    NonAlwaysUpdateCommandBufferModeAllocatesTempBufferInDefaultMemorySpace) {
+  for (DebugOptions::CommandBufferUpdateMode update_mode :
+       {DebugOptions::SKIP_TEMP, DebugOptions::SKIP_PROFILED}) {
+    SCOPED_TRACE(DebugOptions::CommandBufferUpdateMode_Name(update_mode));
+    HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+    DebugOptions& debug_options = config.mutable_debug_options();
+    debug_options.set_xla_gpu_temp_buffer_use_collective_color(true);
+    debug_options.set_xla_gpu_command_buffer_update_mode(update_mode);
+    ExpectTempBufferColor(config, /*num_devices_per_host=*/2,
+                          Layout::kDefaultMemorySpace);
+  }
+}
+
+TEST_F(GpuCompilerTest,
+       DisabledPreallocationAllocatesTempBufferInDefaultMemorySpace) {
+  for (const char* preallocate : {"false", "False", "0"}) {
+    SCOPED_TRACE(preallocate);
+    ASSERT_EQ(tsl::setenv("XLA_PYTHON_CLIENT_PREALLOCATE", preallocate,
+                          /*overwrite=*/1),
+              0);
+    absl::Cleanup unset_env = [] {
+      tsl::unsetenv("XLA_PYTHON_CLIENT_PREALLOCATE");
+    };
+    HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+    config.mutable_debug_options().set_xla_gpu_temp_buffer_use_collective_color(
+        true);
+    ExpectTempBufferColor(config, /*num_devices_per_host=*/2,
+                          Layout::kDefaultMemorySpace);
+  }
+}
+
+TEST_F(GpuCompilerTest,
+       EnabledPreallocationAllocatesTempBufferInCollectiveMemorySpace) {
+  ASSERT_EQ(tsl::setenv("XLA_PYTHON_CLIENT_PREALLOCATE", "true",
+                        /*overwrite=*/1),
+            0);
+  absl::Cleanup unset_env = [] {
+    tsl::unsetenv("XLA_PYTHON_CLIENT_PREALLOCATE");
+  };
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  config.mutable_debug_options().set_xla_gpu_temp_buffer_use_collective_color(
+      true);
+  ExpectTempBufferColor(config, /*num_devices_per_host=*/2,
+                        Layout::kCollectiveMemorySpace);
 }
 
 }  // namespace

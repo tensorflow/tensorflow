@@ -2011,7 +2011,13 @@ message DebugOptions {
   // data via HBM or caches and synchronize with block cluster barriers.
   optional bool xla_gpu_experimental_multi_phase_fusion = 567;
 
-  // Next id: 568
+  // Relevant to GPU backend only. If true, temporary buffers for fully-sharded
+  // modules (modules using all devices in the topology) are allocated in the
+  // collective memory space (color 7) instead of the default memory space
+  // (color 0).
+  optional bool xla_gpu_temp_buffer_use_collective_color = 568;
+
+  // Next id: 569
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

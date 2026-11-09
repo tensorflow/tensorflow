@@ -372,6 +372,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
 
   opts.set_xla_gpu_temp_buffer_use_separate_color(false);
+  opts.set_xla_gpu_temp_buffer_use_collective_color(false);
   opts.set_xla_gpu_require_exclusive_lock(false);
 
   opts.set_xla_gpu_redzone_padding_bytes(8 * 1024 * 1024);
@@ -2498,6 +2499,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enables temp User Buffer Registration. Enable this flag will use a "
       "separate cuda async memory allocator to allocate temp buffer, this will "
       "allocate temp buffer to the fixed address on every iteration"));
+
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_temp_buffer_use_collective_color",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_temp_buffer_use_collective_color),
+      debug_options->xla_gpu_temp_buffer_use_collective_color(),
+      "If true, allocates temporary buffers for fully-sharded modules (modules "
+      "using all devices in the topology) in the Collective memory space "
+      "(color 7)."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_require_exclusive_lock",
