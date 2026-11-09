@@ -26,8 +26,6 @@ cc_library(
     hdrs = glob(["include/spdlog/**/*.h"]),
     defines = [
         "SPDLOG_FMT_EXTERNAL",
-        # Keep XLA's spdlog apart from other spdlog copies in the process.
-        "spdlog=xla_spdlog",
     ],
     features = ["-parse_headers"],
     includes = ["include"],
