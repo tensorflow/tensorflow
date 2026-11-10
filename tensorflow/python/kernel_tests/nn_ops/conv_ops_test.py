@@ -218,11 +218,14 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
         tf.config.threading.set_intra_op_parallelism_threads(24)
         x = tf.ones([150, 128, 128, 1], dtype=tf.float64)
         w = tf.ones([15, 15, 1, 1], dtype=tf.float64)
+        virtual_bytes = None
         with open('/proc/self/status', encoding='utf-8') as status:
           for line in status:
             if line.startswith('VmSize:'):
               virtual_bytes = int(line.split()[1]) * 1024
               break
+        if virtual_bytes is None:
+          raise RuntimeError('Could not find VmSize in /proc/self/status')
         limit = virtual_bytes + (1 << 30)
         resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
         try:
