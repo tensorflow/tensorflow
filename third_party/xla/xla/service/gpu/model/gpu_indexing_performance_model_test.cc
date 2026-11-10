@@ -80,7 +80,6 @@ using ::testing::Field;
 using ::testing::Ge;
 using ::testing::IsEmpty;
 using ::testing::Not;
-using ::testing::SizeIs;
 using ::xla::xtile::BlockLevelParameters;
 
 class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
@@ -899,56 +898,6 @@ ENTRY main {
                 + 4 * 1 * num_root_tile_executions    // ==> %init
   );
   EXPECT_EQ(result.bytes_written, 4 * 64 * 1024);
-}
-
-TEST_F(GpuIndexingPerformanceModelTest,
-       EstimateRunTimeForTriton_ScanFusionWithoutBlockLevelConfig) {
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-add {
-  p0 = f32[64] parameter(0)
-  p1 = f32[64] parameter(1)
-  add = f32[64] add(p0, p1)
-  ROOT tuple = (f32[64], f32[64]) tuple(add, add)
-}
-
-scan_fusion {
-  p0 = f32[64,131072] parameter(0)
-  init = f32[64] parameter(1)
-  scan = (f32[64,131072], f32[64]) scan(p0, init), dimensions={1},
-    num_carries=1, is_associative=true, to_apply=add
-  ROOT gte = f32[64,131072] get-tuple-element(scan), index=0
-}
-
-ENTRY main {
-  p0 = f32[64,131072] parameter(0)
-  init = f32[64] parameter(1)
-  ROOT fusion = f32[64,131072] fusion(p0, init), kind=kCustom, calls=scan_fusion,
-    backend_config={"fusion_backend_config":{"kind":"__triton"}}
-})"));
-
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-
-  // Estimated with the tiling that FusionBlockLevelRewriter would pick.
-  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData runtime,
-                       indexing_cost_model_.EstimateRunTimeForTriton(root));
-  EXPECT_FALSE(runtime.IsInfinite());
-
-  ASSERT_OK_AND_ASSIGN(auto tiled_runtime_data_or_error,
-                       indexing_cost_model_
-                           .TryFindBestTilingForFusionAsync(
-                               *HloFusionAdaptor::ForInstruction(root))
-                           .Await());
-  ASSERT_TRUE(
-      std::holds_alternative<TiledRunTimeData>(tiled_runtime_data_or_error));
-  const TiledRunTimeData& tiled_runtime_data =
-      std::get<TiledRunTimeData>(tiled_runtime_data_or_error);
-  EXPECT_EQ(runtime.exec_time, tiled_runtime_data.runtime_data.exec_time);
-  EXPECT_THAT(tiled_runtime_data.block_level_parameters.output_tile_sizes,
-              ElementsAre(SizeIs(1)));
-  EXPECT_THAT(tiled_runtime_data.block_level_parameters.sequential_tile_sizes,
-              SizeIs(1));
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,

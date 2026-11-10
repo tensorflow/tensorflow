@@ -1442,25 +1442,12 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
   }
 
   auto launch_config = TritonFusion::GetLaunchConfig(&fusion_analysis);
-  if (launch_config.has_value()) {
-    return EstimateRunTimeForTiledFusion(fusion_analysis.fusion(),
-                                         launch_config->block_level_parameters);
+  if (!launch_config.has_value()) {
+    return absl::InvalidArgumentError(
+        "Could not get launch config for Triton fusion.");
   }
-
-  // Triton fusions without a block-level config (e.g. from ScanRewriterTriton)
-  // are tiled by FusionBlockLevelRewriter. Estimate them with that tiling.
-  ABSL_ASSIGN_OR_RETURN(
-      TiledRunTimeDataOrError tiled_run_time_data_or_error,
-      TryFindBestTilingForFusionAsync(fusion_analysis.fusion()).Await());
-  if (const auto* fusion_decision =
-          std::get_if<FusionDecision>(&tiled_run_time_data_or_error)) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("Could not find a tiling for Triton fusion without a "
-                     "block-level config: ",
-                     fusion_decision->Explain()));
-  }
-  return std::get<TiledRunTimeData>(std::move(tiled_run_time_data_or_error))
-      .runtime_data;
+  return EstimateRunTimeForTiledFusion(fusion_analysis.fusion(),
+                                       launch_config->block_level_parameters);
 }
 
 /*static*/
