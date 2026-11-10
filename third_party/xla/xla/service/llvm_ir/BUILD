@@ -221,38 +221,6 @@ cc_library(
 )
 
 cc_library(
-    name = "dynamic_update_slice_util",
-    srcs = ["dynamic_update_slice_util.cc"],
-    hdrs = ["dynamic_update_slice_util.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
-        "//xla/service/cpu:backend_config_proto_cc",
-        "@com_google_absl//absl/log:check",
-    ],
-)
-
-cc_library(
-    name = "tuple_ops",
-    srcs = ["tuple_ops.cc"],
-    hdrs = ["tuple_ops.h"],
-    deps = [
-        ":ir_array",
-        ":llvm_type_conversion_util",
-        ":llvm_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-    ],
-)
-
-cc_library(
     name = "kernel_support_library",
     srcs = ["kernel_support_library.cc"],
     hdrs = ["kernel_support_library.h"],

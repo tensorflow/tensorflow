@@ -27,7 +27,9 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -151,27 +153,9 @@ std::optional<int64_t> GetMetadataInt(llvm::Metadata* absl_nullable value) {
   return c->getSExtValue();
 }
 
-std::optional<std::string> GetMetadataString(
-    llvm::Metadata* absl_nullable value) {
-  if (value == nullptr) {
-    return std::nullopt;
-  }
-  auto* md_string = llvm::dyn_cast<llvm::MDString>(value);
-  if (md_string == nullptr) {
-    return std::nullopt;
-  }
-  return md_string->getString().str();
-}
-
 std::optional<int64_t> GetXlaDylibIndex(const llvm::Module& llvm_module) {
   llvm::Metadata* md = llvm_module.getModuleFlag("xla_dylib_index");
   return GetMetadataInt(md);
-}
-
-std::optional<std::string> GetXlaBackendExtraOptions(
-    const llvm::Module& llvm_module) {
-  llvm::Metadata* md = llvm_module.getModuleFlag("xla_backend_extra_options");
-  return GetMetadataString(md);
 }
 
 static constexpr absl::string_view kAddExponentialOfScatterHlo = R"(
@@ -256,6 +240,27 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
   EXPECT_EQ(max_seen, 0) << "max dylib_index(" << max_seen
                          << ") != 0, but only "
                          << "one dylib is allowed.";
+}
+
+TEST_F(CpuCompilerInternalsTest, ZeroParallelCodegenSplitCountReturnsError) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kAddExponentialOfScatterHlo));
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_parallel_codegen_split_count(0);
+
+  CpuCompiler compiler;
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
+  EXPECT_THAT(
+      compiler.RunBackend(std::move(optimized_module),
+                          /*stream_exec=*/nullptr, /*options=*/{}),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInternal,
+          ::testing::HasSubstr("xla_cpu_parallel_codegen_split_count")));
 }
 
 TEST_F(CpuCompilerInternalsTest, IdenticalSmallWhileLoopsShareKernel) {

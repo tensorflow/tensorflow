@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/parallel_fusion_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
@@ -55,9 +54,9 @@ namespace xla::cpu {
 // sequence of thunks that will launch "work" on the CPU: launch host kernels,
 // call into the libraries (oneDNN, Eigen, etc.).
 //
-// During the thunk emission it emits IR (LLVM IR) for the host kernels via the
-// IrEmitter that later will be compiled into the executable binary (one or
-// multiple LLVM modules compiled to object files).
+// During thunk emission it lowers fusions and host kernels to LLVM modules
+// that are later compiled into the executable binary (one or multiple LLVM
+// modules compiled to object files).
 class ThunkEmitter {
  public:
   struct Options {
@@ -75,7 +74,7 @@ class ThunkEmitter {
     llvm::orc::ThreadSafeModule module;
   };
 
-  ThunkEmitter(IrEmitter2& ir_emitter, tsl::thread::ThreadPool& thread_pool,
+  ThunkEmitter(tsl::thread::ThreadPool& thread_pool,
                const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
                const HloModule& hlo_module,
@@ -93,11 +92,6 @@ class ThunkEmitter {
       const HloSortInstruction* sort);
 
  private:
-  struct HostKernelAllocationSlices {
-    std::vector<ShapedSlice> arguments;
-    std::vector<ShapedSlice> results;
-  };
-
   // Returns the buffer allocation slice assigned to the given instruction at
   // the given shape index. Instruction must have a unique slice assigned to it!
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
@@ -220,14 +214,6 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitOneDnnFusionThunk(
       const HloInstruction* instruction);
 
-  // Returns the list of buffer allocation slices assigned to the given
-  // instruction that will be passed to the host kernel as arguments: a
-  // flattened list of all the leaf buffers for all operands and result. We do
-  // not materialize tuples at run time and only read and write from buffers
-  // corresponding to arrays.
-  absl::StatusOr<HostKernelAllocationSlices> GetHostKernelAllocationSlices(
-      const HloInstruction* instruction);
-
   // Verifies that the element types of all of the given operand instructions
   // match and are of one of the given supported types.
   absl::Status ElementTypesSameAndSupported(
@@ -236,12 +222,6 @@ class ThunkEmitter {
       absl::Span<const PrimitiveType> supported_types);
 
   // Convenience function that creates a thunk sequence containing given kernel.
-  static absl::StatusOr<ThunkSequence> MakeKernelThunkSequence(
-      const HloInstruction* instruction,
-      const ThunkEmitter::HostKernelAllocationSlices& buffers,
-      const IrEmitter2::KernelInfo& kernel,
-      std::optional<uint64_t> min_alignment = std::nullopt);
-
   static absl::StatusOr<ThunkSequence> MakeKernelThunkSequence(
       const HloInstruction* instruction, const KernelSpec& kernel_spec,
       std::optional<uint64_t> min_alignment = std::nullopt);
@@ -260,7 +240,6 @@ class ThunkEmitter {
     std::vector<std::string> nested_kernels;
   };
 
-  IrEmitter2& ir_emitter_;
   const BufferAssignment& buffer_assignment_;
 
   const TargetMachineFeatures& target_machine_features_;
