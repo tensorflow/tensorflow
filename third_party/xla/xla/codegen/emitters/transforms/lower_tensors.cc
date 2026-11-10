@@ -26,10 +26,12 @@ limitations under the License.
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -113,6 +115,8 @@ Value GetDestinationBuffer(Value dest) {
     int result_number = mlir::cast<OpResult>(dest).getResultNumber();
     if (auto insert = dest.getDefiningOp<mlir::tensor::InsertOp>()) {
       dest = insert.getDest();
+    } else if (auto copy_slice = dest.getDefiningOp<CopySliceOp>()) {
+      dest = copy_slice.getDest();
     } else if (auto scf_if = dest.getDefiningOp<scf::IfOp>()) {
       // Pick one of the branches, they're required to yield the same buffers.
       dest = scf_if.getThenRegion().front().getTerminator()->getOperand(
@@ -658,6 +662,133 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
     }
 
     rewriter.replaceOp(op, mlir::ValueRange{op.getBase()});
+    return success();
+  }
+};
+
+Value UnwrapTensorCasts(Value value) {
+  while (value) {
+    value = GetDestinationBuffer(value);
+    if (!value) {
+      return nullptr;
+    }
+    auto cast = value.getDefiningOp<UnrealizedConversionCastOp>();
+    if (!cast || cast.getNumOperands() != 1 ||
+        !mlir::isa<mlir::RankedTensorType>(cast.getOperand(0).getType())) {
+      break;
+    }
+    value = cast.getOperand(0);
+  }
+  return value;
+}
+
+int64_t GetCopySliceAlignment(Value base, ValueRange indices,
+                              int64_t element_size_bytes,
+                              int64_t element_abi_alignment) {
+  Value unwrapped = UnwrapTensorCasts(base);
+  if (!unwrapped) {
+    return element_abi_alignment;
+  }
+  auto arg = mlir::dyn_cast<mlir::BlockArgument>(unwrapped);
+  if (!arg) {
+    return element_abi_alignment;
+  }
+  auto func = mlir::dyn_cast<mlir::func::FuncOp>(arg.getOwner()->getParentOp());
+  if (!func) {
+    return element_abi_alignment;
+  }
+  auto align_attr = func.getArgAttrOfType<mlir::IntegerAttr>(
+      arg.getArgNumber(), ml::LLVMDialect::getAlignAttrName());
+  if (!align_attr) {
+    return element_abi_alignment;
+  }
+  int64_t base_align = align_attr.getInt();
+  if (base_align <= 1 || !llvm::isPowerOf2_64(base_align)) {
+    return element_abi_alignment;
+  }
+  if (indices.empty()) {
+    return base_align;
+  }
+  if (indices.size() == 1) {
+    llvm::APInt const_idx;
+    if (mlir::matchPattern(indices[0], mlir::m_ConstantInt(&const_idx)) &&
+        const_idx.isNonNegative() && const_idx.getActiveBits() <= 60) {
+      uint64_t offset_bytes =
+          const_idx.getZExtValue() * static_cast<uint64_t>(element_size_bytes);
+      return static_cast<int64_t>(
+          llvm::MinAlign(static_cast<uint64_t>(base_align), offset_bytes));
+    }
+  }
+  return static_cast<int64_t>(
+      llvm::MinAlign(static_cast<uint64_t>(base_align),
+                     static_cast<uint64_t>(element_size_bytes)));
+}
+
+struct RewriteCopySlice : mlir::OpRewritePattern<CopySliceOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      CopySliceOp op, mlir::PatternRewriter& rewriter) const override {
+    Value src = GetDestinationBuffer(op.getSrc());
+    Value dest = GetDestinationBuffer(op.getDest());
+    if (!src || !dest) {
+      return failure();
+    }
+
+    auto tensor_src = mlir::cast<TypedValue<mlir::RankedTensorType>>(src);
+    auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
+    Type element_type = tensor_dest.getType().getElementType();
+    if (GetSubByteBitWidth(element_type)) {
+      return op->emitOpError("sub-byte copy_slice is not supported");
+    }
+
+    int64_t num_elements = op.getNumElements();
+    if (num_elements > 0) {
+      mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+      Value src_linear_index = GetLinearIndex(op.getSrcIndices(), b);
+      Value dst_linear_index = GetLinearIndex(op.getDestIndices(), b);
+      auto src_gep = CreateGep(tensor_src, src_linear_index, b);
+      auto dst_gep = CreateGep(tensor_dest, dst_linear_index, b);
+
+      mlir::DataLayout data_layout = mlir::DataLayout::closest(op);
+      mlir::LLVMTypeConverter converter(getContext());
+      Type llvm_element_type = converter.convertType(element_type);
+      int64_t element_size_bytes = static_cast<int64_t>(
+          data_layout.getTypeSize(llvm_element_type).getFixedValue());
+      int64_t element_abi_alignment = static_cast<int64_t>(
+          data_layout.getTypeABIAlignment(llvm_element_type));
+      int64_t src_align =
+          GetCopySliceAlignment(op.getSrc(), op.getSrcIndices(),
+                                element_size_bytes, element_abi_alignment);
+      int64_t dst_align =
+          GetCopySliceAlignment(op.getDest(), op.getDestIndices(),
+                                element_size_bytes, element_abi_alignment);
+
+      auto make_align_dict = [&](int64_t align) {
+        if (align <= 1) {
+          return b.getDictionaryAttr({});
+        }
+        return b.getDictionaryAttr(b.getNamedAttr(
+            ml::LLVMDialect::getAlignAttrName(), b.getI64IntegerAttr(align)));
+      };
+      mlir::ArrayAttr arg_attrs =
+          (dst_align > 1 || src_align > 1)
+              ? b.getArrayAttr({make_align_dict(dst_align),
+                                make_align_dict(src_align),
+                                b.getDictionaryAttr({})})
+              : nullptr;
+
+      Value byte_count = ml::ConstantOp::create(
+          b, b.getI64Type(), num_elements * element_size_bytes);
+      ml::MemcpyOp::create(b, dst_gep, src_gep, byte_count,
+                           /*isVolatile=*/false,
+                           /*access_groups=*/nullptr, /*alias_scopes=*/nullptr,
+                           /*noalias_scopes=*/nullptr, /*tbaa=*/nullptr,
+                           arg_attrs, /*res_attrs=*/nullptr);
+    }
+
+    op.replaceAllUsesWith(op.getDest());
+    op.erase();
     return success();
   }
 };
@@ -1513,7 +1644,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     tensor_patterns.add<RewriteAtomicRMW, RewriteTensorInsert>(mlir_context,
                                                                device_spec_);
     tensor_patterns
-        .add<RewriteAllocateShared, RewriteGetDynamicDimSize,
+        .add<RewriteAllocateShared, RewriteCopySlice, RewriteGetDynamicDimSize,
              RewriteNonScalarConstants, RewriteSyncThreads,
              RewriteTensorExtract, RewriteTransferRead, RewriteTransferWrite>(
             mlir_context);

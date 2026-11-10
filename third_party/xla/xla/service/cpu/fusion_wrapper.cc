@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/cpu/fusion_wrapper.h"
 
-#include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -48,6 +47,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kClz:
     case HloOpcode::kCompare:
     case HloOpcode::kComplex:
+    case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kCosh:
@@ -113,8 +113,6 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
       return IsSupportedTilingType(instruction.shape().element_type()) ||
              primitive_util::IsSubByteNonPredType(
                  instruction.shape().element_type());
-    case HloOpcode::kConcatenate:
-      return !CanDoFastConcatenate(instruction).ok();
     case HloOpcode::kConvolution:
       return target_machine_features_ != nullptr &&
              !CanUseEigenConvolution(instruction, *target_machine_features_);

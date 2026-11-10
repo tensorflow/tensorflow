@@ -440,3 +440,28 @@ func.func @get_dynamic_dim_size(%in: tensor<16x8x4xf32>) -> (i32) {
 // CHECK-LABEL: func.func @get_dynamic_dim_size(
 // CHECK-SAME:      %[[TENSOR:.*]]: tensor<512xf32>) -> i32 {
 // CHECK:         xla.get_dynamic_dim_size %[[TENSOR]] 1 : tensor<512xf32>
+
+// -----
+
+func.func @copy_slice(
+    %src: tensor<2x4x3xf32, dense<[0, 2, 1]> : tensor<3xi64>>,
+    %dst: tensor<2x4x5xf32, dense<[0, 2, 1]> : tensor<3xi64>>,
+    %i1: index)
+    -> tensor<2x4x5xf32, dense<[0, 2, 1]> : tensor<3xi64>> {
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %out = xla.copy_slice %src[%c0, %i1, %c0] into %dst[%c0, %i1, %c2] count(6)
+      : tensor<2x4x3xf32, dense<[0, 2, 1]> : tensor<3xi64>>
+      into tensor<2x4x5xf32, dense<[0, 2, 1]> : tensor<3xi64>>
+  func.return %out : tensor<2x4x5xf32, dense<[0, 2, 1]> : tensor<3xi64>>
+}
+// CHECK-DAG: #[[$SRC_MAP:.+]] = #xla.indexing_map<"(d0) -> (d0 * 6), domain: d0 in [0, 3]">
+// CHECK-DAG: #[[$DST_MAP:.+]] = #xla.indexing_map<"(d0) -> (d0 * 10 + 4), domain: d0 in [0, 3]">
+// CHECK-LABEL: func.func @copy_slice(
+// CHECK-SAME:      %[[SRC:.*]]: tensor<24xf32>, %[[DST:.*]]: tensor<40xf32>,
+// CHECK-SAME:      %[[I1:.*]]: index) -> tensor<40xf32> {
+// CHECK-NOT:     builtin.unrealized_conversion_cast
+// CHECK-DAG:     %[[SRC_IDX:.*]] = xla.apply_indexing #[[$SRC_MAP]](%[[I1]])
+// CHECK-DAG:     %[[DST_IDX:.*]] = xla.apply_indexing #[[$DST_MAP]](%[[I1]])
+// CHECK:         %[[RES:.*]] = xla.copy_slice %[[SRC]][%[[SRC_IDX]]] into %[[DST]][%[[DST_IDX]]] count(6) : tensor<24xf32> into tensor<40xf32>
+// CHECK:         return %[[RES]] : tensor<40xf32>

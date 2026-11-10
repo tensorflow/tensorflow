@@ -169,6 +169,28 @@ def XLA_PredicatedExtractOp : XLA_Op<"predicated_extract",
   }];
 }
 
+def XLA_CopySliceOp : XLA_Op<"copy_slice",
+    [Pure, AttrSizedOperandSegments,
+     TypesMatchWith<"result type matches dest type", "dest", "result", "$_self">]> {
+  let summary = "Copies a contiguous slice from one tensor to another.";
+  let description = [{
+    Copies `$num_elements` contiguous elements starting at `$src[$src_indices]`
+    into `$dest[$dest_indices]` in physical memory order and returns the
+    updated destination tensor.
+  }];
+  let arguments = (ins AnyRankedTensor:$src,
+                       AnyRankedTensor:$dest,
+                       Variadic<Index>:$src_indices,
+                       Variadic<Index>:$dest_indices,
+                       I64Attr:$num_elements);
+  let results = (outs AnyRankedTensor:$result);
+  let assemblyFormat = [{
+    $src `[` $src_indices `]` `into` $dest `[` $dest_indices `]`
+    `count` `(` $num_elements `)` attr-dict `:` type($src) `into` type($dest)
+  }];
+  let hasVerifier = 1;
+}
+
 def ApplyIndexingOp : XLA_Op<"apply_indexing", [Pure]> {
   let summary = "Applies indexing map to a list of SSA values";
   let description = [{

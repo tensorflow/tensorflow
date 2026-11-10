@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -114,6 +115,19 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
       arg_ptr.setDereferenceable(
           rewriter.getAttr<mlir::LLVM::DereferenceableAttr>(
               dereferenceable.getInt(), false));
+    }
+
+    if (auto align = op->getAttrOfType<mlir::IntegerAttr>(
+            mlir::LLVM::LLVMDialect::getAlignAttrName())) {
+      int64_t align_bytes = align.getInt();
+      if (align_bytes > 1 && llvm::isPowerOf2_64(align_bytes)) {
+        mlir::Value true_cond =
+            mlir::LLVM::ConstantOp::create(b, b.getBoolAttr(true));
+        mlir::Value align_const =
+            mlir::LLVM::ConstantOp::create(b, b.getI64Type(), align_bytes);
+        mlir::LLVM::AssumeOp::create(b, true_cond, mlir::LLVM::AssumeAlignTag(),
+                                     arg_ptr, align_const);
+      }
     }
 
     if (auto memref_type = mlir::dyn_cast<mlir::MemRefType>(op.getType())) {

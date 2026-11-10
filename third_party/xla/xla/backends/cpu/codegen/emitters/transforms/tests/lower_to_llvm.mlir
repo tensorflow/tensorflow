@@ -306,3 +306,17 @@ func.func @wrap_comparator(
 // CHECK-SAME:    %[[ARG0:.+]]: tensor<f32>, %[[ARG1:.+]]: tensor<f32>) -> i1
 // CHECK-SAME:    llvm.always_inline
 // CHECK-SAME:    llvm.linkage = #llvm.linkage<internal>
+
+// -----
+
+func.func private @wrap_entry_align(
+  %arg0: tensor<8xf32> {llvm.align = 32 : index, llvm.dereferenceable = 32 : index})
+    -> tensor<8xf32> attributes {xla.entry} {
+  return %arg0 : tensor<8xf32>
+}
+
+// CHECK-LABEL: func.func @wrap_entry_align(
+// CHECK-DAG:     %[[TRUE:.+]] = llvm.mlir.constant(true) : i1
+// CHECK-DAG:     %[[ALIGN:.+]] = llvm.mlir.constant(32 : i64) : i64
+// CHECK-DAG:     %[[TENSOR_PTR:.+]] = llvm.load %{{.+}} dereferenceable<bytes = 32>
+// CHECK:         llvm.intr.assume %[[TRUE]] ["align"(%[[TENSOR_PTR]], %[[ALIGN]] : !llvm.ptr, i64)] : i1

@@ -155,3 +155,33 @@ func.func @atomic_rmw_mismatch_block_arg_vector_type(%in: tensor<16xf32>, %i: in
 func.func @test_backend_kind(%arg0: f32) attributes { xla.backend_kind = #xla.backend_kind<foo> } {
   func.return
 }
+
+// -----
+
+func.func @copy_slice_element_type_mismatch(
+    %src: tensor<4xf32>, %dst: tensor<8xi32>, %idx: index) -> tensor<8xi32> {
+  // expected-error @+1 {{src and dest element types must match}}
+  %out = xla.copy_slice %src[%idx] into %dst[%idx] count(2)
+      : tensor<4xf32> into tensor<8xi32>
+  func.return %out : tensor<8xi32>
+}
+
+// -----
+
+func.func @copy_slice_src_indices_rank_mismatch(
+    %src: tensor<4x2xf32>, %dst: tensor<8xf32>, %idx: index) -> tensor<8xf32> {
+  // expected-error @+1 {{src_indices count must match src rank}}
+  %out = xla.copy_slice %src[%idx] into %dst[%idx] count(2)
+      : tensor<4x2xf32> into tensor<8xf32>
+  func.return %out : tensor<8xf32>
+}
+
+// -----
+
+func.func @copy_slice_negative_count(
+    %src: tensor<4xf32>, %dst: tensor<8xf32>, %idx: index) -> tensor<8xf32> {
+  // expected-error @+1 {{num_elements must be non-negative}}
+  %out = xla.copy_slice %src[%idx] into %dst[%idx] count(-1)
+      : tensor<4xf32> into tensor<8xf32>
+  func.return %out : tensor<8xf32>
+}

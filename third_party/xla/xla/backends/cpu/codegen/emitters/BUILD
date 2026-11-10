@@ -115,6 +115,7 @@ xla_cc_test(
     srcs = ["cpu_fusion_emitter_test.cc"],
     deps = [
         ":cpu_fusion_emitters",
+        "//xla/backends/cpu:alignment",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:fusion_emitter",
         "//xla/codegen:kernel_definition",

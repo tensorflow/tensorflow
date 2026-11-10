@@ -214,3 +214,14 @@ func.func @get_dynamic_dim_size(%in: tensor<16x8x4xf32>) -> (i32) {
 }
 // CHECK-LABEL: @get_dynamic_dim_size
 // CHECK: xla.get_dynamic_dim_size
+
+// -----
+
+func.func @copy_slice(%src: tensor<4x3xf32>, %dst: tensor<4x5xf32>,
+                      %i: index, %j: index) -> tensor<4x5xf32> {
+  %out = xla.copy_slice %src[%i, %j] into %dst[%i, %j] count(3)
+      : tensor<4x3xf32> into tensor<4x5xf32>
+  func.return %out : tensor<4x5xf32>
+}
+// CHECK-LABEL: @copy_slice
+// CHECK: xla.copy_slice %{{.*}}[%{{.*}}, %{{.*}}] into %{{.*}}[%{{.*}}, %{{.*}}] count(3) : tensor<4x3xf32> into tensor<4x5xf32>

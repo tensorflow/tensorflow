@@ -70,8 +70,19 @@ class ConcatenateFusionKernelEmitter final
   static int GetValidUnrollFactor(const HloFusionSpec& fusion_spec,
                                   int max_unroll_factor);
 
+  // Returns true if the concatenate fusion can be emitted on CPU using
+  // contiguous slice copies (`xla.copy_slice`) across matching layouts.
+  static bool CanEmitFastCpuCopy(const HloFusionSpec& fusion_spec,
+                                 BackendKind backend_kind);
+
  private:
   IndexingMap ComputeWorkItemIdToOutputIndexing(mlir::MLIRContext* ctx) const;
+
+  bool ShouldEmitFastCpuCopy() const;
+
+  absl::Status EmitFastCpuEntryFunction(
+      mlir::func::FuncOp entry_function,
+      const HloFusionInstruction& fusion) const;
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,

@@ -258,6 +258,24 @@ static WorkDimensions GetLoopEmitterWorkDims(const HloFusionInstruction& fusion,
 
 static WorkDimensions GetConcatenateEmitterWorkDims(
     const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec) {
+  if (emitters::ConcatenateFusionKernelEmitter::CanEmitFastCpuCopy(
+          fusion_spec, BackendKind::kCpu)) {
+    const HloInstruction& concat = fusion_spec.fusion_root(0).instruction();
+    const Shape& output_shape = concat.shape();
+    if (ShapeUtil::IsZeroElementArray(output_shape)) {
+      return WorkDimensions{};
+    }
+    auto min2maj = LayoutUtil::MinorToMajor(output_shape.layout());
+    auto concat_dim_it = absl::c_find(min2maj, concat.concatenate_dimension());
+    if (std::next(concat_dim_it) == min2maj.end()) {
+      return WorkDimensions{};
+    }
+    int64_t outer_dim_size = output_shape.dimensions(min2maj.back());
+    uint64_t num_groups = static_cast<uint64_t>(std::max<int64_t>(
+        1, std::min(GetWorkGroupCount(fusion), outer_dim_size)));
+    return WorkDimensions{NumWorkClusters{}, NumWorkGroups{num_groups},
+                          NumWorkItems{}, WorkTileSize{}};
+  }
   Shape indexing_shape =
       emitters::ConcatenateFusionKernelEmitter::GetIndexingShape(fusion_spec);
 

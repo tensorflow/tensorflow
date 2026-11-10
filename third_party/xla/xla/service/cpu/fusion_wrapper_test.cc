@@ -237,7 +237,7 @@ TEST_F(FusionWrapperTest, ConcatenateWithMismatchedLayoutsWrapped) {
       wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
 }
 
-TEST_F(FusionWrapperTest, ConcatenateWithMatchingLayoutsNotWrapped) {
+TEST_F(FusionWrapperTest, ConcatenateWithMatchingLayoutsWrapped) {
   static constexpr absl::string_view hlo_string = R"(
   HloModule m
     ENTRY e {
@@ -249,7 +249,7 @@ TEST_F(FusionWrapperTest, ConcatenateWithMatchingLayoutsNotWrapped) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                        ParseAndReturnVerifiedModule(hlo_string));
   FusionWrapper wrapper(&target_machine_features_);
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       wrapper.MustWrapInstruction(*m->entry_computation()->root_instruction()));
 }
 

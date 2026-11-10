@@ -14,12 +14,15 @@
 # ==============================================================================
 
 
+import itertools
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 
 from xla.backends.cpu import testlib as testlib_cpu
 from xla.backends.cpu.testlib import utilities
+from xla.codegen import testlib as base_testlib
 from xla.codegen.testlib import utilities as base_utilities
 
 
@@ -304,6 +307,149 @@ class FusionEmitterTest(parameterized.TestCase):
     self.assertAlmostEqual(np_result[0], np.exp(1))
     self.assertAlmostEqual(np_result[1], np.exp(0))
     self.assertTrue(np.isnan(np_result[2]))
+
+
+def _make_random_array(shape: tuple[int, ...], dtype: np.dtype) -> np.ndarray:
+  if dtype == np.dtype(np.bool_):
+    return np.random.rand(*shape) > 0.5
+  if np.issubdtype(dtype, np.complexfloating):
+    real = np.random.rand(*shape) * 10
+    imag = np.random.rand(*shape) * 10
+    return (real + 1j * imag).astype(dtype)
+  return (np.random.rand(*shape) * 10).astype(dtype)
+
+
+class ConcatenateFusionTest(parameterized.TestCase):
+
+  @parameterized.product(
+      layout_mode=["default", "non_default", "mismatched"],
+      dtype=[
+          np.dtype(np.bool_),
+          np.dtype(np.uint8),
+          np.dtype(np.uint16),
+          np.dtype(np.uint32),
+          np.dtype(np.uint64),
+          np.dtype(np.int8),
+          np.dtype(np.int16),
+          np.dtype(np.int32),
+          np.dtype(np.int64),
+          np.dtype(np.float16),
+          np.dtype(np.float32),
+          np.dtype(np.float64),
+          np.dtype(np.complex64),
+          np.dtype(np.complex128),
+      ],
+      concat_dimension=[0, 1, 2],
+  )
+  def test_concatenate(self, layout_mode, dtype, concat_dimension):
+    num_inputs = 5
+    shape = (4, 4, 4)
+    np_inputs = [_make_random_array(shape, dtype) for _ in range(num_inputs)]
+    if layout_mode == "mismatched":
+      default_layout = [0, 1, 2]
+      input_literals = [
+          base_utilities.create_literal_from_np(
+              input_array, np.roll(default_layout, idx).tolist()
+          )
+          for idx, input_array in enumerate(np_inputs)
+      ]
+      output_layout = [2, 1, 0]
+    elif layout_mode == "non_default":
+      output_layout = [0, 2, 1]
+      input_literals = [
+          base_utilities.create_literal_from_np(input_array, output_layout)
+          for input_array in np_inputs
+      ]
+    else:
+      output_layout = [2, 1, 0]
+      input_literals = [
+          base_utilities.create_literal_from_np(input_array, output_layout)
+          for input_array in np_inputs
+      ]
+
+    expected_output = np.concatenate(np_inputs, axis=concat_dimension)
+    output_literal = base_utilities.create_literal_from_np(
+        np.zeros_like(expected_output), output_layout
+    )
+
+    hlo_parameters = [
+        base_testlib.HloInstruction.create_parameter(
+            idx, literal.shape(), f"input_{idx}"
+        )
+        for [idx, literal] in enumerate(input_literals)
+    ]
+
+    hlo_op = base_testlib.HloInstruction.create_concatenate(
+        output_literal.shape(), hlo_parameters, concat_dimension
+    )
+
+    hlo_module, _ = utilities.build_hlo_module(hlo_op, *hlo_parameters)
+    hlo_module = testlib_cpu.run_fusion_wrapper_pass(hlo_module)
+    hlo_module, buffer_assignment = utilities.annotate_hlo_module(hlo_module)
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+    mlir_context = testlib_cpu.MLIRContext()
+
+    kernel_definition = testlib_cpu.emit_fusion_kernel(
+        mlir_context,
+        hlo_module.get_root_instruction(),
+        buffer_assignment,
+        False,
+    )
+    runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
+    runner.call(list(itertools.chain(input_literals, [output_literal])))
+
+    np.testing.assert_array_equal(np.asarray(output_literal), expected_output)
+
+  @parameterized.parameters(2, 4)
+  def test_concatenate_uneven_workgroup_split(self, num_partitions):
+    hlo = f"""
+      HloModule test_module
+
+      fused_computation {{
+        %p0 = f32[5,2,3]{{2,1,0}} parameter(0)
+        %p1 = f32[5,4,3]{{2,1,0}} parameter(1)
+        ROOT %concat = f32[5,6,3]{{2,1,0}} concatenate(%p0, %p1), dimensions={{1}}
+      }}
+
+      ENTRY main {{
+        %p0 = f32[5,2,3]{{2,1,0}} parameter(0)
+        %p1 = f32[5,4,3]{{2,1,0}} parameter(1)
+        ROOT %wrapped_concat = f32[5,6,3]{{2,1,0}}
+                               fusion(%p0, %p1),
+                               kind=kLoop, calls=%fused_computation,
+                               backend_config={{"outer_dimension_partitions":["{num_partitions}"]}}
+      }}
+    """
+    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+    mlir_context = testlib_cpu.MLIRContext()
+    kernel_definition = testlib_cpu.emit_fusion_kernel(
+        mlir_context,
+        hlo_module.get_root_instruction(),
+        buffer_assignment,
+        False,
+    )
+    mlir_source = str(kernel_definition.source())
+    self.assertIn("xla.copy_slice", mlir_source)
+    self.assertIn("xla.workgroup_id x", mlir_source)
+    self.assertIn(
+        f"xla.range = [0 : index, {num_partitions - 1} : index]", mlir_source
+    )
+
+    np_p0 = np.arange(1, 5 * 2 * 3 + 1, dtype=np.float32).reshape(5, 2, 3)
+    np_p1 = np.arange(101, 101 + 5 * 4 * 3, dtype=np.float32).reshape(5, 4, 3)
+    expected_output = np.concatenate([np_p0, np_p1], axis=1)
+
+    p0_literal = base_utilities.create_literal_from_np(np_p0)
+    p1_literal = base_utilities.create_literal_from_np(np_p1)
+    output_literal = base_utilities.create_literal_from_np(
+        np.zeros_like(expected_output)
+    )
+
+    runner = testlib_cpu.KernelRunner.create(kernel_definition, jit_compiler)
+    runner.call([p0_literal, p1_literal, output_literal])
+
+    np.testing.assert_array_equal(np.asarray(output_literal), expected_output)
 
 
 if __name__ == "__main__":
