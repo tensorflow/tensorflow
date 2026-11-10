@@ -135,17 +135,15 @@ int8_t getTypeBitwidth(Type ty) {
 
 // Returns the bitwidth of the element type. The function works for both
 // scalar and vector types.
-template <bool adjust_bool = false>
 inline int8_t getElementTypeBitwidth(Type ty) {
   if (auto vty = dyn_cast<VectorType>(ty)) {
-    return getTypeBitwidth<adjust_bool>(vty.getElementType());
+    return getTypeBitwidth(vty.getElementType());
   }
-  return getTypeBitwidth<adjust_bool>(ty);
+  return getTypeBitwidth(ty);
 }
 
-template <bool adjust_bool = false>
 inline int8_t getElementTypeBitwidth(MemRefType ty) {
-  return getElementTypeBitwidth<adjust_bool>(ty.getElementType());
+  return getElementTypeBitwidth(ty.getElementType());
 }
 
 // Debug only util.
