@@ -304,97 +304,102 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
     const BatchTask& last_task, absl::Span<const Tensor> inputs,
     std::vector<Tensor>* combined_outputs,
     std::function<void(const absl::Status&)> done) const {
-  std::vector<mlrt::Value> arguments;
-  arguments.reserve(inputs.size());
-  for (const auto& input : inputs) {
-    arguments.emplace_back(tfrt_stub::FallbackTensor(input));
-  }
+  absl::Status status;
+  {
+    std::vector<mlrt::Value> arguments;
+    arguments.reserve(inputs.size());
+    for (const auto& input : inputs) {
+      arguments.emplace_back(tfrt_stub::FallbackTensor(input));
+    }
 
-  std::vector<mlrt::Value> results(batch_function_.output_regs().size());
+    std::vector<mlrt::Value> results(batch_function_.output_regs().size());
 
-  const auto& task = absl::down_cast<const MlrtBatchTask&>(last_task);
-  DCHECK(task.context);
-  mlrt::ExecutionContext& caller_context = *task.caller_context;
+    const auto& task = absl::down_cast<const MlrtBatchTask&>(last_task);
+    DCHECK(task.context);
+    mlrt::ExecutionContext& caller_context = *task.caller_context;
 
-  auto& caller_tf_context = caller_context.GetUserContext<tf_mlrt::Context>();
-  const auto& caller_fallback_request_state =
-      caller_tf_context.fallback_request_state();
+    auto& caller_tf_context = caller_context.GetUserContext<tf_mlrt::Context>();
+    const auto& caller_fallback_request_state =
+        caller_tf_context.fallback_request_state();
 
-  // Connect to the batch step id propagated from batch task.
-  int64_t step_id = caller_fallback_request_state.step_id();
+    // Connect to the batch step id propagated from batch task.
+    int64_t step_id = caller_fallback_request_state.step_id();
 
-  // Copy per-request states to create a new KernelFallbackCompatRequestState.
-  //
-  // TODO(chky): Consider adding copy ctor for KernelFallbackCompatRequestState.
-  tfd::KernelFallbackCompatRequestState fallback_request_state(
-      caller_fallback_request_state.runner(),
-      &caller_fallback_request_state.device_manager(), step_id,
-      caller_fallback_request_state.runner_table(),
-      caller_fallback_request_state.resource_array(),
-      caller_fallback_request_state.intra_op_threadpool(),
-      caller_fallback_request_state.session_metadata(),
-      &caller_fallback_request_state.process_function_library_runtime());
+    // Copy per-request states to create a new KernelFallbackCompatRequestState.
+    //
+    // TODO(chky): Consider adding copy ctor for
+    // KernelFallbackCompatRequestState.
+    tfd::KernelFallbackCompatRequestState fallback_request_state(
+        caller_fallback_request_state.runner(),
+        &caller_fallback_request_state.device_manager(), step_id,
+        caller_fallback_request_state.runner_table(),
+        caller_fallback_request_state.resource_array(),
+        caller_fallback_request_state.intra_op_threadpool(),
+        caller_fallback_request_state.session_metadata(),
+        &caller_fallback_request_state.process_function_library_runtime());
 
-  fallback_request_state.set_cost_recorder(
-      caller_fallback_request_state.cost_recorder());
+    fallback_request_state.set_cost_recorder(
+        caller_fallback_request_state.cost_recorder());
 
-  fallback_request_state.set_client_graph_resource_context(
-      caller_fallback_request_state.client_graph_resource_context());
+    fallback_request_state.set_client_graph_resource_context(
+        caller_fallback_request_state.client_graph_resource_context());
 
-  fallback_request_state.set_cancellation_manager(
-      caller_fallback_request_state.cancellation_manager());
-  fallback_request_state.set_runtime_config(
-      caller_fallback_request_state.runtime_config());
+    fallback_request_state.set_cancellation_manager(
+        caller_fallback_request_state.cancellation_manager());
+    fallback_request_state.set_runtime_config(
+        caller_fallback_request_state.runtime_config());
 
-  const uint64_t batch_activity_id = tsl::profiler::TraceMe::NewActivityId();
-  tsl::profiler::TraceMeProducer activity(
-      // To TraceMeConsumers in WorkQueue.
-      [step_id] {
-        return tsl::profiler::TraceMeEncode("RunMlrtFunction",
-                                            {{"id", step_id}, {"_r", 1}});
-      },
-      tsl::profiler::ContextType::kTfrtExecutor, batch_activity_id,
-      tsl::profiler::TraceMeLevel::kInfo);
-  auto trace_me_context_id = activity.GetContextId();
+    const uint64_t batch_activity_id = tsl::profiler::TraceMe::NewActivityId();
+    tsl::profiler::TraceMeProducer activity(
+        // To TraceMeConsumers in WorkQueue.
+        [step_id] {
+          return tsl::profiler::TraceMeEncode("RunMlrtFunction",
+                                              {{"id", step_id}, {"_r", 1}});
+        },
+        tsl::profiler::ContextType::kTfrtExecutor, batch_activity_id,
+        tsl::profiler::TraceMeLevel::kInfo);
+    auto trace_me_context_id = activity.GetContextId();
 
-  // Copy the ExecutionContext and its user contexts for async execution.
-  auto user_contexts = caller_context.CopyUserContexts();
-  mlrt::ExecutionContext execution_context(&caller_context.loaded_executable(),
-                                           std::move(user_contexts),
-                                           caller_context.user_error_loggers());
-  execution_context.GetUserContext<tf_mlrt::Context>()
-      .set_fallback_request_state(&fallback_request_state);
+    // Copy the ExecutionContext and its user contexts for async execution.
+    auto user_contexts = caller_context.CopyUserContexts();
+    mlrt::ExecutionContext execution_context(
+        &caller_context.loaded_executable(), std::move(user_contexts),
+        caller_context.user_error_loggers());
+    execution_context.GetUserContext<tf_mlrt::Context>()
+        .set_fallback_request_state(&fallback_request_state);
 
-  auto* work_queue = caller_context.work_queue();
-  DCHECK(work_queue);
-  execution_context.set_work_queue(work_queue);
+    auto* work_queue = caller_context.work_queue();
+    DCHECK(work_queue);
+    execution_context.set_work_queue(work_queue);
 
-  auto chain = tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
+    auto chain = tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
 
-  execution_context.set_exit_handler(
-      [chain]() mutable { chain.SetStateConcrete(); });
+    execution_context.set_exit_handler(
+        [chain]() mutable { chain.SetStateConcrete(); });
 
-  execution_context.CallByMove(batch_function_, absl::MakeSpan(arguments),
-                               absl::MakeSpan(results));
+    execution_context.CallByMove(batch_function_, absl::MakeSpan(arguments),
+                                 absl::MakeSpan(results));
 
-  work_queue->AddTask([&execution_context, &trace_me_context_id]() {
-    tsl::profiler::TraceMeConsumer activity(
-        [&] { return "RunMlrtFunction::Execute"; },
-        tsl::profiler::ContextType::kTfrtExecutor, trace_me_context_id);
-    mlrt::Execute(execution_context);
-  });
+    work_queue->AddTask([&execution_context, &trace_me_context_id]() {
+      tsl::profiler::TraceMeConsumer activity(
+          [&] { return "RunMlrtFunction::Execute"; },
+          tsl::profiler::ContextType::kTfrtExecutor, trace_me_context_id);
+      mlrt::Execute(execution_context);
+    });
 
-  work_queue->Await(chain.CopyRCRef());
+    work_queue->Await(chain.CopyRCRef());
 
-  if (execution_context.status().ok()) {
-    combined_outputs->reserve(results.size());
-    for (const auto& output : results) {
-      combined_outputs->push_back(
-          output.Get<tfrt_stub::FallbackTensor>().tensor());
+    status = execution_context.status();
+    if (status.ok()) {
+      combined_outputs->reserve(results.size());
+      for (const auto& output : results) {
+        combined_outputs->push_back(
+            output.Get<tfrt_stub::FallbackTensor>().tensor());
+      }
     }
   }
 
-  done(execution_context.status());
+  done(status);
 }
 
 // The custom KernelFrame for tf_mlrt.batch_function op.

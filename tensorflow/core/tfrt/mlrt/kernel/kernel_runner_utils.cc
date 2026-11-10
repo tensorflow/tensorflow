@@ -33,14 +33,20 @@ limitations under the License.
 namespace tensorflow {
 namespace tf_mlrt {
 
-void LaunchAsyncOpKernel(
-    const tfrt_stub::OpKernelRunner& kernel_runner,
-    const tfrt_stub::OpKernelRunState& run_state,
-    const OpKernelContext::Params& params, mlrt::RegisterSpan results,
-    std::shared_ptr<tensorflow::DeviceBase> custom_device) {
+void LaunchAsyncOpKernel(const tfrt_stub::OpKernelRunner& kernel_runner,
+                         const tfrt_stub::OpKernelRunState& run_state,
+                         const OpKernelContext::Params& params,
+                         mlrt::RegisterSpan results,
+                         std::shared_ptr<tensorflow::DeviceBase> custom_device,
+                         mlrt::ExecutionContext* execution_context) {
   struct DeferredOpsGuard {
-    explicit DeferredOpsGuard(const OpKernelContext::Params& params)
-        : dec_fn(params.dec_num_deferred_ops_function) {
+    explicit DeferredOpsGuard(const OpKernelContext::Params& params,
+                              mlrt::ExecutionContext* execution_context)
+        : dec_fn(params.dec_num_deferred_ops_function),
+          execution_context(execution_context) {
+      if (execution_context != nullptr) {
+        execution_context->IncNumDeferredOps();
+      }
       if (params.inc_num_deferred_ops_function) {
         params.inc_num_deferred_ops_function();
       }
@@ -51,15 +57,20 @@ void LaunchAsyncOpKernel(
       if (dec_fn) {
         dec_fn();
       }
+      if (execution_context != nullptr) {
+        execution_context->DecNumDeferredOps();
+      }
     }
     std::function<void()> dec_fn;
+    mlrt::ExecutionContext* execution_context = nullptr;
   };
 
   struct AsyncState {
     explicit AsyncState(const tfrt_stub::OpKernelRunState& rs,
                         const OpKernelContext::Params& params, int num_outputs,
-                        std::shared_ptr<tensorflow::DeviceBase> device)
-        : deferred_ops_guard(params),
+                        std::shared_ptr<tensorflow::DeviceBase> device,
+                        mlrt::ExecutionContext* execution_context)
+        : deferred_ops_guard(params, execution_context),
           run_state(rs.input_tf_tensor_values, params, device.get()),
           context(&run_state.params, num_outputs),
           custom_device(std::move(device)) {}
@@ -93,8 +104,9 @@ void LaunchAsyncOpKernel(
   };
 
   DCHECK_EQ(results.size(), kernel_runner.op_kernel()->num_outputs());
-  auto async_state = std::make_unique<AsyncState>(
-      run_state, params, results.size(), std::move(custom_device));
+  auto async_state =
+      std::make_unique<AsyncState>(run_state, params, results.size(),
+                                   std::move(custom_device), execution_context);
 
   async_state->results.reserve(results.size());
   for (int i = 0; i < results.size(); ++i) {

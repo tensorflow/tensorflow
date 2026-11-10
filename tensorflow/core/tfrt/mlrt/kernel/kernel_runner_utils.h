@@ -34,11 +34,18 @@ limitations under the License.
 namespace tensorflow {
 namespace tf_mlrt {
 
+// Launches `kernel_runner` asynchronously and binds its outputs/completion to
+// `results`. When `execution_context` is non-null, increments its deferred-op
+// count before launching the async kernel and decrements it after the async
+// `OpKernelContext` and `OpKernelRunState` are destroyed so that
+// `ExecutionContext::FinishExecution()` waits for in-flight async work before
+// running `exit_handler_`.
 void LaunchAsyncOpKernel(const tfrt_stub::OpKernelRunner& kernel_runner,
                          const tfrt_stub::OpKernelRunState& run_state,
                          const OpKernelContext::Params& params,
                          mlrt::RegisterSpan results,
-                         std::shared_ptr<tensorflow::DeviceBase> custom_device);
+                         std::shared_ptr<tensorflow::DeviceBase> custom_device,
+                         mlrt::ExecutionContext* execution_context = nullptr);
 
 inline void SetUpParams(const tfrt_stub::OpKernelRunner& kernel_runner,
                         absl::Span<const TensorValue> input_tf_tensor_values,
@@ -138,7 +145,7 @@ void ExecuteKernelRunner(
     }
 
     LaunchAsyncOpKernel(kernel_runner, run_state, params, results,
-                        std::move(custom_device));
+                        std::move(custom_device), &frame.execution_context());
   }
 
   auto reg_span = args.reg_span();
