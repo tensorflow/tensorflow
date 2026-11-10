@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,8 +42,10 @@ constexpr int kNumTokens = 2;
 constexpr int kGateFf1Rows = kHiddenDim * kNumExperts;
 constexpr int kLinearRows = kModelDim * kNumExperts;
 
-std::vector<uint8_t> MoeCustomData(const std::string& weight_type,
-                                   const std::string& activation) {
+std::vector<uint8_t> MoeCustomData(
+    const std::string& weight_type, const std::string& activation,
+    std::optional<float> swiglu_alpha = std::nullopt,
+    std::optional<float> swiglu_limit = std::nullopt) {
   flexbuffers::Builder fbb;
   fbb.Map([&]() {
     fbb.Int("num_experts", kNumExperts);
@@ -51,6 +54,8 @@ std::vector<uint8_t> MoeCustomData(const std::string& weight_type,
     fbb.Int("hidden_dim", kHiddenDim);
     fbb.String("weight_type", weight_type);
     fbb.String("activation", activation);
+    if (swiglu_alpha.has_value()) fbb.Float("swiglu_alpha", *swiglu_alpha);
+    if (swiglu_limit.has_value()) fbb.Float("swiglu_limit", *swiglu_limit);
     fbb.Bool("renormalized_top_weights", true);
   });
   fbb.Finish();
@@ -130,7 +135,9 @@ class MoeNodeBuilder {
 // blockwise with n blocks along the input axis.
 void BuildInt8Moe(MoeNodeBuilder& builder, int gate_scales, int ff1_scales,
                   int linear_scales,
-                  const std::string& activation = "gelu_tanh") {
+                  const std::string& activation = "gelu_tanh",
+                  std::optional<float> swiglu_alpha = std::nullopt,
+                  std::optional<float> swiglu_limit = std::nullopt) {
   builder.AddInput(kTfLiteFloat32, {1, 1, kNumTokens, kModelDim});
   builder.AddInput(kTfLiteFloat32, {1, 1, kNumTokens, kNumActiveExperts});
   builder.AddInput(kTfLiteInt32, {1, 1, kNumTokens, kNumActiveExperts});
@@ -151,7 +158,8 @@ void BuildInt8Moe(MoeNodeBuilder& builder, int gate_scales, int ff1_scales,
                         kNumExperts * sizeof(float));
 
   builder.AddOutput(kTfLiteFloat32, {1, 1, kNumTokens, kModelDim});
-  builder.SetCustomData(MoeCustomData("int8", activation));
+  builder.SetCustomData(
+      MoeCustomData("int8", activation, swiglu_alpha, swiglu_limit));
   builder.Finish();
 }
 
@@ -203,6 +211,28 @@ TEST(MoeDelegateKernelIsSupportedTest, AcceptsBothGeluSpellings) {
   BuildInt8Moe(legacy_builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
                /*activation=*/"gelu");
   EXPECT_EQ(legacy_builder.IsSupported(), kTfLiteOk);
+}
+
+// gpt-oss's clamped SwiGLU; alpha and limit default to gpt-oss's 1.702 / 7.
+TEST(MoeDelegateKernelIsSupportedTest, AcceptsSwigluOai) {
+  MoeNodeBuilder default_builder;
+  BuildInt8Moe(default_builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"swiglu_oai");
+  EXPECT_EQ(default_builder.IsSupported(), kTfLiteOk);
+
+  MoeNodeBuilder explicit_builder;
+  BuildInt8Moe(explicit_builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"swiglu_oai", /*swiglu_alpha=*/1.702f,
+               /*swiglu_limit=*/7.0f);
+  EXPECT_EQ(explicit_builder.IsSupported(), kTfLiteOk);
+}
+
+TEST(MoeDelegateKernelIsSupportedTest, RejectsNonPositiveSwigluLimit) {
+  MoeNodeBuilder builder;
+  BuildInt8Moe(builder, kGateFf1Rows, kGateFf1Rows, kLinearRows,
+               /*activation=*/"swiglu_oai", /*swiglu_alpha=*/1.702f,
+               /*swiglu_limit=*/0.0f);
+  EXPECT_EQ(builder.IsSupported(), kTfLiteError);
 }
 
 TEST(MoeDelegateKernelIsSupportedTest, RejectsUnknownActivation) {
