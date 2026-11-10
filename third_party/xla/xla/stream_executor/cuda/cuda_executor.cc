@@ -33,9 +33,10 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/casts.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/numeric/int128.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -63,6 +63,11 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/assemble_compilation_provider.h"
+#include "xla/stream_executor/cuda/caching_compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_options.h"
+#include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
@@ -116,7 +121,6 @@ limitations under the License.
 #include "xla/stream_executor/tensor_map.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
@@ -183,84 +187,46 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
   return thread_pool;
 }
 
-// Loads ptx_contents with the CUDA driver's PTX JIT and return the resulting
-// handle. Any error logs that are produced are logged internally.
-absl::StatusOr<CUmodule> LoadPtx(Context* context, const char* ptx_contents) {
-  absl::Notification notification;
-  absl::Status returned_status = absl::OkStatus();
-  CUmodule module;
-  GetDriverExecutor()->Schedule(
-      [context, ptx_contents, &module, &returned_status, &notification]() {
-        ScopedActivateContext activation(context);
-        void* ptx_data = const_cast<char*>(ptx_contents);
-        static const unsigned int kLogBufferBytesLimit = 1024;
-        unsigned int error_log_buffer_bytes = kLogBufferBytesLimit;
-        unsigned int info_log_buffer_bytes = kLogBufferBytesLimit;
-        absl::InlinedVector<char, 4> error_log_buffer(error_log_buffer_bytes);
-        absl::InlinedVector<char, 4> info_log_buffer(info_log_buffer_bytes);
-        bool log_verbose = true;
-        CUjit_option options[] = {CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES,
-                                  CU_JIT_ERROR_LOG_BUFFER,
-                                  CU_JIT_INFO_LOG_BUFFER_SIZE_BYTES,
-                                  CU_JIT_INFO_LOG_BUFFER, CU_JIT_LOG_VERBOSE};
-        // Note that the driver API wants the contents of this values to be
-        // stored in an array of void*s, so we coerce them accordingly.
-        void* option_values[] = {
-            absl::bit_cast<void*>(uintptr_t(error_log_buffer_bytes)),
-            absl::bit_cast<void*>(error_log_buffer.data()),
-            absl::bit_cast<void*>(uintptr_t(info_log_buffer_bytes)),
-            absl::bit_cast<void*>(info_log_buffer.data()),
-            absl::bit_cast<void*>(uintptr_t(log_verbose))};
-        CHECK(TF_ARRAYSIZE(options) == TF_ARRAYSIZE(option_values));
+// Returns a process-wide CachingCompilationProvider for the given options.
+absl::StatusOr<const cuda::CompilationProvider*> GetCompilationProvider(
+    const cuda::CompilationProviderOptions& options) {
+  static absl::NoDestructor<absl::Mutex> mu;
+  static absl::NoDestructor<
+      absl::flat_hash_map<cuda::CompilationProviderOptions,
+                          std::unique_ptr<cuda::CompilationProvider>>>
+      providers ABSL_GUARDED_BY(*mu);
 
-        absl::Status status;
-        status = cuda::ToStatus(cuModuleLoadDataEx(
-            &module, ptx_data, TF_ARRAYSIZE(options), options, option_values));
+  absl::MutexLock lock(*mu);
+  std::unique_ptr<cuda::CompilationProvider>& provider = (*providers)[options];
+  if (provider == nullptr) {
+    ABSL_ASSIGN_OR_RETURN(std::unique_ptr<cuda::CompilationProvider> delegate,
+                     cuda::AssembleCompilationProvider(options));
+    provider =
+        std::make_unique<cuda::CachingCompilationProvider>(std::move(delegate));
+  }
+  return provider.get();
+}
 
-        // The PTX JIT mutates the values in the option values array to reflect
-        // the size of the logs it output; now that we've made the call, read
-        // the values back out.
-        error_log_buffer_bytes = reinterpret_cast<uintptr_t>(option_values[0]);
-        info_log_buffer_bytes = reinterpret_cast<uintptr_t>(option_values[2]);
-        CHECK_LE(error_log_buffer_bytes, kLogBufferBytesLimit);
-        CHECK_LE(info_log_buffer_bytes, kLogBufferBytesLimit);
-
-        if (!status.ok()) {
-          XLA_LOG_DEVICE(ERROR, context->device_ordinal())
-              << "Failed to load PTX text as a module: " << status;
-          // As a precaution for null termination of the API-provided value,
-          // ensure that at least the last byte is null.
-          error_log_buffer[error_log_buffer_bytes ? error_log_buffer_bytes - 1
-                                                  : 0] = '\0';
-          XLA_LOG_DEVICE(ERROR, context->device_ordinal())
-              << "Error log buffer (" << error_log_buffer_bytes
-              << " bytes): " << error_log_buffer.data();
-          if (absl::StrContains(error_log_buffer.data(),
-                                "Register allocation failed")) {
-            returned_status = absl::ResourceExhaustedError(absl::StrFormat(
-                "[%d] Failed to load PTX text as a module (register "
-                "allocation failed): %s",
-                context->device_ordinal(), status.ToString()));
-          } else {
-            returned_status = status;
-          }
-          notification.Notify();
-          return;
-        }
-
-        XLA_VLOG_DEVICE(3, context->device_ordinal())
-            << "PTX compilation info log (" << info_log_buffer_bytes
-            << " bytes): " << info_log_buffer.data();
-        XLA_VLOG_DEVICE(3, context->device_ordinal())
-            << "PTX compilation error log (" << error_log_buffer_bytes
-            << " bytes): " << error_log_buffer.data();
-        CHECK(module != nullptr);
-        notification.Notify();
-      });
-  notification.WaitForNotification();
-
-  ABSL_RETURN_IF_ERROR(returned_status);
-  return module;
+// Clamps `cc` to the major architecture baseline (e.g. `sm_100` on `sm_103a`)
+// when the compilation provider's PTX ISA version is older than the minimum
+// version required for `cc`. Note that `sm_100f` / `sm_120f` require PTX ISA
+// 8.8 (CUDA 12.9+), so `FeatureExtension::kNone` is used here for compatibility
+// with CUDA 12.8 (`ptxas` < 8.8) and `DriverCompilationProvider`.
+CudaComputeCapability ResolveTargetComputeCapability(
+    CudaComputeCapability cc, const cuda::CompilationProvider& provider) {
+  if (cc.major < CudaComputeCapability::kBlackwell || cc.minor == 0) {
+    return cc;
+  }
+  int min_ptx_version = 88;
+  if (cc.major == CudaComputeCapability::kBlackwell && cc.minor >= 7) {
+    min_ptx_version = 94;
+  }
+  absl::StatusOr<int> ptx_version = provider.GetLatestPtxIsaVersion();
+  if (ptx_version.ok() && *ptx_version < min_ptx_version) {
+    return CudaComputeCapability{
+        cc.major, 0, CudaComputeCapability::FeatureExtension::kNone};
+  }
+  return cc;
 }
 
 // Loads cubin_bytes with the CUDA driver's blob loading interface and stores
@@ -1181,8 +1147,10 @@ CudaExecutor::CreatePhysicalMemoryAllocation(uint64_t size) {
 
 absl::Status CudaExecutor::Init() {
   ABSL_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
-  const bool vmm_disabled =
-      xla::GetDebugOptionsFromFlags().xla_gpu_experimental_vmm_disabled();
+  const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  compilation_provider_options_ =
+      cuda::CompilationProviderOptions::FromDebugOptions(debug_options, this);
+  const bool vmm_disabled = debug_options.xla_gpu_experimental_vmm_disabled();
 
   if (!vmm_disabled) {
     ABSL_ASSIGN_OR_RETURN(bool is_vmm_supported, IsVmmSupported(device_));
@@ -1273,22 +1241,33 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromCuBin(
   return module_handle;
 }
 
-absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromPtx(const char* ptx) {
-  ModuleHandle module_handle{ptx};
-  LoadedModule& loaded_module = gpu_binary_to_module_[module_handle];
-
-  if (loaded_module.module == nullptr) {
-    ABSL_ASSIGN_OR_RETURN(loaded_module.module, LoadPtx(cuda_context_, ptx));
-    loaded_module.refcount = 1;
+absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromPtx(
+    absl::string_view ptx, const cuda::CompilationProviderOptions& options) {
+  ModuleHandle module_handle{ptx.data()};
+  if (auto it = gpu_binary_to_module_.find(module_handle);
+      it != gpu_binary_to_module_.end()) {
+    ++it->second.refcount;
     XLA_VLOG_DEVICE(3, device_ordinal())
-        << "Loaded PTX " << static_cast<const void*>(ptx) << " as module "
-        << loaded_module.module;
-  } else {
-    ++loaded_module.refcount;
-    XLA_VLOG_DEVICE(3, device_ordinal())
-        << "PTX " << static_cast<const void*>(ptx)
-        << " is already loaded as module " << loaded_module.module;
+        << "PTX " << static_cast<const void*>(ptx.data())
+        << " is already loaded as module " << it->second.module;
+    return module_handle;
   }
+
+  ABSL_ASSIGN_OR_RETURN(const cuda::CompilationProvider* provider,
+                   GetCompilationProvider(options));
+  const CudaComputeCapability cc = ResolveTargetComputeCapability(
+      GetDeviceDescription().cuda_compute_capability(), *provider);
+  ABSL_ASSIGN_OR_RETURN(cuda::Assembly assembly,
+                   provider->Compile(cc, ptx, cuda::CompilationOptions{}));
+  ABSL_ASSIGN_OR_RETURN(CUmodule module,
+                   LoadCubin(cuda_context_, reinterpret_cast<const char*>(
+                                                assembly.cubin.data())));
+  LoadedModule& loaded_module = gpu_binary_to_module_[module_handle];
+  loaded_module.module = module;
+  loaded_module.refcount = 1;
+  XLA_VLOG_DEVICE(3, device_ordinal())
+      << "Loaded PTX " << static_cast<const void*>(ptx.data()) << " as module "
+      << module;
   return module_handle;
 }
 
@@ -1313,14 +1292,15 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     cuda_kernel->set_gpu_function(function);
 
   } else if (spec.has_cuda_ptx_in_memory()) {
-    const char* ptx = spec.cuda_ptx_in_memory()->ptx.data();
-    if (ptx == nullptr) {
+    absl::string_view ptx = spec.cuda_ptx_in_memory()->ptx;
+    if (ptx.data() == nullptr) {
       XLA_LOG_DEVICE(FATAL, device_ordinal())
           << "Loader spec has no ptx for kernel " << kernel_name;
     }
 
     absl::MutexLock lock{in_memory_modules_mu_};
-    ABSL_ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromPtx(ptx));
+    ABSL_ASSIGN_OR_RETURN(ModuleHandle module_handle,
+                     LoadModuleFromPtx(ptx, compilation_provider_options_));
     kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
 
     CUmodule module = gpu_binary_to_module_.at(module_handle).module;
@@ -1508,7 +1488,8 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModule(
     }
 
     absl::MutexLock lock{in_memory_modules_mu_};
-    return LoadModuleFromPtx(spec.cuda_ptx_in_memory());
+    return LoadModuleFromPtx(spec.cuda_ptx_in_memory(),
+                             compilation_provider_options_);
   }
   return absl::InternalError("No method of loading CUDA module provided");
 }
