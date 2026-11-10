@@ -91,6 +91,7 @@ inline void TransposeConvV2(
     dst_params.cols = input_image_size;
 
     cpu_backend_gemm::GemmParams<int32_t, int32_t> gemm_params;
+    std::fill_n(col2im_data, dst_params.rows * dst_params.cols, 0);
     cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
                            input_data + input_offset * i, dst_params,
                            col2im_data, gemm_params, cpu_backend_context);
