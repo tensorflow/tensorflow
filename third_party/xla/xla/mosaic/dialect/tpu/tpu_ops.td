@@ -126,7 +126,7 @@ def TPU_AllReduceOp : TPU_Op<"all_reduce", [Pure]> {
   let arguments = (ins AnyVectorOfNonZeroRank:$input, I64Attr:$dim, TPU_ReductionKindAttr:$kind);
   let results = (outs AnyVectorOfNonZeroRank:$output);
   let assemblyFormat = [{
-    $input attr-dict `:` type($input) `->` type($output)
+    $input prop-dict attr-dict `:` type($input) `->` type($output)
   }];
   let hasVerifier = 1;
 }
@@ -138,7 +138,7 @@ def TPU_ReduceIndexOp : TPU_Op<"reduce_index", [Pure, SameOperandsAndResultRank]
     TPU_ReductionKindAttr:$kind
   );
   let results = (outs VectorOfNonZeroRankOf<[I16, I32]>:$output);
-  let assemblyFormat = [{ $input attr-dict `:` type($input) `->` type($output) }];
+  let assemblyFormat = [{ $input prop-dict attr-dict `:` type($input) `->` type($output) }];
   let hasVerifier = 1;
 }
 
@@ -197,7 +197,7 @@ def TPU_ScanOp : TPU_Op<"scan", [Pure]> {
   );
   let results = (outs VectorOfNonZeroRankOf<[I16, I32, BF16, F32]>:$output);
   let assemblyFormat = [{
-    $kind `,` $input (`masked` $mask^)? attr-dict `:` type($input) `,` type($mask) `->` type($output)
+    $kind `,` $input (`masked` $mask^)? prop-dict attr-dict `:` type($input) `,` type($mask) `->` type($output)
   }];
   let hasVerifier = 1;
 }
@@ -224,7 +224,7 @@ def TPU_SortOp : TPU_Op<"sort", [Pure]> {
     VectorOfNonZeroRankOf<[I32,F32]>:$sorted_values
   );
   let assemblyFormat = [{
-    $keys `,` $values (`masked` $mask^)? attr-dict `:` functional-type(operands, results)
+    $keys `,` $values (`masked` $mask^)? prop-dict attr-dict `:` functional-type(operands, results)
   }];
   let hasVerifier = 1;
 }
@@ -241,7 +241,7 @@ def TPU_StoreOp : TPU_Op<"store", [DefaultMemWrite, AttrSizedOperandSegments]> {
   );
   let results = (outs);
   let assemblyFormat = [{
-    $base `[` $indices `]` `,` $valueToStore (`masked` $mask^)? `sublanes` $sublane_mask  (`sublane_stride` $sublane_stride^)? attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
+    $base `[` $indices `]` `,` $valueToStore (`masked` $mask^)? `sublanes` $sublane_mask  (`sublane_stride` $sublane_stride^)? prop-dict attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
   }];
 }
 
@@ -275,7 +275,7 @@ def TPU_VectorStoreOp :TPU_Op<"vector_store", [DefaultMemWrite, AttrSizedOperand
   );
   let results = (outs);
   let assemblyFormat = [{
-    $base `[` $indices `]` `,` $valueToStore (`masked` $mask^)? attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
+    $base `[` $indices `]` `,` $valueToStore (`masked` $mask^)? prop-dict attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
   }];
   let hasVerifier = 1;
   let builders = [
@@ -317,7 +317,7 @@ def TPU_CompressStoreVregOp : TPU_Op<"compress_store_vreg", [DefaultMemWrite]> {
   );
   let results = (outs);
   let assemblyFormat = [{
-    $base `[` $indices `]` `,` $valueToStore `,` $mask attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
+    $base `[` $indices `]` `,` $valueToStore `,` $mask prop-dict attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
   }];
   let hasVerifier = 1;
 }
@@ -361,7 +361,7 @@ def TPU_VectorCompressStoreOp : TPU_Op<"vector_compress_store", [DefaultMemWrite
   );
   let results = (outs);
   let assemblyFormat = [{
-    $base `[` $indices `]` `,` $valueToStore `,` $mask attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
+    $base `[` $indices `]` `,` $valueToStore `,` $mask prop-dict attr-dict `:` type($base) `,` type($valueToStore) `,` type($mask)
   }];
   let hasVerifier = 1;
 }
@@ -440,7 +440,7 @@ def TPU_VectorExpandLoadOp : TPU_Op<"vector_expand_load", [DefaultMemRead]> {
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);
   let assemblyFormat = [{
-    $base `[` $indices `]` `,` $mask attr-dict `:` type($base) `,` type($result) `,` type($mask)
+    $base `[` $indices `]` `,` $mask prop-dict attr-dict `:` type($base) `,` type($result) `,` type($mask)
   }];
   let hasVerifier = 1;
 }
@@ -467,7 +467,7 @@ def TPU_VectorLoadOp :TPU_Op<"vector_load", [DefaultMemRead, AttrSizedOperandSeg
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);
   let assemblyFormat = [{
-    $base `[` $indices `]` (`masked` $mask^)? attr-dict `:` type($base) `,` type($result) `,` type($mask)
+    $base `[` $indices `]` (`masked` $mask^)? prop-dict attr-dict `:` type($base) `,` type($result) `,` type($mask)
   }];
   let hasVerifier = 1;
   let builders = [
@@ -483,7 +483,7 @@ def TPU_StridedLoadOp : TPU_Op<"strided_load", [DefaultMemRead]> {
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);
   let assemblyFormat = [{
-    $base `[` $indices `]` attr-dict `:` type($base) `,` type($result)
+    $base `[` $indices `]` prop-dict attr-dict `:` type($base) `,` type($result)
   }];
   let hasVerifier = 1;
 }
@@ -497,7 +497,7 @@ def TPU_StridedStoreOp : TPU_Op<"strided_store", [DefaultMemWrite]> {
   );
   let results = (outs);
   let assemblyFormat = [{
-    $base `[` $indices `]` `,` $valueToStore attr-dict `:` type($base) `,` type($valueToStore)
+    $base `[` $indices `]` `,` $valueToStore prop-dict attr-dict `:` type($base) `,` type($valueToStore)
   }];
   let hasVerifier = 1;
 }
@@ -512,7 +512,7 @@ def TPU_ShuffledLoadOp : TPU_Op<"shuffled_load", [DefaultMemRead]> {
   );
   let results = (outs TPU_Vreg:$result);
   let assemblyFormat = [{
-    $base `[` $indices `]` attr-dict `:` type($base) `,` type($result)
+    $base `[` $indices `]` prop-dict attr-dict `:` type($base) `,` type($result)
   }];
   let hasVerifier = 1;
 }
@@ -528,7 +528,7 @@ def TPU_ShuffledStoreOp : TPU_Op<"shuffled_store", [DefaultMemWrite]> {
   );
   let results = (outs);
   let assemblyFormat = [{
-    $base `[` $indices `]` `,` $valueToStore attr-dict `:` type($base) `,` type($valueToStore)
+    $base `[` $indices `]` `,` $valueToStore prop-dict attr-dict `:` type($base) `,` type($valueToStore)
   }];
   let hasVerifier = 1;
 }
@@ -589,7 +589,7 @@ def TPU_VectorStoreIdxOp :TPU_Op<"vector_store_idx", [DefaultMemWrite, AttrSized
   );
   let results = (outs);
   let assemblyFormat = [{
-    $base `[` $indices `]` `,` $valueToStore (`masked` $mask^)? attr-dict `:` type($base) `[` type($indices) `]` `,` type($valueToStore) `,` type($mask)
+    $base `[` $indices `]` `,` $valueToStore (`masked` $mask^)? prop-dict attr-dict `:` type($base) `[` type($indices) `]` `,` type($valueToStore) `,` type($mask)
   }];
   let hasVerifier = 1;
 }
@@ -606,7 +606,7 @@ def TPU_DynamicRotateOp : TPU_Op<"dynamic_rotate", [Pure, AllTypesMatch<["value"
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);
   let assemblyFormat = [{
-    $value `by` $amount `dim` $dimension attr-dict `:` type($value) `,` type($amount)  `->` type($result)
+    $value `by` $amount `dim` $dimension prop-dict attr-dict `:` type($value) `,` type($amount)  `->` type($result)
   }];
   let hasVerifier = 1;
 }
@@ -662,7 +662,7 @@ def TPU_IotaOp : TPU_Op<"iota", [Pure]> {
 
     Example:
     ```
-    tpu.iota {dimensions = array<i32: 2, 0>} : vector<4x3x2xi16>
+    tpu.iota <dimensions = [2, 0]> : vector<4x3x2xi16>
     ```
     This produces a vector with the following values:
     ```
@@ -674,7 +674,7 @@ def TPU_IotaOp : TPU_Op<"iota", [Pure]> {
   }];
   let arguments = (ins DenseI32ArrayAttr:$dimensions);
   let results = (outs VectorOfNonZeroRankOf<[AnyInteger, Index]>:$output);
-  let assemblyFormat = [{ attr-dict `:` type($output) }];
+  let assemblyFormat = [{ prop-dict attr-dict `:` type($output) }];
   let hasVerifier = 1;
 }
 
@@ -748,7 +748,7 @@ def TPU_UnpackSubelementsOp : TPU_Op<"unpack_subelements", [Pure]> {
     DefaultValuedAttr<BoolAttr, "false">:$unsigned_integers
   );
   let results = (outs AnyVectorOfNonZeroRank:$output);
-  let assemblyFormat = [{ $source `,` $index attr-dict `:` type($source) `->` type($output) }];
+  let assemblyFormat = [{ $source `,` $index prop-dict attr-dict `:` type($source) `->` type($output) }];
   let hasVerifier = 1;
 }
 
@@ -821,7 +821,7 @@ def TPU_PackSubelementsOp : TPU_Op<"pack_subelements", [Pure, SameTypeOperands]>
     DefaultValuedOptionalAttr<BoolAttr, "false">:$unsigned_integers
   );
   let results = (outs TPU_Vreg:$output);
-  let assemblyFormat = [{ $sources attr-dict `:` type($sources) `->` type($output) }];
+  let assemblyFormat = [{ $sources prop-dict attr-dict `:` type($sources) `->` type($output) }];
   let hasVerifier = 1;
 }
 
@@ -846,7 +846,7 @@ def TPU_PackElementwiseOp : TPU_Op<"pack_elementwise", [Pure, SameTypeOperands, 
     TypeAttr:$target_type
   );
   let results = (outs VectorOfNonZeroRankOf<[AnyInteger]>:$output);
-  let assemblyFormat = [{ $sources attr-dict `:` type($sources) `->` type($output) }];
+  let assemblyFormat = [{ $sources prop-dict attr-dict `:` type($sources) `->` type($output) }];
   let hasVerifier = 1;
 }
 
@@ -876,7 +876,7 @@ def TPU_UnpackElementwiseOp : TPU_Op<"unpack_elementwise", [Pure, ElementwiseMap
     I32Attr:$index
   );
   let results = (outs VectorOfNonZeroRankOf<[F32, AnyInteger]>:$output);
-  let assemblyFormat = [{ $source `,` $index attr-dict `:` type($source) `->` type($output) }];
+  let assemblyFormat = [{ $source `,` $index prop-dict attr-dict `:` type($source) `->` type($output) }];
   let hasVerifier = 1;
 }
 
@@ -891,7 +891,7 @@ def TPU_PackMaskOp : TPU_Op<"pack_vmsk", [Pure, SameTypeOperands]> {
     DenseI32ArrayAttr:$positions
   );
   let results = (outs TPU_Vmask:$output);
-  let assemblyFormat = [{ $sources attr-dict `:` type($sources) `->` type($output) }];
+  let assemblyFormat = [{ $sources prop-dict attr-dict `:` type($sources) `->` type($output) }];
   let builders = [
     OpBuilder<(ins "::mlir::VectorType":$output_type, "::mlir::ArrayRef<::mlir::Value>":$padded_sources)>,
   ];
@@ -948,7 +948,7 @@ def AnySignlessIntegerLike : AnyTypeOf<[AnySignlessInteger, VectorOfAnyRankOf<[A
 def TPU_FPToSIOp : TPU_Op<"fptosi", [Pure, ElementwiseMappable]> {
   let arguments = (ins AnyFloatLike:$in, TPU_RoundingModeEnum:$rounding_mode);
   let results = (outs AnySignlessIntegerLike:$output);
-  let assemblyFormat = [{ $in attr-dict `:` type($in) `->` type($output) }];
+  let assemblyFormat = [{ $in prop-dict attr-dict `:` type($in) `->` type($output) }];
 }
 
 // Internal operation. All arith.fptoui operations that change the bitwidth
@@ -956,7 +956,7 @@ def TPU_FPToSIOp : TPU_Op<"fptosi", [Pure, ElementwiseMappable]> {
 def TPU_FPToUIOp : TPU_Op<"fptoui", [Pure, ElementwiseMappable]> {
   let arguments = (ins AnyFloatLike:$in, TPU_RoundingModeEnum:$rounding_mode);
   let results = (outs AnySignlessIntegerLike:$output);
-  let assemblyFormat = [{ $in attr-dict `:` type($in) `->` type($output) }];
+  let assemblyFormat = [{ $in prop-dict attr-dict `:` type($in) `->` type($output) }];
 }
 
 // Internal operation. All arith.sitofp operations that change the bitwidth
@@ -964,7 +964,7 @@ def TPU_FPToUIOp : TPU_Op<"fptoui", [Pure, ElementwiseMappable]> {
 def TPU_SIToFPOp : TPU_Op<"sitofp", [Pure, ElementwiseMappable]> {
   let arguments = (ins AnySignlessIntegerLike:$in, TPU_RoundingModeEnum:$rounding_mode);
   let results = (outs AnyFloatLike:$output);
-  let assemblyFormat = [{ $in attr-dict `:` type($in) `->` type($output) }];
+  let assemblyFormat = [{ $in prop-dict attr-dict `:` type($in) `->` type($output) }];
 }
 
 // Internal operation. All arith.uitofp operations that change the bitwidth
@@ -972,7 +972,7 @@ def TPU_SIToFPOp : TPU_Op<"sitofp", [Pure, ElementwiseMappable]> {
 def TPU_UIToFPOp : TPU_Op<"uitofp", [Pure, ElementwiseMappable]> {
   let arguments = (ins AnySignlessIntegerLike:$in, TPU_RoundingModeEnum:$rounding_mode);
   let results = (outs AnyFloatLike:$output);
-  let assemblyFormat = [{ $in attr-dict `:` type($in) `->` type($output) }];
+  let assemblyFormat = [{ $in prop-dict attr-dict `:` type($in) `->` type($output) }];
 }
 
 // Internal operation.
@@ -989,7 +989,7 @@ def TPU_TruncFOp : TPU_Op<"truncf", [Pure, ElementwiseMappable]> {
     TPU_RoundingModeEnum:$rounding_mode
   );
   let results = (outs AnyFloatLike:$out);
-  let assemblyFormat = [{ $in attr-dict `:` type($in) `->` type($out) }];
+  let assemblyFormat = [{ $in prop-dict attr-dict `:` type($in) `->` type($out) }];
 }
 
 // TODO(apaszke): Think hard about precision
@@ -1010,7 +1010,7 @@ def TPU_MatmulOp : TPU_Op<"matmul", [Pure]> {
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);
   let assemblyFormat = [{
-    $lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
+    $lhs `,` $rhs `,` $acc prop-dict attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
   }];
   let hasVerifier = 1;
 }
@@ -1054,7 +1054,7 @@ def TPU_ConvOp : TPU_Op<"conv", [Pure]> {
   );
   let results = (outs AnyVectorOfNonZeroRank:$result);
   let assemblyFormat = [{
-    $lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
+    $lhs `,` $rhs `,` $acc prop-dict attr-dict `:` type($lhs) `,` type($rhs) `,` type($acc) `->` type($result)
   }];
   let hasVerifier = 1;
 }
@@ -1068,7 +1068,7 @@ def TPU_MatmulPushRhsOp : TPU_Op<"matmul_push_rhs"> {
   );
   let results = (outs);
   let assemblyFormat = [{
-    $rhs attr-dict `:` type($rhs)
+    $rhs prop-dict attr-dict `:` type($rhs)
   }];
 }
 
@@ -1081,7 +1081,7 @@ def TPU_MatmulAccLhsOp : TPU_Op<"matmul_acc_lhs"> {
   );
   let results = (outs);
   let assemblyFormat = [{
-    $acc `,` $lhs attr-dict `:` type($lhs)
+    $acc `,` $lhs prop-dict attr-dict `:` type($lhs)
   }];
 }
 
@@ -1092,7 +1092,7 @@ def TPU_MatmulPopOp : TPU_Op<"matmul_pop"> {
   );
   let results = (outs VectorOfRank<[2]>:$result);
   let assemblyFormat = [{
-    $acc attr-dict `:` type($result)
+    $acc prop-dict attr-dict `:` type($result)
   }];
 }
 
@@ -1104,7 +1104,7 @@ def TPU_MatmulLhsFifoOp : TPU_Op<"matmul_lhs_fifo"> {
   );
   let results = (outs);
   let assemblyFormat = [{
-    $lhs attr-dict `:` type($lhs)
+    $lhs prop-dict attr-dict `:` type($lhs)
   }];
 }
 
@@ -1168,7 +1168,7 @@ def TPU_ReciprocalOp : TPU_Op<"reciprocal", [Pure, SameOperandsAndResultType, El
     DefaultValuedAttr<BoolAttr, "true">:$full_range
   );
   let results = (outs AnyVectorOfNonZeroRank:$output);
-  let assemblyFormat = [{ $input attr-dict `:` type($input) `->` type($output) }];
+  let assemblyFormat = [{ $input prop-dict attr-dict `:` type($input) `->` type($output) }];
   let hasVerifier = 1;
 }
 
@@ -1200,7 +1200,7 @@ def TPU_StochasticConvertElementwiseOp : TPU_Op<"stochastic_convert_elementwise"
     TypeAttr:$dst_type
   );
   let results = (outs VectorOfNonZeroRankOf<[I32]>:$output);
-  let assemblyFormat = [{ $input `,` $random attr-dict `:` type($input) `,` type($random) `->` type($output) }];
+  let assemblyFormat = [{ $input `,` $random prop-dict attr-dict `:` type($input) `,` type($random) `->` type($output) }];
   let hasVerifier = 1;
 }
 
@@ -1220,7 +1220,7 @@ def TPU_ReducePrecisionOp : TPU_Op<"reduce_precision", [Pure, ElementwiseMappabl
   );
   let results = (outs VectorOfNonZeroRankOf<[F32, BF16]>:$output);
   let assemblyFormat = [{
-    $input attr-dict `:` type($input) `->` type($output)
+    $input prop-dict attr-dict `:` type($input) `->` type($output)
   }];
 }
 
@@ -1515,7 +1515,7 @@ def TPU_AnnotateOp : TPU_Op<"annotate", [Pure, SameOperandsAndResultType, ViewLi
   );
   let results = (outs AnyMemRef:$result);
   let assemblyFormat = [{
-    $operand attr-dict `:` type($operand)
+    $operand prop-dict attr-dict `:` type($operand)
   }];
   let extraClassDeclaration = [{
     // ViewLikeOpInterface.
@@ -1658,7 +1658,7 @@ def TPU_EnqueueDMAOp : TPU_Op<"enqueue_dma", [AttrSizedOperandSegments]> {
     (`device_id` `(` $device_id^ `)`)?
     (`core_id` `(` $core_id^ `)`)?
     (`subcore_id` `(` $subcore_id^ `)`)?
-    attr-dict
+    prop-dict attr-dict
   }];
   let hasVerifier = 1;
   let builders = [
@@ -1717,7 +1717,7 @@ def TPU_EnqueueIndirectDMAOp : TPU_Op<"enqueue_indirect_dma">, IndirectDMAOp {
     `offsets` `(` $offsets `:` type($offsets) `)`
     (`offset_filter` `(` $offset_filter^ `)`)?
     `semaphore` `(` $semaphore `:` type($semaphore) `)`
-    attr-dict
+    prop-dict attr-dict
   }];
   let hasVerifier = 1;
   let extraClassDeclaration = extraBaseClassDeclaration;
@@ -1742,7 +1742,7 @@ def TPU_WaitDMA2Op : TPU_Op<"wait_dma2", [AttrSizedOperandSegments]> {
     `dst` `(` $dst `:` type($dst) `)`
     (`device_id` `(` $device_id^ `)`)?
     (`core_id` `(` $core_id^ `)`)?
-    attr-dict
+    prop-dict attr-dict
   }];
   let hasVerifier = 1;
   // A backward-compatible builder that sets `device_id` and `core_id` to nullptr.
@@ -1773,7 +1773,7 @@ def TPU_WaitDMAOp : TPU_Op<"wait_dma", [AttrSizedOperandSegments]> {
     (`device_id` `(` $device_id^ `)`)?
     (`core_id` `(` $core_id^ `)`)?
     (`subcore_id` `(` $subcore_id^ `)`)?
-    attr-dict
+    prop-dict attr-dict
   }];
   let hasVerifier = 1;
 }
@@ -1978,7 +1978,7 @@ def TPU_LogOp : TPU_Op<"log"> {
     DefaultValuedAttr<BoolAttr, "false">:$formatted
   );
   let results = (outs);
-  let assemblyFormat = [{ $tag attr-dict (`:`  `[` $inputs^ `]` `:` type($inputs))? }];
+  let assemblyFormat = [{ $tag prop-dict attr-dict (`:`  `[` $inputs^ `]` `:` type($inputs))? }];
   let hasVerifier = 1;
 }
 
@@ -1989,7 +1989,7 @@ def TPU_LogBufferOp : TPU_Op<"log_buffer"> {
     StrAttr:$tag
   );
   let results = (outs);
-  let assemblyFormat = [{ $tag attr-dict `:` $input `:` type($input) }];
+  let assemblyFormat = [{ $tag prop-dict attr-dict `:` $input `:` type($input) }];
   let hasVerifier = 1;
 }
 
