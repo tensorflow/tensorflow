@@ -1344,7 +1344,7 @@ _diff_no_value = object()
 
 @tf_export.tf_export('experimental.numpy.diff', v1=[])
 @np_utils.np_doc('diff')
-def diff(  # pylint: disable=missing-function-docstring
+def diff(  # pylint: disable=missing-function-docstring,redefined-outer-name
     a, n=1, axis=-1, prepend=_diff_no_value, append=_diff_no_value
 ):
   def f(a):
