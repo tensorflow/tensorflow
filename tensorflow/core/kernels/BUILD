@@ -2921,6 +2921,7 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -6178,7 +6179,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "string_split_op",
     prefix = "string_split_op",
-    deps = STRING_DEPS,
+    deps = STRING_DEPS + ["@com_google_absl//absl/strings:string_view"],
 )
 
 tf_cc_test(

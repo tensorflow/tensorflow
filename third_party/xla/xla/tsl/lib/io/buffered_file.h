@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status_macros.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/status.h"
@@ -77,7 +78,7 @@ class BufferedWritableFile : public WritableFile {
   absl::Status Flush() override {
     if (buffer_pos_ > 0) {
       ABSL_RETURN_IF_ERROR(
-          file_->Append(absl::string_view(&buffer_[0], buffer_pos_)));
+          file_->Append(absl::string_view(buffer_).substr(0, buffer_pos_)));
       buffer_pos_ = 0;
     }
     return file_->Flush();

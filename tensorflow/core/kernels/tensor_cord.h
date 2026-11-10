@@ -215,9 +215,8 @@ class TensorCord {
 
     absl::string_view view() const {
       if (is_inline_) {
-        return absl::string_view(
-            rep_.internal.data() + 1,
-            *reinterpret_cast<const uint8_t*>(rep_.internal.data()));
+        return absl::string_view(rep_.internal.data(), rep_.internal.size())
+            .substr(1, *reinterpret_cast<const uint8_t*>(rep_.internal.data()));
       } else {
         return rep_.external.view;
       }

@@ -374,7 +374,7 @@ class AsyncValueRef {
   void SetError(absl::string_view message) const {
     // Converting to `absl::string_view` because implicit conversion is not
     // supported in android builds.
-    absl::string_view message_view(message.data(), message.size());
+    absl::string_view message_view = message;
     SetError(absl::InternalError(message_view));
   }
 
