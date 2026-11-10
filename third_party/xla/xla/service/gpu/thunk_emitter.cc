@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 #include "xla/backends/gpu/codegen/pad_to_static.h"
+#include "xla/backends/gpu/codegen/slice_to_dynamic.h"
 #include "xla/backends/gpu/codegen/sort.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
@@ -617,23 +618,11 @@ Future<ThunkSequence> ThunkEmitter::EmitPadToStatic(
   return gpu::EmitPadToStatic(instr, ir_emitter_context_);
 }
 
-// Input = {dynamic array(with dynamic dimension meta data at the end)}
-// Output = {static array, dynamic_dim0, dynamic_dim1}
+// Input = {static array, dynamic_dim0, dynamic_dim1}
+// Output = {dynamic array (with dynamic dimension meta data at the end)}
 Future<ThunkSequence> ThunkEmitter::EmitSliceToDynamic(
     const HloCustomCallInstruction* instr) {
-  ABSL_ASSIGN_OR_RETURN(emitters::KernelArguments kernel_arguments,
-                   emitters::KernelArguments::Create(
-                       ir_emitter_context_->buffer_assignment(),
-                       GetDefaultBufferAlignment(), instr));
-  ABSL_ASSIGN_OR_RETURN(
-      (KernelDefinition<LlvmKernelSource, GpuKernelSpec> kernel_def),
-      EmitSliceToDynamicLLVMIR(instr, ir_emitter_context_, kernel_arguments));
-
-  return ir_emitter_context_->kernel_compiler()
-      ->Compile(Thunk::ThunkInfo::WithProfileAnnotation(
-                    instr, ir_emitter_context_->GetNextThunkId()),
-                std::move(kernel_def))
-      .Map([](auto thunk) { return ThunkSequence::Of(std::move(thunk)); });
+  return gpu::EmitSliceToDynamic(instr, ir_emitter_context_);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolution(

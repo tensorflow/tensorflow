@@ -191,10 +191,6 @@ bool IsContiguousSlice(const HloInstruction& instr);
 // partition-id, a memset of 4 bytes).
 bool EmitsNoThunks(const HloInstruction& hlo);
 
-// Emits code that determines whether the current thread is thread 0 within
-// block 0 of the kernel.
-llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b);
-
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index);
@@ -317,17 +313,6 @@ absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
 
 // Verify the given module, and crash if it failed.
 void VerifyModule(const llvm::Module& module);
-
-// Returns the llvm type for the indices used in the kernel that contains the
-// hlo instruction. Such indices include the index for the parallel loop and
-// the indices for the tensors accessed by the kernel. The return type is i32
-// iff the following conditions are met:
-//  . The launch_size of the kernel is within the range of i32.
-//  . The sizes of all the tensors accessed within the kernel are within the
-//    range of i32.
-// Otherwise, the return type is i64.
-llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilderBase* b);
 
 // Returns a deterministic encoded string representation of the proto message.
 absl::StatusOr<std::string> GetProtoFingerprint(

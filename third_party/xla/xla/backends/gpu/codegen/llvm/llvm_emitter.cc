@@ -23,13 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Argument.h"
@@ -46,25 +43,16 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/gpu_kernel_spec.h"
-#include "xla/backends/gpu/codegen/llvm/parallel_loop_emitter.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/primitive_util.h"
 #include "xla/service/gpu/dense_data_intermediate.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/ir_array.h"
-#include "xla/service/llvm_ir/kernel_support_library.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/llvm_ir/loop_emitter.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -81,31 +69,6 @@ std::vector<llvm_ir::IrArray> IrArraysFor(
         llvm_ir::IrArray(&llvm_arg, ir_type, kernel_argument.shape()));
   }
   return ir_arrays;
-}
-
-void CreateStore(llvm::Value* data, llvm::Value* address, int alignment_bytes,
-                 llvm::IRBuilderBase* b) {
-  int data_bytes = data->getType()->getPrimitiveSizeInBits() /
-                   primitive_util::BitWidth(PrimitiveType::U8);
-  CHECK_GE(data_bytes, alignment_bytes);
-  if (alignment_bytes == 0) {
-    b->CreateStore(data, address);
-    return;
-  }
-
-  int alignment_bitwidth =
-      alignment_bytes * primitive_util::BitWidth(PrimitiveType::U8);
-
-  for (int offset_bytes = 0; offset_bytes < data_bytes;
-       offset_bytes += alignment_bytes) {
-    llvm::Value* offset_address = b->CreateConstInBoundsGEP1_32(
-        b->getInt8Ty(), address, offset_bytes, "offset_address");
-    llvm::Value* shifted_partial = b->CreateTrunc(
-        b->CreateLShr(
-            data, llvm::ConstantInt::get(b->getInt32Ty(), offset_bytes * 8)),
-        b->getIntNTy(alignment_bitwidth), "truncated_value");
-    b->CreateStore(shifted_partial, offset_address);
-  }
 }
 
 }  // namespace
@@ -161,144 +124,6 @@ void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
                                /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
   module->insertGlobalVariable(global_for_const);
-}
-
-// Input = {static array, dynamic_dim0, dynamic_dim1}
-// Output = {dynamic array (with dynamic dimension meta data at the end)}
-absl::StatusOr<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>
-EmitSliceToDynamicLLVMIR(const HloCustomCallInstruction* hlo,
-                         IrEmitterContext* ir_emitter_context,
-                         const emitters::KernelArguments& kernel_arguments) {
-  auto llvm_context = std::make_unique<llvm::LLVMContext>();
-  std::string op_name = std::string(hlo->name());
-
-  std::unique_ptr<llvm::Module> llvm_module =
-      ir_emitter_context->CreateLLVMModule(op_name, *llvm_context);
-  llvm::IRBuilder<> b(*llvm_context);
-
-  constexpr int kUnrollFactor = 1;
-  const Shape& input_shape = hlo->operand(0)->shape();
-
-  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context->gpu_device_info(), kUnrollFactor);
-  llvm::Type* index_ty =
-      GetIndexTypeForKernel(hlo, launch_dimensions.launch_bound(), &b);
-
-  std::string sanitized_kernel_name =
-      ir_emitter_context->GetSanitizedUniqueName(op_name);
-
-  ABSL_ASSIGN_OR_RETURN(
-      llvm::Function * kernel,
-      BuildKernelPrototype(
-          llvm_module.get(), ir_emitter_context->gpu_device_info(), op_name,
-          sanitized_kernel_name, kernel_arguments, launch_dimensions, &b));
-
-  const Shape& data_shape = ShapeUtil::MakeStaticShape(hlo->shape());
-  TF_RET_CHECK(data_shape.IsArray());
-
-  // TODO(jurahul): data_shape here is the static shape of the
-  // output (which has a dynamic shape in XLA). Currently, we are
-  // mapping that to a static shaped memref. When we change that to
-  // a more appropriate representation in MLIR, fix this code to
-  // correctly deduce the static shape backing the dynamically
-  // shaped memref.
-
-  // calculate the location where metadata needs to be inserted
-  //   int* dyn_dim0_size = dest_array + meta_data_offset;
-  //   int* dyn_dim1_size = dest_array + meta_data_offset +
-  //   sizeof(int);
-  int32_t raw_data_size = ShapeUtil::ByteSizeOf(data_shape);
-
-  // pseudo code for sliceToDynamic on a 2d array
-  //   int* source_array = args[0];
-  //   int* dest_array = args.back();
-  std::vector<llvm_ir::IrArray> ir_arrays =
-      IrArraysFor(kernel, kernel_arguments);
-  const llvm_ir::IrArray& data_array = ir_arrays.back();
-  llvm::Value* dest_buffer = data_array.GetBasePointer();
-
-  // Load dynamic dimensions from memory.
-  std::vector<llvm::Value*> dynamic_dims;
-  int alignment = raw_data_size % sizeof(int32_t);
-  for (int64_t i = 1; i < hlo->operand_count(); ++i) {
-    llvm::Value* source_buffer = ir_arrays[i].GetBasePointer();
-    llvm::Type* source_buffer_pointee_type = ir_arrays[i].GetBasePointeeType();
-    llvm::LoadInst* dyn_dim_size =
-        b.CreateLoad(source_buffer_pointee_type, source_buffer, "dyn_dim_size");
-    dynamic_dims.push_back(dyn_dim_size);
-  }
-
-  // only one thread need to store the dynamic index
-  //   int thread_id = GetThreadId();
-  //   int block_id = GetBlockId();
-  //   if (thread_id == 0 && block_id == 0) {
-  //     *dyn_dim0_size = *output[1];
-  //     *dyn_dim1_size = *output[2];
-  //   }
-  KernelSupportLibrary{&b}.If("is_thread_0", IsBlock0Thread0(&b), [&] {
-    for (int64_t i = 1; i < hlo->operand_count(); ++i) {
-      const int64_t dim_index = i - 1;
-      llvm::Value* metadata = b.CreateConstInBoundsGEP1_32(
-          b.getInt8Ty(), dest_buffer,
-          raw_data_size + dim_index * sizeof(int32_t));
-      // output[i] stores dynamic_dim_(i-1)
-      CreateStore(dynamic_dims[dim_index], metadata, alignment, &b);
-    }
-  });
-
-  //     int dyn_element_total = 1;
-  //     dyn_element_total *= dyn_dim0_size;
-  //     dyn_element_total *= dyn_dim1_size;
-  llvm::Value* dyn_element_total = llvm::ConstantInt::get(index_ty, 1);
-  for (llvm::Value* dynamic_dim : dynamic_dims) {
-    dyn_element_total =
-        b.CreateMul(dyn_element_total,
-                    b.CreateIntCast(dynamic_dim, dyn_element_total->getType(),
-                                    /*isSigned=*/true),
-                    /*Name=*/"dyn_element_total_slice");
-  }
-
-  //   linear_index = block_id * threads_per_block + thread_id;
-  //   if (linear_index < max_num_element) {
-  //     Index static_index =
-  //         delinerized(linerized_index, static_dim0_size,
-  //         static_dim1_size);
-  //     if (linerized_index < dyn_element_total) {
-  //       Index dyn_index =
-  //           delinerized(linerized_index, *dyn_dim0_size,
-  //           *dyn_dim1_size);
-  //       dest_array[static_index.dim0][static_index.di] =
-  //           source_array[dyn_index.dim0][dyn_index.dim1];
-  //     }
-  //   }
-  llvm_ir::BodyEmitter body_generator =
-      [&](const llvm_ir::IrArray::Index& array_index) -> absl::Status {
-    llvm::Value* linearIndex =
-        array_index.Linearize(input_shape.dimensions(), &b);
-    auto if_in_dyn_bounds = llvm_ir::EmitIfThenElse(
-        b.CreateICmpULT(linearIndex, dyn_element_total),
-        llvm_ir::IrName(op_name, "in_dyn_bounds"), &b, false);
-    // Set IR builder insertion point to the body of the if
-    // structure.
-    llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block, &b);
-    llvm_ir::IrArray::Index dyn_index(linearIndex, input_shape,
-                                      absl::MakeSpan(dynamic_dims), &b);
-
-    data_array.EmitWriteArrayElement(
-        array_index,
-        ir_arrays[0].EmitReadArrayElement(dyn_index, &b, /*name=*/"",
-                                          /*use_linear_index=*/false),
-        &b);
-    return absl::OkStatus();
-  };
-
-  ABSL_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
-                                      launch_dimensions, &b, kUnrollFactor)
-                      .EmitLoop(op_name, index_ty));
-
-  return KernelDefinition<LlvmKernelSource, GpuKernelSpec>(
-      GpuKernelSpec{sanitized_kernel_name, launch_dimensions, kernel_arguments},
-      LlvmKernelSource{std::move(llvm_context), std::move(llvm_module)});
 }
 
 absl::StatusOr<KernelDefinition<LlvmKernelSource, GpuKernelSpec>>

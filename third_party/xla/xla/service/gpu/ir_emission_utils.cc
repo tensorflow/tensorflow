@@ -302,22 +302,6 @@ bool EmitsNoThunks(const HloInstruction& hlo) {
   }
 }
 
-llvm::Value* IsBlock0Thread0(llvm::IRBuilderBase* b) {
-  // On Intel GPUs, intrinsics may return a non-i32 integer type, so we first
-  // emit the intrinsic call to get the correct type for the compare
-  // instruction.
-  llvm::Value* tid =
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b);
-  llvm::Value* is_thread0 =
-      b->CreateICmpEQ(llvm::ConstantInt::get(tid->getType(), 0), tid);
-
-  llvm::Value* bid =
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b);
-  llvm::Value* is_block0 =
-      b->CreateICmpEQ(llvm::ConstantInt::get(bid->getType(), 0), bid);
-  return b->CreateAnd(is_thread0, is_block0);
-}
-
 absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     const BufferAssignment& buffer_assignment, const HloInstruction* instr,
     const ShapeIndex& index) {
@@ -530,59 +514,6 @@ void VerifyModule(const llvm::Module& module) {
   llvm::raw_string_ostream error_stream(error_str);
   bool broken = llvm::verifyModule(module, &error_stream);
   CHECK(!broken) << error_str;
-}
-
-llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,
-                                  int64_t launch_size, llvm::IRBuilderBase* b) {
-  // Find the unnested hlo instruction for which the kernel is generated for.
-  const HloInstruction* unnested_hlo = hlo;
-  const HloComputation* computation = hlo->parent();
-  if (computation->IsFusionComputation()) {
-    unnested_hlo = computation->FusionInstruction();
-  }
-
-  auto shape_in_range = [&](const Shape& s) {
-    bool in_range = true;
-    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
-                                      const ShapeIndex& /*index*/) {
-      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
-        in_range = false;
-      }
-    });
-
-    return in_range;
-  };
-
-  llvm::Type* i64_ty = b->getInt64Ty();
-  // Check launch dimension
-  if (!IsInt32(launch_size)) {
-    return i64_ty;
-  }
-
-  // Check the size of result tensors
-  if (!shape_in_range(unnested_hlo->shape())) {
-    return i64_ty;
-  }
-
-  auto hlo_shape_in_range = [&](const HloInstruction* operand) -> bool {
-    return shape_in_range(operand->shape());
-  };
-
-  // Check the size of input tensors
-  if (!absl::c_all_of(unnested_hlo->operands(), hlo_shape_in_range)) {
-    return i64_ty;
-  }
-
-  // Check the size of the internal result tensors
-  if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    if (!absl::c_all_of(
-            unnested_hlo->fused_instructions_computation()->instructions(),
-            hlo_shape_in_range)) {
-      return i64_ty;
-    }
-  }
-
-  return b->getInt32Ty();
 }
 
 absl::StatusOr<std::string> GetProtoFingerprint(
