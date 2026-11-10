@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/fusion_wrapper.h"
+#include "xla/backends/cpu/transforms/fusion_wrapper.h"
 
 #include <cstdint>
 #include <memory>

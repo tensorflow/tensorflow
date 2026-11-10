@@ -652,6 +652,67 @@ ENTRY main {
               ElementsAre(0.75));
 }
 
+TEST_F(CoalescingTest, TransposeLargeOuterDimExceedingInt32Max) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      %input = c128[2, 134217728, 16] parameter(0)
+      %transpose = c128[134217728, 2, 16] transpose(%input), dimensions={1, 0, 2}
+      ROOT %slice = c128[1, 2, 16] slice(%transpose), slice={[0:1:1], [0:2:1], [0:16:1]}
+    }
+
+    ENTRY entry {
+      %input = c128[2, 134217728, 16] parameter(0)
+      ROOT %fusion = c128[1, 2, 16] fusion(%input), kind=kLoop, calls=fusion
+  })";
+  // thread_x in [0, 15] reads [0, 15] and thread_x in [16, 31] reads
+  // [2147483648, 2147483663] (> INT32_MAX). Both 16-element c128 intervals are
+  // 256-byte contiguous reads and should be coalesced.
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+}
+
+TEST_F(CoalescingTest, RhsTransposedLargeStrideExceedingInt32Max) {
+  absl::string_view ir = R"(
+    HloModule m
+    fusion {
+      p0 = f32[1073741824, 200]{1, 0} parameter(0)
+      p1 = f32[1073741824, 200]{0, 1} parameter(1)
+      ROOT exp = f32[1073741824, 200]{1, 0} add(p0, p1)
+    }
+    ENTRY e {
+      p0 = f32[1073741824, 200]{1, 0} parameter(0)
+      p1 = f32[1073741824, 200]{0, 1} parameter(1)
+      ROOT fusion = f32[1073741824, 200]{1, 0} fusion(p0, p1), kind=kInput, calls=fusion
+    }
+  )";
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, false));
+}
+
+TEST_F(CoalescingTest, ReduceWindowIntervalElementsExceedingInt32Max) {
+  absl::string_view ir = R"(
+    HloModule m
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+    fusion {
+      p0 = f32[2147483710] parameter(0)
+      c0 = f32[] constant(0)
+      ROOT rw = f32[32] reduce-window(p0, c0),
+        window={size=2147483648 stride=2}, to_apply=add
+    }
+    ENTRY e {
+      p0 = f32[2147483710] parameter(0)
+      ROOT fusion = f32[32] fusion(p0), kind=kLoop, calls=fusion
+    }
+  )";
+  // (thread_x)[s0] -> (thread_x * 2 + s0) for s0 in [0, 2147483647] produces a
+  // single contiguous interval of 2147483710 (> INT32_MAX) elements.
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

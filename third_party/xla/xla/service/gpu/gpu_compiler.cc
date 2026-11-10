@@ -124,7 +124,6 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gpu_copy_async_wrapper.h"
 #include "xla/backends/gpu/transforms/gpu_transpose_folding.h"
 #include "xla/backends/gpu/transforms/group_collectives_by_key.h"
-#include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/horizontal_fusion.h"
 #include "xla/backends/gpu/transforms/layout_assignment.h"
 #include "xla/backends/gpu/transforms/move_copy_to_users.h"
@@ -224,7 +223,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
-#include "xla/hlo/transforms/simplifiers/gemv_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_computation_deduplicator.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -2223,14 +2221,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
     if (IsTritonGemmEnabled(debug_options, gpu_version)) {
       pipeline.AddPass<DotDimensionNormalizer>(
-          /*normalize_noncontracting_dimensions=*/!debug_options
-              .xla_gpu_experimental_gemm_fusion_v2());
-      if (!debug_options.xla_gpu_experimental_gemm_fusion_v2()) {
-        pipeline.AddPass<GemvRewriter>();
-      }
+          /*normalize_noncontracting_dimensions=*/false);
       pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
       pipeline.AddPass<GemmFusion>(gpu_target_config.device_description);
-      pipeline.AddPass<HoistFusedBitcasts>();
       pipeline.AddPass<GemmFusionSwapOperands>();
     }
 
