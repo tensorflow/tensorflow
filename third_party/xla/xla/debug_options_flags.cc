@@ -372,7 +372,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
 
   opts.set_xla_gpu_temp_buffer_use_separate_color(false);
-  opts.set_xla_gpu_temp_buffer_use_collective_color(false);
+  opts.set_xla_gpu_temp_buffer_use_collective_color(true);
   opts.set_xla_gpu_require_exclusive_lock(false);
 
   opts.set_xla_gpu_redzone_padding_bytes(8 * 1024 * 1024);
