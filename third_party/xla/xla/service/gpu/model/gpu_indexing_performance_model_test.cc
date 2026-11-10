@@ -837,6 +837,54 @@ ENTRY main {
           device_info_));
   EXPECT_EQ(result.compute_time,
             dot0_compute.compute_time + dot1_compute.compute_time);
+  // 6 K-loop iterations in total: 64 / 16 = 4 (dot0) + 128 / 64 = 2 (dot1).
+  EXPECT_EQ(result.exec_time, result.read_time + result.write_time +
+                                  result.compute_time +
+                                  6 * dot_model::kLoopLatencyTax);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotPipeliningAndL2) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
+HloModule m
+dot_fusion {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT dot = bf16[512, 512] dot(p0, p1), lhs_contracting_dims={1},
+    rhs_contracting_dims={0}, backend_config={sizes:[64]}
+}
+ENTRY main {
+  p0 = bf16[512, 2048] parameter(0)
+  p1 = bf16[2048, 512] parameter(1)
+  ROOT fusion = bf16[512, 512] fusion(p0, p1), kind=kCustom, calls=dot_fusion
+})"));
+
+  std::unique_ptr<HloFusionAdaptor> adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+  auto estimate = [&](int num_stages) {
+    return indexing_cost_model_.EstimateRunTimeForTiledFusion(
+        *adaptor, BlockLevelParameters{/*output_tile_sizes=*/{{32, 16}},
+                                       /*num_warps=*/4,
+                                       /*num_ctas=*/1,
+                                       /*num_stages=*/num_stages});
+  };
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData stage1_result,
+                       estimate(/*num_stages=*/1));
+  ASSERT_OK_AND_ASSIGN(EstimateRunTimeData stage4_result,
+                       estimate(/*num_stages=*/4));
+
+  EXPECT_EQ(stage4_result.shared_memory_per_block_bytes,
+            4 * stage1_result.shared_memory_per_block_bytes);
+  // Software pipelining (num_stages = 4) overlaps HBM reads with compute,
+  // dropping mainloop time below L2 time.
+  EXPECT_EQ(stage4_result.compute_time, stage1_result.compute_time);
+  EXPECT_EQ(stage4_result.read_time, stage1_result.read_time);
+  EXPECT_LT(stage4_result.exec_time, stage1_result.exec_time);
+  EXPECT_EQ(stage4_result.exec_time,
+            dot_model::CalculateL2Time(/*k_loop_iterations=*/32, device_info_,
+                                       stage4_result.l2_bytes_read,
+                                       /*is_tma_allowed=*/false));
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,

@@ -636,20 +636,19 @@ bool DoesTilingFitInSharedMemory(
 }  // namespace internal
 
 namespace {
-// Holds dot launch resource footprints and compute/runtime estimates.
+// Holds dot resource footprints and mainloop work estimates.
 struct DotEstimates {
   absl::Duration compute_time = absl::ZeroDuration();
-  absl::Duration exec_time = absl::ZeroDuration();
+  int64_t k_loop_iterations = 0;
   int64_t shared_memory_per_block_bytes = 0;
   int registers_per_thread = 0;
 };
 
 // Combines two dot estimates within the same fusion by summing sequential
-// compute work and taking the maximum of per-block resource footprints.
+// mainloop work and taking the maximum of per-block resource footprints.
 DotEstimates MergeDotEstimates(DotEstimates dst, const DotEstimates& src) {
   dst.compute_time += src.compute_time;
-  // TODO: b/495346904 - integrate the dot stats more completely.
-  dst.exec_time = std::max(dst.exec_time, src.exec_time);
+  dst.k_loop_iterations += src.k_loop_iterations;
   dst.shared_memory_per_block_bytes = std::max(
       dst.shared_memory_per_block_bytes, src.shared_memory_per_block_bytes);
   dst.registers_per_thread =
@@ -673,28 +672,32 @@ absl::StatusOr<DotEstimates> BuildDotEstimates(
   CHECK_LT(lhs_contracting_dim, lhs_tile_sizes.size());
   int64_t block_k = lhs_tile_sizes[lhs_contracting_dim];
 
-  // Use the provided block parameters which contain num_warps and num_stages.
-  // The output_tile_sizes from the block parameters represent the fusion roots,
-  // which might have different tile sizes than the dot instruction itself.
-  // We clear them and explicitly pass the dot's tile sizes to ensure the
-  // dot cost model receives exactly one correct tile size.
-  BlockLevelParameters dot_block_params = block_params;
-  dot_block_params.output_tile_sizes.clear();
   ABSL_ASSIGN_OR_RETURN(llvm::SmallVector<int64_t> tile_sizes,
                    tiled_hlo->tile(0).GetStaticTileSizes());
-  dot_block_params.output_tile_sizes.emplace_back(tile_sizes.begin(),
-                                                  tile_sizes.end());
-  ABSL_ASSIGN_OR_RETURN(
-      EstimateRunTimeData dot_perf_stats,
-      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
-          dot_instr, dot_block_params, device_info, block_k));
+  absl::Span<const int64_t> batch_tile_sizes =
+      absl::MakeConstSpan(tile_sizes).first(tile_sizes.size() - 2);
+  dot_model::DotTileSize dot_tile{
+      /*m=*/tile_sizes[tile_sizes.size() - 2],
+      /*n=*/tile_sizes.back(),
+      /*k=*/block_k,
+      /*b=*/Product(batch_tile_sizes),
+  };
+
+  dot_model::DotProblemInfo dot_info(*dot_instr);
+
+  ABSL_ASSIGN_OR_RETURN(dot_model::ComputeAndFlops compute_and_flops,
+                   dot_model::CalculateComputeTimeWithTileAndWaveQuantization(
+                       dot_info, dot_tile, device_info));
 
   return DotEstimates{
-      /*compute_time=*/dot_perf_stats.compute_time,
-      /*exec_time=*/dot_perf_stats.exec_time,
+      /*compute_time=*/compute_and_flops.compute_time,
+      /*k_loop_iterations=*/CeilOfRatio<int64_t>(dot_info.k, block_k),
       /*shared_memory_per_block_bytes=*/
-      dot_perf_stats.shared_memory_per_block_bytes,
-      /*registers_per_thread=*/dot_perf_stats.registers_per_thread,
+      dot_model::CalculateSharedMemoryPerBlockBytes(dot_info, dot_tile,
+                                                    block_params.num_stages),
+      /*registers_per_thread=*/
+      dot_model::CalculateRegistersPerThread(dot_info, dot_tile, block_params,
+                                             device_info),
   };
 }
 
@@ -822,9 +825,6 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
                           n_bytes_total_map);
       });
 
-  absl::Duration read_time =
-      ComputeReadTime(n_bytes_total_map, device_info, num_blocks, shape_size);
-
   auto roots = tiled_hlo_computation.roots();
   int64_t bytes_written = 0;
   absl::Duration write_time;
@@ -846,19 +846,10 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
           block_level_parameters.num_warps * WarpSize(device_info)) +
       dot_estimates.compute_time;
 
-  absl::Duration memory_access_time = read_time + write_time;
-  absl::Duration exec_time =
-      GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
-          compute_time, memory_access_time);
-
-  // TODO(b/503201785): This is a hacky way to ensure that the execution time is
-  // at least as long as the dot execution time. But in those cases we are not
-  // accounting for any work in the epilogue or prologue properly. We are
-  // planning to do it in the future but the cost model will need to be
-  // significantly more complex for that.
-  exec_time = std::max(exec_time, dot_estimates.exec_time);
-
-  if (dot_estimates.exec_time > absl::ZeroDuration()) {
+  absl::Duration read_time;
+  absl::Duration exec_time;
+  const bool has_dot = dot_estimates.k_loop_iterations > 0;
+  if (has_dot) {
     int64_t total_net_hbm_bytes =
         GetNetBytesRead(n_bytes_total_map, shape_size) + bytes_written;
     float effective_hbm_bandwidth =
@@ -871,13 +862,35 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
         ComputeReadTime(n_bytes_total_map, device_info, num_blocks, shape_size,
                         /*include_cache_rereads=*/false, hbm_bandwidth_derate);
     write_time /= hbm_bandwidth_derate;
+
+    dot_model::LaunchConfig launch_config{
+        /*num_stages=*/block_level_parameters.num_stages,
+        /*num_warps=*/block_level_parameters.num_warps,
+        /*k_loop_iterations=*/dot_estimates.k_loop_iterations,
+        /*threadblock_count=*/num_blocks,
+        /*shared_memory_per_block_bytes=*/
+        dot_estimates.shared_memory_per_block_bytes,
+        /*registers_per_thread=*/dot_estimates.registers_per_thread,
+    };
+    absl::Duration pipelined_loop_time =
+        dot_model::CalculatePipelinedLoopTimeWithLaunchWaves(
+            launch_config, dot_estimates.compute_time,
+            dot_model::HbmEstimates{read_time, write_time}, device_info);
+    absl::Duration l2_time = dot_model::CalculateL2Time(
+        dot_estimates.k_loop_iterations, device_info, dot_l2_bytes_read,
+        block_level_parameters.is_tma_allowed);
+    exec_time = std::max(pipelined_loop_time, l2_time);
+  } else {
+    read_time =
+        ComputeReadTime(n_bytes_total_map, device_info, num_blocks, shape_size);
+    exec_time = GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
+        compute_time, read_time + write_time);
   }
 
   const int64_t estimated_shared_memory_per_block =
-      dot_estimates.exec_time > absl::ZeroDuration()
-          ? dot_estimates.shared_memory_per_block_bytes
-          : internal::EstimateSharedMemoryUsagePerBlock(tiled_hlo_computation,
-                                                        device_info);
+      has_dot ? dot_estimates.shared_memory_per_block_bytes
+              : internal::EstimateSharedMemoryUsagePerBlock(
+                    tiled_hlo_computation, device_info);
 
   return EstimateRunTimeData{
       /*flops=*/flops + dot_flops,
