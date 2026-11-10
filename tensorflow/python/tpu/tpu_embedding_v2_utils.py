@@ -1578,8 +1578,8 @@ class TableConfig:
         parameters.learning_rate.constant = self.optimizer.learning_rate
       if self.optimizer.low_dimensional_packing_status:
         parameters.low_dimensional_packing_status = (
-            optimization_parameters_pb2.LowDimensionalPackingStatus.Status.ENABLED
-        )
+            optimization_parameters_pb2.LowDimensionalPackingStatus.\
+                Status.ENABLED)
       # Use optimizer to handle the rest of the parameters.
       self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
 
