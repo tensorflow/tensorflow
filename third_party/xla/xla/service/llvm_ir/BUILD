@@ -48,26 +48,6 @@ filegroup(
 )
 
 cc_library(
-    name = "alias_analysis",
-    srcs = ["alias_analysis.cc"],
-    hdrs = ["alias_analysis.h"],
-    deps = [
-        ":ir_array",
-        ":llvm_type_conversion_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
-        "//xla/service:hlo_value",
-        "//xla/service:logical_buffer",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Core",
-    ],
-)
-
-cc_library(
     name = "llvm_util",
     srcs = ["llvm_util.cc"],
     hdrs = ["llvm_util.h"],
@@ -253,15 +233,6 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "ir_builder_mixin",
-    srcs = [],
-    hdrs = ["ir_builder_mixin.h"],
-    deps = [
-        "@llvm-project//llvm:Core",
     ],
 )
 
