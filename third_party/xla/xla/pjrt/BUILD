@@ -59,6 +59,7 @@ cc_library(
     deps = [
         ":device_event",
         ":pjrt_client",
+        ":pjrt_device_dimensions",
         ":pjrt_executable",
         ":raw_buffer",
         "//xla:executable_run_options",

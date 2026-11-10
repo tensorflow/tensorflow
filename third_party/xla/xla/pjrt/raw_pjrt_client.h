@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/runtime/device_id.h"
@@ -162,6 +163,10 @@ class PjRtExecutableLoadState
 class PjRtRawClient {
  public:
   virtual ~PjRtRawClient() = default;
+
+  // Quiesces any background work that may reference the owning
+  // CommonPjRtClient before CommonPjRtClient's members are destroyed.
+  virtual void Quiesce() {}
 
   virtual AsyncWorkRunner* async_work_runner() const = 0;
 
@@ -347,6 +352,15 @@ class PjRtRawClient {
 
   virtual absl::StatusOr<tsl::RCReference<PjRtExecutableLoadState>>
   MakeLoadState(const LoadOptions& load_options) = 0;
+
+  // Translates a subslice-relative device ID from an executable compiled for a
+  // subslice into a full-topology GlobalDeviceId given `computation_origin`.
+  virtual absl::StatusOr<GlobalDeviceId> TranslateSubsliceDeviceId(
+      int64_t subslice_device_id, const PjRtExecutable* executable,
+      const PjRtDeviceDimensions& computation_origin) const {
+    return absl::UnimplementedError(
+        "Subslice computation_origin is not supported.");
+  }
 
   virtual std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       LocalDeviceId local_device_id, absl::string_view description) const {

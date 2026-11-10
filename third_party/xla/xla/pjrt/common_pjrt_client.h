@@ -96,6 +96,8 @@ class CommonPjRtClient : public PjRtClient {
       std::optional<TiledLinearizer::ParallelismOptions>
           tiled_linearizer_options = std::nullopt);
 
+  ~CommonPjRtClient() override;
+
   // TODO(parkers): Devices should be constructed inside the constructor
   // once the device types are unified.
   void AttachDevices(
@@ -166,7 +168,7 @@ class CommonPjRtClient : public PjRtClient {
     return raw_client_->async_work_runner();
   }
 
-  virtual PjRtRawClient* raw_client() const { return raw_client_.get(); }
+  PjRtRawClient* raw_client() const { return raw_client_.get(); }
 
   LinearizeThrottler* linearize_throttler() const {
     return linearize_throttler_.get();
@@ -723,9 +725,7 @@ class CommonPjRtClient : public PjRtClient {
       std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override;
 
-  // TODO(parkers): Remove the need for this temporary function once more
-  // backend differences are resolved.
-  virtual absl::Status ResolveAddressableDevices(
+  absl::Status ResolveAddressableDevices(
       PjRtExecutable* executable, CompileOptions* compile_options,
       std::vector<PjRtLoadedExecutable::LogicalDeviceIds>&
           addressable_device_logical_ids,
