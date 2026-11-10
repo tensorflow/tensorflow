@@ -93,7 +93,7 @@ absl::StatusOr<std::string> GetChunk(
   if (end_of_splits) {
     return absl::OutOfRangeError("No more available chunks.");
   }
-  return split.unaligned_flat<tsl::tstring>().data()[0];
+  return split.unaligned_flat<tsl::tstring>()(0);
 }
 
 absl::StatusOr<std::vector<std::string>> GetAllChunks(
@@ -106,7 +106,7 @@ absl::StatusOr<std::vector<std::string>> GetAllChunks(
     if (end_of_splits) {
       return chunks;
     }
-    chunks.push_back(split.unaligned_flat<tsl::tstring>().data()[0]);
+    chunks.push_back(split.unaligned_flat<tsl::tstring>()(0));
   }
   return chunks;
 }
@@ -245,7 +245,7 @@ TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
               break;
             }
             absl::MutexLock l(mu);
-            result.push_back(split.unaligned_flat<tsl::tstring>().data()[0]);
+            result.push_back(split.unaligned_flat<tsl::tstring>()(0));
           }
         })));
   }
