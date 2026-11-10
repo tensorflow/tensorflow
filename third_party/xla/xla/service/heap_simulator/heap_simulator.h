@@ -319,6 +319,10 @@ class HeapAlgorithm {
   // Finish collects the buffer offset assignment results.  Finish may only be
   // called once, after all Alloc and Free calls.
   virtual absl::StatusOr<Result> Finish() = 0;
+
+  // Returns true if this algorithm only collects heap size statistics without
+  // computing chunk assignments (e.g. NoFragmentationStatsHeap).
+  virtual bool IsStatsOnly() const { return false; }
 };
 
 // NoFragmentationStatsHeap computes the heap size assuming no fragmentation;
@@ -342,6 +346,8 @@ class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
   void Free(const BufferType* buffer, int64_t size) override;
 
   absl::StatusOr<Result> Finish() override;
+
+  bool IsStatsOnly() const override { return true; }
 
  private:
   int64_t current_heap_size_ = 0;

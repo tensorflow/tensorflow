@@ -283,7 +283,8 @@ static bool HasIota(HloSortInstruction* sort, HloInstruction* data) {
 }
 
 std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst,
-                                                  ComparisonOrder* order) {
+                                                  ComparisonOrder* order,
+                                                  bool* is_stable_expanded) {
   HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
   if (sort == nullptr) {
     return std::nullopt;
@@ -302,6 +303,9 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst,
   }
   if (order != nullptr) {
     *order = matched->order;
+  }
+  if (is_stable_expanded != nullptr) {
+    *is_stable_expanded = matched->is_stable_expanded;
   }
   const int64_t sort_dim = sort->sort_dimension();
 
@@ -444,6 +448,14 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k,
   return {topk, value_gte, index_gte};
 }
 
+absl::Status TopkRewriter::ReplaceSliceWithTopKOutput(
+    HloInstruction* slice, HloInstruction* topk_output) {
+  if (ShapeUtil::SameDimensions(slice->shape(), topk_output->shape())) {
+    return slice->ReplaceAllUsesWith(topk_output);
+  }
+  return slice->ReplaceOperandWithDifferentShape(0, topk_output);
+}
+
 absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
     HloInstruction* inst) {
   // Check if sort is in TopK.
@@ -474,16 +486,6 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
 
   TopKCustomCall topkcc = CreateTopKCustomCall(sort, k.value(), order);
 
-  // If the slice starts at 0, its output matches topk_gte, so elide the slice.
-  // Else, retarget the slice to take [start:k] directly from topk_gte.
-  auto replace_slice = [](HloInstruction* slice,
-                          HloInstruction* topk_gte) -> absl::Status {
-    if (ShapeUtil::SameDimensions(slice->shape(), topk_gte->shape())) {
-      return slice->ReplaceAllUsesWith(topk_gte);
-    }
-    return slice->ReplaceOperandWithDifferentShape(0, topk_gte);
-  };
-
   std::vector<HloInstruction*> sort_users = sort->users();
   for (HloInstruction* user : sort_users) {
     if (sort->operand_count() == 2) {
@@ -491,9 +493,9 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
       std::vector<HloInstruction*> gte_users = gte->users();
       for (HloInstruction* slice : gte_users) {
         if (gte->tuple_index() == 0) {
-          ABSL_RETURN_IF_ERROR(replace_slice(slice, topkcc.value_gte));
+          ABSL_RETURN_IF_ERROR(ReplaceSliceWithTopKOutput(slice, topkcc.value_gte));
         } else if (gte->tuple_index() == 1) {
-          ABSL_RETURN_IF_ERROR(replace_slice(slice, topkcc.index_gte));
+          ABSL_RETURN_IF_ERROR(ReplaceSliceWithTopKOutput(slice, topkcc.index_gte));
         } else {
           // The line below should be unreachable. SortIsInTopK() already checks
           // that sort has either 1 or 2 operands. Reaching this line indicates
@@ -503,7 +505,7 @@ absl::StatusOr<HloInstruction*> TopkRewriter::TransformPatternToCustomCall(
         }
       }
     } else {
-      ABSL_RETURN_IF_ERROR(replace_slice(user, topkcc.value_gte));
+      ABSL_RETURN_IF_ERROR(ReplaceSliceWithTopKOutput(user, topkcc.value_gte));
     }
   }
 

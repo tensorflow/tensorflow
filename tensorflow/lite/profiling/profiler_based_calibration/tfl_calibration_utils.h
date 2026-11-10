@@ -2,7 +2,7 @@
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
-you may obtain a copy of the License at
+You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
@@ -32,9 +32,14 @@ struct Range {
 };
 
 // Invokes the subgraph at `subgraph_index` using the specified `interpreter`,
-// and returns a map of min/max values for each non-constant tensor encountered
-// during execution. Currently min/max collection supports only float32 and
-// int32 tensors, all other tensors are ignored.
+// and returns a map of min/max values for each non-constant, non-empty, named
+// tensor encountered during execution. Currently min/max collection supports
+// only float32 and int32 tensors, all other tensors are ignored.
+//
+// Float NaNs and values outside `(-3e38, 3e38)` are excluded from min/max
+// (similar to Python's `min_max_calibrate`). If a tensor has non-NaN values but
+// none within `(-3e38, 3e38)`, its raw non-NaN min/max is used instead; all-NaN
+// tensors are omitted.
 absl::StatusOr<std::map<std::string, Range>> InvokeWithCalibration(
     tflite::Interpreter* interpreter, int subgraph_index,
     tflite::StatefulErrorReporter* reporter = nullptr);
