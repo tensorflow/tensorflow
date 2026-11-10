@@ -758,7 +758,7 @@ absl::Status ClearBackendConfigDeviceType(HloInstruction* instr) {
   return instr->set_backend_config(backend_config);
 }
 
-bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
+bool BackendConfigDeviceTypeIsHost(const HloInstruction* instr) {
   if (!instr->has_backend_config()) {
     return false;
   }
