@@ -30,6 +30,7 @@ py_library(
     deps = [
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:tf_export",
     ],

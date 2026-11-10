@@ -184,8 +184,8 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
   def testNonNumericTypesRaiseInsteadOfAborting(self, make_tensor) -> None:
     """String, variant and resource tensors must raise, not abort the process.
 
-    The C++ exporter used to read the tensor's data pointer before validating
-    the dtype, which hit a `CHECK` failure (SIGABRT) for these dtypes.
+    The C++ exporter reads the tensor's data pointer before validating the
+    dtype, which hits a `CHECK` failure (SIGABRT) for these dtypes.
 
     Args:
       make_tensor: Creates a non-empty tensor of the dtype under test.
@@ -200,6 +200,13 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 ".* is not supported by dlpack"):
       np.from_dlpack(tf_tensor)
+
+  def testNumpyArrayStillRejectedAsNonTensor(self) -> None:
+    """Non-TF inputs keep the C++ "must be a TF tensor" error."""
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "The argument to `to_dlpack` must be a TF tensor, not Python object"):
+      dlpack.to_dlpack(np.array([1.0]))
 
   def testMustPassTensorArgumentToDLPack(self) -> None:
     """Passing a non-Tensor should fail fast with a clear message."""
