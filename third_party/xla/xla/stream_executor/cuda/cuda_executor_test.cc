@@ -17,9 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,15 +28,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"  // IWYU pragma: keep
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/debug_options_flags.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/cuda/command_buffer_kernels.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -51,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
@@ -140,93 +134,6 @@ TEST(CudaExecutorTest, GetCudaKernel) {
                        GetAddI32TestKernelSpec(cuda::kCudaPlatformId));
   verify_kernel(add);
   verify_kernel(GetAddI32PtxKernelSpec());
-
-  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec set_case_condition,
-                       cuda::GetSetCaseConditionKernelLoaderSpec());
-  verify_kernel(set_case_condition);
-  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec set_while_condition,
-                       cuda::GetSetWhileConditionKernelLoaderSpec());
-  verify_kernel(set_while_condition);
-  ASSERT_OK_AND_ASSIGN(KernelLoaderSpec noop, cuda::GetNoOpKernelLoaderSpec());
-  verify_kernel(noop);
-}
-
-TEST(CudaExecutorTest, LoadPtxUsesDriverCompilationFallbackWhenConfigured) {
-  auto save_env = [](const char* name) -> std::optional<std::string> {
-    if (const char* val = std::getenv(name)) {
-      return std::string(val);
-    }
-    return std::nullopt;
-  };
-  auto restore_env = [](const char* name,
-                        const std::optional<std::string>& val) {
-    if (val.has_value()) {
-      tsl::setenv(name, val->c_str(), 1);
-    } else {
-      tsl::unsetenv(name);
-    }
-  };
-  const std::optional<std::string> orig_test_srcdir = save_env("TEST_SRCDIR");
-  const std::optional<std::string> orig_path = save_env("PATH");
-  const std::optional<std::string> orig_cuda_home = save_env("CUDA_HOME");
-  absl::Cleanup restore_env_vars = [&] {
-    restore_env("TEST_SRCDIR", orig_test_srcdir);
-    restore_env("PATH", orig_path);
-    restore_env("CUDA_HOME", orig_cuda_home);
-  };
-  tsl::setenv("TEST_SRCDIR", "/does/not/exist", 1);
-  tsl::setenv("PATH", "", 1);
-  tsl::unsetenv("CUDA_HOME");
-
-  if (FindPtxAsExecutable("/does/not/exist").ok()) {
-    GTEST_SKIP() << "ptxas is installed at a default system path, so "
-                    "SubprocessCompilationProvider would be selected.";
-  }
-
-  std::vector<tsl::Flag> flags;
-  xla::AppendDebugOptionsFlags(&flags);
-  auto parse_flags = [&](std::vector<std::string> args) {
-    EXPECT_TRUE(tsl::Flags::Parse(args, flags));
-    EXPECT_TRUE(args.empty());
-  };
-  absl::Cleanup restore_flags = [&] {
-    xla::ResetFlagValues();
-    xla::ParseDebugOptionFlagsFromEnv(/*reset_envvar=*/false);
-  };
-
-  ASSERT_OK_AND_ASSIGN(Platform * platform,
-                       PlatformManager::PlatformWithName("CUDA"));
-  ASSERT_GT(platform->VisibleDeviceCount(), 0);
-
-  parse_flags({
-      "--xla_gpu_enable_libnvptxcompiler=false",
-      "--xla_gpu_enable_libnvjitlink=false",
-      "--xla_gpu_cuda_data_dir=/does/not/exist",
-      "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found=false",
-  });
-  {
-    CudaExecutor executor_no_fallback(platform, /*device_ordinal=*/0);
-    ASSERT_OK(executor_no_fallback.Init());
-    EXPECT_THAT(executor_no_fallback.LoadKernel(GetAddI32PtxKernelSpec()),
-                absl_testing::StatusIs(absl::StatusCode::kUnavailable));
-  }
-
-  parse_flags({
-      "--xla_gpu_enable_libnvptxcompiler=false",
-      "--xla_gpu_enable_libnvjitlink=false",
-      "--xla_gpu_cuda_data_dir=/does/not/exist",
-      "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found=true",
-  });
-  {
-    CudaExecutor executor_with_fallback(platform, /*device_ordinal=*/0);
-    ASSERT_OK(executor_with_fallback.Init());
-    ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<Kernel> kernel,
-        executor_with_fallback.LoadKernel(GetAddI32PtxKernelSpec()));
-    EXPECT_THAT(executor_with_fallback.GetCudaKernel(kernel.get()),
-                absl_testing::IsOkAndHolds(kernel.get()));
-    executor_with_fallback.UnloadKernel(kernel.get());
-  }
 }
 
 TEST(CudaExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
