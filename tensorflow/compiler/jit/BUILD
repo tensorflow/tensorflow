@@ -1889,10 +1889,10 @@ tf_cuda_only_cc_test(
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/tfrt/common:pjrt_util",
         "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:statusor",
         "@xla//xla:shape_util",
         "@xla//xla/pjrt:pjrt_client",
         "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
