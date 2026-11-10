@@ -345,7 +345,6 @@ absl::StatusOr<std::vector<ArrayRef>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
-  DCHECK(this);
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
       !array_spec_.sharding->devices()->IsFullyAddressable()) {
     return InvalidArgument(
@@ -388,7 +387,6 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(
 tsl::Future<> PjRtArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
   if (array_spec_.sharding->devices()->size() != 1) {
     if (array_spec_.sharding->IsFullyReplicated()) {
       absl::StatusOr<ArrayRef> replicated = FullyReplicatedShard(semantics);
@@ -480,7 +478,6 @@ absl::StatusOr<Memory*> GetMemorySpaceFromMemoryKind(
 absl::StatusOr<std::shared_ptr<PjRtBuffer>> PjRtArray::CopySinglePjRtBuffer(
     int index, Device* dst_device, std::optional<MemoryKind> dst_memory_kind,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
   if (index >= pjrt_buffers_.size() || index < 0) {
     return InvalidArgument(
         "Index %d nust be non-negative and less than the number of buffers "
@@ -570,7 +567,6 @@ absl::StatusOr<ArrayRef> PjRtArray::CopyImpl(
     std::optional<xla::ifrt::DeviceListRef> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind, PjRtArray* donated_dst,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
   ABSL_ASSIGN_OR_RETURN(auto new_sharding,
                    sharding().WithDeviceAssignment(devices, memory_kind));
   if (new_sharding->devices()->size() !=
@@ -642,7 +638,6 @@ absl::StatusOr<ArrayRef> PjRtArray::CopyImpl(
 }
 
 tsl::Future<> PjRtArray::GetReadyFuture() const {
-  DCHECK(this);
   if (pjrt_buffers_.size() == 1) {
     return pjrt_buffers_.front()->GetReadyFuture();
   }
@@ -655,7 +650,6 @@ tsl::Future<> PjRtArray::GetReadyFuture() const {
 }
 
 tsl::Future<> PjRtArray::Delete() {
-  DCHECK(this);
   for (auto& buffer : pjrt_buffers_) {
     if (buffer != nullptr) {
       buffer->Delete();
@@ -667,7 +661,6 @@ tsl::Future<> PjRtArray::Delete() {
 }
 
 bool PjRtArray::IsDeleted() const {
-  DCHECK(this);
   if (is_deleted_) {
     return true;
   }
@@ -680,7 +673,6 @@ bool PjRtArray::IsDeleted() const {
 }
 
 std::string PjRtArray::DebugString() const {
-  DCHECK(this);
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout_ptr =
       pjrt_layout();
   if (layout_ptr.ok() && *layout_ptr == nullptr) {

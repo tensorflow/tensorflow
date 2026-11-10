@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/strings/cord.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -83,7 +82,6 @@ class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
   // ifrt::Array API
 
   Client* client() const override {
-    DCHECK(this);
     return client_;
   }
 
@@ -92,17 +90,14 @@ class BasicStringArray final : public RTTIExtends<BasicStringArray, Array> {
   DType dtype() const override { return array_spec_.dtype; }
 
   const Shape& shape() const override {
-    DCHECK(this);
     return array_spec_.shape;
   }
 
   const Sharding& sharding() const override {
-    DCHECK(this);
     return *array_spec_.sharding;
   }
 
   ShardingRef shared_ptr_sharding() const override {
-    DCHECK(this);
     return array_spec_.sharding;
   }
 

@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -301,46 +300,37 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
   absl::string_view runtime_type() const override { return kRuntimeType; }
 
   absl::string_view platform_name() const override {
-    DCHECK(this);
     return pjrt_client_->platform_name();
   }
   absl::string_view platform_version() const override {
-    DCHECK(this);
     return pjrt_client_->platform_version();
   }
   PlatformId platform_id() const override {
-    DCHECK(this);
     return pjrt_client_->platform_id();
   }
 
   const AttributeMap& Attributes() const override;
 
   int device_count() const override {
-    DCHECK(this);
     return devices_.size();
   }
   int addressable_device_count() const override {
-    DCHECK(this);
     return pjrt_client_->addressable_device_count();
   }
   absl::Span<Device* const> devices() const override {
-    DCHECK(this);
     return devices_;
   }
   absl::Span<Device* const> addressable_devices() const override {
-    DCHECK(this);
     return addressable_devices_;
   }
   int process_index() const override { return my_process_index_; }
 
   absl::Span<Device* const> GetAllDevices() const override {
-    DCHECK(this);
     return devices_;
   }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
-    DCHECK(this);
     return pjrt_client_->GetDefaultDeviceAssignment(num_replicas,
                                                     num_partitions);
   }
@@ -353,7 +343,6 @@ class PjRtClient final : public RTTIExtends<PjRtClient, PjRtCompatibleClient> {
       absl::Span<Device* const> devices) const override;
 
   Compiler* GetDefaultCompiler() override {
-    DCHECK(this);
     return &default_compiler_;
   }
 

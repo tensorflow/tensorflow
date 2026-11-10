@@ -1001,7 +1001,6 @@ absl::StatusOr<xla::GlobalDeviceId> PjRtClient::GetGlobalDeviceId(
 }
 
 absl::StatusOr<Device*> PjRtClient::LookupDevice(DeviceId device_id) const {
-  DCHECK(this);
   auto it = device_id_map_.find(device_id);
   if (it != device_id_map_.end()) {
     return it->second;
@@ -1012,7 +1011,6 @@ absl::StatusOr<Device*> PjRtClient::LookupDevice(DeviceId device_id) const {
 
 absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
     int local_hardware_id) const {
-  DCHECK(this);
   ABSL_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                    pjrt_client_->LookupAddressableDevice(
                        xla::LocalDeviceId(local_hardware_id)));
@@ -1049,7 +1047,6 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     LayoutRef layout, Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
-  DCHECK(this);
   if (dtype.kind() == DType::kString) {
     if (layout != nullptr) {
       return InvalidArgument(
@@ -1158,7 +1155,6 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
   if (error.ok()) {
     return absl::InvalidArgumentError("Error status must not be OK");
   }
-  DCHECK(this);
   std::vector<ArrayRef> arrays;
   arrays.reserve(array_specs.size());
   for (const auto& array_spec : array_specs) {
@@ -1235,7 +1231,6 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     DType dtype, Shape shape, ShardingRef sharding, absl::Span<ArrayRef> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
-  DCHECK(this);
   if (!arrays.empty() && isa<const SingleDeviceSharding>(sharding.get())) {
     // Assemble with SingleDeviceSharding is No-op.
     if (arrays.size() != 1) {

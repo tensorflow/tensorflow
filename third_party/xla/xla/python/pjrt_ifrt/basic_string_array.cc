@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_macros.h"
 #include "absl/status/statusor.h"
@@ -157,7 +156,6 @@ absl::StatusOr<std::optional<int64_t>> BasicStringArray::ByteSize() const {
 }
 
 tsl::Future<> BasicStringArray::GetReadyFuture() const {
-  DCHECK(this);
   absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return tsl::Future<>(
@@ -170,7 +168,6 @@ absl::StatusOr<std::vector<ArrayRef>>
 BasicStringArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
-  DCHECK(this);
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
       !array_spec_.sharding->devices()->IsFullyAddressable()) {
     return InvalidArgument(
@@ -272,7 +269,6 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
 tsl::Future<> BasicStringArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
   absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return tsl::Future<>(
@@ -309,7 +305,6 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
     std::optional<xla::ifrt::DeviceListRef> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
-  DCHECK(this);
   absl::MutexLock lock(mu_);
   if (is_deleted_) {
     return absl::FailedPreconditionError("Array has already been deleted");
@@ -425,7 +420,6 @@ BasicStringArray::pjrt_layout() const {
 LayoutRef BasicStringArray::layout() const { return nullptr; }
 
 std::string BasicStringArray::DebugString() const {
-  DCHECK(this);
   return absl::StrFormat(
       "BasicStringArray(shape=%v; sharding=%v; layout=major-to-minor-dense)",
       array_spec_.shape, array_spec_.sharding);

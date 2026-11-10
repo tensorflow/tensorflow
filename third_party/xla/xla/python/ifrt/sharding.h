@@ -369,12 +369,10 @@ class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
       std::vector<DynamicShape> shard_dynamic_shapes);
 
   bool has_dynamic_shape() const {
-    DCHECK(this);
     return sharding_spec_->has_dynamic_shape();
   }
 
   bool has_static_shape() const {
-    DCHECK(this);
     return sharding_spec_->has_static_shape();
   }
 
@@ -389,18 +387,15 @@ class ConcreteSharding : public RTTIExtends<ConcreteSharding, Sharding> {
   }
 
   const std::vector<Shape>& shard_shapes() const {
-    DCHECK(this);
     return sharding_spec_->shard_shapes();
   }
 
   const std::vector<DynamicShape>& shard_dynamic_shapes() const {
-    DCHECK(this);
     return sharding_spec_->shard_dynamic_shapes();
   }
 
   const std::optional<std::vector<xla::ifrt::IndexDomain>>& index_domains()
       const {
-    DCHECK(this);
     return sharding_spec_->index_domains();
   }
 
@@ -462,11 +457,9 @@ class ConcreteEvenSharding
       Shape shard_shape, bool is_fully_replicated = false);
 
   Shape shape() const {
-    DCHECK(this);
     return sharding_spec_->shape();
   }
   const Shape& shard_shape() const {
-    DCHECK(this);
     return sharding_spec_->shard_shape();
   }
 
