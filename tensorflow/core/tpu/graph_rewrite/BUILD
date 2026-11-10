@@ -376,6 +376,8 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@xla//xla:status_macros",
         "@xla//xla/tpu:tpu_ops_c_api_hdrs",
+        "@xla//xla/tpu/protobuf:optimization_parameters_proto_cc",
+        "@xla//xla/tpu/protobuf:tpu_embedding_configuration_proto_cc",
         "@xla//xla/tsl/platform:logging",
     ],
 )
@@ -403,6 +405,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@xla//xla:status_macros",
+        "@xla//xla/tpu/protobuf:tpu_embedding_configuration_proto_cc",
     ],
 )
 
@@ -439,6 +442,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@xla//xla:status_macros",
+        "@xla//xla/tpu/protobuf:tpu_embedding_configuration_proto_cc",
     ],
 )
 
