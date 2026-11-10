@@ -773,12 +773,23 @@ AsyncTracker::GetNumResourcesPerInstruction(const HloInstruction& instr) const {
     }
   }
 
+  // Only the start of an async op reports its async computation as a called
+  // computation; account for it at the update and done of the async op as
+  // well, so that the resources used inside the async op are checked at both
+  // ends of it.
+  // TODO(deqiangc): Converge this behaviour with GetNumResourcesPerInstruction.
+  std::vector<const HloComputation*> nested_computations(
+      instr.called_computations().begin(), instr.called_computations().end());
+  if (instr.IsAsynchronous() && nested_computations.empty()) {
+    nested_computations.push_back(instr.async_wrapped_computation());
+  }
+
   // For instructions calling multiple computations, we assume that the called
   // computations do not execute in parallel (i.e., they are either mutually
   // exclusive, as in conditionals, or executed in sequence). Then for each
   // resource type, the usage across all called computations is the maximum
   // usage in any of the called computations.
-  for (const HloComputation* computation : instr.called_computations()) {
+  for (const HloComputation* computation : nested_computations) {
     const auto& map = RecursivelyComputeResourceMap(computation);
     for (const auto& [resource_type, num_resources] : map) {
       num_resources_per_type[resource_type] =

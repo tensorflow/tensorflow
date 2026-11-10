@@ -3245,6 +3245,53 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp3d"));
 }
 
+// The resources used inside an async op (here by an async copy fused into the
+// fusion wrapped by the async op) are accounted for as recursive resources of
+// its start, update and done alike, not only of its start.
+TEST_F(LatencyHidingSchedulerTest,
+       RecursiveResourcesOfAsyncOpAreTheSameAtStartAndDone) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module, is_scheduled=true
+
+%fused_copy (p: f32[128]) -> f32[128] {
+  %p = f32[128]{0} parameter(0)
+  ROOT %copy = f32[128]{0} copy(%p)
+}, execution_thread="parallel_thread"
+
+%fused_computation (fp: f32[128]) -> f32[128] {
+  %fp = f32[128]{0} parameter(0)
+  %fused_copy_start = ((f32[128]{0}), f32[128]{0}, u32[]) async-start(%fp), calls=%fused_copy
+  %fused_copy_done = f32[128]{0} async-done(%fused_copy_start)
+  ROOT %negate = f32[128]{0} negate(%fused_copy_done)
+}, execution_thread="parallel_thread"
+
+%async_computation (ap: f32[128]) -> f32[128] {
+  %ap = f32[128]{0} parameter(0)
+  ROOT %fusion = f32[128]{0} fusion(%ap), kind=kCustom, calls=%fused_computation
+}, execution_thread="parallel_thread"
+
+ENTRY %entry (p0: f32[128]) -> f32[128] {
+  %p0 = f32[128]{0} parameter(0)
+  %fusion_start = ((f32[128]{0}), f32[128]{0}, u32[]) async-start(%p0), async_execution_thread="parallel_thread", calls=%async_computation
+  %fusion_update = ((f32[128]{0}), f32[128]{0}, u32[]) async-update(%fusion_start)
+  ROOT %fusion_done = f32[128]{0} async-done(%fusion_update)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(kHlo));
+  AsyncTracker tracker(GetDefaultSchedConfig());
+  const int64_t copy = ResourceTypeToIndex(ResourceType::kCopy);
+  for (absl::string_view name :
+       {"fusion_start", "fusion_update", "fusion_done"}) {
+    const HloInstruction* instr = FindInstruction(hlo_module.get(), name);
+    EXPECT_THAT(tracker.GetResourcesFromInstruction(*instr),
+                ::testing::IsEmpty())
+        << name;
+    EXPECT_THAT(tracker.GetNumResourcesPerInstruction(*instr),
+                ::testing::ElementsAre(::testing::Pair(copy, 1)))
+        << name;
+  }
+}
+
 TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
   // Extend AsyncTracker for a fake target with one target-defined resource
   class AsyncTrackerForMyTarget : public AsyncTracker {
