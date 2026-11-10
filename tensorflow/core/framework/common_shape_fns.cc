@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/einsum_op_util.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -1347,6 +1348,63 @@ absl::Status DepthwiseConv2DNativeShapeWithExplicitPadding(
 
 namespace {
 
+// Computes the output size of a pooling window along one dimension.
+// If padding is VALID or EXPLICIT, a known input dimension smaller than
+// `window` by less than 2 * `stride` infers an output size of 0 instead
+// of a negative dimension error, matching the runtime kernel.
+absl::Status PoolingOutputSize(shape_inference::InferenceContext* c,
+                               shape_inference::DimensionHandle input_size,
+                               int32_t window, int32_t stride,
+                               Padding padding, int64_t pad_before,
+                               int64_t pad_after,
+                               shape_inference::DimensionHandle* output_size) {
+  if (stride <= 0) {
+    return errors::InvalidArgument("Stride must be > 0, but got ", stride);
+  }
+
+  if (padding == Padding::EXPLICIT) {
+    const int64_t total_pad = AddWithoutOverflow(pad_before, pad_after);
+    if (total_pad < 0) {
+      return errors::InvalidArgument(
+          "Overflow or negative value when adding explicit paddings: ",
+          pad_before, " + ", pad_after);
+    }
+    if (c->ValueKnown(input_size)) {
+      const int64_t padded_input =
+          AddWithoutOverflow(c->Value(input_size), total_pad);
+      if (padded_input < 0) {
+        return errors::InvalidArgument(
+            "Overflow when adding input size and explicit padding: ",
+            c->Value(input_size), " + ", total_pad);
+      }
+      if (c->Value(input_size) < window && pad_before < window &&
+          pad_after < window && padded_input < window) {
+        // Runtime pooling uses signed division, which truncates toward zero.
+        // Compare the gap with twice the stride without overflowing.
+        const int64_t gap = static_cast<int64_t>(window) - padded_input;
+        if (gap - stride < stride) {
+          *output_size = c->MakeDim(0);
+          return absl::OkStatus();
+        }
+      }
+    }
+  } else if (padding == Padding::VALID) {
+    if (c->ValueKnown(input_size) && c->Value(input_size) < window) {
+      // Runtime pooling uses signed division, which truncates toward zero.
+      // Compare the gap with twice the stride without overflowing.
+      const int64_t gap = static_cast<int64_t>(window) - c->Value(input_size);
+      if (gap - stride < stride) {
+        *output_size = c->MakeDim(0);
+        return absl::OkStatus();
+      }
+    }
+  }
+
+  return GetWindowedOutputSizeFromDimsV2(c, input_size, window,
+                                         /*dilation_rate=*/1, stride, padding,
+                                         pad_before, pad_after, output_size);
+}
+
 // Computes the output size of a pooling window along one dimension. If
 // `allow_empty_valid_output` is true and the padding is VALID, a known input
 // dimension smaller than `window` by less than 2 * `stride` (window - input <
@@ -1358,15 +1416,9 @@ absl::Status GetPoolingOutputSizeFromDims(shape_inference::InferenceContext* c,
                                           Padding padding,
                                           bool allow_empty_valid_output,
                                           DimensionHandle* output_size) {
-  if (allow_empty_valid_output && padding == Padding::VALID && stride > 0 &&
-      c->ValueKnown(input_size) && c->Value(input_size) < window) {
-    // Runtime pooling uses signed division, which truncates toward zero.
-    // Compare the gap with twice the stride without overflowing.
-    const int64_t gap = static_cast<int64_t>(window) - c->Value(input_size);
-    if (gap - stride < stride) {
-      *output_size = c->MakeDim(0);
-      return absl::OkStatus();
-    }
+  if (allow_empty_valid_output) {
+    return PoolingOutputSize(c, input_size, window, stride, padding,
+                             /*pad_before=*/-1, /*pad_after=*/-1, output_size);
   }
   return GetWindowedOutputSizeFromDims(c, input_size, window, stride, padding,
                                        output_size);
@@ -1875,39 +1927,6 @@ absl::Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c) {
   c->set_output(0, output_shape);
   return absl::OkStatus();
 }
-
-namespace {
-
-absl::Status PoolingOutputSize(shape_inference::InferenceContext* c,
-                               shape_inference::DimensionHandle input_size,
-                               int32_t window, int32_t stride,
-                               Padding padding, int64_t pad_before,
-                               int64_t pad_after,
-                               shape_inference::DimensionHandle* output_size) {
-  if ((padding == Padding::VALID || padding == Padding::EXPLICIT) &&
-      stride > 0 && c->ValueKnown(input_size) &&
-      c->Value(input_size) < window &&
-      (padding != Padding::EXPLICIT ||
-       (pad_before < window && pad_after < window))) {
-    const int64_t total_pad =
-        (padding == Padding::EXPLICIT) ? (pad_before + pad_after) : 0;
-    const int64_t padded_input = c->Value(input_size) + total_pad;
-    if (padded_input < window) {
-      // Runtime pooling uses signed division, which truncates toward zero.
-      // Compare the gap with twice the stride without overflowing.
-      const int64_t gap = static_cast<int64_t>(window) - padded_input;
-      if (gap - stride < stride) {
-        *output_size = c->MakeDim(0);
-        return absl::OkStatus();
-      }
-    }
-  }
-  return GetWindowedOutputSizeFromDimsV2(c, input_size, window,
-                                         /*dilation_rate=*/1, stride, padding,
-                                         pad_before, pad_after, output_size);
-}
-
-}  // namespace
 
 absl::Status MaxPoolShapeImpl(shape_inference::InferenceContext* c,
                               bool supports_explicit_padding) {

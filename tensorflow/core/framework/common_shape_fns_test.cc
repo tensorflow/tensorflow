@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 
+#include <limits>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -1417,7 +1418,7 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
                       const std::vector<int32_t>& ksizes,
                       const std::string& padding,
                       const std::string& data_format,
-                      const std::vector<int32_t>& explicit_paddings = {}) {
+                      const std::vector<int64_t>& explicit_paddings = {}) {
     TF_CHECK_OK(NodeDefBuilder("test", "MaxPool")
                     .Input("input", 0, DT_FLOAT)
                     .Attr("strides", strides)
@@ -1455,6 +1456,15 @@ TEST(CommonShapeFnsTest, MaxPool2DShapeTest) {
   set_op({1, 2, 1, 1}, {1, 6, 2, 1}, "EXPLICIT", "NHWC",
          {0, 0, 0, 1, 0, 0, 0, 0});
   INFER_ERROR("Negative dimension size", op, "[1,1,2,3]");
+
+  // Explicit padding overflow triggers error.
+  set_op({1, 1, 1, 1}, {1, 2, 2, 1}, "EXPLICIT", "NHWC",
+         {0, 0, std::numeric_limits<int64_t>::max(), 1, 0, 0, 0, 0});
+  INFER_ERROR("Overflow", op, "[1,1,2,3]");
+
+  set_op({1, 1, 1, 1}, {1, 2, 2, 1}, "EXPLICIT", "NHWC",
+         {0, 0, std::numeric_limits<int64_t>::max() - 10, 0, 0, 0, 0, 0});
+  INFER_ERROR("Overflow", op, "[1,20,2,3]");
 
   // NCHW format with width smaller than filter produces empty width dimension.
   set_op({1, 1, 1, 1}, {1, 1, 2, 2}, "VALID", "NCHW");
