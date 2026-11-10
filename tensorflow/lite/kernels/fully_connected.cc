@@ -1973,6 +1973,8 @@ TfLiteStatus EvalBlockwise4Bit(
       }
     }
   }
+  tensor_utils::ApplyActivationToVector(output_ptr, NumElements(output),
+                                        params->activation, output_ptr);
   return kTfLiteOk;
 }
 
