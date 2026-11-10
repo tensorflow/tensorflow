@@ -52,6 +52,17 @@ TEST(ReadDynamicShapeMetadataTest, Rank1DynamicDimension) {
               IsOkAndHolds(ShapeEqualTo(ShapeUtil::MakeShape(F32, {24}))));
 }
 
+TEST(ReadDynamicShapeMetadataTest, UnalignedMetadataPointer) {
+  std::vector<uint8_t> aligned = MakeMetadata({24});
+  std::vector<uint8_t> unaligned(aligned.size() + 2);
+  std::memcpy(unaligned.data() + 2, aligned.data(), aligned.size());
+  Shape shape = ShapeUtil::MakeShape(F16, {64}, {true});
+  EXPECT_THAT(
+      ReadDynamicShapeMetadata(absl::MakeConstSpan(unaligned).subspan(2), shape,
+                               PjRtDynamicShapeKind::kSuffix),
+      IsOkAndHolds(ShapeEqualTo(ShapeUtil::MakeShape(F16, {24}))));
+}
+
 TEST(ReadDynamicShapeMetadataTest, StaticDimensionIgnoresUnwrittenSlot) {
   // Only dimension 0 is dynamic. A producer may leave the metadata slot of the
   // static dimension unwritten (zero); the static extent must be used instead.

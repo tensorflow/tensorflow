@@ -756,10 +756,11 @@ absl::Status CommonPjRtClient::Linearize(
     converted_dynamic_sizes.assign(dynamic_sizes.begin(), dynamic_sizes.end());
     dims = converted_dynamic_sizes;
 
-    int32_t* metadata_dest =
-        reinterpret_cast<int32_t*>(dest.data() + requirements.metadata_offset);
+    uint8_t* metadata_dest = dest.data() + requirements.metadata_offset;
     for (int i = 0; i < dims.size(); ++i) {
-      metadata_dest[i] = dynamic_sizes[i];
+      int32_t dynamic_size = static_cast<int32_t>(dynamic_sizes[i]);
+      std::memcpy(metadata_dest + i * sizeof(int32_t), &dynamic_size,
+                  sizeof(dynamic_size));
     }
   } else {
     if (!dynamic_sizes.empty()) {
