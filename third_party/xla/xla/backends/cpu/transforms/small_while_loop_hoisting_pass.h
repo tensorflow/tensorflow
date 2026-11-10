@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_SMALL_WHILE_LOOP_HOISTING_PASS_H_
-#define XLA_SERVICE_CPU_SMALL_WHILE_LOOP_HOISTING_PASS_H_
+#ifndef XLA_BACKENDS_CPU_TRANSFORMS_SMALL_WHILE_LOOP_HOISTING_PASS_H_
+#define XLA_BACKENDS_CPU_TRANSFORMS_SMALL_WHILE_LOOP_HOISTING_PASS_H_
 
 #include <cstdint>
 
@@ -52,4 +52,4 @@ class SmallWhileLoopHoistingPass final : public HloModulePass {
 };
 }  // namespace xla::cpu
 
-#endif  // XLA_SERVICE_CPU_SMALL_WHILE_LOOP_HOISTING_PASS_H_
+#endif  // XLA_BACKENDS_CPU_TRANSFORMS_SMALL_WHILE_LOOP_HOISTING_PASS_H_

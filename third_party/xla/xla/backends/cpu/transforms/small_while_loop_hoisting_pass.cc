@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/cpu/small_while_loop_hoisting_pass.h"
+#include "xla/backends/cpu/transforms/small_while_loop_hoisting_pass.h"
 
 #include <cstdint>
 #include <iterator>

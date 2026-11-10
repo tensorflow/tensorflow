@@ -158,7 +158,6 @@ cc_library(
         ":export_hlo",
         ":metrics",
         ":parallel_task_assignment",
-        ":small_while_loop_hoisting_pass",
         ":thunk_emitter",
         "//xla:comparison_util",
         "//xla:literal_pool",
@@ -187,6 +186,7 @@ cc_library(
         "//xla/backends/cpu/transforms:embedded_while_loop_unroller",
         "//xla/backends/cpu/transforms:fusion_wrapper",
         "//xla/backends/cpu/transforms:library_rewriter",
+        "//xla/backends/cpu/transforms:small_while_loop_hoisting_pass",
         "//xla/backends/cpu/transforms/collectives:all_reduce_combiner",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
@@ -1323,33 +1323,6 @@ cc_library(
 )
 
 cc_library(
-    name = "small_while_loop_hoisting_pass",
-    srcs = ["small_while_loop_hoisting_pass.cc"],
-    hdrs = ["small_while_loop_hoisting_pass.h"],
-    deps = [
-        ":cpu_executable",
-        ":dot_op_emitter",
-        ":ir_emission_utils",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/service:collective_ops_utils",
-        "//xla/service:hlo_cost_analysis",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:status_macros",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-cc_library(
     name = "parallel_fusion_emitter",
     srcs = ["parallel_fusion_emitter.cc"],
     hdrs = ["parallel_fusion_emitter.h"],
@@ -1424,27 +1397,6 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_cc_test(
-    name = "small_while_loop_hoisting_pass_test",
-    srcs = ["small_while_loop_hoisting_pass_test.cc"],
-    deps = [
-        ":backend_config_proto_cc",
-        ":dot_op_emitter",
-        ":small_while_loop_hoisting_pass",
-        ":target_machine_features_stub",
-        "//xla:xla_proto_cc",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/service:hlo_module_config",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
