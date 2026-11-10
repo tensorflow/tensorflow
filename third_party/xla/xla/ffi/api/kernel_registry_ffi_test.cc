@@ -49,6 +49,15 @@ struct CanRegister<T, std::void_t<decltype(std::declval<T>().Register(
     : std::true_type {};
 
 template <typename T, typename = void>
+struct CanRegisterWithCache : std::false_type {};
+
+template <typename T>
+struct CanRegisterWithCache<
+    T, std::void_t<decltype(std::declval<T>().Register(
+           "k", nullptr, 0, SourceFormat::kPtx, false, nullptr))>>
+    : std::true_type {};
+
+template <typename T, typename = void>
 struct CanLaunch : std::false_type {};
 
 template <typename T>
@@ -59,6 +68,12 @@ struct CanLaunch<T, std::void_t<decltype(std::declval<T>().Launch(
 static_assert(CanRegister<PrepareKernelRegistry>::value);
 static_assert(CanRegister<InitializeKernelRegistry>::value);
 static_assert(!CanRegister<ExecuteKernelRegistry>::value);
+static_assert(CanRegisterWithCache<PrepareKernelRegistry>::value);
+static_assert(CanRegisterWithCache<InitializeKernelRegistry>::value);
+static_assert(!CanRegisterWithCache<ExecuteKernelRegistry>::value);
+static_assert(XLA_FFI_KernelRegistry_Register_Args_STRUCT_SIZE ==
+              XLA_FFI_STRUCT_SIZE(XLA_FFI_KernelRegistry_Register_Args,
+                                  kernel));
 
 static_assert(!CanLaunch<PrepareKernelRegistry>::value);
 static_assert(!CanLaunch<InitializeKernelRegistry>::value);
@@ -91,6 +106,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
     int32_t device_ordinal = 3;
     bool registered = false;
     bool launched = false;
+    const XLA_FFI_Kernel* last_cached_kernel = nullptr;
   };
 
   auto register_cb =
@@ -111,6 +127,7 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
     EXPECT_EQ(args->kernel_spec->format, XLA_FFI_SourceFormat_PTX);
     EXPECT_EQ(args->uses_pdl, 1);
     state->registered = true;
+    state->last_cached_kernel = args->cached_kernel;
     args->kernel = kExpectedKernel;
     return nullptr;
   };
@@ -163,7 +180,17 @@ TEST(KernelRegistryFfiTest, KernelRegistry) {
       return kernel.error();
     }
     EXPECT_EQ(*kernel, kExpectedKernel);
+    EXPECT_EQ(state.last_cached_kernel, nullptr);
     registered_kernel = *kernel;
+
+    auto cached = kernel_registry.Register(
+        "my_kernel", "dummy_ptx", 9, SourceFormat::kPtx,
+        /*uses_pdl=*/true, registered_kernel);
+    if (cached.has_error()) {
+      return cached.error();
+    }
+    EXPECT_EQ(*cached, kExpectedKernel);
+    EXPECT_EQ(state.last_cached_kernel, kExpectedKernel);
     return Error::Success();
   };
 

@@ -65,21 +65,26 @@ struct XLA_FFI_KernelRegistry_Register_Args {
   XLA_FFI_KernelRegistryState* state;
   const XLA_FFI_KernelSpec* kernel_spec;
   int32_t uses_pdl;
-  const XLA_FFI_Kernel* kernel;  // out
+  const XLA_FFI_Kernel* cached_kernel;  // in, optional
+  const XLA_FFI_Kernel* kernel;         // out
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_KernelRegistry_Register_Args, kernel);
 
 // Registers a device kernel (PTX or CUBIN) for the current device and returns
-// an opaque `XLA_FFI_Kernel*` handle in `args->kernel`.
+// an opaque `XLA_FFI_Kernel*` handle in `args->kernel`. Call on every Prepare
+// or Initialize so each device loads the module; pass `cached_kernel` (from a
+// prior call on the same executable) to skip binary hashing and map lookup.
 // Valid stages: Prepare, Initialize.
 // Lifetime:
 // - `kernel_spec` (including `name` and `data`) is only read during the call
-//   and does not need to outlive it.
+//   and does not need to outlive it; binary bytes are not re-checked when
+//   `cached_kernel` is non-null.
 // - The returned `XLA_FFI_Kernel*` is owned by the XLA executable and remains
-//   valid until the executable is destroyed.
+//   valid until the executable is destroyed. Passing a handle from a destroyed
+//   executable is undefined behavior.
 // - Repeated registrations of the same kernel (same name, binary contents,
-//   format, and `uses_pdl`) reuse the same `XLA_FFI_Kernel*` handle and load
+//   format, `uses_pdl`, and executable PDL setting) reuse one handle and load
 //   the module at most once per device.
 typedef XLA_FFI_Error* XLA_FFI_KernelRegistry_Register(
     XLA_FFI_KernelRegistry_Register_Args* args);
@@ -126,18 +131,29 @@ typedef XLA_FFI_Error* XLA_FFI_KernelRegistry_Launch(
 // ```
 // 2. Register the kernel during Initialize and launch it during Execute:
 // ```
+// struct MyState {
+//   std::atomic<const XLA_FFI_Kernel*> kernel{nullptr};
+// };
+//
 // absl::Status MyInit(ffi::InitializeKernelRegistry registry, MyState* state) {
+//   const XLA_FFI_Kernel* cached =
+//       state->kernel.load(std::memory_order_acquire);
 //   ABSL_ASSIGN_OR_RETURN(
-//       state->kernel,
+//       const XLA_FFI_Kernel* kernel,
 //       registry.Register("my_kernel", kPtxData, kPtxSize,
-//                         ffi::SourceFormat::kPtx, /*uses_pdl=*/false));
+//                         ffi::SourceFormat::kPtx, /*uses_pdl=*/false,
+//                         cached));
+//   if (cached == nullptr) {
+//     state->kernel.store(kernel, std::memory_order_release);
+//   }
 //   return absl::OkStatus();
 // }
 //
 // absl::Status MyExecute(ffi::ExecuteKernelRegistry registry,
 //                        ffi::RemainingArgs args, MyState* state) {
-//   return registry.Launch(state->kernel, launch_dims, shared_mem_bytes,
-//                          /*uses_pdl=*/false, kernel_args);
+//   return registry.Launch(state->kernel.load(std::memory_order_acquire),
+//                          launch_dims, shared_mem_bytes, /*uses_pdl=*/false,
+//                          kernel_args);
 // }
 // ```
 typedef struct XLA_FFI_KernelRegistryApi {
