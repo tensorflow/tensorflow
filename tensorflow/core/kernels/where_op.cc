@@ -107,7 +107,7 @@ struct Where<CPUDevice, DIMS, T, TIndex> {
 
     Eigen::DenseIndex output_size = output.dimension(0);
     for (Eigen::DenseIndex n = 0; n < input.size(); ++n) {
-      if (input.data()[n] != T(0)) {
+      if (input(n) != T(0)) {
         if (FastBoundsCheck(*found_true, output_size)) {
           WriteIndexRowMajor(output, strides, *found_true, n);
         }
