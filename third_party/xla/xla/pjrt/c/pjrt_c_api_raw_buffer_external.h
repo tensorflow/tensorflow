@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace pjrt {
 
@@ -86,6 +87,8 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
   absl::StatusOr<PjRtRawBufferRef> Slice(int64_t offset, int64_t size) override;
 
   absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() override;
+
+  tsl::AsyncValueRef<ExternalDmaAccess> AcquireExternalDmaAccess() override;
 
   void CopyTo(
       PjRtRawBufferRef dst_raw_buffer,

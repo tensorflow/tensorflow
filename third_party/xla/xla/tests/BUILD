@@ -1065,6 +1065,7 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:types",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
         "//xla/tests:xla_test_backend_predicates",
