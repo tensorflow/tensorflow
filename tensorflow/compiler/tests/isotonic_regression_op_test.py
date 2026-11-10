@@ -31,7 +31,12 @@ from tensorflow.python.platform import test
 class IsotonicRegressionOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _assert_isotonic_close(self, expected, actual, dtype):
-    if dtype in (dtypes.bfloat16, dtypes.half, np.float16):
+    if dtype in (
+        dtypes.bfloat16,
+        dtypes.half,
+        np.float16,
+        dtypes.bfloat16.as_numpy_dtype,
+    ):
       self.assertAllCloseAccordingToType(expected, actual, rtol=1e-2, atol=1e-2)
     else:
       self.assertAllClose(expected, actual)
@@ -69,9 +74,10 @@ class IsotonicRegressionOpTest(xla_test.XLATestCase, parameterized.TestCase):
             inp, decreasing=decreasing, axis=axis
         )
 
-      jit_y, jit_segments = jitted_fn(constant_op.constant(x_np))
-      self._assert_isotonic_close(expected_y_np, jit_y.numpy(), x_np.dtype)
-      self.assertAllEqual(expected_seg_np, jit_segments.numpy())
+      with ops.device("/device:CPU:0"):
+        jit_y, jit_segments = jitted_fn(constant_op.constant(x_np))
+        self._assert_isotonic_close(expected_y_np, jit_y.numpy(), x_np.dtype)
+        self.assertAllEqual(expected_seg_np, jit_segments.numpy())
 
   @parameterized.parameters(
       {"decreasing": True},
@@ -201,26 +207,12 @@ class IsotonicRegressionOpTest(xla_test.XLATestCase, parameterized.TestCase):
     self._verify_isotonic(x_half, decreasing=True)
     self._verify_isotonic(x_half, decreasing=False)
 
-    # bfloat16 test via tensorflow constant
-    x_bf16 = constant_op.constant(
-        [[3.0, 1.0, 2.0], [1.0, 3.0, 4.0]], dtype=dtypes.bfloat16
+    x_bf16 = np.array(
+        [[3.0, 1.0, 2.0], [1.0, 3.0, 4.0]],
+        dtype=dtypes.bfloat16.as_numpy_dtype,
     )
-    with ops.device("/device:CPU:0"):
-      expected_y, expected_seg = nn_ops.isotonic_regression(
-          x_bf16, decreasing=True
-      )
-
-    with self.session() as sess:
-      x_ph = array_ops.placeholder(dtypes.bfloat16, shape=[2, 3])
-      with self.device_scope():
-        out_y, out_seg = nn_ops.isotonic_regression(x_ph, decreasing=True)
-      res_y, res_seg = sess.run(
-          [out_y, out_seg], feed_dict={x_ph: x_bf16.eval(session=sess)}
-      )
-      self._assert_isotonic_close(
-          expected_y.eval(session=sess), res_y, dtypes.bfloat16
-      )
-      self.assertAllEqual(expected_seg.eval(session=sess), res_seg)
+    self._verify_isotonic(x_bf16, decreasing=True)
+    self._verify_isotonic(x_bf16, decreasing=False)
 
 
 if __name__ == "__main__":

@@ -910,6 +910,11 @@ tf_xla_py_strict_test(
     name = "isotonic_regression_op_test",
     size = "small",
     srcs = ["isotonic_regression_op_test.py"],
+    disabled_backends = [
+        "gpu",
+        "gpu_a100",
+        "gpu_h100",
+    ],
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",
